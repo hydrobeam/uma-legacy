@@ -5,16 +5,74 @@ use super::{
     hint_spec, json, kinds_all, scenario_name, stop_risk_code,
 };
 
-/// One random event outcome per firing: (chance, target rewards (target, 1 white | 2 gold)) per outcome. The chances
-/// sum to at most 1 (the rest gives nothing); a reward with chance p on its own is [(p, [(k, lvl)])].
-pub(super) type Group = Vec<(f64, Vec<(usize, u8)>)>;
+/// Mutually exclusive outcomes of one event firing. Probabilities sum to at most 1; the remainder gives no hint.
+/// Each outcome's rewards occur together, using hint levels 1 (white) and 2 (gold).
+pub(super) type Group = Vec<EventOutcome>;
+
+/// An event's probability and the target hints awarded together.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct EventOutcome<Rewards = Vec<TargetReward>> {
+    pub(super) probability: f64,
+    pub(super) rewards: Rewards,
+}
+
+/// One uncertain target's hint level in an outcome (1 white, 2 gold).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(super) struct TargetReward {
+    pub(super) target: usize,
+    pub(super) level: u8,
+}
+
+/// A card's independent training hint for one uncertain target.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct TrainingHint {
+    pub(super) target: usize,
+    pub(super) probability: f64,
+}
+
+/// An outcome group that fires when the chain reaches a link.
+#[derive(Clone, Debug)]
+pub(super) struct ChainOutcome {
+    pub(super) link: u8,
+    pub(super) outcomes: Group,
+}
+
+/// Miss factors contributed by a fixed outcome group to one target.
+#[derive(Clone, Copy)]
+pub(super) struct TargetMisses {
+    pub(super) target: usize,
+    pub(super) no_gold: f64,
+    pub(super) no_hint: f64,
+}
+
+/// Miss factors contributed when one chain link fires.
+#[derive(Clone, Copy)]
+pub(super) struct LinkMisses {
+    pub(super) link: u8,
+    pub(super) no_gold: f64,
+    pub(super) no_hint: f64,
+}
+
+/// One target's miss factors, in chain-link order.
+#[derive(Clone)]
+pub(super) struct TargetChainMisses {
+    pub(super) target: usize,
+    pub(super) links: Vec<LinkMisses>,
+}
+
+/// A deck entry's target sources and its chain scheduling kind.
+#[derive(Clone)]
+pub(super) struct SourceEntry<S> {
+    pub(super) sources: S,
+    pub(super) kind: ChainKind,
+}
 /// Per target a group touches: (k, P(gold for k), P(any hint for k)).
 pub(super) fn group_gh(group: &Group) -> Vec<(usize, f64, f64)> {
     let mut marginals: Vec<(usize, f64, f64)> = vec![];
-    for (probability, rewards) in group {
+    for EventOutcome { probability, rewards } in group {
         // An outcome can list both white and gold for one target; only its best reward counts.
         let mut best_levels: Vec<(usize, u8)> = vec![];
-        for &(target, level) in rewards {
+        for &TargetReward { target, level } in rewards {
             match best_levels.iter_mut().find(|reward| reward.0 == target) {
                 Some(reward) => reward.1 = reward.1.max(level),
                 None => best_levels.push((target, level)),
@@ -39,11 +97,11 @@ pub(super) fn group_gh(group: &Group) -> Vec<(usize, f64, f64)> {
 
 /// Highest hint level for one target in an outcome, using the event model's 1 = white / 2 = gold convention.
 /// An absent target has level 0; any listed reward below gold is treated as white.
-fn outcome_hint_level(rewards: &[(usize, u8)], target: usize) -> u8 {
+fn outcome_hint_level(rewards: &[TargetReward], target: usize) -> u8 {
     rewards
         .iter()
-        .filter(|reward| reward.0 == target)
-        .map(|reward| if reward.1 >= 2 { 2u8 } else { 1u8 })
+        .filter(|reward| reward.target == target)
+        .map(|reward| if reward.level >= 2 { 2u8 } else { 1u8 })
         .max()
         .unwrap_or(0)
 }
@@ -54,10 +112,10 @@ fn outcome_hint_level(rewards: &[(usize, u8)], target: usize) -> u8 {
 /// dependent, P(A >= a, B >= b) <= P(A >= a) P(B >= b) for a, b in {white, gold} (for two variables negative quadrant
 /// dependence is negative association). Three or more targets with an outcome hinting several: not covered.
 pub(super) fn group_assoc(g: &Group) -> bool {
-    if g.iter().all(|(_, o)| o.iter().all(|x| x.0 == o[0].0)) {
+    if g.iter().all(|outcome| outcome.rewards.iter().all(|reward| reward.target == outcome.rewards[0].target)) {
         return true;
     }
-    let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect();
+    let mut ts: Vec<usize> = g.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
     ts.sort_unstable();
     ts.dedup();
     if ts.len() != 2 {
@@ -65,12 +123,22 @@ pub(super) fn group_assoc(g: &Group) -> bool {
     }
     for a in 1..=2u8 {
         for b in 1..=2u8 {
-            let pa: f64 = g.iter().filter(|(_, o)| outcome_hint_level(o, ts[0]) >= a).map(|x| x.0).sum();
-            let pb: f64 = g.iter().filter(|(_, o)| outcome_hint_level(o, ts[1]) >= b).map(|x| x.0).sum();
+            let pa: f64 = g
+                .iter()
+                .filter(|outcome| outcome_hint_level(&outcome.rewards, ts[0]) >= a)
+                .map(|x| x.probability)
+                .sum();
+            let pb: f64 = g
+                .iter()
+                .filter(|outcome| outcome_hint_level(&outcome.rewards, ts[1]) >= b)
+                .map(|x| x.probability)
+                .sum();
             let pj: f64 = g
                 .iter()
-                .filter(|(_, o)| outcome_hint_level(o, ts[0]) >= a && outcome_hint_level(o, ts[1]) >= b)
-                .map(|x| x.0)
+                .filter(|outcome| {
+                    outcome_hint_level(&outcome.rewards, ts[0]) >= a && outcome_hint_level(&outcome.rewards, ts[1]) >= b
+                })
+                .map(|x| x.probability)
                 .sum();
             if pj > pa * pb * (1.0 + 1e-12) + 1e-15 {
                 return false;
@@ -84,12 +152,13 @@ pub(super) fn group_assoc(g: &Group) -> bool {
 /// outcomes hinting several targets together need the explicit check. Results are cached by the group's bits.
 /// More than 20 targets is unproven.
 pub(super) fn group_nuod(g: &Group) -> bool {
-    thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<(usize, u8)>)>, bool>> = std::cell::RefCell::new(crate::FxMap::default()); }
-    let key: Vec<(u64, Vec<(usize, u8)>)> = g.iter().map(|(p, o)| (p.to_bits(), o.clone())).collect();
+    thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<TargetReward>)>, bool>> = std::cell::RefCell::new(crate::FxMap::default()); }
+    let key: Vec<(u64, Vec<TargetReward>)> =
+        g.iter().map(|outcome| (outcome.probability.to_bits(), outcome.rewards.clone())).collect();
     if let Some(r) = GN.with(|c| c.borrow().get(&key).copied()) {
         return r;
     }
-    let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect();
+    let mut ts: Vec<usize> = g.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
     ts.sort_unstable();
     ts.dedup();
     // Exhaustive checking is exponential. An unchecked group is not a proof of negative dependence;
@@ -100,7 +169,15 @@ pub(super) fn group_nuod(g: &Group) -> bool {
     // per outcome, the targets it hints as a bit set
     let outs: Vec<(f64, u32)> = g
         .iter()
-        .map(|(p, o)| (*p, o.iter().fold(0u32, |m, x| m | 1 << ts.iter().position(|&t| t == x.0).unwrap())))
+        .map(|outcome| {
+            (
+                outcome.probability,
+                outcome
+                    .rewards
+                    .iter()
+                    .fold(0u32, |m, reward| m | 1 << ts.iter().position(|&t| t == reward.target).unwrap()),
+            )
+        })
         .collect();
     let marg: Vec<f64> = (0..ts.len()).map(|i| outs.iter().filter(|o| o.1 >> i & 1 == 1).map(|o| o.0).sum()).collect();
     let ok = (1u32..1 << ts.len()).filter(|s| s.count_ones() >= 2).all(|s| {
@@ -112,12 +189,12 @@ pub(super) fn group_nuod(g: &Group) -> bool {
 }
 /// Whether a group's per-target hint levels (Y_k: 0 none, 1 white, 2 gold, the best level its outcome gives k) are
 /// negatively upper-orthant dependent at every level: for every set S of two or more of its targets and every s in
-/// {1, 2}^S, P(Y_k >= s_k for all k in S) <= prod_S P(Y_k >= s_k). What the cap-free bound (`cf_ok`) needs: a nonnegative
+/// {1, 2}^S, P(Y_k >= s_k for all k in S) <= prod_S P(Y_k >= s_k). What `certified_cap_free` needs: a nonnegative
 /// rising function of one Y_k is a nonnegative combination of 1, 1{Y_k >= 1} and 1{Y_k >= 2}, so the expected product
 /// of such functions of distinct targets is at most the product of their expectations. Implied by `group_assoc` (two
 /// targets: the same test; single-target outcomes: every joint term is 0). Over 6 targets: not checked (false).
 pub(super) fn group_nuod_lvl(g: &Group) -> bool {
-    let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect();
+    let mut ts: Vec<usize> = g.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
     ts.sort_unstable();
     ts.dedup();
     if ts.len() < 2 {
@@ -128,8 +205,10 @@ pub(super) fn group_nuod_lvl(g: &Group) -> bool {
     }
     let m = ts.len();
     // per outcome: its chance and each target's level
-    let outs: Vec<(f64, Vec<u8>)> =
-        g.iter().map(|(p, o)| (*p, ts.iter().map(|&t| outcome_hint_level(o, t)).collect())).collect();
+    let outs: Vec<(f64, Vec<u8>)> = g
+        .iter()
+        .map(|outcome| (outcome.probability, ts.iter().map(|&t| outcome_hint_level(&outcome.rewards, t)).collect()))
+        .collect();
     let marg = |i: usize, s: u8| -> f64 { outs.iter().filter(|o| o.1[i] >= s).map(|o| o.0).sum() };
     // every assignment of a level 0 (not in S), 1 or 2 to each target, base 3
     let mut a = vec![0u8; m];
@@ -159,58 +238,69 @@ pub(super) fn group_nuod_lvl(g: &Group) -> bool {
 
 /// Target sources of one deck entry (a card, a card whose chain the player ends early, or a card taking a given
 /// choice where an event offers targets on different choices): training hints (target, chance), outcome groups that
-/// do not depend on the chain, and chain outcome groups with their link, sorted by link. `fm` / `cm` are the same
+/// do not depend on the chain, and chain outcome groups with their link, sorted by link. `fixed_misses` and
+/// `chain_misses` are the same
 /// per target as miss factors (1 - P(gold), 1 - P(any hint)), the chain ones per link in link order.
 #[derive(Clone, Default)]
-pub(super) struct Src {
-    pub(super) train: Vec<(usize, f64)>,
-    pub(super) fixed: Vec<Group>,
-    pub(super) chains: Vec<(u8, Group)>,
-    pub(super) fm: Vec<(usize, f64, f64)>,
-    pub(super) cm: Vec<(usize, Vec<(u8, f64, f64)>)>,
+pub(super) struct TargetSources {
+    pub(super) training_hints: Vec<TrainingHint>,
+    pub(super) fixed_outcomes: Vec<Group>,
+    pub(super) chain_outcomes: Vec<ChainOutcome>,
+    pub(super) fixed_misses: Vec<TargetMisses>,
+    pub(super) chain_misses: Vec<TargetChainMisses>,
     /// a group of it touching two or more targets has not been proved negatively upper-orthant dependent:
     /// `upper_na` does not cover a deck with it
-    pub(super) not_nuod: bool,
+    pub(super) uncertified_orthant: bool,
     /// a group's hint levels are not certified negatively associated by `group_assoc`; the ordinary
     /// state-conditioned bound does not cover it. Multiple targets alone do not imply this flag:
     /// `group_assoc` also certifies some two-target groups with joint rewards.
-    pub(super) multi: bool,
+    pub(super) uncertified_association: bool,
     /// every group of it passes `group_nuod_lvl`: the state-conditioned bound holds for it without any cap (the
     /// cap-free deck search, `Env::best_deck_cf`, covers only decks of such entries)
-    pub(super) cf_ok: bool,
+    pub(super) certified_cap_free: bool,
 }
-impl Src {
+impl TargetSources {
     pub(super) fn finish(mut self) -> Self {
-        self.chains.sort_by_key(|x| x.0);
-        self.fm = self.fixed.iter().flat_map(group_gh).map(|(k, g, h)| (k, 1.0 - g, 1.0 - h)).collect();
-        let mut cm: Vec<(usize, Vec<(u8, f64, f64)>)> = vec![];
-        for (l, g) in &self.chains {
+        self.chain_outcomes.sort_by_key(|x| x.link);
+        self.fixed_misses = self
+            .fixed_outcomes
+            .iter()
+            .flat_map(group_gh)
+            .map(|(k, g, h)| TargetMisses { target: k, no_gold: 1.0 - g, no_hint: 1.0 - h })
+            .collect();
+        let mut cm: Vec<TargetChainMisses> = vec![];
+        for ChainOutcome { link: l, outcomes: g } in &self.chain_outcomes {
             for (k, pg, ph) in group_gh(g) {
-                let e = if let Some(i) = cm.iter().position(|x| x.0 == k) {
-                    &mut cm[i].1
+                let e = if let Some(i) = cm.iter().position(|x| x.target == k) {
+                    &mut cm[i].links
                 } else {
-                    cm.push((k, vec![]));
-                    &mut cm.last_mut().unwrap().1
+                    cm.push(TargetChainMisses { target: k, links: vec![] });
+                    &mut cm.last_mut().unwrap().links
                 };
                 match e.last_mut() {
-                    Some(x) if x.0 == *l => {
-                        x.1 *= 1.0 - pg;
-                        x.2 *= 1.0 - ph;
+                    Some(x) if x.link == *l => {
+                        x.no_gold *= 1.0 - pg;
+                        x.no_hint *= 1.0 - ph;
                     }
-                    _ => e.push((*l, 1.0 - pg, 1.0 - ph)),
+                    _ => e.push(LinkMisses { link: *l, no_gold: 1.0 - pg, no_hint: 1.0 - ph }),
                 }
             }
         }
-        cm.sort_by_key(|x| x.0);
-        self.cm = cm;
-        self.not_nuod =
-            self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| group_gh(g).len() >= 2 && !group_nuod(g));
-        self.multi = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| !group_assoc(g));
-        self.cf_ok = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).all(group_nuod_lvl);
+        cm.sort_by_key(|x| x.target);
+        self.chain_misses = cm;
+        self.uncertified_orthant = self
+            .fixed_outcomes
+            .iter()
+            .chain(self.chain_outcomes.iter().map(|x| &x.outcomes))
+            .any(|g| group_gh(g).len() >= 2 && !group_nuod(g));
+        self.uncertified_association =
+            self.fixed_outcomes.iter().chain(self.chain_outcomes.iter().map(|x| &x.outcomes)).any(|g| !group_assoc(g));
+        self.certified_cap_free =
+            self.fixed_outcomes.iter().chain(self.chain_outcomes.iter().map(|x| &x.outcomes)).all(group_nuod_lvl);
         self
     }
     pub(super) const fn is_empty(&self) -> bool {
-        self.train.is_empty() && self.fixed.is_empty() && self.chains.is_empty()
+        self.training_hints.is_empty() && self.fixed_outcomes.is_empty() && self.chain_outcomes.is_empty()
     }
 }
 
@@ -220,19 +310,19 @@ impl Src {
 /// Links fire in order, so a skill offered at several links comes from the earliest one that fires:
 /// P(miss) = 1 - sum_l P(link l fires) * (P(not from links < l) - P(not from links <= l)).
 /// Both misses fall with every m[l], so the lowest possible link odds bound them from above.
-pub(super) fn src_miss(s: &Src, m: &[f64], mw: &mut [f64], mg: &mut [f64]) {
+pub(super) fn src_miss(s: &TargetSources, m: &[f64], mw: &mut [f64], mg: &mut [f64]) {
     let mut eg = [1.0f64; 32];
     let mut eh = [1.0f64; 32];
-    for &(k, p) in &s.train {
+    for &TrainingHint { target: k, probability: p } in &s.training_hints {
         eh[k] *= 1.0 - p;
     }
-    for &(k, ng, nh) in &s.fm {
+    for &TargetMisses { target: k, no_gold: ng, no_hint: nh } in &s.fixed_misses {
         eg[k] *= ng;
         eh[k] *= nh;
     }
-    for (k, links) in &s.cm {
+    for TargetChainMisses { target: k, links } in &s.chain_misses {
         let (mut cg, mut ch, mut xg, mut xh) = (1.0f64, 1.0f64, 1.0f64, 1.0f64);
-        for &(l, ng, nh) in links {
+        for &LinkMisses { link: l, no_gold: ng, no_hint: nh } in links {
             let ml = m.get(l as usize - 1).copied().unwrap_or(0.0);
             let (ncg, nch) = (cg * ng, ch * nh);
             xg -= ml * (cg - ncg);
@@ -418,17 +508,22 @@ impl Sources<'_> {
         let s = &self.dj.scenario;
         hint_base(s) * (1.0 + c.hf / 100.0) * (1.0 + hint_spec(s) * c.spec / 100.0)
     }
-    pub(super) fn train(&self, c: &Card) -> Vec<(usize, f64)> {
+    pub(super) fn train(&self, c: &Card) -> Vec<TrainingHint> {
         if c.nskill == 0 {
             return vec![];
         }
         let p = 1.0 - hint_miss(1, c.nskill as usize, self.draws(c), c.hinc);
-        self.unc.iter().enumerate().filter(|(_, g)| c.whites.contains(g)).map(|(k, _)| (k, p)).collect()
+        self.unc
+            .iter()
+            .enumerate()
+            .filter(|(_, g)| c.whites.contains(g))
+            .map(|(k, _)| TrainingHint { target: k, probability: p })
+            .collect()
     }
     /// A card's training hints over two or more of its targets as one outcome group: one outcome per non-empty set S
     /// of targets hinted, P(exactly S) = sum over U in S of (-1)^(|S|-|U|) hint_miss(m - |U|) (m targets in the
     /// pool), so the draws that hint one target cannot also hint another. Each target's own chance is unchanged.
-    pub(super) fn train_group(&self, c: &Card, tr: &[(usize, f64)]) -> Group {
+    pub(super) fn train_group(&self, c: &Card, tr: &[TrainingHint]) -> Group {
         let (m, n, h) = (tr.len(), c.nskill as usize, self.draws(c));
         // Only the number of unhinted targets matters. Reuse these probabilities without changing the
         // inclusion-exclusion summation order (and therefore its floating-point rounding).
@@ -447,7 +542,13 @@ impl Sources<'_> {
                 }
                 u = (u - 1) & sm;
             }
-            g.push((w.max(0.0), (0..m).filter(|i| sm >> i & 1 == 1).map(|i| (tr[i].0, 1u8)).collect()));
+            g.push(EventOutcome {
+                probability: w.max(0.0),
+                rewards: (0..m)
+                    .filter(|i| sm >> i & 1 == 1)
+                    .map(|i| TargetReward { target: tr[i].target, level: 1u8 })
+                    .collect(),
+            });
         }
         g
     }
@@ -484,10 +585,13 @@ impl Sources<'_> {
                     .iter()
                     .enumerate()
                     .map(|(outcome_index, outcome)| {
-                        let mut rewards: Vec<(usize, u8)> = outcome
+                        let mut rewards: Vec<TargetReward> = outcome
                             .iter()
                             .filter_map(|&(group, level)| {
-                                self.unc.iter().position(|&target| target == group).map(|k| (k, level))
+                                self.unc
+                                    .iter()
+                                    .position(|&target| target == group)
+                                    .map(|k| TargetReward { target: k, level })
                             })
                             .collect();
                         rewards.sort_unstable();
@@ -497,9 +601,9 @@ impl Sources<'_> {
                             .and_then(|choice| choice.get(outcome_index))
                             .copied()
                             .unwrap_or(1.0 / outcome_count);
-                        (probability, rewards)
+                        EventOutcome { probability, rewards }
                     })
-                    .filter(|(_, rewards)| !rewards.is_empty())
+                    .filter(|outcome| !outcome.rewards.is_empty())
                     .collect()
             })
             .collect();
@@ -568,28 +672,30 @@ impl Sources<'_> {
     }
     /// Sources of a card played normally (stop = None) or ending its chain at link `stop` (links before it as usual,
     /// then the ending choice's rewards at that link), taking choice variant `var`.
-    pub(super) fn src(&self, c: &Card, stop: Option<u8>, var: u32) -> Src {
-        let one = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-        let mut s = Src {
-            fixed: self.odds_for(c.id).into_iter().map(|(k, lvl, p)| one(k, lvl, p)).collect(),
-            ..Src::default()
+    pub(super) fn src(&self, c: &Card, stop: Option<u8>, var: u32) -> TargetSources {
+        let one = |k: usize, lvl: u8, p: f64| -> Group {
+            vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+        };
+        let mut s = TargetSources {
+            fixed_outcomes: self.odds_for(c.id).into_iter().map(|(k, lvl, p)| one(k, lvl, p)).collect(),
+            ..TargetSources::default()
         };
         let tr = self.train(c);
         if tr.len() >= 2 {
-            s.fixed.push(self.train_group(c, &tr));
+            s.fixed_outcomes.push(self.train_group(c, &tr));
         } else {
-            s.train = tr;
+            s.training_hints = tr;
         }
         let alt_links: Vec<u8> = self.dj.alts.iter().filter(|a| a.0 == c.id).map(|a| a.1).collect();
         for (k, lvl, link, f) in self.ev_for(c.id) {
             if link == 0 {
-                s.fixed.push(one(k, lvl, f));
+                s.fixed_outcomes.push(one(k, lvl, f));
                 continue;
             }
             if c.pal || alt_links.contains(&link) || !Self::in_range(link, stop) {
                 continue;
             } // pals have no chain slots
-            s.chains.push((link, one(k, lvl, f)));
+            s.chain_outcomes.push(ChainOutcome { link, outcomes: one(k, lvl, f) });
         }
         if !c.pal {
             let vl = self.var_links(c, stop);
@@ -603,13 +709,13 @@ impl Sources<'_> {
                 let ch = self.choices(c.id, l).unwrap_or_default();
                 let i = vl.iter().position(|x| x.0 == l).map_or(0, |pos| ((var >> (4 * pos)) & 15) as usize);
                 if let Some(g) = ch.get(i) {
-                    s.chains.push((l, g.clone()));
+                    s.chain_outcomes.push(ChainOutcome { link: l, outcomes: g.clone() });
                 }
             }
         }
         if let Some(st) = stop {
             for (k, lvl, f) in self.end_rew(c.id, st) {
-                s.chains.push((st, one(k, lvl, f)));
+                s.chain_outcomes.push(ChainOutcome { link: st, outcomes: one(k, lvl, f) });
             }
         }
         s.finish()
@@ -639,8 +745,8 @@ impl Sources<'_> {
                 let i = ((var >> (4 * pos)) & 15) as usize;
                 let g = self.choices(c.id, l).unwrap_or_default().get(i).cloned().unwrap_or_default();
                 let mut ns: Vec<String> = vec![];
-                for (_, out) in &g {
-                    for &(k, lvl) in out {
+                for EventOutcome { rewards: out, .. } in &g {
+                    for &TargetReward { target: k, level: lvl } in out {
                         let n = name(k, lvl);
                         if !ns.contains(&n) {
                             ns.push(n);
@@ -664,7 +770,7 @@ pub(super) struct Entries<'data> {
     pub(super) kind: Vec<ChainKind>,
     pub(super) endk: Vec<u8>,
     pub(super) vark: Vec<u32>,
-    pub(super) srcs: Vec<Src>,
+    pub(super) srcs: Vec<TargetSources>,
     pub(super) plain_ids: Vec<u32>,
     pub(super) plain_names: Vec<String>,
     pub(super) plain_chars: Vec<u32>,
@@ -704,7 +810,7 @@ pub(super) fn deck_entries<'data>(
     let mut kind: Vec<ChainKind> = vec![];
     let mut endk: Vec<u8> = vec![];
     let mut vark: Vec<u32> = vec![];
-    let mut srcs: Vec<Src> = vec![];
+    let mut srcs: Vec<TargetSources> = vec![];
     let mut plain_names: Vec<String> = vec![];
     let mut plain_ids: Vec<u32> = vec![];
     let mut plain_chars: Vec<u32> = vec![];

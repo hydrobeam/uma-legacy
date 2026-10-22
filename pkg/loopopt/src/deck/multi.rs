@@ -1,10 +1,13 @@
 //! Per-uma decks (`run_multi`): the per-uma tables of exact values by inheritance chance and the loop search over them.
-use super::enumerate::{SearchMode, SearchOutcome};
+use super::SourceEntry;
+use super::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
+use super::joint::JointChances;
+use super::space::HintCoordinate;
 use super::{
-    Card, CardsRaw, ChainKind, Choice, Cl, Data, DeckEval, DeckId, DeckJob, DeckSpace, EXACT_BUDGET, EXACT_RHO,
-    EXACT_STEPS, GEN_GOLD, Instant, JointExt, MemberLineage, Model, NONE, NT, Name, OutfitOption, PDeck, Res, SPT,
-    Sched, SkillJob, Sources, Src, UCHK, Value, chart_rows, check_sizes, joint, joint_b, joint_fast, json, k_filter,
-    lins, member_json, members, optimize_fam, pair_ceilings, prebuilt, probs, split, src_class, upper_na, wval,
+    Card, CardsRaw, Choice, Cl, Data, DeckEval, DeckId, DeckJob, DeckSpace, EXACT_BUDGET, EXACT_RHO, EXACT_STEPS,
+    GEN_GOLD, Instant, JointExt, MemberLineage, Model, NONE, NT, Name, OutfitOption, PDeck, Res, SPT, Sched, SkillJob,
+    Sources, TargetSources, UCHK, Value, chart_rows, check_sizes, joint, joint_b, joint_fast, json, k_filter, lins,
+    member_json, members, optimize_fam, pair_ceilings, prebuilt, probs, split, src_class, upper_na, wval,
 };
 use crate::{UmaIndex, UmaTable};
 use std::borrow::Cow;
@@ -31,33 +34,33 @@ struct LoopJobInputs<'data> {
 /// those cards, run the first time a foursome with her is solved. Bounds use the whole skyline (legal or not),
 /// which no legal deck beats, so the search is exact.
 pub(super) fn run_multi(
-    d: &Data,
-    cr: &CardsRaw,
+    data: &Data,
+    card_data: &CardsRaw,
     model: &Model,
-    sj: &SkillJob,
-    dj: &DeckJob,
-    sky: &[PDeck],
+    skill_job: &SkillJob,
+    deck_job: &DeckJob,
+    skyline: &[PDeck],
     stats: Value,
     space: &DeckSpace,
 ) -> Value {
-    let m = match Multi::new(LoopJobInputs {
-        data: d,
-        cards: cr,
+    let search = match Multi::new(LoopJobInputs {
+        data,
+        cards: card_data,
         model,
-        skill_job: sj,
-        deck_job: dj,
-        skyline: sky,
+        skill_job,
+        deck_job,
+        skyline,
         deck_space: space,
     }) {
         Ok(m) => m,
         Err(e) => return e,
     };
-    let (pass, cert) = m.certify();
+    let (pass, cert) = search.certify();
     if pass.solved.is_empty() {
         return json!({"error": "No loop contains all the required umas."});
     }
-    m.debug_summary(&pass, cert);
-    m.report(pass, cert, stats)
+    search.debug_summary(&pass, cert);
+    search.report(pass, cert, stats)
 }
 
 /// Points on the chance grid of the ceiling tables
@@ -71,7 +74,70 @@ struct ChanceKey {
     count: u8,
 }
 /// A loop's shared-deck list: (exact sum over its lineages, deck), best first
-type SList = Rc<Vec<(f64, PDeck)>>;
+type SharedDecks = Rc<Vec<ScoredDeck<PDeck>>>;
+
+/// A grid cell's exact value and the cap under which it was certified.
+#[derive(Clone, Copy)]
+struct ExactCeiling {
+    value: f64,
+    certified_cap: f64,
+}
+
+/// A shared-deck cache result, valid below its cap and above its floor.
+struct SharedResult {
+    certified_cap: f64,
+    floor: f64,
+    decks: SharedDecks,
+}
+
+/// A loop awaiting evaluation, in descending product-ceiling order.
+#[derive(Clone, Copy)]
+struct LoopCandidate {
+    ceiling: f64,
+    members: [UmaIndex; 4],
+}
+
+/// The reported deck attaining a structure class's highest exact/product ratio.
+struct RatioExample {
+    trainee_id: u32,
+    cards: Vec<Name>,
+}
+
+/// Borrowed or rebuilt source entries and the remaining filler slots of one detached deck.
+struct DeckSources<'data> {
+    entries: Vec<SourceEntry<Cow<'data, TargetSources>>>,
+    filler_count: usize,
+}
+
+/// An entry's card identity, optional early end, and reward variant.
+#[derive(PartialEq, Eq, Hash)]
+struct CardEntryKey {
+    card_id: u32,
+    end_link: u8,
+    variant: u32,
+}
+
+/// A per-trainee exact query; chance order and bit patterns remain part of its identity.
+#[derive(PartialEq, Eq, Hash)]
+struct ExactQueryKey {
+    trainee: UmaIndex,
+    chances: ChanceKey,
+}
+
+/// A shared-deck exact query, retaining member and lineage order.
+#[derive(PartialEq, Eq, Hash)]
+struct SharedQueryKey {
+    members: [UmaIndex; 4],
+    chances: ChanceKey,
+}
+
+/// A checked selection in this job's fixed deck space.
+#[derive(PartialEq, Eq, Hash)]
+struct SelectionKey {
+    entries: Vec<usize>,
+    plain_pals: usize,
+    filler_cards: usize,
+}
 /// A deck's identity in the shared-deck results: (card ids, end links, variants, plain pals)
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct DeckKey {
@@ -118,11 +184,11 @@ struct Multi<'data> {
     /// exact ceiling table: X[u][i] = best exact value over every legal deck at chance grid[i] under the cap it was
     /// computed for (rises with the chance, so a lineage with chance q is bounded at grid[gidx(q)]; each lineage may
     /// take its own deck)
-    exact_ceiling_cache: RefCell<UmaTable<[(f64, f64); NG]>>,
+    exact_ceiling_cache: RefCell<UmaTable<[ExactCeiling; NG]>>,
     /// the deck space's entry per (card id, end link, variant)
-    entry_by_card: crate::FxMap<(u32, u8, u32), usize>,
-    exact_cache: RefCell<crate::FxMap<(UmaIndex, ChanceKey), ExactCacheEntry>>,
-    shared_cache: RefCell<crate::FxMap<([UmaIndex; 4], ChanceKey), (f64, f64, SList)>>,
+    entry_by_card: crate::FxMap<CardEntryKey, usize>,
+    exact_cache: RefCell<crate::FxMap<ExactQueryKey, ExactCacheEntry>>,
+    shared_cache: RefCell<crate::FxMap<SharedQueryKey, SharedResult>>,
     /// schedules found, per foursome (shared by the passes)
     schedule_cache: RefCell<crate::FxMap<[UmaIndex; 4], Res>>,
     tally: Tally,
@@ -139,23 +205,23 @@ struct Multi<'data> {
 
 /// The chance grid the ceiling tables are kept on: NG points from the floor to the highest chance any uma reaches
 struct Grid {
-    qlo: f64,
+    minimum_chance: f64,
     step: f64,
-    q: Vec<f64>,
+    chances: Vec<f64>,
 }
 impl Grid {
     fn new(qlo: f64, qhi: f64) -> Self {
         let step = if qhi > qlo { (qhi - qlo) / (NG - 1) as f64 } else { 0.0 };
         let q: Vec<f64> = (0..NG).map(|i| if i == NG - 1 { qhi } else { qlo + step * i as f64 }).collect();
-        Self { qlo, step, q }
+        Self { minimum_chance: qlo, step, chances: q }
     }
     /// the first grid point at or above q (the last when the grid is one point)
     fn idx(&self, q: f64) -> usize {
         if self.step == 0.0 {
             return NG - 1;
         }
-        let mut i = (((q - self.qlo) / self.step).ceil().max(0.0) as usize).min(NG - 1);
-        while self.q[i] < q && i < NG - 1 {
+        let mut i = (((q - self.minimum_chance) / self.step).ceil().max(0.0) as usize).min(NG - 1);
+        while self.chances[i] < q && i < NG - 1 {
             i += 1;
         }
         i
@@ -165,16 +231,16 @@ impl Grid {
 /// The exact search's counters, timers and work budget (`cap_hit` and `max_ratio` per structure class, `cap_class`)
 #[derive(Default)]
 struct Tally {
-    n_scored: Cell<usize>,
-    n_band: Cell<usize>,
-    n_ufilt: Cell<usize>,
+    scored_decks: Cell<usize>,
+    band_decks: Cell<usize>,
+    bound_rejections: Cell<usize>,
     cap_hit: Cell<bool>,
     max_ratio: Cell<[f64; 4]>,
-    max_deck: RefCell<[Option<(u32, Vec<Name>)>; 4]>,
-    t_band: Cell<f64>,
-    t_score: Cell<f64>,
-    t_seed: Cell<f64>,
-    t_ub: Cell<f64>,
+    max_deck: RefCell<[Option<RatioExample>; 4]>,
+    band_seconds: Cell<f64>,
+    score_seconds: Cell<f64>,
+    seed_seconds: Cell<f64>,
+    bound_seconds: Cell<f64>,
     work: Cell<usize>,
     budget: Cell<usize>,
     /// set when a pass runs out of budget (or a deck search out of room): that pass certifies nothing
@@ -189,7 +255,7 @@ impl Tally {
         if r > m[k] {
             m[k] = r;
             self.max_ratio.set(m);
-            self.max_deck.borrow_mut()[k] = Some((u, x.names.clone()));
+            self.max_deck.borrow_mut()[k] = Some(RatioExample { trainee_id: u, cards: x.names.clone() });
         }
     }
 }
@@ -197,15 +263,15 @@ impl Tally {
 struct Best {
     sum: f64,
     deck: Option<PDeck>,
-    per: Vec<(f64, f64, usize)>,
+    lineage_chances: Vec<JointChances>,
 }
 // per (uma, chances): the best found, decks already scored or bounded, and the cap it is exact under
 struct ExactCacheEntry {
-    best: Option<(f64, PDeck)>,
+    best: Option<ScoredDeck<PDeck>>,
     /// Detached decks already scored exactly (including skyline seeds).
     scored_decks: crate::FxSet<DeckId>,
     /// Band selections already scored or rejected by the proven bound.
-    checked_selections: crate::FxSet<(Vec<usize>, usize, usize)>,
+    checked_selections: crate::FxSet<SelectionKey>,
     /// Highest completed cap; -1 means unseeded, 1 means seeded only.
     certified_cap: f64,
     reported_best: Option<Rc<Best>>,
@@ -214,15 +280,15 @@ struct ExactCacheEntry {
 /// One loop's shared-deck scoring: its members' ids, (trainee, chance) per lineage and each member's chances, the
 /// floor, and the decks scored so far
 struct SharedScan {
-    f: [UmaIndex; 4],
-    nm: usize,
-    ids: Vec<u32>,
-    pairs: Vec<(usize, f64)>,
-    qt: Vec<Vec<f64>>,
+    members: [UmaIndex; 4],
+    member_count: usize,
+    member_ids: Vec<u32>,
+    lineages: Vec<LineageChance>,
+    chances_by_member: Vec<Vec<f64>>,
     floor: f64,
-    kloops: usize,
-    done: crate::FxSet<DeckId>,
-    list: Vec<(f64, PDeck)>,
+    loop_limit: usize,
+    scored_decks: crate::FxSet<DeckId>,
+    decks: Vec<ScoredDeck<PDeck>>,
 }
 impl SharedScan {
     fn new(d: &Data, f: [UmaIndex; 4], qa: &[f64], floor: f64, kloops: usize) -> Self {
@@ -230,16 +296,27 @@ impl SharedScan {
         let fm = members(&f);
         let nm = fm.len();
         let ids: Vec<u32> = fm.iter().map(|&u| d.umas[u].id).collect();
-        let pairs: Vec<(usize, f64)> = (0..ln.len()).map(|l| (ln[l].trainee, qa[l])).collect();
+        let lineages: Vec<LineageChance> =
+            (0..ln.len()).map(|l| LineageChance { trainee: ln[l].trainee, inheritance: qa[l] }).collect();
         let qt: Vec<Vec<f64>> =
             (0..nm).map(|t| (0..ln.len()).filter(|&l| ln[l].trainee == t).map(|l| qa[l]).collect()).collect();
-        Self { f, nm, ids, pairs, qt, floor, kloops, done: crate::FxSet::default(), list: vec![] }
+        Self {
+            members: f,
+            member_count: nm,
+            member_ids: ids,
+            lineages,
+            chances_by_member: qt,
+            floor,
+            loop_limit: kloops,
+            scored_decks: crate::FxSet::default(),
+            decks: vec![],
+        }
     }
     /// the threshold a deck must reach: the floor, or the loop's k-th best so far when that is higher
     fn need(&self) -> f64 {
-        let mut v: Vec<f64> = self.list.iter().map(|x| x.0).collect();
+        let mut v: Vec<f64> = self.decks.iter().map(|x| x.value).collect();
         v.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        let kl = if v.len() >= self.kloops { v[self.kloops - 1] } else { f64::NEG_INFINITY };
+        let kl = if v.len() >= self.loop_limit { v[self.loop_limit - 1] } else { f64::NEG_INFINITY };
         let t = self.floor.max(kl);
         if t.is_finite() { t } else { v.last().copied().unwrap_or(f64::NEG_INFINITY) }
     }
@@ -247,38 +324,46 @@ impl SharedScan {
 
 /// A solved loop: members, schedule, lineage chances, per-member bests (per-uma decks) and value
 struct Solved {
-    f: [UmaIndex; 4],
-    r: Res,
-    qs: Vec<f64>,
+    members: [UmaIndex; 4],
+    schedule: Res,
+    inheritance_chances: Vec<f64>,
     bests: Vec<Rc<Best>>,
-    val: f64,
+    value: f64,
 }
-/// One pass's result: the loops solved, the k-th best value, the bound on what it left unexamined and its tallies;
-/// with a shared deck, each deck's best value and where (solved index, list index) and the per-loop deck lists
+/// The highest value found for a shared deck and where its loop and deck are retained.
+struct DeckBest {
+    /// Mean exact value over the selected loop's lineages.
+    value: f64,
+    /// Indices in the pass's solved loops and shared-deck lists.
+    solved_index: usize,
+    list_index: usize,
+}
+
+/// One pass's solved loops, cutoff and unexamined bound, counters, and shared-deck results.
 struct Pass {
     solved: Vec<Solved>,
     kth: f64,
     next_bound: f64,
     scanned: usize,
     generated: usize,
-    sched_rejects: usize,
-    deck_best: crate::FxMap<DeckKey, (f64, usize, usize)>,
-    lists: Vec<SList>,
+    schedule_rejects: usize,
+    deck_best: crate::FxMap<DeckKey, DeckBest>,
+    lists: Vec<SharedDecks>,
     /// (per-uma decks: the solved loops' values, in solve order)
-    vals: Vec<f64>,
+    values: Vec<f64>,
 }
 /// A pass's queue of structures: (ceiling, members) in ceiling order, the next to scan, and the sum below which no
 /// band has been generated yet
 struct Queue {
-    cand: Vec<(f64, [UmaIndex; 4])>,
+    candidates: Vec<LoopCandidate>,
     next: usize,
-    hi_sum: f64,
+    upper_sum: f64,
 }
 /// A reported loop: its solved index, each member's deck, per lineage (exact P(all), P(all but one), outfit), value
 struct Pick<'pass> {
-    si: usize,
+    solved_index: usize,
     decks: Vec<&'pass PDeck>,
-    per_l: Vec<(f64, f64, usize)>,
+    lineage_chances: Vec<JointChances>,
     value: f64,
 }
 
@@ -357,20 +442,20 @@ fn pair_table(
 // A uma's value depends only on the targets some outfit of hers lacks: (g, h) = (P(gold), P(any hint)) where
 // an outfit lacks the skill, g alone where her outfits have at most the white. Decks are thinned per class of
 // umas with the same coordinates: a deck another beats on all of them never wins for those umas.
-fn ucoords(model: &Model, u: UmaIndex, nu: usize) -> Vec<(usize, bool)> {
+fn ucoords(model: &Model, u: UmaIndex, target_count: usize) -> Vec<HintCoordinate> {
     let mut c = vec![];
-    for k in 0..nu {
+    for k in 0..target_count {
         if model.opts[u].iter().any(|OutfitOption { coverage: st, .. }| st[k] == 0) {
-            c.push((k, true));
-            c.push((k, false));
+            c.push(HintCoordinate { target: k, gold: true });
+            c.push(HintCoordinate { target: k, gold: false });
         } else if model.opts[u].iter().any(|OutfitOption { coverage: st, .. }| st[k] == 1) {
-            c.push((k, true));
+            c.push(HintCoordinate { target: k, gold: true });
         }
     }
     c
 }
 /// The decks of `list` no other beats on the coordinates `co`, by index, ascending
-fn thin(list: &[PDeck], co: &[(usize, bool)]) -> Vec<usize> {
+fn thin(list: &[PDeck], co: &[HintCoordinate]) -> Vec<usize> {
     if list.is_empty() {
         return vec![];
     }
@@ -381,8 +466,14 @@ fn thin(list: &[PDeck], co: &[(usize, bool)]) -> Vec<usize> {
         .iter()
         .enumerate()
         .map(|(i, x)| {
-            let dv: Vec<f64> =
-                co.iter().map(|&(k, g)| if g { x.dg[k] } else { 1.0 - (1.0 - x.dw[k]) * (1.0 - x.dg[k]) }).collect();
+            let dv: Vec<f64> = co
+                .iter()
+                .map(
+                    |&HintCoordinate { target: k, gold: g }| {
+                        if g { x.dg[k] } else { 1.0 - (1.0 - x.dw[k]) * (1.0 - x.dg[k]) }
+                    },
+                )
+                .collect();
             let s = dv.iter().sum();
             DeckEval {
                 pals: 0,
@@ -404,14 +495,22 @@ fn thin(list: &[PDeck], co: &[(usize, bool)]) -> Vec<usize> {
     v
 }
 /// The pool's classes of umas with the same coordinates: each class's skyline decks, and each uma's class
-fn classes(model: &Model, pool: &[UmaIndex], sky: &[PDeck], nu: usize, n: usize) -> (Vec<Vec<usize>>, UmaTable<usize>) {
+fn classes(
+    model: &Model,
+    pool: &[UmaIndex],
+    sky: &[PDeck],
+    target_count: usize,
+    n: usize,
+) -> (Vec<Vec<usize>>, UmaTable<usize>) {
     // the full coordinate set needs no thinning: the skyline is already thin on it
-    let full: Vec<(usize, bool)> = (0..nu).flat_map(|k| [(k, true), (k, false)]).collect();
-    let mut class_ix: crate::FxMap<Vec<(usize, bool)>, usize> = crate::FxMap::default();
+    let full: Vec<HintCoordinate> = (0..target_count)
+        .flat_map(|k| [HintCoordinate { target: k, gold: true }, HintCoordinate { target: k, gold: false }])
+        .collect();
+    let mut class_ix: crate::FxMap<Vec<HintCoordinate>, usize> = crate::FxMap::default();
     let mut class_sky: Vec<Vec<usize>> = vec![];
     let mut ucls = UmaTable(vec![usize::MAX; n]);
     for &u in pool {
-        let co = ucoords(model, u, nu);
+        let co = ucoords(model, u, target_count);
         let ci = if let Some(&c) = class_ix.get(&co) {
             c
         } else {
@@ -424,14 +523,14 @@ fn classes(model: &Model, pool: &[UmaIndex], sky: &[PDeck], nu: usize, n: usize)
     (class_sky, ucls)
 }
 /// Clusters of the whole skyline (one cluster of every deck without uncertain targets); none with per-uma decks
-fn full_clusters(sky: &[PDeck], nu: usize, per_uma: bool) -> Vec<Cl> {
+fn full_clusters(sky: &[PDeck], target_count: usize, per_uma: bool) -> Vec<Cl> {
     if per_uma {
         vec![]
     } else {
         let mut ix: Vec<usize> = (0..sky.len()).collect();
         let mut out = vec![];
-        if nu > 0 && !ix.is_empty() {
-            split(sky, &mut ix, nu, &mut out);
+        if target_count > 0 && !ix.is_empty() {
+            split(sky, &mut ix, target_count, &mut out);
         } else {
             out.push(Cl { mdw: vec![], mdg: vec![], mem: ix });
         }
@@ -513,14 +612,14 @@ impl<'data> Multi<'data> {
         }
         // A deck's sources: the deck space's entry for (card, end link, variant) where it has one of that card (built
         // by the same `Sources::src` and `kind` on the same job and targets, so the same values), borrowed; else built
-        let entry_by_card: crate::FxMap<(u32, u8, u32), usize> = (0..inputs.deck_space.rel.len())
+        let entry_by_card: crate::FxMap<CardEntryKey, usize> = (0..inputs.deck_space.card_indices.len())
             .map(|j| {
                 (
-                    (
-                        inputs.deck_space.cards[inputs.deck_space.rel[j]].id,
-                        inputs.deck_space.endk[j],
-                        inputs.deck_space.vark[j],
-                    ),
+                    CardEntryKey {
+                        card_id: inputs.deck_space.cards[inputs.deck_space.card_indices[j]].id,
+                        end_link: inputs.deck_space.end_links[j],
+                        variant: inputs.deck_space.variants[j],
+                    },
                     j,
                 )
             })
@@ -550,7 +649,10 @@ impl<'data> Multi<'data> {
             cluster_bound_scratch: RefCell::default(),
             skyline_bound_scratch: RefCell::default(),
             relaxed_ceiling_cache: RefCell::new(UmaTable(vec![[f64::NAN; NG]; n])),
-            exact_ceiling_cache: RefCell::new(UmaTable(vec![[(f64::NAN, 0.0); NG]; n])),
+            exact_ceiling_cache: RefCell::new(UmaTable(vec![
+                [ExactCeiling { value: f64::NAN, certified_cap: 0.0 }; NG];
+                n
+            ])),
             entry_by_card,
             exact_cache: RefCell::default(),
             shared_cache: RefCell::default(),
@@ -628,7 +730,7 @@ impl<'data> Multi<'data> {
             return v;
         }
         let (model, sky) = (self.inputs.model, &self.inputs.skyline);
-        let q = self.grid.q[i];
+        let q = self.grid.chances[i];
         let init = model.trainee_fast(u, q, &self.no_hint_chances, &self.no_hint_chances);
         let v = if (0.0..=1.0).contains(&q) {
             self.bb_max(u, init, &|dw, dg| model.trainee_fast(u, q, dw, dg))
@@ -643,15 +745,13 @@ impl<'data> Multi<'data> {
     /// first; `val` must rise with every odds coordinate)
     // (as `bb_max`: the clusters in the stable sort's order, equal bounds by index, from a heap over a reused buffer)
     fn sky_top(&self, m: usize, val: &dyn Fn(&[f64], &[f64]) -> f64, ok: &dyn Fn(&PDeck) -> bool) -> Vec<(f64, usize)> {
-        let (sky, full_cl, nu) = (&self.inputs.skyline, &self.skyline_clusters, self.target_count);
+        let (sky, full_cl, target_count) = (&self.inputs.skyline, &self.skyline_clusters, self.target_count);
         let mut bs = std::mem::take(&mut *self.skyline_bound_scratch.borrow_mut());
         bs.clear();
-        bs.extend(
-            full_cl
-                .iter()
-                .enumerate()
-                .map(|(i, c)| ByBound { bound: if nu > 0 { val(&c.mdw, &c.mdg) } else { f64::INFINITY }, cluster: i }),
-        );
+        bs.extend(full_cl.iter().enumerate().map(|(i, c)| ByBound {
+            bound: if target_count > 0 { val(&c.mdw, &c.mdg) } else { f64::INFINITY },
+            cluster: i,
+        }));
         let mut h = std::collections::BinaryHeap::from(bs);
         let mut top: Vec<(f64, usize)> = vec![];
         while let Some(ByBound { bound: b, cluster: ci }) = h.pop() {
@@ -720,10 +820,10 @@ impl<'data> Multi<'data> {
 
     /// A deck's sources: the deck space's entry for (card, end link, variant) where it has one of that card, borrowed;
     /// else built. With the filler count.
-    fn ents_of(&self, x: &PDeck) -> (Vec<(Cow<'data, Src>, ChainKind)>, usize) {
+    fn ents_of(&self, x: &PDeck) -> DeckSources<'data> {
         let space = self.inputs.deck_space;
-        let srcb = Sources { dj: self.inputs.deck_job, unc: &self.target_groups };
-        let e: Vec<(Cow<Src>, ChainKind)> = x
+        let source_builder = Sources { dj: self.inputs.deck_job, unc: &self.target_groups };
+        let e: Vec<SourceEntry<Cow<TargetSources>>> = x
             .ids
             .iter()
             .enumerate()
@@ -731,22 +831,29 @@ impl<'data> Multi<'data> {
                 self.card_of.get(id).map(|c| {
                     let st = x.ends.get(i).copied().filter(|&e| e > 0);
                     let v = x.vars.get(i).copied().unwrap_or(0);
-                    match self.entry_by_card.get(&(*id, st.unwrap_or(0), v)) {
-                        Some(&j) if std::ptr::eq(space.cards[space.rel[j]], *c) => {
-                            (Cow::Borrowed(&space.srcs[j]), space.kind[j])
+                    match self.entry_by_card.get(&CardEntryKey { card_id: *id, end_link: st.unwrap_or(0), variant: v })
+                    {
+                        Some(&j) if std::ptr::eq(space.cards[space.card_indices[j]], *c) => {
+                            SourceEntry { sources: Cow::Borrowed(&space.sources[j]), kind: space.kind[j] }
                         }
-                        _ => (Cow::Owned(srcb.src(c, st, v)), srcb.kind(c, st)),
+                        _ => SourceEntry {
+                            sources: Cow::Owned(source_builder.src(c, st, v)),
+                            kind: source_builder.kind(c, st),
+                        },
                     }
                 })
             })
             .collect();
-        (e, self.inputs.deck_job.deck_size.saturating_sub(x.ids.len() + x.plain_ids.len()))
+        DeckSources {
+            entries: e,
+            filler_count: self.inputs.deck_job.deck_size.saturating_sub(x.ids.len() + x.plain_ids.len()),
+        }
     }
 
     /// Exact value of trainee u at chances qs under cap lv: the best exact P(all) over her best legal skyline decks
     /// and every legal deck whose product value times lv reaches it (each first through the proven bound).
     fn exact_best(&self, u: UmaIndex, qs: &[f64], lv: f64) -> Rc<Best> {
-        let key = (u, qkey(qs));
+        let key = ExactQueryKey { trainee: u, chances: qkey(qs) };
         if let Some(entry) = self.exact_cache.borrow().get(&key)
             && entry.certified_cap >= lv
             && let Some(result) = &entry.reported_best
@@ -781,24 +888,25 @@ impl<'data> Multi<'data> {
         let (model, tally) = (self.inputs.model, &self.tally);
         let uid = self.inputs.data.umas[u].id;
         let t0 = Instant::now();
-        let (e, fl) = self.ents_of(x);
+        let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
         let j = joint_b(model, u, qs, &e, fl, self.requested_target_count, false);
-        tally.t_score.set(tally.t_score.get() + t0.elapsed().as_secs_f64());
+        tally.score_seconds.set(tally.score_seconds.get() + t0.elapsed().as_secs_f64());
         if std::env::var("UPPER_CHECK").is_ok() {
-            let er: Vec<(&Src, ChainKind)> = e.iter().map(|(s, k)| (&**s, *k)).collect();
+            let er: Vec<SourceEntry<&TargetSources>> =
+                e.iter().map(|entry| SourceEntry { sources: &*entry.sources, kind: entry.kind }).collect();
             if let Some(ub) = upper_na(model, u, qs, &er, fl) {
                 for (i, y) in j.iter().enumerate() {
                     assert!(
-                        ub[i] >= y.0 * (1.0 - 1e-12),
+                        ub[i] >= y.all * (1.0 - 1e-12),
                         "upper bound below exact: {} < {} for {:?}",
                         ub[i],
-                        y.0,
+                        y.all,
                         x.names
                     );
                     UCHK.with(|c| {
                         let mut v = c.get();
                         v.0 += 1;
-                        v.1 = v.1.max(ub[i] / y.0);
+                        v.1 = v.1.max(ub[i] / y.all);
                         c.set(v);
                     });
                 }
@@ -810,18 +918,18 @@ impl<'data> Multi<'data> {
                 });
             }
         }
-        tally.n_scored.set(tally.n_scored.get() + 1);
+        tally.scored_decks.set(tally.scored_decks.get() + 1);
         tally.spend(200);
-        let k = src_class(e.iter().map(|y| &*y.0));
+        let k = src_class(e.iter().map(|y| &*y.sources));
         for (i, &q) in qs.iter().enumerate() {
             let p = self.fixed * model.trainee_fast(u, q, &x.dw, &x.dg);
             if p > 0.0 {
-                tally.ratio_at(k, j[i].0 / p, uid, x);
+                tally.ratio_at(k, j[i].all / p, uid, x);
             }
         }
-        let sv: f64 = j.iter().map(|y| y.0).sum();
-        if ent.best.as_ref().is_none_or(|b| sv > b.0) {
-            ent.best = Some((sv, x.clone()));
+        let sv: f64 = j.iter().map(|y| y.all).sum();
+        if ent.best.as_ref().is_none_or(|b| sv > b.value) {
+            ent.best = Some(ScoredDeck { value: sv, deck: x.clone() });
         }
     }
 
@@ -845,7 +953,7 @@ impl<'data> Multi<'data> {
                 seeds.truncate(3);
             }
         }
-        self.tally.t_seed.set(self.tally.t_seed.get() + t0.elapsed().as_secs_f64());
+        self.tally.seed_seconds.set(self.tally.seed_seconds.get() + t0.elapsed().as_secs_f64());
         for (_, x) in seeds.iter().take(3) {
             self.score_exact(u, qs, x, ent);
         }
@@ -854,10 +962,13 @@ impl<'data> Multi<'data> {
                 model,
                 &[u],
                 &[uid],
-                &[(qs.iter().map(|&q| (0, q)).collect(), 0.0)],
+                &[SearchClause {
+                    lineages: qs.iter().map(|&q| LineageChance { trainee: 0, inheritance: q }).collect(),
+                    threshold: 0.0,
+                }],
                 SearchMode::Best { seed: f64::NEG_INFINITY },
             );
-            if let Some((_, sel)) = r.first() {
+            if let Some(ScoredDeck { value: _, deck: sel }) = r.first() {
                 let x = space.pdeck(sel, &[uid]);
                 self.score_exact(u, qs, &x, ent);
             }
@@ -870,30 +981,33 @@ impl<'data> Multi<'data> {
         let (model, space, tally) = (self.inputs.model, self.inputs.deck_space, &self.tally);
         let uid = self.inputs.data.umas[u].id;
         let mut complete = true;
-        let Some(thr) = ent.best.as_ref().map(|b| b.0) else {
+        let Some(thr) = ent.best.as_ref().map(|b| b.value) else {
             ent.certified_cap = lv;
             return;
         };
-        tally.n_band.set(tally.n_band.get() + 1);
+        tally.band_decks.set(tally.band_decks.get() + 1);
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete } = space.search(
             model,
             &[u],
             &[uid],
-            &[(qs.iter().map(|&q| (0, q)).collect(), thr)],
+            &[SearchClause {
+                lineages: qs.iter().map(|&q| LineageChance { trainee: 0, inheritance: q }).collect(),
+                threshold: thr,
+            }],
             SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap() },
         );
         tally.spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
-        tally.t_band.set(tally.t_band.get() + t0.elapsed().as_secs_f64());
+        tally.band_seconds.set(tally.band_seconds.get() + t0.elapsed().as_secs_f64());
         if incomplete.is_some() {
             tally.cap_hit.set(true);
             complete = false;
         }
-        cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        cands.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
         if complete {
-            for (v, sel) in &cands {
-                if lv * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 {
+            for ScoredDeck { value: v, deck: sel } in &cands {
+                if lv * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().value {
                     break;
                 }
                 if tally.work.get() > tally.budget.get() {
@@ -901,21 +1015,29 @@ impl<'data> Multi<'data> {
                     break;
                 }
                 // below the best at its own class's cap (the best rose since the band was built)
-                if space.sel_cap(sel, lv) * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 {
+                if space.sel_cap(sel, lv) * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().value {
                     continue;
                 }
-                if !ent.checked_selections.insert((sel.entries.clone(), sel.plain_pals, sel.filler_cards)) {
+                if !ent.checked_selections.insert(SelectionKey {
+                    entries: sel.entries.clone(),
+                    plain_pals: sel.plain_pals,
+                    filler_cards: sel.filler_cards,
+                }) {
                     continue;
                 }
                 // the proven bound first: a deck it puts below the best exact value cannot beat it
-                let e: Vec<(&Src, ChainKind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                let e: Vec<SourceEntry<&TargetSources>> = sel
+                    .entries
+                    .iter()
+                    .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
+                    .collect();
                 let t1 = Instant::now();
                 let ubo = upper_na(model, u, qs, &e, sel.filler_cards);
-                tally.t_ub.set(tally.t_ub.get() + t1.elapsed().as_secs_f64());
+                tally.bound_seconds.set(tally.bound_seconds.get() + t1.elapsed().as_secs_f64());
                 if let Some(ub) = ubo {
                     tally.spend(25);
-                    if ub.iter().sum::<f64>() * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 {
-                        tally.n_ufilt.set(tally.n_ufilt.get() + 1);
+                    if ub.iter().sum::<f64>() * (1.0 + 1e-9) < ent.best.as_ref().unwrap().value {
+                        tally.bound_rejections.set(tally.bound_rejections.get() + 1);
                         continue;
                     }
                 }
@@ -932,26 +1054,26 @@ impl<'data> Multi<'data> {
 
     /// The entry's best with its per-lineage values (the deckless value when no deck is legal)
     fn best_of(&self, u: UmaIndex, qs: &[f64], ent: &ExactCacheEntry) -> Best {
-        if let Some((sum, x)) = &ent.best {
-            let (e, fl) = self.ents_of(x);
+        if let Some(ScoredDeck { value: sum, deck: x }) = &ent.best {
+            let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
             let per = joint_b(self.inputs.model, u, qs, &e, fl, self.requested_target_count, true);
-            Best { sum: *sum, deck: Some(x.clone()), per }
+            Best { sum: *sum, deck: Some(x.clone()), lineage_chances: per }
         } else {
             let per = joint(self.inputs.model, u, qs, &[], 0, self.requested_target_count, true);
-            Best { sum: per.iter().map(|y| y.0).sum(), deck: None, per }
+            Best { sum: per.iter().map(|y| y.all).sum(), deck: None, lineage_chances: per }
         }
     }
 
     /// X[u][i] under cap lv (`xtab_c`), computed when not known under lv or more
     fn xtab(&self, u: UmaIndex, i: usize, lv: f64) -> f64 {
-        let (v, l) = self.exact_ceiling_cache.borrow()[u][i];
+        let ExactCeiling { value: v, certified_cap: l } = self.exact_ceiling_cache.borrow()[u][i];
         if !v.is_nan() && l >= lv {
             return v;
         }
-        let v = self.exact_best(u, &[self.grid.q[i]], lv).sum;
+        let v = self.exact_best(u, &[self.grid.chances[i]], lv).sum;
         // a value from a deck search the budget cut short is not exact under lv: not kept
         if !self.tally.aborted.get() {
-            self.exact_ceiling_cache.borrow_mut()[u][i] = (v, lv);
+            self.exact_ceiling_cache.borrow_mut()[u][i] = ExactCeiling { value: v, certified_cap: lv };
         }
         v
     }
@@ -963,8 +1085,8 @@ impl<'data> Multi<'data> {
         let xb = self.exact_ceiling_cache.borrow();
         let row = &xb[u];
         for j in i..NG {
-            if !row[j].0.is_nan() && row[j].1 >= lv {
-                b = b.min(row[j].0 * (1.0 + 1e-12));
+            if !row[j].value.is_nan() && row[j].certified_cap >= lv {
+                b = b.min(row[j].value * (1.0 + 1e-12));
                 return (b, j == i);
             }
         }
@@ -995,7 +1117,7 @@ impl<'data> Multi<'data> {
             let j = {
                 let xb = self.exact_ceiling_cache.borrow();
                 let row = &xb[u];
-                (i..NG).find(|&j| !row[j].0.is_nan() && row[j].1 >= lv)
+                (i..NG).find(|&j| !row[j].value.is_nan() && row[j].certified_cap >= lv)
             };
             let tgt = match j {
                 None => i.max(self.grid.idx(self.maximum_chances[u])),
@@ -1010,9 +1132,9 @@ impl<'data> Multi<'data> {
     // for all four members. Per loop: every such deck whose exact sum is at least `floor` (the k-th best distinct
     // deck so far, times 12) or among the loop's own best `top_decks`, under cap lv; sorted, best first. Ceilings
     // stay the per-uma ones (each trainee's best deck bounds her share of any shared deck).
-    fn exact_shared(&self, f: [UmaIndex; 4], qa: &[f64], floor: f64, lv: f64) -> SList {
-        let key = (f, qkey(qa));
-        if let Some((l, fl, r)) = self.shared_cache.borrow().get(&key)
+    fn exact_shared(&self, f: [UmaIndex; 4], qa: &[f64], floor: f64, lv: f64) -> SharedDecks {
+        let key = SharedQueryKey { members: f, chances: qkey(qa) };
+        if let Some(SharedResult { certified_cap: l, floor: fl, decks: r }) = self.shared_cache.borrow().get(&key)
             && *l >= lv
             && *fl <= floor
         {
@@ -1020,69 +1142,73 @@ impl<'data> Multi<'data> {
         }
         let mut sc = SharedScan::new(self.inputs.data, f, qa, floor, self.loop_limit);
         self.seed_shared(&mut sc);
-        let complete = if lv > 1.0 && !sc.list.is_empty() { self.band_shared(&mut sc, lv) } else { true };
+        let complete = if lv > 1.0 && !sc.decks.is_empty() { self.band_shared(&mut sc, lv) } else { true };
         let thr = sc.need();
-        let mut list = sc.list;
-        list.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        list.retain(|x| x.0 >= thr);
-        let r: SList = Rc::new(list);
+        let mut list = sc.decks;
+        list.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
+        list.retain(|x| x.value >= thr);
+        let r: SharedDecks = Rc::new(list);
         if complete {
-            self.shared_cache.borrow_mut().insert(key, (lv, floor, Rc::clone(&r)));
+            self.shared_cache.borrow_mut().insert(key, SharedResult { certified_cap: lv, floor, decks: Rc::clone(&r) });
         }
         r
     }
 
     /// Scores deck x exactly over the loop's lineages (once per loop) and lists it
     fn score_shared(&self, sc: &mut SharedScan, x: &PDeck) {
-        if !sc.done.insert(x.id()) {
+        if !sc.scored_decks.insert(x.id()) {
             return;
         }
-        let (model, tally, f) = (self.inputs.model, &self.tally, sc.f);
+        let (model, tally, f) = (self.inputs.model, &self.tally, sc.members);
         let t0 = Instant::now();
-        let (e, fl) = self.ents_of(x);
-        let k = src_class(e.iter().map(|y| &*y.0));
+        let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
+        let k = src_class(e.iter().map(|y| &*y.sources));
         let mut sv = 0.0;
-        for t in 0..sc.nm {
-            let j = joint_b(model, f[t], &sc.qt[t], &e, fl, self.requested_target_count, false);
-            for (i, &q) in sc.qt[t].iter().enumerate() {
+        for t in 0..sc.member_count {
+            let j = joint_b(model, f[t], &sc.chances_by_member[t], &e, fl, self.requested_target_count, false);
+            for (i, &q) in sc.chances_by_member[t].iter().enumerate() {
                 let p = self.fixed * model.trainee_fast(f[t], q, &x.dw, &x.dg);
                 if p > 0.0 {
-                    tally.ratio_at(k, j[i].0 / p, self.inputs.data.umas[f[t]].id, x);
+                    tally.ratio_at(k, j[i].all / p, self.inputs.data.umas[f[t]].id, x);
                 }
-                sv += j[i].0;
+                sv += j[i].all;
             }
         }
-        tally.t_score.set(tally.t_score.get() + t0.elapsed().as_secs_f64());
-        tally.n_scored.set(tally.n_scored.get() + 1);
+        tally.score_seconds.set(tally.score_seconds.get() + t0.elapsed().as_secs_f64());
+        tally.scored_decks.set(tally.scored_decks.get() + 1);
         tally.spend(800);
-        sc.list.push((sv, x.clone()));
+        sc.decks.push(ScoredDeck { value: sv, deck: x.clone() });
     }
 
     /// seed: the loop's best `top_decks` + 2 skyline decks legal for every member by product value (or its best legal
     /// deck when none is on the skyline)
     fn seed_shared(&self, sc: &mut SharedScan) {
-        let (model, space, fixed, f) = (self.inputs.model, self.inputs.deck_space, self.fixed, sc.f);
+        let (model, space, fixed, f) = (self.inputs.model, self.inputs.deck_space, self.fixed, sc.members);
         let t0 = Instant::now();
-        let pairs = &sc.pairs;
+        let pairs = &sc.lineages;
         let val = |dw: &[f64], dg: &[f64]| {
-            fixed * pairs.iter().map(|&(t, q)| model.trainee_fast(f[t], q, dw, dg)).sum::<f64>()
+            fixed
+                * pairs
+                    .iter()
+                    .map(|&LineageChance { trainee: t, inheritance: q }| model.trainee_fast(f[t], q, dw, dg))
+                    .sum::<f64>()
         };
-        let ids = &sc.ids;
+        let ids = &sc.member_ids;
         let seeds = self.sky_top(self.loop_limit + 2, &val, &|x| ids.iter().all(|&id| !x.blocks(id, &self.card_of)));
-        self.tally.t_seed.set(self.tally.t_seed.get() + t0.elapsed().as_secs_f64());
+        self.tally.seed_seconds.set(self.tally.seed_seconds.get() + t0.elapsed().as_secs_f64());
         for &(_, j) in &seeds {
             self.score_shared(sc, &self.inputs.skyline[j]);
         }
-        if sc.list.is_empty() {
+        if sc.decks.is_empty() {
             let SearchOutcome { decks: r, .. } = space.search(
                 model,
                 members(&f),
-                &sc.ids,
-                &[(sc.pairs.clone(), 0.0)],
+                &sc.member_ids,
+                &[SearchClause { lineages: sc.lineages.clone(), threshold: 0.0 }],
                 SearchMode::Best { seed: f64::NEG_INFINITY },
             );
-            if let Some((_, sel)) = r.first() {
-                let x = space.pdeck(sel, &sc.ids);
+            if let Some(ScoredDeck { value: _, deck: sel }) = r.first() {
+                let x = space.pdeck(sel, &sc.member_ids);
                 self.score_shared(sc, &x);
             }
         }
@@ -1091,28 +1217,28 @@ impl<'data> Multi<'data> {
     /// Every legal deck that might reach the loop's threshold under cap lv, scored (after the proven bound); false (and
     /// the pass aborted) when a deck search was cut short or the budget ran out
     fn band_shared(&self, sc: &mut SharedScan, lv: f64) -> bool {
-        let (model, space, tally, f) = (self.inputs.model, self.inputs.deck_space, &self.tally, sc.f);
+        let (model, space, tally, f) = (self.inputs.model, self.inputs.deck_space, &self.tally, sc.members);
         let mut complete = true;
-        tally.n_band.set(tally.n_band.get() + 1);
+        tally.band_decks.set(tally.band_decks.get() + 1);
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete } = space.search(
             model,
             members(&f),
-            &sc.ids,
-            &[(sc.pairs.clone(), sc.need())],
+            &sc.member_ids,
+            &[SearchClause { lineages: sc.lineages.clone(), threshold: sc.need() }],
             SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap() },
         );
         tally.spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
-        tally.t_band.set(tally.t_band.get() + t0.elapsed().as_secs_f64());
+        tally.band_seconds.set(tally.band_seconds.get() + t0.elapsed().as_secs_f64());
         if incomplete.is_some() {
             tally.cap_hit.set(true);
             complete = false;
         }
-        cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        cands.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
         let mut seen: crate::FxSet<(Vec<usize>, usize, usize)> = crate::FxSet::default();
         if complete {
-            for (v, sel) in &cands {
+            for ScoredDeck { value: v, deck: sel } in &cands {
                 let thr = sc.need();
                 if lv * v * (1.0 + 1e-9) < thr {
                     break;
@@ -1127,20 +1253,27 @@ impl<'data> Multi<'data> {
                 if !seen.insert((sel.entries.clone(), sel.plain_pals, sel.filler_cards)) {
                     continue;
                 }
-                let e: Vec<(&Src, ChainKind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                let e: Vec<SourceEntry<&TargetSources>> = sel
+                    .entries
+                    .iter()
+                    .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
+                    .collect();
                 let t1 = Instant::now();
-                let ub: Option<f64> = (0..sc.nm)
-                    .map(|t| upper_na(model, f[t], &sc.qt[t], &e, sel.filler_cards).map(|b| b.iter().sum::<f64>()))
+                let ub: Option<f64> = (0..sc.member_count)
+                    .map(|t| {
+                        upper_na(model, f[t], &sc.chances_by_member[t], &e, sel.filler_cards)
+                            .map(|b| b.iter().sum::<f64>())
+                    })
                     .sum();
-                tally.t_ub.set(tally.t_ub.get() + t1.elapsed().as_secs_f64());
+                tally.bound_seconds.set(tally.bound_seconds.get() + t1.elapsed().as_secs_f64());
                 if let Some(ub) = ub {
                     tally.spend(100);
                     if ub * (1.0 + 1e-9) < thr {
-                        tally.n_ufilt.set(tally.n_ufilt.get() + 1);
+                        tally.bound_rejections.set(tally.bound_rejections.get() + 1);
                         continue;
                     }
                 }
-                let x = space.pdeck(sel, &sc.ids);
+                let x = space.pdeck(sel, &sc.member_ids);
                 self.score_shared(sc, &x);
             }
         }
@@ -1153,7 +1286,7 @@ impl<'data> Multi<'data> {
     // ---- the loop search ----
 
     /// The structures whose member sum (in four-member units) is in [lo, hi), with their product ceilings
-    fn band(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [UmaIndex; 4])>) {
+    fn band(&self, lo: f64, hi: f64, out: &mut Vec<LoopCandidate>) {
         if self.allow_four {
             self.band4(lo, hi, out);
         }
@@ -1161,7 +1294,7 @@ impl<'data> Multi<'data> {
             self.band3(lo, hi, out);
         }
     }
-    fn band4(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [UmaIndex; 4])>) {
+    fn band4(&self, lo: f64, hi: f64, out: &mut Vec<LoopCandidate>) {
         let (mv, ord, k) = (&self.ranked_ceilings, &self.ranked_pool, self.pool.len());
         for a in 0..k {
             if a + 3 >= k || mv[a] + mv[a + 1] + mv[a + 2] + mv[a + 3] < lo {
@@ -1194,13 +1327,13 @@ impl<'data> Multi<'data> {
                             * (0..12).map(|l| self.btab(f[ln[l].trainee], self.grid.idx(qs[l]))).sum::<f64>()
                             / 12.0
                             * (1.0 + 1e-12);
-                        out.push((ub, f));
+                        out.push(LoopCandidate { ceiling: ub, members: f });
                     }
                 }
             }
         }
     }
-    fn band3(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [UmaIndex; 4])>) {
+    fn band3(&self, lo: f64, hi: f64, out: &mut Vec<LoopCandidate>) {
         let (mv, ord, k) = (&self.ranked_ceilings, &self.ranked_pool, self.pool.len());
         for a in 0..k {
             if a + 2 >= k || e3(mv[a] + mv[a + 1] + mv[a + 2]) < lo {
@@ -1230,7 +1363,7 @@ impl<'data> Multi<'data> {
                         * (0..3).map(|l| self.btab(t[ln[l].trainee], self.grid.idx(qs[l]))).sum::<f64>()
                         / 3.0
                         * (1.0 + 1e-12);
-                    out.push((ub, f));
+                    out.push(LoopCandidate { ceiling: ub, members: f });
                 }
             }
         }
@@ -1276,21 +1409,21 @@ impl<'data> Multi<'data> {
     /// stop rule compares them with the k-th exact value. None when the budget runs out (the pass certifies nothing).
     fn run_pass(&self, lv: f64) -> Option<Pass> {
         let lo_sum = self.maximum_structure_sum * 0.85;
-        let mut cand: Vec<(f64, [UmaIndex; 4])> = vec![];
-        self.band(lo_sum, f64::INFINITY, &mut cand);
-        cand.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+        let mut candidates: Vec<LoopCandidate> = vec![];
+        self.band(lo_sum, f64::INFINITY, &mut candidates);
+        candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
         let mut p = Pass {
             solved: vec![],
             kth: f64::NEG_INFINITY,
             next_bound: 0.0,
             scanned: 0,
-            generated: cand.len(),
-            sched_rejects: 0,
+            generated: candidates.len(),
+            schedule_rejects: 0,
             deck_best: crate::FxMap::default(),
             lists: vec![],
-            vals: vec![],
+            values: vec![],
         };
-        let mut q = Queue { cand, next: 0, hi_sum: lo_sum };
+        let mut q = Queue { candidates, next: 0, upper_sum: lo_sum };
         loop {
             if self.tally.aborted.get() {
                 return None;
@@ -1300,41 +1433,38 @@ impl<'data> Multi<'data> {
             // guaranteed (every loop has the same value) solved every foursome.
             let kth = p.kth;
             let beats = |c: f64| c > kth * (1.0 + 4e-12);
-            if !(q.next < q.cand.len() && beats(lv * q.cand[q.next].0)) {
-                if q.hi_sum <= 0.0 || !beats(lv * self.sep(q.hi_sum)) {
+            if !(q.next < q.candidates.len() && beats(lv * q.candidates[q.next].ceiling)) {
+                if q.upper_sum <= 0.0 || !beats(lv * self.sep(q.upper_sum)) {
                     break;
                 }
                 p.generated += self.widen(&mut q, kth, lv);
                 continue;
             }
-            let (_, f) = q.cand[q.next];
+            let LoopCandidate { ceiling: _, members: f } = q.candidates[q.next];
             q.next += 1;
             p.scanned += 1;
             self.solve(f, lv, &mut p)?;
         }
         p.next_bound = lv
-            * (if q.next < q.cand.len() { q.cand[q.next].0 } else { 0.0 }).max(if q.hi_sum > 0.0 {
-                self.sep(q.hi_sum)
-            } else {
-                0.0
-            });
+            * (if q.next < q.candidates.len() { q.candidates[q.next].ceiling } else { 0.0 })
+                .max(if q.upper_sum > 0.0 { self.sep(q.upper_sum) } else { 0.0 });
         Some(p)
     }
 
-    /// Adds the next band of structures below the queue's `hi_sum` (down to the sum the k-th value needs, at most 15%
+    /// Adds the next band of structures below the queue's `upper_sum` (down to the sum the k-th value needs, at most 15%
     /// lower), merged into the unscanned rest in ceiling order; how many it added
     fn widen(&self, q: &mut Queue, kth: f64, lv: f64) -> usize {
         let kth_lo = if kth > f64::NEG_INFINITY { kth / lv * 12.0 / (3.0 * self.fixed) * (1.0 - 1e-9) } else { 0.0 };
-        let lo = kth_lo.max(q.hi_sum * 0.85);
+        let lo = kth_lo.max(q.upper_sum * 0.85);
         let lo = if lo < self.maximum_structure_sum * 1e-6 { 0.0 } else { lo };
-        let mut more: Vec<(f64, [UmaIndex; 4])> = vec![];
-        self.band(lo, q.hi_sum, &mut more);
-        q.hi_sum = lo;
+        let mut more: Vec<LoopCandidate> = vec![];
+        self.band(lo, q.upper_sum, &mut more);
+        q.upper_sum = lo;
         let added = more.len();
-        let mut rest: Vec<(f64, [UmaIndex; 4])> = q.cand.split_off(q.next);
+        let mut rest: Vec<LoopCandidate> = q.candidates.split_off(q.next);
         rest.extend(more);
-        rest.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-        q.cand.extend(rest);
+        rest.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
+        q.candidates.extend(rest);
         added
     }
 
@@ -1372,7 +1502,7 @@ impl<'data> Multi<'data> {
         let qa: [f64; 12] = std::array::from_fn(|i| qs.get(i).copied().unwrap_or(0.0));
         // rejected only with the schedule found: a better schedule could change this one's fate
         if (self.shared && !beats(lv * self.relaxed_shared(f, &qa))) || !beats(self.exact_ceiling(f, &qa, kth, lv)) {
-            p.sched_rejects += 1;
+            p.schedule_rejects += 1;
             return Some(());
         }
         if self.shared {
@@ -1384,22 +1514,26 @@ impl<'data> Multi<'data> {
             if sl.is_empty() {
                 return Some(());
             }
-            let val = sl[0].0 / nl as f64;
-            for (v, x) in sl.iter() {
+            let val = sl[0].value / nl as f64;
+            for ScoredDeck { value: v, deck: x } in sl.iter() {
                 let id = DeckKey {
                     card_ids: x.ids.clone(),
                     end_links: x.ends.clone(),
                     variants: x.vars.clone(),
                     plain_pals: x.plain_ids.len(),
                 };
-                let e = p.deck_best.entry(id).or_insert((f64::NEG_INFINITY, 0, 0));
-                if v / nl as f64 > e.0 {
-                    *e = (v / nl as f64, p.solved.len(), p.lists.len());
+                let e = p.deck_best.entry(id).or_insert(DeckBest {
+                    value: f64::NEG_INFINITY,
+                    solved_index: 0,
+                    list_index: 0,
+                });
+                if v / nl as f64 > e.value {
+                    *e = DeckBest { value: v / nl as f64, solved_index: p.solved.len(), list_index: p.lists.len() };
                 }
             }
-            p.solved.push(Solved { f, r, qs, bests: vec![], val });
+            p.solved.push(Solved { members: f, schedule: r, inheritance_chances: qs, bests: vec![], value: val });
             p.lists.push(sl);
-            let mut vs: Vec<f64> = p.deck_best.values().map(|x| x.0).collect();
+            let mut vs: Vec<f64> = p.deck_best.values().map(|x| x.value).collect();
             vs.sort_by(|a, b| b.partial_cmp(a).unwrap());
             p.kth = if vs.len() >= self.loop_limit { vs[self.loop_limit - 1] } else { f64::NEG_INFINITY };
             return Some(());
@@ -1416,9 +1550,9 @@ impl<'data> Multi<'data> {
             return None;
         }
         let val = tot / nl as f64;
-        p.solved.push(Solved { f, r, qs, bests, val });
-        p.vals.push(val);
-        let mut vs = p.vals.clone();
+        p.solved.push(Solved { members: f, schedule: r, inheritance_chances: qs, bests, value: val });
+        p.values.push(val);
+        let mut vs = p.values.clone();
         vs.sort_by(|a, b| b.partial_cmp(a).unwrap());
         p.kth = if vs.len() >= self.loop_limit { vs[self.loop_limit - 1] } else { f64::NEG_INFINITY };
         Some(())
@@ -1460,14 +1594,14 @@ impl<'data> Multi<'data> {
                 cert,
                 p.scanned,
                 p.solved.len(),
-                t.n_band.get(),
-                t.n_scored.get(),
-                t.n_ufilt.get(),
-                p.sched_rejects,
-                t.t_band.get(),
-                t.t_score.get(),
-                t.t_seed.get(),
-                t.t_ub.get()
+                t.band_decks.get(),
+                t.scored_decks.get(),
+                t.bound_rejections.get(),
+                p.schedule_rejects,
+                t.band_seconds.get(),
+                t.score_seconds.get(),
+                t.seed_seconds.get(),
+                t.bound_seconds.get()
             );
         }
     }
@@ -1493,7 +1627,7 @@ impl<'data> Multi<'data> {
         let budget_out = self.inputs.deck_job.exact && cert < self.maximum_exact_ratio;
         let complete = p.next_bound <= p.kth * (1.0 + 4e-12);
         let exact = self.exact_json(&p, cert, complete, budget_out);
-        let n_band = self.tally.n_band.get();
+        let n_band = self.tally.band_decks.get();
         let mut out = stats;
         for (key, val) in [
             ("top", json!(top)),
@@ -1524,35 +1658,35 @@ impl<'data> Multi<'data> {
 
     /// shared: the best `top_decks` distinct decks (ties by identity), each with the loop it scored best in
     fn shared_picks<'pass>(&self, p: &'pass Pass) -> Vec<Pick<'pass>> {
-        let mut db: Vec<(&DeckKey, &(f64, usize, usize))> = p.deck_best.iter().collect();
-        db.sort_by(|a, b| b.1.0.partial_cmp(&a.1.0).unwrap().then(a.0.cmp(b.0)));
+        let mut db: Vec<(&DeckKey, &DeckBest)> = p.deck_best.iter().collect();
+        db.sort_by(|a, b| b.1.value.partial_cmp(&a.1.value).unwrap().then(a.0.cmp(b.0)));
         db.iter()
             .take(self.loop_limit)
-            .map(|&(id, &(v, si, li))| {
+            .map(|&(id, &DeckBest { value: v, solved_index: si, list_index: li })| {
                 let x = &p.lists[li]
                     .iter()
                     .find(|y| {
-                        y.1.ids == id.card_ids
-                            && y.1.ends == id.end_links
-                            && y.1.vars == id.variants
-                            && y.1.plain_ids.len() == id.plain_pals
+                        y.deck.ids == id.card_ids
+                            && y.deck.ends == id.end_links
+                            && y.deck.vars == id.variants
+                            && y.deck.plain_ids.len() == id.plain_pals
                     })
                     .unwrap()
-                    .1;
-                let Solved { f, qs, .. } = &p.solved[si];
-                let (e, fl) = self.ents_of(x);
-                let ln = lin_of(f);
-                let nm = members(f).len();
-                let mut per_l = vec![(0.0, 0.0, 0usize); ln.len()];
+                    .deck;
+                let Solved { members, inheritance_chances, .. } = &p.solved[si];
+                let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
+                let ln = lin_of(members);
+                let nm = crate::members(members).len();
+                let mut per_l = vec![JointChances::default(); ln.len()];
                 for t in 0..nm {
                     let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].trainee == t).collect();
-                    let qt: Vec<f64> = ls.iter().map(|&l| qs[l]).collect();
-                    let j = joint_b(self.inputs.model, f[t], &qt, &e, fl, self.requested_target_count, true);
+                    let qt: Vec<f64> = ls.iter().map(|&l| inheritance_chances[l]).collect();
+                    let j = joint_b(self.inputs.model, members[t], &qt, &e, fl, self.requested_target_count, true);
                     for (i, &l) in ls.iter().enumerate() {
                         per_l[l] = j[i];
                     }
                 }
-                Pick { si, decks: vec![x; nm], per_l, value: v }
+                Pick { solved_index: si, decks: vec![x; nm], lineage_chances: per_l, value: v }
             })
             .collect()
     }
@@ -1562,23 +1696,23 @@ impl<'data> Multi<'data> {
         let solved = &p.solved;
         let mut order: Vec<usize> = (0..solved.len()).collect();
         // stable: ties keep solve order
-        order.sort_by(|&a, &b| solved[b].val.partial_cmp(&solved[a].val).unwrap());
+        order.sort_by(|&a, &b| solved[b].value.partial_cmp(&solved[a].value).unwrap());
         order
             .iter()
             .take(self.loop_limit)
             .map(|&si| {
                 let bests = &solved[si].bests;
-                let ln = lin_of(&solved[si].f);
-                let nm = members(&solved[si].f).len();
-                let mut per_l = vec![(0.0, 0.0, 0usize); ln.len()];
+                let ln = lin_of(&solved[si].members);
+                let nm = members(&solved[si].members).len();
+                let mut per_l = vec![JointChances::default(); ln.len()];
                 for t in 0..nm {
                     let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].trainee == t).collect();
                     for (i, &l) in ls.iter().enumerate() {
-                        per_l[l] = bests[t].per[i];
+                        per_l[l] = bests[t].lineage_chances[i];
                     }
                 }
                 let decks = bests.iter().map(|b| b.deck.as_ref().unwrap_or(empty_deck)).collect();
-                Pick { si, decks, per_l, value: solved[si].val }
+                Pick { solved_index: si, decks, lineage_chances: per_l, value: solved[si].value }
             })
             .collect()
     }
@@ -1587,20 +1721,20 @@ impl<'data> Multi<'data> {
     fn loop_json(&self, p: &Pass, pk: &Pick) -> Value {
         let (d, model, unc, ntar) =
             (self.inputs.data, self.inputs.model, &self.target_groups, self.requested_target_count);
-        let (dk, per_l, pj) = (&pk.decks, &pk.per_l, pk.value);
-        let Solved { f, r, qs, .. } = &p.solved[pk.si];
-        let ln = lin_of(f);
-        let f = members(f);
-        let nm = f.len();
+        let (dk, per_l, pj) = (&pk.decks, &pk.lineage_chances, pk.value);
+        let Solved { members, schedule, inheritance_chances, .. } = &p.solved[pk.solved_index];
+        let ln = lin_of(members);
+        let member_slice = crate::members(members);
+        let nm = member_slice.len();
         let nl = ln.len();
         let mut per = vec![(0.0, 0usize); nm];
         let mut picks: Vec<Vec<usize>> = vec![vec![]; nm];
         for (l, &MemberLineage { trainee: t, .. }) in ln.iter().enumerate() {
-            per[t].0 += per_l[l].0;
+            per[t].0 += per_l[l].all;
             per[t].1 += 1;
-            picks[t].push(per_l[l].2);
+            picks[t].push(per_l[l].outfit);
         }
-        let minus1 = per_l.iter().map(|x| x.1).sum::<f64>() / nl as f64;
+        let minus1 = per_l.iter().map(|x| x.all_but_one).sum::<f64>() / nl as f64;
         // the chance of exactly k targets, k = 0 ..= n (exact over each lineage's landed sets, as `p_all`), averaged over
         // the lineages: the uncertain targets' sets from the joint model, each guaranteed gold on its own (GEN_GOLD)
         let mut landed = vec![0.0f64; ntar + 1];
@@ -1608,19 +1742,21 @@ impl<'data> Multi<'data> {
         let dke: Vec<_> = (0..nm).map(|t| self.ents_of(dk[t])).collect();
         for l in 0..nl {
             let t = ln[l].trainee;
-            let (e, fl) = (&dke[t].0, dke[t].1);
-            let nu = unc.len();
+            let (e, fl) = (&dke[t].entries, dke[t].filler_count);
+            let target_count = unc.len();
             let mut ext = JointExt {
-                su: vec![1.0; nu],
-                sf: vec![1.0; ntar - nu],
-                marg: vec![],
+                scales: super::joint::SparkScales {
+                    uncertain: vec![1.0; target_count],
+                    guaranteed: vec![1.0; ntar - target_count],
+                },
+                marginals: vec![],
                 sets: vec![0.0],
                 per_outfit: vec![],
             };
-            joint_fast(model, f[t], &[qs[l]], e, fl, ntar, false, Some(&mut ext));
-            let o = per_l[l].2;
+            joint_fast(model, member_slice[t], &[inheritance_chances[l]], e, fl, ntar, false, Some(&mut ext));
+            let o = per_l[l].outfit;
             let mut g = vec![1.0f64];
-            for _ in nu..ntar {
+            for _ in target_count..ntar {
                 let mut nn = vec![0.0; g.len() + 1];
                 for (i, x) in g.iter().enumerate() {
                     nn[i] += x * (1.0 - GEN_GOLD);
@@ -1628,7 +1764,7 @@ impl<'data> Multi<'data> {
                 }
                 g = nn;
             }
-            for (mu, &x) in ext.sets[(o << nu)..((o + 1) << nu)].iter().enumerate() {
+            for (mu, &x) in ext.sets[(o << target_count)..((o + 1) << target_count)].iter().enumerate() {
                 if x == 0.0 {
                     continue;
                 }
@@ -1640,13 +1776,20 @@ impl<'data> Multi<'data> {
         // the search's product value of this loop with these decks
         let rank_v = self.fixed
             * (0..nl)
-                .map(|l| model.trainee_fast(f[ln[l].trainee], qs[l], &dk[ln[l].trainee].dw, &dk[ln[l].trainee].dg))
+                .map(|l| {
+                    model.trainee_fast(
+                        member_slice[ln[l].trainee],
+                        inheritance_chances[l],
+                        &dk[ln[l].trainee].dw,
+                        &dk[ln[l].trainee].dg,
+                    )
+                })
                 .sum::<f64>()
             / nl as f64;
         let outfits: Vec<Value> = (0..nm)
             .map(|i| {
                 let kk = *picks[i].iter().max_by_key(|x| picks[i].iter().filter(|y| y == x).count()).unwrap();
-                let OutfitOption { coverage: st, outfits: cs } = &model.opts[f[i]][kk];
+                let OutfitOption { coverage: st, outfits: cs } = &model.opts[member_slice[i]][kk];
                 let covers: Vec<Value> = st
                     .iter()
                     .enumerate()
@@ -1661,19 +1804,20 @@ impl<'data> Multi<'data> {
                 json!({"outfits": outfits, "covers": covers})
             })
             .collect();
-        let pss: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
+        let pss: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[member_slice[i]], &schedule.s[i])).collect();
         let dks: Vec<(&[f64], &[f64])> = (0..nm).map(|t| (&*dk[t].dw, &*dk[t].dg)).collect();
-        let mut detail = model.detail(f, &|a, b| if self.no_race { 0.0 } else { wval(&pss[a], &pss[b]) }, Some(&dks));
+        let mut detail =
+            model.detail(member_slice, &|a, b| if self.no_race { 0.0 } else { wval(&pss[a], &pss[b]) }, Some(&dks));
         if let Some(ls) = detail["lineages"].as_array_mut() {
             for (l, x) in ls.iter_mut().enumerate() {
                 x["rank_value"] = x["p_all"].clone();
-                x["p_all"] = json!(per_l[l].0);
+                x["p_all"] = json!(per_l[l].all);
             }
         }
-        let lp = json!({"members": member_json(d, f), "p_all": pj, "p_minus1": minus1, "landed": landed,
+        let lp = json!({"members": member_json(d, member_slice), "p_all": pj, "p_minus1": minus1, "landed": landed,
                "rank_value": rank_v, "outfits": outfits,
                "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
-               "mean_proc": qs.iter().sum::<f64>() / qs.len() as f64, "schedule": chart_rows(d, f, &r.s[..nm]),
+               "mean_proc": inheritance_chances.iter().sum::<f64>() / inheritance_chances.len() as f64, "schedule": chart_rows(d, member_slice, &schedule.s[..nm]),
                "detail": detail});
         if self.shared {
             return json!({"loop": lp, "deck": dk[0].out(unc)});
@@ -1690,13 +1834,17 @@ impl<'data> Multi<'data> {
     fn exact_json(&self, p: &Pass, cert: f64, complete: bool, budget_out: bool) -> Value {
         let t = &self.tally;
         let mr = t.max_ratio.get();
-        let max_deck: Vec<Option<Value>> =
-            t.max_deck.borrow().iter().map(|x| x.as_ref().map(|(u, n)| json!({"trainee": u, "cards": n}))).collect();
+        let max_deck: Vec<Option<Value>> = t
+            .max_deck
+            .borrow()
+            .iter()
+            .map(|x| x.as_ref().map(|RatioExample { trainee_id: u, cards: n }| json!({"trainee": u, "cards": n})))
+            .collect();
         json!({"rho": cert, "rho_target": self.maximum_exact_ratio, "class_caps": self.exact_caps,
                "max_ratio": mr.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": mr,
-               "class_max_deck": max_deck, "complete": complete, "decks_scored": t.n_scored.get(),
-               "deck_searches": t.n_band.get(), "loops_solved": p.solved.len(), "schedule_rejects": p.sched_rejects,
-               "cap_hit": t.cap_hit.get(), "budget_out": budget_out, "bound_filtered": t.n_ufilt.get()})
+               "class_max_deck": max_deck, "complete": complete, "decks_scored": t.scored_decks.get(),
+               "deck_searches": t.band_decks.get(), "loops_solved": p.solved.len(), "schedule_rejects": p.schedule_rejects,
+               "cap_hit": t.cap_hit.get(), "budget_out": budget_out, "bound_filtered": t.bound_rejections.get()})
     }
 }
 

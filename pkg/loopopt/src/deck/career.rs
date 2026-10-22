@@ -529,10 +529,10 @@ fn deck_odds_ceilings(
     deck_size: usize,
 ) -> UmaTable<Option<(Vec<f64>, Vec<f64>)>> {
     // per relevant entry: (miss of a gold hint, miss of any hint) per uncertain target
-    let strong: Vec<(Vec<f64>, Vec<f64>)> = (0..space.rel.len())
+    let strong: Vec<(Vec<f64>, Vec<f64>)> = (0..space.card_indices.len())
         .map(|j| {
             let (mut mw, mut mg) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-            src_miss(&space.srcs[j], &vec![1.0; space.kind[j].stop as usize], &mut mw, &mut mg);
+            src_miss(&space.sources[j], &vec![1.0; space.kind[j].stop as usize], &mut mw, &mut mg);
             let mh: Vec<f64> = (0..nu).map(|k| mg[k] * mw[k]).collect();
             (mg, mh)
         })
@@ -544,7 +544,8 @@ fn deck_odds_ceilings(
                 return None;
             }
             let uid = d.umas[u].id;
-            let legal: Vec<usize> = (0..space.rel.len()).filter(|&j| !space.cards[space.rel[j]].blocks(uid)).collect();
+            let legal: Vec<usize> =
+                (0..space.card_indices.len()).filter(|&j| !space.cards[space.card_indices[j]].blocks(uid)).collect();
             let lowest = |f: &dyn Fn(usize) -> f64| {
                 let mut m: Vec<f64> = legal.iter().map(|&j| f(j)).collect();
                 m.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -588,7 +589,11 @@ fn assign_deck_classes(env: &mut Env) {
             None => k.push(0),
         }
         k.push(u64::MAX);
-        k.extend((0..env.space.rel.len()).filter(|&j| env.space.cards[env.space.rel[j]].blocks(uid)).map(|j| j as u64));
+        k.extend(
+            (0..env.space.card_indices.len())
+                .filter(|&j| env.space.cards[env.space.card_indices[j]].blocks(uid))
+                .map(|j| j as u64),
+        );
         k.push(u64::MAX);
         k.push(env.space.legal_plain(&[uid]).len() as u64);
         env.deck_class[u] = *first.entry(k).or_insert(u);
@@ -742,7 +747,7 @@ fn note_job_certificates(env: &Env, out: &mut Value, rho_top: f64) {
     // the deck searches that saw a breach and were answered by the cap-free search (`best_deck_cf`; every search of the
     // job, the plan's included), how many of those (or of a `cap_free` job's searches) proved nothing (then `complete`
     // is false), breaches left unanswered (`CAP_RERUN=0`), and the cap-free work
-    if env.space.dj.cap_free {
+    if env.space.deck_job.cap_free {
         out["cap_free"] = json!(true);
     }
     if env.cap_free_stats != CfStats::default() {

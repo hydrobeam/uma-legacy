@@ -1,8 +1,10 @@
 //! The joint deck and loop search (`run_deck`): structures in bands, schedules, ceilings and the shared-deck path.
+use super::sources::{EventOutcome, TargetReward, TrainingHint};
 use super::{
     CHAIN_EVENTS, CHAIN_N, CHAIN_P, CardsRaw, ChainKind, Data, DeckEval, DeckJob, Deserialize, Entries, HashMap,
-    Instant, Kept, Model, Name, PDeck, SkillJob, SkillsRaw, Sources, Src, Value, chain_marginals, deck_entries,
-    deck_space, dominates, json, k_filter, kfilter_order, kmax_top, run_multi, sig_of, src_miss, tie_rank,
+    Instant, Kept, Model, Name, PDeck, SkillJob, SkillsRaw, Sources, TargetSources, Value, chain_marginals,
+    deck_entries, deck_space, dominates, json, k_filter, kfilter_order, kmax_top, run_multi, sig_of, src_miss,
+    tie_rank,
 };
 
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
@@ -39,7 +41,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     };
     // every entry, before card dominance drops any: the exact per-uma search enumerates decks from these
     let space = (!dj.deck_only).then(|| deck_space(cr, &dj, sk, &unc, &ent));
-    let srcb = Sources { dj: &dj, unc: &unc };
+    let source_builder = Sources { dj: &dj, unc: &unc };
     let n_card_dropped = drop_dominated_cards(&mut ent, &dj, target_count);
     let coordinates = dominance_coords(&ent.srcs, target_count);
     let en = match DeckEnumerator::new(&ent, &dj, target_count, &coordinates) {
@@ -78,7 +80,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         eprintln!("skyline {} of {}", sky.len(), front.len());
     }
     let n_front = front.len();
-    let pd = detach(front, &sky, &ent, &srcb, sk);
+    let pd = detach(front, &sky, &ent, &source_builder, sk);
     if dj.deck_only {
         return json!({"sky": pd});
     }
@@ -194,7 +196,7 @@ fn drop_dominated_cards(ent: &mut Entries, dj: &DeckJob, target_count: usize) ->
 
 /// Each entry's (miss gold, miss any) per target at its strongest (every link firing) and weakest (its links at their
 /// lowest odds over any `others` other chain cards)
-fn miss_bounds(kind: &[ChainKind], srcs: &[Src], others: usize, target_count: usize) -> MissBounds {
+fn miss_bounds(kind: &[ChainKind], srcs: &[TargetSources], others: usize, target_count: usize) -> MissBounds {
     let nrel0 = kind.len();
     let mut kindset: Vec<ChainKind> = (0..nrel0).filter(|&j| kind[j] != ChainKind::NONE).map(|j| kind[j]).collect();
     kindset.push(ChainKind::FILLER);
@@ -202,7 +204,7 @@ fn miss_bounds(kind: &[ChainKind], srcs: &[Src], others: usize, target_count: us
     kindset.dedup();
     // lowest odds of each link over every possible set of other chain cards
     let needs_marg = |key_data: ChainKind| {
-        (0..nrel0).any(|j| kind[j] != ChainKind::NONE && kind[j] == key_data && !srcs[j].chains.is_empty())
+        (0..nrel0).any(|j| kind[j] != ChainKind::NONE && kind[j] == key_data && !srcs[j].chain_outcomes.is_empty())
     };
     let mut min_marg: HashMap<ChainKind, Vec<f64>> = HashMap::new();
     for &key_data in &kindset {
@@ -311,16 +313,16 @@ fn debug_robust(
 /// rises with g and h, and a deck at least as high in every (g, h) is never worse. (w, g) dominance implies
 /// (g, h) dominance, so this prunes at least as much. Coordinates no relevant card can move are dropped,
 /// and h == g when no card gives the white.
-fn dominance_coords(srcs: &[Src], target_count: usize) -> Vec<(usize, bool)> {
+fn dominance_coords(srcs: &[TargetSources], target_count: usize) -> Vec<super::space::HintCoordinate> {
     let mut has_w = vec![false; target_count];
     let mut has_g = vec![false; target_count];
     for sr in srcs {
-        for &(k, _) in &sr.train {
+        for &TrainingHint { target: k, .. } in &sr.training_hints {
             has_w[k] = true;
         }
-        for g in sr.fixed.iter().chain(sr.chains.iter().map(|x| &x.1)) {
-            for (_, out) in g {
-                for &(k, lvl) in out {
+        for g in sr.fixed_outcomes.iter().chain(sr.chain_outcomes.iter().map(|x| &x.outcomes)) {
+            for EventOutcome { rewards: out, .. } in g {
+                for &TargetReward { target: k, level: lvl } in out {
                     if lvl >= 2 {
                         has_g[k] = true;
                     } else {
@@ -334,10 +336,10 @@ fn dominance_coords(srcs: &[Src], target_count: usize) -> Vec<(usize, bool)> {
         .flat_map(|k| {
             let mut v = vec![];
             if has_g[k] {
-                v.push((k, true));
+                v.push(super::space::HintCoordinate { target: k, gold: true });
             }
             if has_w[k] {
-                v.push((k, false));
+                v.push(super::space::HintCoordinate { target: k, gold: false });
             }
             v
         })
@@ -443,7 +445,7 @@ type Groups = crate::FxMap<(usize, usize), Kept>;
 struct DeckEnumerator<'env> {
     deck_job: &'env DeckJob,
     entries: &'env Entries<'env>,
-    coordinates: &'env [(usize, bool)],
+    coordinates: &'env [super::space::HintCoordinate],
     target_count: usize,
     entry_count: usize,
     size: usize,
@@ -467,7 +469,7 @@ impl<'env> DeckEnumerator<'env> {
         entries: &'env Entries<'env>,
         deck_job: &'env DeckJob,
         target_count: usize,
-        coordinates: &'env [(usize, bool)],
+        coordinates: &'env [super::space::HintCoordinate],
     ) -> Result<Self, Value> {
         let (cards, rel, kind) = (&entries.cards, &entries.rel, &entries.kind);
         let allowed_borrow = usize::from(deck_job.borrow);
@@ -632,7 +634,7 @@ impl<'env> DeckEnumerator<'env> {
     fn enum_key(&self, counts: &[usize], options: FrontierOptions, workspace: &mut FrontierWorkspace) {
         let (nk, filler_kind_index, size) = (self.chain_kinds.len(), self.filler_kind_index, self.size);
         let (entries_by_kind, borrowed_entries) = (&self.entries_by_kind, &self.borrowed_entries);
-        let csum: usize = counts.iter().sum();
+        let chain_slots: usize = counts.iter().sum();
         // a key needs real entries of each non-filler kind
         if (0..nk).any(|i| i != filler_kind_index && counts[i] > entries_by_kind[i].len()) {
             return;
@@ -655,13 +657,13 @@ impl<'env> DeckEnumerator<'env> {
             if (0..nk).any(|i| (if i == filler_kind_index { real22 } else { counts[i] }) > alive_k[i].len()) {
                 continue;
             }
-            let rem = size - csum;
+            let rem = size - chain_slots;
             for np in 0..=rem.min(alive_p.len()) {
                 let plain = rem - np;
                 if plain > self.entries.plain_chars.len() {
                     continue;
                 }
-                let target = csum - filler + np; // entries in the finished deck
+                let target = chain_slots - filler + np; // entries in the finished deck
                 let mut entry_groups: Vec<EntryGroup> = vec![];
                 for i in 0..nk {
                     let c = if i == filler_kind_index { real22 } else { counts[i] };
@@ -800,7 +802,7 @@ impl<'env> DeckEnumerator<'env> {
             selection.entries.iter().copied().find(|&j| self.borrowed_entries[j]).map(|j| self.entries.rel[j]);
         workspace.counts.decks_built += 1;
         let mut coordinate_sum = 0.0;
-        for (c, &(k, is_g)) in coordinates.iter().enumerate() {
+        for (c, &super::space::HintCoordinate { target: k, gold: is_g }) in coordinates.iter().enumerate() {
             workspace.coordinates[c] = if is_g {
                 gold_hint_chances[k]
             } else {
@@ -1080,7 +1082,7 @@ fn skyline(front: &[DeckEval], dj: &DeckJob, nd: usize) -> Vec<usize> {
 /// The skyline's decks detached from the search (names, ids and choice labels instead of indices): the frontier
 /// consumed, the skyline's decks (ascending indices, `sky`) in order: each deck's lists move into its PDeck and the
 /// rest is freed before `run_multi`
-fn detach(front: Vec<DeckEval>, sky: &[usize], ent: &Entries, srcb: &Sources, sk: &SkillsRaw) -> Vec<PDeck> {
+fn detach(front: Vec<DeckEval>, sky: &[usize], ent: &Entries, source_builder: &Sources, sk: &SkillsRaw) -> Vec<PDeck> {
     let cards = &ent.cards;
     // per (card, end link, variant): its name with the choice and end-link notes, its choice label, and the name
     // marked borrowed (built at first need)
@@ -1107,7 +1109,7 @@ fn detach(front: Vec<DeckEval>, sky: &[usize], ent: &Entries, srcb: &Sources, sk
             for ((&i, &e), &v) in x.cards.iter().zip(&x.ends).zip(&x.vars) {
                 let (n, lb, nb) = shown.entry((i, e, v)).or_insert_with(|| {
                     let mut n = cards[i].name.clone();
-                    let lb = srcb.label(cards[i], (e > 0).then_some(e), v, sk);
+                    let lb = source_builder.label(cards[i], (e > 0).then_some(e), v, sk);
                     if !lb.is_empty() {
                         n = format!("{n} ({lb})");
                     }

@@ -4,8 +4,7 @@ use super::schedule::RaceSchedule;
 use super::{Ancestor, Env, Found, Legacy, Pool, aff_factor, apt_pink, inherit, now_ms, pink_p, prof, set_ews};
 use crate::deck::career::Lineage;
 use crate::deck::{
-    ChainKind, GEN_GOLD, JointExt, JointScratch, OutfitOption, SelectedDeck, Src, Value, joint_eval_in, joint_prep,
-    json,
+    GEN_GOLD, JointExt, JointScratch, OutfitOption, SelectedDeck, TargetSources, Value, joint_eval_in, joint_prep, json,
 };
 
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x, with a buffer the
@@ -43,10 +42,10 @@ impl Env<'_> {
         let (o, ext) = (exact.outfit, &exact.ext);
         let mut pt = vec![0.0f64; ntar];
         for (pos, &i) in self.uncertain_targets.iter().enumerate() {
-            pt[i] = ext.marg[o * nu + pos];
+            pt[i] = ext.marginals[o * nu + pos];
         }
         for (pos, &i) in self.fixed_targets.iter().enumerate() {
-            pt[i] = GEN_GOLD * ext.sf[pos];
+            pt[i] = GEN_GOLD * ext.scales.guaranteed[pos];
         }
         let sj = self.skill_job;
         let OutfitOption { coverage: st, outfits: cards } = &self.model.opts[t][o];
@@ -70,7 +69,7 @@ impl Env<'_> {
         // with GEN_GOLD / GEN_WHITE x her spark scale; the deck's hint chances are its per-target marginals
         // (`f.deck.white_hint_chances`, `f.deck.gold_hint_chances`), so these products match `p` up to the deck chains'
         // correlation. The scenario's golds: bought, landing GEN_GOLD.
-        let (su, sf) = self.scale(&nc);
+        let scales = self.scale(&nc);
         let ewo = &self.own_event_chances[t][o];
         let buy = |i: usize| -> Value {
             if let Some(pos) = self.uncertain_targets.iter().position(|&x| x == i) {
@@ -83,11 +82,11 @@ impl Env<'_> {
                 } else {
                     (1.0 - dg) * (1.0 - (1.0 - dw) * (1.0 - e) * (1.0 - q[i]))
                 };
-                json!({"gold": gold, "white": white, "land_gold": gold * crate::skills::GEN_GOLD * su[pos], "land_white": white * crate::skills::GEN_WHITE * su[pos],
+                json!({"gold": gold, "white": white, "land_gold": gold * crate::skills::GEN_GOLD * scales.uncertain[pos], "land_white": white * crate::skills::GEN_WHITE * scales.uncertain[pos],
                        "deck_gold": dg, "deck_white": dw, "own_event": e, "inherit": q[i], "outfit": v})
             } else {
                 let pos = self.fixed_targets.iter().position(|&x| x == i).unwrap_or(0);
-                json!({"gold": 1.0, "white": 0.0, "land_gold": crate::skills::GEN_GOLD * sf.get(pos).copied().unwrap_or(1.0), "land_white": 0.0, "scenario": true})
+                json!({"gold": 1.0, "white": 0.0, "land_gold": crate::skills::GEN_GOLD * scales.guaranteed.get(pos).copied().unwrap_or(1.0), "land_white": 0.0, "scenario": true})
             }
         };
         let targets: Vec<Value> = (0..ntar)
@@ -165,14 +164,17 @@ impl Env<'_> {
         let mut corners = vec![vec![0.0f64; 1 << nu]; no];
         // per corner `exact(t, sel, [6; ntar], false, false)`: the deck's part of `joint_fast` (`joint_prep`, which reads
         // no chance and no model state) once, its evaluation per corner (the same sums; the scale is 1 throughout)
-        let (su, sf) = self.scale(&vec![6; ntar]);
-        let ents: Vec<(&Src, ChainKind)> =
-            sel.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
+        let scales = self.scale(&vec![6; ntar]);
+        let ents: Vec<crate::deck::SourceEntry<&TargetSources>> = sel
+            .entries
+            .iter()
+            .map(|&j| crate::deck::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
+            .collect();
         let pre = joint_prep(self.model.uncertain.len(), &ents, sel.filler_cards);
-        // (one chance vector and one `JointExt` for every corner: joint_eval only reads su, sf; `marg` is not read here,
+        // (one chance vector and one `JointExt` for every corner: joint_eval only reads `scales`; `marginals` is not read here,
         // so not summed)
         let mut q = q0.to_vec();
-        let mut ext = JointExt { su, sf, marg: vec![], sets: vec![], per_outfit: vec![] };
+        let mut ext = JointExt { scales, marginals: vec![], sets: vec![], per_outfit: vec![] };
         // (and one set of joint_eval's buffers)
         let mut sx = JointScratch::default();
         for c in 0..(1usize << nu) {
@@ -205,7 +207,7 @@ impl Env<'_> {
             }
             let mut part = vec![(base, x)];
             for (pos, &i) in self.fixed_targets.iter().enumerate() {
-                let g = GEN_GOLD * ext.sf[pos];
+                let g = GEN_GOLD * ext.scales.guaranteed[pos];
                 part = part.into_iter().flat_map(|(m, w)| [(m, w * (1.0 - g)), (m | 1 << i, w * g)]).collect();
             }
             for (m, w) in part {

@@ -323,12 +323,19 @@ pub(super) fn chain_marginals_ref(kinds: &[ChainKind]) -> HashMap<ChainKind, Vec
     out
 }
 
-/// Final-state distribution of the chain process behind `chain_marginals`: (links done per entry, probability).
+/// One final state of the chain process, in sorted chain-kind order.
+pub(super) struct ChainState {
+    /// Completed links at each chain position.
+    pub(super) progress: Vec<u8>,
+    pub(super) probability: f64,
+}
+
+/// Final-state distribution of the chain process behind `chain_marginals`.
 /// Memoised per sorted kind list; `kinds` must be sorted. Exact: a state at level L (L events taken) is final
 /// with P(N = L) unless every entry is at its stop, then with P(N >= L); stop-risk entries are the mixture over
 /// where they stop, as in `chain_marginals_risk`.
-pub(super) fn chain_states(kinds: &[ChainKind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
-    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<Vec<(Vec<u8>, f64)>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
+pub(super) fn chain_states(kinds: &[ChainKind]) -> std::rc::Rc<Vec<ChainState>> {
+    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<Vec<ChainState>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let key = (kinds.to_vec(), pmf_key());
     if let Some(r) = CS.with(|c| c.borrow().get(&key).cloned()) {
         return r;
@@ -349,8 +356,9 @@ pub(super) fn chain_states(kinds: &[ChainKind]) -> std::rc::Rc<Vec<(Vec<u8>, f64
             *acc.entry(s.to_vec()).or_insert(0.0) += w * pi * fin;
         });
     });
-    let mut v: Vec<(Vec<u8>, f64)> = acc.into_iter().collect();
-    v.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut v: Vec<ChainState> =
+        acc.into_iter().map(|(progress, probability)| ChainState { progress, probability }).collect();
+    v.sort_by(|a, b| a.progress.cmp(&b.progress));
     let r = std::rc::Rc::new(v);
     CS.with(|c| c.borrow_mut().insert(key, std::rc::Rc::clone(&r)));
     r

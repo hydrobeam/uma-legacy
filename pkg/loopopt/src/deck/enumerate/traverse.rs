@@ -1,16 +1,19 @@
 //! Configuration traversal and its borrowed-card and state bounds.
-use super::bounds::DominanceRequest;
+use super::bounds::{DominanceRequest, OutfitRow, OutfitRun, SplitColumns};
 use super::config::ConfigurationBounds;
 use super::scratch::GroupBounds;
 use super::{
     ConfigOrder, ConfigScratch, ConfigurationContext, ConfigurationQueue, DeckConstraints, DeckCursor, DeckPath,
     NodeScratch, SearchConfig, SearchOutcome, SearchStop, WalkScratch,
 };
+use super::{ScoredDeck, SearchClause};
 use crate::deck::capfree::{BoundOptions, LandingBoundTables};
-use crate::deck::space::EntryMisses;
+use crate::deck::chains::ChainState;
+use crate::deck::joint::MissFactors;
+use crate::deck::space::{Dominator, EntryGroup, EntryMisses, GroupSlots};
 use crate::deck::{
-    CapFreeRatios, ChainKind, DeckSpace, GTab, HashMap, Instant, LandPre, Model, SBN, SPT, SbCfg, SelectedDeck,
-    StateBound, chain_states,
+    CapFreeRatios, ChainKind, DeckSpace, GroupTable, HashMap, Instant, LandPre, Model, SBN, SPT, SelectedDeck,
+    StateBound, StateBoundConfig, chain_states,
 };
 
 /// Immutable controls selected before traversal. Scalar copies do not change the search's buffers.
@@ -44,28 +47,28 @@ pub(crate) struct SearchControl {
 /// tables, so preparation retains their ownership until traversal returns.
 #[derive(Clone, Copy)]
 pub(crate) struct PreparedTables<'tab> {
-    pub(crate) ebit: &'tab [u128],
+    pub(crate) character_bits: &'tab [u128],
     pub(crate) groups_all: &'tab [&'tab Vec<usize>],
-    pub(crate) state_rows: &'tab [Option<Vec<(f64, f64)>>],
+    pub(crate) state_rows: &'tab [Option<Vec<MissFactors>>],
     pub(crate) landing_factors: &'tab [LandPre],
-    pub(crate) lbit: &'tab [u8],
-    pub(crate) all_lk: u8,
-    pub(crate) oq: &'tab [(usize, crate::UmaIndex, f64, usize)],
-    pub(crate) og: &'tab [(usize, usize, usize)],
-    pub(crate) orow: &'tab [crate::skills::OutfitPre],
-    pub(crate) zm: &'tab [u32],
-    pub(crate) nm: &'tab [u32],
-    pub(crate) alt: &'tab [(usize, usize)],
+    pub(crate) lock_bits: &'tab [u8],
+    pub(crate) all_lock_bits: u8,
+    pub(crate) outfit_rows: &'tab [OutfitRow],
+    pub(crate) outfit_runs: &'tab [OutfitRun],
+    pub(crate) outfits: &'tab [crate::skills::OutfitPre],
+    pub(crate) zero_masks: &'tab [u32],
+    pub(crate) nonzero_masks: &'tab [u32],
+    pub(crate) alternative_columns: &'tab [SplitColumns],
 }
 
 /// Reuse preparation's odds buffers and retain diagnostic rows across configurations.
 pub(crate) struct TraversalScratch {
-    pub(crate) out: Vec<(f64, SelectedDeck)>,
+    pub(crate) decks: Vec<ScoredDeck<SelectedDeck>>,
     pub(crate) best_value: f64,
-    pub(crate) dw: Vec<f64>,
-    pub(crate) dg: Vec<f64>,
-    pub(crate) av: Vec<f64>,
-    pub(crate) rbs: Vec<Vec<f64>>,
+    pub(crate) white_chances: Vec<f64>,
+    pub(crate) gold_chances: Vec<f64>,
+    pub(crate) target_bounds: Vec<f64>,
+    pub(crate) diagnostic_bounds: Vec<Vec<f64>>,
 }
 
 impl DeckSpace<'_> {
@@ -74,16 +77,16 @@ impl DeckSpace<'_> {
     pub(crate) fn traverse_configurations(
         &self,
         model: &Model,
-        clauses: &[(Vec<(usize, f64)>, f64)],
+        clauses: &[SearchClause],
         controls: SearchControl,
         tables: PreparedTables<'_>,
         queue: ConfigurationQueue,
         scratch: TraversalScratch,
-        clause_value: impl Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64,
+        clause_value: impl Fn(&SearchClause, &[f64], &[f64]) -> f64,
         bounds: &ConfigurationBounds<
-            impl Fn(&[f64], &[f64], &[u32], u64) -> GTab,
-            impl Fn(&[(usize, usize)], &GTab, &mut [f64], &mut [f64]),
-            impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+            impl Fn(&[f64], &[f64], &[u32], u64) -> GroupTable,
+            impl Fn(&[GroupSlots], &GroupTable, &mut [f64], &mut [f64]),
+            impl Fn(&[GroupSlots], &GroupTable, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
         >,
         ratio_at: impl Fn(usize, &[f64], &[f64]) -> f64,
         cf_ratios: &CapFreeRatios<'_>,
@@ -92,11 +95,11 @@ impl DeckSpace<'_> {
         let PreparedSearch { context, mut scratch, mut results } =
             DeckSearchContext::prepare(self, model, clauses, controls, tables, scratch, clause_value);
         let mut order = ConfigOrder::new(queue, controls);
-        while let Some(cf) = order.next(self, results.best_value, bounds) {
-            if context.past_bar(&cf, &results) {
+        while let Some(configuration) = order.next(self, results.best_value, bounds) {
+            if context.past_bar(&configuration, &results) {
                 break;
             }
-            if let Some(stop) = context.visit(&mut scratch, &mut results, &cf, &ratio_at, cf_ratios) {
+            if let Some(stop) = context.visit(&mut scratch, &mut results, &configuration, &ratio_at, cf_ratios) {
                 return SearchOutcome { decks: results.decks, incomplete: Some(stop) };
             }
         }
@@ -120,14 +123,14 @@ pub(crate) struct MissProducts {
 }
 
 pub(crate) struct BorrowBounds {
-    pub(crate) own: Vec<MissProducts>,
-    pub(crate) one: Vec<MissProducts>,
+    pub(crate) owned_misses: Vec<MissProducts>,
+    pub(crate) borrow_misses: Vec<MissProducts>,
     pub(crate) owned_ratios: Vec<Vec<f64>>,
     pub(crate) borrow_ratios: Vec<Vec<f64>>,
 }
 
-/// The one-borrowed-card tables of one configuration's groups and their suffixes (`own`: no borrowed card left to
-/// place; `one`: at most one, in one group); empty without borrowing (`has_borrowed_entries` false)
+/// The one-borrowed-card tables of a configuration's groups and their suffixes (`owned_suffix`: no borrowed card left;
+/// `borrow_suffix`: at most one, in one group); empty without borrowing (`has_borrowed_entries` false).
 pub(crate) struct BorrowTables {
     pub(crate) has_borrowed_entries: bool,
     pub(crate) group_bounds: Vec<std::rc::Rc<BorrowBounds>>,
@@ -157,11 +160,11 @@ pub(crate) struct ParentRatioBounds {
     pub(crate) prefix_products: Vec<f64>,
 }
 
-/// What every configuration of one traversal reads: the search, its controls and tables, the clause value (`val`)
+/// What every configuration of one traversal reads: the search, its controls and tables, and `clause_value`.
 pub(crate) struct DeckSearchContext<'run, 'space, V> {
     pub(crate) space: &'run DeckSpace<'space>,
     pub(crate) model: &'run Model<'run>,
-    pub(crate) clauses: &'run [(Vec<(usize, f64)>, f64)],
+    pub(crate) clauses: &'run [SearchClause],
     pub(crate) controls: SearchControl,
     pub(crate) tables: PreparedTables<'run>,
     pub(crate) clause_value: V,
@@ -175,11 +178,18 @@ pub(crate) struct DeckSearchContext<'run, 'space, V> {
 struct DeckSearchScratch {
     nodes: NodeScratch,
     configuration_scratch: ConfigScratch,
-    borrow_cache: HashMap<(u64, usize), std::rc::Rc<BorrowBounds>>,
+    borrow_cache: HashMap<BorrowKey, std::rc::Rc<BorrowBounds>>,
+}
+
+/// Borrowing bounds for a chain code and group within this search's fixed entry set.
+#[derive(PartialEq, Eq, Hash)]
+struct BorrowKey {
+    code: u64,
+    group: usize,
 }
 
 pub(crate) struct SearchResults {
-    pub(crate) decks: Vec<(f64, SelectedDeck)>,
+    pub(crate) decks: Vec<ScoredDeck<SelectedDeck>>,
     pub(crate) best_value: f64,
 }
 
@@ -190,27 +200,28 @@ struct PreparedSearch<'run, 'space, Value> {
     results: SearchResults,
 }
 
-impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> DeckSearchContext<'run, 'space, V> {
+impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'run, 'space, V> {
     fn prepare(
         space: &'run DeckSpace<'space>,
         model: &'run Model<'run>,
-        clauses: &'run [(Vec<(usize, f64)>, f64)],
-        ctl: SearchControl,
-        tb: PreparedTables<'run>,
+        clauses: &'run [SearchClause],
+        controls: SearchControl,
+        tables: PreparedTables<'run>,
         scratch: TraversalScratch,
-        val: V,
+        clause_value: V,
     ) -> PreparedSearch<'run, 'space, V> {
-        let TraversalScratch { out, best_value, dw, dg, av, rbs } = scratch;
-        let outfit_row_count = tb.oq.len();
-        let cache_parent_rows = tb.orow.iter().all(|o| o.len() == ctl.target_count);
-        let inheritance_chances: Vec<f64> = tb.oq.iter().map(|x| x.2).collect();
+        let TraversalScratch { decks, best_value, white_chances, gold_chances, target_bounds, diagnostic_bounds } =
+            scratch;
+        let outfit_row_count = tables.outfit_rows.len();
+        let cache_parent_rows = tables.outfits.iter().all(|o| o.len() == controls.target_count);
+        let inheritance_chances: Vec<f64> = tables.outfit_rows.iter().map(|x| x.inheritance).collect();
         let context = Self {
             space,
             model,
             clauses,
-            controls: ctl,
-            tables: tb,
-            clause_value: val,
+            controls,
+            tables,
+            clause_value,
             outfit_row_count,
             cache_parent_rows,
             inheritance_chances,
@@ -218,9 +229,9 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
         let z = [0.0f64; 32];
         let workspace = DeckSearchScratch {
             nodes: NodeScratch {
-                white_chances: dw,
-                gold_chances: dg,
-                outfit_bounds: av,
+                white_chances,
+                gold_chances,
+                outfit_bounds: target_bounds,
                 clause_values: vec![],
                 partial_white: vec![],
                 partial_gold: vec![],
@@ -239,26 +250,27 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
                 parent_white: z,
                 parent_gold: z,
                 dominance_products: z,
-                diagnostic_bounds: rbs,
+                diagnostic_bounds,
             },
             configuration_scratch: ConfigScratch {
-                sufw: vec![],
-                sufg: vec![],
-                spf: vec![],
-                csuf: vec![],
-                goff: vec![],
-                avail: vec![],
-                path: DeckPath { sel: vec![], pw: vec![], pg: vec![], parent_id: 0 },
+                suffix_white: vec![],
+                suffix_gold: vec![],
+                suffix_ratios: vec![],
+                class_suffix: vec![],
+                group_offsets: vec![],
+                available_locks: vec![],
+                path: DeckPath { entries: vec![], white_misses: vec![], gold_misses: vec![], parent_id: 0 },
             },
             borrow_cache: HashMap::new(),
         };
-        PreparedSearch { context, scratch: workspace, results: SearchResults { decks: out, best_value } }
+        PreparedSearch { context, scratch: workspace, results: SearchResults { decks, best_value } }
     }
 
-    /// No configuration from `cf` on can reach the bar (they come in root order)
-    fn past_bar(&self, cf: &SearchConfig, results: &SearchResults) -> bool {
+    /// No configuration from this `configuration` on can reach the bar (they come in root order).
+    fn past_bar(&self, configuration: &SearchConfig, results: &SearchResults) -> bool {
         let SearchControl { best, cap_free, .. } = self.controls;
-        (best && cf.root * (1.0 + 1e-9) < results.best_value) || (!best && !cap_free && cf.root * (1.0 + 1e-9) < 1.0)
+        (best && configuration.root * (1.0 + 1e-9) < results.best_value)
+            || (!best && !cap_free && configuration.root * (1.0 + 1e-9) < 1.0)
     }
 
     /// Visit one configuration: its split root bound, its tables, its state-conditioned root bound, then the walk of
@@ -267,7 +279,7 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
         &self,
         scratch: &mut DeckSearchScratch,
         results: &mut SearchResults,
-        cf: &SearchConfig,
+        configuration: &SearchConfig,
         ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
         cf_ratios: &CapFreeRatios<'_>,
     ) -> Option<SearchStop> {
@@ -277,22 +289,29 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
         let tables = search.tables;
         let space = search.space;
         // (the split's root bound: skip, the order kept)
-        if (controls.best && cf.prune_bound * controls.bound_check_scale * (1.0 + 1e-9) < results.best_value)
+        if (controls.best && configuration.prune_bound * controls.bound_check_scale * (1.0 + 1e-9) < results.best_value)
             || (!controls.best
                 && !controls.cap_free
-                && cf.prune_bound * controls.bound_check_scale * (1.0 + 1e-9) < 1.0)
+                && configuration.prune_bound * controls.bound_check_scale * (1.0 + 1e-9) < 1.0)
         {
             return None;
         }
-        let km = space.key_miss(cf.code);
-        let (white_misses, gold_misses, touched_targets) = (&km.0, &km.1, (&*km.2));
-        let groups: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| ((&**tables.groups_all[i]), c)).collect();
-        // per group of this configuration: its key's tables (group_misses[g] = gm[group], group_ratios[g] = rpk[group])
+        let key_misses = space.key_miss(configuration.code);
+        let (white_misses, gold_misses, touched_targets) =
+            (&key_misses.white, &key_misses.gold, (&*key_misses.touched_targets));
+        let groups: Vec<EntryGroup<'_>> = configuration
+            .groups
+            .iter()
+            .map(|group| EntryGroup { entries: tables.groups_all[group.group], slots: group.slots })
+            .collect();
+        // Per configured group: its blocks from the key's miss and ratio tables.
         // (blocks: group_misses[g]'s row r by `gm_w`, `gm_g`; group_ratios[g]'s column ix at ix (controls.size + 1))
-        let group_misses: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.gm.grp(i)).collect();
-        let group_ratios: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.rpk.grp(i)).collect();
+        let group_misses: Vec<&[f64]> =
+            configuration.groups.iter().map(|group| configuration.group_misses.grp(group.group)).collect();
+        let group_ratios: Vec<&[f64]> =
+            configuration.groups.iter().map(|group| configuration.ratio_prefixes.grp(group.group)).collect();
         configuration_scratch.fill_suffixes(
-            cf,
+            configuration,
             &GroupBounds {
                 misses: &group_misses,
                 ratios: &group_ratios,
@@ -302,8 +321,8 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
             },
         );
         let misses = EntryMisses { white: white_misses, gold: gold_misses, target_count: controls.target_count };
-        let dominance = search.dominance(cf, &groups, misses);
-        let bt = search.borrow_tables(borrow_cache, cf, &groups, misses, ratio_at);
+        let dominance = search.dominance(configuration, &groups, misses);
+        let bt = search.borrow_tables(borrow_cache, configuration, &groups, misses, ratio_at);
         nodes.clause_values.clear();
         nodes.clause_values.resize(search.clauses.len(), 0.0);
         nodes.partial_white.clear();
@@ -312,14 +331,14 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
         nodes.partial_gold.resize(controls.target_count, 0.0);
         let ng = groups.len();
         if !controls.best {
-            configuration_scratch.fill_class_suffixes(&groups, &space.cvm);
+            configuration_scratch.fill_class_suffixes(&groups, &space.class_masks);
         }
         // the configuration's state-conditioned bounds (`StateBound`) and its root: no deck of it can reach the bar
-        let sbc = search.state_cfg(cf, &groups);
+        let sbc = search.state_cfg(configuration, &groups);
         let mut sbb = StateBound::new(
             sbc,
             &groups,
-            &cf.gs,
+            &configuration.groups,
             search.model,
             LandingBoundTables {
                 factors: tables.landing_factors,
@@ -347,15 +366,15 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
         }
         // (CF_CHECK: the bounds of the nodes on the current path, per depth, the root's at 0)
         let cf_path = if controls.cap_free_check_scale > 0.0 { vec![sb_root] } else { vec![] };
-        let nrows = groups.iter().map(|x| x.1).sum::<usize>() + 1;
+        let nrows = groups.iter().map(|x| x.slots).sum::<usize>() + 1;
         let st = &mut configuration_scratch.path;
-        st.sel.clear();
-        st.pw.clear();
-        st.pw.resize(nrows * controls.target_count, 1.0);
-        st.pg.clear();
-        st.pg.resize(nrows * controls.target_count, 1.0);
+        st.entries.clear();
+        st.white_misses.clear();
+        st.white_misses.resize(nrows * controls.target_count, 1.0);
+        st.gold_misses.clear();
+        st.gold_misses.resize(nrows * controls.target_count, 1.0);
         nodes.grow_parent_rows(
-            2 * (groups.iter().map(|x| x.1).sum::<usize>() + 1),
+            2 * (groups.iter().map(|x| x.slots).sum::<usize>() + 1),
             nrows,
             search.outfit_row_count,
             controls.target_count,
@@ -368,39 +387,47 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
         let ncan = if bt.has_borrowed_entries { 2 } else { 1 };
         let mut loff = vec![0usize; ng + 1];
         for g in 0..ng {
-            loff[g + 1] = loff[g] + groups[g].1 + 1;
+            loff[g + 1] = loff[g] + groups[g].slots + 1;
         }
         nodes.reset_constants(loff[ng] * ncan, controls.target_count, controls.column_count);
         // (a branch that can no longer place every locked card is dropped)
-        if !configuration_scratch.fill_avail(&groups, tables.lbit, tables.all_lk) {
+        if !configuration_scratch.fill_available_locks(&groups, tables.lock_bits, tables.all_lock_bits) {
             return None;
         }
-        let ConfigScratch { sufw, sufg, spf, csuf, goff, avail, path } = configuration_scratch;
+        let ConfigScratch {
+            suffix_white,
+            suffix_gold,
+            suffix_ratios,
+            class_suffix,
+            group_offsets,
+            available_locks,
+            path,
+        } = configuration_scratch;
         let walk = ConfigurationContext {
             search,
-            configuration: cf,
-            filler: cf.filler,
-            plain: cf.plain,
+            configuration,
+            filler_count: configuration.filler_count,
+            plain_pal_count: configuration.plain_pal_count,
             groups: &groups,
             group_misses: &group_misses,
             group_ratios: &group_ratios,
             white_misses,
             gold_misses,
             touched_targets,
-            suffix_white: sufw,
-            suffix_gold: sufg,
-            suffix_ratios: spf,
+            suffix_white,
+            suffix_gold,
+            suffix_ratios,
             dominators: &dominance.tables,
             dominance_offsets: &dominance.offsets,
             dominance_suffix: &dominance.suffix_characters,
             borrow_bounds: &bt,
-            class_suffix: csuf,
-            group_offsets: goff,
-            available_locks: avail,
+            class_suffix,
+            group_offsets,
+            available_locks,
             remaining_offsets: &loff,
             borrow_state_count: ncan,
             group_count: ng,
-            total_slots: groups.iter().map(|x| x.1).sum(),
+            total_slots: groups.iter().map(|x| x.slots).sum(),
             root_bound: sb_root,
         };
         let mut walk_scratch = WalkScratch {
@@ -426,7 +453,7 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
                 &mut walk_scratch,
                 results,
                 path,
-                DeckCursor { group: 0, start: 0, remaining: groups[0].1 },
+                DeckCursor { group: 0, start: 0, remaining: groups[0].slots },
                 &DeckConstraints {
                     characters: 0,
                     borrowed_count: 0,
@@ -448,28 +475,35 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
 
 /// Per-group dominance candidates and the flattened character suffix used to reject impossible completions.
 struct ConfigurationDominance {
-    tables: Vec<std::rc::Rc<Vec<Vec<(u32, u32)>>>>,
+    tables: Vec<std::rc::Rc<Vec<Vec<Dominator>>>>,
     offsets: Vec<usize>,
     suffix_characters: Vec<u128>,
 }
 
 impl<V> DeckSearchContext<'_, '_, V> {
-    /// The dominance tables of `cf`'s groups (`dom_table`), and per flat index f (the groups' entries in turn) the
+    /// The dominance tables of `configuration`'s groups (`dom_table`), and per flat index f (the groups' entries in turn) the
     /// characters of the entries from f on (`dsuf`, group g's from `doff[g]`); empty without the dominance skip
     fn dominance(
         &self,
-        cf: &SearchConfig,
-        groups: &[(&[usize], usize)],
+        configuration: &SearchConfig,
+        groups: &[EntryGroup<'_>],
         misses: EntryMisses<'_>,
     ) -> ConfigurationDominance {
         let SearchControl { use_dominance, set_id, .. } = self.controls;
-        let PreparedTables { ebit, groups_all, lbit, .. } = self.tables;
-        let doms: Vec<std::rc::Rc<Vec<Vec<(u32, u32)>>>> = if use_dominance {
-            cf.gs
+        let PreparedTables { character_bits, groups_all, lock_bits, .. } = self.tables;
+        let doms: Vec<std::rc::Rc<Vec<Vec<Dominator>>>> = if use_dominance {
+            configuration
+                .groups
                 .iter()
-                .map(|&(i, _)| {
+                .map(|&GroupSlots { group: i, .. }| {
                     self.space.dom_table(
-                        DominanceRequest { set_id, code: cf.code, group: i, entries: groups_all[i], lock_bits: lbit },
+                        DominanceRequest {
+                            set_id,
+                            code: configuration.code,
+                            group: i,
+                            entries: groups_all[i],
+                            lock_bits,
+                        },
                         misses,
                     )
                 })
@@ -479,9 +513,9 @@ impl<V> DeckSearchContext<'_, '_, V> {
         };
         let (mut doff, mut dsuf): (Vec<usize>, Vec<u128>) = (vec![0], vec![]);
         if use_dominance {
-            for &(l, _) in groups {
-                for &j in l {
-                    dsuf.push(ebit[j]);
+            for group in groups {
+                for &j in group.entries {
+                    dsuf.push(character_bits[j]);
                 }
                 doff.push(dsuf.len());
             }
@@ -502,7 +536,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
     ) -> BorrowBounds {
         let SearchControl { target_count, size, column_count, .. } = self.controls;
         let l = self.tables.groups_all[gi];
-        let (own, bor): (Vec<usize>, Vec<usize>) = l.iter().partition(|&&j| !self.space.ebor[j]);
+        let (own, bor): (Vec<usize>, Vec<usize>) = l.iter().partition(|&&j| !self.space.borrowed[j]);
         let mut om = vec![MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] }; size + 1];
         let mut bm = MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] };
         for t in 0..target_count {
@@ -555,29 +589,30 @@ impl<V> DeckSearchContext<'_, '_, V> {
             owned_ratios.push(pre);
             borrow_ratios.push(borrow_ratio_suffix);
         }
-        BorrowBounds { own: om, one, owned_ratios, borrow_ratios }
+        BorrowBounds { owned_misses: om, borrow_misses: one, owned_ratios, borrow_ratios }
     }
 
-    /// `cf`'s one-borrowed-card tables (each group's `BorrowBounds` cached per (key, group) in `borrow_cache`)
+    /// `configuration`'s one-borrowed-card tables (each group's `BorrowBounds` cached by `BorrowKey` in `borrow_cache`).
     fn borrow_tables(
         &self,
-        borrow_cache: &mut HashMap<(u64, usize), std::rc::Rc<BorrowBounds>>,
-        cf: &SearchConfig,
-        groups: &[(&[usize], usize)],
+        borrow_cache: &mut HashMap<BorrowKey, std::rc::Rc<BorrowBounds>>,
+        configuration: &SearchConfig,
+        groups: &[EntryGroup<'_>],
         misses: EntryMisses<'_>,
         ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
     ) -> BorrowTables {
         let SearchControl { target_count, column_count, .. } = self.controls;
         let space = self.space;
         let has_borrowed_entries =
-            space.allowed_borrow == 1 && groups.iter().any(|(l, _)| l.iter().any(|&j| space.ebor[j]));
+            space.allowed_borrow == 1 && groups.iter().any(|group| group.entries.iter().any(|&j| space.borrowed[j]));
         let group_bounds: Vec<std::rc::Rc<BorrowBounds>> = if has_borrowed_entries {
-            cf.gs
+            configuration
+                .groups
                 .iter()
-                .map(|&(i, _)| {
+                .map(|&GroupSlots { group: i, .. }| {
                     std::rc::Rc::clone(
                         borrow_cache
-                            .entry((cf.code, i))
+                            .entry(BorrowKey { code: configuration.code, group: i })
                             .or_insert_with(|| std::rc::Rc::new(self.borrow_bounds(i, misses, ratio_at))),
                     )
                 })
@@ -585,7 +620,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
         } else {
             vec![]
         };
-        let ngs = cf.gs.len();
+        let ngs = configuration.groups.len();
         // (allocated only when used)
         let nb = if has_borrowed_entries { ngs + 1 } else { 0 };
         // (vec![x; 0] would still build x: none without borrowing)
@@ -604,14 +639,14 @@ impl<V> DeckSearchContext<'_, '_, V> {
         };
         if has_borrowed_entries {
             for g in (0..ngs).rev() {
-                let (gb, c) = (&group_bounds[g], cf.gs[g].1);
+                let (gb, c) = (&group_bounds[g], configuration.groups[g].slots);
                 for t in 0..target_count {
-                    owned_suffix[g].white[t] = gb.own[c].white[t] * owned_suffix[g + 1].white[t];
-                    owned_suffix[g].gold[t] = gb.own[c].gold[t] * owned_suffix[g + 1].gold[t];
-                    borrow_suffix[g].white[t] = (gb.one[c].white[t] * owned_suffix[g + 1].white[t])
-                        .min(gb.own[c].white[t] * borrow_suffix[g + 1].white[t]);
-                    borrow_suffix[g].gold[t] = (gb.one[c].gold[t] * owned_suffix[g + 1].gold[t])
-                        .min(gb.own[c].gold[t] * borrow_suffix[g + 1].gold[t]);
+                    owned_suffix[g].white[t] = gb.owned_misses[c].white[t] * owned_suffix[g + 1].white[t];
+                    owned_suffix[g].gold[t] = gb.owned_misses[c].gold[t] * owned_suffix[g + 1].gold[t];
+                    borrow_suffix[g].white[t] = (gb.borrow_misses[c].white[t] * owned_suffix[g + 1].white[t])
+                        .min(gb.owned_misses[c].white[t] * borrow_suffix[g + 1].white[t]);
+                    borrow_suffix[g].gold[t] = (gb.borrow_misses[c].gold[t] * owned_suffix[g + 1].gold[t])
+                        .min(gb.owned_misses[c].gold[t] * borrow_suffix[g + 1].gold[t]);
                 }
                 for i in 0..column_count {
                     owned_ratio_suffix[g][i] = gb.owned_ratios[i][c] * owned_ratio_suffix[g + 1][i];
@@ -630,21 +665,31 @@ impl<V> DeckSearchContext<'_, '_, V> {
         }
     }
 
-    /// The state-conditioned bound's tables of `cf` (groups `groups`), cached per (set, key, real (2, 2), pal entries):
+    /// The state-conditioned tables of `configuration` and `groups`, cached by `StateBoundKey`:
     /// chain positions (sorted kinds, the key's state distribution projected on the positions whose group has chain
     /// targets), per group its slots' positions and, per chain level, each target's lowest misses over the group's
     /// entries (a slot may take any of them, the same one twice: a relaxation). None without the bound (`state_bound_mode` 0)
-    fn state_cfg(&self, cf: &SearchConfig, groups: &[(&[usize], usize)]) -> Option<std::rc::Rc<SbCfg>> {
+    fn state_cfg(
+        &self,
+        configuration: &SearchConfig,
+        groups: &[EntryGroup<'_>],
+    ) -> Option<std::rc::Rc<StateBoundConfig>> {
         let SearchControl { target_count, kind_count, set_id, state_bound_mode, .. } = self.controls;
-        let (space, state_rows, filler, ng) = (self.space, self.tables.state_rows, cf.filler, groups.len());
-        let sbkey = (set_id, cf.code, cf.code_real22, cf.np);
+        let (space, state_rows, filler, ng) =
+            (self.space, self.tables.state_rows, configuration.filler_count, groups.len());
+        let sbkey = crate::deck::space::StateBoundKey {
+            set_id,
+            code: configuration.code,
+            real_filler_count: configuration.real_filler_count,
+            pal_entry_count: configuration.pal_entry_count,
+        };
         if state_bound_mode == 0 {
             None
-        } else if let Some(r) = space.sbcfg.borrow().get(&sbkey).cloned() {
+        } else if let Some(r) = space.state_bound_cache.borrow().get(&sbkey).cloned() {
             Some(r)
         } else {
             let mut kinds: Vec<(ChainKind, usize)> = vec![]; // (kind, group, or usize::MAX for a filler)
-            for (g, &(i, c)) in cf.gs.iter().enumerate() {
+            for (g, &GroupSlots { group: i, slots: c }) in configuration.groups.iter().enumerate() {
                 if i < kind_count {
                     for _ in 0..c {
                         kinds.push((space.kinds_all[i], g));
@@ -656,9 +701,15 @@ impl<V> DeckSearchContext<'_, '_, V> {
             }
             kinds.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
             let kl: Vec<ChainKind> = kinds.iter().map(|x| x.0).collect();
-            let full = if kl.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kl) };
-            let has_chain: Vec<bool> =
-                groups.iter().map(|(l, _)| l.iter().any(|&j| !space.srcs[j].cm.is_empty())).collect();
+            let full = if kl.is_empty() {
+                std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
+            } else {
+                chain_states(&kl)
+            };
+            let has_chain: Vec<bool> = groups
+                .iter()
+                .map(|group| group.entries.iter().any(|&j| !space.sources[j].chain_misses.is_empty()))
+                .collect();
             let rel_pos: Vec<usize> =
                 (0..kinds.len()).filter(|&p| kinds[p].1 != usize::MAX && has_chain[kinds[p].1]).collect();
             let mut slots: Vec<Vec<usize>> = vec![vec![]; ng];
@@ -666,15 +717,15 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 slots[kinds[p].1].push(ri);
             }
             for g in 0..ng {
-                while slots[g].len() < groups[g].1 {
+                while slots[g].len() < groups[g].slots {
                     slots[g].push(usize::MAX);
                 }
             }
             // (with at most 16 positions and levels below 16, the projected key packed 4 bits per position, the first
             // highest: the same sums, each in the order of `full`, sorted the same way)
-            let states: Vec<(Vec<u8>, f64)> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.stop < 16) {
+            let states: Vec<ChainState> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.stop < 16) {
                 let mut proj: crate::FxMap<u64, f64> = crate::FxMap::default();
-                for (x, w) in full.iter() {
+                for ChainState { progress: x, probability: w } in full.iter() {
                     let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | u64::from(x[p]));
                     *proj.entry(key).or_insert(0.0) += w;
                 }
@@ -682,43 +733,50 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 v.sort_unstable_by_key(|a| a.0);
                 let np = rel_pos.len();
                 v.into_iter()
-                    .map(|(k, w)| ((0..np).map(|i| (k >> (4 * (np - 1 - i)) & 15) as u8).collect(), w))
+                    .map(|(k, w)| ChainState {
+                        progress: (0..np).map(|i| (k >> (4 * (np - 1 - i)) & 15) as u8).collect(),
+                        probability: w,
+                    })
                     .collect()
             } else {
                 let mut proj: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
-                for (x, w) in full.iter() {
+                for ChainState { progress: x, probability: w } in full.iter() {
                     let key: Vec<u8> = rel_pos.iter().map(|&p| x[p]).collect();
                     *proj.entry(key).or_insert(0.0) += w;
                 }
-                let mut states: Vec<(Vec<u8>, f64)> = proj.into_iter().collect();
-                states.sort_by(|a, b| a.0.cmp(&b.0));
+                let mut states: Vec<ChainState> =
+                    proj.into_iter().map(|(progress, probability)| ChainState { progress, probability }).collect();
+                states.sort_by(|a, b| a.progress.cmp(&b.progress));
                 states
             };
-            let stops: Vec<usize> =
-                cf.gs.iter().map(|&(i, _)| if i < kind_count { space.kinds_all[i].stop as usize } else { 0 }).collect();
-            let group_misses: Vec<Vec<(f64, f64)>> = (0..ng)
+            let stops: Vec<usize> = configuration
+                .groups
+                .iter()
+                .map(|&GroupSlots { group: i, .. }| if i < kind_count { space.kinds_all[i].stop as usize } else { 0 })
+                .collect();
+            let group_misses: Vec<Vec<MissFactors>> = (0..ng)
                 .map(|g| {
-                    let mut m = vec![(1.0f64, 1.0f64); (stops[g] + 1) * target_count];
-                    for &j in groups[g].0 {
+                    let mut m = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; (stops[g] + 1) * target_count];
+                    for &j in groups[g].entries {
                         if let Some(r) = &state_rows[j] {
                             for (x, y) in m.iter_mut().zip(r.iter()) {
-                                x.0 = x.0.min(y.0);
-                                x.1 = x.1.min(y.1);
+                                x.no_gold = x.no_gold.min(y.no_gold);
+                                x.no_hint = x.no_hint.min(y.no_hint);
                             }
                         }
                     }
                     m
                 })
                 .collect();
-            let r = std::rc::Rc::new(SbCfg {
+            let r = std::rc::Rc::new(StateBoundConfig {
                 states,
                 slots,
-                gmin: group_misses,
-                kl,
-                rel_pos,
+                group_misses,
+                kinds: kl,
+                projected_positions: rel_pos,
                 order: std::cell::OnceCell::default(),
             });
-            space.sbcfg.borrow_mut().insert(sbkey, std::rc::Rc::clone(&r));
+            space.state_bound_cache.borrow_mut().insert(sbkey, std::rc::Rc::clone(&r));
             Some(r)
         }
     }
