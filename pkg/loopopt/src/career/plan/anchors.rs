@@ -2,10 +2,10 @@
 use crate::career::clock::{now_ms, prof};
 use crate::career::inherit::rise_factor;
 use crate::career::plan::cont::{OwnTrio, ScoreBase};
-use crate::career::plan::fold::{RiseInputs, leaf_products, leaf_set, rise_leaves};
+use crate::career::plan::fold::{RiseInputs, leaf_products, leaf_set};
 use crate::career::plan::score::{HerEnds, fm_masks, her_ends, her_pool, her_pool_done, her_trios};
 use crate::career::plan::search::legal_pair;
-use crate::career::plan::step::{CandidateLift, Lo, OwnFullLanding, StepScratch, v_after};
+use crate::career::plan::step::{CandidateLift, Lo, OwnFullLanding, StepScratch};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
 use crate::career::pool::{Pool, holds_fix};
 use crate::career::search::{CareerSearchResult, DeckRes};
@@ -447,7 +447,7 @@ fn saving_lo(
     step_costs.copy_from_slice(score_base.step_costs);
     let mut changed_candidates = vec![];
     let mut scratch = StepScratch { costs: step_costs, changed_candidates: &mut changed_candidates };
-    v_after(score_base, &mut Lo, &mut scratch, &lifted, landed_mask, own)
+    score_base.v_after(&mut Lo, &mut scratch, &lifted, landed_mask, own)
 }
 
 /// Optional exact anchors for `outcome_hi`: search with her at each of these star levels on every uncertain target.
@@ -735,8 +735,7 @@ fn hi_partner(
                 batch.retained.push((f, anchor_chances.to_vec()));
             }
             batch.direct = true;
-            let leaf_rises =
-                rise_leaves(&rise, anchor_chances, &mut scratch.leaf_products, &mut scratch.next_leaf_products);
+            let leaf_rises = rise.leaves(anchor_chances, &mut scratch.leaf_products, &mut scratch.next_leaf_products);
             for (av, rv) in anchor_bound.prefix_maxima[anchor_bound.target_count].iter_mut().zip(&leaf_rises) {
                 let v = f * rv;
                 if v < *av {
@@ -1166,7 +1165,7 @@ pub(crate) fn outcome_hi(
             if let DeckRes::Done(v, _, true) = simulator.env.best_deck(anchor.lineage.trainee, 1.0, 0.0, &[], &mut nsc)
             {
                 let rise = anchor.rise_inputs(simulator.env);
-                let rz = rise_leaves(&rise, &q, &mut leaf_products_buffer, &mut next_leaf_products);
+                let rz = rise.leaves(&q, &mut leaf_products_buffer, &mut next_leaf_products);
                 for (bv, r) in exact_bounds[partner_index].leaf_bounds.iter_mut().zip(&rz) {
                     let v2 = v * r;
                     if v2 < *bv {

@@ -1,9 +1,9 @@
 //! Career scoring over the possible veterans and their continuations.
 use crate::career::clock::{now_ms, prof};
 use crate::career::plan::cont::{OwnTrio, ScoreBase, TrioSideVeteran, Want};
-use crate::career::plan::score::kernel::{ActiveCandidate, FOLD_SCRATCH, LiftStats, Scored, sc_eval};
+use crate::career::plan::fold::{All, Leaves, OneLeaf};
+use crate::career::plan::score::kernel::{ActiveCandidate, FOLD_SCRATCH, LiftStats, Scored};
 use crate::career::plan::search::{IDX_PARTNERS, is_full, legal_pair, val};
-use crate::career::plan::step::{All, Leaves, OneLeaf};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, PoolProvenance, ScoringContext, TargetMask};
 use crate::career::pool::Pool;
 use crate::career::sim::{Cur, Sim};
@@ -106,11 +106,12 @@ pub(crate) struct HerEnds {
 
 /// Career x's place among the stage candidates and whether its parents a, b are both 8/8s: what `score_career`,
 /// `outcome_hi` and `pick_her` read of her first
-pub(crate) fn her_ends(s: &Sim, bs: &ScoreBase, legs: &[Legacy], lineage: Lineage) -> HerEnds {
+pub(crate) fn her_ends(simulator: &Sim, score_base: &ScoreBase, legacies: &[Legacy], lineage: Lineage) -> HerEnds {
     let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
     HerEnds {
-        own_candidate: bs.candidates.iter().position(|&u| u == x),
-        completes_goal: is_full(s.env.skill_job, &legs[a].sparks) && is_full(s.env.skill_job, &legs[b].sparks),
+        own_candidate: score_base.candidates.iter().position(|&u| u == x),
+        completes_goal: is_full(simulator.env.skill_job, &legacies[a].sparks)
+            && is_full(simulator.env.skill_job, &legacies[b].sparks),
     }
 }
 
@@ -129,27 +130,34 @@ pub(crate) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
         .collect()
 }
 
-/// `Env::pool` of `legs` and her veteran (career x with parents a, b, schedule `c`): with `of_legs` (`pool` is
-/// `Env::pool(legs)`) `pool` with her entry pushed, the same Pool (`Env::pool_push` builds an entry as `Env::pool` does)
-pub(crate) fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, lineage: Lineage, c: &Cur) -> Pool {
-    let veteran = s.env.veteran(legs, lineage, c.wp.to_vec());
-    if of_legs {
-        debug_assert_eq!(pool.veterans.len(), legs.len(), "one legacy per pool member");
-        let mut extended = s.take_pool(pool);
-        s.env.pool_push(&mut extended, &veteran);
+/// Build the pool with this career's veteran. A recorded pool is the pool of `legacies`, so reuse its
+/// working copy and push one entry; otherwise rebuild from the recorded legacies and the new veteran.
+pub(crate) fn her_pool(
+    simulator: &mut Sim,
+    legacies: &[Legacy],
+    pool: &Pool,
+    recorded_pool: bool,
+    lineage: Lineage,
+    outcome: &Cur,
+) -> Pool {
+    let veteran = simulator.env.veteran(legacies, lineage, outcome.wp.to_vec());
+    if recorded_pool {
+        debug_assert_eq!(pool.veterans.len(), legacies.len(), "one legacy per pool member");
+        let mut extended = simulator.take_pool(pool);
+        simulator.env.pool_push(&mut extended, &veteran);
         extended
     } else {
-        let mut extended = legs.to_vec();
+        let mut extended = legacies.to_vec();
         extended.push(veteran);
-        s.env.pool(&extended)
+        simulator.env.pool(&extended)
     }
 }
 
-/// `her_pool`'s pool done with `of_legs`, her entry popped and the working copy kept (`Sim::put_pool`)
-pub(crate) fn her_pool_done(s: &mut Sim, pool: &Pool, of_legs: bool, mut pv: Pool) {
-    if of_legs {
-        Env::pool_pop(&mut pv);
-        s.put_pool(pool, pv);
+/// Return a recorded pool's working copy after popping the new veteran (`Sim::put_pool`).
+pub(crate) fn her_pool_done(simulator: &mut Sim, pool: &Pool, recorded_pool: bool, mut extended_pool: Pool) {
+    if recorded_pool {
+        Env::pool_pop(&mut extended_pool);
+        simulator.put_pool(pool, extended_pool);
     }
 }
 
@@ -182,14 +190,14 @@ pub(crate) struct CareerScore {
 /// `context.pool` must be `Env::pool(context.legacies)` (the planner's callers): her veteran is then an entry
 /// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
 pub(crate) fn score_career(
-    s: &mut Sim,
+    simulator: &mut Sim,
     context: &ScoringContext,
     career: Career,
     want: Want,
     buf: &mut Vec<f64>,
 ) -> CareerScore {
     let started = now_ms();
-    let score = score_career_(s, context, career, want, PoolProvenance::RecordedLegacies, buf);
+    let score = evaluate_career(simulator, context, career, want, PoolProvenance::RecordedLegacies, buf);
     prof("score_ms", now_ms() - started);
     prof("score_calls", 1.0);
     score
@@ -197,14 +205,14 @@ pub(crate) fn score_career(
 
 /// `score_career` for a pool built otherwise (`sim`'s): rebuild the pool from `context.legacies` and her veteran.
 pub(crate) fn score_career_of(
-    s: &mut Sim,
+    simulator: &mut Sim,
     context: &ScoringContext,
     career: Career,
     want: Want,
     buf: &mut Vec<f64>,
 ) -> CareerScore {
     let started = now_ms();
-    let score = score_career_(s, context, career, want, PoolProvenance::Extended, buf);
+    let score = evaluate_career(simulator, context, career, want, PoolProvenance::Extended, buf);
     prof("score_ms", now_ms() - started);
     prof("score_calls", 1.0);
     score
@@ -294,7 +302,7 @@ fn prepare_setups(
     setups
 }
 
-fn score_career_(
+fn evaluate_career(
     simulator: &mut Sim,
     context: &ScoringContext,
     career: Career,
@@ -326,8 +334,8 @@ fn score_career_(
     let fold_started = now_ms();
     // per setup, per star pattern of the uncertain targets (base 4, position k = uncv[k]; 0 absent), the best table value
     // at scale 1: the tables folded one coordinate at a time (interp's order and arithmetic), every setup's tables at once
-    // (`fold_rec`); per outcome (leaf, guaranteed golds fm) and lifted candidate, that value times the setup's spark scale,
-    // the best over her setups and her odds now (`fold_emit`): the products and maxima the outcome loop took per outcome
+    // (`FoldContext::fold`); per outcome (leaf, guaranteed golds fm) and lifted candidate, that value times the setup's spark scale,
+    // the best over her setups and her odds now (`FoldContext::emit`): the products and maxima the outcome loop took per outcome
     let fixed_target_count = simulator.env.fixed_targets.len();
     let fixed_landed_masks = fm_masks(&simulator.env.fixed_targets);
     // the candidates with setups (candidate order): her slot per candidate, per setup, and odds now per slot
@@ -369,10 +377,10 @@ fn score_career_(
         spark_scales: vec![],
     };
     scored.derive();
-    // the kept tables and, per uncertain target, collapsed (`sc_prep`; with no setup slot no outcome reads a table: every
+    // the kept tables and, per uncertain target, collapsed (`prepare_scoring`; with no setup slot no outcome reads a table: every
     // target)
     if slot_count > 0 {
-        sc_prep(simulator, context.score_base, &setups, &mut scored);
+        prepare_scoring(simulator, context.score_base, &setups, &mut scored);
     }
     prof("sc_fold_ms", now_ms() - fold_started);
     // the candidates the loop below can lift, in candidate order: those with setups, and (never, as the odds are not
@@ -418,7 +426,7 @@ fn score_career_(
     }
     let mut scratch = FOLD_SCRATCH.with(|current| std::mem::take(&mut *current.borrow_mut()));
     let evaluation =
-        sc_eval(context.score_base, &scored, &All, if want == Want::Keep { Want::Score } else { want }, &mut scratch);
+        scored.evaluate(context.score_base, &All, if want == Want::Keep { Want::Score } else { want }, &mut scratch);
     FOLD_SCRATCH.with(|current| *current.borrow_mut() = scratch);
     prof("sc_out", evaluation.counters.outcomes as f64);
     prof("sc_trio", evaluation.counters.changed_outcomes as f64);
@@ -434,20 +442,22 @@ fn score_career_(
     }
 }
 
-/// A roll's y (`roll_answer`): the kept scoring evaluated at one outcome (her stars `leaf`, the guaranteed targets
-/// landed `fm`), `sc_eval` at `OneLeaf` (the leaf and its representative); 0 where the outcome can't happen, as the
-/// plan's full table held
-pub(super) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeIndex) -> f64 {
-    let leaf = outcome.leaf(scored.fixed_target_count);
-    let fm = outcome.fixed_mask(scored.fixed_target_count).bits();
-    let leaves = OneLeaf::new(leaf, scored.representative_of(leaf));
-    let mut scratch = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
-    let evaluation = sc_eval(score_base, scored, &leaves, Want::Ys, &mut scratch);
-    FOLD_SCRATCH.with(|c| *c.borrow_mut() = scratch);
-    evaluation.outcome_savings[(leaves.row(leaf) << scored.fixed_target_count) | fm]
+impl Scored {
+    /// A roll's y (`roll_answer`): the kept scoring evaluated at one outcome (her stars `leaf`, the guaranteed targets
+    /// landed `fm`), `Scored::evaluate` at `OneLeaf` (the leaf and its representative); 0 where the outcome can't happen, as the
+    /// plan's full table held
+    pub(super) fn roll(&self, score_base: &ScoreBase, outcome: OutcomeIndex) -> f64 {
+        let leaf = outcome.leaf(self.fixed_target_count);
+        let fixed_mask = outcome.fixed_mask(self.fixed_target_count).bits();
+        let leaves = OneLeaf::new(leaf, self.representative_of(leaf));
+        let mut scratch = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
+        let evaluation = self.evaluate(score_base, &leaves, Want::Ys, &mut scratch);
+        FOLD_SCRATCH.with(|c| *c.borrow_mut() = scratch);
+        evaluation.outcome_savings[(leaves.row(leaf) << self.fixed_target_count) | fixed_mask]
+    }
 }
 
-/// `score_career_`'s tables (with setup slots): every setup's tables, the dominated ones dropped, as level 0 of
+/// `evaluate_career`'s tables (with setup slots): every setup's tables, the dominated ones dropped, as level 0 of
 /// the fold (`Scored::initial_tables`, table j at j 2^nu, its setup `setup_by_table[j]`); per uncertain target whether
 /// it is collapsed (below, `collapsed_targets`). Its own function, entered once per scoring, so V8 compiles it
 /// optimised after the first few (`docs/PERF.md`, *In the page*).
@@ -457,12 +467,12 @@ pub(super) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeI
 /// setup has the same value with target k landed and not (`t[i] == t[i | (1 << k)]`): the table's interpolation then reads
 /// no x_k, t (1 - x) + t x = t, and the fold's f64s differ by at most rounding (a few units in the last place) between
 /// her star levels. A collapsed target is folded at 0 and 1 star only; the outcome loop reads 1 star's values for her 2
-/// and 3 stars there (`sc_outcomes`). Every value folded is the fold's value at a leaf of the
+/// and 3 stars there (`evaluate_outcomes`). Every value folded is the fold's value at a leaf of the
 /// full fold (the same operations on the same f64s), so the dominated-table drop stays exact at every leaf folded; and
 /// the tables dropped are none that could set a maximum, so deciding the collapse on the kept tables decides it on the
 /// values the outcome loop reads.
 #[inline(never)]
-fn sc_prep(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], scored: &mut Scored) {
+fn prepare_scoring(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], scored: &mut Scored) {
     let uncertain_target_count = scored.uncertain_target_count;
     let (present_factors, absent_factors) = (&scored.present_factors, &scored.absent_factors);
     // every setup's tables, level 0 of the fold (table j at j 2^nu), and the setup of each

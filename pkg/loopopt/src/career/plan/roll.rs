@@ -2,8 +2,8 @@
 use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::anchors::{FoundAnchor, OutcomeBounds, OutcomeEstimate, PartnerAnchors, outcome_hi};
 use crate::career::plan::cont::{Cont, OwnTrio, ScoreBase, Trio};
+use crate::career::plan::score::fm_masks;
 use crate::career::plan::score::kernel::{ActiveCandidate, Scored};
-use crate::career::plan::score::{fm_masks, sc_roll};
 use crate::career::plan::search::{IDX_PARTNERS, sim_for};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, PlanJob, ScoringContext, TargetMask};
 use crate::career::pool::Pool;
@@ -110,7 +110,7 @@ pub(crate) fn keep_roll(roll: RollKeep) {
 
 /// The plan's answer to a roll (`next.roll`: her stars per job target, 0 where it did not land) from its kept roll state,
 /// with no search (None when the worker keeps none for this plan job: then the plan runs and answers it, `index_rule`).
-/// y: the careers her veteran saves at that outcome, the pick's kept scoring evaluated at that one outcome (`sc_eval`,
+/// y: the careers her veteran saves at that outcome, the pick's kept scoring evaluated at that one outcome (`Scored::evaluate`,
 /// the plan's own arithmetic in its order: the f64 the plan's full table held); where y < 0.5 the bound y_hi
 /// (`outcome_hi` at that one cell). Rounded as the table was: y to 0.01, y_hi up to 0.01 (null where y >= 0.5)
 pub(crate) fn roll_kept<'data>(
@@ -161,15 +161,15 @@ impl RollPool<'_> {
     }
 }
 
-fn roll_answer(s: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[u8]) -> Value {
-    let (uncv, fixed_t) = (s.env.uncertain_targets.clone(), s.env.fixed_targets.clone());
-    if stars.len() != s.env.target_count {
-        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), s.env.target_count)});
+fn roll_answer(simulator: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[u8]) -> Value {
+    let (uncv, fixed_t) = (simulator.env.uncertain_targets.clone(), simulator.env.fixed_targets.clone());
+    if stars.len() != simulator.env.target_count {
+        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), simulator.env.target_count)});
     }
     let outcome = OutcomeIndex::from_stars(stars, &uncv, &fixed_t);
     let mut partner_anchors = std::mem::take(&mut kept.partner_anchors);
     let score_base = kept.base.base();
-    let y = sc_roll(&score_base, &kept.scored, outcome);
+    let y = kept.scored.roll(&score_base, outcome);
     let mut hi = None;
     if y < 0.5 {
         let context = roll_pool.scoring(&score_base);
@@ -180,7 +180,7 @@ fn roll_answer(s: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[
             own_trios: &kept.own_trios,
         };
         let estimate = OutcomeEstimate { index: outcome, saving: y };
-        hi = Some(outcome_hi(s, &context, career, &bounds, estimate, &mut partner_anchors));
+        hi = Some(outcome_hi(simulator, &context, career, &bounds, estimate, &mut partner_anchors));
     }
     kept.partner_anchors = partner_anchors;
     // (y_hi >= y is derived, `outcome_hi` (1)-(3): checked here, within rounding, where the max below would hide a bound
@@ -240,8 +240,8 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
             let base = kept_base_in(&entry["base"])?;
             let mut scored = scored_in(&entry["sd"])?;
             // (a store that does not fit together is refused whole, as any other: the vectors' lengths and every index
-            // within what it indexes, as `score_career_` builds them, before `derive` sizes its tables)
-            if !scored_fits(&scored, &base) {
+            // within what it indexes, as `evaluate_career` builds them, before `derive` sizes its tables)
+            if !scored.fits(&base) {
                 return None;
             }
             scored.derive();
@@ -404,41 +404,43 @@ fn scored_in(s: &Value) -> Option<Scored> {
     })
 }
 
-/// A stored scoring and its base fit together: the vectors' lengths, and every index within what it indexes
-fn scored_fits(sd: &Scored, base: &KeptBase) -> bool {
-    let (ns, nc) = (sd.misses_without_her.len(), base.candidates.len());
-    let fixed: Vec<usize> = (0..sd.target_count).filter(|i| !sd.uncertain_targets.contains(i)).collect();
-    let fits_base = nc <= crate::career::state::STATE_MAX_N
-        && base.step_costs.len() == nc
-        && base.current_odds.len() == nc
-        && base.later_stage_costs.len() == nc
-        && base.continuations.len() <= nc
-        && base.trios.iter().all(|t| t.candidate_a.0 < nc && t.candidate_b.0 < nc);
-    // her setups (at most IDX_PARTNERS per candidate), the candidates the loop lifts (those with a slot in slot
-    // order, one per slot), her own candidate index and trio sides: candidate indices
-    let fits_cands = ns <= IDX_PARTNERS * nc
-        && sd.active_candidates.iter().filter_map(|a| a.slot).eq(0..sd.slot_count)
-        && sd.active_candidates.iter().all(|a| a.candidate.0 < nc)
-        && sd.own_candidate.is_none_or(|x| x < nc)
-        && sd.own_trios.iter().all(|h| h.candidate.0 < nc);
-    fits_base
-        && fits_cands
-        && sd.uncertain_targets.windows(2).all(|p| p[0] < p[1])
-        && !sd.uncertain_targets.last().is_some_and(|&i| i >= sd.target_count)
-        && sd.fixed_landed_masks == fm_masks(&fixed)
-        && !sd.slot_by_setup.windows(2).any(|p| p[0] > p[1])
-        && sd.uncertain_targets.len() == sd.uncertain_target_count
-        && sd.collapsed_targets.len() == sd.uncertain_target_count
-        && sd.miss_by_stars.len() == ns
-        && sd.target_spark_scales.len() == ns
-        && sd.slot_by_setup.len() == ns
-        && sd.landed_set_chances.len() == 1usize << sd.target_count
-        && sd.fixed_landed_masks.len() == 1usize << sd.fixed_target_count
-        && sd.initial_tables.len() == sd.setup_by_table.len() << sd.uncertain_target_count
-        && !sd.misses_without_her.iter().any(|v| v.len() != sd.uncertain_target_count)
-        && !sd.setup_by_table.iter().any(|&si| si >= ns)
-        && !sd.slot_by_setup.iter().any(|&sl| sl >= sd.slot_count)
-        && sd.current_probabilities.len() == sd.slot_count
+impl Scored {
+    /// A stored scoring and its base fit together: the vectors' lengths, and every index within what it indexes
+    fn fits(&self, base: &KeptBase) -> bool {
+        let (ns, nc) = (self.misses_without_her.len(), base.candidates.len());
+        let fixed: Vec<usize> = (0..self.target_count).filter(|i| !self.uncertain_targets.contains(i)).collect();
+        let fits_base = nc <= crate::career::state::STATE_MAX_N
+            && base.step_costs.len() == nc
+            && base.current_odds.len() == nc
+            && base.later_stage_costs.len() == nc
+            && base.continuations.len() <= nc
+            && base.trios.iter().all(|t| t.candidate_a.0 < nc && t.candidate_b.0 < nc);
+        // her setups (at most IDX_PARTNERS per candidate), the candidates the loop lifts (those with a slot in slot
+        // order, one per slot), her own candidate index and trio sides: candidate indices
+        let fits_cands = ns <= IDX_PARTNERS * nc
+            && self.active_candidates.iter().filter_map(|a| a.slot).eq(0..self.slot_count)
+            && self.active_candidates.iter().all(|a| a.candidate.0 < nc)
+            && self.own_candidate.is_none_or(|x| x < nc)
+            && self.own_trios.iter().all(|h| h.candidate.0 < nc);
+        fits_base
+            && fits_cands
+            && self.uncertain_targets.windows(2).all(|p| p[0] < p[1])
+            && !self.uncertain_targets.last().is_some_and(|&i| i >= self.target_count)
+            && self.fixed_landed_masks == fm_masks(&fixed)
+            && !self.slot_by_setup.windows(2).any(|p| p[0] > p[1])
+            && self.uncertain_targets.len() == self.uncertain_target_count
+            && self.collapsed_targets.len() == self.uncertain_target_count
+            && self.miss_by_stars.len() == ns
+            && self.target_spark_scales.len() == ns
+            && self.slot_by_setup.len() == ns
+            && self.landed_set_chances.len() == 1usize << self.target_count
+            && self.fixed_landed_masks.len() == 1usize << self.fixed_target_count
+            && self.initial_tables.len() == self.setup_by_table.len() << self.uncertain_target_count
+            && !self.misses_without_her.iter().any(|v| v.len() != self.uncertain_target_count)
+            && !self.setup_by_table.iter().any(|&si| si >= ns)
+            && !self.slot_by_setup.iter().any(|&sl| sl >= self.slot_count)
+            && self.current_probabilities.len() == self.slot_count
+    }
 }
 
 pub(crate) fn rolls_set(r: Vec<RollKeep>) {
