@@ -455,7 +455,7 @@ raises that candidate's odds and the mean odds raised to.
 - **Without a borrowed parent now** (`borrowed_parent` "later"). The rows are the careers the player may run now, while
   everything V and V' read is the job with borrowing: the main search with borrowing (the "allow" job's, kept under its
   key, so a plan after an "allow" run takes it as it is), each candidate's best career and odds, Cont's builders, the
-  trios and every scoring's partners and anchors (`outcome_hi`). A base row whose career has a borrowed parent stays a
+  trios and every scoring's partners and anchors (`RollKeep::outcome_hi`). A base row whose career has a borrowed parent stays a
   builder (its lifts) and is neither scored against V, shown nor picked; her best career without one becomes a row of
   its own after the looped rows (an *nb row*: her cached decks through the surrogate while proxies are on, searched or
   certified exactly on the pool without borrowed parents once a shown row or the pick's band can turn on it; exact from

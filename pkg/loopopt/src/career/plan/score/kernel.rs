@@ -377,8 +377,7 @@ fn evaluate_outcomes<L: Leaves>(
         && score_base.trios.iter().all(|t| is_nonnegative_cost(t.finisher_cost));
     let context = OutcomeContext {
         score_base,
-        leaf_layout: &fold_context.leaf_layout,
-        slot_tables: &fold_context.slot_tables,
+        fold: fold_context,
         candidates: CandidateSlots {
             values: outcome_values,
             setup_offsets: &setup_offsets,
@@ -397,7 +396,6 @@ fn evaluate_outcomes<L: Leaves>(
         retain_outcome_savings: want == Want::Ys,
         single_candidate_costs: &single_candidate_costs,
         lazy_costs,
-        leaves,
     };
     context.evaluate(scored.emits_setup_products(), want == Want::Stats, &mut scratch.workspace)
 }
@@ -469,12 +467,10 @@ struct OutcomeProbabilities<'out> {
 /// Immutable outcome inputs, separate from the reusable caches and accumulators.
 struct OutcomeContext<'out, 'base, L: Leaves> {
     score_base: &'out ScoreBase<'base>,
-    leaf_layout: &'out LeafLayout<'out>,
-    slot_tables: &'out SlotTables<'out>,
+    fold: &'out FoldContext<'out, L>,
     candidates: CandidateSlots<'out>,
     probabilities: OutcomeProbabilities<'out>,
     own_full_landing: OwnFullLanding<'out>,
-    leaves: &'out L,
     retain_outcome_savings: bool,
     lazy_costs: bool,
     single_candidate_costs: &'out [SingleCandidateValue],
@@ -493,13 +489,14 @@ impl<L: Leaves> OutcomeContext<'_, '_, L> {
     ) -> &'row [f64] {
         if PL {
             let (folded_row, scale_row) = (
-                &self.candidates.values[leaf_row * self.slot_tables.setup_count..][..self.slot_tables.setup_count],
-                &self.slot_tables.spark_scales[landed_mask * self.slot_tables.setup_count..]
-                    [..self.slot_tables.setup_count],
+                &self.candidates.values[leaf_row * self.fold.slot_tables.setup_count..]
+                    [..self.fold.slot_tables.setup_count],
+                &self.fold.slot_tables.spark_scales[landed_mask * self.fold.slot_tables.setup_count..]
+                    [..self.fold.slot_tables.setup_count],
             );
             for ((probability, &current_probability), setup_range) in probability_buffer
                 .iter_mut()
-                .zip(self.slot_tables.current_probabilities)
+                .zip(self.fold.slot_tables.current_probabilities)
                 .zip(self.candidates.setup_offsets.windows(2))
             {
                 let mut best = current_probability;
@@ -515,9 +512,8 @@ impl<L: Leaves> OutcomeContext<'_, '_, L> {
             }
             probability_buffer
         } else {
-            &self.candidates.values
-                [((leaf_row << self.leaf_layout.fixed_target_count) | fixed_mask) * self.slot_tables.slot_count..]
-                [..self.slot_tables.slot_count]
+            &self.candidates.values[((leaf_row << self.fold.leaf_layout.fixed_target_count) | fixed_mask)
+                * self.fold.slot_tables.slot_count..][..self.fold.slot_tables.slot_count]
         }
     }
 }
@@ -543,11 +539,15 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     let thresholds = context.candidates.thresholds;
     let unslotted_candidates = context.candidates.unslotted_candidates;
     let outcome_probabilities = context.probabilities.outcome_probabilities;
-    let fixed_landed_masks = context.leaf_layout.fixed_landed_masks;
+    let fixed_landed_masks = context.fold.leaf_layout.fixed_landed_masks;
     let candidate_count = score_base.candidates.len();
-    let (fixed_target_count, slot_count, full_mask) =
-        (context.leaf_layout.fixed_target_count, context.slot_tables.slot_count, context.own_full_landing.full_mask);
-    let (leaf_count, leaves) = ((1usize << (2 * context.leaf_layout.uncertain_targets.len())), context.leaves);
+    let (fixed_target_count, slot_count, full_mask) = (
+        context.fold.leaf_layout.fixed_target_count,
+        context.fold.slot_tables.slot_count,
+        context.own_full_landing.full_mask,
+    );
+    let (leaf_count, leaves) =
+        ((1usize << (2 * context.fold.leaf_layout.uncertain_targets.len())), context.fold.leaves);
     let leaf_rows = leaves.nrows(leaf_count);
     // every outcome: uncertain targets' star pattern, guaranteed golds present or not
     let (mut expected_saving, mut improvement_chance) = (0.0f64, 0.0f64);

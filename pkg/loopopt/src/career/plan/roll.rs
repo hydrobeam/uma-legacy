@@ -1,6 +1,6 @@
 //! The roll of the plan's pick and its kept state.
 use crate::career::clock::{PROF, now_ms};
-use crate::career::plan::anchors::{FoundAnchor, OutcomeBounds, OutcomeEstimate, PartnerAnchors, outcome_hi};
+use crate::career::plan::anchors::{FoundAnchor, PartnerAnchors};
 use crate::career::plan::cont::{Cont, OwnTrio, ScoreBase, Trio};
 use crate::career::plan::score::fm_masks;
 use crate::career::plan::score::kernel::{ActiveCandidate, Scored};
@@ -10,7 +10,7 @@ use crate::career::pool::Pool;
 use crate::career::search::Found;
 use crate::career::sim::Sim;
 use crate::career::state::setup_hash;
-use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
+use crate::career::{Env, JobInputs, Legacy, Lineage};
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
@@ -43,7 +43,7 @@ impl KeptBase {
             later_stage_costs: score_base.later_stage_costs.to_vec(),
         }
     }
-    fn base(&self) -> ScoreBase<'_> {
+    pub(super) fn base(&self) -> ScoreBase<'_> {
         ScoreBase {
             candidates: &self.candidates,
             step_costs: &self.step_costs,
@@ -146,17 +146,20 @@ pub(crate) fn roll_kept<'data>(
 }
 
 /// The pool a roll's bound reads.
-struct RollPool<'roll> {
+pub(super) struct RollPool<'roll> {
     /// Recorded veterans in parent-index order.
     legacies: &'roll [Legacy],
     pool: &'roll Pool,
     /// Parent indices required by the job.
-    fixed_parents: &'roll [usize],
+    pub(super) fixed_parents: &'roll [usize],
 }
 
 impl RollPool<'_> {
     /// A scoring against `score_base` on this pool.
-    const fn scoring<'score>(&'score self, score_base: &'score ScoreBase<'score>) -> ScoringContext<'score, 'score> {
+    pub(super) const fn scoring<'score>(
+        &'score self,
+        score_base: &'score ScoreBase<'score>,
+    ) -> ScoringContext<'score, 'score> {
         ScoringContext { score_base, legacies: self.legacies, pool: self.pool }
     }
 }
@@ -167,22 +170,12 @@ fn roll_answer(simulator: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, s
         return json!({"error": format!("roll: {} stars for {} targets", stars.len(), simulator.env.target_count)});
     }
     let outcome = OutcomeIndex::from_stars(stars, &uncv, &fixed_t);
-    let mut partner_anchors = std::mem::take(&mut kept.partner_anchors);
     let score_base = kept.base.base();
     let y = kept.scored.roll(&score_base, outcome);
     let mut hi = None;
     if y < 0.5 {
-        let context = roll_pool.scoring(&score_base);
-        let career = Career { lineage: kept.lineage, deck: &kept.deck };
-        let bounds = OutcomeBounds {
-            fixed_parents: roll_pool.fixed_parents,
-            found_anchors: &kept.found_anchors,
-            own_trios: &kept.own_trios,
-        };
-        let estimate = OutcomeEstimate { index: outcome, saving: y };
-        hi = Some(outcome_hi(simulator, &context, career, &bounds, estimate, &mut partner_anchors));
+        hi = Some(kept.outcome_hi(simulator, roll_pool, outcome, y));
     }
-    kept.partner_anchors = partner_anchors;
     // (y_hi >= y is derived, `outcome_hi` (1)-(3): checked here, within rounding, where the max below would hide a bound
     // that drifted under the estimate; the max stays for the page)
     debug_assert!(hi.is_none_or(|h| h >= y - 1e-9 * y.abs().max(1.0)), "roll: y_hi {hi:?} below y {y}");

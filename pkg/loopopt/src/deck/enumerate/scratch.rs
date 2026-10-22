@@ -1,7 +1,7 @@
 //! Reusable buffers for configuration and node bounds.
 use crate::deck::enumerate::config::SearchConfig;
 use crate::deck::enumerate::order::DeckPath;
-use crate::deck::enumerate::traverse::{ParentRatioBounds, ParentTargetBounds};
+use crate::deck::enumerate::traverse::{ParentRatioBounds, ParentTargetBounds, SearchControl};
 use crate::deck::space::{TraversalEntryGroup, gm_g, gm_w};
 /// The node bound's buffers and per-parent rows (`ConfigurationContext::hopeful`), and the dominance skip's, reused across
 /// configurations
@@ -97,42 +97,39 @@ pub(crate) struct ConfigScratch {
     pub(crate) path: DeckPath,
 }
 
-/// Configuration-local group blocks: miss rows use (remaining, colour, target), ratio columns use (column, remaining).
-pub(crate) struct GroupBounds<'table> {
-    pub(crate) misses: &'table [&'table [f64]],
-    pub(crate) ratios: &'table [&'table [f64]],
-    pub(crate) target_count: usize,
-    pub(crate) column_count: usize,
-    pub(crate) deck_size: usize,
-}
-
 impl ConfigScratch {
     /// The suffix tables of `configuration`, from its group miss and ratio tables: the same products in the same order as the
     /// per-configuration tables they replace
-    pub(crate) fn fill_suffixes(&mut self, configuration: &SearchConfig, tables: &GroupBounds<'_>) {
+    pub(crate) fn fill_suffixes(
+        &mut self,
+        configuration: &SearchConfig,
+        controls: &SearchControl,
+        group_misses: &[&[f64]],
+        group_ratios: &[&[f64]],
+    ) {
         let Self { suffix_white, suffix_gold, suffix_ratios, .. } = self;
         let ng = configuration.groups.len();
         suffix_white.clear();
-        suffix_white.resize((ng + 1) * tables.target_count, 1.0);
+        suffix_white.resize((ng + 1) * controls.target_count, 1.0);
         suffix_gold.clear();
-        suffix_gold.resize((ng + 1) * tables.target_count, 1.0);
+        suffix_gold.resize((ng + 1) * controls.target_count, 1.0);
         suffix_ratios.clear();
-        suffix_ratios.resize((ng + 1) * tables.column_count, 1.0);
+        suffix_ratios.resize((ng + 1) * controls.column_count, 1.0);
         for g in (0..ng).rev() {
             let (gw, gg) = (
-                gm_w(tables.misses[g], tables.target_count, configuration.groups[g].slots),
-                gm_g(tables.misses[g], tables.target_count, configuration.groups[g].slots),
+                gm_w(group_misses[g], controls.target_count, configuration.groups[g].slots),
+                gm_g(group_misses[g], controls.target_count, configuration.groups[g].slots),
             );
-            for t in 0..tables.target_count {
-                suffix_white[g * tables.target_count + t] = suffix_white[(g + 1) * tables.target_count + t] * gw[t];
-                suffix_gold[g * tables.target_count + t] = suffix_gold[(g + 1) * tables.target_count + t] * gg[t];
+            for t in 0..controls.target_count {
+                suffix_white[g * controls.target_count + t] = suffix_white[(g + 1) * controls.target_count + t] * gw[t];
+                suffix_gold[g * controls.target_count + t] = suffix_gold[(g + 1) * controls.target_count + t] * gg[t];
             }
         }
         for g in (0..ng).rev() {
-            let rpg = tables.ratios[g];
-            for i in 0..tables.column_count {
-                suffix_ratios[g * tables.column_count + i] = suffix_ratios[(g + 1) * tables.column_count + i]
-                    * rpg[i * (tables.deck_size + 1) + configuration.groups[g].slots];
+            let rpg = group_ratios[g];
+            for i in 0..controls.column_count {
+                suffix_ratios[g * controls.column_count + i] = suffix_ratios[(g + 1) * controls.column_count + i]
+                    * rpg[i * (controls.size + 1) + configuration.groups[g].slots];
             }
         }
     }

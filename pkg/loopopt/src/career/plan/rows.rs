@@ -150,13 +150,6 @@ pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[u
     PlanPick { row: pick, top }
 }
 
-/// Which pool veterans are 8/8s (legacy indices), for the looped rows' pairs
-struct FullVeterans {
-    is_full: Vec<bool>,
-    /// The pool's last veteran (the one a kept plan of the pool less her lacks) is an 8/8.
-    newest_is_full: bool,
-}
-
 /// The looped rows (below) of `runs`' base rows, in their order.
 pub(crate) fn add_looped_rows(
     simulator: &mut Sim,
@@ -188,10 +181,7 @@ pub(crate) fn add_looped_rows(
         return added;
     }
     let full_veteran_indices: Vec<usize> = (0..legacy_count).filter(|&i| is_full(sj, &legacies[i].sparks)).collect();
-    let full_veterans = FullVeterans {
-        is_full: (0..legacy_count).map(|i| full_veteran_indices.contains(&i)).collect(),
-        newest_is_full: legacy_count > 0 && full_veteran_indices.contains(&(legacy_count - 1)),
-    };
+    let full_veterans: Vec<bool> = (0..legacy_count).map(|i| full_veteran_indices.contains(&i)).collect();
     let looped_started_ms = now_ms();
     let nodes_before = simulator.env.space.nodes.get();
     capped(simulator, input.settings.search_work, searches.env_budget, |simulator| {
@@ -246,7 +236,7 @@ fn looped_career(
     context: &PlanContext,
     searches: &mut PlanSearches,
     trainee: crate::uma::UmaIndex,
-    full_veterans: &FullVeterans,
+    is_full: &[bool],
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let settings = context.settings();
@@ -260,13 +250,12 @@ fn looped_career(
         searches.looped_incomplete[trainee] = kept.incomplete;
     }
     let start = start.and_then(|kept| kept.career);
-    if only_newest && !full_veterans.newest_is_full {
+    if only_newest && !is_full.last().copied().unwrap_or(false) {
         return start;
     }
     // (`pick_pool` and `pool` differ in `max_borrowed` alone, which the ceilings do not read)
     let ParentPool { pool: pick_pool, fixed_parents } = context.pick_parents();
     let newest = context.legacy_count().wrapping_sub(1);
-    let is_full = &full_veterans.is_full;
     let pairs = simulator.env.ranked_pairs(pick_pool, fixed_parents, trainee, |a, b| {
         is_full[a] && is_full[b] && (!only_newest || b == newest)
     });
