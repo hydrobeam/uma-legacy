@@ -22,7 +22,7 @@ defined in *How to read*, after this summary.
 | Star mix of sparks | mixes assumed; band per scenario derived | each scenario uses the band most of its careers reach (14,742 Grand Concert runs, 79% at 17,500+) | 2 |
 | Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight 1.00 [0.98, 1.02], affinity slope 0.97 [0.95, 0.99] on 106,738 + 44,010 trials, which predicts unseen runs no better than slope 1 ($z$ = 0.86); whole careers 0.992 [0.982, 1.003] apart from Tail Held High | 3 |
 | Affinity: +3 per shared G1 win; own grandparent adds no trio points | +3 assumed and tested; trio rule fitted | shared-win slope 0.96 [0.92, 0.99], no better than 1 held out ($z$ = 0.81); trio rule 29 nats better than the alternative | 3, 5 |
-| Race win table | community table, tested | calibrated once grades include inherited aptitude sparks: 1.000 [0.999, 1.001] over 119,188 G1 attempts | 4 |
+| Race win table | community table, tested | calibrated once grades include inherited aptitude sparks: 0.998 [0.996, 0.999] over 119,188 G1 attempts | 4 |
 | Loop schedules for shared wins | derived | on the reference loops, no other schedule could raise the best loop's odds by more than 2.02% | 6 |
 | Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form fixed on the runs, slope $1/100$ assumed and tested, $\beta$ and $d$ fitted | 87,801 rows; specialty term fitted on earlier runs gains +10.1 nats on later ones; real careers 1.004 [0.97, 1.04] of the model | 7 |
 | Chain events, Binomial(21, 0.35) per career | fitted, kept | 5,316 runs; rejected against a free distribution in-sample (p-value 6.5e-05), a known miss; no alternative predicts unseen runs better | 8 |
@@ -39,8 +39,9 @@ Each measured and tested in its section:
 - Inheritance (3, 13): Tail Held High is inherited less often than its odds say (0.953 [0.918, 0.988]
   of the model on whole careers; cause unknown); parents at affinity 200 or more pass sparks less often than predicted
   (0.966 [0.945, 0.987]); non-target skills are inherited slightly less often (0.986 [0.973, 0.999]).
-- Races (4): goal races from the fourth race in a row win more than the streak penalty allows
-  (1.14 [1.13, 1.16]), and chances of 70 or less win slightly less (0.95).
+- Races (4): chances of 70 or less win slightly less (0.95); chosen races at the 1st and 2nd race in a row
+  slightly less (0.996, 0.997); goal races 7th or later in a row, which the
+  planner scores as the 6th, win less than it predicts (0.68, 47 attempts).
 - Training hints (7): cards differ in hint rate beyond the adopted rate (observed / predicted 0.80-1.17 over
   58 cards, cause open); decks with more pals give slightly more hints (+12.5 nats); a skill also hinted by
   inspiration is hinted by training less than predicted (0.74 of the model).
@@ -419,61 +420,72 @@ this miss:
 Computed by `research/s04_races.py`.
 
 Race wins matter through affinity: two umas that won the same G1s inherit more from each other (section 5). This
-section measures how a trainee's chance of winning a race depends on her aptitudes and on how many races she has run
-in a row, and tests a widely used community table of that chance.
+section measures how a trainee's chance of winning a race depends on her aptitudes, on how many races she has run in a
+row and on whether her career requires the race, and tests a widely used community table of that chance.
 
 ### Findings
 
 A race's win chance depends on the trainee's grades for its distance and surface (written as a pair, better grade
-first) and on how many races she has run in a row. Over 119,188 attempts at the 34 single-race G1s, the observed win
-rates are (the community table's chance in parentheses; grades include those raised by inherited aptitude sparks; S is
-shown as A, since both have the same chance; a dot where a cell has under 30 attempts; grade pairs with 200 or more
-attempts):
+first) and on how many races she has run in a row. Of 119,188 attempts at the 34 single-race G1s, the 85,099 that IT
+chose to run won at these rates (the community table's chance in parentheses; grades include those raised by
+inherited aptitude sparks; S is shown as A, since both have the same chance; a dot where a cell has under 30 attempts;
+grade pairs with 200 or more attempts):
 
 | Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | CC | BE | CD | AF | AG |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 race | 100% (100%) | 100% (100%) | 90% (90%) | 91% (90%) | 79% (80%) | 76% (80%) | 68% (70%) | 70% (70%) | 63% (70%) | 50% (60%) | 59% (60%) | 47% (50%) | 19% (20%) |
+| 1 race | 100% (100%) | 100% (100%) | 90% (90%) | 91% (90%) | 80% (80%) | 76% (80%) | 68% (70%) | 70% (70%) | 63% (70%) | 50% (60%) | 59% (60%) | 46% (50%) | 19% (20%) |
 | 2 races | 100% (100%) | 100% (100%) | 91% (90%) | 90% (90%) | 79% (80%) | 80% (80%) | 61% (70%) | 68% (70%) | 78% (70%) | 50% (60%) | 65% (60%) | 52% (50%) | 19% (20%) |
-| 3 races | 100% (100%) | 97% (95%) | 86% (85%) | · (85%) | 75% (75%) | · (75%) | 59% (65%) | 60% (65%) | · (65%) | 43% (55%) | · (55%) | 60% (45%) | 11% (15%) |
-| 4 races | 92% (90%) | 82% (80%) | 74% (70%) | · (70%) | 49% (60%) | 62% (60%) | 38% (50%) | 61% (50%) | · (50%) | · (40%) | 30% (40%) | · (30%) | · (0%) |
-| 5 races | 86% (80%) | 73% (70%) | 59% (60%) | · (60%) | 68% (50%) | · (50%) | 35% (40%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (0%) |
-| 6 or more | 66% (60%) | 69% (50%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (20%) | · (20%) | · (10%) | · (10%) | · (0%) | · (0%) |
+| 3 races | 100% (100%) | 95% (95%) | 85% (85%) | · (85%) | 75% (75%) | · (75%) | 59% (65%) | 60% (65%) | · (65%) | 43% (55%) | · (55%) | 56% (45%) | 11% (15%) |
+| 4 races | 90% (90%) | 81% (80%) | 74% (70%) | · (70%) | 49% (60%) | 62% (60%) | 38% (50%) | 61% (50%) | · (50%) | · (40%) | 30% (40%) | · (30%) | · (0%) |
+| 5 races | 81% (80%) | 66% (70%) | 54% (60%) | · (60%) | · (50%) | · (50%) | 35% (40%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (0%) |
+| 6 or more | 56% (60%) | 58% (50%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (20%) | · (20%) | · (10%) | · (10%) | · (0%) | · (0%) |
 
-- **The community table predicts these rates**: observed / predicted 1.000 [0.999, 1.001] over all
-  attempts, and calibrated within every scenario.
+- **A goal race takes the penalty of the race before it.** Goal races (the races a career requires) win as if they
+  stood one place earlier in the streak: no penalty up to the 3rd race in a row, then 5, 20 and 30. Scored that way
+  they are calibrated at every position, and the table predicts unseen runs 158 ± 34 nats better than the
+  community table, which charges a goal race its own position ($z$ = 4.72). A goal race still counts toward the
+  position of the races after it: not counting goal races at all predicts 1,151 nats worse.
+- **With that shift the table predicts these rates** for goal races at every position and for chosen races from the
+  3rd race in a row on. Outside chosen races at the 1st and 2nd it is calibrated in every scenario.
 - **Grades must include inherited aptitude sparks.** With the trainee's base grades the table predicts too few wins
-  (observed / predicted 1.066 [1.063, 1.069], 1.78 where base grades give a chance of 70 or less). Pink sparks
+  (observed / predicted 1.063 [1.060, 1.066], 1.78 where base grades give a chance of 70 or less). Pink sparks
   raise grades at the start of a career and at each inspiration, from that April on.
-- **Races in a row lower the chance; wins do not.** The penalty counts races entered. At the 2nd and 3rd race in a
-  row the previous race's result does not change the next chance: after a loss the table's fit is
-  0.993 and 0.991 of its fit after a win, both intervals covering 1. From the 4th race on, attempts after a loss
-  win more than after a win (1.080 [1.038, 1.124]), where both win more than the table predicts; not explained here.
-- **Two departures, known misses**: goal races (the races a career requires) from the fourth race in a row win more
-  than the penalty allows (1.14 [1.13, 1.16]), and chances of 70 or less win slightly less than predicted (0.95
-  [0.93, 0.97]).
+- **Races in a row lower the chance; wins do not.** The penalty counts races entered. At the 2nd, 3rd and 4th or later
+  race in a row the previous race's result does not change the next chance: after a loss the table's fit is
+  0.993, 0.990 and 1.021 of its fit after a win, each interval covering 1.
+- **Known misses**: chances of 70 or less win slightly less than predicted (0.95
+  [0.93, 0.97]); the planner counts a streak only to its 6th race, so the few goal races 7th or later
+  in a row (47) win less than it predicts (0.68 [0.51, 0.84]); chosen races
+  at the 1st and 2nd race in a row win slightly less than predicted (0.996 [0.994, 0.998] and 0.997 [0.994, 0.999]), which
+  puts the table's overall observed / predicted at 0.998 [0.996, 0.999].
 
 ### Terms
 
 - *Grade*: the trainee's aptitude grade, S to G, for the race's distance and surface; $c_{\text{dist}}$ and
   $c_{\text{surf}}$ are what each grade costs.
-- *Streak*: consecutive turns with a race; $j$ is a race's position in it and $\mathrm{PEN}_j$ its penalty.
-- *Table's chance*: $110 - c_{\text{dist}} - c_{\text{surf}} - \mathrm{PEN}_j$, in percent, before it is clamped to
+- *Streak*: consecutive turns with a race; $j$ is a race's position in it, $s$ the position whose penalty it takes
+  and $\mathrm{PEN}_s$ that penalty.
+- *Table's chance*: $110 - c_{\text{dist}} - c_{\text{surf}} - \mathrm{PEN}_s$, in percent, before it is clamped to
   0-100.
 - $p$: the chance of winning one race she enters. $P_a(r)$: uma $a$'s chance of winning race $r$ at least once over her
   schedule.
 - *Attempt*: one race entered. *Goal race*: one her career requires; *chosen race*: one IT chose to enter.
 - *Base aptitudes*: her grades before any spark. *Raised grades*: her grades after her legacies' pink sparks (the rule
   in the evidence below).
+- *Community table*: the same formula with $s = j$ for every race.
 
 ### Model
 
-A trainee's chance of winning a race she enters is a community table (**assumed**, tested below):
+A trainee's chance of winning a race she enters is a community table (**assumed**, tested below) with one
+adjustment for goal races (**fitted**: chosen among three forms, below):
 
-$$p = \mathrm{clamp}\big(110 - c_{\text{dist}} - c_{\text{surf}} - \mathrm{PEN}_j,\ 0,\ 100\big) / 100,$$
+$$p = \mathrm{clamp}\big(110 - c_{\text{dist}} - c_{\text{surf}} - \mathrm{PEN}_s,\ 0,\ 100\big) / 100,$$
 
-$c$ = 0 for S/A, 10 B, 20 C, 30 D, 40 E, 60 F, 90 G. $\mathrm{PEN}_j$ = 0, 0, 5, 20, 30, 50 for the $j$-th race in a
-row (any race, goals included; a turn without a race resets the streak). Stats and training are not modelled. Over a
-planned schedule,
+$c$ = 0 for S/A, 10 B, 20 C, 30 D, 40 E, 60 F, 90 G. $\mathrm{PEN}_s$ = 0, 0, 5, 20, 30, 50 for $s$ = 1 to 6 or more.
+$j$ counts any race, goals included, and a turn without a race resets the streak. A chosen race takes its own
+position, $s = j$; a goal race the one before it, $s = \max(j - 1, 1)$, so goal races pay 0, 0, 0, 5, 20, 30. The
+planner counts $j$ up to 6 (6th or later), so a goal race 7th or later in a row pays 30. Stats and training are not
+modelled. Over a planned schedule,
 
 $$P_a(r) = 1 - \prod_{\text{attempts}} (1 - p);$$
 
@@ -486,71 +498,93 @@ them goals), of which 93.7% were won.
 
 *Base aptitudes or raised grades?* Raised grades.
 
-- On base aptitudes (as for a planned loop), the table predicts 88.0%: observed / predicted
-  1.066 [1.063, 1.069], and 1.78 where the table gives 70 or less (19,012 attempts).
+- On base aptitudes (as for a planned loop), the table predicts 88.2%: observed / predicted
+  1.063 [1.060, 1.066], and 1.78 where the table gives 70 or less (19,012 attempts).
 - With her grades raised by the aptitude-spark rule (`docs/MODEL.md`: the legacies' pink stars at the
   start, at most to A; then each pink the run records firing at a Classic or Senior inspiration, from that April on),
-  it predicts 93.7%: observed / predicted 1.000 [0.999, 1.001], 2,780 nats better than
-  base aptitudes, and calibrated in every scenario.
+  it predicts 94.0%: observed / predicted 0.998 [0.996, 0.999], 2,921 nats better than
+  base aptitudes. Chosen races at the 1st and 2nd race in a row fall slightly short (0.996 [0.994, 0.998] and
+  0.997 [0.994, 0.999]); outside them every scenario is calibrated, and over all attempts Grand Concert and Unity Cup
+  fall outside their intervals.
 
-*Is the streak penalty real?* Yes: without it the fit is 2,618 nats worse.
+*Is the streak penalty real?* Yes: without it the fit is 2,753 nats worse.
 
 Both comparisons need one adjustment. The table calls some races certain (0% or 100%), and a handful went the other
 way, which gives the table as stated a log-likelihood of $-\infty$. So every model compared has its 0% and 100% pulled
 in to a fitted floor and ceiling, the same two parameters in each; the comparisons are then between models with equal
 numbers of fitted parameters (rule 1 of *How to read*).
 
+*Do goal races pay the same penalty?* No: one position less. Under the community table, goal races from the 4th race in
+a row win more than predicted (1.141 [1.125, 1.158], 1,984 attempts), while chosen races there match.
+Three forms, each with the same fitted floor and ceiling, scored on runs left out of the fit (five folds by run,
+5,470 runs):
+
+| Form | Goal race at position $j$ pays | Races after it count it | Held out, against the adopted form |
+|---|---|---|---|
+| Adopted | $\mathrm{PEN}_{\max(j-1,1)}$ | yes | |
+| Community table | $\mathrm{PEN}_j$ | yes | 158 ± 34 nats worse ($z$ = 4.72) |
+| Exclusion | $\mathrm{PEN}$ at the chosen races before it | no | 1,151 ± 62 nats worse ($z$ = 18.58) |
+
+In-sample the adopted form fits 135 nats better than the community table. Adopted, goal races are calibrated at
+each position, and chosen races from the 3rd on; chosen races at the 1st and 2nd fall slightly short, a known miss
+(observed / predicted, attempts):
+
+| Race in a row | Goal races | Chosen races |
+|---|---|---|
+| 1st | 1.001 [1.000, 1.001] (18,815) | 0.996 [0.994, 0.998] (41,537) |
+| 2nd | 1.000 [0.999, 1.001] (9,378) | 0.997 [0.994, 0.999] (30,712) |
+| 3rd | 1.001 [0.999, 1.003] (3,912) | 0.999 [0.995, 1.003] (8,065) |
+| 4th | 0.996 [0.991, 1.001] (809) | 0.994 [0.981, 1.008] (3,525) |
+| 5th | 0.999 [0.972, 1.026] (878) | 0.998 [0.959, 1.037] (988) |
+| 6th or later | 0.972 [0.908, 1.036] (297) | 0.972 [0.865, 1.079] (272) |
+
+Why a goal race should pay one position less is not known; the runs only show that it does.
+
 *Does the table hold at every chance?* On raised grades:
 
 | Table's chance | Attempts | Observed / predicted |
 |---|---|---|
-| 110 | 79,866 | 1.002 [1.001, 1.002] |
-| 100 | 18,673 | 1.005 [1.003, 1.006] |
-| 90 | 6,598 | 1.006 [0.997, 1.014] |
+| 110 | 79,866 | 1.000 [0.999, 1.000] |
+| 100 | 18,673 | 1.000 [0.998, 1.002] |
+| 90 | 6,598 | 1.004 [0.996, 1.013] |
 | 80 | 4,477 | 0.992 [0.977, 1.007] |
-| 70 or less | 9,574 | 0.950 [0.932, 0.969] |
+| 70 or less | 9,574 | 0.949 [0.931, 0.968] |
 
 *When does a pink spark take effect?* From the April of its inspiration. The records say which inspiration fired a
 pink, and inspirations sit at fixed turns. On the 502 Senior January-March attempts where the timing matters,
 0.737 [0.696, 0.778] were won, against 0.754 predicted with the pink counted from April and 0.864 counted
 from the year's start.
 
-*How many attempts is each cell of the table in Findings?*
+*How many chosen attempts is each cell of the table in Findings?*
 
 | Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | CC | BE | CD | AF | AG |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 race | 39,126 | 9,780 | 3,575 | 121 | 1,967 | 256 | 1,705 | 285 | 65 | 159 | 111 | 1,921 | 1,012 |
-| 2 races | 27,468 | 5,704 | 1,742 | 177 | 1,441 | 342 | 826 | 309 | 127 | 342 | 191 | 593 | 322 |
-| 3 races | 8,535 | 2,060 | 623 | 17 | 235 | 27 | 216 | 65 | 0 | 46 | 1 | 108 | 38 |
-| 4 races | 3,235 | 500 | 196 | 29 | 82 | 73 | 37 | 36 | 27 | 21 | 44 | 15 | 8 |
-| 5 races | 1,068 | 519 | 87 | 26 | 37 | 13 | 51 | 8 | 3 | 3 | 5 | 22 | 24 |
-| 6 or more | 434 | 110 | 5 | 0 | 4 | 0 | 3 | 0 | 0 | 1 | 0 | 6 | 5 |
+| 1 race | 23,687 | 6,847 | 3,384 | 121 | 1,903 | 256 | 1,609 | 285 | 65 | 159 | 111 | 1,861 | 1,012 |
+| 2 races | 19,408 | 4,539 | 1,676 | 177 | 1,417 | 342 | 784 | 309 | 127 | 342 | 191 | 587 | 322 |
+| 3 races | 5,527 | 1,247 | 580 | 17 | 231 | 27 | 198 | 65 | 0 | 46 | 1 | 82 | 38 |
+| 4 races | 2,461 | 465 | 196 | 29 | 82 | 73 | 37 | 36 | 27 | 21 | 44 | 15 | 8 |
+| 5 races | 509 | 265 | 50 | 26 | 21 | 13 | 40 | 8 | 3 | 3 | 5 | 21 | 24 |
+| 6 or more | 211 | 43 | 4 | 0 | 3 | 0 | 3 | 0 | 0 | 1 | 0 | 1 | 5 |
 
-*Does the previous race's result matter?* Not at the 2nd and 3rd race in a row. Each attempt's chance combines both
-effects in one formula: her grades for the race's distance and surface, and her position in the current streak. The
-penalty counts races in a row, not wins. The test is the contrast: observed / predicted after a loss divided by the
-same after a win, with a run-clustered interval (observed / predicted, attempts):
+*Does the previous race's result matter?* No. Each attempt's chance combines both effects in one formula: her grades
+for the race's distance and surface, and her position in the current streak. The penalty counts races in a row, not
+wins. The test is the contrast: observed / predicted after a loss divided by the same after a win, with a
+run-clustered interval (observed / predicted, attempts):
 
 | Race in a row | After a win | After a loss | Loss / win |
 |---|---|---|---|
 | 2nd | 0.998 [0.996, 1.000] (37,863) | 0.991 [0.979, 1.003] (2,227) | 0.993 [0.981, 1.005] |
-| 3rd | 1.004 [1.001, 1.007] (11,296) | 0.995 [0.976, 1.014] (681) | 0.991 [0.972, 1.011] |
-| 4th or later | 1.030 [1.019, 1.041] (6,099) | 1.112 [1.070, 1.155] (670) | 1.080 [1.038, 1.124] |
+| 3rd | 1.000 [0.997, 1.003] (11,296) | 0.991 [0.972, 1.010] (681) | 0.990 [0.971, 1.010] |
+| 4th or later | 0.992 [0.982, 1.003] (6,099) | 1.013 [0.975, 1.051] (670) | 1.021 [0.982, 1.061] |
 
-At the 2nd and 3rd race the contrast covers 1: the previous result does not move the next chance. From the 4th race on
-both read above 1 and a loss is followed by more wins than a win is ($z$ = 3.77). The model does not have this; the
-goal-race excess below may account for part of it, which is not tested here.
+Every contrast covers 1 ($z$ = 1.04 from the 4th race on): the previous result does not move the next chance.
 
-*Is one formula enough?* Yes, though not exactly. Giving every (chance, streak position) cell its own win rate, read
-straight from its attempts (64 cells), explains the attempts 99 nats better than the table's one formula
-in-sample. That is beyond the 41 nats chance allows for its 62 extra parameters if attempts were independent,
-but they are not: one trainee's stats carry through her races. Held out, the per-cell rates do not predict unseen
-runs better than the table (51 ± 29 nats, $z$ = 1.74). So the table stands, with two departures
-clear in their own intervals:
-
-- goal races from the fourth race in a row win more than the penalty allows (1.14 [1.13, 1.16], 1,984
-  attempts), while chosen races there match (0.99 [0.98, 1.01]);
-- chances of 70 or less win a little less than predicted (0.950 [0.932, 0.969]).
+*Is one formula enough?* Yes, though not exactly. Giving every (chance, streak position, goal or chosen) cell its own
+win rate, read straight from its attempts (101 cells), explains the attempts 93 nats better than the
+table's one formula in-sample. That is beyond the 62 nats chance allows for its 99 extra parameters if
+attempts were independent, but they are not: one trainee's stats carry through her races. Held out, the per-cell rates
+do not predict unseen runs better than the table (-11 ± 15 nats, $z$ = -0.73). So the table stands, with the
+known misses in Findings.
 
 The test is conditional on IT having chosen each non-goal race; stats are not modelled.
 
@@ -673,10 +707,10 @@ its highest possible overlap. Over 40 reference results, whose odds an independe
 
 - the shared wins found are worth 31-85% over no race affinity;
 - the independent ceiling $o_{\max}(a,b) = \sum_r P^{\max}_a(r)\,P^{\max}_b(r)$ caps the gain from a different
-  objective at 17.5%. It is far from reachable (the schedules found reach about 68% of it) and cannot
+  objective at 17.5%. It is far from reachable (the schedules found reach about 69% of it) and cannot
   settle the ranking: 8 of 12 listed runner-up loops reach their winner under it;
 - the pair ceilings come from the same search code that chose the schedules, so they are not an independent check, but they sit between
-  $o$ and $o_{\max}$ on every pair. They put the ceiling only 0.54-2.02% above the odds found (median 0.90%), and no listed runner-up's ceiling
+  $o$ and $o_{\max}$ on every pair. They put the ceiling only 0.43-2.02% above the odds found (median 0.84%), and no listed runner-up's ceiling
   reaches its winner (0 of 12).
 
 ## 7. Training hints

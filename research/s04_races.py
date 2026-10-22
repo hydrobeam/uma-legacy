@@ -1,9 +1,12 @@
 """Section 4: the race win table, tested against the races Independent Training runs actually ran.
 
 The model (pkg/loopopt/src/lib.rs, data.json `pen`): an attempt at one of the 34 single-race G1s wins with
-p = clamp(bp - PEN_j, 0, 100) / 100, bp = max(-20, 110 - cost(distance grade) - cost(surface grade)) from her base aptitudes
-(data.json umas[].turns[t][].bp; cost S/A 0, B 10, C 20, D 30, E 40, F 60, G 90), PEN_j = data.json `pen` for the j-th
-race in a row (any race, goals included; a turn without a race resets). A community table, assumed.
+p = clamp(bp - PEN_s, 0, 100) / 100, bp = max(-20, 110 - cost(distance grade) - cost(surface grade)) from her base aptitudes
+(data.json umas[].turns[t][].bp; cost S/A 0, B 10, C 20, D 30, E 40, F 60, G 90), PEN = data.json `pen` (0, 0, 5, 20,
+30, 50; the community table) and s the race's scored position (scored_j): its position j in the run of consecutive
+races (any race, goals included; a turn without a race resets; capped at 6, as the solver's streak state), one less
+for a goal race from the 2nd in a row (lib.rs scored_position). The community table scores every race at j; the goal
+shift is the adopted model, tested here against it and against goal races not counting at all (exclusion).
 
 Reproduces from the run records (research/data/runs.jsonl, not included; Independent Training runs from uma-it):
 - every attempt at one of the 34 by a trainee in data.json: the record's race name (after ALIAS), matched to the
@@ -15,19 +18,25 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
   predicted p;
 - log-likelihoods on the same attempts: the table as stated (minus infinity when a certain prediction misses), a
   constant rate, the table with and without streak penalties each recalibrated as lo + (hi - lo) p (2 parameters),
-  and free fits: a rate per (bp, j) cell and per bp (j capped at 6); these are in-sample, attempts treated as
-  independent; the cells against the recalibrated pink table are also compared held out (5-fold by run, held_out_cells);
+  and free fits: a rate per (bp, j, goal or chosen) cell and per bp (j capped at 6); these are in-sample, attempts
+  treated as independent; the cells against the recalibrated pink table are also compared held out (5-fold by run,
+  held_out_cells);
 - aptitude raised by pink sparks: the planner's rule (docs/MODEL.md: at the start the six legacies' pink stars per
   aptitude raise the base grade by 1/2/3/4 at 1/4/7/10 stars, at most A; each April firing recorded in the run, years
   2 and 3 from turns 30 and 54 on, +1 grade, at most S) gives a pink-adjusted bp. The overall and detail calibrations are reported on both
   the base bp (what the solver uses) and the pink-adjusted bp, as are the attempts the rule moves and those after an
   April firing of the race's distance or surface; the fits use the pink-adjusted bp;
-- where the residual sits: goal and chosen races from the 4th in a row; detail() also scores a goal race one streak
-  position earlier (j - 1), a lead those cells suggest, on each half of the runs (record order).
-Findings: one per claim of section 4 (base under-predicts; pink-adjusted calibrated overall and per scenario; pink
-beats base; the streak penalty; the table not exact in-sample, the cells not better held out; the excess in goal races from the 4th in a row;
-the previous race's result, as obs / pred after a loss over after a win, run-clustered, at each streak position). The other
-cells, the certain-outcome counts and the fits behind them are printed by detail().
+- the goal shift: the adopted table against the community table (every race at j) and against exclusion (goal races
+  neither shifted nor counted: every race takes PEN at the count of chosen races before it in the run, plus one if it is
+  chosen), each recalibrated, 5-fold held out by run (held_out_tables); goal and chosen races by streak position, and
+  goal races from the 4th in a row under the community table; detail() also compares the forms in-sample on each half
+  of the runs (record order).
+Findings: one per claim of section 4 (base under-predicts; pink-adjusted, goal races calibrated at every position and
+chosen races from the 3rd on, chosen races at the 1st and 2nd slightly over-predicted (a known miss), every scenario
+calibrated outside those; pink beats base; the streak penalty; the goal shift beats the community table and exclusion
+held out; the table not exact in-sample, the cells not better held out; the previous race's result,
+as obs / pred after a loss over after a win, run-clustered, at each streak position). The other cells, the
+certain-outcome counts and the fits behind them are printed by detail().
 
 Conditional on selection: IT chose to run every non-goal attempt, presumably when she was likely to win; goal races are
 run regardless (scored separately). Her stats, mood and skills are not modelled, by the table or here. A win is the record's flag (first place).
@@ -84,10 +93,12 @@ class Attempt(TypedDict):
     apt: tuple[int, ...]  # (distance, surface) aptitude codes, spark-raised
     j: int  # the race's position in a run of consecutive races
     won: int
-    p: float  # win chance: table on base aptitudes
+    p: float  # win chance: the adopted table (goal shift) on base aptitudes
     p0: float  # ... without the streak penalty
-    pa: float  # pink table
+    pa: float  # the adopted table on spark-raised (pink) aptitudes
     pa0: float  # pink table without the streak penalty
+    pc: float  # pink, the community table: every race at its own position j
+    px: float  # pink, exclusion: goal races neither shifted nor counted
     scen: int  # scenario id
     goal: bool  # a career goal (run regardless), else chosen by IT
     outfit: int
@@ -96,7 +107,6 @@ class Attempt(TypedDict):
     last: int | None  # the previous race's result, when it was the turn before
     t: int  # turn index
     pe: float  # pink table, a mid-run pink counted from the year's first turn
-    pg: float  # pink table, a goal race scored one streak position earlier
 
 
 class AttemptSet(NamedTuple):
@@ -125,8 +135,14 @@ def tindex(year: int, turn: str) -> int:
 
 
 def win_p(bp: int, j: int, pen: list[int]) -> float:
-    """the table's chance at bp for the j-th race in a row"""
+    """the table's chance at bp for a race scored at position j (6 and later take the 6th's penalty)"""
     return min(100, max(0, bp - pen[min(j, 6) - 1])) / 100
+
+
+def scored_j(j: int, goal: bool) -> int:
+    """the position whose penalty a race at position j takes in the adopted model (lib.rs scored_position): a goal race
+    from the 2nd in a row the previous one, j capped at 6 first as the solver's streak state is"""
+    return min(j, 6) - 1 if goal and j >= 2 else j
 
 
 def bp_of(distance_grade: int, surface_grade: int) -> int:
@@ -180,11 +196,15 @@ def attempts(R: list[Run]) -> AttemptSet:
         pk = lineage_pinks(r)
         fired = pink_firings(r, pk)
         j = 0
+        chosen_before = 0  # chosen races before this one in the current run of consecutive races (exclusion's count)
         prev: int | None = None
         prev_won: int | None = None
         for t, x in races:
             consecutive = prev == t - 1
             j = j + 1 if consecutive else 1
+            chosen_before = chosen_before if consecutive else 0
+            jx = chosen_before + (0 if x["required"] else 1)  # exclusion's position: goal races not counted
+            chosen_before += 0 if x["required"] else 1
             prev = t
             last, prev_won = (prev_won if consecutive else None), int(x["won"])
             name = ALIAS.get(x["race"], x["race"])
@@ -218,10 +238,12 @@ def attempts(R: list[Run]) -> AttemptSet:
                     apt=tuple(adj),
                     j=j,
                     won=int(x["won"]),
-                    p=win_p(op["bp"], j, pen),
+                    p=win_p(op["bp"], scored_j(j, x["required"]), pen),
                     p0=win_p(op["bp"], 1, pen),
-                    pa=win_p(bpa, j, pen),
+                    pa=win_p(bpa, scored_j(j, x["required"]), pen),
                     pa0=win_p(bpa, 1, pen),
+                    pc=win_p(bpa, j, pen),
+                    px=win_p(bpa, max(jx, 1), pen),
                     scen=r["scenario"],
                     goal=bool(x["required"]),
                     outfit=r["outfit"],
@@ -229,8 +251,7 @@ def attempts(R: list[Run]) -> AttemptSet:
                     later=2 * i >= len(R),
                     last=last,
                     t=t,
-                    pe=win_p(bp_of(early[0], early[1]), j, pen),
-                    pg=win_p(bpa, j - 1 if x["required"] and j > 1 else j, pen),
+                    pe=win_p(bp_of(early[0], early[1]), scored_j(j, x["required"]), pen),
                 )
             )
     return found
@@ -317,48 +338,79 @@ def fits(A: list[Attempt]) -> ModelFits:
     k = int(y.sum())
     n = len(y)
     out = ModelFits({"constant": (k * math.log(k / n) + (n - k) * math.log(1 - k / n), 1)}, {})
-    for key, lab in (("p", "table"), ("p0", "no penalty"), ("pa", "pink table"), ("pa0", "pink no penalty")):
+    for key, lab in (
+        ("p", "table"),
+        ("p0", "no penalty"),
+        ("pa", "pink table"),
+        ("pa0", "pink no penalty"),
+        ("pc", "pink community table"),
+        ("px", "pink exclusion"),
+    ):
         q = np.array([a[key] for a in A])
         out.log_likelihoods[lab] = (ll(q, y), 0)
         L, lo, hi = recal(q, y)
         out.log_likelihoods[lab + ", recalibrated"] = (L, 2)
         out.recalibration[lab] = (lo, hi)
-    out.log_likelihoods["pink cells bp x j"] = saturated(A, lambda a: (a["bpa"], min(a["j"], 6)))
+    out.log_likelihoods["pink cells bp x j x goal"] = saturated(A, cell_of)
     out.log_likelihoods["pink cells bp"] = saturated(A, lambda a: a["bpa"])
     return out
 
 
-def held_out_cells(A: list[Attempt]) -> tuple[common.HeldOutComparison, int]:
-    """rule 3 for the cells: 5-fold cross-validation by common.fold(run). On four folds, a rate per (pink bp, j) cell,
-    (wins + 1/2) / (attempts + 1) (Jeffreys; a raw 0 or 1 makes the held-out score that of the 1e-12 clip; a cell absent
-    there takes the pink table's chance), and the pink table, each recalibrated as lo + (hi - lo) q on those folds; each
-    run of the fifth scored by both. Returns common.compare_held_out(cells, table) and the run count"""
-    cell: Callable[[Attempt], tuple[int, int]] = lambda a: (a["bpa"], min(a["j"], 6))
+def cell_of(a: Attempt) -> tuple[int, int, bool]:
+    """an attempt's free-rate cell: (pink bp, j capped at 6, goal), the covariates the adopted table reads"""
+    return a["bpa"], min(a["j"], 6), a["goal"]
+
+
+def per_run_held_out(A: list[Attempt], predict: Callable[[np.ndarray], np.ndarray]) -> np.ndarray:
+    """each run's held-out log-likelihood, 5-fold by common.fold(run), runs in id order: on each fold's training
+    attempts, `predict(train mask)` gives a chance per attempt (fitted on the training attempts only), recalibrated there
+    as lo + (hi - lo) q; the fold's own runs are scored by it"""
     y = np.array([a["won"] for a in A])
-    pa = np.array([a["pa"] for a in A])
     run = np.array([a["run"] for a in A])
     folds = np.array([common.fold(r) for r in run])
-    ll_cells = np.zeros(len(A))
-    ll_table = np.zeros(len(A))  # each attempt's held-out log-likelihood
+    ll_attempt = np.zeros(len(A))  # each attempt's held-out log-likelihood
     for k in range(common.K_FOLDS):
         train, test = folds != k, folds == k
-        g: dict[tuple[int, int], list[int]] = collections.defaultdict(lambda: [0, 0])  # cell -> [wins, attempts]
-        for a in (a for a, t in zip(A, train) if t):
-            c = g[cell(a)]
-            c[0] += a["won"]
-            c[1] += 1
-        q = np.array([(g[cell(a)][0] + 0.5) / (g[cell(a)][1] + 1) if cell(a) in g else a["pa"] for a in A])
-        for qq, dst in ((q, ll_cells), (pa, ll_table)):
-            _, lo, hi = recal(qq[train], y[train])
-            p_ = np.clip(lo + (hi - lo) * qq[test], CLIP, 1 - CLIP)  # as recal() fits
-            dst[test] = np.where(y[test] == 1, np.log(p_), np.log(1 - p_))
+        q = predict(train)
+        _, lo, hi = recal(q[train], y[train])
+        p_ = np.clip(lo + (hi - lo) * q[test], CLIP, 1 - CLIP)  # as recal() fits
+        ll_attempt[test] = np.where(y[test] == 1, np.log(p_), np.log(1 - p_))
     runs_ = sorted(set(run.tolist()))
     ix = {r: i for i, r in enumerate(runs_)}
-    per_c = np.zeros(len(runs_))
-    per_t = np.zeros(len(runs_))
-    np.add.at(per_c, [ix[r] for r in run], ll_cells)
-    np.add.at(per_t, [ix[r] for r in run], ll_table)
-    return common.compare_held_out(per_c, per_t), len(runs_)
+    per_run = np.zeros(len(runs_))
+    np.add.at(per_run, [ix[r] for r in run], ll_attempt)
+    return per_run
+
+
+def table_prediction(A: list[Attempt], key: str) -> Callable[[np.ndarray], np.ndarray]:
+    """a fixed table's chances (attempt field `key`), the same whatever the training folds"""
+    q = np.array([a[key] for a in A])
+    return lambda _train: q
+
+
+def held_out_cells(A: list[Attempt]) -> tuple[common.HeldOutComparison, int]:
+    """rule 3 for the cells: on four folds, a rate per (pink bp, j, goal) cell, (wins + 1/2) / (attempts + 1) (Jeffreys;
+    a raw 0 or 1 makes the held-out score that of the 1e-12 clip; a cell absent there takes the adopted table's chance),
+    and the adopted table, each recalibrated on those folds; each run of the fifth scored by both (per_run_held_out).
+    Returns common.compare_held_out(cells, table) and the run count"""
+
+    def cells(train: np.ndarray) -> np.ndarray:
+        g: dict[tuple[int, int, bool], list[int]] = collections.defaultdict(lambda: [0, 0])  # cell -> [wins, attempts]
+        for a in (a for a, t in zip(A, train) if t):
+            c = g[cell_of(a)]
+            c[0] += a["won"]
+            c[1] += 1
+        return np.array([(g[cell_of(a)][0] + 0.5) / (g[cell_of(a)][1] + 1) if cell_of(a) in g else a["pa"] for a in A])
+
+    per_table = per_run_held_out(A, table_prediction(A, "pa"))
+    return common.compare_held_out(per_run_held_out(A, cells), per_table), len(per_table)
+
+
+def held_out_tables(A: list[Attempt], key: str, other: str) -> common.HeldOutComparison:
+    """two tables (attempt fields), each recalibrated on four folds and scored on the fifth: compare_held_out(key, other)"""
+    return common.compare_held_out(
+        per_run_held_out(A, table_prediction(A, key)), per_run_held_out(A, table_prediction(A, other))
+    )
 
 
 # ---------------------------------------------------------------- claims
@@ -400,12 +452,13 @@ def after_result(A: list[Attempt]) -> dict[tuple[str, str], Calib]:
 
 
 def grid(A: list[Attempt], pen: list[int], minn: int = 30, mincol: int = 200) -> tuple[str, str]:
-    """the community table's layout from the runs: columns the (distance, surface) grade pair as a sorted pair of letters
-    (spark-raised grades, S as A), rows the race's position in a run of consecutive races (1 to 6+); each cell the
-    observed win rate, with the table's chance in parentheses; pairs with `mincol` or more attempts in all, cells under
-    `minn` attempts show a dot. Returns the markdown table and the attempts table"""
+    """the community table's layout from the chosen races in the runs (a goal race takes the row above's chance): columns
+    the (distance, surface) grade pair as a sorted pair of letters (spark-raised grades, S as A), rows the race's position
+    in a run of consecutive races (1 to 6+); each cell the observed win rate, with the table's chance in parentheses;
+    pairs with `mincol` or more attempts in all, cells under `minn` attempts show a dot. Returns the markdown table and
+    the attempts table"""
     cell: dict[tuple[str, int], list[int]] = collections.defaultdict(lambda: [0, 0])  # (pair, j) -> [wins, attempts]
-    for a in A:
+    for a in (a for a in A if not a["goal"]):
         pair = "".join(sorted((GRADE[a["apt"][0]], GRADE[a["apt"][1]])))
         c = cell[(pair, min(a["j"], 6))]
         c[0] += a["won"]
@@ -444,8 +497,9 @@ class Calibrations(NamedTuple):
 
     base: Calib  # every attempt, base aptitudes
     pink: Calib  # every attempt, pink-adjusted
-    cells: dict[str, dict[Any, Calib]]  # pink-adjusted, by 'bp', 'j' and 'scenario'
+    cells: dict[str, dict[Any, Calib]]  # pink-adjusted, by 'bp', 'j', 'goal j', 'chosen j' and 'scenario'
     from_fourth: dict[str, Calib]  # pink-adjusted, from the 4th race in a row: 'goal' and 'chosen'
+    community_goal_from_fourth: Calib  # goal races from the 4th in a row under the community table
 
 
 class LikelihoodComparison(NamedTuple):
@@ -453,10 +507,12 @@ class LikelihoodComparison(NamedTuple):
 
     pink_over_base: float  # recalibrated pink table - recalibrated base table, nats
     penalty: float  # recalibrated pink table - recalibrated pink no penalty, nats
-    shape: float  # pink cells bp x j - recalibrated pink table, nats
-    cells: int  # pink (bp, j) cells
+    shape: float  # pink cells bp x j x goal - recalibrated pink table, nats
+    cells: int  # pink (bp, j, goal) cells
     held_out: common.HeldOutComparison  # cells against the table, 5-fold by run
     held_out_runs: int
+    shift_over_community: common.HeldOutComparison  # the adopted table against the community table, held out
+    shift_over_exclusion: common.HeldOutComparison  # ... against exclusion
 
 
 def claims() -> list[Value | Finding]:
@@ -500,43 +556,84 @@ def calibration_claims(A: list[Attempt], skip: collections.Counter[str]) -> tupl
     cells = {
         "bp": by(A, lambda a: bucket(a["bpa"], BPB), "pa"),
         "j": by(A, lambda a: jlab(a["j"]), "pa"),
+        "goal j": by([a for a in A if a["goal"]], lambda a: jlab(a["j"]), "pa"),
+        "chosen j": by([a for a in A if not a["goal"]], lambda a: jlab(a["j"]), "pa"),
         "scenario": by(A, lambda a: common.SCEN[a["scen"]], "pa"),
+        "scenario, goal or 3rd on": by(
+            [a for a in A if a["goal"] or a["j"] >= 3], lambda a: common.SCEN[a["scen"]], "pa"
+        ),  # every attempt but chosen races at the 1st and 2nd race in a row
     }
     for lab, cs in cells.items():
         for c, v in cs.items():
             out += calib_values(f"race pink {lab} {c}", v)
-    from_fourth = {
-        lab: calib([a for a in A if a["goal"] == (lab == "goal") and a["j"] >= 4], "pa") for lab in ("goal", "chosen")
-    }
+    fourth = {lab: [a for a in A if a["goal"] == (lab == "goal") and a["j"] >= 4] for lab in ("goal", "chosen")}
+    from_fourth = {lab: calib(S, "pa") for lab, S in fourth.items()}
     for lab, v in from_fourth.items():
         out += calib_values(f"race pink {lab} j>=4", v)
-    return out, Calibrations(base, pink, cells, from_fourth)
+    community = calib(fourth["goal"], "pc")
+    out += calib_values("race community table goal j>=4", community)
+    seventh = calib([a for a in A if a["goal"] and a["j"] >= 7], "pa")
+    out += calib_values("race pink goal j>=7", seventh)
+    out.append(
+        common.finding(
+            SEC,
+            "Known miss (the streak state stops at 6): goal races 7th or later in a row, scored as the 6th (PEN 30 where "
+            "the shift gives 50), win less than predicted: their obs/pred 95% interval lies entirely below 1",
+            seventh.high < 1,
+            cv(seventh),
+        )
+    )
+    out.append(Value(SEC, "race chosen attempts", sum(not a["goal"] for a in A)))
+    outside = [c for c, v in cells["scenario"].items() if not v.low <= 1 <= v.high]
+    out.append(Value(SEC, "race pink scenarios outside their interval", " and ".join(outside) or "none"))
+    return out, Calibrations(base, pink, cells, from_fourth, community)
 
 
 def likelihood_claims(A: list[Attempt]) -> tuple[list[Value | Finding], LikelihoodComparison]:
     """the in-sample fits compared, and the cells against the table held out"""
     F = fits(A).log_likelihoods
     L = {m: v[0] for m, v in F.items()}
-    ncell = F["pink cells bp x j"][1]
+    ncell = F["pink cells bp x j x goal"][1]
     d_pink = L["pink table, recalibrated"] - L["table, recalibrated"]
     d_pen = L["pink table, recalibrated"] - L["pink no penalty, recalibrated"]
-    d_shape = L["pink cells bp x j"] - L["pink table, recalibrated"]
+    d_shape = L["pink cells bp x j x goal"] - L["pink table, recalibrated"]
     out: list[Value | Finding] = [
         Value(SEC, "race LL recalibrated pink table - recalibrated base table, nats", d_pink, note=IN_SAMPLE),
         Value(SEC, "race LL recalibrated pink table - recalibrated pink no penalty, nats", d_pen, note=IN_SAMPLE),
-        Value(SEC, "race pink cells bp x j", ncell),
-        Value(SEC, "race LL pink cells bp x j: extra parameters", ncell - 2),
-        Value(SEC, "race LL pink cells bp x j - recalibrated pink table, nats", d_shape, note=IN_SAMPLE),
-        Value(SEC, "race LL threshold, pink cells bp x j", thr(ncell - 2), note=IN_SAMPLE),
+        Value(
+            SEC,
+            "race LL recalibrated pink table - recalibrated community table, nats",
+            L["pink table, recalibrated"] - L["pink community table, recalibrated"],
+            note=IN_SAMPLE,
+        ),
+        Value(SEC, "race pink cells bp x j x goal", ncell),
+        Value(SEC, "race LL pink cells bp x j x goal: extra parameters", ncell - 2),
+        Value(SEC, "race LL pink cells bp x j x goal - recalibrated pink table, nats", d_shape, note=IN_SAMPLE),
+        Value(SEC, "race LL threshold, pink cells bp x j x goal", thr(ncell - 2), note=IN_SAMPLE),
     ]
     ho, ho_runs = held_out_cells(A)
-    out += [
-        Value(SEC, "held out: cells vs table: nats", ho.nats, note=f"5-fold by run, {ho_runs:,} runs"),
-        Value(SEC, "held out: cells vs table: SE", ho.se),
-        Value(SEC, "held out: cells vs table: z", ho.z),
-        Value(SEC, "held out: cells vs table: runs", ho_runs),
-    ]
-    return out, LikelihoodComparison(d_pink, d_pen, d_shape, ncell, ho, ho_runs)
+    comparisons = {
+        "cells vs table": ho,
+        "goal shift vs community table": held_out_tables(A, "pa", "pc"),
+        "goal shift vs exclusion": held_out_tables(A, "pa", "px"),
+    }
+    for lab, c in comparisons.items():
+        out += [
+            Value(SEC, f"held out: {lab}: nats", c.nats, note=f"5-fold by run, {ho_runs:,} runs"),
+            Value(SEC, f"held out: {lab}: SE", c.se),
+            Value(SEC, f"held out: {lab}: z", c.z),
+        ]
+    out.append(Value(SEC, "held out: runs", ho_runs))
+    return out, LikelihoodComparison(
+        d_pink,
+        d_pen,
+        d_shape,
+        ncell,
+        ho,
+        ho_runs,
+        comparisons["goal shift vs community table"],
+        comparisons["goal shift vs exclusion"],
+    )
 
 
 def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[Value | Finding]:
@@ -545,6 +642,12 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
     base, pink, gj, ho = cal.base, cal.pink, cal.from_fourth, lik.held_out
     lo70 = cal.cells["bp"]["<=70"]
     sc = cal.cells["scenario"]
+    goal_j, chosen_j = cal.cells["goal j"], cal.cells["chosen j"]
+    covers: Callable[[Calib], bool] = lambda c: c.low <= 1 <= c.high
+    early = {j: chosen_j.get(j) for j in ("1", "2")}  # chosen races at the 1st and 2nd race in a row
+    later = {j: v for j, v in chosen_j.items() if j not in early}
+    rest_sc = cal.cells["scenario, goal or 3rd on"]
+    held: Callable[[common.HeldOutComparison], str] = lambda c: f"{c.nats:+,.1f} +- {c.se:.1f} nats, z = {c.z:.2f}"
     return [
         F(
             "On base aptitudes (the solver's bp) the table under-predicts IT's wins: the obs/pred 95% interval lies "
@@ -553,9 +656,18 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
             cv(base),
         ),
         F(
-            "On pink-adjusted aptitudes the table is calibrated overall: the obs/pred 95% interval covers 1",
-            pink.low <= 1 <= pink.high,
-            cv(pink),
+            "On pink-adjusted aptitudes the adopted table is calibrated on goal races at every streak position and on "
+            "chosen races from the 3rd race in a row on: each obs/pred 95% interval covers 1",
+            bool(goal_j) and bool(later) and all(covers(v) for v in [*goal_j.values(), *later.values()]),
+            "; ".join(f"goal j {c}: {cv(v)}" for c, v in goal_j.items())
+            + "; "
+            + "; ".join(f"chosen j {c}: {cv(v)}" for c, v in later.items()),
+        ),
+        F(
+            "Known miss: chosen races at the 1st and 2nd race in a row are slightly over-predicted (each obs/pred 95% "
+            "interval entirely below 1), which puts the overall obs/pred below 1",
+            lambda: all(v.high < 1 for v in early.values()) and pink.high < 1,
+            lambda: "; ".join(f"chosen j {c}: {cv(v)}" for c, v in early.items()) + f"; overall {cv(pink)}",
         ),
         F(
             f"Pink-adjusted aptitudes fit better than base ones: recalibrated pink table - recalibrated base table > "
@@ -570,8 +682,27 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
             f"{lik.penalty:+,.1f} nats",
         ),
         F(
-            f"In-sample (attempts treated as independent), the table is not exact: a free rate per (pink bp, j) cell beats the recalibrated pink table by more than "
-            f"chi2({lik.cells - 2}) 95% / 2 = {thr(lik.cells - 2):.2f} nats",
+            "A goal race takes the previous streak position's penalty: the adopted table predicts unseen runs better than "
+            "the community table, which scores it at its own position (5-fold held out by run, each recalibrated, z > 1.96)",
+            lik.shift_over_community.z > 1.96,
+            held(lik.shift_over_community) + f" on {lik.held_out_runs:,} runs",
+        ),
+        F(
+            "A goal race still counts toward the position of the races after it: the adopted table predicts unseen runs "
+            "better than exclusion, where goal races are not counted (5-fold held out by run, z > 1.96)",
+            lik.shift_over_exclusion.z > 1.96,
+            held(lik.shift_over_exclusion),
+        ),
+        F(
+            "Under the community table goal races from the 4th race in a row win more than predicted (obs/pred 95% "
+            "interval entirely above 1); with the shift they are calibrated (it covers 1), as chosen races there are",
+            cal.community_goal_from_fourth.low > 1 and all(covers(v) for v in gj.values()),
+            f"community table {cv(cal.community_goal_from_fourth)}; adopted: goal {cv(gj['goal'])}; chosen "
+            f"{cv(gj['chosen'])}",
+        ),
+        F(
+            f"In-sample (attempts treated as independent), the table is not exact: a free rate per (pink bp, j, goal) cell "
+            f"beats the recalibrated pink table by more than chi2({lik.cells - 2}) 95% / 2 = {thr(lik.cells - 2):.2f} nats",
             lik.shape > thr(lik.cells - 2),
             f"{lik.shape:+,.1f} nats ({lik.cells} cells)",
         ),
@@ -579,13 +710,7 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
             "The per-cell rates do not predict unseen runs better than the recalibrated pink table (5-fold held out by run, "
             "z <= 1.96)",
             ho.z <= 1.96,
-            f"{ho.nats:+.1f} +- {ho.se:.1f} nats, z = {ho.z:.2f} on {lik.held_out_runs:,} runs",
-        ),
-        F(
-            "The excess sits in goal races from the 4th in a row: their obs/pred 95% interval lies entirely above 1, while "
-            "chosen races from the 4th in a row cover 1",
-            gj["goal"].low > 1 and gj["chosen"].low <= 1 <= gj["chosen"].high,
-            f"goal {cv(gj['goal'])}; chosen {cv(gj['chosen'])}",
+            held(ho) + f" on {lik.held_out_runs:,} runs",
         ),
         F(
             "Low chances win a little less than predicted: pink-adjusted bp <= 70 has an obs/pred 95% interval entirely "
@@ -594,9 +719,13 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
             cv(lo70),
         ),
         F(
-            "Pink-adjusted, the table is calibrated in every scenario: each obs/pred 95% interval covers 1",
-            bool(sc) and all(v.low <= 1 <= v.high for v in sc.values()),
-            "; ".join(f"{c}: {cv(v)}" for c, v in sc.items()),
+            "Pink-adjusted, outside chosen races at the 1st and 2nd race in a row the table is calibrated in every "
+            "scenario (each obs/pred 95% interval covers 1); over all attempts, the scenarios whose interval excludes 1 "
+            "are named in the evidence",
+            bool(rest_sc) and all(covers(v) for v in rest_sc.values()),
+            "; ".join(f"{c}: {cv(v)}" for c, v in rest_sc.items())
+            + "; all attempts, outside their interval: "
+            + (", ".join(f"{c} {cv(v)}" for c, v in sc.items() if not covers(v)) or "none"),
         ),
     ]
 
@@ -686,21 +815,14 @@ def streak_result_claims(A: list[Attempt]) -> list[Value | Finding]:
     out.append(
         common.finding(
             SEC,
-            "Within a streak the previous race's result does not change the next chance: at the 2nd and 3rd race in a "
-            "row, obs/pred after a loss over obs/pred after a win (run-clustered) has a 95% interval covering 1",
-            all(con[jb].low <= 1 <= con[jb].high for jb in ("2", "3")),
+            "Within a streak the previous race's result does not change the next chance: at the 2nd, 3rd and 4th or later "
+            "race in a row, obs/pred after a loss over obs/pred after a win (run-clustered) has a 95% interval covering 1",
+            all(con[jb].low <= 1 <= con[jb].high for jb in ("2", "3", "4+")),
             "; ".join(f"j {jb}: {show_contrast(con[jb])}" for jb in ("2", "3", "4+"))
             + "; absolute: "
-            + "; ".join(f"j {jb} after a {r_}: {cv(ar[(jb, r_)])}" for jb in ("2", "3") for r_ in ("win", "loss")),
-        )
-    )
-    out.append(
-        common.finding(
-            SEC,
-            "From the 4th race in a row, attempts after a win and after a loss both win more than the table predicts (each 95% "
-            "interval entirely above 1)",
-            all(ar[("4+", r_)].low > 1 for r_ in ("win", "loss")),
-            "; ".join(f"after a {r_}: {cv(ar[('4+', r_)])}" for r_ in ("win", "loss")),
+            + "; ".join(
+                f"j {jb} after a {r_}: {cv(ar[(jb, r_)])}" for jb in ("2", "3", "4+") for r_ in ("win", "loss")
+            ),
         )
     )
     return out
@@ -790,23 +912,21 @@ def detail_grids(A: list[Attempt]) -> None:
 
 
 def detail_goal_shift(A: list[Attempt]) -> None:
-    """a hypothesis the goal cells suggest (not a claim): the goal race scored one streak position earlier (j - 1)"""
-    print("\ngoal race scored at j - 1 (a lead from the goal cells, not a claim):")
+    """the adopted table against the community table and exclusion, in-sample on each half of the runs (record order)"""
+    print("\ngoal shift, in-sample, recalibrated LL differences:")
     for lab, S in (
         ("all", A),
         ("earlier half", [a for a in A if not a["later"]]),
         ("later half", [a for a in A if a["later"]]),
     ):
         y = np.array([a["won"] for a in S])
-        dl = recal(np.array([a["pg"] for a in S]), y)[0] - recal(np.array([a["pa"] for a in S]), y)[0]
-        print(f"  {lab}: LL(shifted, recalibrated) - LL(pink table, recalibrated) {dl:+.1f} nats")
-    Lc, ncg = saturated(A, lambda a: (a["bpa"], min(a["j"], 6), a["goal"]))
-    g = Lc - recal(np.array([a["pg"] for a in A]), np.array([a["won"] for a in A]))[0]
-    print(
-        f"  rate per (pink bp, j, goal) cell over the shifted table: {g:+.1f} nats, {ncg} cells "
-        f"(chi2({ncg - 2}) 95% / 2 = {thr(ncg - 2):.2f}); losses where the shift gives 100%: "
-        f"{sum(1 - a['won'] for a in A if a['pg'] == 1)}"
-    )
+        shifted = recal(np.array([a["pa"] for a in S]), y)[0]
+        others = {k: shifted - recal(np.array([a[k] for a in S]), y)[0] for k in ("pc", "px")}
+        print(f"  {lab}: over the community table {others['pc']:+.1f} nats, over exclusion {others['px']:+.1f} nats")
+    for key, lab in (("pa", "adopted"), ("pc", "community")):
+        print(
+            f"  goal races from the 7th in a row, {lab}: {cv(calib([a for a in A if a['goal'] and a['j'] >= 7], key))}"
+        )
 
 
 if __name__ == "__main__":
