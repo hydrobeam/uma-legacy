@@ -58,7 +58,7 @@ pub(crate) struct Bests {
     /// her best looped career (`index_rule`), where searched: kept the same way (a pool plus one veteran adds looped pairs
     /// only when she is an 8/8)
     pub(crate) looped_careers: UmaTable<CachedSearch>,
-    /// whether a search behind her kept best (and her looped best) was not complete (`Solved::complete` false: it ran
+    /// whether a search behind her kept best (and her looped best) was not complete (`CareerSearchResult::complete` false: it ran
     /// out of work, a band overflowed, or a scored deck passed its class's cap)
     pub(crate) base_incomplete: UmaTable<bool>,
     pub(crate) looped_incomplete: UmaTable<bool>,
@@ -177,7 +177,7 @@ pub(crate) struct BestCareer {
     pub(crate) found: Option<Found>,
     /// Per trainee, the decks the search checked fully: the refs to absorb.
     pub(crate) proof_refs: UmaTable<Vec<Ref>>,
-    /// Every search behind it was complete (`Solved::complete`).
+    /// Every search behind it was complete (`CareerSearchResult::complete`).
     pub(crate) complete: bool,
 }
 

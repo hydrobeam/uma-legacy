@@ -17,7 +17,7 @@ use crate::career::plan::{
     found_lineage, search_best_career, unordered_parents,
 };
 use crate::career::pool::Pool;
-use crate::career::search::{Found, Solved};
+use crate::career::search::{CareerSearchResult, Found};
 use crate::career::sim::Sim;
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
@@ -255,7 +255,7 @@ pub(crate) struct ClassWinner {
 
 /// The main search's winners, then each candidate's best career (in candidate order)
 pub(crate) fn class_winners(
-    solved: &Solved,
+    solved: &CareerSearchResult,
     candidates: &PlanCandidates,
     best_careers: &crate::uma::UmaTable<CachedSearch>,
 ) -> Vec<ClassWinner> {
@@ -456,7 +456,7 @@ pub(crate) fn make_row_exact(
     }
     let exact = exact_plan_career(sim, context, searches, row, buf);
     let replaced = exact.is_some();
-    if let Some(ExactCareer { career, lift_stats }) = exact {
+    if let Some(ExactPlanCareer { career, lift_stats }) = exact {
         row.career = career;
         row.lift_stats = lift_stats;
     }
@@ -494,7 +494,7 @@ fn plan_surrogate(
 }
 
 /// An exact career and its lifts per candidate.
-pub(crate) struct ExactCareer {
+pub(crate) struct ExactPlanCareer {
     pub(crate) career: Found,
     pub(crate) lift_stats: Vec<LiftStats>,
 }
@@ -508,7 +508,7 @@ fn exact_plan_career(
     searches: &mut PlanSearches,
     proxy: &PlanRow,
     buf: &mut Vec<f64>,
-) -> Option<ExactCareer> {
+) -> Option<ExactPlanCareer> {
     let x = proxy.trainee;
     let settings = context.settings();
     if searches.best_careers[x].is_unsearched() {
@@ -519,12 +519,12 @@ fn exact_plan_career(
     let career = searches.best_careers[x].found().cloned()?;
     if same_career(&proxy.career, &career) && stamp_ok(sim, Some(&context.candidates.trainees), proxy.stats_stamp) {
         prof("reuse_st", 1.0);
-        return Some(ExactCareer { career, lift_stats: proxy.lift_stats.clone() });
+        return Some(ExactPlanCareer { career, lift_stats: proxy.lift_stats.clone() });
     }
     let stats_base = context.candidates.stats_base();
     let CareerScore { lift_stats, .. } =
         score_career(sim, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf);
-    Some(ExactCareer { career, lift_stats })
+    Some(ExactPlanCareer { career, lift_stats })
 }
 
 /// Record the G1 races trainee's career wins with a chance above 0.5 (`PlanRows::wins_by_trainee`)

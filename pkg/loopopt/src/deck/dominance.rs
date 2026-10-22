@@ -1,4 +1,5 @@
-//! Deck dominance: signatures, buckets and the beaten-deck bookkeeping (`Kept`), and the decks a search returns.
+//! Deck dominance: signatures, buckets and the beaten-deck bookkeeping (`DominanceIndex`), and the decks a search returns.
+//! Frontier enumeration belongs to `frontier`; cached career plans belong to `career::plan::kept`.
 use crate::deck::Card;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -143,9 +144,9 @@ pub(super) fn query_offsets(q: Sig, out: &mut [usize; SIG_FIELDS]) -> usize {
 /// `recent`: coordinates of the last RECENT decks that dominated a new deck.
 ///   top_decks = 1: a deck on it may since have been dropped, but then a kept deck dominates it, so it still
 ///   proves that any deck it dominates is not needed.
-///   top_decks > 1: kept decks are only dropped at compaction, which starts a fresh `Kept`, so every deck on it
+///   top_decks > 1: kept decks are only dropped at compaction, which starts a fresh `DominanceIndex`, so every deck on it
 ///   is still kept; `ruid` holds their ids so each counts once.
-pub(super) struct Kept {
+pub(super) struct DominanceIndex {
     pub(super) nd: usize,
     pub(super) bw: f64,
     pub(super) buckets: Vec<Bucket>,
@@ -161,7 +162,7 @@ pub(super) struct Kept {
     pub(super) found: Vec<(usize, usize)>,
 }
 pub(super) const RECENT: usize = 32;
-impl Kept {
+impl DominanceIndex {
     pub(super) fn new(nd: usize) -> Self {
         Self {
             nd,
@@ -364,15 +365,15 @@ impl Kept {
 /// (bucket of the sum ascending, sum descending), ties in input order.
 pub(super) fn kfilter_order(mut g: Vec<DeckEval>, nd: usize) -> Vec<DeckEval> {
     g.sort_by(|a, b| b.s.partial_cmp(&a.s).unwrap());
-    let kept = Kept::new(nd);
+    let kept = DominanceIndex::new(nd);
     g.sort_by_key(|x| kept.bucket_of(x.s));
     g
 }
 /// Keep each deck unless `kmax` decks scoring at least as high in every coordinate are kept before it (sorted
 /// pass). A dominator's coordinate sum is at least the deck's, so only kept decks above that sum are checked.
-pub(super) fn k_filter(mut g: Vec<DeckEval>, kmax: usize, nd: usize) -> Kept {
+pub(super) fn k_filter(mut g: Vec<DeckEval>, kmax: usize, nd: usize) -> DominanceIndex {
     g.sort_by(|a, b| b.s.partial_cmp(&a.s).unwrap());
-    let mut kept = Kept::new(nd);
+    let mut kept = DominanceIndex::new(nd);
     let mut tests = 0usize;
     for x in g {
         let xq = sig_of(&x.dv, true);

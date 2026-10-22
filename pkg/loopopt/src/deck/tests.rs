@@ -1,5 +1,4 @@
 use crate::data::load;
-use crate::deck::capfree::state_value_cf;
 use crate::deck::chains::{
     CHAIN_EVENTS, ChainKind, chain_marginals, chain_marginals_dense, chain_marginals_ref, chain_states, event_pmf,
     key_level, stop_risk_code,
@@ -13,6 +12,7 @@ use crate::deck::sources::{
     group_gh, group_nuod, group_nuod_lvl, src_miss,
 };
 use crate::deck::space::{MAX_KINDS, kinds_all, top_asc, top_desc};
+use crate::deck::state_bound::state_value_cf;
 use crate::deck::*;
 use crate::skills;
 use crate::skills::{GEN_GOLD, Model, SkillJob, SkillsRaw};

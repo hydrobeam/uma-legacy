@@ -10,7 +10,7 @@ import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 import { openOdds } from './odds.js';
 /**
- * A deck in a result (the solver's `PDeck::out`, deck/kept.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
+ * A deck in a result (the solver's `PDeck::out`, deck/dominance.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
  * ` (end chain at link N)` appended where that applies; `card_ids[i]` is its id (plain pals have a name but no entry).
  * @typedef {object} ResultDeck
  * @property {string[]} cards
@@ -26,7 +26,7 @@ import { openOdds } from './odds.js';
  * A member of a loop (chart.rs `member_json`).
  * @typedef {{id: number, name: string, short: string}} LoopMember
  *
- * A loop in a result (deck/multi.rs `loop_json`); member k is `members[k]`, with `outfits[k]` and `per_trainee[k]`.
+ * A loop in a result (deck/loop_search/report.rs `loop_json`); member k is `members[k]`, with `outfits[k]` and `per_trainee[k]`.
  * @typedef {object} ResultLoop
  * @property {LoopMember[]} members
  * @property {number} p_all  the chance every member lands every target
@@ -45,7 +45,7 @@ import { openOdds } from './odds.js';
  * @property {ResultDeck} deck  the deck most members share (one deck for the loop: that deck)
  * @property {ResultDeck[]} [decks]  per member, when each has her own
  *
- * The loop search's report (deck/multi.rs), or its refusal (`error`).
+ * The loop search's report (deck/loop_search/report.rs), or its refusal (`error`).
  * @typedef {object} LoopReport
  * @property {string} [error]  why it did not search
  * @property {LoopResult[]} top  the best loops, best first

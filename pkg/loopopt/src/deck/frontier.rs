@@ -1,14 +1,17 @@
-//! The joint deck and loop search (`run_deck`): structures in bands, schedules, ceilings and the shared-deck path.
+//! Deck-job setup and enumeration of the nondominated deck frontier (`run_deck`).
+//! Loop structures, schedules and exact deck searches belong to `loop_search` and `enumerate`.
 use crate::Instant;
 use crate::data::Data;
 use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P, ChainKind, chain_marginals};
-use crate::deck::kept::{DeckEval, Kept, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank};
-use crate::deck::multi::run_multi;
+use crate::deck::dominance::{
+    DeckEval, DominanceIndex, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank,
+};
+use crate::deck::loop_search::run_multi;
 use crate::deck::sources::{
     Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries, src_miss,
 };
 use crate::deck::space::deck_space;
-use crate::deck::{CardsRaw, DeckJob, kmax_top};
+use crate::deck::{CardsRaw, DeckJob};
 use crate::skills::{Model, SkillJob, SkillsRaw};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -81,7 +84,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     if front.is_empty() {
         return json!({"error": "No deck can be built from the allowed cards."});
     }
-    let sky = skyline(&front, &dj, coordinates.len());
+    let sky = skyline(&front);
     if std::env::var("DECK_DEBUG").is_ok() {
         eprintln!("skyline {} of {}", sky.len(), front.len());
     }
@@ -143,7 +146,7 @@ fn drop_dominated_cards(ent: &mut Entries, dj: &DeckJob, target_count: usize) ->
     let mut order: Vec<usize> = (0..nrel0).collect();
     let tr = tie_rank(&ent.rel, &ent.cards);
     order.sort_by(|&a, &b| strength(b).partial_cmp(&strength(a)).unwrap().then(tr[a].cmp(&tr[b])));
-    let need = dj.deck_size.saturating_sub(1) + kmax_top(dj);
+    let need = dj.deck_size.saturating_sub(1) + 1;
     let mut keep = vec![true; nrel0];
     let mut done: Vec<usize> = vec![];
     for &b in &order {
@@ -387,7 +390,7 @@ struct DeckShape {
 
 /// A previously computed single-dominator frontier and its deck identities.
 struct FirstFrontier {
-    decks: Kept,
+    decks: DominanceIndex,
     identities: crate::FxSet<Vec<u64>>,
 }
 
@@ -405,7 +408,7 @@ struct FrontierWorkspace<'counts> {
     counts: &'counts mut EnumerationCounts,
 }
 
-struct EntryGroup {
+struct FrontierEntryGroup {
     entries: Vec<usize>,
     required: usize,
 }
@@ -427,7 +430,7 @@ struct FrontierCandidate<'selection> {
     coordinate_sum: f64,
 }
 /// The frontier being built, per group (one global group, (0, 0))
-type Groups = crate::FxMap<(usize, usize), Kept>;
+type Groups = crate::FxMap<(usize, usize), DominanceIndex>;
 
 // ---- enumerate decks ----
 // Decks are enumerated one chain-kind key at a time (the key fixes every entry's chain odds), so each deck is
@@ -671,15 +674,15 @@ impl<'env> DeckEnumerator<'env> {
                     continue;
                 }
                 let target = chain_slots - filler + np; // entries in the finished deck
-                let mut entry_groups: Vec<EntryGroup> = vec![];
+                let mut entry_groups: Vec<FrontierEntryGroup> = vec![];
                 for i in 0..nk {
                     let c = if i == filler_kind_index { real22 } else { counts[i] };
                     if c > 0 {
-                        entry_groups.push(EntryGroup { entries: alive_k[i].clone(), required: c });
+                        entry_groups.push(FrontierEntryGroup { entries: alive_k[i].clone(), required: c });
                     }
                 }
                 if np > 0 {
-                    entry_groups.push(EntryGroup { entries: alive_p.clone(), required: np });
+                    entry_groups.push(FrontierEntryGroup { entries: alive_p.clone(), required: np });
                 }
                 self.enum_decks(
                     key_data,
@@ -696,7 +699,7 @@ impl<'env> DeckEnumerator<'env> {
     fn enum_decks(
         &self,
         key_data: &ChainKeyData,
-        entry_groups: &[EntryGroup],
+        entry_groups: &[FrontierEntryGroup],
         shape: DeckShape,
         options: FrontierOptions,
         workspace: &mut FrontierWorkspace,
@@ -878,7 +881,7 @@ impl<'env> DeckEnumerator<'env> {
         // One global frontier: pals have already passed the job's count constraint. A deck
         // matched or beaten on every coordinate is no better for any loop.
         let nd = coordinates.len();
-        let g = workspace.groups.entry((0, 0)).or_insert_with(|| Kept::new(nd));
+        let g = workspace.groups.entry((0, 0)).or_insert_with(|| DominanceIndex::new(nd));
         if options.maximum_dominators == 1 && g.has_last && dominates(&g.lastrow, &workspace.coordinates) {
             return;
         }
@@ -962,8 +965,8 @@ impl<'env> DeckEnumerator<'env> {
         }
         g.insert_dv(x, &workspace.coordinates);
         if options.maximum_dominators > 1 && g.len() > g.cap {
-            // compaction drops decks, so the remembered dominators are forgotten (Kept::new clears them)
-            let list = std::mem::replace(g, Kept::new(nd)).into_list();
+            // compaction drops decks, so the remembered dominators are forgotten (DominanceIndex::new clears them)
+            let list = std::mem::replace(g, DominanceIndex::new(nd)).into_list();
             *g = k_filter(list, options.maximum_dominators, nd);
             g.cap = (2 * g.len()).max(512);
         }
@@ -976,7 +979,7 @@ impl<'env> DeckEnumerator<'env> {
 // finished deck, so it is a legal swap for j there. `guaranteed_swaps` counts such guaranteed swaps along the branch; at
 // top_decks the branch is cut (the swap rule would skip every deck in it).
 struct PickContext<'tables> {
-    groups: &'tables [EntryGroup],
+    groups: &'tables [FrontierEntryGroup],
     /// At each group position, characters available strictly after that position.
     later_characters: &'tables [Vec<u128>],
     dominators: &'tables [u128],
@@ -1067,23 +1070,8 @@ fn pick(
 /// in run_multi (which only bound that best value) are built from it. Exact scoring obtains
 /// any other needed legal decks from DeckSpace.
 /// (with top_decks = 1 the frontier is already an antichain, so it is its own skyline)
-fn skyline(front: &[DeckEval], dj: &DeckJob, nd: usize) -> Vec<usize> {
-    if kmax_top(dj) == 1 {
-        (0..front.len()).collect()
-    } else {
-        let tagged: Vec<DeckEval> = front
-            .iter()
-            .enumerate()
-            .map(|(i, x)| {
-                let mut y = x.clone();
-                y.cards = vec![i];
-                y
-            })
-            .collect();
-        let mut v: Vec<usize> = k_filter(tagged, 1, nd).into_list().into_iter().map(|y| y.cards[0]).collect();
-        v.sort_unstable();
-        v
-    }
+fn skyline(front: &[DeckEval]) -> Vec<usize> {
+    (0..front.len()).collect()
 }
 
 /// The skyline's decks detached from the search (names, ids and choice labels instead of indices): the frontier

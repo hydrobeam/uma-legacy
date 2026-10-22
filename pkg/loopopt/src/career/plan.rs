@@ -12,7 +12,7 @@ use crate::career::plan::rows::{
 };
 use crate::career::plan::search::{p_margin, p_swork};
 use crate::career::pool::Pool;
-use crate::career::search::{Found, Ref, Solved};
+use crate::career::search::{CareerSearchResult, Found, Ref};
 use crate::career::sim::Sim;
 use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
@@ -177,7 +177,7 @@ pub(crate) struct PlanInputs<'plan, 'data> {
     /// Search pool, including any borrowed veterans.
     pub(crate) pool: &'plan Pool,
     /// Main career search, including its proofs.
-    pub(crate) solved: &'plan Solved,
+    pub(crate) solved: &'plan CareerSearchResult,
     /// Parent indices required by the job.
     pub(crate) fixed_parents: &'plan [usize],
     /// Allowed trainees in search order.
@@ -195,7 +195,7 @@ pub(crate) struct PickSearch<'plan> {
     /// The pool without borrowed parents.
     pub(crate) pool: &'plan Pool,
     /// The main career search on that pool.
-    pub(crate) solved: &'plan Solved,
+    pub(crate) solved: &'plan CareerSearchResult,
 }
 
 impl<'plan> PlanInputs<'plan, '_> {
@@ -205,7 +205,7 @@ impl<'plan> PlanInputs<'plan, '_> {
     }
 
     /// The main search runnable rows fall back to: the pick's, else `solved`.
-    fn pick_solved(&self) -> &'plan Solved {
+    fn pick_solved(&self) -> &'plan CareerSearchResult {
         self.pick_search.map_or(self.solved, |pick| pick.solved)
     }
 

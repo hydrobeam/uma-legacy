@@ -2,7 +2,7 @@
 use crate::deck::enumerate::config::SearchConfig;
 use crate::deck::enumerate::order::DeckPath;
 use crate::deck::enumerate::traverse::{ParentRatioBounds, ParentTargetBounds};
-use crate::deck::space::{EntryGroup, gm_g, gm_w};
+use crate::deck::space::{TraversalEntryGroup, gm_g, gm_w};
 /// The node bound's buffers and per-parent rows (`ConfigurationContext::hopeful`), and the dominance skip's, reused across
 /// configurations
 pub(crate) struct NodeScratch {
@@ -138,7 +138,7 @@ impl ConfigScratch {
     }
 
     /// The suffix class masks of `groups`, from the entries' `class_masks`.
-    pub(crate) fn fill_class_suffixes(&mut self, groups: &[EntryGroup<'_>], class_masks: &[u64]) {
+    pub(crate) fn fill_class_suffixes(&mut self, groups: &[TraversalEntryGroup<'_>], class_masks: &[u64]) {
         let Self { class_suffix, group_offsets, .. } = self;
         let ng = groups.len();
         group_offsets.clear();
@@ -156,7 +156,12 @@ impl ConfigScratch {
     }
 
     /// The locked-card table of `groups`; false when they cannot place every locked card (`all_locked`).
-    pub(crate) fn fill_available_locks(&mut self, groups: &[EntryGroup<'_>], lock_bits: &[u8], all_locked: u8) -> bool {
+    pub(crate) fn fill_available_locks(
+        &mut self,
+        groups: &[TraversalEntryGroup<'_>],
+        lock_bits: &[u8],
+        all_locked: u8,
+    ) -> bool {
         let available_locks = &mut self.available_locks;
         let ng = groups.len();
         available_locks.truncate(ng + 1);

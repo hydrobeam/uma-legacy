@@ -1,5 +1,4 @@
 //! The depth-first walk of decks in one configuration.
-use crate::deck::capfree::StateBound;
 use crate::deck::caps::cap_class;
 use crate::deck::enumerate::bounds::{DOM_GAP, RBCHK};
 use crate::deck::enumerate::config::SearchConfig;
@@ -10,7 +9,8 @@ use crate::deck::enumerate::traverse::{
 };
 use crate::deck::joint::{CFCHK, SBCHK, SBN, joint_fast, sb_check};
 use crate::deck::sources::{SourceEntry, TargetSources};
-use crate::deck::space::{Dominator, EntryGroup, SelectedDeck, gm_g, gm_w};
+use crate::deck::space::{Dominator, SelectedDeck, TraversalEntryGroup, gm_g, gm_w};
+use crate::deck::state_bound::StateBound;
 /// Read-only tables for one configuration, borrowed separately from the node workspace.
 pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
     pub(crate) search: &'walk DeckSearchContext<'run, 'space, V>,
@@ -18,7 +18,7 @@ pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
     pub(crate) filler_count: usize,
     pub(crate) plain_pal_count: usize,
     /// Configuration groups in pick order: eligible entry indices and required slot count.
-    pub(crate) groups: &'walk [EntryGroup<'run>],
+    pub(crate) groups: &'walk [TraversalEntryGroup<'run>],
     /// Per group, white/gold miss-product rows indexed by gm_w/gm_g.
     pub(crate) group_misses: &'walk [&'walk [f64]],
     /// Per group, column-major ratio prefixes with deck_size + 1 entries per column.

@@ -1,11 +1,11 @@
 //! Picks, JSON results and diagnostic summaries from completed loop-search passes.
 //! Search and certification belong to `bands`.
-use super::bands::{DeckBest, Pass, Solved};
-use super::{DeckKey, DeckSources, Multi, RatioExample, lin_of};
+use super::bands::{DeckBest, Pass, SolvedLoop};
+use super::{DeckSources, Multi, RatioExample, SharedDeckKey, lin_of};
 use crate::chart::{chart_rows, member_json};
 use crate::data::{probs, wval};
+use crate::deck::dominance::PDeck;
 use crate::deck::joint::{JointChances, JointExt, joint_b, joint_fast};
-use crate::deck::kept::PDeck;
 use crate::deck::space::{SPT, UCHK};
 use crate::optimize::members;
 use crate::skills::{GEN_GOLD, MemberLineage, OutfitOption};
@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use std::cell::Cell;
 
 /// A reported loop: its solved index, each member's deck, per lineage (exact P(all), P(all but one), outfit), value
-struct Pick<'pass> {
+struct LoopPick<'pass> {
     solved_index: usize,
     decks: Vec<&'pass PDeck>,
     lineage_chances: Vec<JointChances>,
@@ -103,8 +103,8 @@ impl Multi<'_> {
     }
 
     /// shared: the best `top_decks` distinct decks (ties by identity), each with the loop it scored best in
-    fn shared_picks<'pass>(&self, p: &'pass Pass) -> Vec<Pick<'pass>> {
-        let mut db: Vec<(&DeckKey, &DeckBest)> = p.deck_best.iter().collect();
+    fn shared_picks<'pass>(&self, p: &'pass Pass) -> Vec<LoopPick<'pass>> {
+        let mut db: Vec<(&SharedDeckKey, &DeckBest)> = p.deck_best.iter().collect();
         db.sort_by(|a, b| b.1.value.partial_cmp(&a.1.value).unwrap().then(a.0.cmp(b.0)));
         db.iter()
             .take(self.loop_limit)
@@ -119,7 +119,7 @@ impl Multi<'_> {
                     })
                     .unwrap()
                     .deck;
-                let Solved { members, inheritance_chances, .. } = &p.solved[si];
+                let SolvedLoop { members, inheritance_chances, .. } = &p.solved[si];
                 let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
                 let ln = lin_of(members);
                 let nm = crate::optimize::members(members).len();
@@ -132,13 +132,13 @@ impl Multi<'_> {
                         per_l[l] = j[i];
                     }
                 }
-                Pick { solved_index: si, decks: vec![x; nm], lineage_chances: per_l, value: v }
+                LoopPick { solved_index: si, decks: vec![x; nm], lineage_chances: per_l, value: v }
             })
             .collect()
     }
 
     /// per-uma: the best `top_decks` loops (ties in solve order), each member with her best deck
-    fn per_uma_picks<'pass>(&self, p: &'pass Pass, empty_deck: &'pass PDeck) -> Vec<Pick<'pass>> {
+    fn per_uma_picks<'pass>(&self, p: &'pass Pass, empty_deck: &'pass PDeck) -> Vec<LoopPick<'pass>> {
         let solved = &p.solved;
         let mut order: Vec<usize> = (0..solved.len()).collect();
         // stable: ties keep solve order
@@ -158,17 +158,17 @@ impl Multi<'_> {
                     }
                 }
                 let decks = bests.iter().map(|b| b.deck.as_ref().unwrap_or(empty_deck)).collect();
-                Pick { solved_index: si, decks, lineage_chances: per_l, value: solved[si].value }
+                LoopPick { solved_index: si, decks, lineage_chances: per_l, value: solved[si].value }
             })
             .collect()
     }
 
     /// A reported loop: its members, odds, outfits, schedule and detail, with its deck (shared) or decks (per-uma)
-    fn loop_json(&self, p: &Pass, pk: &Pick) -> Value {
+    fn loop_json(&self, p: &Pass, pk: &LoopPick) -> Value {
         let (d, model, unc, ntar) =
             (self.inputs.data, self.inputs.model, &self.target_groups, self.requested_target_count);
         let (dk, per_l, pj) = (&pk.decks, &pk.lineage_chances, pk.value);
-        let Solved { members, schedule, inheritance_chances, .. } = &p.solved[pk.solved_index];
+        let SolvedLoop { members, schedule, inheritance_chances, .. } = &p.solved[pk.solved_index];
         let ln = lin_of(members);
         let member_slice = crate::optimize::members(members);
         let nm = member_slice.len();

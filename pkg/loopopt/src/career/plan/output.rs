@@ -4,7 +4,7 @@ use crate::career::plan::anchors::{found_anchors, pick_her};
 use crate::career::plan::combine::PlanScores;
 use crate::career::plan::kept::{BESTS, Bests, CachedSearch, bests_key};
 use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept, roll_key};
-use crate::career::plan::rows::{Pick, PlanRow, RowOrigin, has_looped_parents, near_floor, pick_of};
+use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, near_floor, pick_of};
 use crate::career::plan::score::KeptScoring;
 use crate::career::plan::{PlanCandidates, PlanContext, PlanProfile, PlanSearches, unordered_parents};
 use crate::career::search::Found;
@@ -50,7 +50,7 @@ pub(crate) fn assemble_plan_output<'data>(
     }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
     let total = |i: usize| runs[i].total();
-    let Pick { row: pick, top } = pick_of(&runs, is_runnable, &undup);
+    let PlanPick { row: pick, top } = pick_of(&runs, is_runnable, &undup);
     let near = |i: usize| is_runnable(&runs[i].career) && total(i) >= near_floor(top);
     let mut options: Vec<Value> = vec![];
     for (i, row) in runs.iter().enumerate() {
@@ -157,7 +157,7 @@ fn pick_roll_state(
 ) -> RollKeep {
     let input = context.input;
     let is_runnable = |f: &Found| input.is_runnable(f);
-    let Pick { row: pick, .. } = pick_of(runs, is_runnable, undup);
+    let PlanPick { row: pick, .. } = pick_of(runs, is_runnable, undup);
     let base = scores.fit.score_base(context.candidates);
     let KeptScoring { scored, full_landing_below_threshold } =
         runs[pick].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");

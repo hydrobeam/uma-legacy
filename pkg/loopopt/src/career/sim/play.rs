@@ -6,7 +6,9 @@ use crate::career::pool::Pool;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
 use crate::career::sim::draw::Keys;
 use crate::career::sim::policies::{IX, IndexRunCounts, Rotation};
-use crate::career::sim::{Cur, KeptState, Pick, Sim, SimJob, SimulationOptions, SimulationRoster, family, kept_swap};
+use crate::career::sim::{
+    Cur, KeptState, Sim, SimJob, SimulationOptions, SimulationRoster, SurrogatePick, family, kept_swap,
+};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -24,12 +26,12 @@ pub(super) struct PathState {
     pub(super) pool: Pool,
     /// Per family (`family`), the results of the owned veterans in it.
     families: crate::FxMap<String, Vec<VeteranResult>>,
-    pub(super) best: Option<Pick>,
+    pub(super) best: Option<SurrogatePick>,
     /// The career the policy runs next, kept until the state changes.
     pub(super) current: Option<Rc<Cur>>,
     pub(super) rotation: Rotation,
     /// `trace`: each loop member's best career (by member index)
-    pub(super) member_best: Vec<Option<Pick>>,
+    pub(super) member_best: Vec<Option<SurrogatePick>>,
 }
 
 #[derive(Clone, Copy, PartialEq)]

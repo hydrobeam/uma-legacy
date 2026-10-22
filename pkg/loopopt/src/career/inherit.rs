@@ -220,7 +220,7 @@ pub(crate) struct ExactOptions {
 }
 
 /// One career's exact numbers (`Env::exact`), at her best outfit.
-pub(crate) struct ExactCareer {
+pub(crate) struct CareerChances {
     pub(crate) p_all: f64,
     /// P(every target but at most one lands); 0 unless asked for.
     pub(crate) p_all_but_one: f64,
@@ -368,7 +368,7 @@ impl Env<'_> {
         sel: &SelectedDeck,
         nc: &[i32],
         options: ExactOptions,
-    ) -> ExactCareer {
+    ) -> CareerChances {
         let scales = self.scale(nc);
         let mut ext = JointExt {
             scales,
@@ -386,7 +386,7 @@ impl Env<'_> {
             options.all_but_one,
             Some(&mut ext),
         )[0];
-        ExactCareer { p_all, p_all_but_one, outfit, ext }
+        CareerChances { p_all, p_all_but_one, outfit, ext }
     }
 
     /// How far trainee t's best exact value (before the spark scale) can rise from chances q0 to q. A target the

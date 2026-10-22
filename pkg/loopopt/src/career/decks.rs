@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 /// to the bit), the spark scale c, the bar th (every th <= 0 as one: each gives no seed and passes the ceiling test),
 /// and the work spent before the call (the work budget's tests read it)
 #[derive(PartialEq, Eq, Hash)]
-pub(crate) struct DeckKey {
+pub(crate) struct DeckSearchKey {
     /// `Env::deck_class` of the trainee.
     class: crate::uma::UmaIndex,
     /// Her folded event-hint chances, outfit by outfit, as bits.
@@ -170,17 +170,17 @@ thread_local! {
     /// `best_deck`'s memo kept between jobs (the page's worker runs a plan, then a Reroll's plans with her added: the
     /// builders whose best pair doesn't involve her search the same deck problems again), per setup: `setup_fp` (what
     /// sets the model, the deck space and the class caps, `cap_audit` included) with the job's trainees (the plain pals'
-    /// order), the last few. Exact: a `DeckKey` reads the same model, space and caps in every job of one setup, and the
+    /// order), the last few. Exact: a `DeckSearchKey` reads the same model, space and caps in every job of one setup, and the
     /// work budget's argument holds for any budget (`best_deck`)
-    pub(crate) static DECK_KEEP: std::cell::RefCell<Vec<(u64, Kept)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static DECK_KEEP: std::cell::RefCell<Vec<(u64, DeckSearchCache)>> = const { std::cell::RefCell::new(Vec::new()) };
     /// jobs run so far (`Env::job_number`)
     pub(crate) static JOB_NO: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// what a setup keeps between jobs: `Env::deck_memo` and `Env::corner_memo`
 #[derive(Default)]
-pub(crate) struct Kept {
-    pub(crate) decks: crate::FxMap<DeckKey, DeckMemo>,
+pub(crate) struct DeckSearchCache {
+    pub(crate) decks: crate::FxMap<DeckSearchKey, DeckMemo>,
     pub(crate) corners: crate::FxMap<(crate::uma::UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
 }
 
@@ -191,7 +191,10 @@ pub(crate) const DECK_KEEP_CAP: usize = 8192;
 
 impl Drop for Env<'_> {
     fn drop(&mut self) {
-        let kept = Kept { decks: std::mem::take(&mut self.deck_memo), corners: std::mem::take(&mut self.corner_memo) };
+        let kept = DeckSearchCache {
+            decks: std::mem::take(&mut self.deck_memo),
+            corners: std::mem::take(&mut self.corner_memo),
+        };
         let fingerprint = self.memo_fingerprint;
         DECK_KEEP.with(|cache| {
             let mut cache = cache.borrow_mut();
@@ -236,7 +239,7 @@ impl Env<'_> {
     /// the best of the product deck and the starts, certified under nothing) and the call is not `full` (no Ref: a
     /// Ref is a proof under the top cap, kept by later searches and jobs). Without an overflow nothing changes.
     ///
-    /// Memoised when there are no start decks (`deck_memo`): the call is then a function of what `DeckKey` holds, the
+    /// Memoised when there are no start decks (`deck_memo`): the call is then a function of what `DeckSearchKey` holds, the
     /// work budget aside, and the budget never bound a call whose work stayed within it (work only grows during a
     /// call, and every budget test is `work <= budget` or `work > budget`), so a stored call that ended at work w
     /// answers again under any budget >= w. Classmates at the same chances (a sample pool of mob veterans gives every
@@ -254,7 +257,7 @@ impl Env<'_> {
         if !starts.is_empty() {
             return self.best_deck_run(DeckSearch { trainee: t, spark_scale: c, bar: th }, starts, scored);
         }
-        let key = DeckKey {
+        let key = DeckSearchKey {
             class: self.deck_class[t],
             hint_chances: self.model.ews[t].iter().flatten().map(|x| x.to_bits()).collect(),
             spark_scale: c.to_bits(),

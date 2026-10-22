@@ -122,7 +122,7 @@ pub(crate) fn has_looped_parents(sj: &SkillJob, legacies: &[Legacy], career: &Fo
 
 /// The plan's pick among its rows, and the top score it was taken within `near_floor` of.
 #[derive(Clone, Copy)]
-pub(crate) struct Pick {
+pub(crate) struct PlanPick {
     pub(crate) row: usize,
     pub(crate) top: f64,
 }
@@ -131,7 +131,7 @@ pub(crate) struct Pick {
 /// be the pick (`vis`; the first such row before any is scored, by more than 1e-9), then within `near_floor` of that top
 /// the best odds (a row that can be the pick), moved to the earlier row it repeats (`undup`). The one rule for the
 /// plan's pick and the roll state kept for it
-pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[usize]) -> Pick {
+pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[usize]) -> PlanPick {
     let total = |i: usize| runs[i].total();
     let mut pick = (0..runs.len()).find(|&i| vis(&runs[i].career)).unwrap_or(0);
     for i in 0..runs.len() {
@@ -148,7 +148,7 @@ pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[u
     if let Some(&u) = undup.get(pick) {
         pick = u;
     }
-    Pick { row: pick, top }
+    PlanPick { row: pick, top }
 }
 
 /// Which pool veterans are 8/8s (legacy indices), for the looped rows' pairs

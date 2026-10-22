@@ -6,7 +6,7 @@ use crate::career::plan::ScoringContext;
 use crate::career::pool::Pool;
 use crate::career::sim::draw::Keys;
 use crate::career::sim::play::PathState;
-use crate::career::sim::{Cur, DeckRequest, PAGE_TOP, Pick, Sim, leg_json};
+use crate::career::sim::{Cur, DeckRequest, PAGE_TOP, Sim, SurrogatePick, leg_json};
 use crate::career::{Career, Lineage, run_career};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -25,7 +25,7 @@ pub(super) struct Rotation {
 struct BuilderCareer {
     /// lam (1/p - 1/p1): the expected fall in A's careers needed, per career run.
     efficiency: f64,
-    pick: Pick,
+    pick: SurrogatePick,
     /// lam: the chance her veteran raises A's best odds.
     lift_chance: f64,
     /// p1: A's mean odds when raised (p when never).
@@ -48,7 +48,7 @@ thread_local! { pub(super) static IX: std::cell::RefCell<IndexRunCounts> = std::
 
 impl Sim<'_, '_> {
     /// a cached pick's career (her cached deck cloned out of the cache)
-    fn pick_cur(&mut self, pool: &Pool, pick: Pick, rotation: bool) -> Cur {
+    fn pick_cur(&mut self, pool: &Pool, pick: SurrogatePick, rotation: bool) -> Cur {
         let deck = self.cache.decks[pick.lineage.trainee][pick.deck].sel.clone();
         self.make_cur(pool, Career { lineage: pick.lineage, deck: &deck }, rotation)
     }
