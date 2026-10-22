@@ -581,12 +581,22 @@ Output: per run `E`, `careers`, `tail`, `final_p`, `pool`, `pruned`, `wall_s`, `
 career, p, pool size, S), `checks`, `audits`; and `E` (mean, sd, 95% CI) over the runs. `trace` returns its rows per run
 instead.
 
-Adding a policy: `simulate` (src/career/sim.rs) matches the policy name to a base (`Base`); `play` asks the base
+The simulator's modules (under `src/career/`):
+
+| File | What it holds |
+|---|---|
+| `sim.rs` | Shared simulator records, construction, deck evaluation and legacy identity/JSON helpers. |
+| `sim/draw.rs` | Keyed uniforms and failed-career veteran draws; pinned uniform test. |
+| `sim/policies.rs` | Greedy, loop, trace, exact and index career selection; rotation and index-run records. |
+| `sim/audit.rs` | Surrogate checks against exact searches, audit rows and ranked careers. |
+| `sim/play.rs` | Path state, veteran admission/pruning, survival accumulation, simulation entry and summaries. |
+
+Adding a policy: `simulate` (src/career/sim/play.rs) matches the policy name to a base (`Base`); `play` asks the base
 for the next career each step (`greedy_cur`, `loop_cur`: a `Cur`, the career with its exact P(all), landed-set chances
 and win chances), runs it, draws the veteran and adds her to the state (`PathState`). A new policy is a new arm there and a
 function returning the `Cur` to run; `play` does the rest (E, the tail, pruning, checks, audits). A policy that runs a
 different loop (as `trace` does) returns its own JSON from `simulate`. `index` (`index_cur`) runs a whole career job
-per decision, as `greedy_exact` (`exact_cur`) does.
+per decision, as `greedy_exact` (`exact_cur`) does. These policy methods live in `src/career/sim/policies.rs`.
 
 Results and commands: `val/sim/README.md`.
 

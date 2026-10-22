@@ -312,7 +312,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let rho_top = env.space.rho_top();
     restore_seen(&mut env, setup_fingerprint);
     if let Some(sm) = &cj.simulate {
-        return sim::simulate(&mut env, &input, legs, &trainees, sm);
+        return crate::career::sim::play::simulate(&mut env, &input, legs, &trainees, sm);
     }
     let pool = env.pool(legs);
     // (tests: the job's Env and pool handed to a check instead of the search)

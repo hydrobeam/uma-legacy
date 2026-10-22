@@ -294,6 +294,9 @@ build.sh             the one entry point for every build step
 .githooks/           the pre-commit formatting check (`./build.sh hooks` turns it on)
 webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
 pkg/loopopt/         the Rust solver (src/, tests/)
+pkg/loopopt/src/career/sim.rs  simulator records, construction and deck evaluation
+pkg/loopopt/src/career/sim/    draw.rs (sampling), policies.rs (career selection), audit.rs (exact comparisons),
+                              play.rs (path state, execution and summaries)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)
 pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: the JP game database cut at L'Arc's
                      launch), each with data.json, web_skills.json, web_cards.json, career.json, card_events.json,
