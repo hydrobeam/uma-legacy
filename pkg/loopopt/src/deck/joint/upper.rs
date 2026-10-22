@@ -39,7 +39,7 @@ pub(crate) fn upper_na(
     // (checked once per source, when it is built: `TargetSources::uncertified_orthant`)
     for SourceEntry { sources: src, .. } in entries {
         if src.uncertified_orthant {
-            if std::env::var("UPPER_WHY").is_ok()
+            if query.checks.upper_why
                 && let Some(g) = src
                     .fixed_outcomes
                     .iter()
@@ -146,7 +146,7 @@ pub(crate) fn upper_na(
         }
     }
     let fed: Vec<bool> = (0..target_count).map(|k| !feeders[k].is_empty()).collect();
-    let chain_levels = if kinds.is_empty() { None } else { Some(key_level(&kinds)) };
+    let chain_levels = if kinds.is_empty() { None } else { Some(key_level(query.chain_events, &kinds)) };
     if let Some(k) = &chain_levels {
         let ok = match pair {
             None => k.nuod,
@@ -156,7 +156,7 @@ pub(crate) fn upper_na(
             return None;
         }
     }
-    let event_probabilities = event_pmf_job();
+    let event_probabilities = event_pmf_job(query.chain_events);
     let outfits = &model.opts[query.trainee];
     let fixed = model.fixed_factor();
     let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 {

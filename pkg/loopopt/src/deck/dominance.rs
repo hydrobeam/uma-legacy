@@ -495,8 +495,8 @@ impl PDeck {
         json!({"pals": self.pals, "cards": self.names, "odds": odds, "pal_cards": self.pal_names, "borrowed": self.borrowed,
                "card_ids": self.ids, "end_chain_at": self.ends, "choices": self.choices, "plain_ids": self.plain_ids})
     }
-    pub(super) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>) -> bool {
-        self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).is_some_and(|c| c.blocks(uma)))
+    pub(super) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>, checks: &crate::checks::Checks) -> bool {
+        self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).is_some_and(|c| c.blocks(uma, checks)))
     }
     /// the deck's identity (cards, end links, variants, plain pals) as a fixed key: at most `DECK_ID_N` cards (a deck
     /// holds at most 6: the key codes count kinds in base 7), the unused places 0

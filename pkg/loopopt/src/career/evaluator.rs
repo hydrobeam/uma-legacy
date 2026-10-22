@@ -410,8 +410,7 @@ impl Evaluator {
         let c = env.lineage_into(pool, lineage, &mut q);
         let pick = 'value: {
             let Some(ub) = env.ceiling(t, &q, c) else { break 'value None };
-            static CHECK_UB: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-            if *CHECK_UB.get_or_init(|| std::env::var("SIM_CHECK_UB").is_ok()) {
+            if env.space.deck_job.checks.sim_check_ub {
                 let f = self.fast_ub(env, pool, lineage);
                 assert!((f - ub).abs() <= 1e-12 * ub, "fast_ub {f} vs ceiling {ub}");
             }

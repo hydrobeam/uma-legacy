@@ -1,16 +1,17 @@
 //! Search legality and the shared bounds used by enumeration.
 use crate::Instant;
+use crate::checks::SPT;
 use crate::deck::chains::ChainKind;
 use crate::deck::enumerate::bounds::{
-    OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds, prepare_ratio_prefixes, rb_check,
+    OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds, prepare_ratio_prefixes,
 };
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationScratch, ConfigurationTables};
 use crate::deck::enumerate::traverse::{PreparedTables, SearchControl, TraversalScratch};
 use crate::deck::enumerate::{
-    LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome, SearchSetup, SearchStop,
+    BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome, SearchSetup, SearchStop,
 };
-use crate::deck::joint::{CF_LIM, CF_ON, LandPre, SB_ON, SB_USED, cf_check, sb_mode, src_levels};
-use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SPT, SelectedDeck, gm_g, gm_w, top_desc};
+use crate::deck::joint::{LandPre, src_levels};
+use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SelectedDeck, gm_g, gm_w, top_desc};
 use crate::deck::state_bound::{CapFreeRatios, LandingBoundTables};
 use crate::skills::DeckChances;
 impl DeckSpace<'_> {
@@ -23,20 +24,20 @@ impl DeckSpace<'_> {
         clauses: &[SearchClause],
         mode: SearchMode,
     ) -> Result<SearchSetup, SearchOutcome> {
-        let (best, seed, rho, cap) = match mode {
-            SearchMode::Best { seed } => (true, seed, 1.0, 1),
-            SearchMode::Band { ratio_cap, max_decks } => (false, f64::NEG_INFINITY, ratio_cap, max_decks),
+        let (best, seed, rho, cap, band_bound) = match mode {
+            SearchMode::Best { seed } => (true, seed, 1.0, 1, BandBound::Capped),
+            SearchMode::Band { ratio_cap, max_decks, bound } => (false, f64::NEG_INFINITY, ratio_cap, max_decks, bound),
         };
         let target_count = self.target_groups.len();
         let size = self.deck_job.deck_size;
-        if self.locked.iter().any(|&l| trainee_ids.iter().any(|&id| self.cards[l].blocks(id))) {
-            return Err(SearchOutcome { decks: vec![], incomplete: None });
+        if self.locked.iter().any(|&l| trainee_ids.iter().any(|&id| self.cards[l].blocks(id, self.deck_job.checks))) {
+            return Err(SearchOutcome { decks: vec![], incomplete: None, uncapped: false });
         }
         let crate::deck::space::ReducedEntries { entries: legal_rc, set_id } =
             self.reduced_cached(chances.model, trainees, trainee_ids);
         let legal_tables = self.legal_tabs(&legal_rc, set_id, trainee_ids);
         if legal_tables.too_many_characters {
-            return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit) });
+            return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit), uncapped: false });
         }
         let plain_pal_count = legal_tables.plain_pal_count;
         let kind_count = self.kinds_all.len();
@@ -46,22 +47,31 @@ impl DeckSpace<'_> {
         let fixed = chances.model.fixed_factor();
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // Per chain level; the ordinary bound is off when an entry fails group_assoc certification (`state_value`).
-        // The cap-free band (`CF_ON`, one trainee at one chance; `Env::best_deck_cf`): two proven bounds at every node and
-        // leaf (`StateBound::cheap`, then `StateBound::full`, on the state-conditioned tables of mode 2) are its only
-        // prunes, no cap in any
-        // test; it needs every legal entry `certified_cap_free` (else UnsupportedCapFreeProof) and stops past CF_LIM nodes
-        // (CapFreeNodeLimit).
-        let cap_free =
-            !best && clauses.len() == 1 && clauses[0].lineages.len() == 1 && CF_ON.with(std::cell::Cell::get);
+        // The cap-free band (`BandBound::CapFree`, one trainee at one chance; `Env::best_deck_cf`): two proven bounds
+        // at every node and leaf (`StateBound::cheap`, then `StateBound::full`, on the state-conditioned tables of mode
+        // 2) are its only prunes, no cap in any test; it needs every legal entry `certified_cap_free` (else
+        // UnsupportedCapFreeProof) and stops past its node limit (CapFreeNodeLimit).
+        let one_lineage = !best && clauses.len() == 1 && clauses[0].lineages.len() == 1;
+        let cap_free_node_limit = match band_bound {
+            BandBound::CapFree { node_limit } if one_lineage => Some(node_limit),
+            _ => None,
+        };
+        let cap_free = cap_free_node_limit.is_some();
         if cap_free && !legal_rc.iter().all(|&j| self.sources[j].certified_cap_free) {
-            return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::UnsupportedCapFreeProof) });
+            return Err(SearchOutcome {
+                decks: vec![],
+                incomplete: Some(SearchStop::UnsupportedCapFreeProof),
+                uncapped: false,
+            });
         }
-        let cap_free_node_limit = if cap_free { CF_LIM.with(std::cell::Cell::get) } else { usize::MAX };
-        let cap_free_check_scale = if cap_free { cf_check() } else { 0.0 };
+        let cap_free_node_limit = cap_free_node_limit.unwrap_or(usize::MAX);
+        let cap_free_check_scale = if cap_free { self.deck_job.checks.cf_check } else { 0.0 };
         let state_bound_mode = if cap_free {
             2
-        } else if !best && clauses.len() == 1 && clauses[0].lineages.len() == 1 && SB_ON.with(std::cell::Cell::get) {
-            sb_mode()
+        } else if let BandBound::StateBound { mode } = band_bound
+            && one_lineage
+        {
+            mode
         } else {
             0
         };
@@ -107,9 +117,6 @@ impl DeckSpace<'_> {
             vec![]
         };
         let rho = if state_bound_mode == 2 { 1e9 } else { rho };
-        if state_bound_mode > 0 {
-            SB_USED.with(|c| c.set(state_bound_mode));
-        }
         // the cap per structure class (`cap_class`), at most rho (uncapped with SBOUND=2); a deck passes at its own
         // class's cap, a node at the cap of the class of every deck it can still reach (its cards and every candidate
         // left: a superset of any completion's, so a cap at least as high)
@@ -268,7 +275,7 @@ impl DeckSpace<'_> {
         };
         // (RB_CHECK=s: the node bounds on the current path, per depth its clause sums, the root's at depth 0; nodes pass
         // at s times their bound, so more leaves are checked, the results unchanged)
-        let bound_check_scale = if cap_free { 0.0 } else { rb_check() };
+        let bound_check_scale = if cap_free { 0.0 } else { self.deck_job.checks.rb_check };
         let check_ratio_bounds = bound_check_scale > 0.0;
         let bound_check_scale = if check_ratio_bounds { bound_check_scale } else { 1.0 };
         let diagnostic_bounds: Vec<Vec<f64>> = vec![];
@@ -482,9 +489,9 @@ impl DeckSpace<'_> {
         );
         SPT.with(|c| {
             let mut v = c.get();
-            v.0 += t_cfg.elapsed().as_secs_f64();
-            v.2 += configurations.configurations.len();
-            v.3 += counts.len();
+            v.setup_seconds += t_cfg.elapsed().as_secs_f64();
+            v.configurations += configurations.configurations.len();
+            v.count_vectors += counts.len();
             c.set(v);
         });
         self.traverse_configurations(

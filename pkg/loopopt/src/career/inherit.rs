@@ -355,6 +355,8 @@ impl Env<'_> {
     }
     pub(crate) fn joint_query(&self, trainee: crate::uma::UmaIndex) -> crate::deck::joint::JointQuery<'_> {
         crate::deck::joint::JointQuery {
+            chain_events: self.space.deck_job.chain_events(),
+            checks: self.space.deck_job.checks,
             trainee,
             inheritance_chances: &[0.0],
             event_chances: &self.folded_events[trainee],

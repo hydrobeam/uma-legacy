@@ -331,17 +331,6 @@ impl DeckSpace<'_> {
 /// within about 2^-50 of exact)
 pub(crate) const DOM_GAP: f64 = 1.0 / (1u64 << 28) as f64;
 
-thread_local! {
-    /// RB_CHECK: (leaves checked, (leaf, clause, ancestor) tests, violations: a value above an ancestor's bound by more
-    /// than 1e-9, the highest value / bound)
-    pub(crate) static RBCHK: std::cell::RefCell<(usize, usize, usize, f64)> = const { std::cell::RefCell::new((0, 0, 0, 0.0)) };
-}
-
-pub(crate) fn rb_check() -> f64 {
-    static C: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
-    *C.get_or_init(|| std::env::var("RB_CHECK").ok().map_or(0.0, |v| v.parse().unwrap_or(1.0)))
-}
-
 /// The low-base split's threshold (ZSPLIT): a target whose empty-deck factor is at most this share of its factor with a
 /// certain white hint.
 const LOW_SPLIT: [f64; 1] = [0.5];

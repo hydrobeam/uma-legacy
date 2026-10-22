@@ -234,7 +234,7 @@ impl LoopJobInputs<'_> {
             self.deck_job
                 .lock_cards
                 .iter()
-                .any(|id| card_of.get(id).is_some_and(|card| card.blocks(self.data.umas[uma].id)))
+                .any(|id| card_of.get(id).is_some_and(|card| card.blocks(self.data.umas[uma].id, self.deck_job.checks)))
         };
         let eligible: Vec<UmaIndex> = self
             .data
@@ -300,7 +300,7 @@ impl<'data> Multi<'data> {
         // rounding) is below the best value so far. The maximum of a set does not depend on visit order, so the
         // result is the same value bit for bit.
         let class_clusters = class_clusters(inputs.skyline, &class_decks, target_count);
-        if std::env::var("DECK_DEBUG").is_ok() {
+        if inputs.deck_job.checks.deck_debug {
             eprintln!(
                 "classes {} sizes {:?} ({:.2}s)",
                 class_decks.len(),

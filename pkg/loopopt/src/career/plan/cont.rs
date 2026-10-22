@@ -109,6 +109,8 @@ pub(crate) struct Memo<K, V> {
     kind: MemoKind,
     /// Entries past which the map is cleared.
     capacity: usize,
+    /// `PLAN_MEMO_CHECK`: every hit computed again and compared bit for bit.
+    check_hits: bool,
 }
 
 /// The memo kinds, by their counters' place in `MEMO_STATS` (lookups, hits and gated-off memos at 3 x kind).
@@ -155,8 +157,16 @@ impl<K: std::hash::Hash + Eq, V: Copy + SameBits + std::fmt::Debug> Memo<K, V> {
     // (`PLAN_MEMO_OFF`: every memo off from the start, for the test that compares against no memo)
     // (`PLAN_MEMO_CAP`: another cap, for the test: entries kept long enough to be read after a refit)
     fn new(kind: MemoKind) -> Self {
-        let settings = memo_settings();
-        Self { map: FxMap::default(), lookups: 0, hits: 0, disabled: settings.off, kind, capacity: settings.capacity }
+        let checks = crate::checks::get();
+        Self {
+            map: FxMap::default(),
+            lookups: 0,
+            hits: 0,
+            disabled: checks.plan_memo_off,
+            kind,
+            capacity: checks.plan_memo_cap.unwrap_or(MEMO_CAP),
+            check_hits: checks.plan_memo_check,
+        }
     }
     #[inline]
     fn get_or(&mut self, key: impl FnOnce() -> K, compute: impl FnOnce() -> V) -> V {
@@ -168,7 +178,7 @@ impl<K: std::hash::Hash + Eq, V: Copy + SameBits + std::fmt::Debug> Memo<K, V> {
         if let Some(&value) = self.map.get(&key) {
             self.hits += 1;
             // (`PLAN_MEMO_CHECK`: every hit computed again and compared bit for bit; tests/plan_memo.rs)
-            if memo_settings().check_hits {
+            if self.check_hits {
                 let computed = compute();
                 assert!(
                     value.same_bits(&computed),
@@ -210,26 +220,6 @@ impl<K, V> Drop for Memo<K, V> {
     }
 }
 
-/// The memos' test settings, read from the environment once.
-#[derive(Clone, Copy)]
-struct MemoSettings {
-    /// `PLAN_MEMO_OFF`
-    off: bool,
-    /// `PLAN_MEMO_CHECK`
-    check_hits: bool,
-    /// `PLAN_MEMO_CAP`, else MEMO_CAP
-    capacity: usize,
-}
-
-fn memo_settings() -> MemoSettings {
-    static SETTINGS: std::sync::OnceLock<MemoSettings> = std::sync::OnceLock::new();
-    *SETTINGS.get_or_init(|| MemoSettings {
-        off: std::env::var("PLAN_MEMO_OFF").is_ok(),
-        check_hits: std::env::var("PLAN_MEMO_CHECK").is_ok(),
-        capacity: std::env::var("PLAN_MEMO_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(MEMO_CAP),
-    })
-}
-
 fn memo_stat(place: usize) {
     MEMO_STATS.with(|c| {
         let mut stats = c.get();
@@ -248,7 +238,7 @@ pub(crate) struct MemoReport;
 impl Drop for MemoReport {
     fn drop(&mut self) {
         let stats = MEMO_STATS.with(|c| c.replace([0; 8]));
-        if std::env::var("PLAN_MEMO").is_ok() {
+        if crate::checks::get().plan_memo {
             let hit_percent =
                 |lookups: u64, hits: u64| if lookups == 0 { 0.0 } else { 100.0 * hits as f64 / lookups as f64 };
             eprintln!(

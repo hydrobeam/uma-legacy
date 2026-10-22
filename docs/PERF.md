@@ -62,6 +62,9 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
 - Career inheritance folding must reuse `Env::folded_events` in place (`set_ews`'s matching-shape path), including
   the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances, without
   copying them per candidate. `joint_eval_in` still takes explicit scratch; `refolding_reuses_outfit_buffers` checks buffer reuse.
+- `work.exact` counts `Env::exact_scorings`, the career's own `best_deck` scorings: a memo hit adds what its search
+  scored, and `CF_CHECK`'s side search puts it back (`SearchEffects`). Count a new exact scoring there, through
+  `Env::score_exact`, or the counter moves.
 - `DominanceIndex` visit order matters: the remembered dominators feed the recent-winner ring and `lastrow`. Prefilters must
   preserve descending bucket order and ascending row order within each bucket (`deck/dominance.rs`, `DominanceIndex::count`).
 - Float order: preserve sums and products in order. Reordering a maximum must also preserve tied winners and the

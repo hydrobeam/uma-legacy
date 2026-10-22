@@ -3,10 +3,10 @@
 use super::bands::{DeckBest, Pass, SolvedLoop};
 use super::{DeckSources, Multi, RatioExample, SharedDeckKey, lin_of};
 use crate::chart::{chart_rows, member_json};
+use crate::checks::{SPT, UCHK};
 use crate::data::dot;
 use crate::deck::dominance::PDeck;
 use crate::deck::joint::{JointChances, JointExt, JointQuery, joint_b, joint_fast};
-use crate::deck::space::{SPT, UCHK};
 use crate::optimize::members;
 use crate::skills::{GEN_GOLD, MemberLineage, OutfitOption};
 use serde_json::{Value, json};
@@ -24,15 +24,22 @@ impl Multi<'_> {
     // ---- the answer ----
 
     pub(super) fn debug_summary(&self, p: &Pass, cert: f64) {
-        if std::env::var("UPPER_CHECK").is_ok() {
+        let checks = self.inputs.deck_job.checks;
+        if checks.upper_check {
             let v = UCHK.with(Cell::get);
-            eprintln!("UPPER_CHECK: {} checked, max bound/exact {:.4}, {} decks not covered", v.0, v.1, v.2);
+            eprintln!(
+                "UPPER_CHECK: {} checked, max bound/exact {:.4}, {} decks not covered",
+                v.checked, v.max_ratio, v.uncovered
+            );
         }
-        if std::env::var("DECK_DEBUG").is_ok() {
+        if checks.deck_debug {
             let v = SPT.with(Cell::get);
-            eprintln!("deck searches: setup {:.2}s tree {:.2}s configs {} count vectors {}", v.0, v.1, v.2, v.3);
+            eprintln!(
+                "deck searches: setup {:.2}s tree {:.2}s configs {} count vectors {}",
+                v.setup_seconds, v.tree_seconds, v.configurations, v.count_vectors
+            );
         }
-        if std::env::var("DECK_DEBUG").is_ok() {
+        if checks.deck_debug {
             let t = &self.tally;
             eprintln!(
                 "per-uma search {:.2}s cap {} scanned {} solved {} exact: {} deck searches, {} decks scored, {} bounded out, schedule rejects {} | band {:.2}s score {:.2}s seed-scan {:.2}s bound {:.2}s",
@@ -129,7 +136,7 @@ impl Multi<'_> {
                     let qt: Vec<f64> = ls.iter().map(|&l| inheritance_chances[l]).collect();
                     let j = joint_b(
                         self.inputs.model,
-                        JointQuery::unfolded(self.inputs.model, members[t], &qt),
+                        JointQuery::unfolded(self.inputs.model, self.inputs.deck_job, members[t], &qt),
                         &e,
                         fl,
                         self.requested_target_count,
@@ -208,7 +215,7 @@ impl Multi<'_> {
             };
             joint_fast(
                 model,
-                JointQuery::unfolded(model, member_slice[t], &[inheritance_chances[l]]),
+                JointQuery::unfolded(model, self.inputs.deck_job, member_slice[t], &[inheritance_chances[l]]),
                 e,
                 fl,
                 ntar,

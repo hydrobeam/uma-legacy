@@ -1,13 +1,14 @@
 //! The depth-first walk of decks in one configuration.
+use crate::checks::{CFCHK, RBCHK, SBCHK, SBN};
 use crate::deck::caps::cap_class;
-use crate::deck::enumerate::bounds::{DOM_GAP, RBCHK};
+use crate::deck::enumerate::bounds::DOM_GAP;
 use crate::deck::enumerate::config::SearchConfig;
 use crate::deck::enumerate::order::DeckPath;
 use crate::deck::enumerate::scratch::NodeScratch;
 use crate::deck::enumerate::traverse::{
     BorrowTables, DeckSearchContext, ParentRatioBounds, PreparedTables, SearchControl, SearchResults,
 };
-use crate::deck::joint::{CFCHK, JointQuery, SBCHK, SBN, joint_fast, sb_check};
+use crate::deck::joint::{JointQuery, joint_fast};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::{Dominator, SelectedDeck, TraversalEntryGroup, gm_g, gm_w};
 use crate::deck::state_bound::StateBound;
@@ -732,7 +733,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                         .full(selection, if cap_free_check_scale == 0.0 { state_bound_threshold / s } else { 0.0 }),
                 )
             };
-            SBN.with(|c| c.borrow_mut().1 += 1);
+            SBN.with(|c| c.borrow_mut().evaluations += 1);
             if cap_free_check_scale > 0.0 {
                 // CF_CHECK: a leaf's exact value against its own bound and every node's above it
                 let path = &mut scratch.bound_path;
@@ -746,6 +747,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                     let x = joint_fast(
                         chances.model,
                         JointQuery {
+                            chain_events: space.deck_job.chain_events(),
+                            checks: space.deck_job.checks,
                             trainee: bound_trainee,
                             inheritance_chances: &[bound_inheritance],
                             event_chances: &chances.event_chances[bound_trainee],
@@ -759,13 +762,13 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                     .all;
                     CFCHK.with(|c| {
                         let mut c = c.borrow_mut();
-                        c.4 += 1;
+                        c.leaves += 1;
                         for &b in path.iter() {
                             if x > b * (1.0 + 1e-9) {
-                                c.5 += 1;
+                                c.leaf_violations += 1;
                             }
                             if b > 0.0 {
-                                c.8 = c.8.max(x / b);
+                                c.max_ratio = c.max_ratio.max(x / b);
                             }
                         }
                     });
@@ -773,16 +776,19 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             }
             let pass = ub * s * (1.0 + 1e-9) >= state_bound_threshold;
             if !pass {
-                SBN.with(|c| c.borrow_mut().2 += 1);
+                SBN.with(|c| c.borrow_mut().nodes_cut += 1);
             }
             return pass;
         }
         let state_bound_mode = search.controls.state_bound_mode;
-        if state_bound_mode == 0 || (state_bound_mode == 3 && !sb_check()) {
+        if state_bound_mode == 0 {
+            return true;
+        }
+        let chk = search.space.deck_job.checks.sb_check;
+        if state_bound_mode == 3 && !chk {
             return true;
         }
         let d = selection.len();
-        let chk = sb_check();
         let leafd = d == self.total_slots;
         if (state_bound_mode == 1 || state_bound_mode == 3) && d > 1 && !(chk && leafd) {
             return true;
@@ -791,7 +797,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             return true;
         }
         let ub = scratch.state_bound.bound(selection);
-        SBN.with(|c| c.borrow_mut().1 += 1);
+        SBN.with(|c| c.borrow_mut().evaluations += 1);
         if d == 1 {
             scratch.depth_one_bound = ub;
         }
@@ -799,9 +805,9 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             let (sb_root, sb_d1) = (self.root_bound, scratch.depth_one_bound);
             SBCHK.with(|c| {
                 let mut c = c.borrow_mut();
-                c.4 += 1;
+                c.leaves += 1;
                 if ub > sb_root * (1.0 + 1e-9) || (d > 1 && ub > sb_d1 * (1.0 + 1e-9)) {
-                    c.5 += 1;
+                    c.violations += 1;
                 }
             });
         }
@@ -810,7 +816,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         }
         let pass = ub * (1.0 + 1e-9) >= search.controls.state_bound_threshold;
         if !pass {
-            SBN.with(|c| c.borrow_mut().2 += 1);
+            SBN.with(|c| c.borrow_mut().nodes_cut += 1);
         }
         pass
     }
@@ -849,7 +855,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             let (s, configuration) = (&scratch.nodes.diagnostic_bounds, self.configuration);
             RBCHK.with(|c| {
                 let mut c = c.borrow_mut();
-                c.0 += 1;
+                c.leaves += 1;
                 for (ci, cl) in clauses.iter().enumerate() {
                     if best && ci > 0 {
                         break;
@@ -857,12 +863,12 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                     let x = val(cl, dw, dg);
                     for d in 0..=selection.len() {
                         let ub = if d == 0 { configuration.clause_bounds[ci] } else { s[d][ci] };
-                        c.1 += 1;
+                        c.tests += 1;
                         if x > ub * (1.0 + 1e-9) {
-                            c.2 += 1;
+                            c.violations += 1;
                         }
                         if ub > 0.0 {
-                            c.3 = c.3.max(x / ub);
+                            c.max_ratio = c.max_ratio.max(x / ub);
                         }
                     }
                 }

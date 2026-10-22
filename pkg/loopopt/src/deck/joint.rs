@@ -1,9 +1,9 @@
 //! Joint landing odds of a deck: the entry points (`joint_b`, `joint_fast`, with `joint_checked`'s diagnostic checks) and
 //! the records the exact sum (`exact`), its reference (`reference`) and the negative-association bound (`upper`) share,
 //! with the per-target landing factor (`land_factor`, `LandPre`) and miss rows (`src_levels`) the state bounds also take.
-//! It also holds the switches and check counters of the state-conditioned and cap-free searches (`SB_ON`, `CF_ON`).
-use crate::deck::caps::JCOUNT;
-use crate::deck::chains::ChainKind;
+use crate::checks::{CFCHK, SBCHK};
+use crate::deck::DeckJob;
+use crate::deck::chains::{ChainEvents, ChainKind};
 use crate::deck::joint::exact::{joint_eval, joint_prep};
 use crate::deck::joint::reference::joint_trainee_ref;
 use crate::deck::sources::{LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint};
@@ -12,9 +12,13 @@ use crate::skills::{GEN_GOLD, Model};
 pub(crate) mod exact;
 pub(super) mod reference;
 pub(crate) mod upper;
-/// The trainee and ordered inheritance chances to evaluate against one deck.
+/// The trainee and ordered inheritance chances to evaluate against one deck, under the job's chain events and checks.
 #[derive(Clone, Copy)]
 pub(crate) struct JointQuery<'chance> {
+    /// The job's chain-event distribution (`DeckJob::chain_events`).
+    pub(crate) chain_events: ChainEvents,
+    /// The job's diagnostic switches (`DeckJob::checks`): `joint_b`'s checks and `upper_na`'s report.
+    pub(crate) checks: &'chance crate::checks::Checks,
     /// Index in `Model::opts`.
     pub(crate) trainee: crate::uma::UmaIndex,
     pub(crate) inheritance_chances: &'chance [f64],
@@ -26,10 +30,17 @@ impl<'chance> JointQuery<'chance> {
     /// A loop search keeps inheritance separate from the model's own-event chances.
     pub(crate) fn unfolded(
         model: &'chance Model,
+        deck_job: &DeckJob,
         trainee: crate::uma::UmaIndex,
         inheritance_chances: &'chance [f64],
     ) -> Self {
-        Self { trainee, inheritance_chances, event_chances: &model.ews[trainee] }
+        Self {
+            chain_events: deck_job.chain_events(),
+            checks: deck_job.checks,
+            trainee,
+            inheritance_chances,
+            event_chances: &model.ews[trainee],
+        }
     }
 }
 
@@ -106,9 +117,8 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
     filler: usize,
     options: JointOptions,
 ) -> Vec<JointChances> {
-    JCOUNT.with(|c| c.set(c.get() + 1));
     let r = evaluate_joint(model, query, entries, filler, options, None);
-    if sb_check() {
+    if query.checks.sb_check {
         let er: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
         if let Some(sv) = state_value(model, query, &er, filler) {
@@ -117,11 +127,11 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
                 for (v, x) in sv.iter().zip(&r) {
                     if x.all > 0.0 {
                         let rt = v / x.all;
-                        c.0 += 1;
-                        c.1 = c.1.max(rt);
-                        c.2 = c.2.min(rt);
+                        c.decks += 1;
+                        c.max_ratio = c.max_ratio.max(rt);
+                        c.min_ratio = c.min_ratio.min(rt);
                         if rt < 1.0 - 1e-9 {
-                            c.3 += 1;
+                            c.below += 1;
                         }
                     }
                 }
@@ -129,26 +139,25 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
         }
     }
     // CF_CHECK: the cap-free bound's value at a whole deck (its leaf test) against the exact value
-    if cf_check() > 0.0 {
+    if query.checks.cf_check > 0.0 {
         let er: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
         if let Some(sv) = state_value_cf(model, query, &er, filler) {
             CFCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 for (v, x) in sv.iter().zip(&r) {
-                    c.6 += 1;
+                    c.scorings += 1;
                     if x.all > v * (1.0 + 1e-9) {
-                        c.7 += 1;
+                        c.scoring_violations += 1;
                     }
                     if *v > 0.0 {
-                        c.8 = c.8.max(x.all / v);
+                        c.max_ratio = c.max_ratio.max(x.all / v);
                     }
                 }
             });
         }
     }
-    static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
+    if query.checks.joint_check {
         let own: Vec<SourceEntry<TargetSources>> = entries
             .iter()
             .map(|entry| SourceEntry { sources: entry.sources.borrow().clone(), kind: entry.kind })
@@ -212,7 +221,13 @@ fn evaluate_joint<S: std::borrow::Borrow<TargetSources>>(
     options: JointOptions,
     extension: Option<&mut JointExt>,
 ) -> Vec<JointChances> {
-    joint_eval(model, query, &joint_prep(model.uncertain.len(), entries, filler), options, extension)
+    joint_eval(
+        model,
+        query,
+        &joint_prep(query.chain_events, model.uncertain.len(), entries, filler),
+        options,
+        extension,
+    )
 }
 
 /// Per-target misses after conditioning on chain progress.
@@ -279,46 +294,4 @@ impl LandPre {
             _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * self.no_event * self.no_inheritance),
         }
     }
-}
-
-thread_local! {
-    /// SB_CHECK: per exact scoring, the state-conditioned value against the exact value: (decks, max value/exact, min
-    /// value/exact, violations); and the node bounds against the decks below them: (leaves checked, violations)
-    pub(crate) static SBCHK: std::cell::RefCell<(usize, f64, f64, usize, usize, usize)> = const { std::cell::RefCell::new((0, 0.0, f64::INFINITY, 0, 0, 0)) };
-}
-thread_local! { pub(crate) static SBN: std::cell::RefCell<(usize, usize, usize)> = const { std::cell::RefCell::new((0, 0, 0)) }; }
-
-pub(super) fn sb_check() -> bool {
-    static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *C.get_or_init(|| std::env::var("SB_CHECK").is_ok())
-}
-/// The state-conditioned bound in the career searches' band pass (`best_deck` pass 2), `SBOUND` to change it: 3 (the
-/// default) at each configuration's root, an extra prune beside the rho one (exact: it only drops configurations no deck
-/// of which can reach the bar); 1 also at depth 1; 2 the band pass without the cap (the bound at every node, a leaf kept
-/// when its state-conditioned value reaches the bar); 0 off.
-pub(crate) fn sb_mode() -> u8 {
-    static C: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
-    *C.get_or_init(|| std::env::var("SBOUND").ok().and_then(|v| v.parse().ok()).unwrap_or(3))
-}
-thread_local! { pub(crate) static SB_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
-thread_local! { pub(crate) static SB_USED: std::cell::Cell<u8> = const { std::cell::Cell::new(0) }; }
-thread_local! {
-    /// the next band search is cap-free (`Env::best_deck_cf`): pruned by `StateBound::cheap` and `StateBound::full`,
-    /// at every
-    /// node and leaf, no cap anywhere; it stops past CF_LIM partial decks tested (the space's node count)
-    pub(crate) static CF_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    pub(crate) static CF_LIM: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
-    /// CF_CHECK: (cap-free searches run beside a capped one, capped answers below the cap-free one (a deck the caps
-    /// pruned), cap-free answers below the capped one (a bug), unproven cap-free runs; leaves checked against their
-    /// ancestors' bounds, violations (an exact value above a bound), exact scorings checked against the state value,
-    /// violations, the largest exact / bound)
-    pub(crate) static CFCHK: std::cell::RefCell<(usize, usize, usize, usize, usize, usize, usize, usize, f64)> = const { std::cell::RefCell::new((0, 0, 0, 0, 0, 0, 0, 0, 0.0)) };
-}
-/// CF_CHECK=s (checks only): every capped deck search also runs the cap-free one (state restored after it) and compares
-/// answers; inside a cap-free search every node passes at s times its bound (s >= 1: more leaves reached; a leaf keeps
-/// the real test, so the band is the same) and every leaf reached is scored exactly against the bounds of every node
-/// above it (an exact value above one would mean the bound could prune a deck that beats the bar). 0 = off.
-pub(crate) fn cf_check() -> f64 {
-    static C: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
-    *C.get_or_init(|| std::env::var("CF_CHECK").ok().map_or(0.0, |v| v.parse().unwrap_or(1.0)))
 }
