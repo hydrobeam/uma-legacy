@@ -22,16 +22,17 @@ mod report;
 mod shared;
 mod tables;
 
-/// Immutable resources for the loop search. All indices retain their original roster/deck-space provenance.
-struct LoopJobInputs<'data> {
-    data: &'data Data,
-    cards: &'data CardsRaw,
-    model: &'data Model<'data>,
-    skill_job: &'data SkillJob,
-    deck_job: &'data DeckJob,
+/// Immutable resources for the loop search, built by the deck job once its skyline and deck space exist. All indices
+/// retain their original roster/deck-space provenance.
+pub(super) struct LoopJobInputs<'data> {
+    pub(super) data: &'data Data,
+    pub(super) cards: &'data CardsRaw,
+    pub(super) model: &'data Model<'data>,
+    pub(super) skill_job: &'data SkillJob,
+    pub(super) deck_job: &'data DeckJob,
     /// Pareto decks from the initial enumeration, in its retained order.
-    skyline: &'data [PDeck],
-    deck_space: &'data DeckSpace<'data>,
+    pub(super) skyline: &'data [PDeck],
+    pub(super) deck_space: &'data DeckSpace<'data>,
 }
 
 /// Per-uma decks: each trainee runs her own best legal deck, the same one in all the lineages she heads (three in a
@@ -39,34 +40,18 @@ struct LoopJobInputs<'data> {
 ///   value(f) = fixed/L * sum_t max over decks D legal for f[t] of sum over her lineages l of T(f[t], q_l, D), L = 12 or 3
 /// The skyline bounds product values without enforcing each trainee's card restrictions. Legal skyline decks
 /// seed exact scoring; `DeckSpace` searches the remaining legal decks under their assumed structure-class caps.
-pub(super) fn run_multi(
-    data: &Data,
-    card_data: &CardsRaw,
-    model: &Model,
-    skill_job: &SkillJob,
-    deck_job: &DeckJob,
-    skyline: &[PDeck],
-    stats: Value,
-    space: &DeckSpace,
-) -> Value {
-    let search = match Multi::new(LoopJobInputs {
-        data,
-        cards: card_data,
-        model,
-        skill_job,
-        deck_job,
-        skyline,
-        deck_space: space,
-    }) {
-        Ok(m) => m,
-        Err(e) => return e,
+/// `stats`: the deck enumeration's counters, reported with the loops.
+pub(super) fn run_multi(inputs: LoopJobInputs, stats: Value) -> Value {
+    let search = match Multi::new(inputs) {
+        Ok(search) => search,
+        Err(error) => return error,
     };
-    let (pass, cert) = search.certify();
+    let (pass, certified_cap) = search.certify();
     if pass.solved.is_empty() {
         return json!({"error": "No loop contains all the required umas."});
     }
-    search.debug_summary(&pass, cert);
-    search.report(pass, cert, stats)
+    search.debug_summary(&pass, certified_cap);
+    search.report(pass, certified_cap, stats)
 }
 
 /// A memo key of up to 12 chances (a loop's lineages): their bits and count, a fixed array (equal exactly when the
@@ -76,6 +61,16 @@ struct ChanceKey {
     /// Bit patterns preserve exact equality, including signed zero.
     bits: [u64; 12],
     count: u8,
+}
+impl ChanceKey {
+    fn new(chances: &[f64]) -> Self {
+        assert!(chances.len() <= 12, "more than 12 chances in a memo key");
+        let mut bits = [0u64; 12];
+        for (slot, chance) in bits.iter_mut().zip(chances) {
+            *slot = chance.to_bits();
+        }
+        Self { bits, count: chances.len() as u8 }
+    }
 }
 /// The reported deck attaining a structure class's highest exact/product ratio.
 struct RatioExample {
@@ -202,55 +197,59 @@ struct Tally {
     aborted: Cell<bool>,
 }
 impl Tally {
-    fn spend(&self, w: usize) {
-        self.work.set(self.work.get() + w);
+    fn spend(&self, work: usize) {
+        self.work.set(self.work.get() + work);
     }
-    fn ratio_at(&self, k: usize, r: f64, u: u32, x: &PDeck) {
-        let mut m = self.max_ratio.get();
-        if r > m[k] {
-            m[k] = r;
-            self.max_ratio.set(m);
-            self.max_deck.borrow_mut()[k] = Some(RatioExample { trainee_id: u, cards: x.names.clone() });
+    /// Keeps `deck` as structure class `class`'s example when its exact/product `ratio` is the class's highest so far
+    fn ratio_at(&self, class: usize, ratio: f64, trainee_id: u32, deck: &PDeck) {
+        let mut max_ratio = self.max_ratio.get();
+        if ratio > max_ratio[class] {
+            max_ratio[class] = ratio;
+            self.max_ratio.set(max_ratio);
+            self.max_deck.borrow_mut()[class] = Some(RatioExample { trainee_id, cards: deck.names.clone() });
         }
     }
 }
 
 // Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages; `lins`), members as [UmaIndex; 4] with
 // `NONE` last for three; a structure's value is the mean over its lineages, so both sizes rank together.
-fn lin_of(f: &[UmaIndex; 4]) -> &'static [MemberLineage] {
-    lins(members(f).len())
+fn lin_of(structure: &[UmaIndex; 4]) -> &'static [MemberLineage] {
+    lins(members(structure).len())
 }
 struct TrainingPool {
     eligible: Vec<UmaIndex>,
     required: Vec<UmaIndex>,
 }
 
-/// The umas that can train (owned or required, not excluded, with an outfit, not blocked by a locked card) and the
-/// required ones
-fn trainable(inputs: &LoopJobInputs, card_of: &crate::FxMap<u32, &Card>) -> TrainingPool {
-    let id_ok = |id: u32| {
-        (inputs.skill_job.owned.is_empty()
-            || inputs.skill_job.owned.contains(&id)
-            || inputs.skill_job.require.contains(&id))
-            && !inputs.skill_job.exclude.contains(&id)
-    };
-    // a locked card goes in every deck, so a uma it blocks cannot train at all
-    let lock_blocked = |u: UmaIndex| {
-        inputs.deck_job.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(inputs.data.umas[u].id)))
-    };
-    let pool: Vec<UmaIndex> = inputs
-        .data
-        .umas
-        .indices()
-        .filter(|&i| id_ok(inputs.data.umas[i].id) && !inputs.model.no_outfit[i] && !lock_blocked(i))
-        .collect();
-    let req: Vec<UmaIndex> = inputs
-        .skill_job
-        .require
-        .iter()
-        .filter_map(|&id| inputs.data.umas.iter().position(|u| u.id == id).map(UmaIndex))
-        .collect();
-    TrainingPool { eligible: pool, required: req }
+impl LoopJobInputs<'_> {
+    /// The umas that can train (owned or required, not excluded, with an outfit, not blocked by a locked card) and the
+    /// required ones
+    fn trainable(&self, card_of: &crate::FxMap<u32, &Card>) -> TrainingPool {
+        let skill_job = self.skill_job;
+        let id_allowed = |id: u32| {
+            (skill_job.owned.is_empty() || skill_job.owned.contains(&id) || skill_job.require.contains(&id))
+                && !skill_job.exclude.contains(&id)
+        };
+        // a locked card goes in every deck, so a uma it blocks cannot train at all
+        let lock_blocked = |uma: UmaIndex| {
+            self.deck_job
+                .lock_cards
+                .iter()
+                .any(|id| card_of.get(id).is_some_and(|card| card.blocks(self.data.umas[uma].id)))
+        };
+        let eligible: Vec<UmaIndex> = self
+            .data
+            .umas
+            .indices()
+            .filter(|&i| id_allowed(self.data.umas[i].id) && !self.model.no_outfit[i] && !lock_blocked(i))
+            .collect();
+        let required: Vec<UmaIndex> = skill_job
+            .require
+            .iter()
+            .filter_map(|&id| self.data.umas.iter().position(|uma| uma.id == id).map(UmaIndex))
+            .collect();
+        TrainingPool { eligible, required }
+    }
 }
 
 impl<'data> Multi<'data> {
@@ -261,8 +260,8 @@ impl<'data> Multi<'data> {
             inputs.model.uncertain.iter().map(|&i| inputs.skill_job.targets[i].group).collect();
         let target_count = target_groups.len();
         let card_of: crate::FxMap<u32, &Card> = inputs.cards.cards.iter().map(|c| (c.id, c)).collect();
-        let n = inputs.data.umas.len();
-        let TrainingPool { eligible: pool, required: required_umas } = trainable(&inputs, &card_of);
+        let uma_count = inputs.data.umas.len();
+        let TrainingPool { eligible: pool, required: required_umas } = inputs.trainable(&card_of);
         if required_umas.iter().any(|r| !pool.contains(r)) {
             return Err(json!({"error": "A required uma cannot train with a locked card of her own."}));
         }
@@ -291,10 +290,10 @@ impl<'data> Multi<'data> {
                     if pool.contains(&u) { inputs.model.q_ub_trainee(u, &pool, &pair_bounds, allow_three) } else { 0.0 }
                 })
                 .collect();
-        let qlo = inputs.model.q_floor();
-        let qhi = pool.iter().map(|&u| maximum_chances[u]).fold(qlo, f64::max);
-        let grid = Grid::new(qlo, qhi);
-        let (class_decks, class_by_trainee) = classes(inputs.model, &pool, inputs.skyline, target_count, n);
+        let lowest_chance = inputs.model.q_floor();
+        let highest_chance = pool.iter().map(|&u| maximum_chances[u]).fold(lowest_chance, f64::max);
+        let grid = Grid::new(lowest_chance, highest_chance);
+        let (class_decks, class_by_trainee) = classes(inputs.model, &pool, inputs.skyline, target_count, uma_count);
         // Clusters of each class's decks (recursive median splits on the widest odds coordinate) with their
         // componentwise maximum odds. T(u, q, deck) rises with every deck odds coordinate (for 0 <= q <= 1, since a
         // white is worth less than a gold), so T at a cluster's maximum bounds every member; maxima over a class are
@@ -313,20 +312,20 @@ impl<'data> Multi<'data> {
         // A deck's sources: the deck space's entry for (card, end link, variant) where it has one of that card (built
         // by the same `Sources::src` and `kind` on the same job and targets, so the same values), borrowed; else built
         let entry_by_card: crate::FxMap<CardEntryKey, usize> = (0..inputs.deck_space.card_indices.len())
-            .map(|j| {
+            .map(|entry| {
                 (
                     CardEntryKey {
-                        card_id: inputs.deck_space.cards[inputs.deck_space.card_indices[j]].id,
-                        end_link: inputs.deck_space.end_links[j],
-                        variant: inputs.deck_space.variants[j],
+                        card_id: inputs.deck_space.cards[inputs.deck_space.card_indices[entry]].id,
+                        end_link: inputs.deck_space.end_links[entry],
+                        variant: inputs.deck_space.variants[entry],
                     },
-                    j,
+                    entry,
                 )
             })
             .collect();
         let exact_caps = inputs.deck_space.caps();
         let skyline_clusters = full_clusters(inputs.skyline, target_count, inputs.deck_job.per_uma);
-        let mut m = Multi {
+        let mut search = Multi {
             target_groups,
             target_count,
             requested_target_count: inputs.skill_job.targets.len(),
@@ -348,10 +347,10 @@ impl<'data> Multi<'data> {
             skyline_clusters,
             cluster_bound_scratch: RefCell::default(),
             skyline_bound_scratch: RefCell::default(),
-            relaxed_ceiling_cache: RefCell::new(UmaTable(vec![[f64::NAN; NG]; n])),
+            relaxed_ceiling_cache: RefCell::new(UmaTable(vec![[f64::NAN; NG]; uma_count])),
             exact_ceiling_cache: RefCell::new(UmaTable(vec![
                 [ExactCeiling { value: f64::NAN, certified_cap: 0.0 }; NG];
-                n
+                uma_count
             ])),
             entry_by_card,
             exact_cache: RefCell::default(),
@@ -368,19 +367,10 @@ impl<'data> Multi<'data> {
             started,
             inputs,
         };
-        m.rank();
-        Ok(m)
+        search.rank();
+        Ok(search)
     }
 }
-fn qkey(qs: &[f64]) -> ChanceKey {
-    assert!(qs.len() <= 12, "more than 12 chances in a memo key");
-    let mut k = [0u64; 12];
-    for (x, q) in k.iter_mut().zip(qs) {
-        *x = q.to_bits();
-    }
-    ChanceKey { bits: k, count: qs.len() as u8 }
-}
-
 /// Fixed schedule for one uma (see DeckJob::schedule).
 fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
     let solo = best_response(d, u, &vec![1.0; d.nr], None).expect("infeasible goals").0;
