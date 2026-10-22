@@ -3,13 +3,13 @@
 //! (derived; `corners`), so 2^nu exact evaluations per (trainee, deck) give it at any chances. Decks come from the
 //! searches' fully checked decks (`Ref`, also kept for `rise`) and from deck searches where a bound says the cached
 //! decks may fall short.
-use super::{Env, Ref, Sel};
+use super::{Env, Ref, SelectedDeck};
 
 /// A cached deck of one trainee and per outfit its corner table (P(all), every spark scale 1, at q_k in {0, 1} per
 /// uncertain target; index bit k set = q_k = 0, as `corners` builds them from q0 = 0)
 #[derive(Clone)]
 pub(super) struct CDeck {
-    pub(super) sel: Sel,
+    pub(super) sel: SelectedDeck,
     pub(super) tab: Vec<Vec<f64>>,
 }
 /// The deck cache of the simulator and the plan: per trainee her decks with corner tables and her fully checked decks (`Ref`, for `rise`)
@@ -30,11 +30,12 @@ impl Cache {
     }
 
     /// Cache a trainee's deck and corner tables, unless that selection is already present.
-    pub(super) fn add(&mut self, env: &mut Env, trainee: usize, sel: &Sel) {
-        if self.decks[trainee]
-            .iter()
-            .any(|deck| deck.sel.ents == sel.ents && deck.sel.plain == sel.plain && deck.sel.filler == sel.filler)
-        {
+    pub(super) fn add(&mut self, env: &mut Env, trainee: usize, sel: &SelectedDeck) {
+        if self.decks[trainee].iter().any(|deck| {
+            deck.sel.entries == sel.entries
+                && deck.sel.plain_pals == sel.plain_pals
+                && deck.sel.filler_cards == sel.filler_cards
+        }) {
             return;
         }
         let tab = env.corners_kept(trainee, sel);
@@ -47,7 +48,7 @@ impl Cache {
     pub(super) fn absorb(&mut self, env: &mut Env, refs: &[Vec<Ref>]) {
         for (trainee, checked_decks) in refs.iter().enumerate() {
             for checked in checked_decks {
-                self.add(env, trainee, &checked.sel);
+                self.add(env, trainee, &checked.deck);
                 self.refs[trainee].push(checked.clone());
             }
         }

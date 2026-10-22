@@ -28,7 +28,7 @@
 //! The next career the page picks (`next`) is `sim::plan::index_rule`; the simulator (`simulate`) is `sim`.
 use crate::deck::{
     CHAIN_EVENTS, CHAIN_N, CHAIN_P, Card, CardsRaw, Data, DeckJob, DeckSpace, Deserialize, FxMap, GEN_GOLD, HashMap,
-    Instant, Model, Sel, SkillJob, SkillsRaw, Value, d_true, deck_entries, deck_space, json, src_miss,
+    Instant, Model, SelectedDeck, SkillJob, SkillsRaw, Value, d_true, deck_entries, deck_space, json, src_miss,
 };
 use clock::{PROF, now_ms, prof, progress};
 pub(crate) use decks::CfStats;
@@ -89,7 +89,7 @@ pub(crate) struct Career<'deck> {
     /// Trainee and ordered parents.
     pub(crate) lineage: Lineage,
     /// Selected support deck, borrowed without cloning.
-    pub(crate) deck: &'deck Sel,
+    pub(crate) deck: &'deck SelectedDeck,
 }
 
 /// Immutable resources for one solver job.
@@ -163,7 +163,8 @@ const fn d_top() -> usize {
 /// (EXACT_BUDGET) left pools of 12, 100 and 200 veterans unproven with the same picks. 300M leaves 3.5x headroom.
 /// It does not stop the search: past it each deck search (`best_deck_run`) stops scoring its band, so every later
 /// candidate gets the exact values of its product deck and start decks only and the search is not `complete`; `solve` itself goes on to its
-/// stop rule (only a `hard` cap, `plan`'s extra searches, ends it early). `EXACT_BUDGET` in the environment overrides it.
+/// stop rule (only a `hard_work_cap`, `plan`'s extra searches, ends it early). `EXACT_BUDGET` in the environment
+/// overrides it.
 const CAREER_BUDGET: usize = 300_000_000;
 
 #[derive(Deserialize)]
@@ -209,38 +210,51 @@ enum BorrowedParent {
 }
 
 struct Env<'data> {
-    d: &'data Data,
-    sj: &'data SkillJob,
+    data: &'data Data,
+    /// The job's targets, owned umas and the rank's star mix.
+    skill_job: &'data SkillJob,
     model: Model<'data>,
-    ew0: Vec<Vec<Vec<f64>>>,
-    uncv: Vec<usize>,
-    fixed_t: Vec<usize>,
-    ntar: usize,
-    nu: usize,
-    unc: Vec<u32>,
+    /// Per uma, per outfit option, the chance her own events hint each uncertain target's white (`Model::ews` before
+    /// any inheritance chance is folded in).
+    own_event_chances: Vec<Vec<Vec<f64>>>,
+    /// The uncertain targets (not guaranteed gold), as job-target indices.
+    uncertain_targets: Vec<usize>,
+    /// The other targets (guaranteed gold), as job-target indices.
+    fixed_targets: Vec<usize>,
+    /// How many targets the job has.
+    target_count: usize,
+    /// How many of them are uncertain.
+    uncertain_count: usize,
+    /// The skill group of each uncertain target.
+    uncertain_groups: Vec<u32>,
     space: DeckSpace<'data>,
-    dmax: Vec<Option<(Vec<f64>, Vec<f64>)>>,
-    sts0: Vec<Vec<Vec<u8>>>,
+    /// Per uma (None when she does not train), the deck odds ceiling per uncertain target (`deck_odds_ceilings`).
+    deck_odds_ceilings: Vec<Option<(Vec<f64>, Vec<f64>)>>,
+    /// Per uma, per outfit option, its coverage of each uncertain target (2: the gold skill, 1: the white one, 0:
+    /// neither; `Model::opts` without the labels).
+    outfit_coverage: Vec<Vec<Vec<u8>>>,
     owned: Vec<usize>,
     budget: usize,
     work: usize,
-    /// every earlier search's fully checked decks per deck class (`cls`; one model, so each is a proven best at its
-    /// chances for every trainee of the class): later searches bound with them (`rise`), but don't start from them, so
-    /// ties resolve as in a lone search
+    /// every earlier search's fully checked decks per deck class (`deck_class`; one model, so each is a proven best at
+    /// its chances for every trainee of the class): later searches bound with them (`rise`), but don't start from them,
+    /// so ties resolve as in a lone search
     seen: Vec<Vec<Ref>>,
     /// each trainee's deck class, as the index of its first trainee: trainees with the same outfit coverage and own-skill
     /// chances of the targets, the same relevant cards barred and as many plain pals face the same deck problem (her
-    /// best deck and its value are one function of the inheritance chances; `rise` and `dmax` agree), so a proof one of
-    /// them makes (`Ref`, `ruled`) holds for all of them. Within a class only the slots' affinity (so q) differs.
-    cls: Vec<usize>,
+    /// best deck and its value are one function of the inheritance chances; `rise` and `deck_odds_ceilings` agree), so
+    /// a proof one of them makes (`Ref`, `ruled`) holds for all of them. Within a class only the slots' affinity (so q)
+    /// differs.
+    deck_class: Vec<usize>,
     /// whether `solve` bounds with `seen`: off for the search whose fully checked decks seed the simulator's cache
     /// (so the simulator's values do not depend on what earlier searches proved)
     use_seen: bool,
-    /// per deck class (`cls`), what its product searches proved (`best_deck` pass 1): (chances q, S) with every legal deck's product
-    /// value at q (fixed factor included, before the spark scale) at most S. Bounds her other candidates (`solve`).
+    /// per deck class (`deck_class`), what its product searches proved (`best_deck` pass 1): (chances q, S) with every
+    /// legal deck's product value at q (fixed factor included, before the spark scale) at most S. Bounds her other
+    /// candidates (`solve`).
     ruled: Vec<Vec<(Vec<f64>, f64)>>,
     /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
-    last_pv: Option<f64>,
+    last_product_bound: Option<f64>,
     /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
     /// best: careers below it are pruned as if the bar were already there); NEG_INFINITY for every other search
     pub(crate) floor: f64,
@@ -253,26 +267,26 @@ struct Env<'data> {
     pub(crate) cap_breach: usize,
     /// the cap-free searches (`best_deck_cf`): reruns after a breach, those that proved nothing, breaches left without
     /// a rerun (`CAP_RERUN=0`), their work (counted apart from `work`)
-    pub(crate) cfs: CfStats,
+    pub(crate) cap_free_stats: CfStats,
     /// per class, the trainee and deck that set `max_ratio`
-    pub(crate) max_deck: [Option<(usize, Sel)>; 4],
+    pub(crate) max_deck: [Option<(usize, SelectedDeck)>; 4],
     /// the lowest cap any deck search was certified under (`best_deck_run`: a band over EXACT_CAP decks is retried
     /// down the cap ladder), and how many bands overflowed; a search below the top cap is not `full`
     pub(crate) cert: f64,
     pub(crate) overflows: usize,
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
-    hard: usize,
+    hard_work_cap: usize,
     /// `best_deck` calls without start decks, by what they read (`DeckKey`): the outcome and what the call did besides
     /// (kept between jobs of one setup, `DECK_KEEP`)
     deck_memo: crate::FxMap<DeckKey, DeckMemo>,
     /// `corners_kept`'s tables by (deck class, the deck's entries, filler), kept between jobs of one setup with `deck_memo`
     corner_memo: crate::FxMap<(usize, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
     /// the setup the memo is kept under, and this job's number
-    memo_fp: u64,
-    job: u64,
-    /// borrowed veterans a pair of parents may hold in every pool this Env builds (`Pool::max_bor`): 1, 0 under
+    memo_fingerprint: u64,
+    job_number: u64,
+    /// borrowed veterans a pair of parents may hold in every pool this Env builds (`Pool::max_borrowed`): 1, 0 under
     /// `borrowed_parent` "never"
-    max_bor: u8,
+    max_borrowed: u8,
 }
 
 /// a new data set (the worker's `init`): nothing kept from the old one
@@ -322,7 +336,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }
     // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
     // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
-    let own_pool = (cj.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_bor: 0, ..pool.clone() });
+    let own_pool = (cj.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_borrowed: 0, ..pool.clone() });
     run.pick_pool = own_pool.as_ref();
     env.use_seen = true;
     // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
@@ -414,12 +428,12 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
     let (d, sk, cr, v) = (input.data, input.skills, input.cards, input.job);
     let (sj, dj, cj) = (&jobs.skills, &jobs.deck, &jobs.career);
     let model = Model::new(d, sk, sj);
-    let ew0 = model.ews.clone();
-    let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
-    let nu = unc.len();
-    let ntar = sj.targets.len();
-    let uncv = model.uncertain.clone();
-    let fixed_t: Vec<usize> = (0..ntar).filter(|i| !uncv.contains(i)).collect();
+    let own_event_chances = model.ews.clone();
+    let uncertain_groups: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
+    let uncertain_count = uncertain_groups.len();
+    let target_count = sj.targets.len();
+    let uncertain_targets = model.uncertain.clone();
+    let fixed_targets: Vec<usize> = (0..target_count).filter(|i| !uncertain_targets.contains(i)).collect();
     let n = d.umas.len();
     let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
     let lock_blocked =
@@ -437,66 +451,67 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
         return Err(json!({"error": "Add at least two veterans to choose parents from."}));
     }
     let pool_ids: Vec<u32> = trainees.iter().map(|&i| d.umas[i].id).collect();
-    let ent = deck_entries(cr, dj, &unc, &pool_ids)?;
-    let space = deck_space(cr, dj, sk, &unc, &ent);
-    let dmax = deck_odds_ceilings(d, &space, &owned, nu, dj.deck_size);
-    let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
+    let ent = deck_entries(cr, dj, &uncertain_groups, &pool_ids)?;
+    let space = deck_space(cr, dj, sk, &uncertain_groups, &ent);
+    let deck_odds_ceilings = deck_odds_ceilings(d, &space, &owned, uncertain_count, dj.deck_size);
+    let outfit_coverage: Vec<Vec<Vec<u8>>> =
+        model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
     // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
     let setup_fingerprint = setup_fp(v);
-    let memo_fp = {
+    let memo_fingerprint = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         setup_fingerprint.hash(&mut h);
         pool_ids.hash(&mut h);
         h.finish()
     };
-    let job = JOB_NO.with(|c| {
+    let job_number = JOB_NO.with(|c| {
         c.set(c.get() + 1);
         c.get()
     });
     let kept = DECK_KEEP
         .with(|c| {
             let mut c = c.borrow_mut();
-            c.iter().position(|e| e.0 == memo_fp).map(|i| c.remove(i).1)
+            c.iter().position(|e| e.0 == memo_fingerprint).map(|i| c.remove(i).1)
         })
         .unwrap_or_default();
     let deck_memo = if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { HashMap::default() };
     let corner_memo = if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { HashMap::default() };
     let mut env = Env {
-        d,
-        sj,
+        data: d,
+        skill_job: sj,
         model,
-        ew0,
-        uncv,
-        fixed_t,
-        ntar,
-        nu,
-        unc,
+        own_event_chances,
+        uncertain_targets,
+        fixed_targets,
+        target_count,
+        uncertain_count,
+        uncertain_groups,
         space,
-        dmax,
-        sts0,
+        deck_odds_ceilings,
+        outfit_coverage,
         owned,
         budget,
         work: 0,
         seen: vec![vec![]; n],
         use_seen: true,
         ruled: vec![vec![]; n],
-        last_pv: None,
+        last_product_bound: None,
         floor: f64::NEG_INFINITY,
-        hard: 0,
+        hard_work_cap: 0,
         max_ratio: [0.0; 4],
         cap_breach: 0,
-        cfs: CfStats::default(),
+        cap_free_stats: CfStats::default(),
         max_deck: Default::default(),
         cert: f64::INFINITY,
         overflows: 0,
         deck_memo,
         corner_memo,
-        memo_fp,
-        job,
-        cls: (0..n).collect(),
-        max_bor: u8::from(cj.borrowed_parent != BorrowedParent::Never),
+        memo_fingerprint,
+        job_number,
+        deck_class: (0..n).collect(),
+        max_borrowed: u8::from(cj.borrowed_parent != BorrowedParent::Never),
     };
     assign_deck_classes(&mut env);
     Ok(CareerSetup { env, trainees, setup_fingerprint })
@@ -545,25 +560,25 @@ fn deck_odds_ceilings(
         .collect()
 }
 
-/// Deck classes (`Env::cls`): the key holds everything of a trainee the deck search reads (outfit coverage, own-skill
-/// chances to the bit, `dmax`, the relevant cards she may not take, how many plain pals she may); each trainee's class
-/// is the first trainee with her key.
+/// Deck classes (`Env::deck_class`): the key holds everything of a trainee the deck search reads (outfit coverage,
+/// own-skill chances to the bit, `deck_odds_ceilings`, the relevant cards she may not take, how many plain pals she
+/// may); each trainee's class is the first trainee with her key.
 fn assign_deck_classes(env: &mut Env) {
     let mut first: crate::FxMap<Vec<u64>, usize> = crate::FxMap::default();
-    for u in 0..env.d.umas.len() {
-        let uid = env.d.umas[u].id;
+    for u in 0..env.data.umas.len() {
+        let uid = env.data.umas[u].id;
         let mut k: Vec<u64> = vec![];
-        for o in &env.sts0[u] {
+        for o in &env.outfit_coverage[u] {
             k.push(o.len() as u64);
             k.extend(o.iter().map(|&x| u64::from(x)));
         }
         k.push(u64::MAX);
-        for o in &env.ew0[u] {
+        for o in &env.own_event_chances[u] {
             k.push(o.len() as u64);
             k.extend(o.iter().map(|x| x.to_bits()));
         }
         k.push(u64::MAX);
-        match &env.dmax[u] {
+        match &env.deck_odds_ceilings[u] {
             Some((w, g)) => {
                 k.push(1);
                 k.extend(w.iter().chain(g).map(|x| x.to_bits()));
@@ -574,7 +589,7 @@ fn assign_deck_classes(env: &mut Env) {
         k.extend((0..env.space.rel.len()).filter(|&j| env.space.cards[env.space.rel[j]].blocks(uid)).map(|j| j as u64));
         k.push(u64::MAX);
         k.push(env.space.legal_plain(&[uid]).len() as u64);
-        env.cls[u] = *first.entry(k).or_insert(u);
+        env.deck_class[u] = *first.entry(k).or_insert(u);
     }
 }
 
@@ -679,14 +694,14 @@ fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Solve
         Err(e) => return json!({"error": format!("next: {e}")}),
     };
     let borrowing;
-    let (solved, pick) = match run.pick_pool {
+    let (solved, pick_search) = match run.pick_pool {
         None => (sv, None),
         // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
         // key (so a plan after an "allow" run takes it as it is)
         Some(pick_pool) => {
             borrowing =
                 solve_kept(env, run.search_key(&["next", "no_reports", "borrowed_parent"]), &run.search_request());
-            (&borrowing, Some((pick_pool, sv)))
+            (&borrowing, Some(sim::plan::PickSearch { pool: pick_pool, solved: sv }))
         }
     };
     sim::plan::index_rule(
@@ -699,7 +714,7 @@ fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Solve
             fixed_parents: &cj.fix,
             trainees: run.trainees,
             settings: &settings,
-            pick,
+            pick_search,
         },
     )
 }
@@ -728,9 +743,9 @@ fn note_job_certificates(env: &Env, out: &mut Value, rho_top: f64) {
     if env.space.dj.cap_free {
         out["cap_free"] = json!(true);
     }
-    if env.cfs != CfStats::default() {
-        out["cap_rerun"] = json!({"searches": env.cfs.reruns, "unproven": env.cfs.open, "unanswered": env.cfs.unhandled, "work": env.cfs.work});
-        if env.cfs.open > 0 || env.cfs.unhandled > 0 {
+    if env.cap_free_stats != CfStats::default() {
+        out["cap_rerun"] = json!({"searches": env.cap_free_stats.reruns, "unproven": env.cap_free_stats.open, "unanswered": env.cap_free_stats.unhandled, "work": env.cap_free_stats.work});
+        if env.cap_free_stats.open > 0 || env.cap_free_stats.unhandled > 0 {
             out["complete"] = json!(false);
         }
     }
@@ -840,18 +855,18 @@ mod tests {
     fn inheritance_copies_match_lineage() {
         with_env(Box::new(|env: &mut Env, pool: &Pool| {
             let mut p = pool.clone();
-            for x in 0..p.me.len() {
+            for x in 0..p.veterans.len() {
                 if x % 3 == 0 {
-                    p.me[x].mix = Some([0.5, 0.4, 0.1]);
+                    p.veterans[x].star_mix = Some([0.5, 0.4, 0.1]);
                 }
                 if x % 4 == 1
-                    && let Some(g) = p.gp[x].first_mut()
+                    && let Some(g) = p.parents[x].first_mut()
                 {
-                    g.stars = std::rc::Rc::new(p.me[x].stars.iter().map(|&s| s.max(1)).collect());
-                    g.mix = Some([0.2, 0.3, 0.5]);
+                    g.stars = std::rc::Rc::new(p.veterans[x].stars.iter().map(|&s| s.max(1)).collect());
+                    g.star_mix = Some([0.2, 0.3, 0.5]);
                 }
             }
-            let ks: Vec<usize> = (0..env.ntar).collect();
+            let ks: Vec<usize> = (0..env.target_count).collect();
             let trainees: Vec<usize> = env.owned.clone();
             let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<u64>>();
             let (mut n, mut tg, mut tg_t) = (0usize, vec![], usize::MAX);
@@ -870,7 +885,7 @@ mod tests {
                         tg.clear();
                         tg_t = t;
                     }
-                    let mut qq = vec![0.0f64; env.ntar];
+                    let mut qq = vec![0.0f64; env.target_count];
                     let cq = env.lineage_qc(&p, lineage, &ks, &mut qq, &mut tg);
                     assert_eq!((bits(&qq), cq.to_bits()), (bits(&q), c.to_bits()), "lineage_qc t {t} pair {a} {b}");
                     for (y, iv) in [(a, b), (b, a)] {
@@ -878,9 +893,9 @@ mod tests {
                         let sl = env.slots(&p, her_lineage);
                         let pos = sl.iter().position(|z| z.parent && z.legacy == iv).unwrap();
                         let mut sl0 = sl.clone();
-                        sl0[pos].stars = std::rc::Rc::new(vec![0; env.ntar]);
+                        sl0[pos].stars = std::rc::Rc::new(vec![0; env.target_count]);
                         sl0[pos].mix = None;
-                        let inherit::Inheritance { chances: q0, carriers: nc0 } = inherit(&sl0, env.ntar);
+                        let inherit::Inheritance { chances: q0, carriers: nc0 } = inherit(&sl0, env.target_count);
                         let hs = env.her_slot(&p, her_lineage).unwrap();
                         let fa = aff_factor(sl[pos].rel, sl[pos].race);
                         assert_eq!(bits(&hs.q0), bits(&q0));

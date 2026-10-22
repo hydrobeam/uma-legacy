@@ -7,8 +7,8 @@ use super::{
 };
 use crate::deck::capfree::LandingBoundTables;
 use crate::deck::{
-    CF_LIM, CF_ON, CapFreeRatios, DeckSpace, GTab, Instant, LandPre, Model, SB_ON, SB_USED, SPT, Sel, cf_check, gm_g,
-    gm_w, sb_mode, src_levels, top_desc,
+    CF_LIM, CF_ON, CapFreeRatios, DeckSpace, GTab, Instant, LandPre, Model, SB_ON, SB_USED, SPT, SelectedDeck,
+    cf_check, gm_g, gm_w, sb_mode, src_levels, top_desc,
 };
 
 impl DeckSpace<'_> {
@@ -192,7 +192,7 @@ impl DeckSpace<'_> {
         // visit
         let lazy = best && valid;
         let t_cfg = Instant::now();
-        let out: Vec<(f64, Sel)> = vec![];
+        let out: Vec<(f64, SelectedDeck)> = vec![];
         let bestv = if best { seed } else { f64::NEG_INFINITY };
         let counts = self.counts_all();
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();

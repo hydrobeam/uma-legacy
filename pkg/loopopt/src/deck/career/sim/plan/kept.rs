@@ -222,12 +222,12 @@ pub(crate) fn best_of(env: &mut Env, parents: ParentPool, trainee: usize, kept: 
                     best_ceiling = f64::max(best_ceiling, ceiling);
                 },
             );
-            if best_ceiling * (1.0 + 1e-9) < old_career.val {
+            if best_ceiling * (1.0 + 1e-9) < old_career.value {
                 return BestCareer { found: Some(old_career.clone()), proof_refs, complete: kept_complete };
             }
         }
         // only a career above the kept one matters: the search's bar starts there (exact; a tie keeps the kept one)
-        env.floor = old.as_ref().map_or(f64::NEG_INFINITY, |old_career| old_career.val);
+        env.floor = old.as_ref().map_or(f64::NEG_INFINITY, |old_career| old_career.value);
         let searched = env.solve(pool, &fixed_with_new_veteran, &[trainee], false, 1);
         env.floor = f64::NEG_INFINITY;
         if proof_refs.len() < searched.refs.len() {
@@ -239,7 +239,7 @@ pub(crate) fn best_of(env: &mut Env, parents: ParentPool, trainee: usize, kept: 
         let complete = kept_complete && searched.complete;
         let new = searched.found.into_iter().next();
         let found = match (old, new) {
-            (Some(old), Some(new)) => Some(if new.val > old.val { new } else { old.clone() }),
+            (Some(old), Some(new)) => Some(if new.value > old.value { new } else { old.clone() }),
             (old, new) => old.clone().or(new),
         };
         return BestCareer { found, proof_refs, complete };
@@ -297,34 +297,40 @@ pub(crate) fn stamp_ok(s: &Sim, trainees: Option<&[usize]>, stamp: Option<CacheS
 }
 
 /// the same career as `score_career` reads it: trainee, parents in order, every field of the deck (floats by bits). Not
-/// its value (`Found::val`, nor `ub`): `score_career` never reads them, and a proxy's value (the surrogate's corner-table
-/// interpolation) and the search's exact one differ in their last bits
+/// its value (`Found::value`, nor `ceiling`): `score_career` never reads them, and a proxy's value (the surrogate's
+/// corner-table interpolation) and the search's exact one differ in their last bits
 pub(crate) fn same_career(f: &Found, g: &Found) -> bool {
     let bits = |a: &[f64], b: &[f64]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits());
-    f.t == g.t
-        && f.a == g.a
-        && f.b == g.b
-        && f.sel.ents == g.sel.ents
-        && f.sel.plain == g.sel.plain
-        && f.sel.filler == g.sel.filler
-        && bits(&f.sel.dw, &g.sel.dw)
-        && bits(&f.sel.dg, &g.sel.dg)
+    f.trainee == g.trainee
+        && f.first_parent == g.first_parent
+        && f.second_parent == g.second_parent
+        && f.deck.entries == g.deck.entries
+        && f.deck.plain_pals == g.deck.plain_pals
+        && f.deck.filler_cards == g.deck.filler_cards
+        && bits(&f.deck.white_hint_chances, &g.deck.white_hint_chances)
+        && bits(&f.deck.gold_hint_chances, &g.deck.gold_hint_chances)
 }
 
 #[cfg(test)]
 mod cached_search_tests {
     use super::*;
-    use crate::deck::Sel;
+    use crate::deck::SelectedDeck;
 
     #[test]
     fn stored_searches_distinguish_missing_empty_and_found() {
         let found = Found {
-            t: 2,
-            a: 0,
-            b: 1,
-            val: 0.25,
-            ub: 0.5,
-            sel: Sel { ents: vec![1], plain: 1, filler: 0, dw: vec![-0.0], dg: vec![0.5] },
+            trainee: 2,
+            first_parent: 0,
+            second_parent: 1,
+            value: 0.25,
+            ceiling: 0.5,
+            deck: SelectedDeck {
+                entries: vec![1],
+                plain_pals: 1,
+                filler_cards: 0,
+                white_hint_chances: vec![-0.0],
+                gold_hint_chances: vec![0.5],
+            },
         };
         let searches =
             vec![CachedSearch::Unsearched, CachedSearch::Known(None), CachedSearch::Known(Some(found.clone()))];
@@ -341,7 +347,7 @@ mod cached_search_tests {
         assert!(matches!(cached.best_careers[1], CachedSearch::Known(None)));
         assert!(!cached.best_careers[1].is_unsearched());
         assert!(cached.best_careers[1].found().is_none());
-        assert_eq!(cached.best_careers[2].found().unwrap().sel.dw[0].to_bits(), (-0.0f64).to_bits());
+        assert_eq!(cached.best_careers[2].found().unwrap().deck.white_hint_chances[0].to_bits(), (-0.0f64).to_bits());
         assert_eq!(json!(cached_searches_out(&cached.best_careers)), stored[0]["b"]);
         assert_eq!(json!(cached_searches_out(&cached.looped_careers)), stored[0]["l"]);
         assert_eq!(cached.base_incomplete, [false, false, true]);

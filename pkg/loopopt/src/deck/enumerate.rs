@@ -1,5 +1,5 @@
 //! The deck enumeration (`DeckSpace::search`): node bounds, the exact pass with its caps and certificate.
-use crate::deck::{DeckSpace, LandPre, LegalTabs, Model, Sel};
+use crate::deck::{DeckSpace, LandPre, LegalTabs, Model, SelectedDeck};
 pub(crate) use bounds::RBCHK;
 use bounds::{DOM_GAP, OutfitBounds, RatioPrefixes, prepare_outfit_bounds, prepare_ratio_prefixes, rb_check};
 use config::{ConfigurationQueue, ConfigurationScratch, ConfigurationTables, PendingConfig, SearchConfig};
@@ -36,7 +36,7 @@ pub(super) enum SearchStop {
 }
 
 pub(super) struct SearchOutcome {
-    pub(super) decks: Vec<(f64, Sel)>,
+    pub(super) decks: Vec<(f64, SelectedDeck)>,
     /// None means enumeration finished under the requested bounds; exact scoring may still be needed.
     pub(super) incomplete: Option<SearchStop>,
 }

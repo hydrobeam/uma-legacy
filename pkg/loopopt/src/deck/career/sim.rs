@@ -57,8 +57,8 @@ use super::cache::Cache;
 use super::inherit::{ExactOptions, Inheritance, LineageChances};
 use super::{
     Ancestor, Bar, CardsRaw, Data, DeckRes, Deserialize, Env, Found, FxMap, GEN_GOLD, HerSlot, Legacy, PROF, Pool, Ref,
-    RelOf, Sel, SkillJob, SkillsRaw, SlotSink, Solved, Value, Who, aff_factor, d_true, holds_fix, inherit, insp_miss,
-    interp_in, json, now_ms, prof, progress, rise_factor, run_career, spark_scale,
+    RelOf, SelectedDeck, SkillJob, SkillsRaw, SlotSink, Solved, Value, Who, aff_factor, d_true, holds_fix, inherit,
+    insp_miss, interp_in, json, now_ms, prof, progress, rise_factor, run_career, spark_scale,
 };
 use crate::deck::career::sim::plan::ScoringContext;
 use crate::deck::career::{Career, JobInputs, Lineage};
@@ -347,7 +347,7 @@ struct PoolIdentity {
 }
 impl PoolIdentity {
     fn of(pool: &Pool) -> Self {
-        Self { address: pool as *const Pool as usize, veterans: pool.me.len(), max_borrowed: pool.max_bor }
+        Self { address: pool as *const Pool as usize, veterans: pool.veterans.len(), max_borrowed: pool.max_borrowed }
     }
 }
 /// `index`, this run: what its plan jobs did.
@@ -403,14 +403,14 @@ fn stats(xs: &[f64]) -> Value {
 /// without legal deck odds). `outfit_fast` at q = 0 on the hint chances `set_trainee` would write, split: A = dg GOLD +
 /// (1 - dg) WHITE and B = (1 - dg) WHITE (1 - dw)(1 - e) where she lacks the skill, B = 0 where she has it
 fn fastc(env: &Env) -> Vec<Vec<Vec<(f64, f64)>>> {
-    (0..env.d.umas.len())
-        .map(|t| match &env.dmax[t] {
+    (0..env.data.umas.len())
+        .map(|t| match &env.deck_odds_ceilings[t] {
             None => vec![],
-            Some((dw, dg)) => env.sts0[t]
+            Some((dw, dg)) => env.outfit_coverage[t]
                 .iter()
-                .zip(&env.ew0[t])
+                .zip(&env.own_event_chances[t])
                 .map(|(sv, ew)| {
-                    (0..env.nu)
+                    (0..env.uncertain_count)
                         .map(|k| match sv[k] {
                             2 => (GEN_GOLD, 0.0),
                             1 => (dg[k] * GEN_GOLD + (1.0 - dg[k]) * crate::skills::GEN_WHITE, 0.0),
@@ -451,7 +451,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         roster: SimulationRoster,
         options: SimulationOptions,
     ) -> Self {
-        let ntar = env.ntar;
+        let ntar = env.target_count;
         let full = (1usize << ntar) - 1;
         let mut failed_sets: Vec<usize> = (0..full).collect();
         failed_sets.sort_by_key(|&m| (m.count_ones(), m));
@@ -460,7 +460,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         let static_ceilings: Vec<f64> = (0..n)
             .map(|t| if env.owned.contains(&t) { env.ceiling(t, &one, 1.0).unwrap_or(0.0) } else { 0.0 })
             .collect();
-        let star_mix = env.sj.star_dist;
+        let star_mix = env.skill_job.star_dist;
         let fastc = fastc(env);
         let fixed = env.model.fixed_factor();
         Sim {
@@ -500,7 +500,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     }
     /// `take_pool`'s copy back, its extra entries popped
     pub(super) fn put_pool(&mut self, pool: &Pool, p: Pool) {
-        debug_assert_eq!(p.me.len(), pool.me.len(), "put_pool takes back the pool take_pool lent");
+        debug_assert_eq!(p.veterans.len(), pool.veterans.len(), "put_pool takes back the pool take_pool lent");
         self.working_pool = Some((PoolIdentity::of(pool), p));
     }
     fn key(&self, c: &Cur) -> String {
@@ -510,16 +510,16 @@ impl<'env, 'data> Sim<'env, 'data> {
     /// P(all) at chances q with spark scale c through trainee t's cached decks: (value, deck index; usize::MAX: none)
     fn tval(&self, t: usize, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
         // (1 - q per uncertain target, on the stack up to 32 of them)
-        let nu = self.env.uncv.len();
+        let nu = self.env.uncertain_targets.len();
         let (mut xa, xv): ([f64; 32], Vec<f64>);
         let x: &[f64] = if nu <= 32 {
             xa = [0.0; 32];
-            for (k, &i) in self.env.uncv.iter().enumerate() {
+            for (k, &i) in self.env.uncertain_targets.iter().enumerate() {
                 xa[k] = 1.0 - q[i];
             }
             &xa[..nu]
         } else {
-            xv = self.env.uncv.iter().map(|&i| 1.0 - q[i]).collect();
+            xv = self.env.uncertain_targets.iter().map(|&i| 1.0 - q[i]).collect();
             &xv
         };
         let (mut best, mut bd) = (0.0f64, usize::MAX);
@@ -549,7 +549,7 @@ impl<'env, 'data> Sim<'env, 'data> {
                 request.trainee,
                 request.inheritance_chances,
                 request.spark_scale,
-                &self.env.ruled[self.env.cls[request.trainee]],
+                &self.env.ruled[self.env.deck_class[request.trainee]],
                 Bar::Below(request.threshold),
             )
         {
@@ -560,7 +560,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         if di == usize::MAX || rb > tv * (1.0 + self.cfg.margin) {
             self.env.set_trainee(request.trainee, request.inheritance_chances);
             // (her cached decks borrowed: the cache and the Env are separate fields)
-            let sr: Vec<&Sel> = self.cache.decks[request.trainee].iter().map(|x| &x.sel).collect();
+            let sr: Vec<&SelectedDeck> = self.cache.decks[request.trainee].iter().map(|x| &x.sel).collect();
             self.env.work = 0;
             let mut sc = 0;
             let r = self.env.best_deck(
@@ -570,15 +570,19 @@ impl<'env, 'data> Sim<'env, 'data> {
                 &sr,
                 &mut sc,
             );
-            if let Some(s) = self.env.last_pv.take() {
-                let ct = self.env.cls[request.trainee];
+            if let Some(s) = self.env.last_product_bound.take() {
+                let ct = self.env.deck_class[request.trainee];
                 self.env.ruled[ct].push((request.inheritance_chances.to_vec(), s));
             }
             self.n.searches += 1;
             if let DeckRes::Done(v, sel, full) = r {
                 self.cache.add(self.env, request.trainee, &sel);
                 if full {
-                    self.cache.refs[request.trainee].push(Ref { q: request.inheritance_chances.to_vec(), val: v, sel });
+                    self.cache.refs[request.trainee].push(Ref {
+                        q: request.inheritance_chances.to_vec(),
+                        val: v,
+                        deck: sel,
+                    });
                 } else {
                     self.n.partial_searches += 1;
                 }
@@ -593,7 +597,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         let env = &*self.env;
         let p = &st.pool;
-        let ntar = env.ntar;
+        let ntar = env.target_count;
         // `walk_slots`' slots and affinities, each slot's misses multiplied in as it
         // comes but a parent's after her grandparent slots' (this filter's own order, so its own rounding); a
         // random-star slot counts at its fixed stars here, where `inherit` averages its squared miss over the mix
@@ -643,7 +647,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         let mut best = 0.0f64;
         for ab in &self.fastc[t] {
             let mut v = 1.0f64;
-            for (j, &i) in env.uncv.iter().enumerate() {
+            for (j, &i) in env.uncertain_targets.iter().enumerate() {
                 v *= ab[j].0 - ab[j].1 * miss[i] * miss[i];
             }
             if v > best {
@@ -704,10 +708,10 @@ impl<'env, 'data> Sim<'env, 'data> {
     }
     /// her chance per race of at least one win, cached per (trainee, the parents' wins)
     pub(super) fn wins(&mut self, pool: &Pool, lineage: Lineage) -> Rc<Vec<f64>> {
-        let mut k: Vec<usize> = pool.me[lineage.first_parent]
+        let mut k: Vec<usize> = pool.veterans[lineage.first_parent]
             .wins
             .iter()
-            .chain(&pool.me[lineage.second_parent].wins)
+            .chain(&pool.veterans[lineage.second_parent].wins)
             .map(|w| w.0)
             .collect();
         k.sort_unstable();
@@ -731,7 +735,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     pub(super) fn make_cur(&mut self, pool: &Pool, career: Career, rotation: bool) -> Cur {
         let lineage = career.lineage;
         let t = lineage.trainee;
-        let Inheritance { chances: q, carriers: nc } = inherit(&self.env.slots(pool, lineage), self.env.ntar);
+        let Inheritance { chances: q, carriers: nc } = inherit(&self.env.slots(pool, lineage), self.env.target_count);
         self.env.set_trainee(t, &q);
         let exact = self.env.exact(t, career.deck, &nc, ExactOptions { all_but_one: true, landed_sets: true });
         let os = self.env.outcome_sets(exact.outfit, &exact.ext);
@@ -860,7 +864,7 @@ impl<'env, 'data> Sim<'env, 'data> {
             let sv = self.env.solve(&st.pool, &prev, &[t], false, 1);
             let f = sv.found.first().expect("loop bootstrap: no legal career for a member");
             self.cache.absorb(self.env, &sv.refs);
-            self.make_cur(&st.pool, Career { lineage: f.lineage(), deck: &f.sel }, true)
+            self.make_cur(&st.pool, Career { lineage: f.lineage(), deck: &f.deck }, true)
         };
         let c = Rc::new(c);
         st.current = Some(Rc::clone(&c));
@@ -876,7 +880,7 @@ impl<'env, 'data> Sim<'env, 'data> {
             let t = self.members[(m + k) % nm];
             let other = if k == 1 { rotation.latest[(m + nm - 1) % nm] } else { rotation.latest[(m + 1) % nm] };
             let Some(o) = other else { continue };
-            if o == v || st.pool.me[o].chara == st.pool.me[v].chara {
+            if o == v || st.pool.veterans[o].chara == st.pool.veterans[v].chara {
                 continue;
             }
             careers.push(Lineage { trainee: t, first_parent: v.min(o), second_parent: v.max(o) });
@@ -1019,7 +1023,7 @@ impl<'env, 'data> Sim<'env, 'data> {
             mask = last;
         }
         let mut sparks = vec![];
-        for (i, tg) in self.env.sj.targets.iter().enumerate() {
+        for (i, tg) in self.env.skill_job.targets.iter().enumerate() {
             if mask >> i & 1 == 0 {
                 continue;
             }
@@ -1053,7 +1057,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     fn veteran_result(&self, l: &Legacy) -> VeteranResult {
         let stars = self
             .env
-            .sj
+            .skill_job
             .targets
             .iter()
             .map(|t| l.sparks.iter().filter(|s| s.0 == t.group).map(|s| s.1).max().unwrap_or(0))
@@ -1170,8 +1174,15 @@ impl<'env, 'data> Sim<'env, 'data> {
     }
     /// total variation distance between the landed-set distributions of two decks of trainee t at chances q (carriers
     /// nc)
-    fn landed_set_distance(&mut self, t: usize, q: &[f64], nc: &[i32], first: &Sel, second: &Sel) -> f64 {
-        let mut sets = |sel: &Sel| {
+    fn landed_set_distance(
+        &mut self,
+        t: usize,
+        q: &[f64],
+        nc: &[i32],
+        first: &SelectedDeck,
+        second: &SelectedDeck,
+    ) -> f64 {
+        let mut sets = |sel: &SelectedDeck| {
             self.env.set_trainee(t, q);
             let exact = self.env.exact(t, sel, nc, ExactOptions { all_but_one: false, landed_sets: true });
             self.env.outcome_sets(exact.outfit, &exact.ext)
@@ -1186,7 +1197,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         self.env.work = 0;
         let mut sc = 0;
         let r = self.env.best_deck(t, c, 0.0, &[], &mut sc);
-        self.env.last_pv = None;
+        self.env.last_product_bound = None;
         match r {
             DeckRes::Done(v, deck, finished) => ExactDeck { value: c * v, deck, finished },
             _ => panic!("audit: no legal deck"),
@@ -1199,8 +1210,17 @@ impl<'env, 'data> Sim<'env, 'data> {
         let cur = self.greedy_cur(st);
         let trainees = self.trainees.clone();
         let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
-        let ex =
-            sv.found.first().map(|f| (f.val, format!("{}:{},{}", self.d.umas[f.t].id, f.a.min(f.b), f.a.max(f.b))));
+        let ex = sv.found.first().map(|f| {
+            (
+                f.value,
+                format!(
+                    "{}:{},{}",
+                    self.d.umas[f.trainee].id,
+                    f.first_parent.min(f.second_parent),
+                    f.first_parent.max(f.second_parent)
+                ),
+            )
+        });
         let sk = self.key(&cur);
         let differs = ex.as_ref().is_none_or(|x| x.1 != sk);
         let mut rows = vec![self.audit_row(&st.pool, cur.lineage, AuditKind::Pick)];
@@ -1240,7 +1260,10 @@ impl<'env, 'data> Sim<'env, 'data> {
         let cur = self.greedy_cur(st);
         let trainees = self.trainees.clone();
         let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
-        let ex = sv.found.first().map(|f| (f.val, format!("{}:{},{}", self.d.umas[f.t].id, f.a, f.b)));
+        let ex = sv
+            .found
+            .first()
+            .map(|f| (f.value, format!("{}:{},{}", self.d.umas[f.trainee].id, f.first_parent, f.second_parent)));
         let argmax = json!({"pool": st.legacies.len(), "sur": self.key(&cur), "sur_p": cur.p_all, "sur_val": st.best.map(|p| p.value),
                             "ex": ex.as_ref().map(|x| x.1.clone()), "ex_p": ex.as_ref().map(|x| x.0), "proven": sv.proven});
         let mut rows = vec![];
@@ -1276,7 +1299,7 @@ impl<'env, 'data> Sim<'env, 'data> {
                 self.env.work = 0;
                 let mut sc = 0;
                 let r = self.env.best_deck(t, c, 0.0, &[], &mut sc);
-                self.env.last_pv = None;
+                self.env.last_product_bound = None;
                 let DeckRes::Done(v, sel, full) = r else { continue };
                 let exv = c * v;
                 // landed sets: the cached argmax deck against the exact best deck (total variation distance)
@@ -1433,7 +1456,7 @@ enum AuditKind {
 struct ExactDeck {
     /// Its exact value times the spark scale.
     value: f64,
-    deck: Sel,
+    deck: SelectedDeck,
     /// The deck search finished (proven best).
     finished: bool,
 }
@@ -1483,8 +1506,8 @@ pub(super) fn simulate<'data>(
         Ok(x) => x,
         Err(e) => return json!({"error": format!("simulate: {e}")}),
     };
-    let ntar = env.ntar;
-    if ntar > 12 || env.nu > 10 {
+    let ntar = env.target_count;
+    if ntar > 12 || env.uncertain_count > 10 {
         return json!({"error": "simulate takes at most 12 targets, 10 of them not guaranteed"});
     }
     let base = match cfg.policy.as_str() {

@@ -61,14 +61,20 @@ pub(super) struct LegalTabs {
     pub(super) glk: Vec<u8>,
     pub(super) nplain: usize,
 }
+/// A deck a search selected: its relevant entries, how many plain pals and filler cards fill it, and its hint chances
+/// per uncertain target.
 #[derive(Clone)]
-pub(super) struct Sel {
+pub(super) struct SelectedDeck {
     /// Indices into this DeckSpace's parallel entry arrays, sorted before returning a search result.
-    pub(super) ents: Vec<usize>,
-    pub(super) plain: usize,
-    pub(super) filler: usize,
-    pub(super) dw: Vec<f64>,
-    pub(super) dg: Vec<f64>,
+    pub(super) entries: Vec<usize>,
+    /// How many plain pals (pal characters with no relevant card) the deck holds.
+    pub(super) plain_pals: usize,
+    /// How many filler cards (any SR without target hints) complete it.
+    pub(super) filler_cards: usize,
+    /// Per uncertain target, the deck's chance of a white hint when it gives no gold one.
+    pub(super) white_hint_chances: Vec<f64>,
+    /// Per uncertain target, the deck's chance of a gold hint.
+    pub(super) gold_hint_chances: Vec<f64>,
 }
 /// Entry-major miss probabilities: entry * target_count + target, white and gold respectively.
 #[derive(Clone, Copy)]
@@ -342,23 +348,23 @@ impl<'data> DeckSpace<'data> {
         self.caps()[3]
     }
     /// a deck's structure class (`cap_class`)
-    pub(crate) fn sel_class(&self, x: &Sel) -> usize {
-        cap_class(x.ents.iter().fold(0u64, |m, &j| m | self.cvm[j]))
+    pub(crate) fn sel_class(&self, x: &SelectedDeck) -> usize {
+        cap_class(x.entries.iter().fold(0u64, |m, &j| m | self.cvm[j]))
     }
     /// a deck's cap under the ceiling rho: its class's cap, at most rho
-    pub(crate) fn sel_cap(&self, x: &Sel, rho: f64) -> f64 {
+    pub(crate) fn sel_cap(&self, x: &SelectedDeck, rho: f64) -> f64 {
         self.caps()[self.sel_class(x)].min(rho)
     }
     pub(super) fn legal_plain(&self, ids: &[u32]) -> Vec<&(u32, String, &'data Card)> {
         self.plain.iter().filter(|x| ids.iter().all(|&id| !x.2.blocks(id))).collect()
     }
-    pub(super) fn pdeck(&self, x: &Sel, ids: &[u32]) -> PDeck {
+    pub(super) fn pdeck(&self, x: &SelectedDeck, ids: &[u32]) -> PDeck {
         let srcb = Sources { dj: self.dj, unc: &self.unc };
         let lp = self.legal_plain(ids);
-        let ci: Vec<usize> = x.ents.iter().map(|&j| self.rel[j]).collect();
-        let borrowed = x.ents.iter().copied().find(|&j| self.ebor[j]).map(|j| self.rel[j]);
+        let ci: Vec<usize> = x.entries.iter().map(|&j| self.rel[j]).collect();
+        let borrowed = x.entries.iter().copied().find(|&j| self.ebor[j]).map(|j| self.rel[j]);
         let mut names: Vec<String> = x
-            .ents
+            .entries
             .iter()
             .map(|&j| {
                 let c = self.cards[self.rel[j]];
@@ -377,17 +383,17 @@ impl<'data> DeckSpace<'data> {
                 n
             })
             .collect();
-        names.extend(lp.iter().take(x.plain).map(|p| p.1.clone()));
-        for _ in 0..x.filler {
+        names.extend(lp.iter().take(x.plain_pals).map(|p| p.1.clone()));
+        for _ in 0..x.filler_cards {
             names.push("(any SR without target hints)".into());
         }
         PDeck {
             names: names.into_iter().map(Name::from).collect(),
             ids: ci.iter().map(|&i| self.cards[i].id).collect(),
-            ends: x.ents.iter().map(|&j| self.endk[j]).collect(),
-            vars: x.ents.iter().map(|&j| self.vark[j]).collect(),
+            ends: x.entries.iter().map(|&j| self.endk[j]).collect(),
+            vars: x.entries.iter().map(|&j| self.vark[j]).collect(),
             choices: x
-                .ents
+                .entries
                 .iter()
                 .map(|&j| {
                     Name::from(srcb.label(
@@ -398,17 +404,17 @@ impl<'data> DeckSpace<'data> {
                     ))
                 })
                 .collect(),
-            plain_ids: lp.iter().take(x.plain).map(|p| p.0).collect(),
+            plain_ids: lp.iter().take(x.plain_pals).map(|p| p.0).collect(),
             pal_names: ci
                 .iter()
                 .filter(|&&i| self.cards[i].pal)
                 .map(|&i| Name::from(self.cards[i].name.as_str()))
-                .chain(lp.iter().take(x.plain).map(|p| Name::from(p.1.as_str())))
+                .chain(lp.iter().take(x.plain_pals).map(|p| Name::from(p.1.as_str())))
                 .collect(),
-            pals: x.ents.iter().filter(|&&j| self.cards[self.rel[j]].pal).count() + x.plain,
+            pals: x.entries.iter().filter(|&&j| self.cards[self.rel[j]].pal).count() + x.plain_pals,
             borrowed: borrowed.map(|i| Name::from(self.cards[i].name.as_str())),
-            dw: x.dw.clone(),
-            dg: x.dg.clone(),
+            dw: x.white_hint_chances.clone(),
+            dg: x.gold_hint_chances.clone(),
         }
     }
 }

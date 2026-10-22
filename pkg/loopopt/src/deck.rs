@@ -233,8 +233,8 @@ use self::{
     multi::run_multi,
     sources::{Entries, Group, Sources, Src, deck_entries, group_gh, group_nuod, src_miss},
     space::{
-        DeckSpace, GTab, LegalTabs, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SPT, Sel, UCHK, deck_space, gm_g, gm_w,
-        kinds_all, top_desc,
+        DeckSpace, GTab, LegalTabs, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SPT, SelectedDeck, UCHK, deck_space, gm_g,
+        gm_w, kinds_all, top_desc,
     },
 };
 

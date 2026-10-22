@@ -5,7 +5,7 @@ use super::{
 use crate::deck::career::sim::plan::anchors::{FoundAnchor, OutcomeBounds, OutcomeEstimate};
 use crate::deck::career::sim::plan::cont::OwnTrio;
 use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, ScoringContext, TargetMask};
-use crate::deck::career::sim::{Env, Found, Legacy, PROF, Pool, Sel, Sim, Value, json, now_ms};
+use crate::deck::career::sim::{Env, Found, Legacy, PROF, Pool, SelectedDeck, Sim, Value, json, now_ms};
 use crate::deck::career::{Career, JobInputs, Lineage};
 
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
@@ -149,7 +149,7 @@ pub(crate) struct RollKeep {
     pub(crate) base: KeptBase,
     /// The pick's trainee and parents, and her deck.
     pub(crate) lineage: Lineage,
-    pub(crate) deck: Sel,
+    pub(crate) deck: SelectedDeck,
     /// Her own 8/8's trio sides at the plan's end (`pick_her`).
     pub(crate) own_trios: Vec<OwnTrio>,
     /// The main search's found-career anchors (`found_anchors`).
@@ -162,8 +162,8 @@ impl RollKeep {
     /// The state is of this trainee's career on these parents, in this order.
     pub(crate) const fn is_of(&self, trainee: usize, career: &Found) -> bool {
         self.lineage.trainee == trainee
-            && self.lineage.first_parent == career.a
-            && self.lineage.second_parent == career.b
+            && self.lineage.first_parent == career.first_parent
+            && self.lineage.second_parent == career.second_parent
     }
 }
 
@@ -243,9 +243,9 @@ impl RollPool<'_> {
 }
 
 fn roll_answer(s: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[u8]) -> Value {
-    let (uncv, fixed_t) = (s.env.uncv.clone(), s.env.fixed_t.clone());
-    if stars.len() != s.env.ntar {
-        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), s.env.ntar)});
+    let (uncv, fixed_t) = (s.env.uncertain_targets.clone(), s.env.fixed_targets.clone());
+    if stars.len() != s.env.target_count {
+        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), s.env.target_count)});
     }
     let outcome = OutcomeIndex::from_stars(stars, &uncv, &fixed_t);
     let mut partner_anchors = std::mem::take(&mut kept.partner_anchors);

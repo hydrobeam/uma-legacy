@@ -93,7 +93,7 @@ impl Env<'_> {
     /// that legacy's affinity / 100), each firing +1 grade, at most S. None when data.json has no aptitudes.
     pub(crate) fn pink_career(&self, p: &Pool, lineage: Lineage) -> Option<PinkCareer> {
         let t = lineage.trainee;
-        let apt = &self.d.umas[t].apt;
+        let apt = &self.data.umas[t].apt;
         if apt.len() < 10 {
             return None;
         }
@@ -132,7 +132,7 @@ impl Env<'_> {
     /// or her grades and the base data agree at every turn).
     /// Also per turn and option her expected aptitude score (110 - grade costs), as the exporter's bp.
     fn pink_uma(&self, pc: &PinkCareer, t: usize) -> Option<(Uma, Vec<Vec<f64>>)> {
-        let d = self.d;
+        let d = self.data;
         if d.race_cat.len() < d.nr || d.race_ground.len() < d.nr {
             return None;
         }
@@ -217,12 +217,12 @@ impl Env<'_> {
     /// that turn. Also her win chance per race index.
     pub(crate) fn schedule(&self, p: &Pool, lineage: Lineage) -> RaceSchedule {
         let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
-        let d = self.d;
+        let d = self.data;
         let pu = self.pink_career(p, lineage).and_then(|pc| self.pink_uma(&pc, t));
         let u = pu.as_ref().map_or(&d.umas[t], |x| &x.0);
         let mut wr = vec![1.0f64; d.nr];
         for x in [a, b] {
-            for &(r, pr) in &p.me[x].wins {
+            for &(r, pr) in &p.veterans[x].wins {
                 if r < d.nr {
                     wr[r] += pr;
                 }
@@ -233,7 +233,7 @@ impl Env<'_> {
             if pu.is_some() { crate::best_response_solve(d, u, &wr, None) } else { best_response(d, u, &wr, None) };
         let Some((s, _)) = br else { return RaceSchedule { rows: json!([]), win_chances: vec![0.0; d.nr] } };
         let wp = probs(d, u, &s);
-        let won = |x: usize, r: usize| p.me[x].wins.iter().find(|w| w.0 == r).map_or(0.0, |w| w.1);
+        let won = |x: usize, r: usize| p.veterans[x].wins.iter().find(|w| w.0 == r).map_or(0.0, |w| w.1);
         let mut rows = vec![];
         let mut k = 0usize;
         for tt in 0..NT {
