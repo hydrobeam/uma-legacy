@@ -80,16 +80,16 @@ pub(crate) struct OwnTrio {
     pub(crate) finisher_cost: f64,
 }
 
-/// V over the trios at step costs c1 (per candidate)
-pub(crate) fn trio_v(c1: &[f64], combos: &[Trio]) -> f64 {
+/// V over the trios at step costs `step_costs` (per candidate)
+pub(crate) fn trio_v(step_costs: &[f64], combos: &[Trio]) -> f64 {
     // (a plain comparison: no value here is NaN, so the same minimum as f64::min)
     let mut best = f64::INFINITY;
     for trio in combos {
-        let a_cost = if trio.a_uses_existing { 0.0 } else { c1[trio.candidate_a.0] };
-        let b_cost = if trio.b_uses_existing { 0.0 } else { c1[trio.candidate_b.0] };
-        let v = a_cost + b_cost + trio.finisher_cost;
-        if v < best {
-            best = v;
+        let a_cost = if trio.a_uses_existing { 0.0 } else { step_costs[trio.candidate_a.0] };
+        let b_cost = if trio.b_uses_existing { 0.0 } else { step_costs[trio.candidate_b.0] };
+        let value = a_cost + b_cost + trio.finisher_cost;
+        if value < best {
+            best = value;
         }
     }
     best
@@ -136,20 +136,20 @@ const MEMO_CAP: usize = 1 << 14;
 
 /// Bit equality of memoised values for `PLAN_MEMO_CHECK`.
 pub(crate) trait SameBits {
-    fn same_bits(&self, o: &Self) -> bool;
+    fn same_bits(&self, other: &Self) -> bool;
 }
 
 impl SameBits for f64 {
-    fn same_bits(&self, o: &Self) -> bool {
-        self.to_bits() == o.to_bits()
+    fn same_bits(&self, other: &Self) -> bool {
+        self.to_bits() == other.to_bits()
     }
 }
 
 impl SameBits for BuildPlan {
-    fn same_bits(&self, o: &Self) -> bool {
-        self.expected_careers.same_bits(&o.expected_careers)
-            && self.building_careers.same_bits(&o.building_careers)
-            && self.grind_odds.same_bits(&o.grind_odds)
+    fn same_bits(&self, other: &Self) -> bool {
+        self.expected_careers.same_bits(&other.expected_careers)
+            && self.building_careers.same_bits(&other.building_careers)
+            && self.grind_odds.same_bits(&other.grind_odds)
     }
 }
 
@@ -210,21 +210,21 @@ thread_local! { static MEMO_STATS: std::cell::Cell<[u64; 8]> = const { std::cell
 impl<K, V> Drop for Memo<K, V> {
     fn drop(&mut self) {
         let first = 3 * self.kind as usize;
-        MEMO_STATS.with(|c| {
-            let mut stats = c.get();
+        MEMO_STATS.with(|stats_cell| {
+            let mut stats = stats_cell.get();
             stats[first] += self.lookups;
             stats[first + 1] += self.hits;
             stats[first + 2] += u64::from(self.disabled);
-            c.set(stats);
+            stats_cell.set(stats);
         });
     }
 }
 
 fn memo_stat(place: usize) {
-    MEMO_STATS.with(|c| {
-        let mut stats = c.get();
+    MEMO_STATS.with(|stats_cell| {
+        let mut stats = stats_cell.get();
         stats[place] += 1;
-        c.set(stats);
+        stats_cell.set(stats);
     });
 }
 
@@ -237,7 +237,7 @@ pub(crate) struct MemoReport;
 
 impl Drop for MemoReport {
     fn drop(&mut self) {
-        let stats = MEMO_STATS.with(|c| c.replace([0; 8]));
+        let stats = MEMO_STATS.with(|stats_cell| stats_cell.replace([0; 8]));
         if crate::checks::get().plan_memo {
             let hit_percent =
                 |lookups: u64, hits: u64| if lookups == 0 { 0.0 } else { 100.0 * hits as f64 / lookups as f64 };
@@ -270,8 +270,8 @@ pub(crate) struct Cont {
     pub(crate) pinf: f64,
     /// per n (0..=CONT_N): `plan` reads them instead of evaluating the powers per call (the same expressions, so the
     /// same values). Empty in a default Cont.
-    pub(crate) tab: std::rc::Rc<Vec<ContStep>>,
-    /// `plan`'s and `cost_lo`'s results by the bits of p. Exact: both read p and lam, phi, pinf and tab alone, which are
+    pub(crate) tables: std::rc::Rc<Vec<ContStep>>,
+    /// `plan`'s and `cost_lo`'s results by the bits of p. Exact: both read p and lam, phi, pinf and tables alone, which are
     /// kept unchanged after construction (a refit makes new Conts). A clone shares the memos and
     /// carries the same parameters; a new or default Cont gets its own
     pub(crate) memo: std::rc::Rc<ContMemo>,
@@ -312,7 +312,7 @@ fn cont_memo() -> std::rc::Rc<ContMemo> {
 
 impl Default for Cont {
     fn default() -> Self {
-        Self { lam: 0.0, phi: 0.0, pinf: 0.0, tab: std::rc::Rc::default(), memo: cont_memo() }
+        Self { lam: 0.0, phi: 0.0, pinf: 0.0, tables: std::rc::Rc::default(), memo: cont_memo() }
     }
 }
 
@@ -328,14 +328,14 @@ const LAM_DECAY: f64 = 1.5;
 impl Cont {
     pub(crate) fn new(lam: f64, phi: f64, pinf: f64) -> Self {
         let r = 1.0 - phi;
-        let mut tab = Vec::with_capacity(CONT_N + 1);
+        let mut tables = Vec::with_capacity(CONT_N + 1);
         let mut built = 0.0f64;
         for n in 0..=CONT_N as i32 {
             let careers_built = built + 1.0 / (lam * r.powi(n).powf(LAM_DECAY));
-            tab.push(ContStep { careers_built, gap_left: r.powi(n) });
+            tables.push(ContStep { careers_built, gap_left: r.powi(n) });
             built = careers_built;
         }
-        Self { lam, phi, pinf, tab: std::rc::Rc::new(tab), memo: cont_memo() }
+        Self { lam, phi, pinf, tables: std::rc::Rc::new(tables), memo: cont_memo() }
     }
     /// The best plan from odds p: build n successes (sum of 1 / lam_j careers), then grind at p_n; the best n
     pub(crate) fn plan(&self, p: f64) -> BuildPlan {
@@ -350,9 +350,9 @@ impl Cont {
     /// `plan` past its early returns (the first stop of the building loop). Past them lam > 0, which only `Cont::new`
     /// makes (with its table; `rolls_in` refuses a stored Cont with lam and phi > 0 but no table)
     fn plan_n(&self, p: f64) -> BuildPlan {
-        debug_assert!(self.tab.len() > CONT_N, "plan_n needs the continuation's table");
+        debug_assert!(self.tables.len() > CONT_N, "plan_n needs the continuation's table");
         let lr = (p / self.pinf).ln();
-        let t = &self.tab;
+        let t = &self.tables;
         let (mut n, mut best) = (0usize, 1.0 / p);
         while n < CONT_N {
             let x = t[n].careers_built + 1.0 / (self.pinf * (lr * t[n + 1].gap_left).exp());
@@ -384,12 +384,12 @@ impl Cont {
     /// `cost_lo` past its early returns (every n: CONT_N exp; `outcome_hi` asks for it per outcome and candidate; the
     /// table as in `plan_n`)
     fn cost_lo_n(&self, p: f64) -> f64 {
-        debug_assert!(self.tab.len() > CONT_N, "cost_lo_n needs the continuation's table");
+        debug_assert!(self.tables.len() > CONT_N, "cost_lo_n needs the continuation's table");
         let lr = (p / self.pinf).ln();
         let mut best = 1.0 / p;
         // every n's cost is its building (rising with n: each term 1/lam_j > 0) plus a positive grind, so once the
         // building alone reaches the best found no later n can be lower: the scan stops there, the same minimum
-        let t = &self.tab;
+        let t = &self.tables;
         for n in 0..CONT_N {
             if t[n].careers_built >= best {
                 break;
@@ -407,7 +407,7 @@ impl Cont {
             && self.phi < 1.0
             && self.pinf >= 1e-50
             && self.pinf.is_finite()
-            && self.tab.len() > CONT_N
+            && self.tables.len() > CONT_N
     }
     /// With `lb_ok`, a lower bound on `cost(p)` (None: none derived), the same for every p in p's cell (its bits >>
     /// LB_SHIFT, 128 cells per binade), memoised in `cell` (direct-mapped by cell): cost_lo(g) (1 - 1e-9), g the cell's top
@@ -453,9 +453,9 @@ pub(crate) const LB_CELLS: usize = 256;
 
 impl ScoreBase<'_> {
     // (no Cont: a default one's, lam = 0: grinding at p)
-    pub(crate) fn cost(&self, ui: usize, p: f64) -> f64 {
-        match self.continuations.get(ui) {
-            Some(c) => c.cost(p),
+    pub(crate) fn cost(&self, candidate: usize, p: f64) -> f64 {
+        match self.continuations.get(candidate) {
+            Some(continuation) => continuation.cost(p),
             None => {
                 if p <= 0.0 {
                     f64::INFINITY
@@ -465,9 +465,9 @@ impl ScoreBase<'_> {
             }
         }
     }
-    pub(crate) fn cost_lo(&self, ui: usize, p: f64) -> f64 {
-        match self.continuations.get(ui) {
-            Some(c) => c.cost_lo(p),
+    pub(crate) fn cost_lo(&self, candidate: usize, p: f64) -> f64 {
+        match self.continuations.get(candidate) {
+            Some(continuation) => continuation.cost_lo(p),
             None => {
                 if p <= 0.0 {
                     f64::INFINITY

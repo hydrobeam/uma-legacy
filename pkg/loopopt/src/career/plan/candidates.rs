@@ -45,7 +45,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         stage_candidates(env, input, &main_career, &loop_rotation.members);
     let loop_ms = now_ms() - started_ms;
     let allowed_trainees: Vec<crate::uma::UmaIndex> =
-        input.trainees.iter().copied().filter(|&u| env.setup.deck_odds_ceilings[u].is_some()).collect();
+        input.trainees.iter().copied().filter(|&trainee| env.setup.deck_odds_ceilings[trainee].is_some()).collect();
     let searches_started_ms = now_ms();
     let env_budget = env.state.budget;
     // (the candidates' career searches below under the cap, as `capped` sets it: the Sim it takes is made after them)
@@ -55,11 +55,11 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     }
     env.state.use_seen = true;
     let mut searches = input.new_searches(kept, &main_career, env_budget);
-    if settings.sur != 1 {
-        for &u in &candidate_trainees {
-            if searches.best_careers[u].is_unsearched() {
-                let search = best_of(env, input.input_parents(), u, searches.kept_plans(legacies.len()));
-                searches.record_best_career(u, search);
+    if settings.surrogate_mode != 1 {
+        for &trainee in &candidate_trainees {
+            if searches.best_careers[trainee].is_unsearched() {
+                let search = best_of(env, input.input_parents(), trainee, searches.kept_plans(legacies.len()));
+                searches.record_best_career(trainee, search);
             }
         }
     }
@@ -74,21 +74,21 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     for found in &input.solved.found {
         sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, found.trainee, &found.deck);
     }
-    for &u in &candidate_trainees {
-        if let Some(found) = searches.best_careers[u].found() {
-            sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, u, &found.deck);
+    for &trainee in &candidate_trainees {
+        if let Some(found) = searches.best_careers[trainee].found() {
+            sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, trainee, &found.deck);
         }
     }
     // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
     let cache_before_builders = settings.proxy_check.then(|| sim.evaluator.cache.clone());
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut surrogate_differences: Vec<Value> = vec![];
-    if settings.sur > 0 {
+    if settings.surrogate_mode > 0 {
         let surrogate_started_ms = now_ms();
         capped(&mut sim, settings.search_work, env_budget, |sim| {
-            for &u in &candidate_trainees {
-                if (settings.sur == 2 || searches.best_careers[u].is_unsearched())
-                    && let Some(difference) = plan_surrogate(sim, input, &mut searches.best_careers, u, buf)
+            for &trainee in &candidate_trainees {
+                if (settings.surrogate_mode == 2 || searches.best_careers[trainee].is_unsearched())
+                    && let Some(difference) = plan_surrogate(sim, input, &mut searches.best_careers, trainee, buf)
                 {
                     surrogate_differences.push(difference);
                 }
@@ -97,16 +97,19 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         search_ms += now_ms() - surrogate_started_ms;
     }
     let careers: Vec<Option<Found>> =
-        candidate_trainees.iter().map(|&u| searches.best_careers[u].found().cloned()).collect();
+        candidate_trainees.iter().map(|&trainee| searches.best_careers[trainee].found().cloned()).collect();
     let candidate_count = candidate_trainees.len();
-    let current_odds: Vec<f64> = careers.iter().map(|f| f.as_ref().map_or(0.0, |f| f.value)).collect();
-    let sj = sim.env.setup.skill_job;
+    let current_odds: Vec<f64> =
+        careers.iter().map(|career| career.as_ref().map_or(0.0, |career| career.value)).collect();
+    let skill_job = sim.env.setup.skill_job;
     // per candidate whether a full veteran of hers exists (a free side of the trios)
     let has_full_veteran: Vec<bool> = candidate_trainees
         .iter()
-        .map(|&u| {
-            legacies.iter().any(|l| {
-                l.chara == data.umas[u].id && is_full(sj, &l.sparks) && input.pool.alone_within_borrow_limit(l.borrowed)
+        .map(|&trainee| {
+            legacies.iter().any(|legacy| {
+                legacy.character_id == data.umas[trainee].id
+                    && is_full(skill_job, &legacy.sparks)
+                    && input.pool.alone_within_borrow_limit(legacy.borrowed)
             })
         })
         .collect();
@@ -120,7 +123,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // band. A proxy's odds cannot exceed the exact best (it is a career she can run); its efficiency can read high
     // or low. Calibration: docs/MODEL.md, "Next career"; `proxy_check` measures the current errors.
     // `exact_all` restores a search for every uma.
-    let proxies_enabled = settings.sur == 0 && !settings.exact_all && !settings.proxy_check;
+    let proxies_enabled = settings.surrogate_mode == 0 && !settings.exact_all && !settings.proxy_check;
     let candidates = PlanCandidates {
         main_career,
         pick_career,
@@ -169,28 +172,28 @@ fn stage_candidates(
     let legacies = input.legacies;
     let settings = input.settings;
     let mut trainees: Vec<crate::uma::UmaIndex> = vec![main_career.trainee];
-    let push = |u: crate::uma::UmaIndex, candidates: &mut Vec<crate::uma::UmaIndex>| {
-        if !candidates.contains(&u) && input.trainees.contains(&u) {
-            candidates.push(u);
+    let push = |uma: crate::uma::UmaIndex, candidates: &mut Vec<crate::uma::UmaIndex>| {
+        if !candidates.contains(&uma) && input.trainees.contains(&uma) {
+            candidates.push(uma);
         }
     };
     for &member in loop_members {
         push(member, &mut trainees);
     }
     for parent in [main_career.first_parent, main_career.second_parent] {
-        let lineage_charas =
-            std::iter::once(legacies[parent].chara).chain(legacies[parent].parents.iter().map(|p| p.chara));
-        for chara in lineage_charas {
-            if let Some(u) = env.setup.uma_index(chara) {
-                push(u, &mut trainees);
+        let lineage_charas = std::iter::once(legacies[parent].character_id)
+            .chain(legacies[parent].parents.iter().map(|grandparent| grandparent.character_id));
+        for character_id in lineage_charas {
+            if let Some(uma) = env.setup.uma_index(character_id) {
+                push(uma, &mut trainees);
             }
         }
     }
     for legacy in legacies.iter().rev() {
         if !legacy.borrowed
-            && let Some(u) = env.setup.uma_index(legacy.chara)
+            && let Some(uma) = env.setup.uma_index(legacy.character_id)
         {
-            push(u, &mut trainees);
+            push(uma, &mut trainees);
         }
     }
     for found in &input.solved.found {
@@ -200,8 +203,8 @@ fn stage_candidates(
     if let Some(fit) = &settings.fit {
         trainees = fit
             .iter()
-            .filter_map(|&(chara, ..)| env.setup.uma_index(chara))
-            .filter(|u| input.trainees.contains(u))
+            .filter_map(|&(character_id, ..)| env.setup.uma_index(character_id))
+            .filter(|uma| input.trainees.contains(uma))
             .collect();
     }
     // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
@@ -211,7 +214,7 @@ fn stage_candidates(
     if settings.loop_members.is_none() && settings.fit.is_none() && trainees.len() < HINT_FLOOR {
         let data = input.resources.data;
         for HintUma { trainee, ceiling } in
-            hint_umas(env, input.pool, &trainees, input.trainees, HINT_FLOOR - trainees.len())
+            hint_umas(&env.setup, &mut env.state, input.pool, &trainees, input.trainees, HINT_FLOOR - trainees.len())
         {
             trainees.push(trainee);
             hint.push(json!({"id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": ceiling}));
@@ -275,11 +278,9 @@ pub(crate) fn class_winners(
         .found
         .iter()
         .map(|found| ClassWinner { trainee: found.trainee, deck: found.deck.clone() })
-        .chain(
-            candidates.trainees.iter().filter_map(|&u| {
-                best_careers[u].found().map(|found| ClassWinner { trainee: u, deck: found.deck.clone() })
-            }),
-        )
+        .chain(candidates.trainees.iter().filter_map(|&trainee| {
+            best_careers[trainee].found().map(|found| ClassWinner { trainee, deck: found.deck.clone() })
+        }))
         .collect()
 }
 
@@ -349,38 +350,46 @@ fn pass_one_rows(
             order.push(trainee);
         }
     }
-    for &x in &order {
-        progress(2, order.iter().position(|&y| y == x).unwrap_or(0), order.len()); // pass 1: uma k of n
-        if candidates.proxies_enabled && searches.best_careers[x].is_unsearched() {
+    for &trainee in &order {
+        progress(2, order.iter().position(|&other| other == trainee).unwrap_or(0), order.len()); // pass 1: uma k of n
+        if candidates.proxies_enabled && searches.best_careers[trainee].is_unsearched() {
             let proxy_started_ms = now_ms();
-            let proxy = proxy_career(simulator, &winners, context.parents(), x, buf);
+            let proxy = proxy_career(simulator, &winners, context.parents(), trainee, buf);
             profile.search_ms += now_ms() - proxy_started_ms;
             let Some(career) = proxy else { continue };
             let (CareerScore { lift_stats, .. }, stats_stamp) =
                 stamped(simulator, Some(&candidates.trainees), |simulator| {
-                    score_career(simulator, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf)
+                    score_career(
+                        simulator,
+                        &context.scoring(&stats_base),
+                        found_career(trainee, &career),
+                        Want::Stats,
+                        buf,
+                    )
                 });
-            rows.push(PlanRow::proxy(x, career, lift_stats, RowOrigin::Base, stats_stamp));
+            rows.push(PlanRow::proxy(trainee, career, lift_stats, RowOrigin::Base, stats_stamp));
             continue;
         }
-        if searches.best_careers[x].is_unsearched() || (settings.sur == 2 && !candidates.trainees.contains(&x)) {
+        if searches.best_careers[trainee].is_unsearched()
+            || (settings.surrogate_mode == 2 && !candidates.trainees.contains(&trainee))
+        {
             let search_started_ms = now_ms();
             capped(simulator, settings.search_work, searches.env_budget, |simulator| {
-                if settings.sur != 1 && searches.best_careers[x].is_unsearched() {
-                    search_best_career(simulator, context, searches, x);
+                if settings.surrogate_mode != 1 && searches.best_careers[trainee].is_unsearched() {
+                    search_best_career(simulator, context, searches, trainee);
                 }
-                if settings.sur > 0
-                    && let Some(difference) = plan_surrogate(simulator, input, &mut searches.best_careers, x, buf)
+                if settings.surrogate_mode > 0
+                    && let Some(difference) = plan_surrogate(simulator, input, &mut searches.best_careers, trainee, buf)
                 {
                     profile.surrogate_differences.push(difference);
                 }
             });
             profile.search_ms += now_ms() - search_started_ms;
         }
-        let Some(career) = searches.best_careers[x].found().cloned() else { continue };
+        let Some(career) = searches.best_careers[trainee].found().cloned() else { continue };
         let CareerScore { lift_stats, .. } =
-            score_career(simulator, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf);
-        rows.push(PlanRow::exact(x, career, lift_stats, RowOrigin::Base));
+            score_career(simulator, &context.scoring(&stats_base), found_career(trainee, &career), Want::Stats, buf);
+        rows.push(PlanRow::exact(trainee, career, lift_stats, RowOrigin::Base));
     }
     rows
 }
@@ -422,20 +431,26 @@ impl PlanContext<'_, '_> {
         let PlanContext { input, candidates } = *self;
         let data = self.data();
         let mut admitted: Vec<usize> = vec![];
-        for ui in 0..candidates.trainees.len() {
-            if candidates.current_odds[ui] <= 0.0 {
+        for candidate in 0..candidates.trainees.len() {
+            if candidates.current_odds[candidate] <= 0.0 {
                 continue;
             }
-            let (u, p) = (candidates.trainees[ui], candidates.current_odds[ui]);
+            let (trainee, odds) = (candidates.trainees[candidate], candidates.current_odds[candidate]);
             let mut efficiencies: Vec<RowEfficiency> = rows
                 .iter()
                 .enumerate()
-                .filter(|(_, r)| data.umas[r.trainee].id != data.umas[u].id && r.lift_stats[ui].lift_chance > 0.0)
-                .map(|(row, r)| RowEfficiency { efficiency: r.lift_stats[ui].efficiency(p), row })
+                .filter(|(_, plan_row)| {
+                    data.umas[plan_row.trainee].id != data.umas[trainee].id
+                        && plan_row.lift_stats[candidate].lift_chance > 0.0
+                })
+                .map(|(row, plan_row)| RowEfficiency {
+                    efficiency: plan_row.lift_stats[candidate].efficiency(odds),
+                    row,
+                })
                 .collect();
-            efficiencies.sort_by(|x, y| y.efficiency.partial_cmp(&x.efficiency).unwrap());
+            efficiencies.sort_by(|first, second| second.efficiency.partial_cmp(&first.efficiency).unwrap());
             let Some(best) = efficiencies.first() else { continue };
-            let second = efficiencies.get(1).map_or(best.efficiency, |x| x.efficiency);
+            let second = efficiencies.get(1).map_or(best.efficiency, |runner_up| runner_up.efficiency);
             for candidate_row in &efficiencies {
                 if candidate_row.efficiency < second * (1.0 - input.settings.proxy_eff.unwrap_or(PROXY_EFF)) {
                     break;
@@ -469,7 +484,7 @@ pub(crate) fn make_row_exact(
 ) -> MadeExact {
     let trainee = row.trainee;
     // a proxy the class's proofs certify needs no search (it is her best career's value)
-    if certified(simulator.env, context.parents(), trainee, &row.career) {
+    if certified(&simulator.env.setup, &mut simulator.env.state, context.parents(), trainee, &row.career) {
         searches.best_careers[trainee] = CachedSearch::Known(Some(row.career.clone()));
         row.exact = true;
         profile.certified_proxies += 1;
@@ -492,23 +507,23 @@ fn plan_surrogate(
     simulator: &mut Sim,
     input: &PlanInputs,
     best_careers: &mut crate::uma::UmaTable<CachedSearch>,
-    u: crate::uma::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Value> {
     let settings = input.settings;
-    let surrogate = best_sur(simulator, input.input_parents(), u, settings.sur_margin, buf);
-    if settings.sur != 2 {
-        best_careers[u] = CachedSearch::Known(surrogate);
+    let surrogate = best_sur(simulator, input.input_parents(), trainee, settings.sur_margin, buf);
+    if settings.surrogate_mode != 2 {
+        best_careers[trainee] = CachedSearch::Known(surrogate);
         return None;
     }
-    let searched = best_careers[u].found().cloned();
+    let searched = best_careers[trainee].found().cloned();
     let (searched_value, surrogate_value) =
-        (searched.as_ref().map_or(0.0, |f| f.value), surrogate.as_ref().map_or(0.0, |f| f.value));
+        (searched.as_ref().map_or(0.0, |career| career.value), surrogate.as_ref().map_or(0.0, |career| career.value));
     let same = searched.as_ref().map(Found::unordered_parents) == surrogate.as_ref().map(Found::unordered_parents);
     if !same || (searched_value - surrogate_value).abs() > 1e-9 * searched_value.max(surrogate_value) {
         let data = input.resources.data;
         return Some(
-            json!({"trainee": data.umas[u].name, "search": [searched.as_ref().map(|f| [f.first_parent, f.second_parent]), searched_value], "sur": [surrogate.as_ref().map(|f| [f.first_parent, f.second_parent]), surrogate_value]}),
+            json!({"trainee": data.umas[trainee].name, "search": [searched.as_ref().map(|career| [career.first_parent, career.second_parent]), searched_value], "sur": [surrogate.as_ref().map(|career| [career.first_parent, career.second_parent]), surrogate_value]}),
         );
     }
     None
@@ -530,14 +545,14 @@ fn exact_plan_career(
     proxy: &PlanRow,
     buf: &mut Vec<f64>,
 ) -> Option<ExactPlanCareer> {
-    let x = proxy.trainee;
+    let trainee = proxy.trainee;
     let settings = context.settings();
-    if searches.best_careers[x].is_unsearched() {
+    if searches.best_careers[trainee].is_unsearched() {
         capped(simulator, settings.search_work, searches.env_budget, |simulator| {
-            search_best_career(simulator, context, searches, x);
+            search_best_career(simulator, context, searches, trainee);
         });
     }
-    let career = searches.best_careers[x].found().cloned()?;
+    let career = searches.best_careers[trainee].found().cloned()?;
     if same_career(&proxy.career, &career) && stamp_ok(simulator, Some(&context.candidates.trainees), proxy.stats_stamp)
     {
         prof("reuse_st", 1.0);
@@ -545,7 +560,7 @@ fn exact_plan_career(
     }
     let stats_base = context.candidates.stats_base();
     let CareerScore { lift_stats, .. } =
-        score_career(simulator, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf);
+        score_career(simulator, &context.scoring(&stats_base), found_career(trainee, &career), Want::Stats, buf);
     Some(ExactPlanCareer { career, lift_stats })
 }
 
@@ -574,7 +589,7 @@ pub(crate) fn exact_no_borrow_career(
     let settings = context.settings();
     let no_kept_plans = KeptPlans { same_pool: None, previous_pool: None, legacy_count: context.legacy_count() };
     capped(simulator, settings.search_work, searches.env_budget, |simulator| {
-        if settings.sur == 1 {
+        if settings.surrogate_mode == 1 {
             best_sur(simulator, context.pick_parents(), trainee, settings.sur_margin, buf)
         } else {
             let search = best_of(simulator.env, context.pick_parents(), trainee, no_kept_plans);

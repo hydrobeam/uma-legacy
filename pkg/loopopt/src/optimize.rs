@@ -28,9 +28,9 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
         let mut trio_sum = 0.0;
         for i in 0..N {
             for j in i + 1..N {
-                pair_sum += f64::from(data.pair[members[i]][members[j]]);
+                pair_sum += f64::from(data.pair_relations[members[i]][members[j]]);
                 for k in j + 1..N {
-                    trio_sum += f64::from(data.tri[members[i]][members[j]][members[k]]);
+                    trio_sum += f64::from(data.trio_relations[members[i]][members[j]][members[k]]);
                 }
             }
         }
@@ -43,7 +43,7 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
 
     /// Every member's win chances per race on her schedule.
     fn member_win_chances(&self, schedules: &[Sched; N]) -> Vec<Vec<f64>> {
-        (0..N).map(|i| self.member(i).win_chances(self.data.nr, &schedules[i])).collect()
+        (0..N).map(|i| self.data.win_chances(self.member(i), &schedules[i])).collect()
     }
 
     pub(crate) fn score(&self, schedules: &[Sched; N]) -> f64 {
@@ -70,13 +70,13 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
     }
 
     fn weights_into(&self, chances: &[Vec<f64>], i: usize, weights: &mut Vec<f64>) {
-        let race_count = self.data.nr;
+        let race_count = self.data.race_count;
         weights.clear();
         weights.resize(race_count, 0.0);
         for j in 0..chances.len() {
             if j != i {
-                for r in 0..race_count {
-                    weights[r] += 3.0 * C_PAIR * chances[j][r];
+                for race in 0..race_count {
+                    weights[race] += 3.0 * C_PAIR * chances[j][race];
                 }
             }
         }
@@ -91,7 +91,7 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
     /// `ascent` with the members' win chances supplied (chances[i] must equal member i's on schedules[i]); they are
     /// kept equal.
     fn ascent_from_chances(&self, schedules: &mut [Sched; N], chances: &mut [Vec<f64>]) -> f64 {
-        let race_count = self.data.nr;
+        let race_count = self.data.race_count;
         let mut weights: Vec<f64> = Vec::with_capacity(race_count);
         // stale[i]: some partner's schedule changed since member i was last solved (or she was never solved here).
         // If not stale, her weights are bit-identical to her last solve, so the deterministic best response is the same
@@ -109,11 +109,11 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
                 let uma = self.member(i);
                 self.weights_into(chances, i, &mut weights);
                 let current_value = dot(&weights, &chances[i]);
-                if let Some((response, value)) = uma.best_response(race_count, &weights, None)
+                if let Some((response, value)) = self.data.best_response(uma, &weights, None)
                     && value > current_value + 1e-9
                 {
                     schedules[i] = response;
-                    uma.win_chances_into(race_count, &response, &mut chances[i]);
+                    self.data.win_chances_into(uma, &response, &mut chances[i]);
                     improved = true;
                     for j in 0..N {
                         if j != i {
@@ -130,10 +130,10 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
     }
 
     /// The races any member is offered at turn t, after rest (None): the targets of a group move there.
-    fn turn_targets(&self, t: usize) -> Vec<Option<i32>> {
+    fn turn_targets(&self, turn: usize) -> Vec<Option<i32>> {
         let mut targets: Vec<Option<i32>> = vec![None];
         for i in 0..N {
-            for option in &self.member(i).opts[t] {
+            for option in &self.member(i).race_options[turn] {
                 if option.race >= 0 && !targets.contains(&Some(option.race)) {
                     targets.push(Some(option.race));
                 }
@@ -144,21 +144,21 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
 
     /// Member i's choice that hits `target` (a race, or rest for None) at turn t; None when her options or goals
     /// don't allow it.
-    fn target_choice(&self, i: usize, t: usize, target: Option<i32>) -> Option<Choice> {
+    fn target_choice(&self, i: usize, turn: usize, target: Option<i32>) -> Option<Choice> {
         let uma = self.member(i);
         match target {
-            None => uma.forced[t].is_none().then_some(Choice::Rest),
+            None => uma.forced[turn].is_none().then_some(Choice::Rest),
             Some(race) => {
-                let o = uma.opts[t].iter().position(|option| option.race == race)? as u8;
-                let goals_allow = uma.forced[t].as_ref().is_none_or(|allowed| allowed.contains(&o));
-                goals_allow.then_some(Choice::Opt(o))
+                let option_index = uma.race_options[turn].iter().position(|option| option.race == race)? as u8;
+                let goals_allow = uma.forced[turn].as_ref().is_none_or(|allowed| allowed.contains(&option_index));
+                goals_allow.then_some(Choice::Opt(option_index))
             }
         }
     }
 
     /// Coordinated moves: force a subset of >=2 members onto the same race (or rest) at one turn, then re-ascend.
     fn group_moves(&self, schedules: &mut [Sched; N], margin: f64) -> f64 {
-        let race_count = self.data.nr;
+        let race_count = self.data.race_count;
         let mut value = self.score(schedules);
         // win chances on the current *schedules, refreshed whenever they change (win_chances is deterministic, so this
         // equals recomputing per mask)
@@ -167,15 +167,15 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
         let mut weights: Vec<f64> = Vec::with_capacity(race_count);
         loop {
             let mut improved = false;
-            for t in 0..NT {
-                for target in self.turn_targets(t) {
+            for turn in 0..NT {
+                for target in self.turn_targets(turn) {
                     // choice for each member to hit the target at t (None = can't)
                     let mut choices: [Option<Choice>; N] = [None; N];
                     let mut on_target = [false; N];
                     for i in 0..N {
-                        let choice = self.target_choice(i, t, target);
+                        let choice = self.target_choice(i, turn, target);
                         choices[i] = choice;
-                        on_target[i] = choice.is_some_and(|choice| schedules[i][t] == choice);
+                        on_target[i] = choice.is_some_and(|choice| schedules[i][turn] == choice);
                     }
                     let movable: Vec<usize> = (0..N).filter(|&i| choices[i].is_some() && !on_target[i]).collect();
                     let on_target_count: usize = on_target.iter().filter(|x| **x).count();
@@ -196,7 +196,7 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
                             continue;
                         }
                         let mut trial = *schedules;
-                        let mut ok = true;
+                        let mut feasible = true;
                         chances.clone_from(&current_chances);
                         for (bit, &i) in movable.iter().enumerate() {
                             if mask & (1 << bit) == 0 {
@@ -205,17 +205,17 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
                             let uma = self.member(i);
                             self.weights_into(&chances, i, &mut weights);
                             if let Some((response, _)) =
-                                uma.best_response(race_count, &weights, Some((t, choices[i].unwrap())))
+                                self.data.best_response(uma, &weights, Some((turn, choices[i].unwrap())))
                             {
                                 trial[i] = response;
-                                uma.win_chances_into(race_count, &response, &mut chances[i]);
+                                self.data.win_chances_into(uma, &response, &mut chances[i]);
                             } else {
-                                ok = false;
+                                feasible = false;
                                 break;
                             }
                         }
                         // chances[i] == member i's on trial[i] here
-                        if !ok || self.score_from_chances(&chances) < value - margin {
+                        if !feasible || self.score_from_chances(&chances) < value - margin {
                             continue;
                         }
                         let trial_value = self.ascent_from_chances(&mut trial, &mut chances); // keeps chances on trial
@@ -241,20 +241,19 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
         let mut schedules = [[Choice::Rest; NT]; N];
         for i in 0..N {
             let weights = self.weights(&chances, i);
-            schedules[i] = self.member(i).best_response(self.data.nr, &weights, None).expect("infeasible goals").0;
+            schedules[i] = self.data.best_response(self.member(i), &weights, None).expect("infeasible goals").0;
         }
         schedules
     }
 
-    /// Optimistic start, ascent and group moves, then `iters` rounds of iterated local search (1-2 members perturbed
-    /// against noisy weights, re-ascent, group moves), then the optional G1s that cost no affinity.
-    fn solve(&self, iters: usize, seed: u64, margin: f64) -> [Sched; N] {
-        let race_count = self.data.nr;
+    /// Optimistic start, ascent and group moves, then `iterations` rounds of iterated local search (1-2 members
+    /// perturbed against noisy weights, re-ascent, group moves), then the optional G1s that cost no affinity.
+    fn solve(&self, iterations: usize, seed: u64, margin: f64) -> [Sched; N] {
         let mut rng = Rng(seed.wrapping_mul(2_654_435_761).wrapping_add(1) | 1);
         let mut schedules = self.optimistic_start();
         let mut value = self.ascent(&mut schedules);
         value = value.max(self.group_moves(&mut schedules, margin));
-        for _ in 0..iters {
+        for _ in 0..iterations {
             let mut candidate_schedules = schedules;
             let mut candidate_chances = self.member_win_chances(&candidate_schedules);
             let moves = 1 + (rng.next() % 2) as usize;
@@ -264,9 +263,9 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
                 for weight in &mut noisy_weights {
                     *weight *= 0.2 + 1.6 * rng.unif();
                 }
-                if let Some((response, _)) = self.member(i).best_response(race_count, &noisy_weights, None) {
+                if let Some((response, _)) = self.data.best_response(self.member(i), &noisy_weights, None) {
                     candidate_schedules[i] = response;
-                    candidate_chances[i] = self.member(i).win_chances(race_count, &response);
+                    candidate_chances[i] = self.data.win_chances(self.member(i), &response);
                 }
             }
             self.ascent_from_chances(&mut candidate_schedules, &mut candidate_chances);
@@ -299,7 +298,7 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
         for i in 0..N {
             let chances = self.member_win_chances(schedules);
             let weights: Vec<f64> = self.weights(&chances, i).iter().map(|weight| weight + FILL_EPS).collect();
-            if let Some((response, _)) = self.member(i).best_response(self.data.nr, &weights, None) {
+            if let Some((response, _)) = self.data.best_response(self.member(i), &weights, None) {
                 let mut trial = *schedules;
                 trial[i] = response;
                 let trial_value = self.score(&trial);
@@ -321,14 +320,14 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
         let attempt_chances = |uma: &Uma, schedule: &Sched| -> Vec<f64> {
             let mut k = 0usize;
             (0..NT)
-                .map(|t| match schedule[t] {
+                .map(|turn| match schedule[turn] {
                     Choice::Rest => {
                         k = 0;
                         -1.0
                     }
-                    Choice::Opt(o) => {
+                    Choice::Opt(option_index) => {
                         k = (k + 1).min(6);
-                        let option = &uma.opts[t][o as usize];
+                        let option = &uma.race_options[turn][option_index as usize];
                         if option.race >= 0 { self.data.option_chance(option, k) } else { -1.0 }
                     }
                 })
@@ -338,21 +337,24 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
             let mut changed = false;
             for i in 0..N {
                 let uma = self.member(i);
-                for t in 0..NT {
-                    if !matches!(schedules[i][t], Choice::Rest) || uma.forced[t].is_some() {
+                for turn in 0..NT {
+                    if !matches!(schedules[i][turn], Choice::Rest) || uma.forced[turn].is_some() {
                         continue;
                     }
-                    let mut race_options: Vec<usize> =
-                        (0..uma.opts[t].len()).filter(|&o| uma.opts[t][o].race >= 0).collect();
-                    race_options.sort_by_key(|&o| std::cmp::Reverse(uma.opts[t][o].bp));
-                    for o in race_options {
+                    let mut race_options: Vec<usize> = (0..uma.race_options[turn].len())
+                        .filter(|&option_index| uma.race_options[turn][option_index].race >= 0)
+                        .collect();
+                    race_options.sort_by_key(|&option_index| {
+                        std::cmp::Reverse(uma.race_options[turn][option_index].win_rate_basis)
+                    });
+                    for option_index in race_options {
                         let mut trial = *schedules;
-                        trial[i][t] = Choice::Opt(o as u8);
+                        trial[i][turn] = Choice::Opt(option_index as u8);
                         if !uma.feasible(&trial[i]) {
                             continue;
                         }
                         let (before, after) = (attempt_chances(uma, &schedules[i]), attempt_chances(uma, &trial[i]));
-                        if (0..NT).any(|other| other != t && before[other] >= 0.0 && after[other] < before[other]) {
+                        if (0..NT).any(|other| other != turn && before[other] >= 0.0 && after[other] < before[other]) {
                             continue;
                         }
                         let trial_value = self.score(&trial);
@@ -392,7 +394,7 @@ pub(crate) const FILL_EPS: f64 = 1e-7;
 /// Schedules found for a loop, in member order; a three-member structure fills s[0..3] and leaves s[3] all rest.
 #[derive(Clone)]
 pub(crate) struct Res {
-    pub(crate) s: [Sched; 4],
+    pub(crate) schedules: [Sched; 4],
 }
 /// Missing fourth member in the fixed-size representation of a three-uma rotation.
 /// `members` removes this sentinel before callers use the entries as indices into the uma table.
@@ -406,31 +408,31 @@ pub(crate) fn members(structure: &[UmaIndex; 4]) -> &[UmaIndex] {
 pub(crate) fn optimize<const N: usize>(
     data: &Data,
     members: [UmaIndex; N],
-    iters: usize,
+    iterations: usize,
     seed: u64,
     margin: f64,
 ) -> Res {
     let _memo = MemoScope::new();
-    let schedules = LoopProblem::new(data, members).solve(iters, seed, margin);
+    let schedules = LoopProblem::new(data, members).solve(iterations, seed, margin);
     let mut result_schedules = [[Choice::Rest; NT]; 4];
     result_schedules[..N].copy_from_slice(&schedules);
-    Res { s: result_schedules }
+    Res { schedules: result_schedules }
 }
 /// `optimize` for a structure of three or four members (`members` of a [UmaIndex; 4] with `NONE` last for three).
-pub(crate) fn optimize_fam(data: &Data, structure: &[UmaIndex; 4], iters: usize, seed: u64, margin: f64) -> Res {
+pub(crate) fn optimize_fam(data: &Data, structure: &[UmaIndex; 4], iterations: usize, seed: u64, margin: f64) -> Res {
     if structure[3] == NONE {
-        optimize(data, [structure[0], structure[1], structure[2]], iters, seed, margin)
+        optimize(data, [structure[0], structure[1], structure[2]], iterations, seed, margin)
     } else {
-        optimize(data, *structure, iters, seed, margin)
+        optimize(data, *structure, iterations, seed, margin)
     }
 }
 
 /// Exact pairwise ceilings PB(a,b) = min(BR_a(W = PM_b), BR_b(W = PM_a)) for all pairs in `pool`, PM a uma's
 /// best-case win chances. Valid because P_b <= PM_b elementwise and P_a >= 0, so <P_a,P_b> <= <P_a,PM_b> <= BR_a(PM_b).
-pub(crate) fn pair_ceilings(d: &Data, pool: &[UmaIndex]) -> UmaTable<UmaTable<f64>> {
-    let n = d.umas.len();
-    let mut ceilings = UmaTable(vec![UmaTable(vec![0.0f64; n]); n]);
-    if let Some(stored) = &d.pbt {
+pub(crate) fn pair_ceilings(data: &Data, pool: &[UmaIndex]) -> UmaTable<UmaTable<f64>> {
+    let roster_len = data.umas.len();
+    let mut ceilings = UmaTable(vec![UmaTable(vec![0.0f64; roster_len]); roster_len]);
+    if let Some(stored) = &data.pair_ceilings {
         for (position, &a) in pool.iter().enumerate() {
             for &b in &pool[position + 1..] {
                 ceilings[a][b] = stored[(a, b)];
@@ -440,7 +442,7 @@ pub(crate) fn pair_ceilings(d: &Data, pool: &[UmaIndex]) -> UmaTable<UmaTable<f6
         return ceilings;
     }
     let best_against_best_case = |a: UmaIndex, b: UmaIndex| {
-        d.umas[a].best_response(d.nr, &d.umas[b].best_case_probs, None).map_or(0.0, |response| response.1)
+        data.best_response(&data.umas[a], &data.umas[b].best_case_probs, None).map_or(0.0, |response| response.1)
     };
     for (position, &a) in pool.iter().enumerate() {
         for &b in &pool[position + 1..] {

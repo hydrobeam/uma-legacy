@@ -144,14 +144,17 @@ impl<'base> StepEstimate<'base> {
         buffers: EstimateBuffers,
     ) -> Self {
         let n = score_base.candidates.len();
-        let lower_bound_continuations: Vec<Option<&Cont>> =
-            (0..n).map(|ui| score_base.continuations.get(ui).filter(|c| lazy && c.lb_ok())).collect();
+        let lower_bound_continuations: Vec<Option<&Cont>> = (0..n)
+            .map(|candidate| {
+                score_base.continuations.get(candidate).filter(|continuation| lazy && continuation.lb_ok())
+            })
+            .collect();
         let trio_order: Vec<usize> = if lazy {
             let trio_values: Vec<f64> =
-                score_base.trios.iter().map(|t| trio_v(score_base.step_costs, std::slice::from_ref(t))).collect();
-            let mut t: Vec<usize> = (0..score_base.trios.len()).collect();
-            t.sort_by(|&a, &b| trio_values[a].total_cmp(&trio_values[b]));
-            t
+                score_base.trios.iter().map(|trio| trio_v(score_base.step_costs, std::slice::from_ref(trio))).collect();
+            let mut order: Vec<usize> = (0..score_base.trios.len()).collect();
+            order.sort_by(|&first, &second| trio_values[first].total_cmp(&trio_values[second]));
+            order
         } else {
             vec![]
         };
@@ -247,17 +250,20 @@ impl StepWorkspace {
                 }
             } else if score_base.trios.is_empty() {
                 let mut best = f64::INFINITY;
-                for a in 0..n {
-                    if (if self.pending_candidates[a] { self.lower_bounds[a] } else { costs[a] })
-                        + score_base.later_stage_costs[a]
+                for candidate in 0..n {
+                    if (if self.pending_candidates[candidate] {
+                        self.lower_bounds[candidate]
+                    } else {
+                        costs[candidate]
+                    }) + score_base.later_stage_costs[candidate]
                         >= best
                     {
                         continue;
                     }
-                    self.settle(score_base, costs, changed_candidates, a);
-                    let v = costs[a] + score_base.later_stage_costs[a];
-                    if v < best {
-                        best = v;
+                    self.settle(score_base, costs, changed_candidates, candidate);
+                    let value = costs[candidate] + score_base.later_stage_costs[candidate];
+                    if value < best {
+                        best = value;
                     }
                 }
                 lazy_value = Some(best);
@@ -293,11 +299,11 @@ impl StepWorkspace {
                     if !second_existing {
                         self.settle(score_base, costs, changed_candidates, second_candidate);
                     }
-                    let v = (if first_existing { 0.0 } else { costs[first_candidate] })
+                    let value = (if first_existing { 0.0 } else { costs[first_candidate] })
                         + (if second_existing { 0.0 } else { costs[second_candidate] })
                         + finisher_cost;
-                    if v < best {
-                        best = v;
+                    if value < best {
+                        best = value;
                     }
                 }
                 lazy_value = Some(best);
@@ -321,7 +327,7 @@ impl StepCost for StepEstimate<'_> {
         changed_candidates: &mut Vec<usize>,
         lift: CandidateLift,
     ) {
-        let b = match self.inputs.lower_bound_continuations[lift.candidate] {
+        let bound = match self.inputs.lower_bound_continuations[lift.candidate] {
             Some(continuation) => continuation.cost_lb(
                 lift.probability,
                 (&mut self.workspace.cell_costs[lift.candidate * LB_CELLS..(lift.candidate + 1) * LB_CELLS])
@@ -330,10 +336,10 @@ impl StepCost for StepEstimate<'_> {
             ),
             None => None,
         };
-        match b {
-            Some(b) if b >= costs[lift.candidate] => {}
-            Some(b) if b < costs[lift.candidate] => {
-                self.workspace.lower_bounds[lift.candidate] = b;
+        match bound {
+            Some(bound) if bound >= costs[lift.candidate] => {}
+            Some(bound) if bound < costs[lift.candidate] => {
+                self.workspace.lower_bounds[lift.candidate] = bound;
                 self.workspace.pending_candidates[lift.candidate] = true;
                 self.workspace.pending_lifts.push(lift);
             }
@@ -435,7 +441,9 @@ impl ScoreBase<'_> {
     /// trio, the least of each candidate's step plus her stages 2-3)
     fn v0_after(&self, step_costs: &[f64]) -> f64 {
         if self.trios.is_empty() {
-            (0..self.candidates.len()).map(|a| step_costs[a] + self.later_stage_costs[a]).fold(f64::INFINITY, f64::min)
+            (0..self.candidates.len())
+                .map(|candidate| step_costs[candidate] + self.later_stage_costs[candidate])
+                .fold(f64::INFINITY, f64::min)
         } else {
             trio_v(step_costs, self.trios)
         }

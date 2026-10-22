@@ -141,7 +141,8 @@ pub(crate) struct PlanJob {
     /// `index_rule`: each uma's best career through the surrogate (`best_sur`) instead of the career search (1), or
     /// both, reporting where they differ (2); the surrogate's refresh margin there
     #[serde(default)]
-    sur: u8,
+    #[serde(rename = "sur")]
+    surrogate_mode: u8,
     #[serde(default)]
     sur_margin: f64,
     /// `index_rule` measurement: each builder's career also from her deck class's winning decks alone (no career search),
@@ -211,8 +212,8 @@ impl<'plan> PlanInputs<'plan, '_> {
 
     /// A career that may run: its parents are legal on the pick's pool (the borrowing rule). Rows repeating another
     /// row's career are dropped later, at output.
-    fn is_runnable(&self, f: &Found) -> bool {
-        self.pick_pool().within_borrow_limit(f.first_parent, f.second_parent)
+    fn is_runnable(&self, career: &Found) -> bool {
+        self.pick_pool().within_borrow_limit(career.first_parent, career.second_parent)
     }
 }
 

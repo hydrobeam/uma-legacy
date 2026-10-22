@@ -22,18 +22,18 @@ pub(crate) fn assemble_plan_output<'data>(
     buf: &mut Vec<f64>,
 ) -> Value {
     let PlanContext { input, candidates } = *context;
-    let sj = sim.env.setup.skill_job;
+    let skill_job = sim.env.setup.skill_job;
     let legacies = input.legacies;
     let pool = input.pool;
     let data = context.data();
-    let is_runnable = |f: &Found| input.is_runnable(f);
+    let is_runnable = |career: &Found| input.is_runnable(career);
     // a looped or nb row that repeats an earlier row's career (a builder's exact search can land on the same pair of full veterans; an
     // nb row on her looped one): left out, the pick moved to the earlier one (the same career, the same score)
     let repeated: Vec<Option<usize>> = (0..runs.len()).map(|i| (0..i).find(|&j| runs[j].repeats(&runs[i]))).collect();
-    let dup: Vec<bool> = repeated.iter().map(Option::is_some).collect();
+    let duplicate: Vec<bool> = repeated.iter().map(Option::is_some).collect();
     let undup: Vec<usize> = repeated.iter().enumerate().map(|(i, earlier)| earlier.unwrap_or(i)).collect();
     let can_roll =
-        runs.iter().any(|r| is_runnable(&r.career)) && scores.any_scored && scores.fit.current_value.is_finite();
+        runs.iter().any(|run| is_runnable(&run.career)) && scores.any_scored && scores.fit.current_value.is_finite();
     let roll_state = can_roll.then(|| pick_roll_state(&mut sim, context, &mut runs, scores, &undup, buf));
     // Release the simulator's caches before publishing kept searches and reporting options.
     let (env, kept) = {
@@ -43,9 +43,9 @@ pub(crate) fn assemble_plan_output<'data>(
     let incomplete = context.keep_plan_searches(kept, searches);
     // nothing scored (no trio: fewer than two candidates of different umas): the best odds is the one option and the pick
     // (no row that can be the pick, `is_runnable`: the same, the pick's main search's)
-    if !runs.iter().any(|r| is_runnable(&r.career)) {
-        for f in &input.pick_solved().found {
-            runs.push(PlanRow::proxy(f.trainee, f.clone(), vec![], RowOrigin::Fallback, None));
+    if !runs.iter().any(|run| is_runnable(&run.career)) {
+        for found in &input.pick_solved().found {
+            runs.push(PlanRow::proxy(found.trainee, found.clone(), vec![], RowOrigin::Fallback, None));
         }
     }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own full veteran
@@ -54,20 +54,20 @@ pub(crate) fn assemble_plan_output<'data>(
     let near = |i: usize| is_runnable(&runs[i].career) && total(i) >= near_floor(top);
     let mut options: Vec<Value> = vec![];
     for (i, row) in runs.iter().enumerate() {
-        let (x, f) = (row.trainee, &row.career);
+        let (trainee, career) = (row.trainee, &row.career);
         // (a builder with a borrowed parent under "later" is no option)
-        if dup.get(i).copied().unwrap_or(false) || !is_runnable(f) {
+        if duplicate.get(i).copied().unwrap_or(false) || !is_runnable(career) {
             continue;
         }
-        let looped = has_looped_parents(sj, legacies, f);
-        let mut report = env.setup.report(&mut env.state, pool, f, false);
+        let looped = has_looped_parents(skill_job, legacies, career);
+        let mut report = env.setup.report(&mut env.state, pool, career, false);
         let option = report.as_object_mut().unwrap();
-        option.insert("role".into(), json!(row_role(candidates, scores, x, looped)));
+        option.insert("role".into(), json!(row_role(candidates, scores, trainee, looped)));
         option.insert(
             "best_odds".into(),
             json!(
-                x == candidates.pick_career.trainee
-                    && f.unordered_parents() == candidates.pick_career.unordered_parents()
+                trainee == candidates.pick_career.trainee
+                    && career.unordered_parents() == candidates.pick_career.unordered_parents()
             ),
         );
         option.insert("chosen".into(), json!(i == pick));
@@ -77,15 +77,21 @@ pub(crate) fn assemble_plan_output<'data>(
         option.insert("exact".into(), json!(row.exact || row.origin == RowOrigin::Fallback));
         // her career search was not complete (its work cap `search_work`, a band overflow or a deck past its class's cap):
         // the best it found, not proven her best
-        if row.exact && incomplete.of(row.origin, x) {
+        if row.exact && incomplete.of(row.origin, trainee) {
             option.insert("proven".into(), json!(false));
         }
         option.insert(
             "stage_cost".into(),
-            json!(candidates.trainees.iter().position(|&c| c == x).map(|ui| scores.fit.step_costs[ui])),
+            json!(
+                candidates
+                    .trainees
+                    .iter()
+                    .position(|&candidate_trainee| candidate_trainee == trainee)
+                    .map(|candidate| scores.fit.step_costs[candidate])
+            ),
         );
         option.insert("index".into(), json!(row.net_saving()));
-        option.insert("saving".into(), json!(row.net_saving().map(|v| v + 1.0)));
+        option.insert("saving".into(), json!(row.net_saving().map(|net_saving| net_saving + 1.0)));
         option.insert("lift".into(), json!(row.scoring.as_ref().map(|scoring| scoring.improvement_chance)));
         option.insert("near".into(), json!(near(i) && i != pick));
         option.insert("score".into(), json!(scores.any_scored.then(|| total(i))));
@@ -116,18 +122,21 @@ pub(crate) fn assemble_plan_output<'data>(
     }
     let fit = &scores.fit;
     let fit_json: Vec<Value> = (0..candidates.trainees.len())
-        .map(|ui| {
-            let continuation = &fit.continuations[ui];
-            json!([data.umas[candidates.trainees[ui]].id, continuation.lam, continuation.phi, continuation.pinf])
+        .map(|candidate| {
+            let continuation = &fit.continuations[candidate];
+            json!([data.umas[candidates.trainees[candidate]].id, continuation.lam, continuation.phi, continuation.pinf])
         })
         .collect();
-    let umas_unproven =
-        data.umas.indices().filter(|&u| incomplete.base[u] || incomplete.looped[u] || incomplete.no_borrow[u]).count();
+    let umas_unproven = data
+        .umas
+        .indices()
+        .filter(|&uma| incomplete.base[uma] || incomplete.looped[uma] || incomplete.no_borrow[uma])
+        .count();
     let current_value = if fit.current_value.is_finite() { json!(fit.current_value) } else { Value::Null };
     let mut out = json!({"choice": choice, "rule": "index", "mode": "trio", "v0": current_value, "outcomes": outcomes,
            "members": members_json,
-           "v0_plan": plan_json, "fit": fit_json, "loop_members": candidates.loop_member_info, "loop_note": candidates.loop_member_note, "hint": candidates.hint, "umas_scored": profile.scored_runnable_rows, "umas_searched": runs.iter().filter(|r| r.exact).count() - profile.certified_proxies, "umas_certified": profile.certified_proxies, "umas_unproven": umas_unproven, "work": scores.work,
-           "sur": input.settings.sur, "sur_diff": profile.surrogate_differences, "loop_ms": profile.loop_ms, "search_ms": profile.search_ms, "combo_ms": scores.combo_ms, "index_ms": scores.index_ms, "total_ms": now_ms() - profile.started_ms});
+           "v0_plan": plan_json, "fit": fit_json, "loop_members": candidates.loop_member_info, "loop_note": candidates.loop_member_note, "hint": candidates.hint, "umas_scored": profile.scored_runnable_rows, "umas_searched": runs.iter().filter(|run| run.exact).count() - profile.certified_proxies, "umas_certified": profile.certified_proxies, "umas_unproven": umas_unproven, "work": scores.work,
+           "sur": input.settings.surrogate_mode, "sur_diff": profile.surrogate_differences, "loop_ms": profile.loop_ms, "search_ms": profile.search_ms, "combo_ms": scores.combo_ms, "index_ms": scores.index_ms, "total_ms": now_ms() - profile.started_ms});
     // (the option reports moved in, not copied by `json!`: the object's keys are ordered, so the same text)
     out["options"] = Value::Array(options);
     out["work"]["prof"] = json!(PROF.with(|p| std::mem::take(&mut *p.borrow_mut())));
@@ -157,7 +166,7 @@ fn pick_roll_state(
     buf: &mut Vec<f64>,
 ) -> RollKeep {
     let input = context.input;
-    let is_runnable = |f: &Found| input.is_runnable(f);
+    let is_runnable = |career: &Found| input.is_runnable(career);
     let PlanPick { row: pick, .. } = pick_of(runs, is_runnable, undup);
     let base = scores.fit.score_base(context.candidates);
     let KeptScoring { scored, full_landing_below_threshold } =
@@ -277,32 +286,34 @@ impl PlanContext<'_, '_> {
         let candidates = self.candidates;
         let data = self.data();
         let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
-        let uma_name =
-            |u: crate::uma::UmaIndex| if u == crate::optimize::NONE { Value::Null } else { json!(data.umas[u].name) };
+        let uma_name = |uma: crate::uma::UmaIndex| {
+            if uma == crate::optimize::NONE { Value::Null } else { json!(data.umas[uma].name) }
+        };
         // a side's step: free from a real full veteran of hers, else her fresh full veteran's step
-        let step = |ui: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[ui] };
+        let step =
+            |candidate: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[candidate] };
         // a member: `real` when the trio uses a real full veteran of hers (her step free), else her fresh full veteran's step
-        let member = |ui: usize, uses_existing: bool| {
-            let continuation = &scores.fit.continuations[ui];
-            let build_plan = continuation.plan(candidates.current_odds[ui]);
+        let member = |candidate: usize, uses_existing: bool| {
+            let continuation = &scores.fit.continuations[candidate];
+            let build_plan = continuation.plan(candidates.current_odds[candidate]);
             json!({
-                "trainee": uma_name(candidates.trainees[ui]),
-                "p": candidates.current_odds[ui],
-                "has_full_veteran": candidates.has_full_veteran[ui],
+                "trainee": uma_name(candidates.trainees[candidate]),
+                "p": candidates.current_odds[candidate],
+                "has_full_veteran": candidates.has_full_veteran[candidate],
                 "real": uses_existing,
                 "p_inf": (continuation.lam > 0.0).then_some(continuation.pinf),
                 "lam": continuation.lam,
                 "phi": continuation.phi,
                 "building_careers": build_plan.building_careers,
                 "p_switch": build_plan.grind_odds,
-                "careers": step(ui, uses_existing)
+                "careers": step(candidate, uses_existing)
             })
         };
         // A: the cheaper of the two steps first
-        let a = (combination.candidate_a_index, combination.a_uses_existing);
-        let b = (combination.candidate_b_index, combination.b_uses_existing);
+        let side_a = (combination.candidate_a_index, combination.a_uses_existing);
+        let side_b = (combination.candidate_b_index, combination.b_uses_existing);
         let ((first_index, first_uses_existing), (second_index, second_uses_existing)) =
-            if step(a.0.0, a.1) <= step(b.0.0, b.1) { (a, b) } else { (b, a) };
+            if step(side_a.0.0, side_a.1) <= step(side_b.0.0, side_b.1) { (side_a, side_b) } else { (side_b, side_a) };
         (
             json!({"a": uma_name(candidates[first_index]), "b": uma_name(candidates[second_index]), "c": uma_name(combination.finisher_trainee), "careers": [step(first_index.0, first_uses_existing), step(second_index.0, second_uses_existing), combination.finisher_cost]}),
             json!([member(first_index.0, first_uses_existing), member(second_index.0, second_uses_existing)]),

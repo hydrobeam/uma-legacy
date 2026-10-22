@@ -1,13 +1,13 @@
 //! Surrogate checks against exact career and deck searches, including audit rows and their ranking records.
 //! Career selection and path execution live in the sibling modules.
 
+use crate::career::Lineage;
 use crate::career::inherit::{ExactOptions, LineageChances};
 use crate::career::pool::Pool;
 use crate::career::search::DeckRes;
 use crate::career::sim::Sim;
 use crate::career::sim::draw::Keys;
 use crate::career::sim::play::PathState;
-use crate::career::{Env, Lineage};
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
 
@@ -31,14 +31,23 @@ impl Sim<'_, '_> {
         let landed_distance = if deck_index == usize::MAX {
             1.0
         } else {
-            let cached = &self.evaluator.cache.decks[trainee][deck_index].sel;
-            Self::landed_set_distance(self.env, trainee, &inheritance_chances, &carriers, cached, &best.deck)
+            let cached = &self.evaluator.cache.decks[trainee][deck_index].deck;
+            Self::landed_set_distance(
+                &self.env.setup,
+                &mut self.env.state,
+                trainee,
+                &inheritance_chances,
+                &carriers,
+                cached,
+                &best.deck,
+            )
         };
         best.audit_row(kind, table_value, landed_distance)
     }
     /// Total variation distance between two decks' landed-set distributions at the same inheritance chances.
     fn landed_set_distance(
-        env: &mut Env,
+        setup: &crate::career::CareerSetup,
+        state: &mut crate::career::SearchState,
         trainee: crate::uma::UmaIndex,
         inheritance_chances: &[f64],
         carriers: &[i32],
@@ -46,19 +55,14 @@ impl Sim<'_, '_> {
         second: &SelectedDeck,
     ) -> f64 {
         let mut sets = |deck: &SelectedDeck| {
-            env.setup.set_trainee(&mut env.state, trainee, inheritance_chances);
-            let exact = env.setup.exact(
-                &env.state,
-                trainee,
-                deck,
-                carriers,
-                ExactOptions { all_but_one: false, landed_sets: true },
-            );
-            env.setup.outcome_sets(exact.outfit, &exact.ext)
+            setup.set_trainee(state, trainee, inheritance_chances);
+            let exact =
+                setup.exact(state, trainee, deck, carriers, ExactOptions { all_but_one: false, landed_sets: true });
+            setup.outcome_sets(exact.outfit, &exact.extras)
         };
         let first_sets = sets(first);
         let second_sets = sets(second);
-        0.5 * first_sets.iter().zip(&second_sets).map(|(x, y)| (x - y).abs()).sum::<f64>()
+        0.5 * first_sets.iter().zip(&second_sets).map(|(first, second)| (first - second).abs()).sum::<f64>()
     }
     /// The trainee's exact best deck at these inheritance chances (a full search), including the spark scale.
     pub(super) fn exact_best(
@@ -70,13 +74,8 @@ impl Sim<'_, '_> {
         self.env.setup.set_trainee(&mut self.env.state, trainee, inheritance_chances);
         self.env.state.work = 0;
         let mut scored_decks = 0;
-        let search_result = self.env.setup.best_deck(
-            &mut self.env.state,
-            &mut self.env.audit,
-            &mut self.env.memo,
-            trainee,
-            spark_scale,
-            0.0,
+        let search_result = self.env.best_deck(
+            crate::career::decks::DeckSearch { trainee, spark_scale, bar: 0.0 },
             &[],
             &mut scored_decks,
         );
@@ -92,22 +91,19 @@ impl Sim<'_, '_> {
     pub(super) fn audit_greedy(&mut self, state: &mut PathState, keys: Keys, career_index: usize) -> Value {
         let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
-        let search = self.env.setup.solve(
-            &mut self.env.state,
-            &mut self.env.audit,
-            &mut self.env.memo,
-            &state.pool,
-            &[],
-            &trainees,
-            false,
-            1,
-        );
+        let search = self.env.solve(crate::career::search::SearchRequest {
+            pool: &state.pool,
+            fixed_parents: &[],
+            trainees: &trainees,
+            per_trainee: false,
+            top: 1,
+        });
         let exact_pick = search.found.first().map(|found| {
             (
                 found.value,
                 format!(
                     "{}:{},{}",
-                    self.d.umas[found.trainee].id,
+                    self.data.umas[found.trainee].id,
                     found.first_parent.min(found.second_parent),
                     found.first_parent.max(found.second_parent)
                 ),
@@ -138,7 +134,7 @@ impl Sim<'_, '_> {
                 }
             }
         }
-        for i in 0..self.cfg.audit_sample.min(candidates.len()) {
+        for i in 0..self.settings.audit_sample.min(candidates.len()) {
             let j = i + (keys.uniform(career_index, 9, i) * (candidates.len() - i) as f64) as usize;
             let last = candidates.len() - 1;
             candidates.swap(i, j.min(last));
@@ -151,23 +147,23 @@ impl Sim<'_, '_> {
     pub(super) fn check(&mut self, state: &mut PathState, all: bool) -> Value {
         let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
-        let search = self.env.setup.solve(
-            &mut self.env.state,
-            &mut self.env.audit,
-            &mut self.env.memo,
-            &state.pool,
-            &[],
-            &trainees,
-            false,
-            1,
-        );
+        let search = self.env.solve(crate::career::search::SearchRequest {
+            pool: &state.pool,
+            fixed_parents: &[],
+            trainees: &trainees,
+            per_trainee: false,
+            top: 1,
+        });
         let exact_pick = search.found.first().map(|found| {
-            (found.value, format!("{}:{},{}", self.d.umas[found.trainee].id, found.first_parent, found.second_parent))
+            (
+                found.value,
+                format!("{}:{},{}", self.data.umas[found.trainee].id, found.first_parent, found.second_parent),
+            )
         });
         let argmax = json!({"pool": state.legacies.len(), "sur": self.key(&career), "sur_p": career.p_all, "sur_val": state.best.map(|pick| pick.value),
                             "ex": exact_pick.as_ref().map(|(_, key)| key.clone()), "ex_p": exact_pick.as_ref().map(|(value, _)| *value), "proven": search.proven});
         let mut rows = vec![];
-        if self.cfg.check_lineages > 0 {
+        if self.settings.check_lineages > 0 {
             let best_value = state.best.map_or(0.0, |pick| pick.value);
             let pool_size = state.legacies.len();
             let newest_veteran = pool_size - 1;
@@ -184,10 +180,10 @@ impl Sim<'_, '_> {
                     RankedCareer::new,
                 )
                 .into_iter()
-                .filter(|candidate| candidate.ceiling >= self.cfg.check_frac * best_value)
+                .filter(|candidate| candidate.ceiling >= self.settings.check_frac * best_value)
                 .collect();
-            candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
-            candidates.truncate(self.cfg.check_lineages);
+            candidates.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
+            candidates.truncate(self.settings.check_lineages);
             if let Some(pick) = state.best
                 && !candidates.iter().any(|candidate| candidate.lineage == pick.lineage)
             {
@@ -229,13 +225,8 @@ impl Sim<'_, '_> {
         self.env.setup.set_trainee(&mut self.env.state, trainee, &inheritance_chances);
         self.env.state.work = 0;
         let mut scored_decks = 0;
-        let search_result = self.env.setup.best_deck(
-            &mut self.env.state,
-            &mut self.env.audit,
-            &mut self.env.memo,
-            trainee,
-            spark_scale,
-            0.0,
+        let search_result = self.env.best_deck(
+            crate::career::decks::DeckSearch { trainee, spark_scale, bar: 0.0 },
             &[],
             &mut scored_decks,
         );
@@ -246,8 +237,16 @@ impl Sim<'_, '_> {
         let landed_distance = if deck_index == usize::MAX {
             1.0
         } else {
-            let cached = &self.evaluator.cache.decks[trainee][deck_index].sel;
-            Self::landed_set_distance(self.env, trainee, &inheritance_chances, &carriers, cached, &deck)
+            let cached = &self.evaluator.cache.decks[trainee][deck_index].deck;
+            Self::landed_set_distance(
+                &self.env.setup,
+                &mut self.env.state,
+                trainee,
+                &inheritance_chances,
+                &carriers,
+                cached,
+                &deck,
+            )
         };
         let pick = state.best.is_some_and(|pick| pick.lineage == lineage);
         Some(json!([

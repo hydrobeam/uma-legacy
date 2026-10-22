@@ -112,20 +112,20 @@ pub(crate) fn roll_kept<'data>(
     env: &mut Env<'data>,
     worker: &mut KeptState,
     input: &JobInputs<'data>,
-    legs: &[Legacy],
+    legacies: &[Legacy],
     pool: &Pool,
-    fix: &[usize],
-    pj: &PlanJob,
+    fixed_parents: &[usize],
+    plan_job: &PlanJob,
 ) -> Option<Value> {
-    let stars = pj.roll.as_ref()?;
+    let stars = plan_job.roll.as_ref()?;
     let key = roll_key(input.job);
     let index = worker.rolls.iter().position(|roll| roll.key == key)?;
     let mut kept = worker.rolls.remove(index);
     // (the roll's own timers and counters, `prof`; what the job counted before goes back after)
     let started = now_ms();
     let prof_before = PROF.with(|prof| std::mem::take(&mut *prof.borrow_mut()));
-    let answer = match sim_for(env, worker, input, pj) {
-        Ok(mut sim) => roll_answer(&mut sim, &RollPool { legacies: legs, pool, fixed_parents: fix }, &mut kept, stars),
+    let answer = match sim_for(env, worker, input, plan_job) {
+        Ok(mut sim) => roll_answer(&mut sim, &RollPool { legacies, pool, fixed_parents }, &mut kept, stars),
         Err(error) => error,
     };
     keep_roll(worker, kept);
@@ -171,8 +171,8 @@ fn roll_answer(simulator: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, s
     }
     // (y_hi >= y is derived, `outcome_hi` (1)-(3): checked here, within rounding, where the max below would hide a bound
     // that drifted under the estimate; the max stays for the page)
-    debug_assert!(hi.is_none_or(|h| h >= y - 1e-9 * y.abs().max(1.0)), "roll: y_hi {hi:?} below y {y}");
-    json!({"y": (y * 100.0).round() / 100.0, "y_hi": hi.map(|h| (h.max(y) * 100.0).ceil() / 100.0)})
+    debug_assert!(hi.is_none_or(|bound| bound >= y - 1e-9 * y.abs().max(1.0)), "roll: y_hi {hi:?} below y {y}");
+    json!({"y": (y * 100.0).round() / 100.0, "y_hi": hi.map(|bound| (bound.max(y) * 100.0).ceil() / 100.0)})
 }
 
 /// the kept roll states for the page to store (`state_out`), every float as its bits
@@ -186,16 +186,16 @@ pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
     };
     let base_out = |base: &KeptBase| {
         json!({"cands": base.candidates, "c1": fvec(&base.step_costs), "v0": hx(base.current_value), "pnow": fvec(&base.current_odds), "m23": fvec(&base.later_stage_costs),
-            "cont": base.continuations.iter().map(|c| json!([hx(c.lam), hx(c.phi), hx(c.pinf), !c.tab.is_empty()])).collect::<Vec<_>>(),
+            "cont": base.continuations.iter().map(|continuation| json!([hx(continuation.lam), hx(continuation.phi), hx(continuation.pinf), !continuation.tables.is_empty()])).collect::<Vec<_>>(),
             "combos": base.trios.iter().map(|trio| json!([trio.candidate_a.0, trio.candidate_b.0, hx(trio.finisher_cost), trio.a_uses_existing, trio.b_uses_existing])).collect::<Vec<_>>()})
     };
-    let scored_out = |sd: &Scored| {
-        json!({"n": [sd.uncertain_target_count, sd.fixed_target_count, sd.target_count, sd.slot_count], "xi": sd.own_candidate, "goal": sd.completes_goal, "w": fvec(&sd.star_mix), "uncv": sd.uncertain_targets, "fmm": sd.fixed_landed_masks,
-            "x0": sd.misses_without_her.iter().map(|v| fvec(v)).collect::<Vec<_>>(), "xm": sd.miss_by_stars.iter().map(|v| fvec(v)).collect::<Vec<_>>(),
-            "pw": sd.target_spark_scales.iter().map(|v| fvec(&v.iter().flatten().copied().collect::<Vec<f64>>())).collect::<Vec<_>>(),
-            "tsi": sd.setup_by_table, "t0": fvec(&sd.initial_tables), "col": sd.collapsed_targets, "sslot": sd.slot_by_setup, "p0": fvec(&sd.current_probabilities), "os": fvec(&sd.landed_set_chances),
-            "act": sd.active_candidates.iter().map(|active| json!([active.candidate.0, active.slot, hx(active.threshold), hx(active.current_chance)])).collect::<Vec<_>>(),
-            "her": trios_out(&sd.own_trios)})
+    let scored_out = |scored: &Scored| {
+        json!({"n": [scored.uncertain_target_count, scored.fixed_target_count, scored.target_count, scored.slot_count], "xi": scored.own_candidate, "goal": scored.completes_goal, "w": fvec(&scored.star_mix), "uncv": scored.uncertain_targets, "fmm": scored.fixed_landed_masks,
+            "x0": scored.misses_without_her.iter().map(|value| fvec(value)).collect::<Vec<_>>(), "xm": scored.miss_by_stars.iter().map(|value| fvec(value)).collect::<Vec<_>>(),
+            "pw": scored.target_spark_scales.iter().map(|value| fvec(&value.iter().flatten().copied().collect::<Vec<f64>>())).collect::<Vec<_>>(),
+            "tsi": scored.setup_by_table, "t0": fvec(&scored.initial_tables), "col": scored.collapsed_targets, "sslot": scored.slot_by_setup, "p0": fvec(&scored.current_probabilities), "os": fvec(&scored.landed_set_chances),
+            "act": scored.active_candidates.iter().map(|active| json!([active.candidate.0, active.slot, hx(active.threshold), hx(active.current_chance)])).collect::<Vec<_>>(),
+            "her": trios_out(&scored.own_trios)})
     };
     Value::Array(
         rolls.iter()
@@ -204,7 +204,7 @@ pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
                 json!({
                     "k": ux(roll.key), "x": [lineage.trainee, lineage.first_parent, lineage.second_parent],
                     "sel": sel_out(&roll.deck), "her": trios_out(&roll.own_trios),
-                    "anc": roll.found_anchors.iter().map(|a| a.as_ref().map(|anchor| json!([anchor.deck_class, fvec(&anchor.inheritance_chances), hx(anchor.value)]))).collect::<Vec<_>>(),
+                    "anc": roll.found_anchors.iter().map(|found_anchor| found_anchor.as_ref().map(|anchor| json!([anchor.deck_class, fvec(&anchor.inheritance_chances), hx(anchor.value)]))).collect::<Vec<_>>(),
                     "base": base_out(&roll.base),
                     "sd": scored_out(&roll.scored)})
             })
@@ -214,9 +214,9 @@ pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
 
 /// Kept roll states from the page's store (`state_in`); None refuses the store whole. (Absent in a state stored before
 /// them: none.)
-pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
+pub(crate) fn rolls_in(value: &Value) -> Option<Vec<RollKeep>> {
     use crate::career::state::{fx, sel_in, usz, uxr};
-    let Some(stored) = v.as_array() else { return v.is_null().then(Vec::new) };
+    let Some(stored) = value.as_array() else { return value.is_null().then(Vec::new) };
     stored
         .iter()
         .map(|entry| {
@@ -233,22 +233,25 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
             let found_anchors = entry["anc"]
                 .as_array()?
                 .iter()
-                .map(|a| {
-                    if a.is_null() {
+                .map(|stored_anchor| {
+                    if stored_anchor.is_null() {
                         Some(None)
                     } else {
                         Some(Some(FoundAnchor {
-                            deck_class: crate::uma::UmaIndex(usz(&a[0])?),
-                            inheritance_chances: crate::career::state::pvec_r(&a[1])?,
-                            value: fx(&a[2])?,
+                            deck_class: crate::uma::UmaIndex(usz(&stored_anchor[0])?),
+                            inheritance_chances: crate::career::state::pvec_r(&stored_anchor[1])?,
+                            value: fx(&stored_anchor[2])?,
                         }))
                     }
                 })
                 .collect::<Option<Vec<_>>>()?;
             // (the anchors' chances: one per job target; her trio sides at the plan's end: candidate indices)
             let own_trios = own_trios_in(&entry["her"])?;
-            if found_anchors.iter().flatten().any(|a| a.inheritance_chances.len() != scored.target_count)
-                || own_trios.iter().any(|h| h.candidate.0 >= base.candidates.len())
+            if found_anchors
+                .iter()
+                .flatten()
+                .any(|stored_anchor| stored_anchor.inheritance_chances.len() != scored.target_count)
+                || own_trios.iter().any(|trio| trio.candidate.0 >= base.candidates.len())
             {
                 return None;
             }
@@ -266,33 +269,34 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
         .collect()
 }
 
-fn usize_vec(v: &Value) -> Option<Vec<usize>> {
-    v.as_array()?.iter().map(crate::career::state::usz).collect()
+fn usize_vec(value: &Value) -> Option<Vec<usize>> {
+    value.as_array()?.iter().map(crate::career::state::usz).collect()
 }
 
-fn own_trios_in(v: &Value) -> Option<Vec<OwnTrio>> {
+fn own_trios_in(value: &Value) -> Option<Vec<OwnTrio>> {
     use crate::career::state::{fx, usz};
-    v.as_array()?
+    value
+        .as_array()?
         .iter()
-        .map(|t| {
+        .map(|stored| {
             Some(OwnTrio {
-                candidate: CandidateIndex(usz(&t[0])?),
-                uses_existing: t[1].as_bool()?,
-                finisher_cost: fx(&t[2])?,
+                candidate: CandidateIndex(usz(&stored[0])?),
+                uses_existing: stored[1].as_bool()?,
+                finisher_cost: fx(&stored[2])?,
             })
         })
         .collect()
 }
 
-fn kept_base_in(b: &Value) -> Option<KeptBase> {
+fn kept_base_in(stored: &Value) -> Option<KeptBase> {
     use crate::career::state::{fvec_r, fx, usz};
-    let continuations = b["cont"]
+    let continuations = stored["cont"]
         .as_array()?
         .iter()
-        .map(|c| {
-            let (lam, phi, pinf) = (fx(&c[0])?, fx(&c[1])?, fx(&c[2])?);
+        .map(|continuation| {
+            let (lam, phi, pinf) = (fx(&continuation[0])?, fx(&continuation[1])?, fx(&continuation[2])?);
             // (a Cont without its table has no building: `Cont::default`'s lam 0; one that reads as building is refused)
-            Some(if c[3].as_bool()? {
+            Some(if continuation[3].as_bool()? {
                 Cont::new(lam, phi, pinf)
             } else if lam > 0.0 && phi > 0.0 {
                 return None;
@@ -301,86 +305,90 @@ fn kept_base_in(b: &Value) -> Option<KeptBase> {
             })
         })
         .collect::<Option<Vec<Cont>>>()?;
-    let trios = b["combos"]
+    let trios = stored["combos"]
         .as_array()?
         .iter()
-        .map(|t| {
+        .map(|trio| {
             Some(Trio {
-                candidate_a: CandidateIndex(usz(&t[0])?),
-                candidate_b: CandidateIndex(usz(&t[1])?),
-                finisher_cost: fx(&t[2])?,
-                a_uses_existing: t[3].as_bool()?,
-                b_uses_existing: t[4].as_bool()?,
+                candidate_a: CandidateIndex(usz(&trio[0])?),
+                candidate_b: CandidateIndex(usz(&trio[1])?),
+                finisher_cost: fx(&trio[2])?,
+                a_uses_existing: trio[3].as_bool()?,
+                b_uses_existing: trio[4].as_bool()?,
             })
         })
         .collect::<Option<Vec<Trio>>>()?;
     Some(KeptBase {
-        candidates: usize_vec(&b["cands"])?.into_iter().map(crate::uma::UmaIndex).collect(),
-        step_costs: fvec_r(&b["c1"])?,
-        current_value: fx(&b["v0"])?,
-        current_odds: fvec_r(&b["pnow"])?,
+        candidates: usize_vec(&stored["cands"])?.into_iter().map(crate::uma::UmaIndex).collect(),
+        step_costs: fvec_r(&stored["c1"])?,
+        current_value: fx(&stored["v0"])?,
+        current_odds: fvec_r(&stored["pnow"])?,
         continuations,
         trios,
-        later_stage_costs: fvec_r(&b["m23"])?,
+        later_stage_costs: fvec_r(&stored["m23"])?,
     })
 }
 
 /// A stored `Scored`, its derived tables left empty (`derive`)
-fn scored_in(s: &Value) -> Option<Scored> {
+fn scored_in(stored: &Value) -> Option<Scored> {
     use crate::career::state::{fvec_r, fx, pvec_r, usz};
-    let sizes = usize_vec(&s["n"])?;
+    let sizes = usize_vec(&stored["n"])?;
     // (the plan's limits, `sim_for`: at most 12 targets, 10 of them uncertain, the rest guaranteed; checked before
     // any table is sized by them)
-    let &[nu, nf, ntar, na] = sizes.as_slice() else { return None };
-    if ntar > 12 || nu > 10 || nf > 12 || nu + nf != ntar {
+    let &[uncertain_target_count, fixed_target_count, target_count, slot_count] = sizes.as_slice() else { return None };
+    if target_count > 12
+        || uncertain_target_count > 10
+        || fixed_target_count > 12
+        || uncertain_target_count + fixed_target_count != target_count
+    {
         return None;
     }
-    let four = |v: &Value| -> Option<[f64; 4]> {
-        let x = fvec_r(v)?;
-        x.try_into().ok()
+    let four = |value: &Value| -> Option<[f64; 4]> {
+        let values = fvec_r(value)?;
+        values.try_into().ok()
     };
-    let w: [f64; 3] = pvec_r(&s["w"])?.try_into().ok()?;
-    let pw = s["pw"]
+    let star_mix: [f64; 3] = pvec_r(&stored["w"])?.try_into().ok()?;
+    let target_spark_scales = stored["pw"]
         .as_array()?
         .iter()
-        .map(|v| {
-            let f = fvec_r(v)?;
-            (f.len() == 2 * ntar).then(|| f.chunks(2).map(|c| [c[0], c[1]]).collect())
+        .map(|value| {
+            let scales = fvec_r(value)?;
+            (scales.len() == 2 * target_count).then(|| scales.chunks(2).map(|pair| [pair[0], pair[1]]).collect())
         })
         .collect::<Option<Vec<Vec<[f64; 2]>>>>()?;
-    let act = s["act"]
+    let active_candidates = stored["act"]
         .as_array()?
         .iter()
-        .map(|t| {
+        .map(|active| {
             Some(ActiveCandidate {
-                candidate: CandidateIndex(usz(&t[0])?),
-                slot: if t[1].is_null() { None } else { Some(usz(&t[1])?) },
-                threshold: fx(&t[2])?,
-                current_chance: fx(&t[3])?,
+                candidate: CandidateIndex(usz(&active[0])?),
+                slot: if active[1].is_null() { None } else { Some(usz(&active[1])?) },
+                threshold: fx(&active[2])?,
+                current_chance: fx(&active[3])?,
             })
         })
         .collect::<Option<Vec<_>>>()?;
     Some(Scored {
-        uncertain_target_count: nu,
-        fixed_target_count: nf,
-        target_count: ntar,
-        slot_count: na,
-        own_candidate: if s["xi"].is_null() { None } else { Some(usz(&s["xi"])?) },
-        completes_goal: s["goal"].as_bool()?,
-        star_mix: w,
-        uncertain_targets: usize_vec(&s["uncv"])?,
-        fixed_landed_masks: usize_vec(&s["fmm"])?.into_iter().map(TargetMask::from_bits).collect(),
-        misses_without_her: s["x0"].as_array()?.iter().map(fvec_r).collect::<Option<_>>()?,
-        miss_by_stars: s["xm"].as_array()?.iter().map(four).collect::<Option<_>>()?,
-        target_spark_scales: pw,
-        setup_by_table: usize_vec(&s["tsi"])?,
-        initial_tables: fvec_r(&s["t0"])?,
-        collapsed_targets: s["col"].as_array()?.iter().map(serde_json::Value::as_bool).collect::<Option<_>>()?,
-        slot_by_setup: usize_vec(&s["sslot"])?,
-        current_probabilities: fvec_r(&s["p0"])?,
-        landed_set_chances: pvec_r(&s["os"])?,
-        active_candidates: act,
-        own_trios: own_trios_in(&s["her"])?,
+        uncertain_target_count,
+        fixed_target_count,
+        target_count,
+        slot_count,
+        own_candidate: if stored["xi"].is_null() { None } else { Some(usz(&stored["xi"])?) },
+        completes_goal: stored["goal"].as_bool()?,
+        star_mix,
+        uncertain_targets: usize_vec(&stored["uncv"])?,
+        fixed_landed_masks: usize_vec(&stored["fmm"])?.into_iter().map(TargetMask::from_bits).collect(),
+        misses_without_her: stored["x0"].as_array()?.iter().map(fvec_r).collect::<Option<_>>()?,
+        miss_by_stars: stored["xm"].as_array()?.iter().map(four).collect::<Option<_>>()?,
+        target_spark_scales,
+        setup_by_table: usize_vec(&stored["tsi"])?,
+        initial_tables: fvec_r(&stored["t0"])?,
+        collapsed_targets: stored["col"].as_array()?.iter().map(serde_json::Value::as_bool).collect::<Option<_>>()?,
+        slot_by_setup: usize_vec(&stored["sslot"])?,
+        current_probabilities: fvec_r(&stored["p0"])?,
+        landed_set_chances: pvec_r(&stored["os"])?,
+        active_candidates,
+        own_trios: own_trios_in(&stored["her"])?,
         present_factors: vec![],
         absent_factors: vec![],
         spark_scales: vec![],
@@ -390,38 +398,41 @@ fn scored_in(s: &Value) -> Option<Scored> {
 impl Scored {
     /// A stored scoring and its base fit together: the vectors' lengths, and every index within what it indexes
     fn fits(&self, base: &KeptBase) -> bool {
-        let (ns, nc) = (self.misses_without_her.len(), base.candidates.len());
+        let (setup_count, candidate_count) = (self.misses_without_her.len(), base.candidates.len());
         let fixed: Vec<usize> = (0..self.target_count).filter(|i| !self.uncertain_targets.contains(i)).collect();
-        let fits_base = nc <= crate::career::state::STATE_MAX_N
-            && base.step_costs.len() == nc
-            && base.current_odds.len() == nc
-            && base.later_stage_costs.len() == nc
-            && base.continuations.len() <= nc
-            && base.trios.iter().all(|t| t.candidate_a.0 < nc && t.candidate_b.0 < nc);
+        let fits_base = candidate_count <= crate::career::state::STATE_MAX_N
+            && base.step_costs.len() == candidate_count
+            && base.current_odds.len() == candidate_count
+            && base.later_stage_costs.len() == candidate_count
+            && base.continuations.len() <= candidate_count
+            && base
+                .trios
+                .iter()
+                .all(|trio| trio.candidate_a.0 < candidate_count && trio.candidate_b.0 < candidate_count);
         // her setups (at most IDX_PARTNERS per candidate), the candidates the loop lifts (those with a slot in slot
         // order, one per slot), her own candidate index and trio sides: candidate indices
-        let fits_cands = ns <= IDX_PARTNERS * nc
-            && self.active_candidates.iter().filter_map(|a| a.slot).eq(0..self.slot_count)
-            && self.active_candidates.iter().all(|a| a.candidate.0 < nc)
-            && self.own_candidate.is_none_or(|x| x < nc)
-            && self.own_trios.iter().all(|h| h.candidate.0 < nc);
+        let fits_cands = setup_count <= IDX_PARTNERS * candidate_count
+            && self.active_candidates.iter().filter_map(|active| active.slot).eq(0..self.slot_count)
+            && self.active_candidates.iter().all(|active| active.candidate.0 < candidate_count)
+            && self.own_candidate.is_none_or(|own| own < candidate_count)
+            && self.own_trios.iter().all(|trio| trio.candidate.0 < candidate_count);
         fits_base
             && fits_cands
-            && self.uncertain_targets.windows(2).all(|p| p[0] < p[1])
+            && self.uncertain_targets.windows(2).all(|window| window[0] < window[1])
             && !self.uncertain_targets.last().is_some_and(|&i| i >= self.target_count)
             && self.fixed_landed_masks == fm_masks(&fixed)
-            && !self.slot_by_setup.windows(2).any(|p| p[0] > p[1])
+            && !self.slot_by_setup.windows(2).any(|window| window[0] > window[1])
             && self.uncertain_targets.len() == self.uncertain_target_count
             && self.collapsed_targets.len() == self.uncertain_target_count
-            && self.miss_by_stars.len() == ns
-            && self.target_spark_scales.len() == ns
-            && self.slot_by_setup.len() == ns
+            && self.miss_by_stars.len() == setup_count
+            && self.target_spark_scales.len() == setup_count
+            && self.slot_by_setup.len() == setup_count
             && self.landed_set_chances.len() == 1usize << self.target_count
             && self.fixed_landed_masks.len() == 1usize << self.fixed_target_count
             && self.initial_tables.len() == self.setup_by_table.len() << self.uncertain_target_count
-            && !self.misses_without_her.iter().any(|v| v.len() != self.uncertain_target_count)
-            && !self.setup_by_table.iter().any(|&si| si >= ns)
-            && !self.slot_by_setup.iter().any(|&sl| sl >= self.slot_count)
+            && !self.misses_without_her.iter().any(|value| value.len() != self.uncertain_target_count)
+            && !self.setup_by_table.iter().any(|&setup| setup >= setup_count)
+            && !self.slot_by_setup.iter().any(|&slot| slot >= self.slot_count)
             && self.current_probabilities.len() == self.slot_count
     }
 }

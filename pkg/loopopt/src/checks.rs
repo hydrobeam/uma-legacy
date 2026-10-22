@@ -1,7 +1,7 @@
 //! The solver's diagnostic switches, read from the environment once (`Checks`), and the check counters they report.
 //!
 //! Every environment variable the solver reads is read here, once per process, into one immutable `Checks` record;
-//! a job borrows it (`DeckJob::checks`) and passes it down. The counters stay thread-local: they total the checks of
+//! a job borrows it (`checks::get`) and passes it down. The counters stay thread-local: they total the checks of
 //! every job the thread runs, the CLI prints them when it exits (`CliBoundReport`, also on a panic), and no search
 //! reads them, so they change no result.
 use std::cell::{Cell, RefCell};

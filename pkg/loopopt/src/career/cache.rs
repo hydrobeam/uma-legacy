@@ -11,9 +11,9 @@ use crate::uma::{UmaIndex, UmaTable};
 /// uncertain target; index bit k set = q_k = 0, as `corners` builds them from q0 = 0)
 #[derive(Clone)]
 pub(super) struct CachedDeck {
-    pub(super) sel: SelectedDeck,
+    pub(super) deck: SelectedDeck,
     /// Per outfit of the trainee, the deck's corner table.
-    pub(super) tab: Vec<Vec<f64>>,
+    pub(super) tables: Vec<Vec<f64>>,
 }
 /// The deck cache of the simulator and the plan: per trainee her decks with corner tables and her fully checked decks (`Ref`, for `rise`)
 #[derive(Clone)]
@@ -47,15 +47,15 @@ impl Cache {
         deck: &SelectedDeck,
     ) {
         if self.decks[trainee].iter().any(|cached| {
-            cached.sel.entries == deck.entries
-                && cached.sel.plain_pals == deck.plain_pals
-                && cached.sel.filler_cards == deck.filler_cards
+            cached.deck.entries == deck.entries
+                && cached.deck.plain_pals == deck.plain_pals
+                && cached.deck.filler_cards == deck.filler_cards
         }) {
             return;
         }
-        let tab = setup.corners_kept(state, memo, trainee, deck);
+        let tables = setup.corners_kept(state, memo, trainee, deck);
         self.tables += 1;
-        self.decks[trainee].push(CachedDeck { sel: deck.clone(), tab });
+        self.decks[trainee].push(CachedDeck { deck: deck.clone(), tables });
     }
 
     /// Absorb a search's fully checked decks. A repeated deck still contributes its proof at the

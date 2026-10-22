@@ -42,22 +42,22 @@ pub unsafe extern "C" fn dealloc(p: *mut u8, len: usize) {
 /// Length of the latest response, to be read together with the pointer returned by `call`.
 #[unsafe(no_mangle)]
 pub extern "C" fn result_len() -> usize {
-    OUT.with(|o| o.borrow().len())
+    OUT.with(|output| output.borrow().len())
 }
 
 /// Handle a request without taking ownership of its bytes. The returned response is owned by this module;
 /// copy `result_len()` bytes before the next `call`, which may overwrite or reallocate the output buffer.
 ///
 /// # Safety
-/// `p` must be non-null and valid for reading `len` initialized bytes in a single allocation, even for an empty
-/// request. The bytes must be valid UTF-8 and remain unchanged for the duration of the call. The host must not
+/// `request_bytes` must be non-null and valid for reading `len` initialized bytes in a single allocation, even for an
+/// empty request. The bytes must be valid UTF-8 and remain unchanged for the duration of the call. The host must not
 /// reenter `call` while it is running or modify the module-owned response buffer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn call(p: *const u8, len: usize) -> *const u8 {
-    // SAFETY: the caller guarantees `p` is valid for reading `len` initialized bytes of UTF-8 that stay unchanged
-    // during the call (`# Safety` above); `req` does not outlive it.
-    let req = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(p, len)) };
-    let out = handle(req);
+pub unsafe extern "C" fn call(request_bytes: *const u8, len: usize) -> *const u8 {
+    // SAFETY: the caller guarantees `request_bytes` is valid for reading `len` initialized bytes of UTF-8 that stay
+    // unchanged during the call (`# Safety` above); `request_text` does not outlive it.
+    let request_text = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(request_bytes, len)) };
+    let out = handle(request_text);
     // (written into the last call's buffer: `Value`'s `Display` is this compact serializer, the same bytes)
     OUT.with(|output| {
         let mut buffer = output.borrow_mut();
@@ -80,20 +80,20 @@ struct InitReq {
     events: serde_json::Value,
 }
 
-fn handle(req: &str) -> serde_json::Value {
+fn handle(request_text: &str) -> serde_json::Value {
     // the request parsed once: an init request with the page's prefix straight into `InitReq`, every other one into a
     // `Value` (an init request without the prefix then from it; on an error the text is parsed again for the message)
     let init = |parsed: Result<InitReq, serde_json::Error>| -> Result<InitReq, serde_json::Value> {
         parsed
-            .or_else(|_| serde_json::from_str::<InitReq>(req))
+            .or_else(|_| serde_json::from_str::<InitReq>(request_text))
             .map_err(|e| serde_json::json!({"error": format!("bad init request: {e}")}))
     };
     let mut job: Option<serde_json::Value> = None;
-    let initialization = if req.starts_with("{\"cmd\":\"init\"") {
-        Some(init(serde_json::from_str(req)))
+    let initialization = if request_text.starts_with("{\"cmd\":\"init\"") {
+        Some(init(serde_json::from_str(request_text)))
     } else {
-        match serde_json::from_str::<serde_json::Value>(req) {
-            Ok(value) if value.get("cmd").and_then(|c| c.as_str()) == Some("init") => {
+        match serde_json::from_str::<serde_json::Value>(request_text) {
+            Ok(value) if value.get("cmd").and_then(|command| command.as_str()) == Some("init") => {
                 Some(init(serde_json::from_value(value)))
             }
             Ok(value) => {
@@ -121,37 +121,45 @@ fn handle(req: &str) -> serde_json::Value {
     let mut job = job.unwrap();
     let cmd = job["cmd"].as_str().unwrap_or("").to_owned();
     match cmd.as_str() {
-        "deck" => STATE.with(|s| {
-            DECK.with(|dk| {
-                let st = s.borrow();
-                let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-                let dkb = dk.borrow();
-                let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-                crate::deck::sources::apply_event_lists(&mut job, ev);
-                crate::deck::frontier::run_deck(d, sk, cr, &job)
+        "deck" => STATE.with(|stored_state| {
+            DECK.with(|stored_deck| {
+                let stored_data = stored_state.borrow();
+                let Some((data, skills)) = stored_data.as_ref() else {
+                    return serde_json::json!({"error": "not initialised"});
+                };
+                let stored_cards = stored_deck.borrow();
+                let Some((cards, events)) = stored_cards.as_ref() else {
+                    return serde_json::json!({"error": "no card data"});
+                };
+                crate::deck::sources::apply_event_lists(&mut job, events);
+                crate::deck::frontier::run_deck(data, skills, cards, &job)
             })
         }),
         // state_out / state_in read no events
-        "career" | "state_out" | "state_in" => STATE.with(|s| {
-            DECK.with(|dk| {
-                let st = s.borrow();
-                let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-                let dkb = dk.borrow();
-                let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
+        "career" | "state_out" | "state_in" => STATE.with(|stored_state| {
+            DECK.with(|stored_deck| {
+                let stored_data = stored_state.borrow();
+                let Some((data, skills)) = stored_data.as_ref() else {
+                    return serde_json::json!({"error": "not initialised"});
+                };
+                let stored_cards = stored_deck.borrow();
+                let Some((cards, events)) = stored_cards.as_ref() else {
+                    return serde_json::json!({"error": "no card data"});
+                };
                 // (a carried roll's plan job too: its kept roll state is found by the plan job as it ran, events applied)
                 if cmd == "career" {
-                    crate::deck::sources::apply_event_lists(&mut job, ev);
+                    crate::deck::sources::apply_event_lists(&mut job, events);
                     if job["roll"]["job"].is_object() {
-                        crate::deck::sources::apply_event_lists(&mut job["roll"]["job"], ev);
+                        crate::deck::sources::apply_event_lists(&mut job["roll"]["job"], events);
                     }
                 }
                 crate::career::state::KEPT.with(|kept| match cmd.as_str() {
                     "state_out" => crate::career::state::state_out(&kept.borrow()),
                     "state_in" => crate::career::state::state_in(&mut kept.borrow_mut(), &job["state"]),
-                    _ => crate::career::run_career_in(d, sk, cr, &job, &mut kept.borrow_mut()),
+                    _ => crate::career::run_career_in(data, skills, cards, &job, &mut kept.borrow_mut()),
                 })
             })
         }),
-        c => serde_json::json!({"error": format!("unknown command {c}")}),
+        other => serde_json::json!({"error": format!("unknown command {other}")}),
     }
 }

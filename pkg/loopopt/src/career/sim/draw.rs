@@ -42,19 +42,20 @@ impl Sim<'_, '_> {
     /// the veteran a failed career leaves: her landed set drawn from the failed sets, her stars from the
     /// rank's mix, her wins from her schedule's chances
     pub(super) fn draw(&self, career: &Cur, legacies: &[Legacy], keys: Keys, career_index: usize) -> Legacy {
-        let failed_probability: f64 = self.failed_sets.iter().map(|&outcome_mask| career.os[outcome_mask]).sum();
+        let failed_probability: f64 =
+            self.failed_sets.iter().map(|&outcome_mask| career.outcome_sets[outcome_mask]).sum();
         let mut remaining_mass = keys.uniform(career_index, STREAM_SET, 0) * failed_probability;
         let (mut landed_mask, mut last_failed_mask) = (usize::MAX, usize::MAX);
         for &outcome_mask in &self.failed_sets {
-            if career.os[outcome_mask] <= 0.0 {
+            if career.outcome_sets[outcome_mask] <= 0.0 {
                 continue;
             }
             last_failed_mask = outcome_mask;
-            if remaining_mass < career.os[outcome_mask] {
+            if remaining_mass < career.outcome_sets[outcome_mask] {
                 landed_mask = outcome_mask;
                 break;
             }
-            remaining_mass -= career.os[outcome_mask];
+            remaining_mass -= career.outcome_sets[outcome_mask];
         }
         if landed_mask == usize::MAX {
             landed_mask = last_failed_mask;
@@ -75,7 +76,7 @@ impl Sim<'_, '_> {
             sparks.push((target.group, stars));
         }
         let wins: Vec<usize> = career
-            .wp
+            .win_chances
             .iter()
             .enumerate()
             .filter(|&(race_index, &win_chance)| {
@@ -85,7 +86,7 @@ impl Sim<'_, '_> {
             .collect();
         let Lineage { trainee, first_parent, second_parent } = career.lineage;
         Legacy {
-            chara: self.d.umas[trainee].id,
+            character_id: self.data.umas[trainee].id,
             borrowed: false,
             sparks,
             wins,

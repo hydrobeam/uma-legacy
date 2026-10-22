@@ -145,20 +145,25 @@ impl Scored {
     /// landed set m and setup the spark scale, the product over job targets of pw at her spark there (m-major:
     /// scf[m * ns + si])
     pub(crate) fn derive(&mut self) {
-        let nu = self.uncertain_target_count;
+        let uncertain_target_count = self.uncertain_target_count;
         self.present_factors = self
             .misses_without_her
             .iter()
             .zip(&self.miss_by_stars)
-            .map(|(x0, xm)| (0..nu).map(|k| [0usize, 1, 2, 3].map(|sg| x0[k] * xm[sg])).collect())
+            .map(|(x0, xm)| {
+                (0..uncertain_target_count).map(|k| [0usize, 1, 2, 3].map(|her_stars| x0[k] * xm[her_stars])).collect()
+            })
             .collect();
-        self.absent_factors =
-            self.present_factors.iter().map(|v| v.iter().map(|r| r.map(|x| 1.0 - x)).collect()).collect();
-        let (nm, ntar) = (1usize << self.target_count, self.target_count);
-        self.spark_scales = Vec::with_capacity(nm * self.setup_count());
-        for m in 0..nm {
+        self.absent_factors = self
+            .present_factors
+            .iter()
+            .map(|setup_factors| setup_factors.iter().map(|star_factors| star_factors.map(|x| 1.0 - x)).collect())
+            .collect();
+        let (landed_set_count, target_count) = (1usize << self.target_count, self.target_count);
+        self.spark_scales = Vec::with_capacity(landed_set_count * self.setup_count());
+        for m in 0..landed_set_count {
             self.spark_scales.extend(self.target_spark_scales.iter().map(|pw| {
-                (0..ntar).map(|k| pw[k][usize::from(TargetMask::from_bits(m).contains(k))]).product::<f64>()
+                (0..target_count).map(|k| pw[k][usize::from(TargetMask::from_bits(m).contains(k))]).product::<f64>()
             }));
         }
     }
@@ -174,12 +179,12 @@ impl Scored {
         TargetMask::from_bits((1usize << self.target_count) - 1)
     }
     /// a leaf's representative: every collapsed target's nonzero digit set to 1 (`evaluate_outcomes`)
-    pub(crate) fn representative_of(&self, l: usize) -> usize {
-        let cm: usize =
+    pub(crate) fn representative_of(&self, leaf: usize) -> usize {
+        let collapsed_mask: usize =
             (0..self.uncertain_target_count).filter(|&k| self.collapsed_targets[k]).map(|k| 3usize << (2 * k)).sum();
-        let lo_bits = cm & (usize::MAX / 3);
-        let z = l & cm;
-        (l & !cm) | ((z | z >> 1) & lo_bits)
+        let lo_bits = collapsed_mask & (usize::MAX / 3);
+        let collapsed_digits = leaf & collapsed_mask;
+        (leaf & !collapsed_mask) | ((collapsed_digits | collapsed_digits >> 1) & lo_bits)
     }
 }
 
@@ -271,9 +276,9 @@ impl Scored {
                 scratch.fold.levels.resize(uncertain_target_count + 1, vec![]);
             }
             for k in 1..=uncertain_target_count {
-                let l = table_count << (uncertain_target_count - k);
-                if scratch.fold.levels[k].len() < l {
-                    scratch.fold.levels[k].resize(l, 0.0);
+                let level_size = table_count << (uncertain_target_count - k);
+                if scratch.fold.levels[k].len() < level_size {
+                    scratch.fold.levels[k].resize(level_size, 0.0);
                 }
             }
             if scratch.fold.setup_factors.len() < 16 * setup_count {
@@ -371,10 +376,10 @@ fn evaluate_outcomes<L: Leaves>(
     }
     // V after her found lazily (`sc_loop`): no step, stage 2-3 cost or C's step NaN, -0.0 or below 0, so no sum of them is
     // NaN or -0.0 and equal minima are the same bits
-    let is_nonnegative_cost = |c: f64| c >= 0.0 && c.to_bits() != (-0.0f64).to_bits();
-    let lazy_costs = score_base.step_costs.iter().all(|&c| is_nonnegative_cost(c))
-        && score_base.later_stage_costs.iter().all(|&c| is_nonnegative_cost(c))
-        && score_base.trios.iter().all(|t| is_nonnegative_cost(t.finisher_cost));
+    let is_nonnegative_cost = |cost: f64| cost >= 0.0 && cost.to_bits() != (-0.0f64).to_bits();
+    let lazy_costs = score_base.step_costs.iter().all(|&cost| is_nonnegative_cost(cost))
+        && score_base.later_stage_costs.iter().all(|&cost| is_nonnegative_cost(cost))
+        && score_base.trios.iter().all(|trio| is_nonnegative_cost(trio.finisher_cost));
     let context = OutcomeContext {
         score_base,
         fold: fold_context,
@@ -406,10 +411,10 @@ impl Scored {
         // per leaf (at its row) her landed set on the uncertain targets and her stars' chance: the product over k of w[her
         // stars on target k - 1] where she has any, in k order from 1.0 (every leaf: the leaves with digit k > 0 extend those
         // below 4^k; else per leaf, `leaf_set`, the same f64s)
-        // (they depend on w and uncv alone: built for every leaf, they are kept until those change, `cache.key`)
+        // (they depend on w and `uncertain_targets` alone: built for every leaf, they are kept until those change, `cache.key`)
         if L::ALL {
             let same = cache.key.len() == 3 + uncertain_target_count
-                && cache.key[..3].iter().zip(&w).all(|(&k, x)| k == x.to_bits())
+                && cache.key[..3].iter().zip(&w).all(|(&k, weight)| k == weight.to_bits())
                 && cache.key[3..].iter().zip(&self.uncertain_targets).all(|(&k, &i)| k == i as u64);
             if !same {
                 cache.star_probabilities.clear();
@@ -418,9 +423,9 @@ impl Scored {
                 cache.uncertain_landed_masks.push(0usize);
                 for k in 0..uncertain_target_count {
                     let lo = 1usize << (2 * k);
-                    for dg in 1..4usize {
+                    for stars in 1..4usize {
                         for i in 0..lo {
-                            cache.star_probabilities.push(cache.star_probabilities[i] * w[dg - 1]);
+                            cache.star_probabilities.push(cache.star_probabilities[i] * w[stars - 1]);
                             cache
                                 .uncertain_landed_masks
                                 .push(cache.uncertain_landed_masks[i] | (1 << self.uncertain_targets[k]));
@@ -428,15 +433,15 @@ impl Scored {
                     }
                 }
                 cache.key.clear();
-                cache.key.extend(w.iter().map(|x| x.to_bits()));
+                cache.key.extend(w.iter().map(|weight| weight.to_bits()));
                 cache.key.extend(self.uncertain_targets.iter().map(|&i| i as u64));
             }
         } else {
             cache.key.clear();
             cache.star_probabilities.clear();
             cache.uncertain_landed_masks.clear();
-            for &l in leaves.list() {
-                let outcome = leaf_set(l, &self.uncertain_targets, w);
+            for &leaf in leaves.list() {
+                let outcome = leaf_set(leaf, &self.uncertain_targets, w);
                 cache.star_probabilities.push(outcome.star_probability);
                 cache.uncertain_landed_masks.push(outcome.landed_mask);
             }
@@ -578,9 +583,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     };
     let mut lifted: Vec<CandidateLift> = vec![];
     let (collapse_mask, low_digit_bits) = (context.probabilities.collapse_mask, context.probabilities.low_digit_bits);
-    let rep_of = |l: usize| {
-        let z = l & collapse_mask;
-        (l & !collapse_mask) | ((z | z >> 1) & low_digit_bits)
+    let rep_of = |leaf: usize| {
+        let collapsed_digits = leaf & collapse_mask;
+        (leaf & !collapse_mask) | ((collapsed_digits | collapsed_digits >> 1) & low_digit_bits)
     };
     // Bound the representative records to about twice the savings buffer's memory.
     let record_capacity = (leaf_count << fixed_target_count).clamp(1 << 16, u32::MAX as usize - 1);
@@ -599,8 +604,8 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         }
     }
     let visited_leaves = if L::ALL { leaf_count } else { leaves.list().len() };
-    for li in 0..visited_leaves {
-        let leaf = if L::ALL { li } else { leaves.list()[li] };
+    for visit in 0..visited_leaves {
+        let leaf = if L::ALL { visit } else { leaves.list()[visit] };
         let leaf_row = leaves.row(leaf);
         let (uncertain_mask, star_probability) = (
             context.probabilities.uncertain_landed_masks[leaf_row],
@@ -640,8 +645,10 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                             }
                         }
                     } else {
-                        for &LiftRecord { candidate, probability: lifted_probability } in
-                            lift_records[record_start as usize..].iter().take_while(|e| e.candidate != usize::MAX)
+                        for &LiftRecord { candidate, probability: lifted_probability } in lift_records
+                            [record_start as usize..]
+                            .iter()
+                            .take_while(|record| record.candidate != usize::MAX)
                         {
                             lift_stats[candidate].lift_chance += outcome_probability;
                             lift_stats[candidate].lifted_odds_sum += outcome_probability * lifted_probability;

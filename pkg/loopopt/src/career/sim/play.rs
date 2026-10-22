@@ -42,12 +42,13 @@ enum Base {
     Index,
 }
 
-fn tq975(df: f64) -> f64 {
+/// The t distribution's 97.5% quantile at `degrees_of_freedom`: z, the normal one, plus its series terms in 1/df
+fn tq975(degrees_of_freedom: f64) -> f64 {
     let z = 1.959_964_f64;
     let (z3, z5, z7) = (z.powi(3), z.powi(5), z.powi(7));
-    z + (z3 + z) / (4.0 * df)
-        + (5.0 * z5 + 16.0 * z3 + 3.0 * z) / (96.0 * df * df)
-        + (3.0 * z7 + 19.0 * z5 + 17.0 * z3 - 15.0 * z) / (384.0 * df.powi(3))
+    z + (z3 + z) / (4.0 * degrees_of_freedom)
+        + (5.0 * z5 + 16.0 * z3 + 3.0 * z) / (96.0 * degrees_of_freedom * degrees_of_freedom)
+        + (3.0 * z7 + 19.0 * z5 + 17.0 * z3 - 15.0 * z) / (384.0 * degrees_of_freedom.powi(3))
 }
 fn stats(values: &[f64]) -> Value {
     let count = values.len() as f64;
@@ -56,7 +57,7 @@ fn stats(values: &[f64]) -> Value {
     }
     let mean = values.iter().sum::<f64>() / count;
     let standard_deviation = if values.len() > 1 {
-        (values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (count - 1.0)).sqrt()
+        (values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (count - 1.0)).sqrt()
     } else {
         0.0
     };
@@ -135,7 +136,7 @@ impl Sim<'_, '_> {
                 if self.evaluator.fast_ub(&self.env.setup, &state.pool, lineage) * (1.0 + 1e-6)
                     < self.bar(state, trainee)
                 {
-                    self.evaluator.n.candidates += 1;
+                    self.evaluator.counters.candidates += 1;
                     continue;
                 }
                 self.consider(state, lineage, interpolation_scratch);
@@ -167,23 +168,20 @@ impl Sim<'_, '_> {
         self.env.state.use_seen = false;
         let trainees = self.trainees.clone();
         // (on the path's pool, `CareerSetup::pool(legacies)`: `add_veteran` builds each entry as it does)
-        let search = self.env.setup.solve(
-            &mut self.env.state,
-            &mut self.env.audit,
-            &mut self.env.memo,
-            &state.pool,
-            &[],
-            &trainees,
-            false,
-            1,
-        );
+        let search = self.env.solve(crate::career::search::SearchRequest {
+            pool: &state.pool,
+            fixed_parents: &[],
+            trainees: &trainees,
+            per_trainee: false,
+            top: 1,
+        });
         self.env.state.use_seen = true;
         self.evaluator.cache.absorb(&self.env.setup, &mut self.env.state, &mut self.env.memo, &search.refs);
         // (every legal career's ceiling, `gen_cands`: `ceiling` at `lineage`'s chances, to the bit; in (trainee,
         // pair) order, then best first)
         let mut candidates =
             self.env.setup.gen_cands(&mut self.env.state, &state.pool, &[], &trainees, |_, _| true, RankedCareer::new);
-        candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
+        candidates.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
         for candidate in candidates {
             let floor = state.candidate_floor();
             if candidate.ceiling * (1.0 + 1e-9) < floor {
@@ -227,41 +225,41 @@ impl Sim<'_, '_> {
             }
         }
     }
-    /// Follow `options.base` from the initial state (survival 1, career 0) until the survival S < eps or max_careers, recording
-    /// pick changes, checks and audits into `trace`.
+    /// Follow `options.base` from the initial state (survival 1, career 0) until the survival S < `survival_cutoff` or
+    /// `max_careers`, recording pick changes, checks and audits into `trace`.
     fn play(&mut self, state: &mut PathState, options: PlayOptions, trace: &mut PathTrace) -> PathResult {
-        let PlayOptions { base, keys, eps, run } = options;
+        let PlayOptions { base, keys, survival_cutoff, run } = options;
         let (mut survival, mut career_index) = (1.0f64, 0usize);
         let mut expected_careers = 0.0f64;
         let mut pruned = 0usize;
         let mut interpolation_scratch = vec![];
         let mut last_key = String::new();
-        let exact = self.cfg.policy == "greedy_exact";
+        let exact = self.settings.policy == "greedy_exact";
         // Exact and index policies keep their decision until the pool changes.
         let mut kept_decision: Option<Rc<Cur>> = None;
         let mut since_check = 0usize;
-        if self.cfg.check > 0 && base == Base::Greedy {
+        if self.settings.check > 0 && base == Base::Greedy {
             trace.checks.push(self.check(state, true));
         }
         loop {
             let career = self.policy_career(state, base, exact, &mut kept_decision);
             let pick_key = self.key(&career);
             if pick_key != last_key {
-                trace.pick_changes.push(json!({"t": career_index, "pick": pick_key, "trainee": self.d.umas[career.lineage.trainee].name, "p": career.p_all, "pool": state.legacies.len(), "s": survival}));
+                trace.pick_changes.push(json!({"t": career_index, "pick": pick_key, "trainee": self.data.umas[career.lineage.trainee].name, "p": career.p_all, "pool": state.legacies.len(), "s": survival}));
                 last_key = pick_key;
-                if self.cfg.audit && base == Base::Greedy && !exact {
+                if self.settings.audit && base == Base::Greedy && !exact {
                     let audit = self.audit_greedy(state, keys, career_index);
                     self.audits.push(audit);
                 }
             }
-            if self.cfg.audit && base == Base::Loop && career_index.is_multiple_of(self.cfg.audit_every) {
+            if self.settings.audit && base == Base::Loop && career_index.is_multiple_of(self.settings.audit_every) {
                 let audit_row = self.audit_row(&state.pool, career.lineage, AuditKind::Loop);
                 self.audits.push(json!({"t": career_index, "pool": state.legacies.len(), "rows": [audit_row]}));
             }
-            if self.cfg.progress > 0 && career_index.is_multiple_of(self.cfg.progress) && career_index > 0 {
+            if self.settings.progress > 0 && career_index.is_multiple_of(self.settings.progress) && career_index > 0 {
                 eprintln!(
                     "  {} run {}: {} careers, pool {}, S {:.4}, p {:.3e}",
-                    self.cfg.policy,
+                    self.settings.policy,
                     run,
                     career_index,
                     state.legacies.len(),
@@ -269,7 +267,7 @@ impl Sim<'_, '_> {
                     career.p_all
                 );
             }
-            if survival < eps || career_index >= self.cfg.max_careers {
+            if survival < survival_cutoff || career_index >= self.settings.max_careers {
                 let tail = survival / career.p_all;
                 return PathResult {
                     expected_careers: expected_careers + tail,
@@ -295,14 +293,14 @@ impl Sim<'_, '_> {
                 Base::Trace => unreachable!("trace runs its own loop"),
                 // (index: a pruned veteran leaves the pool as it was, so the plan, and its pick, are kept)
                 Base::Greedy | Base::Index => {
-                    if self.cfg.prune && state.dominates(&veteran, &self.veteran_result(&veteran)) {
+                    if self.settings.prune && state.dominates(&veteran, &self.veteran_result(&veteran)) {
                         pruned += 1;
                         continue;
                     }
                     self.add_veteran(state, veteran, !exact && base == Base::Greedy, &mut interpolation_scratch);
                     kept_decision = None;
                     since_check += 1;
-                    if base == Base::Greedy && self.cfg.check > 0 && since_check >= self.cfg.check {
+                    if base == Base::Greedy && self.settings.check > 0 && since_check >= self.settings.check {
                         since_check = 0;
                         trace.checks.push(self.check(state, false));
                     }
@@ -318,7 +316,7 @@ struct PlayOptions {
     base: Base,
     keys: Keys,
     /// Stop once the survival S falls below this.
-    eps: f64,
+    survival_cutoff: f64,
     /// The run index (progress lines).
     run: u32,
 }
@@ -401,7 +399,7 @@ pub(in crate::career) fn simulate<'data>(
     let initialization_seconds = initialization_started.elapsed().as_secs_f64();
     let mut runs = vec![];
     let mut run_expectations = vec![];
-    let eps = config.eps;
+    let survival_cutoff = config.survival_cutoff;
     // index: the kept state before the simulation, put back after it (module notes)
     let kept_before_simulation = (base == Base::Index).then(|| kept_swap(simulator.kept, KeptState::default()));
     for run in config.first..config.first + config.runs {
@@ -413,13 +411,13 @@ pub(in crate::career) fn simulate<'data>(
             INDEX_RUN_COUNTS.with(|index_counts| *index_counts.borrow_mut() = IndexRunCounts::default());
         }
         let started = std::time::Instant::now();
-        let counts_before = simulator.evaluator.n;
+        let counts_before = simulator.evaluator.counters;
         let mut state = initial_state.clone();
         let mut trace = PathTrace::default();
         let keys = Keys::Main { seed: config.seed, run: run as u32 };
         let PathResult { expected_careers, careers, tail, final_p_all, pruned } =
-            simulator.play(&mut state, PlayOptions { base, keys, eps, run: run as u32 }, &mut trace);
-        let counts_after = simulator.evaluator.n;
+            simulator.play(&mut state, PlayOptions { base, keys, survival_cutoff, run: run as u32 }, &mut trace);
+        let counts_after = simulator.evaluator.counters;
         run_expectations.push(expected_careers);
         let PathTrace { pick_changes, checks } = trace;
         let final_pick = pick_changes.last().map_or(Value::Null, |change| change["pick"].clone());
@@ -447,5 +445,5 @@ pub(in crate::career) fn simulate<'data>(
         kept_swap(simulator.kept, kept);
     }
     json!({"simulate": configuration, "policy": config.policy, "runs": runs, "E": stats(&run_expectations), "init_s": initialization_seconds, "decks": simulator.evaluator.cache.deck_count(), "deck_tables": simulator.evaluator.cache.tables,
-           "refreshes": simulator.evaluator.n.searches, "schedules": simulator.evaluator.win_chances.schedules()})
+           "refreshes": simulator.evaluator.counters.searches, "schedules": simulator.evaluator.win_chances.schedules()})
 }

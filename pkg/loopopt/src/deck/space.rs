@@ -171,41 +171,43 @@ impl<'data> DeckSpace<'data> {
     /// per entry and target the miss chances (white, gold) under the key, and per entry the targets it touches (bit t:
     /// a miss chance other than exactly 1.0)
     pub(super) fn key_miss(&self, code: u64) -> std::rc::Rc<KeyMisses> {
-        if let Some(r) = self.key_miss_cache.borrow().get(&code) {
-            return std::rc::Rc::clone(r);
+        if let Some(cached) = self.key_miss_cache.borrow().get(&code) {
+            return std::rc::Rc::clone(cached);
         }
         let target_count = self.target_groups.len();
-        let n = self.card_indices.len();
-        let mut ks: Vec<ChainKind> = vec![];
-        let mut c = code;
-        for &kd in &self.kinds_all {
-            for _ in 0..(c % 7) {
-                ks.push(kd);
+        let entry_count = self.card_indices.len();
+        let mut kinds: Vec<ChainKind> = vec![];
+        let mut remaining_code = code;
+        for &kind in &self.kinds_all {
+            for _ in 0..(remaining_code % 7) {
+                kinds.push(kind);
             }
-            c /= 7;
+            remaining_code /= 7;
         }
-        let marg = chain_marginals(self.deck_job.chain_events(), &ks);
+        let marginals = chain_marginals(self.deck_job.chain_events(), &kinds);
         let empty: Vec<f64> = vec![];
-        let mut mw = vec![1.0f64; n * target_count];
-        let mut mg = vec![1.0f64; n * target_count];
-        for j in 0..n {
+        let mut white_misses = vec![1.0f64; entry_count * target_count];
+        let mut gold_misses = vec![1.0f64; entry_count * target_count];
+        for j in 0..entry_count {
             self.sources[j].src_miss(
-                marg.get(&self.kind[j]).unwrap_or(&empty),
-                &mut mw[j * target_count..(j + 1) * target_count],
-                &mut mg[j * target_count..(j + 1) * target_count],
+                marginals.get(&self.kind[j]).unwrap_or(&empty),
+                &mut white_misses[j * target_count..(j + 1) * target_count],
+                &mut gold_misses[j * target_count..(j + 1) * target_count],
             );
         }
         assert!(target_count <= 32, "{target_count} uncertain targets: at most 32 (MAX_UNCERTAIN)");
-        let tm: Vec<u32> = (0..n)
+        let touched_targets: Vec<u32> = (0..entry_count)
             .map(|j| {
                 (0..target_count)
-                    .filter(|&t| mw[j * target_count + t] != 1.0 || mg[j * target_count + t] != 1.0)
-                    .fold(0u32, |m, t| m | 1 << t)
+                    .filter(|&target| {
+                        white_misses[j * target_count + target] != 1.0 || gold_misses[j * target_count + target] != 1.0
+                    })
+                    .fold(0u32, |mask, target| mask | 1 << target)
             })
             .collect();
-        let r = std::rc::Rc::new(KeyMisses { white: mw, gold: mg, touched_targets: tm });
-        self.key_miss_cache.borrow_mut().insert(code, std::rc::Rc::clone(&r));
-        r
+        let key_misses = std::rc::Rc::new(KeyMisses { white: white_misses, gold: gold_misses, touched_targets });
+        self.key_miss_cache.borrow_mut().insert(code, std::rc::Rc::clone(&key_misses));
+        key_misses
     }
     /// Entries that matter for `trainees` (one per-uma trainee, or every structure member with a shared deck): legal
     /// ones (no
@@ -216,38 +218,49 @@ impl<'data> DeckSpace<'data> {
     /// rewarding entry uses first. Any deck has an equal-valued deck from these.
     pub(super) fn reduced(&self, model: &Model, trainees: &[crate::uma::UmaIndex], trainee_ids: &[u32]) -> Vec<usize> {
         let target_count = self.target_groups.len();
-        let relt: Vec<bool> = (0..target_count)
-            .map(|k| trainees.iter().any(|&u| model.opts[u].iter().any(|OutfitOption { coverage: st, .. }| st[k] < 2)))
+        let relevant_targets: Vec<bool> = (0..target_count)
+            .map(|k| {
+                trainees.iter().any(|&trainee| {
+                    model.outfit_options[trainee].iter().any(|OutfitOption { coverage, .. }| coverage[k] < 2)
+                })
+            })
             .collect();
-        let project_group = |g: &Group| -> Group {
-            g.iter()
+        let project_group = |group: &Group| -> Group {
+            group
+                .iter()
                 .map(|outcome| EventOutcome {
                     probability: outcome.probability,
-                    rewards: outcome.rewards.iter().copied().filter(|reward| relt[reward.target]).collect::<Vec<_>>(),
+                    rewards: outcome
+                        .rewards
+                        .iter()
+                        .copied()
+                        .filter(|reward| relevant_targets[reward.target])
+                        .collect::<Vec<_>>(),
                 })
                 .collect()
         };
-        let proj = |x: &TargetSources| -> String {
-            let tr: Vec<(usize, u64)> = x
+        let projection_key = |sources: &TargetSources| -> String {
+            let training: Vec<(usize, u64)> = sources
                 .training_hints
                 .iter()
-                .filter(|t| relt[t.target])
-                .map(|t| (t.target, t.probability.to_bits()))
+                .filter(|hint| relevant_targets[hint.target])
+                .map(|hint| (hint.target, hint.probability.to_bits()))
                 .collect();
-            let fx: Vec<Group> = x
+            let fixed: Vec<Group> = sources
                 .fixed_outcomes
                 .iter()
                 .map(&project_group)
-                .filter(|g| g.iter().any(|o| !o.rewards.is_empty()))
+                .filter(|group| group.iter().any(|outcome| !outcome.rewards.is_empty()))
                 .collect();
-            let ch: Vec<ChainOutcome> = x
+            let chains: Vec<ChainOutcome> = sources
                 .chain_outcomes
                 .iter()
                 .map(|group| ChainOutcome { link: group.link, outcomes: project_group(&group.outcomes) })
                 .filter(|group| group.outcomes.iter().any(|outcome| !outcome.rewards.is_empty()))
                 .collect();
-            let bits = |g: &Group| -> Vec<(u64, Vec<(usize, u8)>)> {
-                g.iter()
+            let bits = |group: &Group| -> Vec<(u64, Vec<(usize, u8)>)> {
+                group
+                    .iter()
                     .map(|outcome| {
                         (
                             outcome.probability.to_bits(),
@@ -258,63 +271,67 @@ impl<'data> DeckSpace<'data> {
             };
             format!(
                 "{:?}|{:?}|{:?}",
-                tr,
-                fx.iter().map(bits).collect::<Vec<_>>(),
-                ch.iter().map(|group| (group.link, bits(&group.outcomes))).collect::<Vec<_>>()
+                training,
+                fixed.iter().map(bits).collect::<Vec<_>>(),
+                chains.iter().map(|group| (group.link, bits(&group.outcomes))).collect::<Vec<_>>()
             )
         };
         let legal: Vec<usize> = (0..self.card_indices.len())
             .filter(|&j| {
-                trainee_ids.iter().all(|&id| !self.cards[self.card_indices[j]].blocks(id, self.deck_job.checks))
+                trainee_ids.iter().all(|&id| !self.cards[self.card_indices[j]].blocks(id, crate::checks::get()))
             })
             .collect();
-        let keys: Vec<String> = legal.iter().map(|&j| proj(&self.sources[j])).collect();
-        let empty = proj(&TargetSources::default());
+        let keys: Vec<String> = legal.iter().map(|&j| projection_key(&self.sources[j])).collect();
+        let empty = projection_key(&TargetSources::default());
         let is_locked = |j: usize| self.locked.contains(&self.card_indices[j]);
         let mut keep: Vec<usize> = vec![];
         let mut seen: Vec<(u32, ChainKind, &String)> = vec![];
-        let mut used_chara: Vec<u32> = vec![];
+        let mut used_characters: Vec<u32> = vec![];
         for (i, &j) in legal.iter().enumerate() {
             if keys[i] == empty && !is_locked(j) {
                 continue;
             }
-            let ch = self.cards[self.card_indices[j]].chara;
-            if !is_locked(j) && seen.iter().any(|x| x.0 == ch && x.1 == self.kind[j] && x.2 == &keys[i]) {
+            let character = self.cards[self.card_indices[j]].character_id;
+            if !is_locked(j)
+                && seen.iter().any(|seen_entry| {
+                    seen_entry.0 == character && seen_entry.1 == self.kind[j] && seen_entry.2 == &keys[i]
+                })
+            {
                 continue;
             }
-            seen.push((ch, self.kind[j], &keys[i]));
+            seen.push((character, self.kind[j], &keys[i]));
             keep.push(j);
-            used_chara.push(ch);
+            used_characters.push(character);
         }
-        let mut cls: Vec<((ChainKind, bool, bool), Vec<usize>)> = vec![];
+        let mut filler_classes: Vec<((ChainKind, bool, bool), Vec<usize>)> = vec![];
         for (i, &j) in legal.iter().enumerate() {
             if keys[i] != empty || is_locked(j) {
                 continue;
             }
-            let c = (self.kind[j], self.cards[self.card_indices[j]].pal, self.borrowed[j]);
-            match cls.iter_mut().find(|x| x.0 == c) {
-                Some(x) => x.1.push(j),
-                None => cls.push((c, vec![j])),
+            let class_key = (self.kind[j], self.cards[self.card_indices[j]].pal, self.borrowed[j]);
+            match filler_classes.iter_mut().find(|class| class.0 == class_key) {
+                Some(class) => class.1.push(j),
+                None => filler_classes.push((class_key, vec![j])),
             }
         }
         let size = self.deck_job.deck_size;
-        for (_, mem) in &cls {
+        for (_, members) in &filler_classes {
             let mut pick: Vec<usize> = vec![];
-            let mut chs: Vec<u32> = vec![];
+            let mut characters: Vec<u32> = vec![];
             for pass in 0..2 {
-                for &j in mem {
+                for &j in members {
                     if pick.len() >= size {
                         break;
                     }
-                    let ch = self.cards[self.card_indices[j]].chara;
-                    if chs.contains(&ch) || pick.contains(&j) {
+                    let character = self.cards[self.card_indices[j]].character_id;
+                    if characters.contains(&character) || pick.contains(&j) {
                         continue;
                     }
-                    if pass == 0 && used_chara.contains(&ch) {
+                    if pass == 0 && used_characters.contains(&character) {
                         continue;
                     }
                     pick.push(j);
-                    chs.push(ch);
+                    characters.push(character);
                 }
             }
             keep.extend(pick);
@@ -330,17 +347,17 @@ impl<'data> DeckSpace<'data> {
         trainees: &[crate::uma::UmaIndex],
         trainee_ids: &[u32],
     ) -> ReducedEntries {
-        if let Some(r) = self.reduced_cache.borrow().get(trainees) {
-            return r.clone();
+        if let Some(reduced_entries) = self.reduced_cache.borrow().get(trainees) {
+            return reduced_entries.clone();
         }
         let list = self.reduced(model, trainees, trainee_ids);
-        let same = self.reduced_cache.borrow().values().find(|v| *v.entries == list).cloned();
-        let r = same.unwrap_or_else(|| {
-            let id = self.reduced_cache.borrow().values().map(|v| v.set_id + 1).max().unwrap_or(0);
+        let same = self.reduced_cache.borrow().values().find(|cached| *cached.entries == list).cloned();
+        let reduced_entries = same.unwrap_or_else(|| {
+            let id = self.reduced_cache.borrow().values().map(|cached| cached.set_id + 1).max().unwrap_or(0);
             ReducedEntries { entries: std::rc::Rc::new(list), set_id: id }
         });
-        self.reduced_cache.borrow_mut().insert(trainees.to_vec(), r.clone());
-        r
+        self.reduced_cache.borrow_mut().insert(trainees.to_vec(), reduced_entries.clone());
+        reduced_entries
     }
     /// (`need`: bit i set for the groups the key's configurations use; the others are left empty)
     /// (a `GroupTable` of rows r = 0..=size, each the white then the gold products per target: `gm_w`, `gm_g`)
@@ -351,59 +368,63 @@ impl<'data> DeckSpace<'data> {
         needed_groups: u64,
         misses: EntryMisses<'_>,
     ) -> std::rc::Rc<GroupTable> {
-        if let Some(r) = self.group_miss_cache.borrow().get(&key) {
-            return std::rc::Rc::clone(r);
+        if let Some(cached) = self.group_miss_cache.borrow().get(&key) {
+            return std::rc::Rc::clone(cached);
         }
         // Each target's lowest misses, as the first `deck_size` of the stable ascending sort (`top_asc`).
         let deck_size = self.deck_job.deck_size;
-        let (mut a, mut b) = (Vec::with_capacity(deck_size), Vec::with_capacity(deck_size));
-        let mut r = GroupTable::new(groups.len(), needed_groups, (deck_size + 1) * 2 * misses.target_count);
-        for (gi, l) in groups.iter().enumerate() {
-            if needed_groups >> gi & 1 == 0 {
+        let (mut white_lowest, mut gold_lowest) = (Vec::with_capacity(deck_size), Vec::with_capacity(deck_size));
+        let mut table = GroupTable::new(groups.len(), needed_groups, (deck_size + 1) * 2 * misses.target_count);
+        for (group_index, group_entries) in groups.iter().enumerate() {
+            if needed_groups >> group_index & 1 == 0 {
                 continue;
             }
-            let pre = r.grp_mut(gi);
-            for t in 0..misses.target_count {
-                a.clear();
-                b.clear();
-                for &j in *l {
-                    top_asc(&mut a, deck_size, misses.white[j * misses.target_count + t]);
-                    top_asc(&mut b, deck_size, misses.gold[j * misses.target_count + t]);
+            let products = table.grp_mut(group_index);
+            for target in 0..misses.target_count {
+                white_lowest.clear();
+                gold_lowest.clear();
+                for &j in *group_entries {
+                    top_asc(&mut white_lowest, deck_size, misses.white[j * misses.target_count + target]);
+                    top_asc(&mut gold_lowest, deck_size, misses.gold[j * misses.target_count + target]);
                 }
-                for r in 1..=deck_size {
-                    pre[r * 2 * misses.target_count + t] =
-                        pre[(r - 1) * 2 * misses.target_count + t] * a.get(r - 1).copied().unwrap_or(1.0);
-                    pre[(r * 2 + 1) * misses.target_count + t] =
-                        pre[((r - 1) * 2 + 1) * misses.target_count + t] * b.get(r - 1).copied().unwrap_or(1.0);
+                for row in 1..=deck_size {
+                    products[row * 2 * misses.target_count + target] = products
+                        [(row - 1) * 2 * misses.target_count + target]
+                        * white_lowest.get(row - 1).copied().unwrap_or(1.0);
+                    products[(row * 2 + 1) * misses.target_count + target] = products
+                        [((row - 1) * 2 + 1) * misses.target_count + target]
+                        * gold_lowest.get(row - 1).copied().unwrap_or(1.0);
                 }
             }
         }
-        let r = std::rc::Rc::new(r);
-        self.group_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&r));
-        r
+        let table = std::rc::Rc::new(table);
+        self.group_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&table));
+        table
     }
     /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use
     pub(super) fn legal_tabs(&self, legal: &[usize], set_id: usize, trainee_ids: &[u32]) -> std::rc::Rc<LegalTables> {
         let plain_pal_count = self.legal_plain(trainee_ids).len();
         let key = LegalTableKey { set_id, plain_pal_count };
-        if let Some(r) = self.legal_table_cache.borrow().get(&key) {
-            return std::rc::Rc::clone(r);
+        if let Some(tables) = self.legal_table_cache.borrow().get(&key) {
+            return std::rc::Rc::clone(tables);
         }
-        let mut chara_ix: HashMap<u32, usize> = HashMap::new();
+        let mut character_index: HashMap<u32, usize> = HashMap::new();
         for &j in legal {
-            let n = chara_ix.len();
-            chara_ix.entry(self.cards[self.card_indices[j]].chara).or_insert(n);
+            let next_bit = character_index.len();
+            character_index.entry(self.cards[self.card_indices[j]].character_id).or_insert(next_bit);
         }
-        let too_many_characters = chara_ix.len() > 128;
+        let too_many_characters = character_index.len() > 128;
         let character_bits: Vec<u128> = if too_many_characters {
             vec![]
         } else {
             (0..self.card_indices.len())
-                .map(|j| chara_ix.get(&self.cards[self.card_indices[j]].chara).map_or(0, |&c| 1u128 << c))
+                .map(|j| {
+                    character_index.get(&self.cards[self.card_indices[j]].character_id).map_or(0, |&bit| 1u128 << bit)
+                })
                 .collect()
         };
-        let nk = self.kinds_all.len();
-        let by_kind: Vec<Vec<usize>> = (0..nk)
+        let kind_count = self.kinds_all.len();
+        let by_kind: Vec<Vec<usize>> = (0..kind_count)
             .map(|i| {
                 legal
                     .iter()
@@ -414,13 +435,18 @@ impl<'data> DeckSpace<'data> {
             .collect();
         let pal_entries: Vec<usize> = legal.iter().copied().filter(|&j| self.kind[j] == ChainKind::NONE).collect();
         // Locked cards each group (`by_kind`, then `pal_entries`) can hold.
-        let lb = |j: usize| self.locked.iter().position(|&l| l == self.card_indices[j]).map_or(0u8, |b| 1u8 << b);
+        let lock_bit = |j: usize| {
+            self.locked
+                .iter()
+                .position(|&locked_card| locked_card == self.card_indices[j])
+                .map_or(0u8, |position| 1u8 << position)
+        };
         let group_lock_bits: Vec<u8> = by_kind
             .iter()
             .chain(std::iter::once(&pal_entries))
-            .map(|l| l.iter().fold(0u8, |m, &j| m | lb(j)))
+            .map(|group_entries| group_entries.iter().fold(0u8, |mask, &j| mask | lock_bit(j)))
             .collect();
-        let r = std::rc::Rc::new(LegalTables {
+        let tables = std::rc::Rc::new(LegalTables {
             too_many_characters,
             character_bits,
             by_kind,
@@ -428,23 +454,23 @@ impl<'data> DeckSpace<'data> {
             group_lock_bits,
             plain_pal_count,
         });
-        self.legal_table_cache.borrow_mut().insert(key, std::rc::Rc::clone(&r));
-        r
+        self.legal_table_cache.borrow_mut().insert(key, std::rc::Rc::clone(&tables));
+        tables
     }
     /// every count vector over `kinds_all` (each entry the number of cards of that kind, summing to at most deck_size)
     pub(super) fn counts_all(&self) -> std::rc::Rc<Vec<Vec<usize>>> {
         std::rc::Rc::clone(self.counts.get_or_init(|| {
-            let (nk, size) = (self.kinds_all.len(), self.deck_job.deck_size);
+            let (kind_count, size) = (self.kinds_all.len(), self.deck_job.deck_size);
             let mut counts: Vec<Vec<usize>> = vec![vec![]];
-            for _ in 0..nk {
+            for _ in 0..kind_count {
                 counts = counts
                     .into_iter()
-                    .flat_map(|c| {
-                        let used: usize = c.iter().sum();
-                        (0..=size - used).map(move |x| {
-                            let mut d = c.clone();
-                            d.push(x);
-                            d
+                    .flat_map(|prefix| {
+                        let used: usize = prefix.iter().sum();
+                        (0..=size - used).map(move |count| {
+                            let mut vector = prefix.clone();
+                            vector.push(count);
+                            vector
                         })
                     })
                     .collect();
@@ -456,7 +482,12 @@ impl<'data> DeckSpace<'data> {
     pub(super) fn lock_bits(&self) -> &LockedCards {
         self.locked_card_bits.get_or_init(|| {
             let lock_bits: Vec<u8> = (0..self.card_indices.len())
-                .map(|j| self.locked.iter().position(|&l| l == self.card_indices[j]).map_or(0, |b| 1u8 << b))
+                .map(|j| {
+                    self.locked
+                        .iter()
+                        .position(|&locked_card| locked_card == self.card_indices[j])
+                        .map_or(0, |position| 1u8 << position)
+                })
                 .collect();
             let all_locked: u8 = if self.locked.is_empty() { 0 } else { ((1u16 << self.locked.len()) - 1) as u8 };
             LockedCards { entry_bits: lock_bits, all_bits: all_locked }
@@ -464,7 +495,7 @@ impl<'data> DeckSpace<'data> {
     }
     /// the class caps (`EXACT_CAPS`, `CAPS_TEST`'s in their place, or all at AUDIT_CAP under `cap_audit`)
     pub(crate) fn caps(&self) -> [f64; 4] {
-        if self.deck_job.cap_audit { [AUDIT_CAP; 4] } else { self.deck_job.checks.caps_test.unwrap_or(EXACT_CAPS) }
+        if self.deck_job.cap_audit { [AUDIT_CAP; 4] } else { crate::checks::get().caps_test.unwrap_or(EXACT_CAPS) }
     }
     /// most decks one band search may return: EXACT_CAP, ten times that under `cap_audit` (its bands are far larger)
     pub(crate) const fn band_cap(&self) -> usize {
@@ -475,54 +506,55 @@ impl<'data> DeckSpace<'data> {
         self.caps()[3]
     }
     /// a deck's structure class (`cap_class`)
-    pub(crate) fn sel_class(&self, x: &SelectedDeck) -> usize {
-        cap_class(x.entries.iter().fold(0u64, |m, &j| m | self.class_masks[j]))
+    pub(crate) fn sel_class(&self, deck: &SelectedDeck) -> usize {
+        cap_class(deck.entries.iter().fold(0u64, |mask, &j| mask | self.class_masks[j]))
     }
     /// a deck's cap under the ceiling rho: its class's cap, at most rho
-    pub(crate) fn sel_cap(&self, x: &SelectedDeck, rho: f64) -> f64 {
-        self.caps()[self.sel_class(x)].min(rho)
+    pub(crate) fn sel_cap(&self, deck: &SelectedDeck, rho: f64) -> f64 {
+        self.caps()[self.sel_class(deck)].min(rho)
     }
     pub(crate) fn legal_plain(&self, trainee_ids: &[u32]) -> Vec<&PlainPal<'data>> {
         self.plain_pals
             .iter()
-            .filter(|x| trainee_ids.iter().all(|&id| !x.card.blocks(id, self.deck_job.checks)))
+            .filter(|plain_pal| trainee_ids.iter().all(|&id| !plain_pal.card.blocks(id, crate::checks::get())))
             .collect()
     }
-    pub(crate) fn pdeck(&self, x: &SelectedDeck, trainee_ids: &[u32]) -> PDeck {
-        let source_builder = Sources { dj: self.deck_job, unc: &self.target_groups };
-        let lp = self.legal_plain(trainee_ids);
-        let ci: Vec<usize> = x.entries.iter().map(|&j| self.card_indices[j]).collect();
-        let borrowed = x.entries.iter().copied().find(|&j| self.borrowed[j]).map(|j| self.card_indices[j]);
-        let mut names: Vec<String> = x
+    pub(crate) fn pdeck(&self, deck: &SelectedDeck, trainee_ids: &[u32]) -> PDeck {
+        let source_builder = Sources { deck_job: self.deck_job, target_groups: &self.target_groups };
+        let legal_plain = self.legal_plain(trainee_ids);
+        let card_indices: Vec<usize> = deck.entries.iter().map(|&j| self.card_indices[j]).collect();
+        let borrowed = deck.entries.iter().copied().find(|&j| self.borrowed[j]).map(|j| self.card_indices[j]);
+        let mut names: Vec<String> = deck
             .entries
             .iter()
             .map(|&j| {
-                let c = self.cards[self.card_indices[j]];
-                let e = self.end_links[j];
-                let mut n = c.name.clone();
-                let lb = source_builder.label(c, (e > 0).then_some(e), self.variants[j], self.skills);
-                if !lb.is_empty() {
-                    n = format!("{n} ({lb})");
+                let card = self.cards[self.card_indices[j]];
+                let end_link = self.end_links[j];
+                let mut name = card.name.clone();
+                let label =
+                    source_builder.label(card, (end_link > 0).then_some(end_link), self.variants[j], self.skills);
+                if !label.is_empty() {
+                    name = format!("{name} ({label})");
                 }
-                if e > 0 {
-                    n = format!("{n} (end chain at link {e})");
+                if end_link > 0 {
+                    name = format!("{name} (end chain at link {end_link})");
                 }
                 if Some(self.card_indices[j]) == borrowed {
-                    n = format!("{n} (borrowed)");
+                    name = format!("{name} (borrowed)");
                 }
-                n
+                name
             })
             .collect();
-        names.extend(lp.iter().take(x.plain_pals).map(|p| p.name.clone()));
-        for _ in 0..x.filler_cards {
+        names.extend(legal_plain.iter().take(deck.plain_pals).map(|p| p.name.clone()));
+        for _ in 0..deck.filler_cards {
             names.push("(any SR without target hints)".into());
         }
         PDeck {
             names: names.into_iter().map(Name::from).collect(),
-            ids: ci.iter().map(|&i| self.cards[i].id).collect(),
-            ends: x.entries.iter().map(|&j| self.end_links[j]).collect(),
-            vars: x.entries.iter().map(|&j| self.variants[j]).collect(),
-            choices: x
+            ids: card_indices.iter().map(|&i| self.cards[i].id).collect(),
+            ends: deck.entries.iter().map(|&j| self.end_links[j]).collect(),
+            variants: deck.entries.iter().map(|&j| self.variants[j]).collect(),
+            choices: deck
                 .entries
                 .iter()
                 .map(|&j| {
@@ -534,17 +566,17 @@ impl<'data> DeckSpace<'data> {
                     ))
                 })
                 .collect(),
-            plain_ids: lp.iter().take(x.plain_pals).map(|p| p.id).collect(),
-            pal_names: ci
+            plain_ids: legal_plain.iter().take(deck.plain_pals).map(|p| p.id).collect(),
+            pal_names: card_indices
                 .iter()
                 .filter(|&&i| self.cards[i].pal)
                 .map(|&i| Name::from(self.cards[i].name.as_str()))
-                .chain(lp.iter().take(x.plain_pals).map(|p| Name::from(p.name.as_str())))
+                .chain(legal_plain.iter().take(deck.plain_pals).map(|p| Name::from(p.name.as_str())))
                 .collect(),
-            pals: x.entries.iter().filter(|&&j| self.cards[self.card_indices[j]].pal).count() + x.plain_pals,
+            pals: deck.entries.iter().filter(|&&j| self.cards[self.card_indices[j]].pal).count() + deck.plain_pals,
             borrowed: borrowed.map(|i| Name::from(self.cards[i].name.as_str())),
-            dw: x.white_hint_chances.clone(),
-            dg: x.gold_hint_chances.clone(),
+            white_hint_chances: deck.white_hint_chances.clone(),
+            gold_hint_chances: deck.gold_hint_chances.clone(),
         }
     }
 }
@@ -584,25 +616,25 @@ pub(crate) fn deck_space<'data>(
     let is_owned = |id: u32| {
         deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
     };
-    let card_of: HashMap<u32, &Card> = card_data.cards.iter().map(|c| (c.id, c)).collect();
+    let card_of: HashMap<u32, &Card> = card_data.cards.iter().map(|card| (card.id, card)).collect();
     let kinds_all = kinds_all(&entries.kind);
     DeckSpace {
         deck_job,
         target_groups: target_groups.to_vec(),
         skills,
         cards: entries.cards.clone(),
-        card_indices: entries.rel.clone(),
+        card_indices: entries.card_indices.clone(),
         kind: entries.kind.clone(),
-        end_links: entries.endk.clone(),
-        variants: entries.vark.clone(),
-        sources: entries.srcs.clone(),
-        borrowed: entries.rel.iter().map(|&r| !is_owned(entries.cards[r].id)).collect(),
-        class_masks: entries.srcs.iter().map(TargetSources::cv_mask).collect(),
+        end_links: entries.end_links.clone(),
+        variants: entries.variants.clone(),
+        sources: entries.sources.clone(),
+        borrowed: entries.card_indices.iter().map(|&card_index| !is_owned(entries.cards[card_index].id)).collect(),
+        class_masks: entries.sources.iter().map(TargetSources::cv_mask).collect(),
         plain_pals: entries
             .plain_ids
             .iter()
             .zip(&entries.plain_names)
-            .map(|(&id, n)| PlainPal { id, name: n.clone(), card: card_of[&id] })
+            .map(|(&id, name)| PlainPal { id, name: name.clone(), card: card_of[&id] })
             .collect(),
         locked: entries.locked.clone(),
         allowed_borrow: usize::from(deck_job.borrow),
@@ -670,14 +702,14 @@ impl GroupTable {
         &mut self.data[slot * self.block_len..(slot + 1) * self.block_len]
     }
 }
-/// `gm_cached`'s row r of a group's block: the white products per target, then the gold ones
+/// `gm_cached`'s row `row` of a group's block: the white products per target, then the gold ones
 #[inline(always)]
-pub(super) fn gm_w(b: &[f64], target_count: usize, r: usize) -> &[f64] {
-    &b[r * 2 * target_count..(r * 2 + 1) * target_count]
+pub(super) fn gm_w(block: &[f64], target_count: usize, row: usize) -> &[f64] {
+    &block[row * 2 * target_count..(row * 2 + 1) * target_count]
 }
 #[inline(always)]
-pub(super) fn gm_g(b: &[f64], target_count: usize, r: usize) -> &[f64] {
-    &b[(r * 2 + 1) * target_count..(r + 1) * 2 * target_count]
+pub(super) fn gm_g(block: &[f64], target_count: usize, row: usize) -> &[f64] {
+    &block[(row * 2 + 1) * target_count..(row + 1) * 2 * target_count]
 }
 /// `top_asc` for the stable descending sort (`sort_by(|a, b| b.partial_cmp(a).unwrap())`)
 #[inline]

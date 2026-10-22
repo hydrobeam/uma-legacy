@@ -116,13 +116,15 @@ impl ConfigScratch {
         suffix_ratios.clear();
         suffix_ratios.resize((group_count + 1) * controls.column_count, 1.0);
         for g in (0..group_count).rev() {
-            let (gw, gg) = (
+            let (group_white, group_gold) = (
                 gm_w(group_misses[g], controls.target_count, configuration.groups[g].slots),
                 gm_g(group_misses[g], controls.target_count, configuration.groups[g].slots),
             );
             for t in 0..controls.target_count {
-                suffix_white[g * controls.target_count + t] = suffix_white[(g + 1) * controls.target_count + t] * gw[t];
-                suffix_gold[g * controls.target_count + t] = suffix_gold[(g + 1) * controls.target_count + t] * gg[t];
+                suffix_white[g * controls.target_count + t] =
+                    suffix_white[(g + 1) * controls.target_count + t] * group_white[t];
+                suffix_gold[g * controls.target_count + t] =
+                    suffix_gold[(g + 1) * controls.target_count + t] * group_gold[t];
             }
         }
         for g in (0..group_count).rev() {
@@ -166,14 +168,14 @@ impl ConfigScratch {
         available_locks[group_count].clear();
         available_locks[group_count].push(0);
         for g in (0..group_count).rev() {
-            let l = groups[g].entries;
+            let entries = groups[g].entries;
             let next = available_locks[g + 1][0];
-            let v = &mut available_locks[g];
-            v.clear();
-            v.resize(l.len() + 1, 0u8);
-            v[l.len()] = next;
-            for p in (0..l.len()).rev() {
-                v[p] = v[p + 1] | lock_bits[l[p]];
+            let locks = &mut available_locks[g];
+            locks.clear();
+            locks.resize(entries.len() + 1, 0u8);
+            locks[entries.len()] = next;
+            for p in (0..entries.len()).rev() {
+                locks[p] = locks[p + 1] | lock_bits[entries[p]];
             }
         }
         all_locked & !available_locks[0][0] == 0

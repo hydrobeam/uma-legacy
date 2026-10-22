@@ -273,9 +273,10 @@ impl<L: Leaves> FoldContext<'_, L> {
     }
 }
 
-/// Leaf `leaf`'s landed set on the uncertain targets (digit k: her stars on target uncv[k], 0 absent) and her stars'
-/// chance: the product over k of w[stars - 1] where she has any, in k order from 1.0 (the f64 `evaluate_outcomes`' per-leaf
-/// table holds: each of its entries is a lower leaf's times its top digit's w, the same product in the same order)
+/// Leaf `leaf`'s landed set on the uncertain targets (digit k: her stars on target uncertain_targets[k], 0 absent) and
+/// her stars' chance: the product over k of w[stars - 1] where she has any, in k order from 1.0 (the f64
+/// `evaluate_outcomes`' per-leaf table holds: each of its entries is a lower leaf's times its top digit's w, the same
+/// product in the same order)
 pub(crate) fn leaf_set(leaf: usize, uncertain_targets: &[usize], star_mix: [f64; 3]) -> LeafOutcome {
     let mut landed_mask = 0usize;
     let mut star_probability = 1.0f64;
@@ -295,20 +296,20 @@ pub(crate) struct LeafOutcome {
     pub(crate) star_probability: f64,
 }
 
-/// Per leaf (base-4 digits, digit k at bits 2k..2k+1) the product of g[k][digit k] over k, into `out`: level by level,
-/// each level's products the previous level's (at the leaf's lower digits) times g[k][digit k], from 1.0. The same
-/// operations in the same order as `let mut pr = 1.0; for k in 0..nu { pr *= g[k][digit k]; }` per leaf, so the same
-/// f64s; each prefix is computed once instead of once per leaf (4/3 4^nu products for nu 4^nu)
-pub(crate) fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
+/// Per leaf (base-4 digits, digit k at bits 2k..2k+1) the product of g[k][digit k] over k (g: `factors`), into `out`:
+/// level by level, each level's products the previous level's (at the leaf's lower digits) times g[k][digit k], from
+/// 1.0. The same operations in the same order as `let mut pr = 1.0; for k in 0..nu { pr *= factors[k][digit k]; }` per
+/// leaf, so the same f64s; each prefix is computed once instead of once per leaf (4/3 4^nu products for nu 4^nu)
+pub(crate) fn leaf_products(factors: &[[f64; 4]], out: &mut Vec<f64>, next: &mut Vec<f64>) {
     out.clear();
     out.push(1.0);
-    for (k, gk) in g.iter().enumerate() {
-        let low = (1usize << (2 * k)) - 1;
-        tmp.clear();
-        for &gd in gk {
-            tmp.extend(out[..=low].iter().map(|&o| o * gd));
+    for (k, target_factors) in factors.iter().enumerate() {
+        let last_prefix = (1usize << (2 * k)) - 1;
+        next.clear();
+        for &digit_factor in target_factors {
+            next.extend(out[..=last_prefix].iter().map(|&prefix_product| prefix_product * digit_factor));
         }
-        std::mem::swap(out, tmp);
+        std::mem::swap(out, next);
     }
 }
 
@@ -340,10 +341,10 @@ impl<'rise> RiseInputs<'rise> {
 }
 
 impl RiseInputs<'_> {
-    /// Per leaf (as `leaf_products`) the best outfit's `CareerSetup::rise` of trainee (sts, ews: her outfits' coverage
-    /// and own chances) from chances qa (job-target order) to q'(leaf), q'_k = 1 - x0[k] xms[her stars on uncertain
-    /// target k]: per outfit and target the factor at each of her four star levels (1 where it can't rise), their
-    /// product per leaf
+    /// Per leaf (as `leaf_products`) the best outfit's `CareerSetup::rise` of trainee (`outfit_coverage`,
+    /// `event_chances`: her outfits' coverage and own chances) from chances qa (job-target order) to q'(leaf),
+    /// q'_k = 1 - x0[k] xms[her stars on uncertain target k]: per outfit and target the factor at each of her four star
+    /// levels (1 where it can't rise), their product per leaf
     pub(crate) fn leaves(
         &self,
         anchor_chances: &[f64],
@@ -356,11 +357,11 @@ impl RiseInputs<'_> {
             let factors: Vec<[f64; 4]> = (0..target_count)
                 .map(|k| {
                     let i = self.uncertain_targets[k];
-                    [0, 1, 2, 3].map(|sg| {
+                    [0, 1, 2, 3].map(|her_stars| {
                         rise_factor(
                             coverage[k],
                             events[k],
-                            1.0 - self.base_misses[k] * self.star_misses[sg],
+                            1.0 - self.base_misses[k] * self.star_misses[her_stars],
                             anchor_chances[i],
                         )
                     })

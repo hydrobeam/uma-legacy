@@ -66,8 +66,8 @@ fn reference_joint(
         for &TrainingHint { target: k, probability: p } in &sources.training_hints {
             base_no_hint[k] *= 1.0 - p;
         }
-        for g in &sources.fixed_outcomes {
-            add_group(g, &mut base_coupled, &mut base_no_gold, &mut base_no_hint);
+        for group in &sources.fixed_outcomes {
+            add_group(group, &mut base_coupled, &mut base_no_gold, &mut base_no_hint);
         }
     }
     // chain entries sorted by kind (with fillers) for the memoised state distribution; per entry and links done,
@@ -75,14 +75,14 @@ fn reference_joint(
     let mut chain_entries: Vec<ChainEntry> = entries
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.kind != ChainKind::NONE)
-        .map(|(i, e)| ChainEntry { kind: e.kind, source_index: Some(i) })
+        .filter(|(_, entry)| entry.kind != ChainKind::NONE)
+        .map(|(i, entry)| ChainEntry { kind: entry.kind, source_index: Some(i) })
         .collect();
     for _ in 0..filler {
         chain_entries.push(ChainEntry { kind: ChainKind::FILLER, source_index: None });
     }
     chain_entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.source_index.cmp(&b.source_index)));
-    let kinds: Vec<ChainKind> = chain_entries.iter().map(|x| x.kind).collect();
+    let kinds: Vec<ChainKind> = chain_entries.iter().map(|entry| entry.kind).collect();
     let states = if kinds.is_empty() {
         std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
     } else {
@@ -116,7 +116,7 @@ fn reference_joint(
             })
         })
         .collect();
-    let outfits = &model.opts[query.trainee];
+    let outfits = &model.outfit_options[query.trainee];
     let outfit_count = outfits.len();
     let chance_count = query.inheritance_chances.len();
     let fixed_target_count = model.n_fixed_gold as usize;
@@ -143,16 +143,16 @@ fn reference_joint(
         }
         // outcomes of the coupled groups: each group's outcomes plus "nothing" (the rest of its weight)
         outcomes.clear();
-        for g in &coupled {
-            let mut v: Vec<EventOutcome<&[TargetReward]>> = g
+        for group in &coupled {
+            let mut group_outcomes: Vec<EventOutcome<&[TargetReward]>> = group
                 .iter()
                 .map(|outcome| EventOutcome { probability: outcome.probability, rewards: &*outcome.rewards })
                 .collect();
-            let no_reward_probability = 1.0 - g.iter().map(|x| x.probability).sum::<f64>();
+            let no_reward_probability = 1.0 - group.iter().map(|outcome| outcome.probability).sum::<f64>();
             if no_reward_probability > 1e-15 {
-                v.push(EventOutcome { probability: no_reward_probability, rewards: &[][..] });
+                group_outcomes.push(EventOutcome { probability: no_reward_probability, rewards: &[][..] });
             }
-            outcomes.push(v);
+            outcomes.push(group_outcomes);
         }
         outcome_indices.clear();
         outcome_indices.resize(outcomes.len(), 0);
@@ -171,18 +171,18 @@ fn reference_joint(
                 }
             }
             for (chance_index, &q) in query.inheritance_chances.iter().enumerate() {
-                for (o, OutfitOption { coverage, .. }) in outfits.iter().enumerate() {
-                    let event_chances = &query.event_chances[o];
+                for (outfit, OutfitOption { coverage, .. }) in outfits.iter().enumerate() {
+                    let event_chances = &query.event_chances[outfit];
                     // P(all land) and the distribution of how many of the uncertain targets land (fixed golds after)
                     let mut all = fixed;
                     landed_count_distribution[..=uncertain_count + fixed_target_count]
                         .iter_mut()
-                        .for_each(|x| *x = 0.0);
+                        .for_each(|probability| *probability = 0.0);
                     landed_count_distribution[0] = 1.0;
                     for k in 0..uncertain_count {
                         let gold_chance = if coupled_gold[k] { 1.0 } else { 1.0 - no_gold[k] };
                         let miss_hint = if coupled_hint[k] { 0.0 } else { no_hint[k] };
-                        let f = match coverage[k] {
+                        let landing_chance = match coverage[k] {
                             2 => GEN_GOLD,
                             1 => GEN_GOLD * gold_chance + GEN_WHITE * (1.0 - gold_chance),
                             _ => {
@@ -190,10 +190,10 @@ fn reference_joint(
                                     + GEN_WHITE * (1.0 - gold_chance - miss_hint * (1.0 - event_chances[k]) * (1.0 - q))
                             }
                         };
-                        all *= f;
+                        all *= landing_chance;
                         for j in (0..=k).rev() {
-                            landed_count_distribution[j + 1] += landed_count_distribution[j] * f;
-                            landed_count_distribution[j] *= 1.0 - f;
+                            landed_count_distribution[j + 1] += landed_count_distribution[j] * landing_chance;
+                            landed_count_distribution[j] *= 1.0 - landing_chance;
                         }
                     }
                     for _ in 0..fixed_target_count {
@@ -211,9 +211,9 @@ fn reference_joint(
                         ..=uncertain_count + fixed_target_count]
                         .iter()
                         .sum();
-                    let a = &mut totals[chance_index * outfit_count + o];
-                    a.all += outcome_probability * all;
-                    a.all_but_one += outcome_probability * all_but_one;
+                    let total = &mut totals[chance_index * outfit_count + outfit];
+                    total.all += outcome_probability * all;
+                    total.all_but_one += outcome_probability * all_but_one;
                 }
             }
             let mut i = 0;
@@ -233,9 +233,11 @@ fn reference_joint(
     (0..chance_count)
         .map(|chance_index| {
             let mut best_outfit = 0;
-            for o in 1..outfit_count {
-                if totals[chance_index * outfit_count + o].all > totals[chance_index * outfit_count + best_outfit].all {
-                    best_outfit = o;
+            for outfit in 1..outfit_count {
+                if totals[chance_index * outfit_count + outfit].all
+                    > totals[chance_index * outfit_count + best_outfit].all
+                {
+                    best_outfit = outfit;
                 }
             }
             JointChances {

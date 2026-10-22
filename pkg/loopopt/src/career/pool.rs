@@ -3,7 +3,7 @@ use crate::career::{Ancestor, CareerSetup, Legacy};
 use crate::uma::UmaIndex;
 /// What `CareerSetup::who` reads of a legacy or of one of her recorded parents.
 struct VeteranTraits<'veteran> {
-    chara: u32,
+    character_id: u32,
     /// (skill group, stars) of her white sparks.
     sparks: &'veteran [(u32, u8)],
     /// Races (data.json `races`) of the single-race G1s she won; read when `win_chances` is empty.
@@ -19,10 +19,10 @@ struct VeteranTraits<'veteran> {
 impl<'veteran> VeteranTraits<'veteran> {
     fn of_legacy(legacy: &'veteran Legacy) -> Self {
         Self {
-            chara: legacy.chara,
+            character_id: legacy.character_id,
             sparks: &legacy.sparks,
             wins: &legacy.wins,
-            win_chances: &legacy.win_p,
+            win_chances: &legacy.win_chances,
             pinks: &legacy.pinks,
             star_mix: legacy.mix,
         }
@@ -30,7 +30,7 @@ impl<'veteran> VeteranTraits<'veteran> {
     /// A recorded parent: fixed stars and certain wins.
     fn of_ancestor(ancestor: &'veteran Ancestor) -> Self {
         Self {
-            chara: ancestor.chara,
+            character_id: ancestor.character_id,
             sparks: &ancestor.sparks,
             wins: &ancestor.wins,
             win_chances: &[],
@@ -47,7 +47,7 @@ impl<'veteran> VeteranTraits<'veteran> {
 pub(crate) struct Who {
     /// Her index in Data::umas (None: a character the data does not list).
     pub(crate) uma_index: Option<UmaIndex>,
-    pub(crate) chara: u32,
+    pub(crate) character_id: u32,
     /// Her G1 wins, sorted by race; chance 1 for a win on record.
     pub(crate) wins: Vec<RaceWin>,
     /// Stars (0..=3) of her spark of each job target, in job-target order.
@@ -62,7 +62,7 @@ impl Who {
     /// Whether she is at least as good a parent as `other` in her own right (`Pool::dominates`): the same character,
     /// fixed stars at least `other`'s on every job target, certain wins only, and a superset of `other`'s wins.
     fn at_least_as_good_as(&self, other: &Self) -> bool {
-        self.chara == other.chara
+        self.character_id == other.character_id
             && self.star_mix.is_none()
             && other.star_mix.is_none()
             && self.stars.iter().zip(other.stars.iter()).all(|(own, theirs)| own >= theirs)
@@ -112,12 +112,12 @@ impl Pool {
     /// `max_borrowed` borrowed
     #[inline]
     pub(crate) fn parents_ok(&self, a: usize, b: usize) -> bool {
-        a != b && self.veterans[a].chara != self.veterans[b].chara && self.within_borrow_limit(a, b)
+        a != b && self.veterans[a].character_id != self.veterans[b].character_id && self.within_borrow_limit(a, b)
     }
     /// The trainee's rule (character `trainee_chara`): neither parent is her character
     #[inline]
     pub(crate) fn trainee_ok(&self, trainee_chara: u32, a: usize, b: usize) -> bool {
-        self.veterans[a].chara != trainee_chara && self.veterans[b].chara != trainee_chara
+        self.veterans[a].character_id != trainee_chara && self.veterans[b].character_id != trainee_chara
     }
     /// Legal parents a, b for a trainee of character `trainee_chara`: `parents_ok` and `trainee_ok`. The one rule every
     /// pair loop takes (`solve`'s candidates, the planner's and the simulator's scans), so a proof over its pairs covers
@@ -127,7 +127,7 @@ impl Pool {
         self.parents_ok(a, b) && self.trainee_ok(trainee_chara, a, b)
     }
 
-    /// Whether veteran `x` is at least as good a parent as veteran `y` in every career (`CareerSetup::solve`, dominated
+    /// Whether veteran `x` is at least as good a parent as veteran `y` in every career (`Env::solve`, dominated
     /// veterans): she is at least as good in her own right (`Who::at_least_as_good_as`: the same character, stars at
     /// least y's on every job target, G1 wins a superset of y's), and she has the same number of parents, each (in
     /// order) at least as good as y's the same way. Only fixed stars and certain wins (a veteran before her result is
@@ -152,11 +152,11 @@ impl Pool {
         let veteran_count = self.veterans.len();
         let mut veterans_by_chara: crate::FxMap<u32, Vec<usize>> = crate::FxMap::default();
         for x in 0..veteran_count {
-            veterans_by_chara.entry(self.veterans[x].chara).or_default().push(x);
+            veterans_by_chara.entry(self.veterans[x].character_id).or_default().push(x);
         }
         (0..veteran_count)
             .map(|y| {
-                veterans_by_chara[&self.veterans[y].chara]
+                veterans_by_chara[&self.veterans[y].character_id]
                     .iter()
                     .copied()
                     .filter(|&x| x != y && self.dominates(x, y))
@@ -177,7 +177,7 @@ impl Pool {
 /// Whether parents a and b hold every fixed legacy of `fix` (a job's parent places)
 #[inline]
 pub(crate) fn holds_fix(fix: &[usize], a: usize, b: usize) -> bool {
-    fix.iter().all(|&f| f == a || f == b)
+    fix.iter().all(|&fixed_legacy| fixed_legacy == a || fixed_legacy == b)
 }
 
 /// G1s two legacies both won (expected count when a win is a chance)
@@ -198,9 +198,9 @@ pub(crate) fn shared(a: &Who, b: &Who) -> f64 {
 }
 
 impl CareerSetup<'_> {
-    /// The index in Data::umas of character `chara` (None: a character the data does not list).
-    pub(crate) fn uma_index(&self, chara: u32) -> Option<UmaIndex> {
-        self.data.umas.iter().position(|uma| uma.id == chara).map(UmaIndex)
+    /// The index in Data::umas of character `character_id` (None: a character the data does not list).
+    pub(crate) fn uma_index(&self, character_id: u32) -> Option<UmaIndex> {
+        self.data.umas.iter().position(|uma| uma.id == character_id).map(UmaIndex)
     }
     /// Stars (0..=3) of the best white spark of each job target among `sparks` ((skill group, stars) pairs), in
     /// job-target order.
@@ -235,8 +235,8 @@ impl CareerSetup<'_> {
         };
         wins.sort_by_key(|win| win.race);
         Who {
-            uma_index: self.uma_index(traits.chara),
-            chara: traits.chara,
+            uma_index: self.uma_index(traits.character_id),
+            character_id: traits.character_id,
             wins,
             stars: std::rc::Rc::new(self.job_target_stars(traits.sparks)),
             pinks: std::rc::Rc::new(traits.pinks.to_vec()),

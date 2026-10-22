@@ -103,52 +103,57 @@ pub(crate) fn plan_continuations(
     let PlanContext { input, candidates } = *context;
     let data = context.data();
     let candidate_count = candidates.trainees.len();
-    let wins = |x: crate::uma::UmaIndex| wins_by_trainee[x].clone();
+    let wins = |uma: crate::uma::UmaIndex| wins_by_trainee[uma].clone();
     let mut continuations = vec![Cont::default(); candidate_count];
-    for ui in 0..candidate_count {
-        if candidates.current_odds[ui] <= 0.0 || runs.is_empty() {
+    for candidate in 0..candidate_count {
+        if candidates.current_odds[candidate] <= 0.0 || runs.is_empty() {
             continue;
         }
-        let u = candidates.trainees[ui];
-        let p = candidates.current_odds[ui];
+        let trainee = candidates.trainees[candidate];
+        let p = candidates.current_odds[candidate];
         let mut lifts: Vec<BuilderLift> = runs
             .iter()
-            .filter(|r| {
-                r.origin == RowOrigin::Base
-                    && r.exact
-                    && data.umas[r.trainee].id != data.umas[u].id
-                    && r.lift_stats[ui].lift_chance > 0.0
+            .filter(|row| {
+                row.origin == RowOrigin::Base
+                    && row.exact
+                    && data.umas[row.trainee].id != data.umas[trainee].id
+                    && row.lift_stats[candidate].lift_chance > 0.0
             })
-            .map(|r| {
-                let lift = r.lift_stats[ui];
+            .map(|row| {
+                let lift = row.lift_stats[candidate];
                 BuilderLift {
                     efficiency: lift.efficiency(p),
-                    builder: r.trainee,
+                    builder: row.trainee,
                     lift_chance: lift.lift_chance,
                     lifted_odds: lift.lifted_odds_sum / lift.lift_chance,
                 }
             })
             .collect();
-        lifts.sort_by(|x, y| y.efficiency.partial_cmp(&x.efficiency).unwrap());
+        lifts.sort_by(|first, second| second.efficiency.partial_cmp(&first.efficiency).unwrap());
         let Some(&best) = lifts.first() else { continue };
         let lam = best.lift_chance;
         let p1 = best.lifted_odds;
-        let second_builder =
-            lifts.iter().skip(1).map(|lift| lift.builder).find(|&b| data.umas[b].id != data.umas[best.builder].id);
+        let second_builder = lifts
+            .iter()
+            .skip(1)
+            .map(|lift| lift.builder)
+            .find(|&builder| data.umas[builder].id != data.umas[best.builder].id);
         let pinf = match second_builder {
             Some(second_builder) => {
-                let full_loop = FullLoop { trainee: u, first_builder: best.builder, second_builder };
+                let full_loop = FullLoop { trainee, first_builder: best.builder, second_builder };
                 (CEIL_SHARE * loop_ceiling(simulator, input.pool, full_loop, &wins, buf)).max(p1)
             }
             None => p1,
         };
         let phi = if pinf > p && p1 > p { ((p1 / p).ln() / (pinf / p).ln()).clamp(0.0, 1.0) } else { 0.0 };
-        continuations[ui] = Cont::new(lam, phi, pinf);
+        continuations[candidate] = Cont::new(lam, phi, pinf);
     }
     if let Some(fit) = &input.settings.fit {
-        for ui in 0..candidate_count {
-            if let Some(&(_, lam, phi, pinf)) = fit.iter().find(|x| data.umas[candidates.trainees[ui]].id == x.0) {
-                continuations[ui] = Cont::new(lam, phi, pinf);
+        for candidate in 0..candidate_count {
+            if let Some(&(_, lam, phi, pinf)) =
+                fit.iter().find(|entry| data.umas[candidates.trainees[candidate]].id == entry.0)
+            {
+                continuations[candidate] = Cont::new(lam, phi, pinf);
             }
         }
     }
@@ -184,42 +189,52 @@ pub(crate) fn plan_combinations(
     let data = context.data();
     let candidate_count = candidates.trainees.len();
     let fresh_veterans: Vec<Option<Legacy>> =
-        (0..candidate_count).map(|ui| fresh_veteran(simulator, context, step_costs, ui)).collect();
+        (0..candidate_count).map(|candidate| fresh_veteran(simulator, context, step_costs, candidate)).collect();
     let mut combos: Vec<PlanCombination> = vec![];
-    for ia in 0..candidate_count {
-        for ib in ia + 1..candidate_count {
-            let (ua, ub) = (candidates.trainees[ia], candidates.trainees[ib]);
-            if data.umas[ua].id == data.umas[ub].id {
+    for first_candidate in 0..candidate_count {
+        for second_candidate in first_candidate + 1..candidate_count {
+            let (first_trainee, second_trainee) =
+                (candidates.trainees[first_candidate], candidates.trainees[second_candidate]);
+            if data.umas[first_trainee].id == data.umas[second_trainee].id {
                 continue;
             }
             // (`CareerSetup::pool` of the legacies and the fresh full veterans: the working copy of `pool` with them
             // pushed, A's first, popped below)
             let mut working_pool = simulator.evaluator.take_pool(pool);
-            let sides = |simulator: &mut Sim, working_pool: &mut Pool, ui: usize| -> Vec<TrioSide> {
+            let sides = |simulator: &mut Sim, working_pool: &mut Pool, candidate: usize| -> Vec<TrioSide> {
                 let mut sides: Vec<TrioSide> =
-                    full_veterans[ui].iter().map(|&legacy| TrioSide { uses_existing: true, legacy }).collect();
-                if let Some(fresh) = &fresh_veterans[ui] {
+                    full_veterans[candidate].iter().map(|&legacy| TrioSide { uses_existing: true, legacy }).collect();
+                if let Some(fresh) = &fresh_veterans[candidate] {
                     simulator.env.setup.pool_push(working_pool, fresh);
                     sides.push(TrioSide { uses_existing: false, legacy: working_pool.veterans.len() - 1 });
                 }
                 sides
             };
-            let (a_sides, b_sides) = (sides(simulator, &mut working_pool, ia), sides(simulator, &mut working_pool, ib));
+            let (a_sides, b_sides) = (
+                sides(simulator, &mut working_pool, first_candidate),
+                sides(simulator, &mut working_pool, second_candidate),
+            );
             // per side choice ([A existing][B existing]): the best C
             let mut finishers: [[Option<Finisher>; 2]; 2] = [[None; 2]; 2];
-            for &c in &candidates.allowed_trainees {
-                if data.umas[c].id == data.umas[ua].id || data.umas[c].id == data.umas[ub].id {
+            for &finisher_trainee in &candidates.allowed_trainees {
+                if data.umas[finisher_trainee].id == data.umas[first_trainee].id
+                    || data.umas[finisher_trainee].id == data.umas[second_trainee].id
+                {
                     continue;
                 }
                 for a_side in &a_sides {
                     for b_side in &b_sides {
-                        let lineage = Lineage { trainee: c, first_parent: a_side.legacy, second_parent: b_side.legacy };
+                        let lineage = Lineage {
+                            trainee: finisher_trainee,
+                            first_parent: a_side.legacy,
+                            second_parent: b_side.legacy,
+                        };
                         if legal_pair(data, &working_pool, lineage) {
                             let best =
                                 &mut finishers[usize::from(a_side.uses_existing)][usize::from(b_side.uses_existing)];
                             let odds = val(simulator, &working_pool, lineage, buf);
                             if odds > best.map_or(0.0, |finisher| finisher.odds) {
-                                *best = Some(Finisher { odds, trainee: c });
+                                *best = Some(Finisher { odds, trainee: finisher_trainee });
                             }
                         }
                     }
@@ -229,8 +244,8 @@ pub(crate) fn plan_combinations(
                 for (b_uses_existing, finisher) in [false, true].into_iter().zip(row) {
                     if let Some(finisher) = finisher {
                         combos.push(PlanCombination {
-                            candidate_a_index: CandidateIndex(ia),
-                            candidate_b_index: CandidateIndex(ib),
+                            candidate_a_index: CandidateIndex(first_candidate),
+                            candidate_b_index: CandidateIndex(second_candidate),
                             finisher_cost: 1.0 / finisher.odds,
                             finisher_trainee: finisher.trainee,
                             a_uses_existing,
@@ -248,15 +263,15 @@ pub(crate) fn plan_combinations(
     combos
 }
 
-/// The fresh full veteran candidate `ui`'s best career now would leave (`CareerSetup::veteran`), where her step is
-/// finite
-fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, step_costs: &[f64], ui: usize) -> Option<Legacy> {
-    if !step_costs[ui].is_finite() {
+/// The fresh full veteran the best career of candidate `candidate` would now leave (`CareerSetup::veteran`), where
+/// her step is finite
+fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, step_costs: &[f64], candidate: usize) -> Option<Legacy> {
+    if !step_costs[candidate].is_finite() {
         return None;
     }
     let candidates = context.candidates;
-    let career = candidates.careers[ui].as_ref()?;
-    let lineage = found_lineage(candidates.trainees[ui], career);
+    let career = candidates.careers[candidate].as_ref()?;
+    let lineage = found_lineage(candidates.trainees[candidate], career);
     let win_chances = simulator.evaluator.wins(&simulator.env.setup, context.input.pool, lineage);
     Some(simulator.env.setup.veteran(context.input.legacies, lineage, win_chances.to_vec()))
 }
@@ -270,12 +285,12 @@ pub(crate) fn plan_sides(
 ) -> Vec<Vec<TrioSideVeteran>> {
     let legacies = context.input.legacies;
     (0..context.candidates.trainees.len())
-        .map(|ui| {
-            let mut sides: Vec<TrioSideVeteran> = full_veterans[ui]
+        .map(|candidate| {
+            let mut sides: Vec<TrioSideVeteran> = full_veterans[candidate]
                 .iter()
                 .map(|&i| TrioSideVeteran { uses_existing: true, legacy: legacies[i].clone() })
                 .collect();
-            if let Some(fresh) = fresh_veteran(simulator, context, step_costs, ui) {
+            if let Some(fresh) = fresh_veteran(simulator, context, step_costs, candidate) {
                 sides.push(TrioSideVeteran { uses_existing: false, legacy: fresh });
             }
             sides

@@ -25,7 +25,7 @@ impl CeilingFactors<'_, '_, '_> {
     }
 
     fn outfit_count(&self) -> usize {
-        self.simulator.evaluator.fastc[self.trainee].len()
+        self.simulator.evaluator.ceiling_factors[self.trainee].len()
     }
 
     fn scale(&self) -> f64 {
@@ -100,7 +100,7 @@ impl AnchorBound {
         self.suffix_minima.clear();
         self.suffix_minima.resize((target_count + 1) * anchor_outfit_count, 1.0);
         self.prefix_maxima.resize(target_count + 1, vec![]);
-        let nan_inf = |b: f64| if b.is_nan() { f64::INFINITY } else { b };
+        let nan_inf = |bound: f64| if bound.is_nan() { f64::INFINITY } else { bound };
         let mut leaf_bounds = std::mem::take(&mut self.prefix_maxima[target_count]);
         if target_count == 0 {
             leaf_bounds.clear();
@@ -122,9 +122,9 @@ impl AnchorBound {
                 leaf_bounds.clear();
                 leaf_bounds.resize(prefix_count * 4, f64::NEG_INFINITY);
                 for j in 0..target_count {
-                    let t = &mut self.prefix_maxima[j];
-                    t.clear();
-                    t.resize(1usize << (2 * j), f64::NEG_INFINITY);
+                    let level = &mut self.prefix_maxima[j];
+                    level.clear();
+                    level.resize(1usize << (2 * j), f64::NEG_INFINITY);
                 }
                 self.sparse_leaves = true;
             }
@@ -135,32 +135,32 @@ impl AnchorBound {
         self.sparse_leaves = false;
         leaf_bounds.clear();
         leaf_bounds.resize(prefix_count * 4, 0.0);
-        let mut g: Vec<[f64; 4]> = Vec::with_capacity(target_count);
+        let mut factors: Vec<[f64; 4]> = Vec::with_capacity(target_count);
         for o in 0..outfit_count {
-            g.clear();
-            g.extend((0..target_count).map(|k| {
-                let b = (o * target_count + k) * 4;
-                [ceiling.values[b], ceiling.values[b + 1], ceiling.values[b + 2], ceiling.values[b + 3]]
+            factors.clear();
+            factors.extend((0..target_count).map(|k| {
+                let base = (o * target_count + k) * 4;
+                [ceiling.values[base], ceiling.values[base + 1], ceiling.values[base + 2], ceiling.values[base + 3]]
             }));
-            leaf_products(&g[..target_count - 1], products.current, products.next);
+            leaf_products(&factors[..target_count - 1], products.current, products.next);
             // the last digit's level straight into the running most
-            for (stars, &last_factor) in g[target_count - 1].iter().enumerate() {
-                for (c, &prefix_product) in leaf_bounds[stars * prefix_count..(stars + 1) * prefix_count]
+            for (stars, &last_factor) in factors[target_count - 1].iter().enumerate() {
+                for (bound, &prefix_product) in leaf_bounds[stars * prefix_count..(stars + 1) * prefix_count]
                     .iter_mut()
                     .zip(products.current.iter())
                 {
                     let product = prefix_product * last_factor;
-                    if product > *c {
-                        *c = product;
+                    if product > *bound {
+                        *bound = product;
                     }
                 }
             }
         }
-        for c in &mut leaf_bounds {
-            *c = nan_inf(scale * *c);
+        for bound in &mut leaf_bounds {
+            *bound = nan_inf(scale * *bound);
         }
-        for &l in &marks.unmarked_leaves {
-            leaf_bounds[l] = f64::NEG_INFINITY;
+        for &leaf in &marks.unmarked_leaves {
+            leaf_bounds[leaf] = f64::NEG_INFINITY;
         }
         self.prefix_maxima[target_count] = leaf_bounds;
         self.levels();
@@ -179,20 +179,20 @@ impl AnchorBound {
         accumulator.clear();
         accumulator.resize(marked_leaf_count, 0.0);
         for o in 0..outfit_count {
-            let g = &ceiling.values[o * target_count * 4..(o + 1) * target_count * 4];
+            let factors = &ceiling.values[o * target_count * 4..(o + 1) * target_count * 4];
             products.current.clear();
             products.current.push(1.0);
             for j in 1..=target_count {
-                let target_factors = &g[(j - 1) * 4..j * 4];
+                let target_factors = &factors[(j - 1) * 4..j * 4];
                 let digit_shift = 2 * (j - 1);
                 if j == target_count {
-                    for ((a, &prefix), &parent) in
+                    for ((most, &prefix), &parent) in
                         accumulator.iter_mut().zip(&marks.prefix_indices[j]).zip(&marks.parent_indices[j])
                     {
-                        let v =
+                        let product =
                             products.current[parent as usize] * target_factors[(prefix >> digit_shift) as usize & 3];
-                        if v > *a {
-                            *a = v;
+                        if product > *most {
+                            *most = product;
                         }
                     }
                 } else {
@@ -208,9 +208,9 @@ impl AnchorBound {
         }
         {
             let leaf_bounds = &mut self.prefix_maxima[target_count];
-            for (&l, &a) in marks.prefix_indices[target_count].iter().zip(&accumulator) {
-                let b = scale * a;
-                leaf_bounds[l as usize] = if b.is_nan() { f64::INFINITY } else { b };
+            for (&leaf, &most) in marks.prefix_indices[target_count].iter().zip(&accumulator) {
+                let bound = scale * most;
+                leaf_bounds[leaf as usize] = if bound.is_nan() { f64::INFINITY } else { bound };
             }
         }
         self.marked_accumulators = accumulator;
@@ -244,111 +244,114 @@ impl AnchorBound {
             self.prefix_maxima[j] = level;
         }
     }
-    /// an anchor's suffix products of its least factors (`suffix_minima`), and whether its bound at the root is below th (the most bd
-    /// holds, prefix_maxima[0][0], or a bar at least that: the prefix maxima only fall, so a no now is a no later too); f > 0, g its factors as `run`'s
-    fn root_open(&mut self, f: f64, g: &[f64], th: f64) -> bool {
+    /// an anchor's suffix products of its least factors (`suffix_minima`), and whether its bound at the root is
+    /// below `threshold` (the most bd holds, prefix_maxima[0][0], or a bar at least that: the prefix maxima only fall,
+    /// so a no now is a no later too); `anchor_value` f > 0, `factors` its factors as `run`'s
+    fn root_open(&mut self, anchor_value: f64, factors: &[f64], threshold: f64) -> bool {
         let (target_count, outfit_count) = (self.target_count, self.outfit_count);
         if target_count == 0 {
             return true;
         }
-        let mut lb = 0.0f64;
+        let mut lower_bound = 0.0f64;
         for o in 0..outfit_count {
             for j in (0..target_count).rev() {
-                let target_factors = &g[(o * target_count + j) * 4..(o * target_count + j) * 4 + 4];
-                let mn = target_factors[0].min(target_factors[1]).min(target_factors[2]).min(target_factors[3]);
+                let target_factors = &factors[(o * target_count + j) * 4..(o * target_count + j) * 4 + 4];
+                let least = target_factors[0].min(target_factors[1]).min(target_factors[2]).min(target_factors[3]);
                 self.suffix_minima[o * (target_count + 1) + j] =
-                    self.suffix_minima[o * (target_count + 1) + j + 1] * mn;
+                    self.suffix_minima[o * (target_count + 1) + j + 1] * least;
             }
-            let l = self.suffix_minima[o * (target_count + 1)];
-            if l > lb {
-                lb = l;
+            let suffix_minimum = self.suffix_minima[o * (target_count + 1)];
+            if suffix_minimum > lower_bound {
+                lower_bound = suffix_minimum;
             }
         }
-        f * BB_SLACK * lb < th
+        anchor_value * BB_SLACK * lower_bound < threshold
     }
-    /// `root_open`'s answer for an anchor (f > 0, chances qa) from its 0-star factors alone (`rise_factors`' expressions;
+    /// `root_open`'s answer for an anchor (`anchor_value` f > 0, chances qa) from its 0-star factors alone
+    /// (`rise_factors`' expressions;
     /// the same products in the same order; `suffix_minima` is not written, `run` writes it). Premises (the caller's): e, qa, x0 in
     /// [0, 1], xms falling and >= 0, nu > 0. Derived: qn = 1 - x0 xms[s] rises with s (rounding is monotone); a factor is 1
     /// where qn <= qa, else N(qn) / D, D = N(qa) = 1 - (1 - e)(1 - qa) in [0, 1] and N rising with qn: N >= D, so it is
     /// >= 1 (+inf where D = 0, as N > 0 there), never NaN, and rises with qn: each digit's least is its 0-star factor
-    fn root_min(&self, f: f64, inputs: &RiseInputs, anchor_chances: &[f64], th: f64) -> bool {
+    fn root_min(&self, anchor_value: f64, inputs: &RiseInputs, anchor_chances: &[f64], threshold: f64) -> bool {
         let target_count = self.target_count;
-        let mut lb = 0.0f64;
-        for (st, ew) in inputs.outfit_coverage.iter().zip(inputs.event_chances) {
-            let mut l = 1.0f64;
+        let mut lower_bound = 0.0f64;
+        for (coverage, hint_chances) in inputs.outfit_coverage.iter().zip(inputs.event_chances) {
+            let mut product = 1.0f64;
             for k in (0..target_count).rev() {
-                l *= rise_factor(
-                    st[k],
-                    ew[k],
+                product *= rise_factor(
+                    coverage[k],
+                    hint_chances[k],
                     1.0 - inputs.base_misses[k] * inputs.star_misses[0],
                     anchor_chances[inputs.uncertain_targets[k]],
                 );
             }
-            if l > lb {
-                lb = l;
+            if product > lower_bound {
+                lower_bound = product;
             }
         }
-        f * BB_SLACK * lb < th
+        anchor_value * BB_SLACK * lower_bound < threshold
     }
-    /// fold one anchor in: f > 0, g its factors [outfit][target k][her stars], all > 0
-    fn run(&mut self, f: f64, g: &[f64]) {
+    /// fold one anchor in: `anchor_value` f > 0, `factors` its factors [outfit][target k][her stars], all > 0
+    fn run(&mut self, anchor_value: f64, factors: &[f64]) {
         let (target_count, outfit_count) = (self.target_count, self.outfit_count);
         if target_count == 0 {
-            let v = f * if outfit_count > 0 { 1.0 } else { 0.0 };
-            if v < self.prefix_maxima[0][0] {
-                self.prefix_maxima[0][0] = v;
+            let value = anchor_value * if outfit_count > 0 { 1.0 } else { 0.0 };
+            if value < self.prefix_maxima[0][0] {
+                self.prefix_maxima[0][0] = value;
             }
             return;
         }
-        if !self.root_open(f, g, self.prefix_maxima[0][0]) {
+        if !self.root_open(anchor_value, factors, self.prefix_maxima[0][0]) {
             return;
         }
         for o in 0..outfit_count {
             self.prefix_products[o] = 1.0;
         }
         self.open_roots += 1;
-        self.dfs(0, 0, f, f * BB_SLACK, g);
+        self.dfs(0, 0, anchor_value, anchor_value * BB_SLACK, factors);
     }
-    fn dfs(&mut self, j: usize, p: usize, f: f64, fs: f64, g: &[f64]) {
+    fn dfs(&mut self, j: usize, p: usize, anchor_value: f64, slack_value: f64, factors: &[f64]) {
         let (target_count, outfit_count) = (self.target_count, self.outfit_count);
         self.visited_nodes += 1;
         for stars in 0..4usize {
             let prefix = p | stars << (2 * j);
             for o in 0..outfit_count {
                 self.prefix_products[(j + 1) * outfit_count + o] =
-                    self.prefix_products[j * outfit_count + o] * g[(o * target_count + j) * 4 + stars];
+                    self.prefix_products[j * outfit_count + o] * factors[(o * target_count + j) * 4 + stars];
             }
             if j + 1 == target_count {
-                let mut rv = 0.0f64;
+                let mut best_product = 0.0f64;
                 for o in 0..outfit_count {
                     let product = self.prefix_products[target_count * outfit_count + o];
-                    if product > rv {
-                        rv = product;
+                    if product > best_product {
+                        best_product = product;
                     }
                 }
-                let v = f * rv;
-                let b = &mut self.prefix_maxima[target_count][prefix];
-                if v < *b {
-                    *b = v;
+                let value = anchor_value * best_product;
+                let leaf_bound = &mut self.prefix_maxima[target_count][prefix];
+                if value < *leaf_bound {
+                    *leaf_bound = value;
                 }
             } else {
-                let mut lb = 0.0f64;
+                let mut lower_bound = 0.0f64;
                 for o in 0..outfit_count {
-                    let l = self.prefix_products[(j + 1) * outfit_count + o]
+                    let lower = self.prefix_products[(j + 1) * outfit_count + o]
                         * self.suffix_minima[o * (target_count + 1) + j + 1];
-                    if l > lb {
-                        lb = l;
+                    if lower > lower_bound {
+                        lower_bound = lower;
                     }
                 }
-                if fs * lb >= self.prefix_maxima[j + 1][prefix] {
+                if slack_value * lower_bound >= self.prefix_maxima[j + 1][prefix] {
                     continue;
                 }
-                self.dfs(j + 1, prefix, f, fs, g);
+                self.dfs(j + 1, prefix, anchor_value, slack_value, factors);
             }
         }
         let children = &self.prefix_maxima[j + 1];
-        let s = 1usize << (2 * j);
-        self.prefix_maxima[j][p] = children[p].max(children[p + s]).max(children[p + 2 * s]).max(children[p + 3 * s]);
+        let quarter = 1usize << (2 * j);
+        self.prefix_maxima[j][p] =
+            children[p].max(children[p + quarter]).max(children[p + 2 * quarter]).max(children[p + 3 * quarter]);
     }
 }
 
@@ -390,10 +393,10 @@ impl Marks {
                 })
                 .collect();
         }
-        marks.marked_leaf_count = marks.prefix_marks[target_count].iter().filter(|&&b| b).count();
+        marks.marked_leaf_count = marks.prefix_marks[target_count].iter().filter(|&&marked| marked).count();
         marks.dense = 4 * marks.marked_leaf_count >= leaf_count;
         if marks.dense {
-            marks.unmarked_leaves = (0..leaf_count).filter(|&l| !marks.prefix_marks[target_count][l]).collect();
+            marks.unmarked_leaves = (0..leaf_count).filter(|&leaf| !marks.prefix_marks[target_count][leaf]).collect();
         } else {
             for j in 0..=target_count {
                 marks.prefix_indices[j] =
@@ -411,17 +414,17 @@ impl Marks {
     }
 }
 
-/// `rise_leaves`'s factors for chances qa, [outfit][target k][her stars] (the same expressions), into g
-fn rise_factors(inputs: &RiseInputs, anchor_chances: &[f64], g: &mut Vec<f64>) {
-    let nu = inputs.uncertain_targets.len();
-    g.clear();
-    for (st, ew) in inputs.outfit_coverage.iter().zip(inputs.event_chances) {
-        for k in 0..nu {
-            for sg in 0..4 {
-                g.push(rise_factor(
-                    st[k],
-                    ew[k],
-                    1.0 - inputs.base_misses[k] * inputs.star_misses[sg],
+/// `rise_leaves`'s factors for chances qa, [outfit][target k][her stars] (the same expressions), into `factors`
+fn rise_factors(inputs: &RiseInputs, anchor_chances: &[f64], factors: &mut Vec<f64>) {
+    let uncertain_count = inputs.uncertain_targets.len();
+    factors.clear();
+    for (coverage, hint_chances) in inputs.outfit_coverage.iter().zip(inputs.event_chances) {
+        for k in 0..uncertain_count {
+            for her_stars in 0..4 {
+                factors.push(rise_factor(
+                    coverage[k],
+                    hint_chances[k],
+                    1.0 - inputs.base_misses[k] * inputs.star_misses[her_stars],
                     anchor_chances[inputs.uncertain_targets[k]],
                 ));
             }
@@ -569,7 +572,7 @@ impl ExactAnchorChances {
     fn rise_inputs<'rise>(&'rise self, setup: &'rise CareerSetup) -> RiseInputs<'rise> {
         RiseInputs {
             outfit_coverage: &setup.outfit_coverage[self.lineage.trainee],
-            event_chances: &setup.model.ews[self.lineage.trainee],
+            event_chances: &setup.model.event_chances[self.lineage.trainee],
             uncertain_targets: &setup.uncertain_targets,
             base_misses: &self.base_misses,
             star_misses: &self.star_misses,
@@ -623,7 +626,7 @@ fn hi_partner(
     let candidate = partner.candidate;
     let uncertain_targets = &simulator.env.setup.uncertain_targets;
     let outfit_coverage = &simulator.env.setup.outfit_coverage[partner.lineage.trainee];
-    let event_chances = &simulator.env.setup.model.ews[partner.lineage.trainee];
+    let event_chances = &simulator.env.setup.model.event_chances[partner.lineage.trainee];
     let ceiling_scale = simulator.env.setup.space.rho_top() * simulator.evaluator.fixed;
     // her slot's miss factors and spark scales (`CareerSetup::her_slot`, as `score_career`'s setups)
     let Some(slot) = simulator.env.setup.her_slot(candidate.extended_pool, partner.lineage) else {
@@ -634,13 +637,13 @@ fn hi_partner(
     // levels, 1 - q' = x0 xm (`outfit_fast` at her chances folded in, as `Evaluator::fast_ub` takes it)
     let ceiling_started = now_ms();
     scratch.ceiling_factors.clear();
-    for o in &simulator.evaluator.fastc[partner.lineage.trainee] {
+    for outfit_factors in &simulator.evaluator.ceiling_factors[partner.lineage.trainee] {
         for k in 0..uncertain_targets.len() {
-            let (intercept, miss_coefficient) = o[k];
-            for sg in 0..4 {
+            let (intercept, miss_coefficient) = outfit_factors[k];
+            for her_stars in 0..4 {
                 scratch
                     .ceiling_factors
-                    .push(intercept - miss_coefficient * (slot.misses_without_her[k] * slot.miss_by_stars[sg]));
+                    .push(intercept - miss_coefficient * (slot.misses_without_her[k] * slot.miss_by_stars[her_stars]));
             }
         }
     }
@@ -662,7 +665,7 @@ fn hi_partner(
         && slot.miss_by_stars[1] >= slot.miss_by_stars[2]
         && slot.miss_by_stars[2] >= slot.miss_by_stars[3]
         && slot.miss_by_stars[3] >= 0.0
-        && slot.misses_without_her.iter().all(|v| (0.0..=1.0).contains(v));
+        && slot.misses_without_her.iter().all(|miss| (0.0..=1.0).contains(miss));
     // The most the ceiling holds at any leaf (`AnchorBound::reset`'s bd at the leaf of each digit's largest factor: per outfit the
     // product in the leaves' order from 1.0, the most over outfits from 0.0, rf x it; with every factor >= 0 rounding is
     // monotone, so no leaf's is above it), +inf where a factor is negative or NaN. An anchor whose root test fails against
@@ -670,75 +673,84 @@ fn hi_partner(
     // the anchors kept for later calls (`retained_anchors`, a roll's: the same pair, pool and odds now at every outcome) are the others,
     // in their order, so a later call folds in the same anchors as computing them all would, minus ones that lower nothing
     let ceiling_maximum = {
-        let (no, mut acc, mut ok) = (simulator.evaluator.fastc[partner.lineage.trainee].len(), 0.0f64, true);
-        for o in 0..no {
-            let mut p = 1.0f64;
+        let (outfit_count, mut best, mut ok) =
+            (simulator.evaluator.ceiling_factors[partner.lineage.trainee].len(), 0.0f64, true);
+        for o in 0..outfit_count {
+            let mut product = 1.0f64;
             for k in 0..uncertain_targets.len() {
-                let g = &scratch.ceiling_factors[(o * uncertain_targets.len() + k) * 4..][..4];
-                ok &= g.iter().all(|v| *v >= 0.0);
-                p *= g[0].max(g[1]).max(g[2]).max(g[3]);
+                let factors = &scratch.ceiling_factors[(o * uncertain_targets.len() + k) * 4..][..4];
+                ok &= factors.iter().all(|factor| *factor >= 0.0);
+                product *= factors[0].max(factors[1]).max(factors[2]).max(factors[3]);
             }
-            if p > acc {
-                acc = p;
+            if product > best {
+                best = product;
             }
         }
-        let b = ceiling_scale * acc;
-        if ok && !b.is_nan() { b } else { f64::INFINITY }
+        let bound = ceiling_scale * best;
+        if ok && !bound.is_nan() { bound } else { f64::INFINITY }
     };
     let building_cache = output.retained_anchors.is_none();
-    let mut add = |anchor_bound: &mut AnchorBound, f: f64, anchor_chances: &[f64], batch: &mut AnchorBatch| {
-        if f > 0.0 && monotone_factors && uncertain_targets.iter().all(|&i| (0.0..=1.0).contains(&anchor_chances[i])) {
+    let mut add = |anchor_bound: &mut AnchorBound,
+                   anchor_value: f64,
+                   anchor_chances: &[f64],
+                   batch: &mut AnchorBatch| {
+        if anchor_value > 0.0
+            && monotone_factors
+            && uncertain_targets.iter().all(|&i| (0.0..=1.0).contains(&anchor_chances[i]))
+        {
             // every factor >= 1, each digit's least its 0-star one: the root test on those alone, the rest only
             // for an anchor it keeps (as the test below would: all factors > 0, `root_open` the same answer)
             if building_cache {
-                if !anchor_bound.root_min(f, &rise, anchor_chances, ceiling_maximum) {
+                if !anchor_bound.root_min(anchor_value, &rise, anchor_chances, ceiling_maximum) {
                     return;
                 }
-                batch.retained.push((f, anchor_chances.to_vec()));
+                batch.retained.push((anchor_value, anchor_chances.to_vec()));
             }
-            if !anchor_bound.root_min(f, &rise, anchor_chances, anchor_bound.prefix_maxima[0][0]) {
+            if !anchor_bound.root_min(anchor_value, &rise, anchor_chances, anchor_bound.prefix_maxima[0][0]) {
                 return;
             }
             rise_factors(&rise, anchor_chances, &mut scratch.rise_factors);
             debug_assert!(
-                scratch.rise_factors.iter().all(|&v| v > 0.0)
-                    && anchor_bound.root_open(f, &scratch.rise_factors, anchor_bound.prefix_maxima[0][0]),
+                scratch.rise_factors.iter().all(|&factor| factor > 0.0)
+                    && anchor_bound.root_open(anchor_value, &scratch.rise_factors, anchor_bound.prefix_maxima[0][0]),
                 "a candidate kept for a rise has positive factors and an open root"
             );
-            batch.values.push(f);
+            batch.values.push(anchor_value);
             batch.factors.extend_from_slice(&scratch.rise_factors);
             return;
         }
         rise_factors(&rise, anchor_chances, &mut scratch.rise_factors);
-        if f > 0.0 && scratch.rise_factors.iter().all(|&v| v > 0.0) {
+        if anchor_value > 0.0 && scratch.rise_factors.iter().all(|&factor| factor > 0.0) {
             if building_cache {
-                if !anchor_bound.root_open(f, &scratch.rise_factors, ceiling_maximum) {
+                if !anchor_bound.root_open(anchor_value, &scratch.rise_factors, ceiling_maximum) {
                     return;
                 }
-                batch.retained.push((f, anchor_chances.to_vec()));
+                batch.retained.push((anchor_value, anchor_chances.to_vec()));
             }
-            if anchor_bound.root_open(f, &scratch.rise_factors, anchor_bound.prefix_maxima[0][0]) {
-                batch.values.push(f);
+            if anchor_bound.root_open(anchor_value, &scratch.rise_factors, anchor_bound.prefix_maxima[0][0]) {
+                batch.values.push(anchor_value);
                 batch.factors.extend_from_slice(&scratch.rise_factors);
             }
         } else {
             // outside the bound's premises: every leaf, as before
             if building_cache {
-                batch.retained.push((f, anchor_chances.to_vec()));
+                batch.retained.push((anchor_value, anchor_chances.to_vec()));
             }
             batch.direct = true;
             let leaf_rises = rise.leaves(anchor_chances, &mut scratch.leaf_products, &mut scratch.next_leaf_products);
-            for (av, rv) in anchor_bound.prefix_maxima[anchor_bound.target_count].iter_mut().zip(&leaf_rises) {
-                let v = f * rv;
-                if v < *av {
-                    *av = v;
+            for (leaf_bound, leaf_rise) in
+                anchor_bound.prefix_maxima[anchor_bound.target_count].iter_mut().zip(&leaf_rises)
+            {
+                let value = anchor_value * leaf_rise;
+                if value < *leaf_bound {
+                    *leaf_bound = value;
                 }
             }
         }
     };
-    if let Some(ks) = output.retained_anchors.as_ref() {
-        for (f, anchor_chances) in ks {
-            add(&mut scratch.anchor_bound, *f, anchor_chances, &mut batch);
+    if let Some(retained) = output.retained_anchors.as_ref() {
+        for (anchor_value, anchor_chances) in retained {
+            add(&mut scratch.anchor_bound, *anchor_value, anchor_chances, &mut batch);
         }
     } else {
         if context.scoring.score_base.current_odds[candidate.candidate_index] > 0.0 {
@@ -746,7 +758,7 @@ fn hi_partner(
             for lineage in (0..context.scoring.legacies.len())
                 .map(|second_parent| Lineage { second_parent, ..partner.lineage })
                 .filter(|&lineage| {
-                    legal_pair(simulator.d, context.scoring.pool, lineage)
+                    legal_pair(simulator.data, context.scoring.pool, lineage)
                         && holds_fix(context.fixed_parents, lineage.first_parent, lineage.second_parent)
                 })
             {
@@ -789,14 +801,14 @@ fn hi_partner(
         .values
         .iter()
         .enumerate()
-        .map(|(i, &f)| {
-            let gi = &batch.factors[i * factor_stride..(i + 1) * factor_stride];
+        .map(|(i, &anchor_value)| {
+            let factors = &batch.factors[i * factor_stride..(i + 1) * factor_stride];
             AnchorPriority {
-                bound_at_two_stars: f
+                bound_at_two_stars: anchor_value
                     * (0..outfit_coverage.len())
                         .map(|o| {
                             (0..uncertain_targets.len())
-                                .map(|k| gi[(o * uncertain_targets.len() + k) * 4 + 2])
+                                .map(|k| factors[(o * uncertain_targets.len() + k) * 4 + 2])
                                 .product::<f64>()
                         })
                         .fold(0.0f64, f64::max),
@@ -834,25 +846,25 @@ fn hi_partner(
     if context.marked_outcomes.marked_cell_count == context.marked_outcomes.cell_count
         && context.marked_outcomes.fixed_target_count == 0
     {
-        for ((t, &m), &b) in
+        for ((candidate_bound, &m), &leaf_bound) in
             output.candidate_bounds.iter_mut().zip(context.marked_outcomes.landed_masks).zip(leaf_bounds)
         {
-            let v = spark_scales[m as usize] * b;
-            if v > *t {
-                *t = v;
+            let value = spark_scales[m as usize] * leaf_bound;
+            if value > *candidate_bound {
+                *candidate_bound = value;
             }
         }
     } else {
-        for ((t, &i), &m) in output
+        for ((candidate_bound, &i), &m) in output
             .candidate_bounds
             .iter_mut()
             .zip(context.marked_outcomes.cell_indices)
             .zip(context.marked_outcomes.landed_masks)
         {
-            let v = (if spark_scales.is_empty() { scale_for_mask(m as usize) } else { spark_scales[m as usize] })
+            let value = (if spark_scales.is_empty() { scale_for_mask(m as usize) } else { spark_scales[m as usize] })
                 * leaf_bounds[i >> context.marked_outcomes.fixed_target_count];
-            if v > *t {
-                *t = v;
+            if value > *candidate_bound {
+                *candidate_bound = value;
             }
         }
     }
@@ -894,8 +906,8 @@ impl RollKeep {
     /// there, under the caps every search assumes)
     ///     value(y, her) <= c' E_best(q^s) rise(q', q^s),
     /// rise 1 where her stars are at most s (this outcome is bounded again after); also at most the ceiling
-    /// (`CareerSetup::ceiling` through `Evaluator::fastc`, under the top cap: per outfit and target A - B (1 - q'),
-    /// `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
+    /// (`CareerSetup::ceiling` through `Evaluator::ceiling_factors`, under the top cap: per outfit and target
+    /// A - B (1 - q'), `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
     /// (`Cont::cost_lo`). Derived, per outcome:
     /// (1) For each partner, the bound >= the best career's exact value >= the table value `score_career` reads. A cached
     ///     deck's corner table is multilinear in the targets' miss chances, as P(all) of a fixed deck is (each chance enters
@@ -923,7 +935,7 @@ impl RollKeep {
         let career = Career { lineage: self.lineage, deck: &self.deck };
         // Borrow the persistent cache independently of the immutable scoring and kept anchors.
         let anchor_cache = &mut self.partner_anchors;
-        let data = simulator.d;
+        let data = simulator.data;
         let trainee = career.lineage.trainee;
 
         let candidate_count = context.score_base.candidates.len();
@@ -954,7 +966,7 @@ impl RollKeep {
         let cell = |i: usize| {
             let outcome = leaf_set(i >> fixed_target_count, uncertain_targets, star_mix);
             let m = outcome.landed_mask | fixed_landed_masks[i & ((1usize << fixed_target_count) - 1)].bits();
-            OutcomeChance { probability: current.os[m] * outcome.star_probability, landed_mask: m }
+            OutcomeChance { probability: current.outcome_sets[m] * outcome.star_probability, landed_mask: m }
         };
         // Only this roll's cell is requested; impossible outcomes have no saving bound to compute.
         let requested_chance = cell(outcome.0);
@@ -1007,20 +1019,21 @@ impl RollKeep {
             let candidate_trainee = context.score_base.candidates[candidate];
             if data.umas[candidate_trainee].id == data.umas[trainee].id
                 || context.score_base.step_costs[candidate] == 0.0
-                || simulator.evaluator.fastc[candidate_trainee].is_empty()
+                || simulator.evaluator.ceiling_factors[candidate_trainee].is_empty()
             {
                 continue;
             }
             // Her own chances, for the monotonicity premise shared by her partners.
-            let event_chances = &simulator.env.setup.model.ews[candidate_trainee];
+            let event_chances = &simulator.env.setup.model.event_chances[candidate_trainee];
             scratch.relation_points.clear(); // (`CareerSetup::lineage_qc`'s table: another trainee)
             // the main search's found careers of her deck class that it fully checked (`found_anchors`)
             let deck_class = simulator.env.setup.deck_class[candidate_trainee];
             let anchor_indices: Vec<usize> = (0..self.found_anchors.len())
-                .filter(|&i| self.found_anchors[i].as_ref().is_some_and(|f| f.deck_class == deck_class))
+                .filter(|&i| self.found_anchors[i].as_ref().is_some_and(|anchor| anchor.deck_class == deck_class))
                 .collect();
             // `AnchorBound::root_min`'s premises on her own chances
-            let event_chances_valid = event_chances.iter().all(|ew| ew.iter().all(|e| (0.0..=1.0).contains(e)));
+            let event_chances_valid =
+                event_chances.iter().all(|outfit_chances| outfit_chances.iter().all(|e| (0.0..=1.0).contains(e)));
             let candidate_inputs = CandidateBoundInputs {
                 extended_pool: &extended_pool.pool,
                 candidate_index: candidate,
@@ -1079,7 +1092,7 @@ impl RollKeep {
         let mut chosen: Vec<usize> = vec![];
         if saving_bound.max(saving) >= 0.5 && search_limit > 0 {
             let (leaf, m) = (outcome.0 >> fixed_target_count, requested_chance.landed_mask);
-            let h =
+            let saving_hi =
                 hi_at(context.score_base, &exact_bounds, leaf, m, &own, &mut step_costs, &mut candidate_probabilities);
             let (mut need, mut far): (Vec<usize>, bool) = (vec![], false);
             for candidate in 0..candidate_count {
@@ -1088,19 +1101,19 @@ impl RollKeep {
                 }
                 let keep = candidate_probabilities[candidate];
                 candidate_probabilities[candidate] = context.score_base.current_odds[candidate];
-                let h2 = saving_lo(context.score_base, &candidate_probabilities, m, &own, &mut step_costs);
+                let saving_without = saving_lo(context.score_base, &candidate_probabilities, m, &own, &mut step_costs);
                 candidate_probabilities[candidate] = keep;
-                if h2 >= h - 1e-9 {
+                if saving_without >= saving_hi - 1e-9 {
                     continue;
                 }
                 for (partner_index, bound) in exact_bounds.iter().enumerate() {
                     if bound.candidate != candidate {
                         continue;
                     }
-                    let v = bound.spark_scales[m] * bound.leaf_bounds[leaf];
-                    if v > context.score_base.current_odds[candidate] * (1.0 + 1e-9) {
+                    let value = bound.spark_scales[m] * bound.leaf_bounds[leaf];
+                    if value > context.score_base.current_odds[candidate] * (1.0 + 1e-9) {
                         need.push(partner_index);
-                        if v > HI_RISE * context.score_base.current_odds[candidate] {
+                        if value > HI_RISE * context.score_base.current_odds[candidate] {
                             far = true;
                         }
                     }
@@ -1114,30 +1127,26 @@ impl RollKeep {
         // full, under the caps): value(y, her) <= c' E_best(q^s) rise(q', q^s) for every outcome (rise 1 where her stars <= s)
         for &partner_index in &chosen {
             let anchor = &exact_chances[partner_index];
-            for &st in &HI_STARS {
+            for &stars in &HI_STARS {
                 let mut q = anchor.initial_chances.clone();
                 for k in 0..uncertain_target_count {
-                    q[simulator.env.setup.uncertain_targets[k]] = 1.0 - anchor.base_misses[k] * anchor.star_misses[st];
+                    q[simulator.env.setup.uncertain_targets[k]] =
+                        1.0 - anchor.base_misses[k] * anchor.star_misses[stars];
                 }
                 simulator.env.setup.set_trainee(&mut simulator.env.state, anchor.lineage.trainee, &q);
                 simulator.env.state.work = 0;
-                let mut nsc = 0;
-                if let DeckRes::Done(v, _, true) = simulator.env.setup.best_deck(
-                    &mut simulator.env.state,
-                    &mut simulator.env.audit,
-                    &mut simulator.env.memo,
-                    anchor.lineage.trainee,
-                    1.0,
-                    0.0,
+                let mut scored_count = 0;
+                if let DeckRes::Done(best_value, _, true) = simulator.env.best_deck(
+                    crate::career::decks::DeckSearch { trainee: anchor.lineage.trainee, spark_scale: 1.0, bar: 0.0 },
                     &[],
-                    &mut nsc,
+                    &mut scored_count,
                 ) {
                     let rise = anchor.rise_inputs(&simulator.env.setup);
-                    let rz = rise.leaves(&q, &mut leaf_products_buffer, &mut next_leaf_products);
-                    for (bv, r) in exact_bounds[partner_index].leaf_bounds.iter_mut().zip(&rz) {
-                        let v2 = v * r;
-                        if v2 < *bv {
-                            *bv = v2;
+                    let leaf_rises = rise.leaves(&q, &mut leaf_products_buffer, &mut next_leaf_products);
+                    for (leaf_bound, leaf_rise) in exact_bounds[partner_index].leaf_bounds.iter_mut().zip(&leaf_rises) {
+                        let value = best_value * leaf_rise;
+                        if value < *leaf_bound {
+                            *leaf_bound = value;
                         }
                     }
                 }
@@ -1162,42 +1171,56 @@ impl RollKeep {
 /// `her_trios` reads C's cached decks), where an outcome that lands every target reads y < 0.5 (`full_lo`: only there
 /// does `saving_lo` read it; else none)
 pub(crate) fn pick_her(
-    s: &mut Sim,
+    simulator: &mut Sim,
     context: &ScoringContext,
     career: Career,
     full_lo: bool,
     buf: &mut Vec<f64>,
 ) -> Vec<OwnTrio> {
-    let ends = her_ends(s, context.score_base, context.legacies, career.lineage);
+    let ends = her_ends(simulator, context.score_base, context.legacies, career.lineage);
     if !full_lo || ends.own_candidate.is_some() || ends.completes_goal || context.score_base.trio_sides.is_empty() {
         return vec![];
     }
-    let c = s.evaluator.make_cur(&s.env.setup, &mut s.env.state, context.pool, career, false);
-    let full_m = (1usize << s.env.setup.target_count) - 1;
-    if c.os[full_m] <= 0.0 {
+    let current =
+        simulator.evaluator.make_cur(&simulator.env.setup, &mut simulator.env.state, context.pool, career, false);
+    let full_mask = (1usize << simulator.env.setup.target_count) - 1;
+    if current.outcome_sets[full_mask] <= 0.0 {
         return vec![];
     }
-    let mut pv = s.evaluator.push_her(&s.env.setup, context.legacies, context.pool, true, &c);
-    let iv = pv.pool.veterans.len() - 1;
-    let r = her_trios(s, context.score_base, &mut pv.pool, iv, career.lineage.trainee, buf);
-    s.evaluator.pop_her(context.pool, pv);
-    r
+    let mut pushed = simulator.evaluator.push_her(&simulator.env.setup, context.legacies, context.pool, true, &current);
+    let her = pushed.pool.veterans.len() - 1;
+    let trios = her_trios(simulator, context.score_base, &mut pushed.pool, her, career.lineage.trainee, buf);
+    simulator.evaluator.pop_her(context.pool, pushed);
+    trios
 }
 
-/// `outcome_hi`'s found-career anchors: per found career of the main search `msv` (its order), (her deck class, q_f,
+/// `outcome_hi`'s found-career anchors: per found career of `main_search` (its order), (her deck class, q_f,
 /// val_f) when the search fully checked it (a Ref at the career's own chances: val_f is the best value of any deck at q_f
 /// for every trainee of the class, `SearchState::seen`, scale 1), else none
-pub(crate) fn found_anchors(setup: &CareerSetup, pool: &Pool, msv: &CareerSearchResult) -> Vec<Option<FoundAnchor>> {
-    msv.found
+pub(crate) fn found_anchors(
+    setup: &CareerSetup,
+    pool: &Pool,
+    main_search: &CareerSearchResult,
+) -> Vec<Option<FoundAnchor>> {
+    main_search
+        .found
         .iter()
-        .map(|f| {
-            let lineage = Lineage { trainee: f.trainee, first_parent: f.first_parent, second_parent: f.second_parent };
-            let (fq, _) = setup.lineage_q(pool, lineage);
-            msv.refs.get(f.trainee).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| FoundAnchor {
-                deck_class: setup.deck_class[f.trainee],
-                inheritance_chances: r.q.clone(),
-                value: r.val,
-            })
+        .map(|found| {
+            let lineage = Lineage {
+                trainee: found.trainee,
+                first_parent: found.first_parent,
+                second_parent: found.second_parent,
+            };
+            let (found_chances, _) = setup.lineage_q(pool, lineage);
+            main_search
+                .refs
+                .get(found.trainee)
+                .and_then(|refs| refs.iter().find(|reference| reference.inheritance_chances == found_chances))
+                .map(|reference| FoundAnchor {
+                    deck_class: setup.deck_class[found.trainee],
+                    inheritance_chances: reference.inheritance_chances.clone(),
+                    value: reference.value,
+                })
         })
         .collect()
 }

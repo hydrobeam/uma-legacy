@@ -28,7 +28,11 @@ impl DeckSpace<'_> {
         };
         let target_count = self.target_groups.len();
         let size = self.deck_job.deck_size;
-        if self.locked.iter().any(|&l| trainee_ids.iter().any(|&id| self.cards[l].blocks(id, self.deck_job.checks))) {
+        if self
+            .locked
+            .iter()
+            .any(|&locked| trainee_ids.iter().any(|&id| self.cards[locked].blocks(id, crate::checks::get())))
+        {
             return Err(SearchOutcome { decks: vec![], incomplete: None, uncapped: false });
         }
         let crate::deck::space::ReducedEntries { entries: legal_entries, set_id } =
@@ -63,7 +67,7 @@ impl DeckSpace<'_> {
             });
         }
         let cap_free_node_limit = cap_free_node_limit.unwrap_or(usize::MAX);
-        let cap_free_check_scale = if cap_free { self.deck_job.checks.cf_check } else { 0.0 };
+        let cap_free_check_scale = if cap_free { crate::checks::get().cf_check } else { 0.0 };
         let state_bound_mode = if cap_free {
             2
         } else if let BandBound::StateBound { mode } = band_bound
@@ -78,7 +82,7 @@ impl DeckSpace<'_> {
         {
             let hit = self.state_row_cache.borrow().get(&set_id).cloned();
             hit.unwrap_or_else(|| {
-                let r = std::rc::Rc::new(
+                let rows = std::rc::Rc::new(
                     (0..self.card_indices.len())
                         .map(|j| {
                             legal_entries
@@ -87,8 +91,8 @@ impl DeckSpace<'_> {
                         })
                         .collect::<Vec<_>>(),
                 );
-                self.state_row_cache.borrow_mut().insert(set_id, std::rc::Rc::clone(&r));
-                r
+                self.state_row_cache.borrow_mut().insert(set_id, std::rc::Rc::clone(&rows));
+                rows
             })
         } else {
             std::rc::Rc::new(vec![])
@@ -102,12 +106,12 @@ impl DeckSpace<'_> {
         };
         // the trainee's `land_factor` per (outfit, target), row o * target_count + k (`LandPre`: the same values)
         let landing_factors: Vec<LandPre> = if state_bound_mode > 0 {
-            (0..chances.model.opts[bound_trainee].len())
-                .flat_map(|o| {
+            (0..chances.model.outfit_options[bound_trainee].len())
+                .flat_map(|outfit| {
                     (0..target_count).map(move |k| {
                         LandPre::new(
-                            chances.model.opts[bound_trainee][o].coverage[k],
-                            chances.event_chances[bound_trainee][o][k],
+                            chances.model.outfit_options[bound_trainee][outfit].coverage[k],
+                            chances.event_chances[bound_trainee][outfit][k],
                             bound_inheritance,
                         )
                     })
@@ -123,8 +127,8 @@ impl DeckSpace<'_> {
         let class_caps: [f64; 4] = if state_bound_mode == 2 {
             [rho; 4]
         } else {
-            let c = self.caps();
-            [c[0].min(rho), c[1].min(rho), c[2].min(rho), c[3].min(rho)]
+            let caps = self.caps();
+            [caps[0].min(rho), caps[1].min(rho), caps[2].min(rho), caps[3].min(rho)]
         };
         Ok(SearchSetup {
             best,
@@ -192,9 +196,10 @@ impl DeckSpace<'_> {
         } = setup;
         let character_bits: &[u128] = &legal_tables.character_bits;
         let (by_kind, pal_entries) = (&legal_tables.by_kind, &legal_tables.pal_entries);
-        let val = |cl: &SearchClause, white_chances: &[f64], gold_chances: &[f64]| {
+        let clause_value = |clause: &SearchClause, white_chances: &[f64], gold_chances: &[f64]| {
             fixed
-                * cl.lineages
+                * clause
+                    .lineages
                     .iter()
                     .map(|&LineageChance { trainee: k, inheritance: q }| {
                         chances.trainee_fast(trainees[k], q, white_chances, gold_chances)
@@ -203,12 +208,12 @@ impl DeckSpace<'_> {
         };
         // every chance and outfit odd in [0, 1] and a fixed factor >= 0: then a deck's value rises with each of its odds
         // (white < gold) and every quantity in its evaluation is in [0, 1] up to rounding, which the dominance skip
-        // (`dom`), the lazy configurations (`PendingConfig`) and the key bound (`keyskip`) rely on
-        let in01 = |x: f64| (0.0..=1.0).contains(&x);
+        // (`use_dominance`), the lazy configurations (`PendingConfig`) and the key bound (`keyskip`) rely on
+        let in_unit = |x: f64| (0.0..=1.0).contains(&x);
         let valid = fixed >= 0.0
-            && clauses.iter().all(|cl| {
-                cl.lineages.iter().all(|&LineageChance { trainee: k, inheritance: q }| {
-                    in01(q) && chances.event_chances[trainees[k]].iter().flatten().all(|&x| in01(x))
+            && clauses.iter().all(|clause| {
+                clause.lineages.iter().all(|&LineageChance { trainee: k, inheritance: q }| {
+                    in_unit(q) && chances.event_chances[trainees[k]].iter().flatten().all(|&chance| in_unit(chance))
                 })
             });
         let use_dominance = best && valid;
@@ -221,7 +226,7 @@ impl DeckSpace<'_> {
         let counts = self.counts_all();
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_entries)).collect();
         // the cap-free band's ratio tables (`CapFreeRatios`), built on first use
-        let cap_free_outfit_count = if cap_free { chances.model.opts[bound_trainee].len() } else { 0 };
+        let cap_free_outfit_count = if cap_free { chances.model.outfit_options[bound_trainee].len() } else { 0 };
         let cap_free_ratios = CapFreeRatios::new(
             LandingBoundTables {
                 factors: &landing_factors,
@@ -236,11 +241,11 @@ impl DeckSpace<'_> {
         );
         // per group, its entries' `cv_mask`s ORed
         let group_class_masks: Vec<u64> =
-            groups_all.iter().map(|l| l.iter().fold(0u64, |m, &j| m | self.class_masks[j])).collect();
+            groups_all.iter().map(|group| group.iter().fold(0u64, |mask, &j| mask | self.class_masks[j])).collect();
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
         let (lock_bits, all_lock_bits) = {
-            let x = self.lock_bits();
-            ((&*x.entry_bits), x.all_bits)
+            let locks = self.lock_bits();
+            ((&*locks.entry_bits), locks.all_bits)
         };
         let group_lock_bits: &[u8] = &legal_tables.group_lock_bits;
         let mut white_chances = vec![0.0f64; target_count];
@@ -266,19 +271,18 @@ impl DeckSpace<'_> {
         // a card's ratio for column c (its single-card odds x, y): N's (a split column), the plain ratio, or infinite
         let ratio_at = |c: usize, x: &[f64], y: &[f64]| -> f64 {
             let i = row_indices[c];
-            let crate::deck::enumerate::bounds::OutfitRow { trainee: u, inheritance: q, outfit: o, .. } =
-                outfit_rows[i];
+            let crate::deck::enumerate::bounds::OutfitRow { trainee, inheritance: q, outfit, .. } = outfit_rows[i];
             if zero_masks[c] != 0 {
                 outfits[i].eval_in(q, x, y, nonzero_masks[c]) / divisors[c]
             } else if empty_values[i] > 0.0 {
-                chances.outfit_fast(u, o, q, x, y) / empty_values[i]
+                chances.outfit_fast(trainee, outfit, q, x, y) / empty_values[i]
             } else {
                 f64::INFINITY
             }
         };
         // (RB_CHECK=s: the node bounds on the current path, per depth its clause sums, the root's at depth 0; nodes pass
         // at s times their bound, so more leaves are checked, the results unchanged)
-        let bound_check_scale = if cap_free { 0.0 } else { self.deck_job.checks.rb_check };
+        let bound_check_scale = if cap_free { 0.0 } else { crate::checks::get().rb_check };
         let check_ratio_bounds = bound_check_scale > 0.0;
         let bound_check_scale = if check_ratio_bounds { bound_check_scale } else { 1.0 };
         let diagnostic_bounds: Vec<Vec<f64>> = vec![];
@@ -301,131 +305,140 @@ impl DeckSpace<'_> {
         // (a `GroupTable`: per group, column c's products at c (size + 1); `top`, the columns' best ratios, reused)
         let top_ratios: std::cell::RefCell<Vec<Vec<f64>>> =
             std::cell::RefCell::new((0..column_count).map(|_| Vec::with_capacity(size)).collect());
-        let ratio_prefixes_for = |mw: &[f64], mg: &[f64], touched_targets: &[u32], needed_groups: u64| -> GroupTable {
-            let (mut x, mut y) = ([0.0f64; 32], [0.0f64; 32]);
-            let mut top = top_ratios.borrow_mut();
-            let mut tab = GroupTable::new(groups_all.len(), needed_groups, column_count * (size + 1));
-            for (gi, l) in groups_all.iter().enumerate() {
-                if needed_groups >> gi & 1 == 0 {
-                    continue;
-                }
-                top.iter_mut().for_each(std::vec::Vec::clear);
-                for &j in *l {
-                    let tm = touched_targets[j];
-                    let mut m = tm;
-                    while m != 0 {
-                        let t = m.trailing_zeros() as usize;
-                        m &= m - 1;
-                        x[t] = 1.0 - mw[j * target_count + t];
-                        y[t] = 1.0 - mg[j * target_count + t];
+        let ratio_prefixes_for =
+            |white_misses: &[f64], gold_misses: &[f64], touched_targets: &[u32], needed_groups: u64| -> GroupTable {
+                let (mut x, mut y) = ([0.0f64; 32], [0.0f64; 32]);
+                let mut top = top_ratios.borrow_mut();
+                let mut table = GroupTable::new(groups_all.len(), needed_groups, column_count * (size + 1));
+                for (group_index, l) in groups_all.iter().enumerate() {
+                    if needed_groups >> group_index & 1 == 0 {
+                        continue;
                     }
-                    for c in 0..column_count {
-                        let r = match ratio_divisors[c] {
-                            None => f64::INFINITY,
-                            Some(crate::deck::enumerate::bounds::RatioDivisor { targets: cm, value: den }) => {
-                                let (i, s) = (row_indices[c], tm & cm);
-                                let p = if s == 0 {
-                                    factor_prefixes[c * (target_count + 1) + target_count]
-                                } else {
-                                    let (o, q, t0) =
-                                        (&outfits[i], outfit_rows[i].inheritance, s.trailing_zeros() as usize);
-                                    let mut p = factor_prefixes[c * (target_count + 1) + t0];
-                                    let mut m = cm >> t0 << t0;
-                                    while m != 0 {
-                                        let t = m.trailing_zeros() as usize;
-                                        m &= m - 1;
-                                        p *= if s >> t & 1 != 0 {
-                                            o.factor_at(t, q, x[t], y[t])
-                                        } else {
-                                            empty_factors[i * target_count + t]
-                                        };
-                                    }
-                                    p
-                                };
-                                p / den
-                            }
-                        };
-                        top_desc(&mut top[c], size, r);
+                    top.iter_mut().for_each(std::vec::Vec::clear);
+                    for &j in *l {
+                        let touched = touched_targets[j];
+                        let mut remaining = touched;
+                        while remaining != 0 {
+                            let t = remaining.trailing_zeros() as usize;
+                            remaining &= remaining - 1;
+                            x[t] = 1.0 - white_misses[j * target_count + t];
+                            y[t] = 1.0 - gold_misses[j * target_count + t];
+                        }
+                        for c in 0..column_count {
+                            let ratio = match ratio_divisors[c] {
+                                None => f64::INFINITY,
+                                Some(crate::deck::enumerate::bounds::RatioDivisor {
+                                    targets: column_targets,
+                                    value: divisor,
+                                }) => {
+                                    let (i, shared_targets) = (row_indices[c], touched & column_targets);
+                                    let product = if shared_targets == 0 {
+                                        factor_prefixes[c * (target_count + 1) + target_count]
+                                    } else {
+                                        let (outfit, q, first_target) = (
+                                            &outfits[i],
+                                            outfit_rows[i].inheritance,
+                                            shared_targets.trailing_zeros() as usize,
+                                        );
+                                        let mut product = factor_prefixes[c * (target_count + 1) + first_target];
+                                        let mut remaining = column_targets >> first_target << first_target;
+                                        while remaining != 0 {
+                                            let t = remaining.trailing_zeros() as usize;
+                                            remaining &= remaining - 1;
+                                            product *= if shared_targets >> t & 1 != 0 {
+                                                outfit.factor_at(t, q, x[t], y[t])
+                                            } else {
+                                                empty_factors[i * target_count + t]
+                                            };
+                                        }
+                                        product
+                                    };
+                                    product / divisor
+                                }
+                            };
+                            top_desc(&mut top[c], size, ratio);
+                        }
+                    }
+                    let block = table.grp_mut(group_index);
+                    for (best_ratios, prefixes) in top.iter().zip(block.chunks_exact_mut(size + 1)) {
+                        for k in 1..=size {
+                            prefixes[k] = prefixes[k - 1] * best_ratios.get(k - 1).copied().unwrap_or(1.0);
+                        }
                     }
                 }
-                let blk = tab.grp_mut(gi);
-                for (r, pre) in top.iter().zip(blk.chunks_exact_mut(size + 1)) {
-                    for k in 1..=size {
-                        pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0);
-                    }
-                }
-            }
-            tab
-        };
+                table
+            };
         // A configuration's per-target bound (`groups`, the key's `group_misses`): each target's odds at the product of
         // its groups' lowest misses, from the last group down (row 0 of the suffix table the DFS builds, the same products
         // in the same order). The eager and the lazy build both take it
         let configuration_odds =
             |groups: &[GroupSlots], group_misses: &GroupTable, white_chances: &mut [f64], gold_chances: &mut [f64]| {
                 for t in 0..target_count {
-                    let (mut a, mut b) = (1.0f64, 1.0f64);
+                    let (mut white_miss, mut gold_miss) = (1.0f64, 1.0f64);
                     for g in (0..groups.len()).rev() {
-                        let gb = group_misses.grp(groups[g].group);
-                        a *= gm_w(gb, target_count, groups[g].slots)[t];
-                        b *= gm_g(gb, target_count, groups[g].slots)[t];
+                        let group_bound = group_misses.grp(groups[g].group);
+                        white_miss *= gm_w(group_bound, target_count, groups[g].slots)[t];
+                        gold_miss *= gm_g(group_bound, target_count, groups[g].slots)[t];
                     }
-                    white_chances[t] = 1.0 - a;
-                    gold_chances[t] = 1.0 - b;
+                    white_chances[t] = 1.0 - white_miss;
+                    gold_chances[t] = 1.0 - gold_miss;
                 }
             };
-        // Its root bound at those odds with `ratio_prefixes`: the root ratio products (row 0 of the suffix
-        // table, from the last group down), then per (chance, outfit) the lower of the per-target bound and the ratio
-        // bound, summed per clause with the split (`cv`) and without (`cvo`). With ZSPLIT rows `cvo` sets the visiting
-        // order (`root`, as before: the order decides which of two tied decks is found first) and the stop; the split's
-        // (`prune_bound`) skips. Without the split the ratios were all infinite, so B was 0 * inf (NaN, which `min` ignores)
-        // or, with no card to place, 0 * 1
+        // Its root bound at those odds with `ratio_prefixes`: the root ratio products (row 0 of the suffix table, from
+        // the last group down), then per (chance, outfit) the lower of the per-target bound and the ratio bound, summed
+        // per clause with the split (`clause_values`) and without (`order_values`). With ZSPLIT rows `order_values`
+        // sets the visiting order (`root`, as before: the order decides which of two tied decks is found first) and the
+        // stop; the split's (`prune_bound`) skips. Without the split the ratios were all infinite, so B was 0 * inf
+        // (NaN, which `min` ignores) or, with no card to place, 0 * 1
         let configuration_root_bound = |groups: &[GroupSlots],
                                         ratio_prefixes: &GroupTable,
                                         white_chances: &[f64],
                                         gold_chances: &[f64],
                                         ratio_products: &mut [f64],
-                                        cv: &mut [f64],
-                                        cvo: &mut [f64]| {
-            let ng = groups.len();
+                                        clause_values: &mut [f64],
+                                        order_values: &mut [f64]| {
+            let group_count = groups.len();
             for i in 0..column_count {
-                let mut x = 1.0f64;
-                for g in (0..ng).rev() {
-                    x *= ratio_prefixes.grp(groups[g].group)[i * (size + 1) + groups[g].slots];
+                let mut product = 1.0f64;
+                for g in (0..group_count).rev() {
+                    product *= ratio_prefixes.grp(groups[g].group)[i * (size + 1) + groups[g].slots];
                 }
-                ratio_products[i] = x;
+                ratio_products[i] = product;
             }
-            cv.fill(0.0);
-            cvo.fill(0.0);
-            for &crate::deck::enumerate::bounds::OutfitRun { clause: ci, start: i, count: no } in &outfit_runs {
+            clause_values.fill(0.0);
+            order_values.fill(0.0);
+            for &crate::deck::enumerate::bounds::OutfitRun { clause: clause_index, start: i, count: outfit_count } in
+                &outfit_runs
+            {
                 let q = outfit_rows[i].inheritance;
-                let (mut m, mut mo) = (0.0f64, 0.0f64);
-                for o in 0..no {
-                    let ix = i + o;
-                    let a = outfits[ix].eval(q, white_chances, gold_chances);
-                    let (mut t, to) = if zero_masks[ix] != 0 {
+                let (mut best_bound, mut best_order) = (0.0f64, 0.0f64);
+                for offset in 0..outfit_count {
+                    let row = i + offset;
+                    let outfit_value = outfits[row].eval(q, white_chances, gold_chances);
+                    let (mut bound, order_bound) = if zero_masks[row] != 0 {
                         (
-                            a.min(
-                                outfits[ix].eval_in(q, white_chances, gold_chances, zero_masks[ix])
-                                    * (divisors[ix] * ratio_products[ix]),
+                            outfit_value.min(
+                                outfits[row].eval_in(q, white_chances, gold_chances, zero_masks[row])
+                                    * (divisors[row] * ratio_products[row]),
                             ),
-                            a.min(empty_values[ix] * if ng > 0 { f64::INFINITY } else { 1.0 }),
+                            outfit_value.min(empty_values[row] * if group_count > 0 { f64::INFINITY } else { 1.0 }),
                         )
                     } else {
-                        let b = a.min(empty_values[ix] * ratio_products[ix]);
-                        (b, b)
+                        let ratio_bound = outfit_value.min(empty_values[row] * ratio_products[row]);
+                        (ratio_bound, ratio_bound)
                     };
                     // (a low split: the lower B, outside the visiting order)
-                    for c in alternative_columns[ix].start..alternative_columns[ix].end {
-                        t = t.min(
-                            outfits[ix].eval_in(q, white_chances, gold_chances, zero_masks[c])
+                    for c in alternative_columns[row].start..alternative_columns[row].end {
+                        bound = bound.min(
+                            outfits[row].eval_in(q, white_chances, gold_chances, zero_masks[c])
                                 * (divisors[c] * ratio_products[c]),
                         );
                     }
-                    m = m.max(t);
-                    mo = mo.max(to);
+                    best_bound = best_bound.max(bound);
+                    best_order = best_order.max(order_bound);
                 }
-                cv[ci] += fixed * m;
-                cvo[ci] += fixed * mo;
+                clause_values[clause_index] += fixed * best_bound;
+                order_values[clause_index] += fixed * best_order;
             }
         };
         // The key bound (`keyskip`; in the product search only with a bar): a key none of whose configurations (its
@@ -438,7 +451,7 @@ impl DeckSpace<'_> {
         // rounding, each operation's error at most 2^-53 of one, about 300 operations), so a variant's value is at most
         // the bound's plus `key_slack` (1e-11 per pair)
         let keyskip = valid && !cap_free && (!best || best_value > f64::NEG_INFINITY);
-        let (mut kdw, mut kdg) = (vec![0.0f64; target_count], vec![0.0f64; target_count]);
+        let (mut key_white, mut key_gold) = (vec![0.0f64; target_count], vec![0.0f64; target_count]);
         let controls = SearchControl {
             best,
             rho,
@@ -491,19 +504,19 @@ impl DeckSpace<'_> {
                 clause_bounds: &mut clause_bounds,
                 order_bounds: &mut order_bounds,
                 ratio_products: &mut ratio_products,
-                key_white: &mut kdw,
-                key_gold: &mut kdg,
+                key_white: &mut key_white,
+                key_gold: &mut key_gold,
             },
             best_value,
-            val,
+            clause_value,
             &bounds,
         );
-        SPT.with(|c| {
-            let mut v = c.get();
-            v.setup_seconds += configuration_start.elapsed().as_secs_f64();
-            v.configurations += configurations.configurations.len();
-            v.count_vectors += counts.len();
-            c.set(v);
+        SPT.with(|cell| {
+            let mut stats = cell.get();
+            stats.setup_seconds += configuration_start.elapsed().as_secs_f64();
+            stats.configurations += configurations.configurations.len();
+            stats.count_vectors += counts.len();
+            cell.set(stats);
         });
         self.traverse_configurations(
             state_bounds,
@@ -526,7 +539,7 @@ impl DeckSpace<'_> {
             },
             configurations,
             TraversalScratch { decks: out, best_value, white_chances, gold_chances, target_bounds, diagnostic_bounds },
-            val,
+            clause_value,
             &bounds,
             ratio_at,
             &cap_free_ratios,
