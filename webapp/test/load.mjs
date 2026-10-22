@@ -70,10 +70,10 @@ export default async function load(b) {
   // choice is kept (the default setup's odds barely move: its decks get the targets from events, not training hints)
   check('the first search is a Unity Cup job', await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
   await pickScen(pg, 'ura'); await lastJob(pg, 'ura');   // the check reads the job: its (slow) search is not awaited
-  // Unity Cup's golds follow the scenario: off under URA, back on under Unity, and the example targets take them too
+  // Unity Cup's golds follow the scenario: off under URA, back on under Unity, and the 8/8 example takes them too
   check('URA drops the Unity golds', (await pg.getAttribute('#g-20049', 'data-g')) === '0' && (await pg.getAttribute('#g-20046', 'data-g')) === '0');
   await pg.click('#t-preset'); await pg.locator('#pr-list .prow').first().locator('button', { hasText: 'Load' }).click();
-  check('example targets under URA: eight targets, no guaranteed golds', (await pg.locator('#targets .tgt').count()) === 8 && (await pg.getAttribute('#g-20049', 'data-g')) === '0');
+  check('8/8 example under URA: eight targets, no guaranteed golds', (await pg.locator('#targets .tgt').count()) === 8 && (await pg.getAttribute('#g-20049', 'data-g')) === '0');
   // a saved preset: kept across a reload, and an import adds its presets to yours instead of replacing them
   await pg.locator('#targets .tgt .x').first().click(); await pg.click('#t-preset'); await pg.click('#pr-save'); await pg.fill('#prn-name', 'Seven'); await pg.click('#prn-save');
   check('a saved preset is the current one', (await pg.locator('#pr-list .prow.cur .pname').textContent()) === 'Seven');
@@ -81,11 +81,11 @@ export default async function load(b) {
   await pg.reload(); await jobSent(pg, () => window.__runs.length > 0);
   check('scenario survives a reload', (await scen(pg)) === 'ura' && (await pg.getAttribute('#x-scen', 'aria-label')) === 'Scenario: URA Finale');
   await pg.click('#t-preset');
-  check('presets survive a reload', (await pg.locator('#pr-list .pname').allTextContents()).join('|') === 'Example targets|Seven');
+  check('presets survive a reload', (await pg.locator('#pr-list .pname').allTextContents()).join('|') === '8/8 example|Seven');
   await pg.click('#preset-dlg .dclose'); await pg.click('#ex-open');
   const ex = JSON.parse(await pg.inputValue('#ex-text')); ex.settings.presets = [{ name: 'Seven', groups: [20159] }, { name: 'Other', groups: [20049] }];
   await pg.fill('#ex-text', JSON.stringify(ex)); await pg.click('#ex-load'); await pg.click('#ex-close'); await pg.click('#t-preset');
-  check('an import merges presets', (await pg.locator('#pr-list .pname').allTextContents()).join('|') === 'Example targets|Seven|Seven (imported)|Other');
+  check('an import merges presets', (await pg.locator('#pr-list .pname').allTextContents()).join('|') === '8/8 example|Seven|Seven (imported)|Other');
   await pg.click('#preset-dlg .dclose');
   await pickScen(pg, 'unity');
   check('Unity Cup marks No Stopping Me! and It\'s On! as guaranteed golds', (await pg.getAttribute('#g-20049', 'data-g')) === '2' && (await pg.getAttribute('#g-20046', 'data-g')) === '2');

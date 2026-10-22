@@ -140,5 +140,5 @@ for (const scenario of SCENARIOS) {
   scenario.mult = `Hint rate ×${(scenario.base / URA_BASE).toFixed(2)}`;
   scenario.rate = scenario.mult + (scenario.est ? ' (estimate)' : '');
 }
-// the example targets: the default eight, as skill groups (Unity Cup's two guaranteed golds among them: state.js goldGiven)
+// the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them: state.js goldGiven)
 export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];

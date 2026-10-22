@@ -97,7 +97,7 @@ function stopEngine() { restartEngine(); busy = false; }
 class Blocked extends Error { constructor(kind, text, act) { super(text); this.status = { kind, text, act }; } }
 // The search job for the current settings (throws Blocked when they can't be searched). Used by the search and by firstResult.
 function buildJob() {
-  if (!state.targets.length) throw new Blocked('empty', 'Add a target skill to search.', { label: 'Load the example targets', click: 't-preset', run: loadExample });
+  if (!state.targets.length) throw new Blocked('empty', 'Add a target skill to search.', { label: 'Load the 8/8 example targets', click: 't-preset', run: loadExample });
   const exclude = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.id);
   const exclude_outfits = Object.entries(state.outfits).filter(([, owned]) => owned === false).map(([id]) => +id);
   const owned = UMAS.length - exclude.length;
