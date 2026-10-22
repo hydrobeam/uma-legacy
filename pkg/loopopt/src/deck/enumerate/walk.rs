@@ -493,8 +493,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                         row[t] = outfit.factor_at(t, q, nodes.touched_white[t], nodes.touched_gold[t]);
                     }
                     let mut product = prefix_products[first_touched];
-                    for &x in &row[first_touched..] {
-                        product *= x;
+                    for &factor in &row[first_touched..] {
+                        product *= factor;
                     }
                     let mut remaining_targets = node.touched_targets;
                     while remaining_targets != 0 {
@@ -522,8 +522,10 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             if best {
                 clause_values[0] * bound_check_scale * (1.0 + 1e-9) >= best_value
             } else {
-                (0..clauses.len())
-                    .any(|ci| rho * clause_values[ci] * bound_check_scale * (1.0 + 1e-9) >= clauses[ci].threshold)
+                (0..clauses.len()).any(|clause_index| {
+                    rho * clause_values[clause_index] * bound_check_scale * (1.0 + 1e-9)
+                        >= clauses[clause_index].threshold
+                })
             }
         };
         // Phase 3: reject on the target-only bound before paying for ratio factors.
@@ -534,20 +536,22 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         let PreparedTables { outfit_rows, outfit_runs, outfits, .. } = search.tables;
         let fixed = search.controls.fixed;
         let mut has_nan = false;
-        for &crate::deck::enumerate::bounds::OutfitRun { clause: ci, start: i, count: outfit_count } in outfit_runs {
+        for &crate::deck::enumerate::bounds::OutfitRun { clause: clause_index, start: i, count: outfit_count } in
+            outfit_runs
+        {
             let q = outfit_rows[i].inheritance;
-            let mut m = 0.0f64;
-            for o in 0..outfit_count {
+            let mut outfit_best = 0.0f64;
+            for offset in 0..outfit_count {
                 let a = if cached_target_bounds {
-                    nodes.outfit_bounds[i + o]
+                    nodes.outfit_bounds[i + offset]
                 } else {
-                    outfits[i + o].eval(q, &nodes.white_chances, &nodes.gold_chances)
+                    outfits[i + offset].eval(q, &nodes.white_chances, &nodes.gold_chances)
                 };
-                nodes.outfit_bounds[i + o] = a;
+                nodes.outfit_bounds[i + offset] = a;
                 has_nan |= a.is_nan();
-                m = m.max(a);
+                outfit_best = outfit_best.max(a);
             }
-            nodes.clause_values[ci] += fixed * m;
+            nodes.clause_values[clause_index] += fixed * outfit_best;
         }
         if !has_nan && !pass(&nodes.clause_values) {
             return false;
@@ -687,14 +691,15 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 }
                 product
             };
-            for &crate::deck::enumerate::bounds::OutfitRun { clause: ci, start: i, count: outfit_count } in outfit_runs
+            for &crate::deck::enumerate::bounds::OutfitRun { clause: clause_index, start: i, count: outfit_count } in
+                outfit_runs
             {
                 let q = outfit_rows[i].inheritance;
-                let mut m = 0.0f64;
-                for o in 0..outfit_count {
-                    let ix = i + o;
+                let mut outfit_best = 0.0f64;
+                for offset in 0..outfit_count {
+                    let ix = i + offset;
                     let a = nodes.outfit_bounds[ix];
-                    if a <= m {
+                    if a <= outfit_best {
                         continue;
                     }
                     let r = if row == usize::MAX { 1.0 } else { nodes.ratio_constants[row * column_count + ix] };
@@ -722,9 +727,9 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                         };
                         b = b.min(a_z(ix, zero_masks[column]) * (nonzero_product * r));
                     }
-                    m = m.max(a.min(b));
+                    outfit_best = outfit_best.max(a.min(b));
                 }
-                nodes.clause_values[ci] += fixed * m;
+                nodes.clause_values[clause_index] += fixed * outfit_best;
             }
         }
         let passes_bound = pass(&nodes.clause_values);
@@ -779,7 +784,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                         if cap_free_check_scale == 0.0 { state_bound_threshold / check_scale } else { 0.0 },
                     ))
                 };
-            SBN.with(|c| c.borrow_mut().evaluations += 1);
+            SBN.with(|cell| cell.borrow_mut().evaluations += 1);
             if cap_free_check_scale > 0.0 {
                 // CF_CHECK: a leaf's exact value against its own bound and every node's above it
                 let path = &mut scratch.bound_path;
@@ -790,11 +795,11 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                         .iter()
                         .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
                         .collect();
-                    let x = joint_fast(
+                    let leaf_value = joint_fast(
                         chances.model,
                         JointQuery {
                             chain_events: space.deck_job.chain_events(),
-                            checks: space.deck_job.checks,
+                            checks: crate::checks::get(),
                             trainee: bound_trainee,
                             inheritance_chances: &[bound_inheritance],
                             event_chances: &chances.event_chances[bound_trainee],
@@ -806,15 +811,15 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                         None,
                     )[0]
                     .all;
-                    CFCHK.with(|c| {
-                        let mut c = c.borrow_mut();
-                        c.leaves += 1;
-                        for &b in path.iter() {
-                            if x > b * (1.0 + 1e-9) {
-                                c.leaf_violations += 1;
+                    CFCHK.with(|cell| {
+                        let mut counters = cell.borrow_mut();
+                        counters.leaves += 1;
+                        for &bound in path.iter() {
+                            if leaf_value > bound * (1.0 + 1e-9) {
+                                counters.leaf_violations += 1;
                             }
-                            if b > 0.0 {
-                                c.max_ratio = c.max_ratio.max(x / b);
+                            if bound > 0.0 {
+                                counters.max_ratio = counters.max_ratio.max(leaf_value / bound);
                             }
                         }
                     });
@@ -822,7 +827,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             }
             let pass = upper_bound * check_scale * (1.0 + 1e-9) >= state_bound_threshold;
             if !pass {
-                SBN.with(|c| c.borrow_mut().nodes_cut += 1);
+                SBN.with(|cell| cell.borrow_mut().nodes_cut += 1);
             }
             return pass;
         }
@@ -830,7 +835,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         if state_bound_mode == 0 {
             return true;
         }
-        let check_bounds = search.space.deck_job.checks.sb_check;
+        let check_bounds = crate::checks::get().sb_check;
         if state_bound_mode == 3 && !check_bounds {
             return true;
         }
@@ -843,19 +848,19 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             return true;
         }
         let upper_bound = scratch.state_bound.bound(selection);
-        SBN.with(|c| c.borrow_mut().evaluations += 1);
+        SBN.with(|cell| cell.borrow_mut().evaluations += 1);
         if depth == 1 {
             scratch.depth_one_bound = upper_bound;
         }
         if check_bounds && is_leaf {
             let (root_bound, depth_one_bound) = (self.root_bound, scratch.depth_one_bound);
-            SBCHK.with(|c| {
-                let mut c = c.borrow_mut();
-                c.leaves += 1;
+            SBCHK.with(|cell| {
+                let mut counters = cell.borrow_mut();
+                counters.leaves += 1;
                 if upper_bound > root_bound * (1.0 + 1e-9)
                     || (depth > 1 && upper_bound > depth_one_bound * (1.0 + 1e-9))
                 {
-                    c.violations += 1;
+                    counters.violations += 1;
                 }
             });
         }
@@ -864,7 +869,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         }
         let pass = upper_bound * (1.0 + 1e-9) >= search.controls.state_bound_threshold;
         if !pass {
-            SBN.with(|c| c.borrow_mut().nodes_cut += 1);
+            SBN.with(|cell| cell.borrow_mut().nodes_cut += 1);
         }
         pass
     }
@@ -885,12 +890,12 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         let (space, clauses, clause_value) = (self.search.space, self.search.clauses, &self.search.clause_value);
         let (plain_pals, filler_cards) = (self.plain_pal_count, self.filler_count);
         let pal_count = selection.iter().filter(|&&j| space.cards[space.card_indices[j]].pal).count() + plain_pals;
-        if let Some(p) = space.deck_job.pals
-            && p != pal_count
+        if let Some(required_pals) = space.deck_job.pals
+            && required_pals != pal_count
         {
             return false;
         }
-        if !space.locked.iter().all(|l| selection.iter().any(|&j| space.card_indices[j] == *l)) {
+        if !space.locked.iter().all(|locked| selection.iter().any(|&j| space.card_indices[j] == *locked)) {
             return false;
         }
         for t in 0..target_count {
@@ -901,35 +906,39 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             (&scratch.white_chances[..target_count], &scratch.gold_chances[..target_count]);
         // RB_CHECK: each clause's value against the bounds of the root and of every node above the deck
         if check_ratio_bounds {
-            let (s, configuration) = (&scratch.nodes.diagnostic_bounds, self.configuration);
-            RBCHK.with(|c| {
-                let mut c = c.borrow_mut();
-                c.leaves += 1;
-                for (ci, cl) in clauses.iter().enumerate() {
-                    if best && ci > 0 {
+            let (path_bounds, configuration) = (&scratch.nodes.diagnostic_bounds, self.configuration);
+            RBCHK.with(|cell| {
+                let mut counters = cell.borrow_mut();
+                counters.leaves += 1;
+                for (clause_index, clause) in clauses.iter().enumerate() {
+                    if best && clause_index > 0 {
                         break;
                     }
-                    let x = clause_value(cl, white_chances, gold_chances);
-                    for d in 0..=selection.len() {
-                        let ub = if d == 0 { configuration.clause_bounds[ci] } else { s[d][ci] };
-                        c.tests += 1;
-                        if x > ub * (1.0 + 1e-9) {
-                            c.violations += 1;
+                    let value = clause_value(clause, white_chances, gold_chances);
+                    for depth in 0..=selection.len() {
+                        let bound = if depth == 0 {
+                            configuration.clause_bounds[clause_index]
+                        } else {
+                            path_bounds[depth][clause_index]
+                        };
+                        counters.tests += 1;
+                        if value > bound * (1.0 + 1e-9) {
+                            counters.violations += 1;
                         }
-                        if ub > 0.0 {
-                            c.max_ratio = c.max_ratio.max(x / ub);
+                        if bound > 0.0 {
+                            counters.max_ratio = counters.max_ratio.max(value / bound);
                         }
                     }
                 }
             });
         }
-        let scored_deck = |v: f64| -> crate::deck::enumerate::ScoredDeck<SelectedDeck> {
-            let mut e = selection.to_vec();
-            e.sort_unstable();
+        let scored_deck = |value: f64| -> crate::deck::enumerate::ScoredDeck<SelectedDeck> {
+            let mut entries = selection.to_vec();
+            entries.sort_unstable();
             crate::deck::enumerate::ScoredDeck {
-                value: v,
+                value,
                 deck: SelectedDeck {
-                    entries: e,
+                    entries,
                     plain_pals,
                     filler_cards,
                     white_hint_chances: white_chances.to_vec(),
@@ -938,24 +947,24 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             }
         };
         if best {
-            let v = clause_value(&clauses[0], white_chances, gold_chances);
-            if v > results.best_value {
-                results.best_value = v;
+            let value = clause_value(&clauses[0], white_chances, gold_chances);
+            if value > results.best_value {
+                results.best_value = value;
                 results.decks.clear();
-                results.decks.push(scored_deck(v));
+                results.decks.push(scored_deck(value));
             }
             false
         } else {
             // each clause's value once: the best of them, and whether any passes its bar at the deck's class cap
-            let (mut v, mut pass) = (f64::NEG_INFINITY, false);
+            let (mut best_clause_value, mut pass) = (f64::NEG_INFINITY, false);
             let rho = class_caps[cap_class(class_mask)];
-            for cl in clauses {
-                let x = clause_value(cl, white_chances, gold_chances);
-                v = v.max(x);
-                pass = pass || cap_free || rho * x * (1.0 + 1e-9) >= cl.threshold;
+            for clause in clauses {
+                let value = clause_value(clause, white_chances, gold_chances);
+                best_clause_value = best_clause_value.max(value);
+                pass = pass || cap_free || rho * value * (1.0 + 1e-9) >= clause.threshold;
             }
             if pass {
-                results.decks.push(scored_deck(v));
+                results.decks.push(scored_deck(best_clause_value));
                 if results.decks.len() >= cap {
                     return true;
                 }

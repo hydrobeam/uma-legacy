@@ -30,30 +30,36 @@ use std::collections::HashMap;
 pub(crate) struct Card {
     pub id: u32,
     pub name: String,
-    pub chara: u32,
+    #[serde(rename = "chara")]
+    pub character_id: u32,
     pub rarity: u8,
     pub pal: bool,
     pub links: u8,
-    pub hf: f64,
+    #[serde(rename = "hf")]
+    pub hint_frequency: f64,
     /// specialty priority at max limit break (unique effect included): more training hints (`hint_spec`)
     #[serde(default)]
-    pub spec: f64,
+    #[serde(rename = "spec")]
+    pub specialty_priority: f64,
     /// training-hint options that are skills (the stat option is never drawn in Independent Training)
     #[serde(default)]
-    pub nskill: u32,
+    #[serde(rename = "nskill")]
+    pub skill_count: u32,
     pub whites: Vec<u32>,
     /// hint levels per training-hint draw at max limit break (1 + hint-level effect); a skill at Lv 5 leaves the pool
     #[serde(default = "d_hinc")]
-    pub hinc: u32,
+    #[serde(rename = "hinc")]
+    pub hint_levels: u32,
     /// characters who cannot train with this card: its own character and, for a group card, every member
     #[serde(default)]
-    pub charas: Vec<u32>,
+    #[serde(rename = "charas")]
+    pub blocked_characters: Vec<u32>,
 }
 impl Card {
     /// The character rule. `RULE_OFF=1` (`Checks::rule_off`: brute-force checks only, val/permcheck.py and
     /// owncheck.py) switches it off.
     pub(crate) fn blocks(&self, uma: u32, checks: &crate::checks::Checks) -> bool {
-        !checks.rule_off && (self.chara == uma || self.charas.contains(&uma))
+        !checks.rule_off && (self.character_id == uma || self.blocked_characters.contains(&uma))
     }
 }
 #[derive(Deserialize)]
@@ -67,9 +73,6 @@ pub(crate) struct CardsRaw {
 
 #[derive(Deserialize)]
 pub(crate) struct DeckJob {
-    /// The process's diagnostic switches (`checks::get`), borrowed by the job's searches.
-    #[serde(skip, default = "crate::checks::get")]
-    pub(crate) checks: &'static crate::checks::Checks,
     /// chain events per run: Binomial(n, p); defaults CHAIN_N, CHAIN_P (for experiments)
     #[serde(default)]
     pub chain_events: Option<(u32, f64)>,
@@ -101,11 +104,13 @@ pub(crate) struct DeckJob {
     /// choices that keep the chain going, outcomes equally likely. At these links they replace `events` /
     /// `events_p`, which credit every skill on its own.
     #[serde(default)]
-    pub alts: Vec<(u32, u8, Vec<Vec<Vec<(u32, u8)>>>)>,
+    #[serde(rename = "alts")]
+    pub choice_events: Vec<(u32, u8, Vec<Vec<Vec<(u32, u8)>>>)>,
     /// measured outcome weights for `alts` events: (card, link, [choice][outcome] -> share); an event not listed here
     /// keeps equally likely outcomes (event_shares.json, applied by the event builders)
     #[serde(default)]
-    pub alt_w: Vec<(u32, u8, Vec<Vec<f64>>)>,
+    #[serde(rename = "alt_w")]
+    pub choice_weights: Vec<(u32, u8, Vec<Vec<f64>>)>,
     #[serde(default)]
     pub owned_cards: Vec<u32>,
     /// allow one card the player does not own (a friend's card) in the deck

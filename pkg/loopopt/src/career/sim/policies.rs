@@ -82,7 +82,8 @@ impl Rotation {
                 self.latest[(member_index + 1) % member_count]
             };
             let Some(other_parent) = other else { continue };
-            if other_parent == veteran_index || pool.veterans[other_parent].chara == pool.veterans[veteran_index].chara
+            if other_parent == veteran_index
+                || pool.veterans[other_parent].character_id == pool.veterans[veteran_index].character_id
             {
                 continue;
             }
@@ -112,13 +113,13 @@ impl Sim<'_, '_> {
     pub(super) fn trace(&mut self, initial_state: &PathState) -> Value {
         let finisher = self.members[0];
         let mut runs = vec![];
-        for run in self.cfg.first..self.cfg.first + self.cfg.runs {
+        for run in self.settings.first..self.settings.first + self.settings.runs {
             let mut state = initial_state.clone();
-            let keys = Keys::Main { seed: self.cfg.seed, run: run as u32 };
+            let keys = Keys::Main { seed: self.settings.seed, run: run as u32 };
             let mut interpolation_scratch = vec![];
             let mut rows = vec![];
             let started = std::time::Instant::now();
-            for career_index in 0..self.cfg.max_careers {
+            for career_index in 0..self.settings.max_careers {
                 let Some(finisher_pick) = state.member_best[0] else { break };
                 let finisher_odds = finisher_pick.value;
                 let Some(builder) = self.trace_builder(&state, finisher_odds, &mut interpolation_scratch) else {
@@ -132,7 +133,7 @@ impl Sim<'_, '_> {
                 rows.push(json!([
                     career_index,
                     finisher_odds,
-                    self.d.umas[builder.pick.lineage.trainee].name,
+                    self.data.umas[builder.pick.lineage.trainee].name,
                     builder.lift_chance,
                     builder.lifted_odds,
                     after
@@ -148,7 +149,7 @@ impl Sim<'_, '_> {
             );
             runs.push(json!({"run": run, "rows": rows}));
         }
-        json!({"trace": runs, "trainee": self.d.umas[finisher].name, "builders": self.members[1..].iter().map(|&member| self.d.umas[member].name.clone()).collect::<Vec<_>>()})
+        json!({"trace": runs, "trainee": self.data.umas[finisher].name, "builders": self.members[1..].iter().map(|&member| self.data.umas[member].name.clone()).collect::<Vec<_>>()})
     }
     fn trace_builder(
         &mut self,
@@ -175,7 +176,7 @@ impl Sim<'_, '_> {
         for member_index in 1..self.members.len() {
             let Some(pick) = state.member_best[member_index] else { continue };
             // (cloned: the scoring borrows the whole simulator and may add decks to her cache)
-            let deck = self.evaluator.cache.decks[pick.lineage.trainee][pick.deck].sel.clone();
+            let deck = self.evaluator.cache.decks[pick.lineage.trainee][pick.deck].deck.clone();
             let plan::score::CareerScore { lift_stats, .. } = plan::score::score_career_of(
                 self,
                 &scoring,
@@ -244,16 +245,13 @@ impl Sim<'_, '_> {
             )
         } else {
             self.env.state.use_seen = true;
-            let search = self.env.setup.solve(
-                &mut self.env.state,
-                &mut self.env.audit,
-                &mut self.env.memo,
-                &state.pool,
-                &parents,
-                &[trainee],
-                false,
-                1,
-            );
+            let search = self.env.solve(crate::career::search::SearchRequest {
+                pool: &state.pool,
+                fixed_parents: &parents,
+                trainees: &[trainee],
+                per_trainee: false,
+                top: 1,
+            });
             let found = search.found.first().expect("loop bootstrap: no legal career for a member");
             self.evaluator.cache.absorb(&self.env.setup, &mut self.env.state, &mut self.env.memo, &search.refs);
             self.evaluator.make_cur(
@@ -305,12 +303,15 @@ impl Sim<'_, '_> {
                         },
                         &mut interpolation_scratch,
                     )
-                    .map_or(0.0, |x| x.0);
+                    .map_or(0.0, |(value, _)| value);
             }
             total
         };
         let (previous_surrogate, new_surrogate) = (surrogate(self, previous_veteran), surrogate(self, veteran_index));
-        if self.cfg.audit && self.record_audits && state.rotation.position.is_multiple_of(self.cfg.audit_every) {
+        if self.settings.audit
+            && self.record_audits
+            && state.rotation.position.is_multiple_of(self.settings.audit_every)
+        {
             // the keep-or-replace decision under exact values (a full deck search per term)
             let exact = |simulator: &mut Self, parent_index: usize| -> f64 {
                 let mut total = 0.0;
@@ -335,10 +336,10 @@ impl Sim<'_, '_> {
         let (parent_a, parent_b) =
             (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
         let outcome_sets: Vec<f64> =
-            pick["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
+            pick["outcome_sets"].as_array().unwrap().iter().map(|chance| chance.as_f64().unwrap()).collect();
         let lineage = Lineage { trainee, first_parent: parent_a, second_parent: parent_b };
         let win_probs = self.evaluator.wins(&self.env.setup, pool, lineage);
-        Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), os: outcome_sets, wp: win_probs, rotation: false }
+        Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), outcome_sets, win_chances: win_probs, rotation: false }
     }
     /// the in-process career search's pick (greedy_exact: the best career by P(all))
     pub(super) fn exact_cur(&mut self, state: &PathState) -> Cur {
@@ -348,7 +349,7 @@ impl Sim<'_, '_> {
         job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
         job_fields.insert("top".into(), json!(1));
         job_fields.insert("per_trainee".into(), json!(false));
-        let report = run_career_in(self.d, self.skills, self.cards, &job, self.kept);
+        let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
         let pick = report["results"][0].clone();
         assert!(pick.is_object(), "solver gave no pick: {}", report.to_string().chars().take(300).collect::<String>());
         self.cur_from_solver_pick(&state.pool, &pick)
@@ -364,10 +365,10 @@ impl Sim<'_, '_> {
         job_fields.insert("fix".into(), json!([]));
         job_fields.insert("top".into(), json!(PAGE_TOP));
         job_fields.insert("per_trainee".into(), json!(false));
-        job_fields.insert("next".into(), self.cfg.next.clone());
+        job_fields.insert("next".into(), self.settings.next.clone());
         job_fields.insert("no_reports".into(), json!(true));
         let started = std::time::Instant::now();
-        let report = run_career_in(self.d, self.skills, self.cards, &job, self.kept);
+        let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
         let pick = report["next"]["choice"].clone();
         assert!(
             pick.is_object(),

@@ -47,13 +47,13 @@ pub(crate) fn upper_na(
     for SourceEntry { sources, .. } in entries {
         if sources.uncertified_orthant {
             if query.checks.upper_why
-                && let Some(g) = sources
+                && let Some(group) = sources
                     .fixed_outcomes
                     .iter()
-                    .chain(sources.chain_outcomes.iter().map(|x| &x.outcomes))
-                    .find(|g| group_gh(g).len() >= 2 && !group_nuod(g))
+                    .chain(sources.chain_outcomes.iter().map(|chain_outcomes| &chain_outcomes.outcomes))
+                    .find(|candidate| group_gh(candidate).len() >= 2 && !group_nuod(candidate))
             {
-                eprintln!("why: group {g:?}");
+                eprintln!("why: group {group:?}");
             }
             return None;
         }
@@ -84,10 +84,10 @@ pub(crate) fn upper_na(
                 let mut cumulative = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; stop + 1];
                 for l in 1..=stop {
                     cumulative[l] = cumulative[l - 1];
-                    for &LinkMisses { link, no_gold: g, no_hint: h } in links {
+                    for &LinkMisses { link, no_gold: miss_gold, no_hint: miss_hint } in links {
                         if link as usize == l {
-                            cumulative[l].no_gold *= g;
-                            cumulative[l].no_hint *= h;
+                            cumulative[l].no_gold *= miss_gold;
+                            cumulative[l].no_hint *= miss_hint;
                         }
                     }
                 }
@@ -131,20 +131,20 @@ pub(crate) fn upper_na(
             _ => true,
         };
         if use_full_progress {
-            let (mut g, mut h) = (base_no_gold[k], base_no_hint[k]);
+            let (mut miss_gold, mut miss_hint) = (base_no_gold[k], base_no_hint[k]);
             for &chain_index in &feeders[k] {
                 #[allow(clippy::unwrap_in_result, reason = "feeders[k] lists only chains with target k (built above)")]
                 let cumulative = &chains[chain_index].targets.iter().find(|row| row.target == k).unwrap().by_progress;
                 let last = cumulative[cumulative.len() - 1];
-                g *= last.no_gold;
-                h *= last.no_hint;
+                miss_gold *= last.no_gold;
+                miss_hint *= last.no_hint;
             }
-            maxed[k] = Some(MissFactors { no_gold: g, no_hint: h });
+            maxed[k] = Some(MissFactors { no_gold: miss_gold, no_hint: miss_hint });
         }
     }
     if maxed.iter().any(std::option::Option::is_some) {
-        for c in &mut chains {
-            c.targets.retain(|row| maxed[row.target].is_none());
+        for chain in &mut chains {
+            chain.targets.retain(|row| maxed[row.target].is_none());
         }
         for k in 0..target_count {
             if maxed[k].is_some() {
@@ -154,23 +154,23 @@ pub(crate) fn upper_na(
     }
     let has_feeder: Vec<bool> = (0..target_count).map(|k| !feeders[k].is_empty()).collect();
     let chain_levels = if kinds.is_empty() { None } else { Some(key_level(query.chain_events, &kinds)) };
-    if let Some(k) = &chain_levels {
+    if let Some(chain_level) = &chain_levels {
         let ok = match pair {
-            None => k.nuod,
-            Some(ChainPair { first: a, second: b }) => k.pair_ok(a, b),
+            None => chain_level.nuod,
+            Some(ChainPair { first, second }) => chain_level.pair_ok(first, second),
         };
         if !ok {
             return None;
         }
     }
     let event_probabilities = event_pmf_job(query.chain_events);
-    let outfits = &model.opts[query.trainee];
+    let outfits = &model.outfit_options[query.trainee];
     let fixed = model.fixed_factor();
-    let phi = |o: usize, q: f64, k: usize, no_gold: f64, no_hint: f64| -> f64 {
-        land_factor(outfits[o].coverage[k], query.event_chances[o][k], q, no_gold, no_hint)
+    let phi = |outfit: usize, q: f64, k: usize, no_gold: f64, no_hint: f64| -> f64 {
+        land_factor(outfits[outfit].coverage[k], query.event_chances[outfit][k], q, no_gold, no_hint)
     };
     let pair_marginals: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &chain_levels) {
-        (Some(ChainPair { first: a, second: b }), Some(k)) => Some(k.pair_margs(a, b)),
+        (Some(ChainPair { first, second }), Some(chain_level)) => Some(chain_level.pair_margs(first, second)),
         _ => None,
     };
     Some(
@@ -179,13 +179,13 @@ pub(crate) fn upper_na(
             .iter()
             .map(|&q| {
                 let mut best = 0.0f64;
-                for o in 0..outfits.len() {
+                for outfit in 0..outfits.len() {
                     let mut outside_product = 1.0;
                     for k in 0..target_count {
-                        if let Some(MissFactors { no_gold: g, no_hint: h }) = maxed[k] {
-                            outside_product *= phi(o, q, k, g, h);
+                        if let Some(MissFactors { no_gold: miss_gold, no_hint: miss_hint }) = maxed[k] {
+                            outside_product *= phi(outfit, q, k, miss_gold, miss_hint);
                         } else if !has_feeder[k] {
-                            outside_product *= phi(o, q, k, base_no_gold[k], base_no_hint[k]);
+                            outside_product *= phi(outfit, q, k, base_no_gold[k], base_no_hint[k]);
                         }
                     }
                     // per single card and links done: the product over the targets only it feeds
@@ -196,7 +196,7 @@ pub(crate) fn upper_na(
                             .filter(|row| feeders[row.target].len() == 1)
                             .map(|row| {
                                 phi(
-                                    o,
+                                    outfit,
                                     q,
                                     row.target,
                                     base_no_gold[row.target] * row.by_progress[l].no_gold,
@@ -210,37 +210,39 @@ pub(crate) fn upper_na(
                             (0..=chains[chain_index].kind.stop as usize).map(|l| single(chain_index, l)).collect()
                         })
                         .collect();
-                    // the pair's group: both cards' single targets and the shared ones, over (la, lb)
-                    let pair_products: Option<Vec<Vec<f64>>> = pair.map(|ChainPair { first: a, second: b }| {
-                        (0..=chains[a].kind.stop as usize)
-                            .map(|la| {
-                                (0..=chains[b].kind.stop as usize)
-                                    .map(|lb| {
-                                        let mut v = single_products[a][la] * single_products[b][lb];
-                                        for target in &chains[a].targets {
+                    // the pair's group: both cards' single targets and the shared ones, over (first_links,
+                    // second_links)
+                    let pair_products: Option<Vec<Vec<f64>>> = pair.map(|ChainPair { first, second }| {
+                        (0..=chains[first].kind.stop as usize)
+                            .map(|first_links| {
+                                (0..=chains[second].kind.stop as usize)
+                                    .map(|second_links| {
+                                        let mut group_product =
+                                            single_products[first][first_links] * single_products[second][second_links];
+                                        for target in &chains[first].targets {
                                             let k = target.target;
                                             let first_misses = &target.by_progress;
                                             if feeders[k].len() == 2 {
-                                                let second_misses = &chains[b]
+                                                let second_misses = &chains[second]
                                                     .targets
                                                     .iter()
                                                     .find(|row| row.target == k)
                                                     .unwrap()
                                                     .by_progress;
-                                                v *= phi(
-                                                    o,
+                                                group_product *= phi(
+                                                    outfit,
                                                     q,
                                                     k,
                                                     base_no_gold[k]
-                                                        * first_misses[la].no_gold
-                                                        * second_misses[lb].no_gold,
+                                                        * first_misses[first_links].no_gold
+                                                        * second_misses[second_links].no_gold,
                                                     base_no_hint[k]
-                                                        * first_misses[la].no_hint
-                                                        * second_misses[lb].no_hint,
+                                                        * first_misses[first_links].no_hint
+                                                        * second_misses[second_links].no_hint,
                                                 );
                                             }
                                         }
-                                        v
+                                        group_product
                                     })
                                     .collect()
                             })
@@ -252,26 +254,31 @@ pub(crate) fn upper_na(
                             continue;
                         }
                         let mut product = outside_product;
-                        if let Some(k) = &chain_levels {
+                        if let Some(chain_level) = &chain_levels {
                             for chain_index in 0..chains.len() {
                                 if chains[chain_index].targets.is_empty()
-                                    || pair.is_some_and(|ChainPair { first: a, second: b }| {
-                                        chain_index == a || chain_index == b
+                                    || pair.is_some_and(|ChainPair { first, second }| {
+                                        chain_index == first || chain_index == second
                                     })
                                 {
                                     continue;
                                 }
-                                product *= k.marg[chain_index][m]
+                                product *= chain_level.marginals[chain_index][m]
                                     .iter()
                                     .zip(&single_products[chain_index])
-                                    .map(|(p, c)| p * c)
+                                    .map(|(probability, value)| probability * value)
                                     .sum::<f64>();
                             }
                             if let (Some(pair_values), Some(pair_rows)) = (&pair_products, &pair_marginals) {
                                 product *= pair_rows[m]
                                     .iter()
                                     .zip(pair_values)
-                                    .map(|(r, s)| r.iter().zip(s).map(|(p, c)| p * c).sum::<f64>())
+                                    .map(|(row, values)| {
+                                        row.iter()
+                                            .zip(values)
+                                            .map(|(probability, value)| probability * value)
+                                            .sum::<f64>()
+                                    })
                                     .sum::<f64>();
                             }
                         }

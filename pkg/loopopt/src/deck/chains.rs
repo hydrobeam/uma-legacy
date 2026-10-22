@@ -26,9 +26,12 @@ impl ChainKind {
     pub(super) const FILLER: Self = Self { links: 2, stop: 2, stop_risk: 0 };
 }
 pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
-    risk.iter()
-        .filter(|r| r.0 >= 1 && r.0 < stop && r.0 <= 4 && r.2 > 0)
-        .fold(0u32, |c, r| c | (((u32::from(r.1) << 4) | u32::from(r.2)) << (8 * (u32::from(r.0) - 1))))
+    risk.iter().filter(|risk_row| risk_row.0 >= 1 && risk_row.0 < stop && risk_row.0 <= 4 && risk_row.2 > 0).fold(
+        0u32,
+        |code, risk_row| {
+            code | (((u32::from(risk_row.1) << 4) | u32::from(risk_row.2)) << (8 * (u32::from(risk_row.0) - 1)))
+        },
+    )
 }
 
 /// A job's chain events per run: Binomial(count, probability) (`DeckJob::chain_events`). Passed by value to every
@@ -51,11 +54,11 @@ impl ChainEvents {
 }
 /// P(N = e) chain events per run for e = 0..=n, N ~ Binomial(`events`).
 pub(super) fn event_pmf(events: ChainEvents, n: usize) -> Vec<f64> {
-    let ChainEvents { count: bn, probability: bp } = events;
+    let ChainEvents { count: trials, probability: chance } = events;
     (0..=n)
         .map(|e| {
-            if e as u32 <= bn {
-                binom_coef(bn, e as u32) * bp.powi(e as i32) * (1.0 - bp).powi((bn - e as u32) as i32)
+            if e as u32 <= trials {
+                binom_coef(trials, e as u32) * chance.powi(e as i32) * (1.0 - chance).powi((trials - e as u32) as i32)
             } else {
                 0.0
             }
@@ -66,15 +69,17 @@ pub(super) fn event_pmf(events: ChainEvents, n: usize) -> Vec<f64> {
 pub(super) fn event_pmf_job(events: ChainEvents) -> std::rc::Rc<Vec<f64>> {
     thread_local! { static EP: std::cell::RefCell<Option<((u32, u64), std::rc::Rc<Vec<f64>>)>> = const { std::cell::RefCell::new(None) }; }
     let key = events.key();
-    if let Some(r) = EP.with(|c| c.borrow().as_ref().filter(|x| x.0 == key).map(|x| std::rc::Rc::clone(&x.1))) {
-        return r;
+    if let Some(pmf) = EP.with(|cell| {
+        cell.borrow().as_ref().filter(|cached| cached.0 == key).map(|cached| std::rc::Rc::clone(&cached.1))
+    }) {
+        return pmf;
     }
-    let r = std::rc::Rc::new(event_pmf(events, key.0 as usize));
-    EP.with(|c| *c.borrow_mut() = Some((key, std::rc::Rc::clone(&r))));
-    r
+    let pmf = std::rc::Rc::new(event_pmf(events, key.0 as usize));
+    EP.with(|cell| *cell.borrow_mut() = Some((key, std::rc::Rc::clone(&pmf))));
+    pmf
 }
 pub(super) fn binom_coef(n: u32, k: u32) -> f64 {
-    (0..k).fold(1.0f64, |a, i| a * f64::from(n - i) / f64::from(i + 1))
+    (0..k).fold(1.0f64, |coefficient, i| coefficient * f64::from(n - i) / f64::from(i + 1))
 }
 /// A realised chain stop and its probability.
 struct ChainStop {
@@ -199,19 +204,19 @@ fn chain_walk(
 /// another order, so the two agree to float noise).
 pub(super) fn chain_marginals(events: ChainEvents, kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
     thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), HashMap<ChainKind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
-    let mut ks: Vec<ChainKind> = kinds.to_vec();
-    ks.sort_unstable();
-    let key = (ks, events.key());
-    if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) {
-        return r;
+    let mut sorted_kinds: Vec<ChainKind> = kinds.to_vec();
+    sorted_kinds.sort_unstable();
+    let key = (sorted_kinds, events.key());
+    if let Some(marginals) = CM.with(|cell| cell.borrow().get(&key).cloned()) {
+        return marginals;
     }
-    let r = if key.0.iter().any(|k| k.stop_risk != 0) {
+    let marginals = if key.0.iter().any(|k| k.stop_risk != 0) {
         chain_marginals_risk(events, &key.0)
     } else {
         chain_marginals_dense(events, &key.0)
     };
-    CM.with(|c| c.borrow_mut().insert(key, r.clone()));
-    r
+    CM.with(|cell| cell.borrow_mut().insert(key, marginals.clone()));
+    marginals
 }
 /// Kinds with a stop risk: the chance that IT's default choice ends a chain at a link is independent of how many
 /// chain events the run gets, so the run is a mixture over where each risky entry would stop. Each realisation is a
@@ -219,22 +224,22 @@ pub(super) fn chain_marginals(events: ChainEvents, kinds: &[ChainKind]) -> HashM
 /// its remaining slots, exactly as a chosen early end does. Exact.
 pub(super) fn chain_marginals_risk(events: ChainEvents, kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
     let n = kinds.len();
-    let mut acc: Vec<Vec<f64>> = kinds.iter().map(|k| vec![0.0; k.stop as usize]).collect();
+    let mut sums: Vec<Vec<f64>> = kinds.iter().map(|k| vec![0.0; k.stop as usize]).collect();
     for_each_realisation(kinds, |w, stops| {
         let real: Vec<ChainKind> =
             (0..n).map(|i| ChainKind { links: kinds[i].links, stop: stops[i], stop_risk: 0 }).collect();
-        let m = chain_marginals(events, &real);
+        let marginals = chain_marginals(events, &real);
         for i in 0..n {
-            if let Some(v) = m.get(&real[i]) {
-                for (k, x) in v.iter().enumerate() {
-                    acc[i][k] += w * x;
+            if let Some(link_marginals) = marginals.get(&real[i]) {
+                for (k, marginal) in link_marginals.iter().enumerate() {
+                    sums[i][k] += w * marginal;
                 }
             }
         }
     });
     let mut out: HashMap<ChainKind, Vec<f64>> = HashMap::new();
     for i in 0..n {
-        out.entry(kinds[i]).or_insert_with(|| acc[i].clone());
+        out.entry(kinds[i]).or_insert_with(|| sums[i].clone());
     }
     out
 }
@@ -244,37 +249,38 @@ pub(super) fn chain_marginals_dense(events: ChainEvents, kinds: &[ChainKind]) ->
     if n == 0 {
         return out;
     }
-    let emax = 60usize;
-    let event_weights = event_pmf(events, emax);
+    let max_events = 60usize;
+    let event_weights = event_pmf(events, max_events);
     let total: usize = kinds.iter().map(|kind| kind.stop as usize).sum();
-    let last = emax.min(total);
+    let last = max_events.min(total);
     let width = kinds.iter().map(|k| k.stop as usize).max().unwrap_or(0).max(1);
     // done[e][i][k] = P(after e events entry i has >= k+1 links done)
     let mut done = vec![0.0f64; (last + 1) * n * width];
     let (links, stops): (Vec<u8>, Vec<u8>) = kinds.iter().map(|k| (k.links, k.stop)).unzip();
-    chain_walk(&links, &stops, last, &vec![0; n], |s, lvl, _, pi| {
-        if lvl >= 1 {
-            let b = lvl * n * width;
+    chain_walk(&links, &stops, last, &vec![0; n], |progress, event_count, _, probability| {
+        if event_count >= 1 {
+            let base = event_count * n * width;
             for i in 0..n {
-                for k in 0..s[i] as usize {
-                    done[b + i * width + k] += pi;
+                for k in 0..progress[i] as usize {
+                    done[base + i * width + k] += probability;
                 }
             }
         }
     });
     let mut fired = vec![vec![0.0f64; width]; n];
     for e in 1..=last {
-        let pe = event_weights[e] + if e == last { 1.0 - event_weights[..=e].iter().sum::<f64>() } else { 0.0 };
-        let b = e * n * width;
+        let event_weight =
+            event_weights[e] + if e == last { 1.0 - event_weights[..=e].iter().sum::<f64>() } else { 0.0 };
+        let base = e * n * width;
         for i in 0..n {
             for k in 0..width {
-                fired[i][k] += pe * done[b + i * width + k];
+                fired[i][k] += event_weight * done[base + i * width + k];
             }
         }
     }
     for i in 0..n {
-        let kd = kinds[i];
-        out.entry(kd).or_insert_with(|| (0..kd.stop as usize).map(|k| fired[i][k]).collect());
+        let kind = kinds[i];
+        out.entry(kind).or_insert_with(|| (0..kind.stop as usize).map(|k| fired[i][k]).collect());
     }
     out
 }
@@ -288,52 +294,53 @@ pub(super) fn chain_marginals_ref(events: ChainEvents, kinds: &[ChainKind]) -> H
     if n == 0 {
         return out;
     }
-    let emax = 60usize;
-    let event_weights = event_pmf(events, emax);
+    let max_events = 60usize;
+    let event_weights = event_pmf(events, max_events);
     let total: usize = kinds.iter().map(|kind| kind.stop as usize).sum();
     let width = kinds.iter().map(|k| k.stop as usize).max().unwrap_or(0).max(1);
     let mut fired = vec![vec![0.0f64; width]; n]; // P(entry i has >= k+1 links done), accumulated over E
-    let mut st: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
-    st.insert(vec![0; n], 1.0);
-    for e in 1..=emax.min(total) {
-        let mut ns: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
-        for (s, p) in &st {
-            let w: Vec<f64> =
-                (0..n).map(|i| if s[i] < kinds[i].stop { f64::from(kinds[i].links - s[i]) } else { 0.0 }).collect();
-            let wsum: f64 = w.iter().sum();
-            if wsum == 0.0 {
-                *ns.entry(s.clone()).or_insert(0.0) += p;
+    let mut states: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
+    states.insert(vec![0; n], 1.0);
+    for e in 1..=max_events.min(total) {
+        let mut next_states: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
+        for (state, p) in &states {
+            let weights: Vec<f64> = (0..n)
+                .map(|i| if state[i] < kinds[i].stop { f64::from(kinds[i].links - state[i]) } else { 0.0 })
+                .collect();
+            let weight_sum: f64 = weights.iter().sum();
+            if weight_sum == 0.0 {
+                *next_states.entry(state.clone()).or_insert(0.0) += p;
                 continue;
             }
             for i in 0..n {
-                if w[i] > 0.0 {
-                    let mut t = s.clone();
-                    t[i] += 1;
-                    *ns.entry(t).or_insert(0.0) += p * w[i] / wsum;
+                if weights[i] > 0.0 {
+                    let mut next = state.clone();
+                    next[i] += 1;
+                    *next_states.entry(next).or_insert(0.0) += p * weights[i] / weight_sum;
                 }
             }
         }
-        st = ns;
+        states = next_states;
         let mut prev_done = vec![vec![0.0f64; width]; n];
-        for (s, p) in &st {
+        for (state, p) in &states {
             for i in 0..n {
-                for k in 0..s[i] as usize {
+                for k in 0..state[i] as usize {
                     prev_done[i][k] += p;
                 }
             }
         }
         // P(link done) = sum_e P(E = e) * P(done after e events); accumulate with P(E = e)
-        let pe =
-            event_weights[e] + if e == emax.min(total) { 1.0 - event_weights[..=e].iter().sum::<f64>() } else { 0.0 };
+        let event_weight = event_weights[e]
+            + if e == max_events.min(total) { 1.0 - event_weights[..=e].iter().sum::<f64>() } else { 0.0 };
         for i in 0..n {
             for k in 0..width {
-                fired[i][k] += pe * prev_done[i][k];
+                fired[i][k] += event_weight * prev_done[i][k];
             }
         }
     }
     for i in 0..n {
-        let kd = kinds[i];
-        out.entry(kd).or_insert_with(|| (0..kd.stop as usize).map(|k| fired[i][k]).collect());
+        let kind = kinds[i];
+        out.entry(kind).or_insert_with(|| (0..kind.stop as usize).map(|k| fired[i][k]).collect());
     }
     out
 }
@@ -352,31 +359,31 @@ pub(super) struct ChainState {
 pub(super) fn chain_states(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc<Vec<ChainState>> {
     thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<Vec<ChainState>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let key = (kinds.to_vec(), events.key());
-    if let Some(r) = CS.with(|c| c.borrow().get(&key).cloned()) {
-        return r;
+    if let Some(states) = CS.with(|cell| cell.borrow().get(&key).cloned()) {
+        return states;
     }
     let n = kinds.len();
     let links: Vec<u8> = kinds.iter().map(|k| k.links).collect();
-    let mut acc: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
+    let mut state_chances: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
     for_each_realisation(kinds, |w, stops| {
-        let total: usize = stops.iter().map(|&x| x as usize).sum();
+        let total: usize = stops.iter().map(|&stop| stop as usize).sum();
         let event_weights = event_pmf(events, total);
         // (a state below the last level has an entry not stopped: final with P(N = L); at it, with P(N >= L))
-        chain_walk(&links, stops, total, &vec![0; n], |s, lvl, _, pi| {
-            let fin = if lvl < total {
-                event_weights[lvl]
+        chain_walk(&links, stops, total, &vec![0; n], |progress, event_count, _, probability| {
+            let final_chance = if event_count < total {
+                event_weights[event_count]
             } else {
-                (1.0 - event_weights[..lvl].iter().sum::<f64>()).max(0.0)
+                (1.0 - event_weights[..event_count].iter().sum::<f64>()).max(0.0)
             };
-            *acc.entry(s.to_vec()).or_insert(0.0) += w * pi * fin;
+            *state_chances.entry(progress.to_vec()).or_insert(0.0) += w * probability * final_chance;
         });
     });
-    let mut v: Vec<ChainState> =
-        acc.into_iter().map(|(progress, probability)| ChainState { progress, probability }).collect();
-    v.sort_by(|a, b| a.progress.cmp(&b.progress));
-    let r = std::rc::Rc::new(v);
-    CS.with(|c| c.borrow_mut().insert(key, std::rc::Rc::clone(&r)));
-    r
+    let mut sorted: Vec<ChainState> =
+        state_chances.into_iter().map(|(progress, probability)| ChainState { progress, probability }).collect();
+    sorted.sort_by(|a, b| a.progress.cmp(&b.progress));
+    let states = std::rc::Rc::new(sorted);
+    CS.with(|cell| cell.borrow_mut().insert(key, std::rc::Rc::clone(&states)));
+    states
 }
 
 /// Per chain-kind key (sorted kinds, fillers as (2, 2)): for each position, P(links done = l | N = n), n = 0..=nmax,
@@ -385,91 +392,99 @@ pub(super) fn chain_states(events: ChainEvents, kinds: &[ChainKind]) -> std::rc:
 /// checked exactly (to 1e-12) over the key's state distribution. Early ends and stop risk are included (stop risk as
 /// the mixture over where each risky card stops, which does not depend on N).
 pub(super) struct KeyLevel {
-    pub(super) marg: Vec<Vec<Vec<f64>>>,
+    pub(super) marginals: Vec<Vec<Vec<f64>>>,
     pub(super) nuod: bool,
-    pub(super) lev: Vec<Vec<f64>>,
-    pub(super) dims: Vec<usize>,
-    pub(super) gstride: Vec<usize>,
+    pub(super) level_probabilities: Vec<Vec<f64>>,
+    pub(super) dimensions: Vec<usize>,
+    pub(super) grid_strides: Vec<usize>,
     pub(super) pairs: std::cell::RefCell<crate::FxMap<(usize, usize), bool>>,
-    pub(super) pms: std::cell::RefCell<crate::FxMap<(usize, usize), std::rc::Rc<Vec<Vec<Vec<f64>>>>>>,
+    pub(super) pair_marginals: std::cell::RefCell<crate::FxMap<(usize, usize), std::rc::Rc<Vec<Vec<Vec<f64>>>>>>,
 }
 impl KeyLevel {
     /// P(X_i = a, X_j = b | N = m)
     pub(super) fn pair_marg(&self, i: usize, j: usize, m: usize) -> Vec<Vec<f64>> {
-        let mut v = vec![vec![0.0f64; self.dims[j]]; self.dims[i]];
-        for (gi, &p) in self.lev[m].iter().enumerate() {
+        let mut marginal = vec![vec![0.0f64; self.dimensions[j]]; self.dimensions[i]];
+        for (grid_index, &p) in self.level_probabilities[m].iter().enumerate() {
             if p != 0.0 {
-                v[(gi / self.gstride[i]) % self.dims[i]][(gi / self.gstride[j]) % self.dims[j]] += p;
+                marginal[(grid_index / self.grid_strides[i]) % self.dimensions[i]]
+                    [(grid_index / self.grid_strides[j]) % self.dimensions[j]] += p;
             }
         }
-        v
+        marginal
     }
     /// `pair_marg` at every event count m = 0..=n, kept per pair (a function of the key alone)
     pub(super) fn pair_margs(&self, i: usize, j: usize) -> std::rc::Rc<Vec<Vec<Vec<f64>>>> {
-        if let Some(r) = self.pms.borrow().get(&(i, j)) {
-            return std::rc::Rc::clone(r);
+        if let Some(by_count) = self.pair_marginals.borrow().get(&(i, j)) {
+            return std::rc::Rc::clone(by_count);
         }
-        let r = std::rc::Rc::new((0..self.lev.len()).map(|m| self.pair_marg(i, j, m)).collect::<Vec<_>>());
-        self.pms.borrow_mut().insert((i, j), std::rc::Rc::clone(&r));
-        r
+        let by_count =
+            std::rc::Rc::new((0..self.level_probabilities.len()).map(|m| self.pair_marg(i, j, m)).collect::<Vec<_>>());
+        self.pair_marginals.borrow_mut().insert((i, j), std::rc::Rc::clone(&by_count));
+        by_count
     }
     /// The orthant check with positions i and j as one block: for every up-set A of the (i, j) grid and every
     /// threshold vector t on the other positions, P((X_i, X_j) in A, X_k >= t_k) <= P((X_i, X_j) in A) prod P(X_k >= t_k).
     /// Any rising function of (X_i, X_j) is a positive combination of up-set indicators, so this is what the bound
     /// needs when one group holds both cards.
     pub(super) fn pair_ok(&self, i: usize, j: usize) -> bool {
-        if let Some(&r) = self.pairs.borrow().get(&(i, j)) {
-            return r;
+        if let Some(&cached) = self.pairs.borrow().get(&(i, j)) {
+            return cached;
         }
-        let (di, dj) = (self.dims[i], self.dims[j]);
+        let (first_dimension, second_dimension) = (self.dimensions[i], self.dimensions[j]);
         // up-sets of the di x dj grid: for each row a, the first column c_a in the set, non-increasing in a
-        let mut ups: Vec<Vec<usize>> = vec![];
-        fn upsets(a: usize, di: usize, hi: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-            if a == di {
-                out.push(cur.clone());
+        let mut up_sets: Vec<Vec<usize>> = vec![];
+        fn upsets(a: usize, first_dimension: usize, hi: usize, current: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+            if a == first_dimension {
+                out.push(current.clone());
                 return;
             }
             for c in 0..=hi {
-                cur.push(c);
-                upsets(a + 1, di, c, cur, out);
-                cur.pop();
+                current.push(c);
+                upsets(a + 1, first_dimension, c, current, out);
+                current.pop();
             }
         }
-        upsets(0, di, dj, &mut vec![], &mut ups);
-        let n = self.dims.len();
+        upsets(0, first_dimension, second_dimension, &mut vec![], &mut up_sets);
+        let n = self.dimensions.len();
         let others: Vec<usize> = (0..n).filter(|&k| k != i && k != j).collect();
         let mut ok = true;
-        'outer: for m in 0..self.lev.len() {
-            let d = &self.lev[m];
-            for up in &ups {
-                // indicator of the up-set (column c >= up[row]) over the grid, times the distribution
-                let mut arr: Vec<f64> = d
+        'outer: for m in 0..self.level_probabilities.len() {
+            let distribution = &self.level_probabilities[m];
+            for up_set in &up_sets {
+                // indicator of the up-set (column c >= up_set[row]) over the grid, times the distribution
+                let mut mass: Vec<f64> = distribution
                     .iter()
                     .enumerate()
-                    .map(|(gi, &p)| {
-                        let a = (gi / self.gstride[i]) % di;
-                        let c = (gi / self.gstride[j]) % dj;
-                        if c >= up[a] { p } else { 0.0 }
+                    .map(|(grid_index, &p)| {
+                        let a = (grid_index / self.grid_strides[i]) % first_dimension;
+                        let c = (grid_index / self.grid_strides[j]) % second_dimension;
+                        if c >= up_set[a] { p } else { 0.0 }
                     })
                     .collect();
-                let pa: f64 = arr.iter().sum();
+                let up_set_chance: f64 = mass.iter().sum();
                 for &k in &others {
-                    for gi in (0..arr.len()).rev() {
-                        let c = (gi / self.gstride[k]) % self.dims[k];
-                        if c + 1 < self.dims[k] {
-                            arr[gi] += arr[gi + self.gstride[k]];
+                    for grid_index in (0..mass.len()).rev() {
+                        let c = (grid_index / self.grid_strides[k]) % self.dimensions[k];
+                        if c + 1 < self.dimensions[k] {
+                            mass[grid_index] += mass[grid_index + self.grid_strides[k]];
                         }
                     }
                 }
-                for gi in 0..arr.len() {
-                    if !(gi / self.gstride[i]).is_multiple_of(di) || !(gi / self.gstride[j]).is_multiple_of(dj) {
+                for grid_index in 0..mass.len() {
+                    if !(grid_index / self.grid_strides[i]).is_multiple_of(first_dimension)
+                        || !(grid_index / self.grid_strides[j]).is_multiple_of(second_dimension)
+                    {
                         continue;
                     }
                     let prod: f64 = others
                         .iter()
-                        .map(|&k| self.marg[k][m][(gi / self.gstride[k]) % self.dims[k]..].iter().sum::<f64>())
+                        .map(|&k| {
+                            self.marginals[k][m][(grid_index / self.grid_strides[k]) % self.dimensions[k]..]
+                                .iter()
+                                .sum::<f64>()
+                        })
                         .product();
-                    if arr[gi] > pa * prod * (1.0 + 1e-12) + 1e-15 {
+                    if mass[grid_index] > up_set_chance * prod * (1.0 + 1e-12) + 1e-15 {
                         ok = false;
                         break 'outer;
                     }
@@ -483,87 +498,91 @@ impl KeyLevel {
 pub(super) fn key_level(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc<KeyLevel> {
     thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     thread_local! { static KL_LAST: std::cell::RefCell<Option<(Vec<ChainKind>, (u32, u64), std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
-    let pk = events.key();
-    if let Some(r) =
-        KL_LAST.with(|c| c.borrow().as_ref().filter(|x| x.0 == kinds && x.1 == pk).map(|x| std::rc::Rc::clone(&x.2)))
-    {
-        return r;
+    let events_key = events.key();
+    if let Some(level) = KL_LAST.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .filter(|last| last.0 == kinds && last.1 == events_key)
+            .map(|last| std::rc::Rc::clone(&last.2))
+    }) {
+        return level;
     }
-    let key = (kinds.to_vec(), pk);
-    if let Some(r) = KL.with(|c| c.borrow().get(&key).cloned()) {
-        KL_LAST.with(|c| *c.borrow_mut() = Some((key.0, key.1, std::rc::Rc::clone(&r))));
-        return r;
+    let key = (kinds.to_vec(), events_key);
+    if let Some(level) = KL.with(|cell| cell.borrow().get(&key).cloned()) {
+        KL_LAST.with(|cell| *cell.borrow_mut() = Some((key.0, key.1, std::rc::Rc::clone(&level))));
+        return level;
     }
-    let bn = events.count;
-    let nmax = bn as usize;
+    let trials = events.count;
+    let max_events = trials as usize;
     let n = kinds.len();
-    let dims: Vec<usize> = kinds.iter().map(|k| k.stop as usize + 1).collect();
-    let mut gstride = vec![1usize; n];
-    let mut gsize = 1usize;
+    let dimensions: Vec<usize> = kinds.iter().map(|k| k.stop as usize + 1).collect();
+    let mut grid_strides = vec![1usize; n];
+    let mut grid_size = 1usize;
     for i in 0..n {
-        gstride[i] = gsize;
-        gsize *= dims[i];
+        grid_strides[i] = grid_size;
+        grid_size *= dimensions[i];
     }
     // per level, the distribution over the grid of progress vectors
-    let mut lev = vec![vec![0.0f64; gsize]; nmax + 1];
+    let mut level_probabilities = vec![vec![0.0f64; grid_size]; max_events + 1];
     let links: Vec<u8> = kinds.iter().map(|k| k.links).collect();
     for_each_realisation(kinds, |w, stops| {
-        let total: usize = stops.iter().map(|&x| x as usize).sum();
-        chain_walk(&links, stops, total, &gstride, |_, lvl, gi, pi| {
-            if lvl <= nmax {
-                lev[lvl][gi] += w * pi;
+        let total: usize = stops.iter().map(|&stop| stop as usize).sum();
+        chain_walk(&links, stops, total, &grid_strides, |_, event_count, grid_index, probability| {
+            if event_count <= max_events {
+                level_probabilities[event_count][grid_index] += w * probability;
             }
-            if lvl == total {
-                for m in total + 1..=nmax {
-                    lev[m][gi] += w * pi;
+            if event_count == total {
+                for m in total + 1..=max_events {
+                    level_probabilities[m][grid_index] += w * probability;
                 }
             }
         });
     });
-    let mut marg = vec![vec![vec![0.0f64; 0]; nmax + 1]; n];
+    let mut marginals = vec![vec![vec![0.0f64; 0]; max_events + 1]; n];
     let mut nuod = true;
-    // each grid index's digits, dig[gi * n + i] = (gi / gstride[i]) % dims[i] (the same sums below, in the same order)
-    let mut dig = vec![0u8; gsize * n];
+    // each grid index's digits, digits[g * n + i] = (g / grid_strides[i]) % dimensions[i] (the same sums below, in the
+    // same order)
+    let mut digits = vec![0u8; grid_size * n];
     {
-        let mut st = vec![0u8; n];
-        for gi in 0..gsize {
-            dig[gi * n..(gi + 1) * n].copy_from_slice(&st);
+        let mut odometer = vec![0u8; n];
+        for grid_index in 0..grid_size {
+            digits[grid_index * n..(grid_index + 1) * n].copy_from_slice(&odometer);
             for i in 0..n {
-                if (st[i] as usize) + 1 < dims[i] {
-                    st[i] += 1;
+                if (odometer[i] as usize) + 1 < dimensions[i] {
+                    odometer[i] += 1;
                     break;
                 }
-                st[i] = 0;
+                odometer[i] = 0;
             }
         }
     }
-    for m in 0..=nmax {
-        let d = &lev[m];
-        // (grid index gi = b + c * gstride[i] + lo: by blocks b of gstride[i] * dims[i], then digit c, then lo, the
-        // indices in increasing order, so each sum takes its terms in the same order)
+    for m in 0..=max_events {
+        let distribution = &level_probabilities[m];
+        // (grid index g = b + c * stride + lo: by blocks b of stride * dimension, then digit c, then lo, the indices in
+        // increasing order, so each sum takes its terms in the same order)
         for i in 0..n {
-            let (sd, dm) = (gstride[i], dims[i]);
-            let mut v = vec![0.0f64; dm];
-            for blk in d.chunks_exact(sd * dm) {
-                for (c, row) in blk.chunks_exact(sd).enumerate() {
-                    for &x in row {
-                        v[c] += x;
+            let (stride, dimension) = (grid_strides[i], dimensions[i]);
+            let mut marginal = vec![0.0f64; dimension];
+            for block in distribution.chunks_exact(stride * dimension) {
+                for (c, row) in block.chunks_exact(stride).enumerate() {
+                    for &mass in row {
+                        marginal[c] += mass;
                     }
                 }
             }
-            marg[i][m] = v;
+            marginals[i][m] = marginal;
         }
         if !nuod {
             continue;
         }
         // upper-orthant sums by suffix sums along every axis (digit c from the top down: each entry adds the one a
         // digit above it, already summed; the entries of one digit are independent)
-        let mut up = d.clone();
+        let mut upper = distribution.clone();
         for i in 0..n {
-            let (sd, dm) = (gstride[i], dims[i]);
-            for blk in up.chunks_exact_mut(sd * dm) {
-                for c in (0..dm - 1).rev() {
-                    let (lo, hi) = blk[c * sd..(c + 2) * sd].split_at_mut(sd);
+            let (stride, dimension) = (grid_strides[i], dimensions[i]);
+            for block in upper.chunks_exact_mut(stride * dimension) {
+                for c in (0..dimension - 1).rev() {
+                    let (lo, hi) = block[c * stride..(c + 2) * stride].split_at_mut(stride);
                     for (x, &y) in lo.iter_mut().zip(hi.iter()) {
                         *x += y;
                     }
@@ -572,32 +591,32 @@ pub(super) fn key_level(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc
         }
         let tail: Vec<Vec<f64>> = (0..n)
             .map(|i| {
-                let mut t = marg[i][m].clone();
-                for c in (0..dims[i] - 1).rev() {
-                    t[c] += t[c + 1];
+                let mut tail_row = marginals[i][m].clone();
+                for c in (0..dimensions[i] - 1).rev() {
+                    tail_row[c] += tail_row[c + 1];
                 }
-                t
+                tail_row
             })
             .collect();
-        for gi in 0..gsize {
-            let dg = &dig[gi * n..(gi + 1) * n];
-            let prod: f64 = (0..n).map(|i| tail[i][dg[i] as usize]).product();
-            if up[gi] > prod * (1.0 + 1e-12) + 1e-15 {
+        for grid_index in 0..grid_size {
+            let grid_digits = &digits[grid_index * n..(grid_index + 1) * n];
+            let prod: f64 = (0..n).map(|i| tail[i][grid_digits[i] as usize]).product();
+            if upper[grid_index] > prod * (1.0 + 1e-12) + 1e-15 {
                 nuod = false;
                 break;
             }
         }
     }
-    let r = std::rc::Rc::new(KeyLevel {
-        marg,
+    let level = std::rc::Rc::new(KeyLevel {
+        marginals,
         nuod,
-        lev,
-        dims,
-        gstride,
+        level_probabilities,
+        dimensions,
+        grid_strides,
         pairs: std::cell::RefCell::default(),
-        pms: std::cell::RefCell::default(),
+        pair_marginals: std::cell::RefCell::default(),
     });
-    KL_LAST.with(|c| *c.borrow_mut() = Some((key.0.clone(), key.1, std::rc::Rc::clone(&r))));
-    KL.with(|c| c.borrow_mut().insert(key, std::rc::Rc::clone(&r)));
-    r
+    KL_LAST.with(|cell| *cell.borrow_mut() = Some((key.0.clone(), key.1, std::rc::Rc::clone(&level))));
+    KL.with(|cell| cell.borrow_mut().insert(key, std::rc::Rc::clone(&level)));
+    level
 }

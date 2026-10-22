@@ -115,8 +115,9 @@ impl PlanRow {
 }
 
 /// Both parents of `career` are full veterans: her full veteran from it is a fully looped parent
-pub(crate) fn has_looped_parents(sj: &SkillJob, legacies: &[Legacy], career: &Found) -> bool {
-    is_full(sj, &legacies[career.first_parent].sparks) && is_full(sj, &legacies[career.second_parent].sparks)
+pub(crate) fn has_looped_parents(skill_job: &SkillJob, legacies: &[Legacy], career: &Found) -> bool {
+    is_full(skill_job, &legacies[career.first_parent].sparks)
+        && is_full(skill_job, &legacies[career.second_parent].sparks)
 }
 
 /// The plan's pick among its rows, and the top score it was taken within `near_floor` of.
@@ -127,12 +128,13 @@ pub(crate) struct PlanPick {
 }
 
 /// The pick among the rows `runs` (a row without scoring has score -infinity): the highest score among the rows that can
-/// be the pick (`vis`; the first such row before any is scored, by more than 1e-9), then within `near_floor` of that top
+/// be the pick (`can_be_pick`; the first such row before any is scored, by more than 1e-9), then within `near_floor` of
+/// that top
 /// the best odds (a row that can be the pick), moved to the earlier row it repeats (`undup`). The one rule for the
 /// plan's pick and the roll state kept for it
-pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[usize]) -> PlanPick {
+pub(crate) fn pick_of(runs: &[PlanRow], can_be_pick: impl Fn(&Found) -> bool, undup: &[usize]) -> PlanPick {
     let total = |i: usize| runs[i].total();
-    let mut pick = (0..runs.len()).find(|&i| vis(&runs[i].career)).unwrap_or(0);
+    let mut pick = (0..runs.len()).find(|&i| can_be_pick(&runs[i].career)).unwrap_or(0);
     for i in 0..runs.len() {
         if total(i) > total(pick) + 1e-9 {
             pick = i;
@@ -140,7 +142,8 @@ pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[u
     }
     let top = if runs.is_empty() { 0.0 } else { total(pick) };
     for i in 0..runs.len() {
-        if vis(&runs[i].career) && total(i) >= near_floor(top) && runs[i].career.value > runs[pick].career.value {
+        if can_be_pick(&runs[i].career) && total(i) >= near_floor(top) && runs[i].career.value > runs[pick].career.value
+        {
             pick = i;
         }
     }
@@ -164,7 +167,7 @@ pub(crate) fn add_looped_rows(
     let stats_base = candidates.stats_base();
     let legacies = input.legacies;
     let legacy_count = legacies.len();
-    let sj = simulator.env.setup.skill_job;
+    let skill_job = simulator.env.setup.skill_job;
     // Looped careers: per uma whose career above has parents that are not both full veterans, her best career on two real
     // full veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her full veteran a fully
     // looped parent (the goal), so these rows make the trios' runnable last steps available as options.
@@ -180,7 +183,8 @@ pub(crate) fn add_looped_rows(
     if input.fixed_parents.len() >= 2 {
         return added;
     }
-    let full_veteran_indices: Vec<usize> = (0..legacy_count).filter(|&i| is_full(sj, &legacies[i].sparks)).collect();
+    let full_veteran_indices: Vec<usize> =
+        (0..legacy_count).filter(|&i| is_full(skill_job, &legacies[i].sparks)).collect();
     let full_veterans: Vec<bool> = (0..legacy_count).map(|i| full_veteran_indices.contains(&i)).collect();
     let looped_started_ms = now_ms();
     let nodes_before = simulator.env.setup.space.nodes.get();
@@ -189,19 +193,19 @@ pub(crate) fn add_looped_rows(
             if row.origin != RowOrigin::Base {
                 continue;
             }
-            let x = row.trainee;
-            if has_looped_parents(sj, legacies, &row.career) && input.is_runnable(&row.career) {
+            let trainee = row.trainee;
+            if has_looped_parents(skill_job, legacies, &row.career) && input.is_runnable(&row.career) {
                 continue;
             }
-            let looped = looped_career(simulator, context, searches, x, &full_veterans, buf);
-            searches.looped_careers[x] = CachedSearch::Known(looped.clone());
+            let looped = looped_career(simulator, context, searches, trainee, &full_veterans, buf);
+            searches.looped_careers[trainee] = CachedSearch::Known(looped.clone());
             if let Some(career) = looped {
                 // (its stats feed only `proxy_check`; without it the scoring runs for its state effects alone: its `val`
                 // searches, under this block's cap, add decks later scorings read)
                 let want = if input.settings.proxy_check { Want::Stats } else { Want::Touch };
                 let CareerScore { lift_stats, .. } =
-                    score_career(simulator, &context.scoring(&stats_base), found_career(x, &career), want, buf);
-                added.push(PlanRow::exact(x, career, lift_stats, RowOrigin::Looped));
+                    score_career(simulator, &context.scoring(&stats_base), found_career(trainee, &career), want, buf);
+                added.push(PlanRow::exact(trainee, career, lift_stats, RowOrigin::Looped));
             }
         }
     });
@@ -256,32 +260,34 @@ fn looped_career(
     // (`pick_pool` and `pool` differ in `max_borrowed` alone, which the ceilings do not read)
     let ParentPool { pool: pick_pool, fixed_parents } = context.pick_parents();
     let newest = context.legacy_count().wrapping_sub(1);
-    let pairs =
-        simulator.env.setup.ranked_pairs(&mut simulator.env.state, pick_pool, fixed_parents, trainee, |a, b| {
-            is_full[a] && is_full[b] && (!only_newest || b == newest)
-        });
+    let pairs = simulator.env.setup.ranked_pairs(
+        &mut simulator.env.state,
+        pick_pool,
+        fixed_parents,
+        trainee,
+        |first_parent, second_parent| {
+            is_full[first_parent] && is_full[second_parent] && (!only_newest || second_parent == newest)
+        },
+    );
     let mut best = start;
-    for RankedPair { ceiling, first_parent: a, second_parent: b } in pairs {
-        if ceiling <= best.as_ref().map_or(0.0, |f| f.value) {
+    for RankedPair { ceiling, first_parent, second_parent } in pairs {
+        if ceiling <= best.as_ref().map_or(0.0, |career| career.value) {
             break;
         }
-        let pair = [a, b];
+        let pair = [first_parent, second_parent];
         // (the exact search's bar starts at the best looped career so far: only a career above it can
         // replace it, as in `best_of`; a tie keeps the earlier pair either way)
-        let found = if settings.sur == 1 {
+        let found = if settings.surrogate_mode == 1 {
             best_sur(simulator, ParentPool { pool: pick_pool, fixed_parents: &pair }, trainee, settings.sur_margin, buf)
         } else {
-            simulator.env.state.floor = best.as_ref().map_or(f64::NEG_INFINITY, |f| f.value);
-            let searched = simulator.env.setup.solve(
-                &mut simulator.env.state,
-                &mut simulator.env.audit,
-                &mut simulator.env.memo,
-                pick_pool,
-                &pair,
-                &[trainee],
-                false,
-                1,
-            );
+            simulator.env.state.floor = best.as_ref().map_or(f64::NEG_INFINITY, |career| career.value);
+            let searched = simulator.env.solve(crate::career::search::SearchRequest {
+                pool: pick_pool,
+                fixed_parents: &pair,
+                trainees: &[trainee],
+                per_trainee: false,
+                top: 1,
+            });
             if !searched.complete {
                 searches.looped_incomplete[trainee] = true;
             }
@@ -289,7 +295,7 @@ fn looped_career(
             searched.found.into_iter().next()
         };
         if let Some(found) = found
-            && found.value > best.as_ref().map_or(0.0, |f| f.value)
+            && found.value > best.as_ref().map_or(0.0, |career| career.value)
         {
             best = Some(found);
         }
@@ -360,8 +366,9 @@ fn fit_trios(
 ) -> FittedTrios {
     let candidates = context.candidates;
     // a fresh full veteran of hers (her step); a real full veteran of hers costs nothing (the trios' side choice)
-    let step_costs: Vec<f64> =
-        (0..candidates.trainees.len()).map(|ui| continuations[ui].cost(candidates.current_odds[ui])).collect();
+    let step_costs: Vec<f64> = (0..candidates.trainees.len())
+        .map(|candidate| continuations[candidate].cost(candidates.current_odds[candidate]))
+        .collect();
     let started_ms = now_ms();
     let combinations = plan_combinations(simulator, context, full_veterans, &step_costs, buf);
     let sides = plan_sides(simulator, context, full_veterans, &step_costs);
@@ -388,7 +395,7 @@ pub(crate) fn score_and_promote_rows(
     let PlanContext { input, candidates } = *context;
     let legacies = input.legacies;
     let data = context.data();
-    let sj = simulator.env.setup.skill_job;
+    let skill_job = simulator.env.setup.skill_job;
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
     let continuations = plan_continuations(simulator, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
@@ -396,11 +403,11 @@ pub(crate) fn score_and_promote_rows(
     let full_veterans: Vec<Vec<usize>> = candidates
         .trainees
         .iter()
-        .map(|&u| {
+        .map(|&trainee| {
             (0..legacies.len())
                 .filter(|&i| {
-                    legacies[i].chara == data.umas[u].id
-                        && is_full(sj, &legacies[i].sparks)
+                    legacies[i].character_id == data.umas[trainee].id
+                        && is_full(skill_job, &legacies[i].sparks)
                         && input.pool.alone_within_borrow_limit(legacies[i].borrowed)
                 })
                 .collect()
@@ -427,7 +434,7 @@ pub(crate) fn score_and_promote_rows(
                 let old_careers: Vec<Found> = promoted.iter().map(|&i| plan_rows.rows[i].career.clone()).collect();
                 for (&i, old_career) in promoted.iter().zip(&old_careers) {
                     let row = &mut plan_rows.rows[i];
-                    let x = row.trainee;
+                    let trainee = row.trainee;
                     if row.origin == RowOrigin::NoBorrow {
                         make_no_borrow_row_exact(simulator, context, searches, profile, row, buf);
                         continue;
@@ -438,22 +445,27 @@ pub(crate) fn score_and_promote_rows(
                         continue;
                     };
                     if replaced {
-                        set_plan_wins(simulator, input.pool, &mut plan_rows.wins_by_trainee, x, &row.career);
+                        set_plan_wins(simulator, input.pool, &mut plan_rows.wins_by_trainee, trainee, &row.career);
                     }
                     // ("later") her best career has a borrowed parent: that row is a builder now, and the proxy's career,
                     // without one, her nb row (scored below)
                     if !input.is_runnable(&row.career) {
                         let no_lifts = vec![LiftStats::default(); candidates.trainees.len()];
-                        plan_rows.rows.push(PlanRow::proxy(x, old_career.clone(), no_lifts, RowOrigin::NoBorrow, None));
+                        plan_rows.rows.push(PlanRow::proxy(
+                            trainee,
+                            old_career.clone(),
+                            no_lifts,
+                            RowOrigin::NoBorrow,
+                            None,
+                        ));
                     }
                 }
                 profile.search_ms += now_ms() - started_ms;
                 let next_continuations =
                     plan_continuations(simulator, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
-                let same_fit = next_continuations
-                    .iter()
-                    .zip(&fit.continuations)
-                    .all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
+                let same_fit = next_continuations.iter().zip(&fit.continuations).all(|(next, current)| {
+                    next.lam == current.lam && next.phi == current.phi && next.pinf == current.pinf
+                });
                 let runs = &mut plan_rows.rows;
                 if same_fit {
                     for (&i, old_career) in promoted.iter().zip(&old_careers) {
@@ -493,18 +505,23 @@ pub(crate) fn score_and_promote_rows(
                 }
             }
         }
-        profile.scored_runnable_rows =
-            plan_rows.rows.iter().filter(|r| r.scoring.is_some() && input.is_runnable(&r.career)).count();
+        profile.scored_runnable_rows = plan_rows
+            .rows
+            .iter()
+            .filter(|plan_row| plan_row.scoring.is_some() && input.is_runnable(&plan_row.career))
+            .count();
     }
     let runs = &plan_rows.rows;
     let best_combo = combinations
         .iter()
-        .min_by(|x, y| x.total_cost(&fit.step_costs).partial_cmp(&y.total_cost(&fit.step_costs)).unwrap())
+        .min_by(|first, second| {
+            first.total_cost(&fit.step_costs).partial_cmp(&second.total_cost(&fit.step_costs)).unwrap()
+        })
         .copied();
     let index_ms = now_ms() - profile.index_started_ms;
     let env = &simulator.env;
-    let work = json!({"nodes": env.setup.space.nodes.get() - profile.nodes_at_start, "exact": env.state.exact_scorings - profile.exact_scorings_at_start, "max_ratio": env.audit.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.audit.max_ratio, "class_max_deck": env.setup.max_decks(&env.audit), "cap": env.setup.space.rho_top().min(env.audit.cert), "class_caps": env.setup.space.caps()});
-    let any_scored = runs.iter().any(|r| r.scoring.is_some());
+    let work = json!({"nodes": env.setup.space.nodes.get() - profile.nodes_at_start, "exact": env.state.exact_scorings - profile.exact_scorings_at_start, "max_ratio": env.audit.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.audit.max_ratio, "class_max_deck": env.setup.max_decks(&env.audit), "cap": env.setup.space.rho_top().min(env.audit.certified_cap), "class_caps": env.setup.space.caps()});
+    let any_scored = runs.iter().any(|plan_row| plan_row.scoring.is_some());
     PlanScores { fit, best_combo, any_scored, combo_ms, index_ms, work }
 }
 
@@ -527,8 +544,8 @@ impl PlanInputs<'_, '_> {
     /// `is_runnable`): their saving within PROXY_SAVE of the lowest saving those take, in row order
     fn promotable_proxies(&self, runs: &[PlanRow]) -> Vec<usize> {
         let mut savings: Vec<f64> =
-            runs.iter().filter(|r| self.is_runnable(&r.career)).filter_map(PlanRow::net_saving).collect();
-        savings.sort_by(|x, y| y.partial_cmp(x).unwrap());
+            runs.iter().filter(|row| self.is_runnable(&row.career)).filter_map(PlanRow::net_saving).collect();
+        savings.sort_by(|first, second| second.partial_cmp(first).unwrap());
         if savings.is_empty() {
             return vec![];
         }
@@ -553,7 +570,7 @@ fn make_no_borrow_row_exact(
     row: &mut PlanRow,
     buf: &mut Vec<f64>,
 ) {
-    if certified(simulator.env, context.pick_parents(), row.trainee, &row.career) {
+    if certified(&simulator.env.setup, &mut simulator.env.state, context.pick_parents(), row.trainee, &row.career) {
         profile.certified_proxies += 1;
     } else if let Some(career) = exact_no_borrow_career(simulator, context, searches, row.trainee, buf) {
         row.career = career;
@@ -582,12 +599,15 @@ pub(crate) fn check_plan_proxies(
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let score_base = scores.fit.score_base(candidates);
-    let efficiencies = |x: crate::uma::UmaIndex, lift_stats: &[LiftStats]| -> Vec<f64> {
+    let efficiencies = |trainee: crate::uma::UmaIndex, lift_stats: &[LiftStats]| -> Vec<f64> {
         (0..candidate_count)
-            .map(|ui| {
-                let lift = lift_stats[ui];
-                let odds = candidates.current_odds[ui];
-                if data.umas[candidates.trainees[ui]].id == data.umas[x].id || lift.lift_chance <= 0.0 || odds <= 0.0 {
+            .map(|candidate| {
+                let lift = lift_stats[candidate];
+                let odds = candidates.current_odds[candidate];
+                if data.umas[candidates.trainees[candidate]].id == data.umas[trainee].id
+                    || lift.lift_chance <= 0.0
+                    || odds <= 0.0
+                {
                     0.0
                 } else {
                     lift.efficiency(odds)
@@ -596,24 +616,24 @@ pub(crate) fn check_plan_proxies(
             .collect()
     };
     let mut rows = vec![];
-    for r in runs {
-        let x = r.trainee;
-        let is_candidate = candidates.trainees.contains(&x);
-        let exact_efficiencies = efficiencies(x, &r.lift_stats);
+    for run in runs {
+        let trainee = run.trainee;
+        let is_candidate = candidates.trainees.contains(&trainee);
+        let exact_efficiencies = efficiencies(trainee, &run.lift_stats);
         let (proxy, proxy_efficiencies, proxy_score) = if is_candidate {
-            (Some(r.career.clone()), exact_efficiencies.clone(), r.net_saving())
+            (Some(run.career.clone()), exact_efficiencies.clone(), run.net_saving())
         } else {
-            match proxy_career(simulator, &winners, context.parents(), x, buf) {
+            match proxy_career(simulator, &winners, context.parents(), trainee, buf) {
                 None => (None, vec![0.0; candidate_count], None),
                 Some(career) => {
                     let CareerScore { lift_stats, .. } = score_career(
                         simulator,
                         &context.scoring(&stats_base),
-                        found_career(x, &career),
+                        found_career(trainee, &career),
                         Want::Stats,
                         buf,
                     );
-                    let proxy_efficiencies = efficiencies(x, &lift_stats);
+                    let proxy_efficiencies = efficiencies(trainee, &lift_stats);
                     #[expect(
                         clippy::if_then_some_else_none,
                         reason = "Keep the multiline scoring call in an explicit conditional (Code clarity: Calls)."
@@ -622,7 +642,7 @@ pub(crate) fn check_plan_proxies(
                         let score = score_career(
                             simulator,
                             &context.scoring(&score_base),
-                            found_career(x, &career),
+                            found_career(trainee, &career),
                             Want::Score,
                             buf,
                         );
@@ -634,17 +654,18 @@ pub(crate) fn check_plan_proxies(
                 }
             }
         };
-        let same_pair = proxy.as_ref().is_some_and(|f| f.unordered_parents() == r.career.unordered_parents());
-        let same_deck = proxy.as_ref().is_some_and(|f| {
-            f.deck.entries == r.career.deck.entries
-                && f.deck.plain_pals == r.career.deck.plain_pals
-                && f.deck.filler_cards == r.career.deck.filler_cards
+        let same_pair =
+            proxy.as_ref().is_some_and(|career| career.unordered_parents() == run.career.unordered_parents());
+        let same_deck = proxy.as_ref().is_some_and(|career| {
+            career.deck.entries == run.career.deck.entries
+                && career.deck.plain_pals == run.career.deck.plain_pals
+                && career.deck.filler_cards == run.career.deck.filler_cards
         });
-        rows.push(json!({"trainee": data.umas[x].name, "cand": is_candidate, "class": simulator.env.setup.deck_class[x], "exact_val": r.career.value, "proxy_val": proxy.as_ref().map(|f| f.value),
-        "same_pair": same_pair, "same_deck": same_deck, "score": r.net_saving(), "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
+        rows.push(json!({"trainee": data.umas[trainee].name, "cand": is_candidate, "class": simulator.env.setup.deck_class[trainee], "exact_val": run.career.value, "proxy_val": proxy.as_ref().map(|career| career.value),
+        "same_pair": same_pair, "same_deck": same_deck, "score": run.net_saving(), "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
     }
     std::mem::swap(&mut simulator.evaluator.cache, &mut cache_before_builders);
-    json!({"cands": candidates.trainees.iter().map(|&u| data.umas[u].name.clone()).collect::<Vec<_>>(), "rows": rows})
+    json!({"cands": candidates.trainees.iter().map(|&uma| data.umas[uma].name.clone()).collect::<Vec<_>>(), "rows": rows})
 }
 
 /// A row scored against the fit, with the stamp of the cache it read (`stamped`)
@@ -689,7 +710,7 @@ impl PlanInputs<'_, '_> {
     fn prune_plan_scorings(&self, runs: &mut [PlanRow]) {
         let best_exact_saving = runs
             .iter()
-            .filter(|r| r.exact && self.is_runnable(&r.career))
+            .filter(|row| row.exact && self.is_runnable(&row.career))
             .filter_map(PlanRow::net_saving)
             .fold(f64::NEG_INFINITY, f64::max);
         if !best_exact_saving.is_finite() {

@@ -139,7 +139,7 @@ impl DeckSpace<'_> {
             key_white,
             key_gold,
         } = scratch;
-        let key_slack = |cl: &SearchClause| 1e-11 * cl.lineages.len() as f64 * fixed.max(1.0);
+        let key_slack = |clause: &SearchClause| 1e-11 * clause.lineages.len() as f64 * fixed.max(1.0);
         let mut configurations: Vec<SearchConfig> = vec![];
         let mut pending: Vec<PendingConfig> = vec![];
         let mut key_ratios: Vec<Option<std::rc::Rc<GroupTable>>> = vec![];
@@ -149,14 +149,19 @@ impl DeckSpace<'_> {
                 continue;
             }
             let mut needs_ratio_key = true;
-            let code: u64 = kind_counts.iter().zip(kind_place_values).map(|(&c, &p)| c as u64 * p).sum();
+            let code: u64 = kind_counts
+                .iter()
+                .zip(kind_place_values)
+                .map(|(&count, &place_value)| count as u64 * place_value)
+                .sum();
             let key_misses = self.key_miss(code);
             let (white_misses, gold_misses) = (&key_misses.white, &key_misses.gold);
             // per kind group and target: products of the r lowest miss chances of distinct entries, r = 0..=size
             // (any r entries of the group miss at least that much); cached per trainee and key
             // (the groups a configuration of this key can use: its kinds and, with slots left, the pal entries)
-            let needed_groups: u64 = (0..kind_count).filter(|&i| kind_counts[i] > 0).fold(0u64, |m, i| m | 1 << i)
-                | if chain_slots < size { 1 << kind_count } else { 0 };
+            let needed_groups: u64 =
+                (0..kind_count).filter(|&i| kind_counts[i] > 0).fold(0u64, |mask, i| mask | 1 << i)
+                    | if chain_slots < size { 1 << kind_count } else { 0 };
             let group_misses = self.gm_cached(
                 GroupMissKey { set_id, code },
                 groups_all,
@@ -211,8 +216,9 @@ impl DeckSpace<'_> {
                     (clause_value(&clauses[0], key_white, key_gold) + key_slack(&clauses[0])) * (1.0 + 1e-9)
                         < best_value
                 } else {
-                    clauses.iter().all(|cl| {
-                        rho * (clause_value(cl, key_white, key_gold) + key_slack(cl)) * (1.0 + 1e-9) < cl.threshold
+                    clauses.iter().all(|clause| {
+                        rho * (clause_value(clause, key_white, key_gold) + key_slack(clause)) * (1.0 + 1e-9)
+                            < clause.threshold
                     })
                 };
                 if none {
@@ -230,43 +236,46 @@ impl DeckSpace<'_> {
                     if plain_pals > plain_pal_count {
                         continue;
                     }
-                    if let Some(p) = self.deck_job.pals
-                        && (pal_entry_count + plain_pals < p || plain_pals > p)
+                    if let Some(required_pals) = self.deck_job.pals
+                        && (pal_entry_count + plain_pals < required_pals || plain_pals > required_pals)
                     {
                         continue;
                     }
                     let groups = &mut *group_buffer;
                     groups.clear();
                     for i in 0..kind_count {
-                        let c = if i == filler_kind_index { real_filler_count } else { kind_counts[i] };
-                        if c > 0 {
-                            groups.push(GroupSlots { group: i, slots: c });
+                        let slots = if i == filler_kind_index { real_filler_count } else { kind_counts[i] };
+                        if slots > 0 {
+                            groups.push(GroupSlots { group: i, slots });
                         }
                     }
                     if pal_entry_count > 0 {
                         groups.push(GroupSlots { group: kind_count, slots: pal_entry_count });
                     }
                     let groups = &**group_buffer;
-                    if all_lock_bits & !groups.iter().fold(0u8, |m, group| m | group_lock_bits[group.group]) != 0 {
+                    if all_lock_bits & !groups.iter().fold(0u8, |mask, group| mask | group_lock_bits[group.group]) != 0
+                    {
                         continue;
                     }
                     // the per-target bound first, the ratio products only for configurations it lets through
                     (bounds.odds)(groups, &group_misses, white_chances, gold_chances);
                     // the configuration's class cap (every deck of it is in a class at most this one's)
-                    let rc = if best {
+                    let class_cap = if best {
                         rho
                     } else {
-                        class_caps[cap_class(groups.iter().fold(0u64, |m, group| m | group_class_masks[group.group]))]
+                        class_caps
+                            [cap_class(groups.iter().fold(0u64, |mask, group| mask | group_class_masks[group.group]))]
                     };
-                    let iv = if best { clause_value(&clauses[0], white_chances, gold_chances) } else { 0.0 };
+                    let ideal_value = if best { clause_value(&clauses[0], white_chances, gold_chances) } else { 0.0 };
                     let ideal = if cap_free {
                         true
                     } else if best {
-                        iv * (1.0 + 1e-9) >= best_value
+                        ideal_value * (1.0 + 1e-9) >= best_value
                     } else {
-                        clauses
-                            .iter()
-                            .any(|cl| rc * clause_value(cl, white_chances, gold_chances) * (1.0 + 1e-9) >= cl.threshold)
+                        clauses.iter().any(|clause| {
+                            class_cap * clause_value(clause, white_chances, gold_chances) * (1.0 + 1e-9)
+                                >= clause.threshold
+                        })
                     };
                     if !ideal {
                         continue;
@@ -277,7 +286,7 @@ impl DeckSpace<'_> {
                             needs_ratio_key = false;
                         }
                         pending.push(PendingConfig {
-                            upper_bound: iv * (1.0 + 1e-12),
+                            upper_bound: ideal_value * (1.0 + 1e-12),
                             ratio_key_index: key_ratios.len() - 1,
                             code,
                             real_filler_count,
@@ -299,23 +308,35 @@ impl DeckSpace<'_> {
                         )));
                     }
                     let ratio_prefixes = ratio_prefixes.as_ref().unwrap();
-                    let (cv, cvo) = (&mut *clause_bounds, &mut *order_bounds);
-                    (bounds.root)(groups, ratio_prefixes, white_chances, gold_chances, ratio_products, cv, cvo);
-                    let rt = |cv: &[f64]| {
+                    let (clause_values, order_values) = (&mut *clause_bounds, &mut *order_bounds);
+                    (bounds.root)(
+                        groups,
+                        ratio_prefixes,
+                        white_chances,
+                        gold_chances,
+                        ratio_products,
+                        clause_values,
+                        order_values,
+                    );
+                    let root_of = |clause_values: &[f64]| {
                         if best {
-                            cv[0]
+                            clause_values[0]
                         } else {
                             (0..clauses.len())
-                                .map(|ci| rho * cv[ci] / clauses[ci].threshold.max(1e-300))
+                                .map(|clause_index| {
+                                    rho * clause_values[clause_index] / clauses[clause_index].threshold.max(1e-300)
+                                })
                                 .fold(f64::NEG_INFINITY, f64::max)
                         }
                     };
-                    let (root, prune_bound) = (rt(cvo), rt(cv));
+                    let (root, prune_bound) = (root_of(order_values), root_of(clause_values));
                     // (the visiting order stays by `root`; a configuration whose root at its class cap fails is left out)
                     if !best
                         && !cap_free
-                        && rc < rho
-                        && (0..clauses.len()).all(|ci| rc * cv[ci] * (1.0 + 1e-9) < clauses[ci].threshold)
+                        && class_cap < rho
+                        && (0..clauses.len()).all(|clause_index| {
+                            class_cap * clause_values[clause_index] * (1.0 + 1e-9) < clauses[clause_index].threshold
+                        })
                     {
                         continue;
                     }
@@ -330,7 +351,7 @@ impl DeckSpace<'_> {
                         group_misses: std::rc::Rc::clone(&group_misses),
                         ratio_prefixes: std::rc::Rc::clone(ratio_prefixes),
                         prune_bound,
-                        clause_bounds: if check_ratio_bounds { cv.to_vec() } else { vec![] },
+                        clause_bounds: if check_ratio_bounds { clause_values.to_vec() } else { vec![] },
                     });
                 }
             }

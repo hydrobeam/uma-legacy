@@ -39,7 +39,7 @@ pub(super) struct DeckBest {
 /// One pass's solved loops, cutoff and unexamined bound, counters, and shared-deck results.
 pub(super) struct Pass {
     pub(super) solved: Vec<SolvedLoop>,
-    pub(super) kth: f64,
+    pub(super) kth_best: f64,
     pub(super) next_bound: f64,
     pub(super) scanned: usize,
     pub(super) generated: usize,
@@ -74,7 +74,7 @@ impl Pass {
             let key = SharedDeckKey {
                 card_ids: deck.ids.clone(),
                 end_links: deck.ends.clone(),
-                variants: deck.vars.clone(),
+                variants: deck.variants.clone(),
                 plain_pals: deck.plain_ids.len(),
             };
             let best = self.deck_best.entry(key).or_insert(DeckBest {
@@ -93,14 +93,14 @@ impl Pass {
         self.solved.push(solved);
         self.lists.push(decks);
         let mut deck_values: Vec<f64> = self.deck_best.values().map(|best| best.value).collect();
-        self.kth = kth_highest(&mut deck_values, loop_limit);
+        self.kth_best = kth_highest(&mut deck_values, loop_limit);
     }
 
     /// Adds a per-uma-deck loop: the cutoff becomes the `loop_limit`-th best loop's value
     fn add_per_uma(&mut self, solved: SolvedLoop, loop_limit: usize) {
         self.values.push(solved.value);
         self.solved.push(solved);
-        self.kth = kth_highest(&mut self.values, loop_limit);
+        self.kth_best = kth_highest(&mut self.values, loop_limit);
     }
 }
 
@@ -108,22 +108,22 @@ impl Multi<'_> {
     /// Orders the pool by M_u (the product ceiling at her highest chance), highest first, for `band`, and sets the
     /// highest structure sum
     pub(super) fn rank(&mut self, state: &mut LoopSearchState) {
-        let top_ceilings: UmaTable<f64> =
-            self.inputs
-                .data
-                .umas
-                .indices()
-                .map(|u| {
-                    if self.pool.contains(&u) {
-                        self.btab(state, u, self.grid.idx(self.maximum_chances[u]))
-                    } else {
-                        0.0
-                    }
-                })
-                .collect();
+        let top_ceilings: UmaTable<f64> = self
+            .inputs
+            .data
+            .umas
+            .indices()
+            .map(|uma| {
+                if self.pool.contains(&uma) {
+                    self.btab(state, uma, self.grid.idx(self.maximum_chances[uma]))
+                } else {
+                    0.0
+                }
+            })
+            .collect();
         let mut ranked: Vec<UmaIndex> = self.pool.clone();
         ranked.sort_by(|&a, &b| top_ceilings[b].partial_cmp(&top_ceilings[a]).unwrap());
-        let ceilings: Vec<f64> = ranked.iter().map(|&u| top_ceilings[u]).collect();
+        let ceilings: Vec<f64> = ranked.iter().map(|&uma| top_ceilings[uma]).collect();
         let pool_size = self.pool.len();
         let four_sum =
             if self.allow_four && pool_size >= 4 { ceilings[0] + ceilings[1] + ceilings[2] + ceilings[3] } else { 0.0 };
@@ -181,14 +181,13 @@ impl Multi<'_> {
                         }
                         let mut structure = [ranked[a], ranked[b], ranked[c], ranked[e]];
                         structure.sort_unstable();
-                        if !self.required_umas.iter().all(|r| structure.contains(r)) {
+                        if !self.required_umas.iter().all(|required| structure.contains(required)) {
                             continue;
                         }
                         let lineages = lins(4);
-                        let chances = self
-                            .inputs
-                            .model
-                            .lineage_q_arr(&structure, &|x, y| self.pair_bounds[structure[x]][structure[y]]);
+                        let chances = self.inputs.model.lineage_q_arr(&structure, &|first, second| {
+                            self.pair_bounds[structure[first]][structure[second]]
+                        });
                         let ceiling = self.fixed
                             * (0..12)
                                 .map(|l| self.btab(state, structure[lineages[l].trainee], self.grid.idx(chances[l])))
@@ -223,11 +222,14 @@ impl Multi<'_> {
                     let mut trio = [ranked[a], ranked[b], ranked[c]];
                     trio.sort_unstable();
                     let structure = [trio[0], trio[1], trio[2], NONE];
-                    if !self.required_umas.iter().all(|r| structure.contains(r)) {
+                    if !self.required_umas.iter().all(|required| structure.contains(required)) {
                         continue;
                     }
                     let lineages = lins(3);
-                    let chances = self.inputs.model.lineage_q_arr(&trio, &|x, y| self.pair_bounds[trio[x]][trio[y]]);
+                    let chances = self
+                        .inputs
+                        .model
+                        .lineage_q_arr(&trio, &|first, second| self.pair_bounds[trio[first]][trio[second]]);
                     let ceiling = self.fixed
                         * (0..3)
                             .map(|l| self.btab(state, trio[lineages[l].trainee], self.grid.idx(chances[l])))
@@ -244,7 +246,7 @@ impl Multi<'_> {
     /// budget; a lower cap's pass reuses everything computed so far and gets a quarter of the budget more. When none
     /// finishes, a pass with the cap at 1 (product odds: no deck searches) gives the answer. (the pass, its cap)
     pub(super) fn certify(&self, state: &mut LoopSearchState) -> (Pass, f64) {
-        let checks = self.inputs.deck_job.checks;
+        let checks = crate::checks::get();
         let budget = checks.exact_budget.unwrap_or(EXACT_BUDGET);
         let default_caps;
         let caps: &[f64] = if !self.inputs.deck_job.exact {
@@ -289,7 +291,7 @@ impl Multi<'_> {
         candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
         let mut pass = Pass {
             solved: vec![],
-            kth: f64::NEG_INFINITY,
+            kth_best: f64::NEG_INFINITY,
             next_bound: 0.0,
             scanned: 0,
             generated: candidates.len(),
@@ -305,13 +307,13 @@ impl Multi<'_> {
             }
             // Treat improvements within 4e-12 relative slack as ties, so equal-valued structures need not all be
             // solved.
-            let kth = pass.kth;
-            let beats = |ceiling: f64| ceiling > kth * (1.0 + 4e-12);
+            let kth_best = pass.kth_best;
+            let beats = |ceiling: f64| ceiling > kth_best * (1.0 + 4e-12);
             if !(queue.next < queue.candidates.len() && beats(cap * queue.candidates[queue.next].ceiling)) {
                 if queue.upper_sum <= 0.0 || !beats(cap * self.sum_ceiling(queue.upper_sum)) {
                     break;
                 }
-                pass.generated += self.widen(state, &mut queue, kth, cap);
+                pass.generated += self.widen(state, &mut queue, kth_best, cap);
                 continue;
             }
             let LoopCandidate { ceiling: _, members: structure } = queue.candidates[queue.next];
@@ -327,8 +329,9 @@ impl Multi<'_> {
 
     /// Adds the next band of structures below the queue's `upper_sum` (down to the sum the k-th value needs, at most 15%
     /// lower), merged into the unscanned rest in ceiling order; how many it added
-    fn widen(&self, state: &mut LoopSearchState, queue: &mut Queue, kth: f64, cap: f64) -> usize {
-        let kth_sum = if kth > f64::NEG_INFINITY { kth / cap * 12.0 / (3.0 * self.fixed) * (1.0 - 1e-9) } else { 0.0 };
+    fn widen(&self, state: &mut LoopSearchState, queue: &mut Queue, kth_best: f64, cap: f64) -> usize {
+        let kth_sum =
+            if kth_best > f64::NEG_INFINITY { kth_best / cap * 12.0 / (3.0 * self.fixed) * (1.0 - 1e-9) } else { 0.0 };
         let lo = kth_sum.max(queue.upper_sum * 0.85);
         let lo = if lo < self.maximum_structure_sum * 1e-6 { 0.0 } else { lo };
         let mut more: Vec<LoopCandidate> = vec![];
@@ -345,14 +348,16 @@ impl Multi<'_> {
     /// A structure's turn in a pass: rejected by its ceilings (cheapest first), else scheduled and solved exactly into
     /// the pass. None when the budget runs out.
     fn solve(&self, state: &mut LoopSearchState, structure: [UmaIndex; 4], cap: f64, pass: &mut Pass) -> Option<()> {
-        let kth = pass.kth;
-        let beats = |ceiling: f64| ceiling > kth * (1.0 + 4e-12);
+        let kth_best = pass.kth_best;
+        let beats = |ceiling: f64| ceiling > kth_best * (1.0 + 4e-12);
         let members = members(&structure);
         let member_count = members.len();
         let lineages = lins(member_count);
         let lineage_count = lineages.len();
-        let pair_ceiling_chances =
-            self.inputs.model.lineage_q_arr(members, &|x, y| self.pair_bounds[members[x]][members[y]]);
+        let pair_ceiling_chances = self
+            .inputs
+            .model
+            .lineage_q_arr(members, &|first, second| self.pair_bounds[members[first]][members[second]]);
         // cheapest first: the cell bounds as they stand, then the product ceiling with one deck per trainee
         let cell_ceiling = (0..lineage_count)
             .map(|l| self.cell(state, structure[lineages[l].trainee], self.grid.idx(pair_ceiling_chances[l]), cap).0)
@@ -368,7 +373,7 @@ impl Multi<'_> {
             return Some(());
         }
         // exact ceiling at the pairwise-ceiling chances, valid for any schedule
-        if !beats(self.exact_ceiling(state, structure, &pair_ceiling_chances, kth, cap)) {
+        if !beats(self.exact_ceiling(state, structure, &pair_ceiling_chances, kth_best, cap)) {
             return Some(());
         }
         if state.tally.aborted {
@@ -377,20 +382,20 @@ impl Multi<'_> {
         let schedule = self.schedule(state, structure, member_count);
         let data = self.inputs.data;
         let win_chances: Vec<Vec<f64>> =
-            (0..member_count).map(|i| data.umas[structure[i]].win_chances(data.nr, &schedule.s[i])).collect();
-        let chances = self.inputs.model.lineage_q(members, &|x, y| {
-            if self.no_race { 0.0 } else { dot(&win_chances[x], &win_chances[y]) }
+            (0..member_count).map(|i| data.win_chances(&data.umas[structure[i]], &schedule.schedules[i])).collect();
+        let chances = self.inputs.model.lineage_q(members, &|first, second| {
+            if self.no_race { 0.0 } else { dot(&win_chances[first], &win_chances[second]) }
         });
         let padded_chances: [f64; 12] = std::array::from_fn(|i| chances.get(i).copied().unwrap_or(0.0));
         // rejected only with the schedule found: a better schedule could change this one's fate
         if (self.shared && !beats(cap * self.relaxed_shared(state, structure, &padded_chances)))
-            || !beats(self.exact_ceiling(state, structure, &padded_chances, kth, cap))
+            || !beats(self.exact_ceiling(state, structure, &padded_chances, kth_best, cap))
         {
             pass.schedule_rejects += 1;
             return Some(());
         }
         if self.shared {
-            let floor = if kth.is_finite() { kth * lineage_count as f64 } else { f64::NEG_INFINITY };
+            let floor = if kth_best.is_finite() { kth_best * lineage_count as f64 } else { f64::NEG_INFINITY };
             let decks = self.exact_shared(state, structure, &padded_chances[..lineage_count], floor, cap);
             if state.tally.aborted {
                 return None;
@@ -430,14 +435,14 @@ impl Multi<'_> {
         cached.unwrap_or_else(|| {
             let schedule = match &self.fixed_schedules {
                 Some(fixed) => Res {
-                    s: std::array::from_fn(|i| {
+                    schedules: std::array::from_fn(|i| {
                         if i < member_count { fixed[structure[i]].unwrap() } else { [Choice::Rest; NT] }
                     }),
                 },
                 None => optimize_fam(
                     self.inputs.data,
                     &structure,
-                    self.inputs.skill_job.iters,
+                    self.inputs.skill_job.iterations,
                     self.inputs.skill_job.seed,
                     60.0,
                 ),

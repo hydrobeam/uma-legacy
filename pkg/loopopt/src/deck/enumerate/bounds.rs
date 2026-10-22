@@ -71,36 +71,36 @@ pub(crate) fn prepare_outfit_bounds(
     let outfit_rows: Vec<OutfitRow> = clauses
         .iter()
         .enumerate()
-        .flat_map(|(ci, cl)| {
-            cl.lineages.iter().flat_map(move |&LineageChance { trainee: k, inheritance: q }| {
-                (0..chances.model.n_outfits(trainees[k])).map(move |o| OutfitRow {
-                    clause: ci,
+        .flat_map(|(clause_index, clause)| {
+            clause.lineages.iter().flat_map(move |&LineageChance { trainee: k, inheritance: q }| {
+                (0..chances.model.n_outfits(trainees[k])).map(move |outfit| OutfitRow {
+                    clause: clause_index,
                     trainee: trainees[k],
                     inheritance: q,
-                    outfit: o,
+                    outfit,
                 })
             })
         })
         .collect();
     let outfit_runs: Vec<OutfitRun> = {
-        let mut v = vec![];
+        let mut runs = vec![];
         let mut i = 0;
         while i < outfit_rows.len() {
-            let no = chances.model.n_outfits(outfit_rows[i].trainee);
-            v.push(OutfitRun { clause: outfit_rows[i].clause, start: i, count: no });
-            i += no;
+            let outfit_count = chances.model.n_outfits(outfit_rows[i].trainee);
+            runs.push(OutfitRun { clause: outfit_rows[i].clause, start: i, count: outfit_count });
+            i += outfit_count;
         }
-        v
+        runs
     };
     let zero = vec![0.0f64; target_count];
     // the node bound's per-target values, one per (clause, chance, outfit)
     let target_bounds = vec![0.0f64; outfit_rows.len()];
     // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
     let outfits: Vec<crate::skills::OutfitPre> =
-        outfit_rows.iter().map(|&OutfitRow { trainee: u, outfit: o, .. }| chances.outfit_pre(u, o)).collect();
+        outfit_rows.iter().map(|&OutfitRow { trainee, outfit, .. }| chances.outfit_pre(trainee, outfit)).collect();
     let empty_values: Vec<f64> = outfit_rows
         .iter()
-        .map(|&OutfitRow { trainee: u, inheritance: q, outfit: o, .. }| chances.outfit_fast(u, o, q, &zero, &zero))
+        .map(|&OutfitRow { trainee, inheritance: q, outfit, .. }| chances.outfit_fast(trainee, outfit, q, &zero, &zero))
         .collect();
     // The ratio bound split by target (ZSPLIT). An outfit's value is a product of per-target factors; split the
     // targets into Z and N: over the decks below a node, Z's factors are at most A's (each target's at its lowest
@@ -213,16 +213,17 @@ impl RatioColumns<'_> {
         // from the prefix at its first touched target: the same f64s
         let empty_factors: Vec<f64> = (0..outfit_row_count)
             .flat_map(|i| {
-                let (o, q) = (&self.outfits[i], self.outfit_rows[i].inheritance);
-                (0..self.target_count).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
+                let (outfit, q) = (&self.outfits[i], self.outfit_rows[i].inheritance);
+                (0..self.target_count)
+                    .map(move |t| if t < outfit.len() { outfit.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
             })
             .collect();
         let ratio_divisors: Vec<Option<RatioDivisor>> = (0..column_count)
-            .map(|c| {
-                let i = self.row_indices[c];
+            .map(|column| {
+                let i = self.row_indices[column];
                 let n = self.outfits[i].len();
-                if self.zero_masks[c] != 0 {
-                    Some(RatioDivisor { targets: self.nonzero_masks[c], value: self.divisors[c] })
+                if self.zero_masks[column] != 0 {
+                    Some(RatioDivisor { targets: self.nonzero_masks[column], value: self.divisors[column] })
                 } else if self.empty_values[i] > 0.0 {
                     Some(RatioDivisor {
                         targets: if n >= 32 { u32::MAX } else { (1u32 << n) - 1 },
@@ -234,14 +235,18 @@ impl RatioColumns<'_> {
             })
             .collect();
         let factor_prefixes: Vec<f64> = (0..column_count)
-            .flat_map(|c| {
-                let i = self.row_indices[c];
-                let m = ratio_divisors[c].map_or(0, |x| x.targets);
-                let mut v = vec![1.0f64; self.target_count + 1];
+            .flat_map(|column| {
+                let i = self.row_indices[column];
+                let target_mask = ratio_divisors[column].map_or(0, |divisor| divisor.targets);
+                let mut prefixes = vec![1.0f64; self.target_count + 1];
                 for t in 0..self.target_count {
-                    v[t + 1] = if m >> t & 1 != 0 { v[t] * empty_factors[i * self.target_count + t] } else { v[t] };
+                    prefixes[t + 1] = if target_mask >> t & 1 != 0 {
+                        prefixes[t] * empty_factors[i * self.target_count + t]
+                    } else {
+                        prefixes[t]
+                    };
                 }
-                v
+                prefixes
             })
             .collect();
         RatioPrefixes { empty_factors, ratio_divisors, factor_prefixes }
@@ -275,17 +280,17 @@ impl DeckSpace<'_> {
         lock_bits: &[u8],
         misses: EntryMisses<'_>,
     ) -> std::rc::Rc<Vec<Vec<Dominator>>> {
-        if let Some(r) = self.dominance_cache.borrow().get(&key) {
-            return std::rc::Rc::clone(r);
+        if let Some(table) = self.dominance_cache.borrow().get(&key) {
+            return std::rc::Rc::clone(table);
         }
         let target_count = self.target_groups.len();
-        let in01 = |x: f64| (0.0..=1.0).contains(&x);
+        let in_unit = |x: f64| (0.0..=1.0).contains(&x);
         let ok = |j: usize| {
             (0..target_count)
-                .all(|t| in01(misses.white[j * target_count + t]) && in01(misses.gold[j * target_count + t]))
+                .all(|t| in_unit(misses.white[j * target_count + t]) && in_unit(misses.gold[j * target_count + t]))
         };
-        let pal = |j: usize| self.cards[self.card_indices[j]].pal;
-        let r = std::rc::Rc::new(
+        let is_pal = |j: usize| self.cards[self.card_indices[j]].pal;
+        let table = std::rc::Rc::new(
             (0..entries.len())
                 .map(|p| {
                     let b = entries[p];
@@ -301,7 +306,7 @@ impl DeckSpace<'_> {
                             if lock_bits[b] != 0 && lock_bits[aj] != lock_bits[b] {
                                 return None;
                             }
-                            if self.deck_job.pals.is_some() && pal(aj) != pal(b) {
+                            if self.deck_job.pals.is_some() && is_pal(aj) != is_pal(b) {
                                 return None;
                             }
                             if !ok(aj)
@@ -316,15 +321,15 @@ impl DeckSpace<'_> {
                                 position: a as u32,
                                 gold_gap_targets: (0..target_count)
                                     .filter(|&t| misses.gold[aj * target_count + t] < misses.gold[b * target_count + t])
-                                    .fold(0u32, |m, t| m | 1 << t),
+                                    .fold(0u32, |mask, t| mask | 1 << t),
                             })
                         })
                         .collect()
                 })
                 .collect::<Vec<_>>(),
         );
-        self.dominance_cache.borrow_mut().insert(key, std::rc::Rc::clone(&r));
-        r
+        self.dominance_cache.borrow_mut().insert(key, std::rc::Rc::clone(&table));
+        table
     }
 }
 

@@ -124,7 +124,7 @@ impl ConfigOrder {
             while self.pending_position < self.pending_order.len() {
                 let pending_config = &self.pending[self.pending_order[self.pending_position]];
                 if !(pending_config.upper_bound * (1.0 + 1e-9) >= best_value
-                    && self.heap.peek().is_none_or(|h| pending_config.upper_bound >= h.root))
+                    && self.heap.peek().is_none_or(|top| pending_config.upper_bound >= top.root))
                 {
                     break;
                 }
@@ -173,7 +173,7 @@ impl ConfigOrder {
                     },
                 });
             }
-            self.heap.pop().map(|h| ConfigRef::Computed(h.configuration))
+            self.heap.pop().map(|top| ConfigRef::Computed(top.configuration))
         } else {
             if self.eager_position >= self.configurations.len() {
                 return None;

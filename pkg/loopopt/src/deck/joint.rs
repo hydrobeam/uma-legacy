@@ -17,9 +17,9 @@ pub(crate) mod upper;
 pub(crate) struct JointQuery<'chance> {
     /// The job's chain-event distribution (`DeckJob::chain_events`).
     pub(crate) chain_events: ChainEvents,
-    /// The job's diagnostic switches (`DeckJob::checks`): `joint_b`'s checks and `upper_na`'s report.
+    /// The job's diagnostic switches (`checks::get`): `joint_b`'s checks and `upper_na`'s report.
     pub(crate) checks: &'chance crate::checks::Checks,
-    /// Index in `Model::opts`.
+    /// Index in `Model::outfit_options`.
     pub(crate) trainee: crate::uma::UmaIndex,
     pub(crate) inheritance_chances: &'chance [f64],
     /// Per outfit and uncertain target: own events, or the career's folded event/inheritance chances.
@@ -36,10 +36,10 @@ impl<'chance> JointQuery<'chance> {
     ) -> Self {
         Self {
             chain_events: deck_job.chain_events(),
-            checks: deck_job.checks,
+            checks: crate::checks::get(),
             trainee,
             inheritance_chances,
-            event_chances: &model.ews[trainee],
+            event_chances: &model.event_chances[trainee],
         }
     }
 }
@@ -122,16 +122,16 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
         let borrowed_entries: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
         if let Some(state_bounds) = state_value(model, query, &borrowed_entries, filler) {
-            SBCHK.with(|c| {
-                let mut c = c.borrow_mut();
-                for (v, x) in state_bounds.iter().zip(&chances) {
-                    if x.all > 0.0 {
-                        let bound_ratio = v / x.all;
-                        c.decks += 1;
-                        c.max_ratio = c.max_ratio.max(bound_ratio);
-                        c.min_ratio = c.min_ratio.min(bound_ratio);
+            SBCHK.with(|cell| {
+                let mut counts = cell.borrow_mut();
+                for (bound, exact) in state_bounds.iter().zip(&chances) {
+                    if exact.all > 0.0 {
+                        let bound_ratio = bound / exact.all;
+                        counts.decks += 1;
+                        counts.max_ratio = counts.max_ratio.max(bound_ratio);
+                        counts.min_ratio = counts.min_ratio.min(bound_ratio);
                         if bound_ratio < 1.0 - 1e-9 {
-                            c.below += 1;
+                            counts.below += 1;
                         }
                     }
                 }
@@ -143,15 +143,15 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
         let borrowed_entries: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
         if let Some(state_bounds) = state_value_cf(model, query, &borrowed_entries, filler) {
-            CFCHK.with(|c| {
-                let mut c = c.borrow_mut();
-                for (v, x) in state_bounds.iter().zip(&chances) {
-                    c.scorings += 1;
-                    if x.all > v * (1.0 + 1e-9) {
-                        c.scoring_violations += 1;
+            CFCHK.with(|cell| {
+                let mut counts = cell.borrow_mut();
+                for (bound, exact) in state_bounds.iter().zip(&chances) {
+                    counts.scorings += 1;
+                    if exact.all > bound * (1.0 + 1e-9) {
+                        counts.scoring_violations += 1;
                     }
-                    if *v > 0.0 {
-                        c.max_ratio = c.max_ratio.max(x.all / v);
+                    if *bound > 0.0 {
+                        counts.max_ratio = counts.max_ratio.max(exact.all / bound);
                     }
                 }
             });
@@ -162,8 +162,8 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
             .iter()
             .map(|entry| SourceEntry { sources: entry.sources.borrow().clone(), kind: entry.kind })
             .collect();
-        let x = joint_trainee_ref(model, query, &owned_entries, filler, options.target_count);
-        for (a, b) in chances.iter().zip(&x) {
+        let reference = joint_trainee_ref(model, query, &owned_entries, filler, options.target_count);
+        for (a, b) in chances.iter().zip(&reference) {
             let relative_error = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
             assert!(
                 relative_error(a.all, b.all) < 1e-11
@@ -247,12 +247,12 @@ impl TargetSources {
         }
         let mut levels = Vec::with_capacity((stop as usize + 1) * uncertain_count);
         levels.extend_from_slice(&base);
-        for d in 1..=stop {
+        for level in 1..=stop {
             let mut row: Vec<MissFactors> =
-                levels[(d as usize - 1) * uncertain_count..d as usize * uncertain_count].to_vec();
+                levels[(level as usize - 1) * uncertain_count..level as usize * uncertain_count].to_vec();
             for TargetChainMisses { target: k, links } in &self.chain_misses {
-                for &LinkMisses { link: l, no_gold, no_hint } in links {
-                    if l == d {
+                for &LinkMisses { link, no_gold, no_hint } in links {
+                    if link == level {
                         row[*k].no_gold *= no_gold;
                         row[*k].no_hint *= no_hint;
                     }

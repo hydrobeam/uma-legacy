@@ -36,9 +36,9 @@ fn fixture_cards() -> CardsRaw {
 #[test]
 fn fast_metric_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk = fixture_skills();
-    let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":21010},{"group":20165}]})).unwrap();
-    let m = Model::new(&d, &sk, &sj);
+    let skills = fixture_skills();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":21010},{"group":20165}]})).unwrap();
+    let m = Model::new(&d, &skills, &skill_job);
     let nu = m.uncertain.len();
     let fs: [&[usize]; 5] = [&[0, 5, 9, 20], &[3, 7, 11, 40], &[1, 2, 3, 4], &[0, 5, 9], &[3, 11, 40]];
     for (fi, &f) in fs.iter().enumerate() {
@@ -47,13 +47,16 @@ fn fast_metric_matches_reference() {
         let qv = m.lineage_q(&f, &|_, _| 3.0);
         assert_eq!(qv.len(), if f.len() == 4 { 12 } else { 3 });
         assert!(qa.iter().zip(&qv).all(|(a, b)| a.to_bits() == b.to_bits()));
-        let dw: Vec<f64> = (0..nu).map(|k| ((k + fi) as f64 * 0.17) % 1.0).collect();
-        let dg: Vec<f64> = (0..nu).map(|k| ((k * 3 + fi) as f64 * 0.11) % 1.0).collect();
+        let white_hint_chances: Vec<f64> = (0..nu).map(|k| ((k + fi) as f64 * 0.17) % 1.0).collect();
+        let gold_hint_chances: Vec<f64> = (0..nu).map(|k| ((k * 3 + fi) as f64 * 0.11) % 1.0).collect();
         // the search's per-trainee term (best outfit, no allocation) against the detail view's (`trainee_d`): one
         // landing form (`land_dw`) multiplied in target order, so the same f64
         for (lineage, &q) in skills::lins(f.len()).iter().zip(&qv) {
             let t = f[lineage.trainee];
-            let (a, b) = (m.trainee_fast(t, q, &dw, &dg), m.trainee_d(t, q, &dw, &dg).0);
+            let (a, b) = (
+                m.trainee_fast(t, q, &white_hint_chances, &gold_hint_chances),
+                m.trainee_d(t, q, &white_hint_chances, &gold_hint_chances).0,
+            );
             assert_eq!(a.to_bits(), b.to_bits(), "{a} vs {b}");
         }
     }
@@ -73,7 +76,7 @@ fn chain_marginals_dense_matches_ref() {
         ChainKind { links: 5, stop: 2, stop_risk: 0 },
     ];
     let mut worst = 0.0f64;
-    let mut cnt = 0;
+    let mut multiset_count = 0;
     fn visit_multisets(
         kinds: &[ChainKind],
         start: usize,
@@ -93,10 +96,10 @@ fn chain_marginals_dense_matches_ref() {
             current.pop();
         }
     }
-    visit_multisets(&kinds, 0, 6, &mut vec![], &mut |ks| {
-        let a = chain_marginals_ref(ChainEvents::default(), ks);
-        let b = chain_marginals_dense(ChainEvents::default(), ks);
-        cnt += 1;
+    visit_multisets(&kinds, 0, 6, &mut vec![], &mut |multiset| {
+        let a = chain_marginals_ref(ChainEvents::default(), multiset);
+        let b = chain_marginals_dense(ChainEvents::default(), multiset);
+        multiset_count += 1;
         #[allow(clippy::iter_over_hash_type, reason = "a running max over every entry: the order changes nothing")]
         for (k, v) in &a {
             for (x, y) in v.iter().zip(&b[k]) {
@@ -104,19 +107,19 @@ fn chain_marginals_dense_matches_ref() {
             }
         }
     });
-    eprintln!("{cnt} multisets, max |dense - ref| = {worst:e}");
+    eprintln!("{multiset_count} multisets, max |dense - ref| = {worst:e}");
     assert!(worst < 1e-14);
 }
 /// The character rule: a card blocks its own character and, for a group card, every member.
 #[test]
 fn card_blocks_own_character_and_group_members() {
-    let cr = fixture_cards();
-    let sirius = cr.cards.iter().find(|c| c.id == 30081).expect("Team Sirius");
+    let cards = fixture_cards();
+    let sirius = cards.cards.iter().find(|c| c.id == 30081).expect("Team Sirius");
     let checks = crate::checks::get();
     // Special Week, Suzuka; not Vodka
     assert!(sirius.blocks(1001, checks) && sirius.blocks(1002, checks) && !sirius.blocks(1008, checks));
-    let halo = cr.cards.iter().find(|c| c.name.contains("Tonight, We Waltz")).unwrap();
-    assert!(halo.blocks(halo.chara, checks) && !halo.blocks(1001, checks));
+    let halo = cards.cards.iter().find(|c| c.name.contains("Tonight, We Waltz")).unwrap();
+    assert!(halo.blocks(halo.character_id, checks) && !halo.blocks(1001, checks));
 }
 /// Retained chain-model regression values, plus the effect of freeing a slot by ending a chain early.
 /// Current calibration: docs/RESEARCH.md section 8 (`8.fit_of_n_runs`).
@@ -144,18 +147,18 @@ fn chain_model_calibration() {
 /// are hinted together less often than independent chances would say, and the outcomes are a distribution.
 #[test]
 fn training_draws_over_two_targets() {
-    let cr = fixture_cards();
-    let c = cr
+    let cards = fixture_cards();
+    let c = cards
         .cards
         .iter()
-        .find(|c| c.nskill > 0 && c.whites.contains(&20046) && c.whites.contains(&20161))
+        .find(|c| c.skill_count > 0 && c.whites.contains(&20046) && c.whites.contains(&20161))
         .expect("a card with Ramp Up and Tail Held High");
-    let dj = job_with(json!({}));
-    let unc = [20046u32, 20161];
-    let sb = Sources { dj: &dj, unc: &unc };
-    let tr = sb.training_hints(c);
+    let deck_job = job_with(json!({}));
+    let target_groups = [20046u32, 20161];
+    let source_builder = Sources { deck_job: &deck_job, target_groups: &target_groups };
+    let tr = source_builder.training_hints(c);
     assert_eq!(tr.len(), 2);
-    let g = sb.train_group(c, &tr);
+    let g = source_builder.train_group(c, &tr);
     assert!(g.iter().map(|x| x.probability).sum::<f64>() <= 1.0 + 1e-12);
     let gh = group_gh(&g);
     for (k, _, ph) in &gh {
@@ -163,37 +166,43 @@ fn training_draws_over_two_targets() {
     }
     let both = g.iter().filter(|x| x.rewards.len() == 2).map(|x| x.probability).sum::<f64>();
     assert!(both < tr[0].probability * tr[1].probability);
-    let h = hint_base("unity") * (1.0 + c.hf / 100.0) * (1.0 + hint_spec("unity") * c.spec / 100.0);
-    assert!((tr[0].probability - (1.0 - hint_miss(1, c.nskill as usize, h, c.hinc))).abs() < 1e-12); // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
-    let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
-    sb.target_sources(c, None, 0).src_miss(&[1.0, 1.0, 1.0], &mut mw, &mut mg);
+    let h = hint_base("unity")
+        * (1.0 + c.hint_frequency / 100.0)
+        * (1.0 + hint_spec("unity") * c.specialty_priority / 100.0);
+    // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
+    assert!((tr[0].probability - (1.0 - hint_miss(1, c.skill_count as usize, h, c.hint_levels))).abs() < 1e-12);
+    let (mut white_misses, mut gold_misses) = (vec![1.0; 2], vec![1.0; 2]);
+    source_builder.target_sources(c, None, 0).src_miss(&[1.0, 1.0, 1.0], &mut white_misses, &mut gold_misses);
     for k in 0..2 {
-        assert!((1.0 - mw[k] * mg[k] - tr[k].probability).abs() < 1e-9 || mg[k] < 1.0, "{mw:?} {mg:?} {tr:?}");
-        assert!(mw[k] * mg[k] < 1.0);
+        assert!(
+            (1.0 - white_misses[k] * gold_misses[k] - tr[k].probability).abs() < 1e-9 || gold_misses[k] < 1.0,
+            "{white_misses:?} {gold_misses:?} {tr:?}"
+        );
+        assert!(white_misses[k] * gold_misses[k] < 1.0);
     }
 }
 /// The Lv-5 cap: a skill leaves a card's pool after ceil(5 / levels per draw) draws. Checked against brute-force
 /// enumeration of every draw sequence, and on cases worked by hand (a +5 card draws without replacement).
 #[test]
 fn training_draws_leave_maxed_skills() {
-    fn brute(k: usize, n: usize, t: usize, cap: usize, cnt: &mut Vec<usize>) -> f64 {
-        if t == 0 {
+    fn brute(k: usize, n: usize, draws_left: usize, cap: usize, counts: &mut Vec<usize>) -> f64 {
+        if draws_left == 0 {
             return 1.0;
         }
-        let avail: Vec<usize> = (0..n).filter(|&i| cnt[i] < cap).collect();
+        let avail: Vec<usize> = (0..n).filter(|&i| counts[i] < cap).collect();
         if avail.is_empty() {
             return 1.0;
         }
-        let mut p = 0.0;
+        let mut probability = 0.0;
         for &i in &avail {
             if i < k {
                 continue;
             } // skills 0..k are the given ones: drawing one fails
-            cnt[i] += 1;
-            p += brute(k, n, t - 1, cap, cnt) / avail.len() as f64;
-            cnt[i] -= 1;
+            counts[i] += 1;
+            probability += brute(k, n, draws_left - 1, cap, counts) / avail.len() as f64;
+            counts[i] -= 1;
         }
-        p
+        probability
     }
     for n in 2..=6 {
         for k in 1..=n {
@@ -248,20 +257,20 @@ fn chain_stop_risk_is_a_mixture() {
 /// decks, allowed in URA Finale and Trackblazer.
 #[test]
 fn scenario_bans_exported() {
-    let cr = fixture_cards();
+    let cards = fixture_cards();
     for sc in ["unity", "gc"] {
-        assert!(cr.restrict.get(sc).is_some_and(|v| v.contains(&30081)), "{sc}: {:?}", cr.restrict);
+        assert!(cards.restrict.get(sc).is_some_and(|v| v.contains(&30081)), "{sc}: {:?}", cards.restrict);
     }
     for sc in ["ura", "trackblazer"] {
-        assert!(!cr.restrict.get(sc).is_some_and(|v| v.contains(&30081)));
+        assert!(!cards.restrict.get(sc).is_some_and(|v| v.contains(&30081)));
     }
 }
-fn job_with(v: Value) -> DeckJob {
-    serde_json::from_value(v).unwrap()
+fn job_with(job: Value) -> DeckJob {
+    serde_json::from_value(job).unwrap()
 }
 fn halo() -> Card {
-    let cr = fixture_cards();
-    cr.cards.into_iter().find(|c| c.id == 30056).unwrap()
+    let cards = fixture_cards();
+    cards.cards.into_iter().find(|c| c.id == 30056).unwrap()
 }
 /// An event offering targets on different choices gives one deck entry per choice, each with one choice's
 /// rewards; with only one of them a target, the card keeps a single entry with that choice.
@@ -269,51 +278,54 @@ fn halo() -> Card {
 fn choices_become_variants() {
     let c = halo();
     // King Halo [Tonight, We Waltz], link 1: Stop Right There! (choice 1) or Uma Stan (choice 2)
-    let dj = job_with(
+    let deck_job = job_with(
         json!({"alts": [[30056, 1, [[[[20102, 1]]], [[[20159, 1]]]]]], "events": [[30056, 20102, 1, 1], [30056, 20159, 1, 1]]}),
     );
-    let unc = [20159u32, 20102];
-    let sb = Sources { dj: &dj, unc: &unc };
-    let vs = sb.variants(&c, None);
+    let target_groups = [20159u32, 20102];
+    let source_builder = Sources { deck_job: &deck_job, target_groups: &target_groups };
+    let vs = source_builder.variants(&c, None);
     assert_eq!(vs.len(), 2);
     for (i, &v) in vs.iter().enumerate() {
-        let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
-        sb.target_sources(&c, None, v).src_miss(&[1.0, 1.0, 1.0], &mut mw, &mut mg);
+        let (mut white_misses, mut gold_misses) = (vec![1.0; 2], vec![1.0; 2]);
+        source_builder.target_sources(&c, None, v).src_miss(&[1.0, 1.0, 1.0], &mut white_misses, &mut gold_misses);
         // with every link firing, exactly one of the two whites is certain
-        let got: Vec<bool> = mw.iter().map(|&x| x < 1e-12).collect();
-        assert_eq!(got.iter().filter(|&&x| x).count(), 1, "variant {i}: {mw:?}");
+        let got: Vec<bool> = white_misses.iter().map(|&x| x < 1e-12).collect();
+        assert_eq!(got.iter().filter(|&&x| x).count(), 1, "variant {i}: {white_misses:?}");
     }
     let one = [20159u32];
-    let sb1 = Sources { dj: &dj, unc: &one };
+    let sb1 = Sources { deck_job: &deck_job, target_groups: &one };
     assert_eq!(sb1.variants(&c, None), vec![0]);
-    let (mut mw, mut mg) = (vec![1.0], vec![1.0]);
-    sb1.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 1.0], &mut mw, &mut mg);
-    assert!(mw[0] < 1e-12 && mg[0] == 1.0);
+    let (mut white_misses, mut gold_misses) = (vec![1.0], vec![1.0]);
+    sb1.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 1.0], &mut white_misses, &mut gold_misses);
+    assert!(white_misses[0] < 1e-12 && gold_misses[0] == 1.0);
 }
 /// One event's outcomes exclude each other: a gold on two of four outcomes and its white on the other two give
 /// a hint whenever the link fires (independent 50% chances would give 75%).
 #[test]
 fn outcomes_of_one_event_are_exclusive() {
     let c = halo();
-    let dj = job_with(json!({"alts": [[30056, 3, [[[[20203, 2]], [[20203, 1]], [[20203, 2]], [[20203, 1]]]]]]}));
-    let unc = [20203u32];
-    let sb = Sources { dj: &dj, unc: &unc };
-    let (mut mw, mut mg) = (vec![1.0], vec![1.0]);
-    sb.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 0.8], &mut mw, &mut mg);
-    assert!((mg[0] - 0.6).abs() < 1e-12, "{mg:?}"); // P(no gold) = 1 - 0.8 * 0.5
-    assert!((mg[0] * mw[0] - 0.2).abs() < 1e-12, "{mw:?}"); // P(no hint) = 1 - 0.8
+    let deck_job = job_with(json!({"alts": [[30056, 3, [[[[20203, 2]], [[20203, 1]], [[20203, 2]], [[20203, 1]]]]]]}));
+    let target_groups = [20203u32];
+    let source_builder = Sources { deck_job: &deck_job, target_groups: &target_groups };
+    let (mut white_misses, mut gold_misses) = (vec![1.0], vec![1.0]);
+    source_builder.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 0.8], &mut white_misses, &mut gold_misses);
+    assert!((gold_misses[0] - 0.6).abs() < 1e-12, "{gold_misses:?}"); // P(no gold) = 1 - 0.8 * 0.5
+    assert!((gold_misses[0] * white_misses[0] - 0.2).abs() < 1e-12, "{white_misses:?}"); // P(no hint) = 1 - 0.8
 }
 /// Measured outcome shares (`alt_w`) replace equal outcomes: 3:1 between two skills, link firing 80%.
 #[test]
 fn outcome_shares_weight_alts() {
     let c = halo();
-    let dj =
+    let deck_job =
         job_with(json!({"alts": [[30056, 3, [[[[20102, 1]], [[20159, 1]]]]]], "alt_w": [[30056, 3, [[0.75, 0.25]]]]}));
-    let unc = [20102u32, 20159];
-    let sb = Sources { dj: &dj, unc: &unc };
-    let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
-    sb.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 0.8], &mut mw, &mut mg);
-    assert!((mw[0] - (1.0 - 0.8 * 0.75)).abs() < 1e-12 && (mw[1] - (1.0 - 0.8 * 0.25)).abs() < 1e-12, "{mw:?}");
+    let target_groups = [20102u32, 20159];
+    let source_builder = Sources { deck_job: &deck_job, target_groups: &target_groups };
+    let (mut white_misses, mut gold_misses) = (vec![1.0; 2], vec![1.0; 2]);
+    source_builder.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 0.8], &mut white_misses, &mut gold_misses);
+    assert!(
+        (white_misses[0] - (1.0 - 0.8 * 0.75)).abs() < 1e-12 && (white_misses[1] - (1.0 - 0.8 * 0.25)).abs() < 1e-12,
+        "{white_misses:?}"
+    );
 }
 /// The final-state distribution has the same per-link marginals as `chain_marginals`, stop risk included.
 #[test]
@@ -365,16 +377,17 @@ fn key_level_matches_states() {
         let mut ks = ks;
         ks.sort_unstable();
         let (st, kl) = (chain_states(ChainEvents::default(), &ks), key_level(ChainEvents::default(), &ks));
-        let at = |gi: usize| (0..kl.lev.len()).map(|m| pmf[m] * kl.lev[m][gi]).sum::<f64>();
+        let at =
+            |gi: usize| (0..kl.level_probabilities.len()).map(|m| pmf[m] * kl.level_probabilities[m][gi]).sum::<f64>();
         let mut seen = 0.0f64;
         for crate::deck::chains::ChainState { progress: s, probability: p } in st.iter() {
-            let gi: usize = s.iter().zip(&kl.gstride).map(|(&x, &g)| x as usize * g).sum();
+            let gi: usize = s.iter().zip(&kl.grid_strides).map(|(&x, &g)| x as usize * g).sum();
             let q = at(gi);
             seen += q;
             assert!((q - p).abs() < 1e-12, "{ks:?} state {s:?}: key_level {q} vs chain_states {p}");
         }
         // (and no grid mass outside the final states)
-        assert!((seen - (0..kl.lev[0].len()).map(at).sum::<f64>()).abs() < 1e-12, "{ks:?}");
+        assert!((seen - (0..kl.level_probabilities[0].len()).map(at).sum::<f64>()).abs() < 1e-12, "{ks:?}");
     }
 }
 /// Jobs with the same chain kinds but different event distributions each get their own (the caches key on both).
@@ -396,12 +409,12 @@ fn chain_event_parameters_are_independent() {
 #[test]
 fn joint_fast_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk = fixture_skills();
-    let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
-    let m = Model::new(&d, &sk, &sj);
-    let dj = job_with(json!({}));
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
-        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    let skills = fixture_skills();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let m = Model::new(&d, &skills, &skill_job);
+    let deck_job = job_with(json!({}));
+    let g1 = |k: usize, level: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
     };
     let two = |a: usize, b: usize| -> Group {
         vec![
@@ -444,19 +457,19 @@ fn joint_fast_matches_reference() {
         for u in [0, 5, 20].map(crate::uma::UmaIndex) {
             let x = joint_fast(
                 &m,
-                JointQuery::unfolded(&m, &dj, u, &[0.1, 0.5, 0.9]),
+                JointQuery::unfolded(&m, &deck_job, u, &[0.1, 0.5, 0.9]),
                 &ents,
                 fill,
-                sj.targets.len(),
+                skill_job.targets.len(),
                 true,
                 None,
             );
             let y = joint_trainee_ref(
                 &m,
-                JointQuery::unfolded(&m, &dj, u, &[0.1, 0.5, 0.9]),
+                JointQuery::unfolded(&m, &deck_job, u, &[0.1, 0.5, 0.9]),
                 &ents,
                 fill,
-                sj.targets.len(),
+                skill_job.targets.len(),
             );
             for (p, r) in x.iter().zip(&y) {
                 assert!(
@@ -468,10 +481,10 @@ fn joint_fast_matches_reference() {
             }
             let z = joint_fast(
                 &m,
-                JointQuery::unfolded(&m, &dj, u, &[0.1, 0.5, 0.9]),
+                JointQuery::unfolded(&m, &deck_job, u, &[0.1, 0.5, 0.9]),
                 &ents,
                 fill,
-                sj.targets.len(),
+                skill_job.targets.len(),
                 false,
                 None,
             );
@@ -488,13 +501,13 @@ fn joint_fast_matches_reference() {
 #[test]
 fn career_fold_and_scale() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk = fixture_skills();
-    let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
+    let skills = fixture_skills();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
         "trainee_hints": [[1001, 20166, 0.3]]})).unwrap();
-    let m = Model::new(&d, &sk, &sj);
-    let dj = job_with(json!({}));
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
-        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    let m = Model::new(&d, &skills, &skill_job);
+    let deck_job = job_with(json!({}));
+    let g1 = |k: usize, level: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
     };
     let two = |a: usize, b: usize| -> Group {
         vec![
@@ -532,21 +545,29 @@ fn career_fold_and_scale() {
     let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1e-300);
     for u in [0, 5, 20].map(crate::uma::UmaIndex) {
         for q in [0.1, 0.6] {
-            let x = joint_fast(&m, JointQuery::unfolded(&m, &dj, u, &[q]), &ents, 1, sj.targets.len(), true, None)[0];
+            let x = joint_fast(
+                &m,
+                JointQuery::unfolded(&m, &deck_job, u, &[q]),
+                &ents,
+                1,
+                skill_job.targets.len(),
+                true,
+                None,
+            )[0];
             let folded: Vec<Vec<f64>> =
-                m.ews[u].iter().map(|o| o.iter().map(|e| 1.0 - (1.0 - e) * (1.0 - q)).collect()).collect();
+                m.event_chances[u].iter().map(|o| o.iter().map(|e| 1.0 - (1.0 - e) * (1.0 - q)).collect()).collect();
             let y = joint_fast(
                 &m,
                 JointQuery {
-                    chain_events: dj.chain_events(),
-                    checks: dj.checks,
+                    chain_events: deck_job.chain_events(),
+                    checks: crate::checks::get(),
                     trainee: u,
                     inheritance_chances: &[0.0],
                     event_chances: &folded,
                 },
                 &ents,
                 1,
-                sj.targets.len(),
+                skill_job.targets.len(),
                 true,
                 None,
             )[0];
@@ -564,15 +585,15 @@ fn career_fold_and_scale() {
             let z = joint_fast(
                 &m,
                 JointQuery {
-                    chain_events: dj.chain_events(),
-                    checks: dj.checks,
+                    chain_events: deck_job.chain_events(),
+                    checks: crate::checks::get(),
                     trainee: u,
                     inheritance_chances: &[0.0],
                     event_chances: &folded,
                 },
                 &ents,
                 1,
-                sj.targets.len(),
+                skill_job.targets.len(),
                 true,
                 Some(&mut ext),
             )[0];
@@ -583,7 +604,7 @@ fn career_fold_and_scale() {
     }
     // two targets, coupled sources: marginals against P(all) and P(all but at most one)
     let sj2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20166}]})).unwrap();
-    let m2 = Model::new(&d, &sk, &sj2);
+    let m2 = Model::new(&d, &skills, &sj2);
     let p = TargetSources {
         training_hints: vec![TrainingHint { target: 0, probability: 0.2 }],
         chain_outcomes: vec![
@@ -608,7 +629,7 @@ fn career_fold_and_scale() {
             sets: vec![0.0],
             per_outfit: vec![],
         };
-        let j = joint_fast(&m2, JointQuery::unfolded(&m2, &dj, u, &[0.3]), &ents2, 0, 2, true, Some(&mut ext))[0];
+        let j = joint_fast(&m2, JointQuery::unfolded(&m2, &deck_job, u, &[0.3]), &ents2, 0, 2, true, Some(&mut ext))[0];
         let (m0, m1) = (ext.marginals[j.outfit * 2], ext.marginals[j.outfit * 2 + 1]);
         assert!(rel(m0 + m1, j.all + j.all_but_one) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.all, j.all_but_one);
         // the landed sets: they sum to 1, {both} is P(all), and each target's sets sum to its marginal
@@ -628,12 +649,12 @@ fn career_fold_and_scale() {
 #[test]
 fn upper_bound_covers_exact() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk = fixture_skills();
-    let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
-    let m = Model::new(&d, &sk, &sj);
-    let dj = job_with(json!({}));
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
-        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    let skills = fixture_skills();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let m = Model::new(&d, &skills, &skill_job);
+    let deck_job = job_with(json!({}));
+    let g1 = |k: usize, level: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
     };
     let two = |a: usize, b: usize| -> Group {
         vec![
@@ -692,11 +713,18 @@ fn upper_bound_covers_exact() {
         for fill in [0usize, 1, 3] {
             for u in [0, 5, 20].map(crate::uma::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
-                let x =
-                    joint_fast(&m, JointQuery::unfolded(&m, &dj, u, &qs), ents, fill, sj.targets.len(), false, None);
+                let x = joint_fast(
+                    &m,
+                    JointQuery::unfolded(&m, &deck_job, u, &qs),
+                    ents,
+                    fill,
+                    skill_job.targets.len(),
+                    false,
+                    None,
+                );
                 let er: Vec<SourceEntry<&TargetSources>> =
                     ents.iter().map(|entry| SourceEntry { sources: &entry.sources, kind: entry.kind }).collect();
-                if let Some(ub) = upper_na(&m, JointQuery::unfolded(&m, &dj, u, &qs), &er, fill) {
+                if let Some(ub) = upper_na(&m, JointQuery::unfolded(&m, &deck_job, u, &qs), &er, fill) {
                     covered += 1;
                     for (i, y) in x.iter().enumerate() {
                         assert!(
@@ -761,19 +789,19 @@ fn group_orthant_check_declines_unchecked_groups() {
 #[test]
 fn unchecked_inline_event_disables_orthant_bound() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk = fixture_skills();
-    let unc: Vec<u32> = sk.skills.iter().take(21).map(|s| s.0).collect();
-    assert_eq!(unc.len(), 21);
-    let targets: Vec<Value> = unc.iter().map(|g| json!({"group": g})).collect();
-    let sj: SkillJob = serde_json::from_value(json!({"targets": targets})).unwrap();
-    let model = Model::new(&d, &sk, &sj);
+    let skills = fixture_skills();
+    let target_groups: Vec<u32> = skills.skills.iter().take(21).map(|s| s.0).collect();
+    assert_eq!(target_groups.len(), 21);
+    let targets: Vec<Value> = target_groups.iter().map(|g| json!({"group": g})).collect();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": targets})).unwrap();
+    let model = Model::new(&d, &skills, &skill_job);
     let mut card = halo();
-    card.nskill = 0;
+    card.skill_count = 0;
     card.whites.clear();
-    let rewards: Vec<(u32, u8)> = unc.iter().map(|&g| (g, 1)).collect();
-    let dj = job_with(json!({"alts": [[card.id, 1, [[rewards, []]]]]}));
-    let sb = Sources { dj: &dj, unc: &unc };
-    let src = sb.target_sources(&card, None, 0);
+    let rewards: Vec<(u32, u8)> = target_groups.iter().map(|&g| (g, 1)).collect();
+    let deck_job = job_with(json!({"alts": [[card.id, 1, [[rewards, []]]]]}));
+    let source_builder = Sources { deck_job: &deck_job, target_groups: &target_groups };
+    let src = source_builder.target_sources(&card, None, 0);
     assert_eq!(src.chain_outcomes.len(), 1);
     assert_eq!(src.chain_outcomes[0].outcomes[0].probability, 0.5);
     assert_eq!(src.chain_outcomes[0].outcomes[0].rewards.len(), 21);
@@ -781,8 +809,8 @@ fn unchecked_inline_event_disables_orthant_bound() {
     assert!(
         upper_na(
             &model,
-            JointQuery::unfolded(&model, &dj, crate::uma::UmaIndex(0), &[0.0]),
-            &[SourceEntry { sources: &src, kind: sb.kind(&card, None) }],
+            JointQuery::unfolded(&model, &deck_job, crate::uma::UmaIndex(0), &[0.0]),
+            &[SourceEntry { sources: &src, kind: source_builder.kind(&card, None) }],
             0
         )
         .is_none()
@@ -834,12 +862,12 @@ fn group_level_orthant_check() {
         }
     ]));
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk = fixture_skills();
-    let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
-    let m = Model::new(&d, &sk, &sj);
-    let dj = job_with(json!({}));
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
-        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    let skills = fixture_skills();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let m = Model::new(&d, &skills, &skill_job);
+    let deck_job = job_with(json!({}));
+    let g1 = |k: usize, level: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
     };
     let two = |a: usize, b: usize| -> Group {
         vec![
@@ -895,11 +923,18 @@ fn group_level_orthant_check() {
         for fill in [0usize, 2] {
             for u in [0, 5, 20].map(crate::uma::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
-                let x =
-                    joint_fast(&m, JointQuery::unfolded(&m, &dj, u, &qs), &ents, fill, sj.targets.len(), false, None);
+                let x = joint_fast(
+                    &m,
+                    JointQuery::unfolded(&m, &deck_job, u, &qs),
+                    &ents,
+                    fill,
+                    skill_job.targets.len(),
+                    false,
+                    None,
+                );
                 let er: Vec<SourceEntry<&TargetSources>> =
                     ents.iter().map(|entry| SourceEntry { sources: &entry.sources, kind: entry.kind }).collect();
-                let sv = state_value_cf(&m, JointQuery::unfolded(&m, &dj, u, &qs), &er, fill).unwrap();
+                let sv = state_value_cf(&m, JointQuery::unfolded(&m, &deck_job, u, &qs), &er, fill).unwrap();
                 for (i, y) in x.iter().enumerate() {
                     assert!(
                         sv[i] >= y.all * (1.0 - 1e-12),
@@ -918,13 +953,13 @@ fn group_level_orthant_check() {
 #[test]
 fn joint_equals_product_without_correlation() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk = fixture_skills();
-    let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
-    let m = Model::new(&d, &sk, &sj);
-    let dj = job_with(json!({}));
+    let skills = fixture_skills();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let m = Model::new(&d, &skills, &skill_job);
+    let deck_job = job_with(json!({}));
     let nu = m.uncertain.len();
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
-        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    let g1 = |k: usize, level: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
     };
     let a = TargetSources {
         training_hints: vec![
@@ -941,26 +976,26 @@ fn joint_equals_product_without_correlation() {
         ..Default::default()
     }
     .finish();
-    let (mut mw, mut mg) = (vec![1.0; nu], vec![1.0; nu]);
+    let (mut white_misses, mut gold_misses) = (vec![1.0; nu], vec![1.0; nu]);
     for x in [&a, &b] {
-        x.src_miss(&[], &mut mw, &mut mg);
+        x.src_miss(&[], &mut white_misses, &mut gold_misses);
     }
-    let dw: Vec<f64> = mw.iter().map(|x| 1.0 - x).collect();
-    let dg: Vec<f64> = mg.iter().map(|x| 1.0 - x).collect();
+    let white_hint_chances: Vec<f64> = white_misses.iter().map(|x| 1.0 - x).collect();
+    let gold_hint_chances: Vec<f64> = gold_misses.iter().map(|x| 1.0 - x).collect();
     for u in [0, 5, 20].map(crate::uma::UmaIndex) {
         for q in [0.3, 0.75] {
             let j = joint(
                 &m,
-                JointQuery::unfolded(&m, &dj, u, &[q]),
+                JointQuery::unfolded(&m, &deck_job, u, &[q]),
                 &[
                     SourceEntry { sources: a.clone(), kind: ChainKind::NONE },
                     SourceEntry { sources: b.clone(), kind: ChainKind::NONE },
                 ],
                 0,
-                sj.targets.len(),
+                skill_job.targets.len(),
                 true,
             );
-            let p = m.fixed_factor() * m.trainee_fast(u, q, &dw, &dg);
+            let p = m.fixed_factor() * m.trainee_fast(u, q, &white_hint_chances, &gold_hint_chances);
             assert!((j[0].all - p).abs() < 1e-14, "uma {u} q {q}: {} vs {p}", j[0].all);
         }
     }
@@ -1026,39 +1061,42 @@ fn land_factor_forms_match() {
 /// `deck_entries` with an error, before any table is built from it; the page's six-card job passes.
 #[test]
 fn deck_limits_refuse_with_an_error() {
-    let cr = fixture_cards();
-    let banned = cr.restrict.get("unity").cloned().unwrap_or_default();
+    let cards = fixture_cards();
+    let banned = cards.restrict.get("unity").cloned().unwrap_or_default();
     let chain: Vec<&Card> =
-        cr.cards.iter().filter(|c| !c.pal && c.links >= 2 && c.rarity >= 2 && !banned.contains(&c.id)).collect();
+        cards.cards.iter().filter(|c| !c.pal && c.links >= 2 && c.rarity >= 2 && !banned.contains(&c.id)).collect();
     assert!(chain.len() >= 20, "{} chain cards", chain.len());
-    let unc = [20159u32];
-    let err = |dj: &DeckJob, unc: &[u32]| match deck_entries(&cr, dj, unc, &[]) {
+    let target_groups = [20159u32];
+    let err = |deck_job: &DeckJob, target_groups: &[u32]| match deck_entries(&cards, deck_job, target_groups, &[]) {
         Ok(_) => None,
         Err(e) => Some(e["error"].as_str().expect("an error message").to_string()),
     };
-    assert_eq!(err(&job_with(json!({})), &unc), None);
+    assert_eq!(err(&job_with(json!({})), &target_groups), None);
     for size in [0, 7, 8, usize::MAX] {
-        assert!(err(&job_with(json!({ "deck_size": size })), &unc).is_some(), "deck_size {size}");
+        assert!(err(&job_with(json!({ "deck_size": size })), &target_groups).is_some(), "deck_size {size}");
     }
     let many: Vec<u32> = (0..33).map(|i| 20000 + i).collect();
     assert!(err(&job_with(json!({})), &many).is_some(), "33 uncertain targets");
     assert_eq!(err(&job_with(json!({})), &many[..32]), None);
     // locks: as many as the deck holds, not one more (duplicates and unknown ids count nothing, as before)
     let ids: Vec<u32> = chain.iter().map(|c| c.id).collect();
-    assert_eq!(err(&job_with(json!({"lock_cards": ids[..6], "deck_size": 6})), &unc), None);
-    assert_eq!(err(&job_with(json!({"lock_cards": [ids[0], ids[0], 1, 2, 3, 4, 5, 6, 7]})), &unc), None);
-    assert!(err(&job_with(json!({"lock_cards": ids[..7]})), &unc).is_some(), "7 locks");
-    assert!(err(&job_with(json!({"lock_cards": ids[..3], "deck_size": 2})), &unc).is_some(), "3 locks, deck of 2");
+    assert_eq!(err(&job_with(json!({"lock_cards": ids[..6], "deck_size": 6})), &target_groups), None);
+    assert_eq!(err(&job_with(json!({"lock_cards": [ids[0], ids[0], 1, 2, 3, 4, 5, 6, 7]})), &target_groups), None);
+    assert!(err(&job_with(json!({"lock_cards": ids[..7]})), &target_groups).is_some(), "7 locks");
+    assert!(
+        err(&job_with(json!({"lock_cards": ids[..3], "deck_size": 2})), &target_groups).is_some(),
+        "3 locks, deck of 2"
+    );
     // chain kinds: each card its own stop-risk code, so at least its own kind; a job passes exactly when its entries'
     // kinds with the fillers' (2, 2) are at most MAX_KINDS
     let (mut passed, mut refused) = (0, 0);
     for n in 1..=20 {
         let cs = &chain[..n];
-        let dj = job_with(json!({
-            "events": cs.iter().map(|c| json!([c.id, unc[0], 1, 1])).collect::<Vec<_>>(),
+        let deck_job = job_with(json!({
+            "events": cs.iter().map(|c| json!([c.id, target_groups[0], 1, 1])).collect::<Vec<_>>(),
             "stop_risk": cs.iter().enumerate().map(|(i, c)| json!([c.id, 1, i / 15, 1 + i % 15])).collect::<Vec<_>>(),
         }));
-        match deck_entries(&cr, &dj, &unc, &[]) {
+        match deck_entries(&cards, &deck_job, &target_groups, &[]) {
             Ok(e) => {
                 assert!(kinds_all(&e.kind).len() <= MAX_KINDS, "{n} cards");
                 passed += 1;

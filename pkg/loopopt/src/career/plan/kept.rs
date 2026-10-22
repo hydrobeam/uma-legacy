@@ -40,7 +40,7 @@ fn cached_searches_out(searches: &UmaTable<CachedSearch>) -> Vec<Value> {
         .collect()
 }
 
-/// Each trainee's best career (`CareerSetup::solve`, one trainee, top 1) and the decks that search checked, per plan:
+/// Each trainee's best career (`Env::solve`, one trainee, top 1) and the decks that search checked, per plan:
 /// kept for the next plan of the same setup and places whose pool is this one plus one veteran at the end (the page's
 /// Compare and Reroll: your veterans and her). Every career of the larger pool is one of this pool's or has her as a
 /// parent, so the best is the better of the kept one and the best with her as a parent (a search with her fixed):
@@ -67,38 +67,42 @@ pub(crate) struct Bests {
 /// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
 /// not kept: nothing reads them back)
 pub(crate) fn bests_out(bests: &[Bests]) -> Value {
-    Value::Array(bests.iter().map(|b| json!({"k": [crate::career::state::ux(b.key.0), crate::career::state::ux(b.key.1)], "n": b.best_careers.len(),
-        "b": cached_searches_out(&b.best_careers),
-        "l": cached_searches_out(&b.looped_careers),
-        "u": b.base_incomplete.indices().filter(|&u| b.base_incomplete[u]).collect::<Vec<_>>(),
-        "lu": b.looped_incomplete.indices().filter(|&u| b.looped_incomplete[u]).collect::<Vec<_>>()})).collect())
+    Value::Array(bests.iter().map(|plan| json!({"k": [crate::career::state::ux(plan.key.0), crate::career::state::ux(plan.key.1)], "n": plan.best_careers.len(),
+        "b": cached_searches_out(&plan.best_careers),
+        "l": cached_searches_out(&plan.looped_careers),
+        "u": plan.base_incomplete.indices().filter(|&uma| plan.base_incomplete[uma]).collect::<Vec<_>>(),
+        "lu": plan.looped_incomplete.indices().filter(|&uma| plan.looped_incomplete[uma]).collect::<Vec<_>>()})).collect())
 }
 
-pub(crate) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
+pub(crate) fn bests_in(value: &Value) -> Option<Vec<Bests>> {
     use crate::career::state::{found_in, len_in, usz, uxr};
-    v.as_array()?
+    value
+        .as_array()?
         .iter()
-        .map(|e| {
-            let k = e["k"].as_array()?;
+        .map(|stored| {
+            let key_pair = stored["k"].as_array()?;
             // (checked conversions: on wasm32 usize is 32 bits, and a stored count or index must not wrap into range)
-            let n = len_in(&e["n"])?;
+            let n = len_in(&stored["n"])?;
             let per_uma = |key: &str| -> Option<UmaTable<CachedSearch>> {
-                let mut v = UmaTable(vec![CachedSearch::Unsearched; n]);
-                for x in e[key].as_array()? {
-                    let a = x.as_array()?;
-                    let u = usz(a.first()?)?;
-                    if u >= n {
+                let mut value = UmaTable(vec![CachedSearch::Unsearched; n]);
+                for row in stored[key].as_array()? {
+                    let fields = row.as_array()?;
+                    let uma = usz(fields.first()?)?;
+                    if uma >= n {
                         return None;
                     }
-                    v[UmaIndex(u)] =
-                        CachedSearch::Known(if a.get(1)?.is_null() { None } else { Some(found_in(a.get(1)?)?) });
+                    value[UmaIndex(uma)] = CachedSearch::Known(if fields.get(1)?.is_null() {
+                        None
+                    } else {
+                        Some(found_in(fields.get(1)?)?)
+                    });
                 }
-                Some(v)
+                Some(value)
             };
             // Older stored states omit these flags; those searches are treated as proven.
             let flags = |key: &str| -> UmaTable<bool> {
                 let mut flags = UmaTable(vec![false; n]);
-                for entry in e[key].as_array().into_iter().flatten() {
+                for entry in stored[key].as_array().into_iter().flatten() {
                     if let Some(trainee) = usz(entry)
                         && trainee < n
                     {
@@ -108,7 +112,7 @@ pub(crate) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
                 flags
             };
             Some(Bests {
-                key: (uxr(k.first()?)?, uxr(k.get(1)?)?),
+                key: (uxr(key_pair.first()?)?, uxr(key_pair.get(1)?)?),
                 best_careers: per_uma("b")?,
                 proof_refs: UmaTable(vec![UmaTable(vec![]); n]),
                 looped_careers: per_uma("l")?,
@@ -132,14 +136,14 @@ pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usiz
     // (the slice's text as the array's: the same serializer, no copy)
     let legacies_text = job
         .get("legacies")
-        .and_then(|l| l.as_array())
-        .map(|a| serde_json::to_string(&a[..legacy_count.min(a.len())]).unwrap())
+        .and_then(|legacy_value| legacy_value.as_array())
+        .map(|legacies| serde_json::to_string(&legacies[..legacy_count.min(legacies.len())]).unwrap())
         .unwrap_or_default();
     let borrowing_rule = job
         .get("borrowed_parent")
-        .and_then(|b| b.as_str())
-        .filter(|&b| b != "allow")
-        .map_or(0, |b| hash_text(b).rotate_left(2));
+        .and_then(|rule| rule.as_str())
+        .filter(|&rule| rule != "allow")
+        .map_or(0, |rule| hash_text(rule).rotate_left(2));
     (
         crate::career::state::setup_fp(job) ^ hash_text(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
         hash_text(&legacies_text),
@@ -213,16 +217,13 @@ pub(super) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kep
         }
         // only a career above the kept one matters: the search's bar starts there (exact; a tie keeps the kept one)
         env.state.floor = old.as_ref().map_or(f64::NEG_INFINITY, |old_career| old_career.value);
-        let searched = env.setup.solve(
-            &mut env.state,
-            &mut env.audit,
-            &mut env.memo,
+        let searched = env.solve(crate::career::search::SearchRequest {
             pool,
-            &fixed_with_new_veteran,
-            &[trainee],
-            false,
-            1,
-        );
+            fixed_parents: &fixed_with_new_veteran,
+            trainees: &[trainee],
+            per_trainee: false,
+            top: 1,
+        });
         env.state.floor = f64::NEG_INFINITY;
         if proof_refs.len() < searched.refs.len() {
             proof_refs.resize(searched.refs.len(), vec![]);
@@ -238,8 +239,13 @@ pub(super) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kep
         };
         return BestCareer { found, proof_refs, complete };
     }
-    let searched =
-        env.setup.solve(&mut env.state, &mut env.audit, &mut env.memo, pool, fixed_parents, &[trainee], false, 1);
+    let searched = env.solve(crate::career::search::SearchRequest {
+        pool,
+        fixed_parents,
+        trainees: &[trainee],
+        per_trainee: false,
+        top: 1,
+    });
     let complete = searched.complete;
     BestCareer { found: searched.found.into_iter().next(), proof_refs: searched.refs, complete }
 }
@@ -261,14 +267,20 @@ struct CacheVersion {
 }
 
 /// The cache's version summed over the trainees `trainees` (None: every trainee)
-fn cache_version(s: &Sim, trainees: Option<&[UmaIndex]>) -> CacheVersion {
+fn cache_version(simulator: &Sim, trainees: Option<&[UmaIndex]>) -> CacheVersion {
     let (decks, proofs) = match trainees {
         Some(trainees) => trainees.iter().fold((0, 0), |(decks, proofs), &trainee| {
-            (decks + s.evaluator.cache.decks[trainee].len(), proofs + s.evaluator.cache.refs[trainee].len())
+            (
+                decks + simulator.evaluator.cache.decks[trainee].len(),
+                proofs + simulator.evaluator.cache.refs[trainee].len(),
+            )
         }),
-        None => (s.evaluator.cache.deck_count(), s.evaluator.cache.refs.iter().map(std::vec::Vec::len).sum()),
+        None => (
+            simulator.evaluator.cache.deck_count(),
+            simulator.evaluator.cache.refs.iter().map(std::vec::Vec::len).sum(),
+        ),
     };
-    CacheVersion { stamp: CacheStamp { decks, proofs }, deck_searches: s.evaluator.n.searches }
+    CacheVersion { stamp: CacheStamp { decks, proofs }, deck_searches: simulator.evaluator.counters.searches }
 }
 
 /// A scoring with its stamp: the cache it read (`cache_version` over `trainees`, those whose decks it reads) when it
@@ -276,34 +288,34 @@ fn cache_version(s: &Sim, trainees: Option<&[UmaIndex]>) -> CacheVersion {
 /// cache is again at the stamp, reads the same decks and tables, takes the same branches (whether `deck_for` searches
 /// is decided by those alone) and gives the same f64s (`stamp_ok`), so it need not run
 pub(crate) fn stamped<R>(
-    s: &mut Sim,
+    simulator: &mut Sim,
     trainees: Option<&[UmaIndex]>,
     scoring: impl FnOnce(&mut Sim) -> R,
 ) -> (R, Option<CacheStamp>) {
-    let before = cache_version(s, trainees);
-    let result = scoring(s);
-    let after = cache_version(s, trainees);
+    let before = cache_version(simulator, trainees);
+    let result = scoring(simulator);
+    let after = cache_version(simulator, trainees);
     let unchanged = before == after;
     (result, unchanged.then_some(after.stamp))
 }
 
-pub(crate) fn stamp_ok(s: &Sim, trainees: Option<&[UmaIndex]>, stamp: Option<CacheStamp>) -> bool {
-    stamp == Some(cache_version(s, trainees).stamp)
+pub(crate) fn stamp_ok(simulator: &Sim, trainees: Option<&[UmaIndex]>, stamp: Option<CacheStamp>) -> bool {
+    stamp == Some(cache_version(simulator, trainees).stamp)
 }
 
 /// the same career as `score_career` reads it: trainee, parents in order, every field of the deck (floats by bits). Not
 /// its value (`Found::value`, nor `ceiling`): `score_career` never reads them, and a proxy's value (the surrogate's
 /// corner-table interpolation) and the search's exact one differ in their last bits
-pub(crate) fn same_career(f: &Found, g: &Found) -> bool {
+pub(crate) fn same_career(first: &Found, second: &Found) -> bool {
     let bits = |a: &[f64], b: &[f64]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits());
-    f.trainee == g.trainee
-        && f.first_parent == g.first_parent
-        && f.second_parent == g.second_parent
-        && f.deck.entries == g.deck.entries
-        && f.deck.plain_pals == g.deck.plain_pals
-        && f.deck.filler_cards == g.deck.filler_cards
-        && bits(&f.deck.white_hint_chances, &g.deck.white_hint_chances)
-        && bits(&f.deck.gold_hint_chances, &g.deck.gold_hint_chances)
+    first.trainee == second.trainee
+        && first.first_parent == second.first_parent
+        && first.second_parent == second.second_parent
+        && first.deck.entries == second.deck.entries
+        && first.deck.plain_pals == second.deck.plain_pals
+        && first.deck.filler_cards == second.deck.filler_cards
+        && bits(&first.deck.white_hint_chances, &second.deck.white_hint_chances)
+        && bits(&first.deck.gold_hint_chances, &second.deck.gold_hint_chances)
 }
 
 #[cfg(test)]

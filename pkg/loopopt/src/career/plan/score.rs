@@ -32,7 +32,7 @@ pub(crate) fn her_trios(
     trainee: crate::uma::UmaIndex,
     score_buffer: &mut Vec<f64>,
 ) -> Vec<OwnTrio> {
-    let data = simulator.d;
+    let data = simulator.data;
     let trainee_id = data.umas[trainee].id;
     let mut trios = vec![];
     // the pool with her (`Evaluator::push_her`: `CareerSetup::pool` of the legacies and hers), with each side pushed in
@@ -73,7 +73,7 @@ pub(crate) fn her_trios(
                             .map(|upper_bound| FinisherCeiling { upper_bound, lineage })
                     }),
             );
-            finishers.sort_by(|a, b| b.upper_bound.partial_cmp(&a.upper_bound).unwrap());
+            finishers.sort_by(|first, second| second.upper_bound.partial_cmp(&first.upper_bound).unwrap());
             let mut best = 0.0f64;
             for &FinisherCeiling { upper_bound, lineage } in &finishers {
                 if upper_bound * (1.0 + 1e-9) <= best {
@@ -106,14 +106,14 @@ pub(crate) struct HerEnds {
     pub(crate) completes_goal: bool,
 }
 
-/// Career x's place among the stage candidates and whether its parents a, b are both full veterans: what `score_career`,
+/// The career's place among the stage candidates and whether its parents are both full veterans: what `score_career`,
 /// `outcome_hi` and `pick_her` read of her first
 pub(crate) fn her_ends(simulator: &Sim, score_base: &ScoreBase, legacies: &[Legacy], lineage: Lineage) -> HerEnds {
-    let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
+    let Lineage { trainee, first_parent, second_parent } = lineage;
     HerEnds {
-        own_candidate: score_base.candidates.iter().position(|&u| u == x),
-        completes_goal: is_full(simulator.env.setup.skill_job, &legacies[a].sparks)
-            && is_full(simulator.env.setup.skill_job, &legacies[b].sparks),
+        own_candidate: score_base.candidates.iter().position(|&candidate| candidate == trainee),
+        completes_goal: is_full(simulator.env.setup.skill_job, &legacies[first_parent].sparks)
+            && is_full(simulator.env.setup.skill_job, &legacies[second_parent].sparks),
     }
 }
 
@@ -220,7 +220,7 @@ fn prepare_setups(
     trainee: crate::uma::UmaIndex,
     score_buffer: &mut Vec<f64>,
 ) -> Vec<Setup> {
-    let data = simulator.d;
+    let data = simulator.data;
     let candidate_count = score_base.candidates.len();
     let new_veteran = pool.veterans.len() - 1;
     let mut setups: Vec<Setup> = vec![];
@@ -258,7 +258,7 @@ fn prepare_setups(
                 continue;
             };
             let deck_count = simulator.evaluator.cache.decks[candidate_trainee].len();
-            if simulator.evaluator.cache.decks[candidate_trainee].iter().all(|deck| deck.tab.is_empty()) {
+            if simulator.evaluator.cache.decks[candidate_trainee].iter().all(|deck| deck.tables.is_empty()) {
                 continue;
             }
             setups.push(Setup {
@@ -341,7 +341,7 @@ fn evaluate_career(
         collapsed_targets: vec![true; uncertain_target_count],
         slot_by_setup,
         current_probabilities,
-        landed_set_chances: current.os,
+        landed_set_chances: current.outcome_sets,
         active_candidates: vec![],
         own_trios: vec![],
         present_factors: vec![],
@@ -422,9 +422,9 @@ impl Scored {
         let leaf = outcome.leaf(self.fixed_target_count);
         let fixed_mask = outcome.fixed_mask(self.fixed_target_count).bits();
         let leaves = OneLeaf::new(leaf, self.representative_of(leaf));
-        let mut scratch = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
+        let mut scratch = FOLD_SCRATCH.with(|cell| std::mem::take(&mut *cell.borrow_mut()));
         let evaluation = self.evaluate(score_base, &leaves, Want::Ys, &mut scratch);
-        FOLD_SCRATCH.with(|c| *c.borrow_mut() = scratch);
+        FOLD_SCRATCH.with(|cell| *cell.borrow_mut() = scratch);
         evaluation.outcome_savings[(leaves.row(leaf) << self.fixed_target_count) | fixed_mask]
     }
 }
@@ -450,18 +450,18 @@ fn prepare_scoring(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], sc
     // every setup's tables, level 0 of the fold (table j at j 2^nu), and the setup of each
     let (mut setup_by_table, mut initial_tables): (Vec<usize>, Vec<f64>) = (vec![], vec![]);
     let mut dominated_tables = 0usize;
-    for (si, setup) in setups.iter().enumerate() {
+    for (setup_index, setup) in setups.iter().enumerate() {
         let tables: Vec<&Vec<f64>> = simulator.evaluator.cache.decks[score_base.candidates[setup.candidate]]
             [..setup.deck_count]
             .iter()
-            .flat_map(|deck| deck.tab.iter())
+            .flat_map(|deck| deck.tables.iter())
             .collect();
         // a table at most another everywhere (an equal one: the later) folds to at most that one's value at every leaf
         // (every fold coefficient is >= 0 and rounding is monotone), so the maximum is the same without it
-        let nonnegative_factors = present_factors[si]
+        let nonnegative_factors = present_factors[setup_index]
             .iter()
-            .chain(&absent_factors[si])
-            .all(|star_factors| star_factors.iter().all(|&v| v >= 0.0));
+            .chain(&absent_factors[setup_index])
+            .all(|star_factors| star_factors.iter().all(|&factor| factor >= 0.0));
         for (j, table) in tables.iter().enumerate() {
             debug_assert_eq!(
                 table.len(),
@@ -469,17 +469,18 @@ fn prepare_scoring(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], sc
                 "one table entry per subset of the uncertain targets"
             );
             if nonnegative_factors
-                && tables.iter().enumerate().any(|(k, context)| {
+                && tables.iter().enumerate().any(|(k, other_table)| {
                     k != j
-                        && table.iter().zip(context.iter()).all(|(a, b)| a <= b)
-                        && (k < j || table.iter().zip(context.iter()).any(|(a, b)| a < b))
+                        && table.iter().zip(other_table.iter()).all(|(value, other_value)| value <= other_value)
+                        && (k < j
+                            || table.iter().zip(other_table.iter()).any(|(value, other_value)| value < other_value))
                 })
             {
                 dominated_tables += 1;
                 continue;
             }
             initial_tables.extend_from_slice(table);
-            setup_by_table.push(si);
+            setup_by_table.push(setup_index);
         }
     }
     prof("sc_dom", dominated_tables as f64);
@@ -490,14 +491,14 @@ fn prepare_scoring(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], sc
     let mut table_collapses = 0usize;
     for (k, collapsed) in collapsed_targets.iter_mut().enumerate() {
         let mut collapsed_by_table = false;
-        for (si, setup_factors) in present_factors.iter().enumerate() {
+        for (setup_index, setup_factors) in present_factors.iter().enumerate() {
             let star_factors = &setup_factors[k];
             if star_factors[1].to_bits() == star_factors[2].to_bits()
                 && star_factors[2].to_bits() == star_factors[3].to_bits()
             {
                 continue;
             }
-            let flat = (0..table_count).filter(|&j| setup_by_table[j] == si).all(|j| {
+            let flat = (0..table_count).filter(|&j| setup_by_table[j] == setup_index).all(|j| {
                 let t = &initial_tables[j * table_size..(j + 1) * table_size];
                 (0..table_size).all(|i| i >> k & 1 == 1 || t[i] == t[i | (1 << k)])
             });
@@ -511,7 +512,7 @@ fn prepare_scoring(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], sc
             table_collapses += 1;
         }
     }
-    prof("sc_col", collapsed_targets.iter().filter(|&&c| c).count() as f64);
+    prof("sc_col", collapsed_targets.iter().filter(|&&collapsed| collapsed).count() as f64);
     prof("sc_col_tab", table_collapses as f64);
     (scored.setup_by_table, scored.initial_tables, scored.collapsed_targets) =
         (setup_by_table, initial_tables, collapsed_targets);

@@ -113,7 +113,8 @@ pub(super) struct SimJob {
     #[serde(default = "d_seed")]
     seed: u32,
     #[serde(default = "d_eps")]
-    eps: f64,
+    #[serde(rename = "eps")]
+    survival_cutoff: f64,
     #[serde(default = "d_maxc")]
     max_careers: usize,
     /// refresh margin m (module notes); 0 = refresh whenever a bound exceeds the table value
@@ -181,11 +182,11 @@ pub(crate) struct Sim<'env, 'data> {
     pub(super) env: &'env mut Env<'data>,
     /// Retained work shared with nested career jobs; index runs replace and restore it explicitly.
     pub(super) kept: &'env mut crate::career::state::KeptState,
-    pub(super) d: &'data Data,
+    pub(super) data: &'data Data,
     skills: &'data SkillsRaw,
     cards: &'data CardsRaw,
     job: &'data Value,
-    pub(super) cfg: SimJob,
+    pub(super) settings: SimJob,
     pub(super) evaluator: Evaluator,
     trainees: Vec<crate::uma::UmaIndex>,
     /// Per uma, her static ceiling (q = 1 on every target; 0 when she is not owned)
@@ -201,22 +202,26 @@ pub(crate) struct Sim<'env, 'data> {
     record_audits: bool,
     audits: Vec<Value>,
 }
-fn canon(chara: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
-    let (mut s, mut p, mut w) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
-    s.sort_unstable();
-    p.sort_unstable();
-    w.sort_unstable();
-    format!("{chara}|{s:?}|{p:?}|{w:?}")
+fn canon(character_id: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
+    let (mut sparks, mut pinks, mut wins) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
+    sparks.sort_unstable();
+    pinks.sort_unstable();
+    wins.sort_unstable();
+    format!("{character_id}|{sparks:?}|{pinks:?}|{wins:?}")
 }
 /// a veteran's family: the character and her two parents as recorded
-fn family(l: &Legacy) -> String {
-    let mut ps: Vec<String> = l.parents.iter().map(|g| canon(g.chara, &g.sparks, &g.pinks, &g.wins)).collect();
-    ps.sort();
-    format!("{}#{}", l.chara, ps.join("#"))
+fn family(legacy: &Legacy) -> String {
+    let mut parents: Vec<String> = legacy
+        .parents
+        .iter()
+        .map(|parent| canon(parent.character_id, &parent.sparks, &parent.pinks, &parent.wins))
+        .collect();
+    parents.sort();
+    format!("{}#{}", legacy.character_id, parents.join("#"))
 }
-fn leg_json(l: &Legacy) -> Value {
-    json!({"chara": l.chara, "borrowed": l.borrowed, "sparks": l.sparks, "wins": l.wins, "pinks": l.pinks,
-           "parents": l.parents.iter().map(|g| json!({"chara": g.chara, "sparks": g.sparks, "wins": g.wins, "pinks": g.pinks})).collect::<Vec<_>>()})
+fn leg_json(legacy: &Legacy) -> Value {
+    json!({"chara": legacy.character_id, "borrowed": legacy.borrowed, "sparks": legacy.sparks, "wins": legacy.wins, "pinks": legacy.pinks,
+           "parents": legacy.parents.iter().map(|parent| json!({"chara": parent.character_id, "sparks": parent.sparks, "wins": parent.wins, "pinks": parent.pinks})).collect::<Vec<_>>()})
 }
 
 impl<'env, 'data> Sim<'env, 'data> {
@@ -227,32 +232,38 @@ impl<'env, 'data> Sim<'env, 'data> {
         env: &'env mut Env<'data>,
         kept: &'env mut crate::career::state::KeptState,
         input: &JobInputs<'data>,
-        cfg: SimJob,
+        settings: SimJob,
         roster: SimulationRoster,
         options: SimulationOptions,
     ) -> Self {
         let Env { ref setup, ref mut state, .. } = *env;
-        let ntar = setup.target_count;
-        let full = (1usize << ntar) - 1;
+        let target_count = setup.target_count;
+        let full = (1usize << target_count) - 1;
         let mut failed_sets: Vec<usize> = (0..full).collect();
-        failed_sets.sort_by_key(|&m| (m.count_ones(), m));
-        let one = vec![1.0f64; ntar];
+        failed_sets.sort_by_key(|&mask| (mask.count_ones(), mask));
+        let one = vec![1.0f64; target_count];
         let static_ceilings: crate::uma::UmaTable<f64> = setup
             .data
             .umas
             .indices()
-            .map(|t| if setup.owned.contains(&t) { setup.ceiling(state, t, &one, 1.0).unwrap_or(0.0) } else { 0.0 })
+            .map(|trainee| {
+                if setup.owned.contains(&trainee) {
+                    setup.ceiling(state, trainee, &one, 1.0).unwrap_or(0.0)
+                } else {
+                    0.0
+                }
+            })
             .collect();
         let star_mix = setup.skill_job.star_dist;
-        let evaluator = Evaluator::new(setup, cfg.margin, options.fill_missing_decks);
+        let evaluator = Evaluator::new(setup, settings.margin, options.fill_missing_decks);
         Sim {
             env,
             kept,
-            d: input.data,
+            data: input.data,
             skills: input.skills,
             cards: input.cards,
             job: input.job,
-            cfg,
+            settings,
             evaluator,
             trainees: roster.trainees,
             static_ceilings,
@@ -264,34 +275,34 @@ impl<'env, 'data> Sim<'env, 'data> {
             audits: vec![],
         }
     }
-    fn key(&self, c: &Cur) -> String {
-        let Lineage { trainee, first_parent, second_parent } = c.lineage;
-        format!("{}:{},{}", self.d.umas[trainee].id, first_parent, second_parent)
+    fn key(&self, career: &Cur) -> String {
+        let Lineage { trainee, first_parent, second_parent } = career.lineage;
+        format!("{}:{},{}", self.data.umas[trainee].id, first_parent, second_parent)
     }
-    /// the value a career of trainee t must beat to matter: the best overall, or under `trace` a member's own best
-    fn bar(&self, st: &PathState, t: crate::uma::UmaIndex) -> f64 {
-        match self.member_by_trainee.get(t).copied().flatten() {
-            Some(k) => st.member_best[k].map_or(0.0, |p| p.value),
-            None => st.best.map_or(0.0, |p| p.value),
+    /// the value a career of `trainee` must beat to matter: the best overall, or under `trace` a member's own best
+    fn bar(&self, path: &PathState, trainee: crate::uma::UmaIndex) -> f64 {
+        match self.member_by_trainee.get(trainee).copied().flatten() {
+            Some(member) => path.member_best[member].map_or(0.0, |pick| pick.value),
+            None => path.best.map_or(0.0, |pick| pick.value),
         }
     }
     /// value a candidate lineage against the bar (`Evaluator::consider`), kept when it beats the best so far (or, under
     /// `trace`, her member's best)
-    fn consider(&mut self, st: &mut PathState, lineage: Lineage, buf: &mut Vec<f64>) {
-        let bar = self.bar(st, lineage.trainee);
-        let Some(pick) = self.evaluator.consider(self.env, &st.pool, lineage, bar, buf) else { return };
-        if let Some(k) = self.member_by_trainee.get(lineage.trainee).copied().flatten()
+    fn consider(&mut self, path: &mut PathState, lineage: Lineage, buf: &mut Vec<f64>) {
+        let bar = self.bar(path, lineage.trainee);
+        let Some(pick) = self.evaluator.consider(self.env, &path.pool, lineage, bar, buf) else { return };
+        if let Some(member) = self.member_by_trainee.get(lineage.trainee).copied().flatten()
             && pick.value > bar
         {
-            st.member_best[k] = Some(pick);
-            st.current = None;
+            path.member_best[member] = Some(pick);
+            path.current = None;
         }
-        if pick.value > st.best.map_or(0.0, |p| p.value) {
-            st.best = Some(pick);
-            st.current = None;
+        if pick.value > path.best.map_or(0.0, |best_pick| best_pick.value) {
+            path.best = Some(pick);
+            path.current = None;
         }
     }
-    fn legal(&self, st: &PathState, lineage: Lineage) -> bool {
-        st.pool.pair_ok(self.d.umas[lineage.trainee].id, lineage.first_parent, lineage.second_parent)
+    fn legal(&self, path: &PathState, lineage: Lineage) -> bool {
+        path.pool.pair_ok(self.data.umas[lineage.trainee].id, lineage.first_parent, lineage.second_parent)
     }
 }

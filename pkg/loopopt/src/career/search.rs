@@ -3,7 +3,7 @@ use crate::career::clock::{now_ms, prof};
 use crate::career::inherit::{aff_factor, inherit_q, insp_miss, mix_term, part_sum, spark_scale};
 use crate::career::pool::{Pool, holds_fix, shared};
 use crate::career::state::{KeptSolve, KeptState, ProductProof, SOLVE_KEEP};
-use crate::career::{CareerSetup, DeckSearchAudit, DeckSearchMemo, Env, Lineage, SearchState};
+use crate::career::{CareerSetup, Env, Lineage, SearchState};
 use crate::deck::space::SelectedDeck;
 use crate::uma::{UmaIndex, UmaTable};
 /// How a bound proves a career out (`CareerSetup::ceiling_out`, `refs_out`, `ruled_out`): `Below(th)`, `solve`'s prune,
@@ -19,10 +19,10 @@ pub(crate) enum Bar {
 
 impl Bar {
     #[inline(always)]
-    fn out(self, b: f64, s: f64) -> bool {
+    fn out(self, bound: f64, slack: f64) -> bool {
         match self {
-            Self::Below(th) => b * (1.0 + s) < th,
-            Self::AtMost(v) => b <= v * (1.0 + 1e-12),
+            Self::Below(threshold) => bound * (1.0 + slack) < threshold,
+            Self::AtMost(limit) => bound <= limit * (1.0 + 1e-12),
         }
     }
 }
@@ -33,9 +33,9 @@ impl Bar {
 /// before it orders before everything after it) and sorts only the chunk, so the sequence is the full sort's, element
 /// for element, and a caller that stops early sorts little
 pub(crate) struct Ranked {
-    v: Vec<RankedPair>,
-    upto: usize,
-    i: usize,
+    candidates: Vec<RankedPair>,
+    sorted_until: usize,
+    next_index: usize,
 }
 
 /// One of a trainee's legal parent pairs with its ceiling (`CareerSetup::ranked_pairs`).
@@ -52,29 +52,30 @@ pub(crate) struct RankedPair {
 impl Iterator for Ranked {
     type Item = RankedPair;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.i >= self.v.len() {
+        if self.next_index >= self.candidates.len() {
             return None;
         }
-        if self.i >= self.upto {
-            let ord = |x: &RankedPair, y: &RankedPair| {
-                y.ceiling
-                    .partial_cmp(&x.ceiling)
+        if self.next_index >= self.sorted_until {
+            let order = |first: &RankedPair, second: &RankedPair| {
+                second
+                    .ceiling
+                    .partial_cmp(&first.ceiling)
                     .unwrap()
-                    .then(x.first_parent.cmp(&y.first_parent))
-                    .then(x.second_parent.cmp(&y.second_parent))
+                    .then(first.first_parent.cmp(&second.first_parent))
+                    .then(first.second_parent.cmp(&second.second_parent))
             };
-            let rest = &mut self.v[self.upto..];
+            let rest = &mut self.candidates[self.sorted_until..];
             // (chunks of 256, then 4x what is sorted: each selection scans the whole remainder)
-            let m = (4 * self.upto).max(256).min(rest.len());
-            if m < rest.len() {
-                rest.select_nth_unstable_by(m - 1, ord);
+            let chunk = (4 * self.sorted_until).max(256).min(rest.len());
+            if chunk < rest.len() {
+                rest.select_nth_unstable_by(chunk - 1, order);
             }
-            rest[..m].sort_unstable_by(ord);
-            self.upto += m;
+            rest[..chunk].sort_unstable_by(order);
+            self.sorted_until += chunk;
         }
-        let r = self.v[self.i];
-        self.i += 1;
-        Some(r)
+        let pair = self.candidates[self.next_index];
+        self.next_index += 1;
+        Some(pair)
     }
 }
 
@@ -107,8 +108,8 @@ impl Found {
 /// value bounds every deck at other chances through `rise`.
 #[derive(Clone)]
 pub(crate) struct Ref {
-    pub(crate) q: Vec<f64>,
-    pub(crate) val: f64,
+    pub(crate) inheritance_chances: Vec<f64>,
+    pub(crate) value: f64,
     pub(crate) deck: SelectedDeck,
 }
 
@@ -126,7 +127,7 @@ pub(crate) struct CareerSearchResult {
     pub(crate) found: Vec<Found>,
     pub(crate) refs: UmaTable<Vec<Ref>>,
     pub(crate) work: usize,
-    pub(crate) cands: usize,
+    pub(crate) candidates: usize,
     pub(crate) solved: usize,
     pub(crate) bounded: usize,
     pub(crate) scored: usize,
@@ -134,47 +135,64 @@ pub(crate) struct CareerSearchResult {
     pub(crate) next_bound: f64,
     pub(crate) complete: bool,
     pub(crate) proven: bool,
-    pub(crate) cert: f64,
+    pub(crate) certified_cap: f64,
 }
 
 impl CareerSetup<'_> {
-    /// The bound a fully checked deck search `r` (a `Ref`: chances r.q, best value r.val before the spark scale) puts on
-    /// every career of trainee t's deck class at chances q with spark scale c: c r.val rise(t, q, r.q)
-    /// (`CareerSetup::rise`)
+    /// The bound a fully checked deck search `reference` (a `Ref`: chances r.inheritance_chances, best value r.value
+    /// before the spark scale) puts on every career of the trainee's deck class at chances q with spark scale c:
+    /// c r.value rise(t, q, r.inheritance_chances) (`CareerSetup::rise`)
     #[inline]
-    pub(crate) fn ref_bound(&self, t: UmaIndex, q: &[f64], c: f64, r: &Ref) -> f64 {
-        c * r.val * self.rise(t, q, &r.q)
+    pub(crate) fn ref_bound(&self, trainee: UmaIndex, q: &[f64], career_spark_scale: f64, reference: &Ref) -> f64 {
+        career_spark_scale * reference.value * self.rise(trainee, q, &reference.inheritance_chances)
     }
-    /// The bound a product search's proof (`ruled`: chances rq, best product value s) puts on it there: EXACT_RHO c s
-    /// rise(t, q, rq) (`solve`'s derivation at its `ruled` test)
+    /// The bound a product search's proof (`ruled`: chances rq = `proof_chances`, best product value s =
+    /// `product_bound`) puts on it there: EXACT_RHO c s rise(t, q, rq) (`solve`'s derivation at its `ruled` test)
     #[inline]
-    fn ruled_bound(&self, t: UmaIndex, q: &[f64], c: f64, rq: &[f64], s: f64) -> f64 {
-        self.space.rho_top() * c * s * self.rise(t, q, rq)
+    fn ruled_bound(
+        &self,
+        trainee: UmaIndex,
+        q: &[f64],
+        career_spark_scale: f64,
+        proof_chances: &[f64],
+        product_bound: f64,
+    ) -> f64 {
+        self.space.rho_top() * career_spark_scale * product_bound * self.rise(trainee, q, proof_chances)
     }
-    /// Whether a career's ceiling `ub` (`gen_cands`) proves it out at `bar` (`Bar`; `solve`: ub (1 + 1e-9) < th)
+    /// Whether a career's ceiling (`gen_cands`) proves it out at `bar` (`Bar`; `solve`: ceiling (1 + 1e-9) < th)
     #[inline]
-    pub(crate) fn ceiling_out(ub: f64, bar: Bar) -> bool {
-        bar.out(ub, 1e-9)
+    pub(crate) fn ceiling_out(ceiling: f64, bar: Bar) -> bool {
+        bar.out(ceiling, 1e-9)
     }
     /// Whether a fully checked deck of `refs` proves career (t, q, c) out at `bar` (`solve`: some `ref_bound` (1 + 1e-9) < th)
     #[inline]
     pub(crate) fn refs_out<'refs>(
         &self,
-        t: UmaIndex,
+        trainee: UmaIndex,
         q: &[f64],
-        c: f64,
+        career_spark_scale: f64,
         mut refs: impl Iterator<Item = &'refs Ref>,
         bar: Bar,
     ) -> bool {
-        refs.any(|r| bar.out(self.ref_bound(t, q, c, r), 1e-9))
+        refs.any(|reference| bar.out(self.ref_bound(trainee, q, career_spark_scale, reference), 1e-9))
     }
     /// Whether a product proof of `ruled` does (`solve`: some `ruled_bound` (1 + 2e-9) < th; 2e-9: the rounding of the
     /// product value and of rise)
     #[inline]
-    pub(crate) fn ruled_out(&self, t: UmaIndex, q: &[f64], c: f64, ruled: &[ProductProof], bar: Bar) -> bool {
-        ruled
-            .iter()
-            .any(|proof| bar.out(self.ruled_bound(t, q, c, &proof.inheritance_chances, proof.product_bound), 2e-9))
+    pub(crate) fn ruled_out(
+        &self,
+        trainee: UmaIndex,
+        q: &[f64],
+        career_spark_scale: f64,
+        ruled: &[ProductProof],
+        bar: Bar,
+    ) -> bool {
+        ruled.iter().any(|proof| {
+            bar.out(
+                self.ruled_bound(trainee, q, career_spark_scale, &proof.inheritance_chances, proof.product_bound),
+                2e-9,
+            )
+        })
     }
     /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
     /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
@@ -183,29 +201,49 @@ impl CareerSetup<'_> {
     pub(crate) fn ranked_pairs(
         &self,
         state: &mut SearchState,
-        p: &Pool,
-        fix: &[usize],
-        t: UmaIndex,
+        pool: &Pool,
+        fixed_parents: &[usize],
+        trainee: UmaIndex,
         keep: impl Fn(usize, usize) -> bool,
     ) -> Ranked {
         let pair = |ceiling, _, _, first_parent, second_parent| RankedPair { ceiling, first_parent, second_parent };
-        Ranked { v: self.gen_cands(state, p, fix, &[t], keep, pair), upto: 0, i: 0 }
+        Ranked {
+            candidates: self.gen_cands(state, pool, fixed_parents, &[trainee], keep, pair),
+            sorted_until: 0,
+            next_index: 0,
+        }
     }
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
-    pub(crate) fn ceiling(&self, state: &mut SearchState, t: UmaIndex, q: &[f64], c: f64) -> Option<f64> {
-        self.deck_odds_ceilings[t].as_ref()?;
+    pub(crate) fn ceiling(
+        &self,
+        state: &mut SearchState,
+        trainee: UmaIndex,
+        q: &[f64],
+        career_spark_scale: f64,
+    ) -> Option<f64> {
+        self.deck_odds_ceilings[trainee].as_ref()?;
         let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
-        Some(self.ceiling_at(state, t, q, c, rho, fixed))
+        Some(self.ceiling_at(state, trainee, q, career_spark_scale, rho, fixed))
     }
     /// `ceiling` for a trainee with legal deck odds, EXACT_RHO and the fixed gold factor given (the same values)
     #[inline]
-    fn ceiling_at(&self, state: &mut SearchState, t: UmaIndex, q: &[f64], c: f64, rho: f64, fixed: f64) -> f64 {
-        self.set_trainee(state, t, q);
-        let (dw, dg) = self.deck_odds_ceilings[t].as_ref().unwrap();
+    fn ceiling_at(
+        &self,
+        state: &mut SearchState,
+        trainee: UmaIndex,
+        q: &[f64],
+        career_spark_scale: f64,
+        rho: f64,
+        fixed: f64,
+    ) -> f64 {
+        self.set_trainee(state, trainee, q);
+        let (white_hint_chances, gold_hint_chances) = self.deck_odds_ceilings[trainee].as_ref().unwrap();
         let chances = self.deck_chances(state);
-        let pv = (0..self.model.n_outfits(t)).map(|o| chances.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
-        rho * c * fixed * pv
+        let product_value = (0..self.model.n_outfits(trainee))
+            .map(|outfit| chances.outfit_fast(trainee, outfit, 0.0, white_hint_chances, gold_hint_chances))
+            .fold(0.0f64, f64::max);
+        rho * career_spark_scale * fixed * product_value
     }
     /// `solve`'s candidates: per trainee of `trainees` with legal deck odds (in order; `tp` her position), per legal pair
     /// a < b of `p` (all of `fix` among them, at most `p.max_borrowed` borrowed, neither her character), `mk(ceiling, tp, t, a, b)`,
@@ -219,374 +257,432 @@ impl CareerSetup<'_> {
     pub(crate) fn gen_cands<C>(
         &self,
         state: &mut SearchState,
-        p: &Pool,
-        fix: &[usize],
+        pool: &Pool,
+        fixed_parents: &[usize],
         trainees: &[UmaIndex],
         keep: impl Fn(usize, usize) -> bool,
-        mut mk: impl FnMut(f64, usize, UmaIndex, usize, usize) -> C,
+        mut make_candidate: impl FnMut(f64, usize, UmaIndex, usize, usize) -> C,
     ) -> Vec<C> {
-        let d = self.data;
-        let nl = p.veterans.len();
-        let ntar = self.target_count;
+        let data = self.data;
+        let legacy_count = pool.veterans.len();
+        let target_count = self.target_count;
         // a slot's (miss, mix) factors of target k: `inherit`'s, 1 for the one it leaves alone (its affinity factor fa
         // computed once per slot)
         #[inline(always)]
-        fn fac(st: u8, mix: Option<[f64; 3]>, fa: f64) -> (f64, f64) {
-            if st == 0 {
+        fn fac(stars: u8, mix: Option<[f64; 3]>, affinity_factor: f64) -> (f64, f64) {
+            if stars == 0 {
                 return (1.0, 1.0);
             }
             match mix {
-                None => (insp_miss(f64::from(st), fa), 1.0),
-                Some(w) => (1.0, mix_term(w, fa)),
+                None => (insp_miss(f64::from(stars), affinity_factor), 1.0),
+                Some(star_mix) => (1.0, mix_term(star_mix, affinity_factor)),
             }
         }
         // `spark_scale` per carrier count n
-        let maxs = (0..nl).map(|x| 1 + p.parents[x].len()).max().unwrap_or(0) * 2;
-        let pw: Vec<f64> = (0..=maxs).map(|n| spark_scale(n as i32)).collect();
-        struct Pre {
-            a: usize,
-            b: usize,
-            c: f64,
+        let max_carriers = (0..legacy_count).map(|legacy| 1 + pool.parents[legacy].len()).max().unwrap_or(0) * 2;
+        let spark_scales: Vec<f64> = (0..=max_carriers).map(|n| spark_scale(n as i32)).collect();
+        struct PairPreparation {
+            first_parent: usize,
+            second_parent: usize,
+            career_spark_scale: f64,
             race: [f64; 2],
-            pp: [f64; 2],
+            parent_pair_relations: [f64; 2],
         }
-        let mut pairs: Vec<Pre> = vec![];
+        let mut pairs: Vec<PairPreparation> = vec![];
         // per legacy and target, how many of her slots (her own, her parents') carry the spark
-        let cnt: Vec<usize> = (0..nl)
-            .flat_map(|x| {
-                (0..ntar).map(move |k| {
-                    std::iter::once(&p.veterans[x]).chain(&p.parents[x]).filter(|w| w.stars[k] != 0).count()
+        let slot_carriers: Vec<usize> = (0..legacy_count)
+            .flat_map(|legacy| {
+                (0..target_count).map(move |k| {
+                    std::iter::once(&pool.veterans[legacy])
+                        .chain(&pool.parents[legacy])
+                        .filter(|who| who.stars[k] != 0)
+                        .count()
                 })
             })
             .collect();
-        let mut nc = vec![0usize; ntar];
-        // the pairs a < b in (a, b) order: with a fixed legacy f, only those holding it, (a, f) for a < f then (f, b)
-        let pair_list: Box<dyn Iterator<Item = (usize, usize)>> = match fix.first() {
-            None => Box::new((0..nl).flat_map(move |a| (a + 1..nl).map(move |b| (a, b)))),
-            Some(&f) if f < nl => Box::new((0..f).map(move |a| (a, f)).chain((f + 1..nl).map(move |b| (f, b)))),
+        let mut carriers = vec![0usize; target_count];
+        // the pairs a < b in (a, b) order: with a fixed legacy f (`fixed_legacy`), only those holding it,
+        // (a, f) for a < f then (f, b)
+        let pair_list: Box<dyn Iterator<Item = (usize, usize)>> = match fixed_parents.first() {
+            None => Box::new((0..legacy_count).flat_map(move |first_parent| {
+                (first_parent + 1..legacy_count).map(move |second_parent| (first_parent, second_parent))
+            })),
+            Some(&fixed_legacy) if fixed_legacy < legacy_count => Box::new(
+                (0..fixed_legacy)
+                    .map(move |first_parent| (first_parent, fixed_legacy))
+                    .chain((fixed_legacy + 1..legacy_count).map(move |second_parent| (fixed_legacy, second_parent))),
+            ),
             Some(_) => Box::new(std::iter::empty()),
         };
-        for (a, b) in pair_list {
-            if !p.parents_ok(a, b) || !holds_fix(fix, a, b) || !keep(a, b) {
+        for (first_parent, second_parent) in pair_list {
+            if !pool.parents_ok(first_parent, second_parent)
+                || !holds_fix(fixed_parents, first_parent, second_parent)
+                || !keep(first_parent, second_parent)
+            {
                 continue;
             }
-            let sh = 3.0 * shared(&p.veterans[a], &p.veterans[b]);
-            let race = [a, b].map(|x| part_sum(sh, p.grandparent_race_affinity[x].iter().copied()));
-            let pp = [
-                self.pair(p.veterans[a].uma_index, p.veterans[b].uma_index),
-                self.pair(p.veterans[b].uma_index, p.veterans[a].uma_index),
+            let shared_race_affinity = 3.0 * shared(&pool.veterans[first_parent], &pool.veterans[second_parent]);
+            let race = [first_parent, second_parent]
+                .map(|legacy| part_sum(shared_race_affinity, pool.grandparent_race_affinity[legacy].iter().copied()));
+            let parent_pair_relations = [
+                self.pair(pool.veterans[first_parent].uma_index, pool.veterans[second_parent].uma_index),
+                self.pair(pool.veterans[second_parent].uma_index, pool.veterans[first_parent].uma_index),
             ];
-            for k in 0..ntar {
-                nc[k] = cnt[a * ntar + k] + cnt[b * ntar + k];
+            for k in 0..target_count {
+                carriers[k] =
+                    slot_carriers[first_parent * target_count + k] + slot_carriers[second_parent * target_count + k];
             }
-            let c = self
+            let career_spark_scale = self
                 .uncertain_targets
                 .iter()
-                .map(|&i| pw[nc[i]])
-                .chain(self.fixed_targets.iter().map(|&i| pw[nc[i]]))
+                .map(|&i| spark_scales[carriers[i]])
+                .chain(self.fixed_targets.iter().map(|&i| spark_scales[carriers[i]]))
                 .product::<f64>();
-            pairs.push(Pre { a, b, c, race, pp });
+            pairs.push(PairPreparation {
+                first_parent,
+                second_parent,
+                career_spark_scale,
+                race,
+                parent_pair_relations,
+            });
         }
-        let mut out: Vec<C> = Vec::with_capacity(
-            pairs.len() * trainees.iter().filter(|&&t| self.deck_odds_ceilings[t].is_some()).count(),
+        let mut candidates: Vec<C> = Vec::with_capacity(
+            pairs.len() * trainees.iter().filter(|&&trainee| self.deck_odds_ceilings[trainee].is_some()).count(),
         );
         let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
-        let mut q = vec![0.0f64; ntar];
+        let mut q = vec![0.0f64; target_count];
         // per legacy x: her relation points with the trainee, and per grandparent slot its relation points and its
-        // factors per target (flat, from `go[x]`)
-        let mut pt = vec![0.0f64; nl];
-        let go: Vec<usize> = std::iter::once(0)
-            .chain((0..nl).scan(0, |s, x| {
-                *s += p.parents[x].len();
-                Some(*s)
+        // factors per target (flat, from `grandparent_offsets[x]`)
+        let mut parent_relations = vec![0.0f64; legacy_count];
+        let grandparent_offsets: Vec<usize> = std::iter::once(0)
+            .chain((0..legacy_count).scan(0, |total, legacy| {
+                *total += pool.parents[legacy].len();
+                Some(*total)
             }))
             .collect();
-        let mut gr = vec![0.0f64; go[nl]];
-        let mut gf = vec![(1.0f64, 1.0f64); go[nl] * ntar];
+        let mut grandparent_relations = vec![0.0f64; grandparent_offsets[legacy_count]];
+        let mut grandparent_factors = vec![(1.0f64, 1.0f64); grandparent_offsets[legacy_count] * target_count];
         // per outfit and uncertain target, `outfit_fast`'s factor as Fixed (no chance in it) or Open(1 - e, 1 - dw, dg GOLD,
         // 1 - dg): the same subexpressions, each computed once for her
-        enum Fac {
+        enum OutfitFactor {
             Fixed(f64),
             Open(f64, f64, f64, f64),
         }
         // what one trainee's pair loop reads
-        struct Cx<'cx> {
-            p: &'cx Pool,
-            pairs: &'cx [Pre],
-            tid: u32,
-            ntar: usize,
-            pt: &'cx [f64],
-            go: &'cx [usize],
-            gr: &'cx [f64],
-            gf: &'cx [(f64, f64)],
-            ft: &'cx [Vec<Fac>],
-            uncv: &'cx [usize],
-            gw: f64,
+        struct CandidateContext<'context> {
+            pool: &'context Pool,
+            pairs: &'context [PairPreparation],
+            trainee_id: u32,
+            target_count: usize,
+            parent_relations: &'context [f64],
+            grandparent_offsets: &'context [usize],
+            grandparent_relations: &'context [f64],
+            grandparent_factors: &'context [(f64, f64)],
+            outfit_factors: &'context [Vec<OutfitFactor>],
+            uncertain_targets: &'context [usize],
+            white_spark_rate: f64,
             rho: f64,
             fixed: f64,
-            tp: usize,
-            t: UmaIndex,
+            trainee_position: usize,
+            trainee: UmaIndex,
         }
         // One trainee's candidates, pair by pair; true when it made one (q then holds the last one's chances). Its own
         // function, entered once per trainee: a wasm call keeps the code it started in (V8 has no on-stack replacement
         // for wasm), so a loop over every trainee in one frame would run in baseline code throughout (docs/PERF.md).
         #[inline(never)]
         fn trainee_cands<C>(
-            cx: &Cx,
+            context: &CandidateContext,
             q: &mut [f64],
-            nq: &mut [f64],
-            out: &mut Vec<C>,
-            mk: &mut impl FnMut(f64, usize, UmaIndex, usize, usize) -> C,
+            uncertain_misses: &mut [f64],
+            candidates: &mut Vec<C>,
+            make_candidate: &mut impl FnMut(f64, usize, UmaIndex, usize, usize) -> C,
         ) -> bool {
-            let (p, go, gw, ntar) = (cx.p, cx.go, cx.gw, cx.ntar);
+            let (pool, grandparent_offsets, white_spark_rate, target_count) =
+                (context.pool, context.grandparent_offsets, context.white_spark_rate, context.target_count);
             let mut last = false;
-            for pr in cx.pairs {
-                let (a, b) = (pr.a, pr.b);
-                if !p.trainee_ok(cx.tid, a, b) {
+            for pair in context.pairs {
+                let (first_parent, second_parent) = (pair.first_parent, pair.second_parent);
+                if !pool.trainee_ok(context.trainee_id, first_parent, second_parent) {
                     continue;
                 }
-                // each parent slot's affinity, summed as `slots` sums it (as fa)
-                let fa = [0, 1].map(|s| {
-                    let x = if s == 0 { a } else { b };
-                    aff_factor(part_sum(cx.pt[x] + pr.pp[s], cx.gr[go[x]..go[x + 1]].iter().copied()), pr.race[s])
+                // each parent slot's affinity factor, summed as `slots` sums it
+                let affinity_factors = [0, 1].map(|side| {
+                    let parent = if side == 0 { first_parent } else { second_parent };
+                    aff_factor(
+                        part_sum(
+                            context.parent_relations[parent] + pair.parent_pair_relations[side],
+                            context.grandparent_relations[grandparent_offsets[parent]..grandparent_offsets[parent + 1]]
+                                .iter()
+                                .copied(),
+                        ),
+                        pair.race[side],
+                    )
                 });
-                for k in 0..ntar {
-                    let (mut miss, mut mix2) = (1.0f64, 1.0f64);
-                    for (s, x) in [a, b].into_iter().enumerate() {
-                        let (fm, fx) = fac(p.veterans[x].stars[k], p.veterans[x].star_mix, fa[s]);
-                        miss *= fm;
-                        mix2 *= fx;
-                        for j in go[x]..go[x + 1] {
-                            let (fm, fx) = cx.gf[j * ntar + k];
-                            miss *= fm;
-                            mix2 *= fx;
+                for k in 0..target_count {
+                    let (mut miss, mut mix_product) = (1.0f64, 1.0f64);
+                    for (side, parent) in [first_parent, second_parent].into_iter().enumerate() {
+                        let (slot_miss, slot_mix) =
+                            fac(pool.veterans[parent].stars[k], pool.veterans[parent].star_mix, affinity_factors[side]);
+                        miss *= slot_miss;
+                        mix_product *= slot_mix;
+                        for j in grandparent_offsets[parent]..grandparent_offsets[parent + 1] {
+                            let (slot_miss, slot_mix) = context.grandparent_factors[j * target_count + k];
+                            miss *= slot_miss;
+                            mix_product *= slot_mix;
                         }
                     }
-                    q[k] = inherit_q(miss, mix2);
+                    q[k] = inherit_q(miss, mix_product);
                 }
                 // `ceiling_at` without writing the folded buffer: per outfit `outfit_fast` at q = 0 on the hint chances
-                // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its fold
-                // (an open factor: ew = 1 - (1 - e)(1 - q_k), white = GEN_WHITE (1 - (1 - dw)(1 - ew)), dg GOLD + (1 - dg) white)
-                for k in 0..nq.len() {
-                    nq[k] = 1.0 - q[cx.uncv[k]];
+                // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its
+                // fold (an open factor: `event_chance` = 1 - (1 - e)(1 - q_k),
+                // white = GEN_WHITE (1 - (1 - dw)(1 - `event_chance`)), dg GOLD + (1 - dg) white)
+                for k in 0..uncertain_misses.len() {
+                    uncertain_misses[k] = 1.0 - q[context.uncertain_targets[k]];
                 }
-                let mut pv = 0.0f64;
-                for fo in cx.ft {
-                    let mut po = 1.0f64;
-                    for (k, f) in fo.iter().enumerate() {
-                        po *= match *f {
-                            Fac::Fixed(x) => x,
-                            Fac::Open(ne, ndw, a, nd) => {
-                                let ew = 1.0 - ne * nq[k];
-                                a + nd * (gw * (1.0 - ndw * (1.0 - ew)))
+                let mut product_value = 0.0f64;
+                for outfit in context.outfit_factors {
+                    let mut outfit_value = 1.0f64;
+                    for (k, factor) in outfit.iter().enumerate() {
+                        outfit_value *= match *factor {
+                            OutfitFactor::Fixed(fixed_factor) => fixed_factor,
+                            OutfitFactor::Open(event_miss, white_miss, gold_factor, gold_miss) => {
+                                let event_chance = 1.0 - event_miss * uncertain_misses[k];
+                                gold_factor + gold_miss * (white_spark_rate * (1.0 - white_miss * (1.0 - event_chance)))
                             }
                         };
                     }
-                    pv = f64::max(pv, po);
+                    product_value = f64::max(product_value, outfit_value);
                 }
                 last = true;
-                out.push(mk(cx.rho * pr.c * cx.fixed * pv, cx.tp, cx.t, a, b));
+                candidates.push(make_candidate(
+                    context.rho * pair.career_spark_scale * context.fixed * product_value,
+                    context.trainee_position,
+                    context.trainee,
+                    first_parent,
+                    second_parent,
+                ));
             }
             last
         }
-        for (tp, &t) in trainees.iter().enumerate() {
-            if self.deck_odds_ceilings[t].is_none() {
+        for (trainee_position, &trainee) in trainees.iter().enumerate() {
+            if self.deck_odds_ceilings[trainee].is_none() {
                 continue;
             }
-            let (ti, tid) = (Some(t), d.umas[t].id);
-            for x in 0..nl {
-                let px = &p.veterans[x];
-                pt[x] = self.pair(ti, px.uma_index);
-                for (gi, g) in p.parents[x].iter().enumerate() {
-                    let j = go[x] + gi;
-                    gr[j] = self.tri(ti, px.uma_index, g.uma_index);
-                    let fa = aff_factor(gr[j], p.grandparent_race_affinity[x][gi]);
-                    for k in 0..ntar {
-                        gf[j * ntar + k] = fac(g.stars[k], g.star_mix, fa);
+            let (trainee_index, trainee_id) = (Some(trainee), data.umas[trainee].id);
+            for legacy in 0..legacy_count {
+                let veteran = &pool.veterans[legacy];
+                parent_relations[legacy] = self.pair(trainee_index, veteran.uma_index);
+                for (grandparent_slot, grandparent) in pool.parents[legacy].iter().enumerate() {
+                    let j = grandparent_offsets[legacy] + grandparent_slot;
+                    grandparent_relations[j] = self.tri(trainee_index, veteran.uma_index, grandparent.uma_index);
+                    let affinity_factor =
+                        aff_factor(grandparent_relations[j], pool.grandparent_race_affinity[legacy][grandparent_slot]);
+                    for k in 0..target_count {
+                        grandparent_factors[j * target_count + k] =
+                            fac(grandparent.stars[k], grandparent.star_mix, affinity_factor);
                     }
                 }
             }
-            let (dw, dg) = self.deck_odds_ceilings[t].as_ref().unwrap();
+            let (white_hint_chances, gold_hint_chances) = self.deck_odds_ceilings[trainee].as_ref().unwrap();
             debug_assert!(
-                self.outfit_coverage[t].len() == self.model.n_outfits(t),
-                "one skill table per outfit of trainee {t}"
+                self.outfit_coverage[trainee].len() == self.model.n_outfits(trainee),
+                "one skill table per outfit of trainee {trainee}"
             );
-            let (gg, gw) = (crate::skills::GEN_GOLD, crate::skills::GEN_WHITE);
-            let ft: Vec<Vec<Fac>> = self.outfit_coverage[t]
+            let (gold_rate, white_spark_rate) = (crate::skills::GEN_GOLD, crate::skills::GEN_WHITE);
+            let outfit_factors: Vec<Vec<OutfitFactor>> = self.outfit_coverage[trainee]
                 .iter()
-                .zip(&self.model.ews[t])
-                .map(|(st, e0)| {
-                    (0..st.len())
-                        .map(|k| match st[k] {
-                            2 => Fac::Fixed(gg),
-                            1 => Fac::Fixed(dg[k] * gg + (1.0 - dg[k]) * gw),
-                            _ => Fac::Open(1.0 - e0[k], 1.0 - dw[k], dg[k] * gg, 1.0 - dg[k]),
+                .zip(&self.model.event_chances[trainee])
+                .map(|(coverage, own_event_chances)| {
+                    (0..coverage.len())
+                        .map(|k| match coverage[k] {
+                            2 => OutfitFactor::Fixed(gold_rate),
+                            1 => OutfitFactor::Fixed(
+                                gold_hint_chances[k] * gold_rate + (1.0 - gold_hint_chances[k]) * white_spark_rate,
+                            ),
+                            _ => OutfitFactor::Open(
+                                1.0 - own_event_chances[k],
+                                1.0 - white_hint_chances[k],
+                                gold_hint_chances[k] * gold_rate,
+                                1.0 - gold_hint_chances[k],
+                            ),
                         })
                         .collect()
                 })
                 .collect();
-            let mut nq = vec![0.0f64; ft.iter().map(std::vec::Vec::len).max().unwrap_or(0)];
-            let cx = Cx {
-                p,
+            let mut uncertain_misses = vec![0.0f64; outfit_factors.iter().map(std::vec::Vec::len).max().unwrap_or(0)];
+            let context = CandidateContext {
+                pool,
                 pairs: &pairs,
-                tid,
-                ntar,
-                pt: &pt,
-                go: &go,
-                gr: &gr,
-                gf: &gf,
-                ft: &ft,
-                uncv: &self.uncertain_targets,
-                gw,
+                trainee_id,
+                target_count,
+                parent_relations: &parent_relations,
+                grandparent_offsets: &grandparent_offsets,
+                grandparent_relations: &grandparent_relations,
+                grandparent_factors: &grandparent_factors,
+                outfit_factors: &outfit_factors,
+                uncertain_targets: &self.uncertain_targets,
+                white_spark_rate,
                 rho,
                 fixed,
-                tp,
-                t,
+                trainee_position,
+                trainee,
             };
-            let last = trainee_cands(&cx, &mut q, &mut nq, &mut out, &mut mk);
+            let last = trainee_cands(&context, &mut q, &mut uncertain_misses, &mut candidates, &mut make_candidate);
             // the folded buffer the last candidate's `ceiling` left (q still holds its chances)
             if last {
-                self.set_trainee(state, t, &q);
+                self.set_trainee(state, trainee, &q);
             }
         }
-        out
+        candidates
     }
+}
 
+impl Env<'_> {
     /// The best careers: trainees from `trainees` (uma indices), two legacies of `p` as parents (all of `fix` among
     /// them, at most one borrowed), each with her best deck; `top` of them, one per trainee when `per_trainee`.
     /// Candidates are kept as (ceiling, trainee, parents) only (a pool of 400 veterans has millions); their chances
     /// are recomputed when one is solved (the same numbers, so the same results). The search is `complete` unless a
     /// deck search was not `full`, a cap breach went unanswered, or the hard work cap stopped candidate evaluation.
-    pub(crate) fn solve(
-        &self,
-        state: &mut SearchState,
-        audit: &mut DeckSearchAudit,
-        memo: &mut DeckSearchMemo,
-        p: &Pool,
-        fix: &[usize],
-        trainees: &[UmaIndex],
-        per_trainee: bool,
-        top: usize,
-    ) -> CareerSearchResult {
-        let d = self.data;
-        state.work = 0; // each search has its own work budget
-        let cert0 = std::mem::replace(&mut audit.cert, f64::INFINITY);
+    pub(crate) fn solve(&mut self, request: SearchRequest) -> CareerSearchResult {
+        let SearchRequest { pool, fixed_parents, trainees, per_trainee, top } = request;
+        let data = self.setup.data;
+        self.state.work = 0; // each search has its own work budget
+        let previous_certificate = std::mem::replace(&mut self.audit.certified_cap, f64::INFINITY);
         // (`tp`: the trainee's position in `trainees`; generated in (tp, a, b) order)
         // (packed as u16, not a `Lineage`: a pool of 400 veterans has millions of candidates)
-        struct Cand {
-            ub: f64,
-            t: u16,
-            tp: u16,
-            a: u16,
-            b: u16,
+        struct Candidate {
+            ceiling: f64,
+            trainee: u16,
+            trainee_position: u16,
+            first_parent: u16,
+            second_parent: u16,
         }
-        impl Cand {
+        impl Candidate {
             const fn lineage(&self) -> Lineage {
                 Lineage {
-                    trainee: UmaIndex(self.t as usize),
-                    first_parent: self.a as usize,
-                    second_parent: self.b as usize,
+                    trainee: UmaIndex(self.trainee as usize),
+                    first_parent: self.first_parent as usize,
+                    second_parent: self.second_parent as usize,
                 }
             }
         }
-        let t_gen = now_ms();
-        let nl = p.veterans.len();
+        let generation_start = now_ms();
+        let legacy_count = pool.veterans.len();
         assert!(
-            nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize && trainees.len() <= u16::MAX as usize,
+            legacy_count <= u16::MAX as usize
+                && data.umas.len() <= u16::MAX as usize
+                && trainees.len() <= u16::MAX as usize,
             "legacies, umas and trainees are packed as u16"
         );
-        let mut cands: Vec<Cand> = self.gen_cands(
-            state,
-            p,
-            fix,
+        let mut candidates: Vec<Candidate> = self.setup.gen_cands(
+            &mut self.state,
+            pool,
+            fixed_parents,
             trainees,
             |_, _| true,
-            |ub, tp, t, a, b| Cand { ub, t: t.0 as u16, tp: tp as u16, a: a as u16, b: b as u16 },
+            |ceiling, trainee_position, trainee, first_parent, second_parent| Candidate {
+                ceiling,
+                trainee: trainee.0 as u16,
+                trainee_position: trainee_position as u16,
+                first_parent: first_parent as u16,
+                second_parent: second_parent as u16,
+            },
         );
         // Best ceiling first, ties in generation order: the order a stable sort by ceiling gives (partial_cmp, so 0 and
         // -0 tie as there), as a total order on (ceiling descending, tp, a, b), unique per candidate. Sorted lazily
         // (`upto`): the loop below reads a short prefix, so each step selects the next chunk (everything before it is
         // ordered before everything after it) and sorts only the chunk; the prefix is the full sort's, element for element.
-        let ord = |x: &Cand, y: &Cand| {
-            y.ub.partial_cmp(&x.ub).unwrap().then(x.tp.cmp(&y.tp)).then(x.a.cmp(&y.a)).then(x.b.cmp(&y.b))
+        let candidate_order = |first: &Candidate, second: &Candidate| {
+            second
+                .ceiling
+                .partial_cmp(&first.ceiling)
+                .unwrap()
+                .then(first.trainee_position.cmp(&second.trainee_position))
+                .then(first.first_parent.cmp(&second.first_parent))
+                .then(first.second_parent.cmp(&second.second_parent))
         };
-        let mut upto = 0usize;
+        let mut sorted_until = 0usize;
         // cands[..upto] in final order; makes it reach past i
-        let sort_to = |cands: &mut [Cand], i: usize, upto: &mut usize| {
-            if i < *upto || *upto >= cands.len() {
+        let sort_to = |candidates: &mut [Candidate], i: usize, sorted_until: &mut usize| {
+            if i < *sorted_until || *sorted_until >= candidates.len() {
                 return;
             }
-            let t0 = now_ms();
-            while i >= *upto && *upto < cands.len() {
-                let rest = &mut cands[*upto..];
+            let sort_start = now_ms();
+            while i >= *sorted_until && *sorted_until < candidates.len() {
+                let rest = &mut candidates[*sorted_until..];
                 // (chunks of 1024, then 4x what is sorted: each selection scans the whole remainder)
-                let m = (4 * *upto).max(1024).min(rest.len());
-                if m < rest.len() {
-                    rest.select_nth_unstable_by(m - 1, ord);
+                let chunk = (4 * *sorted_until).max(1024).min(rest.len());
+                if chunk < rest.len() {
+                    rest.select_nth_unstable_by(chunk - 1, candidate_order);
                 }
-                rest[..m].sort_unstable_by(ord);
-                *upto += m;
+                rest[..chunk].sort_unstable_by(candidate_order);
+                *sorted_until += chunk;
             }
-            prof("gen_ms", now_ms() - t0);
+            prof("gen_ms", now_ms() - sort_start);
         };
-        prof("gen_ms", now_ms() - t_gen);
-        prof("gen_cands", cands.len() as f64);
+        prof("gen_ms", now_ms() - generation_start);
+        prof("gen_cands", candidates.len() as f64);
         prof("solves", 1.0);
         let top = top.max(1);
         let mut complete = true;
         // a breach no cap-free search answered (`CAP_RERUN=0`): the search may have pruned a better deck. A rerun that
         // proves nothing returns a deck search that is not full, so `complete` falls below as for any such search
-        let open0 = audit.cap_free_stats.unhandled;
+        let unhandled_before = self.audit.cap_free_stats.unhandled;
         let mut done: Vec<(f64, usize, SelectedDeck)> = vec![];
-        let floor = state.floor;
+        let floor = self.state.floor;
         let kth =
             |done: &[(f64, usize, SelectedDeck)]| if done.len() < top { floor } else { done[top - 1].0.max(floor) };
         let (mut n_solved, mut n_bounded, mut n_scored) = (0usize, 0usize, 0usize);
         let mut next = 0;
         // one result per trainee: a candidate only matters if it beats the k-th best and its trainee's best so far
-        let thr = |done: &[(f64, usize, SelectedDeck)], cands: &[Cand], t: UmaIndex| {
+        let threshold_for = |done: &[(f64, usize, SelectedDeck)], candidates: &[Candidate], trainee: UmaIndex| {
             if per_trainee {
                 done.iter()
-                    .find(|x| UmaIndex(cands[x.1].t as usize) == t)
-                    .map_or_else(|| kth(done), |x| x.0.max(kth(done)))
+                    .find(|result| UmaIndex(candidates[result.1].trainee as usize) == trainee)
+                    .map_or_else(|| kth(done), |result| result.0.max(kth(done)))
             } else {
                 kth(done)
             }
         };
         // per trainee, her fully checked candidates (`Ref`: chances, exact best value before the spark scale, deck)
-        let mut refs = UmaTable(vec![vec![]; d.umas.len()]);
+        let mut refs = UmaTable(vec![vec![]; data.umas.len()]);
         // per trainee, where this search's own entries in `ruled` start
-        let ruled0: UmaTable<usize> = state.ruled.iter().map(std::vec::Vec::len).collect();
+        let prior_proof_counts: UmaTable<usize> = self.state.ruled.iter().map(std::vec::Vec::len).collect();
         // dominated veterans (`dominance_lists`), and the candidates this search took and did not solve (bounded, no
         // deck)
-        let dom = p.dominance_lists();
-        let prune = dom.iter().any(|v| !v.is_empty());
+        let dominance = pool.dominance_lists();
+        let prune = dominance.iter().any(|dominators| !dominators.is_empty());
         let mut unsolved: crate::FxSet<(u16, u16, u16)> = crate::FxSet::default();
         // the deck problems searched so far (`Twin`)
         let mut twins: crate::FxMap<TwinKey, Twin> = crate::FxMap::default();
         // a candidate whose ceiling is 0 cannot land every target (a target no legacy carries and nothing else gives):
         // nothing after it can either (sorted), and with every value 0 the bar would never rise, so every career would
         // be solved without a positive pruning bar; stop there, leaving such careers out
-        while next < cands.len()
+        while next < candidates.len()
             && {
-                sort_to(&mut cands, next, &mut upto);
-                cands[next].ub > 0.0
+                sort_to(&mut candidates, next, &mut sorted_until);
+                candidates[next].ceiling > 0.0
             }
-            && cands[next].ub * (1.0 + 1e-9) >= kth(&done)
+            && candidates[next].ceiling * (1.0 + 1e-9) >= kth(&done)
         {
-            if state.hard_work_cap > 0 && state.work > state.hard_work_cap {
+            if self.state.hard_work_cap > 0 && self.state.work > self.state.hard_work_cap {
                 complete = false;
                 break;
             }
-            let ci = next;
+            let candidate_index = next;
             next += 1;
-            let lineage = cands[ci].lineage();
-            let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
-            let th = thr(&done, &cands, t);
+            let lineage = candidates[candidate_index].lineage();
+            let Lineage { trainee, first_parent, second_parent } = lineage;
+            let threshold = threshold_for(&done, &candidates, trainee);
             if prune {
-                unsolved.insert((cands[ci].t, cands[ci].a, cands[ci].b));
+                unsolved.insert((
+                    candidates[candidate_index].trainee,
+                    candidates[candidate_index].first_parent,
+                    candidates[candidate_index].second_parent,
+                ));
             }
-            if Self::ceiling_out(cands[ci].ub, Bar::Below(th)) {
+            if CareerSetup::ceiling_out(candidates[candidate_index].ceiling, Bar::Below(threshold)) {
                 n_bounded += 1;
                 continue;
             }
@@ -599,30 +695,39 @@ impl CareerSetup<'_> {
             // this search's own candidates. A taken-and-solved dominator proves nothing of the kind (this one could still
             // come out solved, a Ref the later searches start from), so only unsolved ones count.
             if prune {
-                let key = |x: usize, y: usize| (t.0 as u16, x.min(y) as u16, x.max(y) as u16);
-                if [(a, b), (b, a)]
-                    .iter()
-                    .any(|&(x, y)| dom[x].iter().any(|&v| v != y && unsolved.contains(&key(v, y))))
-                {
+                let key = |parent: usize, partner: usize| {
+                    (trainee.0 as u16, parent.min(partner) as u16, parent.max(partner) as u16)
+                };
+                if [(first_parent, second_parent), (second_parent, first_parent)].iter().any(|&(parent, partner)| {
+                    dominance[parent]
+                        .iter()
+                        .any(|&dominator| dominator != partner && unsolved.contains(&key(dominator, partner)))
+                }) {
                     n_bounded += 1;
                     continue;
                 }
             }
-            let (q, c) = self.lineage_q(p, lineage);
+            let (q, career_spark_scale) = self.setup.lineage_q(pool, lineage);
             // (the ceiling this candidate was ranked and stopped by is `ceiling` at these chances, to the bit:
             // `gen_cands`' claim; only the trainee's reusable folded buffer changes)
             debug_assert!(
                 {
-                    let ub = self.ceiling(state, t, &q, c);
-                    ub.map(f64::to_bits) == Some(cands[ci].ub.to_bits())
+                    let ceiling = self.setup.ceiling(&mut self.state, trainee, &q, career_spark_scale);
+                    ceiling.map(f64::to_bits) == Some(candidates[candidate_index].ceiling.to_bits())
                 },
-                "gen_cands' ceiling of ({t}, {a}, {b}) is not ceiling(lineage)"
+                "gen_cands' ceiling of ({trainee}, {first_parent}, {second_parent}) is not ceiling(lineage)"
             );
-            let ct = self.deck_class[t];
-            let seen: &[Ref] = if state.use_seen { &state.seen[ct] } else { &[] };
+            let deck_class = self.setup.deck_class[trainee];
+            let seen: &[Ref] = if self.state.use_seen { &self.state.seen[deck_class] } else { &[] };
             // (the lowest of these bounds below th, as any one of them below it: the minimum is one of the bounds, and
             // rounding x (1 + 1e-9) is monotone; a NaN bound neither lowers the minimum nor passes the test)
-            if self.refs_out(t, &q, c, refs[t].iter().chain(seen), Bar::Below(th)) {
+            if self.setup.refs_out(
+                trainee,
+                &q,
+                career_spark_scale,
+                refs[trainee].iter().chain(seen),
+                Bar::Below(threshold),
+            ) {
                 n_bounded += 1;
                 continue;
             }
@@ -640,153 +745,181 @@ impl CareerSetup<'_> {
             // that ran out of its budget before can now get further). A search whose
             // decks seed the simulator's cache (`use_seen` off) takes only the proofs of its own candidates, so its work does not
             // depend on what earlier searches did either.
-            let lo = if state.use_seen { 0 } else { ruled0[ct] };
-            if self.ruled_out(t, &q, c, &state.ruled[ct][lo..], Bar::Below(th)) {
+            let proof_start = if self.state.use_seen { 0 } else { prior_proof_counts[deck_class] };
+            if self.setup.ruled_out(
+                trainee,
+                &q,
+                career_spark_scale,
+                &self.state.ruled[deck_class][proof_start..],
+                Bar::Below(threshold),
+            ) {
                 n_bounded += 1;
                 continue;
             }
-            self.set_trainee(state, t, &q);
-            let res = self.twin_deck_search(
-                state,
-                audit,
-                memo,
+            self.setup.set_trainee(&mut self.state, trainee, &q);
+            let result = self.twin_deck_search(
                 &mut twins,
-                TwinSearch { trainee: t, chances: &q, spark_scale: c, bar: th, starts: &refs[t] },
+                TwinSearch {
+                    trainee,
+                    chances: &q,
+                    spark_scale: career_spark_scale,
+                    bar: threshold,
+                    starts: &refs[trainee],
+                },
                 &mut n_scored,
             );
-            let (val, sel, full) = match res {
+            let (value, deck, full) = match result {
                 DeckRes::NoDeck => continue,
                 DeckRes::Bounded => {
                     n_bounded += 1;
                     continue;
                 }
-                DeckRes::Done(v, sel, full) => (v, sel, full),
+                DeckRes::Done(found_value, deck, full) => (found_value, deck, full),
             };
             n_solved += 1;
             if prune {
-                unsolved.remove(&(cands[ci].t, cands[ci].a, cands[ci].b));
+                unsolved.remove(&(
+                    candidates[candidate_index].trainee,
+                    candidates[candidate_index].first_parent,
+                    candidates[candidate_index].second_parent,
+                ));
             }
             if full {
-                refs[t].push(Ref { q, val, deck: sel.clone() });
+                refs[trainee].push(Ref { inheritance_chances: q, value, deck: deck.clone() });
             } else {
                 complete = false;
             }
-            let val = c * val;
-            if per_trainee && let Some(i) = done.iter().position(|x| UmaIndex(cands[x.1].t as usize) == t) {
-                if done[i].0 >= val {
+            let value = career_spark_scale * value;
+            if per_trainee
+                && let Some(i) =
+                    done.iter().position(|result| UmaIndex(candidates[result.1].trainee as usize) == trainee)
+            {
+                if done[i].0 >= value {
                     continue;
                 }
                 done.remove(i);
             }
-            let pos = done.iter().position(|x| x.0 < val).unwrap_or(done.len());
-            done.insert(pos, (val, ci, sel));
+            let pos = done.iter().position(|result| result.0 < value).unwrap_or(done.len());
+            done.insert(pos, (value, candidate_index, deck));
         }
-        self.merge_seen(state, &refs);
-        let next_bound = if next < cands.len() {
-            sort_to(&mut cands, next, &mut upto);
-            cands[next].ub
+        self.setup.merge_seen(&mut self.state, &refs);
+        let next_bound = if next < candidates.len() {
+            sort_to(&mut candidates, next, &mut sorted_until);
+            candidates[next].ceiling
         } else {
             0.0
         };
-        if audit.cap_free_stats.unhandled > open0 {
+        if self.audit.cap_free_stats.unhandled > unhandled_before {
             complete = false;
         }
         let proven = complete
             && !done.is_empty()
-            && (done.len() >= top.min(cands.len()) || next >= cands.len())
+            && (done.len() >= top.min(candidates.len()) || next >= candidates.len())
             && next_bound < done[0].0;
-        let n = cands.len();
-        let cert = audit.cert;
-        audit.cert = cert0.min(cert);
+        let candidate_count = candidates.len();
+        let certified_cap = self.audit.certified_cap;
+        self.audit.certified_cap = previous_certificate.min(certified_cap);
         CareerSearchResult {
             found: done
                 .into_iter()
                 .take(top)
-                .map(|(val, ci, sel)| Found {
-                    trainee: UmaIndex(cands[ci].t as usize),
-                    first_parent: cands[ci].a as usize,
-                    second_parent: cands[ci].b as usize,
-                    value: val,
-                    ceiling: cands[ci].ub,
-                    deck: sel,
+                .map(|(value, candidate_index, deck)| Found {
+                    trainee: UmaIndex(candidates[candidate_index].trainee as usize),
+                    first_parent: candidates[candidate_index].first_parent as usize,
+                    second_parent: candidates[candidate_index].second_parent as usize,
+                    value,
+                    ceiling: candidates[candidate_index].ceiling,
+                    deck,
                 })
                 .collect(),
             refs,
-            cands: n,
+            candidates: candidate_count,
             solved: n_solved,
             bounded: n_bounded,
             scored: n_scored,
-            skipped: n - next,
+            skipped: candidate_count - next,
             next_bound,
             complete,
             proven,
-            work: state.work,
-            cert,
+            work: self.state.work,
+            certified_cap,
+        }
+    }
+}
+
+impl Env<'_> {
+    /// `solve`'s deck search of a candidate at chances `search.chances` (folded in: `set_trainee`), or the outcome of
+    /// a bit-identical problem it already searched (`Twin`); records the product search's proof in `ruled`
+    fn twin_deck_search(
+        &mut self,
+        twins: &mut crate::FxMap<TwinKey, Twin>,
+        search: TwinSearch,
+        n_scored: &mut usize,
+    ) -> DeckRes {
+        let TwinSearch { trainee, chances: q, spark_scale: career_spark_scale, bar: threshold, starts } = search;
+        let deck_class = self.setup.deck_class[trainee];
+        let twin_key = (
+            trainee.0 as u16,
+            q.iter().map(|chance| chance.to_bits()).collect::<Vec<u64>>(),
+            career_spark_scale.to_bits(),
+        );
+        match twins.get(&twin_key) {
+            Some(Twin::Done(value, deck, product_bound)) => {
+                if let Some(bound) = product_bound {
+                    self.state.ruled[deck_class]
+                        .push(ProductProof { inheritance_chances: q.to_vec(), product_bound: *bound });
+                }
+                DeckRes::Done(*value, deck.clone(), true)
+            }
+            Some(Twin::Bounded(bar)) if threshold >= *bar => DeckRes::Bounded,
+            Some(Twin::NoDeck) => DeckRes::NoDeck,
+            _ => {
+                let starts: Vec<&SelectedDeck> = starts.iter().map(|reference| &reference.deck).collect();
+                let result = self.best_deck(
+                    crate::career::decks::DeckSearch { trainee, spark_scale: career_spark_scale, bar: threshold },
+                    &starts,
+                    n_scored,
+                );
+                let product_bound = self.state.last_product_bound.take();
+                if let Some(bound) = product_bound {
+                    self.state.ruled[deck_class]
+                        .push(ProductProof { inheritance_chances: q.to_vec(), product_bound: bound });
+                }
+                match &result {
+                    DeckRes::Done(value, deck, true) => {
+                        twins.insert(twin_key, Twin::Done(*value, deck.clone(), product_bound));
+                    }
+                    DeckRes::Done(..) => {}
+                    DeckRes::Bounded => {
+                        twins.insert(twin_key, Twin::Bounded(threshold));
+                    }
+                    DeckRes::NoDeck => {
+                        twins.insert(twin_key, Twin::NoDeck);
+                    }
+                }
+                result
+            }
         }
     }
 }
 
 impl CareerSetup<'_> {
-    /// `solve`'s deck search of a candidate at chances `search.chances` (folded in: `set_trainee`), or the outcome of
-    /// a bit-identical problem it already searched (`Twin`); records the product search's proof in `ruled`
-    fn twin_deck_search(
-        &self,
-        state: &mut SearchState,
-        audit: &mut DeckSearchAudit,
-        memo: &mut DeckSearchMemo,
-        twins: &mut crate::FxMap<TwinKey, Twin>,
-        search: TwinSearch,
-        n_scored: &mut usize,
-    ) -> DeckRes {
-        let TwinSearch { trainee: t, chances: q, spark_scale: c, bar: th, starts } = search;
-        let ct = self.deck_class[t];
-        let tk = (t.0 as u16, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
-        match twins.get(&tk) {
-            Some(Twin::Done(v, sel, pv)) => {
-                if let Some(s) = pv {
-                    state.ruled[ct].push(ProductProof { inheritance_chances: q.to_vec(), product_bound: *s });
-                }
-                DeckRes::Done(*v, sel.clone(), true)
-            }
-            Some(Twin::Bounded(th1)) if th >= *th1 => DeckRes::Bounded,
-            Some(Twin::NoDeck) => DeckRes::NoDeck,
-            _ => {
-                let starts: Vec<&SelectedDeck> = starts.iter().map(|r| &r.deck).collect();
-                let res = self.best_deck(state, audit, memo, t, c, th, &starts, n_scored);
-                let pv = state.last_product_bound.take();
-                if let Some(s) = pv {
-                    state.ruled[ct].push(ProductProof { inheritance_chances: q.to_vec(), product_bound: s });
-                }
-                match &res {
-                    DeckRes::Done(v, sel, true) => {
-                        twins.insert(tk, Twin::Done(*v, sel.clone(), pv));
-                    }
-                    DeckRes::Done(..) => {}
-                    DeckRes::Bounded => {
-                        twins.insert(tk, Twin::Bounded(th));
-                    }
-                    DeckRes::NoDeck => {
-                        twins.insert(tk, Twin::NoDeck);
-                    }
-                }
-                res
-            }
-        }
-    }
     /// A search's fully checked decks (`refs`, per trainee) into `seen` (per deck class), each new one once
     fn merge_seen(&self, state: &mut SearchState, refs: &UmaTable<Vec<Ref>>) {
-        for (t, rs) in refs.indexed() {
-            let ct = self.deck_class[t];
-            for r in rs {
-                if !state.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) {
-                    state.seen[ct].push(r.clone());
+        for (trainee, trainee_refs) in refs.indexed() {
+            let deck_class = self.deck_class[trainee];
+            for reference in trainee_refs {
+                if !state.seen[deck_class].iter().any(|known| {
+                    known.value == reference.value && known.inheritance_chances == reference.inheritance_chances
+                }) {
+                    state.seen[deck_class].push(reference.clone());
                 }
             }
         }
     }
 }
 
-/// Identical deck problems, searched once (`CareerSetup::solve`): a candidate whose trainee, chances q and spark scale
+/// Identical deck problems, searched once (`Env::solve`): a candidate whose trainee, chances q and spark scale
 /// c are bit-identical to an earlier candidate's of this search (interchangeable parents: veterans with the same stars
 /// and no relation or race points between them, as every sample pool of mob veterans has; 15 pairs of 6 such
 /// veterans are one problem per trainee) takes that candidate's outcome instead of a second `best_deck`.
@@ -831,7 +964,7 @@ struct TwinSearch<'search> {
     starts: &'search [Ref],
 }
 
-/// What a career search covers (`CareerSetup::solve`'s arguments, as `solve_kept` takes them).
+/// What a career search covers (`Env::solve`'s arguments, as `solve_kept` takes them).
 #[derive(Clone, Copy)]
 pub(crate) struct SearchRequest<'request> {
     /// The legacies the parents come from.
@@ -868,16 +1001,13 @@ pub(crate) fn solve_kept(
             solved
         }
         _ => {
-            let solved = env.setup.solve(
-                &mut env.state,
-                &mut env.audit,
-                &mut env.memo,
-                request.pool,
-                request.fixed_parents,
-                request.trainees,
-                request.per_trainee,
-                request.top,
-            );
+            let solved = env.solve(crate::career::search::SearchRequest {
+                pool: request.pool,
+                fixed_parents: request.fixed_parents,
+                trainees: request.trainees,
+                per_trainee: request.per_trainee,
+                top: request.top,
+            });
             {
                 let cache = &mut worker.searches;
                 cache.retain(|entry| entry.key != key);

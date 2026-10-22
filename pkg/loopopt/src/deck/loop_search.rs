@@ -6,7 +6,7 @@ use self::tables::{
 };
 use crate::Instant;
 use crate::data::{Choice, Data, NT, Sched, Uma};
-use crate::deck::dominance::{Cl, Name, PDeck};
+use crate::deck::dominance::{DeckCluster, Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
 use crate::deck::{Card, CardsRaw, DeckJob};
@@ -145,10 +145,10 @@ struct Multi<'data> {
     /// per class of umas with the same value coordinates (`ucoords`): its skyline decks and their clusters; each
     /// uma's class
     class_decks: Vec<Vec<usize>>,
-    class_clusters: Vec<Vec<Cl>>,
+    class_clusters: Vec<Vec<DeckCluster>>,
     class_by_trainee: UmaTable<usize>,
     /// clusters of the whole skyline (empty with per-uma decks)
-    skyline_clusters: Vec<Cl>,
+    skyline_clusters: Vec<DeckCluster>,
     /// the deck space's entry per (card id, end link, variant)
     entry_by_card: crate::FxMap<CardEntryKey, usize>,
     exact_caps: [f64; 4],
@@ -237,7 +237,7 @@ impl LoopJobInputs<'_> {
             self.deck_job
                 .lock_cards
                 .iter()
-                .any(|id| card_of.get(id).is_some_and(|card| card.blocks(self.data.umas[uma].id, self.deck_job.checks)))
+                .any(|id| card_of.get(id).is_some_and(|card| card.blocks(self.data.umas[uma].id, crate::checks::get())))
         };
         let eligible: Vec<UmaIndex> = self
             .data
@@ -261,14 +261,14 @@ impl<'data> Multi<'data> {
         let target_groups: Vec<u32> =
             inputs.model.uncertain.iter().map(|&i| inputs.skill_job.targets[i].group).collect();
         let target_count = target_groups.len();
-        let card_of: crate::FxMap<u32, &Card> = inputs.cards.cards.iter().map(|c| (c.id, c)).collect();
+        let card_of: crate::FxMap<u32, &Card> = inputs.cards.cards.iter().map(|card| (card.id, card)).collect();
         let uma_count = inputs.data.umas.len();
         let TrainingPool { eligible: pool, required: required_umas } = inputs.trainable(&card_of);
-        if required_umas.iter().any(|r| !pool.contains(r)) {
+        if required_umas.iter().any(|required| !pool.contains(required)) {
             return Err(json!({"error": "A required uma cannot train with a locked card of her own."}));
         }
-        if let Err(e) = check_sizes(&inputs.skill_job.sizes, pool.len(), required_umas.len()) {
-            return Err(json!({"error": e}));
+        if let Err(error) = check_sizes(&inputs.skill_job.sizes, pool.len(), required_umas.len()) {
+            return Err(json!({"error": error}));
         }
         let (allow_three, allow_four) = (inputs.skill_job.sizes.contains(&3), inputs.skill_job.sizes.contains(&4));
         let started = Instant::now();
@@ -283,17 +283,16 @@ impl<'data> Multi<'data> {
         let no_race = inputs.deck_job.schedule.as_deref() == Some("none");
         let pair_bounds = pair_table(inputs.data, &pool, fixed_schedules.as_ref(), no_race);
         let fixed = inputs.model.fixed_factor();
-        let maximum_chances: UmaTable<f64> =
-            inputs
-                .data
-                .umas
-                .indices()
-                .map(|u| {
-                    if pool.contains(&u) { inputs.model.q_ub_trainee(u, &pool, &pair_bounds, allow_three) } else { 0.0 }
-                })
-                .collect();
+        let maximum_chances: UmaTable<f64> = inputs
+            .data
+            .umas
+            .indices()
+            .map(|uma| {
+                if pool.contains(&uma) { inputs.model.q_ub_trainee(uma, &pool, &pair_bounds, allow_three) } else { 0.0 }
+            })
+            .collect();
         let lowest_chance = inputs.model.q_floor();
-        let highest_chance = pool.iter().map(|&u| maximum_chances[u]).fold(lowest_chance, f64::max);
+        let highest_chance = pool.iter().map(|&uma| maximum_chances[uma]).fold(lowest_chance, f64::max);
         let grid = Grid::new(lowest_chance, highest_chance);
         let (class_decks, class_by_trainee) = classes(inputs.model, &pool, inputs.skyline, target_count, uma_count);
         // Clusters of each class's decks (recursive median splits on the widest odds coordinate) with their
@@ -303,7 +302,7 @@ impl<'data> Multi<'data> {
         // rounding) is below the best value so far. The maximum of a set does not depend on visit order, so the
         // result is the same value bit for bit.
         let class_clusters = class_clusters(inputs.skyline, &class_decks, target_count);
-        if inputs.deck_job.checks.deck_debug {
+        if crate::checks::get().deck_debug {
             eprintln!(
                 "classes {} sizes {:?} ({:.2}s)",
                 class_decks.len(),
@@ -374,8 +373,8 @@ impl<'data> Multi<'data> {
     }
 }
 /// Fixed schedule for one uma (see DeckJob::schedule).
-fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
-    let solo = u.best_response(d.nr, &vec![1.0; d.nr], None).expect("infeasible goals").0;
+fn prebuilt(data: &Data, uma: &Uma, mode: &str) -> Sched {
+    let solo = data.best_response(uma, &vec![1.0; data.race_count], None).expect("infeasible goals").0;
     if mode != "goals" {
         return solo;
     }
@@ -384,13 +383,13 @@ fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
     let mut covered_goals = 0u32;
     for turn in 0..NT {
         if let Choice::Opt(option) = schedule[turn] {
-            let goal_bits = u.bits[turn][option as usize];
-            if u.forced[turn].is_some() || goal_bits & !covered_goals != 0 {
+            let goal_bits = uma.goal_bits[turn][option as usize];
+            if uma.forced[turn].is_some() || goal_bits & !covered_goals != 0 {
                 covered_goals |= goal_bits;
             } else {
                 schedule[turn] = Choice::Rest;
             }
         }
     }
-    if u.feasible(&schedule) { schedule } else { solo }
+    if uma.feasible(&schedule) { schedule } else { solo }
 }

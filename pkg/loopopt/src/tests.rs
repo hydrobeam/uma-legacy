@@ -7,7 +7,7 @@
 //   pb_milp.json                     pair ceilings
 // Run with: cargo test --release
 // ---------------------------------------------------------------------------------------------
-use crate::chart::{self, ScheduleChart};
+use crate::chart;
 use crate::data::{Choice, Data, NT, Sched, Uma, dot, load, load_str};
 use crate::optimize::{C_PAIR, FILL_EPS, LoopProblem, optimize, pair_ceilings};
 use crate::uma::UmaIndex;
@@ -20,12 +20,12 @@ fn fixture(name: &str) -> serde_json::Value {
     let path = format!("{}/tests/fixtures/{}", env!("CARGO_MANIFEST_DIR"), name);
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
-fn ix(d: &Data, id: u32) -> UmaIndex {
-    UmaIndex(d.umas.iter().position(|u| u.id == id).unwrap())
+fn ix(data: &Data, id: u32) -> UmaIndex {
+    UmaIndex(data.umas.iter().position(|uma| uma.id == id).unwrap())
 }
-/// The option with race program `prog` at 1-based turn `t`.
-fn opt_at(u: &Uma, t: usize, prog: u32) -> Choice {
-    Choice::Opt(u.opts[t - 1].iter().position(|o| o.prog == prog).unwrap() as u8)
+/// The option with race program `prog` at 1-based turn `turn`.
+fn opt_at(uma: &Uma, turn: usize, program_id: u32) -> Choice {
+    Choice::Opt(uma.race_options[turn - 1].iter().position(|option| option.program_id == program_id).unwrap() as u8)
 }
 struct Lcg(u64);
 impl Lcg {
@@ -46,7 +46,7 @@ fn streak_positions() {
     // Digital: Japan Cup classic (t46) then Champions Cup (t47) then Tokyo Daishoten (t48): k = 1,2,3
     let mut schedule = [Choice::Rest; NT];
     for (t, name) in [(46, "Japan Cup"), (47, "Champions Cup"), (48, "Tokyo Daishoten")] {
-        let o = digital.opts[t - 1].iter().position(|op| op.name == name).unwrap();
+        let o = digital.race_options[t - 1].iter().position(|op| op.name == name).unwrap();
         schedule[t - 1] = Choice::Opt(o as u8);
     }
     let rows = chart::chart_rows(d, &[ix(d, 1019)], &[schedule]);
@@ -64,7 +64,7 @@ fn best_response_matches_milp() {
     for (file, rest) in [("br_milp.json", false), ("br_rest_milp.json", true)] {
         for case in fixture(file).as_array().unwrap() {
             let uma = &d.umas[ix(d, case["uma"].as_u64().unwrap() as u32)];
-            let mut weights = vec![0.0; d.nr];
+            let mut weights = vec![0.0; d.race_count];
             for entry in case["weights"].as_array().unwrap() {
                 weights[entry[0].as_u64().unwrap() as usize] = entry[1].as_f64().unwrap();
             }
@@ -76,7 +76,7 @@ fn best_response_matches_milp() {
                     (t - 1, opt_at(uma, t, forced[1].as_u64().unwrap() as u32))
                 })
             };
-            let (schedule, value) = uma.best_response(d.nr, &weights, force).expect("infeasible");
+            let (schedule, value) = d.best_response(uma, &weights, force).expect("infeasible");
             let want = case["milp_value"].as_f64().unwrap();
             assert!(
                 (value - want).abs() < 1e-6,
@@ -99,13 +99,13 @@ fn best_response_matches_milp() {
 #[test]
 fn force_conflicting_with_goal_is_infeasible() {
     let d = data();
-    let weights = vec![1.0; d.nr];
+    let weights = vec![1.0; d.race_count];
     let urara = &d.umas[ix(d, 1052)];
     assert!(urara.forced[71].is_some(), "Urara has a goal at turn 72");
-    assert!(urara.best_response(d.nr, &weights, Some((71, Choice::Rest))).is_none());
+    assert!(d.best_response(urara, &weights, Some((71, Choice::Rest))).is_none());
     let chiyono = &d.umas[ix(d, 1069)];
     // turn 23 goal for Chiyono O is Asahi Hai FS; forcing Hanshin JF (program 623) must fail
-    assert!(chiyono.best_response(d.nr, &weights, Some((22, opt_at(chiyono, 23, 623)))).is_none());
+    assert!(d.best_response(chiyono, &weights, Some((22, opt_at(chiyono, 23, 623)))).is_none());
 }
 
 /// Uma::feasible rejects bad schedules (it is not vacuously true).
@@ -113,8 +113,8 @@ fn force_conflicting_with_goal_is_infeasible() {
 fn feasible_rejects_bad_schedules() {
     let d = data();
     let daiwa = &d.umas[ix(d, 1009)];
-    let weights = vec![1.0; d.nr];
-    let (schedule, _) = daiwa.best_response(d.nr, &weights, None).unwrap();
+    let weights = vec![1.0; d.race_count];
+    let (schedule, _) = d.best_response(daiwa, &weights, None).unwrap();
     assert!(daiwa.feasible(&schedule));
     // drop a goal race
     let mut goal_turn = 0;
@@ -133,7 +133,7 @@ fn feasible_rejects_bad_schedules() {
     assert!(!daiwa.feasible(&missing_option), "nonexistent option accepted");
     // multi-turn goal alternative: Fuji Kiseki must run NHK Mile (t33) or the Derby (t34)
     let fuji = &d.umas[ix(d, 1005)];
-    let (fuji_schedule, _) = fuji.best_response(d.nr, &weights, None).unwrap();
+    let (fuji_schedule, _) = d.best_response(fuji, &weights, None).unwrap();
     let mut neither = fuji_schedule;
     neither[32] = Choice::Rest;
     neither[33] = Choice::Rest;
@@ -150,12 +150,12 @@ fn stored_pb_tables_match_fresh() {
     ] {
         let text = std::fs::read_to_string(path).unwrap();
         let d = load_str(&text);
-        let Some(stored) = d.pbt.as_ref() else {
+        let Some(stored) = d.pair_ceilings.as_ref() else {
             eprintln!("warning: {path} has no current pb table (run ./build.sh pb)");
             continue;
         };
         let mut fresh = load_str(&text);
-        fresh.pbt = None;
+        fresh.pair_ceilings = None;
         let roster: Vec<UmaIndex> = d.umas.indices().collect();
         let ceilings = pair_ceilings(&fresh, &roster);
         for a in d.umas.indices() {
@@ -167,7 +167,7 @@ fn stored_pb_tables_match_fresh() {
         }
         let mut changed: serde_json::Value = serde_json::from_str(&text).unwrap();
         changed["pen"][2] = serde_json::json!(changed["pen"][2].as_i64().unwrap() + 1);
-        assert!(load_str(&changed.to_string()).pbt.is_none(), "{path}: a table survived a data change");
+        assert!(load_str(&changed.to_string()).pair_ceilings.is_none(), "{path}: a table survived a data change");
     }
 }
 
@@ -190,8 +190,10 @@ fn pair_ceilings_match_milp() {
 fn score_matches_per_legacy_sum() {
     let d = data();
     let mut rng = Lcg(2024);
-    let pair = |a: UmaIndex, b: UmaIndex| f64::from(d.pair[a][b]);
-    let trio = |a: UmaIndex, b: UmaIndex, c: UmaIndex| if a == c || b == c { 0.0 } else { f64::from(d.tri[a][b][c]) };
+    let pair = |a: UmaIndex, b: UmaIndex| f64::from(d.pair_relations[a][b]);
+    let trio = |a: UmaIndex, b: UmaIndex, c: UmaIndex| {
+        if a == c || b == c { 0.0 } else { f64::from(d.trio_relations[a][b][c]) }
+    };
     for _ in 0..60 {
         let mut members = [UmaIndex(0); 4];
         loop {
@@ -206,11 +208,11 @@ fn score_matches_per_legacy_sum() {
         }
         let schedules: Vec<Sched> = (0..4)
             .map(|i| {
-                let weights: Vec<f64> = (0..d.nr).map(|_| rng.unit() * 3.0).collect();
-                d.umas[members[i]].best_response(d.nr, &weights, None).unwrap().0
+                let weights: Vec<f64> = (0..d.race_count).map(|_| rng.unit() * 3.0).collect();
+                d.best_response(&d.umas[members[i]], &weights, None).unwrap().0
             })
             .collect();
-        let chances: Vec<Vec<f64>> = (0..4).map(|i| d.umas[members[i]].win_chances(d.nr, &schedules[i])).collect();
+        let chances: Vec<Vec<f64>> = (0..4).map(|i| d.win_chances(&d.umas[members[i]], &schedules[i])).collect();
         let overlap = |a: usize, b: usize| dot(&chances[a], &chances[b]);
         let um = |i: usize| members[i];
         let w = 0.5;
@@ -252,16 +254,16 @@ fn score_matches_per_legacy_sum() {
 fn tie_break_costs_the_parents_races_nothing() {
     let d = data();
     for uma in &d.umas {
-        let parents: Vec<f64> = (0..d.nr).map(|race| if race % 3 == 0 { 1.0 } else { 0.0 }).collect();
+        let parents: Vec<f64> = (0..d.race_count).map(|race| if race % 3 == 0 { 1.0 } else { 0.0 }).collect();
         let with_tie_break: Vec<f64> = parents.iter().map(|weight| weight + FILL_EPS).collect();
         let (Some((best, _)), Some((tied, _))) =
-            (uma.best_response(d.nr, &parents, None), uma.best_response(d.nr, &with_tie_break, None))
+            (d.best_response(uma, &parents, None), d.best_response(uma, &with_tie_break, None))
         else {
             continue;
         };
-        let best_value = dot(&parents, &uma.win_chances(d.nr, &best));
-        let tied_value = dot(&parents, &uma.win_chances(d.nr, &tied));
-        let bonus = FILL_EPS * d.nr as f64;
+        let best_value = dot(&parents, &d.win_chances(uma, &best));
+        let tied_value = dot(&parents, &d.win_chances(uma, &tied));
+        let bonus = FILL_EPS * d.race_count as f64;
         assert!(
             tied_value >= best_value - bonus,
             "uma {}: the tie-break lost {} of her parents' races",
@@ -278,15 +280,15 @@ fn optional_g1s_cost_nothing() {
         [[1007, 1019, 1021, 1049], [1009, 1014, 1019, 1029], [1015, 1017, 1023, 1030], [1006, 1019, 1029, 1034]];
     for ids in cases {
         let members = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2]), ix(d, ids[3])];
-        let optimized = optimize(d, members, 3, 5, 60.0).s;
+        let optimized = optimize(d, members, 3, 5, 60.0).schedules;
         let problem = LoopProblem::new(d, members);
         let value = problem.score(&optimized);
-        let mut runners = vec![0u8; d.nr];
+        let mut runners = vec![0u8; d.race_count];
         for i in 0..4 {
-            let mut seen = vec![false; d.nr];
+            let mut seen = vec![false; d.race_count];
             for t in 0..NT {
                 if let Choice::Opt(o) = optimized[i][t] {
-                    let race = d.umas[members[i]].opts[t][o as usize].race;
+                    let race = d.umas[members[i]].race_options[t][o as usize].race;
                     if race >= 0 && !seen[race as usize] {
                         seen[race as usize] = true;
                         runners[race as usize] += 1;
@@ -298,7 +300,7 @@ fn optional_g1s_cost_nothing() {
         for i in 0..4 {
             for t in 0..NT {
                 if let Choice::Opt(o) = stripped[i][t] {
-                    let op = &d.umas[members[i]].opts[t][o as usize];
+                    let op = &d.umas[members[i]].race_options[t][o as usize];
                     if op.race >= 0 && runners[op.race as usize] == 1 && !op.goal {
                         stripped[i][t] = Choice::Rest;
                     }
@@ -322,13 +324,13 @@ fn three_member_schedules() {
     for ids in [[1019u32, 1021, 1034], [1006, 1019, 1029], [1007, 1009, 1049]] {
         let members = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2])];
         let result = optimize(d, members, 5, 3, 60.0);
-        assert!(result.s[3].iter().all(|c| *c == Choice::Rest));
-        let schedules: [Sched; 3] = [result.s[0], result.s[1], result.s[2]];
+        assert!(result.schedules[3].iter().all(|c| *c == Choice::Rest));
+        let schedules: [Sched; 3] = [result.schedules[0], result.schedules[1], result.schedules[2]];
         for i in 0..3 {
             assert!(d.umas[members[i]].feasible(&schedules[i]));
         }
         let problem = LoopProblem::new(d, members);
-        let chances: Vec<Vec<f64>> = (0..3).map(|i| d.umas[members[i]].win_chances(d.nr, &schedules[i])).collect();
+        let chances: Vec<Vec<f64>> = (0..3).map(|i| d.win_chances(&d.umas[members[i]], &schedules[i])).collect();
         let direct = problem.base
             + 3.0
                 * C_PAIR
@@ -336,7 +338,7 @@ fn three_member_schedules() {
         assert!((direct - problem.score(&schedules)).abs() < 1e-9, "{ids:?}");
         for i in 0..3 {
             let weights = problem.weights(&chances, i);
-            let (_, best) = d.umas[members[i]].best_response(d.nr, &weights, None).unwrap();
+            let (_, best) = d.best_response(&d.umas[members[i]], &weights, None).unwrap();
             let current = dot(&weights, &chances[i]);
             assert!(best <= current + 1e-6, "{ids:?}: member {i} gains {}", best - current);
         }
@@ -354,26 +356,28 @@ fn interchangeable_swaps_preserve_score() {
         let members = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2]), ix(d, ids[3])];
         let result = optimize(d, members, 3, 5, 60.0);
         let problem = LoopProblem::new(d, members);
-        let value = problem.score(&result.s);
-        let chart = ScheduleChart { data: d, members: &members, schedules: &result.s };
+        let value = problem.score(&result.schedules);
         for t in 0..NT {
             let mut races: Vec<i32> = vec![];
             for i in 0..4 {
-                if let Choice::Opt(o) = result.s[i][t] {
-                    let race = d.umas[members[i]].opts[t][o as usize].race;
+                if let Choice::Opt(o) = result.schedules[i][t] {
+                    let race = d.umas[members[i]].race_options[t][o as usize].race;
                     if race >= 0 && !races.contains(&race) {
                         races.push(race);
                     }
                 }
             }
             for race in races {
-                for alternative in chart.interchangeable(t, race) {
-                    let mut swapped = result.s;
+                for alternative in chart::interchangeable(d, &members, &result.schedules, t, race) {
+                    let mut swapped = result.schedules;
                     for i in 0..4 {
                         if let Choice::Opt(o) = swapped[i][t]
-                            && d.umas[members[i]].opts[t][o as usize].race == race
+                            && d.umas[members[i]].race_options[t][o as usize].race == race
                         {
-                            let k = d.umas[members[i]].opts[t].iter().position(|op| op.race == alternative).unwrap();
+                            let k = d.umas[members[i]].race_options[t]
+                                .iter()
+                                .position(|op| op.race == alternative)
+                                .unwrap();
                             swapped[i][t] = Choice::Opt(k as u8);
                         }
                     }
@@ -413,9 +417,13 @@ fn win_table_matches_community_table() {
         (180, [0; 6]),
     ];
     for (cost, vals) in table {
-        let bp = (110 - cost).max(-20);
+        let win_rate_basis = (110 - cost).max(-20);
         for k in 1..=6 {
-            assert_eq!(d.attempt_chance(bp, k), f64::from(vals[k - 1].clamp(0, 100)) / 100.0, "cost {cost} k {k}");
+            assert_eq!(
+                d.attempt_chance(win_rate_basis, k),
+                f64::from(vals[k - 1].clamp(0, 100)) / 100.0,
+                "cost {cost} k {k}"
+            );
         }
     }
 }
@@ -430,12 +438,17 @@ fn goal_race_takes_previous_position() {
     assert_eq!(goal_penalties, [0, 0, 0, 5, 20, 30]);
     assert_eq!(chosen_penalties, [0, 0, 5, 20, 30, 50]);
     let mut goal_options = 0;
-    for u in &d.umas.0 {
-        for (t, options) in u.opts.iter().enumerate() {
+    for uma in &d.umas.0 {
+        for (t, options) in uma.race_options.iter().enumerate() {
             for (o, option) in options.iter().enumerate() {
                 goal_options += usize::from(option.goal && option.race >= 0);
                 for k in 1..=6 {
-                    assert_eq!(u.ent[t][o + 1].p[k], d.option_chance(option, k), "{} turn {t} option {o}", u.name);
+                    assert_eq!(
+                        uma.choices[t][o + 1].win_chances[k],
+                        d.option_chance(option, k),
+                        "{} turn {t} option {o}",
+                        uma.name
+                    );
                 }
             }
         }

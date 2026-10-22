@@ -34,8 +34,8 @@ pub(crate) const fn cap_class(mask: u64) -> usize {
     }
 }
 /// The class of a deck given by its sources.
-pub(super) fn src_class<'src>(it: impl Iterator<Item = &'src TargetSources>) -> usize {
-    cap_class(it.fold(0u64, |m, s| m | s.cv_mask()))
+pub(super) fn src_class<'src>(sources: impl Iterator<Item = &'src TargetSources>) -> usize {
+    cap_class(sources.fold(0u64, |mask, source| mask | source.cv_mask()))
 }
 /// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.
 pub(crate) const EXACT_STEPS: [f64; 3] = [EXACT_RHO, 1.12, 1.05];

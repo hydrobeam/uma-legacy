@@ -237,9 +237,11 @@ impl JointScratch {
         self.target_parents.clear();
         self.in_cluster.clear();
         self.in_cluster.resize(target_count, false);
-        for v in [&mut self.all_land, &mut self.one_misses, &mut self.cluster_all_land, &mut self.cluster_one_misses] {
-            v.clear();
-            v.resize(query_outfit_count, 0.0);
+        for buffer in
+            [&mut self.all_land, &mut self.one_misses, &mut self.cluster_all_land, &mut self.cluster_one_misses]
+        {
+            buffer.clear();
+            buffer.resize(query_outfit_count, 0.0);
         }
         self.outcome_indices.clear();
         self.cluster_distribution.clear();
@@ -253,30 +255,30 @@ impl JointScratch {
     fn build_clusters(&mut self, groups: &[CoupledGroup], target_count: usize) -> usize {
         self.target_parents.clear();
         self.target_parents.extend(0..target_count);
-        const fn root(p: &mut [usize], mut x: usize) -> usize {
-            while p[x] != x {
-                p[x] = p[p[x]];
-                x = p[x];
+        const fn root(parents: &mut [usize], mut target: usize) -> usize {
+            while parents[target] != target {
+                parents[target] = parents[parents[target]];
+                target = parents[target];
             }
-            x
+            target
         }
-        for &g in &self.coupled_groups {
-            let targets = &groups[g].targets;
+        for &group in &self.coupled_groups {
+            let targets = &groups[group].targets;
             for adjacent_targets in targets.windows(2) {
-                let (a, b) = (
+                let (first_root, second_root) = (
                     root(&mut self.target_parents, adjacent_targets[0]),
                     root(&mut self.target_parents, adjacent_targets[1]),
                 );
-                if a != b {
-                    self.target_parents[a.max(b)] = a.min(b);
+                if first_root != second_root {
+                    self.target_parents[first_root.max(second_root)] = first_root.min(second_root);
                 }
             }
         }
         self.cluster_of_target.fill(usize::MAX);
         let mut cluster_count = 0usize;
-        for &g in &self.coupled_groups {
-            let r = root(&mut self.target_parents, groups[g].targets[0]);
-            let cluster_index = match self.cluster_of_target[r] {
+        for &group in &self.coupled_groups {
+            let group_root = root(&mut self.target_parents, groups[group].targets[0]);
+            let cluster_index = match self.cluster_of_target[group_root] {
                 usize::MAX => {
                     if cluster_count == self.cluster_targets.len() {
                         self.cluster_targets.push(vec![]);
@@ -284,13 +286,13 @@ impl JointScratch {
                     }
                     self.cluster_targets[cluster_count].clear();
                     self.cluster_groups[cluster_count].clear();
-                    self.cluster_of_target[r] = cluster_count;
+                    self.cluster_of_target[group_root] = cluster_count;
                     cluster_count += 1;
                     cluster_count - 1
                 }
                 c => c,
             };
-            self.cluster_groups[cluster_index].push(g);
+            self.cluster_groups[cluster_index].push(group);
         }
         for k in 0..target_count {
             if self.cluster_of_target[root(&mut self.target_parents, k)] != usize::MAX {
@@ -338,12 +340,12 @@ fn evaluate_prepared(
     let target_count = model.uncertain.len();
     let mut scratch = std::mem::take(workspace);
     let JointPrep { base, chains, states, groups } = prepared;
-    let outfits = &model.opts[query.trainee];
+    let outfits = &model.outfit_options[query.trainee];
     let outfit_count = outfits.len();
     let chance_count = query.inheritance_chances.len();
     let fixed_target_count = model.n_fixed_gold as usize;
     let fixed_factor = match &extension {
-        Some(extra) => extra.scales.guaranteed.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
+        Some(extra) => extra.scales.guaranteed.iter().fold(1.0, |product, scale| product * GEN_GOLD * scale),
         None => model.fixed_factor(),
     };
     let want_landed_sets = extension.as_ref().is_some_and(|extra| !extra.sets.is_empty()) && target_count <= 16;
@@ -356,7 +358,8 @@ fn evaluate_prepared(
         }
     }
     // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
-    let has_unit_scales = extension.as_ref().is_none_or(|extra| extra.scales.uncertain.iter().all(|&s| s == 1.0));
+    let has_unit_scales =
+        extension.as_ref().is_none_or(|extra| extra.scales.uncertain.iter().all(|&scale| scale == 1.0));
     let query_outfit_count = chance_count * outfit_count;
     scratch.reset(target_count, query_outfit_count, want_landed_sets);
     let mut outcomes: Vec<&[EventOutcome<&[TargetReward]>]> = vec![];
@@ -378,9 +381,9 @@ fn evaluate_prepared(
         }
         // Phase 3: tabulate landing factors for no coupled hint, a white hint, and a gold hint.
         for (chance_index, &q) in query.inheritance_chances.iter().enumerate() {
-            for (o, OutfitOption { coverage, .. }) in outfits.iter().enumerate() {
-                let event_chances = &query.event_chances[o];
-                let base = (chance_index * outfit_count + o) * target_count;
+            for (outfit, OutfitOption { coverage, .. }) in outfits.iter().enumerate() {
+                let event_chances = &query.event_chances[outfit];
+                let base = (chance_index * outfit_count + outfit) * target_count;
                 for k in 0..target_count {
                     let landing_factor = LandPre::new(coverage[k], event_chances[k], q);
                     scratch.landing_factors[base + k] = [
@@ -409,12 +412,18 @@ fn evaluate_prepared(
         for i in 0..query_outfit_count {
             for k in 0..target_count {
                 if !scratch.in_cluster[k] {
-                    let f = scratch.landing_factors[i * target_count + k][0];
-                    combine_independent(&mut scratch.all_land, &mut scratch.one_misses, i, f, 1.0 - f);
+                    let unit_factor = scratch.landing_factors[i * target_count + k][0];
+                    combine_independent(
+                        &mut scratch.all_land,
+                        &mut scratch.one_misses,
+                        i,
+                        unit_factor,
+                        1.0 - unit_factor,
+                    );
                     if options.marginals
                         && let Some(extra) = extension.as_deref_mut()
                     {
-                        extra.marginals[i * target_count + k] += state_probability * f;
+                        extra.marginals[i * target_count + k] += state_probability * unit_factor;
                     }
                 }
             }
@@ -447,7 +456,7 @@ fn evaluate_prepared(
             scratch.cluster_targets[..cluster_count].iter().zip(&scratch.cluster_groups[..cluster_count])
         {
             outcomes.clear();
-            outcomes.extend(group_indices.iter().map(|&g| &*groups[g].outcomes));
+            outcomes.extend(group_indices.iter().map(|&group| &*groups[group].outcomes));
             scratch.cluster_all_land.fill(0.0);
             scratch.cluster_one_misses.fill(0.0);
             // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
@@ -467,8 +476,8 @@ fn evaluate_prepared(
                     scratch.hint_levels[k] = 0;
                 }
                 for i in 0..outcomes.len() {
-                    for &TargetReward { target: k, level: l } in outcomes[i][scratch.outcome_indices[i]].rewards {
-                        scratch.hint_levels[k] = scratch.hint_levels[k].max(if l >= 2 { 2 } else { 1 });
+                    for &TargetReward { target: k, level } in outcomes[i][scratch.outcome_indices[i]].rewards {
+                        scratch.hint_levels[k] = scratch.hint_levels[k].max(if level >= 2 { 2 } else { 1 });
                     }
                 }
                 for i in 0..query_outfit_count {
@@ -595,18 +604,18 @@ fn evaluate_prepared(
         }
     }
     // Phase 7: publish per-outfit totals and select the first outfit maximizing P(all).
-    if let Some(x) = extension {
-        x.per_outfit.clear();
-        x.per_outfit.extend(scratch.totals.iter().map(|a| a.all));
+    if let Some(extra) = extension {
+        extra.per_outfit.clear();
+        extra.per_outfit.extend(scratch.totals.iter().map(|total| total.all));
     }
     let chances = (0..chance_count)
         .map(|chance_index| {
             let mut best_outfit = 0;
-            for o in 1..outfit_count {
-                if scratch.totals[chance_index * outfit_count + o].all
+            for outfit in 1..outfit_count {
+                if scratch.totals[chance_index * outfit_count + outfit].all
                     > scratch.totals[chance_index * outfit_count + best_outfit].all
                 {
-                    best_outfit = o;
+                    best_outfit = outfit;
                 }
             }
             JointChances {

@@ -128,12 +128,12 @@ pub(super) fn group_assoc(group: &Group) -> bool {
             let first_chance: f64 = group
                 .iter()
                 .filter(|outcome| outcome_hint_level(&outcome.rewards, targets[0]) >= a)
-                .map(|x| x.probability)
+                .map(|outcome| outcome.probability)
                 .sum();
             let second_chance: f64 = group
                 .iter()
                 .filter(|outcome| outcome_hint_level(&outcome.rewards, targets[1]) >= b)
-                .map(|x| x.probability)
+                .map(|outcome| outcome.probability)
                 .sum();
             let joint_chance: f64 = group
                 .iter()
@@ -141,7 +141,7 @@ pub(super) fn group_assoc(group: &Group) -> bool {
                     outcome_hint_level(&outcome.rewards, targets[0]) >= a
                         && outcome_hint_level(&outcome.rewards, targets[1]) >= b
                 })
-                .map(|x| x.probability)
+                .map(|outcome| outcome.probability)
                 .sum();
             if joint_chance > first_chance * second_chance * (1.0 + 1e-12) + 1e-15 {
                 return false;
@@ -170,8 +170,8 @@ pub(super) fn group_nuod(group: &Group) -> bool {
     thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<TargetReward>)>, bool>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let key: Vec<(u64, Vec<TargetReward>)> =
         group.iter().map(|outcome| (outcome.probability.to_bits(), outcome.rewards.clone())).collect();
-    if let Some(r) = GN.with(|c| c.borrow().get(&key).copied()) {
-        return r;
+    if let Some(cached) = GN.with(|cache| cache.borrow().get(&key).copied()) {
+        return cached;
     }
     let mut targets: Vec<usize> =
         group.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
@@ -193,16 +193,19 @@ pub(super) fn group_nuod(group: &Group) -> bool {
         })
         .collect();
     let marginal_chance: Vec<f64> = (0..targets.len())
-        .map(|i| outcomes.iter().filter(|o| o.targets >> i & 1 == 1).map(|o| o.probability).sum())
+        .map(|i| {
+            outcomes.iter().filter(|outcome| outcome.targets >> i & 1 == 1).map(|outcome| outcome.probability).sum()
+        })
         .collect();
     let certified = (1u32..1 << targets.len()).filter(|s| s.count_ones() >= 2).all(|s| {
-        let joint: f64 = outcomes.iter().filter(|o| o.targets & s == s).map(|o| o.probability).sum();
+        let joint: f64 =
+            outcomes.iter().filter(|outcome| outcome.targets & s == s).map(|outcome| outcome.probability).sum();
         joint
             <= (0..targets.len()).filter(|i| s >> i & 1 == 1).map(|i| marginal_chance[i]).product::<f64>()
                 * (1.0 + 1e-12)
                 + 1e-15
     });
-    GN.with(|c| c.borrow_mut().insert(key, certified));
+    GN.with(|cache| cache.borrow_mut().insert(key, certified));
     certified
 }
 /// Whether a group's per-target hint levels (Y_k: 0 none, 1 white, 2 gold, the best level its outcome gives k) are
@@ -222,7 +225,7 @@ pub(super) fn group_nuod_lvl(group: &Group) -> bool {
     if targets.len() > 6 {
         return false;
     }
-    let m = targets.len();
+    let target_count = targets.len();
     // per outcome: its chance and each target's level
     let outcomes: Vec<HintLevelOutcome> = group
         .iter()
@@ -231,28 +234,34 @@ pub(super) fn group_nuod_lvl(group: &Group) -> bool {
             levels: targets.iter().map(|&target| outcome_hint_level(&outcome.rewards, target)).collect(),
         })
         .collect();
-    let marginal_chance =
-        |i: usize, s: u8| -> f64 { outcomes.iter().filter(|o| o.levels[i] >= s).map(|o| o.probability).sum() };
+    let marginal_chance = |i: usize, level: u8| -> f64 {
+        outcomes.iter().filter(|outcome| outcome.levels[i] >= level).map(|outcome| outcome.probability).sum()
+    };
     // every assignment of a level 0 (not in S), 1 or 2 to each target, base 3
-    let mut a = vec![0u8; m];
+    let mut assignment = vec![0u8; target_count];
     loop {
         let mut i = 0;
-        while i < m {
-            a[i] += 1;
-            if a[i] < 3 {
+        while i < target_count {
+            assignment[i] += 1;
+            if assignment[i] < 3 {
                 break;
             }
-            a[i] = 0;
+            assignment[i] = 0;
             i += 1;
         }
-        if i == m {
+        if i == target_count {
             return true;
         }
-        if a.iter().filter(|&&x| x > 0).count() < 2 {
+        if assignment.iter().filter(|&&level| level > 0).count() < 2 {
             continue;
         }
-        let joint: f64 = outcomes.iter().filter(|o| (0..m).all(|i| o.levels[i] >= a[i])).map(|o| o.probability).sum();
-        let product_chance: f64 = (0..m).filter(|&i| a[i] > 0).map(|i| marginal_chance(i, a[i])).product();
+        let joint: f64 = outcomes
+            .iter()
+            .filter(|outcome| (0..target_count).all(|i| outcome.levels[i] >= assignment[i]))
+            .map(|outcome| outcome.probability)
+            .sum();
+        let product_chance: f64 =
+            (0..target_count).filter(|&i| assignment[i] > 0).map(|i| marginal_chance(i, assignment[i])).product();
         if joint > product_chance * (1.0 + 1e-12) + 1e-15 {
             return false;
         }
@@ -284,7 +293,7 @@ pub(crate) struct TargetSources {
 }
 impl TargetSources {
     pub(super) fn finish(mut self) -> Self {
-        self.chain_outcomes.sort_by_key(|x| x.link);
+        self.chain_outcomes.sort_by_key(|chain| chain.link);
         self.fixed_misses = self
             .fixed_outcomes
             .iter()
@@ -298,7 +307,7 @@ impl TargetSources {
         let mut chain_misses: Vec<TargetChainMisses> = vec![];
         for ChainOutcome { link, outcomes: group } in &self.chain_outcomes {
             for (target, gold_chance, hint_chance) in group_gh(group) {
-                let links = if let Some(i) = chain_misses.iter().position(|x| x.target == target) {
+                let links = if let Some(i) = chain_misses.iter().position(|misses| misses.target == target) {
                     &mut chain_misses[i].links
                 } else {
                     chain_misses.push(TargetChainMisses { target, links: vec![] });
@@ -313,20 +322,23 @@ impl TargetSources {
                 }
             }
         }
-        chain_misses.sort_by_key(|x| x.target);
+        chain_misses.sort_by_key(|last| last.target);
         self.chain_misses = chain_misses;
         self.uncertified_orthant = self
             .fixed_outcomes
             .iter()
-            .chain(self.chain_outcomes.iter().map(|x| &x.outcomes))
+            .chain(self.chain_outcomes.iter().map(|misses| &misses.outcomes))
             .any(|group| group_gh(group).len() >= 2 && !group_nuod(group));
         self.uncertified_association = self
             .fixed_outcomes
             .iter()
-            .chain(self.chain_outcomes.iter().map(|x| &x.outcomes))
+            .chain(self.chain_outcomes.iter().map(|chain| &chain.outcomes))
             .any(|group| !group_assoc(group));
-        self.certified_cap_free =
-            self.fixed_outcomes.iter().chain(self.chain_outcomes.iter().map(|x| &x.outcomes)).all(group_nuod_lvl);
+        self.certified_cap_free = self
+            .fixed_outcomes
+            .iter()
+            .chain(self.chain_outcomes.iter().map(|chain| &chain.outcomes))
+            .all(group_nuod_lvl);
         self
     }
     pub(super) const fn is_empty(&self) -> bool {
@@ -373,8 +385,8 @@ impl TargetSources {
 }
 
 /// Merge a card-event cache (card_events.json) into a deck job: skill names -> (group, level) via the skills table.
-pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
-    apply_event_lists(v, &event_lists(sk, db));
+pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: &Value) {
+    apply_event_lists(job, &event_lists(skills, event_cache));
 }
 
 /// The job lists a card-event cache adds, in `EVENT_KEYS` order: the same for every job (the page's worker builds
@@ -382,14 +394,14 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
 pub(crate) struct EventLists([Vec<Value>; 8]);
 const EVENT_KEYS: [&str; 8] = ["events", "events_p", "odds_events", "end_links", "ends", "stop_risk", "alts", "alt_w"];
 /// Each list after the job's own entries of it, in their order.
-pub(crate) fn apply_event_lists(v: &mut Value, l: &EventLists) {
-    for (k, add) in EVENT_KEYS.iter().zip(&l.0) {
-        let mut a: Vec<Value> = match v[*k].take() {
-            Value::Array(a) => a,
+pub(crate) fn apply_event_lists(job: &mut Value, lists: &EventLists) {
+    for (key, add) in EVENT_KEYS.iter().zip(&lists.0) {
+        let mut list: Vec<Value> = match job[*key].take() {
+            Value::Array(list) => list,
             _ => vec![],
         };
-        a.extend(add.iter().cloned());
-        v[*k] = Value::Array(a);
+        list.extend(add.iter().cloned());
+        job[*key] = Value::Array(list);
     }
 }
 /// Cached rewards are either a bare skill name (certain) or [name, chance]. Keep the cache reader's defaults
@@ -401,9 +413,9 @@ fn event_reward(value: &Value) -> (&str, f64) {
         (value.as_str().unwrap_or(""), 1.0)
     }
 }
-pub(crate) fn event_lists(sk: &SkillsRaw, db: &Value) -> EventLists {
+pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &Value) -> EventLists {
     let lookup_skill = |name: &str| {
-        sk.skills.iter().find_map(|(group, white, gold)| {
+        skills.skills.iter().find_map(|(group, white, gold)| {
             if white == name {
                 Some((*group, 1u8))
             } else if gold.as_deref() == Some(name) {
@@ -423,7 +435,7 @@ pub(crate) fn event_lists(sk: &SkillsRaw, db: &Value) -> EventLists {
         mut alternatives,
         mut alternative_weights,
     ]: [Vec<Value>; 8] = Default::default();
-    if let Some(cards) = db["cards"].as_object() {
+    if let Some(cards) = event_cache["cards"].as_object() {
         for (id, card) in cards {
             let Ok(id) = id.parse::<u32>() else { continue };
             for link in card["chain"].as_array().into_iter().flatten() {
@@ -528,8 +540,8 @@ struct ChoiceLink {
 /// Builds a deck entry's target sources and chain kind from the deck job; shared by the deck search and the exact
 /// evaluation of the decks it reports.
 pub(super) struct Sources<'data> {
-    pub(super) dj: &'data DeckJob,
-    pub(super) unc: &'data [u32],
+    pub(super) deck_job: &'data DeckJob,
+    pub(super) target_groups: &'data [u32],
 }
 pub(super) const fn in_range(link: u8, stop: Option<u8>) -> bool {
     match stop {
@@ -540,112 +552,115 @@ pub(super) const fn in_range(link: u8, stop: Option<u8>) -> bool {
 
 impl Sources<'_> {
     fn chain_rewards(&self, id: u32) -> Vec<ChainReward> {
-        let unc = self.unc;
+        let target_groups = self.target_groups;
         let mut rewards: Vec<ChainReward> = self
-            .dj
+            .deck_job
             .events
             .iter()
-            .filter(|e| e.0 == id)
-            .filter_map(|e| {
-                unc.iter().position(|&g| g == e.1).map(|target| ChainReward {
+            .filter(|event| event.0 == id)
+            .filter_map(|event| {
+                target_groups.iter().position(|&group| group == event.1).map(|target| ChainReward {
                     target,
-                    level: e.2,
-                    link: e.3,
+                    level: event.2,
+                    link: event.3,
                     probability: 1.0,
                 })
             })
             .collect();
-        rewards.extend(self.dj.events_p.iter().filter(|e| e.0 == id).filter_map(|e| {
-            unc.iter().position(|&g| g == e.1).map(|target| ChainReward {
+        rewards.extend(self.deck_job.events_p.iter().filter(|event| event.0 == id).filter_map(|event| {
+            target_groups.iter().position(|&group| group == event.1).map(|target| ChainReward {
                 target,
-                level: e.2,
-                link: e.3,
-                probability: e.4,
+                level: event.2,
+                link: event.3,
+                probability: event.4,
             })
         }));
         rewards
     }
     fn fixed_rewards(&self, id: u32) -> Vec<ProbabilisticReward> {
-        self.dj
+        self.deck_job
             .odds_events
             .iter()
-            .filter(|e| e.0 == id)
-            .filter_map(|e| {
-                self.unc.iter().position(|&g| g == e.1).map(|target| ProbabilisticReward {
+            .filter(|event| event.0 == id)
+            .filter_map(|event| {
+                self.target_groups.iter().position(|&group| group == event.1).map(|target| ProbabilisticReward {
                     target,
-                    level: e.2,
-                    probability: e.3,
+                    level: event.2,
+                    probability: event.3,
                 })
             })
             .collect()
     }
     /// Training-hint draws per run: base(scenario) x (1 + hint frequency / 100) x (1 + d(scenario) x specialty / 100),
     /// each uniform over the card's skill options still below Lv 5. Per target in the pool: P(hinted) = 1 - hint_miss(1).
-    pub(super) fn draws(&self, c: &Card) -> f64 {
-        let s = &self.dj.scenario;
-        hint_base(s) * (1.0 + c.hf / 100.0) * (1.0 + hint_spec(s) * c.spec / 100.0)
+    pub(super) fn draws(&self, card: &Card) -> f64 {
+        let scenario = &self.deck_job.scenario;
+        hint_base(scenario)
+            * (1.0 + card.hint_frequency / 100.0)
+            * (1.0 + hint_spec(scenario) * card.specialty_priority / 100.0)
     }
-    pub(super) fn training_hints(&self, c: &Card) -> Vec<TrainingHint> {
-        if c.nskill == 0 {
+    pub(super) fn training_hints(&self, card: &Card) -> Vec<TrainingHint> {
+        if card.skill_count == 0 {
             return vec![];
         }
-        let p = 1.0 - hint_miss(1, c.nskill as usize, self.draws(c), c.hinc);
-        self.unc
+        let probability = 1.0 - hint_miss(1, card.skill_count as usize, self.draws(card), card.hint_levels);
+        self.target_groups
             .iter()
             .enumerate()
-            .filter(|(_, g)| c.whites.contains(g))
-            .map(|(k, _)| TrainingHint { target: k, probability: p })
+            .filter(|(_, group)| card.whites.contains(group))
+            .map(|(k, _)| TrainingHint { target: k, probability })
             .collect()
     }
     /// A card's training hints over two or more of its targets as one outcome group: one outcome per non-empty set S
     /// of targets hinted, P(exactly S) = sum over U in S of (-1)^(|S|-|U|) hint_miss(m - |U|) (m targets in the
     /// pool), so the draws that hint one target cannot also hint another. Each target's own chance is unchanged.
-    pub(super) fn train_group(&self, c: &Card, tr: &[TrainingHint]) -> Group {
-        let (m, n, h) = (tr.len(), c.nskill as usize, self.draws(c));
+    pub(super) fn train_group(&self, card: &Card, hints: &[TrainingHint]) -> Group {
+        let (m, n, h) = (hints.len(), card.skill_count as usize, self.draws(card));
         // Only the number of unhinted targets matters. Reuse these probabilities without changing the
         // inclusion-exclusion summation order (and therefore its floating-point rounding).
-        let miss: Vec<f64> = (0..=m).map(|unhit| hint_miss(unhit, n, h, c.hinc)).collect();
-        let mut g: Group = vec![];
-        for sm in 1u32..(1 << m) {
-            let mut w = 0.0f64;
-            let ssz = sm.count_ones() as i32;
-            let mut u = sm;
+        let miss: Vec<f64> = (0..=m).map(|unhit| hint_miss(unhit, n, h, card.hint_levels)).collect();
+        let mut group: Group = vec![];
+        for s_mask in 1u32..(1 << m) {
+            let mut exact_chance = 0.0f64;
+            let s_size = s_mask.count_ones() as i32;
+            let mut u_mask = s_mask;
             loop {
                 // every subset U of S (including the empty set)
-                let usz = u.count_ones() as i32;
-                w += if (ssz - usz) % 2 == 0 { 1.0 } else { -1.0 } * miss[m - usz as usize];
-                if u == 0 {
+                let u_size = u_mask.count_ones() as i32;
+                exact_chance += if (s_size - u_size) % 2 == 0 { 1.0 } else { -1.0 } * miss[m - u_size as usize];
+                if u_mask == 0 {
                     break;
                 }
-                u = (u - 1) & sm;
+                u_mask = (u_mask - 1) & s_mask;
             }
-            g.push(EventOutcome {
-                probability: w.max(0.0),
+            group.push(EventOutcome {
+                probability: exact_chance.max(0.0),
                 rewards: (0..m)
-                    .filter(|i| sm >> i & 1 == 1)
-                    .map(|i| TargetReward { target: tr[i].target, level: 1u8 })
+                    .filter(|i| s_mask >> i & 1 == 1)
+                    .map(|i| TargetReward { target: hints[i].target, level: 1u8 })
                     .collect(),
             });
         }
-        g
+        group
     }
     /// early-end options: links where a card has a choice that ends its chain, and the target rewards of that choice
     pub(super) fn end_links(&self, id: u32) -> Vec<u8> {
-        let mut v: Vec<u8> = self.dj.end_links.iter().filter(|e| e.0 == id).map(|e| e.1).collect();
-        v.sort_unstable();
-        v.dedup();
-        v
+        let mut links: Vec<u8> =
+            self.deck_job.end_links.iter().filter(|event| event.0 == id).map(|event| event.1).collect();
+        links.sort_unstable();
+        links.dedup();
+        links
     }
     fn end_rewards(&self, id: u32, link: u8) -> Vec<ProbabilisticReward> {
-        self.dj
+        self.deck_job
             .ends
             .iter()
-            .filter(|e| e.0 == id && e.1 == link)
-            .filter_map(|e| {
-                self.unc.iter().position(|&g| g == e.2).map(|target| ProbabilisticReward {
+            .filter(|event| event.0 == id && event.1 == link)
+            .filter_map(|event| {
+                self.target_groups.iter().position(|&group| group == event.2).map(|target| ProbabilisticReward {
                     target,
-                    level: e.3,
-                    probability: e.4,
+                    level: event.3,
+                    probability: event.4,
                 })
             })
             .collect()
@@ -654,10 +669,14 @@ impl Sources<'_> {
     /// those with a target that no other choice beats on every target (P(gold) and P(any hint)); of two with the same
     /// odds, both are kept unless their outcomes are the same (then the first).
     pub(super) fn choices(&self, id: u32, link: u8) -> Option<Vec<Group>> {
-        let event = self.dj.alts.iter().find(|event| event.0 == id && event.1 == link)?;
-        let weights =
-            self.dj.alt_w.iter().find(|weights| weights.0 == id && weights.1 == link).map(|weights| &weights.2);
-        let nu = self.unc.len();
+        let event = self.deck_job.choice_events.iter().find(|event| event.0 == id && event.1 == link)?;
+        let weights = self
+            .deck_job
+            .choice_weights
+            .iter()
+            .find(|weights| weights.0 == id && weights.1 == link)
+            .map(|weights| &weights.2);
+        let uncertain_count = self.target_groups.len();
         let groups: Vec<Group> = event
             .2
             .iter()
@@ -671,7 +690,7 @@ impl Sources<'_> {
                         let mut rewards: Vec<TargetReward> = outcome
                             .iter()
                             .filter_map(|&(group, level)| {
-                                self.unc
+                                self.target_groups
                                     .iter()
                                     .position(|&target| target == group)
                                     .map(|k| TargetReward { target: k, level })
@@ -693,7 +712,7 @@ impl Sources<'_> {
         let profiles: Vec<Vec<(f64, f64)>> = groups
             .iter()
             .map(|group| {
-                let mut profile = vec![(0.0, 0.0); nu];
+                let mut profile = vec![(0.0, 0.0); uncertain_count];
                 for (k, gold, any_hint) in group_gh(group) {
                     profile[k] = (gold, any_hint);
                 }
@@ -701,9 +720,10 @@ impl Sources<'_> {
             })
             .collect();
         let beats = |challenger: usize, candidate: usize| {
-            profiles[challenger].iter().zip(&profiles[candidate]).all(|(a, b)| a.0 >= b.0 && a.1 >= b.1)
-                && (profiles[challenger] != profiles[candidate]
-                    || (groups[challenger] == groups[candidate] && challenger < candidate))
+            profiles[challenger].iter().zip(&profiles[candidate]).all(|(challenger_odds, candidate_odds)| {
+                challenger_odds.0 >= candidate_odds.0 && challenger_odds.1 >= candidate_odds.1
+            }) && (profiles[challenger] != profiles[candidate]
+                || (groups[challenger] == groups[candidate] && challenger < candidate))
         };
         Some(
             (0..groups.len())
@@ -718,37 +738,42 @@ impl Sources<'_> {
         )
     }
     /// links (before the entry's stop) where two or more choices are worth taking, with how many
-    fn choice_links(&self, c: &Card, stop: Option<u8>) -> Vec<ChoiceLink> {
-        if c.pal {
+    fn choice_links(&self, card: &Card, stop: Option<u8>) -> Vec<ChoiceLink> {
+        if card.pal {
             return vec![];
         }
-        let mut v: Vec<ChoiceLink> = self
-            .dj
-            .alts
+        let mut links: Vec<ChoiceLink> = self
+            .deck_job
+            .choice_events
             .iter()
-            .filter(|a| a.0 == c.id && in_range(a.1, stop))
-            .filter_map(|a| {
-                let n = self.choices(c.id, a.1).map_or(0, |x| x.len());
-                (n >= 2).then_some(ChoiceLink { link: a.1, choices: n })
+            .filter(|event| event.0 == card.id && in_range(event.1, stop))
+            .filter_map(|event| {
+                let choice_count = self.choices(card.id, event.1).map_or(0, |choices| choices.len());
+                (choice_count >= 2).then_some(ChoiceLink { link: event.1, choices: choice_count })
             })
             .collect();
-        v.sort_unstable();
-        v.dedup();
-        v
+        links.sort_unstable();
+        links.dedup();
+        links
     }
     /// The entry's choice variants: the choice taken at each `choice_links` link, 4 bits per link in link order.
-    pub(super) fn variants(&self, c: &Card, stop: Option<u8>) -> Vec<u32> {
+    pub(super) fn variants(&self, card: &Card, stop: Option<u8>) -> Vec<u32> {
         let mut out = vec![0u32];
-        for (pos, choice_link) in self.choice_links(c, stop).iter().enumerate() {
+        for (position, choice_link) in self.choice_links(card, stop).iter().enumerate() {
             out = out
                 .iter()
-                .flat_map(|&v| (0..choice_link.choices.min(16)).map(move |i| v | ((i as u32) << (4 * pos))))
+                .flat_map(|&variant| {
+                    (0..choice_link.choices.min(16)).map(move |i| variant | ((i as u32) << (4 * position)))
+                })
                 .collect();
         }
         out
     }
     pub(super) fn has_choices(&self, id: u32) -> bool {
-        self.dj.alts.iter().any(|a| a.0 == id && self.choices(id, a.1).is_some_and(|x| !x.is_empty()))
+        self.deck_job
+            .choice_events
+            .iter()
+            .any(|event| event.0 == id && self.choices(id, event.1).is_some_and(|choices| !choices.is_empty()))
     }
     /// Sources of a card played normally (stop = None) or ending its chain at link `stop` (links before it as usual,
     /// then the ending choice's rewards at that link), taking choice variant `variant`.
@@ -770,7 +795,8 @@ impl Sources<'_> {
         } else {
             sources.training_hints = training_hints;
         }
-        let alt_links: Vec<u8> = self.dj.alts.iter().filter(|a| a.0 == card.id).map(|a| a.1).collect();
+        let alt_links: Vec<u8> =
+            self.deck_job.choice_events.iter().filter(|event| event.0 == card.id).map(|event| event.1).collect();
         for ChainReward { target, level, link, probability } in self.chain_rewards(card.id) {
             if link == 0 {
                 sources.fixed_outcomes.push(one(target, level, probability));
@@ -794,7 +820,7 @@ impl Sources<'_> {
                 let choice_index = choice_links
                     .iter()
                     .position(|choice_link| choice_link.link == link)
-                    .map_or(0, |pos| ((variant >> (4 * pos)) & 15) as usize);
+                    .map_or(0, |position| ((variant >> (4 * position)) & 15) as usize);
                 if let Some(outcomes) = choices.get(choice_index) {
                     sources.chain_outcomes.push(ChainOutcome { link, outcomes: outcomes.clone() });
                 }
@@ -809,204 +835,234 @@ impl Sources<'_> {
         }
         sources.finish()
     }
-    pub(super) fn kind(&self, c: &Card, stop: Option<u8>) -> ChainKind {
-        if c.pal || c.links == 0 {
+    pub(super) fn kind(&self, card: &Card, stop: Option<u8>) -> ChainKind {
+        if card.pal || card.links == 0 {
             return ChainKind::NONE;
         }
-        let risk: Vec<(u8, u8, u8)> =
-            self.dj.stop_risk.iter().filter(|r| r.0 == c.id).map(|r| (r.1, r.2, r.3)).collect();
-        let st = stop.unwrap_or(c.links);
-        ChainKind { links: c.links, stop: st, stop_risk: stop_risk_code(&risk, st) }
+        let risk: Vec<(u8, u8, u8)> = self
+            .deck_job
+            .stop_risk
+            .iter()
+            .filter(|risk_row| risk_row.0 == card.id)
+            .map(|risk_row| (risk_row.1, risk_row.2, risk_row.3))
+            .collect();
+        let stop_at = stop.unwrap_or(card.links);
+        ChainKind { links: card.links, stop: stop_at, stop_risk: stop_risk_code(&risk, stop_at) }
     }
     /// "link 1: Uma Stan" for each link where the variant picks between choices ("" when there is none)
-    pub(super) fn label(&self, c: &Card, stop: Option<u8>, var: u32, sk: &SkillsRaw) -> String {
-        let name = |k: usize, lvl: u8| {
-            sk.skills
+    pub(super) fn label(&self, card: &Card, stop: Option<u8>, variant: u32, skills: &SkillsRaw) -> String {
+        let name = |k: usize, skill_level: u8| {
+            skills
+                .skills
                 .iter()
-                .find(|x| x.0 == self.unc[k])
-                .map(|x| if lvl >= 2 { x.2.clone().unwrap_or_else(|| x.1.clone()) } else { x.1.clone() })
+                .find(|skill| skill.0 == self.target_groups[k])
+                .map(|skill| {
+                    if skill_level >= 2 { skill.2.clone().unwrap_or_else(|| skill.1.clone()) } else { skill.1.clone() }
+                })
                 .unwrap_or_default()
         };
-        self.choice_links(c, stop)
+        self.choice_links(card, stop)
             .iter()
             .enumerate()
-            .map(|(pos, choice_link)| {
-                let l = choice_link.link;
-                let i = ((var >> (4 * pos)) & 15) as usize;
-                let g = self.choices(c.id, l).unwrap_or_default().get(i).cloned().unwrap_or_default();
-                let mut ns: Vec<String> = vec![];
-                for EventOutcome { rewards: out, .. } in &g {
-                    for &TargetReward { target: k, level: lvl } in out {
-                        let n = name(k, lvl);
-                        if !ns.contains(&n) {
-                            ns.push(n);
+            .map(|(position, choice_link)| {
+                let link = choice_link.link;
+                let i = ((variant >> (4 * position)) & 15) as usize;
+                let outcomes = self.choices(card.id, link).unwrap_or_default().get(i).cloned().unwrap_or_default();
+                let mut names: Vec<String> = vec![];
+                for EventOutcome { rewards, .. } in &outcomes {
+                    for &TargetReward { target: k, level: skill_level } in rewards {
+                        let skill_name = name(k, skill_level);
+                        if !names.contains(&skill_name) {
+                            names.push(skill_name);
                         }
                     }
                 }
-                format!("link {}: {}", l, ns.join(", "))
+                format!("link {}: {}", link, names.join(", "))
             })
             .collect::<Vec<_>>()
             .join("; ")
     }
 }
 
-/// Deck entries of a job: per entry the card (`rel`, an index into `cards`, the cards a deck may hold), chain kind,
-/// early-end link (0 = played normally), choice variant and sources; the plain pals (owned pal characters with no
-/// relevant card, best-rarity card) and the locked cards. `pool_ids`: the umas that may train (plain pals that block
+/// Deck entries of a job: per entry the card (`card_indices`, an index into `cards`, the cards a deck may hold), chain
+/// kind, early-end link (0 = played normally), choice variant and sources; the plain pals (owned pal characters with
+/// no relevant card, best-rarity card) and the locked cards. `pool_ids`: the umas that may train (plain pals that block
 /// none of them come first).
 pub(crate) struct Entries<'data> {
     pub(super) cards: Vec<&'data Card>,
-    pub(super) rel: Vec<usize>,
+    pub(super) card_indices: Vec<usize>,
     pub(super) kind: Vec<ChainKind>,
-    pub(super) endk: Vec<u8>,
-    pub(super) vark: Vec<u32>,
-    pub(super) srcs: Vec<TargetSources>,
+    pub(super) end_links: Vec<u8>,
+    pub(super) variants: Vec<u32>,
+    pub(super) sources: Vec<TargetSources>,
     pub(super) plain_ids: Vec<u32>,
     pub(super) plain_names: Vec<String>,
     pub(super) plain_chars: Vec<u32>,
     pub(super) locked: Vec<usize>,
 }
 pub(crate) fn deck_entries<'data>(
-    cr: &'data CardsRaw,
-    dj: &DeckJob,
-    unc: &[u32],
+    cards: &'data CardsRaw,
+    deck_job: &DeckJob,
+    target_groups: &[u32],
     pool_ids: &[u32],
 ) -> Result<Entries<'data>, Value> {
     // the packed search's limits (`MAX_DECK`, `MAX_UNCERTAIN`; `MAX_KINDS` and the locks below), refused before any table
-    if !(1..=MAX_DECK).contains(&dj.deck_size) {
-        return Err(json!({"error": format!("deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.", dj.deck_size)}));
-    }
-    if unc.len() > MAX_UNCERTAIN {
+    if !(1..=MAX_DECK).contains(&deck_job.deck_size) {
         return Err(
-            json!({"error": format!("At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.", unc.len())}),
+            json!({"error": format!("deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.", deck_job.deck_size)}),
         );
     }
-    let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
+    if target_groups.len() > MAX_UNCERTAIN {
+        return Err(
+            json!({"error": format!("At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.", target_groups.len())}),
+        );
+    }
+    let is_owned = |id: u32| {
+        deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
+    };
     // a card the scenario bans can't be in the deck, owned, borrowed or locked
-    let banned: &[u32] = cr.restrict.get(&dj.scenario).map_or(&[], |v| v.as_slice());
-    if let Some(c) =
-        dj.lock_cards.iter().find(|id| banned.contains(id)).and_then(|id| cr.cards.iter().find(|c| c.id == *id))
+    let banned: &[u32] = cards.restrict.get(&deck_job.scenario).map_or(&[], |variant| variant.as_slice());
+    if let Some(card) = deck_job
+        .lock_cards
+        .iter()
+        .find(|id| banned.contains(id))
+        .and_then(|id| cards.cards.iter().find(|card| card.id == *id))
     {
         return Err(
-            json!({"error": format!("{} can't be used in {}: the game bans it from that scenario's deck.", c.name, scenario_name(&dj.scenario))}),
+            json!({"error": format!("{} can't be used in {}: the game bans it from that scenario's deck.", card.name, scenario_name(&deck_job.scenario))}),
         );
     }
-    let owned_c = |id: u32| (is_owned(id) || dj.borrow) && !dj.exclude_cards.contains(&id) && !banned.contains(&id);
+    let usable =
+        |id: u32| (is_owned(id) || deck_job.borrow) && !deck_job.exclude_cards.contains(&id) && !banned.contains(&id);
     // ---- card sources ----
-    let srcb = Sources { dj, unc };
-    let cards: Vec<&Card> = cr.cards.iter().filter(|c| owned_c(c.id)).collect();
-    // deck entries: card index (`rel`), chain kind, early-end link (0 = played normally), choice variant and sources
-    let mut rel: Vec<usize> = vec![];
+    let source_builder = Sources { deck_job, target_groups };
+    let cards: Vec<&Card> = cards.cards.iter().filter(|card| usable(card.id)).collect();
+    // deck entries: card index (`card_indices`), chain kind, early-end link (0 = played normally), choice variant and
+    // sources
+    let mut card_indices: Vec<usize> = vec![];
     let mut kind: Vec<ChainKind> = vec![];
-    let mut endk: Vec<u8> = vec![];
-    let mut vark: Vec<u32> = vec![];
-    let mut srcs: Vec<TargetSources> = vec![];
+    let mut end_links: Vec<u8> = vec![];
+    let mut variants: Vec<u32> = vec![];
+    let mut sources: Vec<TargetSources> = vec![];
     let mut plain_names: Vec<String> = vec![];
     let mut plain_ids: Vec<u32> = vec![];
     let mut plain_chars: Vec<u32> = vec![];
-    for (i, c) in cards.iter().enumerate() {
-        let useful = !srcb.chain_rewards(c.id).is_empty()
-            || !srcb.fixed_rewards(c.id).is_empty()
-            || !srcb.training_hints(c).is_empty()
-            || srcb.has_choices(c.id);
-        let locked = dj.lock_cards.contains(&c.id);
-        if c.pal || c.links == 0 {
+    for (i, card) in cards.iter().enumerate() {
+        let useful = !source_builder.chain_rewards(card.id).is_empty()
+            || !source_builder.fixed_rewards(card.id).is_empty()
+            || !source_builder.training_hints(card).is_empty()
+            || source_builder.has_choices(card.id);
+        let locked = deck_job.lock_cards.contains(&card.id);
+        if card.pal || card.links == 0 {
             // pals, and cards without chain events (R cards): like a pal, an R card takes no chain slot
             if useful || locked {
-                rel.push(i);
+                card_indices.push(i);
                 kind.push(ChainKind::NONE);
-                endk.push(0);
-                vark.push(0);
-                srcs.push(srcb.target_sources(c, None, 0));
+                end_links.push(0);
+                variants.push(0);
+                sources.push(source_builder.target_sources(card, None, 0));
             }
-        } else if c.rarity >= dj.min_rarity {
+        } else if card.rarity >= deck_job.min_rarity {
             // one entry per choice variant (an event offering targets on different choices: the player prioritises
             // one); the same card played to end its chain at link l is its own entry too. One character, so a deck
             // holds at most one of a card's entries.
             if useful || locked {
-                for v in srcb.variants(c, None) {
-                    rel.push(i);
-                    kind.push(srcb.kind(c, None));
-                    endk.push(0);
-                    vark.push(v);
-                    srcs.push(srcb.target_sources(c, None, v));
+                for variant in source_builder.variants(card, None) {
+                    card_indices.push(i);
+                    kind.push(source_builder.kind(card, None));
+                    end_links.push(0);
+                    variants.push(variant);
+                    sources.push(source_builder.target_sources(card, None, variant));
                 }
             }
-            for l in srcb.end_links(c.id) {
-                if l == 0 || l > c.links {
+            for end_link in source_builder.end_links(card.id) {
+                if end_link == 0 || end_link > card.links {
                     continue;
                 }
-                for v in srcb.variants(c, Some(l)) {
-                    let x = srcb.target_sources(c, Some(l), v);
-                    if !x.is_empty() || locked {
-                        rel.push(i);
-                        kind.push(srcb.kind(c, Some(l)));
-                        endk.push(l);
-                        vark.push(v);
-                        srcs.push(x);
+                for variant in source_builder.variants(card, Some(end_link)) {
+                    let entry_sources = source_builder.target_sources(card, Some(end_link), variant);
+                    if !entry_sources.is_empty() || locked {
+                        card_indices.push(i);
+                        kind.push(source_builder.kind(card, Some(end_link)));
+                        end_links.push(end_link);
+                        variants.push(variant);
+                        sources.push(entry_sources);
                     }
                 }
             }
         }
     }
-    // plain pals: owned pal characters with no relevant card in `rel` (best-rarity card name for display).
+    // plain pals: owned pal characters with no relevant card in `card_indices` (best-rarity card name for display).
     // With borrowing, a pal character the player owns no card of can still fill one slot as the borrowed card.
     // A deck with p plain pals uses the first p, so those blocking no uma in the pool come first (a plain pal that
     // blocks a loop member makes the result illegal, and `run_deck` then searches without it).
     let mut plain: Vec<(usize, u32, String)> = vec![];
-    for c in cards.iter().filter(|c| c.pal && is_owned(c.id)) {
-        if rel.iter().any(|&r| cards[r].chara == c.chara) || plain_chars.contains(&c.chara) {
+    for card in cards.iter().filter(|card| card.pal && is_owned(card.id)) {
+        if card_indices.iter().any(|&card_index| cards[card_index].character_id == card.character_id)
+            || plain_chars.contains(&card.character_id)
+        {
             continue;
         }
-        plain_chars.push(c.chara);
-        let best =
-            cards.iter().filter(|x| x.pal && x.chara == c.chara && is_owned(x.id)).max_by_key(|x| x.rarity).unwrap();
-        plain.push((pool_ids.iter().filter(|&&u| best.blocks(u, dj.checks)).count(), best.id, best.name.clone()));
+        plain_chars.push(card.character_id);
+        let best = cards
+            .iter()
+            .filter(|other| other.pal && other.character_id == card.character_id && is_owned(other.id))
+            .max_by_key(|other| other.rarity)
+            .unwrap();
+        plain.push((
+            pool_ids.iter().filter(|&&uma_id| best.blocks(uma_id, crate::checks::get())).count(),
+            best.id,
+            best.name.clone(),
+        ));
     }
-    plain.sort_by_key(|x| x.0); // stable: ties keep card order
+    plain.sort_by_key(|plain_pal| plain_pal.0); // stable: ties keep card order
     for (_, id, name) in plain {
         plain_ids.push(id);
         plain_names.push(name);
     }
-    if dj.borrow {
+    if deck_job.borrow {
         let mut seen: Vec<u32> = vec![];
-        for c in &cards {
-            if !c.pal
-                || is_owned(c.id)
-                || plain_chars.contains(&c.chara)
-                || seen.contains(&c.chara)
-                || rel.iter().any(|&r| cards[r].chara == c.chara)
+        for card in &cards {
+            if !card.pal
+                || is_owned(card.id)
+                || plain_chars.contains(&card.character_id)
+                || seen.contains(&card.character_id)
+                || card_indices.iter().any(|&card_index| cards[card_index].character_id == card.character_id)
             {
                 continue;
             }
             let best = cards
                 .iter()
                 .enumerate()
-                .filter(|(_, x)| x.pal && x.chara == c.chara)
-                .max_by_key(|(_, x)| x.rarity)
+                .filter(|(_, other)| other.pal && other.character_id == card.character_id)
+                .max_by_key(|(_, other)| other.rarity)
                 .unwrap()
                 .0;
-            seen.push(c.chara);
-            rel.push(best);
+            seen.push(card.character_id);
+            card_indices.push(best);
             kind.push(ChainKind::NONE);
-            endk.push(0);
-            vark.push(0);
-            srcs.push(srcb.target_sources(cards[best], None, 0));
+            end_links.push(0);
+            variants.push(0);
+            sources.push(source_builder.target_sources(cards[best], None, 0));
         }
     }
-    let mut locked: Vec<usize> = rel.iter().copied().filter(|&r| dj.lock_cards.contains(&cards[r].id)).collect();
+    let mut locked: Vec<usize> = card_indices
+        .iter()
+        .copied()
+        .filter(|&card_index| deck_job.lock_cards.contains(&cards[card_index].id))
+        .collect();
     locked.sort_unstable();
     locked.dedup();
-    if locked.len() > dj.deck_size {
+    if locked.len() > deck_job.deck_size {
         return Err(
-            json!({"error": format!("{} locked cards don't fit in a deck of {}.", locked.len(), dj.deck_size)}),
+            json!({"error": format!("{} locked cards don't fit in a deck of {}.", locked.len(), deck_job.deck_size)}),
         );
     }
-    let nk = kinds_all(&kind).len();
-    if nk > MAX_KINDS {
+    let kind_count = kinds_all(&kind).len();
+    if kind_count > MAX_KINDS {
         return Err(
-            json!({"error": format!("The cards' chains come in {nk} kinds (lengths, early ends, stop risks); the search takes at most {MAX_KINDS}.")}),
+            json!({"error": format!("The cards' chains come in {kind_count} kinds (lengths, early ends, stop risks); the search takes at most {MAX_KINDS}.")}),
         );
     }
-    Ok(Entries { cards, rel, kind, endk, vark, srcs, plain_ids, plain_names, plain_chars, locked })
+    Ok(Entries { cards, card_indices, kind, end_links, variants, sources, plain_ids, plain_names, plain_chars, locked })
 }

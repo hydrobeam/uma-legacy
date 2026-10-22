@@ -18,14 +18,14 @@ pub(crate) fn pb_table_json(json: &str) -> serde_json::Value {
     let raw: DataRaw = serde_json::from_str(json).unwrap();
     let fingerprint = pb_fingerprint(&raw);
     let mut data = load_str(json);
-    data.pbt = None;
+    data.pair_ceilings = None;
     let n = data.umas.len();
     let roster: Vec<UmaIndex> = data.umas.indices().collect();
     let ceilings = pair_ceilings(&data, &roster);
     let rows: Vec<String> = (0..n)
         .map(|a| (a + 1..n).map(|b| format!("{:016x}", ceilings[UmaIndex(a)][UmaIndex(b)].to_bits())).collect())
         .collect();
-    serde_json::to_value(PbRaw { fp: fingerprint, rows }).unwrap()
+    serde_json::to_value(PbRaw { fingerprint, rows }).unwrap()
 }
 
 /// Emit the enabled bound diagnostics on normal return or panic unwind, including `pbtable`.
@@ -75,10 +75,10 @@ impl Drop for CliBoundReport {
 /// The carried job must match the enriched job that originally populated the worker's kept state.
 pub(crate) fn apply_cli_events(job: &mut serde_json::Value, skills: &skills::SkillsRaw) {
     if let Some(path) = job["events_file"].as_str() {
-        let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        crate::deck::sources::apply_events_db(job, skills, &db);
+        let event_cache: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        crate::deck::sources::apply_events_db(job, skills, &event_cache);
         if job["roll"]["job"].is_object() {
-            crate::deck::sources::apply_events_db(&mut job["roll"]["job"], skills, &db);
+            crate::deck::sources::apply_events_db(&mut job["roll"]["job"], skills, &event_cache);
         }
     }
 }

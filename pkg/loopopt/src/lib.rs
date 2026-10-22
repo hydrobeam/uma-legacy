@@ -58,43 +58,43 @@ impl Instant {
 pub(crate) struct Fx(u64);
 impl Fx {
     #[inline(always)]
-    const fn add(&mut self, x: u64) {
-        self.0 = (self.0.rotate_left(5) ^ x).wrapping_mul(0x517c_c1b7_2722_0a95);
+    const fn add(&mut self, word: u64) {
+        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(0x517c_c1b7_2722_0a95);
     }
 }
 impl std::hash::Hasher for Fx {
     #[inline]
-    fn write(&mut self, b: &[u8]) {
-        let mut c = b.chunks_exact(8);
-        for w in &mut c {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for w in &mut chunks {
             self.add(u64::from_le_bytes(w.try_into().unwrap()));
         }
-        let r = c.remainder();
-        if !r.is_empty() {
-            let mut t = [0u8; 8];
-            t[..r.len()].copy_from_slice(r);
-            self.add(u64::from_le_bytes(t));
+        let remainder = chunks.remainder();
+        if !remainder.is_empty() {
+            let mut tail = [0u8; 8];
+            tail[..remainder.len()].copy_from_slice(remainder);
+            self.add(u64::from_le_bytes(tail));
         }
     }
     #[inline]
-    fn write_u8(&mut self, x: u8) {
-        self.add(u64::from(x));
+    fn write_u8(&mut self, word: u8) {
+        self.add(u64::from(word));
     }
     #[inline]
-    fn write_u16(&mut self, x: u16) {
-        self.add(u64::from(x));
+    fn write_u16(&mut self, word: u16) {
+        self.add(u64::from(word));
     }
     #[inline]
-    fn write_u32(&mut self, x: u32) {
-        self.add(u64::from(x));
+    fn write_u32(&mut self, word: u32) {
+        self.add(u64::from(word));
     }
     #[inline]
-    fn write_u64(&mut self, x: u64) {
-        self.add(x);
+    fn write_u64(&mut self, word: u64) {
+        self.add(word);
     }
     #[inline]
-    fn write_usize(&mut self, x: usize) {
-        self.add(x as u64);
+    fn write_usize(&mut self, word: usize) {
+        self.add(word as u64);
     }
     #[inline]
     fn finish(&self) -> u64 {
