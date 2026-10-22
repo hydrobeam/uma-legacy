@@ -70,51 +70,6 @@ pub(crate) struct TraversalScratch {
     pub(crate) diagnostic_bounds: Vec<Vec<f64>>,
 }
 
-impl DeckSpace<'_> {
-    /// Traverse the prepared configurations in their visiting order (`ConfigOrder`): each one's root tests, then its
-    /// tables and the depth-first walk of its decks (`DeckSearchContext::visit`), until one ends the search.
-    pub(crate) fn traverse_configurations(
-        &self,
-        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
-        chances: &DeckChances,
-        clauses: &[SearchClause],
-        controls: SearchControl,
-        tables: PreparedTables<'_>,
-        queue: ConfigurationQueue,
-        scratch: TraversalScratch,
-        clause_value: impl Fn(&SearchClause, &[f64], &[f64]) -> f64,
-        bounds: &ConfigurationBounds<
-            impl Fn(&[f64], &[f64], &[u32], u64) -> GroupTable,
-            impl Fn(&[GroupSlots], &GroupTable, &mut [f64], &mut [f64]),
-            impl Fn(&[GroupSlots], &GroupTable, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
-        >,
-        ratio_at: impl Fn(usize, &[f64], &[f64]) -> f64,
-        cap_free_ratios: &CapFreeRatios<'_>,
-    ) -> SearchOutcome {
-        let traversal_start = Instant::now();
-        let PreparedSearch { context, mut scratch, mut results } =
-            DeckSearchContext::prepare(self, chances, clauses, controls, tables, scratch, clause_value);
-        let uncapped = controls.state_bound_mode == 2;
-        let mut order = ConfigOrder::new(queue, controls);
-        while let Some(configuration) = order.next(self, results.best_value, bounds) {
-            if context.past_bar(&configuration, &results) {
-                break;
-            }
-            if let Some(stop) =
-                context.visit(state_bounds, &mut scratch, &mut results, &configuration, &ratio_at, cap_free_ratios)
-            {
-                return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped };
-            }
-        }
-        SPT.with(|cell| {
-            let mut stats = cell.get();
-            stats.tree_seconds += traversal_start.elapsed().as_secs_f64();
-            cell.set(stats);
-        });
-        SearchOutcome { decks: results.decks, incomplete: None, uncapped }
-    }
-}
-
 /// A deck holds at most `allowed_borrow` (0 or 1) borrowed cards; the tables above take each group's best entries
 /// whatever they are, so with borrowing they count several borrowed cards at once (every card the player lacks
 /// is one), which leaves the bound loose. Per (key, group): the products of its r best owned entries, and of
@@ -164,7 +119,8 @@ pub(crate) struct ParentRatioBounds {
     pub(crate) prefix_products: Vec<f64>,
 }
 
-/// What every configuration of one traversal reads: the search, its controls and tables, and `clause_value`.
+/// What one search's configuration build and every configuration of its traversal read: the search, its controls and
+/// tables, and `clause_value`.
 pub(crate) struct DeckSearchContext<'run, 'space, V> {
     pub(crate) space: &'run DeckSpace<'space>,
     pub(crate) chances: &'run DeckChances<'run>,
@@ -197,29 +153,21 @@ pub(crate) struct SearchResults {
     pub(crate) best_value: f64,
 }
 
-/// Owners returned by search preparation; traversal borrows their parts independently.
-struct PreparedSearch<'run, 'space, Value> {
-    context: DeckSearchContext<'run, 'space, Value>,
-    scratch: DeckSearchScratch,
-    results: SearchResults,
-}
-
 impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'run, 'space, V> {
-    fn prepare(
+    /// The search's context, built where its tables come into being (`search_with_bounds`) and read by the
+    /// configuration build (`build_configurations`) and the traversal.
+    pub(crate) fn new(
         space: &'run DeckSpace<'space>,
         chances: &'run DeckChances<'run>,
         clauses: &'run [SearchClause],
         controls: SearchControl,
         tables: PreparedTables<'run>,
-        scratch: TraversalScratch,
         clause_value: V,
-    ) -> PreparedSearch<'run, 'space, V> {
-        let TraversalScratch { decks, best_value, white_chances, gold_chances, target_bounds, diagnostic_bounds } =
-            scratch;
+    ) -> Self {
         let outfit_row_count = tables.outfit_rows.len();
         let cache_parent_rows = tables.outfits.iter().all(|outfit| outfit.len() == controls.target_count);
         let inheritance_chances: Vec<f64> = tables.outfit_rows.iter().map(|row| row.inheritance).collect();
-        let context = Self {
+        Self {
             space,
             chances,
             clauses,
@@ -229,7 +177,50 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             outfit_row_count,
             cache_parent_rows,
             inheritance_chances,
-        };
+        }
+    }
+
+    /// Traverse the prepared configurations in their visiting order (`ConfigOrder`): each one's root tests, then its
+    /// tables and the depth-first walk of its decks (`visit`), until one ends the search.
+    pub(crate) fn traverse_configurations(
+        &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
+        queue: ConfigurationQueue,
+        scratch: TraversalScratch,
+        bounds: &ConfigurationBounds<
+            impl Fn(&[f64], &[f64], &[u32], u64) -> GroupTable,
+            impl Fn(&[GroupSlots], &GroupTable, &mut [f64], &mut [f64]),
+            impl Fn(&[GroupSlots], &GroupTable, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+        >,
+        ratio_at: impl Fn(usize, &[f64], &[f64]) -> f64,
+        cap_free_ratios: &CapFreeRatios<'_>,
+    ) -> SearchOutcome {
+        let traversal_start = Instant::now();
+        let (mut scratch, mut results) = Self::workspace(scratch);
+        let uncapped = self.controls.state_bound_mode == 2;
+        let mut order = ConfigOrder::new(queue, self.controls);
+        while let Some(configuration) = order.next(self.space, results.best_value, bounds) {
+            if self.past_bar(&configuration, &results) {
+                break;
+            }
+            if let Some(stop) =
+                self.visit(state_bounds, &mut scratch, &mut results, &configuration, &ratio_at, cap_free_ratios)
+            {
+                return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped };
+            }
+        }
+        SPT.with(|cell| {
+            let mut stats = cell.get();
+            stats.tree_seconds += traversal_start.elapsed().as_secs_f64();
+            cell.set(stats);
+        });
+        SearchOutcome { decks: results.decks, incomplete: None, uncapped }
+    }
+
+    /// The traversal's buffers (preparation's odds buffers reused) and its results so far (no deck, preparation's bar).
+    fn workspace(scratch: TraversalScratch) -> (DeckSearchScratch, SearchResults) {
+        let TraversalScratch { decks, best_value, white_chances, gold_chances, target_bounds, diagnostic_bounds } =
+            scratch;
         let zeros = [0.0f64; 32];
         let workspace = DeckSearchScratch {
             nodes: NodeScratch {
@@ -267,7 +258,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             },
             borrow_cache: HashMap::new(),
         };
-        PreparedSearch { context, scratch: workspace, results: SearchResults { decks, best_value } }
+        (workspace, SearchResults { decks, best_value })
     }
 
     /// No configuration from this `configuration` on can reach the bar (they come in root order).

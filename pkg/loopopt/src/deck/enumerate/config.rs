@@ -1,8 +1,8 @@
 //! Legal card-count configurations and their bounds.
 use crate::deck::caps::cap_class;
 use crate::deck::enumerate::SearchClause;
-use crate::deck::enumerate::traverse::SearchControl;
-use crate::deck::space::{DeckSpace, EntryMisses, GroupMissKey, GroupSlots, GroupTable, gm_g, gm_w};
+use crate::deck::enumerate::traverse::{DeckSearchContext, SearchControl};
+use crate::deck::space::{EntryMisses, GroupMissKey, GroupSlots, GroupTable, gm_g, gm_w};
 /// Legal groups and key counts used to enumerate configurations, in their original order.
 pub(crate) struct ConfigurationTables<'tab> {
     pub(crate) counts: &'tab [Vec<usize>],
@@ -85,23 +85,21 @@ struct TargetMissBounds {
     gold: f64,
 }
 
-impl DeckSpace<'_> {
+impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
     /// Enumerate legal card-count configurations, preserving stable root-bound order and
     /// deferring ratio tables for the product search until traversal actually needs them.
     pub(crate) fn build_configurations(
         &self,
-        clauses: &[SearchClause],
-        controls: SearchControl,
         tables: ConfigurationTables<'_>,
         scratch: ConfigurationScratch<'_>,
         best_value: f64,
-        clause_value: impl Fn(&SearchClause, &[f64], &[f64]) -> f64,
         bounds: &ConfigurationBounds<
             impl Fn(&[f64], &[f64], &[u32], u64) -> GroupTable,
             impl Fn(&[GroupSlots], &GroupTable, &mut [f64], &mut [f64]),
             impl Fn(&[GroupSlots], &GroupTable, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
         >,
     ) -> ConfigurationQueue {
+        let Self { space, clauses, controls, clause_value, .. } = self;
         let SearchControl {
             best,
             rho,
@@ -115,7 +113,7 @@ impl DeckSpace<'_> {
             lazy,
             check_ratio_bounds,
             ..
-        } = controls;
+        } = *controls;
         let ConfigurationTables {
             counts,
             by_kind,
@@ -154,7 +152,7 @@ impl DeckSpace<'_> {
                 .zip(kind_place_values)
                 .map(|(&count, &place_value)| count as u64 * place_value)
                 .sum();
-            let key_misses = self.key_miss(code);
+            let key_misses = space.key_miss(code);
             let (white_misses, gold_misses) = (&key_misses.white, &key_misses.gold);
             // per kind group and target: products of the r lowest miss chances of distinct entries, r = 0..=size
             // (any r entries of the group miss at least that much); cached per trainee and key
@@ -162,7 +160,7 @@ impl DeckSpace<'_> {
             let needed_groups: u64 =
                 (0..kind_count).filter(|&i| kind_counts[i] > 0).fold(0u64, |mask, i| mask | 1 << i)
                     | if chain_slots < size { 1 << kind_count } else { 0 };
-            let group_misses = self.gm_cached(
+            let group_misses = space.gm_cached(
                 GroupMissKey { set_id, code },
                 groups_all,
                 needed_groups,
@@ -236,7 +234,7 @@ impl DeckSpace<'_> {
                     if plain_pals > plain_pal_count {
                         continue;
                     }
-                    if let Some(required_pals) = self.deck_job.pals
+                    if let Some(required_pals) = space.deck_job.pals
                         && (pal_entry_count + plain_pals < required_pals || plain_pals > required_pals)
                     {
                         continue;

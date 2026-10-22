@@ -5,12 +5,22 @@ use crate::career::pool::Pool;
 use crate::career::schedule::{RaceSchedule, apt_pink, pink_p};
 use crate::career::search::Found;
 use crate::career::{Ancestor, CareerSetup, DeckSearchMemo, Legacy, Lineage, SearchState};
-use crate::deck::joint::JointExt;
 use crate::deck::joint::exact::{JointScratch, joint_eval_in, joint_prep};
+use crate::deck::joint::{JointExt, JointOptions};
 use crate::deck::sources::TargetSources;
 use crate::deck::space::SelectedDeck;
 use crate::skills::{GEN_GOLD, OutfitOption};
 use serde_json::{Value, json};
+/// What a corner table (`CareerSetup::corners_kept`) reads besides the model: the trainee's deck class and the deck's
+/// entries and filler cards.
+#[derive(PartialEq, Eq, Hash)]
+pub(crate) struct CornerKey {
+    /// `CareerSetup::deck_class` of the trainee.
+    pub(crate) class: crate::uma::UmaIndex,
+    pub(crate) entries: Vec<usize>,
+    pub(crate) filler_cards: usize,
+}
+
 /// Multilinear interpolation of corner values `corners` (index bit k = coordinate k at 1) at `point`, with `buffer` the
 /// caller keeps (the simulator and the plan evaluate tables millions of times).
 /// Folds coordinate 0 first, halving the table each step: entry i after k folds is the full sweep's entry i << k (the
@@ -158,7 +168,7 @@ impl CareerSetup<'_> {
     /// points q_k = 1 - (1 - q0_k) x_k, x_k in {0, 1} (index bit k = uncertain target k at x_k = 1). Derived: q_k
     /// enters every landing factor only through (1 - e)(1 - q_k), affinely, and P(all) per outfit is a sum of products
     /// with one factor per target, so it is multilinear in x and `interp_in` at any x in [0, 1]^nu gives it exactly.
-    /// `corners` at q0 = 0 (a cached deck's table, `Cache::add`), memoised by (deck class, entries, filler). Exact: the
+    /// `corners` at q0 = 0 (a cached deck's table, `Cache::add`), memoised by `CornerKey`. Exact: the
     /// table reads trainee t only through her model (outfit coverage, own-skill chances: `set_trainee` from
     /// `Model::event_chances`), which her deck class holds to the bit, and the deck only through its entries and
     /// filler; the memo is kept between jobs of one setup (`KeptState::decks`: the same model and entries). `corners`
@@ -170,7 +180,11 @@ impl CareerSetup<'_> {
         trainee: crate::uma::UmaIndex,
         deck: &SelectedDeck,
     ) -> Vec<Vec<f64>> {
-        let key = (self.deck_class[trainee], deck.entries.clone(), deck.filler_cards);
+        let key = CornerKey {
+            class: self.deck_class[trainee],
+            entries: deck.entries.clone(),
+            filler_cards: deck.filler_cards,
+        };
         let zero_chances = vec![0.0; self.target_count];
         if let Some(table) = memo.corners.get(&key) {
             let table = (**table).clone();
@@ -220,9 +234,7 @@ impl CareerSetup<'_> {
                 self.model,
                 self.joint_query(state, trainee),
                 &prepared,
-                target_count,
-                false,
-                false,
+                JointOptions { target_count, all_but_one: false, marginals: false },
                 Some(&mut ext),
                 &mut scratch,
             );

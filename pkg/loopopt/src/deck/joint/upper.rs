@@ -169,7 +169,7 @@ pub(crate) fn upper_na(
     let phi = |outfit: usize, q: f64, k: usize, no_gold: f64, no_hint: f64| -> f64 {
         land_factor(outfits[outfit].coverage[k], query.event_chances[outfit][k], q, no_gold, no_hint)
     };
-    let pair_marginals: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &chain_levels) {
+    let pair_marginals: Option<std::rc::Rc<crate::deck::chains::PairMarginals>> = match (pair, &chain_levels) {
         (Some(ChainPair { first, second }), Some(chain_level)) => Some(chain_level.pair_margs(first, second)),
         _ => None,
     };

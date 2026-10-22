@@ -46,10 +46,22 @@ impl Default for ChainEvents {
         Self { count: CHAIN_N, probability: CHAIN_P }
     }
 }
+/// Cache key of a chain-event distribution: n and the bits of p, kept separately to avoid XOR collisions.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) struct EventsKey {
+    count: u32,
+    probability_bits: u64,
+}
+/// Cache key of the chain caches (`chain_marginals`, `chain_states`, `key_level`): a deck's chain kinds and the
+/// event distribution.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct ChainKey {
+    kinds: Vec<ChainKind>,
+    events: EventsKey,
+}
 impl ChainEvents {
-    /// Cache key of the distribution: (n, bits of p), kept separately to avoid XOR collisions.
-    pub(super) const fn key(self) -> (u32, u64) {
-        (self.count, self.probability.to_bits())
+    pub(super) const fn key(self) -> EventsKey {
+        EventsKey { count: self.count, probability_bits: self.probability.to_bits() }
     }
 }
 /// P(N = e) chain events per run for e = 0..=n, N ~ Binomial(`events`).
@@ -67,14 +79,14 @@ pub(super) fn event_pmf(events: ChainEvents, n: usize) -> Vec<f64> {
 }
 /// `event_pmf` of the job's own event count (n = `events.count`), kept per (n, p): the same for every call of a job
 pub(super) fn event_pmf_job(events: ChainEvents) -> std::rc::Rc<Vec<f64>> {
-    thread_local! { static EP: std::cell::RefCell<Option<((u32, u64), std::rc::Rc<Vec<f64>>)>> = const { std::cell::RefCell::new(None) }; }
+    thread_local! { static EP: std::cell::RefCell<Option<(EventsKey, std::rc::Rc<Vec<f64>>)>> = const { std::cell::RefCell::new(None) }; }
     let key = events.key();
     if let Some(pmf) = EP.with(|cell| {
         cell.borrow().as_ref().filter(|cached| cached.0 == key).map(|cached| std::rc::Rc::clone(&cached.1))
     }) {
         return pmf;
     }
-    let pmf = std::rc::Rc::new(event_pmf(events, key.0 as usize));
+    let pmf = std::rc::Rc::new(event_pmf(events, key.count as usize));
     EP.with(|cell| *cell.borrow_mut() = Some((key, std::rc::Rc::clone(&pmf))));
     pmf
 }
@@ -203,17 +215,17 @@ fn chain_walk(
 /// Entries are sorted first so the floating-point summation order is canonical (the reference sums its states in
 /// another order, so the two agree to float noise).
 pub(crate) fn chain_marginals(events: ChainEvents, kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
-    thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), HashMap<ChainKind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
+    thread_local! { static CM: std::cell::RefCell<crate::FxMap<ChainKey, HashMap<ChainKind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let mut sorted_kinds: Vec<ChainKind> = kinds.to_vec();
     sorted_kinds.sort_unstable();
-    let key = (sorted_kinds, events.key());
+    let key = ChainKey { kinds: sorted_kinds, events: events.key() };
     if let Some(marginals) = CM.with(|cell| cell.borrow().get(&key).cloned()) {
         return marginals;
     }
-    let marginals = if key.0.iter().any(|k| k.stop_risk != 0) {
-        chain_marginals_risk(events, &key.0)
+    let marginals = if key.kinds.iter().any(|k| k.stop_risk != 0) {
+        chain_marginals_risk(events, &key.kinds)
     } else {
-        chain_marginals_dense(events, &key.0)
+        chain_marginals_dense(events, &key.kinds)
     };
     CM.with(|cell| cell.borrow_mut().insert(key, marginals.clone()));
     marginals
@@ -357,8 +369,8 @@ pub(super) struct ChainState {
 /// with P(N = L) unless every entry is at its stop, then with P(N >= L); stop-risk entries are the mixture over
 /// where they stop, as in `chain_marginals_risk`.
 pub(super) fn chain_states(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc<Vec<ChainState>> {
-    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<Vec<ChainState>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
-    let key = (kinds.to_vec(), events.key());
+    thread_local! { static CS: std::cell::RefCell<crate::FxMap<ChainKey, std::rc::Rc<Vec<ChainState>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
+    let key = ChainKey { kinds: kinds.to_vec(), events: events.key() };
     if let Some(states) = CS.with(|cell| cell.borrow().get(&key).cloned()) {
         return states;
     }
@@ -398,8 +410,10 @@ pub(super) struct KeyLevel {
     pub(super) dimensions: Vec<usize>,
     pub(super) grid_strides: Vec<usize>,
     pub(super) pairs: std::cell::RefCell<crate::FxMap<(usize, usize), bool>>,
-    pub(super) pair_marginals: std::cell::RefCell<crate::FxMap<(usize, usize), std::rc::Rc<Vec<Vec<Vec<f64>>>>>>,
+    pub(super) pair_marginals: std::cell::RefCell<crate::FxMap<(usize, usize), std::rc::Rc<PairMarginals>>>,
 }
+/// A pair of entries' joint progress per event count: [m][a][b] = P(X_i = a, X_j = b | N = m) (`KeyLevel::pair_marg`).
+pub(super) type PairMarginals = Vec<Vec<Vec<f64>>>;
 impl KeyLevel {
     /// P(X_i = a, X_j = b | N = m)
     pub(super) fn pair_marg(&self, i: usize, j: usize, m: usize) -> Vec<Vec<f64>> {
@@ -413,7 +427,7 @@ impl KeyLevel {
         marginal
     }
     /// `pair_marg` at every event count m = 0..=n, kept per pair (a function of the key alone)
-    pub(super) fn pair_margs(&self, i: usize, j: usize) -> std::rc::Rc<Vec<Vec<Vec<f64>>>> {
+    pub(super) fn pair_margs(&self, i: usize, j: usize) -> std::rc::Rc<PairMarginals> {
         if let Some(by_count) = self.pair_marginals.borrow().get(&(i, j)) {
             return std::rc::Rc::clone(by_count);
         }
@@ -496,20 +510,20 @@ impl KeyLevel {
     }
 }
 pub(super) fn key_level(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc<KeyLevel> {
-    thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(crate::FxMap::default()); }
-    thread_local! { static KL_LAST: std::cell::RefCell<Option<(Vec<ChainKind>, (u32, u64), std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
+    thread_local! { static KL: std::cell::RefCell<crate::FxMap<ChainKey, std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(crate::FxMap::default()); }
+    thread_local! { static KL_LAST: std::cell::RefCell<Option<(ChainKey, std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
     let events_key = events.key();
     if let Some(level) = KL_LAST.with(|cell| {
         cell.borrow()
             .as_ref()
-            .filter(|last| last.0 == kinds && last.1 == events_key)
-            .map(|last| std::rc::Rc::clone(&last.2))
+            .filter(|last| last.0.kinds == kinds && last.0.events == events_key)
+            .map(|last| std::rc::Rc::clone(&last.1))
     }) {
         return level;
     }
-    let key = (kinds.to_vec(), events_key);
+    let key = ChainKey { kinds: kinds.to_vec(), events: events_key };
     if let Some(level) = KL.with(|cell| cell.borrow().get(&key).cloned()) {
-        KL_LAST.with(|cell| *cell.borrow_mut() = Some((key.0, key.1, std::rc::Rc::clone(&level))));
+        KL_LAST.with(|cell| *cell.borrow_mut() = Some((key, std::rc::Rc::clone(&level))));
         return level;
     }
     let trials = events.count;
@@ -616,7 +630,7 @@ pub(super) fn key_level(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc
         pairs: std::cell::RefCell::default(),
         pair_marginals: std::cell::RefCell::default(),
     });
-    KL_LAST.with(|cell| *cell.borrow_mut() = Some((key.0.clone(), key.1, std::rc::Rc::clone(&level))));
+    KL_LAST.with(|cell| *cell.borrow_mut() = Some((key.clone(), std::rc::Rc::clone(&level))));
     KL.with(|cell| cell.borrow_mut().insert(key, std::rc::Rc::clone(&level)));
     level
 }

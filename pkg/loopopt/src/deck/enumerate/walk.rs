@@ -325,6 +325,12 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
 
     /// Test the child's target bound first, then its ratio bound. Parent rows are cached by node identity;
     /// only the selected card's touched targets differ from those rows.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the walk's per-child test in its inner loop: the walk's mutable scratch and results beside the child's \
+                  cursor, constraints, position, row and identity, which `walk` derives per child; a record of them would \
+                  be built per node only to make this call"
+    )]
     fn hopeful(
         &self,
         scratch: &mut WalkScratch<'_>,

@@ -89,6 +89,10 @@ pub(super) struct DominanceKey {
     pub(super) code: u64,
     pub(super) group: usize,
 }
+/// Per deck-space entry, its miss chances at each number of its chain links done (`TargetSources::miss_levels`); None
+/// for an entry outside the search's legal set.
+pub(crate) type StateRows = Vec<Option<Vec<MissFactors>>>;
+
 /// Every legal deck of one trainee, without the skyline's pruning (which compares product odds only). Used to make
 /// the per-uma search exact: decks are enumerated by chain-kind key, like the skyline search, with an upper bound on
 /// a partial deck's product value (each remaining slot of a kind group at that group's best miss chances per target,
@@ -127,7 +131,7 @@ pub(crate) struct DeckSpace<'data> {
     /// per entry, its locked card's bit (0 if none), and all locked bits together
     locked_card_bits: std::cell::OnceCell<LockedCards>,
     /// Per set id, the legal entries' miss rows per chain level.
-    pub(super) state_row_cache: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<Option<Vec<MissFactors>>>>>>,
+    pub(super) state_row_cache: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<StateRows>>>,
     /// the product search's dominance table (`dom_table`) per (set id, key code, group): functions of those alone
     pub(super) dominance_cache: std::cell::RefCell<crate::FxMap<DominanceKey, std::rc::Rc<Vec<Vec<Dominator>>>>>,
 }

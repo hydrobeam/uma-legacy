@@ -9,8 +9,8 @@
 //! - `walk`: the depth-first walk of the decks of one configuration.
 //! - `bounds`: outfit bounds and ratio prefixes.
 //! - `scratch`: the reusable buffers of configuration and node bounds.
-use crate::deck::joint::{LandPre, MissFactors};
-use crate::deck::space::{DeckSpace, LegalTables, SelectedDeck};
+use crate::deck::joint::LandPre;
+use crate::deck::space::{DeckSpace, LegalTables, SelectedDeck, StateRows};
 use crate::skills::DeckChances;
 pub(crate) mod bounds;
 mod config;
@@ -102,7 +102,7 @@ pub(crate) struct SearchSetup {
     cap_free_node_limit: usize,
     cap_free_check_scale: f64,
     state_bound_mode: u8,
-    state_rows: std::rc::Rc<Vec<Option<Vec<MissFactors>>>>,
+    state_rows: std::rc::Rc<StateRows>,
     state_bound_threshold: f64,
     bound_trainee: crate::uma::UmaIndex,
     bound_inheritance: f64,
