@@ -13,10 +13,11 @@ use self::tables::{
 };
 use crate::Instant;
 use crate::data::{Choice, Data, NT, Sched, Uma};
-use crate::deck::dominance::{DeckCluster, Name, PDeck};
+use crate::deck::pdeck::{Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
 use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::loop_planner::dominance::DeckCluster;
 use crate::loop_planner::schedules::{Res, members};
 use crate::skills::{MemberLineage, Model, SkillJob, check_sizes, lins};
 use crate::uma::{UmaIndex, UmaTable};

@@ -37,6 +37,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/skills.rs` | The skill-target model (`Model`), outfit choices and lineage inheritance probabilities (`lins`) |
 | `src/tests.rs` | Affinity-core tests against independent fixtures and model invariants |
 | `src/loop_planner/mod.rs` | The loop planner: a deck job's path through its children |
+| `src/loop_planner/dominance.rs` | Dominance signatures, `DominanceIndex`, `k_filter`, candidate decks (`DeckEval`) and odds clusters |
 | `src/loop_planner/job.rs` | Deck-job setup and the nondominated deck frontier (`run_deck`) |
 | `src/loop_planner/schedules.rs` | Loop affinity scoring, coordinated schedules (`LoopProblem`, `optimize`) and pairwise ceilings |
 | `src/loop_planner/search/mod.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
@@ -63,7 +64,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/deck/chains.rs` | Chain events: count per run (`ChainEvents`), per-link marginals, final-state distributions (`key_level`) |
 | `src/deck/hints.rs` | Training-hint draws per scenario (constants from `build.rs`) and their miss chances (`miss_draws`) |
 | `src/deck/caps.rs` | The assumed caps per deck class (`EXACT_CAPS`, `cap_class`) and the exact search's budgets |
-| `src/deck/dominance.rs` | Dominance signatures, `DominanceIndex` and the decks a search returns |
+| `src/deck/pdeck.rs` | The decks a search returns (`PDeck`), their shared names (`Name`) and identity key (`DeckId`) |
 | `src/deck/tests.rs` | The deck model's tests |
 | `src/career/mod.rs` | The career planner: the job's records, `Env` and its four parts, `run_career` / `run_career_in` |
 | `src/career/setup.rs` | The job read three ways (`CareerJobs`) and its `Env` built (`career_setup`), earlier jobs' proofs restored |
