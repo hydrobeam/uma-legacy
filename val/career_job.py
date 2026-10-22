@@ -7,29 +7,67 @@ player's own veterans and the lender's viewer_id on the ones offered for borrowi
 usage: career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB [TABLES]
   BASE_JOB  a deck job (targets, cards, events files...); its mode becomes "career"
   TABLES    career.json (default pkg/loopopt/data/global/career.json)"""
-import json, sys, os
-S = os.path.dirname(os.path.abspath(__file__)) + '/../'
-vets, base_path, out_path = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3]
-T = json.load(open(sys.argv[4] if len(sys.argv) > 4 else S + 'pkg/loopopt/data/global/career.json'))
-F, W = {int(k): v for k, v in T['factors'].items()}, {int(k): v for k, v in T['saddles'].items()}
 
-def sparks(fs):
-    out = {}
-    for f in fs:
-        g = F.get(f['factor_id'] // 100)
-        if g is not None: out[g] = max(out.get(g, 0), f['factor_id'] % 100)
-    return sorted(out.items())
-P = {int(k) for k in T.get('pinks', {})}
-def pinks(fs): return sorted({f['factor_id'] // 100: f['factor_id'] % 100 for f in fs if f['factor_id'] // 100 in P}.items())
-def wins(ws): return sorted({W[w] for w in ws if w in W})
-def anc(x): return {'chara': x['card_id'] // 100, 'sparks': sparks(x['factor_info_array']), 'pinks': pinks(x['factor_info_array']), 'wins': wins(x['win_saddle_id_array'])}
+import json
+import sys
+import os
 
-legs = []
-for v in vets:
-    a = anc(v)
-    a['borrowed'] = bool(v.get('owner_viewer_id'))
-    a['parents'] = [anc(p) for p in sorted(v['succession_chara_array'], key=lambda p: p['position_id']) if p['position_id'] in (10, 20)]
-    legs.append(a)
-job = json.load(open(base_path)); job['mode'] = 'career'; job['legacies'] = legs
-json.dump(job, open(out_path, 'w'))
-print(len(legs), 'veterans,', sum(l['borrowed'] for l in legs), 'borrowed')
+REPO = os.path.dirname(os.path.abspath(__file__)) + "/../"
+veterans, base_path, out_path = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3]
+tables = json.load(open(sys.argv[4] if len(sys.argv) > 4 else REPO + "pkg/loopopt/data/global/career.json"))
+factor_groups, saddle_races = (
+    {int(k): veteran for k, veteran in tables["factors"].items()},
+    {int(k): veteran for k, veteran in tables["saddles"].items()},
+)
+
+
+def sparks(factors):
+    sparks_by_group = {}
+    for factor in factors:
+        group = factor_groups.get(factor["factor_id"] // 100)
+        if group is not None:
+            sparks_by_group[group] = max(sparks_by_group.get(group, 0), factor["factor_id"] % 100)
+    return sorted(sparks_by_group.items())
+
+
+pink_groups = {int(k) for k in tables.get("pinks", {})}
+
+
+def pinks(factors):
+    return sorted(
+        {
+            factor["factor_id"] // 100: factor["factor_id"] % 100
+            for factor in factors
+            if factor["factor_id"] // 100 in pink_groups
+        }.items()
+    )
+
+
+def wins(saddles):
+    return sorted({saddle_races[saddle] for saddle in saddles if saddle in saddle_races})
+
+
+def ancestor(veteran):
+    return {
+        "chara": veteran["card_id"] // 100,
+        "sparks": sparks(veteran["factor_info_array"]),
+        "pinks": pinks(veteran["factor_info_array"]),
+        "wins": wins(veteran["win_saddle_id_array"]),
+    }
+
+
+legacies = []
+for veteran in veterans:
+    legacy = ancestor(veteran)
+    legacy["borrowed"] = bool(veteran.get("owner_viewer_id"))
+    legacy["parents"] = [
+        ancestor(parent)
+        for parent in sorted(veteran["succession_chara_array"], key=lambda parent: parent["position_id"])
+        if parent["position_id"] in (10, 20)
+    ]
+    legacies.append(legacy)
+job = json.load(open(base_path))
+job["mode"] = "career"
+job["legacies"] = legacies
+json.dump(job, open(out_path, "w"))
+print(len(legacies), "veterans,", sum(legacy["borrowed"] for legacy in legacies), "borrowed")

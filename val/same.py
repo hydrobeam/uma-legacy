@@ -3,31 +3,60 @@ Compares val/TAG__*.out with val/REF__*.out (default ref) and val/TAGpu__*.out w
 val/plan/TAG__*.out with val/plan/REF__*.out, planval's outputs), every field but
 the timings (`timing_s`, `*_ms`); prints each differing output with the paths that differ. Exit 1 on any difference or
 when nothing was compared. Stricter than cmp2.py, which checks rounded P(all)."""
-import glob, json, os, sys
 
-V = os.path.dirname(os.path.abspath(__file__))
-args = [a for a in sys.argv[1:] if a != '--plan']
-if '--plan' in sys.argv: V = os.path.join(V, 'plan')
-tag = args[0]; ref = args[1] if len(args) > 1 else 'ref'
+import glob
+import json
+import os
+import sys
 
-def load(p):
-    t = open(p).read()
-    return json.loads(t[t.index('{'):])
+VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
+args = [argument for argument in sys.argv[1:] if argument != "--plan"]
+if "--plan" in sys.argv:
+    VALIDATION_DIR = os.path.join(VALIDATION_DIR, "plan")
+tag = args[0]
+ref = args[1] if len(args) > 1 else "ref"
 
-def paths(a, b, at=''):   # the paths where a and b differ, timings left out
-    timing = lambda k: k == 'timing_s' or k.endswith('_ms')
-    if isinstance(a, dict) and isinstance(b, dict):
-        return [p for k in sorted(set(a) | set(b)) if not timing(k) for p in paths(a.get(k), b.get(k), f'{at}.{k}')]
-    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
-        return [p for i, (x, y) in enumerate(zip(a, b)) for p in paths(x, y, f'{at}[{i}]')]
-    return [] if a == b else [at or '.']
 
-n = bad = 0
-for t, r in ((tag, ref),) + (() if '--plan' in sys.argv else ((tag + 'pu', ref + 'pu'),)):
-    for nf in sorted(glob.glob(os.path.join(V, f'{t}__*.out'))):
-        rf = os.path.join(V, f'{r}__' + nf.split(f'{t}__', 1)[1])
-        if not os.path.exists(rf): continue
-        n += 1; d = paths(load(rf), load(nf))
-        if d: bad += 1; print(f'{os.path.basename(nf)}: {len(d)} differ: ' + ', '.join(d[:6]) + (' …' if len(d) > 6 else ''))
-print(f'{n} compared, {bad} differ')
-sys.exit(1 if bad or not n else 0)
+def load(path):
+    text = open(path).read()
+    return json.loads(text[text.index("{") :])
+
+
+def paths(reference, candidate, at=""):
+    """Paths whose values differ, excluding only timings."""
+    timing = lambda key: key == "timing_s" or key.endswith("_ms")
+    if isinstance(reference, dict) and isinstance(candidate, dict):
+        return [
+            path
+            for key in sorted(set(reference) | set(candidate))
+            if not timing(key)
+            for path in paths(reference.get(key), candidate.get(key), f"{at}.{key}")
+        ]
+    if isinstance(reference, list) and isinstance(candidate, list) and len(reference) == len(candidate):
+        return [
+            path
+            for i, (reference_item, candidate_item) in enumerate(zip(reference, candidate))
+            for path in paths(reference_item, candidate_item, f"{at}[{i}]")
+        ]
+    return [] if reference == candidate else [at or "."]
+
+
+compared = mismatches = 0
+for candidate_tag, reference_tag in ((tag, ref),) + (() if "--plan" in sys.argv else ((tag + "pu", ref + "pu"),)):
+    for candidate_path in sorted(glob.glob(os.path.join(VALIDATION_DIR, f"{candidate_tag}__*.out"))):
+        reference_path = os.path.join(
+            VALIDATION_DIR, f"{reference_tag}__" + candidate_path.split(f"{candidate_tag}__", 1)[1]
+        )
+        if not os.path.exists(reference_path):
+            continue
+        compared += 1
+        differences = paths(load(reference_path), load(candidate_path))
+        if differences:
+            mismatches += 1
+            print(
+                f"{os.path.basename(candidate_path)}: {len(differences)} differ: "
+                + ", ".join(differences[:6])
+                + (" …" if len(differences) > 6 else "")
+            )
+print(f"{compared} compared, {mismatches} differ")
+sys.exit(1 if mismatches or not compared else 0)
