@@ -5,14 +5,14 @@
 //!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
 //!   {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in (page reloads)
 #![allow(unsafe_code, reason = "the wasm exports take the host's pointers: `alloc`/`dealloc` and `call`")]
-use super::skills::SkillsRaw;
-use super::{Data, DataRaw, load_raw};
+use crate::skills::SkillsRaw;
+use crate::{Data, DataRaw, load_raw};
 use std::cell::RefCell;
 
 thread_local! {
     static STATE: RefCell<Option<(Data, SkillsRaw)>> = const { RefCell::new(None) };
     // the card table and the job lists its event cache adds (`events` at init)
-    static DECK: RefCell<Option<(super::deck::CardsRaw, super::deck::EventLists)>> = const { RefCell::new(None) };
+    static DECK: RefCell<Option<(crate::deck::CardsRaw, crate::deck::sources::EventLists)>> = const { RefCell::new(None) };
     static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -110,12 +110,12 @@ fn handle(req: &str) -> serde_json::Value {
         };
         let data = load_raw(request.data);
         let uma_count = data.umas.len();
-        if let Ok(cards) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&request.cards) {
-            let events = super::deck::event_lists(&request.skills, &request.events);
+        if let Ok(cards) = <crate::deck::CardsRaw as serde::Deserialize>::deserialize(&request.cards) {
+            let events = crate::deck::sources::event_lists(&request.skills, &request.events);
             DECK.with(|deck| *deck.borrow_mut() = Some((cards, events)));
         }
         STATE.with(|state| *state.borrow_mut() = Some((data, request.skills)));
-        super::deck::forget_kept_decks();
+        crate::career::forget_kept_decks();
         return serde_json::json!({"ok": true, "umas": uma_count});
     }
     let mut job = job.unwrap();
@@ -127,8 +127,8 @@ fn handle(req: &str) -> serde_json::Value {
                 let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
                 let dkb = dk.borrow();
                 let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-                super::deck::apply_event_lists(&mut job, ev);
-                super::deck::run_deck(d, sk, cr, &job)
+                crate::deck::sources::apply_event_lists(&mut job, ev);
+                crate::deck::loops::run_deck(d, sk, cr, &job)
             })
         }),
         // state_out / state_in read no events
@@ -140,12 +140,12 @@ fn handle(req: &str) -> serde_json::Value {
                 let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
                 // (a carried roll's plan job too: its kept roll state is found by the plan job as it ran, events applied)
                 if cmd == "career" {
-                    super::deck::apply_event_lists(&mut job, ev);
+                    crate::deck::sources::apply_event_lists(&mut job, ev);
                     if job["roll"]["job"].is_object() {
-                        super::deck::apply_event_lists(&mut job["roll"]["job"], ev);
+                        crate::deck::sources::apply_event_lists(&mut job["roll"]["job"], ev);
                     }
                 }
-                super::deck::run_career(d, sk, cr, &job)
+                crate::career::run_career(d, sk, cr, &job)
             })
         }),
         c => serde_json::json!({"error": format!("unknown command {c}")}),

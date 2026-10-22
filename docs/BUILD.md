@@ -206,7 +206,7 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
 - **Lints:** clippy's default groups, with the few that fight this code deliberately allowed in the `[lints.clippy]`
   table of `pkg/loopopt/Cargo.toml`, each with its reason, and a chosen set of pedantic, nursery and restriction lints
   denied there; an `#[allow]` in the code needs `reason = "..."`. `unsafe_code` is denied crate-wide and allowed only
-  for the wasm exports (`web.rs`) and host imports (`deck/career/clock.rs`), each unsafe block with a `// SAFETY:` note. A lint fix that could change floating-point evaluation
+  for the wasm exports (`web.rs`) and host imports (`career/clock.rs`), each unsafe block with a `// SAFETY:` note. A lint fix that could change floating-point evaluation
   order, NaN handling or iteration order is a result change: it lands only with byte-identical validation (the
   `same.py` checks in *Tests*), otherwise the lint is allowed locally with a reason. `./build.sh native` runs the
   clippy part before its tests.

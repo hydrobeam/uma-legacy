@@ -19,7 +19,7 @@ pub(crate) fn now_ms() -> f64 {
     T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
 }
 
-/// the plan's progress for the page's status line, at its phase boundaries (`sim::plan::index_rule`): phase, k of n. In
+/// the plan's progress for the page's status line, at its phase boundaries (`plan::index_rule`): phase, k of n. In
 /// wasm the host's `env.progress` (the worker posts it to the page while the plan runs); elsewhere nothing
 #[cfg(target_arch = "wasm32")]
 #[allow(unsafe_code, reason = "calls the host's progress import")]

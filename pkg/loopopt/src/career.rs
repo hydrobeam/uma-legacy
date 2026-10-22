@@ -25,31 +25,21 @@
 //! Schedule: every G1 win counts one, plus one per parent who won that race (`best_response` weights), under the same
 //! goals, race clashes and streak penalties as the loop scheduler; the report lists every G1 she could enter.
 //!
-//! The next career the page picks (`next`) is `sim::plan::index_rule`; the simulator (`simulate`) is `sim`.
-use crate::deck::{
-    CHAIN_EVENTS, CHAIN_N, CHAIN_P, Card, CardsRaw, Data, DeckJob, DeckSpace, Deserialize, FxMap, GEN_GOLD, HashMap,
-    Instant, Model, SelectedDeck, SkillJob, SkillsRaw, Value, d_true, deck_entries, deck_space, json, src_miss,
-};
-use crate::{UmaIndex, UmaTable};
-use clock::{PROF, now_ms, prof, progress};
-pub(crate) use decks::CfStats;
-use decks::{DECK_KEEP, JOB_NO};
-use decks::{DECK_KEEP_CAP, DeckKey, DeckMemo, Kept};
-pub(crate) use inherit::HerSlot;
-use inherit::{
-    RelOf, SlotSink, aff_factor, inherit, inherit_q, insp_miss, mix_term, part_sum, rise_factor, set_ews, spark_scale,
-};
-use outcomes::interp_in;
-use pool::{Pool, RaceWin, Who, dominates, holds_fix, shared};
-use schedule::{apt_pink, pink_p};
-pub(crate) use search::RankedPair;
-use search::{Bar, DeckRes, Found, Ref, SearchRequest, Solved, solve_kept};
-use state::{KeptSolve, LAST_SOLVE, SEEN};
-use state::{
-    ProductProof, SEEN_KEEP, SOLVE_KEEP, STATE_MAX_N, found_in, found_out, fvec, fvec_r, fx, hx, len_in, pvec_r,
-    sel_in, sel_out, setup_hash, state_in, state_out, usz, ux, uxr,
-};
-pub(crate) use state::{json_without, setup_fp};
+//! The next career the page picks (`next`) is `plan::index_rule`; the simulator (`simulate`) is `sim`.
+use crate::career::decks::{CfStats, DECK_KEEP, DECK_KEEP_CAP, DeckKey, DeckMemo, JOB_NO};
+use crate::career::pool::Pool;
+use crate::career::search::{Ref, SearchRequest, Solved, solve_kept};
+use crate::career::state::{ProductProof, SEEN, SEEN_KEEP, json_without, setup_fp, setup_hash, state_in, state_out};
+use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P};
+use crate::deck::sources::{deck_entries, src_miss};
+use crate::deck::space::{DeckSpace, SelectedDeck, deck_space};
+use crate::deck::{Card, CardsRaw, DeckJob, d_true};
+use crate::skills::{Model, SkillJob, SkillsRaw};
+use crate::uma::{UmaIndex, UmaTable};
+use crate::{Data, Instant};
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::collections::HashMap;
 mod clock;
 mod decks;
 mod inherit;
@@ -61,6 +51,7 @@ mod state;
 
 mod cache;
 
+mod plan;
 mod sim;
 
 /// A trainee and her parents in the supplied legacy pool; parent order is significant.
@@ -185,7 +176,7 @@ struct CareerJob {
     /// the builder-trace simulator (`sim`): runs instead of the search when present
     #[serde(default)]
     simulate: Option<Value>,
-    /// the page's next career without simulation (`sim::plan::index_rule`): the career saving the most careers to a fully looped veteran
+    /// the page's next career without simulation (`plan::index_rule`): the career saving the most careers to a fully looped veteran
     #[serde(default)]
     next: Option<Value>,
     /// the page's veteran-analysis comparison (echoed in the output, nothing else)
@@ -341,10 +332,9 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     env.use_seen = true;
     // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
     // search was kept from the job before
-    let (sn0, sj0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
+    let (sn0, sj0) = (env.space.nodes.get(), crate::deck::caps::JCOUNT.with(std::cell::Cell::get));
     let sv = solve_kept(&mut env, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
-    let search_work =
-        json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - sj0});
+    let search_work = json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::caps::JCOUNT.with(std::cell::Cell::get) - sj0});
     env.use_seen = true;
     if std::env::var("CAREER_WORK").is_ok() {
         eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven);
@@ -623,7 +613,7 @@ fn keep_seen(env: &Env, setup_fingerprint: u64) {
     });
 }
 
-/// A roll of a plan this worker keeps (`next.roll`): answered from its roll state, no search (`sim::plan::roll_kept`);
+/// A roll of a plan this worker keeps (`next.roll`): answered from its roll state, no search (`plan::roll::roll_kept`);
 /// None when the job carries no roll or the worker keeps no state for it (the job then runs, its plan answering it).
 fn answer_kept_roll<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>) -> Option<Value> {
     let cj = run.job;
@@ -631,8 +621,8 @@ fn answer_kept_roll<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>) -> 
         .next
         .as_ref()
         .filter(|x| x.get("roll").is_some_and(|r| !r.is_null()))
-        .and_then(|x| serde_json::from_value::<sim::plan::PlanJob>(x.clone()).ok())?;
-    sim::plan::roll_kept(env, run.input, &cj.legacies, run.pool, &cj.fix, &plan_job)
+        .and_then(|x| serde_json::from_value::<crate::career::plan::PlanJob>(x.clone()).ok())?;
+    crate::career::plan::roll::roll_kept(env, run.input, &cj.legacies, run.pool, &cj.fix, &plan_job)
 }
 
 /// What the job's main search and its plan read.
@@ -692,10 +682,10 @@ fn search_output(env: &mut Env, run: &CareerRun, sv: &Solved, search_work: Value
     out
 }
 
-/// The job's `next`: the page's next career (`sim::plan::index_rule`) on the main search `sv`.
+/// The job's `next`: the page's next career (`plan::index_rule`) on the main search `sv`.
 fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Solved, next: &Value) -> Value {
     let cj = run.job;
-    let settings = match serde_json::from_value::<sim::plan::PlanJob>(next.clone()) {
+    let settings = match serde_json::from_value::<crate::career::plan::PlanJob>(next.clone()) {
         Ok(settings) => settings,
         Err(e) => return json!({"error": format!("next: {e}")}),
     };
@@ -707,12 +697,12 @@ fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Solve
         Some(pick_pool) => {
             borrowing =
                 solve_kept(env, run.search_key(&["next", "no_reports", "borrowed_parent"]), &run.search_request());
-            (&borrowing, Some(sim::plan::PickSearch { pool: pick_pool, solved: sv }))
+            (&borrowing, Some(crate::career::plan::PickSearch { pool: pick_pool, solved: sv }))
         }
     };
-    sim::plan::index_rule(
+    crate::career::plan::index_rule(
         env,
-        &sim::plan::PlanInputs {
+        &crate::career::plan::PlanInputs {
             resources: run.input,
             legacies: &cj.legacies,
             pool: run.pool,
@@ -759,9 +749,9 @@ fn note_job_certificates(env: &Env, out: &mut Value, rho_top: f64) {
 
 #[cfg(test)]
 mod tests {
-    use super::inherit::insp_miss2;
-    use super::state::STATE_VERSION;
     use super::*;
+    use crate::career::inherit::{aff_factor, inherit, insp_miss2, spark_scale};
+    use crate::career::state::STATE_VERSION;
     type Hook = Box<dyn for<'env> FnOnce(&mut Env<'env>, &Pool)>;
     thread_local! { pub(super) static ENV_HOOK: std::cell::RefCell<Option<Hook>> = const { std::cell::RefCell::new(None) }; }
     /// val/plan's p16 plan job with its events, and the Global data it runs on
@@ -776,7 +766,7 @@ mod tests {
         )
         .unwrap();
         let db: Value = serde_json::from_str(&rd("card_events.json")).unwrap();
-        crate::deck::apply_events_db(&mut v, &sk, &db);
+        crate::deck::sources::apply_events_db(&mut v, &sk, &db);
         (d, sk, cr, v)
     }
     /// `run_career` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `h` given its Env and pool

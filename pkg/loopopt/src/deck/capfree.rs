@@ -1,12 +1,12 @@
 //! The state-conditioned bounds of one configuration (`StateBound`): the band pass's (`plain`) and the cap-free band's,
 //! its cheap bound (`cheap`) tried before the per-state one (`full`); and the search-wide ratio tables the cap-free
 //! bounds read (`CapFreeRatios`).
-use super::chains::ChainState;
-use super::joint::MissFactors;
-use super::space::{EntryGroup, GroupSlots};
-use super::{ChainKind, KeyLevel, LandPre, Model, StateBoundConfig, event_pmf_job, key_level};
-use std::{cell::RefCell, rc::Rc};
-
+use crate::deck::chains::{ChainKind, ChainState, KeyLevel, event_pmf_job, key_level};
+use crate::deck::joint::{LandPre, MissFactors, StateBoundConfig};
+use crate::deck::space::{EntryGroup, GroupSlots};
+use crate::skills::Model;
+use std::cell::RefCell;
+use std::rc::Rc;
 /// Landing factors and entry misses used by both state-conditioned bounds.
 #[derive(Clone, Copy)]
 pub(super) struct LandingBoundTables<'table> {
@@ -21,7 +21,7 @@ pub(super) struct LandingBoundTables<'table> {
 #[derive(Clone, Copy)]
 pub(super) struct BoundOptions {
     pub(super) cap_free: bool,
-    pub(super) trainee: crate::UmaIndex,
+    pub(super) trainee: crate::uma::UmaIndex,
     pub(super) fixed_factor: f64,
 }
 
@@ -63,7 +63,7 @@ struct ChainRatioSlot<'row> {
 /// per-target bound), and per group of `groups` (`group`), level and outfit (row l * outfit_count + o) the best ratio over its
 /// entries: R(e, l) = prod over the other targets of the factor at e's misses at level l over the factor with no card;
 /// per entry (`entry`) the same ratio of that entry alone. Both built on first use.
-pub(super) struct CapFreeRatios<'tab> {
+pub(crate) struct CapFreeRatios<'tab> {
     target_count: usize,
     outfit_count: usize,
     kind_count: usize,
@@ -223,7 +223,7 @@ struct StateBoundContext<'cfg> {
     configuration: Option<Rc<StateBoundConfig>>,
     groups: &'cfg [EntryGroup<'cfg>],
     model: &'cfg Model<'cfg>,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     entry_rows: &'cfg [Option<Vec<MissFactors>>],
     landing_factors: &'cfg [LandPre],
     zero_base_targets: &'cfg [u32],
@@ -552,7 +552,7 @@ impl StateBoundContext<'_> {
                 for i in (0..state_count).rev() {
                     t[i] = t[i + 1] + configuration.states[o[i] as usize].probability;
                 }
-                super::joint::WeightedStates { indices: o, suffix_weights: t }
+                crate::deck::joint::WeightedStates { indices: o, suffix_weights: t }
             });
             (&*x.indices, &*x.suffix_weights)
         } else {

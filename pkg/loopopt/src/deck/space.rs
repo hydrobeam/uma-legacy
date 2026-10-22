@@ -1,12 +1,12 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
-use super::joint::MissFactors;
-use super::sources::{ChainOutcome, EventOutcome};
-use super::{
-    AUDIT_CAP, Card, CardsRaw, ChainKind, DeckJob, EXACT_CAP, EXACT_CAPS, Entries, Group, HashMap, Model, Name,
-    OutfitOption, PDeck, SkillsRaw, Sources, StateBoundConfig, TargetSources, cap_class, chain_marginals, cv_mask,
-    src_miss, test_caps,
-};
-
+use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class, cv_mask, test_caps};
+use crate::deck::chains::{ChainKind, chain_marginals};
+use crate::deck::joint::{MissFactors, StateBoundConfig};
+use crate::deck::kept::{Name, PDeck};
+use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources, src_miss};
+use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::skills::{Model, OutfitOption, SkillsRaw};
+use std::collections::HashMap;
 thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = const { std::cell::Cell::new((0, 0.0, 0)) }; pub(super) static SPT: std::cell::Cell<(f64, f64, usize, usize)> = const { std::cell::Cell::new((0.0, 0.0, 0, 0)) }; }
 
 /// A configuration's required cards from one chain-kind group.
@@ -56,7 +56,7 @@ pub(super) struct LockedCards {
 }
 
 /// A pal without target hints, retained for legality and the reported deck.
-pub(super) struct PlainPal<'data> {
+pub(crate) struct PlainPal<'data> {
     pub(super) id: u32,
     pub(super) name: String,
     pub(super) card: &'data Card,
@@ -103,18 +103,18 @@ pub(super) struct DominanceKey {
 /// the per-uma search exact: decks are enumerated by chain-kind key, like the skyline search, with an upper bound on
 /// a partial deck's product value (each remaining slot of a kind group at that group's best miss chances per target,
 /// ignoring the one-per-character rule), so only the decks that can reach a threshold are built.
-pub(super) struct DeckSpace<'data> {
-    pub(super) deck_job: &'data DeckJob,
+pub(crate) struct DeckSpace<'data> {
+    pub(crate) deck_job: &'data DeckJob,
     pub(super) target_groups: Vec<u32>,
     pub(super) skills: &'data SkillsRaw,
-    pub(super) cards: Vec<&'data Card>,
+    pub(crate) cards: Vec<&'data Card>,
     // Parallel arrays indexed by entry, before card dominance: card index, kind, early end, variant.
     // Entry indices differ from card indices: one card can have several end-link/variant entries.
-    pub(super) card_indices: Vec<usize>,
-    pub(super) kind: Vec<ChainKind>,
+    pub(crate) card_indices: Vec<usize>,
+    pub(crate) kind: Vec<ChainKind>,
     pub(super) end_links: Vec<u8>,
     pub(super) variants: Vec<u32>,
-    pub(super) sources: Vec<TargetSources>,
+    pub(crate) sources: Vec<TargetSources>,
     pub(super) borrowed: Vec<bool>,
     // per entry, `cv_mask` of its source (the class caps)
     pub(super) class_masks: Vec<u64>,
@@ -126,10 +126,10 @@ pub(super) struct DeckSpace<'data> {
     pub(super) kinds_all: Vec<ChainKind>,
     // All caches belong to this fixed job and target set. Their abbreviated keys omit only those fixed inputs.
     pub(super) key_miss_cache: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<KeyMisses>>>,
-    pub(super) reduced_cache: std::cell::RefCell<crate::FxMap<Vec<crate::UmaIndex>, ReducedEntries>>,
+    pub(super) reduced_cache: std::cell::RefCell<crate::FxMap<Vec<crate::uma::UmaIndex>, ReducedEntries>>,
     pub(super) group_miss_cache: std::cell::RefCell<crate::FxMap<GroupMissKey, std::rc::Rc<GroupTable>>>,
     /// partial decks tested, over every search (the search's cost)
-    pub(super) nodes: std::cell::Cell<usize>,
+    pub(crate) nodes: std::cell::Cell<usize>,
     /// what `search` derives from a legal entry set alone, per (set id, plain pals allowed): built once, not per call
     legal_table_cache: std::cell::RefCell<crate::FxMap<LegalTableKey, std::rc::Rc<LegalTables>>>,
     /// every count vector over `kinds_all` (summing to at most deck_size), in enumeration order: the same for every search
@@ -158,21 +158,21 @@ pub(super) struct LegalTables {
 /// A deck a search selected: its relevant entries, how many plain pals and filler cards fill it, and its hint chances
 /// per uncertain target.
 #[derive(Clone)]
-pub(super) struct SelectedDeck {
+pub(crate) struct SelectedDeck {
     /// Indices into this DeckSpace's parallel entry arrays, sorted before returning a search result.
-    pub(super) entries: Vec<usize>,
+    pub(crate) entries: Vec<usize>,
     /// How many plain pals (pal characters with no relevant card) the deck holds.
-    pub(super) plain_pals: usize,
+    pub(crate) plain_pals: usize,
     /// How many filler cards (any SR without target hints) complete it.
-    pub(super) filler_cards: usize,
+    pub(crate) filler_cards: usize,
     /// Per uncertain target, the deck's chance of a white hint when it gives no gold one.
-    pub(super) white_hint_chances: Vec<f64>,
+    pub(crate) white_hint_chances: Vec<f64>,
     /// Per uncertain target, the deck's chance of a gold hint.
-    pub(super) gold_hint_chances: Vec<f64>,
+    pub(crate) gold_hint_chances: Vec<f64>,
 }
 /// Entry-major miss probabilities: entry * target_count + target, white and gold respectively.
 #[derive(Clone, Copy)]
-pub(super) struct EntryMisses<'table> {
+pub(crate) struct EntryMisses<'table> {
     pub(super) white: &'table [f64],
     pub(super) gold: &'table [f64],
     pub(super) target_count: usize,
@@ -237,7 +237,7 @@ impl<'data> DeckSpace<'data> {
     /// targets: entries of one character with the same such rewards and chain kind keep the first; entries with none
     /// (they only take a slot) keep, per chain kind, pal status and borrowing, deck_size of them, characters no
     /// rewarding entry uses first. Any deck has an equal-valued deck from these.
-    pub(super) fn reduced(&self, model: &Model, trainees: &[crate::UmaIndex], trainee_ids: &[u32]) -> Vec<usize> {
+    pub(super) fn reduced(&self, model: &Model, trainees: &[crate::uma::UmaIndex], trainee_ids: &[u32]) -> Vec<usize> {
         let target_count = self.target_groups.len();
         let relt: Vec<bool> = (0..target_count)
             .map(|k| trainees.iter().any(|&u| model.opts[u].iter().any(|OutfitOption { coverage: st, .. }| st[k] < 2)))
@@ -348,7 +348,7 @@ impl<'data> DeckSpace<'data> {
     pub(super) fn reduced_cached(
         &self,
         model: &Model,
-        trainees: &[crate::UmaIndex],
+        trainees: &[crate::uma::UmaIndex],
         trainee_ids: &[u32],
     ) -> ReducedEntries {
         if let Some(r) = self.reduced_cache.borrow().get(trainees) {
@@ -504,10 +504,10 @@ impl<'data> DeckSpace<'data> {
     pub(crate) fn sel_cap(&self, x: &SelectedDeck, rho: f64) -> f64 {
         self.caps()[self.sel_class(x)].min(rho)
     }
-    pub(super) fn legal_plain(&self, trainee_ids: &[u32]) -> Vec<&PlainPal<'data>> {
+    pub(crate) fn legal_plain(&self, trainee_ids: &[u32]) -> Vec<&PlainPal<'data>> {
         self.plain_pals.iter().filter(|x| trainee_ids.iter().all(|&id| !x.card.blocks(id))).collect()
     }
-    pub(super) fn pdeck(&self, x: &SelectedDeck, trainee_ids: &[u32]) -> PDeck {
+    pub(crate) fn pdeck(&self, x: &SelectedDeck, trainee_ids: &[u32]) -> PDeck {
         let source_builder = Sources { dj: self.deck_job, unc: &self.target_groups };
         let lp = self.legal_plain(trainee_ids);
         let ci: Vec<usize> = x.entries.iter().map(|&j| self.card_indices[j]).collect();
@@ -571,7 +571,7 @@ impl<'data> DeckSpace<'data> {
 // ---------- what the packed search can represent (checked once, where a job's entries are built: `deck_entries`) ----------
 /// Most cards in a deck: a key code counts each chain kind's cards as one base-7 digit (`DeckSpace::search`,
 /// `key_miss`), so at most six of a kind. The page's decks hold six.
-pub(super) const MAX_DECK: usize = 6;
+pub(crate) const MAX_DECK: usize = 6;
 /// Most chain kinds (the fillers' (2, 2) included, `kinds_all`): a key code's largest value, six cards of the last kind,
 /// must fit a u64 (it would up to 22), and the count vectors over the kinds (`counts_all`, C(16 + 6, 6) = 74613 of them
 /// here) bound the configuration count.
@@ -593,7 +593,7 @@ pub(super) fn kinds_all(kind: &[ChainKind]) -> Vec<ChainKind> {
     kinds
 }
 
-pub(super) fn deck_space<'data>(
+pub(crate) fn deck_space<'data>(
     card_data: &'data CardsRaw,
     deck_job: &'data DeckJob,
     skills: &'data SkillsRaw,
@@ -657,7 +657,7 @@ pub(super) fn top_asc(buf: &mut Vec<f64>, k: usize, value: f64) {
 }
 /// Per-group tables of one key in one flat buffer (`gm_cached`'s and the ratio tables of `search`): the groups in `need`
 /// each own a block of `block_len` f64s (built from 1.0), in group order; callers must not read omitted groups.
-pub(super) struct GroupTable {
+pub(crate) struct GroupTable {
     /// Packed block index per group; u32::MAX marks a group omitted by `need`.
     slot: Vec<u32>,
     block_len: usize,

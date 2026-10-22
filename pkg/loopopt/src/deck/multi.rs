@@ -1,19 +1,20 @@
 //! Per-uma decks (`run_multi`): the per-uma tables of exact values by inheritance chance and the loop search over them.
-use super::SourceEntry;
-use super::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
-use super::joint::JointChances;
-use super::space::HintCoordinate;
-use super::{
-    Card, CardsRaw, Choice, Cl, Data, DeckEval, DeckId, DeckJob, DeckSpace, EXACT_BUDGET, EXACT_RHO, EXACT_STEPS,
-    GEN_GOLD, Instant, JointExt, MemberLineage, Model, NONE, NT, Name, OutfitOption, PDeck, Res, SPT, Sched, SkillJob,
-    Sources, TargetSources, UCHK, Value, chart_rows, check_sizes, joint, joint_b, joint_fast, json, k_filter, lins,
-    member_json, members, optimize_fam, pair_ceilings, prebuilt, probs, split, src_class, upper_na, wval,
+use crate::deck::caps::{EXACT_BUDGET, EXACT_RHO, EXACT_STEPS, src_class};
+use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
+use crate::deck::joint::{JointChances, JointExt, joint, joint_b, joint_fast, upper_na};
+use crate::deck::kept::{Cl, DeckEval, DeckId, Name, PDeck, k_filter, split};
+use crate::deck::sources::{SourceEntry, Sources, TargetSources};
+use crate::deck::space::{DeckSpace, HintCoordinate, SPT, UCHK};
+use crate::deck::{Card, CardsRaw, DeckJob, prebuilt};
+use crate::skills::{
+    GEN_GOLD, MemberLineage, Model, OutfitOption, SkillJob, chart_rows, check_sizes, lins, member_json,
 };
-use crate::{UmaIndex, UmaTable};
+use crate::uma::{UmaIndex, UmaTable};
+use crate::{Choice, Data, Instant, NONE, NT, Res, Sched, members, optimize_fam, pair_ceilings, probs, wval};
+use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
 /// Immutable resources for the loop search. All indices retain their original roster/deck-space provenance.
 struct LoopJobInputs<'data> {
     data: &'data Data,
@@ -1743,7 +1744,7 @@ impl<'data> Multi<'data> {
             let (e, fl) = (&dke[t].entries, dke[t].filler_count);
             let target_count = unc.len();
             let mut ext = JointExt {
-                scales: super::joint::SparkScales {
+                scales: crate::deck::joint::SparkScales {
                     uncertain: vec![1.0; target_count],
                     guaranteed: vec![1.0; ntar - target_count],
                 },

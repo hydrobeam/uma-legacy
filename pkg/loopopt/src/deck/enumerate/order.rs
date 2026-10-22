@@ -1,9 +1,7 @@
 //! The visiting order of queued configurations.
-use super::config::ConfigurationBounds;
-use super::{ConfigurationQueue, PendingConfig, SearchConfig, SearchControl};
-use crate::deck::space::GroupSlots;
-use crate::deck::{DeckSpace, GroupTable};
-
+use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationQueue, PendingConfig, SearchConfig};
+use crate::deck::enumerate::traverse::SearchControl;
+use crate::deck::space::{DeckSpace, GroupSlots, GroupTable};
 /// (lazy: the pending configurations by bound, highest first; the computed ones not yet visited, best root first
 /// and, among equal roots, first built first, the order of the stable sort above)
 struct QueuedConfig {

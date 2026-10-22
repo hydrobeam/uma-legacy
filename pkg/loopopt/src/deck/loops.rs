@@ -1,12 +1,17 @@
 //! The joint deck and loop search (`run_deck`): structures in bands, schedules, ceilings and the shared-deck path.
-use super::sources::{EventOutcome, TargetReward, TrainingHint};
-use super::{
-    CHAIN_EVENTS, CHAIN_N, CHAIN_P, CardsRaw, ChainKind, Data, DeckEval, DeckJob, Deserialize, Entries, HashMap,
-    Instant, Kept, Model, Name, PDeck, SkillJob, SkillsRaw, Sources, TargetSources, Value, chain_marginals,
-    deck_entries, deck_space, dominates, json, k_filter, kfilter_order, kmax_top, run_multi, sig_of, src_miss,
-    tie_rank,
+use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P, ChainKind, chain_marginals};
+use crate::deck::kept::{DeckEval, Kept, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank};
+use crate::deck::multi::run_multi;
+use crate::deck::sources::{
+    Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries, src_miss,
 };
-
+use crate::deck::space::deck_space;
+use crate::deck::{CardsRaw, DeckJob, kmax_top};
+use crate::skills::{Model, SkillJob, SkillsRaw};
+use crate::{Data, Instant};
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::collections::HashMap;
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
 /// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with
 /// per-uma decks, for every structure member with a shared deck.
@@ -314,7 +319,7 @@ fn debug_robust(
 /// rises with g and h, and a deck at least as high in every (g, h) is never worse. (w, g) dominance implies
 /// (g, h) dominance, so this prunes at least as much. Coordinates no relevant card can move are dropped,
 /// and h == g when no card gives the white.
-fn dominance_coords(srcs: &[TargetSources], target_count: usize) -> Vec<super::space::HintCoordinate> {
+fn dominance_coords(srcs: &[TargetSources], target_count: usize) -> Vec<crate::deck::space::HintCoordinate> {
     let mut has_w = vec![false; target_count];
     let mut has_g = vec![false; target_count];
     for sr in srcs {
@@ -337,10 +342,10 @@ fn dominance_coords(srcs: &[TargetSources], target_count: usize) -> Vec<super::s
         .flat_map(|k| {
             let mut v = vec![];
             if has_g[k] {
-                v.push(super::space::HintCoordinate { target: k, gold: true });
+                v.push(crate::deck::space::HintCoordinate { target: k, gold: true });
             }
             if has_w[k] {
-                v.push(super::space::HintCoordinate { target: k, gold: false });
+                v.push(crate::deck::space::HintCoordinate { target: k, gold: false });
             }
             v
         })
@@ -446,7 +451,7 @@ type Groups = crate::FxMap<(usize, usize), Kept>;
 struct DeckEnumerator<'env> {
     deck_job: &'env DeckJob,
     entries: &'env Entries<'env>,
-    coordinates: &'env [super::space::HintCoordinate],
+    coordinates: &'env [crate::deck::space::HintCoordinate],
     target_count: usize,
     entry_count: usize,
     size: usize,
@@ -470,7 +475,7 @@ impl<'env> DeckEnumerator<'env> {
         entries: &'env Entries<'env>,
         deck_job: &'env DeckJob,
         target_count: usize,
-        coordinates: &'env [super::space::HintCoordinate],
+        coordinates: &'env [crate::deck::space::HintCoordinate],
     ) -> Result<Self, Value> {
         let (cards, rel, kind) = (&entries.cards, &entries.rel, &entries.kind);
         let allowed_borrow = usize::from(deck_job.borrow);
@@ -803,7 +808,7 @@ impl<'env> DeckEnumerator<'env> {
             selection.entries.iter().copied().find(|&j| self.borrowed_entries[j]).map(|j| self.entries.rel[j]);
         workspace.counts.decks_built += 1;
         let mut coordinate_sum = 0.0;
-        for (c, &super::space::HintCoordinate { target: k, gold: is_g }) in coordinates.iter().enumerate() {
+        for (c, &crate::deck::space::HintCoordinate { target: k, gold: is_g }) in coordinates.iter().enumerate() {
             workspace.coordinates[c] = if is_g {
                 gold_hint_chances[k]
             } else {

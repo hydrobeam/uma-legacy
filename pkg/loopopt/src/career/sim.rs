@@ -10,6 +10,10 @@
 //! career's exact landed-set distribution with the all-landed set removed), and stops when S_t < eps or at
 //! `max_careers`, where the tail S_t / p_t (career t repeated forever) is added.
 //!
+//! The modules call each other on purpose: `run_career` (career.rs) runs `simulate` for a job with `simulate`, and the
+//! `exact` and `index` policies (`exact_cur`, `index_cur`) call `run_career` again on that job with `simulate` removed,
+//! so the simulator tests the same path the page runs.
+//!
 //! The surrogate (policy `greedy`): the career with the highest P(all), where each candidate (trainee, parents) is
 //! valued by its trainee's cached decks only (`Cache`: per deck and outfit the corner table, exact at any inheritance
 //! chances, `Env::corners`). A candidate is first bounded by the search's ceiling and by `rise` from each fully checked
@@ -40,7 +44,7 @@
 //! plan: `index_rule` on the step's pool, run as the page's plan job in process, its `choice` the career run). A policy
 //! picks the next career (`Cur`) from the state (`PathState`) in `play`; `trace` runs its own loop and returns its rows.
 //!
-//! `index` and the worker's kept state: a plan job reads and leaves the kept plans (`plan::BESTS`), proofs (`SEEN`),
+//! `index` and the worker's kept state: a plan job reads and leaves the kept plans (`plan::kept::BESTS`), proofs (`SEEN`),
 //! main searches (`LAST_SOLVE`) and deck memos (`DECK_KEEP`). Each run starts with all four empty (`kept_swap`; the
 //! state before the simulation is put back after it), so a run's plans read only what its own earlier steps left: a
 //! run's careers are a function of the job and the run index, not of the runs before it or their order. Within a run
@@ -53,19 +57,25 @@
 //! keeps her own schedule (the career model's); the loop planner coordinates schedules across members, this does not.
 //! The loop adds every veteran without dominance pruning. Its rotation keeps the better of the previous veteran and
 //! the new one for the next two loop careers (`rot_update`), keeping the previous veteran on a tie.
-use super::cache::Cache;
-use super::inherit::{ExactOptions, Inheritance, LineageChances};
-use super::{
-    Ancestor, Bar, CardsRaw, Data, DeckRes, Deserialize, Env, Found, FxMap, GEN_GOLD, HerSlot, Legacy, PROF, Pool,
-    ProductProof, Ref, RelOf, SelectedDeck, SkillJob, SkillsRaw, SlotSink, Solved, Value, Who, aff_factor, d_true,
-    holds_fix, inherit, insp_miss, interp_in, json, now_ms, prof, progress, rise_factor, run_career, spark_scale,
+use crate::Data;
+use crate::career::cache::Cache;
+use crate::career::inherit::{
+    ExactOptions, Inheritance, LineageChances, RelOf, SlotSink, aff_factor, inherit, insp_miss, spark_scale,
 };
-use crate::deck::career::sim::plan::ScoringContext;
-use crate::deck::career::{Career, JobInputs, Lineage};
-use std::rc::Rc;
+use crate::career::outcomes::interp_in;
 /// the page's next career (`next` on a career job)
-pub(super) mod plan;
-
+use crate::career::plan;
+use crate::career::pool::{Pool, Who};
+use crate::career::search::{Bar, DeckRes, Ref};
+use crate::career::state::ProductProof;
+use crate::career::{Ancestor, Career, Env, JobInputs, Legacy, Lineage, run_career};
+use crate::deck::space::SelectedDeck;
+use crate::deck::{CardsRaw, d_true};
+use crate::skills::{GEN_GOLD, SkillsRaw};
+use plan::ScoringContext;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::rc::Rc;
 fn d_policy() -> String {
     "greedy".into()
 }
@@ -108,7 +118,7 @@ pub(super) struct SimJob {
     max_careers: usize,
     /// refresh margin m (module notes); 0 = refresh whenever a bound exceeds the table value
     #[serde(default)]
-    margin: f64,
+    pub(super) margin: f64,
     #[serde(default = "d_true")]
     prune: bool,
     /// keep the deck cache across runs (faster; with m > 0 a pick can depend on what earlier runs cached)
@@ -149,18 +159,20 @@ const PAGE_TOP: usize = 6;
 /// The worker's kept state across jobs: the kept plans, proofs, main searches and deck memos
 #[derive(Default)]
 struct KeptState {
-    bests: Vec<plan::Bests>,
-    seen: Vec<(u64, crate::UmaTable<Vec<Ref>>)>,
-    searches: Vec<super::KeptSolve>,
-    decks: Vec<(u64, super::Kept)>,
+    bests: Vec<plan::kept::Bests>,
+    seen: Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>,
+    searches: Vec<crate::career::state::KeptSolve>,
+    decks: Vec<(u64, crate::career::decks::Kept)>,
 }
 /// Replace the worker's kept state, returning the previous state (`index`: module notes).
 fn kept_swap(replacement: KeptState) -> KeptState {
-    let bests = plan::bests_take();
-    plan::bests_set(replacement.bests);
-    let seen = super::SEEN.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.seen));
-    let searches = super::LAST_SOLVE.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.searches));
-    let decks = super::DECK_KEEP.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.decks));
+    let bests = plan::kept::bests_take();
+    plan::kept::bests_set(replacement.bests);
+    let seen = crate::career::state::SEEN.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.seen));
+    let searches = crate::career::state::LAST_SOLVE
+        .with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.searches));
+    let decks =
+        crate::career::decks::DECK_KEEP.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.decks));
     KeptState { bests, seen, searches, decks }
 }
 
@@ -213,9 +225,9 @@ pub(crate) struct Cur {
     lineage: Lineage,
     p_all: f64,
     /// Chance of each landed set (bit i = job target i).
-    os: Vec<f64>,
+    pub(super) os: Vec<f64>,
     /// Her chance of at least one win, per race index.
-    wp: Rc<Vec<f64>>,
+    pub(super) wp: Rc<Vec<f64>>,
     /// A loop rotation career: her veteran may replace her member's rotation veteran (`rot_update`).
     rotation: bool,
 }
@@ -257,7 +269,7 @@ enum Base {
 }
 /// The simulator's work counters (`Sim::n`).
 #[derive(Default, Clone, Copy)]
-struct Counters {
+pub(super) struct Counters {
     /// Candidate careers valued.
     candidates: usize,
     /// Candidates whose ceiling cleared the bar.
@@ -265,7 +277,7 @@ struct Counters {
     /// Cached-table valuations (`deck_for`).
     tables: usize,
     /// Deck searches ("refreshes").
-    searches: usize,
+    pub(super) searches: usize,
     /// Deck searches that did not finish (no `Ref`).
     partial_searches: usize,
     /// Veterans added to a path's pool.
@@ -285,48 +297,48 @@ struct BuilderCareer {
 }
 
 /// Owned roster tables moved into a simulator.
-struct SimulationRoster {
+pub(super) struct SimulationRoster {
     /// Trainees considered by later simulated careers, in search order.
-    trainees: Vec<crate::UmaIndex>,
+    pub(super) trainees: Vec<crate::uma::UmaIndex>,
     /// Rotation members in the supplied order.
-    members: Vec<crate::UmaIndex>,
+    pub(super) members: Vec<crate::uma::UmaIndex>,
     /// Rotation position for each Data::umas index, when tracing members.
-    member_by_trainee: crate::UmaTable<Option<usize>>,
+    pub(super) member_by_trainee: crate::uma::UmaTable<Option<usize>>,
 }
 
 /// Independent simulator behaviours selected by its caller.
 #[derive(Clone, Copy)]
-struct SimulationOptions {
+pub(super) struct SimulationOptions {
     /// Record audit output for the main simulation.
-    record_audits: bool,
+    pub(super) record_audits: bool,
     /// Search for decks absent from the simulator cache.
-    fill_missing_decks: bool,
+    pub(super) fill_missing_decks: bool,
 }
 
 pub(crate) struct Sim<'env, 'data> {
-    env: &'env mut Env<'data>,
-    d: &'data Data,
+    pub(super) env: &'env mut Env<'data>,
+    pub(super) d: &'data Data,
     skills: &'data SkillsRaw,
     cards: &'data CardsRaw,
     job: &'data Value,
-    cfg: SimJob,
-    cache: Cache,
-    trainees: Vec<crate::UmaIndex>,
+    pub(super) cfg: SimJob,
+    pub(super) cache: Cache,
+    trainees: Vec<crate::uma::UmaIndex>,
     /// Per uma, her static ceiling (q = 1 on every target; 0 when she is not owned)
-    static_ceilings: crate::UmaTable<f64>,
+    static_ceilings: crate::uma::UmaTable<f64>,
     /// The failed landed sets (every set but the full one), fewest landed first, ties by mask: the draw's order
     failed_sets: Vec<usize>,
     /// The rank's 1/2/3-star shares of a landed target's spark
     star_mix: [f64; 3],
     /// Win chances per (trainee, her parents' wins and pink inputs) (`wins`)
-    win_chances: crate::FxMap<(crate::UmaIndex, Vec<usize>), Rc<Vec<f64>>>,
-    n: Counters,
-    members: Vec<crate::UmaIndex>,
+    win_chances: crate::FxMap<(crate::uma::UmaIndex, Vec<usize>), Rc<Vec<f64>>>,
+    pub(super) n: Counters,
+    members: Vec<crate::uma::UmaIndex>,
     /// per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`fast_ub`)
-    fastc: crate::UmaTable<Vec<Vec<(f64, f64)>>>,
-    fixed: f64,
+    pub(super) fastc: crate::uma::UmaTable<Vec<Vec<(f64, f64)>>>,
+    pub(super) fixed: f64,
     /// trace: trainee → loop member index (empty under the other policies)
-    member_by_trainee: crate::UmaTable<Option<usize>>,
+    member_by_trainee: crate::uma::UmaTable<Option<usize>>,
     /// the simulator's own path (false when the plan uses this machinery): audits are taken only there
     record_audits: bool,
     audits: Vec<Value>,
@@ -334,7 +346,7 @@ pub(crate) struct Sim<'env, 'data> {
     /// a bar (so she has one from then on), instead of a search at the bar that caches nothing when it ends Bounded
     fill_missing_decks: bool,
     /// a lineage's chances, reused (`lineage_into`)
-    qs: Vec<f64>,
+    pub(super) qs: Vec<f64>,
     /// the planner's working copy of its pool (`take_pool`), with the identity of the pool it copies
     working_pool: Option<(PoolIdentity, Pool)>,
 }
@@ -402,7 +414,7 @@ fn stats(xs: &[f64]) -> Value {
 /// Per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`Sim::fastc`; none
 /// without legal deck odds). `outfit_fast` at q = 0 on the hint chances `set_trainee` would write, split: A = dg GOLD +
 /// (1 - dg) WHITE and B = (1 - dg) WHITE (1 - dw)(1 - e) where she lacks the skill, B = 0 where she has it
-fn fastc(env: &Env) -> crate::UmaTable<Vec<Vec<(f64, f64)>>> {
+fn fastc(env: &Env) -> crate::uma::UmaTable<Vec<Vec<(f64, f64)>>> {
     env.data
         .umas
         .indices()
@@ -429,24 +441,24 @@ fn fastc(env: &Env) -> crate::UmaTable<Vec<Vec<(f64, f64)>>> {
 }
 /// A trainee's inheritance chances and the bounds for choosing her cached or searched deck.
 #[derive(Clone, Copy)]
-struct DeckRequest<'chances> {
+pub(super) struct DeckRequest<'chances> {
     /// Trainee's position in Data::umas.
-    trainee: crate::UmaIndex,
+    pub(super) trainee: crate::uma::UmaIndex,
     /// Inheritance probability per job target.
-    inheritance_chances: &'chances [f64],
+    pub(super) inheritance_chances: &'chances [f64],
     /// Product of inheritance spark multipliers.
-    spark_scale: f64,
+    pub(super) spark_scale: f64,
     /// Upper bound on this lineage's success probability.
-    ceiling: f64,
+    pub(super) ceiling: f64,
     /// Minimum success probability worth searching.
-    threshold: f64,
+    pub(super) threshold: f64,
 }
 
 impl<'env, 'data> Sim<'env, 'data> {
-    /// The simulator's machinery for a job (`simulate`'s, and the plan's through `plan::sim_for`): the landed sets in
+    /// The simulator's machinery for a job (`simulate`'s, and the plan's through `plan::search::sim_for`): the landed sets in
     /// order of size, each owned trainee's ceiling at q = 1 (`static_ceilings`), the rank's star mix, `fastc`, the
     /// fixed gold factor
-    fn new(
+    pub(super) fn new(
         env: &'env mut Env<'data>,
         input: &JobInputs<'data>,
         cfg: SimJob,
@@ -459,7 +471,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         failed_sets.sort_by_key(|&m| (m.count_ones(), m));
         let n = input.data.umas.len();
         let one = vec![1.0f64; ntar];
-        let static_ceilings: crate::UmaTable<f64> = env
+        let static_ceilings: crate::uma::UmaTable<f64> = env
             .data
             .umas
             .indices()
@@ -513,7 +525,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         format!("{}:{},{}", self.d.umas[trainee].id, first_parent, second_parent)
     }
     /// P(all) at chances q with spark scale c through trainee t's cached decks: (value, deck index; usize::MAX: none)
-    fn tval(&self, t: crate::UmaIndex, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
+    fn tval(&self, t: crate::uma::UmaIndex, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
         // (1 - q per uncertain target, on the stack up to 32 of them)
         let nu = self.env.uncertain_targets.len();
         let (mut xa, xv): ([f64; 32], Vec<f64>);
@@ -541,7 +553,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     }
     /// trainee t's best cached deck at chances q (spark scale c, ceiling ub) after the refresh rule (module notes), when
     /// it can reach the bar th: (value, deck index); None when it provably cannot
-    fn deck_for(&mut self, request: DeckRequest, buf: &mut Vec<f64>) -> Option<(f64, usize)> {
+    pub(super) fn deck_for(&mut self, request: DeckRequest, buf: &mut Vec<f64>) -> Option<(f64, usize)> {
         let mut rb = request.ceiling;
         for r in &self.cache.refs[request.trainee] {
             rb = rb.min(self.env.ref_bound(request.trainee, request.inheritance_chances, request.spark_scale, r));
@@ -663,7 +675,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         env.space.rho_top() * c * self.fixed * best
     }
     /// the value a career of trainee t must beat to matter: the best overall, or under `trace` a member's own best
-    fn bar(&self, st: &PathState, t: crate::UmaIndex) -> f64 {
+    fn bar(&self, st: &PathState, t: crate::uma::UmaIndex) -> f64 {
         match self.member_by_trainee.get(t).copied().flatten() {
             Some(k) => st.member_best[k].map_or(0.0, |p| p.value),
             None => st.best.map_or(0.0, |p| p.value),
@@ -781,7 +793,7 @@ impl<'env, 'data> Sim<'env, 'data> {
                 // this career's scoring of the builders: A alone, at her best odds now, on this career's pool
                 let one = [a];
                 let pw = [pa];
-                let base = plan::ScoreBase {
+                let base = plan::cont::ScoreBase {
                     candidates: &one,
                     step_costs: &[1.0],
                     later_stage_costs: &[0.0],
@@ -797,14 +809,14 @@ impl<'env, 'data> Sim<'env, 'data> {
                 for k in 1..nb {
                     let Some(pk) = st.member_best[k] else { continue };
                     let sel = self.cache.decks[pk.lineage.trainee][pk.deck].sel.clone();
-                    let plan::CareerScore { lift_stats: stt, .. } = plan::score_career_of(
+                    let plan::score::CareerScore { lift_stats: stt, .. } = plan::score::score_career_of(
                         self,
                         &scoring,
                         Career { lineage: pk.lineage, deck: &sel },
-                        plan::Want::Stats,
+                        plan::cont::Want::Stats,
                         &mut buf,
                     );
-                    let plan::LiftStats { lift_chance: pl, lifted_odds_sum: sp } = stt[0];
+                    let plan::score::LiftStats { lift_chance: pl, lifted_odds_sum: sp } = stt[0];
                     let (e, p1) = if pl > 0.0 {
                         let p1 = sp / pl;
                         (pl * (1.0 / pa - 1.0 / p1), p1)
@@ -1182,7 +1194,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     /// nc)
     fn landed_set_distance(
         &mut self,
-        t: crate::UmaIndex,
+        t: crate::uma::UmaIndex,
         q: &[f64],
         nc: &[i32],
         first: &SelectedDeck,
@@ -1198,7 +1210,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         0.5 * s1.iter().zip(&s2).map(|(x, y)| (x - y).abs()).sum::<f64>()
     }
     /// trainee t's exact best deck at chances q (a full deck search), its value with spark scale c
-    fn exact_best(&mut self, t: crate::UmaIndex, q: &[f64], c: f64) -> ExactDeck {
+    fn exact_best(&mut self, t: crate::uma::UmaIndex, q: &[f64], c: f64) -> ExactDeck {
         self.env.set_trainee(t, q);
         self.env.work = 0;
         let mut sc = 0;
@@ -1442,7 +1454,13 @@ struct RankedCareer {
 }
 impl RankedCareer {
     /// `gen_cands`' constructor: (ceiling, trainee position, trainee, a, b)
-    const fn new(ceiling: f64, _: usize, trainee: crate::UmaIndex, first_parent: usize, second_parent: usize) -> Self {
+    const fn new(
+        ceiling: f64,
+        _: usize,
+        trainee: crate::uma::UmaIndex,
+        first_parent: usize,
+        second_parent: usize,
+    ) -> Self {
         Self { ceiling, lineage: Lineage { trainee, first_parent, second_parent } }
     }
 }
@@ -1505,7 +1523,7 @@ pub(super) fn simulate<'data>(
     env: &mut Env<'data>,
     input: &JobInputs<'data>,
     legs: &[Legacy],
-    trainees: &[crate::UmaIndex],
+    trainees: &[crate::uma::UmaIndex],
     sim: &Value,
 ) -> Value {
     let cfg: SimJob = match serde_json::from_value(sim.clone()) {
@@ -1523,7 +1541,7 @@ pub(super) fn simulate<'data>(
         "index" => Base::Index,
         p => return json!({"error": format!("simulate: unknown policy {p}")}),
     };
-    let members: Vec<crate::UmaIndex> = cfg.loop_members.iter().filter_map(|&id| env.uix(id)).collect();
+    let members: Vec<crate::uma::UmaIndex> = cfg.loop_members.iter().filter_map(|&id| env.uix(id)).collect();
     if matches!(base, Base::Loop | Base::Trace)
         && (members.len() < 3
             || members.len() != cfg.loop_members.len()
@@ -1532,7 +1550,7 @@ pub(super) fn simulate<'data>(
         return json!({"error": "loop: loop_members must be at least three owned umas"});
     }
     let n = input.data.umas.len();
-    let mut mi = crate::UmaTable(vec![None; if base == Base::Trace { n } else { 0 }]);
+    let mut mi = crate::uma::UmaTable(vec![None; if base == Base::Trace { n } else { 0 }]);
     if base == Base::Trace {
         for (k, &m) in members.iter().enumerate() {
             mi[m] = Some(k);

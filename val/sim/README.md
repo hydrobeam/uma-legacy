@@ -8,7 +8,7 @@ policy are compared against), `trace` and `index` (the page's planner, `sim::pla
 page's plan job); adding one: `docs/SOLVER.md`, *Policy simulator*.
 
 Its one result in use: the shape of the career planner's continuation (`Cont`: `CEIL_SHARE` 0.6, `LAM_DECAY` 1.5 in
-`src/deck/career/sim/plan.rs`) was fitted to its `trace` policy, building for Agnes Digital with her most efficient
+`src/career/plan/cont.rs`) was fitted to its `trace` policy, building for Agnes Digital with her most efficient
 builders on 2-, 5-, 11- and 19-veteran pools (6 runs x 400 careers each). Results and the fit's error:
 `docs/MODEL.md`, *Next career*. Reproduce one trace with a career job carrying
 `"simulate": {"policy": "trace", "runs": 6, "max_careers": 400, "margin": 1e9, "loop_members": [1019, <five builders>]}`

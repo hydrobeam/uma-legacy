@@ -1,20 +1,19 @@
 //! Chain events: the event count per run, the per-link marginals and the final-state distribution of a deck's chains,
 //! and the per-key level tables.
-use super::HashMap;
-
+use std::collections::HashMap;
 /// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P). The retained fit and its checks are in docs/RESEARCH.md
 /// section 8 (`8.fit_of_n_runs`); the current evidence does not make this count law exact for every deck or scenario.
-pub(super) const CHAIN_N: u32 = 21;
-pub(super) const CHAIN_P: f64 = 0.35;
+pub(crate) const CHAIN_N: u32 = 21;
+pub(crate) const CHAIN_P: f64 = 0.35;
 /// A deck entry's chain kind. A card played normally stops at its last link; a chosen early end stops sooner. While it
 /// runs, an entry is picked with weight = links it has left (length - done); once it reaches its stop it is out.
 /// Ordered and hashed as the tuple (links, stop, stop risk).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub(super) struct ChainKind {
+pub(crate) struct ChainKind {
     /// The card's chain links.
     pub(super) links: u8,
     /// The link it stops after.
-    pub(super) stop: u8,
+    pub(crate) stop: u8,
     /// Links where IT's default choice ends the chain on k of n outcomes, one byte per link 1..=4 ((k << 4) | n; 0 =
     /// none), only links before the stop (`stop_risk_code`).
     pub(super) stop_risk: u32,
@@ -32,7 +31,7 @@ pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
         .fold(0u32, |c, r| c | (((u32::from(r.1) << 4) | u32::from(r.2)) << (8 * (u32::from(r.0) - 1))))
 }
 
-thread_local! { pub(super) static CHAIN_EVENTS: std::cell::Cell<(u32, f64)> = const { std::cell::Cell::new((CHAIN_N, CHAIN_P)) }; }
+thread_local! { pub(crate) static CHAIN_EVENTS: std::cell::Cell<(u32, f64)> = const { std::cell::Cell::new((CHAIN_N, CHAIN_P)) }; }
 /// P(N = e) chain events per run for e = 0..=n, N ~ Binomial of the job in progress (default CHAIN_N, CHAIN_P).
 pub(super) fn event_pmf(n: usize) -> Vec<f64> {
     let (bn, bp) = CHAIN_EVENTS.with(std::cell::Cell::get);

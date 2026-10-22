@@ -1,15 +1,16 @@
 //! Anchor bounds and the best partners after an outcome.
-use super::fold::RiseInputs;
-use super::step::{CandidateLift, OwnFullLanding, StepScratch};
-use super::{
-    HerEnds, Lo, ScoreBase, fm_masks, her_ends, her_pool, her_pool_done, her_trios, leaf_products, leaf_set,
-    legal_pair, rise_leaves, v_after,
-};
-use crate::deck::career::sim::plan::cont::OwnTrio;
-use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
-use crate::deck::career::sim::{DeckRes, Env, Pool, Sim, Solved, holds_fix, now_ms, prof, rise_factor};
-use crate::deck::career::{Career, Lineage};
-
+use crate::career::clock::{now_ms, prof};
+use crate::career::inherit::rise_factor;
+use crate::career::plan::cont::{OwnTrio, ScoreBase};
+use crate::career::plan::fold::{RiseInputs, leaf_products, leaf_set, rise_leaves};
+use crate::career::plan::score::{HerEnds, fm_masks, her_ends, her_pool, her_pool_done, her_trios};
+use crate::career::plan::search::legal_pair;
+use crate::career::plan::step::{CandidateLift, Lo, OwnFullLanding, StepScratch, v_after};
+use crate::career::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
+use crate::career::pool::{Pool, holds_fix};
+use crate::career::search::{DeckRes, Solved};
+use crate::career::sim::Sim;
+use crate::career::{Career, Env, Lineage};
 /// Ceiling factors are flattened [outfit][uncertain target][star level].
 struct CeilingFactors<'factors> {
     values: &'factors [f64],
@@ -581,7 +582,7 @@ pub(crate) struct PartnerAnchors {
 /// A fully checked career used as an exact anchor for its deck class.
 pub(crate) struct FoundAnchor {
     /// Deck class shared by trainees with the same legal deck search.
-    pub(crate) deck_class: crate::UmaIndex,
+    pub(crate) deck_class: crate::uma::UmaIndex,
     /// Inheritance chances at the exact check, in job target order.
     pub(crate) inheritance_chances: Vec<f64>,
     /// Best deck value at those chances and unit spark scale.

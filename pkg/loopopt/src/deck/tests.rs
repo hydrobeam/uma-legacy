@@ -1,11 +1,20 @@
-use super::chains::{chain_marginals_dense, chain_marginals_ref, event_pmf};
-use super::hints::miss_draws;
-use super::joint::{joint_trainee_ref, land_factor, state_value_cf};
-use super::sources::{ChainOutcome, EventOutcome, TargetReward, TrainingHint, group_nuod_lvl};
-use super::space::top_asc;
-use super::*;
+use crate::deck::chains::{
+    CHAIN_EVENTS, ChainKind, chain_marginals, chain_marginals_dense, chain_marginals_ref, chain_states, event_pmf,
+    key_level, stop_risk_code,
+};
+use crate::deck::hints::{hint_base, hint_miss, hint_spec, miss_draws};
+use crate::deck::joint::{
+    JointExt, LandPre, joint, joint_fast, joint_trainee_ref, land_factor, state_value_cf, upper_na,
+};
+use crate::deck::sources::{
+    ChainOutcome, EventOutcome, Group, SourceEntry, Sources, TargetReward, TargetSources, TrainingHint, deck_entries,
+    group_gh, group_nuod, group_nuod_lvl, src_miss,
+};
+use crate::deck::space::{MAX_KINDS, kinds_all, top_asc, top_desc};
+use crate::deck::*;
+use crate::skills::{GEN_GOLD, Model, SkillJob, SkillsRaw};
 use crate::{load, skills};
-
+use serde_json::{Value, json};
 /// A three-link chain card played to its end.
 const THREE_LINKS: ChainKind = ChainKind { links: 3, stop: 3, stop_risk: 0 };
 
@@ -31,7 +40,7 @@ fn fast_metric_matches_reference() {
     let nu = m.uncertain.len();
     let fs: [&[usize]; 5] = [&[0, 5, 9, 20], &[3, 7, 11, 40], &[1, 2, 3, 4], &[0, 5, 9], &[3, 11, 40]];
     for (fi, &f) in fs.iter().enumerate() {
-        let f: Vec<crate::UmaIndex> = f.iter().copied().map(crate::UmaIndex).collect();
+        let f: Vec<crate::uma::UmaIndex> = f.iter().copied().map(crate::uma::UmaIndex).collect();
         let qa = m.lineage_q_arr(&f, &|_, _| 3.0);
         let qv = m.lineage_q(&f, &|_, _| 3.0);
         assert_eq!(qv.len(), if f.len() == 4 { 12 } else { 3 });
@@ -354,7 +363,7 @@ fn key_level_matches_states() {
         let (st, kl) = (chain_states(&ks), key_level(&ks));
         let at = |gi: usize| (0..kl.lev.len()).map(|m| pmf[m] * kl.lev[m][gi]).sum::<f64>();
         let mut seen = 0.0f64;
-        for super::chains::ChainState { progress: s, probability: p } in st.iter() {
+        for crate::deck::chains::ChainState { progress: s, probability: p } in st.iter() {
             let gi: usize = s.iter().zip(&kl.gstride).map(|(&x, &g)| x as usize * g).sum();
             let q = at(gi);
             seen += q;
@@ -412,7 +421,7 @@ fn joint_fast_matches_reference() {
         SourceEntry { sources: e, kind: ChainKind::NONE },
     ];
     for fill in [0usize, 2] {
-        for u in [0, 5, 20].map(crate::UmaIndex) {
+        for u in [0, 5, 20].map(crate::uma::UmaIndex) {
             let x = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), true, None);
             let y = joint_trainee_ref(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len());
             for (p, r) in x.iter().zip(&y) {
@@ -478,7 +487,7 @@ fn career_fold_and_scale() {
         SourceEntry { sources: c, kind: THREE_LINKS },
     ];
     let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1e-300);
-    for u in [0, 5, 20].map(crate::UmaIndex) {
+    for u in [0, 5, 20].map(crate::uma::UmaIndex) {
         for q in [0.1, 0.6] {
             let x = joint_fast(&m, u, &[q], &ents, 1, sj.targets.len(), true, None)[0];
             let mut f = Model::new(&d, &sk, &sj);
@@ -490,7 +499,7 @@ fn career_fold_and_scale() {
             );
             let su = vec![1.1f64.powi(-1), 1.0, 1.1f64.powi(-3), 1.1f64.powi(-6)];
             let mut ext = JointExt {
-                scales: super::joint::SparkScales { uncertain: su.clone(), guaranteed: vec![1.1f64.powi(-2)] },
+                scales: crate::deck::joint::SparkScales { uncertain: su.clone(), guaranteed: vec![1.1f64.powi(-2)] },
                 marginals: vec![],
                 sets: vec![],
                 per_outfit: vec![],
@@ -521,9 +530,9 @@ fn career_fold_and_scale() {
     .finish();
     let ents2: Vec<SourceEntry<TargetSources>> =
         vec![SourceEntry { sources: p, kind: ChainKind::FILLER }, SourceEntry { sources: r, kind: ChainKind::FILLER }];
-    for u in [0, 5, 20].map(crate::UmaIndex) {
+    for u in [0, 5, 20].map(crate::uma::UmaIndex) {
         let mut ext = JointExt {
-            scales: super::joint::SparkScales { uncertain: vec![0.9, 0.8], guaranteed: vec![] },
+            scales: crate::deck::joint::SparkScales { uncertain: vec![0.9, 0.8], guaranteed: vec![] },
             marginals: vec![],
             sets: vec![0.0],
             per_outfit: vec![],
@@ -609,7 +618,7 @@ fn upper_bound_covers_exact() {
     let mut covered = 0;
     for ents in &decks {
         for fill in [0usize, 1, 3] {
-            for u in [0, 5, 20].map(crate::UmaIndex) {
+            for u in [0, 5, 20].map(crate::uma::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, ents, fill, sj.targets.len(), false, None);
                 let er: Vec<SourceEntry<&TargetSources>> =
@@ -697,8 +706,14 @@ fn unchecked_inline_event_disables_orthant_bound() {
     assert_eq!(src.chain_outcomes[0].outcomes[0].rewards.len(), 21);
     assert!(src.uncertified_orthant);
     assert!(
-        upper_na(&model, crate::UmaIndex(0), &[0.0], &[SourceEntry { sources: &src, kind: sb.kind(&card, None) }], 0)
-            .is_none()
+        upper_na(
+            &model,
+            crate::uma::UmaIndex(0),
+            &[0.0],
+            &[SourceEntry { sources: &src, kind: sb.kind(&card, None) }],
+            0
+        )
+        .is_none()
     );
 }
 
@@ -805,7 +820,7 @@ fn group_level_orthant_check() {
     ];
     for ents in decks {
         for fill in [0usize, 2] {
-            for u in [0, 5, 20].map(crate::UmaIndex) {
+            for u in [0, 5, 20].map(crate::uma::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, &ents, fill, sj.targets.len(), false, None);
                 let er: Vec<SourceEntry<&TargetSources>> =
@@ -857,7 +872,7 @@ fn joint_equals_product_without_correlation() {
     }
     let dw: Vec<f64> = mw.iter().map(|x| 1.0 - x).collect();
     let dg: Vec<f64> = mg.iter().map(|x| 1.0 - x).collect();
-    for u in [0, 5, 20].map(crate::UmaIndex) {
+    for u in [0, 5, 20].map(crate::uma::UmaIndex) {
         for q in [0.3, 0.75] {
             let j = joint(
                 &m,

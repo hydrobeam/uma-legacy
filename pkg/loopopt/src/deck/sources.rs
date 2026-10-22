@@ -1,10 +1,11 @@
 //! Target sources of a deck entry: outcome groups, training hints and chain links per card, the event data merged into
 //! a job, and the deck entries of a job.
-use super::{
-    Card, CardsRaw, ChainKind, DeckJob, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SkillsRaw, Value, hint_base, hint_miss,
-    hint_spec, json, kinds_all, scenario_name, stop_risk_code,
-};
-
+use crate::deck::chains::{ChainKind, stop_risk_code};
+use crate::deck::hints::{hint_base, hint_miss, hint_spec, scenario_name};
+use crate::deck::space::{MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, kinds_all};
+use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::skills::SkillsRaw;
+use serde_json::{Value, json};
 /// Mutually exclusive outcomes of one event firing. Probabilities sum to at most 1; the remainder gives no hint.
 /// Each outcome's rewards occur together, using hint levels 1 (white) and 2 (gold).
 pub(super) type Group = Vec<EventOutcome>;
@@ -62,9 +63,9 @@ pub(super) struct TargetChainMisses {
 
 /// A deck entry's target sources and its chain scheduling kind.
 #[derive(Clone)]
-pub(super) struct SourceEntry<S> {
-    pub(super) sources: S,
-    pub(super) kind: ChainKind,
+pub(crate) struct SourceEntry<S> {
+    pub(crate) sources: S,
+    pub(crate) kind: ChainKind,
 }
 /// Per target a group touches: (k, P(gold for k), P(any hint for k)).
 pub(super) fn group_gh(group: &Group) -> Vec<(usize, f64, f64)> {
@@ -242,7 +243,7 @@ pub(super) fn group_nuod_lvl(g: &Group) -> bool {
 /// `chain_misses` are the same
 /// per target as miss factors (1 - P(gold), 1 - P(any hint)), the chain ones per link in link order.
 #[derive(Clone, Default)]
-pub(super) struct TargetSources {
+pub(crate) struct TargetSources {
     pub(super) training_hints: Vec<TrainingHint>,
     pub(super) fixed_outcomes: Vec<Group>,
     pub(super) chain_outcomes: Vec<ChainOutcome>,
@@ -310,7 +311,7 @@ impl TargetSources {
 /// Links fire in order, so a skill offered at several links comes from the earliest one that fires:
 /// P(miss) = 1 - sum_l P(link l fires) * (P(not from links < l) - P(not from links <= l)).
 /// Both misses fall with every m[l], so the lowest possible link odds bound them from above.
-pub(super) fn src_miss(s: &TargetSources, m: &[f64], mw: &mut [f64], mg: &mut [f64]) {
+pub(crate) fn src_miss(s: &TargetSources, m: &[f64], mw: &mut [f64], mg: &mut [f64]) {
     let mut eg = [1.0f64; 32];
     let mut eh = [1.0f64; 32];
     for &TrainingHint { target: k, probability: p } in &s.training_hints {
@@ -764,7 +765,7 @@ impl Sources<'_> {
 /// early-end link (0 = played normally), choice variant and sources; the plain pals (owned pal characters with no
 /// relevant card, best-rarity card) and the locked cards. `pool_ids`: the umas that may train (plain pals that block
 /// none of them come first).
-pub(super) struct Entries<'data> {
+pub(crate) struct Entries<'data> {
     pub(super) cards: Vec<&'data Card>,
     pub(super) rel: Vec<usize>,
     pub(super) kind: Vec<ChainKind>,
@@ -776,7 +777,7 @@ pub(super) struct Entries<'data> {
     pub(super) plain_chars: Vec<u32>,
     pub(super) locked: Vec<usize>,
 }
-pub(super) fn deck_entries<'data>(
+pub(crate) fn deck_entries<'data>(
     cr: &'data CardsRaw,
     dj: &DeckJob,
     unc: &[u32],

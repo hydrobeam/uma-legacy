@@ -17,13 +17,13 @@
 //! Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages, the trainee her own grandparent twice;
 //! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
 //! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
-use super::{
-    Choice, Data, Deserialize, NT, Sched, chart_race_name, interchangeable, option_chance, row_label, short_name,
-    streak_penalty, when,
+use crate::uma::{UmaIndex, UmaTable};
+use crate::{
+    Choice, Data, NT, Sched, chart_race_name, interchangeable, option_chance, row_label, short_name, streak_penalty,
+    when,
 };
-use crate::{UmaIndex, UmaTable};
+use serde::Deserialize;
 use serde_json::{Value, json};
-
 /// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
 /// the six ancestors already carrying that spark (assumed; docs/RESEARCH.md section 1).
 /// In a running loop all six carry every target.

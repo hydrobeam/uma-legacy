@@ -1,6 +1,7 @@
 //! Deck dominance: signatures, buckets and the beaten-deck bookkeeping (`Kept`), and the decks a search returns.
-use super::{Card, Deserialize, Serialize, Value, json};
-
+use crate::deck::Card;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 /// Slack for float noise in dominance tests: per coordinate, and summed over all coordinates.
 pub(super) const DOM_EPS: f64 = 1e-12;
 pub(super) const SUM_EPS: f64 = 1e-9;
@@ -463,8 +464,8 @@ pub(super) fn split<D: Odds>(sky: &[D], ix: &mut [usize], nu: usize, out: &mut V
 /// A deck detached from the search that built it (names and ids instead of indices), for per-uma mode. Its names are
 /// shared strings (`Name`: a skyline of 50k decks repeats about a hundred distinct ones), written as plain strings
 #[derive(Clone, Serialize, Deserialize)]
-pub(super) struct PDeck {
-    pub(super) names: Vec<Name>,
+pub(crate) struct PDeck {
+    pub(crate) names: Vec<Name>,
     pub(super) ids: Vec<u32>,
     pub(super) ends: Vec<u8>,
     #[serde(default)]
@@ -481,7 +482,7 @@ pub(super) struct PDeck {
 /// A card or deck name shared between decks (serde's `rc`: serialised as the string)
 pub(super) type Name = std::rc::Rc<str>;
 impl PDeck {
-    pub(super) fn out(&self, unc: &[u32]) -> Value {
+    pub(crate) fn out(&self, unc: &[u32]) -> Value {
         let odds: Vec<Value> =
             (0..unc.len()).map(|k| json!({"group": unc[k], "white": self.dw[k], "gold": self.dg[k]})).collect();
         json!({"pals": self.pals, "cards": self.names, "odds": odds, "pal_cards": self.pal_names, "borrowed": self.borrowed,

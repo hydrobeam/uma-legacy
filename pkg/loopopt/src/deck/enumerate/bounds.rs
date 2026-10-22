@@ -1,13 +1,12 @@
 //! Outfit bounds and ratio prefixes.
-use super::{LineageChance, SearchClause};
-use crate::deck::space::{DominanceKey, Dominator, EntryMisses};
-use crate::deck::{DeckSpace, Model};
-
+use crate::deck::enumerate::{LineageChance, SearchClause};
+use crate::deck::space::{DeckSpace, DominanceKey, Dominator, EntryMisses};
+use crate::skills::Model;
 /// One outfit at one inheritance chance within a search clause.
 #[derive(Clone, Copy)]
 pub(crate) struct OutfitRow {
     pub(crate) clause: usize,
-    pub(crate) trainee: crate::UmaIndex,
+    pub(crate) trainee: crate::uma::UmaIndex,
     pub(crate) inheritance: f64,
     pub(crate) outfit: usize,
 }
@@ -61,7 +60,7 @@ pub(crate) struct RatioPrefixes {
 
 pub(crate) fn prepare_outfit_bounds(
     model: &Model,
-    trainees: &[crate::UmaIndex],
+    trainees: &[crate::uma::UmaIndex],
     clauses: &[SearchClause],
     target_count: usize,
 ) -> OutfitBounds {

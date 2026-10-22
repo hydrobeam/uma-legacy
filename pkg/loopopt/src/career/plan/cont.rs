@@ -1,12 +1,12 @@
 //! The continuation (`Cont`) and its memo: the fitted expected careers to finish after a candidate.
-use crate::deck::career::sim::plan::CandidateIndex;
-use crate::deck::career::sim::{FxMap, Legacy};
-
+use crate::FxMap;
+use crate::career::Legacy;
+use crate::career::plan::CandidateIndex;
 /// What a career is scored against: per stage-1 candidate her step cost and stages 2-3, V0, the stage-1 odds now, the
 /// fitted continuations and the trios. Per-candidate slices follow `candidates`' order.
 pub(crate) struct ScoreBase<'base> {
     /// The stage-1 candidates, as umas.
-    pub(crate) candidates: &'base [crate::UmaIndex],
+    pub(crate) candidates: &'base [crate::uma::UmaIndex],
     /// Each candidate's stage-1 step in expected careers (c1; 0: her 8/8 exists).
     pub(crate) step_costs: &'base [f64],
     /// Each candidate's stages 2-3 in expected careers (m23).
@@ -24,7 +24,7 @@ pub(crate) struct ScoreBase<'base> {
     /// `finisher_umas`, what `her_trios` pairs a new real 8/8 with. Empty: none
     pub(crate) trio_sides: &'base [Vec<TrioSideVeteran>],
     /// The umas a trio's C may be.
-    pub(crate) finisher_umas: &'base [crate::UmaIndex],
+    pub(crate) finisher_umas: &'base [crate::uma::UmaIndex],
 }
 
 /// A trio side's veteran as `her_trios` reads it: a real 8/8 of the candidate's, or the fresh 8/8 her best career now

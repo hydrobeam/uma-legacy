@@ -1,8 +1,9 @@
 //! Legacy slots, affinity and inheritance chances.
-use super::{Env, Pool, Who, shared};
-use crate::deck::career::Lineage;
-use crate::deck::{JointExt, SelectedDeck, TargetSources, joint_fast};
-
+use crate::career::pool::{Pool, Who, shared};
+use crate::career::{Env, Lineage};
+use crate::deck::joint::{JointExt, joint_fast};
+use crate::deck::sources::TargetSources;
+use crate::deck::space::SelectedDeck;
 /// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
 /// inheritance chance (`inherit`, `Env::lineage_qc`, `Env::gen_cands`, `Sim::fast_ub`, the planner's her-slot setups).
 /// A slot's affinity factor 1 + A / 100, A its relation part plus its race part
@@ -69,7 +70,7 @@ pub(crate) trait RelPts {
 pub(crate) struct RelOf<'env, 'data> {
     pub(crate) env: &'env Env<'data>,
     pub(crate) p: &'env Pool,
-    pub(crate) t: crate::UmaIndex,
+    pub(crate) t: crate::uma::UmaIndex,
 }
 
 impl RelPts for RelOf<'_, '_> {
@@ -258,7 +259,7 @@ pub(crate) fn inherit(sl: &[Slot], ntar: usize) -> Inheritance {
 }
 
 impl Env<'_> {
-    pub(crate) fn pair(&self, a: Option<crate::UmaIndex>, b: Option<crate::UmaIndex>) -> f64 {
+    pub(crate) fn pair(&self, a: Option<crate::uma::UmaIndex>, b: Option<crate::uma::UmaIndex>) -> f64 {
         match (a, b) {
             (Some(a), Some(b)) => f64::from(self.data.pair[a][b]),
             _ => 0.0,
@@ -266,9 +267,9 @@ impl Env<'_> {
     }
     pub(crate) fn tri(
         &self,
-        a: Option<crate::UmaIndex>,
-        b: Option<crate::UmaIndex>,
-        c: Option<crate::UmaIndex>,
+        a: Option<crate::uma::UmaIndex>,
+        b: Option<crate::uma::UmaIndex>,
+        c: Option<crate::uma::UmaIndex>,
     ) -> f64 {
         match (a, b, c) {
             (Some(a), Some(b), Some(c)) => f64::from(self.data.tri[a][b][c]),
@@ -349,21 +350,21 @@ impl Env<'_> {
         }
     }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
-    pub(crate) fn set_trainee(&mut self, t: crate::UmaIndex, q: &[f64]) {
+    pub(crate) fn set_trainee(&mut self, t: crate::uma::UmaIndex, q: &[f64]) {
         set_ews(&mut self.model.ews[t], &self.own_event_chances[t], &self.uncertain_targets, q);
     }
     /// a deck's entries (sources borrowed from the deck space: `joint` only reads them)
-    pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<crate::deck::SourceEntry<&TargetSources>> {
+    pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<crate::deck::sources::SourceEntry<&TargetSources>> {
         sel.entries
             .iter()
-            .map(|&j| crate::deck::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
+            .map(|&j| crate::deck::sources::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
             .collect()
     }
     /// exact P(all) of trainee t (her inheritance already folded in) with deck `sel`, scaled per target by the
     /// carrier counts `nc`; `options` says what else to compute
     pub(crate) fn exact(
         &self,
-        t: crate::UmaIndex,
+        t: crate::uma::UmaIndex,
         sel: &SelectedDeck,
         nc: &[i32],
         options: ExactOptions,
@@ -393,7 +394,7 @@ impl Env<'_> {
     /// e: her own event hint chance); from q0 to q it grows at most by (1 - (1 - e)(1 - q_k)) / (1 - (1 - e)(1 - q0_k))
     /// (n = 1, g = 0), and not at all when q_k <= q0_k or the outfit has the skill. P(all) is a sum of products of
     /// these factors, so it grows at most by the product, for every deck: E(q) <= E(q0) x max over outfits of it.
-    pub(crate) fn rise(&self, t: crate::UmaIndex, q: &[f64], q0: &[f64]) -> f64 {
+    pub(crate) fn rise(&self, t: crate::uma::UmaIndex, q: &[f64], q0: &[f64]) -> f64 {
         self.outfit_coverage[t]
             .iter()
             .zip(&self.own_event_chances[t])

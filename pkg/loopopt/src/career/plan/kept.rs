@@ -1,8 +1,10 @@
 //! Kept plans and cached career searches.
-use super::ParentPool;
-use crate::deck::career::sim::{Env, Found, Ref, Sim, Value, json};
-use crate::{UmaIndex, UmaTable};
-
+use crate::career::Env;
+use crate::career::plan::ParentPool;
+use crate::career::search::{Found, Ref};
+use crate::career::sim::Sim;
+use crate::uma::{UmaIndex, UmaTable};
+use serde_json::{Value, json};
 /// A cached result may be available from searching, certification or reuse. A known empty result is
 /// reusable too; an unsearched entry still needs work. Completeness is tracked separately.
 #[derive(Clone)]
@@ -32,7 +34,7 @@ fn cached_searches_out(searches: &UmaTable<CachedSearch>) -> Vec<Value> {
         .enumerate()
         .filter_map(|(trainee, search)| match search {
             CachedSearch::Unsearched => None,
-            CachedSearch::Known(found) => Some(json!([trainee, found.as_ref().map(crate::deck::career::found_out)])),
+            CachedSearch::Known(found) => Some(json!([trainee, found.as_ref().map(crate::career::state::found_out)])),
         })
         .collect()
 }
@@ -66,7 +68,7 @@ thread_local! { pub(crate) static BESTS: std::cell::RefCell<Vec<Bests>> = const 
 /// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
 /// not kept: nothing reads them back)
 pub(crate) fn bests_out() -> Value {
-    BESTS.with(|c| Value::Array(c.borrow().iter().map(|b| json!({"k": [crate::deck::career::ux(b.key.0), crate::deck::career::ux(b.key.1)], "n": b.best_careers.len(),
+    BESTS.with(|c| Value::Array(c.borrow().iter().map(|b| json!({"k": [crate::career::state::ux(b.key.0), crate::career::state::ux(b.key.1)], "n": b.best_careers.len(),
         "b": cached_searches_out(&b.best_careers),
         "l": cached_searches_out(&b.looped_careers),
         "u": b.base_incomplete.indices().filter(|&u| b.base_incomplete[u]).collect::<Vec<_>>(),
@@ -74,7 +76,7 @@ pub(crate) fn bests_out() -> Value {
 }
 
 pub(crate) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
-    use crate::deck::career::{found_in, len_in, usz, uxr};
+    use crate::career::state::{found_in, len_in, usz, uxr};
     v.as_array()?
         .iter()
         .map(|e| {
@@ -159,7 +161,7 @@ pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usiz
         .filter(|&b| b != "allow")
         .map_or(0, |b| h64(b).rotate_left(2));
     (
-        crate::deck::career::setup_fp(job) ^ h64(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
+        crate::career::state::setup_fp(job) ^ h64(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
         h64(&legacies_text),
     )
 }
@@ -186,7 +188,7 @@ pub(crate) struct BestCareer {
 }
 
 /// `trainee`'s best career in the pool, reusing a kept plan of this pool or of the pool less its last veteran
-pub(crate) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kept: KeptPlans) -> BestCareer {
+pub(super) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kept: KeptPlans) -> BestCareer {
     let ParentPool { pool, fixed_parents } = parents;
     // a kept plan of this very pool (the same job planned again: a reload, a setting changed and back): her best, as kept
     if let Some(same) = kept.same_pool
@@ -316,8 +318,7 @@ pub(crate) fn same_career(f: &Found, g: &Found) -> bool {
 #[cfg(test)]
 mod cached_search_tests {
     use super::*;
-    use crate::deck::SelectedDeck;
-
+    use crate::deck::space::SelectedDeck;
     #[test]
     fn stored_searches_distinguish_missing_empty_and_found() {
         let found = Found {
@@ -340,7 +341,7 @@ mod cached_search_tests {
             CachedSearch::Known(Some(found.clone())),
         ]);
         let rows = json!(cached_searches_out(&searches));
-        assert_eq!(rows, json!([[1, null], [2, crate::deck::career::found_out(&found)]]));
+        assert_eq!(rows, json!([[1, null], [2, crate::career::state::found_out(&found)]]));
 
         let stored = json!([{
             "k": ["0000000000000001", "0000000000000002"], "n": 3,

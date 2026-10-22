@@ -378,9 +378,9 @@ and the reruns in `cap_rerun`. The best career also carries `schedule`, `g1_wins
 
 #### Next career (`next`)
 
-The page's plan (`sim::plan::index_rule`): exact where it can be, not simulated. The page sends it as a second job,
+The page's plan (`career::plan::index_rule`): exact where it can be, not simulated. The page sends it as a second job,
 `next: {}` with `no_reports: true`, after the search job (it reuses the search the worker keeps). The model and its
-evidence: `docs/MODEL.md`, *Next career*. The planner is split across `src/deck/career/sim/plan.rs` and `src/deck/career/sim/plan/`.
+evidence: `docs/MODEL.md`, *Next career*. The planner is split across `src/career/plan.rs` and `src/career/plan/`.
 
 | Field of `next` (all optional) | Meaning | Default |
 |---|---|---|
@@ -581,7 +581,7 @@ Output: per run `E`, `careers`, `tail`, `final_p`, `pool`, `pruned`, `wall_s`, `
 career, p, pool size, S), `checks`, `audits`; and `E` (mean, sd, 95% CI) over the runs. `trace` returns its rows per run
 instead.
 
-Adding a policy: `simulate` (src/deck/career/sim.rs) matches the policy name to a base (`Base`); `play` asks the base
+Adding a policy: `simulate` (src/career/sim.rs) matches the policy name to a base (`Base`); `play` asks the base
 for the next career each step (`greedy_cur`, `loop_cur`: a `Cur`, the career with its exact P(all), landed-set chances
 and win chances), runs it, draws the veteran and adds her to the state (`PathState`). A new policy is a new arm there and a
 function returning the `Cur` to run; `play` does the rest (E, the tail, pruning, checks, audits). A policy that runs a

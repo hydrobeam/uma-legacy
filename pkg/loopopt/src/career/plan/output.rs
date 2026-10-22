@@ -1,12 +1,15 @@
 //! The assembled plan response.
-use super::{
-    BESTS, Bests, CachedSearch, KeptBase, KeptScoring, PlanCandidates, PlanContext, PlanProfile, PlanRow, PlanScores,
-    PlanSearches, RollKeep, RowOrigin, bests_key, found_anchors, keep_roll, near_floor, pick_her, pick_of, roll_kept,
-    roll_key, unordered_parents,
-};
-use crate::deck::career::sim::plan::rows::{Pick, has_looped_parents};
-use crate::deck::career::sim::{Found, PROF, Sim, Value, json, now_ms};
-
+use crate::career::clock::{PROF, now_ms};
+use crate::career::plan::anchors::{found_anchors, pick_her};
+use crate::career::plan::combine::PlanScores;
+use crate::career::plan::kept::{BESTS, Bests, CachedSearch, bests_key};
+use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept, roll_key};
+use crate::career::plan::rows::{Pick, PlanRow, RowOrigin, has_looped_parents, near_floor, pick_of};
+use crate::career::plan::score::KeptScoring;
+use crate::career::plan::{PlanCandidates, PlanContext, PlanProfile, PlanSearches, unordered_parents};
+use crate::career::search::Found;
+use crate::career::sim::Sim;
+use serde_json::{Value, json};
 /// The plan's response: its options, pick and trio, with the pick's roll state and the plan's searches kept for later
 /// jobs (`RollKeep`, `Bests`)
 pub(crate) fn assemble_plan_output<'data>(
@@ -175,13 +178,13 @@ fn pick_roll_state(
 
 /// Per uma (`Data::umas`), whether a search behind her rows was incomplete, by the row's origin
 struct IncompleteSearches {
-    base: crate::UmaTable<bool>,
-    looped: crate::UmaTable<bool>,
-    no_borrow: crate::UmaTable<bool>,
+    base: crate::uma::UmaTable<bool>,
+    looped: crate::uma::UmaTable<bool>,
+    no_borrow: crate::uma::UmaTable<bool>,
 }
 
 impl IncompleteSearches {
-    fn of(&self, origin: RowOrigin, trainee: crate::UmaIndex) -> bool {
+    fn of(&self, origin: RowOrigin, trainee: crate::uma::UmaIndex) -> bool {
         match origin {
             RowOrigin::Base => self.base[trainee],
             RowOrigin::Looped => self.looped[trainee],
@@ -226,7 +229,12 @@ fn keep_plan_searches(context: &PlanContext, searches: PlanSearches) -> Incomple
 
 /// A career's role in the plan: one of the best trio's A and B, its finisher (C on A's and B's real 8/8s, so only on two
 /// 8/8 parents), else a loop member, a candidate or a builder
-fn row_role(candidates: &PlanCandidates, scores: &PlanScores, trainee: crate::UmaIndex, looped: bool) -> &'static str {
+fn row_role(
+    candidates: &PlanCandidates,
+    scores: &PlanScores,
+    trainee: crate::uma::UmaIndex,
+    looped: bool,
+) -> &'static str {
     match scores.best_combo {
         Some(combination)
             if trainee == candidates[combination.candidate_a_index]
@@ -260,7 +268,7 @@ fn trio_report(context: &PlanContext, scores: &PlanScores) -> (Value, Value) {
     let candidates = context.candidates;
     let data = context.data();
     let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
-    let uma_name = |u: crate::UmaIndex| if u == crate::NONE { Value::Null } else { json!(data.umas[u].name) };
+    let uma_name = |u: crate::uma::UmaIndex| if u == crate::NONE { Value::Null } else { json!(data.umas[u].name) };
     // a side's step: free from a real 8/8 of hers, else her fresh 8/8's step
     let step = |ui: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[ui] };
     // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step

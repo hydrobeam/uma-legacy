@@ -1,13 +1,17 @@
 //! The roll of the plan's pick and its kept state.
-use super::{
-    Cont, IDX_PARTNERS, PartnerAnchors, PlanJob, ScoreBase, Trio, fm_masks, h64, outcome_hi, sc_roll, sim_for,
-};
-use crate::deck::career::sim::plan::anchors::{FoundAnchor, OutcomeBounds, OutcomeEstimate};
-use crate::deck::career::sim::plan::cont::OwnTrio;
-use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, ScoringContext, TargetMask};
-use crate::deck::career::sim::{Env, Found, Legacy, PROF, Pool, SelectedDeck, Sim, Value, json, now_ms};
-use crate::deck::career::{Career, JobInputs, Lineage};
-
+use crate::career::clock::{PROF, now_ms};
+use crate::career::plan::anchors::{FoundAnchor, OutcomeBounds, OutcomeEstimate, PartnerAnchors, outcome_hi};
+use crate::career::plan::cont::{Cont, OwnTrio, ScoreBase, Trio};
+use crate::career::plan::kept::h64;
+use crate::career::plan::score::{fm_masks, sc_roll};
+use crate::career::plan::search::{IDX_PARTNERS, sim_for};
+use crate::career::plan::{CandidateIndex, OutcomeIndex, PlanJob, ScoringContext, TargetMask};
+use crate::career::pool::Pool;
+use crate::career::search::Found;
+use crate::career::sim::Sim;
+use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
+use crate::deck::space::SelectedDeck;
+use serde_json::{Value, json};
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
 /// Candidate whose step may change at an outcome.
 #[derive(Clone, Copy)]
@@ -123,7 +127,7 @@ impl Scored {
 /// Per-candidate vectors follow `candidates`' order.
 pub(crate) struct KeptBase {
     /// The stage candidates (`ScoreBase::candidates`).
-    candidates: Vec<crate::UmaIndex>,
+    candidates: Vec<crate::uma::UmaIndex>,
     /// Each candidate's step (`ScoreBase::step_costs`).
     step_costs: Vec<f64>,
     /// V (`ScoreBase::current_value`).
@@ -184,7 +188,7 @@ pub(crate) struct RollKeep {
 
 impl RollKeep {
     /// The state is of this trainee's career on these parents, in this order.
-    pub(crate) fn is_of(&self, trainee: crate::UmaIndex, career: &Found) -> bool {
+    pub(crate) fn is_of(&self, trainee: crate::uma::UmaIndex, career: &Found) -> bool {
         self.lineage.trainee == trainee
             && self.lineage.first_parent == career.first_parent
             && self.lineage.second_parent == career.second_parent
@@ -199,7 +203,7 @@ const ROLL_KEEP: usize = 4;
 /// a plan job's roll key: the whole job but its roll (`next.roll`) and the page's flags that change no plan
 /// (`no_reports`, `compare`)
 pub(crate) fn roll_key(job: &Value) -> u64 {
-    h64(&crate::deck::career::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
+    h64(&crate::career::state::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
 }
 
 pub(crate) fn keep_roll(roll: RollKeep) {
@@ -296,7 +300,7 @@ fn roll_answer(s: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[
 
 /// the kept roll states for the page to store (`state_out`), every float as its bits
 pub(crate) fn rolls_out() -> Value {
-    use crate::deck::career::{fvec, hx, sel_out, ux};
+    use crate::career::state::{fvec, hx, sel_out, ux};
     let trios_out = |trios: &[OwnTrio]| {
         trios
             .iter()
@@ -337,7 +341,7 @@ pub(crate) fn rolls_out() -> Value {
 /// Kept roll states from the page's store (`state_in`); None refuses the store whole. (Absent in a state stored before
 /// them: none.)
 pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
-    use crate::deck::career::{fx, sel_in, usz, uxr};
+    use crate::career::state::{fx, sel_in, usz, uxr};
     let Some(stored) = v.as_array() else { return v.is_null().then(Vec::new) };
     stored
         .iter()
@@ -360,8 +364,8 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                         Some(None)
                     } else {
                         Some(Some(FoundAnchor {
-                            deck_class: crate::UmaIndex(usz(&a[0])?),
-                            inheritance_chances: crate::deck::career::pvec_r(&a[1])?,
+                            deck_class: crate::uma::UmaIndex(usz(&a[0])?),
+                            inheritance_chances: crate::career::state::pvec_r(&a[1])?,
                             value: fx(&a[2])?,
                         }))
                     }
@@ -378,7 +382,7 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 key: uxr(&entry["k"])?,
                 scored,
                 base,
-                lineage: Lineage { trainee: crate::UmaIndex(trainee), first_parent, second_parent },
+                lineage: Lineage { trainee: crate::uma::UmaIndex(trainee), first_parent, second_parent },
                 deck: sel_in(&entry["sel"])?,
                 own_trios,
                 found_anchors,
@@ -389,11 +393,11 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
 }
 
 fn usize_vec(v: &Value) -> Option<Vec<usize>> {
-    v.as_array()?.iter().map(crate::deck::career::usz).collect()
+    v.as_array()?.iter().map(crate::career::state::usz).collect()
 }
 
 fn own_trios_in(v: &Value) -> Option<Vec<OwnTrio>> {
-    use crate::deck::career::{fx, usz};
+    use crate::career::state::{fx, usz};
     v.as_array()?
         .iter()
         .map(|t| {
@@ -407,7 +411,7 @@ fn own_trios_in(v: &Value) -> Option<Vec<OwnTrio>> {
 }
 
 fn kept_base_in(b: &Value) -> Option<KeptBase> {
-    use crate::deck::career::{fvec_r, fx, usz};
+    use crate::career::state::{fvec_r, fx, usz};
     let continuations = b["cont"]
         .as_array()?
         .iter()
@@ -437,7 +441,7 @@ fn kept_base_in(b: &Value) -> Option<KeptBase> {
         })
         .collect::<Option<Vec<Trio>>>()?;
     Some(KeptBase {
-        candidates: usize_vec(&b["cands"])?.into_iter().map(crate::UmaIndex).collect(),
+        candidates: usize_vec(&b["cands"])?.into_iter().map(crate::uma::UmaIndex).collect(),
         step_costs: fvec_r(&b["c1"])?,
         current_value: fx(&b["v0"])?,
         current_odds: fvec_r(&b["pnow"])?,
@@ -449,7 +453,7 @@ fn kept_base_in(b: &Value) -> Option<KeptBase> {
 
 /// A stored `Scored`, its derived tables left empty (`derive`)
 fn scored_in(s: &Value) -> Option<Scored> {
-    use crate::deck::career::{fvec_r, fx, pvec_r, usz};
+    use crate::career::state::{fvec_r, fx, pvec_r, usz};
     let sizes = usize_vec(&s["n"])?;
     // (the plan's limits, `sim_for`: at most 12 targets, 10 of them uncertain, the rest guaranteed; checked before
     // any table is sized by them)
@@ -513,7 +517,7 @@ fn scored_in(s: &Value) -> Option<Scored> {
 fn scored_fits(sd: &Scored, base: &KeptBase) -> bool {
     let (ns, nc) = (sd.misses_without_her.len(), base.candidates.len());
     let fixed: Vec<usize> = (0..sd.target_count).filter(|i| !sd.uncertain_targets.contains(i)).collect();
-    let fits_base = nc <= crate::deck::career::STATE_MAX_N
+    let fits_base = nc <= crate::career::state::STATE_MAX_N
         && base.step_costs.len() == nc
         && base.current_odds.len() == nc
         && base.later_stage_costs.len() == nc

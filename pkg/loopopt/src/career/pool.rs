@@ -1,7 +1,6 @@
 //! Veteran pools and legal parent pairs.
-use super::{Ancestor, Env, Legacy};
-use crate::UmaIndex;
-
+use crate::career::{Ancestor, Env, Legacy};
+use crate::uma::UmaIndex;
 /// What `Env::who` reads of a legacy or of one of her recorded parents.
 struct VeteranTraits<'veteran> {
     chara: u32,
