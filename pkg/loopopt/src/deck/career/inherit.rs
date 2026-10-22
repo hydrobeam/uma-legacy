@@ -1,7 +1,7 @@
 //! Legacy slots, affinity and inheritance chances.
 use super::{Env, Pool, Who, shared};
 use crate::deck::career::Lineage;
-use crate::deck::{JointExt, Kind, SelectedDeck, Src, joint_fast};
+use crate::deck::{ChainKind, JointExt, SelectedDeck, Src, joint_fast};
 
 /// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
 /// inheritance chance (`inherit`, `Env::lineage_qc`, `Env::gen_cands`, `Sim::fast_ub`, the planner's her-slot setups).
@@ -167,14 +167,17 @@ impl SlotSink<'_> for Inherit {
     }
 }
 
-/// A legacy slot of the planner's veteran-to-be (`Env::her_slot`): the trainee's inheritance chances and carriers with
-/// her slot left out (q0, nc0), per uncertain target 1 - q0 (x0), her miss factor squared per star count (xms; 1 at 0
-/// stars) and per job target the spark scale without and with her spark (pw)
+/// A legacy slot of the planner's veteran-to-be (`Env::her_slot`): the trainee's inheritance with her slot left out,
+/// and what her veteran in the slot adds.
 pub(crate) struct HerSlot {
-    pub(crate) q0: Vec<f64>,
-    pub(crate) x0: Vec<f64>,
-    pub(crate) xms: [f64; 4],
-    pub(crate) pw: Vec<[f64; 2]>,
+    /// q0: per job target, the trainee's inheritance chance with her slot left out.
+    pub(crate) chances_without_her: Vec<f64>,
+    /// x0: per uncertain target (`Env::uncertain_targets` order), 1 - q0.
+    pub(crate) misses_without_her: Vec<f64>,
+    /// xms: her miss factor squared per star count (1 at 0 stars).
+    pub(crate) miss_by_stars: [f64; 4],
+    /// pw: per job target, the spark scale without and with her spark (from the carriers without her, nc0).
+    pub(crate) target_spark_scales: Vec<[f64; 2]>,
 }
 
 /// One legacy slot of a lineage: affinity parts and per-target stars.
@@ -333,10 +336,10 @@ impl Env<'_> {
         let Inheritance { chances: q0, carriers: nc0 } = acc.finish();
         let xm = |st: u8| insp_miss2(f64::from(st), fa);
         Some(HerSlot {
-            x0: self.uncertain_targets.iter().map(|&i| 1.0 - q0[i]).collect(),
-            xms: [1.0, xm(1), xm(2), xm(3)],
-            pw: nc0.iter().map(|&n| [spark_scale(n), spark_scale(n + 1)]).collect(),
-            q0,
+            misses_without_her: self.uncertain_targets.iter().map(|&i| 1.0 - q0[i]).collect(),
+            miss_by_stars: [1.0, xm(1), xm(2), xm(3)],
+            target_spark_scales: nc0.iter().map(|&n| [spark_scale(n), spark_scale(n + 1)]).collect(),
+            chances_without_her: q0,
         })
     }
     pub(crate) fn scale(&self, nc: &[i32]) -> (Vec<f64>, Vec<f64>) {
@@ -350,7 +353,7 @@ impl Env<'_> {
         set_ews(&mut self.model.ews[t], &self.own_event_chances[t], &self.uncertain_targets, q);
     }
     /// a deck's entries (sources borrowed from the deck space: `joint` only reads them)
-    pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<(&Src, Kind)> {
+    pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<(&Src, ChainKind)> {
         sel.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect()
     }
     /// exact P(all) of trainee t (her inheritance already folded in) with deck `sel`, scaled per target by the

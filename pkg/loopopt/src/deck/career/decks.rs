@@ -1,7 +1,7 @@
 //! Exact career deck searches and their kept memos.
 use super::{DeckRes, Env};
 use crate::deck::enumerate::{SearchMode, SearchOutcome};
-use crate::deck::{EXACT_BUDGET, EXACT_STEPS, Kind, SelectedDeck, Src, Value, joint_b, json, upper_na};
+use crate::deck::{ChainKind, EXACT_BUDGET, EXACT_STEPS, SelectedDeck, Src, Value, joint_b, json, upper_na};
 
 /// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads
 /// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the model state the search runs on,
@@ -515,7 +515,8 @@ impl Env<'_> {
                 continue;
             }
             let k = self.space.sel_class(&s);
-            let e: Vec<(&Src, Kind)> = s.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
+            let e: Vec<(&Src, ChainKind)> =
+                s.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
             if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler_cards) {
                 work += 25;
                 if ub[0] * (1.0 + 1e-9) < best.0.max(the) {
@@ -660,7 +661,7 @@ impl Env<'_> {
                 if !nocap && self.space.caps()[k].min(rho) * v * (1.0 + 1e-9) < best.0 {
                     continue;
                 }
-                let e: Vec<(&Src, Kind)> =
+                let e: Vec<(&Src, ChainKind)> =
                     s.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
                 if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler_cards) {
                     self.work += 25;

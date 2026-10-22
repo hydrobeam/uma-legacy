@@ -8,7 +8,7 @@ use crate::deck::career::{Career, JobInputs, Lineage};
 use anchors::{PartnerAnchors, found_anchors, outcome_hi, pick_her};
 use candidates::{exact_no_borrow_career, score_and_admit_proxies, set_plan_wins, setup_plan_candidates};
 use combine::{PlanCombination, PlanFit, PlanScores, plan_combinations, plan_continuations, plan_sides};
-use cont::{CEIL_SHARE, LB_CELLS, MemoReport, count_refit, trio_v};
+use cont::{CEIL_SHARE, CostBoundCell, LB_CELLS, MemoReport, TrioSideVeteran, count_refit, trio_v};
 pub(crate) use cont::{Cont, ScoreBase, Trio, Want};
 use fold::{FOLD_SCRATCH, FoldCx, FoldScratch, fold_rec, leaf_products, leaf_set, rise_leaves};
 use kept::{
@@ -26,11 +26,13 @@ use rows::{
     PlanRow, RowOrigin, add_looped_rows, add_no_borrow_rows, check_plan_proxies, near_floor, pick_of,
     score_and_promote_rows,
 };
-pub(crate) use score::{CareerScore, score_career, score_career_of};
-use score::{KeptScoring, fm_masks, her_ends, her_pool, her_pool_done, her_trios, sc_roll, v0_after, with_her};
+pub(crate) use score::{CareerScore, LiftStats, score_career, score_career_of};
+use score::{
+    HerEnds, KeptScoring, fm_masks, her_ends, her_pool, her_pool_done, her_trios, sc_roll, v0_after, with_her,
+};
 use search::{
     FullLoop, HINT_FLOOR, IDX_CANDS, IDX_PARTNERS, OPT_SHOW, PROXY_EFF, PROXY_SAVE, Setup, best_sur, capped, certified,
-    hint_umas, is_full, legal_pair, lift_eff, loop_ceiling, p_margin, p_swork, rotation, sim_for, val,
+    hint_umas, is_full, legal_pair, loop_ceiling, p_margin, p_swork, rotation, sim_for, val,
 };
 pub(crate) use step::{All, Leaves, OneLeaf};
 use step::{Est, EstBufs, Lo, One, one_of, v_after};
@@ -264,7 +266,7 @@ struct PlanCandidates {
     current_odds: Vec<f64>,
     /// Whether an 8/8 of hers exists (a free side of the trios).
     has_full_veteran: Vec<bool>,
-    /// Zeros: the stages-2-3 costs (`ScoreBase::m23`), which the trios replace.
+    /// Zeros: the stages-2-3 costs (`ScoreBase::later_stage_costs`), which the trios replace.
     later_stage_costs: Vec<f64>,
     /// Ones: pass 1's placeholder step costs, so that every candidate's lifts are gathered.
     placeholder_step_costs: Vec<f64>,
@@ -277,15 +279,15 @@ impl PlanCandidates {
     /// Placeholder step costs gather every candidate's lifts, before the continuation is fitted.
     fn stats_base(&self) -> ScoreBase<'_> {
         ScoreBase {
-            cands: &self.trainees,
-            c1: &self.placeholder_step_costs,
-            m23: &self.later_stage_costs,
-            v0: 0.0,
-            pnow: &self.current_odds,
-            cont: &[],
-            combos: &[],
-            sides: &[],
-            all: &[],
+            candidates: &self.trainees,
+            step_costs: &self.placeholder_step_costs,
+            later_stage_costs: &self.later_stage_costs,
+            current_value: 0.0,
+            current_odds: &self.current_odds,
+            continuations: &[],
+            trios: &[],
+            trio_sides: &[],
+            finisher_umas: &[],
         }
     }
 }

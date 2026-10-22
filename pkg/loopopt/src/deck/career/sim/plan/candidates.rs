@@ -1,9 +1,9 @@
 //! Candidate setup and exact and surrogate careers.
 use super::{
-    CachedSearch, CareerScore, HINT_FLOOR, IDX_CANDS, KeptPlans, PROXY_EFF, ParentPool, PlanCandidates, PlanContext,
-    PlanInputs, PlanProfile, PlanRow, PlanRows, PlanSearches, PlanSetup, RowOrigin, Want, best_of, best_sur, bests_key,
-    capped, certified, found_career, found_lineage, hint_umas, is_full, lift_eff, rotation, same_career, score_career,
-    search_best_career, sim_for, stamp_ok, stamped, take_kept_plan, unordered_parents,
+    CachedSearch, CareerScore, HINT_FLOOR, IDX_CANDS, KeptPlans, LiftStats, PROXY_EFF, ParentPool, PlanCandidates,
+    PlanContext, PlanInputs, PlanProfile, PlanRow, PlanRows, PlanSearches, PlanSetup, RowOrigin, Want, best_of,
+    best_sur, bests_key, capped, certified, found_career, found_lineage, hint_umas, is_full, rotation, same_career,
+    score_career, search_best_career, sim_for, stamp_ok, stamped, take_kept_plan, unordered_parents,
 };
 use crate::deck::career::sim::plan::search::{HintUma, LoopRotation};
 use crate::deck::career::sim::{Env, Found, Pool, SelectedDeck, Sim, Solved, Value, json, now_ms, prof, progress};
@@ -400,11 +400,8 @@ fn near_top_proxies(context: &PlanContext, rows: &[PlanRow]) -> Vec<usize> {
         let mut efficiencies: Vec<RowEfficiency> = rows
             .iter()
             .enumerate()
-            .filter(|(_, r)| data.umas[r.trainee].id != data.umas[u].id && r.lift_stats[ui].0 > 0.0)
-            .map(|(row, r)| {
-                let (lift_chance, lifted_odds_sum) = r.lift_stats[ui];
-                RowEfficiency { efficiency: lift_eff(lift_chance, lifted_odds_sum, p), row }
-            })
+            .filter(|(_, r)| data.umas[r.trainee].id != data.umas[u].id && r.lift_stats[ui].lift_chance > 0.0)
+            .map(|(row, r)| RowEfficiency { efficiency: r.lift_stats[ui].efficiency(p), row })
             .collect();
         efficiencies.sort_by(|x, y| y.efficiency.partial_cmp(&x.efficiency).unwrap());
         let Some(best) = efficiencies.first() else { continue };
@@ -489,7 +486,7 @@ fn plan_surrogate(
 /// An exact career and its lifts per candidate.
 pub(crate) struct ExactCareer {
     pub(crate) career: Found,
-    pub(crate) lift_stats: Vec<(f64, f64)>,
+    pub(crate) lift_stats: Vec<LiftStats>,
 }
 
 /// The proxy row's trainee's exact best career (searched now if not yet) and its lifts. The proxy's lifts are taken as

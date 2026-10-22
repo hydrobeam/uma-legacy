@@ -1,8 +1,8 @@
 //! The joint deck and loop search (`run_deck`): structures in bands, schedules, ceilings and the shared-deck path.
 use super::{
-    CHAIN_EVENTS, CHAIN_N, CHAIN_P, CardsRaw, Data, DeckEval, DeckJob, Deserialize, Entries, HashMap, Instant, Kept,
-    Kind, Model, Name, PDeck, SkillJob, SkillsRaw, Sources, Src, Value, chain_marginals, deck_entries, deck_space,
-    dominates, json, k_filter, kfilter_order, kmax_top, run_multi, sig_of, src_miss, tie_rank,
+    CHAIN_EVENTS, CHAIN_N, CHAIN_P, CardsRaw, ChainKind, Data, DeckEval, DeckJob, Deserialize, Entries, HashMap,
+    Instant, Kept, Model, Name, PDeck, SkillJob, SkillsRaw, Sources, Src, Value, chain_marginals, deck_entries,
+    deck_space, dominates, json, k_filter, kfilter_order, kmax_top, run_multi, sig_of, src_miss, tie_rank,
 };
 
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
@@ -93,7 +93,13 @@ fn is_owned(dj: &DeckJob, id: u32) -> bool {
 }
 
 /// Calls `out` on every multiset of at most `left` values from `vals[start..]` (as index-ordered lists)
-fn multisets(vals: &[Kind], start: usize, left: usize, cur: &mut Vec<Kind>, out: &mut dyn FnMut(&[Kind])) {
+fn multisets(
+    vals: &[ChainKind],
+    start: usize,
+    left: usize,
+    cur: &mut Vec<ChainKind>,
+    out: &mut dyn FnMut(&[ChainKind]),
+) {
     out(cur);
     if left == 0 {
         return;
@@ -188,26 +194,27 @@ fn drop_dominated_cards(ent: &mut Entries, dj: &DeckJob, target_count: usize) ->
 
 /// Each entry's (miss gold, miss any) per target at its strongest (every link firing) and weakest (its links at their
 /// lowest odds over any `others` other chain cards)
-fn miss_bounds(kind: &[Kind], srcs: &[Src], others: usize, target_count: usize) -> MissBounds {
+fn miss_bounds(kind: &[ChainKind], srcs: &[Src], others: usize, target_count: usize) -> MissBounds {
     let nrel0 = kind.len();
-    let mut kindset: Vec<Kind> = (0..nrel0).filter(|&j| kind[j] != (0, 0, 0)).map(|j| kind[j]).collect();
-    kindset.push((2, 2, 0));
+    let mut kindset: Vec<ChainKind> = (0..nrel0).filter(|&j| kind[j] != ChainKind::NONE).map(|j| kind[j]).collect();
+    kindset.push(ChainKind::FILLER);
     kindset.sort_unstable();
     kindset.dedup();
     // lowest odds of each link over every possible set of other chain cards
-    let needs_marg =
-        |key_data: Kind| (0..nrel0).any(|j| kind[j] != (0, 0, 0) && kind[j] == key_data && !srcs[j].chains.is_empty());
-    let mut min_marg: HashMap<Kind, Vec<f64>> = HashMap::new();
+    let needs_marg = |key_data: ChainKind| {
+        (0..nrel0).any(|j| kind[j] != ChainKind::NONE && kind[j] == key_data && !srcs[j].chains.is_empty())
+    };
+    let mut min_marg: HashMap<ChainKind, Vec<f64>> = HashMap::new();
     for &key_data in &kindset {
         if !needs_marg(key_data) {
             continue;
         }
-        let mut mins = vec![1.0f64; key_data.1 as usize];
+        let mut mins = vec![1.0f64; key_data.stop as usize];
         multisets(&kindset, 0, others, &mut vec![], &mut |o| {
             let mut key = vec![key_data];
             key.extend_from_slice(o);
             let m = chain_marginals(&key);
-            for k in 0..key_data.1 as usize {
+            for k in 0..key_data.stop as usize {
                 mins[k] = mins[k].min(m[&key_data][k]);
             }
         });
@@ -215,7 +222,7 @@ fn miss_bounds(kind: &[Kind], srcs: &[Src], others: usize, target_count: usize) 
     }
     // per card: (miss gold, miss any) per target, at its strongest (lo) and weakest (hi)
     let miss = |j: usize, strongest: bool| -> MissProbabilities {
-        let stop = kind[j].1 as usize;
+        let stop = kind[j].stop as usize;
         let m: Vec<f64> = if strongest {
             vec![1.0; stop]
         } else {
@@ -446,7 +453,7 @@ struct DeckEnumerator<'env> {
     borrowed_entries: Vec<bool>,
     is_locked: Vec<bool>,
     // Chain-kind key of a deck = multiset of its chain entries' kinds plus fillers (2, 2), coded as counts in base 7.
-    chain_kinds: Vec<Kind>,
+    chain_kinds: Vec<ChainKind>,
     kind_places: Vec<u64>,
     filler_kind_index: usize,
     entries_by_kind: Vec<Vec<usize>>,
@@ -476,8 +483,9 @@ impl<'env> DeckEnumerator<'env> {
         }
         let character_bits: Vec<u128> = rel.iter().map(|&r| 1u128 << chara_ix[&cards[r].chara]).collect();
         let borrowed_entries: Vec<bool> = rel.iter().map(|&r| !is_owned(deck_job, cards[r].id)).collect();
-        let mut chain_kinds: Vec<Kind> = (0..entry_count).filter(|&j| kind[j] != (0, 0, 0)).map(|j| kind[j]).collect();
-        chain_kinds.push((2, 2, 0));
+        let mut chain_kinds: Vec<ChainKind> =
+            (0..entry_count).filter(|&j| kind[j] != ChainKind::NONE).map(|j| kind[j]).collect();
+        chain_kinds.push(ChainKind::FILLER);
         chain_kinds.sort_unstable();
         chain_kinds.dedup();
         let kind_places: Vec<u64> = (0..chain_kinds.len()).map(|i| 7u64.pow(i as u32)).collect();
@@ -485,11 +493,11 @@ impl<'env> DeckEnumerator<'env> {
         assert!(target_count <= 32, "too many uncertain targets");
         let is_locked: Vec<bool> = (0..entry_count).map(|j| entries.locked.contains(&rel[j])).collect();
         let nk = chain_kinds.len();
-        let filler_kind_index = chain_kinds.iter().position(|&k| k == (2, 2, 0)).unwrap();
+        let filler_kind_index = chain_kinds.iter().position(|&k| k == ChainKind::FILLER).unwrap();
         let entries_by_kind: Vec<Vec<usize>> = (0..nk)
-            .map(|i| (0..entry_count).filter(|&j| kind[j] != (0, 0, 0) && kind[j] == chain_kinds[i]).collect())
+            .map(|i| (0..entry_count).filter(|&j| kind[j] != ChainKind::NONE && kind[j] == chain_kinds[i]).collect())
             .collect();
-        let no_chain_entries: Vec<usize> = (0..entry_count).filter(|&j| kind[j] == (0, 0, 0)).collect();
+        let no_chain_entries: Vec<usize> = (0..entry_count).filter(|&j| kind[j] == ChainKind::NONE).collect();
         Ok(DeckEnumerator {
             deck_job,
             entries,
@@ -515,7 +523,7 @@ impl<'env> DeckEnumerator<'env> {
     fn make_key(&self, code: u64) -> ChainKeyData {
         let (entry_count, target_count) = (self.entry_count, self.target_count);
         let (cards, rel, kind, srcs) = (&self.entries.cards, &self.entries.rel, &self.entries.kind, &self.entries.srcs);
-        let mut ks: Vec<Kind> = vec![];
+        let mut ks: Vec<ChainKind> = vec![];
         let mut c = code;
         for &key_data in &self.chain_kinds {
             for _ in 0..(c % 7) {

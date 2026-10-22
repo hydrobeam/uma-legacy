@@ -6,6 +6,9 @@ use super::space::top_asc;
 use super::*;
 use crate::{load, skills};
 
+/// A three-link chain card played to its end.
+const THREE_LINKS: ChainKind = ChainKind { links: 3, stop: 3, stop_risk: 0 };
+
 fn fixture_skills() -> SkillsRaw {
     let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json"))
         .expect("read global skill fixture");
@@ -37,8 +40,9 @@ fn fast_metric_matches_reference() {
         let dg: Vec<f64> = (0..nu).map(|k| ((k * 3 + fi) as f64 * 0.11) % 1.0).collect();
         // the search's per-trainee term (best outfit, no allocation) against the detail view's (`trainee_d`): one
         // landing form (`land_dw`) multiplied in target order, so the same f64
-        for (&(t, ..), &q) in skills::lins(f.len()).iter().zip(&qv) {
-            let (a, b) = (m.trainee_fast(f[t], q, &dw, &dg), m.trainee_d(f[t], q, &dw, &dg).0);
+        for (lineage, &q) in skills::lins(f.len()).iter().zip(&qv) {
+            let t = f[lineage.trainee];
+            let (a, b) = (m.trainee_fast(t, q, &dw, &dg), m.trainee_d(t, q, &dw, &dg).0);
             assert_eq!(a.to_bits(), b.to_bits(), "{a} vs {b}");
         }
     }
@@ -46,16 +50,25 @@ fn fast_metric_matches_reference() {
 /// dense chain_marginals equals the reference to float noise
 #[test]
 fn chain_marginals_dense_matches_ref() {
-    let kinds: Vec<Kind> =
-        vec![(2, 2, 0), (3, 3, 0), (3, 2, 0), (3, 1, 0), (4, 4, 0), (4, 3, 0), (5, 5, 0), (5, 4, 0), (5, 2, 0)];
+    let kinds: Vec<ChainKind> = vec![
+        ChainKind::FILLER,
+        THREE_LINKS,
+        ChainKind { links: 3, stop: 2, stop_risk: 0 },
+        ChainKind { links: 3, stop: 1, stop_risk: 0 },
+        ChainKind { links: 4, stop: 4, stop_risk: 0 },
+        ChainKind { links: 4, stop: 3, stop_risk: 0 },
+        ChainKind { links: 5, stop: 5, stop_risk: 0 },
+        ChainKind { links: 5, stop: 4, stop_risk: 0 },
+        ChainKind { links: 5, stop: 2, stop_risk: 0 },
+    ];
     let mut worst = 0.0f64;
     let mut cnt = 0;
     fn visit_multisets(
-        kinds: &[Kind],
+        kinds: &[ChainKind],
         start: usize,
         remaining: usize,
-        current: &mut Vec<Kind>,
-        visit: &mut dyn FnMut(&[Kind]),
+        current: &mut Vec<ChainKind>,
+        visit: &mut dyn FnMut(&[ChainKind]),
     ) {
         if !current.is_empty() {
             visit(current);
@@ -96,16 +109,18 @@ fn card_blocks_own_character_and_group_members() {
 /// chain 89% of the time (observed; the binomial gives 86.6%), next to two others 60%, and alone almost always.
 #[test]
 fn chain_model_calibration() {
-    let m = chain_marginals(&[(3, 3, 0), (3, 3, 0)]);
-    assert!((m[&(3, 3, 0)][2] - 0.866).abs() < 0.01, "{m:?}");
-    assert!(m[&(3, 3, 0)][0] > 0.99);
-    let m9 = chain_marginals(&[(3, 3, 0), (3, 3, 0), (3, 3, 0)]);
-    assert!(m9[&(3, 3, 0)][2] > 0.45 && m9[&(3, 3, 0)][2] < 0.62, "{m9:?}");
-    let one = chain_marginals(&[(3, 3, 0)]);
-    assert!(one[&(3, 3, 0)][2] > 0.99);
+    let m = chain_marginals(&[THREE_LINKS, THREE_LINKS]);
+    assert!((m[&THREE_LINKS][2] - 0.866).abs() < 0.01, "{m:?}");
+    assert!(m[&THREE_LINKS][0] > 0.99);
+    let m9 = chain_marginals(&[THREE_LINKS, THREE_LINKS, THREE_LINKS]);
+    assert!(m9[&THREE_LINKS][2] > 0.45 && m9[&THREE_LINKS][2] < 0.62, "{m9:?}");
+    let one = chain_marginals(&[THREE_LINKS]);
+    assert!(one[&THREE_LINKS][2] > 0.99);
     // ending a chain early frees its slot: the other card's links fire more often
-    let early = chain_marginals(&[(3, 3, 0), (3, 2, 0)]);
-    assert!(early[&(3, 3, 0)][2] > m[&(3, 3, 0)][2] && early[&(3, 2, 0)].len() == 2);
+    let early = chain_marginals(&[THREE_LINKS, ChainKind { links: 3, stop: 2, stop_risk: 0 }]);
+    assert!(
+        early[&THREE_LINKS][2] > m[&THREE_LINKS][2] && early[&ChainKind { links: 3, stop: 2, stop_risk: 0 }].len() == 2
+    );
     let pm = event_pmf(30);
     assert!(
         (pm.iter().sum::<f64>() - 1.0).abs() < 1e-12
@@ -195,8 +210,10 @@ fn chain_stop_risk_is_a_mixture() {
     let r12 = stop_risk_code(&[(1, 1, 2), (2, 1, 2)], 3); // ends on 1 of 2 outcomes at links 1 and 2
     let r2 = stop_risk_code(&[(2, 1, 2)], 3);
     assert_eq!(stop_risk_code(&[(2, 1, 2), (3, 1, 2)], 2), 0); // links at or past the stop don't matter
-    let full = chain_marginals(&[(3, 3, 0)])[&(3, 3, 0)].clone();
-    let alone = chain_marginals(&[(3, 3, r12)])[&(3, 3, r12)].clone();
+    let full = chain_marginals(&[THREE_LINKS])[&THREE_LINKS].clone();
+    let alone = chain_marginals(&[ChainKind { links: 3, stop: 3, stop_risk: r12 }])
+        [&ChainKind { links: 3, stop: 3, stop_risk: r12 }]
+        .clone();
     assert!(
         (alone[0] - full[0]).abs() < 1e-15
             && (alone[1] - 0.5 * full[1]).abs() < 1e-15
@@ -204,14 +221,14 @@ fn chain_stop_risk_is_a_mixture() {
         "{alone:?}"
     );
     // with a partner: 50% the deck is (full, full), 50% the risky card stops after link 2 and frees its slot
-    let mix = chain_marginals(&[(3, 3, 0), (3, 3, r2)]);
-    let a = chain_marginals(&[(3, 3, 0), (3, 3, 0)]);
-    let b = chain_marginals(&[(3, 3, 0), (3, 2, 0)]);
+    let mix = chain_marginals(&[THREE_LINKS, ChainKind { links: 3, stop: 3, stop_risk: r2 }]);
+    let a = chain_marginals(&[THREE_LINKS, THREE_LINKS]);
+    let b = chain_marginals(&[THREE_LINKS, ChainKind { links: 3, stop: 2, stop_risk: 0 }]);
     for k in 0..3 {
-        assert!((mix[&(3, 3, 0)][k] - (0.5 * a[&(3, 3, 0)][k] + 0.5 * b[&(3, 3, 0)][k])).abs() < 1e-15);
+        assert!((mix[&THREE_LINKS][k] - (0.5 * a[&THREE_LINKS][k] + 0.5 * b[&THREE_LINKS][k])).abs() < 1e-15);
     }
-    assert!((mix[&(3, 3, r2)][2] - 0.5 * a[&(3, 3, 0)][2]).abs() < 1e-15);
-    assert!(mix[&(3, 3, 0)][2] > a[&(3, 3, 0)][2]);
+    assert!((mix[&ChainKind { links: 3, stop: 3, stop_risk: r2 }][2] - 0.5 * a[&THREE_LINKS][2]).abs() < 1e-15);
+    assert!(mix[&THREE_LINKS][2] > a[&THREE_LINKS][2]);
 }
 
 /// The game's scenario bans reach the solver with the card data: Team Sirius out of Unity Cup and Grand Concert
@@ -290,18 +307,22 @@ fn outcome_shares_weight_alts() {
 fn chain_states_match_marginals() {
     let r = stop_risk_code(&[(2, 1, 2)], 3);
     for ks in [
-        vec![(3, 3, 0)],
-        vec![(2, 2, 0), (3, 3, 0), (3, 3, 0)],
-        vec![(3, 2, 0), (3, 3, r), (4, 4, 0)],
-        vec![(2, 2, 0); 6],
+        vec![THREE_LINKS],
+        vec![ChainKind::FILLER, THREE_LINKS, THREE_LINKS],
+        vec![
+            ChainKind { links: 3, stop: 2, stop_risk: 0 },
+            ChainKind { links: 3, stop: 3, stop_risk: r },
+            ChainKind { links: 4, stop: 4, stop_risk: 0 },
+        ],
+        vec![ChainKind::FILLER; 6],
     ] {
-        let mut ks: Vec<Kind> = ks;
+        let mut ks = ks;
         ks.sort_unstable();
         let st = chain_states(&ks);
         assert!((st.iter().map(|x| x.1).sum::<f64>() - 1.0).abs() < 1e-12);
         let m = chain_marginals(&ks);
         for (i, kd) in ks.iter().enumerate() {
-            for l in 1..=kd.1 {
+            for l in 1..=kd.stop {
                 let p: f64 = st.iter().filter(|x| x.0[i] >= l).map(|x| x.1).sum();
                 assert!(
                     (p - m[kd][l as usize - 1]).abs() < 1e-12,
@@ -319,12 +340,16 @@ fn key_level_matches_states() {
     let r = stop_risk_code(&[(2, 1, 2)], 3);
     let pmf = event_pmf(CHAIN_EVENTS.with(std::cell::Cell::get).0 as usize);
     for ks in [
-        vec![(3, 3, 0)],
-        vec![(2, 2, 0), (3, 3, 0), (3, 3, 0)],
-        vec![(3, 2, 0), (3, 3, r), (4, 4, 0)],
-        vec![(2, 2, 0); 6],
+        vec![THREE_LINKS],
+        vec![ChainKind::FILLER, THREE_LINKS, THREE_LINKS],
+        vec![
+            ChainKind { links: 3, stop: 2, stop_risk: 0 },
+            ChainKind { links: 3, stop: 3, stop_risk: r },
+            ChainKind { links: 4, stop: 4, stop_risk: 0 },
+        ],
+        vec![ChainKind::FILLER; 6],
     ] {
-        let mut ks: Vec<Kind> = ks;
+        let mut ks = ks;
         ks.sort_unstable();
         let (st, kl) = (chain_states(&ks), key_level(&ks));
         let at = |gi: usize| (0..kl.lev.len()).map(|m| pmf[m] * kl.lev[m][gi]).sum::<f64>();
@@ -359,7 +384,12 @@ fn joint_fast_matches_reference() {
     let c = Src { train: vec![(2, 0.2)], chains: vec![(1, two(2, 3))], ..Default::default() }.finish();
     let e = Src { fixed: vec![g1(1, 2, 0.25)], ..Default::default() }.finish();
     let risk = stop_risk_code(&[(2, 1, 2)], 3);
-    let ents = vec![(a, (3, 3, 0)), (b, (2, 2, 0)), (c, (3, 3, risk)), (e, (0, 0, 0))];
+    let ents = vec![
+        (a, THREE_LINKS),
+        (b, ChainKind::FILLER),
+        (c, ChainKind { links: 3, stop: 3, stop_risk: risk }),
+        (e, ChainKind::NONE),
+    ];
     for fill in [0usize, 2] {
         for u in [0, 5, 20].map(crate::UmaIndex) {
             let x = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), true, None);
@@ -398,7 +428,7 @@ fn career_fold_and_scale() {
     .finish();
     let b = Src { fixed: vec![two(3, 0)], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
     let c = Src { train: vec![(2, 0.2)], chains: vec![(1, two(2, 3))], ..Default::default() }.finish();
-    let ents = vec![(a, (3, 3, 0)), (b, (2, 2, 0)), (c, (3, 3, 0))];
+    let ents = vec![(a, THREE_LINKS), (b, ChainKind::FILLER), (c, THREE_LINKS)];
     let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1e-300);
     for u in [0, 5, 20].map(crate::UmaIndex) {
         for q in [0.1, 0.6] {
@@ -422,7 +452,7 @@ fn career_fold_and_scale() {
     let p =
         Src { train: vec![(0, 0.2)], chains: vec![(1, two(0, 1)), (2, g1(1, 1, 0.7))], ..Default::default() }.finish();
     let r = Src { fixed: vec![two(1, 0)], chains: vec![(1, g1(0, 2, 0.4))], ..Default::default() }.finish();
-    let ents2 = vec![(p, (2, 2, 0)), (r, (2, 2, 0))];
+    let ents2 = vec![(p, ChainKind::FILLER), (r, ChainKind::FILLER)];
     for u in [0, 5, 20].map(crate::UmaIndex) {
         let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
         let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
@@ -460,11 +490,15 @@ fn upper_bound_covers_exact() {
     let c = Src { train: vec![(2, 0.2)], chains: vec![(3, g1(2, 2, 0.6))], ..Default::default() }.finish();
     let e = Src { fixed: vec![g1(1, 2, 0.25)], ..Default::default() }.finish();
     let risk = stop_risk_code(&[(2, 1, 2)], 3);
-    let decks: Vec<Vec<(Src, Kind)>> = vec![
-        vec![(a.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0)), (e.clone(), (0, 0, 0))],
-        vec![(a.clone(), (3, 3, 0)), (c.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))],
-        vec![(a.clone(), (3, 2, 0)), (c.clone(), (3, 3, risk)), (b, (2, 2, 0))],
-        vec![(a, (3, 3, 0)), (c, (3, 1, 0)), (e, (0, 0, 0))],
+    let decks: Vec<Vec<(Src, ChainKind)>> = vec![
+        vec![(a.clone(), THREE_LINKS), (b.clone(), ChainKind::FILLER), (e.clone(), ChainKind::NONE)],
+        vec![(a.clone(), THREE_LINKS), (c.clone(), THREE_LINKS), (b.clone(), ChainKind::FILLER)],
+        vec![
+            (a.clone(), ChainKind { links: 3, stop: 2, stop_risk: 0 }),
+            (c.clone(), ChainKind { links: 3, stop: 3, stop_risk: risk }),
+            (b, ChainKind::FILLER),
+        ],
+        vec![(a, THREE_LINKS), (c, ChainKind { links: 3, stop: 1, stop_risk: 0 }), (e, ChainKind::NONE)],
     ];
     let mut covered = 0;
     for ents in &decks {
@@ -472,7 +506,7 @@ fn upper_bound_covers_exact() {
             for u in [0, 5, 20].map(crate::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, ents, fill, sj.targets.len(), false, None);
-                let er: Vec<(&Src, Kind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
+                let er: Vec<(&Src, ChainKind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
                 if let Some(ub) = upper_na(&m, u, &qs, &er, fill) {
                     covered += 1;
                     for (i, y) in x.iter().enumerate() {
@@ -575,14 +609,15 @@ fn group_level_orthant_check() {
     let b = Src { fixed: vec![two(3, 0), three], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
     let c = Src { train: vec![(2, 0.2)], chains: vec![(3, g1(2, 2, 0.6))], ..Default::default() }.finish();
     assert!(a.cf_ok && b.cf_ok && c.cf_ok && b.multi);
-    for ents in
-        [vec![(a.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))], vec![(a, (3, 3, 0)), (c, (3, 3, 0)), (b, (2, 2, 0))]]
-    {
+    for ents in [
+        vec![(a.clone(), THREE_LINKS), (b.clone(), ChainKind::FILLER)],
+        vec![(a, THREE_LINKS), (c, THREE_LINKS), (b, ChainKind::FILLER)],
+    ] {
         for fill in [0usize, 2] {
             for u in [0, 5, 20].map(crate::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, &ents, fill, sj.targets.len(), false, None);
-                let er: Vec<(&Src, Kind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
+                let er: Vec<(&Src, ChainKind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
                 let sv = state_value_cf(&m, u, &qs, &er, fill).unwrap();
                 for (i, y) in x.iter().enumerate() {
                     assert!(sv[i] >= y.0 * (1.0 - 1e-12), "fill {fill} uma {u}: state value {} exact {}", sv[i], y.0);
@@ -617,7 +652,15 @@ fn joint_equals_product_without_correlation() {
     let dg: Vec<f64> = mg.iter().map(|x| 1.0 - x).collect();
     for u in [0, 5, 20].map(crate::UmaIndex) {
         for q in [0.3, 0.75] {
-            let j = joint(&m, u, &[q], &[(a.clone(), (0, 0, 0)), (b.clone(), (0, 0, 0))], 0, sj.targets.len(), true);
+            let j = joint(
+                &m,
+                u,
+                &[q],
+                &[(a.clone(), ChainKind::NONE), (b.clone(), ChainKind::NONE)],
+                0,
+                sj.targets.len(),
+                true,
+            );
             let p = m.fixed_factor() * m.trainee_fast(u, q, &dw, &dg);
             assert!((j[0].0 - p).abs() < 1e-14, "uma {u} q {q}: {} vs {p}", j[0].0);
         }

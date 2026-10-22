@@ -1,7 +1,7 @@
 //! Target sources of a deck entry: outcome groups, training hints and chain links per card, the event data merged into
 //! a job, and the deck entries of a job.
 use super::{
-    Card, CardsRaw, DeckJob, Kind, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SkillsRaw, Value, hint_base, hint_miss,
+    Card, CardsRaw, ChainKind, DeckJob, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SkillsRaw, Value, hint_base, hint_miss,
     hint_spec, json, kinds_all, scenario_name, stop_risk_code,
 };
 
@@ -614,14 +614,14 @@ impl Sources<'_> {
         }
         s.finish()
     }
-    pub(super) fn kind(&self, c: &Card, stop: Option<u8>) -> Kind {
+    pub(super) fn kind(&self, c: &Card, stop: Option<u8>) -> ChainKind {
         if c.pal || c.links == 0 {
-            return (0, 0, 0);
+            return ChainKind::NONE;
         }
         let risk: Vec<(u8, u8, u8)> =
             self.dj.stop_risk.iter().filter(|r| r.0 == c.id).map(|r| (r.1, r.2, r.3)).collect();
         let st = stop.unwrap_or(c.links);
-        (c.links, st, stop_risk_code(&risk, st))
+        ChainKind { links: c.links, stop: st, stop_risk: stop_risk_code(&risk, st) }
     }
     /// "link 1: Uma Stan" for each link where the variant picks between choices ("" when there is none)
     pub(super) fn label(&self, c: &Card, stop: Option<u8>, var: u32, sk: &SkillsRaw) -> String {
@@ -661,7 +661,7 @@ impl Sources<'_> {
 pub(super) struct Entries<'data> {
     pub(super) cards: Vec<&'data Card>,
     pub(super) rel: Vec<usize>,
-    pub(super) kind: Vec<Kind>,
+    pub(super) kind: Vec<ChainKind>,
     pub(super) endk: Vec<u8>,
     pub(super) vark: Vec<u32>,
     pub(super) srcs: Vec<Src>,
@@ -701,7 +701,7 @@ pub(super) fn deck_entries<'data>(
     let cards: Vec<&Card> = cr.cards.iter().filter(|c| owned_c(c.id)).collect();
     // deck entries: card index (`rel`), chain kind, early-end link (0 = played normally), choice variant and sources
     let mut rel: Vec<usize> = vec![];
-    let mut kind: Vec<Kind> = vec![];
+    let mut kind: Vec<ChainKind> = vec![];
     let mut endk: Vec<u8> = vec![];
     let mut vark: Vec<u32> = vec![];
     let mut srcs: Vec<Src> = vec![];
@@ -718,7 +718,7 @@ pub(super) fn deck_entries<'data>(
             // pals, and cards without chain events (R cards): like a pal, an R card takes no chain slot
             if useful || locked {
                 rel.push(i);
-                kind.push((0, 0, 0));
+                kind.push(ChainKind::NONE);
                 endk.push(0);
                 vark.push(0);
                 srcs.push(srcb.src(c, None, 0));
@@ -792,7 +792,7 @@ pub(super) fn deck_entries<'data>(
                 .0;
             seen.push(c.chara);
             rel.push(best);
-            kind.push((0, 0, 0));
+            kind.push(ChainKind::NONE);
             endk.push(0);
             vark.push(0);
             srcs.push(srcb.src(cards[best], None, 0));

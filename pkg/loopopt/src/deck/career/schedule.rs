@@ -1,5 +1,5 @@
 //! Aptitude sparks and career race schedules.
-use super::{Env, Pool, aff_factor};
+use super::{Env, Pool, RaceWin, aff_factor};
 use crate::deck::career::Lineage;
 use crate::deck::{Choice, NT, Uma, Value, best_response, chart_race_name, json, pk, probs, when};
 
@@ -222,7 +222,7 @@ impl Env<'_> {
         let u = pu.as_ref().map_or(&d.umas[t], |x| &x.0);
         let mut wr = vec![1.0f64; d.nr];
         for x in [a, b] {
-            for &(r, pr) in &p.veterans[x].wins {
+            for &RaceWin { race: r, chance: pr } in &p.veterans[x].wins {
                 if r < d.nr {
                     wr[r] += pr;
                 }
@@ -233,7 +233,7 @@ impl Env<'_> {
             if pu.is_some() { crate::best_response_solve(d, u, &wr, None) } else { best_response(d, u, &wr, None) };
         let Some((s, _)) = br else { return RaceSchedule { rows: json!([]), win_chances: vec![0.0; d.nr] } };
         let wp = probs(d, u, &s);
-        let won = |x: usize, r: usize| p.veterans[x].wins.iter().find(|w| w.0 == r).map_or(0.0, |w| w.1);
+        let won = |x: usize, r: usize| p.veterans[x].wins.iter().find(|w| w.race == r).map_or(0.0, |w| w.chance);
         let mut rows = vec![];
         let mut k = 0usize;
         for tt in 0..NT {

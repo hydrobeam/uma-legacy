@@ -22,36 +22,58 @@ pub(crate) struct ActiveCandidate {
     pub(crate) current_chance: f64,
 }
 
-/// One scoring's outcome evaluation as `sc_eval` reads it (built by `score_career_`; a plan keeps its pick's for a roll,
-/// `RollKeep`). Per setup her miss factor's parts (x0 per uncertain target, xm per star level) and her spark scales (pw
-/// per job target, without and with her spark), with what the fold and the outcome loop read of them (`derive`: xs, xc
-/// and scf); the tables kept (`sc_prep`: level 0 of the fold, table j at j 2^nu) and each one's setup; the collapsed
-/// targets; per setup its candidate slot and per slot the odds now; her landed sets' chances (`os`); the candidates the
-/// loop can lift (`act`); her own 8/8's trio sides (`her`); her candidate index, the goal, the star mix
+/// One scoring's outcome evaluation as `sc_eval` reads it (built by `score_career_`; a plan keeps its pick's for a
+/// roll, `RollKeep`): per setup her miss factor's parts and her spark scales, with what the fold and the outcome loop
+/// read of them (`derive`); the tables kept (`sc_prep`) and each one's setup; the collapsed targets; per setup its
+/// candidate slot and per slot the odds now; her landed sets' chances; the candidates the loop can lift; her own 8/8's
+/// trio sides; her candidate index, the goal, the star mix. A setup is one place her veteran may be a parent (`Setup`).
 pub(crate) struct Scored {
-    pub(crate) nu: usize,
-    pub(crate) nf: usize,
-    pub(crate) ntar: usize,
-    pub(crate) na: usize,
-    pub(crate) xi: Option<usize>,
-    pub(crate) goal: bool,
-    pub(crate) w: [f64; 3],
-    pub(crate) uncv: Vec<usize>,
-    pub(crate) fmm: Vec<TargetMask>,
-    pub(crate) x0: Vec<Vec<f64>>,
-    pub(crate) xm: Vec<[f64; 4]>,
-    pub(crate) pw: Vec<Vec<[f64; 2]>>,
-    pub(crate) tsi: Vec<usize>,
-    pub(crate) t0: Vec<f64>,
-    pub(crate) col: Vec<bool>,
-    pub(crate) sslot: Vec<usize>,
-    pub(crate) p0: Vec<f64>,
-    pub(crate) os: Vec<f64>,
-    pub(crate) act: Vec<ActiveCandidate>,
-    pub(crate) her: Vec<OwnTrio>,
-    pub(crate) xs: Vec<Vec<[f64; 4]>>,
-    pub(crate) xc: Vec<Vec<[f64; 4]>>,
-    pub(crate) scf: Vec<f64>,
+    /// nu: the job's uncertain targets.
+    pub(crate) uncertain_target_count: usize,
+    /// nf: the scenario-guaranteed targets.
+    pub(crate) fixed_target_count: usize,
+    /// All job targets (nu + nf).
+    pub(crate) target_count: usize,
+    /// The setup slots: the candidates with a setup, one slot each.
+    pub(crate) slot_count: usize,
+    /// Her own place among the stage candidates (`her_ends`); None: her uma is not one.
+    pub(crate) own_candidate: Option<usize>,
+    /// Her parents are both 8/8s: her own 8/8 completes the loop (V after her 0).
+    pub(crate) completes_goal: bool,
+    /// The rank's star mix (1, 2, 3 stars).
+    pub(crate) star_mix: [f64; 3],
+    /// The uncertain targets as job-target indices, ascending (`Env::uncertain_targets`).
+    pub(crate) uncertain_targets: Vec<usize>,
+    /// Per mask of the guaranteed targets landed, its landed set over the job targets (`fm_masks`).
+    pub(crate) fixed_landed_masks: Vec<TargetMask>,
+    /// x0: per setup and uncertain target, the miss product without her (`HerSlot::misses_without_her`).
+    pub(crate) misses_without_her: Vec<Vec<f64>>,
+    /// xm: per setup, her miss factor per star count (`HerSlot::miss_by_stars`).
+    pub(crate) miss_by_stars: Vec<[f64; 4]>,
+    /// pw: per setup and job target, the spark scale without and with her spark (`HerSlot::target_spark_scales`).
+    pub(crate) target_spark_scales: Vec<Vec<[f64; 2]>>,
+    /// Per kept table, its setup (`sc_prep`).
+    pub(crate) setup_by_table: Vec<usize>,
+    /// The kept tables, level 0 of the fold: table j at j 2^nu (`sc_prep`).
+    pub(crate) initial_tables: Vec<f64>,
+    /// Per uncertain target, whether it is collapsed: folded at 0 and 1 star only (`sc_prep`).
+    pub(crate) collapsed_targets: Vec<bool>,
+    /// Per setup, its candidate's slot.
+    pub(crate) slot_by_setup: Vec<usize>,
+    /// Per slot, its candidate's odds now.
+    pub(crate) current_probabilities: Vec<f64>,
+    /// Per landed set over the job targets (bit i: target i), her chance of landing exactly it.
+    pub(crate) landed_set_chances: Vec<f64>,
+    /// The candidates the outcome loop can lift, in candidate order.
+    pub(crate) active_candidates: Vec<ActiveCandidate>,
+    /// Her own 8/8's trio sides when her uma is not a stage candidate (`her_trios`).
+    pub(crate) own_trios: Vec<OwnTrio>,
+    /// Derived (`derive`): per setup, uncertain target and star level, x = x0 xm.
+    pub(crate) present_factors: Vec<Vec<[f64; 4]>>,
+    /// Derived (`derive`): 1 - x of `present_factors`.
+    pub(crate) absent_factors: Vec<Vec<[f64; 4]>>,
+    /// Derived (`derive`): per landed set m and setup, the spark scale (m-major: m * setup count + setup).
+    pub(crate) spark_scales: Vec<f64>,
 }
 
 impl Scored {
@@ -59,36 +81,38 @@ impl Scored {
     /// landed set m and setup the spark scale, the product over job targets of pw at her spark there (m-major:
     /// scf[m * ns + si])
     pub(crate) fn derive(&mut self) {
-        let nu = self.nu;
-        self.xs = self
-            .x0
+        let nu = self.uncertain_target_count;
+        self.present_factors = self
+            .misses_without_her
             .iter()
-            .zip(&self.xm)
+            .zip(&self.miss_by_stars)
             .map(|(x0, xm)| (0..nu).map(|k| [0usize, 1, 2, 3].map(|sg| x0[k] * xm[sg])).collect())
             .collect();
-        self.xc = self.xs.iter().map(|v| v.iter().map(|r| r.map(|x| 1.0 - x)).collect()).collect();
-        let (nm, ntar) = (1usize << self.ntar, self.ntar);
-        self.scf = Vec::with_capacity(nm * self.ns());
+        self.absent_factors =
+            self.present_factors.iter().map(|v| v.iter().map(|r| r.map(|x| 1.0 - x)).collect()).collect();
+        let (nm, ntar) = (1usize << self.target_count, self.target_count);
+        self.spark_scales = Vec::with_capacity(nm * self.setup_count());
         for m in 0..nm {
-            self.scf.extend(self.pw.iter().map(|pw| {
+            self.spark_scales.extend(self.target_spark_scales.iter().map(|pw| {
                 (0..ntar).map(|k| pw[k][usize::from(TargetMask::from_bits(m).contains(k))]).product::<f64>()
             }));
         }
     }
-    pub(crate) const fn ns(&self) -> usize {
-        self.x0.len()
+    pub(crate) const fn setup_count(&self) -> usize {
+        self.misses_without_her.len()
     }
     /// the fold writes per leaf the setups' table values (fewer rows than per outcome and slot), else per outcome the
     /// slots' odds (`fold_emit`)
-    pub(crate) const fn pl(&self) -> bool {
-        (1usize << self.nf) * self.na > self.ns()
+    pub(crate) const fn emits_setup_products(&self) -> bool {
+        (1usize << self.fixed_target_count) * self.slot_count > self.setup_count()
     }
-    pub(crate) const fn full_m(&self) -> TargetMask {
-        TargetMask::from_bits((1usize << self.ntar) - 1)
+    pub(crate) const fn full_mask(&self) -> TargetMask {
+        TargetMask::from_bits((1usize << self.target_count) - 1)
     }
     /// a leaf's representative: every collapsed target's nonzero digit set to 1 (`sc_outcomes`)
-    pub(crate) fn rep_of(&self, l: usize) -> usize {
-        let cm: usize = (0..self.nu).filter(|&k| self.col[k]).map(|k| 3usize << (2 * k)).sum();
+    pub(crate) fn representative_of(&self, l: usize) -> usize {
+        let cm: usize =
+            (0..self.uncertain_target_count).filter(|&k| self.collapsed_targets[k]).map(|k| 3usize << (2 * k)).sum();
         let lo_bits = cm & (usize::MAX / 3);
         let z = l & cm;
         (l & !cm) | ((z | z >> 1) & lo_bits)
@@ -98,43 +122,43 @@ impl Scored {
 /// The base a kept scoring was scored against (`ScoreBase` without the sides and C's umas, which only `her_trios` reads).
 /// Per-candidate vectors follow `candidates`' order.
 pub(crate) struct KeptBase {
-    /// The stage candidates (`ScoreBase::cands`).
+    /// The stage candidates (`ScoreBase::candidates`).
     candidates: Vec<crate::UmaIndex>,
-    /// Each candidate's step (`ScoreBase::c1`).
+    /// Each candidate's step (`ScoreBase::step_costs`).
     step_costs: Vec<f64>,
-    /// V (`ScoreBase::v0`).
+    /// V (`ScoreBase::current_value`).
     current_value: f64,
-    /// Each candidate's odds now (`ScoreBase::pnow`).
+    /// Each candidate's odds now (`ScoreBase::current_odds`).
     current_odds: Vec<f64>,
     continuations: Vec<Cont>,
     trios: Vec<Trio>,
-    /// Stages 2-3 per candidate (`ScoreBase::m23`).
+    /// Stages 2-3 per candidate (`ScoreBase::later_stage_costs`).
     later_stage_costs: Vec<f64>,
 }
 
 impl KeptBase {
     pub(crate) fn of(score_base: &ScoreBase) -> Self {
         Self {
-            candidates: score_base.cands.to_vec(),
-            step_costs: score_base.c1.to_vec(),
-            current_value: score_base.v0,
-            current_odds: score_base.pnow.to_vec(),
-            continuations: score_base.cont.to_vec(),
-            trios: score_base.combos.to_vec(),
-            later_stage_costs: score_base.m23.to_vec(),
+            candidates: score_base.candidates.to_vec(),
+            step_costs: score_base.step_costs.to_vec(),
+            current_value: score_base.current_value,
+            current_odds: score_base.current_odds.to_vec(),
+            continuations: score_base.continuations.to_vec(),
+            trios: score_base.trios.to_vec(),
+            later_stage_costs: score_base.later_stage_costs.to_vec(),
         }
     }
     fn base(&self) -> ScoreBase<'_> {
         ScoreBase {
-            cands: &self.candidates,
-            c1: &self.step_costs,
-            m23: &self.later_stage_costs,
-            v0: self.current_value,
-            pnow: &self.current_odds,
-            cont: &self.continuations,
-            combos: &self.trios,
-            sides: &[],
-            all: &[],
+            candidates: &self.candidates,
+            step_costs: &self.step_costs,
+            later_stage_costs: &self.later_stage_costs,
+            current_value: self.current_value,
+            current_odds: &self.current_odds,
+            continuations: &self.continuations,
+            trios: &self.trios,
+            trio_sides: &[],
+            finisher_umas: &[],
         }
     }
 }
@@ -285,12 +309,12 @@ pub(crate) fn rolls_out() -> Value {
             "combos": base.trios.iter().map(|trio| json!([trio.candidate_a.0, trio.candidate_b.0, hx(trio.finisher_cost), trio.a_uses_existing, trio.b_uses_existing])).collect::<Vec<_>>()})
     };
     let scored_out = |sd: &Scored| {
-        json!({"n": [sd.nu, sd.nf, sd.ntar, sd.na], "xi": sd.xi, "goal": sd.goal, "w": fvec(&sd.w), "uncv": sd.uncv, "fmm": sd.fmm,
-            "x0": sd.x0.iter().map(|v| fvec(v)).collect::<Vec<_>>(), "xm": sd.xm.iter().map(|v| fvec(v)).collect::<Vec<_>>(),
-            "pw": sd.pw.iter().map(|v| fvec(&v.iter().flatten().copied().collect::<Vec<f64>>())).collect::<Vec<_>>(),
-            "tsi": sd.tsi, "t0": fvec(&sd.t0), "col": sd.col, "sslot": sd.sslot, "p0": fvec(&sd.p0), "os": fvec(&sd.os),
-            "act": sd.act.iter().map(|active| json!([active.candidate.0, active.slot, hx(active.threshold), hx(active.current_chance)])).collect::<Vec<_>>(),
-            "her": trios_out(&sd.her)})
+        json!({"n": [sd.uncertain_target_count, sd.fixed_target_count, sd.target_count, sd.slot_count], "xi": sd.own_candidate, "goal": sd.completes_goal, "w": fvec(&sd.star_mix), "uncv": sd.uncertain_targets, "fmm": sd.fixed_landed_masks,
+            "x0": sd.misses_without_her.iter().map(|v| fvec(v)).collect::<Vec<_>>(), "xm": sd.miss_by_stars.iter().map(|v| fvec(v)).collect::<Vec<_>>(),
+            "pw": sd.target_spark_scales.iter().map(|v| fvec(&v.iter().flatten().copied().collect::<Vec<f64>>())).collect::<Vec<_>>(),
+            "tsi": sd.setup_by_table, "t0": fvec(&sd.initial_tables), "col": sd.collapsed_targets, "sslot": sd.slot_by_setup, "p0": fvec(&sd.current_probabilities), "os": fvec(&sd.landed_set_chances),
+            "act": sd.active_candidates.iter().map(|active| json!([active.candidate.0, active.slot, hx(active.threshold), hx(active.current_chance)])).collect::<Vec<_>>(),
+            "her": trios_out(&sd.own_trios)})
     };
     ROLLS.with(|c| {
         Value::Array(
@@ -345,7 +369,7 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 .collect::<Option<Vec<_>>>()?;
             // (the anchors' chances: one per job target; her trio sides at the plan's end: candidate indices)
             let own_trios = own_trios_in(&entry["her"])?;
-            if found_anchors.iter().flatten().any(|a| a.inheritance_chances.len() != scored.ntar)
+            if found_anchors.iter().flatten().any(|a| a.inheritance_chances.len() != scored.target_count)
                 || own_trios.iter().any(|h| h.candidate.0 >= base.candidates.len())
             {
                 return None;
@@ -459,36 +483,36 @@ fn scored_in(s: &Value) -> Option<Scored> {
         })
         .collect::<Option<Vec<_>>>()?;
     Some(Scored {
-        nu,
-        nf,
-        ntar,
-        na,
-        xi: if s["xi"].is_null() { None } else { Some(usz(&s["xi"])?) },
-        goal: s["goal"].as_bool()?,
-        w,
-        uncv: usize_vec(&s["uncv"])?,
-        fmm: usize_vec(&s["fmm"])?.into_iter().map(TargetMask::from_bits).collect(),
-        x0: s["x0"].as_array()?.iter().map(fvec_r).collect::<Option<_>>()?,
-        xm: s["xm"].as_array()?.iter().map(four).collect::<Option<_>>()?,
-        pw,
-        tsi: usize_vec(&s["tsi"])?,
-        t0: fvec_r(&s["t0"])?,
-        col: s["col"].as_array()?.iter().map(serde_json::Value::as_bool).collect::<Option<_>>()?,
-        sslot: usize_vec(&s["sslot"])?,
-        p0: fvec_r(&s["p0"])?,
-        os: pvec_r(&s["os"])?,
-        act,
-        her: own_trios_in(&s["her"])?,
-        xs: vec![],
-        xc: vec![],
-        scf: vec![],
+        uncertain_target_count: nu,
+        fixed_target_count: nf,
+        target_count: ntar,
+        slot_count: na,
+        own_candidate: if s["xi"].is_null() { None } else { Some(usz(&s["xi"])?) },
+        completes_goal: s["goal"].as_bool()?,
+        star_mix: w,
+        uncertain_targets: usize_vec(&s["uncv"])?,
+        fixed_landed_masks: usize_vec(&s["fmm"])?.into_iter().map(TargetMask::from_bits).collect(),
+        misses_without_her: s["x0"].as_array()?.iter().map(fvec_r).collect::<Option<_>>()?,
+        miss_by_stars: s["xm"].as_array()?.iter().map(four).collect::<Option<_>>()?,
+        target_spark_scales: pw,
+        setup_by_table: usize_vec(&s["tsi"])?,
+        initial_tables: fvec_r(&s["t0"])?,
+        collapsed_targets: s["col"].as_array()?.iter().map(serde_json::Value::as_bool).collect::<Option<_>>()?,
+        slot_by_setup: usize_vec(&s["sslot"])?,
+        current_probabilities: fvec_r(&s["p0"])?,
+        landed_set_chances: pvec_r(&s["os"])?,
+        active_candidates: act,
+        own_trios: own_trios_in(&s["her"])?,
+        present_factors: vec![],
+        absent_factors: vec![],
+        spark_scales: vec![],
     })
 }
 
 /// A stored scoring and its base fit together: the vectors' lengths, and every index within what it indexes
 fn scored_fits(sd: &Scored, base: &KeptBase) -> bool {
-    let (ns, nc) = (sd.x0.len(), base.candidates.len());
-    let fixed: Vec<usize> = (0..sd.ntar).filter(|i| !sd.uncv.contains(i)).collect();
+    let (ns, nc) = (sd.misses_without_her.len(), base.candidates.len());
+    let fixed: Vec<usize> = (0..sd.target_count).filter(|i| !sd.uncertain_targets.contains(i)).collect();
     let fits_base = nc <= crate::deck::career::STATE_MAX_N
         && base.step_costs.len() == nc
         && base.current_odds.len() == nc
@@ -498,28 +522,28 @@ fn scored_fits(sd: &Scored, base: &KeptBase) -> bool {
     // her setups (at most IDX_PARTNERS per candidate), the candidates the loop lifts (those with a slot in slot
     // order, one per slot), her own candidate index and trio sides: candidate indices
     let fits_cands = ns <= IDX_PARTNERS * nc
-        && sd.act.iter().filter_map(|a| a.slot).eq(0..sd.na)
-        && sd.act.iter().all(|a| a.candidate.0 < nc)
-        && sd.xi.is_none_or(|x| x < nc)
-        && sd.her.iter().all(|h| h.candidate.0 < nc);
+        && sd.active_candidates.iter().filter_map(|a| a.slot).eq(0..sd.slot_count)
+        && sd.active_candidates.iter().all(|a| a.candidate.0 < nc)
+        && sd.own_candidate.is_none_or(|x| x < nc)
+        && sd.own_trios.iter().all(|h| h.candidate.0 < nc);
     fits_base
         && fits_cands
-        && sd.uncv.windows(2).all(|p| p[0] < p[1])
-        && !sd.uncv.last().is_some_and(|&i| i >= sd.ntar)
-        && sd.fmm == fm_masks(&fixed)
-        && !sd.sslot.windows(2).any(|p| p[0] > p[1])
-        && sd.uncv.len() == sd.nu
-        && sd.col.len() == sd.nu
-        && sd.xm.len() == ns
-        && sd.pw.len() == ns
-        && sd.sslot.len() == ns
-        && sd.os.len() == 1usize << sd.ntar
-        && sd.fmm.len() == 1usize << sd.nf
-        && sd.t0.len() == sd.tsi.len() << sd.nu
-        && !sd.x0.iter().any(|v| v.len() != sd.nu)
-        && !sd.tsi.iter().any(|&si| si >= ns)
-        && !sd.sslot.iter().any(|&sl| sl >= sd.na)
-        && sd.p0.len() == sd.na
+        && sd.uncertain_targets.windows(2).all(|p| p[0] < p[1])
+        && !sd.uncertain_targets.last().is_some_and(|&i| i >= sd.target_count)
+        && sd.fixed_landed_masks == fm_masks(&fixed)
+        && !sd.slot_by_setup.windows(2).any(|p| p[0] > p[1])
+        && sd.uncertain_targets.len() == sd.uncertain_target_count
+        && sd.collapsed_targets.len() == sd.uncertain_target_count
+        && sd.miss_by_stars.len() == ns
+        && sd.target_spark_scales.len() == ns
+        && sd.slot_by_setup.len() == ns
+        && sd.landed_set_chances.len() == 1usize << sd.target_count
+        && sd.fixed_landed_masks.len() == 1usize << sd.fixed_target_count
+        && sd.initial_tables.len() == sd.setup_by_table.len() << sd.uncertain_target_count
+        && !sd.misses_without_her.iter().any(|v| v.len() != sd.uncertain_target_count)
+        && !sd.setup_by_table.iter().any(|&si| si >= ns)
+        && !sd.slot_by_setup.iter().any(|&sl| sl >= sd.slot_count)
+        && sd.current_probabilities.len() == sd.slot_count
 }
 
 pub(crate) fn rolls_set(r: Vec<RollKeep>) {

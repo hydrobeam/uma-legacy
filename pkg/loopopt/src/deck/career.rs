@@ -40,13 +40,14 @@ use inherit::{
     RelOf, SlotSink, aff_factor, inherit, inherit_q, insp_miss, mix_term, part_sum, rise_factor, set_ews, spark_scale,
 };
 use outcomes::interp_in;
-use pool::{Pool, Who, dominates, holds_fix, shared};
+use pool::{Pool, RaceWin, Who, dominates, holds_fix, shared};
 use schedule::{apt_pink, pink_p};
+pub(crate) use search::RankedPair;
 use search::{Bar, DeckRes, Found, Ref, SearchRequest, Solved, solve_kept};
-use state::{LAST_SOLVE, SEEN};
+use state::{KeptSolve, LAST_SOLVE, SEEN};
 use state::{
-    Ruled, SEEN_KEEP, SOLVE_KEEP, STATE_MAX_N, found_in, found_out, fvec, fvec_r, fx, hx, len_in, pvec_r, sel_in,
-    sel_out, setup_hash, state_in, state_out, usz, ux, uxr,
+    ProductProof, SEEN_KEEP, SOLVE_KEEP, STATE_MAX_N, found_in, found_out, fvec, fvec_r, fx, hx, len_in, pvec_r,
+    sel_in, sel_out, setup_hash, state_in, state_out, usz, ux, uxr,
 };
 pub(crate) use state::{json_without, setup_fp};
 mod clock;
@@ -250,10 +251,9 @@ struct Env<'data> {
     /// whether `solve` bounds with `seen`: off for the search whose fully checked decks seed the simulator's cache
     /// (so the simulator's values do not depend on what earlier searches proved)
     use_seen: bool,
-    /// per deck class (`deck_class`), what its product searches proved (`best_deck` pass 1): (chances q, S) with every
-    /// legal deck's product value at q (fixed factor included, before the spark scale) at most S. Bounds her other
+    /// per deck class (`deck_class`), what its product searches proved (`best_deck` pass 1). Bounds her other
     /// candidates (`solve`).
-    ruled: UmaTable<Vec<(Vec<f64>, f64)>>,
+    ruled: UmaTable<Vec<ProductProof>>,
     /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
     last_product_bound: Option<f64>,
     /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
@@ -456,7 +456,7 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
     let space = deck_space(cr, dj, sk, &uncertain_groups, &ent);
     let deck_odds_ceilings = deck_odds_ceilings(d, &space, &owned, uncertain_count, dj.deck_size);
     let outfit_coverage: UmaTable<Vec<Vec<u8>>> =
-        model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
+        model.opts.iter().map(|m| m.iter().map(|x| x.coverage.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
     // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
     let setup_fingerprint = setup_fp(v);
@@ -532,7 +532,7 @@ fn deck_odds_ceilings(
     let strong: Vec<(Vec<f64>, Vec<f64>)> = (0..space.rel.len())
         .map(|j| {
             let (mut mw, mut mg) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-            src_miss(&space.srcs[j], &vec![1.0; space.kind[j].1 as usize], &mut mw, &mut mg);
+            src_miss(&space.srcs[j], &vec![1.0; space.kind[j].stop as usize], &mut mw, &mut mg);
             let mh: Vec<f64> = (0..nu).map(|k| mg[k] * mw[k]).collect();
             (mg, mh)
         })
@@ -900,13 +900,18 @@ mod tests {
                         let inherit::Inheritance { chances: q0, carriers: nc0 } = inherit(&sl0, env.target_count);
                         let hs = env.her_slot(&p, her_lineage).unwrap();
                         let fa = aff_factor(sl[pos].rel, sl[pos].race);
-                        assert_eq!(bits(&hs.q0), bits(&q0));
+                        assert_eq!(bits(&hs.chances_without_her), bits(&q0));
                         assert_eq!(
-                            bits(&hs.xms),
+                            bits(&hs.miss_by_stars),
                             bits(&[1.0, insp_miss2(1.0, fa), insp_miss2(2.0, fa), insp_miss2(3.0, fa)])
                         );
-                        assert!(hs.pw.iter().zip(&nc0).all(|(w, &m)| w[0].to_bits() == spark_scale(m).to_bits()
-                            && w[1].to_bits() == spark_scale(m + 1).to_bits()));
+                        assert!(
+                            hs.target_spark_scales
+                                .iter()
+                                .zip(&nc0)
+                                .all(|(w, &m)| w[0].to_bits() == spark_scale(m).to_bits()
+                                    && w[1].to_bits() == spark_scale(m + 1).to_bits())
+                        );
                     }
                     n += 1;
                 }

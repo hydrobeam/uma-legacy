@@ -9,8 +9,8 @@ use super::{
 use crate::deck::capfree::{BoundOptions, LandingBoundTables};
 use crate::deck::space::EntryMisses;
 use crate::deck::{
-    CapFreeRatios, DeckSpace, GTab, HashMap, Instant, Kind, LandPre, Model, SBN, SPT, SbCfg, SelectedDeck, StateBound,
-    chain_states,
+    CapFreeRatios, ChainKind, DeckSpace, GTab, HashMap, Instant, LandPre, Model, SBN, SPT, SbCfg, SelectedDeck,
+    StateBound, chain_states,
 };
 
 /// Immutable controls selected before traversal. Scalar copies do not change the search's buffers.
@@ -643,7 +643,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
         } else if let Some(r) = space.sbcfg.borrow().get(&sbkey).cloned() {
             Some(r)
         } else {
-            let mut kinds: Vec<(Kind, usize)> = vec![]; // (kind, group, or usize::MAX for a filler)
+            let mut kinds: Vec<(ChainKind, usize)> = vec![]; // (kind, group, or usize::MAX for a filler)
             for (g, &(i, c)) in cf.gs.iter().enumerate() {
                 if i < kind_count {
                     for _ in 0..c {
@@ -652,10 +652,10 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 }
             }
             for _ in 0..filler {
-                kinds.push(((2, 2, 0), usize::MAX));
+                kinds.push((ChainKind::FILLER, usize::MAX));
             }
             kinds.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-            let kl: Vec<Kind> = kinds.iter().map(|x| x.0).collect();
+            let kl: Vec<ChainKind> = kinds.iter().map(|x| x.0).collect();
             let full = if kl.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kl) };
             let has_chain: Vec<bool> =
                 groups.iter().map(|(l, _)| l.iter().any(|&j| !space.srcs[j].cm.is_empty())).collect();
@@ -672,7 +672,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
             }
             // (with at most 16 positions and levels below 16, the projected key packed 4 bits per position, the first
             // highest: the same sums, each in the order of `full`, sorted the same way)
-            let states: Vec<(Vec<u8>, f64)> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.1 < 16) {
+            let states: Vec<(Vec<u8>, f64)> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.stop < 16) {
                 let mut proj: crate::FxMap<u64, f64> = crate::FxMap::default();
                 for (x, w) in full.iter() {
                     let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | u64::from(x[p]));
@@ -695,7 +695,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 states
             };
             let stops: Vec<usize> =
-                cf.gs.iter().map(|&(i, _)| if i < kind_count { space.kinds_all[i].1 as usize } else { 0 }).collect();
+                cf.gs.iter().map(|&(i, _)| if i < kind_count { space.kinds_all[i].stop as usize } else { 0 }).collect();
             let group_misses: Vec<Vec<(f64, f64)>> = (0..ng)
                 .map(|g| {
                     let mut m = vec![(1.0f64, 1.0f64); (stops[g] + 1) * target_count];

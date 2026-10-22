@@ -64,11 +64,30 @@ thread_local! {
     /// `no_reports` (the page's plan job repeats the job it follows), with what the search's product searches proved
     /// (`Env::ruled` as the search left it: a job that takes a kept search starts its plan from the Env state a combined
     /// job's plan starts from); kept across page reloads (`state_out`)
-    pub(crate) static LAST_SOLVE: std::cell::RefCell<Vec<(u64, Solved, Ruled)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static LAST_SOLVE: std::cell::RefCell<Vec<KeptSolve>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// One kept main search (`LAST_SOLVE`).
+pub(crate) struct KeptSolve {
+    /// The job's key (`CareerRun::search_key`).
+    pub(crate) key: u64,
+    pub(crate) solved: Solved,
+    /// What its product searches proved (`Env::ruled` as the search left it).
+    pub(crate) ruled: Ruled,
 }
 
 /// per deck class, the product searches' proofs (`Env::ruled`)
-pub(crate) type Ruled = crate::UmaTable<Vec<(Vec<f64>, f64)>>;
+pub(crate) type Ruled = crate::UmaTable<Vec<ProductProof>>;
+
+/// What one product search proved (`best_deck` pass 1): every legal deck's product value at chances q (fixed factor
+/// included, before the spark scale) is at most S.
+#[derive(Clone)]
+pub(crate) struct ProductProof {
+    /// q: the inheritance chances the search ran at, per job target.
+    pub(crate) inheritance_chances: Vec<f64>,
+    /// S: the best product value at q.
+    pub(crate) product_bound: f64,
+}
 
 /// main searches kept (`LAST_SOLVE`): the page's run, and one it goes back to (a setting changed and back, a Compare or
 /// Reroll plan in between)
@@ -260,13 +279,13 @@ fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<crat
 
 /// LAST_SOLVE as [key, search, proofs] per kept search: every field of `Solved`, floats as bit patterns
 fn solve_out() -> Value {
-    LAST_SOLVE.with(|c| Value::Array(c.borrow().iter().map(|(k, s, r)| json!([ux(*k), {
+    LAST_SOLVE.with(|c| Value::Array(c.borrow().iter().map(|KeptSolve { key: k, solved: s, ruled: r }| json!([ux(*k), {
         "found": s.found.iter().map(found_out).collect::<Vec<_>>(), "refs": lists_out(&s.refs, ref_out),
         "n": [s.work, s.cands, s.solved, s.bounded, s.scored, s.skipped], "next_bound": hx(s.next_bound), "complete": s.complete, "proven": s.proven, "cert": hx(s.cert)
-    }, lists_out(r, |(q, x)| json!([fvec(q), hx(*x)]))])).collect()))
+    }, lists_out(r, |proof| json!([fvec(&proof.inheritance_chances), hx(proof.product_bound)]))])).collect()))
 }
 
-fn solve_in(v: &Value) -> Option<Vec<(u64, Solved, Ruled)>> {
+fn solve_in(v: &Value) -> Option<Vec<KeptSolve>> {
     v.as_array()?
         .iter()
         .map(|e| {
@@ -292,9 +311,9 @@ fn solve_in(v: &Value) -> Option<Vec<(u64, Solved, Ruled)>> {
             };
             let ruled = lists_in(a.get(2)?, |x| {
                 let p = x.as_array()?;
-                Some((pvec_r(p.first()?)?, fx(p.get(1)?)?))
+                Some(ProductProof { inheritance_chances: pvec_r(p.first()?)?, product_bound: fx(p.get(1)?)? })
             })?;
-            Some((uxr(a.first()?)?, sv, ruled))
+            Some(KeptSolve { key: uxr(a.first()?)?, solved: sv, ruled })
         })
         .collect()
 }
@@ -351,7 +370,7 @@ impl Env<'_> {
     pub(crate) fn solved_fits(&self, sv: &Solved, ruled: &Ruled, p: &Pool) -> bool {
         let n = self.data.umas.len();
         ruled.len() == n
-            && ruled.iter().flatten().all(|(q, _)| q.len() == self.target_count)
+            && ruled.iter().flatten().all(|proof| proof.inheritance_chances.len() == self.target_count)
             && sv.refs.len() == n
             && sv.refs.iter().flatten().all(|r| self.ref_fits(r))
             && sv.found.iter().all(|f| {

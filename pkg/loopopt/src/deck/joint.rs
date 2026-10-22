@@ -1,6 +1,9 @@
 //! Joint landing odds of a deck: exact over chain progress and outcome groups, the negative-association bound, and the
 //! state-conditioned bound.
-use super::{GEN_GOLD, Group, JCOUNT, Kind, Model, Src, chain_states, event_pmf_job, group_gh, group_nuod, key_level};
+use super::{
+    ChainKind, GEN_GOLD, Group, JCOUNT, Model, OutfitOption, Src, chain_states, event_pmf_job, group_gh, group_nuod,
+    key_level,
+};
 
 /// The trainee and ordered inheritance chances to evaluate against one deck.
 #[derive(Clone, Copy)]
@@ -36,7 +39,7 @@ pub(super) fn joint(
     model: &Model,
     u: crate::UmaIndex,
     qs: &[f64],
-    ents: &[(Src, Kind)],
+    ents: &[(Src, ChainKind)],
     filler: usize,
     n_targets: usize,
     m1: bool,
@@ -48,7 +51,7 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
     model: &Model,
     u: crate::UmaIndex,
     qs: &[f64],
-    ents: &[(S, Kind)],
+    ents: &[(S, ChainKind)],
     filler: usize,
     n_targets: usize,
     m1: bool,
@@ -65,14 +68,14 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
 fn joint_checked<S: std::borrow::Borrow<Src>>(
     model: &Model,
     query: JointQuery,
-    ents: &[(S, Kind)],
+    ents: &[(S, ChainKind)],
     filler: usize,
     options: JointOptions,
 ) -> Vec<(f64, f64, usize)> {
     JCOUNT.with(|c| c.set(c.get() + 1));
     let r = evaluate_joint(model, query, ents, filler, options, None);
     if sb_check() {
-        let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
+        let er: Vec<(&Src, ChainKind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
         if let Some(sv) = state_value(model, query.trainee, query.inheritance_chances, &er, filler) {
             SBCHK.with(|c| {
                 let mut c = c.borrow_mut();
@@ -92,7 +95,7 @@ fn joint_checked<S: std::borrow::Borrow<Src>>(
     }
     // CF_CHECK: the cap-free bound's value at a whole deck (its leaf test) against the exact value
     if cf_check() > 0.0 {
-        let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
+        let er: Vec<(&Src, ChainKind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
         if let Some(sv) = state_value_cf(model, query.trainee, query.inheritance_chances, &er, filler) {
             CFCHK.with(|c| {
                 let mut c = c.borrow_mut();
@@ -110,7 +113,7 @@ fn joint_checked<S: std::borrow::Borrow<Src>>(
     }
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
-        let own: Vec<(Src, Kind)> = ents.iter().map(|e| (e.0.borrow().clone(), e.1)).collect();
+        let own: Vec<(Src, ChainKind)> = ents.iter().map(|e| (e.0.borrow().clone(), e.1)).collect();
         let x = joint_trainee_ref(model, query.trainee, query.inheritance_chances, &own, filler, options.target_count);
         for (a, b) in r.iter().zip(&x) {
             let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
@@ -142,7 +145,7 @@ pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(
     model: &Model,
     u: crate::UmaIndex,
     qs: &[f64],
-    ents: &[(S, Kind)],
+    ents: &[(S, ChainKind)],
     filler: usize,
     n_targets: usize,
     m1: bool,
@@ -161,7 +164,7 @@ pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(
 fn evaluate_joint<S: std::borrow::Borrow<Src>>(
     model: &Model,
     query: JointQuery,
-    ents: &[(S, Kind)],
+    ents: &[(S, ChainKind)],
     filler: usize,
     options: JointOptions,
     ext: Option<&mut JointExt>,
@@ -201,7 +204,11 @@ struct CoupledGroup<'group> {
     targets: Vec<usize>,
     outcomes: Vec<(f64, &'group [(usize, u8)])>,
 }
-pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kind)], filler: usize) -> JointPrep<'_> {
+pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(
+    nu: usize,
+    ents: &[(S, ChainKind)],
+    filler: usize,
+) -> JointPrep<'_> {
     fn add_group<'group>(
         group: &'group Group,
         groups: &mut Vec<CoupledGroup<'group>>,
@@ -238,17 +245,17 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
             add_group(group, &mut groups, &mut base_coupled, &mut base_no_gold, &mut base_no_hint);
         }
     }
-    let mut chain_entries: Vec<(Kind, Option<usize>)> = ents
+    let mut chain_entries: Vec<(ChainKind, Option<usize>)> = ents
         .iter()
         .enumerate()
-        .filter(|(_, entry)| entry.1 != (0, 0, 0))
+        .filter(|(_, entry)| entry.1 != ChainKind::NONE)
         .map(|(i, entry)| (entry.1, Some(i)))
         .collect();
     for _ in 0..filler {
-        chain_entries.push(((2, 2, 0), None));
+        chain_entries.push((ChainKind::FILLER, None));
     }
     chain_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let kinds: Vec<Kind> = chain_entries.iter().map(|entry| entry.0).collect();
+    let kinds: Vec<ChainKind> = chain_entries.iter().map(|entry| entry.0).collect();
     let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
     let mut chains: Vec<ChainProgress> = vec![];
     for (position, &(kind, entry)) in chain_entries.iter().enumerate() {
@@ -261,7 +268,7 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
         let mut levels =
             vec![ChainFactors { no_gold: no_gold.clone(), no_hint: no_hint.clone(), coupled: coupled.clone() }];
         let mut class_of_progress = vec![0u8];
-        for link in 1..=kind.1 {
+        for link in 1..=kind.stop {
             let mut changed = false;
             for (group_link, group) in &src.chains {
                 if *group_link == link {
@@ -511,7 +518,7 @@ fn evaluate_prepared(
             scratch.coupled_groups.extend(factors.coupled.iter().copied());
         }
         for (qi, &q) in query.inheritance_chances.iter().enumerate() {
-            for (o, (st, _)) in outfits.iter().enumerate() {
+            for (o, OutfitOption { coverage: st, .. }) in outfits.iter().enumerate() {
                 let ew = &model.ews[query.trainee][o];
                 let base = (qi * outfit_count + o) * target_count;
                 for k in 0..target_count {
@@ -732,7 +739,7 @@ pub(super) fn joint_trainee_ref(
     model: &Model,
     u: crate::UmaIndex,
     qs: &[f64],
-    ents: &[(Src, Kind)],
+    ents: &[(Src, ChainKind)],
     filler: usize,
     n_targets: usize,
 ) -> Vec<(f64, f64, usize)> {
@@ -748,7 +755,7 @@ pub(super) fn joint_trainee_ref(
 fn reference_joint(
     model: &Model,
     query: JointQuery,
-    ents: &[(Src, Kind)],
+    ents: &[(Src, ChainKind)],
     filler: usize,
     options: JointOptions,
 ) -> Vec<(f64, f64, usize)> {
@@ -779,13 +786,13 @@ fn reference_joint(
     }
     // chain entries sorted by kind (with fillers) for the memoised state distribution; per entry and links done,
     // the cumulative factors and coupled groups of the links fired so far
-    let mut ch: Vec<(Kind, Option<usize>)> =
-        ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
+    let mut ch: Vec<(ChainKind, Option<usize>)> =
+        ents.iter().enumerate().filter(|(_, e)| e.1 != ChainKind::NONE).map(|(i, e)| (e.1, Some(i))).collect();
     for _ in 0..filler {
-        ch.push(((2, 2, 0), None));
+        ch.push((ChainKind::FILLER, None));
     }
     ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
+    let kinds: Vec<ChainKind> = ch.iter().map(|x| x.0).collect();
     let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
     let lv: Vec<Option<Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>>> = ch
         .iter()
@@ -794,7 +801,7 @@ fn reference_joint(
                 let src = &ents[i].0;
                 let (mut g, mut h, mut c) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
                 let mut out = vec![(g.clone(), h.clone(), c.clone())];
-                for l in 1..=kd.1 {
+                for l in 1..=kd.stop {
                     for (cl, grp) in &src.chains {
                         if *cl == l {
                             take(grp, &mut c, &mut g, &mut h);
@@ -856,7 +863,7 @@ fn reference_joint(
                 }
             }
             for (qi, &q) in query.inheritance_chances.iter().enumerate() {
-                for (o, (st, _)) in opts.iter().enumerate() {
+                for (o, OutfitOption { coverage: st, .. }) in opts.iter().enumerate() {
                     let ew = &model.ews[query.trainee][o];
                     // P(all land) and the distribution of how many of the uncertain targets land (fixed golds after)
                     let mut all = fixed;
@@ -930,7 +937,7 @@ struct BoundTarget {
 }
 
 struct BoundChain {
-    kind: Kind,
+    kind: ChainKind,
     targets: Vec<BoundTarget>,
 }
 
@@ -947,7 +954,7 @@ pub(super) fn upper_na(
     model: &Model,
     trainee: crate::UmaIndex,
     inheritance_chances: &[f64],
-    entries: &[(&Src, Kind)],
+    entries: &[(&Src, ChainKind)],
     filler: usize,
 ) -> Option<Vec<f64>> {
     let target_count = model.uncertain.len();
@@ -983,10 +990,10 @@ pub(super) fn upper_na(
     // chain cards in key order (fillers included): (kind, per target: cumulative (miss gold, miss any) after l links)
     let mut chains: Vec<BoundChain> = vec![];
     for (src, kind) in entries {
-        if *kind == (0, 0, 0) {
+        if *kind == ChainKind::NONE {
             continue;
         }
-        let stop = kind.1 as usize;
+        let stop = kind.stop as usize;
         let targets: Vec<BoundTarget> = src
             .cm
             .iter()
@@ -1007,10 +1014,10 @@ pub(super) fn upper_na(
         chains.push(BoundChain { kind: *kind, targets });
     }
     for _ in 0..filler {
-        chains.push(BoundChain { kind: (2, 2, 0), targets: vec![] });
+        chains.push(BoundChain { kind: ChainKind::FILLER, targets: vec![] });
     }
     chains.sort_by_key(|chain| chain.kind);
-    let kinds: Vec<Kind> = chains.iter().map(|chain| chain.kind).collect();
+    let kinds: Vec<ChainKind> = chains.iter().map(|chain| chain.kind).collect();
     // groups: cards joined by a target their chains both feed; at most one group of two cards, none larger. A target
     // that would join a larger group (three or more feeders, or two feeders other than the one pair) is "maxed": its
     // factor is taken at every feeder's full progress, a constant, and it leaves its feeders' target lists. Valid
@@ -1077,7 +1084,7 @@ pub(super) fn upper_na(
     let outfits = &model.opts[trainee];
     let fixed = model.fixed_factor();
     let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 {
-        land_factor(outfits[o].0[k], model.ews[trainee][o][k], q, ng, nh)
+        land_factor(outfits[o].coverage[k], model.ews[trainee][o][k], q, ng, nh)
     };
     let pair_marginals: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &chain_levels) {
         (Some((a, b)), Some(k)) => Some(k.pair_margs(a, b)),
@@ -1116,14 +1123,14 @@ pub(super) fn upper_na(
                     };
                     let single_products: Vec<Vec<f64>> = (0..chains.len())
                         .map(|chain_index| {
-                            (0..=chains[chain_index].kind.1 as usize).map(|l| single(chain_index, l)).collect()
+                            (0..=chains[chain_index].kind.stop as usize).map(|l| single(chain_index, l)).collect()
                         })
                         .collect();
                     // the pair's group: both cards' single targets and the shared ones, over (la, lb)
                     let pair_products: Option<Vec<Vec<f64>>> = pair.map(|(a, b)| {
-                        (0..=chains[a].kind.1 as usize)
+                        (0..=chains[a].kind.stop as usize)
                             .map(|la| {
-                                (0..=chains[b].kind.1 as usize)
+                                (0..=chains[b].kind.stop as usize)
                                     .map(|lb| {
                                         let mut v = single_products[a][la] * single_products[b][lb];
                                         for target in &chains[a].targets {
@@ -1259,7 +1266,7 @@ pub(super) fn state_value(
     model: &Model,
     u: crate::UmaIndex,
     qs: &[f64],
-    ents: &[(&Src, Kind)],
+    ents: &[(&Src, ChainKind)],
     filler: usize,
 ) -> Option<Vec<f64>> {
     if ents.iter().any(|e| e.0.multi) {
@@ -1274,7 +1281,7 @@ pub(super) fn state_value_cf(
     model: &Model,
     u: crate::UmaIndex,
     qs: &[f64],
-    ents: &[(&Src, Kind)],
+    ents: &[(&Src, ChainKind)],
     filler: usize,
 ) -> Option<Vec<f64>> {
     if ents.iter().any(|e| !e.0.cf_ok) {
@@ -1282,20 +1289,26 @@ pub(super) fn state_value_cf(
     }
     Some(state_value_any(model, u, qs, ents, filler))
 }
-fn state_value_any(model: &Model, u: crate::UmaIndex, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Vec<f64> {
+fn state_value_any(
+    model: &Model,
+    u: crate::UmaIndex,
+    qs: &[f64],
+    ents: &[(&Src, ChainKind)],
+    filler: usize,
+) -> Vec<f64> {
     let nu = model.uncertain.len();
-    let mut ch: Vec<(Kind, Option<usize>)> =
-        ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
+    let mut ch: Vec<(ChainKind, Option<usize>)> =
+        ents.iter().enumerate().filter(|(_, e)| e.1 != ChainKind::NONE).map(|(i, e)| (e.1, Some(i))).collect();
     for _ in 0..filler {
-        ch.push(((2, 2, 0), None));
+        ch.push((ChainKind::FILLER, None));
     }
     ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
+    let kinds: Vec<ChainKind> = ch.iter().map(|x| x.0).collect();
     let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
     // the non-chain entries' misses (constant over states), and per chain position its entry's rows
     let mut cg = vec![1.0f64; nu];
     let mut chh = vec![1.0f64; nu];
-    for e in ents.iter().filter(|e| e.1 == (0, 0, 0)) {
+    for e in ents.iter().filter(|e| e.1 == ChainKind::NONE) {
         let r = src_levels(e.0, 0, nu);
         for k in 0..nu {
             cg[k] *= r[k].0;
@@ -1303,7 +1316,7 @@ fn state_value_any(model: &Model, u: crate::UmaIndex, qs: &[f64], ents: &[(&Src,
         }
     }
     let rows: Vec<Option<Vec<(f64, f64)>>> =
-        ch.iter().map(|&(kd, e)| e.map(|i| src_levels(ents[i].0, kd.1, nu))).collect();
+        ch.iter().map(|&(kd, e)| e.map(|i| src_levels(ents[i].0, kd.stop, nu))).collect();
     let opts = &model.opts[u];
     let no = opts.len();
     let mut acc = vec![0.0f64; qs.len() * no];
@@ -1321,7 +1334,7 @@ fn state_value_any(model: &Model, u: crate::UmaIndex, qs: &[f64], ents: &[(&Src,
             }
         }
         for (qi, &q) in qs.iter().enumerate() {
-            for (o, (st, _)) in opts.iter().enumerate() {
+            for (o, OutfitOption { coverage: st, .. }) in opts.iter().enumerate() {
                 let ew = &model.ews[u][o];
                 let f: f64 = (0..nu).map(|k| land_factor(st[k], ew[k], q, ng[k], nh[k])).product();
                 acc[qi * no + o] += w * f;
@@ -1345,7 +1358,7 @@ pub(super) struct SbCfg {
     pub(super) slots: Vec<Vec<usize>>,
     pub(super) gmin: Vec<Vec<(f64, f64)>>,
     /// the configuration's chain kinds in position order (fillers included) and each projected position's place among them
-    pub(super) kl: Vec<Kind>,
+    pub(super) kl: Vec<ChainKind>,
     pub(super) rel_pos: Vec<usize>,
     /// (the cap-free bound's early stop) the states by weight, highest first, and the weight from each on (built on first use)
     pub(super) order: std::cell::OnceCell<(Vec<u32>, Vec<f64>)>,

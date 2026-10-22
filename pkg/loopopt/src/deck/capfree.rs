@@ -1,7 +1,7 @@
 //! The state-conditioned bounds of one configuration (`StateBound`): the band pass's (`plain`) and the cap-free band's,
 //! its cheap bound (`cheap`) tried before the per-state one (`full`); and the search-wide ratio tables the cap-free
 //! bounds read (`CapFreeRatios`).
-use super::{KeyLevel, Kind, LandPre, Model, SbCfg, event_pmf_job, key_level};
+use super::{ChainKind, KeyLevel, LandPre, Model, SbCfg, event_pmf_job, key_level};
 use std::{cell::RefCell, rc::Rc};
 
 /// Landing factors and entry misses used by both state-conditioned bounds.
@@ -67,7 +67,7 @@ pub(super) struct CapFreeRatios<'tab> {
     landing_factors: &'tab [LandPre],
     entry_rows: &'tab [Option<Vec<(f64, f64)>>],
     groups: &'tab [&'tab Vec<usize>],
-    kinds: &'tab [Kind],
+    kinds: &'tab [ChainKind],
     pub(super) z: Vec<u32>,
     group_ratios: RefCell<Vec<Option<Rc<Vec<f64>>>>>,
     entry_ratios: RefCell<crate::FxMap<usize, Rc<Vec<f64>>>>,
@@ -80,7 +80,7 @@ impl<'tab> CapFreeRatios<'tab> {
         cap_free: bool,
         kind_count: usize,
         groups: &'tab [&'tab Vec<usize>],
-        kinds: &'tab [Kind],
+        kinds: &'tab [ChainKind],
     ) -> Self {
         let LandingBoundTables { factors: landing_factors, entry_rows, target_count, outfit_count } = tables;
         let z: Vec<u32> = (0..outfit_count)
@@ -131,7 +131,7 @@ impl<'tab> CapFreeRatios<'tab> {
             return Rc::clone(r);
         }
         let (target_count, outfit_count) = (self.target_count, self.outfit_count);
-        let stop = if gi < self.kind_count { self.kinds[gi].1 as usize } else { 0 };
+        let stop = if gi < self.kind_count { self.kinds[gi].stop as usize } else { 0 };
         let mut m = vec![0.0f64; (stop + 1) * outfit_count];
         for o in 0..outfit_count {
             let den = self.den(o);
@@ -278,7 +278,8 @@ impl<'cfg> StateBound<'cfg> {
             group_ratios = (0..group_count).map(|g| ratios.group(cgs[g].0)).collect();
         }
         let chain_slots: Vec<usize> = (0..slots.len()).filter(|&i| slots[i].chain_position != usize::MAX).collect();
-        let maximum_level = configuration.as_ref().map_or(0, |c| c.kl.iter().map(|k| k.1 as usize).max().unwrap_or(0));
+        let maximum_level =
+            configuration.as_ref().map_or(0, |c| c.kl.iter().map(|k| k.stop as usize).max().unwrap_or(0));
         let state_cache = StateBoundCache {
             state_classes: vec![],
             filled_stamps: vec![],

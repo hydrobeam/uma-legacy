@@ -1,9 +1,9 @@
 //! Career candidates, bounds and the best careers.
-use super::LAST_SOLVE;
 use super::{
-    Env, Pool, SOLVE_KEEP, aff_factor, dominates, holds_fix, inherit_q, insp_miss, mix_term, now_ms, part_sum, prof,
-    shared, spark_scale,
+    Env, Pool, ProductProof, SOLVE_KEEP, aff_factor, dominates, holds_fix, inherit_q, insp_miss, mix_term, now_ms,
+    part_sum, prof, shared, spark_scale,
 };
+use super::{KeptSolve, LAST_SOLVE};
 use crate::deck::SelectedDeck;
 use crate::deck::career::Lineage;
 use crate::{UmaIndex, UmaTable};
@@ -36,20 +36,35 @@ impl Bar {
 /// before it orders before everything after it) and sorts only the chunk, so the sequence is the full sort's, element
 /// for element, and a caller that stops early sorts little
 pub(crate) struct Ranked {
-    v: Vec<(f64, usize, usize)>,
+    v: Vec<RankedPair>,
     upto: usize,
     i: usize,
 }
 
+/// One of a trainee's legal parent pairs with its ceiling (`Env::ranked_pairs`).
+#[derive(Clone, Copy)]
+pub(crate) struct RankedPair {
+    /// The pair's ceiling for the trainee.
+    pub(crate) ceiling: f64,
+    /// The first parent (legacy index).
+    pub(crate) first_parent: usize,
+    /// The second parent (legacy index).
+    pub(crate) second_parent: usize,
+}
+
 impl Iterator for Ranked {
-    type Item = (f64, usize, usize);
+    type Item = RankedPair;
     fn next(&mut self) -> Option<Self::Item> {
         if self.i >= self.v.len() {
             return None;
         }
         if self.i >= self.upto {
-            let ord = |x: &(f64, usize, usize), y: &(f64, usize, usize)| {
-                y.0.partial_cmp(&x.0).unwrap().then(x.1.cmp(&y.1)).then(x.2.cmp(&y.2))
+            let ord = |x: &RankedPair, y: &RankedPair| {
+                y.ceiling
+                    .partial_cmp(&x.ceiling)
+                    .unwrap()
+                    .then(x.first_parent.cmp(&y.first_parent))
+                    .then(x.second_parent.cmp(&y.second_parent))
             };
             let rest = &mut self.v[self.upto..];
             // (chunks of 256, then 4x what is sorted: each selection scans the whole remainder)
@@ -157,8 +172,10 @@ impl Env<'_> {
     /// Whether a product proof of `ruled` does (`solve`: some `ruled_bound` (1 + 2e-9) < th; 2e-9: the rounding of the
     /// product value and of rise)
     #[inline]
-    pub(crate) fn ruled_out(&self, t: UmaIndex, q: &[f64], c: f64, ruled: &[(Vec<f64>, f64)], bar: Bar) -> bool {
-        ruled.iter().any(|(rq, s)| bar.out(self.ruled_bound(t, q, c, rq, *s), 2e-9))
+    pub(crate) fn ruled_out(&self, t: UmaIndex, q: &[f64], c: f64, ruled: &[ProductProof], bar: Bar) -> bool {
+        ruled
+            .iter()
+            .any(|proof| bar.out(self.ruled_bound(t, q, c, &proof.inheritance_chances, proof.product_bound), 2e-9))
     }
     /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
     /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
@@ -171,7 +188,8 @@ impl Env<'_> {
         t: UmaIndex,
         keep: impl Fn(usize, usize) -> bool,
     ) -> Ranked {
-        Ranked { v: self.gen_cands(p, fix, &[t], keep, |ub, _, _, a, b| (ub, a, b)), upto: 0, i: 0 }
+        let pair = |ceiling, _, _, first_parent, second_parent| RankedPair { ceiling, first_parent, second_parent };
+        Ranked { v: self.gen_cands(p, fix, &[t], keep, pair), upto: 0, i: 0 }
     }
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
@@ -717,7 +735,7 @@ impl Env<'_> {
         match twins.get(&tk) {
             Some(Twin::Done(v, sel, pv)) => {
                 if let Some(s) = pv {
-                    self.ruled[ct].push((q.to_vec(), *s));
+                    self.ruled[ct].push(ProductProof { inheritance_chances: q.to_vec(), product_bound: *s });
                 }
                 DeckRes::Done(*v, sel.clone(), true)
             }
@@ -728,7 +746,7 @@ impl Env<'_> {
                 let res = self.best_deck(t, c, th, &starts, n_scored);
                 let pv = self.last_product_bound.take();
                 if let Some(s) = pv {
-                    self.ruled[ct].push((q.to_vec(), s));
+                    self.ruled[ct].push(ProductProof { inheritance_chances: q.to_vec(), product_bound: s });
                 }
                 match &res {
                     DeckRes::Done(v, sel, true) => {
@@ -837,10 +855,10 @@ pub(crate) struct SearchRequest<'request> {
 pub(crate) fn solve_kept(env: &mut Env, key: u64, request: &SearchRequest) -> Solved {
     let kept = LAST_SOLVE.with(|cache| {
         let mut cache = cache.borrow_mut();
-        let index = cache.iter().position(|entry| entry.0 == key)?;
+        let index = cache.iter().position(|entry| entry.key == key)?;
         let entry = cache.remove(index);
         cache.push(entry);
-        cache.last().map(|entry| (entry.1.clone(), entry.2.clone()))
+        cache.last().map(|entry| (entry.solved.clone(), entry.ruled.clone()))
     });
     match kept {
         Some((solved, ruled)) if env.solved_fits(&solved, &ruled, request.pool) => {
@@ -852,8 +870,8 @@ pub(crate) fn solve_kept(env: &mut Env, key: u64, request: &SearchRequest) -> So
                 env.solve(request.pool, request.fixed_parents, request.trainees, request.per_trainee, request.top);
             LAST_SOLVE.with(|cache| {
                 let mut cache = cache.borrow_mut();
-                cache.retain(|entry| entry.0 != key);
-                cache.push((key, solved.clone(), env.ruled.clone()));
+                cache.retain(|entry| entry.key != key);
+                cache.push(KeptSolve { key, solved: solved.clone(), ruled: env.ruled.clone() });
                 while cache.len() > SOLVE_KEEP {
                     cache.remove(0);
                 }

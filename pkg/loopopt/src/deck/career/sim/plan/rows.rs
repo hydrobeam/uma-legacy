@@ -1,15 +1,15 @@
 //! Plan rows, their scoring and promotion.
 use super::{
-    Bests, CacheStamp, CachedSearch, CareerScore, KeptScoring, OPT_SHOW, PROXY_SAVE, ParentPool, PlanCombination,
-    PlanContext, PlanFit, PlanInputs, PlanProfile, PlanRows, PlanScores, PlanSearches, Trio, Want, best_sur, capped,
-    certified, count_refit, exact_no_borrow_career, found_career, found_lineage, is_full, lift_eff, plan_combinations,
-    plan_continuations, plan_sides, same_career, score_career, set_plan_wins, stamp_ok, stamped, trio_v,
-    unordered_parents,
+    Bests, CacheStamp, CachedSearch, CareerScore, KeptScoring, LiftStats, OPT_SHOW, PROXY_SAVE, ParentPool,
+    PlanCombination, PlanContext, PlanFit, PlanInputs, PlanProfile, PlanRows, PlanScores, PlanSearches, Trio, Want,
+    best_sur, capped, certified, count_refit, exact_no_borrow_career, found_career, found_lineage, is_full,
+    plan_combinations, plan_continuations, plan_sides, same_career, score_career, set_plan_wins, stamp_ok, stamped,
+    trio_v, unordered_parents,
 };
 use crate::deck::career::sim::plan::Cont;
 use crate::deck::career::sim::plan::candidates::{MadeExact, class_winners, make_row_exact, proxy_career};
 use crate::deck::career::sim::{Cache, Found, Legacy, Sim, SkillJob, Value, json, now_ms, prof, progress};
-use crate::deck::career::{Career, Lineage};
+use crate::deck::career::{Career, Lineage, RankedPair};
 
 /// Scores within this many careers per run of the best (or 5% of it) count as tied
 const NEAR: f64 = 0.25;
@@ -38,7 +38,7 @@ pub(crate) struct PlanRow {
     pub(crate) career: Found,
     /// Per candidate (`PlanCandidates::trainees` order): P(her veteran lifts the candidate's odds) and the summed
     /// lifted odds (`CareerScore::lift_stats`); zeros where only Cont and `proxy_check` would read them.
-    pub(crate) lift_stats: Vec<(f64, f64)>,
+    pub(crate) lift_stats: Vec<LiftStats>,
     pub(crate) origin: RowOrigin,
     /// The career was searched exactly (or certified); false: a proxy from her deck class's winning decks.
     pub(crate) exact: bool,
@@ -64,7 +64,7 @@ impl PlanRow {
     pub(crate) const fn exact(
         trainee: crate::UmaIndex,
         career: Found,
-        lift_stats: Vec<(f64, f64)>,
+        lift_stats: Vec<LiftStats>,
         origin: RowOrigin,
     ) -> Self {
         Self { trainee, career, lift_stats, origin, exact: true, stats_stamp: None, scoring: None }
@@ -74,7 +74,7 @@ impl PlanRow {
     pub(crate) const fn proxy(
         trainee: crate::UmaIndex,
         career: Found,
-        lift_stats: Vec<(f64, f64)>,
+        lift_stats: Vec<LiftStats>,
         origin: RowOrigin,
         stats_stamp: Option<CacheStamp>,
     ) -> Self {
@@ -264,7 +264,7 @@ fn looped_career(
         is_full[a] && is_full[b] && (!only_newest || b == newest)
     });
     let mut best = start;
-    for (ceiling, a, b) in pairs {
+    for RankedPair { ceiling, first_parent: a, second_parent: b } in pairs {
         if ceiling <= best.as_ref().map_or(0.0, |f| f.value) {
             break;
         }
@@ -323,7 +323,7 @@ pub(crate) fn add_no_borrow_rows(
             exact_no_borrow_career(sim, context, searches, trainee, buf)
         };
         let Some(career) = career else { continue };
-        let no_lifts = vec![(0.0, 0.0); candidate_count];
+        let no_lifts = vec![LiftStats::default(); candidate_count];
         added.push(if candidates.proxies_enabled {
             PlanRow::proxy(trainee, career, no_lifts, RowOrigin::NoBorrow, None)
         } else {
@@ -436,7 +436,7 @@ pub(crate) fn score_and_promote_rows(
                     // ("later") her best career has a borrowed parent: that row is a builder now, and the proxy's career,
                     // without one, her nb row (scored below)
                     if !input.is_runnable(&row.career) {
-                        let no_lifts = vec![(0.0, 0.0); candidates.trainees.len()];
+                        let no_lifts = vec![LiftStats::default(); candidates.trainees.len()];
                         plan_rows.rows.push(PlanRow::proxy(x, old_career.clone(), no_lifts, RowOrigin::NoBorrow, None));
                     }
                 }
@@ -567,15 +567,15 @@ pub(crate) fn check_plan_proxies(
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let score_base = scores.fit.score_base(candidates);
-    let efficiencies = |x: crate::UmaIndex, lift_stats: &[(f64, f64)]| -> Vec<f64> {
+    let efficiencies = |x: crate::UmaIndex, lift_stats: &[LiftStats]| -> Vec<f64> {
         (0..candidate_count)
             .map(|ui| {
-                let (lift_chance, lifted_odds_sum) = lift_stats[ui];
+                let lift = lift_stats[ui];
                 let odds = candidates.current_odds[ui];
-                if data.umas[candidates.trainees[ui]].id == data.umas[x].id || lift_chance <= 0.0 || odds <= 0.0 {
+                if data.umas[candidates.trainees[ui]].id == data.umas[x].id || lift.lift_chance <= 0.0 || odds <= 0.0 {
                     0.0
                 } else {
-                    lift_eff(lift_chance, lifted_odds_sum, odds)
+                    lift.efficiency(odds)
                 }
             })
             .collect()

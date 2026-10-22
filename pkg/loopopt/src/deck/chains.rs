@@ -8,11 +8,26 @@ use super::HashMap;
 /// variance = mean, fits much worse). Decks with two chain cards finish both chains in 83% of such runs, 80% predicted.
 pub(super) const CHAIN_N: u32 = 21;
 pub(super) const CHAIN_P: f64 = 0.35;
-/// A deck entry's chain kind: (chain links, link it stops after, stop risk). A card played normally stops at its last
-/// link; a chosen early end stops sooner. While it runs, an entry is picked with weight = links it has left
-/// (length - done); once it reaches its stop it is out. Stop risk: links where IT's default
-/// choice ends the chain on k of n outcomes, one byte per link 1..=4 ((k << 4) | n; 0 = none), only links before the stop.
-pub(super) type Kind = (u8, u8, u32);
+/// A deck entry's chain kind. A card played normally stops at its last link; a chosen early end stops sooner. While it
+/// runs, an entry is picked with weight = links it has left (length - done); once it reaches its stop it is out.
+/// Ordered and hashed as the tuple (links, stop, stop risk).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub(super) struct ChainKind {
+    /// The card's chain links.
+    pub(super) links: u8,
+    /// The link it stops after.
+    pub(super) stop: u8,
+    /// Links where IT's default choice ends the chain on k of n outcomes, one byte per link 1..=4 ((k << 4) | n; 0 =
+    /// none), only links before the stop (`stop_risk_code`).
+    pub(super) stop_risk: u32,
+}
+
+impl ChainKind {
+    /// A pal's or a chainless card's entry: no chain.
+    pub(super) const NONE: Self = Self { links: 0, stop: 0, stop_risk: 0 };
+    /// The fillers' chain: two links, played to the end.
+    pub(super) const FILLER: Self = Self { links: 2, stop: 2, stop_risk: 0 };
+}
 pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
     risk.iter()
         .filter(|r| r.0 >= 1 && r.0 < stop && r.0 <= 4 && r.2 > 0)
@@ -55,8 +70,8 @@ pub(super) fn pmf_key() -> (u32, u64) {
         (n, p.to_bits())
     })
 }
-/// Where an entry of stop risk `risk` (`Kind`) and planned stop `stop` stops: [(realised stop, probability)], the risky
-/// links in order then the planned stop with what is left. The one decoding of `Kind`'s risk bytes
+/// Where an entry of stop risk `risk` (`ChainKind::stop_risk`) and planned stop `stop` stops: [(realised stop,
+/// probability)], the risky links in order then the planned stop with what is left. The one decoding of the risk bytes
 fn stop_alts(stop: u8, risk: u32) -> Vec<(u8, f64)> {
     let mut alternatives = vec![];
     let mut surviving_probability = 1.0f64;
@@ -74,8 +89,8 @@ fn stop_alts(stop: u8, risk: u32) -> Vec<(u8, f64)> {
 }
 /// The stop-risk mixture: every realisation of where the entries stop (one alternative of `stop_alts` each, the first
 /// entry's choice varying fastest), with its probability w (the product in entry order), `visit(w, stops)` where w > 0.
-fn for_each_realisation(kinds: &[Kind], mut visit: impl FnMut(f64, &[u8])) {
-    let alternatives: Vec<Vec<(u8, f64)>> = kinds.iter().map(|&(_, stop, risk)| stop_alts(stop, risk)).collect();
+fn for_each_realisation(kinds: &[ChainKind], mut visit: impl FnMut(f64, &[u8])) {
+    let alternatives: Vec<Vec<(u8, f64)>> = kinds.iter().map(|kind| stop_alts(kind.stop, kind.stop_risk)).collect();
     let n = kinds.len();
     let mut choices = vec![0usize; n];
     let mut stops = vec![0u8; n];
@@ -167,15 +182,19 @@ fn chain_walk(
 /// entries' progress; every transition raises the index, so one pass in index order is a topological order.
 /// Entries are sorted first so the floating-point summation order is canonical (the reference sums its states in
 /// another order, so the two agree to float noise).
-pub(super) fn chain_marginals(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
-    thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
-    let mut ks: Vec<Kind> = kinds.to_vec();
+pub(super) fn chain_marginals(kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
+    thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), HashMap<ChainKind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
+    let mut ks: Vec<ChainKind> = kinds.to_vec();
     ks.sort_unstable();
     let key = (ks, pmf_key());
     if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) {
         return r;
     }
-    let r = if key.0.iter().any(|k| k.2 != 0) { chain_marginals_risk(&key.0) } else { chain_marginals_dense(&key.0) };
+    let r = if key.0.iter().any(|k| k.stop_risk != 0) {
+        chain_marginals_risk(&key.0)
+    } else {
+        chain_marginals_dense(&key.0)
+    };
     CM.with(|c| c.borrow_mut().insert(key, r.clone()));
     r
 }
@@ -183,11 +202,12 @@ pub(super) fn chain_marginals(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
 /// chain events the run gets, so the run is a mixture over where each risky entry would stop. Each realisation is a
 /// plain kind (links, realised stop): the entry competes for events with its full chain until it stops, then frees
 /// its remaining slots, exactly as a chosen early end does. Exact.
-pub(super) fn chain_marginals_risk(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
+pub(super) fn chain_marginals_risk(kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
     let n = kinds.len();
-    let mut acc: Vec<Vec<f64>> = kinds.iter().map(|k| vec![0.0; k.1 as usize]).collect();
+    let mut acc: Vec<Vec<f64>> = kinds.iter().map(|k| vec![0.0; k.stop as usize]).collect();
     for_each_realisation(kinds, |w, stops| {
-        let real: Vec<Kind> = (0..n).map(|i| (kinds[i].0, stops[i], 0)).collect();
+        let real: Vec<ChainKind> =
+            (0..n).map(|i| ChainKind { links: kinds[i].links, stop: stops[i], stop_risk: 0 }).collect();
         let m = chain_marginals(&real);
         for i in 0..n {
             if let Some(v) = m.get(&real[i]) {
@@ -197,26 +217,26 @@ pub(super) fn chain_marginals_risk(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
             }
         }
     });
-    let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
+    let mut out: HashMap<ChainKind, Vec<f64>> = HashMap::new();
     for i in 0..n {
         out.entry(kinds[i]).or_insert_with(|| acc[i].clone());
     }
     out
 }
-pub(super) fn chain_marginals_dense(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
+pub(super) fn chain_marginals_dense(kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
     let n = kinds.len();
-    let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
+    let mut out: HashMap<ChainKind, Vec<f64>> = HashMap::new();
     if n == 0 {
         return out;
     }
     let emax = 60usize;
     let event_weights = event_pmf(emax);
-    let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
+    let total: usize = kinds.iter().map(|kind| kind.stop as usize).sum();
     let last = emax.min(total);
-    let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
+    let width = kinds.iter().map(|k| k.stop as usize).max().unwrap_or(0).max(1);
     // done[e][i][k] = P(after e events entry i has >= k+1 links done)
     let mut done = vec![0.0f64; (last + 1) * n * width];
-    let (links, stops): (Vec<u8>, Vec<u8>) = kinds.iter().map(|k| (k.0, k.1)).unzip();
+    let (links, stops): (Vec<u8>, Vec<u8>) = kinds.iter().map(|k| (k.links, k.stop)).unzip();
     chain_walk(&links, &stops, last, &vec![0; n], |s, lvl, _, pi| {
         if lvl >= 1 {
             let b = lvl * n * width;
@@ -239,7 +259,7 @@ pub(super) fn chain_marginals_dense(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     }
     for i in 0..n {
         let kd = kinds[i];
-        out.entry(kd).or_insert_with(|| (0..kd.1 as usize).map(|k| fired[i][k]).collect());
+        out.entry(kd).or_insert_with(|| (0..kd.stop as usize).map(|k| fired[i][k]).collect());
     }
     out
 }
@@ -247,16 +267,16 @@ pub(super) fn chain_marginals_dense(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds
 /// (reference implementation, for the tests).
 #[cfg(test)]
-pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
+pub(super) fn chain_marginals_ref(kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
     let n = kinds.len();
-    let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
+    let mut out: HashMap<ChainKind, Vec<f64>> = HashMap::new();
     if n == 0 {
         return out;
     }
     let emax = 60usize;
     let event_weights = event_pmf(emax);
-    let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
-    let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
+    let total: usize = kinds.iter().map(|kind| kind.stop as usize).sum();
+    let width = kinds.iter().map(|k| k.stop as usize).max().unwrap_or(0).max(1);
     let mut fired = vec![vec![0.0f64; width]; n]; // P(entry i has >= k+1 links done), accumulated over E
     let mut st: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
     st.insert(vec![0; n], 1.0);
@@ -264,7 +284,7 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
         let mut ns: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
         for (s, p) in &st {
             let w: Vec<f64> =
-                (0..n).map(|i| if s[i] < kinds[i].1 { f64::from(kinds[i].0 - s[i]) } else { 0.0 }).collect();
+                (0..n).map(|i| if s[i] < kinds[i].stop { f64::from(kinds[i].links - s[i]) } else { 0.0 }).collect();
             let wsum: f64 = w.iter().sum();
             if wsum == 0.0 {
                 *ns.entry(s.clone()).or_insert(0.0) += p;
@@ -298,7 +318,7 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     }
     for i in 0..n {
         let kd = kinds[i];
-        out.entry(kd).or_insert_with(|| (0..kd.1 as usize).map(|k| fired[i][k]).collect());
+        out.entry(kd).or_insert_with(|| (0..kd.stop as usize).map(|k| fired[i][k]).collect());
     }
     out
 }
@@ -307,14 +327,14 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
 /// Memoised per sorted kind list; `kinds` must be sorted. Exact: a state at level L (L events taken) is final
 /// with P(N = L) unless every entry is at its stop, then with P(N >= L); stop-risk entries are the mixture over
 /// where they stop, as in `chain_marginals_risk`.
-pub(super) fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
-    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<Vec<(Vec<u8>, f64)>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
+pub(super) fn chain_states(kinds: &[ChainKind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
+    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<Vec<(Vec<u8>, f64)>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let key = (kinds.to_vec(), pmf_key());
     if let Some(r) = CS.with(|c| c.borrow().get(&key).cloned()) {
         return r;
     }
     let n = kinds.len();
-    let links: Vec<u8> = kinds.iter().map(|k| k.0).collect();
+    let links: Vec<u8> = kinds.iter().map(|k| k.links).collect();
     let mut acc: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
     for_each_realisation(kinds, |w, stops| {
         let total: usize = stops.iter().map(|&x| x as usize).sum();
@@ -437,9 +457,9 @@ impl KeyLevel {
         ok
     }
 }
-pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
-    thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(crate::FxMap::default()); }
-    thread_local! { static KL_LAST: std::cell::RefCell<Option<(Vec<Kind>, (u32, u64), std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
+pub(super) fn key_level(kinds: &[ChainKind]) -> std::rc::Rc<KeyLevel> {
+    thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(crate::FxMap::default()); }
+    thread_local! { static KL_LAST: std::cell::RefCell<Option<(Vec<ChainKind>, (u32, u64), std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
     let pk = pmf_key();
     if let Some(r) =
         KL_LAST.with(|c| c.borrow().as_ref().filter(|x| x.0 == kinds && x.1 == pk).map(|x| std::rc::Rc::clone(&x.2)))
@@ -454,7 +474,7 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
     let (bn, _) = CHAIN_EVENTS.with(std::cell::Cell::get);
     let nmax = bn as usize;
     let n = kinds.len();
-    let dims: Vec<usize> = kinds.iter().map(|k| k.1 as usize + 1).collect();
+    let dims: Vec<usize> = kinds.iter().map(|k| k.stop as usize + 1).collect();
     let mut gstride = vec![1usize; n];
     let mut gsize = 1usize;
     for i in 0..n {
@@ -463,7 +483,7 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
     }
     // per level, the distribution over the grid of progress vectors
     let mut lev = vec![vec![0.0f64; gsize]; nmax + 1];
-    let links: Vec<u8> = kinds.iter().map(|k| k.0).collect();
+    let links: Vec<u8> = kinds.iter().map(|k| k.links).collect();
     for_each_realisation(kinds, |w, stops| {
         let total: usize = stops.iter().map(|&x| x as usize).sum();
         chain_walk(&links, stops, total, &gstride, |_, lvl, gi, pi| {

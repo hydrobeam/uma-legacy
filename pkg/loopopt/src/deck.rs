@@ -26,7 +26,9 @@ use super::{
     Choice, Data, Deserialize, FxMap, Instant, NONE, NT, Res, Sched, Serialize, Uma, best_response, chart_race_name,
     feasible, members, optimize_fam, pair_ceilings, pk, probs, when, wval,
 };
-use crate::skills::{GEN_GOLD, Model, SkillJob, SkillsRaw, chart_rows, check_sizes, lins, member_json};
+use crate::skills::{
+    GEN_GOLD, MemberLineage, Model, OutfitOption, SkillJob, SkillsRaw, chart_rows, check_sizes, lins, member_json,
+};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -221,7 +223,7 @@ use self::{
         test_caps,
     },
     chains::{
-        CHAIN_EVENTS, CHAIN_N, CHAIN_P, KeyLevel, Kind, chain_marginals, chain_states, event_pmf_job, key_level,
+        CHAIN_EVENTS, CHAIN_N, CHAIN_P, ChainKind, KeyLevel, chain_marginals, chain_states, event_pmf_job, key_level,
         stop_risk_code,
     },
     hints::{hint_base, hint_miss, hint_spec, scenario_name},
