@@ -10,9 +10,14 @@ export default async function panels(b) {
   check('deck card panel: GameTora card link', /^https:\/\/gametora\.com\/umamusume\/supports\/\d+-[a-z0-9-]+$/.test(href || ''), href);
   const side = await pg.evaluate(() => { const c = document.querySelector('.deck .dc').getBoundingClientRect(), p = document.querySelector('.cpop').getBoundingClientRect(); return { beside: p.left >= c.right || p.right <= c.left, top: Math.abs(p.top - c.top) }; });
   check('deck card panel opens beside the card (desktop), not over the deck below', side.beside && side.top <= 2, JSON.stringify(side));
-  const cid = await dc.getAttribute('data-cid');
+  // the picker's tiles carry no card id: a tile is known by its picture's title, the card's full name (images.js
+  // cardAv, art or not; names are unique), which the deck card's picture carries too; null when no tile shows the card
+  const cardName = await dc.locator('.cav').getAttribute('title');
+  const pickerPressed = () => pg.evaluate((name) => [...document.querySelectorAll('#cards .ct')].find(t => t.querySelector('.cav')?.title === name)?.getAttribute('aria-pressed') ?? null, cardName);
+  const pressedBefore = await pickerPressed();
   await pg.locator('.cpop .sw').click();
-  check('deck card Owned switch updates the card picker', await pg.evaluate((_id) => [...document.querySelectorAll('#cards .ct')].some(t => t.querySelector('img') && t.getAttribute('aria-pressed') === 'false'), cid));
+  const pressedAfter = await pickerPressed();
+  check('deck card Owned switch updates the card picker', pressedBefore === 'true' && pressedAfter === 'false', `${cardName}: ${pressedBefore} → ${pressedAfter}`);
   check('… and greys the card in the result', (await pg.locator('.deck .dc.off').count()) > 0);
   await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape');
   check('Escape closes the panel', await pg.evaluate(() => document.querySelector('.cpop').hidden));
