@@ -19,6 +19,10 @@ where the analysis is by pal count:
   - N per pal count (1-4 pals): the binomial grid MLE on each pal count's runs;
   - the marker allowance: the share of links implied fired (a later link of the card shows) whose marker is missing,
     and the best p at n = 21 under allowances 0.01-0.045 and with none on the runs without such a contradiction;
+  - the decks with Sasami Anshinzawa [This Might Sting!] and the Inari One careers against the other runs: separate
+    free fits, and p at n = 21 re-fitted on each side;
+  - the candidate Binomial(18, 0.405) against Binomial(21, 0.35): in-sample, and the binomial fitted on the general
+    collection (batches 0-17) scored on the other runs;
   - final links by pal count against Binomial(21, 0.35) and Poisson(7.1);
   - final links by card against the model, the spread between cards with 60+ observations (run-clustered Wald chi2);
   - the allocation rule: slot rule against card rule, per-observation log-likelihood, and final links at 2 and 0 pals;
@@ -28,7 +32,7 @@ where the analysis is by pal count:
     exact over the chain states on every deck.
 The model: N chain events per run; each advances one running non-pal card's chain by a link, the card picked with
 weight = links left ("slots") or uniformly ("cards"); stop risk (card_events.json) ends a chain at link l with k/n.
-Fits of N are exact over the chain states, with a 3% chance that a fired link's marker does not show (without it a run
+Fits of N are exact over the chain states, with a 2% chance that a fired link's marker does not show (without it a run
 whose later link shows while an earlier one does not has likelihood 0; allowance_claims measures the rate); the
 allocation, final-link and early-link comparisons score each observation on its own
 (P(card reaches link) on the run's deck). Intervals on rates over observations that come several to a run (final
@@ -101,10 +105,14 @@ class BinomialFit(NamedTuple):
 Pmf = Sequence[float] | np.ndarray
 
 SEC: str = "8"
-EPS: float = 0.03  # chance a fired link's marker hint does not show (the fits' allowance)
+EPS: float = 0.02  # chance a fired link's marker hint does not show (the fits' allowance; allowance_claims measures it)
 KMAX: int = 16  # distribution-free fit: P(N = 0..15) and P(N >= 16)
 ALL: set[int] = {0, 1, 2, 3, 4, 5}  # pal counts of decks with a chain card
 CHI1: float = 1.920729  # chi2(1) 95% / 2
+CANDIDATE: tuple[int, float] = (18, 0.405)  # the binomial proposed for N in place of (CHAIN_N, CHAIN_P)
+ANSHINZAWA: int = 30080  # [This Might Sting!] Sasami Anshinzawa, a pal card: decks with her reach more chain events
+INARI: int = 1034  # Inari One: her careers reach fewer
+GENERAL_BATCHES: range = range(18)  # the general collection's batches; later ones were fetched for targeted tests
 MISC: dict[Any, Any] = {}  # numbers the findings and the detail use that the document does not state
 
 
@@ -637,6 +645,9 @@ def fit_claims() -> list[common.Value | common.Finding]:
         ],
         V("Conway-Maxwell-Poisson: nats behind distribution-free", llp - l_cmp),
         V("Conway-Maxwell-Poisson: LR p", float(chi2.sf(2 * (llp - l_cmp), KMAX - 2))),
+        V("best binomial n free over Conway-Maxwell-Poisson: nats", lb - l_cmp, note="two parameters each"),
+        *candidate_claims(xs, M),
+        *property_claims(xs, M),
     ]
     by: collections.defaultdict[int, list[int]] = collections.defaultdict(list)  # scenario -> row indices
     for i, x in enumerate(xs):
@@ -667,6 +678,65 @@ def fit_claims() -> list[common.Value | common.Finding]:
         "by_pals": dict(sorted(collections.Counter(pals(x.run) for x in xs).items())),
     }
     return out
+
+
+def property_claims(xs: list[Row], M: np.ndarray) -> list[common.Value | common.Finding]:
+    """N on the decks with Sasami Anshinzawa [This Might Sting!] and on the Inari One careers against the other runs: each
+    side's free-fit mean, the gain of separate free fits (KMAX parameters), and of p at n = CHAIN_N re-fitted on each
+    side (one parameter); then Binomial(CHAIN_N, CHAIN_P) on the runs with neither, and on the general collection"""
+    out: list[common.Value | common.Finding] = []
+    llp = ll(em(M), M)
+    _, l_one = best_binomial_p(M, CN)
+    sides = {
+        "Sasami Anshinzawa's card": np.array([any(c[0] == ANSHINZAWA for c in x.run["deck"]) for x in xs]),
+        "Inari One": np.array([x.run["chara"] == INARI for x in xs]),
+    }
+    for nm, g in sides.items():
+        (p_in, l_in), (p_out, l_out) = best_binomial_p(M[g], CN), best_binomial_p(M[~g], CN)
+        free_gain = ll(em(M[g]), M[g]) + ll(em(M[~g]), M[~g]) - llp
+        out += [
+            V(f"{nm}: runs", int(g.sum())),
+            V(f"{nm}: mean of N", mean_var(em(M[g]))[0]),
+            V(f"{nm}: mean of N, the other runs", mean_var(em(M[~g]))[0]),
+            V(f"{nm}: separate free fits, gain", free_gain, note=f"{KMAX} parameters"),
+            V(f"{nm}: separate free fits, LR p", float(chi2.sf(2 * free_gain, KMAX))),
+            V(f"{nm}: p at n = {CN}", p_in),
+            V(f"{nm}: p at n = {CN}, the other runs", p_out),
+            V(f"{nm}: p at n = {CN} on each side, LR p", float(chi2.sf(2 * (l_in + l_out - l_one), 1))),
+        ]
+    for nm, g in (
+        ("runs with neither", ~sides["Sasami Anshinzawa's card"] & ~sides["Inari One"]),
+        ("general collection", np.array([x.run["batch"] in GENERAL_BATCHES for x in xs])),
+    ):
+        gap = ll(em(M[g]), M[g]) - ll(lump(BIN), M[g])
+        out.append(V(f"Binomial(21, 0.35) LR p, {nm}", float(chi2.sf(2 * gap, KMAX - 2)), note=f"{g.sum()} runs"))
+    return out
+
+
+def candidate_claims(xs: list[Row], M: np.ndarray) -> list[common.Value | common.Finding]:
+    """the candidate Binomial(18, 0.405) against Binomial(CHAIN_N, CHAIN_P): in-sample on every run; the binomial fitted on
+    the general collection (n by profile, p re-fitted) scored on the other runs, per run paired (common.compare_held_out).
+    The 5-fold comparison with refit is held_out()'s binomial by likelihood"""
+    cn, cp = CANDIDATE
+    base = np.log(np.maximum(1e-300, M @ np.asarray(lump(BIN))))
+    cand = np.log(np.maximum(1e-300, M @ np.asarray(lump(binom_pmf(cn, cp)))))
+    gen = np.array([x.run["batch"] in GENERAL_BATCHES for x in xs])
+    gn, gp, _ = max(binom_profile(M[gen]), key=lambda x: x[2])
+    fit = np.log(np.maximum(1e-300, M[~gen] @ np.asarray(lump(binom_pmf(gn, gp)))))
+    out = common.compare_held_out(fit, base[~gen])
+    return [
+        V(f"candidate Binomial({cn}, {cp}): mean", cn * cp),
+        V(f"candidate Binomial({cn}, {cp}): variance", cn * cp * (1 - cp)),
+        V(f"candidate Binomial({cn}, {cp}) over Binomial(21, 0.35), in-sample: nats", float((cand - base).sum())),
+        V("fitted on the general collection: runs", int(gen.sum())),
+        V("fitted on the general collection: n", gn),
+        V("fitted on the general collection: p", gp),
+        V("fitted on the general collection, scored on the other runs: runs", int((~gen).sum())),
+        *[
+            V(f"fitted on the general collection over Binomial(21, 0.35), scored on the other runs: {w}", x)
+            for w, x in zip(("nats", "SE", "z"), out)
+        ],
+    ]
 
 
 # pal count -> (runs, the Binomial MLE on them)
@@ -739,8 +809,10 @@ def final_claims() -> tuple[list[common.Value | common.Finding], LinkTables]:
         o = b = p = 0.0
         n = 0
         rows: list[tuple[float, float, int]] = []
+        hers = [0.0, 0.0, 0]  # decks with Sasami Anshinzawa's card: observed, predicted, card-links
         for r, kinds, _, obs in xs:
             mb, mp = reach(kinds, BIN), reach(kinds, POIS)
+            her = any(c[0] == ANSHINZAWA for c in r["deck"])
             for ci, lk, seen in obs:
                 if lk == kinds[ci][0]:
                     o += seen
@@ -748,6 +820,8 @@ def final_claims() -> tuple[list[common.Value | common.Finding], LinkTables]:
                     p += mp[(ci, lk)]
                     n += 1
                     rows.append((seen, mb[(ci, lk)], r["id"]))
+                    if her:
+                        hers = [hers[0] + seen, hers[1] + mb[(ci, lk)], hers[2] + 1]
         lo, hi = obs_ci(rows)
         tab[npal] = FinalLinks(len(xs), o / n, b / n, p / n, n, lo, hi)
         out += [
@@ -758,6 +832,12 @@ def final_claims() -> tuple[list[common.Value | common.Finding], LinkTables]:
             V(f"final-link table, {npal} pals: Binomial(21, 0.35)", b / n),
             V(f"final-link table, {npal} pals: Poisson(7.1)", p / n),
         ]
+        if hers[2]:
+            out += [
+                V(f"final-link table, {npal} pals, Sasami Anshinzawa's card: card-links", hers[2]),
+                V(f"final-link table, {npal} pals, Sasami Anshinzawa's card: observed", hers[0] / hers[2]),
+                V(f"final-link table, {npal} pals, Sasami Anshinzawa's card: Binomial(21, 0.35)", hers[1] / hers[2]),
+            ]
     out.append(
         V(
             "final-link table: runs in all",
@@ -1128,10 +1208,32 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
     lrp = g["binomial(21, 0.35) LR p"]
     fs.append(
         F(
-            f"Binomial({CN}, {CP}) is not rejected against a free distribution of N (likelihood ratio on its {df:.0f} fewer "
-            "parameters, p > 0.05)",
-            lrp > 0.05,
-            f"{gap:.1f} nats behind distribution-free, LR p = {lrp:.3f}",
+            f"Known miss: Binomial({CN}, {CP}) is rejected against a free distribution of N (likelihood ratio on its {df:.0f} "
+            "fewer parameters, p < 0.05)",
+            lrp < 0.05,
+            f"{gap:.1f} nats behind distribution-free, LR p = {lrp:.2g}; best binomial (n free) "
+            f"{g['best binomial n free: nats behind distribution-free']:.1f} nats behind, p "
+            f"{g['best binomial n free: LR p']:.3f}; Binomial({CN}, {CP}) on the runs with neither Sasami Anshinzawa's card "
+            f"nor Inari One p {g['Binomial(21, 0.35) LR p, runs with neither']:.3f}, on the general collection p "
+            f"{g['Binomial(21, 0.35) LR p, general collection']:.3f}",
+        )
+    )
+    a_, i_ = "Sasami Anshinzawa's card", "Inari One"
+    fs.append(
+        F(
+            "N depends on the deck and the trainee where the model has it fixed: decks with Sasami Anshinzawa "
+            "[This Might Sting!] reach more chain events than the other runs and Inari One's careers fewer (p at n = 21 "
+            "re-fitted on each side, likelihood ratio on one parameter, p < 0.05)",
+            g[f"{a_}: p at n = {CN}"] > g[f"{a_}: p at n = {CN}, the other runs"]
+            and g[f"{a_}: p at n = {CN} on each side, LR p"] < 0.05
+            and g[f"{i_}: p at n = {CN}"] < g[f"{i_}: p at n = {CN}, the other runs"]
+            and g[f"{i_}: p at n = {CN} on each side, LR p"] < 0.05,
+            "; ".join(
+                f"{nm}: mean of N {g[f'{nm}: mean of N']:.2f} vs {g[f'{nm}: mean of N, the other runs']:.2f}, p "
+                f"{g[f'{nm}: p at n = {CN}']:.3f} vs {g[f'{nm}: p at n = {CN}, the other runs']:.3f} "
+                f"(LR p {g[f'{nm}: p at n = {CN} on each side, LR p']:.2g})"
+                for nm in (a_, i_)
+            ),
         )
     )
     pg_ = g["Poisson(7.1): nats behind distribution-free"]
@@ -1143,18 +1245,20 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
             f"{pg_:.1f} nats behind distribution-free, LR p = {chi2.sf(2 * pg_, dfp):.2g}",
         )
     )
-    vm, cp_, bp_ = (
+    vm, cp_, bp_, bc = (
         g["distribution-free: variance / mean"],
         g["Conway-Maxwell-Poisson: LR p"],
         g["best binomial n free: LR p"],
+        g["best binomial n free over Conway-Maxwell-Poisson: nats"],
     )
     fs.append(
         F(
             "N is under-dispersed (the free fit's variance / mean below 1, so no Poisson or over-dispersed family fits), and "
-            "the data do not single out the binomial among under-dispersed two-parameter families: the best binomial and the "
-            "Conway-Maxwell-Poisson fit are each not rejected against a free distribution (p > 0.05)",
-            vm < 1 and bp_ > 0.05 and cp_ > 0.05,
-            f"variance / mean {vm:.2f}; best binomial p {bp_:.3f}; CMP p {cp_:.3f}",
+            "of the two under-dispersed two-parameter families the binomial fits better: the best binomial's log-likelihood "
+            "is above the Conway-Maxwell-Poisson fit's (same parameter count, compared directly)",
+            vm < 1 and bc > 0,
+            f"variance / mean {vm:.2f}; best binomial {bc:+.1f} nats over CMP; against distribution-free, LR p binomial "
+            f"{bp_:.3f}, CMP {cp_:.3f}",
         )
     )
     hz = {
@@ -1228,11 +1332,18 @@ def link_findings(g: dict[str, Any], res: PalCountFits, fl: LinkTables, al: Allo
     pos = {npal: placement(t.binomial, t.low, t.high) for npal, t in fl.final.items()}
     fs.append(
         F(
-            "Final links: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 5, 4, 3, 1 and 0 pals and above it at 2 pals",
-            pos == {5: "inside", 4: "inside", 3: "inside", 2: "above", 1: "inside", 0: "inside"},
+            "Final links: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 3, 1 and 0 pals, above it "
+            "at 5 and 2 pals and below it at 4 pals",
+            pos == {5: "above", 4: "below", 3: "inside", 2: "above", 1: "inside", 0: "inside"},
             "; ".join(
                 f"{k} pals {fl.final[k].observed:.3f} [{fl.final[k].low:.3f}, {fl.final[k].high:.3f}] vs {fl.final[k].binomial:.3f} ({c})"
                 for k, c in sorted(pos.items(), reverse=True)
+            )
+            + "; decks with Sasami Anshinzawa's card: "
+            + ", ".join(
+                f"{k} pals {g[h + 'observed']:.3f} vs {g[h + 'Binomial(21, 0.35)']:.3f} ({g[h + 'card-links']:.0f} links)"
+                for k, h in ((k, f"final-link table, {k} pals, Sasami Anshinzawa's card: ") for k in (5, 4, 3, 2))
+                if h + "observed" in g
             ),
         )
     )
@@ -1343,7 +1454,7 @@ def detail() -> None:
     k, n, lo, hi = MISC["two-chain"]
     print(
         f"two plain 3-link SSRs, 4 pals: both finished {k}/{n} = {k / n:.3f} ({lo:.3f}-{hi:.3f}); "
-        f"model P(N >= 6) {sum(BIN[6:]):.3f}, with the 3% unseen allowance on each final link {sum(BIN[6:]) * (1 - EPS) ** 2:.3f}"
+        f"model P(N >= 6) {sum(BIN[6:]):.3f}, with the {EPS:.0%} unseen allowance on each final link {sum(BIN[6:]) * (1 - EPS) ** 2:.3f}"
     )
     print(
         "link 1 not reached, observed / Binomial(21, 0.35), by chain cards: "

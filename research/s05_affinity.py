@@ -11,7 +11,9 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
 Also checks the records' relation-point column (base) against pair and tri computed from master.mdb.
 Findings: each hypothesis's predicted pass sum against the observed one (z with a run-clustered sd: a run's trials
 share its lineage, so the variance sums each run's squared residual, observed minus predicted passes), the kappa
-grid maximum-likelihood estimate, the same sums for ordinary ancestors (the fit's premise), and the records' +3 per shared win.
+grid maximum-likelihood estimate, the same H0/H1 test with the affinity slope s in b (1 + s A / 100) refitted on the
+ordinary ancestors' trials (the fit's premise: the gap is not the ordinary trials' own misfit; section 3 keeps s = 1),
+the ordinary ancestors' observed / predicted at s = 1 as context, and the records' +3 per shared win.
 """
 
 import collections, math
@@ -176,9 +178,26 @@ def trials(R: list[Run], race: bool = False) -> list[Trial]:
     return out
 
 
-def roll(t: Trial, k: float) -> float:
-    """the trial's chance with tri(T, P, T) = k pair(T, P): min(1, b (1 + A / 100))"""
-    return min(1.0, t.base * (1 + (t.affinity_h0 + k * (t.affinity_h1 - t.affinity_h0)) / 100))
+def roll(t: Trial, k: float, slope: float = 1.0) -> float:
+    """the trial's chance with tri(T, P, T) = k pair(T, P): min(1, b (1 + slope A / 100))"""
+    return min(1.0, t.base * (1 + slope * (t.affinity_h0 + k * (t.affinity_h1 - t.affinity_h0)) / 100))
+
+
+def ordinary_slope(ts: list[Trial]) -> float:
+    """the maximum-likelihood affinity slope s in min(1, b (1 + s A / 100)) on the ordinary parents' and grandparents'
+    trials (categories 'P' and 'G', where tri(T, P, T) plays no part)"""
+    from scipy.optimize import minimize_scalar
+
+    ordinary = [t for t in ts if t.category in ("P", "G")]
+
+    def nll(s: float) -> float:
+        total = 0.0
+        for t in ordinary:
+            p = min(max(roll(t, 0, s), 1e-12), 1 - 1e-12)
+            total -= math.log(p if t.passed else 1 - p)
+        return total
+
+    return float(minimize_scalar(nll, bounds=(0.0, 3.0), method="bounded", options={"xatol": 1e-5}).x)
 
 
 def ll(ts: list[Trial], k: float) -> float:
@@ -261,14 +280,21 @@ def claims() -> list[Value | Finding]:
         Value(SEC, "LL(0) - LL(pair), nats", ll(with_parents, 0) - ll(with_parents, 1)),
         Value(SEC, "kappa fitted", grid[i]),
     ]
-    # findings: the self-grandparent rule, the premise that the rest of the model fits these trials, the +3 rule
+    # findings: the self-grandparent rule, the same rule with the slope refitted on the ordinary trials, the +3 rule
     z = {(k, h): zsum(ts, k, h) for k in ("G_self", "P_selfgp", "P", "G") for h in (0, 1)}
+    s = ordinary_slope(ts)
+    zs = {(k, h): zsum(ts, k, h, s) for k in ("G_self", "P_selfgp") for h in (0, 1)}
     out += [
         Value(SEC, "self-grandparent passes: z with 0", z["G_self", 0].z),
         Value(SEC, "self-grandparent passes: z with pair", z["G_self", 1].z),
+        Value(SEC, "ordinary parents: observed / predicted", z["P", 0].observed / z["P", 0].predicted),
+        Value(SEC, "ordinary grandparents: observed / predicted", z["G", 0].observed / z["G", 0].predicted),
+        Value(SEC, "affinity slope refitted on the ordinary trials", s),
+        Value(SEC, "self-grandparent passes, refitted slope: z with 0", zs["G_self", 0].z),
+        Value(SEC, "self-grandparent passes, refitted slope: z with pair", zs["G_self", 1].z),
     ]
-    ev: Callable[[str, int], str] = lambda c, h: (
-        f"{c}: {z[c, h].observed} obs, {z[c, h].predicted:.1f} pred, z {z[c, h].z:+.2f}"
+    ev: Callable[..., str] = lambda c, h, zz=z: (
+        f"{c}: {zz[c, h].observed} obs, {zz[c, h].predicted:.1f} pred, z {zz[c, h].z:+.2f}"
     )
     out.append(
         common.finding(
@@ -280,14 +306,18 @@ def claims() -> list[Value | Finding]:
             f"H1 {ev('P_selfgp', 1)}",
         )
     )
+    ratio: Callable[[str], str] = lambda c: f"{c} {z[c, 0].observed / z[c, 0].predicted:.3f} ({ev(c, 0)})"
     out.append(
         common.finding(
             SEC,
-            "Premise of the fit (implicit in RESEARCH.md): the inspiration model fits the ordinary "
-            "parents and grandparents of the same runs (each sum within 1.96 sd), so the self-grandparent "
-            "gap is not a model-wide offset",
-            all(abs(z[c, 0].z) < 1.96 for c in ("P", "G")),
-            f"{ev('P', 0)}; {ev('G', 0)}",
+            "Premise of the fit (implicit in RESEARCH.md): the self-grandparent gap is not the ordinary "
+            "trials' own misfit: with the affinity slope refitted on the ordinary parents and grandparents "
+            "of the same runs, the self-grandparent passes stay within 1.96 sd of the H0 sum and beyond "
+            "1.96 sd of the H1 sum",
+            abs(zs["G_self", 0].z) < 1.96 and abs(zs["G_self", 1].z) > 1.96,
+            f"slope {s:.3f}: H0 {ev('G_self', 0, zs)}; H1 {ev('G_self', 1, zs)}; their parents: "
+            f"H0 {ev('P_selfgp', 0, zs)}, H1 {ev('P_selfgp', 1, zs)}. Context, ordinary obs / pred at slope 1: "
+            f"{ratio('P')}; {ratio('G')}",
         )
     )
     tc = table_check(R)
@@ -305,15 +335,12 @@ def claims() -> list[Value | Finding]:
     return out
 
 
-def zsum(ts: list[Trial], cat: str, h: int) -> PassSum:
-    """(observed passes, predicted sum, z) for one ancestor category under H0 (h = 0) or H1 (h = 1); the sum's variance is
+def zsum(ts: list[Trial], cat: str, h: int, slope: float = 1.0) -> PassSum:
+    """(observed passes, predicted sum, z) for one ancestor category under H0 (h = 0) or H1 (h = 1), affinity scaled by
+    `slope` as in roll(); the sum's variance is
     run-clustered (common.cluster_chi2 with one group): C / (C - 1) times the sum over runs of (a run's passes - its
     predicted passes)^2, since one run's trials share a lineage and need not be independent"""
-    ps = [
-        (min(1.0, t.base * (1 + (t.affinity_h1 if h else t.affinity_h0) / 100)), t.passed, t.run)
-        for t in ts
-        if t.category == cat
-    ]
+    ps = [(roll(t, h, slope), t.passed, t.run) for t in ts if t.category == cat]
     o = sum(f for _, f, _ in ps)
     e = sum(p for p, _, _ in ps)
     x2, _, _ = common.cluster_chi2([(0, f - p) for p, f, _ in ps], [run for _, _, run in ps])

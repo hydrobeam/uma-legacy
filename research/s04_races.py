@@ -25,7 +25,8 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
 - where the residual sits: goal and chosen races from the 4th in a row; detail() also scores a goal race one streak
   position earlier (j - 1), a lead those cells suggest, on each half of the runs (record order).
 Findings: one per claim of section 4 (base under-predicts; pink-adjusted calibrated overall and per scenario; pink
-beats base; the streak penalty; the table not exact in-sample, the cells not better held out; the excess in goal races from the 4th in a row). The other
+beats base; the streak penalty; the table not exact in-sample, the cells not better held out; the excess in goal races from the 4th in a row;
+the previous race's result, as obs / pred after a loss over after a win, run-clustered, at each streak position). The other
 cells, the certain-outcome counts and the fits behind them are printed by detail().
 
 Conditional on selection: IT chose to run every non-goal attempt, presumably when she was likely to win; goal races are
@@ -254,14 +255,37 @@ def ll(ps: np.ndarray, y: np.ndarray) -> float:
         return float(np.sum(np.where(y == 1, np.log(ps), np.log(1 - ps))))
 
 
+CLIP: float = 1e-12  # predictions are kept in [CLIP, 1 - CLIP]; a certain miss scores log(CLIP)
+
+
 def recal(q: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
-    """the table recalibrated as lo + (hi - lo) q: (LL, lo, hi), fitted by maximum likelihood"""
-    sig: Callable[[Any], Any] = lambda z: 1 / (1 + np.exp(-z))
-    nll: Callable[[np.ndarray], float] = lambda th: (
-        -ll(np.clip(sig(th[0]) + (sig(th[1]) - sig(th[0])) * q, 1e-12, 1 - 1e-12), y)
-    )
-    res = minimize(nll, [-1.0, 4.0], method="Nelder-Mead", options={"xatol": 1e-8, "fatol": 1e-9, "maxiter": 20000})
-    return -res.fun, sig(res.x[0]), sig(res.x[1])
+    """the table recalibrated as lo + (hi - lo) q: (LL, lo, hi), fitted by maximum likelihood with lo and hi each in
+    [CLIP, 1 - CLIP]. The log-likelihood is concave in (lo, hi) (each prediction is linear in them), so a bounded
+    quasi-Newton fit (L-BFGS-B, exact gradient) reaches the maximum, at the bound when the data put it there (a ceiling
+    of 1 when no attempt at q = 1 loses); two starts, one fixed and one from the edge cells' smoothed rates (the
+    attempts at the lowest and highest q, (wins + 1/2) / (attempts + 1)), keep the better. A logistic scale on lo and
+    hi cannot reach 1 and stalls near it."""
+    q, y = np.asarray(q, float), np.asarray(y, float)
+
+    def nll(th: np.ndarray) -> tuple[float, np.ndarray]:
+        p = np.clip(th[0] + (th[1] - th[0]) * q, CLIP, 1 - CLIP)
+        d = y / p - (1 - y) / (1 - p)  # d LL / d p per attempt
+        return -float(np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))), -np.array([np.sum(d * (1 - q)), np.sum(d * q)])
+
+    edge = [((y[m].sum() + 0.5) / (m.sum() + 1)) for m in (q == q.min(), q == q.max())]
+    best = None
+    for start in ([0.05, 0.95], edge):
+        res = minimize(
+            nll,
+            np.clip(start, CLIP, 1 - CLIP),
+            jac=True,
+            method="L-BFGS-B",
+            bounds=[(CLIP, 1 - CLIP)] * 2,
+            options={"ftol": 1e-15, "gtol": 1e-10, "maxiter": 20000},
+        )
+        if best is None or res.fun < best.fun:
+            best = res
+    return -float(best.fun), float(best.x[0]), float(best.x[1])
 
 
 def saturated(A: list[Attempt], key: Callable[[Attempt], Hashable]) -> tuple[float, int]:
@@ -326,7 +350,7 @@ def held_out_cells(A: list[Attempt]) -> tuple[common.HeldOutComparison, int]:
         q = np.array([(g[cell(a)][0] + 0.5) / (g[cell(a)][1] + 1) if cell(a) in g else a["pa"] for a in A])
         for qq, dst in ((q, ll_cells), (pa, ll_table)):
             _, lo, hi = recal(qq[train], y[train])
-            p_ = np.clip(lo + (hi - lo) * qq[test], 1e-12, 1 - 1e-12)  # as recal() fits
+            p_ = np.clip(lo + (hi - lo) * qq[test], CLIP, 1 - CLIP)  # as recal() fits
             dst[test] = np.where(y[test] == 1, np.log(p_), np.log(1 - p_))
     runs_ = sorted(set(run.tolist()))
     ix = {r: i for i, r in enumerate(runs_)}
@@ -607,19 +631,67 @@ def pink_timing_claims(A: list[Attempt]) -> list[Value | Finding]:
     ]
 
 
+class Contrast(NamedTuple):
+    """contrast(): one set's obs / pred over another's, on the same table"""
+
+    ratio: float  # (obs / pred of the first set) / (obs / pred of the second)
+    low: float  # its run-clustered 95% interval
+    high: float
+    z: float  # log ratio / its standard error
+
+
+def contrast(A: list[Attempt], B: list[Attempt], key: str) -> Contrast:
+    """obs / pred on A over obs / pred on B, with a run-clustered 95% interval on the log scale: each ratio R = O / E
+    linearised per run as (O_c - R E_c) / O (common.cluster_ci's estimator, on log R), the two sets' terms differenced
+    per run so that a run in both sets counts once, Var = C / (C - 1) * sum_runs u_c^2 over the C runs in either set"""
+    O = [sum(a["won"] for a in S) for S in (A, B)]
+    E = [sum(a[key] for a in S) for S in (A, B)]
+    if not all(O) or not all(E):
+        return Contrast(*(float("nan"),) * 4)
+    R = [o / e for o, e in zip(O, E)]
+    u: dict[int, float] = collections.defaultdict(float)  # run -> its term of log(ratio)
+    for sign, S, o, r in ((1, A, O[0], R[0]), (-1, B, O[1], R[1])):
+        for a in S:
+            u[a["run"]] += sign * (a["won"] - r * a[key]) / o
+    C = len(u)
+    se = math.sqrt(C / (C - 1) * sum(v * v for v in u.values()))
+    lr = math.log(R[0] / R[1])
+    return Contrast(R[0] / R[1], math.exp(lr - 1.96 * se), math.exp(lr + 1.96 * se), lr / se)
+
+
+def show_contrast(c: Contrast) -> str:
+    return f"{c.ratio:.3f} [{c.low:.3f}, {c.high:.3f}], z {c.z:+.2f}"
+
+
 def streak_result_claims(A: list[Attempt]) -> list[Value | Finding]:
-    """within a streak, obs / pred by the previous race's result"""
+    """within a streak, obs / pred by the previous race's result, and after a loss against after a win"""
     out: list[Value | Finding] = []
     ar = after_result(A)
     for (jb, res), c in ar.items():
         out += calib_values(f"race in a streak, j {jb}, after a {res}:", c)
+    con: dict[str, Contrast] = {}
+    for jb in ("2", "3", "4+"):
+        S = {
+            res: [a for a in A if (str(a["j"]) == jb or (jb == "4+" and a["j"] >= 4)) and a["last"] == (res == "win")]
+            for res in ("win", "loss")
+        }
+        con[jb] = c = contrast(S["loss"], S["win"], "pa")
+        lab = f"race in a streak, j {jb}, after a loss / after a win: obs/pred"
+        out += [
+            Value(SEC, lab, c.ratio),
+            Value(SEC, f"{lab} 95% low", c.low),
+            Value(SEC, f"{lab} 95% high", c.high),
+            Value(SEC, f"{lab} z", c.z),
+        ]
     out.append(
         common.finding(
             SEC,
-            "Within a streak the previous race's result does not change the next chance beyond the table: at the 2nd and 3rd race "
-            "in a row, attempts after a win and after a loss each have an obs/pred 95% interval covering 1",
-            all(ar[(jb, r_)].low <= 1 <= ar[(jb, r_)].high for jb in ("2", "3") for r_ in ("win", "loss")),
-            "; ".join(f"j {jb} after a {r_}: {cv(ar[(jb, r_)])}" for jb in ("2", "3", "4+") for r_ in ("win", "loss")),
+            "Within a streak the previous race's result does not change the next chance: at the 2nd and 3rd race in a "
+            "row, obs/pred after a loss over obs/pred after a win (run-clustered) has a 95% interval covering 1",
+            all(con[jb].low <= 1 <= con[jb].high for jb in ("2", "3")),
+            "; ".join(f"j {jb}: {show_contrast(con[jb])}" for jb in ("2", "3", "4+"))
+            + "; absolute: "
+            + "; ".join(f"j {jb} after a {r_}: {cv(ar[(jb, r_)])}" for jb in ("2", "3") for r_ in ("win", "loss")),
         )
     )
     out.append(
