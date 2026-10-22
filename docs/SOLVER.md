@@ -619,7 +619,8 @@ The simulator's modules (under `src/career/`):
 
 | File | What it holds |
 |---|---|
-| `sim.rs` | Shared simulator records, construction, deck evaluation and legacy identity/JSON helpers. |
+| `evaluator.rs` | The surrogate's valuation, owned by the simulator and borrowed by its policies and the plan beside `&mut Env`: the deck cache, `deck_for` (the refresh rule), `fast_ub`, win chances, a career's exact numbers (`Cur`), the planner's working pool (`push_her`/`pop_her`). |
+| `sim.rs` | Shared simulator records, construction, the bar and best pick of a path, and legacy identity/JSON helpers. |
 | `sim/draw.rs` | Keyed uniforms and failed-career veteran draws; pinned uniform test. |
 | `sim/policies.rs` | Greedy, loop, trace, exact and index career selection; rotation and index-run records. |
 | `sim/audit.rs` | Surrogate checks against exact searches, audit rows and ranked careers. |

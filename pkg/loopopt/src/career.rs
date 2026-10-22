@@ -51,6 +51,7 @@ mod search;
 mod state;
 
 mod cache;
+mod evaluator;
 
 mod plan;
 mod sim;

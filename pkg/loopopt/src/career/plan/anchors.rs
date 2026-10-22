@@ -4,7 +4,7 @@ use crate::career::inherit::rise_factor;
 use crate::career::plan::cont::{OwnTrio, ScoreBase};
 use crate::career::plan::fold::{RiseInputs, leaf_products, leaf_set};
 use crate::career::plan::roll::{RollKeep, RollPool};
-use crate::career::plan::score::{HerEnds, fm_masks, her_ends, her_pool, her_pool_done, her_trios};
+use crate::career::plan::score::{HerEnds, fm_masks, her_ends, her_trios};
 use crate::career::plan::search::legal_pair;
 use crate::career::plan::step::{CandidateLift, Lo, OwnFullLanding, StepScratch};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
@@ -25,11 +25,11 @@ impl CeilingFactors<'_, '_, '_> {
     }
 
     fn outfit_count(&self) -> usize {
-        self.simulator.fastc[self.trainee].len()
+        self.simulator.evaluator.fastc[self.trainee].len()
     }
 
     fn scale(&self) -> f64 {
-        self.simulator.env.space.rho_top() * self.simulator.fixed
+        self.simulator.env.space.rho_top() * self.simulator.evaluator.fixed
     }
 }
 
@@ -624,17 +624,17 @@ fn hi_partner(
     let uncertain_targets = &simulator.env.uncertain_targets;
     let outfit_coverage = &simulator.env.outfit_coverage[partner.lineage.trainee];
     let event_chances = &simulator.env.model.ews[partner.lineage.trainee];
-    let ceiling_scale = simulator.env.space.rho_top() * simulator.fixed;
+    let ceiling_scale = simulator.env.space.rho_top() * simulator.evaluator.fixed;
     // her slot's miss factors and spark scales (`Env::her_slot`, as `score_career`'s setups)
     let Some(slot) = simulator.env.her_slot(candidate.extended_pool, partner.lineage) else {
         return;
     };
     let rise = RiseInputs::for_slot(outfit_coverage, event_chances, uncertain_targets, &slot);
     // the best outfit's product per leaf: per outfit and target the factor A - B (1 - q') at each of her four star
-    // levels, 1 - q' = x0 xm (`outfit_fast` at her chances folded in, as `Sim::fast_ub` takes it)
+    // levels, 1 - q' = x0 xm (`outfit_fast` at her chances folded in, as `Evaluator::fast_ub` takes it)
     let ceiling_started = now_ms();
     scratch.ceiling_factors.clear();
-    for o in &simulator.fastc[partner.lineage.trainee] {
+    for o in &simulator.evaluator.fastc[partner.lineage.trainee] {
         for k in 0..uncertain_targets.len() {
             let (intercept, miss_coefficient) = o[k];
             for sg in 0..4 {
@@ -670,7 +670,7 @@ fn hi_partner(
     // the anchors kept for later calls (`retained_anchors`, a roll's: the same pair, pool and odds now at every outcome) are the others,
     // in their order, so a later call folds in the same anchors as computing them all would, minus ones that lower nothing
     let ceiling_maximum = {
-        let (no, mut acc, mut ok) = (simulator.fastc[partner.lineage.trainee].len(), 0.0f64, true);
+        let (no, mut acc, mut ok) = (simulator.evaluator.fastc[partner.lineage.trainee].len(), 0.0f64, true);
         for o in 0..no {
             let mut p = 1.0f64;
             for k in 0..uncertain_targets.len() {
@@ -894,7 +894,7 @@ impl RollKeep {
     /// there, under the caps every search assumes)
     ///     value(y, her) <= c' E_best(q^s) rise(q', q^s),
     /// rise 1 where her stars are at most s (this outcome is bounded again after); also at most the ceiling
-    /// (`Env::ceiling` through `Sim::fastc`, under the top cap: per outfit and target A - B (1 - q'),
+    /// (`Env::ceiling` through `Evaluator::fastc`, under the top cap: per outfit and target A - B (1 - q'),
     /// `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
     /// (`Cont::cost_lo`). Derived, per outcome:
     /// (1) For each partner, the bound >= the best career's exact value >= the table value `score_career` reads. A cached
@@ -931,10 +931,10 @@ impl RollKeep {
         let star_mix = simulator.env.skill_job.star_dist;
         let HerEnds { own_candidate, completes_goal } =
             her_ends(simulator, context.score_base, context.legacies, career.lineage);
-        let current = simulator.make_cur(context.pool, career, false);
-        let extended_pool = her_pool(simulator, context.legacies, context.pool, true, career.lineage, &current);
+        let current = simulator.evaluator.make_cur(simulator.env, context.pool, career, false);
+        let extended_pool = simulator.evaluator.push_her(simulator.env, context.legacies, context.pool, true, &current);
         let uncertain_targets = &simulator.env.uncertain_targets;
-        let new_veteran = extended_pool.veterans.len() - 1;
+        let new_veteran = extended_pool.pool.veterans.len() - 1;
         // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
         let leaf_count = 1usize << (2 * uncertain_target_count);
         let outcome_count = 1usize << target_count;
@@ -1003,7 +1003,7 @@ impl RollKeep {
             let candidate_trainee = context.score_base.candidates[candidate];
             if data.umas[candidate_trainee].id == data.umas[trainee].id
                 || context.score_base.step_costs[candidate] == 0.0
-                || simulator.fastc[candidate_trainee].is_empty()
+                || simulator.evaluator.fastc[candidate_trainee].is_empty()
             {
                 continue;
             }
@@ -1018,7 +1018,7 @@ impl RollKeep {
             // `AnchorBound::root_min`'s premises on her own chances
             let event_chances_valid = event_chances.iter().all(|ew| ew.iter().all(|e| (0.0..=1.0).contains(e)));
             let candidate_inputs = CandidateBoundInputs {
-                extended_pool: &extended_pool,
+                extended_pool: &extended_pool.pool,
                 candidate_index: candidate,
                 event_chances_valid,
                 anchor_indices: &anchor_indices,
@@ -1026,7 +1026,7 @@ impl RollKeep {
             };
             for partner in 0..new_veteran {
                 let partner_inputs = candidate_inputs.partner(context.score_base, partner);
-                if !legal_pair(data, &extended_pool, partner_inputs.lineage) {
+                if !legal_pair(data, &extended_pool.pool, partner_inputs.lineage) {
                     continue;
                 }
                 if anchor_cache.len() <= partner_count {
@@ -1049,7 +1049,7 @@ impl RollKeep {
                 partner_count += 1;
             }
         }
-        her_pool_done(simulator, context.pool, true, extended_pool);
+        simulator.evaluator.pop_her(context.pool, extended_pool);
         let UpperBoundScratch { leaf_products: mut leaf_products_buffer, mut next_leaf_products, .. } = scratch;
         let own = OwnFullLanding {
             candidate_index: own_candidate,
@@ -1161,15 +1161,15 @@ pub(crate) fn pick_her(
     if !full_lo || ends.own_candidate.is_some() || ends.completes_goal || context.score_base.trio_sides.is_empty() {
         return vec![];
     }
-    let c = s.make_cur(context.pool, career, false);
+    let c = s.evaluator.make_cur(s.env, context.pool, career, false);
     let full_m = (1usize << s.env.target_count) - 1;
     if c.os[full_m] <= 0.0 {
         return vec![];
     }
-    let mut pv = her_pool(s, context.legacies, context.pool, true, career.lineage, &c);
-    let iv = pv.veterans.len() - 1;
-    let r = her_trios(s, context.score_base, &mut pv, iv, career.lineage.trainee, buf);
-    her_pool_done(s, context.pool, true, pv);
+    let mut pv = s.evaluator.push_her(s.env, context.legacies, context.pool, true, &c);
+    let iv = pv.pool.veterans.len() - 1;
+    let r = her_trios(s, context.score_base, &mut pv.pool, iv, career.lineage.trainee, buf);
+    s.evaluator.pop_her(context.pool, pv);
     r
 }
 

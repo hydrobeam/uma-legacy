@@ -2,13 +2,12 @@
 //! Policies choose the careers; sibling draw and audit modules supply samples and exact comparisons.
 
 use crate::career::cache::Cache;
+use crate::career::evaluator::{Cur, SurrogatePick};
 use crate::career::pool::Pool;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
 use crate::career::sim::draw::Keys;
 use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
-use crate::career::sim::{
-    Cur, KeptState, Sim, SimJob, SimulationOptions, SimulationRoster, SurrogatePick, family, kept_swap,
-};
+use crate::career::sim::{KeptState, Sim, SimJob, SimulationOptions, SimulationRoster, family, kept_swap};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -116,7 +115,6 @@ impl Sim<'_, '_> {
             state.families.entry(family(&legacy)).or_default().push(result);
         }
         state.legacies.push(legacy);
-        self.n.veterans_added += 1;
         if !evaluate_candidates {
             return;
         }
@@ -132,8 +130,8 @@ impl Sim<'_, '_> {
                     continue;
                 }
                 // the allocation-free ceiling first (`fast_ub`, the same bound to rounding)
-                if self.fast_ub(state, lineage) * (1.0 + 1e-6) < self.bar(state, trainee) {
-                    self.n.candidates += 1;
+                if self.evaluator.fast_ub(self.env, &state.pool, lineage) * (1.0 + 1e-6) < self.bar(state, trainee) {
+                    self.evaluator.n.candidates += 1;
                     continue;
                 }
                 self.consider(state, lineage, interpolation_scratch);
@@ -167,7 +165,7 @@ impl Sim<'_, '_> {
         // (on the path's pool, `Env::pool(legacies)`: `add_veteran` builds each entry as it does)
         let search = self.env.solve(&state.pool, &[], &trainees, false, 1);
         self.env.use_seen = true;
-        self.cache.absorb(self.env, &search.refs);
+        self.evaluator.cache.absorb(self.env, &search.refs);
         // (every legal career's ceiling, `gen_cands`: `ceiling` at `lineage`'s chances, to the bit; in (trainee,
         // pair) order, then best first)
         let mut candidates = self.env.gen_cands(&state.pool, &[], &trainees, |_, _| true, RankedCareer::new);
@@ -391,20 +389,20 @@ pub(in crate::career) fn simulate<'data>(
     let kept_before_simulation = (base == Base::Index).then(|| kept_swap(KeptState::default()));
     for run in config.first..config.first + config.runs {
         if !config.share_cache && run > config.first {
-            simulator.cache = Cache::new(uma_count);
+            simulator.evaluator.cache = Cache::new(uma_count);
         }
         if base == Base::Index {
             kept_swap(KeptState::default());
             INDEX_RUN_COUNTS.with(|index_counts| *index_counts.borrow_mut() = IndexRunCounts::default());
         }
         let started = std::time::Instant::now();
-        let counts_before = simulator.n;
+        let counts_before = simulator.evaluator.n;
         let mut state = initial_state.clone();
         let mut trace = PathTrace::default();
         let keys = Keys::Main { seed: config.seed, run: run as u32 };
         let PathResult { expected_careers, careers, tail, final_p_all, pruned } =
             simulator.play(&mut state, PlayOptions { base, keys, eps, run: run as u32 }, &mut trace);
-        let counts_after = simulator.n;
+        let counts_after = simulator.evaluator.n;
         run_expectations.push(expected_careers);
         let PathTrace { pick_changes, checks } = trace;
         let final_pick = pick_changes.last().map_or(Value::Null, |change| change["pick"].clone());
@@ -431,6 +429,6 @@ pub(in crate::career) fn simulate<'data>(
     if let Some(kept) = kept_before_simulation {
         kept_swap(kept);
     }
-    json!({"simulate": configuration, "policy": config.policy, "runs": runs, "E": stats(&run_expectations), "init_s": initialization_seconds, "decks": simulator.cache.deck_count(), "deck_tables": simulator.cache.tables,
-           "refreshes": simulator.n.searches, "schedules": simulator.win_chances.len()})
+    json!({"simulate": configuration, "policy": config.policy, "runs": runs, "E": stats(&run_expectations), "init_s": initialization_seconds, "decks": simulator.evaluator.cache.deck_count(), "deck_tables": simulator.evaluator.cache.tables,
+           "refreshes": simulator.evaluator.n.searches, "schedules": simulator.evaluator.win_chances.schedules()})
 }
