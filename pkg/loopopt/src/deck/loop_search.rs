@@ -15,7 +15,6 @@ use crate::skills::{MemberLineage, Model, SkillJob, check_sizes, lins};
 use crate::uma::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
 mod bands;
 mod report;
 mod shared;
@@ -41,16 +40,16 @@ pub(super) struct LoopJobInputs<'data> {
 /// seed exact scoring; `DeckSpace` searches the remaining legal decks under their assumed structure-class caps.
 /// `stats`: the deck enumeration's counters, reported with the loops.
 pub(super) fn run_multi(inputs: LoopJobInputs, stats: Value) -> Value {
-    let search = match Multi::new(inputs) {
+    let (search, mut state) = match Multi::new(inputs) {
         Ok(search) => search,
         Err(error) => return error,
     };
-    let (pass, certified_cap) = search.certify();
+    let (pass, certified_cap) = search.certify(&mut state);
     if pass.solved.is_empty() {
         return json!({"error": "No loop contains all the required umas."});
     }
-    search.debug_summary(&pass, certified_cap);
-    search.report(pass, certified_cap, stats)
+    search.debug_summary(&state.tally, &pass, certified_cap);
+    search.report(&state.tally, pass, certified_cap, stats)
 }
 
 /// A memo key of up to 12 chances (a loop's lineages): their bits and count, a fixed array (equal exactly when the
@@ -121,8 +120,8 @@ struct SharedDeckKey {
     plain_pals: usize,
 }
 
-/// What the search's phases share: the job, the skyline with its per-class views and clusters, the ceiling tables,
-/// the exact caches and the tally. Tables filled on demand sit in cells, so every phase works through `&self`.
+/// Read-only loop-search context after setup: the job, skyline classes and clusters, and fixed ceiling tables.
+/// Phases borrow this beside the mutable `LoopSearchState`; reporting only reads its tally.
 struct Multi<'data> {
     inputs: LoopJobInputs<'data>,
     target_groups: Vec<u32>,
@@ -150,22 +149,8 @@ struct Multi<'data> {
     class_by_trainee: UmaTable<usize>,
     /// clusters of the whole skyline (empty with per-uma decks)
     skyline_clusters: Vec<Cl>,
-    /// the clusters' bounds in reused buffers (`bb_max`, `sky_top`)
-    cluster_bound_scratch: RefCell<Vec<ByBound>>,
-    skyline_bound_scratch: RefCell<Vec<ByBound>>,
-    /// B[u][i] = max over all skyline decks (legal for u or not) of T(u, grid[i], deck): no legal deck beats it
-    relaxed_ceiling_cache: RefCell<UmaTable<[f64; NG]>>,
-    /// exact ceiling table: X[u][i] = best exact value over every legal deck at chance grid[i] under the cap it was
-    /// computed for (rises with the chance, so a lineage with chance q is bounded at grid[gidx(q)]; each lineage may
-    /// take its own deck)
-    exact_ceiling_cache: RefCell<UmaTable<[ExactCeiling; NG]>>,
     /// the deck space's entry per (card id, end link, variant)
     entry_by_card: crate::FxMap<CardEntryKey, usize>,
-    exact_cache: RefCell<crate::FxMap<ExactQueryKey, ExactCacheEntry>>,
-    shared_cache: RefCell<crate::FxMap<SharedQueryKey, SharedResult>>,
-    /// Schedules found per structure (shared by the passes).
-    schedule_cache: RefCell<crate::FxMap<[UmaIndex; 4], Res>>,
-    tally: Tally,
     exact_caps: [f64; 4],
     maximum_exact_ratio: f64,
     shared: bool,
@@ -177,35 +162,52 @@ struct Multi<'data> {
     started: Instant,
 }
 
+/// Caches, reusable cluster buffers and work accounting for one loop job, retained across certification passes.
+/// Owned beside `Multi` by `run_multi`; only phases that fill or update them receive a mutable borrow.
+struct LoopSearchState {
+    /// the clusters' bounds in reused buffers (`bb_max`, `sky_top`)
+    cluster_bound_scratch: Vec<ByBound>,
+    skyline_bound_scratch: Vec<ByBound>,
+    /// B[u][i] = max over all skyline decks (legal for u or not) of T(u, grid[i], deck): no legal deck beats it
+    relaxed_ceiling_cache: UmaTable<[f64; NG]>,
+    /// exact ceiling table: X[u][i] = best exact value over every legal deck at chance grid[i] under the cap it was
+    /// computed for (rises with the chance, so a lineage with chance q is bounded at grid[gidx(q)]; each lineage may
+    /// take its own deck)
+    exact_ceiling_cache: UmaTable<[ExactCeiling; NG]>,
+    exact_cache: crate::FxMap<ExactQueryKey, ExactCacheEntry>,
+    shared_cache: crate::FxMap<SharedQueryKey, SharedResult>,
+    /// Schedules found per structure (shared by the passes).
+    schedule_cache: crate::FxMap<[UmaIndex; 4], Res>,
+    tally: Tally,
+}
+
 /// The exact search's counters, timers and work budget; `max_ratio` is per structure class (`cap_class`).
 #[derive(Default)]
 struct Tally {
-    scored_decks: Cell<usize>,
-    band_decks: Cell<usize>,
-    bound_rejections: Cell<usize>,
-    cap_hit: Cell<bool>,
-    max_ratio: Cell<[f64; 4]>,
-    max_deck: RefCell<[Option<RatioExample>; 4]>,
-    band_seconds: Cell<f64>,
-    score_seconds: Cell<f64>,
-    seed_seconds: Cell<f64>,
-    bound_seconds: Cell<f64>,
-    work: Cell<usize>,
-    budget: Cell<usize>,
+    scored_decks: usize,
+    band_decks: usize,
+    bound_rejections: usize,
+    cap_hit: bool,
+    max_ratio: [f64; 4],
+    max_deck: [Option<RatioExample>; 4],
+    band_seconds: f64,
+    score_seconds: f64,
+    seed_seconds: f64,
+    bound_seconds: f64,
+    work: usize,
+    budget: usize,
     /// set when a pass runs out of budget (or a deck search out of room): that pass certifies nothing
-    aborted: Cell<bool>,
+    aborted: bool,
 }
 impl Tally {
-    fn spend(&self, work: usize) {
-        self.work.set(self.work.get() + work);
+    const fn spend(&mut self, work: usize) {
+        self.work += work;
     }
     /// Keeps `deck` as structure class `class`'s example when its exact/product `ratio` is the class's highest so far
-    fn ratio_at(&self, class: usize, ratio: f64, trainee_id: u32, deck: &PDeck) {
-        let mut max_ratio = self.max_ratio.get();
-        if ratio > max_ratio[class] {
-            max_ratio[class] = ratio;
-            self.max_ratio.set(max_ratio);
-            self.max_deck.borrow_mut()[class] = Some(RatioExample { trainee_id, cards: deck.names.clone() });
+    fn ratio_at(&mut self, class: usize, ratio: f64, trainee_id: u32, deck: &PDeck) {
+        if ratio > self.max_ratio[class] {
+            self.max_ratio[class] = ratio;
+            self.max_deck[class] = Some(RatioExample { trainee_id, cards: deck.names.clone() });
         }
     }
 }
@@ -254,7 +256,7 @@ impl LoopJobInputs<'_> {
 impl<'data> Multi<'data> {
     /// Setup: the pool, its pair ceilings and chance grid, the skyline's classes and clusters, and the pool's order;
     /// Err with the job's error when the required umas cannot train or the sizes do not fit
-    fn new(inputs: LoopJobInputs<'data>) -> Result<Self, Value> {
+    fn new(inputs: LoopJobInputs<'data>) -> Result<(Self, LoopSearchState), Value> {
         let target_groups: Vec<u32> =
             inputs.model.uncertain.iter().map(|&i| inputs.skill_job.targets[i].group).collect();
         let target_count = target_groups.len();
@@ -344,18 +346,7 @@ impl<'data> Multi<'data> {
             class_clusters,
             class_by_trainee,
             skyline_clusters,
-            cluster_bound_scratch: RefCell::default(),
-            skyline_bound_scratch: RefCell::default(),
-            relaxed_ceiling_cache: RefCell::new(UmaTable(vec![[f64::NAN; NG]; uma_count])),
-            exact_ceiling_cache: RefCell::new(UmaTable(vec![
-                [ExactCeiling { value: f64::NAN, certified_cap: 0.0 }; NG];
-                uma_count
-            ])),
             entry_by_card,
-            exact_cache: RefCell::default(),
-            shared_cache: RefCell::default(),
-            schedule_cache: RefCell::default(),
-            tally: Tally::default(),
             exact_caps,
             maximum_exact_ratio: exact_caps[3],
             shared: !inputs.deck_job.per_uma,
@@ -366,8 +357,18 @@ impl<'data> Multi<'data> {
             started,
             inputs,
         };
-        search.rank();
-        Ok(search)
+        let mut state = LoopSearchState {
+            cluster_bound_scratch: Vec::new(),
+            skyline_bound_scratch: Vec::new(),
+            relaxed_ceiling_cache: UmaTable(vec![[f64::NAN; NG]; uma_count]),
+            exact_ceiling_cache: UmaTable(vec![[ExactCeiling { value: f64::NAN, certified_cap: 0.0 }; NG]; uma_count]),
+            exact_cache: crate::FxMap::default(),
+            shared_cache: crate::FxMap::default(),
+            schedule_cache: crate::FxMap::default(),
+            tally: Tally::default(),
+        };
+        search.rank(&mut state);
+        Ok((search, state))
     }
 }
 /// Fixed schedule for one uma (see DeckJob::schedule).

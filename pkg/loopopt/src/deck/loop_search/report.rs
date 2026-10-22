@@ -1,5 +1,6 @@
 //! Picks, JSON results and diagnostic summaries from completed loop-search passes.
 //! Search and certification belong to `bands`.
+use super::Tally;
 use super::bands::{DeckBest, Pass, SolvedLoop};
 use super::{DeckSources, Multi, RatioExample, SharedDeckKey, lin_of};
 use crate::chart::{chart_rows, member_json};
@@ -23,7 +24,7 @@ struct LoopPick<'pass> {
 impl Multi<'_> {
     // ---- the answer ----
 
-    pub(super) fn debug_summary(&self, p: &Pass, cert: f64) {
+    pub(super) fn debug_summary(&self, tally: &Tally, p: &Pass, cert: f64) {
         let checks = self.inputs.deck_job.checks;
         if checks.upper_check {
             let v = UCHK.with(Cell::get);
@@ -40,27 +41,27 @@ impl Multi<'_> {
             );
         }
         if checks.deck_debug {
-            let t = &self.tally;
+            let t = tally;
             eprintln!(
                 "per-uma search {:.2}s cap {} scanned {} solved {} exact: {} deck searches, {} decks scored, {} bounded out, schedule rejects {} | band {:.2}s score {:.2}s seed-scan {:.2}s bound {:.2}s",
                 self.started.elapsed().as_secs_f64(),
                 cert,
                 p.scanned,
                 p.solved.len(),
-                t.band_decks.get(),
-                t.scored_decks.get(),
-                t.bound_rejections.get(),
+                t.band_decks,
+                t.scored_decks,
+                t.bound_rejections,
                 p.schedule_rejects,
-                t.band_seconds.get(),
-                t.score_seconds.get(),
-                t.seed_seconds.get(),
-                t.bound_seconds.get()
+                t.band_seconds,
+                t.score_seconds,
+                t.seed_seconds,
+                t.bound_seconds
             );
         }
     }
 
     /// The output: the reported loops, the search's counts and what the answer rests on, over the deck search's stats
-    pub(super) fn report(&self, p: Pass, cert: f64, stats: Value) -> Value {
+    pub(super) fn report(&self, tally: &Tally, p: Pass, cert: f64, stats: Value) -> Value {
         let empty_deck = PDeck {
             names: vec![],
             ids: vec![],
@@ -79,8 +80,8 @@ impl Multi<'_> {
         let top: Vec<Value> = picks.iter().map(|pk| self.loop_json(&p, pk)).collect();
         let budget_out = self.inputs.deck_job.exact && cert < self.maximum_exact_ratio;
         let complete = p.next_bound <= p.kth * (1.0 + 4e-12);
-        let exact = self.exact_json(&p, cert, complete, budget_out);
-        let n_band = self.tally.band_decks.get();
+        let exact = self.exact_json(tally, &p, cert, complete, budget_out);
+        let n_band = tally.band_decks;
         let mut out = stats;
         for (key, val) in [
             ("top", json!(top)),
@@ -299,19 +300,18 @@ impl Multi<'_> {
     /// assumed cap per structure class (each certified at most at rho), `class_max_ratio` the largest exact / product
     /// odds seen per class on any deck scored here (`max_ratio` of them all); `complete` = the search ended by its stop
     /// rule (no unexamined loop or deck can win under the certified caps)
-    fn exact_json(&self, p: &Pass, cert: f64, complete: bool, budget_out: bool) -> Value {
-        let t = &self.tally;
-        let mr = t.max_ratio.get();
+    fn exact_json(&self, tally: &Tally, p: &Pass, cert: f64, complete: bool, budget_out: bool) -> Value {
+        let t = tally;
+        let mr = t.max_ratio;
         let max_deck: Vec<Option<Value>> = t
             .max_deck
-            .borrow()
             .iter()
             .map(|x| x.as_ref().map(|RatioExample { trainee_id: u, cards: n }| json!({"trainee": u, "cards": n})))
             .collect();
         json!({"rho": cert, "rho_target": self.maximum_exact_ratio, "class_caps": self.exact_caps,
                "max_ratio": mr.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": mr,
-               "class_max_deck": max_deck, "complete": complete, "decks_scored": t.scored_decks.get(),
-               "deck_searches": t.band_decks.get(), "loops_solved": p.solved.len(), "schedule_rejects": p.schedule_rejects,
-               "cap_hit": t.cap_hit.get(), "budget_out": budget_out, "bound_filtered": t.bound_rejections.get()})
+               "class_max_deck": max_deck, "complete": complete, "decks_scored": t.scored_decks,
+               "deck_searches": t.band_decks, "loops_solved": p.solved.len(), "schedule_rejects": p.schedule_rejects,
+               "cap_hit": t.cap_hit, "budget_out": budget_out, "bound_filtered": t.bound_rejections})
     }
 }
