@@ -63,7 +63,13 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
   Keep this state across certification passes: a lower-cap retry reuses exact results, chance-grid cells and
   schedules, and starts its allowance from the work already spent. `bb_max` and `sky_top` take their reusable
   cluster buffers explicitly; their heaps return the same allocation to those buffers. Reporting only reads
-  `Tally`. `DeckSpace`'s interior caches have a separate job-wide lifetime, including its state-bound configurations.
+  `Tally`. State-bound configurations live in a job-wide `StateBoundMemo`, owned by `LoopSearchState` or the career's
+  `DeckSearchMemo`, and passed by `&mut` through enumeration. Keep this owner across searches, but never carry its
+  space-specific keys into another job. `DeckSpace` retains its other interior caches.
+- The worker's five retained collections live in `KeptState`; nested career jobs borrow it explicitly. Index simulation
+  swaps the whole record (roll states included) and restores it afterward. Publish deck and corner memos at the career
+  entry point after every completed path, including early answers; publishing from `Env::drop` hides that mutation.
+  Saved-state JSON still omits deck memos; importing it preserves those process-local tables.
 - Career inheritance folding must reuse `SearchState::folded_events` in place (`set_ews`'s matching-shape path),
   including the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances,
   without copying them per candidate. `joint_eval_in` still takes explicit scratch; `refolding_reuses_outfit_buffers`
@@ -251,7 +257,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
   pair, now `RollKeep::partner_anchors`: 18,895). The page sends `next.roll` in its own call before the quick
   search; a saving roll goes straight to the exact comparison (`webapp/src/career.js`, `quickCompare`).
 - In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
-  work persisted). Since 4689795 the stored work includes the main search (`LAST_SOLVE`), so a reload can reuse a
+  work persisted). Since 4689795 the stored work includes the main search (`KeptState::searches`), so a reload can reuse a
   matching stored search (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state
   31-149 KB).
 - Reroll (2026-10-10, from the plan's table then): about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run
@@ -320,7 +326,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
 | Caching the main search's ceilings for the per-uma solves | about 0.3% | about 13 MB on 315 veterans, 60+ MB on 400, with a pool key |
 | An index on `ruled` | scans about 1 ms per job | nothing to gain |
 | `her_trios`' C ranking through `gen_cands` (one pair, every trainee) | exact; p16 instructions +4.5% | `gen_cands`' per-trainee tables cover every legacy of the pool, for one pair |
-| Carrying `ruled` across pools (per setup, like SEEN) | changes outputs | `certified` takes a proxy career a foreign proof certifies, possibly another pair or deck of equal value |
+| Carrying `ruled` across pools (per setup, like `KeptState::seen`) | changes outputs | `certified` takes a proxy career a foreign proof certifies, possibly another pair or deck of equal value |
 | Seed each builder's floor with the previous builder's career | -7% / -4% / +5% | noise |
 | Pass 2 against the bar the candidate must beat (not its own best) | -6% | worse with class sharing (fewer proofs to share) |
 | Classmate's best deck as the product search's starting bar | nodes -4% (p16), -0.3% (p10) | bound looseness, not the incumbent, sets pass 1's tree |

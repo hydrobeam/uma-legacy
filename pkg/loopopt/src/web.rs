@@ -145,7 +145,11 @@ fn handle(req: &str) -> serde_json::Value {
                         crate::deck::sources::apply_event_lists(&mut job["roll"]["job"], ev);
                     }
                 }
-                crate::career::run_career(d, sk, cr, &job)
+                crate::career::state::KEPT.with(|kept| match cmd.as_str() {
+                    "state_out" => crate::career::state::state_out(&kept.borrow()),
+                    "state_in" => crate::career::state::state_in(&mut kept.borrow_mut(), &job["state"]),
+                    _ => crate::career::run_career_in(d, sk, cr, &job, &mut kept.borrow_mut()),
+                })
             })
         }),
         c => serde_json::json!({"error": format!("unknown command {c}")}),

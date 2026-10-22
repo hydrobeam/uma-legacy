@@ -179,6 +179,7 @@ struct LoopSearchState {
     /// Schedules found per structure (shared by the passes).
     schedule_cache: crate::FxMap<[UmaIndex; 4], Res>,
     tally: Tally,
+    state_bounds: crate::deck::state_bound::StateBoundMemo,
 }
 
 /// The exact search's counters, timers and work budget; `max_ratio` is per structure class (`cap_class`).
@@ -366,6 +367,7 @@ impl<'data> Multi<'data> {
             shared_cache: crate::FxMap::default(),
             schedule_cache: crate::FxMap::default(),
             tally: Tally::default(),
+            state_bounds: crate::deck::state_bound::StateBoundMemo::default(),
         };
         search.rank(&mut state);
         Ok((search, state))

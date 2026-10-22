@@ -2,7 +2,7 @@
 use crate::career::clock::{now_ms, prof};
 use crate::career::inherit::{aff_factor, inherit_q, insp_miss, mix_term, part_sum, spark_scale};
 use crate::career::pool::{Pool, holds_fix, shared};
-use crate::career::state::{KeptSolve, LAST_SOLVE, ProductProof, SOLVE_KEEP};
+use crate::career::state::{KeptSolve, KeptState, ProductProof, SOLVE_KEEP};
 use crate::career::{CareerSetup, DeckSearchAudit, DeckSearchMemo, Env, Lineage, SearchState};
 use crate::deck::space::SelectedDeck;
 use crate::uma::{UmaIndex, UmaTable};
@@ -846,16 +846,22 @@ pub(crate) struct SearchRequest<'request> {
     pub(crate) top: usize,
 }
 
-/// The main search of the job keyed `key` (`LAST_SOLVE`): the kept one, with what its product searches proved
+/// The main search of the job keyed `key` (`KeptState::searches`): the kept one, with what its product searches proved
 /// (`SearchState::ruled` as a combined job's plan finds it), else searched now and kept
-pub(crate) fn solve_kept(env: &mut Env, key: u64, request: &SearchRequest) -> CareerSearchResult {
-    let kept = LAST_SOLVE.with(|cache| {
-        let mut cache = cache.borrow_mut();
+pub(crate) fn solve_kept(
+    env: &mut Env,
+    worker: &mut KeptState,
+    key: u64,
+    request: &SearchRequest,
+) -> CareerSearchResult {
+    let kept = (|| {
+        let cache = &mut worker.searches;
         let index = cache.iter().position(|entry| entry.key == key)?;
         let entry = cache.remove(index);
         cache.push(entry);
+        // The retained result and this job's working result must both remain available.
         cache.last().map(|entry| (entry.solved.clone(), entry.ruled.clone()))
-    });
+    })();
     match kept {
         Some((solved, ruled)) if env.setup.solved_fits(&solved, &ruled, request.pool) => {
             env.state.ruled = ruled;
@@ -872,14 +878,14 @@ pub(crate) fn solve_kept(env: &mut Env, key: u64, request: &SearchRequest) -> Ca
                 request.per_trainee,
                 request.top,
             );
-            LAST_SOLVE.with(|cache| {
-                let mut cache = cache.borrow_mut();
+            {
+                let cache = &mut worker.searches;
                 cache.retain(|entry| entry.key != key);
                 cache.push(KeptSolve { key, solved: solved.clone(), ruled: env.state.ruled.clone() });
                 while cache.len() > SOLVE_KEEP {
                     cache.remove(0);
                 }
-            });
+            }
             solved
         }
     }

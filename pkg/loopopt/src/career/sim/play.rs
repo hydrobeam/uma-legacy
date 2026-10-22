@@ -7,7 +7,8 @@ use crate::career::pool::Pool;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
 use crate::career::sim::draw::Keys;
 use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
-use crate::career::sim::{KeptState, Sim, SimJob, SimulationOptions, SimulationRoster, family, kept_swap};
+use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster, family};
+use crate::career::state::{KeptState, kept_swap};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -347,6 +348,7 @@ struct PathResult {
 
 pub(in crate::career) fn simulate<'data>(
     env: &mut Env<'data>,
+    kept: &mut KeptState,
     input: &JobInputs<'data>,
     legacies: &[Legacy],
     trainees: &[crate::uma::UmaIndex],
@@ -385,6 +387,7 @@ pub(in crate::career) fn simulate<'data>(
     }
     let mut simulator = Sim::new(
         env,
+        kept,
         input,
         config.clone(),
         SimulationRoster { trainees: trainees.to_vec(), members, member_by_trainee },
@@ -400,13 +403,13 @@ pub(in crate::career) fn simulate<'data>(
     let mut run_expectations = vec![];
     let eps = config.eps;
     // index: the kept state before the simulation, put back after it (module notes)
-    let kept_before_simulation = (base == Base::Index).then(|| kept_swap(KeptState::default()));
+    let kept_before_simulation = (base == Base::Index).then(|| kept_swap(simulator.kept, KeptState::default()));
     for run in config.first..config.first + config.runs {
         if !config.share_cache && run > config.first {
             simulator.evaluator.cache = Cache::new(uma_count);
         }
         if base == Base::Index {
-            kept_swap(KeptState::default());
+            kept_swap(simulator.kept, KeptState::default());
             INDEX_RUN_COUNTS.with(|index_counts| *index_counts.borrow_mut() = IndexRunCounts::default());
         }
         let started = std::time::Instant::now();
@@ -441,7 +444,7 @@ pub(in crate::career) fn simulate<'data>(
         }
     }
     if let Some(kept) = kept_before_simulation {
-        kept_swap(kept);
+        kept_swap(simulator.kept, kept);
     }
     json!({"simulate": configuration, "policy": config.policy, "runs": runs, "E": stats(&run_expectations), "init_s": initialization_seconds, "decks": simulator.evaluator.cache.deck_count(), "deck_tables": simulator.evaluator.cache.tables,
            "refreshes": simulator.evaluator.n.searches, "schedules": simulator.evaluator.win_chances.schedules()})

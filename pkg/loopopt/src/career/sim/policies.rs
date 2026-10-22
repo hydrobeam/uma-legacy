@@ -8,7 +8,7 @@ use crate::career::pool::Pool;
 use crate::career::sim::draw::Keys;
 use crate::career::sim::play::PathState;
 use crate::career::sim::{PAGE_TOP, Sim, leg_json};
-use crate::career::{Career, Lineage, run_career};
+use crate::career::{Career, Lineage, run_career_in};
 use serde_json::{Value, json};
 use std::rc::Rc;
 
@@ -348,7 +348,7 @@ impl Sim<'_, '_> {
         job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
         job_fields.insert("top".into(), json!(1));
         job_fields.insert("per_trainee".into(), json!(false));
-        let report = run_career(self.d, self.skills, self.cards, &job);
+        let report = run_career_in(self.d, self.skills, self.cards, &job, self.kept);
         let pick = report["results"][0].clone();
         assert!(pick.is_object(), "solver gave no pick: {}", report.to_string().chars().take(300).collect::<String>());
         self.cur_from_solver_pick(&state.pool, &pick)
@@ -367,7 +367,7 @@ impl Sim<'_, '_> {
         job_fields.insert("next".into(), self.cfg.next.clone());
         job_fields.insert("no_reports".into(), json!(true));
         let started = std::time::Instant::now();
-        let report = run_career(self.d, self.skills, self.cards, &job);
+        let report = run_career_in(self.d, self.skills, self.cards, &job, self.kept);
         let pick = report["next"]["choice"].clone();
         assert!(
             pick.is_object(),

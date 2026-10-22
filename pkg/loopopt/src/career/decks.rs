@@ -1,6 +1,6 @@
 //! Exact career deck searches and their kept memos.
 use crate::career::search::DeckRes;
-use crate::career::{CareerSetup, DeckSearchAudit, DeckSearchMemo, Env, SearchState};
+use crate::career::{CareerSetup, DeckSearchAudit, DeckSearchMemo, SearchState};
 use crate::deck::caps::{EXACT_BUDGET, EXACT_STEPS};
 use crate::deck::enumerate::{BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
 use crate::deck::joint::joint_b;
@@ -154,17 +154,14 @@ struct MemoStart {
 }
 
 thread_local! {
-    /// `best_deck`'s memo kept between jobs (the page's worker runs a plan, then a Reroll's plans with her added: the
-    /// builders whose best pair doesn't involve her search the same deck problems again), per setup: `setup_fp` (what
-    /// sets the model, the deck space and the class caps, `cap_audit` included) with the job's trainees (the plain pals'
-    /// order), the last few. Exact: a `DeckSearchKey` reads the same model, space and caps in every job of one setup, and the
-    /// work budget's argument holds for any budget (`best_deck`)
-    pub(crate) static DECK_KEEP: std::cell::RefCell<Vec<(u64, DeckSearchCache)>> = const { std::cell::RefCell::new(Vec::new()) };
-    /// jobs run so far (`DeckSearchMemo::job_number`)
+    /// Monotonic job identity for memo work accounting (`DeckSearchMemo::job_number`). This thread-local counter
+    /// deliberately survives kept-state swaps: an outer job and its nested simulator jobs need distinct identities.
     pub(crate) static JOB_NO: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
-/// what a setup keeps between jobs: `DeckSearchMemo::decks` and `corners`
+/// What a setup keeps between jobs: `DeckSearchMemo::decks` and `corners`, keyed by `setup_fp` plus trainee order
+/// (the plain pals' order). A DeckSearchKey reads the same model, space and caps in every such job; the memo's work
+/// accounting holds for any budget. Adding a veteran can reuse builders whose best pair does not involve her.
 #[derive(Default)]
 pub(crate) struct DeckSearchCache {
     pub(crate) decks: crate::FxMap<DeckSearchKey, DeckMemo>,
@@ -176,21 +173,15 @@ const DECK_KEEP_SETUPS: usize = 4;
 
 pub(crate) const DECK_KEEP_CAP: usize = 8192;
 
-impl Drop for Env<'_> {
-    fn drop(&mut self) {
-        let kept = DeckSearchCache {
-            decks: std::mem::take(&mut self.memo.decks),
-            corners: std::mem::take(&mut self.memo.corners),
-        };
-        let fingerprint = self.memo.fingerprint;
-        DECK_KEEP.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            cache.retain(|entry| entry.0 != fingerprint);
-            cache.push((fingerprint, kept));
-            while cache.len() > DECK_KEEP_SETUPS {
-                cache.remove(0);
-            }
-        });
+impl crate::career::DeckSearchMemo {
+    /// Publish this job's reusable tables at the career entry point, after search and reporting finish.
+    pub(super) fn keep(self, worker: &mut crate::career::state::KeptState) {
+        let cache = &mut worker.decks;
+        cache.retain(|entry| entry.0 != self.fingerprint);
+        cache.push((self.fingerprint, DeckSearchCache { decks: self.decks, corners: self.corners }));
+        while cache.len() > DECK_KEEP_SETUPS {
+            cache.remove(0);
+        }
     }
 }
 
@@ -248,6 +239,7 @@ impl CareerSetup<'_> {
             return self.best_deck_run(
                 state,
                 audit,
+                &mut memo.state_bounds,
                 DeckSearch { trainee: t, spark_scale: c, bar: th },
                 starts,
                 scored,
@@ -269,7 +261,7 @@ impl CareerSetup<'_> {
             audit.cert = audit.cert.min(m.cert);
             audit.overflows += m.overflows;
             audit.cap_free_stats.add(&m.cf);
-            // first use in this job of an outcome an earlier job stored (`DECK_KEEP`): this job's own search would have
+            // first use in this job of an outcome an earlier job stored (`KeptState::decks`): this job's own search would have
             // run here, so its node and exact-scoring counters and its per-class ratios count as if it had (a later use
             // in the same job leaves them, as the memo always has). A class's ratio and deck change only when the call's
             // own maximum is above the job's: `note_ratio` keeps the first deck strictly above, so the same as the run
@@ -301,7 +293,14 @@ impl CareerSetup<'_> {
         // (the call's own per-class maxima, from nothing, then merged into the job's: see the hit above)
         let (r0, d0) =
             (std::mem::replace(&mut audit.max_ratio, [f64::NEG_INFINITY; 4]), std::mem::take(&mut audit.max_deck));
-        let res = self.best_deck_run(state, audit, DeckSearch { trainee: t, spark_scale: c, bar: th }, starts, scored);
+        let res = self.best_deck_run(
+            state,
+            audit,
+            &mut memo.state_bounds,
+            DeckSearch { trainee: t, spark_scale: c, bar: th },
+            starts,
+            scored,
+        );
         let cert = audit.cert;
         audit.cert = start.cert.min(cert);
         let (r1, d1) = (std::mem::replace(&mut audit.max_ratio, r0), std::mem::replace(&mut audit.max_deck, d0));
@@ -355,17 +354,19 @@ impl CareerSetup<'_> {
         &self,
         state: &mut SearchState,
         audit: &mut DeckSearchAudit,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         search: DeckSearch,
         starts: &[&SelectedDeck],
         scored: &mut usize,
     ) -> DeckRes {
         if self.space.deck_job.cap_free {
-            return self.best_deck_cf(state, audit, search, starts, scored, None, None);
+            return self.best_deck_cf(state, audit, state_bounds, search, starts, scored, None, None);
         }
         let (breaches_before, cert_before, overflows_before) = (audit.cap_breach, audit.cert, audit.overflows);
-        let CappedSearch { result: res, product_deck } = self.best_deck_capped(state, audit, search, starts, scored);
+        let CappedSearch { result: res, product_deck } =
+            self.best_deck_capped(state, audit, state_bounds, search, starts, scored);
         if self.space.deck_job.checks.cf_check > 0.0 {
-            self.cf_beside(state, audit, search, starts, &res, &product_deck);
+            self.cf_beside(state, audit, state_bounds, search, starts, &res, &product_deck);
         }
         if audit.cap_breach == breaches_before {
             return res;
@@ -382,7 +383,7 @@ impl CareerSetup<'_> {
             DeckRes::Done(v, s, _) => Some(ValuedDeck { value: *v, deck: s.clone() }),
             _ => None,
         };
-        self.best_deck_cf(state, audit, search, starts, scored, product_deck, capped)
+        self.best_deck_cf(state, audit, state_bounds, search, starts, scored, product_deck, capped)
     }
     /// CF_CHECK: the cap-free search beside a capped one, everything it changes put back, and their answers compared
     /// (`CFCHK`)
@@ -390,6 +391,7 @@ impl CareerSetup<'_> {
         &self,
         state: &mut SearchState,
         audit: &mut DeckSearchAudit,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         search: DeckSearch,
         starts: &[&SelectedDeck],
         res: &DeckRes,
@@ -397,7 +399,7 @@ impl CareerSetup<'_> {
     ) {
         let saved = SearchEffects::save(self, state, audit);
         let mut sc = 0usize;
-        let r = self.best_deck_cf(state, audit, search, starts, &mut sc, product_deck.clone(), None);
+        let r = self.best_deck_cf(state, audit, state_bounds, search, starts, &mut sc, product_deck.clone(), None);
         saved.restore(self, state, audit);
         // a deck below the career's bar counts as nothing (the capped search may stop as `Bounded` there)
         let DeckSearch { spark_scale: c, bar: th, .. } = search;
@@ -454,6 +456,7 @@ impl CareerSetup<'_> {
         &self,
         state: &mut SearchState,
         audit: &mut DeckSearchAudit,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         search: DeckSearch,
         starts: &[&SelectedDeck],
         scored: &mut usize,
@@ -469,6 +472,7 @@ impl CareerSetup<'_> {
         } else {
             let n0 = self.space.nodes.get();
             let SearchOutcome { decks: r, incomplete, .. } = self.space.search(
+                state_bounds,
                 &self.deck_chances(state),
                 &[t],
                 &[uid],
@@ -506,6 +510,7 @@ impl CareerSetup<'_> {
         let n0 = self.space.nodes.get();
         let node_limit = n0.saturating_add(budget.saturating_sub(work) / CF_NODE_WORK);
         let SearchOutcome { decks: mut more, incomplete, .. } = self.space.search(
+            state_bounds,
             &self.deck_chances(state),
             &[t],
             &[uid],
@@ -573,6 +578,7 @@ impl CareerSetup<'_> {
         &self,
         state: &mut SearchState,
         audit: &mut DeckSearchAudit,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         search: DeckSearch,
         starts: &[&SelectedDeck],
         scored: &mut usize,
@@ -587,6 +593,7 @@ impl CareerSetup<'_> {
         let seed =
             if th.is_finite() && th > 0.0 { th / (rho * c * (1.0 + 1e-9)) * (1.0 - 1e-12) } else { f64::NEG_INFINITY };
         let SearchOutcome { decks: r, incomplete, .. } = self.space.search(
+            state_bounds,
             &self.deck_chances(state),
             &[t],
             &[uid],
@@ -638,6 +645,7 @@ impl CareerSetup<'_> {
             let n0 = self.space.nodes.get();
             // `uncapped`: the band was built without the cap (SBOUND=2): every deck in it may beat the bar
             let SearchOutcome { decks: mut more, incomplete, uncapped } = self.space.search(
+                state_bounds,
                 &self.deck_chances(state),
                 &[t],
                 &[uid],

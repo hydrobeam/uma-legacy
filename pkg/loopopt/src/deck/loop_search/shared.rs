@@ -93,8 +93,11 @@ impl Multi<'_> {
         }
         let mut sc = SharedScan::new(self.inputs.data, f, qa, floor, self.loop_limit);
         self.seed_shared(state, &mut sc);
-        let complete =
-            if lv > 1.0 && !sc.decks.is_empty() { self.band_shared(&mut state.tally, &mut sc, lv) } else { true };
+        let complete = if lv > 1.0 && !sc.decks.is_empty() {
+            self.band_shared(&mut state.state_bounds, &mut state.tally, &mut sc, lv)
+        } else {
+            true
+        };
         let thr = sc.need();
         let mut list = sc.decks;
         list.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
@@ -162,6 +165,7 @@ impl Multi<'_> {
         }
         if sc.decks.is_empty() {
             let SearchOutcome { decks: r, .. } = space.search(
+                &mut state.state_bounds,
                 &model.deck_chances(),
                 members(&f),
                 &sc.member_ids,
@@ -177,13 +181,20 @@ impl Multi<'_> {
 
     /// Every legal deck that might reach the loop's threshold under cap lv, scored (after the proven bound); false (and
     /// the pass aborted) when a deck search was cut short or the budget ran out
-    fn band_shared(&self, tally: &mut Tally, sc: &mut SharedScan, lv: f64) -> bool {
+    fn band_shared(
+        &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
+        tally: &mut Tally,
+        sc: &mut SharedScan,
+        lv: f64,
+    ) -> bool {
         let (model, space, f) = (self.inputs.model, self.inputs.deck_space, sc.members);
         let mut complete = true;
         tally.band_decks += 1;
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete, .. } = space.search(
+            state_bounds,
             &model.deck_chances(),
             members(&f),
             &sc.member_ids,

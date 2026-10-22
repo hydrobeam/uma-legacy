@@ -24,6 +24,7 @@ use serde_json::{Value, json};
 /// Choose the stage candidates, search their best careers, and build the simulator the later phases share.
 pub(crate) fn setup_plan_candidates<'env, 'data>(
     env: &'env mut Env<'data>,
+    kept: &'env mut crate::career::state::KeptState,
     input: &PlanInputs<'_, 'data>,
     started_ms: f64,
     pick_career: Found,
@@ -53,7 +54,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         env.state.hard_work_cap = settings.search_work;
     }
     env.state.use_seen = true;
-    let mut searches = input.new_searches(&main_career, env_budget);
+    let mut searches = input.new_searches(kept, &main_career, env_budget);
     if settings.sur != 1 {
         for &u in &candidate_trainees {
             if searches.best_careers[u].is_unsearched() {
@@ -65,7 +66,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     env.state.hard_work_cap = 0;
     env.state.budget = env_budget;
     let mut search_ms = now_ms() - searches_started_ms;
-    let mut sim = sim_for(env, input.resources, settings)?;
+    let mut sim = sim_for(env, kept, input.resources, settings)?;
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
     // winners only, the main search's best careers and each uma's best one, so what it holds (and every number read from
     // it) depends on the job alone, not on what the pruning happened to check fully (earlier jobs' proofs, the order, a
@@ -221,15 +222,20 @@ fn stage_candidates(
 
 impl PlanInputs<'_, '_> {
     /// The plan's searches before any is run: the main search's best career known, and the kept plans of this pool and of
-    /// this pool less its last veteran taken out of `BESTS`
-    fn new_searches(&self, main_career: &Found, env_budget: usize) -> PlanSearches {
+    /// this pool less its last veteran taken out of `KeptState::bests`
+    fn new_searches(
+        &self,
+        kept: &mut crate::career::state::KeptState,
+        main_career: &Found,
+        env_budget: usize,
+    ) -> PlanSearches {
         let uma_count = self.resources.data.umas.len();
         let legacy_count = self.legacies.len();
         let mut best_careers = crate::uma::UmaTable(vec![CachedSearch::Unsearched; uma_count]);
         best_careers[main_career.trainee] = CachedSearch::Known(Some(main_career.clone()));
-        let kept_same_pool = take_kept_plan(bests_key(self.resources.job, self.fixed_parents, legacy_count));
+        let kept_same_pool = take_kept_plan(kept, bests_key(self.resources.job, self.fixed_parents, legacy_count));
         let kept_previous_pool = if legacy_count > 1 {
-            take_kept_plan(bests_key(self.resources.job, self.fixed_parents, legacy_count - 1))
+            take_kept_plan(kept, bests_key(self.resources.job, self.fixed_parents, legacy_count - 1))
         } else {
             None
         };

@@ -75,6 +75,7 @@ impl DeckSpace<'_> {
     /// tables and the depth-first walk of its decks (`DeckSearchContext::visit`), until one ends the search.
     pub(crate) fn traverse_configurations(
         &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         chances: &DeckChances,
         clauses: &[SearchClause],
         controls: SearchControl,
@@ -99,7 +100,9 @@ impl DeckSpace<'_> {
             if context.past_bar(&configuration, &results) {
                 break;
             }
-            if let Some(stop) = context.visit(&mut scratch, &mut results, &configuration, &ratio_at, cf_ratios) {
+            if let Some(stop) =
+                context.visit(state_bounds, &mut scratch, &mut results, &configuration, &ratio_at, cf_ratios)
+            {
                 return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped };
             }
         }
@@ -278,6 +281,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
     /// its decks. Some: the search stops there
     fn visit(
         &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         scratch: &mut DeckSearchScratch,
         results: &mut SearchResults,
         configuration: &SearchConfig,
@@ -326,7 +330,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             configuration_scratch.fill_class_suffixes(&groups, &space.class_masks);
         }
         // A root bound below the bar rules out every deck in the configuration.
-        let sbc = search.state_cfg(configuration, &groups);
+        let sbc = search.state_cfg(state_bounds, configuration, &groups);
         let mut sbb = StateBound::new(
             sbc,
             &groups,
@@ -664,13 +668,14 @@ impl<V> DeckSearchContext<'_, '_, V> {
     /// entries (a slot may take any of them, the same one twice: a relaxation). None without the bound (`state_bound_mode` 0)
     fn state_cfg(
         &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         configuration: &SearchConfig,
         groups: &[TraversalEntryGroup<'_>],
     ) -> Option<std::rc::Rc<StateBoundConfig>> {
         let SearchControl { target_count, kind_count, set_id, state_bound_mode, .. } = self.controls;
         let (space, state_rows, filler, ng) =
             (self.space, self.tables.state_rows, configuration.filler_count, groups.len());
-        let sbkey = crate::deck::space::StateBoundKey {
+        let sbkey = crate::deck::state_bound::StateBoundKey {
             set_id,
             code: configuration.code,
             real_filler_count: configuration.real_filler_count,
@@ -678,7 +683,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
         };
         if state_bound_mode == 0 {
             None
-        } else if let Some(r) = space.state_bound_cache.borrow().get(&sbkey).cloned() {
+        } else if let Some(r) = state_bounds.configurations.get(&sbkey).cloned() {
             Some(r)
         } else {
             let mut kinds: Vec<(ChainKind, usize)> = vec![]; // (kind, group, or usize::MAX for a filler)
@@ -769,7 +774,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 projected_positions: rel_pos,
                 order: std::cell::OnceCell::default(),
             });
-            space.state_bound_cache.borrow_mut().insert(sbkey, std::rc::Rc::clone(&r));
+            state_bounds.configurations.insert(sbkey, std::rc::Rc::clone(&r));
             Some(r)
         }
     }
