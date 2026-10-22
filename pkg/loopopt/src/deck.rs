@@ -24,7 +24,6 @@
 //! tables of exact values by inheritance chance) can still beat the k-th best. A pass over its work budget falls back
 //! to lower caps, then to product odds alone (`exact.rho`). Per-uma decks (`per_uma`, `run_multi`) give each trainee
 //! her own best legal deck; a shared deck must be legal for every member. docs/SOLVER.md "Deck + loop search".
-use crate::{Choice, Data, NT, Sched, Uma, best_response, feasible};
 use serde::Deserialize;
 use std::collections::HashMap;
 #[derive(Deserialize, Clone)]
@@ -147,27 +146,6 @@ pub(crate) struct DeckJob {
     pub cap_free: bool,
 }
 
-/// Fixed schedule for one uma (see DeckJob::schedule).
-fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
-    let solo = best_response(d, u, &vec![1.0; d.nr], None).expect("infeasible goals").0;
-    if mode != "goals" {
-        return solo;
-    }
-
-    let mut schedule = solo;
-    let mut covered_goals = 0u32;
-    for turn in 0..NT {
-        if let Choice::Opt(option) = schedule[turn] {
-            let goal_bits = u.bits[turn][option as usize];
-            if u.forced[turn].is_some() || goal_bits & !covered_goals != 0 {
-                covered_goals |= goal_bits;
-            } else {
-                schedule[turn] = Choice::Rest;
-            }
-        }
-    }
-    if feasible(u, &schedule) { schedule } else { solo }
-}
 const fn d_one() -> usize {
     1
 }
