@@ -89,6 +89,7 @@
 !/val/owncheck.py
 !/val/permcheck.py
 !/val/joint_check.py
+!/val/milp_fixtures.py
 # research scripts are tracked; the run records they read (research/data/) are not
 !/research/
 /research/data/

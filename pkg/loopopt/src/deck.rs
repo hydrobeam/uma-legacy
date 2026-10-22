@@ -24,7 +24,7 @@
 //! her own best legal deck; a shared deck must be legal for every member. docs/SOLVER.md "Deck + loop search".
 use super::{
     Choice, Data, Deserialize, FxMap, Instant, NONE, NT, Res, Sched, Serialize, Uma, best_response, chart_race_name,
-    feasible, members, optimize_fam, pair_ceilings, pk, probs, when, wval,
+    feasible, members, optimize_fam, pair_ceilings, pk, probs, scored_position, streak_penalty, when, wval,
 };
 use crate::skills::{
     GEN_GOLD, MemberLineage, Model, OutfitOption, SkillJob, SkillsRaw, chart_rows, check_sizes, lins, member_json,

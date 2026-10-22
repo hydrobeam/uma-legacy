@@ -7,7 +7,8 @@
 //! Objective, normalized to 4 runs:
 //!     E = base + 3 * C * sum_{i<j} <P_i, P_j>
 //! where P_i[r] = P(member i wins G1 race r at least once) = 1 - prod(1 - p) over her attempts at r,
-//! and p = clamp(110 - cost(distance grade) - cost(surface grade) - PEN[streak position], 0, 100) / 100.
+//! and p = clamp(110 - cost(distance grade) - cost(surface grade) - PEN[scored position], 0, 100) / 100, the scored
+//! position being the race's streak position, one less for a goal race (`scored_position`).
 //! This scheduling objective retains the older half-grandparent normalization: C = 2,
 //! base = 2*sum pair + 2*sum trio (`make_loop`). The skill model uses full grandparent rates.
 //! Both weight every pair's shared wins uniformly, so the normalization preserves schedule rankings within a
@@ -194,7 +195,8 @@ struct Uma {
     apt: Vec<u8>,                 // aptitude codes (UmaRaw); empty in older data
 }
 
-/// Precomputed per-choice data for dp_exact: race (-1 = none), win chance per streak position k (same values as `pk`), goal bits.
+/// Precomputed per-choice data for dp_exact: race (-1 = none), win chance per streak position k (same values as
+/// `option_chance`), goal bits.
 #[derive(Clone, Copy)]
 struct Ent {
     race: i32,
@@ -219,7 +221,7 @@ struct Data {
 
 /// Bump when best_response / pair_ceilings change in a way that could move a ceiling's bits: stored tables then
 /// stop matching and are recomputed.
-const PB_VERSION: u64 = 1;
+const PB_VERSION: u64 = 2;
 /// Fingerprint of everything a pairwise ceiling depends on: every uma's id, options (race, bp) per turn and goals,
 /// the streak penalties and the race count. Fx over fixed-width words, so native and wasm agree.
 fn pb_fingerprint(raw: &DataRaw) -> String {
@@ -274,6 +276,25 @@ fn pb_table_from(raw: &DataRaw) -> Option<UmaPairTable<f64>> {
 // pk table indexed by bp+20 (bp can be as low as -10), position k=1..6
 fn pk(d: &Data, bp: i32, k: usize) -> f64 {
     d.pk[(bp + 20) as usize][k]
+}
+
+/// The streak position whose penalty a race at streak position `k` takes (`docs/MODEL.md`, win chance in IT): a goal
+/// race (one the career's goals require) takes the previous position's, so it pays 0/0/0/5/20/30 where a chosen race
+/// pays 0/0/5/20/30/50. It still counts toward the position of the races after it. The streak state stops at 6
+/// (6th or later), so a goal race 7th or later in a row scores as the 6th.
+const fn scored_position(goal: bool, k: usize) -> usize {
+    if goal && k >= 2 { k - 1 } else { k }
+}
+
+/// Win chance of one option at streak position `k` (1..=6), its goal shift included.
+fn option_chance(d: &Data, option: &OptRaw, k: usize) -> f64 {
+    pk(d, option.bp, scored_position(option.goal, k))
+}
+
+/// The streak penalty (percentage points) an option takes at streak position `k`, for the schedule's explanations
+/// (0 at k = 0).
+fn streak_penalty(d: &Data, goal: bool, k: usize) -> i32 {
+    d.pen.get(scored_position(goal, k).max(1) - 1).copied().unwrap_or(0)
 }
 
 fn load(path: &str) -> Data {
@@ -357,8 +378,11 @@ fn load_raw(raw: DataRaw) -> Data {
         for t in 0..NT {
             assert!(u.turns[t].len() <= 5, "more than 5 options at one turn");
             for (o, op) in u.turns[t].iter().enumerate() {
+                let chances = &pkt[(op.bp + 20) as usize];
                 let mut p = [0.0f64; 7];
-                p[1..=6].copy_from_slice(&pkt[(op.bp + 20) as usize][1..=6]);
+                for (k, chance) in p.iter_mut().enumerate().skip(1) {
+                    *chance = chances[scored_position(op.goal, k)];
+                }
                 ent[t][o + 1] = Ent { race: op.race, rest: false, bit: bits[t][o], p };
             }
             let (a, n) = &mut chl[t];
@@ -422,7 +446,7 @@ fn probs_into(d: &Data, u: &Uma, s: &Sched, miss: &mut Vec<f64>) {
             Choice::Rest => k = 0,
             Choice::Opt(o) => {
                 k = (k + 1).min(6);
-                // ent[t][o+1].p[k] == pk(d, op.bp, k) bit for bit (copied from the same table at load)
+                // ent[t][o+1].p[k] == option_chance(d, op, k) bit for bit (copied from the same table at load)
                 let e = &u.ent[t][o as usize + 1];
                 if e.race >= 0 {
                     miss[e.race as usize] *= 1.0 - e.p[k];
@@ -1035,7 +1059,7 @@ fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: 
                 Choice::Opt(o) => {
                     k = (k + 1).min(6);
                     let op = &u.opts[t][o as usize];
-                    if op.race >= 0 { pk(d, op.bp, k) } else { -1.0 }
+                    if op.race >= 0 { option_chance(d, op, k) } else { -1.0 }
                 }
             })
             .collect()
@@ -1432,7 +1456,7 @@ pub fn cli_main() {
 
 // ---------------------------------------------------------------------------------------------
 // Correctness tests of the affinity core. Reference values in tests/fixtures/ were produced independently of this code
-// (exact MILP, scipy/HiGHS) on the frozen data_v1.json:
+// (exact MILP, scipy/HiGHS: val/milp_fixtures.py, rerun after a change to the win model) on the frozen data_v1.json:
 //   br_milp.json, br_rest_milp.json  best responses, incl. forced races and rests and the special-goal umas
 //   pb_milp.json                     pair ceilings
 // Run with: cargo test --release
@@ -1808,6 +1832,34 @@ mod tests {
                 assert_eq!(pk(&d, bp, k), f64::from(vals[k - 1].clamp(0, 100)) / 100.0, "cost {cost} k {k}");
             }
         }
+    }
+
+    /// A goal race takes the previous streak position's penalty (0/0/0/5/20/30 in the shipped data), a chosen race its
+    /// own; every option's precomputed chances, which the DP reads, follow that rule.
+    #[test]
+    fn goal_race_takes_previous_position() {
+        let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/data.json"));
+        let goal_penalties: Vec<i32> = (1..=6).map(|k| streak_penalty(&d, true, k)).collect();
+        let chosen_penalties: Vec<i32> = (1..=6).map(|k| streak_penalty(&d, false, k)).collect();
+        assert_eq!(goal_penalties, [0, 0, 0, 5, 20, 30]);
+        assert_eq!(chosen_penalties, [0, 0, 5, 20, 30, 50]);
+        let mut goal_options = 0;
+        for u in &d.umas.0 {
+            for (t, options) in u.opts.iter().enumerate() {
+                for (o, option) in options.iter().enumerate() {
+                    goal_options += usize::from(option.goal && option.race >= 0);
+                    for k in 1..=6 {
+                        assert_eq!(
+                            u.ent[t][o + 1].p[k],
+                            option_chance(&d, option, k),
+                            "{} turn {t} option {o}",
+                            u.name
+                        );
+                    }
+                }
+            }
+        }
+        assert!(goal_options > 0, "no G1 goal options in the data");
     }
 }
 

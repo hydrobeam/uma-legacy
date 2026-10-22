@@ -1,7 +1,9 @@
 //! Aptitude sparks and career race schedules.
 use super::{Env, Pool, RaceWin, aff_factor};
 use crate::deck::career::Lineage;
-use crate::deck::{Choice, NT, Uma, Value, best_response, chart_race_name, json, pk, probs, when};
+use crate::deck::{
+    Choice, NT, Uma, Value, best_response, chart_race_name, json, pk, probs, scored_position, streak_penalty, when,
+};
 
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
 const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];
@@ -181,7 +183,7 @@ impl Env<'_> {
                         let bp = (110 - cost(gd) - cost(gs)).max(-20);
                         ebp[tt][o] += wd * ws * f64::from(bp);
                         for k in 1..=6 {
-                            pr[k] += wd * ws * pk(d, bp, k);
+                            pr[k] += wd * ws * pk(d, bp, scored_position(op.goal, k));
                         }
                     }
                 }
@@ -265,7 +267,7 @@ impl Env<'_> {
                 let pw = u.ent[tt][o + 1].p;
                 let apt = pu.as_ref().map_or(f64::from(110 - op.bp), |x| 110.0 - x.1[tt][o]).round() as i64;
                 let cell = if run {
-                    json!({"p": (pw[k] * 100.0).round(), "goal": op.goal, "apt": apt, "row": k, "pen": d.pen.get(k.max(1) - 1).copied().unwrap_or(0)})
+                    json!({"p": (pw[k] * 100.0).round(), "goal": op.goal, "apt": apt, "row": k, "pen": streak_penalty(d, op.goal, k)})
                 } else {
                     Value::Null
                 };

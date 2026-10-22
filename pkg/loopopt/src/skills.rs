@@ -18,7 +18,10 @@
 //! Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages, the trainee her own grandparent twice;
 //! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
 //! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
-use super::{Choice, Data, Deserialize, NT, Sched, chart_race_name, interchangeable, pk, row_label, short_name, when};
+use super::{
+    Choice, Data, Deserialize, NT, Sched, chart_race_name, interchangeable, option_chance, row_label, short_name,
+    streak_penalty, when,
+};
 use crate::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
 
@@ -637,9 +640,9 @@ pub(crate) fn chart_rows(d: &Data, members: &[UmaIndex], schedules: &[Sched]) ->
                             runner_count += 1;
                             let streak = streaks[i][turn];
                             // Win chance accounts for aptitude grades (distance + surface, out of 110) and consecutive races.
-                            json!({"p": (pk(d, chosen.bp, streak) * 100.0).round(), "goal": chosen.goal,
+                            json!({"p": (option_chance(d, chosen, streak) * 100.0).round(), "goal": chosen.goal,
                            "apt": 110 - chosen.bp, "row": streak,
-                           "pen": d.pen.get(streak.max(1) - 1).copied().unwrap_or(0)})
+                           "pen": streak_penalty(d, chosen.goal, streak)})
                         } else {
                             Value::Null
                         }
