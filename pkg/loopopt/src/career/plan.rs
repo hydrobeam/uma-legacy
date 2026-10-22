@@ -212,7 +212,7 @@ impl<'plan> PlanInputs<'plan, '_> {
     /// A career that may run: its parents are legal on the pick's pool (the borrowing rule). Rows repeating another
     /// row's career are dropped later, at output.
     fn is_runnable(&self, f: &Found) -> bool {
-        self.pick_pool().bor_ok(f.first_parent, f.second_parent)
+        self.pick_pool().within_borrow_limit(f.first_parent, f.second_parent)
     }
 }
 

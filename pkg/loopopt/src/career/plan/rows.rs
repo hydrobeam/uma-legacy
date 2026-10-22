@@ -402,7 +402,7 @@ pub(crate) fn score_and_promote_rows(
                 .filter(|&i| {
                     legacies[i].chara == data.umas[u].id
                         && is_full(sj, &legacies[i].sparks)
-                        && input.pool.bor_one(legacies[i].borrowed)
+                        && input.pool.alone_within_borrow_limit(legacies[i].borrowed)
                 })
                 .collect()
         })

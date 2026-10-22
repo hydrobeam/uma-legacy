@@ -64,7 +64,7 @@ pub(crate) fn rotation(env: &Env, ids: &[u32]) -> LoopRotation {
         };
     }
     let members: Vec<Option<crate::uma::UmaIndex>> =
-        member_info.iter().map(|m| m["id"].as_u64().and_then(|id| env.uix(id as u32))).collect();
+        member_info.iter().map(|m| m["id"].as_u64().and_then(|id| env.uma_index(id as u32))).collect();
     if members.len() < 3
         || members.iter().any(|x| x.is_none_or(|t| !env.owned.contains(&t) || env.deck_odds_ceilings[t].is_none()))
     {
@@ -275,8 +275,8 @@ pub(crate) fn loop_ceiling(
     let n = p.veterans.len();
     let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
     let v = if legal_pair(d, &p, lineage) { val(simulator, &p, lineage, buf) } else { 0.0 };
-    Env::pool_pop(&mut p);
-    Env::pool_pop(&mut p);
+    p.pop_veteran();
+    p.pop_veteran();
     simulator.put_pool(pool, p);
     v
 }
@@ -355,8 +355,8 @@ pub(crate) fn hint_umas(
                 out.push(HintUma { trainee: u, ceiling });
             }
         }
-        Env::pool_pop(&mut p);
-        Env::pool_pop(&mut p);
+        p.pop_veteran();
+        p.pop_veteran();
     }
     // best first; equal odds in uma order (stable)
     out.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());

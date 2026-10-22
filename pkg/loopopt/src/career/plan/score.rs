@@ -7,7 +7,7 @@ use crate::career::plan::search::{IDX_PARTNERS, is_full, legal_pair, val};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, PoolProvenance, ScoringContext, TargetMask};
 use crate::career::pool::Pool;
 use crate::career::sim::{Cur, Sim};
-use crate::career::{Career, Env, Legacy, Lineage};
+use crate::career::{Career, Legacy, Lineage};
 pub(crate) mod kernel;
 
 struct FinisherCeiling {
@@ -89,7 +89,7 @@ pub(crate) fn her_trios(
                     finisher_cost: 1.0 / best,
                 });
             }
-            Env::pool_pop(extended_pool);
+            extended_pool.pop_veteran();
         }
     }
     trios
@@ -156,7 +156,7 @@ pub(crate) fn her_pool(
 /// Return a recorded pool's working copy after popping the new veteran (`Sim::put_pool`).
 pub(crate) fn her_pool_done(simulator: &mut Sim, pool: &Pool, recorded_pool: bool, mut extended_pool: Pool) {
     if recorded_pool {
-        Env::pool_pop(&mut extended_pool);
+        extended_pool.pop_veteran();
         simulator.put_pool(pool, extended_pool);
     }
 }
