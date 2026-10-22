@@ -1,6 +1,6 @@
 // ---------- the solver's kept work across page loads (IndexedDB; the career planner) ----------
 // One record per key (the solver's and the era data's fingerprints: a release starts afresh). Every failure (no
-// IndexedDB, private mode, quota, a corrupt record) reads as "nothing stored": the page then plans cold, as before.
+// IndexedDB, private mode, quota, a corrupt record) reads as "nothing stored": the page then plans cold.
 const DB_NAME = 'llp-solver', STORE = 'state';
 let opening = null;   // the open database (a promise); a failed open is forgotten, so the next use tries again
 function database() {

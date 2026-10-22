@@ -1,5 +1,6 @@
-// ---------- character icons, card art and skill icons: files in img/ next to the page (from the game's own files) ----------
-// All lazy: the browser fetches an image only when it scrolls near the view (loading is set before src).
+// ---------- character icons, card art and skill icons: files in the page's image folder (data.js IMG_BASE; from the game's own files) ----------
+// Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near the
+// view (loading is set before src).
 import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, NAME } from './data.js';
 import { spinHTML } from './dom.js';
 /** @param {string} kind the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...) @param {number|string} id @returns {string|null} */

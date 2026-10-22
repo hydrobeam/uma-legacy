@@ -139,7 +139,7 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
 }
 // the G1 wins of one node, on the schedule window's calendar (the editor in agenda.js): each win in its slot, click it to
 // remove it; an empty slot where a G1 is held lists the races held then. A pool veteran's wins are saved on each edit, and
-// the page searches again when the dialog closes. opts (the veteran analysis' draft): {offer, info, hint, onEdit, onClose}
+// the page searches again when the dialog closes. opts (the veteran analysis' draft): {offer, info, onEdit, onClose}
 // (see winsAgenda). nd.winAt {race index: turn} is where a win shows, for display only (the solver reads nd.wins).
 const allRaces = () => CAREER.races.map((name, ix) => ({ ix, name, turns: (CAREER.race_turns || [])[ix] || [] }));
 let winsClose = null;
@@ -196,7 +196,7 @@ function starsEl(stars) {
   box.append(filled, empty); return box;
 }
 /**
- * One spark as a chip: a target skill (click: stars 1 -> 2 -> 3 -> 1; the corner x removes) or a pink.
+ * One spark as a chip: a target skill (click: stars 1 -> 2 -> 3 -> 1; the corner x removes), a pink or a unique.
  * @typedef {object} ChipSpec
  * @property {string} label  the spark's name
  * @property {Node|null} icon  the skill's icon, if any
@@ -266,7 +266,8 @@ function pinkChoices(nd) {
 }
 // her spark of one kind, as [group (an object key: a string), stars], or undefined (none)
 const currentSpark = (nd, kind) => Object.entries(nd[KIND[kind].field] || {}).find(([, stars]) => stars > 0);
-// her spark of one kind as its coloured bar: a chip for a unique or a pink she has, else a bar that opens the picker
+// her spark of one kind as its coloured bar: a chip for a unique or a pink she has, else a bar that opens the picker (a
+// missing unique's bar adds it at NEW_STARS)
 function colourBar(nd, kind, key, onEdit, readOnly) {
   const spec = KIND[kind], cur = currentSpark(nd, kind);
   if (!cur && (readOnly || !spec.groups(nd).length)) return null;
@@ -373,7 +374,6 @@ export function importVets(list, all = false) {
   const own = list.filter(v => !v.borrowed), borrowed = list.filter(v => v.borrowed), fresh = [];
   let updated = 0, dropped = 0;
   for (const v of own) { const old = vetById(v.id); if (old) { Object.assign(old, v); updated++; } else fresh.push(v); }
-  // new ones of yours go right after your last import
   const afterOwnImports = vets.reduce((at, v, i) => (isImport(v) && !v.borrowed ? i + 1 : at), 0);
   vets.splice(afterOwnImports, 0, ...fresh);
   if (borrowed.length) {
@@ -400,7 +400,7 @@ export function sampleVets() {
       parents: [node(pool[i + 1][0], {}), node(pool[i + 2][0], {})] });
   return out;
 }
-// veterans from an uma.moe tree: added after the others (the numbers you have keep)
+// veterans from an uma.moe tree, or the samples: added after the others (the numbers you have keep)
 /** @param {Veteran[]} list */
 export function addVets(list) { vets.push(...list); changed(); }
 /** @param {number} i her index in `vets` */
@@ -409,11 +409,11 @@ export function removeVet(i) { vets.splice(i, 1); dropMissing(); changed(); }
 /** @param {(vet: Veteran) => boolean} [drop] */
 export function clearVets(drop = () => true) { for (let i = vets.length - 1; i >= 0; i--) if (drop(vets[i])) vets.splice(i, 1); dropMissing(); changed(); }
 function dropMissing() { plan.parents = plan.parents.map(id => (id && vetById(id) ? id : null)); }
-// the job's legacies (skill groups and stars as pairs; an unknown parent counts with character 0: no relation points)
-// (the same array until the next edit, `rev`: callers don't change it)
+// legaciesJob returns the same array until the next edit (`rev`): callers don't change it
 let legaciesCache = null, legaciesRev = -1;
 /**
- * A veteran as the solver's job takes her (sparks as [group, stars] pairs; an unknown parent's character 0).
+ * A veteran as the solver's job takes her (sparks as [group, stars] pairs; an unknown parent's character 0: no relation
+ * points).
  * @typedef {{chara: number, sparks: [number, number][], pinks: [number, number][], wins: number[]}} JobNode
  * @typedef {JobNode & {borrowed: boolean, parents: JobNode[]}} JobLegacy
  * @returns {JobLegacy[]}

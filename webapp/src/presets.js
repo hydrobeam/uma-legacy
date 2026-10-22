@@ -14,7 +14,8 @@ const NAME_MAX = 40;
 // the same skills, in any order
 const sameSkills = (a, b) => a.length === b.length && [...a].sort((x, y) => x - y).join() === [...b].sort((x, y) => x - y).join();
 const skillCount = (n) => `${n} skill${n === 1 ? '' : 's'}`;
-// the game has no trash can among its UI sprites: one drawn in its icon style, in the ink colour, the slits in the face's
+// the game has no trash can among its UI sprites: one drawn in its icon style, in the ink colour, the slits in the
+// button face's colour (style.css .ptrash .slit)
 const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9.2 2.5h5.6l.9 1.9H20a1 1 0 0 1 1 1V7H3V5.4a1 1 0 0 1 1-1h4.3z"/>'
   + '<path fill="currentColor" d="M4.8 8.5h14.4l-1.1 12a2 2 0 0 1-2 1.8H7.9a2 2 0 0 1-2-1.8z"/><path class="slit" d="M9.6 11.5v7.4M14.4 11.5v7.4" stroke-width="1.8" stroke-linecap="round"/></svg>';
 let rerender = () => {};
