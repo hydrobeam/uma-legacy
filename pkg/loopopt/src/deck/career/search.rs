@@ -5,6 +5,7 @@ use super::{
     shared, spark_scale,
 };
 use crate::deck::Sel;
+use crate::deck::career::Lineage;
 
 /// How a bound proves a career out (`Env::ceiling_out`, `refs_out`, `ruled_out`): `Below(th)`, `solve`'s prune, the bound
 /// below the bar with its slack s, b (1 + s) < th (a computed bound a hair under the true one still proves it); or
@@ -581,7 +582,7 @@ impl Env<'_> {
                     continue;
                 }
             }
-            let (q, c) = self.lineage_q(p, t, a, b);
+            let (q, c) = self.lineage_q(p, Lineage { trainee: t, first_parent: a, second_parent: b });
             // (the ceiling this candidate was ranked and stopped by is `ceiling` at these chances, to the bit:
             // `gen_cands`' claim, checked with the model state put back)
             debug_assert!(

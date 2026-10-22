@@ -6,72 +6,75 @@ import { state, goldGiven } from './state.js';
 import { skillIcon } from './images.js';
 import { save } from './save.js';
 import { renderCards } from './cards.js';
-// one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
-// remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
-// row's, else the add box), so the keyboard doesn't fall back to the page top
+const namesOf = (group) => SK.get(group) || { w: `Skill ${group}`, gd: null };
 // a target as the game's skill tile: icon and name; a gold the scenario guarantees shows as that gold (It's On! for
 // Ramp Up), in gold (the editor below adds its remove button; the Presets view shows the tiles alone)
 export function tileEl(group) {
-  const s = SK.get(group) || { w: 'Skill ' + group, gd: null };
-  const el = document.createElement('div'); el.className = 'tgt'; el.dataset.g = goldGiven(group) ? '2' : '0';
-  const nm = document.createElement('span'); nm.className = 'name'; el.appendChild(nm);
-  const gold = goldGiven(group) && !!s.gd;
-  if (gold) el.classList.add('gold');
-  const ic = skillIcon(group, gold); if (ic) nm.appendChild(ic);
-  nm.append(gold ? s.gd : s.w); if (gold) nm.title = `Gold of ${s.w}, guaranteed by the scenario`;   // a plain target's name is on the tile: no hover
-  return el;
+  const names = namesOf(group);
+  const tile = document.createElement('div'); tile.className = 'tgt'; tile.dataset.g = goldGiven(group) ? '2' : '0';
+  const name = document.createElement('span'); name.className = 'name'; tile.appendChild(name);
+  const gold = goldGiven(group) && !!names.gd;
+  if (gold) tile.classList.add('gold');
+  const icon = skillIcon(group, gold); if (icon) name.appendChild(icon);
+  name.append(gold ? names.gd : names.w); if (gold) name.title = `Gold of ${names.w}, guaranteed by the scenario`;   // a plain target's name is on the tile: no hover
+  return tile;
 }
+// one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
+// remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
+// row's, else the add box), so the keyboard doesn't fall back to the page top
 export function renderTargets(focus = null) {
-  const n = document.getElementById('o-skills-n'); if (n) n.textContent = String(state.targets.length);   // the setup panel's Target skills button
+  const count = document.getElementById('o-skills-n'); if (count) count.textContent = String(state.targets.length);   // the setup panel's Target skills button
   const box = $('targets'); box.textContent = '';
   state.targets.forEach((t, i) => {
-    const s = SK.get(t.group) || { w: 'Skill ' + t.group, gd: null };
-    const el = tileEl(t.group); el.id = 'g-' + t.group;
-    const x = document.createElement('button'); x.className = 'x'; x.type = 'button'; x.textContent = '×'; el.appendChild(x);
-    x.setAttribute('aria-label', 'Remove ' + s.w); x.title = 'Remove ' + s.w;
-    x.onclick = () => { state.targets.splice(i, 1); save(); renderTargets(i); };
-    box.appendChild(el);
+    const names = namesOf(t.group);
+    const tile = tileEl(t.group); tile.id = `g-${t.group}`;
+    const remove = document.createElement('button'); remove.className = 'x'; remove.type = 'button'; remove.textContent = '×'; tile.appendChild(remove);
+    remove.setAttribute('aria-label', `Remove ${names.w}`); remove.title = `Remove ${names.w}`;
+    remove.onclick = () => { state.targets.splice(i, 1); save(); renderTargets(i); };
+    box.appendChild(tile);
   });
   if (!state.targets.length) box.innerHTML = '<p class="hint">No target skills yet. Add one above.</p>';
-  if (focus !== null) { const xs = box.querySelectorAll('.x'); (xs[Math.min(focus, xs.length - 1)] || $('t-add')).focus(); }
+  if (focus !== null) { const removes = box.querySelectorAll('.x'); (removes[Math.min(focus, removes.length - 1)] || $('t-add')).focus(); }
   renderCards();
 }
 export function initTargets() {
-  const addIn = $('t-add'), sugg = $('t-sugg');
-  const items = () => [...sugg.querySelectorAll('button')];
-  const add = (g) => { state.targets.push({ group: g }); addIn.value = ''; sugg.hidden = true; save(); renderTargets(); addIn.focus(); };
-  const note = (text) => { const p = document.createElement('p'); p.className = 'snote'; p.textContent = text; sugg.appendChild(p); };
+  const addIn = $('t-add'), suggestions = $('t-sugg');
+  const SHOWN_MAX = 30;   // suggestions listed at most
+  const items = () => [...suggestions.querySelectorAll('button')];
+  const add = (group) => { state.targets.push({ group }); addIn.value = ''; suggestions.hidden = true; save(); renderTargets(); addIn.focus(); };
+  const note = (text) => { const p = document.createElement('p'); p.className = 'snote'; p.textContent = text; suggestions.appendChild(p); };
   addIn.oninput = () => {
-    const f = addIn.value.trim().toLowerCase(); sugg.textContent = '';
-    if (f.length < 2) { sugg.hidden = true; return; }
+    const filter = addIn.value.trim().toLowerCase(); suggestions.textContent = '';
+    if (filter.length < 2) { suggestions.hidden = true; return; }
     const have = new Set(state.targets.map(t => t.group));
-    const match = CAT.filter(([, w, gd]) => w.toLowerCase().includes(f) || (gd && gd.toLowerCase().includes(f)));
-    const hits = match.filter(([g]) => !have.has(g)).slice(0, 30);
-    for (const [g, w, gd] of hits) {
+    const matches = (name) => !!name && name.toLowerCase().includes(filter);
+    const match = CAT.filter(([, white, gold]) => matches(white) || matches(gold));
+    const hits = match.filter(([group]) => !have.has(group)).slice(0, SHOWN_MAX);
+    for (const [group, white, gold] of hits) {
       // matched on the gold's name only: show the gold with its white (the target is the white; its gold comes with it)
-      const viaGold = gd && gd.toLowerCase().includes(f) && !w.toLowerCase().includes(f);
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = w;
-      if (viaGold) { const x = document.createElement('span'); x.className = 'tg'; x.textContent = ' → ' + gd; b.appendChild(x); }
-      const ic = skillIcon(g, viaGold); if (ic) b.prepend(ic);
-      b.onclick = () => add(g);
-      sugg.appendChild(b);
+      const viaGold = matches(gold) && !matches(white);
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = white;
+      if (viaGold) { const arrow = document.createElement('span'); arrow.className = 'tg'; arrow.textContent = ` → ${gold}`; b.appendChild(arrow); }
+      const icon = skillIcon(group, viaGold); if (icon) b.prepend(icon);
+      b.onclick = () => add(group);
+      suggestions.appendChild(b);
     }
-    for (const [g, w] of match.filter(([g]) => have.has(g)).slice(0, 3)) note(`${w} is already a target`);
-    if (!match.length) note('No skill matches “' + addIn.value.trim() + '”');
-    sugg.hidden = false;
+    for (const [, white] of match.filter(([group]) => have.has(group)).slice(0, 3)) note(`${white} is already a target`);
+    if (!match.length) note(`No skill matches “${addIn.value.trim()}”`);
+    suggestions.hidden = false;
   };
   // Enter adds the first match; the arrows walk the list (Up from the first goes back to the box); Escape closes it
   addIn.onkeydown = (e) => {
-    if (e.key === 'Escape' && !sugg.hidden) { e.preventDefault(); sugg.hidden = true; }   // the list, not the dialog the editor sits in
-    else if (e.key === 'Enter') { const b = items()[0]; if (b && !sugg.hidden) { e.preventDefault(); b.click(); } }
-    else if (e.key === 'ArrowDown' && !sugg.hidden && items().length) { e.preventDefault(); items()[0].focus(); }
+    if (e.key === 'Escape' && !suggestions.hidden) { e.preventDefault(); suggestions.hidden = true; }   // the list, not the dialog the editor sits in
+    else if (e.key === 'Enter') { const b = items()[0]; if (b && !suggestions.hidden) { e.preventDefault(); b.click(); } }
+    else if (e.key === 'ArrowDown' && !suggestions.hidden && items().length) { e.preventDefault(); items()[0].focus(); }
   };
-  sugg.addEventListener('keydown', (e) => {
+  suggestions.addEventListener('keydown', (e) => {
     const bs = items(), i = bs.indexOf(document.activeElement);
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); sugg.hidden = true; addIn.focus(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); suggestions.hidden = true; addIn.focus(); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); if (i < bs.length - 1) bs[i + 1].focus(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); (i > 0 ? bs[i - 1] : addIn).focus(); }
   });
-  document.addEventListener('click', (e) => { if (!sugg.contains(e.target) && e.target !== addIn) sugg.hidden = true; });
+  document.addEventListener('click', (e) => { if (!suggestions.contains(e.target) && e.target !== addIn) suggestions.hidden = true; });
   initPresets(renderTargets);
 }

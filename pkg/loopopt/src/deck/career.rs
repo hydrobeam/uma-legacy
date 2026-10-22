@@ -61,6 +61,38 @@ mod cache;
 
 mod sim;
 
+/// A trainee and her parents in the supplied legacy pool; parent order is significant.
+#[derive(Clone, Copy)]
+pub(in crate::deck) struct Lineage {
+    /// Trainee's index in Data::umas.
+    pub(in crate::deck) trainee: usize,
+    /// First parent's index in the supplied pool or legacy slice.
+    pub(in crate::deck) first_parent: usize,
+    /// Second parent's index, preserving the caller's order.
+    pub(in crate::deck) second_parent: usize,
+}
+
+/// A borrowed deck and the lineage that will train with it.
+#[derive(Clone, Copy)]
+pub(in crate::deck) struct Career<'deck> {
+    /// Trainee and ordered parents.
+    pub(in crate::deck) lineage: Lineage,
+    /// Selected support deck, borrowed without cloning.
+    pub(in crate::deck) deck: &'deck Sel,
+}
+
+/// Immutable resources for one solver job.
+pub(in crate::deck) struct JobInputs<'data> {
+    /// Roster, affinities and race data.
+    pub(in crate::deck) data: &'data Data,
+    /// Skill and outfit source data.
+    pub(in crate::deck) skills: &'data SkillsRaw,
+    /// Support card source data.
+    pub(in crate::deck) cards: &'data CardsRaw,
+    /// Original job settings, including planner settings.
+    pub(in crate::deck) job: &'data Value,
+}
+
 #[derive(Deserialize, Clone, Default)]
 pub(crate) struct Ancestor {
     pub chara: u32,
@@ -443,7 +475,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         });
     };
     if let Some(sm) = &cj.simulate {
-        return sim::simulate(&mut env, d, sk, cr, v, legs, &trainees, sm);
+        return sim::simulate(&mut env, &JobInputs { data: d, skills: sk, cards: cr, job: v }, legs, &trainees, sm);
     }
     let pool = env.pool(legs);
     // (tests: the job's Env and pool handed to a check instead of the search)
@@ -459,7 +491,14 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         .as_ref()
         .filter(|x| x.get("roll").is_some_and(|r| !r.is_null()))
         .and_then(|x| serde_json::from_value::<sim::plan::PlanJob>(x.clone()).ok())
-        && let Some(r) = sim::plan::roll_kept(&mut env, d, sk, cr, v, legs, &pool, &cj.fix, &nj)
+        && let Some(r) = sim::plan::roll_kept(
+            &mut env,
+            &JobInputs { data: d, skills: sk, cards: cr, job: v },
+            legs,
+            &pool,
+            &cj.fix,
+            &nj,
+        )
     {
         return json!({"next": {"roll": r}});
     }
@@ -515,7 +554,19 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     {
         out["next"] = match serde_json::from_value::<sim::plan::PlanJob>(x.clone()) {
             Ok(nj) => match &ppool {
-                None => sim::plan::index_rule(&mut env, d, sk, cr, v, legs, &pool, &sv, &cj.fix, &trainees, &nj, None),
+                None => sim::plan::index_rule(
+                    &mut env,
+                    &sim::plan::PlanInputs {
+                        resources: &JobInputs { data: d, skills: sk, cards: cr, job: v },
+                        legacies: legs,
+                        pool: &pool,
+                        solved: &sv,
+                        fixed_parents: &cj.fix,
+                        trainees: &trainees,
+                        settings: &nj,
+                        pick: None,
+                    },
+                ),
                 // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
                 // key (so a plan after an "allow" run takes it as it is)
                 Some(pp) => {
@@ -530,17 +581,16 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
                     );
                     sim::plan::index_rule(
                         &mut env,
-                        d,
-                        sk,
-                        cr,
-                        v,
-                        legs,
-                        &pool,
-                        &sva,
-                        &cj.fix,
-                        &trainees,
-                        &nj,
-                        Some((pp, &sv)),
+                        &sim::plan::PlanInputs {
+                            resources: &JobInputs { data: d, skills: sk, cards: cr, job: v },
+                            legacies: legs,
+                            pool: &pool,
+                            solved: &sva,
+                            fixed_parents: &cj.fix,
+                            trainees: &trainees,
+                            settings: &nj,
+                            pick: Some((pp, &sv)),
+                        },
                     )
                 }
             },
@@ -713,7 +763,13 @@ mod tests {
                         tg_t = t;
                     }
                     let mut qq = vec![0.0f64; env.ntar];
-                    let cq = env.lineage_qc(&p, t, a, b, &ks, &mut qq, &mut tg);
+                    let cq = env.lineage_qc(
+                        &p,
+                        Lineage { trainee: t, first_parent: a, second_parent: b },
+                        &ks,
+                        &mut qq,
+                        &mut tg,
+                    );
                     assert_eq!((bits(&qq), cq.to_bits()), (bits(&q), c.to_bits()), "lineage_qc t {t} pair {a} {b}");
                     for (y, iv) in [(a, b), (b, a)] {
                         let sl = env.slots(&p, t, y, iv);
@@ -722,7 +778,7 @@ mod tests {
                         sl0[pos].stars = std::rc::Rc::new(vec![0; env.ntar]);
                         sl0[pos].mix = None;
                         let (q0, nc0) = inherit(&sl0, env.ntar);
-                        let hs = env.her_slot(&p, t, y, iv).unwrap();
+                        let hs = env.her_slot(&p, Lineage { trainee: t, first_parent: y, second_parent: iv }).unwrap();
                         let fa = aff_factor(sl[pos].rel, sl[pos].race);
                         assert_eq!(bits(&hs.q0), bits(&q0));
                         assert_eq!(
