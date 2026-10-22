@@ -816,7 +816,7 @@ impl<'env, 'data> Sim<'env, 'data> {
                         plan::cont::Want::Stats,
                         &mut buf,
                     );
-                    let plan::score::LiftStats { lift_chance: pl, lifted_odds_sum: sp } = stt[0];
+                    let plan::score::kernel::LiftStats { lift_chance: pl, lifted_odds_sum: sp } = stt[0];
                     let (e, p1) = if pl > 0.0 {
                         let p1 = sp / pl;
                         (pl * (1.0 / pa - 1.0 / p1), p1)
