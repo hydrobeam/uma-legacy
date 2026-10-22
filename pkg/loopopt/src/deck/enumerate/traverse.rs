@@ -150,7 +150,8 @@ pub(crate) struct ParentTargetBounds {
 }
 
 /// The same for B, per depth (B has no borrowing variant): the parent's odds 1 - ppw, 1 - ppg, and per row, built
-/// at the first child that evaluates its B (`st`: the parent id it was built for), its factors and their products
+/// at the first child that evaluates its B (`row_stamps`: the parent id it was built for), its factors and their
+/// products
 pub(crate) struct ParentRatioBounds {
     pub(crate) parent_id: usize,
     pub(crate) white_chances: [f64; 32],
@@ -333,7 +334,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         if !controls.best {
             configuration_scratch.fill_class_suffixes(&groups, &space.class_masks);
         }
-        // the configuration's state-conditioned bounds (`StateBound`) and its root: no deck of it can reach the bar
+        // A root bound below the bar rules out every deck in the configuration.
         let sbc = search.state_cfg(configuration, &groups);
         let mut sbb = StateBound::new(
             sbc,

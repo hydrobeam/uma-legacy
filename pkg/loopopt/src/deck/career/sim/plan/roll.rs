@@ -178,7 +178,7 @@ pub(crate) struct RollKeep {
     pub(crate) own_trios: Vec<OwnTrio>,
     /// The main search's found-career anchors (`found_anchors`).
     pub(crate) found_anchors: Vec<Option<FoundAnchor>>,
-    /// the bound's anchors per (candidate, partner), kept by its first roll for the next (`HiAnc`; not stored by `state_out`)
+    /// The bound's anchors per (candidate, partner), retained for later rolls; not stored by `state_out`.
     pub(crate) partner_anchors: Vec<PartnerAnchors>,
 }
 

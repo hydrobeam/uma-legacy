@@ -1,4 +1,4 @@
-//! `borrowed_parent` on the val/plan p16 pool with veteran #14 marked borrowed (a parent of most of its best careers).
+//! `borrowed_parent` on the val/plan p16 pool with veteran #14 marked borrowed.
 //! "later": no career the job offers has a borrowed parent (the search's results, the plan's rows and its pick), while
 //! the plan's look-ahead is the one with borrowing (V and Cont's fit are the "allow" job's, to the bit on this pool);
 //! the page's run as two jobs, after an "allow" run in the same worker, plans as the combined job does (each setting's

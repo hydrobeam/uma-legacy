@@ -97,9 +97,8 @@ pub(crate) fn trio_v(c1: &[f64], combos: &[Trio]) -> f64 {
 
 /// An exact memo of a pure function of its key, owned (through an `Rc`) by the one object whose fixed parameters the
 /// function reads; a hit returns the value a miss computed for the same key bits, so outputs are the same by
-/// construction. The gate only decides whether to look up: after MEMO_PROBE lookups with fewer than one hit in
-/// MEMO_MIN_HIT it stops (the hash and insert would cost more than the misses save). Past MEMO_CAP entries it is cleared
-/// (the wasm page's memory).
+/// construction. On a miss after MEMO_PROBE lookups, fewer than one hit in MEMO_MIN_HIT disables it.
+/// Before an insertion at capacity it is cleared to limit memory; `PLAN_MEMO_CAP` overrides MEMO_CAP.
 pub(crate) struct Memo<K, V> {
     map: FxMap<K, V>,
     lookups: u64,
@@ -130,10 +129,10 @@ const MEMO_PROBE: u64 = 4096;
 
 const MEMO_MIN_HIT: u64 = 8;
 
-/// (measured on val/plan: a Cont memo without a cap would hit 0.2-1.5% more often; 1 << 14 entries hold about 0.6 MB)
+/// Default entry cap per continuation memo.
 const MEMO_CAP: usize = 1 << 14;
 
-/// bit equality of memoised values (the audit's test)
+/// Bit equality of memoised values for `PLAN_MEMO_CHECK`.
 pub(crate) trait SameBits {
     fn same_bits(&self, o: &Self) -> bool;
 }
@@ -272,9 +271,8 @@ impl Drop for MemoReport {
 /// A step's continuation (form assumed; the rate and step fitted to the pool now, the shape to traces): builder careers
 /// lift her odds, each lift closing `phi` of the remaining gap in log odds to `pinf`, her effective ceiling; the lift
 /// chance falls with the remaining gap: lam_j = lam ((1 - phi)^j)^LAM_DECAY. pinf = CEIL_SHARE x her full-loop odds.
-/// Both constants fitted (val/sim/README.md E5) to traces of building for Agnes Digital on 2-, 5-, 11- and
-/// 19-veteran pools (the best builder each career, 6 runs x 400 careers): within 10-20% on 11 and 19, building
-/// underestimated on 5 and overestimated early on 2; leave-one-pool-out fits ranged 0.6-1.0 and 1-3. lam = 0: none.
+/// Shape calibration and its limits: docs/MODEL.md, "Next career"; trace setup: val/sim/README.md.
+/// lam = 0: no building.
 #[derive(Clone)]
 pub(crate) struct Cont {
     pub(crate) lam: f64,
@@ -284,7 +282,7 @@ pub(crate) struct Cont {
     /// same values). Empty in a default Cont.
     pub(crate) tab: std::rc::Rc<Vec<ContStep>>,
     /// `plan`'s and `cost_lo`'s results by the bits of p. Exact: both read p and lam, phi, pinf and tab alone, which are
-    /// set once in `new` and never written after (private fields; a refit makes new Conts). A clone shares the memos and
+    /// kept unchanged after construction (a refit makes new Conts). A clone shares the memos and
     /// carries the same parameters; a new or default Cont gets its own
     pub(crate) memo: std::rc::Rc<ContMemo>,
 }
@@ -292,7 +290,7 @@ pub(crate) struct Cont {
 /// One row of a Cont's table, for n successes.
 #[derive(Clone, Copy)]
 pub(crate) struct ContStep {
-    /// The careers built through the n-th success (the sum `plan` takes, in its order).
+    /// The careers built through success n + 1 (the sum `plan` takes, in its order).
     pub(crate) careers_built: f64,
     /// (1 - phi)^n: the share of the log-odds gap to pinf left after n successes.
     pub(crate) gap_left: f64,
@@ -330,7 +328,8 @@ impl Default for Cont {
 /// `plan`'s cap on successes before grinding
 const CONT_N: usize = 500;
 
-/// Effective ceiling as a share of the full-loop odds, and the lift chance's decline exponent (val/sim/README.md E5)
+/// Effective ceiling as a share of the full-loop odds; the following exponent controls the lift chance's decline.
+/// Calibration: docs/MODEL.md, "Next career" (`CEIL_SHARE`, `LAM_DECAY`).
 pub(crate) const CEIL_SHARE: f64 = 0.6;
 
 const LAM_DECAY: f64 = 1.5;

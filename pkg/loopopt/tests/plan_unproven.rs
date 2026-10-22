@@ -1,7 +1,7 @@
 //! A per-uma career search that runs out of its work cap (`next.search_work`) gives the best career it found, not a
 //! proven best: the plan counts those umas (`umas_unproven`) and marks their rows (`proven: false`), which the page
-//! notes under its table. On the val/plan p16 pool with a cap of 1 unit every searched uma's search stops early; with the
-//! default cap none does.
+//! notes under its table. The val/plan p16 regression checks that a cap of 1 unit leaves unproven rows and searches,
+//! while the default cap leaves none.
 use serde_json::{Value, json};
 use std::{fs, process::Command};
 

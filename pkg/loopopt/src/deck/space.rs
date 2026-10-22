@@ -230,7 +230,8 @@ impl<'data> DeckSpace<'data> {
         self.key_miss_cache.borrow_mut().insert(code, std::rc::Rc::clone(&r));
         r
     }
-    /// Entries that matter for `trainees` (one per-uma trainee, or a loop's four with a shared deck): legal ones (no
+    /// Entries that matter for `trainees` (one per-uma trainee, or every structure member with a shared deck): legal
+    /// ones (no
     /// card of any of them), with entries that are interchangeable for them merged. Targets every outfit of each has as
     /// a gold are constant in both the product and the exact value, so an entry is judged by its rewards for the other
     /// targets: entries of one character with the same such rewards and chain kind keep the first; entries with none
@@ -573,7 +574,7 @@ impl<'data> DeckSpace<'data> {
 pub(super) const MAX_DECK: usize = 6;
 /// Most chain kinds (the fillers' (2, 2) included, `kinds_all`): a key code's largest value, six cards of the last kind,
 /// must fit a u64 (it would up to 22), and the count vectors over the kinds (`counts_all`, C(16 + 6, 6) = 74613 of them
-/// here) stay a few MB. The exports give at most eight.
+/// here) bound the configuration count.
 pub(super) const MAX_KINDS: usize = 16;
 /// Most uncertain targets: a deck entry's touched targets are the bits of a u32 (`key_miss`, `run_deck`).
 pub(super) const MAX_UNCERTAIN: usize = 32;
@@ -655,8 +656,7 @@ pub(super) fn top_asc(buf: &mut Vec<f64>, k: usize, value: f64) {
     buf.insert(position, value);
 }
 /// Per-group tables of one key in one flat buffer (`gm_cached`'s and the ratio tables of `search`): the groups in `need`
-/// each own a block of `block_len` f64s (built from 1.0), in group order; a group outside it has none (reading it panics, as
-/// an empty table's read did)
+/// each own a block of `block_len` f64s (built from 1.0), in group order; callers must not read omitted groups.
 pub(super) struct GroupTable {
     /// Packed block index per group; u32::MAX marks a group omitted by `need`.
     slot: Vec<u32>,

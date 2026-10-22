@@ -153,7 +153,7 @@ pub(crate) struct PlanJob {
     /// search), and of each deck search a continuation makes (a refresh); 0 = the job's budget
     #[serde(default = "p_swork")]
     search_work: usize,
-    /// the rotation (chara ids, in order); absent: the loop planner's best loop for the job's settings; empty: no loop base
+    /// Named rotation (chara ids, in order) added to the stage candidates; absent or empty: no named rotation.
     #[serde(default)]
     loop_members: Option<Vec<u32>>,
     /// `index_rule`: each uma's best career through the surrogate (`best_sur`) instead of the career search (1), or
@@ -166,7 +166,7 @@ pub(crate) struct PlanJob {
     /// its lifts and score beside the exact ones (`proxy_check` in the output); changes nothing else
     #[serde(default)]
     proxy_check: bool,
-    /// `index_rule`: every uma's best career searched exactly (the rule before builders went through their deck class)
+    /// `index_rule`: search every allowed uma's best career instead of using builder proxies.
     #[serde(default)]
     exact_all: bool,
     /// `index_rule`: the stage candidates (chara ids, in order) and their continuations (lam, phi, pinf) taken as given,

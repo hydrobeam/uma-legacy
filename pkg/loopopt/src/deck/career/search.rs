@@ -12,8 +12,7 @@ use crate::{UmaIndex, UmaTable};
 /// below the bar with its slack s, b (1 + s) < th (a computed bound a hair under the true one still proves it); or
 /// `AtMost(v)`, `certified`'s, the bound at most v up to rounding, b <= v (1 + 1e-12): the career can't beat v, and a
 /// tie proves value equality, all a certificate claims. The 1e-12 is rounding only: v is a proxy's value through its
-/// deck's corner table and the bound the same deck's exact value, the same number computed two ways (boot_mob: 48
-/// proxies one ulp below their class's proof). Before 2026-10-21 the allowance was 1e-9, looser than any rounding
+/// deck's corner table and the bound the same deck's exact value, the same number computed two ways.
 #[derive(Clone, Copy)]
 pub(crate) enum Bar {
     Below(f64),
@@ -454,8 +453,7 @@ impl Env<'_> {
     /// them, at most one borrowed), each with her best deck; `top` of them, one per trainee when `per_trainee`.
     /// Candidates are kept as (ceiling, trainee, parents) only (a pool of 400 veterans has millions); their chances
     /// are recomputed when one is solved (the same numbers, so the same results). The search is `complete` unless a
-    /// deck search was not `full` (the work budget ran out, or a band was certified below the top cap) or a deck scored
-    /// during it passed its class's cap (`cap_breach`).
+    /// deck search was not `full`, a cap breach went unanswered, or the hard work cap stopped candidate evaluation.
     pub(crate) fn solve(
         &mut self,
         p: &Pool,
@@ -561,7 +559,7 @@ impl Env<'_> {
         let mut twins: crate::FxMap<TwinKey, Twin> = crate::FxMap::default();
         // a candidate whose ceiling is 0 cannot land every target (a target no legacy carries and nothing else gives):
         // nothing after it can either (sorted), and with every value 0 the bar would never rise, so every career would
-        // be solved with unbounded deck searches (the page hung); stop there, leaving such careers out
+        // be solved without a positive pruning bar; stop there, leaving such careers out
         while next < cands.len()
             && {
                 sort_to(&mut cands, next, &mut upto);
@@ -634,7 +632,7 @@ impl Env<'_> {
             // no deck above its seed th / (EXACT_RHO c' (1 + 1e-9)), or its best deck pv' with EXACT_RHO c' pv' (1 + 1e-9)
             // < th. The slack 2e-9 covers the float rounding of pv' and rise (about 1e-15 each). A skipped candidate is
             // one that would have been `Bounded`: no Ref, no result, the same counters bar `work` (less of it, so a search
-            // that ran out of its budget before can now get further; none of the checked jobs comes near it). A search whose
+            // that ran out of its budget before can now get further). A search whose
             // decks seed the simulator's cache (`use_seen` off) takes only the proofs of its own candidates, so its work does not
             // depend on what earlier searches did either.
             let lo = if self.use_seen { 0 } else { ruled0[ct] };

@@ -1,8 +1,8 @@
-//! # loopopt: Uma Musume (Global) legacy loop and deck optimizer
+//! # loopopt: Uma Musume legacy loop and deck optimizer
 //!
-//! The affinity core below finds race schedules for a loop's members that maximise expected legacy affinity; the
+//! The affinity core below optimizes race schedules for a loop's members by expected legacy affinity; the
 //! skill-target model (`skills`), the deck search and the career planner (`deck`) build on it. The CLI runs "deck"
-//! and "career" jobs and `pbtable`; the page runs the same through `web`.
+//! and "career" jobs and `pbtable`; the page runs deck and career jobs through `web`.
 //!
 //! Objective, normalized to 4 runs:
 //!     E = base + 3 * C * sum_{i<j} <P_i, P_j>
@@ -17,8 +17,8 @@
 //! Layers:
 //! * `dp_exact`: exact best response for one uma against fixed partners. Junior turns run in sequence;
 //!   Classic turn t and Senior turn t+24 are decided jointly, so a race offered in both years
-//!   (always 24 turns apart) is scored exactly. Validated against an exact MILP on 352 cases.
-//! * `ascent`: best-response dynamics; converges to a Nash equilibrium of the identical-interest game.
+//!   (always 24 turns apart) is scored exactly. Checked against the MILP fixtures in `best_response_matches_milp`.
+//! * `ascent`: best-response dynamics; stops when no member improves her weighted score by more than 1e-9.
 //! * `group_moves`: coalition deviations (2+ members forced onto the same race, or rest, at one turn),
 //!   which escape the coordination equilibria that single-member moves can't leave.
 //! * `optimize`: optimistic start + ascent + group moves + iterated local search (noisy best responses).
@@ -729,7 +729,7 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
 
 /// Best-response memo, active only inside `optimize` (one per thread, cleared per call). dp_exact + the evaluation below
 /// are a pure, deterministic function of (uma, force, exact weight bits), so a hit returns exactly what a fresh solve
-/// would. Within one optimize() call ~99% of best-response calls repeat an earlier one.
+/// would.
 /// Key: [uma id << 16 | force code, weight bits...], built in `key` (reused) so a hit allocates nothing.
 #[derive(Default)]
 struct BrMemo {
@@ -1507,10 +1507,8 @@ mod tests {
         assert_eq!(ks, vec![1, 2, 3]);
     }
 
-    /// The exact DP equals the independent MILP optimum (scipy/HiGHS) on 200 cases with optional forced races (turn-49
-    /// goals, multi-turn goal alternatives, repeat-race-heavy weights) and 71 rest-forced ones (turns 24/25/48/49/50 for
-    /// the turn-49-goal umas Meisho Doto 1058 and Mejiro Palmer 1064, and Haru Urara 1052); returned schedules are
-    /// feasible and honor the force.
+    /// The exact DP matches the MILP fixtures with optional forced races and forced rests; returned schedules are
+    /// feasible and honor the force. Fixtures include turn-49 goals, multi-turn goals and repeated races.
     #[test]
     fn best_response_matches_milp() {
         let d = data();

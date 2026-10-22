@@ -1,12 +1,10 @@
 //! The career planner's memos (per Cont, by the bits of p) return what the functions compute, through a refit of Cont
 //! as well: the val/plan p11 pool with its pass-1 builders left to their proxies (`next.proxy_eff` -1: none searched
 //! there), so the pass-2 searches change a candidate's best builders and index_rule fits Cont again (new Conts, new
-//! memos). The pool is the one of the val/plan set that refits under the current model (p10 did before the hint
-//! rates took specialty priority). Two checks: with `PLAN_MEMO_CHECK` every hit is computed
+//! memos). With `PLAN_MEMO_CHECK` every hit is computed
 //! again and compared bit for bit (the plan panics on a stale value; a memo carried across the refit fails here, while
-//! the output alone would not show it: that candidate is in no cheapest trio), with the cap lifted (`PLAN_MEMO_CAP`; at
-//! the default cap the pre-refit entries are cleared before the rescoring reads them again, so a stale memo would pass
-//! unseen), and the output with the memos on equals the output with them off (`PLAN_MEMO_OFF`) but for timings.
+//! the output alone need not show it), with the cap lifted (`PLAN_MEMO_CAP`) so clearing cannot hide stale entries.
+//! The output with the memos on must equal the output with them off (`PLAN_MEMO_OFF`) but for timings.
 use serde_json::{Value, json};
 use std::{fs, process::Command};
 

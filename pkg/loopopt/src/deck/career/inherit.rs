@@ -46,7 +46,7 @@ pub(crate) fn spark_scale(n: i32) -> f64 {
 /// `Env::rise`'s factor for one outfit and uncertain target: how far the landing chance can grow from inheritance
 /// chance q0 to q, with her own event hint chance `ew` and her outfit's coverage `st` of it (1 where it cannot grow).
 /// The one form behind `solve`'s Ref and ruled prunes and `outcome_hi`'s anchors (`rise_leaves`, `rise_factors`,
-/// `AncBb::root_min`)
+/// `AnchorBound::root_min`)
 #[inline(always)]
 pub(crate) fn rise_factor(st: u8, ew: f64, q: f64, q0: f64) -> f64 {
     if st > 0 || q <= q0 { 1.0 } else { (1.0 - (1.0 - ew) * (1.0 - q)) / (1.0 - (1.0 - ew) * (1.0 - q0)) }

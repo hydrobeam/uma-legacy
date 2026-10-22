@@ -1,8 +1,8 @@
 //! Policy simulator on a surrogate (`simulate` on a career job; docs/SOLVER.md "Policy simulator").
 //!
 //! Under the model, the expected number of careers until the first career whose veteran lands every target, for a
-//! decision policy on a fixed starting pool. One process runs every career of every run, so nothing is re-read or
-//! re-searched between careers. Per run (derived):
+//! decision policy on a fixed starting pool. One process retains the loaded data and deck cache between careers;
+//! policies may still search for new decks or careers. Per run (derived):
 //!
 //!   E = sum over careers t of S_t,   S_0 = 1,   S_{t+1} = S_t (1 - p_t)
 //!

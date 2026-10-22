@@ -230,12 +230,8 @@ pub(crate) fn capped<'env, 'data, R>(
 
 /// Builders through their deck class (`index_rule`): a proxy is searched exactly when her lift efficiency is within this
 /// share of a candidate's second best, or her saving within this share of the lowest saving the shown rows or the pick's
-/// near-tie band take. Recalibrated 2026-10-09 (val/plan `proxy_check`, with the own-8/8 credit): the proxy is
-/// the exact career for every builder on five of the seven jobs; it reads at most 2.79% low on a contender's efficiency
-/// (exact at least 0.7 of a candidate's second best; p11) and 2.67% low on a builder's saving (p11): 0.06 is 2.15x and
-/// 2.25x those. (The first measurement, on the planner as it was before the class winners and the merges since, had 11%
-/// and 9%, with 0.2.) The errors move with the model: run `proxy_check` again after a change to what builders' careers
-/// are made of
+/// near-tie band take. Calibration: docs/MODEL.md, "Next career". Run `proxy_check` again after changing how
+/// builders' careers are chosen or scored.
 pub(crate) const PROXY_EFF: f64 = 0.06;
 
 pub(crate) const PROXY_SAVE: f64 = 0.06;
@@ -292,8 +288,7 @@ pub(crate) fn loop_ceiling(
     v
 }
 
-/// Below this many stage candidates the plan adds umas by `hint_umas` (the loop planner's search added up to three; a
-/// pool with veterans of its loop's umas gives four or more by the other routes: 6-8 on the val/plan pools)
+/// Below this many stage candidates the plan adds umas by `hint_umas`.
 pub(crate) const HINT_FLOOR: usize = 4;
 
 /// An uma `hint_umas` adds to the stage candidates.

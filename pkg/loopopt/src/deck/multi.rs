@@ -29,10 +29,8 @@ struct LoopJobInputs<'data> {
 /// Per-uma decks: each trainee runs her own best legal deck, the same one in all the lineages she heads (three in a
 /// four-uma loop, one in a three-uma rotation).
 ///   value(f) = fixed/L * sum_t max over decks D legal for f[t] of sum over her lineages l of T(f[t], q_l, D), L = 12 or 3
-/// The skyline (decks no deck beats on every coordinate) holds every uma's best deck as long as none of its decks
-/// carries a card that blocks her; for a uma it does, her legal decks come from a second deck search without
-/// those cards, run the first time a foursome with her is solved. Bounds use the whole skyline (legal or not),
-/// which no legal deck beats, so the search is exact.
+/// The skyline bounds product values without enforcing each trainee's card restrictions. Legal skyline decks
+/// seed exact scoring; `DeckSpace` searches the remaining legal decks under their assumed structure-class caps.
 pub(super) fn run_multi(
     data: &Data,
     card_data: &CardsRaw,
@@ -189,7 +187,7 @@ struct Multi<'data> {
     entry_by_card: crate::FxMap<CardEntryKey, usize>,
     exact_cache: RefCell<crate::FxMap<ExactQueryKey, ExactCacheEntry>>,
     shared_cache: RefCell<crate::FxMap<SharedQueryKey, SharedResult>>,
-    /// schedules found, per foursome (shared by the passes)
+    /// Schedules found per structure (shared by the passes).
     schedule_cache: RefCell<crate::FxMap<[UmaIndex; 4], Res>>,
     tally: Tally,
     exact_caps: [f64; 4],
@@ -228,7 +226,7 @@ impl Grid {
     }
 }
 
-/// The exact search's counters, timers and work budget (`cap_hit` and `max_ratio` per structure class, `cap_class`)
+/// The exact search's counters, timers and work budget; `max_ratio` is per structure class (`cap_class`).
 #[derive(Default)]
 struct Tally {
     scored_decks: Cell<usize>,
@@ -723,7 +721,7 @@ impl<'data> Multi<'data> {
         best
     }
 
-    /// B[u][i] (`btab_c`), computed at first need
+    /// B[u][i], memoised in `relaxed_ceiling_cache` at first need.
     fn btab(&self, u: UmaIndex, i: usize) -> f64 {
         let v = self.relaxed_ceiling_cache.borrow()[u][i];
         if !v.is_nan() {
@@ -774,7 +772,7 @@ impl<'data> Multi<'data> {
         top
     }
 
-    /// shared-deck ceiling: the best single skyline deck (legal or not) over the loop's twelve lineages, product odds
+    /// Shared-deck ceiling: the best single skyline deck (legal or not) over the structure's lineages, product odds.
     fn relaxed_shared(&self, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
         let model = self.inputs.model;
         let ln = lin_of(&f);
@@ -815,8 +813,8 @@ impl<'data> Multi<'data> {
     // ---- exact per-uma values ----
     // Loops are ranked by exact odds. A trainee's exact value at her lineages' inheritance chances is the best exact
     // P(all) over every legal deck (`DeckSpace`, not only the skyline). It is seeded with her best legal skyline decks
-    // by product odds; then every legal deck whose product value times EXACT_RHO reaches the best exact value is scored
-    // exactly. That is exact under one assumption: no deck's exact odds exceed EXACT_RHO times its product odds.
+    // by product odds; other decks are bounded or scored under their structure-class caps, limited by the pass's cap.
+    // Exactness assumes each deck's exact/product ratio stays within that cap and the pass finishes within budget.
 
     /// A deck's sources: the deck space's entry for (card, end link, variant) where it has one of that card, borrowed;
     /// else built. With the filler count.
@@ -1064,7 +1062,7 @@ impl<'data> Multi<'data> {
         }
     }
 
-    /// X[u][i] under cap lv (`xtab_c`), computed when not known under lv or more
+    /// X[u][i] under cap lv, memoised in `exact_ceiling_cache` when certified under lv or more.
     fn xtab(&self, u: UmaIndex, i: usize, lv: f64) -> f64 {
         let ExactCeiling { value: v, certified_cap: l } = self.exact_ceiling_cache.borrow()[u][i];
         if !v.is_nan() && l >= lv {
@@ -1128,9 +1126,10 @@ impl<'data> Multi<'data> {
     }
 
     // ---- shared deck ----
-    // With one deck for the whole loop, a loop's value is the best exact sum over its twelve lineages among decks legal
-    // for all four members. Per loop: every such deck whose exact sum is at least `floor` (the k-th best distinct
-    // deck so far, times 12) or among the loop's own best `top_decks`, under cap lv; sorted, best first. Ceilings
+    // With one deck for the whole structure, its value is the best exact sum over its lineages among decks legal
+    // for every member. Per structure: every such deck whose exact sum is at least `floor` (the k-th best distinct
+    // deck so far, times the lineage count) or among its own best `top_decks`, under cap lv; sorted, best first.
+    // Ceilings
     // stay the per-uma ones (each trainee's best deck bounds her share of any shared deck).
     fn exact_shared(&self, f: [UmaIndex; 4], qa: &[f64], floor: f64, lv: f64) -> SharedDecks {
         let key = SharedQueryKey { members: f, chances: qkey(qa) };
@@ -1405,7 +1404,7 @@ impl<'data> Multi<'data> {
         (p, cert)
     }
 
-    /// One best-first pass over the foursomes with cap lv: ceilings are exact tables or product ceilings times lv, the
+    /// One best-first pass over the structures with cap lv: ceilings are exact tables or product ceilings times lv, the
     /// stop rule compares them with the k-th exact value. None when the budget runs out (the pass certifies nothing).
     fn run_pass(&self, lv: f64) -> Option<Pass> {
         let lo_sum = self.maximum_structure_sum * 0.85;
@@ -1428,9 +1427,8 @@ impl<'data> Multi<'data> {
             if self.tally.aborted.get() {
                 return None;
             }
-            // Ceilings carry a (1 + 1e-12) guard against rounding, so a loop whose ceiling beats the k-th value by no
-            // more than that only ties it and cannot change the result. Without this, a job whose targets are all
-            // guaranteed (every loop has the same value) solved every foursome.
+            // Treat improvements within 4e-12 relative slack as ties, so equal-valued structures need not all be
+            // solved.
             let kth = p.kth;
             let beats = |c: f64| c > kth * (1.0 + 4e-12);
             if !(q.next < q.candidates.len() && beats(lv * q.candidates[q.next].ceiling)) {

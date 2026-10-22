@@ -75,8 +75,9 @@ struct FinisherCeiling {
 /// A career's own 8/8 as a trio side when her uma is not a stage candidate (her outcome lands every target): the replan
 /// would take her uma in (a veteran of hers) with that real 8/8 a free side. Per candidate side (real or fresh) her 8/8 can
 /// pair with, C's step: 1 / the best allowed C's value with the two 8/8s as parents (every allowed uma but hers and the
-/// partner's, best ceiling first, the value taken until no ceiling can beat the best: the best C by value, as `combos_of`
-/// finds one). Her 8/8 is `lv[iv]` (`Env::veteran`: every target at the rank's star mix), valued as every fresh side is
+/// partner's, best ceiling first, the value taken until no ceiling can beat the best, as `plan_combinations` does).
+/// Her 8/8 is the new veteran in `extended_pool` (`Env::veteran`: every target at the rank's star mix), valued as
+/// every fresh side is
 /// (the trios' own 8/8s use the rank's mix too), so the trios with her compare like for like with the others; one per
 /// call, not per star pattern (the full set's stars vary per leaf: per leaf it would be 4^nu searches for C).
 /// (B's candidate index, partner side real, C's step)
@@ -106,7 +107,7 @@ pub(crate) fn her_trios(
         {
             simulator.env.pool_push(extended_pool, legacy);
             // (C ranges over the trainees on one pair: `lineage` and `ceiling` per trainee, not `gen_cands`, whose
-            // per-trainee tables cover every legacy of the pool: on p16 +4.5% instructions in all)
+            // per-trainee tables cover every legacy of the pool)
             finishers.clear();
             finishers.extend(
                 score_base
@@ -256,12 +257,14 @@ pub(crate) struct CareerScore {
     pub(crate) lift_stats: Vec<LiftStats>,
 }
 
-/// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
-/// above 0, the scoring kept for a roll (`Want::Keep`: `Scored`, with whether an outcome landing every target reads y < 0.5), and per candidate (P(her veteran lifts her), the summed lifted odds): what `want` asks for (`Want`). Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
+/// Score of `career` against `context.score_base`: E[V0 - V0 with her veteran], the chance it exceeds 1e-9,
+/// the scoring kept for a roll (`Want::Keep`: `Scored`, with whether an outcome landing every target reads y < 0.5),
+/// and per candidate (P(her veteran lifts her), the summed lifted odds): what `want` asks for (`Want`).
+/// Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
 /// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
 /// decks' corner tables, folded one target at a time); her own 8/8 ends her stage when she is a candidate.
 ///
-/// `pool` must be `Env::pool(legs)` (the planner's callers): the pool with her veteran is then that pool with her entry
+/// `context.pool` must be `Env::pool(context.legacies)` (the planner's callers): her veteran is then an entry
 /// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
 pub(crate) fn score_career(
     s: &mut Sim,
@@ -277,7 +280,7 @@ pub(crate) fn score_career(
     score
 }
 
-/// `score_career` for a pool built otherwise (`sim`'s): the pool with her veteran built from `legs` and her
+/// `score_career` for a pool built otherwise (`sim`'s): rebuild the pool from `context.legacies` and her veteran.
 pub(crate) fn score_career_of(
     s: &mut Sim,
     context: &ScoringContext,
@@ -537,8 +540,10 @@ impl Scored {
     }
 }
 
-/// A scoring's evaluation (`Scored`) at the leaves `lv` produces: the fold of its tables into the outcome rows (with na >
-/// 0 setup slots: `fold_rec`), then the outcome loop (`sc_outcomes`): what `sc_outcomes` returns, with whether an outcome
+/// A scoring's evaluation (`Scored`) at the leaves `leaves` produces: the fold of its tables into the outcome rows
+/// (with
+/// any setup slots: `fold_rec`), then the outcome loop (`sc_outcomes`): what `sc_outcomes` returns, with whether an
+/// outcome
 /// that lands every target reads y < 0.5 (with y). The plan's scorings take `All`; a roll `OneLeaf` (`sc_roll`), the same
 /// arithmetic in the same order at the leaves it produces
 #[inline(never)]
@@ -612,7 +617,7 @@ pub(crate) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeI
     evaluation.outcome_savings[(leaves.row(leaf) << scored.fixed_target_count) | fm]
 }
 
-/// `score_career_`'s tables (with na > 0 setup slots): every setup's tables, the dominated ones dropped, as level 0 of
+/// `score_career_`'s tables (with setup slots): every setup's tables, the dominated ones dropped, as level 0 of
 /// the fold (`Scored::initial_tables`, table j at j 2^nu, its setup `setup_by_table[j]`); per uncertain target whether
 /// it is collapsed (below, `collapsed_targets`). Its own function, entered once per scoring, so V8 compiles it
 /// optimised after the first few (`docs/PERF.md`, *In the page*).
@@ -699,13 +704,15 @@ fn sc_prep(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], scored: &m
         (setup_by_table, initial_tables, collapsed_targets);
 }
 
-/// `score_career_`'s outcome loop: every outcome `lv` produces (her stars per uncertain target, the guaranteed golds
-/// present or not), its chance, V after her and y; (E[y], P(y > 1e-9), y per outcome (at its leaf's row), per candidate
+/// `score_career_`'s outcome loop: every outcome `fold_context.leaves` produces (her stars per uncertain target,
+/// the guaranteed golds present or not), its chance, V after her and y; (E[y], P(y > 1e-9), y per outcome (at its
+/// leaf's row), per candidate
 /// stats: what `want` asks for; whether an outcome landing every target reads y < 0.5; counters). Its own function,
 /// entered once per scoring, so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*). On a
 /// collapsed target (`collapsed_targets`, `sc_prep`: folded at 0 and 1 star only) a leaf with 2 or 3 stars there reads
 /// its representative's values (`representative_of`: those digits set to 1, so a smaller leaf, met first): y as
-/// computed there (`yb`) and each candidate's odds for the stats; every sum (E[y], the lift, the stats) still takes
+/// computed there (`representative_savings`) and each candidate's odds for the stats; every sum (E[y], the lift,
+/// the stats) still takes
 /// every outcome in the loop's order at its own chance, the same sums as without the collapse wherever the
 /// representative's values are the leaf's own.
 ///
@@ -725,15 +732,15 @@ fn sc_outcomes<L: Leaves>(
     let leaves = fold_context.leaves;
     let n = score_base.candidates.len();
     let (uncertain_target_count, slot_count) = (scored.uncertain_target_count, scored.slot_count);
-    // V after her when one candidate's step alone moved (`one_of`, `one_v`: trio_v's minimum, split by the trios that read
-    // her step)
+    // V after her when one candidate's step alone moved (`one_of`, `single_candidate_value`: trio_v's minimum,
+    // split by the trios that read her step)
     let single_candidate_costs: Vec<One> = if score_base.trios.is_empty() || want == Want::Stats {
         vec![]
     } else {
         (0..n).map(|i| one_of(score_base.trios, score_base.step_costs, i)).collect()
     };
     prepare_leaf_cache(scored, leaves, &mut scratch.leaf_cache);
-    // the collapsed targets' digits (cm) and their low bits: a leaf's representative has each nonzero one at 1
+    // A leaf's representative has each nonzero collapsed-target digit at 1.
     let collapse_mask: usize =
         (0..uncertain_target_count).filter(|&k| scored.collapsed_targets[k]).map(|k| 3usize << (2 * k)).sum();
     let low_digit_bits = collapse_mask & (usize::MAX / 3);

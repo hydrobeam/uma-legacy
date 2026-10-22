@@ -47,17 +47,14 @@ impl CfStats {
     }
 }
 
-/// Work budget of one cap-free search (`best_deck_cf`), in the units of `EXACT_BUDGET` (about 0.1 us each natively):
-/// twice the loop planner's, about 6 s; `CF_BUDGET` in the environment overrides it. Past it the search proves
-/// nothing (its call is not full). Measured on tiny Grand Masters slices (8-10 targets, caps forced down so every
-/// search reruns): 0.4-4.4M cap-free nodes per search
+/// Work budget of one cap-free search (`best_deck_cf`), twice `EXACT_BUDGET` unless `CF_BUDGET` overrides it.
+/// Past it the search proves nothing (its call is not full).
 fn cf_budget() -> usize {
     static C: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *C.get_or_init(|| std::env::var("CF_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(2 * EXACT_BUDGET))
 }
 
-/// Work units per cap-free node: its bounds sum over event counts and chain states (about 1.5 us per node natively,
-/// against 0.2 us for a capped node's 2 units)
+/// Work units per cap-free node: its bounds sum over event counts and chain states.
 const CF_NODE_WORK: usize = 15;
 
 /// A memoised `best_deck` outcome: the result, its product search's proof (`last_pv`), the work and exact scorings it
@@ -350,7 +347,7 @@ impl Env<'_> {
     /// may beat its answer: the call is answered by the cap-free search instead (`best_deck_cf`; its own budget, the
     /// capped call's band overflows and certificate undone). Without a breach the capped answer stands, unchanged. Job
     /// field `cap_free`: the cap-free search alone. `CAP_RERUN=0` (checks): no rerun, the breach leaves the search not
-    /// `complete` (as before the rerun existed).
+    /// `complete`.
     fn best_deck_run(&mut self, search: DeckSearch, starts: &[&SelectedDeck], scored: &mut usize) -> DeckRes {
         if self.space.deck_job.cap_free {
             return self.best_deck_cf(search, starts, scored, None, None);
@@ -428,7 +425,7 @@ impl Env<'_> {
     /// The cap-free search: the best deck over every legal deck at the chances folded in, pruned only by proven bounds.
     /// The best product deck (`product_deck`, the capped search's, or searched here unseeded: a seed would need a cap
     /// to relate product and exact values) and the starts are scored; then the band of every deck whose cap-free bounds
-    /// (`CF_ON`: `cf_cheap` and `cf_ub` in `DeckSpace::search`, on `state_value`'s argument and `group_nuod_lvl`) reach
+    /// (`CF_ON`: `StateBound::cheap` and `StateBound::full`, on `state_value`'s argument and `group_nuod_lvl`) reach
     /// the bar, the incumbent or the career's bar th / c if higher, is built and scored best product value first,
     /// through `upper_na`. Proven (`full`) when the band finished (no node limit, no band overflow, every legal entry
     /// covered: `TargetSources::certified_cap_free`) within CF_BUDGET work; then a best below th / c is `Bounded` (every deck is), else

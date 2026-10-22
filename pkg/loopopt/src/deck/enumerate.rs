@@ -77,7 +77,7 @@ pub(crate) struct SearchSetup {
     kind_place_values: Vec<u64>,
     set_id: usize,
     legal_tables: std::rc::Rc<LegalTables>,
-    // Keep the cached-entry handle alive through traversal, as before extraction.
+    // Keep the cached-entry handle alive through traversal.
     legal_entries: std::rc::Rc<Vec<usize>>,
     fixed: f64,
     cap_free: bool,

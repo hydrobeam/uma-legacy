@@ -160,11 +160,10 @@ const fn d_top() -> usize {
 }
 
 /// The work budget of one career search (units as in the per-uma search: 2 per deck node tested, 200 per exact
-/// scoring, 10,000 per deck search). Measured need for a proven result (2026-10-07, synthetic pools of 12-400
-/// veterans, default 8 targets): 10M-85M, the most at 200 veterans (12 s native); the loop planner's 30M
-/// (EXACT_BUDGET) left pools of 12, 100 and 200 veterans unproven with the same picks. 300M leaves 3.5x headroom.
+/// scoring, 10,000 per deck search).
 /// It does not stop the search: past it each deck search (`best_deck_run`) stops scoring its band, so every later
-/// candidate gets the exact values of its product deck and start decks only and the search is not `complete`; `solve` itself goes on to its
+/// candidate reaching the band gets the exact values of its product deck and start decks only, and the search is not
+/// `complete`; `solve` itself goes on to its
 /// stop rule (only a `hard_work_cap`, `plan`'s extra searches, ends it early). `EXACT_BUDGET` in the environment
 /// overrides it.
 const CAREER_BUDGET: usize = 300_000_000;

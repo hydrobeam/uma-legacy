@@ -23,8 +23,6 @@ impl DeckSpace<'_> {
         clauses: &[SearchClause],
         mode: SearchMode,
     ) -> Result<SearchSetup, SearchOutcome> {
-        // Keep the numerical kernel's existing inputs and branch order. These unused-mode defaults were
-        // previously repeated at every call site.
         let (best, seed, rho, cap) = match mode {
             SearchMode::Best { seed } => (true, seed, 1.0, 1),
             SearchMode::Band { ratio_cap, max_decks } => (false, f64::NEG_INFINITY, ratio_cap, max_decks),
@@ -49,7 +47,8 @@ impl DeckSpace<'_> {
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // Per chain level; the ordinary bound is off when an entry fails group_assoc certification (`state_value`).
         // The cap-free band (`CF_ON`, one trainee at one chance; `Env::best_deck_cf`): two proven bounds at every node and
-        // leaf (`cf_cheap`, then `cf_ub`, on the state-conditioned tables of mode 2) are its only prunes, no cap in any
+        // leaf (`StateBound::cheap`, then `StateBound::full`, on the state-conditioned tables of mode 2) are its only
+        // prunes, no cap in any
         // test; it needs every legal entry `certified_cap_free` (else UnsupportedCapFreeProof) and stops past CF_LIM nodes
         // (CapFreeNodeLimit).
         let cap_free =

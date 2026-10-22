@@ -171,7 +171,7 @@ pub(crate) struct JointExt {
     pub sets: Vec<f64>,
     pub per_outfit: Vec<f64>,
 }
-/// `joint_trainee` without the reference check; `all_but_one` also computes P(all but one) (else 0).
+/// `joint_b` without the diagnostic checks; `all_but_one` also computes P(at least all but one) (else 0).
 /// Faster form of the same sum: chain states are collapsed to the progress that changes some target's factors (a
 /// filler's progress, and links that add nothing, drop out), and outcome groups touching two or more targets are
 /// enumerated per cluster of targets they connect (clusters are independent given the chain state).
@@ -785,8 +785,8 @@ fn evaluate_prepared(
     r
 }
 
-/// Reference form of `joint_trainee`: every chain state, every combination of coupled outcomes. `JOINT_CHECK=1` runs
-/// it beside the fast form on every call and panics on a relative difference above 1e-11.
+/// Reference form of `joint_b`: every chain state, every combination of coupled outcomes. Setting `JOINT_CHECK` runs
+/// it in `joint_checked` and panics on a relative difference at or above 1e-11.
 pub(super) fn joint_trainee_ref(
     model: &Model,
     u: crate::UmaIndex,
@@ -1457,8 +1457,7 @@ pub(super) fn sb_check() -> bool {
 /// The state-conditioned bound in the career searches' band pass (`best_deck` pass 2), `SBOUND` to change it: 3 (the
 /// default) at each configuration's root, an extra prune beside the rho one (exact: it only drops configurations no deck
 /// of which can reach the bar); 1 also at depth 1; 2 the band pass without the cap (the bound at every node, a leaf kept
-/// when its state-conditioned value reaches the bar; measured far slower); 0 off. Measured (val/plan, user CPU): roots
-/// only, Grand Masters -24 to -28%, nodes -57%; Global within noise; depth 1 costs more than it saves on Global.
+/// when its state-conditioned value reaches the bar); 0 off.
 pub(crate) fn sb_mode() -> u8 {
     static C: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
     *C.get_or_init(|| std::env::var("SBOUND").ok().and_then(|v| v.parse().ok()).unwrap_or(3))
@@ -1466,7 +1465,8 @@ pub(crate) fn sb_mode() -> u8 {
 thread_local! { pub(crate) static SB_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
 thread_local! { pub(crate) static SB_USED: std::cell::Cell<u8> = const { std::cell::Cell::new(0) }; }
 thread_local! {
-    /// the next band search is cap-free (`Env::best_deck_cf`): pruned by its two proven bounds alone (`cf_cheap`, `cf_ub`), at every
+    /// the next band search is cap-free (`Env::best_deck_cf`): pruned by `StateBound::cheap` and `StateBound::full`,
+    /// at every
     /// node and leaf, no cap anywhere; it stops past CF_LIM partial decks tested (the space's node count)
     pub(crate) static CF_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     pub(crate) static CF_LIM: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };

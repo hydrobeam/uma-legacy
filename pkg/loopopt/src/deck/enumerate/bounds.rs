@@ -65,7 +65,7 @@ pub(crate) fn prepare_outfit_bounds(
     clauses: &[SearchClause],
     target_count: usize,
 ) -> OutfitBounds {
-    // (clause, chance, outfit) triples; the product value of one outfit at one chance is submodular in the set of
+    // (clause, chance, outfit) triples; the product value of one outfit at one chance is log-submodular in the set of
     // cards (log of each target's factor gains less from a card the more the deck already has), so a deck's value
     // is at most a partial deck's value times the best ratios P({card}) / P({}) of the cards still to add
     // Each clause/trainee/chance contributes a run of its trainee's outfits to `outfit_runs`.
@@ -258,8 +258,8 @@ pub(crate) struct DominanceRequest<'group> {
 }
 
 impl DeckSpace<'_> {
-    /// The product search's dominance table of group `gi` (entries `l`) under key `code`: per position p, the earlier
-    /// positions a whose entry A could take B = l[p]'s place in any deck (borrowed only if B is, B's locked card if B
+    /// The product search's dominance table for `request`: per position p in `request.entries`, the earlier
+    /// positions a whose entry A could take B's place in any deck (borrowed only if B is, B's locked card if B
     /// is one, B's pal status when the job fixes the pals) with every miss chance in [0, 1] and at most B's, white and
     /// gold, for every target; with the targets where A's gold miss is the lower (bit t).
     ///
@@ -275,8 +275,8 @@ impl DeckSpace<'_> {
     /// enumeration (the same configuration, lexicographically lower). The search returns the first deck of the highest
     /// value in enumeration order (strictly higher replaces it; a branch is pruned only below the best so far), which is
     /// never such a D: the decks through B are skipped when nothing of A's character can follow B, else those without a
-    /// pick of A's character (`need`). Only which decks are visited (the rest in the same order) and how the bar rises
-    /// change: the deck found, its value and odds do not.
+    /// pick of A's character (`required_characters`). Only which decks are visited (the rest in the same order) and
+    /// how the bar rises change: the deck found, its value and odds do not.
     pub(crate) fn dom_table(
         &self,
         request: DominanceRequest<'_>,
@@ -359,6 +359,5 @@ pub(crate) fn rb_check() -> f64 {
 }
 
 /// The low-base split's threshold (ZSPLIT): a target whose empty-deck factor is at most this share of its factor with a
-/// certain white hint. Measured on tiny 8-target jobs (instructions): 0.25 and 0.5 the same, 0.75 alone or as a second
-/// split (0.5 and 0.75) fewer nodes but more instructions
+/// certain white hint.
 const LOW_SPLIT: [f64; 1] = [0.5];

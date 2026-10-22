@@ -1,6 +1,6 @@
 //! Host clocks, progress and phase counters.
 
-/// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
+/// Elapsed wall-clock ms: the host's `env.clock_ms` in wasm (performance.now()), else since the first native call.
 #[cfg(target_arch = "wasm32")]
 #[allow(unsafe_code, reason = "calls the host's clock import")]
 pub(crate) fn now_ms() -> f64 {
@@ -36,7 +36,7 @@ pub(crate) fn progress(phase: u32, k: usize, n: usize) {
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) const fn progress(_phase: u32, _k: usize, _n: usize) {}
 
-// phase timers and counters for speed work, per plan (`next.work.prof`; planval and the val compares skip `work`)
+// Phase timers and counters per plan (`next.work.prof`); val/same.py excludes timings but compares work counters.
 thread_local! { pub(crate) static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = std::cell::RefCell::default(); }
 
 pub(crate) fn prof(k: &'static str, v: f64) {

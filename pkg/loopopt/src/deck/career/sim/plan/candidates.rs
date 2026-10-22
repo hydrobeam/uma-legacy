@@ -22,8 +22,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
     let (nodes_at_start, exact_scorings_at_start) =
         (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
-    // the loop planner's members only when the job names them (`loop_members`, an override; the plan no longer runs the
-    // loop planner's search itself: on the val/plan pools its members always entered the candidates by the routes below)
+    // Named loop members supplement the candidates; this setup does not run the loop search.
     let loop_rotation = match &settings.loop_members {
         Some(ids) => rotation(env, ids),
         None => LoopRotation { members: vec![], member_info: vec![], note: None },
@@ -58,8 +57,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
     // winners only, the main search's best careers and each uma's best one, so what it holds (and every number read from
     // it) depends on the job alone, not on what the pruning happened to check fully (earlier jobs' proofs, the order, a
-    // kept plan). Before, every fully checked deck went in: a candidate then had several decks, and her lifted odds
-    // read the best of them; with one the planner's numbers moved once (val/plan: picks unchanged)
+    // kept plan).
     for found in &input.solved.found {
         sim.cache.add(sim.env, found.trainee, &found.deck);
     }
@@ -106,9 +104,8 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // chances through the surrogate, `best_sur`), no career search. Exact searches only where the plan can turn on her:
     // a lift efficiency within PROXY_EFF of a candidate's second best (Cont's two builders come from the exactly
     // searched careers), or a saving within PROXY_SAVE of the shown rows (the page's top OPT_SHOW) or the pick's near-tie
-    // band. Measured on val/plan (`proxy_check`): the proxy's odds only ever read low (it is a
-    // career she can run); its efficiency on contenders for a candidate's top two at most 2.8% low (p11; it can also
-    // read high, which only searches more), its saving at most 2.7% low; exact on the other five jobs.
+    // band. A proxy's odds cannot exceed the exact best (it is a career she can run); its efficiency can read high
+    // or low. Calibration: docs/MODEL.md, "Next career"; `proxy_check` measures the current errors.
     // `exact_all` restores a search for every uma.
     let proxies_enabled = settings.sur == 0 && !settings.exact_all && !settings.proxy_check;
     let candidates = PlanCandidates {
@@ -356,7 +353,7 @@ fn pass_one_rows(
     rows
 }
 
-/// A row's efficiency for one candidate (`lift_eff`).
+/// A row's efficiency for one candidate (`LiftStats::efficiency`).
 #[derive(Clone, Copy)]
 struct RowEfficiency {
     efficiency: f64,

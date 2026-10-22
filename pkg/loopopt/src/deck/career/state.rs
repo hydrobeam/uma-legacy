@@ -109,12 +109,10 @@ pub(crate) const SEEN_KEEP: usize = 256;
 // its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
 // keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
 // `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
-// 2: the kept plans carry each uma's looped career; 3: the kept main searches (`LAST_SOLVE`); 4: the plans' roll states
-// (`sim::plan::ROLLS`)
 pub(crate) const STATE_VERSION: u64 = 4;
 
 /// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
-/// umas or deck classes a list covers: 69 umas in the Global data, 83 in JP) at most STATE_MAX_N, so nothing is allocated
+/// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated
 /// from a count past it; every index within the list it indexes; no float NaN (the bounds compare them); chances,
 /// odds and deck hint chances within [0, 1]; a deck at most `MAX_DECK` cards. What a store says of a setup (deck
 /// entries, chances per target) is checked where it meets that setup (`Env::seen_fits`, `solve_kept`).
