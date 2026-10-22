@@ -4,7 +4,7 @@ use crate::career::plan::{ParentPool, PlanJob};
 use crate::career::pool::Pool;
 use crate::career::search::{Bar, Found, RankedPair};
 use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster};
-use crate::career::{Ancestor, Env, JobInputs, Legacy, Lineage};
+use crate::career::{Ancestor, CareerSetup, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
 use crate::skills::SkillJob;
 use serde_json::{Value, json};
@@ -21,13 +21,13 @@ pub(crate) fn sim_for<'env, 'data>(
     input: &JobInputs<'data>,
     settings: &PlanJob,
 ) -> Result<Sim<'env, 'data>, Value> {
-    if env.target_count > 12 || env.uncertain_count > 10 {
+    if env.setup.target_count > 12 || env.setup.uncertain_count > 10 {
         return Err(json!({"error": "The plan takes at most 12 targets, 10 of them not guaranteed by the scenario."}));
     }
     let cfg: SimJob = serde_json::from_value(json!({"margin": settings.margin}))
         .map_err(|e| json!({"error": format!("The plan's margin does not make a simulator setting: {e}")}))?;
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
-    let trainees = env.owned.clone();
+    let trainees = env.setup.owned.clone();
     Ok(Sim::new(
         env,
         input,
@@ -49,11 +49,11 @@ pub(crate) struct LoopRotation {
 
 /// The rotation for the loop base `ids` (chara ids). Members must be owned umas with a legal deck, at least three of
 /// them.
-pub(crate) fn rotation(env: &Env, ids: &[u32]) -> LoopRotation {
+pub(crate) fn rotation(setup: &CareerSetup, ids: &[u32]) -> LoopRotation {
     let member_info: Vec<Value> = ids
         .iter()
         .map(|&id| {
-            let uma = env.data.umas.iter().find(|u| u.id == id);
+            let uma = setup.data.umas.iter().find(|u| u.id == id);
             json!({"id": id, "name": uma.map_or_else(|| format!("Uma {id}"), |u| u.name.clone())})
         })
         .collect();
@@ -65,9 +65,9 @@ pub(crate) fn rotation(env: &Env, ids: &[u32]) -> LoopRotation {
         };
     }
     let members: Vec<Option<crate::uma::UmaIndex>> =
-        member_info.iter().map(|m| m["id"].as_u64().and_then(|id| env.uma_index(id as u32))).collect();
+        member_info.iter().map(|m| m["id"].as_u64().and_then(|id| setup.uma_index(id as u32))).collect();
     if members.len() < 3
-        || members.iter().any(|x| x.is_none_or(|t| !env.owned.contains(&t) || env.deck_odds_ceilings[t].is_none()))
+        || members.iter().any(|x| x.is_none_or(|t| !setup.owned.contains(&t) || setup.deck_odds_ceilings[t].is_none()))
     {
         return LoopRotation {
             members: vec![],
@@ -89,24 +89,25 @@ pub(crate) fn legal_pair(data: &Data, pool: &Pool, lineage: Lineage) -> bool {
 }
 
 /// Whether builder x's career f (her deck class's proxy) is provably her best, without a career search: over every legal
-/// pair one of the bounds `solve` prunes with (`Env::ceiling_out`; `refs_out` over the fully checked decks of her class,
-/// exact for the class; `ruled_out` over its product proofs) is at most f's value (`Bar::AtMost`), so no deck and pair
-/// beats it (a different deck or pair of equal value may exist; the value is the search's). With mob or affinity-free
-/// parents every classmate has the same chances, so one classmate's search proves the rest of her class.
+/// pair one of the bounds `solve` prunes with (`CareerSetup::ceiling_out`; `refs_out` over the fully checked decks of
+/// her class, exact for the class; `ruled_out` over its product proofs) is at most f's value (`Bar::AtMost`), so no
+/// deck and pair beats it (a different deck or pair of equal value may exist; the value is the search's). With mob or
+/// affinity-free parents every classmate has the same chances, so one classmate's search proves the rest of her class.
 pub(crate) fn certified(env: &mut Env, parents: ParentPool, x: crate::uma::UmaIndex, f: &Found) -> bool {
     let ParentPool { pool, fixed_parents } = parents;
-    let deck_class = env.deck_class[x];
+    let deck_class = env.setup.deck_class[x];
     // (each test computed alone, so the order the pairs are taken in changes no number; a NaN bound proves nothing)
-    let pairs = env.gen_cands(pool, fixed_parents, &[x], |_, _| true, |ub, _, _, a, b| (ub, a, b));
-    let mut q = Vec::with_capacity(env.target_count);
+    let pairs =
+        env.setup.gen_cands(&mut env.state, pool, fixed_parents, &[x], |_, _| true, |ub, _, _, a, b| (ub, a, b));
+    let mut q = Vec::with_capacity(env.setup.target_count);
     for (ub, a, b) in pairs {
         let bar = Bar::AtMost(f.value);
-        if Env::ceiling_out(ub, bar) {
+        if CareerSetup::ceiling_out(ub, bar) {
             continue;
         }
-        let c = env.lineage_into(pool, Lineage { trainee: x, first_parent: a, second_parent: b }, &mut q);
-        if env.refs_out(x, &q, c, env.seen[deck_class].iter(), bar)
-            || env.ruled_out(x, &q, c, &env.ruled[deck_class], bar)
+        let c = env.setup.lineage_into(pool, Lineage { trainee: x, first_parent: a, second_parent: b }, &mut q);
+        if env.setup.refs_out(x, &q, c, env.state.seen[deck_class].iter(), bar)
+            || env.setup.ruled_out(x, &q, c, &env.state.ruled[deck_class], bar)
         {
             continue;
         }
@@ -119,8 +120,9 @@ pub(crate) fn certified(env: &mut Env, parents: ParentPool, x: crate::uma::UmaIn
 pub(crate) fn val(simulator: &mut Sim, pool: &Pool, lineage: Lineage, score_buffer: &mut Vec<f64>) -> f64 {
     let trainee = lineage.trainee;
     let mut inheritance_chances = std::mem::take(&mut simulator.evaluator.qs);
-    let spark_scale = simulator.env.lineage_into(pool, lineage, &mut inheritance_chances);
-    let value = match simulator.env.ceiling(trainee, &inheritance_chances, spark_scale) {
+    let spark_scale = simulator.env.setup.lineage_into(pool, lineage, &mut inheritance_chances);
+    let value = match simulator.env.setup.ceiling(&mut simulator.env.state, trainee, &inheritance_chances, spark_scale)
+    {
         None => 0.0,
         Some(ceiling) => simulator
             .evaluator
@@ -158,7 +160,7 @@ pub(crate) fn best_sur(
     // (her cached decks only grow, so the best's deck index stays valid, and the deck is copied once, at the end)
     let mut best: Option<SurrogateBest> = None;
     for RankedPair { ceiling, first_parent, second_parent } in
-        simulator.env.ranked_pairs(pool, fixed_parents, trainee, |_, _| true)
+        simulator.env.setup.ranked_pairs(&mut simulator.env.state, pool, fixed_parents, trainee, |_, _| true)
     {
         let bar = best.map_or(0.0, |found| found.value);
         if ceiling <= bar {
@@ -166,7 +168,7 @@ pub(crate) fn best_sur(
         }
         let lineage = Lineage { trainee, first_parent, second_parent };
         let mut inheritance_chances = std::mem::take(&mut simulator.evaluator.qs);
-        let spark_scale = simulator.env.lineage_into(pool, lineage, &mut inheritance_chances);
+        let spark_scale = simulator.env.setup.lineage_into(pool, lineage, &mut inheritance_chances);
         let deck = simulator.evaluator.deck_for(
             simulator.env,
             DeckRequest { trainee, inheritance_chances: &inheritance_chances, spark_scale, ceiling, threshold: bar },
@@ -216,12 +218,12 @@ pub(crate) fn capped<'env, 'data, R>(
     searches: impl FnOnce(&mut Sim<'env, 'data>) -> R,
 ) -> R {
     if work > 0 {
-        simulator.env.budget = work;
-        simulator.env.hard_work_cap = work;
+        simulator.env.state.budget = work;
+        simulator.env.state.hard_work_cap = work;
     }
     let result = searches(simulator);
-    simulator.env.hard_work_cap = 0;
-    simulator.env.budget = env_budget;
+    simulator.env.state.hard_work_cap = 0;
+    simulator.env.state.budget = env_budget;
     result
 }
 
@@ -257,8 +259,8 @@ pub(crate) fn loop_ceiling(
 ) -> f64 {
     let FullLoop { trainee, first_builder, second_builder } = full_loop;
     let d = simulator.d;
-    let sj = simulator.env.skill_job;
-    let star = simulator.env.skill_job.star_dist;
+    let sj = simulator.env.setup.skill_job;
+    let star = simulator.env.setup.skill_job.star_dist;
     let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
     let ancestor =
         |x: crate::uma::UmaIndex| Ancestor { chara: d.umas[x].id, sparks: full.clone(), wins: wins(x), pinks: vec![] };
@@ -272,10 +274,10 @@ pub(crate) fn loop_ceiling(
         win_p: vec![],
         mix: Some(star),
     };
-    // (`Env::pool` of legs and the two: the working copy of `pool` with them pushed, then popped)
+    // (`CareerSetup::pool` of legs and the two: the working copy of `pool` with them pushed, then popped)
     let mut p = simulator.evaluator.take_pool(pool);
-    simulator.env.pool_push(&mut p, &veteran(first_builder, second_builder, trainee));
-    simulator.env.pool_push(&mut p, &veteran(second_builder, first_builder, trainee));
+    simulator.env.setup.pool_push(&mut p, &veteran(first_builder, second_builder, trainee));
+    simulator.env.setup.pool_push(&mut p, &veteran(second_builder, first_builder, trainee));
     let n = p.veterans.len();
     let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
     let v = if legal_pair(d, &p, lineage) { val(simulator, &p, lineage, buf) } else { 0.0 };
@@ -292,7 +294,7 @@ pub(crate) const HINT_FLOOR: usize = 4;
 pub(crate) struct HintUma {
     /// Index in `Data::umas`.
     pub(crate) trainee: crate::uma::UmaIndex,
-    /// Her odds under the full loop lineage (`Env::ceiling`).
+    /// Her odds under the full loop lineage (`CareerSetup::ceiling`).
     pub(crate) ceiling: f64,
 }
 
@@ -301,8 +303,8 @@ pub(crate) struct HintUma {
 /// rank's mix), each bred from the other and from her, as `loop_ceiling` builds p_inf's lineage (a missing candidate: an
 /// ancestor of no uma, so no relation points); no G1 wins on the hypothetical ancestors (the race part of their
 /// affinity is the same for every uma ranked, and the wins come from schedules the pool doesn't have yet). Valued by
-/// `Env::ceiling` (the per-target best deck odds: no deck search), which ranks the umas the way a full loop would before
-/// any building.
+/// `CareerSetup::ceiling` (the per-target best deck odds: no deck search), which ranks the umas the way a full loop
+/// would before any building.
 pub(crate) fn hint_umas(
     env: &mut Env,
     pool: &Pool,
@@ -310,8 +312,8 @@ pub(crate) fn hint_umas(
     trainees: &[crate::uma::UmaIndex],
     count: usize,
 ) -> Vec<HintUma> {
-    let d = env.data;
-    let sj = env.skill_job;
+    let d = env.setup.data;
+    let sj = env.setup.skill_job;
     let star = sj.star_dist;
     let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
     let mut sides: Vec<u32> = vec![];
@@ -340,20 +342,22 @@ pub(crate) fn hint_umas(
         mix: Some(star),
     };
     let mut out: Vec<HintUma> = vec![];
-    // (`Env::pool` of the legacies and the two: one copy of `pool`, `Env::pool(legs)`, the two pushed and popped per uma)
+    // (`CareerSetup::pool` of the legacies and the two: one copy of `pool`, `CareerSetup::pool(legs)`, the two pushed
+    // and popped per uma)
     let mut p = pool.clone();
     for &u in trainees {
         let id = d.umas[u].id;
-        if candidates.contains(&u) || env.deck_odds_ceilings[u].is_none() || id == first_side || id == second_side {
+        if candidates.contains(&u) || env.setup.deck_odds_ceilings[u].is_none() || id == first_side || id == second_side
+        {
             continue;
         }
-        env.pool_push(&mut p, &veteran(first_side, second_side, id));
-        env.pool_push(&mut p, &veteran(second_side, first_side, id));
+        env.setup.pool_push(&mut p, &veteran(first_side, second_side, id));
+        env.setup.pool_push(&mut p, &veteran(second_side, first_side, id));
         let n = p.veterans.len();
         let lineage = Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 };
         if legal_pair(d, &p, lineage) {
-            let (q, c) = env.lineage_q(&p, lineage);
-            if let Some(ceiling) = env.ceiling(u, &q, c)
+            let (q, c) = env.setup.lineage_q(&p, lineage);
+            if let Some(ceiling) = env.setup.ceiling(&mut env.state, u, &q, c)
                 && ceiling > 0.0
             {
                 out.push(HintUma { trainee: u, ceiling });

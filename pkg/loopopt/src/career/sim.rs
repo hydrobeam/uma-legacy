@@ -19,11 +19,11 @@
 //!
 //! The surrogate (policy `greedy`): the career with the highest P(all), where each candidate (trainee, parents) is
 //! valued by its trainee's cached decks only (`Cache`: per deck and outfit the corner table, exact at any inheritance
-//! chances, `Env::corners`). A candidate is first bounded by the search's ceiling and by `rise` from each fully checked
-//! deck of hers (`Ref`, proven best at its chances) and by her product-search proofs (`ruled`); a candidate whose bound
-//! rb clears the best so far B and exceeds her table value tv by more than the margin m gets an exact deck search
-//! there (`best_deck` at bar B, the per-uma search), and the deck found joins the cache ("refresh"). Derived: for the
-//! exact best career c* (value E*), either rb(c*) < B (so E* < B), or it was searched (tv = E* when the search
+//! chances, `CareerSetup::corners`). A candidate is first bounded by the search's ceiling and by `rise` from each fully
+//! checked deck of hers (`Ref`, proven best at its chances) and by her product-search proofs (`ruled`); a candidate
+//! whose bound rb clears the best so far B and exceeds her table value tv by more than the margin m gets an exact deck
+//! search there (`best_deck` at bar B, the per-uma search), and the deck found joins the cache ("refresh"). Derived:
+//! for the exact best career c* (value E*), either rb(c*) < B (so E* < B), or it was searched (tv = E* when the search
 //! finished), or tv >= rb / (1 + m) >= E* / (1 + m); B only rises. So the career picked has an exact P(all), with the
 //! cached deck it is run with, of at least E* / (1 + m) (m = 0: the exact greedy pick up to ties and searches that ran
 //! out of work). A candidate is valued once, when its last parent arrives: a new veteran only creates candidates with
@@ -249,19 +249,20 @@ impl<'env, 'data> Sim<'env, 'data> {
         roster: SimulationRoster,
         options: SimulationOptions,
     ) -> Self {
-        let ntar = env.target_count;
+        let Env { ref setup, ref mut state, .. } = *env;
+        let ntar = setup.target_count;
         let full = (1usize << ntar) - 1;
         let mut failed_sets: Vec<usize> = (0..full).collect();
         failed_sets.sort_by_key(|&m| (m.count_ones(), m));
         let one = vec![1.0f64; ntar];
-        let static_ceilings: crate::uma::UmaTable<f64> = env
+        let static_ceilings: crate::uma::UmaTable<f64> = setup
             .data
             .umas
             .indices()
-            .map(|t| if env.owned.contains(&t) { env.ceiling(t, &one, 1.0).unwrap_or(0.0) } else { 0.0 })
+            .map(|t| if setup.owned.contains(&t) { setup.ceiling(state, t, &one, 1.0).unwrap_or(0.0) } else { 0.0 })
             .collect();
-        let star_mix = env.skill_job.star_dist;
-        let evaluator = Evaluator::new(env, cfg.margin, options.fill_missing_decks);
+        let star_mix = setup.skill_job.star_dist;
+        let evaluator = Evaluator::new(setup, cfg.margin, options.fill_missing_decks);
         Sim {
             env,
             d: input.data,

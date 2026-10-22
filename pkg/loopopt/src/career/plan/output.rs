@@ -22,7 +22,7 @@ pub(crate) fn assemble_plan_output<'data>(
     buf: &mut Vec<f64>,
 ) -> Value {
     let PlanContext { input, candidates } = *context;
-    let sj = sim.env.skill_job;
+    let sj = sim.env.setup.skill_job;
     let legacies = input.legacies;
     let pool = input.pool;
     let data = context.data();
@@ -60,7 +60,7 @@ pub(crate) fn assemble_plan_output<'data>(
             continue;
         }
         let looped = has_looped_parents(sj, legacies, f);
-        let mut report = env.report(pool, f, false);
+        let mut report = env.setup.report(&mut env.state, pool, f, false);
         let option = report.as_object_mut().unwrap();
         option.insert("role".into(), json!(row_role(candidates, scores, x, looped)));
         option.insert(
@@ -98,14 +98,15 @@ pub(crate) fn assemble_plan_output<'data>(
             .partial_cmp(&a["score"].as_f64().unwrap_or(f64::NEG_INFINITY))
             .unwrap()
     });
-    let choice = if runs.is_empty() { Value::Null } else { env.report(pool, &runs[pick].career, true) };
+    let choice =
+        if runs.is_empty() { Value::Null } else { env.setup.report(&mut env.state, pool, &runs[pick].career, true) };
     let (plan_json, members_json) = context.trio_report(scores);
     // the career a roll of this plan is of (`next.roll`, `roll_kept`: its saving per outcome, computed on demand from the
     // roll state kept here): the pick, her uncertain targets (`uncv`) and the scenario's guaranteed ones (`fixed`)
     let outcomes = match runs.get(pick) {
         Some(row) if row.scoring.is_some() => {
             json!({"trainee": data.umas[row.trainee].id, "parents": [row.career.first_parent, row.career.second_parent],
-        "uncv": env.uncertain_targets, "fixed": env.fixed_targets})
+        "uncv": env.setup.uncertain_targets, "fixed": env.setup.fixed_targets})
         }
         _ => Value::Null,
     };
@@ -172,7 +173,7 @@ fn pick_roll_state(
         // (the roll state outlives the plan's rows)
         deck: row.career.deck.clone(),
         own_trios,
-        found_anchors: found_anchors(simulator.env, input.pool, input.solved),
+        found_anchors: found_anchors(&simulator.env.setup, input.pool, input.solved),
         partner_anchors: vec![],
     }
 }

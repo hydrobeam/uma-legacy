@@ -1,6 +1,6 @@
 //! The worker's saved searches and their validation.
 
-use crate::career::Env;
+use crate::career::CareerSetup;
 use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Found, Ref};
 use crate::deck::space::{MAX_DECK, SelectedDeck};
@@ -64,8 +64,8 @@ pub(crate) fn setup_hash(s: &str) -> u64 {
 thread_local! {
     /// the last few jobs' main searches (the most recent last), each keyed by the whole job without `next` and
     /// `no_reports` (the page's plan job repeats the job it follows), with what the search's product searches proved
-    /// (`Env::ruled` as the search left it: a job that takes a kept search starts its plan from the Env state a combined
-    /// job's plan starts from); kept across page reloads (`state_out`)
+    /// (`SearchState::ruled` as the search left it: a job that takes a kept search starts its plan from the search
+    /// state a combined job's plan starts from); kept across page reloads (`state_out`)
     pub(crate) static LAST_SOLVE: std::cell::RefCell<Vec<KeptSolve>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -74,11 +74,11 @@ pub(crate) struct KeptSolve {
     /// The job's key (`CareerRun::search_key`).
     pub(crate) key: u64,
     pub(crate) solved: CareerSearchResult,
-    /// What its product searches proved (`Env::ruled` as the search left it).
+    /// What its product searches proved (`SearchState::ruled` as the search left it).
     pub(crate) ruled: Ruled,
 }
 
-/// per deck class, the product searches' proofs (`Env::ruled`)
+/// per deck class, the product searches' proofs (`SearchState::ruled`)
 pub(crate) type Ruled = crate::uma::UmaTable<Vec<ProductProof>>;
 
 /// What one product search proved (`best_deck` pass 1): every legal deck's product value at chances q (fixed factor
@@ -96,9 +96,10 @@ pub(crate) struct ProductProof {
 pub(crate) const SOLVE_KEEP: usize = 3;
 
 thread_local! {
-    /// per setup fingerprint (the last few), every fully checked deck found so far (`Env::seen`): what the page's
-    /// earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact value
-    /// there, which depend on the setup only (the job's trainees change no deck value: they only order plain pals).
+    /// per setup fingerprint (the last few), every fully checked deck found so far (`SearchState::seen`): what the
+    /// page's earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact
+    /// value there, which depend on the setup only (the job's trainees change no deck value: they only order plain
+    /// pals).
     pub(crate) static SEEN: std::cell::RefCell<Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -117,7 +118,7 @@ pub(crate) const STATE_VERSION: u64 = 4;
 /// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated
 /// from a count past it; every index within the list it indexes; no float NaN (the bounds compare them); chances,
 /// odds and deck hint chances within [0, 1]; a deck at most `MAX_DECK` cards. What a store says of a setup (deck
-/// entries, chances per target) is checked where it meets that setup (`Env::seen_fits`, `solve_kept`).
+/// entries, chances per target) is checked where it meets that setup (`CareerSetup::seen_fits`, `solve_kept`).
 pub(crate) const STATE_MAX_N: usize = 1 << 10;
 
 pub(crate) fn hx(x: f64) -> Value {
@@ -349,7 +350,7 @@ pub(crate) fn state_in(v: &Value) -> Value {
     json!({"ok": true, "bests": nb, "seen": ns, "solve": nm, "rolls": nr})
 }
 
-impl Env<'_> {
+impl CareerSetup<'_> {
     // ---- what a stored state (`state_in`) says of a setup, checked where it meets this one ----
     /// a stored deck: entries of this job's deck space, within its deck size, a chance per uncertain target
     fn sel_fits(&self, s: &SelectedDeck) -> bool {

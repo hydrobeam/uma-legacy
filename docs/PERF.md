@@ -59,12 +59,13 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
 
 ## Pitfalls in this codebase
 
-- Career inheritance folding must reuse `Env::folded_events` in place (`set_ews`'s matching-shape path), including
-  the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances, without
-  copying them per candidate. `joint_eval_in` still takes explicit scratch; `refolding_reuses_outfit_buffers` checks buffer reuse.
-- `work.exact` counts `Env::exact_scorings`, the career's own `best_deck` scorings: a memo hit adds what its search
-  scored, and `CF_CHECK`'s side search puts it back (`SearchEffects`). Count a new exact scoring there, through
-  `Env::score_exact`, or the counter moves.
+- Career inheritance folding must reuse `SearchState::folded_events` in place (`set_ews`'s matching-shape path),
+  including the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances,
+  without copying them per candidate. `joint_eval_in` still takes explicit scratch; `refolding_reuses_outfit_buffers`
+  checks buffer reuse.
+- `work.exact` counts `SearchState::exact_scorings`, the career's own `best_deck` scorings: a memo hit adds what its
+  search scored, and `CF_CHECK`'s side search puts it back (`SearchEffects`). Count a new exact scoring there, through
+  `CareerSetup::score_exact`, or the counter moves.
 - `DominanceIndex` visit order matters: the remembered dominators feed the recent-winner ring and `lastrow`. Prefilters must
   preserve descending bucket order and ascending row order within each bucket (`deck/dominance.rs`, `DominanceIndex::count`).
 - Float order: preserve sums and products in order. Reordering a maximum must also preserve tied winners and the
@@ -120,13 +121,13 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
 - One shared deck, three or four trainees: the loop search's scoring (`loop_search/shared.rs`, `Multi::score_shared`, and
   `loop_search/report.rs`, `Multi::shared_picks`)
   calls `joint_b` once per trainee, and each call rebuilds `joint_prep`, which depends on the deck, not the trainee.
-  Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and
-  the product of event outcomes on every call, though they depend only on the ordered active groups (`Env::corners`
+  Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and the
+  product of event outcomes on every call, though they depend only on the ordered active groups (`CareerSetup::corners`
   repeats it at each of 2^nu corners); a plan compiled per group list could replay every weighted addition in order
   (equal rewards' weights are not merged: that regroups sums). Measured 2026-10-21 (callgrind, pal_U shared): neither
-  `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive).
-  The profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `loop_search/bands.rs`.
-  Reprofile before acting on that measurement.
+  `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive). The
+  profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `loop_search/bands.rs`. Reprofile
+  before acting on that measurement.
 - Training groups: a card's inclusion-exclusion weight depends only on the subset's size, so it could be summed once
   per size (`3^m - 1` additions to `2^(m+1) - 2`, same order per subset), and `group_nuod`'s `O(4^m)` subset scan has
   the same symmetry. The jobs in `val/jobs.json` and `val/plan/jobs.json` have at most three uncertain targets in
@@ -290,8 +291,8 @@ untracked; reproducing their figures requires those inputs and the named revisio
   that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
   lose one (today: the same pool, or one more veteran at the end).
 - Not worth doing (measured 2026-10-21): a memo of `sc_prep`'s dominance and flat checks per (trainee, deck prefix):
-  `sc_prep` is 1.1M of p10's 19.7G instructions; `Env::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB copies
-  a job.
+  `sc_prep` is 1.1M of p10's 19.7G instructions; `CareerSetup::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB
+  copies a job.
 - Where the time is (callgrind, 2026-10-21): p10 spends 88.6% of its instructions in the deck search
   (`DeckSpace::search`, 260 runs from 211 `best_deck` calls: the main search 29.6%, `best_of` 47.9%, `deck_for` 15%)
   and 6.3% in `score_career`; `rec`'s cost is spread (no source line above 2% self). Exports 1 and 2 (native, main):

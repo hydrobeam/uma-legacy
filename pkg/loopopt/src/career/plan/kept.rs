@@ -40,11 +40,11 @@ fn cached_searches_out(searches: &UmaTable<CachedSearch>) -> Vec<Value> {
         .collect()
 }
 
-/// Each trainee's best career (`Env::solve`, one trainee, top 1) and the decks that search checked, per plan: kept for
-/// the next plan of the same setup and places whose pool is this one plus one veteran at the end (the page's Compare
-/// and Reroll: your veterans and her). Every career of the larger pool is one of this pool's or has her as a parent, so
-/// the best is the better of the kept one and the best with her as a parent (a search with her fixed): exact, the same
-/// value; on an exact tie the kept career stands.
+/// Each trainee's best career (`CareerSetup::solve`, one trainee, top 1) and the decks that search checked, per plan:
+/// kept for the next plan of the same setup and places whose pool is this one plus one veteran at the end (the page's
+/// Compare and Reroll: your veterans and her). Every career of the larger pool is one of this pool's or has her as a
+/// parent, so the best is the better of the kept one and the best with her as a parent (a search with her fixed):
+/// exact, the same value; on an exact tie the kept career stands.
 /// `CachedSearch` distinguishes an unsearched trainee from a search that returned no career.
 /// Search completeness is separate, in `base_incomplete` / `looped_incomplete`. Every vector is indexed by uma
 /// (`Data::umas`).
@@ -211,7 +211,8 @@ pub(super) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kep
             // (her legal pairs, `gen_cands`' ceilings: `ceiling` at `lineage`'s chances)
             // (their maximum folded from 0 in generation order, as a fold over the collected ceilings; no Vec: `()` items)
             let mut best_ceiling = 0.0f64;
-            env.gen_cands(
+            env.setup.gen_cands(
+                &mut env.state,
                 pool,
                 fixed_parents,
                 &[trainee],
@@ -225,9 +226,18 @@ pub(super) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kep
             }
         }
         // only a career above the kept one matters: the search's bar starts there (exact; a tie keeps the kept one)
-        env.floor = old.as_ref().map_or(f64::NEG_INFINITY, |old_career| old_career.value);
-        let searched = env.solve(pool, &fixed_with_new_veteran, &[trainee], false, 1);
-        env.floor = f64::NEG_INFINITY;
+        env.state.floor = old.as_ref().map_or(f64::NEG_INFINITY, |old_career| old_career.value);
+        let searched = env.setup.solve(
+            &mut env.state,
+            &mut env.audit,
+            &mut env.memo,
+            pool,
+            &fixed_with_new_veteran,
+            &[trainee],
+            false,
+            1,
+        );
+        env.state.floor = f64::NEG_INFINITY;
         if proof_refs.len() < searched.refs.len() {
             proof_refs.resize(searched.refs.len(), vec![]);
         }
@@ -242,7 +252,8 @@ pub(super) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kep
         };
         return BestCareer { found, proof_refs, complete };
     }
-    let searched = env.solve(pool, fixed_parents, &[trainee], false, 1);
+    let searched =
+        env.setup.solve(&mut env.state, &mut env.audit, &mut env.memo, pool, fixed_parents, &[trainee], false, 1);
     let complete = searched.complete;
     BestCareer { found: searched.found.into_iter().next(), proof_refs: searched.refs, complete }
 }

@@ -17,10 +17,16 @@ impl Sim<'_, '_> {
     /// the two decks, search finished].
     pub(super) fn audit_row(&mut self, pool: &Pool, lineage: Lineage, kind: AuditKind) -> Value {
         let trainee = lineage.trainee;
-        let LineageChances { chances: inheritance_chances, carriers, spark_scale } = self.env.lineage(pool, lineage);
+        let LineageChances { chances: inheritance_chances, carriers, spark_scale } =
+            self.env.setup.lineage(pool, lineage);
         let mut interpolation_scratch = vec![];
-        let (table_value, deck_index) =
-            self.evaluator.tval(self.env, trainee, &inheritance_chances, spark_scale, &mut interpolation_scratch);
+        let (table_value, deck_index) = self.evaluator.tval(
+            &self.env.setup,
+            trainee,
+            &inheritance_chances,
+            spark_scale,
+            &mut interpolation_scratch,
+        );
         let best = self.exact_best(trainee, &inheritance_chances, spark_scale);
         let landed_distance = if deck_index == usize::MAX {
             1.0
@@ -40,9 +46,15 @@ impl Sim<'_, '_> {
         second: &SelectedDeck,
     ) -> f64 {
         let mut sets = |deck: &SelectedDeck| {
-            env.set_trainee(trainee, inheritance_chances);
-            let exact = env.exact(trainee, deck, carriers, ExactOptions { all_but_one: false, landed_sets: true });
-            env.outcome_sets(exact.outfit, &exact.ext)
+            env.setup.set_trainee(&mut env.state, trainee, inheritance_chances);
+            let exact = env.setup.exact(
+                &env.state,
+                trainee,
+                deck,
+                carriers,
+                ExactOptions { all_but_one: false, landed_sets: true },
+            );
+            env.setup.outcome_sets(exact.outfit, &exact.ext)
         };
         let first_sets = sets(first);
         let second_sets = sets(second);
@@ -55,11 +67,20 @@ impl Sim<'_, '_> {
         inheritance_chances: &[f64],
         spark_scale: f64,
     ) -> ExactDeck {
-        self.env.set_trainee(trainee, inheritance_chances);
-        self.env.work = 0;
+        self.env.setup.set_trainee(&mut self.env.state, trainee, inheritance_chances);
+        self.env.state.work = 0;
         let mut scored_decks = 0;
-        let search_result = self.env.best_deck(trainee, spark_scale, 0.0, &[], &mut scored_decks);
-        self.env.last_product_bound = None;
+        let search_result = self.env.setup.best_deck(
+            &mut self.env.state,
+            &mut self.env.audit,
+            &mut self.env.memo,
+            trainee,
+            spark_scale,
+            0.0,
+            &[],
+            &mut scored_decks,
+        );
+        self.env.state.last_product_bound = None;
         match search_result {
             DeckRes::Done(value, deck, finished) => ExactDeck { value: spark_scale * value, deck, finished },
             _ => panic!("audit: no legal deck"),
@@ -71,7 +92,16 @@ impl Sim<'_, '_> {
     pub(super) fn audit_greedy(&mut self, state: &mut PathState, keys: Keys, career_index: usize) -> Value {
         let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
-        let search = self.env.solve(&state.pool, &[], &trainees, false, 1);
+        let search = self.env.setup.solve(
+            &mut self.env.state,
+            &mut self.env.audit,
+            &mut self.env.memo,
+            &state.pool,
+            &[],
+            &trainees,
+            false,
+            1,
+        );
         let exact_pick = search.found.first().map(|found| {
             (
                 found.value,
@@ -102,7 +132,7 @@ impl Sim<'_, '_> {
                     if !self.legal(state, lineage) || lineage == picked {
                         continue;
                     }
-                    if self.evaluator.fast_ub(self.env, &state.pool, lineage) >= 0.3 * best_value {
+                    if self.evaluator.fast_ub(&self.env.setup, &state.pool, lineage) >= 0.3 * best_value {
                         candidates.push(lineage);
                     }
                 }
@@ -121,7 +151,16 @@ impl Sim<'_, '_> {
     pub(super) fn check(&mut self, state: &mut PathState, all: bool) -> Value {
         let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
-        let search = self.env.solve(&state.pool, &[], &trainees, false, 1);
+        let search = self.env.setup.solve(
+            &mut self.env.state,
+            &mut self.env.audit,
+            &mut self.env.memo,
+            &state.pool,
+            &[],
+            &trainees,
+            false,
+            1,
+        );
         let exact_pick = search.found.first().map(|found| {
             (found.value, format!("{}:{},{}", self.d.umas[found.trainee].id, found.first_parent, found.second_parent))
         });
@@ -135,7 +174,9 @@ impl Sim<'_, '_> {
             // (the legal careers with her, or every one, `gen_cands`' ceilings, at least check_frac x the best)
             let mut candidates: Vec<RankedCareer> = self
                 .env
+                .setup
                 .gen_cands(
+                    &mut self.env.state,
                     &state.pool,
                     &[],
                     &trainees,
@@ -150,9 +191,13 @@ impl Sim<'_, '_> {
             if let Some(pick) = state.best
                 && !candidates.iter().any(|candidate| candidate.lineage == pick.lineage)
             {
-                let (inheritance_chances, spark_scale) = self.env.lineage_q(&state.pool, pick.lineage);
+                let (inheritance_chances, spark_scale) = self.env.setup.lineage_q(&state.pool, pick.lineage);
                 candidates.push(RankedCareer {
-                    ceiling: self.env.ceiling(pick.lineage.trainee, &inheritance_chances, spark_scale).unwrap(),
+                    ceiling: self
+                        .env
+                        .setup
+                        .ceiling(&mut self.env.state, pick.lineage.trainee, &inheritance_chances, spark_scale)
+                        .unwrap(),
                     lineage: pick.lineage,
                 });
             }
@@ -174,18 +219,27 @@ impl Sim<'_, '_> {
         let RankedCareer { ceiling, lineage } = candidate;
         let trainee = lineage.trainee;
         let LineageChances { chances: inheritance_chances, carriers, spark_scale } =
-            self.env.lineage(&state.pool, lineage);
+            self.env.setup.lineage(&state.pool, lineage);
         let reference_bound = self.evaluator.cache.refs[trainee]
             .iter()
-            .map(|reference| self.env.ref_bound(trainee, &inheritance_chances, spark_scale, reference))
+            .map(|reference| self.env.setup.ref_bound(trainee, &inheritance_chances, spark_scale, reference))
             .fold(ceiling, f64::min);
         let (table_value, deck_index) =
-            self.evaluator.tval(self.env, trainee, &inheritance_chances, spark_scale, interpolation_scratch);
-        self.env.set_trainee(trainee, &inheritance_chances);
-        self.env.work = 0;
+            self.evaluator.tval(&self.env.setup, trainee, &inheritance_chances, spark_scale, interpolation_scratch);
+        self.env.setup.set_trainee(&mut self.env.state, trainee, &inheritance_chances);
+        self.env.state.work = 0;
         let mut scored_decks = 0;
-        let search_result = self.env.best_deck(trainee, spark_scale, 0.0, &[], &mut scored_decks);
-        self.env.last_product_bound = None;
+        let search_result = self.env.setup.best_deck(
+            &mut self.env.state,
+            &mut self.env.audit,
+            &mut self.env.memo,
+            trainee,
+            spark_scale,
+            0.0,
+            &[],
+            &mut scored_decks,
+        );
+        self.env.state.last_product_bound = None;
         let DeckRes::Done(value, deck, finished) = search_result else { return None };
         let exact_value = spark_scale * value;
         // landed sets: the cached argmax deck against the exact best deck (total variation distance)
@@ -210,14 +264,14 @@ impl Sim<'_, '_> {
     }
 }
 
-/// A legal career and its ceiling (`Env::gen_cands`' order).
+/// A legal career and its ceiling (`CareerSetup::gen_cands`' order).
 #[derive(Clone, Copy)]
 pub(super) struct RankedCareer {
     pub(super) ceiling: f64,
     pub(super) lineage: Lineage,
 }
 impl RankedCareer {
-    /// Constructor for `Env::gen_cands`; the unused argument is the trainee position.
+    /// Constructor for `CareerSetup::gen_cands`; the unused argument is the trainee position.
     pub(super) const fn new(
         ceiling: f64,
         _: usize,

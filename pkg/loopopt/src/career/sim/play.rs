@@ -88,6 +88,7 @@ impl Sim<'_, '_> {
     fn veteran_result(&self, legacy: &Legacy) -> VeteranResult {
         let stars = self
             .env
+            .setup
             .skill_job
             .targets
             .iter()
@@ -108,8 +109,8 @@ impl Sim<'_, '_> {
         evaluate_candidates: bool,
         interpolation_scratch: &mut Vec<f64>,
     ) {
-        // (her entry as `Env::pool` builds it, win chances and star mix kept)
-        self.env.pool_push(&mut state.pool, &legacy);
+        // (her entry as `CareerSetup::pool` builds it, win chances and star mix kept)
+        self.env.setup.pool_push(&mut state.pool, &legacy);
         if !legacy.borrowed {
             let result = self.veteran_result(&legacy);
             state.families.entry(family(&legacy)).or_default().push(result);
@@ -130,7 +131,9 @@ impl Sim<'_, '_> {
                     continue;
                 }
                 // the allocation-free ceiling first (`fast_ub`, the same bound to rounding)
-                if self.evaluator.fast_ub(self.env, &state.pool, lineage) * (1.0 + 1e-6) < self.bar(state, trainee) {
+                if self.evaluator.fast_ub(&self.env.setup, &state.pool, lineage) * (1.0 + 1e-6)
+                    < self.bar(state, trainee)
+                {
                     self.evaluator.n.candidates += 1;
                     continue;
                 }
@@ -142,7 +145,7 @@ impl Sim<'_, '_> {
     fn initial(&mut self, legacies: &[Legacy], base: Base) -> PathState {
         let mut state = PathState {
             legacies: vec![],
-            pool: self.env.pool(&[]),
+            pool: self.env.setup.pool(&[]),
             families: std::collections::HashMap::default(),
             best: None,
             current: None,
@@ -160,15 +163,25 @@ impl Sim<'_, '_> {
     }
     fn seed_surrogate(&mut self, state: &mut PathState, interpolation_scratch: &mut Vec<f64>) {
         // seed the cache with the career search's fully checked decks
-        self.env.use_seen = false;
+        self.env.state.use_seen = false;
         let trainees = self.trainees.clone();
-        // (on the path's pool, `Env::pool(legacies)`: `add_veteran` builds each entry as it does)
-        let search = self.env.solve(&state.pool, &[], &trainees, false, 1);
-        self.env.use_seen = true;
-        self.evaluator.cache.absorb(self.env, &search.refs);
+        // (on the path's pool, `CareerSetup::pool(legacies)`: `add_veteran` builds each entry as it does)
+        let search = self.env.setup.solve(
+            &mut self.env.state,
+            &mut self.env.audit,
+            &mut self.env.memo,
+            &state.pool,
+            &[],
+            &trainees,
+            false,
+            1,
+        );
+        self.env.state.use_seen = true;
+        self.evaluator.cache.absorb(&self.env.setup, &mut self.env.state, &mut self.env.memo, &search.refs);
         // (every legal career's ceiling, `gen_cands`: `ceiling` at `lineage`'s chances, to the bit; in (trainee,
         // pair) order, then best first)
-        let mut candidates = self.env.gen_cands(&state.pool, &[], &trainees, |_, _| true, RankedCareer::new);
+        let mut candidates =
+            self.env.setup.gen_cands(&mut self.env.state, &state.pool, &[], &trainees, |_, _| true, RankedCareer::new);
         candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
         for candidate in candidates {
             let floor = state.candidate_floor();
@@ -343,8 +356,8 @@ pub(in crate::career) fn simulate<'data>(
         Ok(config) => config,
         Err(error) => return json!({"error": format!("simulate: {error}")}),
     };
-    let target_count = env.target_count;
-    if target_count > 12 || env.uncertain_count > 10 {
+    let target_count = env.setup.target_count;
+    if target_count > 12 || env.setup.uncertain_count > 10 {
         return json!({"error": "simulate takes at most 12 targets, 10 of them not guaranteed"});
     }
     let base = match config.policy.as_str() {
@@ -354,11 +367,12 @@ pub(in crate::career) fn simulate<'data>(
         "index" => Base::Index,
         policy => return json!({"error": format!("simulate: unknown policy {policy}")}),
     };
-    let members: Vec<crate::uma::UmaIndex> = config.loop_members.iter().filter_map(|&id| env.uma_index(id)).collect();
+    let members: Vec<crate::uma::UmaIndex> =
+        config.loop_members.iter().filter_map(|&id| env.setup.uma_index(id)).collect();
     if matches!(base, Base::Loop | Base::Trace)
         && (members.len() < 3
             || members.len() != config.loop_members.len()
-            || members.iter().any(|member| !env.owned.contains(member)))
+            || members.iter().any(|member| !env.setup.owned.contains(member)))
     {
         return json!({"error": "loop: loop_members must be at least three owned umas"});
     }
