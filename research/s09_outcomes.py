@@ -15,7 +15,7 @@ The split-choice, Anshinzawa and Helios counts use seq < 2865; Festa and priorit
   credits). Daitaku Helios and Nakayama Festa: credits to her event on the skills of one link.
 Intervals are 90% Wilson. Findings test each conclusion on them: the choice rule (prioritised against not), the measured
 shares against the equal rule (k of n outcomes, from the game data) and the model's adopted shares (event_shares.json,
-manual.json), Anshinzawa's choice 1 by scenario and her dates, the shares off or near the equal rule.
+manual.json), Anshinzawa's dates, the shares off or near the equal rule.
 """
 
 import collections, json, os
@@ -267,7 +267,6 @@ class AnshinRun:
     """one run with Anshinzawa's card (anshin_runs())"""
 
     festa: bool  # Nakayama Festa's card in the deck too (joint credits)
-    scen: int  # scenario id
     shown: bool  # the run shows a priority list
     nv_pri: bool  # Nothing Ventured prioritised
     rb_pri: bool  # Risky Business prioritised
@@ -288,7 +287,6 @@ def anshin_runs(R: list[Run]) -> list[AnshinRun]:
         out.append(
             AnshinRun(
                 festa=FESTA in d,
-                scen=r["scenario"],
                 shown=pri is not None,
                 nv_pri="Nothing Ventured" in (pri or []),
                 rb_pri="Risky Business" in (pri or []),
@@ -331,11 +329,8 @@ class AnshinSummary:
     rbp: int  # runs with Risky Business prioritised
     choice2_share: float  # of those showing the finale, choice 2 taken
     nv_rbp: int  # Nothing Ventured read with Risky Business prioritised
-    c2_clean: Count  # choice 2 won, without inherited Risky Business
-    c2_mixed: tuple[float, float]  # choice 2's share with inherited Risky Business counted as a loss / left out
     nei: int  # runs with neither skill prioritised (list shown)
     nei_c2: int  # of them, choice 2 won
-    c1: Count  # choice 1 won among the runs reading choice 1 or nothing
     shows: int  # Risky Business prioritised and the finale shows its outcome
     rb_c2wins: Count  # her extra Risky Business in choice-2 wins, prioritised
     rb_c2wins_nei: Count  # the same, Risky Business not prioritised
@@ -343,7 +338,6 @@ class AnshinSummary:
     nvp: collections.Counter[str]  # readings with Nothing Ventured prioritised (not Risky Business)
     nei_c: collections.Counter[str]  # readings with neither prioritised
     c1_exc: Count  # choice-1 runs with Risky Business at Lv 5, of the prioritised choice-1 runs
-    c1_by: Callable[[bool], Count]  # choice 1 won / runs, in Grand Concert (True) or elsewhere (False)
 
 
 def anshin(R: list[Run]) -> AnshinSummary:
@@ -353,22 +347,14 @@ def anshin(R: list[Run]) -> AnshinSummary:
     nvp = [o for o in A if o.nv_pri and not o.rb_pri]
     c = collections.Counter(o.c for o in rbp)
     c2 = c["c2_win"] + c["c2_lose"] + c["c2_lose?"]
-    inh: Callable[[AnshinRun], bool] = lambda o: bool(o.RB and "Inspiration" in o.RB[1])
     her_rb: Callable[[AnshinRun], bool] = lambda o: bool(o.RB and any("Anshinzawa" in s for s in o.RB[1]))
-    w_clean = sum(o.c == "c2_win" and not inh(o) for o in rbp)
-    l_clean = sum(o.c == "c2_lose" and o.RB == (2, [HER_A]) for o in rbp)
-    l_mixed = sum(o.c == "c2_lose" and inh(o) for o in rbp)
-    ca = collections.Counter(o.c for o in A)
     return AnshinSummary(
         n=len(A),
         rbp=len(rbp),
         choice2_share=c2 / (c2 + c["c1_win"]),
         nv_rbp=c["c1_win"] + c["c2_win"],
-        c2_clean=(w_clean, w_clean + l_clean),
-        c2_mixed=(c["c2_win"] / (c["c2_win"] + l_clean + l_mixed), c["c2_win"] / (c["c2_win"] + l_clean)),
         nei=len(nei),
         nei_c2=sum(o.c == "c2_win" for o in nei),
-        c1=(ca["c1_win"], ca["c1_win"] + ca["none"] + ca["none_rb5"]),
         shows=c["c1_win"] + c2,
         rb_c2wins=(sum(her_rb(o) for o in rbp if o.c == "c2_win"), c["c2_win"]),
         rb_c2wins_nei=(sum(her_rb(o) for o in nei + nvp if o.c == "c2_win"), sum(o.c == "c2_win" for o in nei + nvp)),
@@ -376,10 +362,6 @@ def anshin(R: list[Run]) -> AnshinSummary:
         nvp=collections.Counter(o.c for o in nvp),
         nei_c=collections.Counter(o.c for o in nei),
         c1_exc=(sum(o.c == "c1_win" and bool(o.RB) and o.RB[0] >= 5 for o in rbp), c["c1_win"]),
-        c1_by=lambda gc: (
-            sum(o.c == "c1_win" for o in A if (o.scen == 3) == gc),
-            sum(o.c in ("c1_win", "none", "none_rb5") for o in A if (o.scen == 3) == gc),
-        ),
     )
 
 
@@ -598,20 +580,6 @@ def anshin_values(a: AnshinSummary) -> dict[str, Any]:
             "Anshinzawa: NV share 90% high": hi,
         }
     )
-    k, n = a.c2_clean
-    lo, hi = wil(k, n)
-    got.update(
-        {
-            "Anshinzawa: choice 2, no inherited RB, won": k,
-            "Anshinzawa: choice 2, no inherited RB, runs": n,
-            "Anshinzawa: choice 2 share": k / n,
-            "Anshinzawa: choice 2 90% low": lo,
-            "Anshinzawa: choice 2 90% high": hi,
-        }
-    )
-    got["Anshinzawa: choice 2 with inherited, low"], got["Anshinzawa: choice 2 with inherited, high"] = a.c2_mixed
-    k, n = a.c1
-    got.update({"Anshinzawa: choice 1 won": k, "Anshinzawa: choice 1 runs": n, "Anshinzawa: choice 1 share": k / n})
     got["Anshinzawa: RB prioritised runs showing the finale"] = a.shows
     got["Anshinzawa: her extra RB in choice-2 wins, prioritised"], got["Anshinzawa: choice-2 wins, prioritised"] = (
         a.rb_c2wins
@@ -658,7 +626,6 @@ def riko_values(S: list[Run]) -> dict[str, Any]:
             "Riko firings: top choice": ru + mv,
             "Riko firings: all": ru + mv + lw,
             "Riko firings: top-choice rate": (ru + mv) / (ru + mv + lw),
-            "Riko firings: bottom choice": lw,
         }
     )
     return got
@@ -736,7 +703,7 @@ def findings(
     )
     out.append(finale_rule(X))
     out += choice_rule_findings(S, a)
-    out += measured_share_findings(S, a, X, got)
+    out += measured_share_findings(S, X, got)
     out += anshin_findings(a)
     out += equal_rule_findings(S, X)
     out += festa_findings(X)
@@ -772,9 +739,7 @@ def choice_rule_findings(S: list[Run], a: AnshinSummary) -> list[Value | Finding
     ]
 
 
-def measured_share_findings(
-    S: list[Run], a: AnshinSummary, X: list[SplitChoice], got: dict[str, Any]
-) -> list[Value | Finding]:
+def measured_share_findings(S: list[Run], X: list[SplitChoice], got: dict[str, Any]) -> list[Value | Finding]:
     """measured shares: why they leave the equal rule, and whether the adopted share sits in the measured interval"""
     out: list[Value | Finding] = []
     # each: k, n, the choice (card, event, choice, marker skill)
@@ -808,18 +773,16 @@ def measured_share_findings(
             "; ".join(f"{t} {iv(k, n)} (equal {equal(X, *c):g})" for t, (k, n, c) in rows.items()),
         )
     )
-    c2k, c2n = a.c2_clean
     for t, (k, n, c) in rows.items():
         if t.startswith("Riko"):
             continue
-        ex = f"; choice 2 alone {iv(c2k, c2n)}" if t.startswith("Anshinzawa") else ""
         v = adopted(c[0], c[3])
         out.append(common.Value(SEC, f"adopted: {t}", v))
         out.append(
             F(
                 f"Adopted {v:g} for {t} lies inside its measured 90% interval",
                 wil(k, n)[0] <= v <= wil(k, n)[1],
-                iv(k, n) + ex,
+                iv(k, n),
             )
         )
     ru, mv, lw, nr, rr = riko_firings(S)
@@ -839,18 +802,11 @@ def measured_share_findings(
 
 
 def anshin_findings(a: AnshinSummary) -> list[Value | Finding]:
-    """Anshinzawa's choice 1 by scenario; her date-start event and the finale"""
-    g, o = a.c1_by(True), a.c1_by(False)
+    """Anshinzawa's date-start event and the finale"""
     kp, np_ = a.rb_c2wins
     kq, nq = a.rb_c2wins_nei
     ks, ns = a.shows, a.rbp
     return [
-        F(
-            "Anshinzawa's choice 1 (Nothing Ventured +3 or nothing) is lower in Grand Concert than elsewhere "
-            "(disjoint 90% intervals)",
-            wil(*g)[1] < wil(*o)[0],
-            f"Grand Concert {iv(*g)}; other scenarios {iv(*o)}",
-        ),
         F(
             'With Risky Business prioritised IT also takes the bottom choice of "A Pleasant Practice Partner?": her '
             "extra Risky Business +1 in choice-2 wins with the priority, against without it (disjoint 90% intervals)",

@@ -848,94 +848,84 @@ This is not a nested maximised comparison and cannot reject activation.
 
 ## 9. Event choices and outcomes
 
-Computed by `research/s09_outcomes.py` (the certainty checks: `research/s13_calibration.py`).
+Computed by `research/s09_outcomes.py` (the event-only rows and the certainty checks: `research/s13_calibration.py`).
 
-Two rules are **assumed** (`docs/MODEL.md`). IT takes an event's top choice unless a prioritised skill sits on another
-choice, and the player prioritises every target. A choice's outcomes are equally likely unless measured; master.mdb
-holds no outcome odds.
+Two rules are **assumed** (`docs/MODEL.md`). The *choice rule*: IT takes an event's top choice unless a prioritised
+skill sits on another choice, and the player prioritises every target. The *equal rule*: a choice's outcomes are equally
+likely unless measured, since master.mdb holds no outcome odds.
 
 A target counts as *prioritised* when it is on the run's priority list and not outranked. It is outranked when a
-higher-ranked prioritised skill sits on a rival choice of every event offering it. That affects {{9.event_only_hints_outranked_on_a_rival_choice_rows|.0f}} event-only rows;
-which way the rank runs is assumed, not tested. The classifier does not compare each choice's best-ranked skill,
-so a higher-ranked companion on the target's own choice can invalidate its outranked label.
+higher-ranked prioritised skill sits on a rival choice of every event offering it. That affects {{9.event_only_hints_outranked_on_a_rival_choice_rows|.0f}} of section 13's
+event-only rows. That the higher rank wins is assumed, not tested. The classifier also ignores a higher-ranked skill on
+the target's own choice, which would cancel the outranking.
 
 ### Findings
 
-- **IT follows the choice rule** in the two events where priority lists show the choice taken.
+- **IT follows the choice rule** in the three events where the runs show which choice it took.
 - **The rule's consequence shows on real careers.** Event-only hints of targets not prioritised read {{9.event_only_hints_non_prioritised_targets_obs_per_pred|.3f}} of the
-  model, far below prioritised ones.
+  model, far below prioritised ones (section 13).
 - **Known miss: event-only hints of prioritised targets read just below the model**, at {{9.event_only_hints_prioritised_targets_obs_per_pred|.3f}}.
-- **Five measured outcomes depart from equal shares**, and the model uses the measured values. Some other outcomes are
-  off the equal rule but left at it: known misses.
-- **Pal and group finales are assumed certain.** Every checked run is consistent with that
-  assumption; finite samples do not establish certainty.
+- **Five measured outcome shares depart from the equal rule**, and the model uses them. Some other outcomes are off the
+  equal rule but left at it: known misses.
+- **Pal and group finales are assumed to fire every time.** They fired in every checked run: an observed rate on a
+  finite sample, not a game rule.
 
 ### Measured shares
 
-These shares are **fitted**, with 90% intervals. Riko's adopted value is a per-career approximation under the observed
-choice policy. Festa's interval treats estimated latent assignments as binomial trials and omits their uncertainty. A *reading* is a firing where every outcome could show: her hint
-credited, and the skill's level from other sources below 5.
+These shares are **fitted**, with 90% intervals. A *reading* is a firing where every outcome could show: the card's
+hint credited, and each outcome's skill below level 5 from other sources.
 
-| Event, outcome | Observed | Share [90%] | Adopted |
+| Event: outcome | Observed | Share [90%] | Adopted |
 |---|---|---|---|
-| Sasami Anshinzawa [This Might Sting!] finale, Nothing Ventured, Risky Business prioritised | {{9.anshinzawa_nv_with_rb_prioritised|.0f}}/{{9.anshinzawa_rb_prioritised_runs|.0f}} | {{9.anshinzawa_nv_share|.2f}} [{{9.anshinzawa_nv_share_90_pct_low|.2f}}, {{9.anshinzawa_nv_share_90_pct_high|.2f}}] | {{9.adopted_anshinzawa_finale_nothing_ventured|.2f}} |
-| same, choice 2 alone, no inherited Risky Business | {{9.anshinzawa_choice_2_no_inherited_rb_won|.0f}}/{{9.anshinzawa_choice_2_no_inherited_rb_runs|.0f}} | {{9.anshinzawa_choice_2_share|.2f}} [{{9.anshinzawa_choice_2_90_pct_low|.2f}}, {{9.anshinzawa_choice_2_90_pct_high|.2f}}] | |
-| Riko Kashimoto [Planned Perfection] "Unexpected Side", Ramp Up, top choice taken | {{9.riko_ramp_up_top_choice_taken|.0f}}/{{9.riko_readings|.0f}} | {{9.riko_share|.2f}} [{{9.riko_90_pct_low|.2f}}, {{9.riko_90_pct_high|.2f}}] | {{9.adopted_riko_unexpected_side_ramp_up|.2f}} |
-| Seiun Sky [Foolproof Plan] link 3, Fast-Paced | {{9.seiun_sky_link_3_fast_paced|.0f}}/{{9.seiun_sky_link_3_readings|.0f}} | {{9.seiun_sky_share|.2f}} [{{9.seiun_sky_90_pct_low|.2f}}, {{9.seiun_sky_90_pct_high|.2f}}] | {{9.adopted_seiun_sky_link_3_fast_paced|.2f}} |
-| Smart Falcon [My Umadol Way! ☆] link 3, Center Stage | {{9.smart_falcon_link_3_center_stage|.0f}}/{{9.smart_falcon_link_3_readings|.0f}} | {{9.smart_falcon_share|.2f}} [{{9.smart_falcon_90_pct_low|.2f}}, {{9.smart_falcon_90_pct_high|.2f}}] | {{9.adopted_smart_falcon_link_3_center_stage|.2f}} |
-| Nakayama Festa [Trusting the Dice] link 3 "Upping the Ante", Nothing Ventured | {{9.festa_nv_wins|.0f}}/{{9.festa_readings|.0f}} | {{9.festa_share|.2f}} [{{9.festa_share_90_pct_low|.2f}}, {{9.festa_share_90_pct_high|.2f}}] | {{9.festa_adopted|.2f}} |
+| Sasami Anshinzawa [This Might Sting!] finale, Risky Business prioritised: Nothing Ventured | {{9.anshinzawa_nv_with_rb_prioritised|.0f}}/{{9.anshinzawa_rb_prioritised_runs|.0f}} | {{9.anshinzawa_nv_share|.2f}} [{{9.anshinzawa_nv_share_90_pct_low|.2f}}, {{9.anshinzawa_nv_share_90_pct_high|.2f}}] | {{9.adopted_anshinzawa_finale_nothing_ventured|.2f}} |
+| Riko Kashimoto [Planned Perfection] "Unexpected Side", top choice: Ramp Up, not Maverick ○ | {{9.riko_ramp_up_top_choice_taken|.0f}}/{{9.riko_readings|.0f}} | {{9.riko_share|.2f}} [{{9.riko_90_pct_low|.2f}}, {{9.riko_90_pct_high|.2f}}] | {{9.adopted_riko_unexpected_side_ramp_up|.2f}} |
+| Seiun Sky [Foolproof Plan] link 3: Fast-Paced, not Escape Artist | {{9.seiun_sky_link_3_fast_paced|.0f}}/{{9.seiun_sky_link_3_readings|.0f}} | {{9.seiun_sky_share|.2f}} [{{9.seiun_sky_90_pct_low|.2f}}, {{9.seiun_sky_90_pct_high|.2f}}] | {{9.adopted_seiun_sky_link_3_fast_paced|.2f}} |
+| Smart Falcon [My Umadol Way! ☆] link 3: Center Stage, not Prudent Positioning | {{9.smart_falcon_link_3_center_stage|.0f}}/{{9.smart_falcon_link_3_readings|.0f}} | {{9.smart_falcon_share|.2f}} [{{9.smart_falcon_90_pct_low|.2f}}, {{9.smart_falcon_90_pct_high|.2f}}] | {{9.adopted_smart_falcon_link_3_center_stage|.2f}} |
+| Nakayama Festa [Trusting the Dice] link 3 "Upping the Ante": Nothing Ventured, not Risky Business | {{9.festa_nv_wins|.0f}}/{{9.festa_readings|.0f}} | {{9.festa_share|.2f}} [{{9.festa_share_90_pct_low|.2f}}, {{9.festa_share_90_pct_high|.2f}}] | {{9.festa_adopted|.2f}} |
 
-The other outcomes: Riko Kashimoto's alternative is Maverick ○, Seiun Sky's Escape Artist, Smart Falcon's Prudent
-Positioning. Sasami Anshinzawa's rows use the {{9.anshinzawa_runs_with_the_card_no_festa|.0f}} runs with her card and without Nakayama Festa's; Nakayama Festa's
-start from {{9.festa_runs_with_the_card|.0f}} runs with her card, then exclude her own careers and decks with Sasami Anshinzawa's SSR.
-The split-choice, Sasami Anshinzawa and Daitaku Helios analyses use the earlier collection subset, not the full pool.
+Riko Kashimoto's adopted share mixes her choice policy with her outcome. It is the share of runs with her Ramp Up hint
+under the runs' own choices, so it sits below the top-choice share above. Nakayama Festa's share rests on an
+attribution model, and its interval is approximate. Both are set out under *Evidence*. Except for Nakayama Festa's,
+the counts in this section's share and choice tables use an earlier subset of the runs, not the full pool.
 
 ### Evidence
 
-*Does IT follow the choice rule?* Where it can be seen, yes:
+*Does IT follow the choice rule?* Where the runs show the choice taken, yes:
 
 | Event | Condition | Choice taken |
 |---|---|---|
 | Sasami Anshinzawa's finale | Risky Business prioritised | choice 2 in about {{9.anshinzawa_rb_prioritised_took_choice_2|.0%}} of runs |
 | Sasami Anshinzawa's finale | neither skill prioritised | choice 2 in {{9.anshinzawa_neither_prioritised_choice_2_won|.0f}} of {{9.anshinzawa_neither_prioritised_runs|.0f}} runs |
+| her date-start event "A Pleasant Practice Partner?", read by its extra Risky Business +1 | Risky Business prioritised | bottom choice in {{9.anshinzawa_her_extra_rb_in_choice_2_wins_prioritised|.0f}} of {{9.anshinzawa_choice_2_wins_prioritised|.0f}} runs winning finale choice 2 |
+| the same | Risky Business not prioritised | bottom choice in {{9.anshinzawa_her_extra_rb_in_choice_2_wins_rb_not_prioritised|.0f}} of {{9.anshinzawa_choice_2_wins_rb_not_prioritised|.0f}} such runs |
 | Riko Kashimoto [Planned Perfection]'s event | Lone Wolf prioritised | bottom choice in {{9.riko_lone_wolf_prioritised_bottom_choice|.0f}} of {{9.riko_lone_wolf_prioritised_runs|.0f}} runs |
 
-Of the {{9.anshinzawa_choice_1_exceptions_rb_prioritised|.0f}} exceptions in the first row, {{9.anshinzawa_choice_1_exceptions_with_rb_at_lv_5|.0f}} had Risky Business already at hint Lv 5. Every run has a priority
-list, but the records show it for only {{9.runs_showing_a_priority_list|.0f}} of {{9.runs|,.0f}} runs. The rest count as unknown, never as an empty list.
-So the rule is tested mainly through its consequences in section 13. There the prioritised rows read just below the
-model, a known miss. Assuming every target prioritised over-predicts the rest by far more.
+Of the {{9.anshinzawa_choice_1_exceptions_rb_prioritised|.0f}} finale runs that took choice 1 with Risky Business prioritised, {{9.anshinzawa_choice_1_exceptions_with_rb_at_lv_5|.0f}} had it already at hint Lv 5.
+The records show a priority list for only {{9.runs_showing_a_priority_list|,.0f}} of {{9.runs|,.0f}} runs. The rest count as unknown, never as an empty
+list, so the rule is tested mainly through its consequences in section 13.
 
 *Reading Sasami Anshinzawa's finale.* Nakayama Festa [Trusting the Dice]'s "Upping the Ante" also gives Nothing
-Ventured and is credited jointly with it, so runs with Festa's card are left out. Hint levels identify the choice:
+Ventured and shares its credits. So these rows use the {{9.anshinzawa_runs_with_the_card_no_festa|.0f}} runs with Anshinzawa's card and without Festa's.
+Hint levels identify the choice:
 
-- her Nothing Ventured +3 is choice 1, and +1 is choice 2;
+- her Nothing Ventured +3 is choice 1, which otherwise gives nothing, and +1 is choice 2;
 - a loss on choice 2 shows as her Risky Business at level 2, from storyline choice 3 and the finale.
 
-With inherited Risky Business levels mixed in, choice 2 reads {{9.anshinzawa_choice_2_with_inherited_low|.2f}}-{{9.anshinzawa_choice_2_with_inherited_high|.2f}}. Choice 1 gives Nothing Ventured +3 or nothing.
-If the finale always fires, choice 1 won in {{9.anshinzawa_choice_1_won|.0f}} of {{9.anshinzawa_choice_1_runs|.0f}} runs. Grand Concert reads lower, unexplained.
+GameTora marks the date-start event's bottom choice as ending her event chain, which for a pal card means her dates.
+Yet with Risky Business prioritised the finale shows its outcome in at least {{9.anshinzawa_rb_prioritised_runs_showing_the_finale|.0f}} of {{9.anshinzawa_rb_prioritised_runs|.0f}} runs. IT
+apparently keeps her dates either way.
 
-*IT keeps her dates.* With Risky Business prioritised, IT also takes the bottom choice of her date-start event "A
-Pleasant Practice Partner?", which gives Risky Business +1. The extra +1 shows that it does:
-
-| Choice-2 wins at her finale | With the extra Risky Business +1 |
-|---|---|
-| {{9.anshinzawa_choice_2_wins_prioritised|.0f}}, Risky Business prioritised | {{9.anshinzawa_her_extra_rb_in_choice_2_wins_prioritised|.0f}} |
-| {{9.anshinzawa_choice_2_wins_rb_not_prioritised|.0f}}, not prioritised | {{9.anshinzawa_her_extra_rb_in_choice_2_wins_rb_not_prioritised|.0f}} |
-
-GameTora marks that choice as ending her event chain, which for a pal card means her dates. Yet the finale still
-fires: at least {{9.anshinzawa_rb_prioritised_runs_showing_the_finale|.0f}} of {{9.anshinzawa_rb_prioritised_runs|.0f}} such runs show its outcome. IT apparently keeps her dates either way.
-
-*Why Riko Kashimoto's adopted share is lower than measured.* The adopted value is a per-run chance of her Ramp Up
-hint, whichever choice IT took. Transferring it to a policy that prioritises Ramp Up is an assumption:
+*Riko Kashimoto's adopted share.* The adopted value is the share of runs with her Ramp Up hint, whichever choice IT
+took. It folds the runs' choice policy into the outcome, and carrying it over to a player who prioritises Ramp Up is
+assumed:
 
 | Riko Kashimoto [Planned Perfection] | Count | Share [90%] |
 |---|---|---|
 | runs with her Ramp Up hint | {{9.riko_per_run_runs_with_ramp_up|.0f}} of {{9.riko_per_run_runs|.0f}} | {{9.riko_per_run_share|.3f}} [{{9.riko_per_run_90_pct_low|.3f}}, {{9.riko_per_run_90_pct_high|.3f}}] |
-| firings where IT took the top choice | {{9.riko_firings_top_choice|.0f}} of {{9.riko_firings_all|.0f}} | {{9.riko_firings_top_choice_rate|.2f}} |
-| firings where IT took the bottom choice, Lone Wolf | {{9.riko_firings_bottom_choice|.0f}} | |
+| firings where IT took the top choice; the rest took the bottom choice, Lone Wolf | {{9.riko_firings_top_choice|.0f}} of {{9.riko_firings_all|.0f}} | {{9.riko_firings_top_choice_rate|.2f}} |
 
-*Reading Nakayama Festa's share.* The following credits are from the eligible subset of the
-{{9.festa_runs_with_the_card|.0f}} runs with her card:
+*Nakayama Festa's share.* It starts from the {{9.festa_runs_with_the_card|.0f}} runs with her card, less her own careers and decks with
+Sasami Anshinzawa's SSR. The credits there:
 
 | Credit | Runs |
 |---|---|
@@ -945,31 +935,35 @@ hint, whichever choice IT took. Transferring it to a policy that prioritises Ram
 | neither outcome, with Risky Business already at Lv 5 | {{9.festa_blank_risky_business_at_lv_5|.0f}} |
 
 A shared credit is split by estimated source rates. Let $r_F$ be her exclusive Risky Business credit rate in runs with
-her card, {{9.festa_her_rb_rate|.3f}}. Let $r_o$ be the rate at which the other card alone is credited with it in runs without her:
-{{9.festa_team_sirius_alone_rb_rate|.3f}} for Team Sirius, {{9.festa_anshinzawa_alone_rb_rate|.3f}} for Sasami Anshinzawa. The estimator assigns a shared credit to her with weight
-$r_F / (1 - (1 - r_F)(1 - r_o))$, which gives her {{9.festa_shared_credits_hers|.1f}} of them.
+her card, {{9.festa_her_rb_rate|.3f}}. Let $r_o$ be the other card's exclusive rate in runs without her: {{9.festa_team_sirius_alone_rb_rate|.3f}} for Team Sirius,
+{{9.festa_anshinzawa_alone_rb_rate|.3f}} for Sasami Anshinzawa. A shared credit goes to her with weight $r_F / (1 - (1 - r_F)(1 - r_o))$, the chance she
+fired given that at least one of the two did. That gives her {{9.festa_shared_credits_hers|.1f}} of them.
 
-In the blank runs a Risky Business win cannot show, or the event never fired. They are split by the rate at which the
-event shows where both outcomes can, {{9.festa_firing_rate_where_both_can_show|.2f}}. That gives the share in the measured-shares table. Whatever share of
-the shared credits is hers, it stays within {{9.festa_share_shared_all_hers|.3f}}-{{9.festa_share_shared_none_hers|.3f}} under the same blank-case correction.
-This attribution assumes independent source firings but substitutes exclusive credits for marginal firing rates.
-The blank-case correction does not condition on the missing gold outcome. Both corrections need a joint observation
-model, and no final-Wit test is computed here.
+In a blank run either a Risky Business win could not show or the event never fired. The blank runs are split by the
+rate at which the event shows where both outcomes can, {{9.festa_firing_rate_where_both_can_show|.2f}}. Whatever part of the shared credits is hers, the share
+stays within {{9.festa_share_shared_all_hers|.3f}}-{{9.festa_share_shared_none_hers|.3f}}.
+
+So the share rests on an attribution model. Its rates are exclusive credit rates, not firing rates, and it assumes the
+sources fire independently. The blank-run split ignores which outcome is missing. The interval treats the attributed
+runs as binomial trials and omits the attribution's uncertainty, so it is approximate. No joint observation model is
+fitted or tested.
 
 *Shares left at the equal rule.*
 
-| Event, outcome | Share | Verdict |
+| Event: outcome | Share | Verdict |
 |---|---|---|
-| Tazuna Hayakawa SSR finale, Concentration | {{9.tazuna_finale_concentration|.2f}} | off 0.5, left at the equal rule: known miss |
-| Agnes Tachyon [Q≠0] link 1 choice 2, Murmur | {{9.tachyon_link_1_choice_2_murmur|.2f}} | off 0.5, left: known miss |
-| Marvelous Sunday [Dazzling Day in the Snow] link 3, Position Pilfer | {{9.marvelous_sunday_link_3_position_pilfer|.2f}} | off 0.5, left: known miss |
-| Light Hello SSR finale, +3 See Ya Later! | {{9.light_hello_finale_share|.2f}}: {{9.light_hello_finale_see_ya_later_3|,.0f}} of {{9.light_hello_finale_readings|,.0f}} | off 0.5, left: known miss |
+| Tazuna Hayakawa [Tracen Reception] finale: Concentration | {{9.tazuna_finale_concentration|.2f}} | off 0.5: known miss |
+| Agnes Tachyon [Q≠0] link 1 choice 2: Murmur | {{9.tachyon_link_1_choice_2_murmur|.2f}} | off 0.5: known miss |
+| Marvelous Sunday [Dazzling Day in the Snow] link 3: Position Pilfer | {{9.marvelous_sunday_link_3_position_pilfer|.2f}} | off 0.5: known miss |
+| Light Hello [From the Ground Up] finale: See Ya Later! +3 | {{9.light_hello_finale_share|.2f}}: {{9.light_hello_finale_see_ya_later_3|,.0f}} of {{9.light_hello_finale_readings|,.0f}} | off 0.5: known miss |
 | Gold Ship [That Time I Became the Strongest] link 3 | {{9.gold_ship_link_3_innate_experience|.2f}} | consistent with 0.5 |
 | King Halo [Tonight, We Waltz] link 3 | {{9.king_halo_link_3_gap_closer|.2f}} | consistent with 0.5 |
-| Daitaku Helios [Sunlit Angel ♪] link 2, Tail Held High, where link 3 visibly fired | {{9.helios_link_2_tail_held_high_given_link_3|.2f}} | consistent with 0.5 |
+| Daitaku Helios [Sunlit Angel ♪] link 2, where link 3 visibly fired: Tail Held High | {{9.helios_link_2_tail_held_high_given_link_3|.2f}} | consistent with 0.5 |
 
-*Pal and group finales are assumed certain.* Light Hello [From the Ground Up] credits See Ya Later! to her event in {{9.light_hello_credited_credited|.0f}} of
-{{9.light_hello_credited_runs_carrying_her|.0f}} runs carrying her. Team Sirius is credited with Risky Business, alone or shared, in {{9.team_sirius_credited_credited|.0f}} of {{9.team_sirius_credited_runs_carrying_her|.0f}}.
+*Pal and group finales.* The checks use runs where the card is the deck's one source of the skill and no inspiration
+hinted it. Light Hello [From the Ground Up]'s event is credited with See Ya Later! in {{9.light_hello_credited_credited|.0f}} of {{9.light_hello_credited_runs_carrying_her|.0f}} such runs.
+Team Sirius is credited with Risky Business, alone or shared, in {{9.team_sirius_credited_credited|.0f}} of {{9.team_sirius_credited_runs_carrying_her|.0f}}. These observed rates are
+consistent with a finale that always fires; finite samples do not establish it.
 
 ## 10. Random card events (not modelled)
 
