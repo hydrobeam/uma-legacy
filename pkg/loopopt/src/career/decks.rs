@@ -3,7 +3,8 @@ use crate::career::Env;
 use crate::career::search::DeckRes;
 use crate::deck::caps::{EXACT_BUDGET, EXACT_STEPS};
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
-use crate::deck::joint::{joint_b, upper_na};
+use crate::deck::joint::joint_b;
+use crate::deck::joint::upper::upper_na;
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
 /// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads

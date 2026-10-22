@@ -1,7 +1,8 @@
 //! Per-uma decks (`run_multi`): the per-uma tables of exact values by inheritance chance and the loop search over them.
 use crate::deck::caps::{EXACT_BUDGET, EXACT_RHO, EXACT_STEPS, src_class};
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
-use crate::deck::joint::{JointChances, JointExt, joint, joint_b, joint_fast, upper_na};
+use crate::deck::joint::upper::upper_na;
+use crate::deck::joint::{JointChances, JointExt, joint, joint_b, joint_fast};
 use crate::deck::kept::{Cl, DeckEval, DeckId, Name, PDeck, k_filter, split};
 use crate::deck::sources::{SourceEntry, Sources, TargetSources};
 use crate::deck::space::{DeckSpace, HintCoordinate, SPT, UCHK};

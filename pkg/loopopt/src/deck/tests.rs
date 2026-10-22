@@ -1,11 +1,12 @@
+use crate::deck::capfree::state_value_cf;
 use crate::deck::chains::{
     CHAIN_EVENTS, ChainKind, chain_marginals, chain_marginals_dense, chain_marginals_ref, chain_states, event_pmf,
     key_level, stop_risk_code,
 };
 use crate::deck::hints::{hint_base, hint_miss, hint_spec, miss_draws};
-use crate::deck::joint::{
-    JointExt, LandPre, joint, joint_fast, joint_trainee_ref, land_factor, state_value_cf, upper_na,
-};
+use crate::deck::joint::reference::joint_trainee_ref;
+use crate::deck::joint::upper::upper_na;
+use crate::deck::joint::{JointExt, LandPre, joint, joint_fast, land_factor};
 use crate::deck::sources::{
     ChainOutcome, EventOutcome, Group, SourceEntry, Sources, TargetReward, TargetSources, TrainingHint, deck_entries,
     group_gh, group_nuod, group_nuod_lvl, src_miss,
