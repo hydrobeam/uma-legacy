@@ -34,7 +34,7 @@ use clock::{PROF, now_ms, prof, progress};
 pub(crate) use decks::CfStats;
 use decks::{DECK_KEEP, JOB_NO};
 use decks::{DECK_KEEP_CAP, DeckKey, DeckMemo, Kept};
-pub(in crate::deck) use inherit::HerSlot;
+pub(crate) use inherit::HerSlot;
 use inherit::{
     RelOf, SlotSink, aff_factor, inherit, inherit_q, insp_miss, mix_term, part_sum, rise_factor, set_ews, spark_scale,
 };
@@ -47,7 +47,7 @@ use state::{
     Ruled, SEEN_KEEP, SOLVE_KEEP, STATE_MAX_N, found_in, found_out, fvec, fvec_r, fx, hx, len_in, pvec_r, sel_in,
     sel_out, setup_hash, state_in, state_out, usz, ux, uxr,
 };
-pub(in crate::deck) use state::{json_without, setup_fp};
+pub(crate) use state::{json_without, setup_fp};
 mod clock;
 mod decks;
 mod inherit;
@@ -63,18 +63,18 @@ mod sim;
 
 /// A trainee and her parents in the supplied legacy pool; parent order is significant.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::deck) struct Lineage {
+pub(crate) struct Lineage {
     /// Trainee's index in Data::umas.
-    pub(in crate::deck) trainee: usize,
+    pub(crate) trainee: usize,
     /// First parent's index in the supplied pool or legacy slice.
-    pub(in crate::deck) first_parent: usize,
+    pub(crate) first_parent: usize,
     /// Second parent's index, preserving the caller's order.
-    pub(in crate::deck) second_parent: usize,
+    pub(crate) second_parent: usize,
 }
 
 impl Lineage {
     /// The same career with the lower legacy index as the first parent.
-    pub(in crate::deck) fn ordered(self) -> Self {
+    pub(crate) fn ordered(self) -> Self {
         Self {
             trainee: self.trainee,
             first_parent: self.first_parent.min(self.second_parent),
@@ -85,23 +85,23 @@ impl Lineage {
 
 /// A borrowed deck and the lineage that will train with it.
 #[derive(Clone, Copy)]
-pub(in crate::deck) struct Career<'deck> {
+pub(crate) struct Career<'deck> {
     /// Trainee and ordered parents.
-    pub(in crate::deck) lineage: Lineage,
+    pub(crate) lineage: Lineage,
     /// Selected support deck, borrowed without cloning.
-    pub(in crate::deck) deck: &'deck Sel,
+    pub(crate) deck: &'deck Sel,
 }
 
 /// Immutable resources for one solver job.
-pub(in crate::deck) struct JobInputs<'data> {
+pub(crate) struct JobInputs<'data> {
     /// Roster, affinities and race data.
-    pub(in crate::deck) data: &'data Data,
+    pub(crate) data: &'data Data,
     /// Skill and outfit source data.
-    pub(in crate::deck) skills: &'data SkillsRaw,
+    pub(crate) skills: &'data SkillsRaw,
     /// Support card source data.
-    pub(in crate::deck) cards: &'data CardsRaw,
+    pub(crate) cards: &'data CardsRaw,
     /// Original job settings, including planner settings.
-    pub(in crate::deck) job: &'data Value,
+    pub(crate) job: &'data Value,
 }
 
 #[derive(Deserialize, Clone, Default)]

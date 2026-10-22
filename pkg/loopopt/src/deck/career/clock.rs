@@ -3,7 +3,7 @@
 /// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
 #[cfg(target_arch = "wasm32")]
 #[allow(unsafe_code, reason = "calls the host's clock import")]
-pub(in crate::deck::career) fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
     #[link(wasm_import_module = "env")]
     unsafe extern "C" {
         fn clock_ms() -> f64;
@@ -14,7 +14,7 @@ pub(in crate::deck::career) fn now_ms() -> f64 {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(in crate::deck::career) fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
     static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
     T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
 }
@@ -23,7 +23,7 @@ pub(in crate::deck::career) fn now_ms() -> f64 {
 /// wasm the host's `env.progress` (the worker posts it to the page while the plan runs); elsewhere nothing
 #[cfg(target_arch = "wasm32")]
 #[allow(unsafe_code, reason = "calls the host's progress import")]
-pub(in crate::deck::career) fn progress(phase: u32, k: usize, n: usize) {
+pub(crate) fn progress(phase: u32, k: usize, n: usize) {
     #[link(wasm_import_module = "env")]
     unsafe extern "C" {
         #[link_name = "progress"]
@@ -34,11 +34,11 @@ pub(in crate::deck::career) fn progress(phase: u32, k: usize, n: usize) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(in crate::deck::career) const fn progress(_phase: u32, _k: usize, _n: usize) {}
+pub(crate) const fn progress(_phase: u32, _k: usize, _n: usize) {}
 
 // phase timers and counters for speed work, per plan (`next.work.prof`; planval and the val compares skip `work`)
-thread_local! { pub(in crate::deck::career) static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = std::cell::RefCell::default(); }
+thread_local! { pub(crate) static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = std::cell::RefCell::default(); }
 
-pub(in crate::deck::career) fn prof(k: &'static str, v: f64) {
+pub(crate) fn prof(k: &'static str, v: f64) {
     PROF.with(|p| *p.borrow_mut().entry(k).or_insert(0.0) += v);
 }
