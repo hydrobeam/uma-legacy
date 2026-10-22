@@ -111,14 +111,15 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
 
 ## Open in the deck search (estimates)
 
-- One shared deck, three or four trainees: the loop search's scoring (`multi.rs`, `Multi::score_shared` and `Multi::shared_picks`)
+- One shared deck, three or four trainees: the loop search's scoring (`multi/shared.rs`, `Multi::score_shared`, and
+  `multi/report.rs`, `Multi::shared_picks`)
   calls `joint_b` once per trainee, and each call rebuilds `joint_prep`, which depends on the deck, not the trainee.
   Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and
   the product of event outcomes on every call, though they depend only on the ordered active groups (`Env::corners`
   repeats it at each of 2^nu corners); a plan compiled per group list could replay every weighted addition in order
   (equal rewards' weights are not merged: that regroups sums). Measured 2026-10-21 (callgrind, pal_U shared): neither
   `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive).
-  The profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `multi.rs`.
+  The profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `multi/bands.rs`.
   Reprofile before acting on that measurement.
 - Training groups: a card's inclusion-exclusion weight depends only on the subset's size, so it could be summed once
   per size (`3^m - 1` additions to `2^(m+1) - 2`, same order per subset), and `group_nuod`'s `O(4^m)` subset scan has

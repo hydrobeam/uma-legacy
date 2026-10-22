@@ -3,6 +3,7 @@ use crate::career::Env;
 use crate::career::plan::ParentPool;
 use crate::career::search::{Found, Ref};
 use crate::career::sim::Sim;
+use crate::career::state::setup_hash;
 use crate::uma::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
 /// A cached result may be available from searching, certification or reuse. A known empty result is
@@ -138,13 +139,6 @@ pub(crate) fn take_kept_plan(key: (u64, u64)) -> Option<Bests> {
     })
 }
 
-pub(crate) fn h64(s: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish()
-}
-
 /// A kept plan's key: (setup and places, the first `legacy_count` legacies). The borrowed-parent rule is in the first
 /// unless "allow": `setup_fp` leaves it out, and a plan under "later" or "never" keeps other looped careers, under
 /// "never" other best careers too
@@ -159,10 +153,10 @@ pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usiz
         .get("borrowed_parent")
         .and_then(|b| b.as_str())
         .filter(|&b| b != "allow")
-        .map_or(0, |b| h64(b).rotate_left(2));
+        .map_or(0, |b| setup_hash(b).rotate_left(2));
     (
-        crate::career::state::setup_fp(job) ^ h64(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
-        h64(&legacies_text),
+        crate::career::state::setup_fp(job) ^ setup_hash(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
+        setup_hash(&legacies_text),
     )
 }
 

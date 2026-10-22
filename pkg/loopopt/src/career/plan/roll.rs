@@ -2,127 +2,18 @@
 use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::anchors::{FoundAnchor, OutcomeBounds, OutcomeEstimate, PartnerAnchors, outcome_hi};
 use crate::career::plan::cont::{Cont, OwnTrio, ScoreBase, Trio};
-use crate::career::plan::kept::h64;
+use crate::career::plan::score::kernel::{ActiveCandidate, Scored};
 use crate::career::plan::score::{fm_masks, sc_roll};
 use crate::career::plan::search::{IDX_PARTNERS, sim_for};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, PlanJob, ScoringContext, TargetMask};
 use crate::career::pool::Pool;
 use crate::career::search::Found;
 use crate::career::sim::Sim;
+use crate::career::state::setup_hash;
 use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
-/// Candidate whose step may change at an outcome.
-#[derive(Clone, Copy)]
-pub(crate) struct ActiveCandidate {
-    /// Position in the fixed planner candidate table.
-    pub(crate) candidate: CandidateIndex,
-    /// Slot in the prepared outcome table, if this candidate has one.
-    pub(crate) slot: Option<usize>,
-    /// Odds above which this candidate's step can improve.
-    pub(crate) threshold: f64,
-    /// Candidate's odds in the original pool.
-    pub(crate) current_chance: f64,
-}
-
-/// One scoring's outcome evaluation as `sc_eval` reads it (built by `score_career_`; a plan keeps its pick's for a
-/// roll, `RollKeep`): per setup her miss factor's parts and her spark scales, with what the fold and the outcome loop
-/// read of them (`derive`); the tables kept (`sc_prep`) and each one's setup; the collapsed targets; per setup its
-/// candidate slot and per slot the odds now; her landed sets' chances; the candidates the loop can lift; her own 8/8's
-/// trio sides; her candidate index, the goal, the star mix. A setup is one place her veteran may be a parent (`Setup`).
-pub(crate) struct Scored {
-    /// nu: the job's uncertain targets.
-    pub(crate) uncertain_target_count: usize,
-    /// nf: the scenario-guaranteed targets.
-    pub(crate) fixed_target_count: usize,
-    /// All job targets (nu + nf).
-    pub(crate) target_count: usize,
-    /// The setup slots: the candidates with a setup, one slot each.
-    pub(crate) slot_count: usize,
-    /// Her own place among the stage candidates (`her_ends`); None: her uma is not one.
-    pub(crate) own_candidate: Option<usize>,
-    /// Her parents are both 8/8s: her own 8/8 completes the loop (V after her 0).
-    pub(crate) completes_goal: bool,
-    /// The rank's star mix (1, 2, 3 stars).
-    pub(crate) star_mix: [f64; 3],
-    /// The uncertain targets as job-target indices, ascending (`Env::uncertain_targets`).
-    pub(crate) uncertain_targets: Vec<usize>,
-    /// Per mask of the guaranteed targets landed, its landed set over the job targets (`fm_masks`).
-    pub(crate) fixed_landed_masks: Vec<TargetMask>,
-    /// x0: per setup and uncertain target, the miss product without her (`HerSlot::misses_without_her`).
-    pub(crate) misses_without_her: Vec<Vec<f64>>,
-    /// xm: per setup, her miss factor per star count (`HerSlot::miss_by_stars`).
-    pub(crate) miss_by_stars: Vec<[f64; 4]>,
-    /// pw: per setup and job target, the spark scale without and with her spark (`HerSlot::target_spark_scales`).
-    pub(crate) target_spark_scales: Vec<Vec<[f64; 2]>>,
-    /// Per kept table, its setup (`sc_prep`).
-    pub(crate) setup_by_table: Vec<usize>,
-    /// The kept tables, level 0 of the fold: table j at j 2^nu (`sc_prep`).
-    pub(crate) initial_tables: Vec<f64>,
-    /// Per uncertain target, whether it is collapsed: folded at 0 and 1 star only (`sc_prep`).
-    pub(crate) collapsed_targets: Vec<bool>,
-    /// Per setup, its candidate's slot.
-    pub(crate) slot_by_setup: Vec<usize>,
-    /// Per slot, its candidate's odds now.
-    pub(crate) current_probabilities: Vec<f64>,
-    /// Per landed set over the job targets (bit i: target i), her chance of landing exactly it.
-    pub(crate) landed_set_chances: Vec<f64>,
-    /// The candidates the outcome loop can lift, in candidate order.
-    pub(crate) active_candidates: Vec<ActiveCandidate>,
-    /// Her own 8/8's trio sides when her uma is not a stage candidate (`her_trios`).
-    pub(crate) own_trios: Vec<OwnTrio>,
-    /// Derived (`derive`): per setup, uncertain target and star level, x = x0 xm.
-    pub(crate) present_factors: Vec<Vec<[f64; 4]>>,
-    /// Derived (`derive`): 1 - x of `present_factors`.
-    pub(crate) absent_factors: Vec<Vec<[f64; 4]>>,
-    /// Derived (`derive`): per landed set m and setup, the spark scale (m-major: m * setup count + setup).
-    pub(crate) spark_scales: Vec<f64>,
-}
-
-impl Scored {
-    /// what the fold and the outcome loop read of the setups: per setup, target and star level x = x0 xm and 1 - x; per
-    /// landed set m and setup the spark scale, the product over job targets of pw at her spark there (m-major:
-    /// scf[m * ns + si])
-    pub(crate) fn derive(&mut self) {
-        let nu = self.uncertain_target_count;
-        self.present_factors = self
-            .misses_without_her
-            .iter()
-            .zip(&self.miss_by_stars)
-            .map(|(x0, xm)| (0..nu).map(|k| [0usize, 1, 2, 3].map(|sg| x0[k] * xm[sg])).collect())
-            .collect();
-        self.absent_factors =
-            self.present_factors.iter().map(|v| v.iter().map(|r| r.map(|x| 1.0 - x)).collect()).collect();
-        let (nm, ntar) = (1usize << self.target_count, self.target_count);
-        self.spark_scales = Vec::with_capacity(nm * self.setup_count());
-        for m in 0..nm {
-            self.spark_scales.extend(self.target_spark_scales.iter().map(|pw| {
-                (0..ntar).map(|k| pw[k][usize::from(TargetMask::from_bits(m).contains(k))]).product::<f64>()
-            }));
-        }
-    }
-    pub(crate) const fn setup_count(&self) -> usize {
-        self.misses_without_her.len()
-    }
-    /// the fold writes per leaf the setups' table values (fewer rows than per outcome and slot), else per outcome the
-    /// slots' odds (`fold_emit`)
-    pub(crate) const fn emits_setup_products(&self) -> bool {
-        (1usize << self.fixed_target_count) * self.slot_count > self.setup_count()
-    }
-    pub(crate) const fn full_mask(&self) -> TargetMask {
-        TargetMask::from_bits((1usize << self.target_count) - 1)
-    }
-    /// a leaf's representative: every collapsed target's nonzero digit set to 1 (`sc_outcomes`)
-    pub(crate) fn representative_of(&self, l: usize) -> usize {
-        let cm: usize =
-            (0..self.uncertain_target_count).filter(|&k| self.collapsed_targets[k]).map(|k| 3usize << (2 * k)).sum();
-        let lo_bits = cm & (usize::MAX / 3);
-        let z = l & cm;
-        (l & !cm) | ((z | z >> 1) & lo_bits)
-    }
-}
-
 /// The base a kept scoring was scored against (`ScoreBase` without the sides and C's umas, which only `her_trios` reads).
 /// Per-candidate vectors follow `candidates`' order.
 pub(crate) struct KeptBase {
@@ -203,7 +94,7 @@ const ROLL_KEEP: usize = 4;
 /// a plan job's roll key: the whole job but its roll (`next.roll`) and the page's flags that change no plan
 /// (`no_reports`, `compare`)
 pub(crate) fn roll_key(job: &Value) -> u64 {
-    h64(&crate::career::state::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
+    setup_hash(&crate::career::state::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
 }
 
 pub(crate) fn keep_roll(roll: RollKeep) {

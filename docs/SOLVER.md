@@ -5,6 +5,16 @@ The Rust crate in `pkg/loopopt/`; crate paths below are relative to it, while `d
 era). The CLI resolves a job's file names from the working directory; run it from the era's data folder.
 Building and running it: `docs/BUILD.md`.
 
+The loop search's modules:
+
+| File | Holds |
+|---|---|
+| `src/deck/multi.rs` | `Multi`, its inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
+| `src/deck/multi/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
+| `src/deck/multi/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
+| `src/deck/multi/bands.rs` | Loop bands, schedules, certification and solved passes |
+| `src/deck/multi/report.rs` | Reported picks, JSON and diagnostic summaries |
+
 Searches parent loops (four-uma loops and three-uma rotations) and support decks for landing target skills in
 Independent Training, reports each uma's race schedule, and plans careers to a looped parent (`/career`). Its
 inputs are data files exported from the game's `master.mdb` and GameTora's event data.

@@ -9,7 +9,8 @@ use crate::career::plan::combine::{
 };
 use crate::career::plan::cont::{Cont, Trio, Want, count_refit, trio_v};
 use crate::career::plan::kept::{Bests, CacheStamp, CachedSearch, same_career, stamp_ok, stamped};
-use crate::career::plan::score::{CareerScore, KeptScoring, LiftStats, score_career};
+use crate::career::plan::score::kernel::LiftStats;
+use crate::career::plan::score::{CareerScore, KeptScoring, score_career};
 use crate::career::plan::search::{OPT_SHOW, PROXY_SAVE, best_sur, capped, certified, is_full};
 use crate::career::plan::{
     ParentPool, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, found_career, found_lineage,

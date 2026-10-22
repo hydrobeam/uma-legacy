@@ -1,6 +1,6 @@
 //! Configuration traversal and its borrowed-card and state bounds.
 use crate::Instant;
-use crate::deck::capfree::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound};
+use crate::deck::capfree::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound, StateBoundConfig};
 use crate::deck::chains::{ChainKind, ChainState, chain_states};
 use crate::deck::enumerate::bounds::{DominanceRequest, OutfitRow, OutfitRun, SplitColumns};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationQueue, SearchConfig};
@@ -8,7 +8,7 @@ use crate::deck::enumerate::order::{ConfigOrder, DeckPath};
 use crate::deck::enumerate::scratch::{ConfigScratch, GroupBounds, NodeScratch};
 use crate::deck::enumerate::walk::{ConfigurationContext, DeckConstraints, DeckCursor, WalkScratch};
 use crate::deck::enumerate::{ScoredDeck, SearchClause, SearchOutcome, SearchStop};
-use crate::deck::joint::{LandPre, MissFactors, SBN, StateBoundConfig};
+use crate::deck::joint::{LandPre, MissFactors, SBN};
 use crate::deck::space::{DeckSpace, Dominator, EntryGroup, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck};
 use crate::skills::Model;
 use std::collections::HashMap;
