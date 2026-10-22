@@ -425,17 +425,14 @@ Specialty Priority, both at maximum limit break with unique effects included.
 
 ### Findings
 
-- **The adopted form gives a nearly fixed count of uniform skill draws per card.**
-  A skill already at hint level 5 is no longer picked. The fitted table below gives a typical card's hints per
-  scenario.
+- **A card makes a nearly fixed number of uniform draws from its pool.** A skill already at hint level 5 is no longer
+  drawn.
 - **Hint frequency scales that number directly**: Hint Frequency +40% gives 40% more hints. The slope is **assumed**;
   on the adopted model a free one does not predict unseen careers better.
-- **Specialty priority also raises it**, by a weight that differs between scenarios. The game describes it only as
-  making the character join her preferred training more often. The effect predicts careers it was not fitted to, but
-  it is not shown to be a cause, and why it differs by scenario is not tested.
-- **Known misses**: cards differ in hint rate beyond what their effects predict; which card properties explain it is
-  open. Decks with more pals give slightly more hints. A skill also hinted by inspiration is hinted by training less
-  than predicted.
+- **Specialty priority also raises it**, by a weight that differs between scenarios. The effect predicts careers it was
+  not fitted to, but it is not shown to be a cause, and why it differs by scenario is not tested.
+- **Known misses**: cards differ in hint rate beyond what their effects predict, for reasons not known. Decks with more
+  pals give slightly more hints. A skill also hinted by inspiration is hinted by training less than predicted.
 - SR cards give slightly fewer hints than SSR cards with the same effects in-sample, but that does not predict unseen
   careers better, so the model ignores rarity.
 
@@ -446,29 +443,26 @@ A card gives, in scenario $s$, $h$ training hints per career:
 $$h = \beta_s \left(1 + \frac{hf}{100}\right)\left(1 + d_s\,\frac{\mathit{sp}}{100}\right).$$
 
 That is a base $\beta_s$ for a card with neither effect, raised in proportion to hint frequency and to specialty
-priority. The specialty weight $d_s$ is a fitted association, not a game value. A career gets $\lfloor h \rfloor$ hints,
-or one more with chance $f = h - \lfloor h \rfloor$.
+priority. A career gets $\lfloor h \rfloor$ hints, or one more with chance $f = h - \lfloor h \rfloor$.
+
+Each hint draws one skill uniformly from the pool and raises it by the card's hint increment $\iota$. So a skill reaches
+level 5 and leaves the pool after $c = \lceil 5 / \iota \rceil$ hints. The runs bear out the increment: {{7.increment_multiples_of_iota|,.0f}} of
+{{7.increment_single_source_levels|,.0f}} levels that one card gave alone are multiples of $\iota$, or 5.
 
 The chance that none of $k$ targets in a pool of $n$ skills is hinted is computed jointly, not target by target:
 
 $$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfloor + 1), \qquad
 m(k, n, t) = \left(1 - \frac{k}{n}\right)^{t} \ (t \le c).$$
 
-Each of $t$ hints misses all $k$ targets with chance $1 - k/n$. A card's hint raises a skill by its hint increment
-$\iota$, so a skill reaches level 5 and leaves the pool after $c = \lceil 5 / \iota \rceil$ hints:
-
-| Hint increment $\iota$ | +1 | +2 | +3 | +4 | +5 |
-|---|---|---|---|---|---|
-| Hints to level 5, $c$ | {{7.draws_to_lv_5_1_card|.0f}} | {{7.draws_to_lv_5_2_card|.0f}} | {{7.draws_to_lv_5_3_card|.0f}} | {{7.draws_to_lv_5_4_card|.0f}} | {{7.draws_to_lv_5_5_card|.0f}} |
-
-When $t > c$, an exact Markov chain over the other skills' hint counts replaces $m$.
+Each of $t$ hints misses all $k$ targets with chance $1 - k/n$. When $t > c$, an exact Markov chain over the other
+skills' hint counts replaces $m$.
 
 ### Fitted values
 
-**Fitted** by maximum likelihood on {{7.specialty_rows|,.0f}} hint rows from {{7.specialty_card_runs|,.0f}} card-runs. A row is one pool skill of one card in one
-run; a card-run is one card in one run's deck. Only maximum-limit-break cards count, R cards are out, and so are rows
-where an inspiration hinted the skill. The Runs column counts the runs that add a row. The solver reads these values
-from `research/results.json` when it is built (`pkg/loopopt/build.rs`), rounded to three decimals.
+**Fitted** by maximum likelihood on {{7.specialty_rows|,.0f}} rows from {{7.specialty_card_runs|,.0f}} card-runs. A row is one pool skill of one card in
+one run; a card-run is one card in one run's deck. The fit takes SR and SSR cards at maximum limit break and leaves out
+rows where an inspiration hinted the skill. The Runs column counts the runs that add a row. The solver reads these
+values from `research/results.json` when it is built (`pkg/loopopt/build.rs`), rounded to three decimals.
 
 | Scenario | $\beta$ | $d$ | Rows | Runs | Typical card's hints per career |
 |---|---|---|---|---|---|
@@ -481,6 +475,23 @@ from `research/results.json` when it is built (`pkg/loopopt/build.rs`), rounded 
 The typical card is the runs' median: hint frequency +{{7.example_median_hint_frequency|.0f}}% and specialty priority {{7.example_median_specialty_priority|.0f}}.
 
 ### Evidence
+
+*The form.* The form was chosen before the specialty term was added, on a wider sample: every card at any limit break,
+R cards included, {{7.form_rows|,.0f}} rows from {{7.form_runs|,.0f}} runs. That study reads the count as continuous and ignores the level-5 cap. On
+runs left out of the fit, per-scenario $\beta(1 + hf/100)$ predicts better than either simpler form:
+
+| Alternative | Per-scenario $\beta(1 + hf/100)$ better held out by |
+|---|---|
+| one constant count, no $hf$ | {{7.held_out_per_scenario_bases_vs_constant_nats|,.1f}} ± {{7.held_out_per_scenario_bases_vs_constant_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_bases_vs_constant_z|.1f}} |
+| one $\beta(1 + hf/100)$ for every scenario | {{7.held_out_per_scenario_bases_vs_one_base_nats|.1f}} ± {{7.held_out_per_scenario_bases_vs_one_base_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_bases_vs_one_base_z|.1f}} |
+
+*Hint frequency's slope.* The $1/100$ is **assumed**: a card's +40% is read as 40% more hints. A free divisor tests it,
+with and without the specialty term:
+
+| Model | Free divisor | Held out, against $1/100$ | Verdict |
+|---|---|---|---|
+| adopted, with the specialty term | {{7.specialty_model_free_divisor_c|.0f}} | {{7.held_out_specialty_model_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_specialty_model_free_divisor_vs_1_per_100_se|.1f}} nats, $z$ = {{7.held_out_specialty_model_free_divisor_vs_1_per_100_z|.1f}} | $1/100$ kept |
+| form study, without it | {{7.free_divisor_c|.0f}} | {{7.held_out_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_free_divisor_vs_1_per_100_se|.1f}} nats, $z$ = {{7.held_out_free_divisor_vs_1_per_100_z|.1f}} | free divisor better |
 
 *Specialty priority.* Without the specialty term, cards with more specialty priority give more hints than predicted.
 With it, the excess is gone:
@@ -495,114 +506,61 @@ With it, the excess is gone:
 | Claim | Estimate [95%] | Test | Verdict |
 |---|---|---|---|
 | The term predicts unseen careers | | held out {{7.held_out_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_specialty_term_vs_none_se|.1f}} nats, $z$ = {{7.held_out_specialty_term_vs_none_z|.1f}} | holds |
-| Fitted on the earlier half, it predicts the later half | | {{7.held_out_later_runs_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_later_runs_specialty_term_vs_none_se|.1f}} nats, $z$ = {{7.held_out_later_runs_specialty_term_vs_none_z|.1f}} | holds |
+| Fitted on the earlier half of the runs, it predicts the later half | | {{7.held_out_later_runs_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_later_runs_specialty_term_vs_none_se|.1f}} nats, $z$ = {{7.held_out_later_runs_specialty_term_vs_none_z|.1f}} | holds |
 | A weight per scenario beats one shared weight | | held out {{7.held_out_per_scenario_d_vs_one_d_nats|.1f}} ± {{7.held_out_per_scenario_d_vs_one_d_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_d_vs_one_d_z|.1f}} | per scenario |
-| Scenario × specialty cells fit | {{7.specialty_cells_df|.0f}} cells of 200+ rows | run-clustered $\chi^2$ = {{7.specialty_cells_joint_chi2|.1f}}, $p$ = {{7.specialty_cells_p|.2f}} | consistent |
-| Not one card's, rarity's or period's | scale $k$ {{7.specialty_scale_k_robustness_min|.2f}}-{{7.specialty_scale_k_robustness_max|.2f}} | refitted on subsets | holds |
-| Same card across limit breaks | $d$ = {{7.specialty_same_card_d|.2f}} [{{7.specialty_same_card_d_95_pct_low|u.2f}}, {{7.specialty_same_card_d_95_pct_high|.2f}}], {{7.specialty_same_card_cards|.0f}} cards | | absorbs hint-frequency misfit |
-| Same card, hint frequency fixed | $d$ = {{7.specialty_same_card_clean_d|u.2f}} [{{7.specialty_same_card_clean_d_95_pct_low|u.2f}}, {{7.specialty_same_card_clean_d_95_pct_high|.2f}}], {{7.specialty_same_card_clean_cards|.0f}} cards | {{7.specialty_same_card_clean_gain_nats|+.2f}} nats over no term | cause undecided |
+| With the term, the scenario × specialty cells fit | {{7.specialty_cells_df|.0f}} cells of 200+ rows | run-clustered $\chi^2$ = {{7.specialty_cells_joint_chi2|.1f}}, $p$ = {{7.specialty_cells_p|.2f}} | consistent |
+| The same card, only specialty priority changing | $d$ = {{7.specialty_same_card_clean_d|u.2f}} [{{7.specialty_same_card_clean_d_95_pct_low|u.2f}}, {{7.specialty_same_card_clean_d_95_pct_high|.2f}}], {{7.specialty_same_card_clean_cards|.0f}} cards | {{7.specialty_same_card_clean_gain_nats|+.2f}} nats over no term | cause undecided |
 
-The scale $k$ multiplies the adopted per-scenario weights and is 1 on every row. It is refitted on either half of the
-runs, on SR or SSR cards alone, and without any one of the eight most-used cards. The last two rows are within-card
-comparisons. The same card at different limit breaks has different specialty priority but is otherwise the same card. On most
-such cards hint frequency changes too, so their weight, with a base per card and scenario, also absorbs any misfit of
-the hint-frequency term. On the clean cards, whose hint frequency never changes, the estimate is consistent with no
-effect and with every per-scenario weight.
+The last row compares each card with itself. On these cards, from one limit break to the next, specialty priority changes and hint
+frequency does not; a base is fitted per card and scenario. The estimate is consistent with no effect and with every
+per-scenario weight. A scale on the per-scenario weights, refitted on either half of the runs, on SR or SSR cards alone
+and without each of the eight most-used cards, stays within {{7.specialty_scale_k_robustness_min|.2f}}-{{7.specialty_scale_k_robustness_max|.2f}}.
 
-*Hint frequency's slope.* The $1/100$ is **assumed**: a card's +40% is read as 40% more hints. A free divisor tests it:
+*The level-5 cap.* Removing a skill at level 5 fits {{7.cap_gain_nats|.1f}} nats better than drawing with replacement, with no
+extra parameter. It matters most where one hint reaches level 5: with replacement those rows read {{7.cap_table_1_draws_replacement|.3f}} of prediction,
+with the cap {{7.cap_table_1_draws_cap|.3f}}.
 
-| Model | Free divisor | Held out, against $1/100$ | Verdict |
-|---|---|---|---|
-| adopted, with the specialty term | {{7.specialty_model_free_divisor_c|.0f}} | {{7.held_out_specialty_model_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_specialty_model_free_divisor_vs_1_per_100_se|.1f}} nats, $z$ = {{7.held_out_specialty_model_free_divisor_vs_1_per_100_z|.1f}} | $1/100$ kept |
-| form study, without it | {{7.free_divisor_c|.0f}} | {{7.held_out_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_free_divisor_vs_1_per_100_se|.1f}} nats, $z$ = {{7.held_out_free_divisor_vs_1_per_100_z|.1f}} | free divisor better |
+*The draws' shape.* Three checks bear on the shape of the draws, and none runs the adopted model. The repeat and pair
+checks use the form study's rate, without the specialty term or the level-5 cap, and the pair check reads the count as
+continuous. The stat-option check assumes a fixed count. They test the shape, not the fitted rate.
 
-On the adopted model the free divisor gains in-sample but has no clear held-out advantage. The nominal in-sample
-likelihood-ratio test uses dependent skill marginals without adjustment.
-
-*The form.* The form was fixed on every card at any limit break, R cards included, without the specialty term:
-{{7.form_rows|,.0f}} rows from {{7.form_runs|,.0f}} runs. Per-scenario $\beta(1 + hf/100)$ predicts unseen runs better than every alternative:
-
-| Rate form | LL in-sample | Per-scenario $\beta(1 + hf/100)$ better held out by |
+| Question | Observed | Predicted |
 |---|---|---|
-| $1 + hf/25$, over options | {{7.ll_1_hf_per_25_over_options|u,.1f}} | {{7.held_out_per_scenario_bases_vs_1_hf_per_25_over_options_nats|.1f}} ± {{7.held_out_per_scenario_bases_vs_1_hf_per_25_over_options_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_bases_vs_1_hf_per_25_over_options_z|.1f}} |
-| $1 + hf/25$, over skills | {{7.ll_1_hf_per_25_over_skills|u,.1f}} | {{7.held_out_per_scenario_bases_vs_1_hf_per_25_over_skills_nats|.1f}} ± {{7.held_out_per_scenario_bases_vs_1_hf_per_25_over_skills_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_bases_vs_1_hf_per_25_over_skills_z|.1f}} |
-| constant | {{7.ll_constant|u,.1f}} | {{7.held_out_per_scenario_bases_vs_constant_nats|.1f}} ± {{7.held_out_per_scenario_bases_vs_constant_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_bases_vs_constant_z|.1f}} |
-| one $\beta(1 + hf/100)$ | {{7.ll_base_1_hf_per_100|u,.1f}} | {{7.held_out_per_scenario_bases_vs_one_base_nats|.1f}} ± {{7.held_out_per_scenario_bases_vs_one_base_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_bases_vs_one_base_z|.1f}} |
-| per-scenario $\beta(1 + hf/100)$ | {{7.ll_per_scenario_base_1_hf_per_100|u,.1f}} | |
-| free divisor, $c = {{7.free_divisor_c|.0f}}$ | {{7.ll_free_divisor|u,.1f}} | slope table above |
+| A skill a card hinted at all, hinted again: $P(k \ge 2 \mid k \ge 1)$ | {{7.repeat_rate_observed|.3f}} | {{7.repeat_rate_two_point_count|.3f}} with the two-point count, {{7.repeat_rate_poisson_count|.3f}} with a Poisson count |
+| Two skills of one pool both hinted, over {{7.joint_pairs|,.0f}} pairs, Trackblazer out | {{7.p_both_observed|.4f}} | {{7.p_both_joint|.4f}} by joint draws, {{7.p_both_independent|.4f}} independently |
 
-The other checks of the form are descriptive. The stat-option variance check selects uncensored card-runs and uses
-a downward-biased sample variance; its sign-test reference probability is unjustified. It does not establish the
-absence of a stat option. The pair check uses continuous draw powers at the earlier rate without specialty priority;
-it does not test the adopted cap-aware integer mixture.
+That a draw never picks the card's stat option, the one non-skill option beside its pool, is **assumed**. In {{7.cells_var_below_stat_option_floor|.0f}} of
+{{7.cells_card_hf|.0f}} (card, $hf$) cells the count of draws varies less than a drawn stat option would allow. The check keeps only
+card-runs whose every count is exact, with no skill at level 5 or hinted by another source, and uses a sample
+variance biased low. It is consistent with the assumption and does
+not establish it.
 
-| Question | Result |
-|---|---|
-| Hints draw skills only, not a stat option too | in {{7.cells_var_below_stat_option_floor|.0f}} of {{7.cells_card_hf|.0f}} (card, $hf$) cells the draw-count variance is below the floor a stat option implies |
-| Repeats: $P(k \ge 2 \mid k \ge 1)$ | {{7.repeat_rate_observed|.3f}} observed; {{7.repeat_rate_two_point_count|.3f}} with the two-point count, {{7.repeat_rate_poisson_count|.3f}} with a Poisson count |
-| Distinct skills per card-run, 1 / 2 / 3 / 4, observed | {{7.distinct_1_observed|.3f}} / {{7.distinct_2_observed|.3f}} / {{7.distinct_3_observed|.3f}} / {{7.distinct_4_observed|.3f}} |
-| the same, model | {{7.distinct_1_model|.3f}} / {{7.distinct_2_model|.3f}} / {{7.distinct_3_model|.3f}} / {{7.distinct_4_model|.3f}} |
-| Joint draws: $P(\text{both})$ for {{7.joint_pairs|,.0f}} pairs of pool skills, Trackblazer out | {{7.p_both_observed|.4f}} observed; {{7.p_both_joint|.4f}} joint, {{7.p_both_independent|.4f}} independent |
-| Joint draws: $P(\text{neither})$ | {{7.p_neither_observed|.4f}} observed; {{7.p_neither_joint|.4f}} joint |
-| Pool size | observed / predicted {{7.pool_size_obs_per_pred_min|.2f}}-{{7.pool_size_obs_per_pred_max|.2f}} for every $n$ with 150+ rows |
-| Increment per hint | {{7.increment_multiples_of_iota|,.0f}} of {{7.increment_single_source_levels|,.0f}} single-source levels are multiples of $\iota$, capped at 5 |
-| $hf$ by card level, LL | floored linear interpolation {{7.ll_hf_floored_linear|u,.1f}}; step {{7.ll_hf_step|u,.1f}}; maximum-limit-break $hf$ for all {{7.ll_hf_max_lb_for_all|u,.1f}} |
-
-*The level-5 cap.* Removing a skill at level 5 beats drawing with replacement by {{7.cap_gain_nats|.1f}} nats, with no extra parameter:
-
-| Hints to reach level 5 | Rows | Observed / predicted, with replacement | With the cap |
-|---|---|---|---|
-| 5 | {{7.cap_table_5_draws_rows|,.0f}} | {{7.cap_table_5_draws_replacement|.3f}} | {{7.cap_table_5_draws_cap|.3f}} |
-| 3 | {{7.cap_table_3_draws_rows|,.0f}} | {{7.cap_table_3_draws_replacement|.3f}} | {{7.cap_table_3_draws_cap|.3f}} |
-| 2 | {{7.cap_table_2_draws_rows|,.0f}} | {{7.cap_table_2_draws_replacement|.3f}} | {{7.cap_table_2_draws_cap|.3f}} |
-| 1 | {{7.cap_table_1_draws_rows|.0f}} | {{7.cap_table_1_draws_replacement|.3f}} | {{7.cap_table_1_draws_cap|.3f}} |
-
-*Covariates and cards.* The in-sample significance labels below use unadjusted composite-likelihood tests. The
-held-out comparisons retain full-pool specialty weights. On top of the adopted rate, over {{7.covariate_rows|,.0f}} rows:
+*Covariates and cards.* Card type, initial bond and pool size add no nominally detectable gain to the adopted rate.
+Three other terms, tested on {{7.covariate_rows|,.0f}} rows under the limits *How to read* sets out:
 
 | Added term | In-sample gain | Held out | Verdict |
 |---|---|---|---|
-| card type, 4 parameters | +{{7.covariate_gain_card_type_nats|.1f}} nats | | not significant |
-| initial bond | +{{7.covariate_gain_initial_bond_nats|.1f}} nats | | not significant |
-| pool size | +{{7.covariate_gain_pool_size_nats|.1f}} nats | | not significant |
-| rarity, SR against SSR | +{{7.covariate_gain_sr_nats|.1f}} nats | {{7.held_out_covariate_sr_vs_none_nats|.1f}} ± {{7.held_out_covariate_sr_vs_none_se|.1f}}, $z$ = {{7.held_out_covariate_sr_vs_none_z|.1f}} | detectable, not predictive; factor {{7.covariate_factor_sr|.3f}} |
+| rarity, SR against SSR | +{{7.covariate_gain_sr_nats|.1f}} nats | {{7.held_out_covariate_sr_vs_none_nats|.1f}} ± {{7.held_out_covariate_sr_vs_none_se|.1f}}, $z$ = {{7.held_out_covariate_sr_vs_none_z|.1f}} | not predictive, ignored; factor {{7.covariate_factor_sr|.3f}} |
 | pals per deck | +{{7.covariate_gain_pals_per_deck_nats|.1f}} nats | {{7.held_out_covariate_pals_per_deck_vs_none_nats|.1f}} ± {{7.held_out_covariate_pals_per_deck_vs_none_se|.1f}}, $z$ = {{7.held_out_covariate_pals_per_deck_vs_none_z|.1f}} | known miss; factor {{7.covariate_factor_pals_per_deck|.3f}} per pal |
-| a factor per card | | {{7.held_out_a_factor_per_card_vs_none_nats|.1f}} ± {{7.held_out_a_factor_per_card_vs_none_se|.1f}}, $z$ = {{7.held_out_a_factor_per_card_vs_none_z|.1f}} | known miss, not modelled |
+| a factor for each of {{7.per_card_cards|.0f}} cards with 200+ rows | | {{7.held_out_a_factor_per_card_vs_none_nats|.1f}} ± {{7.held_out_a_factor_per_card_vs_none_se|.1f}}, $z$ = {{7.held_out_a_factor_per_card_vs_none_z|.1f}} | known miss; cards read {{7.per_card_obs_per_pred_min|.2f}}-{{7.per_card_obs_per_pred_max|.2f}} |
 
-Cards differ beyond chance. On the adopted rate with a level per scenario, the cards with 200 or more rows read:
+*Other sources of the same skill.* The fit leaves out rows where an inspiration also hinted the skill. Against the
+adopted rate, the card's own hint is seen:
 
-| Per card | Value |
-|---|---|
-| cards, rows | {{7.per_card_cards|.0f}}, {{7.per_card_rows|,.0f}} |
-| observed / predicted | {{7.per_card_obs_per_pred_min|.2f}}-{{7.per_card_obs_per_pred_max|.2f}} |
-| joint run-clustered $\chi^2$, degrees of freedom | {{7.per_card_wald_chi2|.0f}}, {{7.per_card_wald_df|.0f}} |
-| $p$ | {{7.per_card_wald_p|.0e}} |
+| Other source of the skill | Rows | Observed / predicted |
+|---|---|---|
+| none | {{7.spark_none_rows|,.0f}} | {{7.spark_none_obs_per_pred|.3f}} [{{7.spark_none_obs_per_pred_95_pct_low|.3f}}, {{7.spark_none_obs_per_pred_95_pct_high|.3f}}] |
+| inspiration | {{7.spark_inspiration_rows|,.0f}} | {{7.spark_inspiration_ratio|.2f}} |
+| card event | {{7.spark_card_event_rows|,.0f}} | {{7.spark_card_event_ratio|.2f}} |
+| other card's training | {{7.spark_other_card_training_rows|,.0f}} | {{7.spark_other_card_training_ratio|.2f}} |
 
-*Other sources of the same skill.* The fit uses rows where no inspiration hinted the skill. Where something else also
-hinted it, the card's own hint is seen this often, against the adopted rate:
+The shortfall where an inspiration hinted the skill is not modelled. It is not because such a skill leaves the card's
+pool. On card-runs where an inspiration hinted two pool skills, training hinted the rest at {{7.drop_out_test_observed|.3f}}. With the
+two kept in the pool the model predicts {{7.drop_out_test_no_drop_out|.3f}}; with them removed, {{7.drop_out_test_drop_out|.3f}}.
 
-| Other source of the skill | Rows | Observed | Predicted | Ratio |
-|---|---|---|---|---|
-| none | {{7.spark_none_rows|,.0f}} | {{7.spark_none_observed|.3f}} | {{7.spark_none_predicted|.3f}} | {{7.spark_none_obs_per_pred|.3f}} [{{7.spark_none_obs_per_pred_95_pct_low|.3f}}, {{7.spark_none_obs_per_pred_95_pct_high|.3f}}] |
-| inspiration | {{7.spark_inspiration_rows|,.0f}} | {{7.spark_inspiration_observed|.3f}} | {{7.spark_inspiration_predicted|.3f}} | {{7.spark_inspiration_ratio|.2f}} |
-| inspiration + card event | {{7.spark_inspiration_card_event_rows|,.0f}} | {{7.spark_inspiration_card_event_observed|.3f}} | {{7.spark_inspiration_card_event_predicted|.3f}} | {{7.spark_inspiration_card_event_ratio|.2f}} |
-| card event | {{7.spark_card_event_rows|,.0f}} | {{7.spark_card_event_observed|.3f}} | {{7.spark_card_event_predicted|.3f}} | {{7.spark_card_event_ratio|.2f}} |
-| other card's training | {{7.spark_other_card_training_rows|,.0f}} | {{7.spark_other_card_training_observed|.3f}} | {{7.spark_other_card_training_predicted|.3f}} | {{7.spark_other_card_training_ratio|.2f}} |
-
-With no other source the adopted rate is consistent with the aggregate interval. A skill hinted by inspiration is
-hinted by training less than predicted, which is not modelled. The cause is not that such a skill leaves the card's
-pool. With two pool skills hinted by inspiration, the rest are hinted at {{7.drop_out_test_observed|.3f}}:
-
-| If the two skills | The rest are hinted at |
-|---|---|
-| stay in the pool | {{7.drop_out_test_no_drop_out|.3f}} |
-| leave the pool | {{7.drop_out_test_drop_out|.3f}} |
-
-*Prioritised skills* are hinted by training at the model's rate, as it assumes:
-
-| Runs showing a priority list | Prioritised pool-skill rows | Hinted by training | Predicted |
-|---|---|---|---|
-| {{7.priority_runs|.0f}} | {{7.priority_rows|.0f}} | {{7.priority_observed|.3f}} | {{7.priority_predicted|.3f}} |
+*Prioritised skills.* The model assumes a priority list does not change training hints. On the {{7.priority_runs|,.0f}} runs that
+show a list, {{7.priority_rows|.0f}} rows hold a prioritised pool skill. Training hinted them at {{7.priority_observed|.3f}}, against {{7.priority_predicted|.3f}}
+predicted: no sign of a rise, from a weak test.
 
 ## 8. Chain events
 

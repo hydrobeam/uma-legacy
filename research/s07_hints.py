@@ -8,10 +8,9 @@ level: floored linear interpolation between milestone levels, plus the unique ef
 
 Every analysis runs on every record, on three row sets:
 - the form study: every limit break, R cards included, the rate without the specialty term (h = base_s (1 + hf/100)):
-  it compares forms of the hf rate (Bernoulli rows, P(hit) = 1 - (1 - 1/n)^h), the stat option, repeats and distinct
-  counts, per-scenario bases, hf by card level and the per-draw increment, and through the Lv-5 cap (uniform draws over
-  the skills still below Lv 5, h read as floor or ceiling; pkg/loopopt/src/deck/hints.rs) on its max-limit-break rows
-  no spark hinted the cap, joint draws and pool size;
+  it compares forms of the hf rate (Bernoulli rows, P(hit) = 1 - (1 - 1/n)^h), the stat option, repeats, per-scenario
+  bases and the per-draw increment, and through the Lv-5 cap (uniform draws over the skills still below Lv 5, h read as
+  floor or ceiling; pkg/loopopt/src/deck/hints.rs) on its max-limit-break rows no spark hinted the cap and joint draws;
 - the fit: max-limit-break card-runs, rows no spark hinted, R cards out, through the Lv-5 cap, with
   h = base_s (1 + hf/100) (1 + d_s spec/100); its later-runs test fits on the earlier half of the records (by seq) and
   scores the later half;
@@ -19,8 +18,8 @@ Every analysis runs on every record, on three row sets:
   constants: pkg/loopopt/build.rs rounds the same results.json values the same way) on the fit's card-runs, for the
   other covariates (a free level per scenario in both fits), per-card differences, the spark deficit (every row),
   drop-out and priority;
-- the same-card test: cards whose specialty differs between limit breaks, every limit break, a base per (card,
-  scenario); on every such card and on the clean ones (hint frequency the same at every limit break).
+- the same-card test: the clean cards (specialty differs between limit breaks, hint frequency does not), every limit
+  break, a base per (card, scenario).
 Rate forms, specialty choices, SR/pal covariates and a factor per card are also tested held out: 5-fold cross-validation by common.fold(run), each fold scored by the fits
 on the other four, per-run held-out log-likelihoods compared by common.compare_held_out using a z > 1.96 threshold. Every other result is in-sample on the pooled runs. Intervals and z on observed / predicted over rows (the
 spark deficit, priority, the specialty cells) are run-clustered (common.cluster_ci): one run gives many rows; the
@@ -103,22 +102,19 @@ def _game() -> GameData:
     return g
 
 
-def effect(g: GameData, cid: int, typ: int, level: int, mode: str = "lin") -> int:
-    """support effect `typ` at `level`: floored linear interpolation between milestones (or the last milestone
-    reached, mode 'step'), plus the unique effect once its level is reached"""
+def effect(g: GameData, cid: int, typ: int, level: int) -> int:
+    """support effect `typ` at `level`: floored linear interpolation between milestones, plus the unique effect once its
+    level is reached"""
     vals = g.effects[g.card_info[cid][1]].get(typ)
     x = 0
     if vals:
         pts = [(m, v) for m, v in zip(MIL, vals) if v != -1]
         if pts and level >= pts[0][0]:
-            if mode == "step":
-                x = [v for m, v in pts if m <= level][-1]
-            else:
-                x = pts[-1][1]
-                for (x0, y0), (x1, y1) in pairwise(pts):
-                    if level <= x1:
-                        x = y0 + (y1 - y0) * (level - x0) // (x1 - x0)
-                        break
+            x = pts[-1][1]
+            for (x0, y0), (x1, y1) in pairwise(pts):
+                if level <= x1:
+                    x = y0 + (y1 - y0) * (level - x0) // (x1 - x0)
+                    break
     return x + sum(v for lv, t, v in g.unique.get(cid, []) if t == typ and level >= lv)
 
 
@@ -136,8 +132,6 @@ class CardRun:
     rar: int  # rarity: 1 R, 2 SR, 3 SSR
     lb: int  # limit break
     hf: int  # hint frequency, floored-linear
-    hf_step: int  # hint frequency, the last milestone reached
-    hf_max: int  # hint frequency at maximum limit break (web_cards.json)
     hlv: int  # effect 17: hint levels per draw minus 1
     spec: int  # specialty priority
     bond0: int  # initial bond
@@ -165,8 +159,6 @@ class Data:
     hit: np.ndarray  # per row: 1.0 when the card hinted the skill
     noinsp: np.ndarray  # per row: no spark hinted the skill
     hf: np.ndarray  # per card-run, the CardRun fields of the same names
-    hf_step: np.ndarray
-    hf_max: np.ndarray
     spec: np.ndarray
     bond0: np.ndarray
     scen: np.ndarray
@@ -213,8 +205,6 @@ def card_runs(g: GameData) -> list[CardRun]:
                     rar=rar,
                     lb=lb,
                     hf=effect(g, cid, EFFECT_HINT_FREQUENCY, level),
-                    hf_step=effect(g, cid, EFFECT_HINT_FREQUENCY, level, "step"),
-                    hf_max=C[cid]["hf"],
                     hlv=effect(g, cid, EFFECT_HINT_LEVELS, level),
                     spec=effect(g, cid, EFFECT_SPECIALTY, level),
                     bond0=effect(g, cid, EFFECT_INITIAL_BOND, level),
@@ -295,8 +285,6 @@ def build() -> Data:
         hit=(kk_ >= 1).astype(float),
         noinsp=np.array(["Inspiration" not in c for c in cat]),
         hf=per_card_run("hf"),
-        hf_step=per_card_run("hf_step"),
-        hf_max=per_card_run("hf_max"),
         spec=per_card_run("spec"),
         bond0=per_card_run("bond0"),
         scen=per_card_run("scen", int),
@@ -384,10 +372,6 @@ def row_ll(p: np.ndarray, y: np.ndarray) -> np.ndarray:
     return np.where(y > 0, np.log(p), np.log(1 - p))
 
 
-def bern_ll(p: np.ndarray, y: np.ndarray) -> float:
-    return row_ll(p, y).sum()
-
-
 # ---------------------------------------------------------------- classes: rows that a fit predicts alike
 # A fit's prediction for a row reads only its card-run's covariates (scenario, hf, specialty, pool size, ...), so rows
 # with equal covariates share P(hit): a fit sums hits * log p + misses * log(1 - p) over these classes instead of over
@@ -473,10 +457,10 @@ def compared(name: str, a: np.ndarray, b: np.ndarray) -> list[common.Value]:
 
 
 def form_classes(D: Data) -> tuple[np.ndarray, np.ndarray]:
-    """card-runs alike for every rate of the form study (scenario, hf in its three readings, pool size): (class of each
-    card-run, a card-run of each class)"""
+    """card-runs alike for every rate of the form study (scenario, hf, pool size): (class of each card-run, a card-run of
+    each class)"""
     if D.form_classes is None:
-        D.form_classes = alike(D.scen, D.hf, D.hf_step, D.hf_max, D.nskill)
+        D.form_classes = alike(D.scen, D.hf, D.nskill)
     return D.form_classes
 
 
@@ -502,8 +486,8 @@ def fitB(D: Data, hfun: Rate, x0: Sequence[float], rows: Mask | None = None) -> 
     return b.x, -b.fun
 
 
-def fit_cap(D: Data, rows: Mask, cap: bool = True, pooled: bool = False) -> tuple[dict[int, float], float, np.ndarray]:
-    """per-scenario (or pooled) base for h = base (1 + hf/100), Bernoulli through the floor/ceiling mixture of
+def fit_cap(D: Data, rows: Mask, cap: bool = True) -> tuple[dict[int, float], float, np.ndarray]:
+    """per-scenario base for h = base (1 + hf/100), Bernoulli through the floor/ceiling mixture of
     miss(1, n, t, cap); cap=False draws with replacement. Returns bases, log-likelihood, per-row P(hit)"""
     ci = D.ci
     j = np.nonzero(rows)[0]
@@ -514,7 +498,7 @@ def fit_cap(D: Data, rows: Mask, cap: bool = True, pooled: bool = False) -> tupl
     capv = cap_draws(D.hinc[rep]) if cap else np.full(nc, 99)
     tab = miss_table(np.ones(nc, int), D.nskill[rep], capv)  # per class
     y = D.hit[j]
-    g = np.zeros(len(j), int) if pooled else D.scen[c]
+    g = D.scen[c]
     bases, ll, p = {}, 0.0, np.zeros(len(j))
     for s in sorted(set(g)):
         q = g == s
@@ -564,21 +548,6 @@ def add(out: Out, name: str, got: float | np.number | None, **kw: str) -> None:
     out.append(V(name, got, **kw))
 
 
-def derived() -> list[common.Value]:
-    """the h-reading example: n = 5, h = 2.74; smooth (1 - 1/n)^h against floor/ceiling draws"""
-    n, h = 5, 2.74
-    caps = [V(f"draws to Lv 5, +{i} card", math.ceil(5 / i), note="derived") for i in range(1, 6)]
-    return [
-        *caps,
-        V("miss (1-1/n)^h, n=5 h=2.74", (1 - 1 / n) ** h, note="derived"),
-        V(
-            "miss floor/ceiling, n=5 h=2.74",
-            mix(np.array([[(1 - 1 / n) ** t for t in range(TMAX + 1)]]), np.array([h]))[0],
-            note="derived",
-        ),
-    ]
-
-
 class Adopted(NamedTuple):
     """the solver's constants by scenario"""
 
@@ -617,37 +586,19 @@ def worked_example(A: Adopted, out: Out) -> None:
             f"example: hints per career, median card, {nm}",
             A.base[s] * (1 + mhf / 100) * (1 + A.spec[s] * msp / 100),
         )
-        add(out, f"example: hints per career, no effects, {nm}", A.base[s])
 
 
 # ---------------------------------------------------------------- the form study: every record, every limit break, no specialty term
-class FormFits(NamedTuple):
-    one_base_ll: float
-    per_scenario_ll: float
-
-
-def form_fits(D: Data, forms: RateForms, out: Out) -> FormFits:
-    """the rate forms in-sample"""
-    ci, hit, hf = D.ci, D.hit, D.hf
-    n = D.nskill.astype(float)
+def form_fits(D: Data, forms: RateForms, out: Out) -> None:
+    """the per-scenario rate and the free divisor in-sample"""
+    ci = D.ci
     add(out, "form: rows", len(ci))
-    add(out, "form: rows without a spark", D.noinsp.sum())
     add(out, "form: runs", len({D.obs[i].run for i in ci}), note="runs that add a row")
-
-    def fixed_ll(h: np.ndarray, nn: np.ndarray = n) -> float:
-        return bern_ll(1 - (1 - 1 / nn[ci]) ** h[ci], hit)
-
-    add(out, "LL 1+hf/25 over options", fixed_ll(1 + hf / 25, D.opts.astype(float)))
-    add(out, "LL 1+hf/25 over skills", fixed_ll(1 + hf / 25))
-    add(out, "LL constant", fitB(D, forms.constant, [2.0])[1])
-    ll1 = fitB(D, forms.one_base, [2.0])[1]
-    add(out, "LL base(1+hf/100)", ll1)
     th4, ll4 = fitB(D, forms.per_scenario, [1.5, 2.6, 2.0, 1.7])
     add(out, "LL per-scenario base(1+hf/100)", ll4)
     thc, llc = fitB(D, forms.free_divisor, [*th4, 100.0])
     add(out, "LL free divisor", llc)
     add(out, "free divisor c", thc[4])
-    return FormFits(ll1, ll4)
 
 
 def stat_option_cells(D: Data, out: Out) -> None:
@@ -674,19 +625,12 @@ def stat_option_cells(D: Data, out: Out) -> None:
     add(out, "cells (card, hf)", cells, note="testable cells (an empty pool is left out)")
 
 
-class NoSparkFit(NamedTuple):
-    """per-scenario bases fitted on the rows no spark hinted, every limit break"""
-
-    bases: np.ndarray
-    ll: float
-    h: np.ndarray  # h per card-run
-
-
-def repeats_and_distinct(D: Data, forms: RateForms, out: Out) -> NoSparkFit:
-    """repeats and distinct counts (bases: per-scenario, rows no spark hinted, every limit break)"""
-    ci, hit, hf = D.ci, D.hit, D.hf
+def repeats(D: Data, forms: RateForms, out: Out) -> np.ndarray:
+    """repeats against a two-point and a Poisson count (bases: per-scenario, rows no spark hinted, every limit break);
+    returns that rate's h per card-run"""
+    ci, hf = D.ci, D.hf
     n = D.nskill.astype(float)
-    bs, ll_ni = fitB(D, forms.per_scenario, [1.5, 2.7, 2.0, 1.8], rows=D.noinsp)
+    bs = fitB(D, forms.per_scenario, [1.5, 2.7, 2.0, 1.8], rows=D.noinsp)[0]
     h = B4(D, bs) * (1 + hf / 100)
     inc, kk, kind = D.inc[ci], D.kk, D.kind
     k1 = (kind == 0) & (kk == 1)
@@ -708,28 +652,16 @@ def repeats_and_distinct(D: Data, forms: RateForms, out: Out) -> NoSparkFit:
     add(out, "repeat rate observed", k2[use].mean())
     add(out, "repeat rate two-point count", r_two[use].mean())
     add(out, "repeat rate Poisson count", r_poi[use].mean())
-    has = n > 0
-    dist = np.bincount(ci, weights=hit, minlength=D.N).astype(int)
-    model = np.zeros(TMAX + 1)
-    for i in np.nonzero(has)[0]:  # distinct skills after t uniform draws over n: C(n,d) d! S(t,d) / n^t
-        t0 = int(h[i])
-        w = h[i] - t0
-        for t, wt in ((t0, 1 - w), (t0 + 1, w)):
-            model[: t + 1] += wt * distinct_pmf(int(n[i]), t)
-    model /= has.sum()
-    for k in (1, 2, 3, 4):
-        add(out, f"distinct {k} observed", np.mean(dist[has] == k))
-        add(out, f"distinct {k} model", model[k], note="exact")
-    return NoSparkFit(bs, ll_ni, h)
+    return h
 
 
 def held_out_forms(D: Data, forms: RateForms, out: Out) -> None:
     """the form study's rate forms held out: each fold's fits on the other four folds' rows, every row scored"""
-    ci, hit, hf = D.ci, D.hit, D.hf
+    ci, hit = D.ci, D.hit
     n = D.nskill.astype(float)
 
-    def scored(h: np.ndarray, te: Mask, nn: np.ndarray = n) -> np.ndarray:
-        return row_ll(1 - (1 - 1 / nn[ci][te]) ** h[ci][te], hit[te])
+    def scored(h: np.ndarray, te: Mask) -> np.ndarray:
+        return row_ll(1 - (1 - 1 / n[ci][te]) ** h[ci][te], hit[te])
 
     def fold_form(tr: Mask, te: Mask) -> dict[str, np.ndarray]:
         t4 = fitB(D, forms.per_scenario, [1.5, 2.6, 2.0, 1.7], rows=tr)[0]
@@ -738,48 +670,35 @@ def held_out_forms(D: Data, forms: RateForms, out: Out) -> None:
             "per-scenario": scored(forms.per_scenario(t4), te),
             "free divisor": scored(forms.free_divisor(fitB(D, forms.free_divisor, [*t4, 100.0], rows=tr)[0]), te),
             "constant": scored(forms.constant(fitB(D, forms.constant, [2.0], rows=tr)[0]), te),
-            "1+hf/25 over options": scored(1 + hf / 25, te, D.opts.astype(float)),
-            "1+hf/25 over skills": scored(1 + hf / 25, te),
         }
 
     hof = cv(run_of_rows(D, ci), fold_form)
     add(out, "held out: form study runs", len(hof["per-scenario"]))
     out.extend(compared("free divisor vs 1/100", hof["free divisor"], hof["per-scenario"]))
     out.extend(compared("per-scenario bases vs one base", hof["per-scenario"], hof["one base"]))
-    for m in ("constant", "1+hf/25 over options", "1+hf/25 over skills"):
-        out.extend(compared(f"per-scenario bases vs {m}", hof["per-scenario"], hof[m]))
+    out.extend(compared("per-scenario bases vs constant", hof["per-scenario"], hof["constant"]))
 
 
-class CapFit(NamedTuple):
-    """the Lv-5 cap fit on max-limit-break rows no spark hinted"""
-
-    rows: Mask
-    j: np.ndarray  # those rows' indices
-    p: np.ndarray  # P(hit) per row of j
-
-
-def lv5_cap(D: Data, out: Out) -> CapFit:
-    """the Lv-5 cap against drawing with replacement (max limit break, rows no spark hinted)"""
+def lv5_cap(D: Data, out: Out) -> Mask:
+    """the Lv-5 cap against drawing with replacement (max limit break, rows no spark hinted), and obs / pred of each on
+    the rows one draw takes to Lv 5; returns those max-limit-break rows"""
     ci, hit = D.ci, D.hit
     rows = (D.lb[ci] == 4) & D.noinsp
     _, ll_cap, p_cap = fit_cap(D, rows)
     _, ll_repl, p_repl = fit_cap(D, rows, cap=False)
     add(out, "cap gain, nats", ll_cap - ll_repl)
     j = np.nonzero(rows)[0]
-    capd = cap_draws(D.hinc[ci[j]])
-    for d in (5, 3, 2, 1):
-        q = capd == d
-        add(out, f"cap table {d} draws rows", q.sum())
-        add(out, f"cap table {d} draws replacement", hit[j][q].sum() / p_repl[q].sum())
-        add(out, f"cap table {d} draws cap", hit[j][q].sum() / p_cap[q].sum())
-    return CapFit(rows, j, p_cap)
+    q = cap_draws(D.hinc[ci[j]]) == 1
+    add(out, "cap table 1 draws replacement", hit[j][q].sum() / p_repl[q].sum())
+    add(out, "cap table 1 draws cap", hit[j][q].sum() / p_cap[q].sum())
+    return rows
 
 
-def joint_draws(D: Data, cap: CapFit, h: np.ndarray, out: Out) -> None:
+def joint_draws(D: Data, rows: Mask, h: np.ndarray, out: Out) -> None:
     """pairs of no-spark pool skills on one max-limit-break card-run (URA, Unity, Grand Concert)"""
     ci, hit = D.ci, D.hit
     n = D.nskill.astype(float)
-    m = cap.rows & (D.scen[ci] != 4)
+    m = rows & (D.scen[ci] != 4)
     by = collections.defaultdict(list)
     for r in np.nonzero(m)[0]:
         by[ci[r]].append(r)
@@ -792,23 +711,6 @@ def joint_draws(D: Data, cap: CapFit, h: np.ndarray, out: Out) -> None:
     add(out, "P(both) observed", np.mean(hit[a] * hit[b]))
     add(out, "P(both) joint", np.mean(1 - 2 * m1 + m2))
     add(out, "P(both) independent", np.mean((1 - m1) ** 2))
-    add(out, "P(neither) observed", np.mean((1 - hit[a]) * (1 - hit[b])))
-    add(out, "P(neither) joint", np.mean(m2))
-
-
-def pool_size(D: Data, cap: CapFit, out: Out) -> None:
-    """obs / pred by n (cap fit above), Unity Cup and Grand Concert, n with >= 150 rows"""
-    ci, hit, sc, j = D.ci, D.hit, D.scen, cap.j
-    n = D.nskill.astype(float)
-    ratios = []
-    for s in (2, 3):
-        for v in sorted(set(n[ci[j]])):
-            q = (n[ci[j]] == v) & (sc[ci[j]] == s)
-            if q.sum() >= 150:
-                ratios.append(hit[j][q].sum() / cap.p[q].sum())
-    note = "Lv-5 cap, max limit break, no spark, per (scenario, n)"
-    add(out, "pool size obs/pred min", min(ratios), note=note)
-    add(out, "pool size obs/pred max", max(ratios), note=note)
 
 
 def increment(D: Data, out: Out) -> None:
@@ -821,16 +723,6 @@ def increment(D: Data, out: Out) -> None:
                 ok += (lv % (1 + x.hlv) == 0) or lv == 5
     add(out, "increment: multiples of iota", ok)
     add(out, "increment: single-source levels", total)
-
-
-def hf_by_level(D: Data, nospark: NoSparkFit, out: Out) -> None:
-    """hint frequency by card level (rows no spark hinted)"""
-    hf = D.hf
-    n = D.nskill.astype(float)
-    add(out, "hf max in the data", hf[n > 0].max(), note=f"min {hf[n > 0].min():.0f}")
-    add(out, "LL hf floored-linear", nospark.ll)
-    for nm, H in (("LL hf step", D.hf_step), ("LL hf max-LB for all", D.hf_max)):
-        add(out, nm, fitB(D, lambda th, H=H: B4(D, th) * (1 + H / 100), list(nospark.bases), rows=D.noinsp)[1])
 
 
 # ---------------------------------------------------------------- tests of the current model
@@ -926,6 +818,9 @@ class CovariateRows:
         return CovFit(b.x, -b.fun)
 
 
+HELD_OUT_COVARIATES: tuple[str, ...] = ("SR", "pals per deck")  # the in-sample detectable ones, also tested held out
+
+
 def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
     hit, sc, n = D.hit, D.scen, D.nskill.astype(float)
     nim = D.noinsp[AR.jm]
@@ -943,36 +838,28 @@ def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
     cls, rep = alike(sk, hk, D.nskill[ck], D.hinc[ck], *np.concatenate([X[ck] for X in covs.values()], 1).T)
     rows = CovariateRows(hit[AR.jm][nim], AR.tab[nim], hk, sk, ck, cls, rep)
     l0 = rows.fit(np.zeros((len(ck), 0))).ll
-    facs = []
     add(out, "covariate rows", nim.sum(), note=ADOPTED_NOTE)
     for nm, X in covs.items():
         f = rows.fit(X[ck])
         factors = np.exp(f.theta[4:])
-        facs += list(factors)
         add(
             out,
             f"covariate gain {nm}, nats",
             f.ll - l0,
             note=f"{X.shape[1]} parameter(s), factor(s) " + ", ".join(f"{x:.3f}" for x in factors),
         )
-        if X.shape[1] == 1:
+        if nm in HELD_OUT_COVARIATES:
             add(out, f"covariate factor {nm}", factors[0])
-    add(out, "covariate factor min", min(facs))
-    add(out, "covariate factor max", max(facs))
     # the detectable covariates held out: the adopted rate with a free level per scenario, with and without each
-    held = {"none": np.zeros((len(ck), 0)), "SR": covs["SR"][ck], "pals per deck": covs["pals per deck"][ck]}
+    held = {"none": np.zeros((len(ck), 0))} | {nm: covs[nm][ck] for nm in HELD_OUT_COVARIATES}
     hoc = cv(
         run_of_rows(D, ck),
         lambda tr, te: {m: row_ll(rows.p(rows.fit(X, tr).theta, X, te), rows.y[te]) for m, X in held.items()},
     )
     add(out, "held out: covariate runs", len(hoc["none"]))
-    for nm in ("SR", "pals per deck"):
+    for nm in HELD_OUT_COVARIATES:
         out.extend(compared(f"covariate {nm} vs none", hoc[nm], hoc["none"]))
-    # context: the SR factor on the general collection and on the targeted ones (decks chosen for their cards)
-    general = general_rows(D, ck)
-    for label, q in (("general collection", general), ("targeted collections", ~general)):
-        add(out, f"covariate factor SR, {label}", np.exp(rows.fit(covs["SR"][ck], q).theta[4]))
-    card_heterogeneity(D, rows, general, out)
+    card_heterogeneity(D, rows, general_rows(D, ck), out)
 
 
 def general_rows(D: Data, card_run: np.ndarray) -> Mask:
@@ -1000,7 +887,6 @@ def card_heterogeneity(D: Data, rows: CovariateRows, general: Mask, out: Out) ->
     O = np.bincount(code + 1, weights=rows.y)[1:]
     E = np.bincount(code + 1, weights=p)[1:]
     add(out, "per-card cards", len(cards), note=f"cards with {CARD_ROWS}+ covariate rows")
-    add(out, "per-card rows", (code >= 0).sum())
     add(out, "per-card obs/pred min", (O / E).min(), note="the adopted rate with a free level per scenario")
     add(out, "per-card obs/pred max", (O / E).max())
     for label, q in (("", every), (", general collection", general)):
@@ -1042,7 +928,6 @@ def spark_deficit(D: Data, AR: AdoptedRate, out: Out) -> None:
     for c, key in (
         ("none", "none"),
         ("inspiration", "Inspiration"),
-        ("inspiration + card event", "Inspiration+card event"),
         ("card event", "card event"),
         ("other card training", "other card"),
     ):
@@ -1050,7 +935,6 @@ def spark_deficit(D: Data, AR: AdoptedRate, out: Out) -> None:
         add(out, f"spark {c} rows", q.sum(), note=ADOPTED_NOTE)
         add(out, f"spark {c} observed", hit[q].mean())
         add(out, f"spark {c} predicted", AR.p[q].mean())
-        add(out, f"spark {c} ratio", hit[q].mean() / AR.p[q].mean())
         lo, hi = observed_interval(D, AR, q)
         add(out, f"spark {c} observed 95% low", lo)
         add(out, f"spark {c} observed 95% high", hi)
@@ -1059,6 +943,8 @@ def spark_deficit(D: Data, AR: AdoptedRate, out: Out) -> None:
             add(out, "spark none obs/pred", r)
             add(out, "spark none obs/pred 95% low", lo)
             add(out, "spark none obs/pred 95% high", hi)
+        else:
+            add(out, f"spark {c} ratio", hit[q].mean() / AR.p[q].mean())
 
 
 def drop_out(D: Data, AR: AdoptedRate, out: Out) -> None:
@@ -1072,8 +958,7 @@ def drop_out(D: Data, AR: AdoptedRate, out: Out) -> None:
     hj = clip(AR.h[c])
     keep = 1 - mix(miss_table(np.ones(len(jj), int), D.nskill[c], capj), hj)
     drop = 1 - mix(miss_table(np.ones(len(jj), int), D.nskill[c] - 2, capj), hj)
-    add(out, "drop-out test rows", len(jj), note=ADOPTED_NOTE)
-    add(out, "drop-out test observed", D.hit[jj].mean())
+    add(out, "drop-out test observed", D.hit[jj].mean(), note=f"{len(jj):,} rows; " + ADOPTED_NOTE)
     add(out, "drop-out test no drop-out", keep.mean())
     add(out, "drop-out test drop-out", drop.mean())
 
@@ -1094,7 +979,7 @@ def priority(D: Data, AR: AdoptedRate, out: Out) -> None:
 
 def claims() -> list[common.Value | common.Finding]:
     if not common.have_runs() or common.mdb() is None:
-        return derived()
+        return []
     out: Out = []
     D = build()
     S = SpecialtyRows(D)
@@ -1102,23 +987,19 @@ def claims() -> list[common.Value | common.Finding]:
     A = adopted(fit, pooled_fit(S, out))
     worked_example(A, out)
     forms = rate_forms(D)
-    fits = form_fits(D, forms, out)
+    form_fits(D, forms, out)
     stat_option_cells(D, out)
-    nospark = repeats_and_distinct(D, forms, out)
-    add(out, "per-scenario bases gain, nats", fits.per_scenario_ll - fits.one_base_ll)  # against one base
+    h_form = repeats(D, forms, out)
     held_out_forms(D, forms, out)
-    cap = lv5_cap(D, out)
-    joint_draws(D, cap, nospark.h, out)
-    pool_size(D, cap, out)
+    joint_draws(D, lv5_cap(D, out), h_form, out)
     increment(D, out)
-    hf_by_level(D, nospark, out)
     AR = adopted_rate(D, A)
     covariates(D, AR, out)
     spark_deficit(D, AR, out)
     drop_out(D, AR, out)
     out += specialty(D, S, fit)
     priority(D, AR, out)
-    return derived() + out + findings(out)
+    return out + findings(out)
 
 
 def findings(out: list[common.Value]) -> list[common.Finding]:
@@ -1139,14 +1020,12 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     def hs(c: str) -> str:
         return "{:+.1f} +- {:.1f} nats, z = {:.2f}".format(*H(c))
 
-    rf = ("constant", "1+hf/25 over options", "1+hf/25 over skills")
     fs.append(
         F(
-            "h = beta_s (1 + hf/100) predicts unseen runs better than the other rate forms tried without a free slope (a constant, "
-            "1 + hf/25 over options or over skills; 5-fold held out, each z > 1.96)",
-            all(H(f"per-scenario bases vs {m}")[2] > 1.96 for m in rf),
-            "; ".join(f"against {m} " + hs(f"per-scenario bases vs {m}") for m in rf)
-            + f" on {g['held out: form study runs']:,.0f} runs",
+            "h = beta_s (1 + hf/100) predicts unseen runs better than one constant count (form study, 5-fold held out, "
+            "z > 1.96)",
+            H("per-scenario bases vs constant")[2] > 1.96,
+            hs("per-scenario bases vs constant") + f" on {g['held out: form study runs']:,.0f} runs",
         )
     )
     gc = g["LL free divisor"] - lps
@@ -1163,8 +1042,9 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     k, n = g["cells var below stat-option floor"], g["cells (card, hf)"]
     fs.append(
         F(
-            "The stat option is never drawn: the draw-count variance is below the floor a drawn stat option implies in most (card, hf) "
-            "cells (sign test p < 0.05)",
+            "Consistent with no stat option (descriptive; it assumes a fixed count and keeps only exactly counted card-runs, so it "
+            "does not establish the assumption): the draw-count variance is below the floor a drawn stat option implies in "
+            "most (card, hf) cells (nominal sign test p < 0.05)",
             binom.sf(k - 1, n, 0.5) < 0.05,
             f"{k:.0f} of {n:.0f} cells, p = {binom.sf(k - 1, n, 0.5):.4f}",
         )
@@ -1172,17 +1052,10 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     o, t2, po = g["repeat rate observed"], g["repeat rate two-point count"], g["repeat rate Poisson count"]
     fs.append(
         F(
-            "Draws repeat skills as uniform draws with a near-fixed count do, not as a Poisson count",
+            "On the form study's rate (no specialty term, no Lv-5 cap), draws repeat skills as uniform draws with a near-fixed "
+            "count do, not as a Poisson count",
             abs(o - t2) < abs(o - po),
             f"repeat rate observed {o:.3f}, two-point {t2:.3f}, Poisson {po:.3f}",
-        )
-    )
-    gb = g["per-scenario bases gain, nats"]
-    fs.append(
-        F(
-            "Bases differ by scenario (per-scenario bases against one base, LR p < 0.001 on 3 parameters)",
-            chi2.sf(2 * gb, 3) < 0.001,
-            f"+{gb:.0f} nats, LR p = {chi2.sf(2 * gb, 3):.1e}",
         )
     )
     fs.append(
@@ -1212,9 +1085,7 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
             "out, z > 1.96); rarity (SR against SSR), detectable in-sample, does not (z <= 1.96)",
             pals[2] > 1.96 and sr[2] <= 1.96,
             "; ".join(f"{nm} " + hs(f"covariate {nm} vs none") for nm in miss_c)
-            + f" on {g['held out: covariate runs']:,.0f} runs; SR factor {g['covariate factor SR']:.3f}, general collection "
-            f"{g['covariate factor SR, general collection']:.3f}, targeted collections "
-            f"{g['covariate factor SR, targeted collections']:.3f}",
+            + f" on {g['held out: covariate runs']:,.0f} runs; SR factor {g['covariate factor SR']:.3f}",
         )
     )
     fs.append(
@@ -1250,7 +1121,8 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     b, j, i = g["P(both) observed"], g["P(both) joint"], g["P(both) independent"]
     fs.append(
         F(
-            "Two targets in one card's pool land jointly as the draws imply, not independently",
+            "On the form study's rate (no specialty term, continuous count, no Lv-5 cap), two skills of one card's pool are both "
+            "hinted as joint draws imply, not as independent ones",
             abs(b - j) < abs(b - i),
             f"P(both) observed {b:.4f}, joint {j:.4f}, independent {i:.4f} ({g['joint pairs']:,.0f} pairs)",
         )
@@ -1261,15 +1133,6 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
             "Each draw adds the card's hint levels (at least 99.5% of single-source levels are multiples of it, capped at 5)",
             m / t >= 0.995,
             f"{m:,.0f} of {t:,.0f}",
-        )
-    )
-    fl, stp, mx = g["LL hf floored-linear"], g["LL hf step"], g["LL hf max-LB for all"]
-    fs.append(
-        F(
-            "hf at a card's level is the floored linear interpolation between milestone levels (it fits at least as well as a step "
-            "or the max-limit-break value)",
-            fl >= stp and fl >= mx,
-            f"floored-linear {fl:.1f}, step {stp:.1f}, max-LB {mx:.1f}",
         )
     )
     sp = {}  # by other source: (prediction inside the interval, observed, predicted, observed 95% low, high)
@@ -1403,10 +1266,7 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
             f"clean cards d {g['specialty same-card clean: d']:.2f} [{g['specialty same-card clean: d 95% low']:.2f}, "
             f"{g['specialty same-card clean: d 95% high']:.2f}] on {g['specialty same-card clean: cards']:.0f} cards, "
             f"{g['specialty same-card clean: gain, nats']:+.2f} nats; per-scenario d "
-            + ", ".join(f"{g[f'specialty d {nm}']:.2f}" for _, nm in SCENARIOS)
-            + f"; every card (hf also changes with limit break, confounded) d {g['specialty same-card: d']:.2f} "
-            f"[{g['specialty same-card: d 95% low']:.2f}, {g['specialty same-card: d 95% high']:.2f}] on "
-            f"{g['specialty same-card: cards']:.0f} cards",
+            + ", ".join(f"{g[f'specialty d {nm}']:.2f}" for _, nm in SCENARIOS),
         )
     )
     rows, ob, pr = g["priority rows"], g["priority observed"], g["priority predicted"]
@@ -1505,14 +1365,6 @@ class SpecialtyRows:
             lambda s: -self.ll_ds(q, 1 + s * self.hfr), bounds=(0, 0.05), method="bounded", options={"xatol": 1e-6}
         ).x
 
-    def exp_gain(self, k: int) -> float:
-        """scenario k's LL gain of the exponential form exp(g sp/10) over no term"""
-        q = self.sc == k
-        best = minimize_scalar(
-            lambda g: -self.fit(q, self.hfm * np.exp(g * self.sp / 10))[0], bounds=(-0.1, 0.1), method="bounded"
-        )
-        return -best.fun - self.fit(q, self.hfm)[0]
-
     def scored(self, qa: Mask, qb: Mask, m: np.ndarray) -> np.ndarray:
         """rows qb's log-likelihoods under the base fitted on rows qa for multiplier m"""
         return row_ll(1 - mix(self.tab[qb], np.minimum(self.fit(qa, m)[1] * m[qb], TMAX - 1e-6)), self.y[qb])
@@ -1604,21 +1456,14 @@ def specialty(A: Data, S: SpecialtyRows, fit: PerScenarioD) -> list[common.Value
     """specialty priority (effect 19, at the card's level) on the fit's setup over every record (S, its per-scenario fit
     `fit`): max-limit-break card-runs, rows no spark hinted, Lv-5 cap, R cards out. h = base_s (1 + hf/100) (1 + d
     spec/100)."""
-    y, sc, sp = S.y, S.sc, S.sp
+    sc = S.sc
     out: Out = []
     add(out, "specialty rows", len(S.j))
     add(out, "specialty card-runs", len(set(S.c)))
     for k, nm in SCENARIOS:
         add(out, f"specialty rows {nm}", (sc == k).sum())
         add(out, f"specialty runs {nm}", len(set(S.run[sc == k])))
-    dp, gp = S.pooled_d()
-    add(out, "specialty gain one d, nats", gp)
-    add(out, "specialty d pooled", dp)
-    add(out, "specialty gain exp form, nats", sum(S.exp_gain(k) for k in (1, 2, 3, 4)))
     specialty_residuals(S, fit, out)
-    u = (sc == 2) & (S.hfr == 0) & (sp == 0)
-    add(out, "Unity hf-0 spec-0 before", y[u].sum() / fit.p_without[u].sum())
-    add(out, "Unity hf-0 spec-0 after", y[u].sum() / fit.p_with[u].sum())
     # robustness of the adopted per-scenario d's: one scale k on them, h = base_s (1 + hf/100) (1 + k d_s sp/100), the
     # d_s fitted on every row, a base per scenario refitted on each subset (halves of the records, rarity, without each
     # of the eight most-used cards); k = 1 on every row
@@ -1668,8 +1513,6 @@ def later_runs(S: SpecialtyRows, cut: int, out: Out) -> None:
     ix = np.searchsorted(np.unique(S.run[te]), S.run[te])
     add(out, "specialty held-out gain, nats", ho[True][te].sum() - ho[False][te].sum())
     add(out, "specialty held-out rows", te.sum())
-    add(out, "specialty held-out fit rows", tr.sum())
-    add(out, "specialty held-out first later record", cut, note="seq; records before it fit")
     out.extend(
         compared("later runs: specialty term vs none", *(np.bincount(ix, weights=ho[s][te]) for s in (True, False)))
     )
@@ -1761,35 +1604,23 @@ def same_card_fit(A: Data, cards: Sequence[int]) -> tuple[float, float, float, f
 
 
 def same_card(A: Data) -> list[common.Value]:
-    """the same card at different limit breaks (specialty seen at two or more values in the runs, R cards out): every
-    such card, whose hint frequency mostly changes with limit break too (so its d also absorbs any misfit of the hf
-    slope), and the clean cards among them (clean_cards: only the specialty term changes)"""
+    """the same card at different limit breaks: the clean cards (clean_cards: only the specialty term changes) seen in
+    the runs at two or more specialty values, R cards out"""
     out: Out = []
     lv = collections.defaultdict(set)
     for i, x in enumerate(A.obs):
         if x.rar != 1:
             lv[x.cid].add(A.spec[i])
-    vary = sorted(k for k, v in lv.items() if len(v) > 1)
-    clean = [k for k in vary if k in clean_cards(_game())]
-    for label, cards in (("specialty same-card", vary), ("specialty same-card clean", clean)):
-        d, gain, lo, hi = same_card_fit(A, cards)
-        add(out, f"{label}: cards", len(cards))
-        add(out, f"{label}: d", d)
-        add(out, f"{label}: d 95% low", lo, note=f"profile likelihood; searched over {SAME_CARD_D}")
-        add(out, f"{label}: d 95% high", hi)
-        add(out, f"{label}: gain, nats", gain)
+    cc = clean_cards(_game())
+    clean = sorted(k for k, v in lv.items() if len(v) > 1 and k in cc)
+    d, gain, lo, hi = same_card_fit(A, clean)
+    label = "specialty same-card clean"
+    add(out, f"{label}: cards", len(clean))
+    add(out, f"{label}: d", d)
+    add(out, f"{label}: d 95% low", lo, note=f"profile likelihood; searched over {SAME_CARD_D}")
+    add(out, f"{label}: d 95% high", hi)
+    add(out, f"{label}: gain, nats", gain)
     return out
-
-
-@functools.lru_cache(None)
-def distinct_pmf(n: int, t: int) -> np.ndarray:
-    """P(d distinct of n skills after t uniform draws with replacement), d = 0..t"""
-    S = [[0] * (t + 1) for _ in range(t + 1)]
-    S[0][0] = 1  # Stirling numbers of the second kind
-    for i in range(1, t + 1):
-        for k in range(1, i + 1):
-            S[i][k] = k * S[i - 1][k] + S[i - 1][k - 1]
-    return np.array([math.comb(n, d) * math.factorial(d) * S[t][d] / n**t for d in range(t + 1)])
 
 
 if __name__ == "__main__":
