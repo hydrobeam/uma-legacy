@@ -2,6 +2,25 @@
 //! state-conditioned bound.
 use super::{GEN_GOLD, Group, JCOUNT, Kind, Model, Src, chain_states, event_pmf_job, group_gh, group_nuod, key_level};
 
+/// The trainee and ordered inheritance chances to evaluate against one deck.
+#[derive(Clone, Copy)]
+struct JointQuery<'chance> {
+    /// Index in `Model::opts` and `Model::ews`.
+    trainee: usize,
+    inheritance_chances: &'chance [f64],
+}
+
+/// Which exact landing probabilities the caller needs.
+#[derive(Clone, Copy)]
+struct JointOptions {
+    /// Number of requested targets, including guaranteed golds.
+    target_count: usize,
+    /// Also compute the chance of landing at least all but one target.
+    all_but_one: bool,
+    /// Fill `JointExt::marg` when an extension is supplied.
+    marginals: bool,
+}
+
 /// Exact chances that all targets land, and all but one, for trainee `u` with one deck, at each inheritance chance in
 /// `qs`: (P(all), P(all but one), outfit option index in `model.opts[u]`) per q, with the outfit that gives the
 /// higher P(all).
@@ -34,11 +53,27 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
     n_targets: usize,
     m1: bool,
 ) -> Vec<(f64, f64, usize)> {
+    joint_checked(
+        model,
+        JointQuery { trainee: u, inheritance_chances: qs },
+        ents,
+        filler,
+        JointOptions { target_count: n_targets, all_but_one: m1, marginals: true },
+    )
+}
+
+fn joint_checked<S: std::borrow::Borrow<Src>>(
+    model: &Model,
+    query: JointQuery,
+    ents: &[(S, Kind)],
+    filler: usize,
+    options: JointOptions,
+) -> Vec<(f64, f64, usize)> {
     JCOUNT.with(|c| c.set(c.get() + 1));
-    let r = joint_fast(model, u, qs, ents, filler, n_targets, m1, None);
+    let r = evaluate_joint(model, query, ents, filler, options, None);
     if sb_check() {
         let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
-        if let Some(sv) = state_value(model, u, qs, &er, filler) {
+        if let Some(sv) = state_value(model, query.trainee, query.inheritance_chances, &er, filler) {
             SBCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 for (v, x) in sv.iter().zip(&r) {
@@ -58,7 +93,7 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
     // CF_CHECK: the cap-free bound's value at a whole deck (its leaf test) against the exact value
     if cf_check() > 0.0 {
         let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
-        if let Some(sv) = state_value_cf(model, u, qs, &er, filler) {
+        if let Some(sv) = state_value_cf(model, query.trainee, query.inheritance_chances, &er, filler) {
             CFCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 for (v, x) in sv.iter().zip(&r) {
@@ -76,10 +111,13 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
         let own: Vec<(Src, Kind)> = ents.iter().map(|e| (e.0.borrow().clone(), e.1)).collect();
-        let x = joint_trainee_ref(model, u, qs, &own, filler, n_targets);
+        let x = joint_trainee_ref(model, query.trainee, query.inheritance_chances, &own, filler, options.target_count);
         for (a, b) in r.iter().zip(&x) {
             let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
-            assert!(rel(a.0, b.0) < 1e-11 && (!m1 || rel(a.1, b.1) < 1e-11), "joint mismatch: {a:?} vs {b:?}");
+            assert!(
+                rel(a.0, b.0) < 1e-11 && (!options.all_but_one || rel(a.1, b.1) < 1e-11),
+                "joint mismatch: {a:?} vs {b:?}"
+            );
         }
     }
     r
@@ -110,7 +148,25 @@ pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(
     m1: bool,
     ext: Option<&mut JointExt>,
 ) -> Vec<(f64, f64, usize)> {
-    joint_eval(model, u, qs, &joint_prep(model.uncertain.len(), ents, filler), n_targets, m1, true, ext)
+    evaluate_joint(
+        model,
+        JointQuery { trainee: u, inheritance_chances: qs },
+        ents,
+        filler,
+        JointOptions { target_count: n_targets, all_but_one: m1, marginals: true },
+        ext,
+    )
+}
+
+fn evaluate_joint<S: std::borrow::Borrow<Src>>(
+    model: &Model,
+    query: JointQuery,
+    ents: &[(S, Kind)],
+    filler: usize,
+    options: JointOptions,
+    ext: Option<&mut JointExt>,
+) -> Vec<(f64, f64, usize)> {
+    joint_eval(model, query, &joint_prep(model.uncertain.len(), ents, filler), options, ext)
 }
 /// The deck-dependent part of `joint_fast`, before inheritance chances or outfit state are applied.
 /// Collapsed states retain first-seen order; each weight is summed in the original chain-state order.
@@ -119,9 +175,15 @@ pub(super) struct JointPrep<'group> {
     base: ChainFactors,
     chains: Vec<ChainProgress>,
     /// One class index per relevant chain position, and that collapsed state's probability.
-    states: Vec<(Vec<u8>, f64)>,
+    states: Vec<CollapsedChainState>,
     groups: Vec<CoupledGroup<'group>>,
 }
+struct CollapsedChainState {
+    /// Class index at each relevant chain position.
+    classes: Vec<u8>,
+    probability: f64,
+}
+
 /// Cumulative factors after a chain prefix, or from all sources outside the chains.
 struct ChainFactors {
     no_gold: Vec<f64>,
@@ -237,7 +299,7 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
         .into_iter()
         .map(|key| {
             let probability = collapsed[&key];
-            (key, probability)
+            CollapsedChainState { classes: key, probability }
         })
         .collect();
     JointPrep {
@@ -247,48 +309,138 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
         groups,
     }
 }
-/// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order; `marg`: sum `ext`'s `marg` (else
-/// left empty, every other number the same)
-pub(super) fn joint_eval(
+/// Evaluate a prepared deck with fresh scratch. Disabling marginals leaves the extension's marginal buffer empty.
+fn joint_eval(
     model: &Model,
-    u: usize,
-    qs: &[f64],
-    pre: &JointPrep,
-    n_targets: usize,
-    m1: bool,
-    marg: bool,
-    ext: Option<&mut JointExt>,
+    query: JointQuery,
+    prepared: &JointPrep,
+    options: JointOptions,
+    extension: Option<&mut JointExt>,
 ) -> Vec<(f64, f64, usize)> {
-    joint_eval_in(model, u, qs, pre, n_targets, m1, marg, ext, &mut JointScratch::default())
+    evaluate_prepared(model, query, prepared, options, extension, &mut JointScratch::default())
 }
+#[derive(Clone, Copy)]
+struct LandingProbability {
+    all: f64,
+    all_but_one: f64,
+}
+
 /// `joint_eval`'s working buffers, kept by a caller that evaluates many times (`Env::corners`): each call sets every
 /// one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets' inner
 /// buffers are cleared where first used, as fresh ones are), so only their capacity carries over
 #[derive(Default)]
 pub(super) struct JointScratch {
-    dist: Vec<Vec<f64>>,
-    acc: Vec<(f64, f64)>,
-    fv: Vec<[f64; 3]>,
-    ng: Vec<f64>,
-    nh: Vec<f64>,
-    coupled: Vec<usize>,
-    cl_of: Vec<usize>,
-    lvl: Vec<u8>,
-    par: Vec<usize>,
-    cl_ts: Vec<Vec<usize>>,
-    cl_gs: Vec<Vec<usize>>,
-    in_cl: Vec<bool>,
-    ua: Vec<f64>,
-    ub: Vec<f64>,
-    ca: Vec<f64>,
-    cb: Vec<f64>,
-    pick: Vec<usize>,
-    cd: Vec<f64>,
-    cm: Vec<usize>,
-    pa: Vec<(usize, f64)>,
-    pb: Vec<(usize, f64)>,
-    nd: Vec<f64>,
+    landed_sets: Vec<Vec<f64>>,
+    totals: Vec<LandingProbability>,
+    landing_factors: Vec<[f64; 3]>,
+    no_gold: Vec<f64>,
+    no_hint: Vec<f64>,
+    coupled_groups: Vec<usize>,
+    cluster_of_target: Vec<usize>,
+    hint_levels: Vec<u8>,
+    target_parents: Vec<usize>,
+    cluster_targets: Vec<Vec<usize>>,
+    cluster_groups: Vec<Vec<usize>>,
+    in_cluster: Vec<bool>,
+    all_land: Vec<f64>,
+    one_misses: Vec<f64>,
+    cluster_all_land: Vec<f64>,
+    cluster_one_misses: Vec<f64>,
+    outcome_indices: Vec<usize>,
+    cluster_distribution: Vec<f64>,
+    cluster_masks: Vec<usize>,
+    subsets: Vec<(usize, f64)>,
+    next_subsets: Vec<(usize, f64)>,
+    next_distribution: Vec<f64>,
 }
+impl JointScratch {
+    /// Clear values while retaining capacities, including each cluster's inner buffers.
+    fn reset(&mut self, target_count: usize, query_outfit_count: usize, want_sets: bool) {
+        self.landed_sets.resize(if want_sets { query_outfit_count } else { 0 }, vec![]);
+        self.totals.clear();
+        self.totals.resize(query_outfit_count, LandingProbability { all: 0.0, all_but_one: 0.0 });
+        // Per (chance, outfit, target): no coupled hint, coupled white hint, coupled gold hint.
+        self.landing_factors.clear();
+        self.landing_factors.resize(query_outfit_count * target_count, [0.0f64; 3]);
+        self.no_gold.clear();
+        self.no_gold.resize(target_count, 1.0);
+        self.no_hint.clear();
+        self.no_hint.resize(target_count, 1.0);
+        self.coupled_groups.clear();
+        self.cluster_of_target.clear();
+        self.cluster_of_target.resize(target_count, usize::MAX);
+        self.hint_levels.clear();
+        self.hint_levels.resize(target_count, 0);
+        // Each chain state writes these buffers before reading them. Cluster distributions are dense:
+        // entry j holds cluster_masks[j], and each outcome combination writes subsets in the same order.
+        self.target_parents.clear();
+        self.in_cluster.clear();
+        self.in_cluster.resize(target_count, false);
+        for v in [&mut self.all_land, &mut self.one_misses, &mut self.cluster_all_land, &mut self.cluster_one_misses] {
+            v.clear();
+            v.resize(query_outfit_count, 0.0);
+        }
+        self.outcome_indices.clear();
+        self.cluster_distribution.clear();
+        self.cluster_masks.clear();
+        self.subsets.clear();
+        self.next_subsets.clear();
+        self.next_distribution.clear();
+    }
+
+    /// Union targets connected by coupled outcome groups, retaining first-seen cluster order.
+    fn build_clusters(&mut self, groups: &[CoupledGroup], target_count: usize) -> usize {
+        self.target_parents.clear();
+        self.target_parents.extend(0..target_count);
+        const fn root(p: &mut [usize], mut x: usize) -> usize {
+            while p[x] != x {
+                p[x] = p[p[x]];
+                x = p[x];
+            }
+            x
+        }
+        for &g in &self.coupled_groups {
+            let targets = &groups[g].targets;
+            for w2 in targets.windows(2) {
+                let (a, b) = (root(&mut self.target_parents, w2[0]), root(&mut self.target_parents, w2[1]));
+                if a != b {
+                    self.target_parents[a.max(b)] = a.min(b);
+                }
+            }
+        }
+        self.cluster_of_target.fill(usize::MAX);
+        let mut cluster_count = 0usize;
+        for &g in &self.coupled_groups {
+            let r = root(&mut self.target_parents, groups[g].targets[0]);
+            let cluster_index = match self.cluster_of_target[r] {
+                usize::MAX => {
+                    if cluster_count == self.cluster_targets.len() {
+                        self.cluster_targets.push(vec![]);
+                        self.cluster_groups.push(vec![]);
+                    }
+                    self.cluster_targets[cluster_count].clear();
+                    self.cluster_groups[cluster_count].clear();
+                    self.cluster_of_target[r] = cluster_count;
+                    cluster_count += 1;
+                    cluster_count - 1
+                }
+                c => c,
+            };
+            self.cluster_groups[cluster_index].push(g);
+        }
+        for k in 0..target_count {
+            if self.cluster_of_target[root(&mut self.target_parents, k)] != usize::MAX {
+                let cluster_index = self.cluster_of_target[root(&mut self.target_parents, k)];
+                self.cluster_targets[cluster_index].push(k);
+            }
+        }
+        for k in 0..target_count {
+            self.in_cluster[k] = self.cluster_of_target[root(&mut self.target_parents, k)] != usize::MAX;
+        }
+        cluster_count
+    }
+}
+
 /// `joint_eval` with its buffers from `sx`
 pub(super) fn joint_eval_in(
     model: &Model,
@@ -298,201 +450,116 @@ pub(super) fn joint_eval_in(
     n_targets: usize,
     m1: bool,
     marg: bool,
-    mut ext: Option<&mut JointExt>,
+    ext: Option<&mut JointExt>,
     sx: &mut JointScratch,
 ) -> Vec<(f64, f64, usize)> {
-    let nu = model.uncertain.len();
-    let JointScratch {
-        dist,
-        acc,
-        fv,
-        ng,
-        nh,
-        coupled,
-        cl_of,
-        lvl,
-        par,
-        cl_ts,
-        cl_gs,
-        in_cl,
-        ua,
-        ub,
-        ca,
-        cb,
-        pick,
-        cd,
-        cm,
-        pa,
-        pb,
-        nd,
-    } = std::mem::take(sx);
-    let (mut dist, mut acc, mut fv, mut ng, mut nh, mut coupled, mut cl_of, mut lvl) =
-        (dist, acc, fv, ng, nh, coupled, cl_of, lvl);
-    let (mut par, mut cl_ts, mut cl_gs, mut in_cl, mut ua, mut ub, mut ca, mut cb) =
-        (par, cl_ts, cl_gs, in_cl, ua, ub, ca, cb);
-    let (mut pick, mut cd, mut cm, mut pa, mut pb, mut nd) = (pick, cd, cm, pa, pb, nd);
-    let JointPrep { base, chains, states, groups } = pre;
-    let opts = &model.opts[u];
-    let no = opts.len();
-    let nq = qs.len();
-    let nfix = model.n_fixed_gold as usize;
-    let fixed = match &ext {
+    evaluate_prepared(
+        model,
+        JointQuery { trainee: u, inheritance_chances: qs },
+        pre,
+        JointOptions { target_count: n_targets, all_but_one: m1, marginals: marg },
+        ext,
+        sx,
+    )
+}
+
+fn evaluate_prepared(
+    model: &Model,
+    query: JointQuery,
+    prepared: &JointPrep,
+    options: JointOptions,
+    mut extension: Option<&mut JointExt>,
+    workspace: &mut JointScratch,
+) -> Vec<(f64, f64, usize)> {
+    let target_count = model.uncertain.len();
+    let mut scratch = std::mem::take(workspace);
+    let JointPrep { base, chains, states, groups } = prepared;
+    let outfits = &model.opts[query.trainee];
+    let outfit_count = outfits.len();
+    let chance_count = query.inheritance_chances.len();
+    let fixed_target_count = model.n_fixed_gold as usize;
+    let fixed = match &extension {
         Some(x) => x.sf.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
         None => model.fixed_factor(),
     };
-    let want_sets = ext.as_ref().is_some_and(|x| !x.sets.is_empty()) && nu <= 16;
-    if let Some(x) = ext.as_deref_mut() {
-        if marg {
-            x.marg = vec![0.0; nq * no * nu];
+    let want_sets = extension.as_ref().is_some_and(|x| !x.sets.is_empty()) && target_count <= 16;
+    if let Some(x) = extension.as_deref_mut() {
+        if options.marginals {
+            x.marg = vec![0.0; chance_count * outfit_count * target_count];
         }
         if want_sets {
-            x.sets = vec![0.0; (nq * no) << nu];
+            x.sets = vec![0.0; (chance_count * outfit_count) << target_count];
         }
     }
     // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
-    let su1 = ext.as_ref().is_none_or(|x| x.su.iter().all(|&s| s == 1.0));
-    dist.resize(if want_sets { nq * no } else { 0 }, vec![]);
-    acc.clear();
-    acc.resize(nq * no, (0.0f64, 0.0f64));
-    // per (q, outfit, target): factor with no coupled outcome, with a coupled white (any hint), with a coupled gold
-    let nqo = nq * no;
-    fv.clear();
-    fv.resize(nqo * nu, [0.0f64; 3]);
-    ng.clear();
-    ng.resize(nu, 1.0);
-    nh.clear();
-    nh.resize(nu, 1.0);
-    coupled.clear();
-    cl_of.clear();
-    cl_of.resize(nu, usize::MAX);
-    lvl.clear();
-    lvl.resize(nu, 0);
-    // per chain state's buffers, reused (each written before it is read): the union-find, the clusters (targets, groups;
-    // the first ncl in use), the per-unit products, per cluster its groups' outcomes and the pick of each, and with
-    // `want_sets` its subset distribution per (chance, outfit) (dense: entry j of each holds the mask cm[j]; every combo
-    // writes every subset, in the same order), the subsets of one combo (pa, pb) and the next landed-set rows (nd)
-    par.clear();
-    in_cl.clear();
-    in_cl.resize(nu, false);
-    for v in [&mut ua, &mut ub, &mut ca, &mut cb] {
-        v.clear();
-        v.resize(nqo, 0.0);
-    }
-    let mut alts: Vec<&[(f64, &[(usize, u8)])]> = vec![];
-    pick.clear();
-    cd.clear();
-    cm.clear();
-    pa.clear();
-    pb.clear();
-    nd.clear();
-    for (key, w) in states {
-        let w = *w;
-        ng.copy_from_slice(&base.no_gold);
-        nh.copy_from_slice(&base.no_hint);
-        coupled.clear();
-        coupled.extend(base.coupled.iter().copied());
+    let unit_scales = extension.as_ref().is_none_or(|x| x.su.iter().all(|&s| s == 1.0));
+    let query_outfit_count = chance_count * outfit_count;
+    scratch.reset(target_count, query_outfit_count, want_sets);
+    let mut outcomes: Vec<&[(f64, &[(usize, u8)])]> = vec![];
+    for state in states {
+        let state_probability = state.probability;
+        scratch.no_gold.copy_from_slice(&base.no_gold);
+        scratch.no_hint.copy_from_slice(&base.no_hint);
+        scratch.coupled_groups.clear();
+        scratch.coupled_groups.extend(base.coupled.iter().copied());
         for (j, chain) in chains.iter().enumerate() {
-            let factors = &chain.levels[key[j] as usize];
-            for k in 0..nu {
-                ng[k] *= factors.no_gold[k];
-                nh[k] *= factors.no_hint[k];
+            let factors = &chain.levels[state.classes[j] as usize];
+            for k in 0..target_count {
+                scratch.no_gold[k] *= factors.no_gold[k];
+                scratch.no_hint[k] *= factors.no_hint[k];
             }
-            coupled.extend(factors.coupled.iter().copied());
+            scratch.coupled_groups.extend(factors.coupled.iter().copied());
         }
-        for (qi, &q) in qs.iter().enumerate() {
-            for (o, (st, _)) in opts.iter().enumerate() {
-                let ew = &model.ews[u][o];
-                let base = (qi * no + o) * nu;
-                for k in 0..nu {
+        for (qi, &q) in query.inheritance_chances.iter().enumerate() {
+            for (o, (st, _)) in outfits.iter().enumerate() {
+                let ew = &model.ews[query.trainee][o];
+                let base = (qi * outfit_count + o) * target_count;
+                for k in 0..target_count {
                     let lp = LandPre::new(st[k], ew[k], q);
-                    fv[base + k] = [lp.f(ng[k], nh[k]), lp.f(ng[k], 0.0), lp.f(0.0, 0.0)];
-                    if !su1 && let Some(x) = &ext {
-                        for v in &mut fv[base + k] {
+                    scratch.landing_factors[base + k] =
+                        [lp.f(scratch.no_gold[k], scratch.no_hint[k]), lp.f(scratch.no_gold[k], 0.0), lp.f(0.0, 0.0)];
+                    if !unit_scales && let Some(x) = &extension {
+                        for v in &mut scratch.landing_factors[base + k] {
                             *v *= x.su[k];
                         }
                     }
                 }
             }
         }
-        // clusters of targets joined by coupled groups (union-find over targets)
-        par.clear();
-        par.extend(0..nu);
-        const fn root(p: &mut [usize], mut x: usize) -> usize {
-            while p[x] != x {
-                p[x] = p[p[x]];
-                x = p[x];
-            }
-            x
-        }
-        for &g in &coupled {
-            let ts = &groups[g].targets;
-            for w2 in ts.windows(2) {
-                let (a, b) = (root(&mut par, w2[0]), root(&mut par, w2[1]));
-                if a != b {
-                    par[a.max(b)] = a.min(b);
-                }
-            }
-        }
-        cl_of.fill(usize::MAX);
-        let mut ncl = 0usize;
-        for &g in &coupled {
-            let r = root(&mut par, groups[g].targets[0]);
-            let ci = match cl_of[r] {
-                usize::MAX => {
-                    if ncl == cl_ts.len() {
-                        cl_ts.push(vec![]);
-                        cl_gs.push(vec![]);
-                    }
-                    cl_ts[ncl].clear();
-                    cl_gs[ncl].clear();
-                    cl_of[r] = ncl;
-                    ncl += 1;
-                    ncl - 1
-                }
-                c => c,
-            };
-            cl_gs[ci].push(g);
-        }
-        for k in 0..nu {
-            if cl_of[root(&mut par, k)] != usize::MAX {
-                let ci = cl_of[root(&mut par, k)];
-                cl_ts[ci].push(k);
-            }
-        }
-        for k in 0..nu {
-            in_cl[k] = cl_of[root(&mut par, k)] != usize::MAX;
-        }
+        let cluster_count = scratch.build_clusters(groups, target_count);
         // per (q, outfit): (P(all land), P(exactly one misses)) of each independent unit, combined
-        ua.fill(1.0);
-        ub.fill(0.0);
-        let push = |ua: &mut [f64], ub: &mut [f64], i: usize, a: f64, b: f64| {
-            ub[i] = ub[i] * a + ua[i] * b;
-            ua[i] *= a;
+        scratch.all_land.fill(1.0);
+        scratch.one_misses.fill(0.0);
+        let push = |all: &mut [f64], one: &mut [f64], i: usize, a: f64, b: f64| {
+            one[i] = one[i] * a + all[i] * b;
+            all[i] *= a;
         };
-        for i in 0..nqo {
-            for k in 0..nu {
-                if !in_cl[k] {
-                    let f = fv[i * nu + k][0];
-                    push(&mut ua, &mut ub, i, f, 1.0 - f);
-                    if marg && let Some(x) = ext.as_deref_mut() {
-                        x.marg[i * nu + k] += w * f;
+        for i in 0..query_outfit_count {
+            for k in 0..target_count {
+                if !scratch.in_cluster[k] {
+                    let f = scratch.landing_factors[i * target_count + k][0];
+                    push(&mut scratch.all_land, &mut scratch.one_misses, i, f, 1.0 - f);
+                    if options.marginals
+                        && let Some(x) = extension.as_deref_mut()
+                    {
+                        x.marg[i * target_count + k] += state_probability * f;
                     }
                 }
             }
         }
-        // the landed sets: independent targets first, clusters below (their targets join through `cd`)
+        // the landed sets: independent targets first, clusters below (their targets join through `scratch.cluster_distribution`)
         if want_sets {
-            for i in 0..nqo {
-                let d = &mut dist[i];
+            for i in 0..query_outfit_count {
+                let d = &mut scratch.landed_sets[i];
                 d.clear();
-                d.resize(1 << nu, 0.0);
+                d.resize(1 << target_count, 0.0);
                 d[0] = 1.0;
-                for k in 0..nu {
-                    if in_cl[k] {
+                for k in 0..target_count {
+                    if scratch.in_cluster[k] {
                         continue;
                     }
-                    let (f, b) = (fv[i * nu + k][0], 1usize << k);
-                    for m in 0..(1usize << nu) {
+                    let (f, b) = (scratch.landing_factors[i * target_count + k][0], 1usize << k);
+                    for m in 0..(1usize << target_count) {
                         if m & b == 0 && d[m] != 0.0 {
                             let x = d[m];
                             d[m] = x * (1.0 - f);
@@ -502,104 +569,120 @@ pub(super) fn joint_eval_in(
                 }
             }
         }
-        for (ts, gs) in cl_ts[..ncl].iter().zip(&cl_gs[..ncl]) {
-            alts.clear();
-            alts.extend(gs.iter().map(|&g| &*groups[g].outcomes));
-            ca.fill(0.0);
-            cb.fill(0.0);
+        for (targets, group_indices) in
+            scratch.cluster_targets[..cluster_count].iter().zip(&scratch.cluster_groups[..cluster_count])
+        {
+            outcomes.clear();
+            outcomes.extend(group_indices.iter().map(|&g| &*groups[g].outcomes));
+            scratch.cluster_all_land.fill(0.0);
+            scratch.cluster_one_misses.fill(0.0);
             // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
             if want_sets {
-                let nsub = 1usize << ts.len();
-                cd.clear();
-                cd.resize(nqo * nsub, 0.0);
-                cm.clear();
-                cm.resize(nsub, 0);
+                let nsub = 1usize << targets.len();
+                scratch.cluster_distribution.clear();
+                scratch.cluster_distribution.resize(query_outfit_count * nsub, 0.0);
+                scratch.cluster_masks.clear();
+                scratch.cluster_masks.resize(nsub, 0);
             }
-            pick.clear();
-            pick.resize(alts.len(), 0);
+            scratch.outcome_indices.clear();
+            scratch.outcome_indices.resize(outcomes.len(), 0);
             loop {
-                let wc: f64 = (0..alts.len()).map(|i| alts[i][pick[i]].0).product();
-                for &k in ts {
-                    lvl[k] = 0;
+                let outcome_probability: f64 =
+                    (0..outcomes.len()).map(|i| outcomes[i][scratch.outcome_indices[i]].0).product();
+                for &k in targets {
+                    scratch.hint_levels[k] = 0;
                 }
-                for i in 0..alts.len() {
-                    for &(k, l) in alts[i][pick[i]].1 {
-                        lvl[k] = lvl[k].max(if l >= 2 { 2 } else { 1 });
+                for i in 0..outcomes.len() {
+                    for &(k, l) in outcomes[i][scratch.outcome_indices[i]].1 {
+                        scratch.hint_levels[k] = scratch.hint_levels[k].max(if l >= 2 { 2 } else { 1 });
                     }
                 }
-                for i in 0..nqo {
+                for i in 0..query_outfit_count {
                     let (mut a, mut b) = (1.0f64, 0.0f64);
-                    for &k in ts {
-                        let f = fv[i * nu + k][lvl[k] as usize];
+                    for &k in targets {
+                        let f = scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
                         b = b * f + a * (1.0 - f);
                         a *= f;
                     }
-                    ca[i] += wc * a;
-                    cb[i] += wc * b;
-                    if marg && let Some(x) = ext.as_deref_mut() {
-                        for &k in ts {
-                            x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize];
+                    scratch.cluster_all_land[i] += outcome_probability * a;
+                    scratch.cluster_one_misses[i] += outcome_probability * b;
+                    if options.marginals
+                        && let Some(x) = extension.as_deref_mut()
+                    {
+                        for &k in targets {
+                            x.marg[i * target_count + k] += state_probability
+                                * outcome_probability
+                                * scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
                         }
                     }
                     if want_sets {
-                        pa.clear();
-                        pa.push((0, wc));
-                        for &k in ts {
-                            let f = fv[i * nu + k][lvl[k] as usize];
-                            pb.clear();
-                            for &(m, p) in &pa {
-                                pb.push((m, p * (1.0 - f)));
-                                pb.push((m | 1 << k, p * f));
+                        scratch.subsets.clear();
+                        scratch.subsets.push((0, outcome_probability));
+                        for &k in targets {
+                            let f = scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
+                            scratch.next_subsets.clear();
+                            for &(m, p) in &scratch.subsets {
+                                scratch.next_subsets.push((m, p * (1.0 - f)));
+                                scratch.next_subsets.push((m | 1 << k, p * f));
                             }
-                            std::mem::swap(&mut pa, &mut pb);
+                            std::mem::swap(&mut scratch.subsets, &mut scratch.next_subsets);
                         }
-                        let ci = &mut cd[i * pa.len()..(i + 1) * pa.len()];
-                        for (j, &(m, p)) in pa.iter().enumerate() {
+                        let ci = &mut scratch.cluster_distribution
+                            [i * scratch.subsets.len()..(i + 1) * scratch.subsets.len()];
+                        for (j, &(m, p)) in scratch.subsets.iter().enumerate() {
                             ci[j] += p;
-                            cm[j] = m;
+                            scratch.cluster_masks[j] = m;
                         }
                     }
                 }
                 let mut i = 0;
-                while i < alts.len() {
-                    pick[i] += 1;
-                    if pick[i] < alts[i].len() {
+                while i < outcomes.len() {
+                    scratch.outcome_indices[i] += 1;
+                    if scratch.outcome_indices[i] < outcomes[i].len() {
                         break;
                     }
-                    pick[i] = 0;
+                    scratch.outcome_indices[i] = 0;
                     i += 1;
                 }
-                if i == alts.len() {
+                if i == outcomes.len() {
                     break;
                 }
             }
-            for i in 0..nqo {
-                push(&mut ua, &mut ub, i, ca[i], cb[i]);
+            for i in 0..query_outfit_count {
+                push(
+                    &mut scratch.all_land,
+                    &mut scratch.one_misses,
+                    i,
+                    scratch.cluster_all_land[i],
+                    scratch.cluster_one_misses[i],
+                );
             }
-            // (each entry m0 | m of a row is written once, m0 holding no target of this cluster: the order is free)
+            // (each entry m0 | m of a row is written once, m0 holding outfit_count target of this cluster: the order is free)
             if want_sets {
-                let nsub = cm.len();
-                for i in 0..nqo {
-                    let d = &mut dist[i];
-                    nd.clear();
-                    nd.resize(1 << nu, 0.0);
+                let nsub = scratch.cluster_masks.len();
+                for i in 0..query_outfit_count {
+                    let d = &mut scratch.landed_sets[i];
+                    scratch.next_distribution.clear();
+                    scratch.next_distribution.resize(1 << target_count, 0.0);
                     for (m0, &x) in d.iter().enumerate() {
                         if x == 0.0 {
                             continue;
                         }
-                        for (&m, &p) in cm.iter().zip(&cd[i * nsub..(i + 1) * nsub]) {
-                            nd[m0 | m] += x * p;
+                        for (&m, &p) in
+                            scratch.cluster_masks.iter().zip(&scratch.cluster_distribution[i * nsub..(i + 1) * nsub])
+                        {
+                            scratch.next_distribution[m0 | m] += x * p;
                         }
                     }
-                    std::mem::swap(d, &mut nd);
+                    std::mem::swap(d, &mut scratch.next_distribution);
                 }
             }
         }
-        for i in 0..nqo {
-            let (mut a, mut b) = (ua[i], ub[i]);
-            if m1 {
-                for j in 0..nfix {
-                    let g = match &ext {
+        for i in 0..query_outfit_count {
+            let (mut a, mut b) = (scratch.all_land[i], scratch.one_misses[i]);
+            if options.all_but_one {
+                for j in 0..fixed_target_count {
+                    let g = match &extension {
                         Some(x) => GEN_GOLD * x.sf[j],
                         None => GEN_GOLD,
                     };
@@ -609,56 +692,37 @@ pub(super) fn joint_eval_in(
             } else {
                 a *= fixed;
             }
-            // P(at least n_targets - 1 land) over nu + nfix targets
-            let m = if n_targets <= nu + nfix { if n_targets == 0 { 1.0 } else { a + b } } else { 0.0 };
-            acc[i].0 += w * a;
-            acc[i].1 += w * if m1 { m } else { 0.0 };
-            if want_sets && let Some(x) = ext.as_deref_mut() {
-                for (m, &p) in dist[i].iter().enumerate() {
-                    x.sets[(i << nu) + m] += w * p;
+            // P(at least options.target_count - 1 land) over target_count + fixed_target_count targets
+            let m = if options.target_count <= target_count + fixed_target_count {
+                if options.target_count == 0 { 1.0 } else { a + b }
+            } else {
+                0.0
+            };
+            scratch.totals[i].all += state_probability * a;
+            scratch.totals[i].all_but_one += state_probability * if options.all_but_one { m } else { 0.0 };
+            if want_sets && let Some(x) = extension.as_deref_mut() {
+                for (m, &p) in scratch.landed_sets[i].iter().enumerate() {
+                    x.sets[(i << target_count) + m] += state_probability * p;
                 }
             }
         }
     }
-    if let Some(x) = ext {
+    if let Some(x) = extension {
         x.per_outfit.clear();
-        x.per_outfit.extend(acc.iter().map(|a| a.0));
+        x.per_outfit.extend(scratch.totals.iter().map(|a| a.all));
     }
-    let r = (0..nq)
+    let r = (0..chance_count)
         .map(|qi| {
             let mut b = 0;
-            for o in 1..no {
-                if acc[qi * no + o].0 > acc[qi * no + b].0 {
+            for o in 1..outfit_count {
+                if scratch.totals[qi * outfit_count + o].all > scratch.totals[qi * outfit_count + b].all {
                     b = o;
                 }
             }
-            (acc[qi * no + b].0, acc[qi * no + b].1, b)
+            (scratch.totals[qi * outfit_count + b].all, scratch.totals[qi * outfit_count + b].all_but_one, b)
         })
         .collect();
-    *sx = JointScratch {
-        dist,
-        acc,
-        fv,
-        ng,
-        nh,
-        coupled,
-        cl_of,
-        lvl,
-        par,
-        cl_ts,
-        cl_gs,
-        in_cl,
-        ua,
-        ub,
-        ca,
-        cb,
-        pick,
-        cd,
-        cm,
-        pa,
-        pb,
-        nd,
-    };
+    *workspace = scratch;
     r
 }
 
@@ -671,6 +735,22 @@ pub(super) fn joint_trainee_ref(
     ents: &[(Src, Kind)],
     filler: usize,
     n_targets: usize,
+) -> Vec<(f64, f64, usize)> {
+    reference_joint(
+        model,
+        JointQuery { trainee: u, inheritance_chances: qs },
+        ents,
+        filler,
+        JointOptions { target_count: n_targets, all_but_one: true, marginals: false },
+    )
+}
+
+fn reference_joint(
+    model: &Model,
+    query: JointQuery,
+    ents: &[(Src, Kind)],
+    filler: usize,
+    options: JointOptions,
 ) -> Vec<(f64, f64, usize)> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
@@ -726,9 +806,9 @@ pub(super) fn joint_trainee_ref(
             })
         })
         .collect();
-    let opts = &model.opts[u];
+    let opts = &model.opts[query.trainee];
     let no = opts.len();
-    let nq = qs.len();
+    let nq = query.inheritance_chances.len();
     let nfix = model.n_fixed_gold as usize;
     let fixed = model.fixed_factor();
     let mut acc = vec![(0.0f64, 0.0f64); nq * no];
@@ -775,9 +855,9 @@ pub(super) fn joint_trainee_ref(
                     }
                 }
             }
-            for (qi, &q) in qs.iter().enumerate() {
+            for (qi, &q) in query.inheritance_chances.iter().enumerate() {
                 for (o, (st, _)) in opts.iter().enumerate() {
-                    let ew = &model.ews[u][o];
+                    let ew = &model.ews[query.trainee][o];
                     // P(all land) and the distribution of how many of the uncertain targets land (fixed golds after)
                     let mut all = fixed;
                     dist[..=nu + nfix].iter_mut().for_each(|x| *x = 0.0);
@@ -804,7 +884,7 @@ pub(super) fn joint_trainee_ref(
                             dist[j] *= 1.0 - GEN_GOLD;
                         }
                     }
-                    let m1: f64 = dist[n_targets.saturating_sub(1).min(nu + nfix)..=nu + nfix].iter().sum();
+                    let m1: f64 = dist[options.target_count.saturating_sub(1).min(nu + nfix)..=nu + nfix].iter().sum();
                     let a = &mut acc[qi * no + o];
                     a.0 += wc * all;
                     a.1 += wc * m1;
@@ -837,6 +917,23 @@ pub(super) fn joint_trainee_ref(
         .collect()
 }
 
+#[derive(Clone, Copy)]
+struct MissFactors {
+    no_gold: f64,
+    no_hint: f64,
+}
+
+struct BoundTarget {
+    target: usize,
+    /// Cumulative misses after each number of completed chain links, starting at zero.
+    by_progress: Vec<MissFactors>,
+}
+
+struct BoundChain {
+    kind: Kind,
+    targets: Vec<BoundTarget>,
+}
+
 /// Upper bound on exact P(all), per inheritance chance in `qs`, including the fixed-gold factor.
 /// Each chain card is grouped with the targets it feeds. Given N = n, the checked upper-orthant inequality lets
 /// the expectation of the product be bounded by the product of expectations over those groups. One pair of cards
@@ -846,12 +943,18 @@ pub(super) fn joint_trainee_ref(
 /// of targets outside those groups. Event outcomes and training hints are independent of the chain allocation.
 /// Event groups must pass `group_nuod`, since their per-target marginals replace the full outcome distribution.
 /// Returns None when either dependence check is unproven; callers must then use a different bound or score exactly.
-pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Option<Vec<f64>> {
-    let nu = model.uncertain.len();
+pub(super) fn upper_na(
+    model: &Model,
+    trainee: usize,
+    inheritance_chances: &[f64],
+    entries: &[(&Src, Kind)],
+    filler: usize,
+) -> Option<Vec<f64>> {
+    let target_count = model.uncertain.len();
     // every group touching two or more targets must be negatively upper-orthant dependent, or the per-target
     // marginals below could understate a group whose outcomes hint targets together
     // (checked once per source, when it is built: `Src::not_nuod`)
-    for (src, _) in ents {
+    for (src, _) in entries {
         if src.not_nuod {
             if std::env::var("UPPER_WHY").is_ok()
                 && let Some(g) = src
@@ -865,49 +968,49 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
             return None;
         }
     }
-    let (mut ng0, mut nh0) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-    for (src, _) in ents {
+    let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; target_count], vec![1.0f64; target_count]);
+    for (src, _) in entries {
         for &(k, p) in &src.train {
-            nh0[k] *= 1.0 - p;
+            base_no_hint[k] *= 1.0 - p;
         }
         // (Src::fm: the fixed groups' (k, 1 - P(gold), 1 - P(any hint)) in group order, as group_gh gives them: the same
         // factors in the same order, computed once per source)
         for &(k, mg, mh) in &src.fm {
-            ng0[k] *= mg;
-            nh0[k] *= mh;
+            base_no_gold[k] *= mg;
+            base_no_hint[k] *= mh;
         }
     }
     // chain cards in key order (fillers included): (kind, per target: cumulative (miss gold, miss any) after l links)
-    let mut chains: Vec<(Kind, Vec<(usize, Vec<(f64, f64)>)>)> = vec![];
-    for (src, kd) in ents {
-        if *kd == (0, 0, 0) {
+    let mut chains: Vec<BoundChain> = vec![];
+    for (src, kind) in entries {
+        if *kind == (0, 0, 0) {
             continue;
         }
-        let stop = kd.1 as usize;
-        let ts: Vec<(usize, Vec<(f64, f64)>)> = src
+        let stop = kind.1 as usize;
+        let targets: Vec<BoundTarget> = src
             .cm
             .iter()
             .map(|(k, per)| {
-                let mut cum = vec![(1.0f64, 1.0f64); stop + 1];
+                let mut cumulative = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; stop + 1];
                 for l in 1..=stop {
-                    cum[l] = cum[l - 1];
+                    cumulative[l] = cumulative[l - 1];
                     for &(lk, g, h) in per {
                         if lk as usize == l {
-                            cum[l].0 *= g;
-                            cum[l].1 *= h;
+                            cumulative[l].no_gold *= g;
+                            cumulative[l].no_hint *= h;
                         }
                     }
                 }
-                (*k, cum)
+                BoundTarget { target: *k, by_progress: cumulative }
             })
             .collect();
-        chains.push((*kd, ts));
+        chains.push(BoundChain { kind: *kind, targets });
     }
     for _ in 0..filler {
-        chains.push(((2, 2, 0), vec![]));
+        chains.push(BoundChain { kind: (2, 2, 0), targets: vec![] });
     }
-    chains.sort_by_key(|a| a.0);
-    let kinds: Vec<Kind> = chains.iter().map(|c| c.0).collect();
+    chains.sort_by_key(|chain| chain.kind);
+    let kinds: Vec<Kind> = chains.iter().map(|chain| chain.kind).collect();
     // groups: cards joined by a target their chains both feed; at most one group of two cards, none larger. A target
     // that would join a larger group (three or more feeders, or two feeders other than the one pair) is "maxed": its
     // factor is taken at every feeder's full progress, a constant, and it leaves its feeders' target lists. Valid
@@ -915,16 +1018,16 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
     // (nh <= ng) and phi falls with ng and with nh; the miss products only fall as links progress (each link's factor
     // is at most 1), so f_k(L) <= f_k(full progress) on every chain state L, and E[prod_k f_k] <= E[prod_kept f_k] x
     // prod_maxed f_k^max; the kept targets then meet the structure the bound below needs.
-    let mut feeders: Vec<Vec<usize>> = vec![vec![]; nu];
-    for (ci, (_, ts)) in chains.iter().enumerate() {
-        for (k, _) in ts {
-            feeders[*k].push(ci);
+    let mut feeders: Vec<Vec<usize>> = vec![vec![]; target_count];
+    for (chain_index, chain) in chains.iter().enumerate() {
+        for target in &chain.targets {
+            feeders[target.target].push(chain_index);
         }
     }
     let mut pair: Option<(usize, usize)> = None;
-    let mut maxed: Vec<Option<(f64, f64)>> = vec![None; nu];
-    for k in 0..nu {
-        let mx = match feeders[k].len() {
+    let mut maxed: Vec<Option<MissFactors>> = vec![None; target_count];
+    for k in 0..target_count {
+        let use_full_progress = match feeders[k].len() {
             0 | 1 => false,
             2 => {
                 let p = (feeders[k][0], feeders[k][1]);
@@ -937,31 +1040,31 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
             }
             _ => true,
         };
-        if mx {
-            let (mut g, mut h) = (ng0[k], nh0[k]);
-            for &ci in &feeders[k] {
+        if use_full_progress {
+            let (mut g, mut h) = (base_no_gold[k], base_no_hint[k]);
+            for &chain_index in &feeders[k] {
                 #[allow(clippy::unwrap_in_result, reason = "feeders[k] lists only chains with target k (built above)")]
-                let cum = &chains[ci].1.iter().find(|x| x.0 == k).unwrap().1;
-                let last = cum[cum.len() - 1];
-                g *= last.0;
-                h *= last.1;
+                let cumulative = &chains[chain_index].targets.iter().find(|row| row.target == k).unwrap().by_progress;
+                let last = cumulative[cumulative.len() - 1];
+                g *= last.no_gold;
+                h *= last.no_hint;
             }
-            maxed[k] = Some((g, h));
+            maxed[k] = Some(MissFactors { no_gold: g, no_hint: h });
         }
     }
     if maxed.iter().any(std::option::Option::is_some) {
         for c in &mut chains {
-            c.1.retain(|(k, _)| maxed[*k].is_none());
+            c.targets.retain(|row| maxed[row.target].is_none());
         }
-        for k in 0..nu {
+        for k in 0..target_count {
             if maxed[k].is_some() {
                 feeders[k].clear();
             }
         }
     }
-    let fed: Vec<bool> = (0..nu).map(|k| !feeders[k].is_empty()).collect();
-    let kl = if kinds.is_empty() { None } else { Some(key_level(&kinds)) };
-    if let Some(k) = &kl {
+    let fed: Vec<bool> = (0..target_count).map(|k| !feeders[k].is_empty()).collect();
+    let chain_levels = if kinds.is_empty() { None } else { Some(key_level(&kinds)) };
+    if let Some(k) = &chain_levels {
         let ok = match pair {
             None => k.nuod,
             Some((a, b)) => k.pair_ok(a, b),
@@ -970,57 +1073,75 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
             return None;
         }
     }
-    let pmf = event_pmf_job();
-    let opts = &model.opts[u];
+    let event_probabilities = event_pmf_job();
+    let outfits = &model.opts[trainee];
     let fixed = model.fixed_factor();
     let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 {
-        land_factor(opts[o].0[k], model.ews[u][o][k], q, ng, nh)
+        land_factor(outfits[o].0[k], model.ews[trainee][o][k], q, ng, nh)
     };
-    let pm: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &kl) {
+    let pair_marginals: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &chain_levels) {
         (Some((a, b)), Some(k)) => Some(k.pair_margs(a, b)),
         _ => None,
     };
     Some(
-        qs.iter()
+        inheritance_chances
+            .iter()
             .map(|&q| {
                 let mut best = 0.0f64;
-                for o in 0..opts.len() {
+                for o in 0..outfits.len() {
                     let mut other = 1.0;
-                    for k in 0..nu {
-                        if let Some((g, h)) = maxed[k] {
+                    for k in 0..target_count {
+                        if let Some(MissFactors { no_gold: g, no_hint: h }) = maxed[k] {
                             other *= phi(o, q, k, g, h);
                         } else if !fed[k] {
-                            other *= phi(o, q, k, ng0[k], nh0[k]);
+                            other *= phi(o, q, k, base_no_gold[k], base_no_hint[k]);
                         }
                     }
                     // per single card and links done: the product over the targets only it feeds
-                    let single = |ci: usize, l: usize| -> f64 {
-                        chains[ci]
-                            .1
+                    let single = |chain_index: usize, l: usize| -> f64 {
+                        chains[chain_index]
+                            .targets
                             .iter()
-                            .filter(|(k, _)| feeders[*k].len() == 1)
-                            .map(|(k, cum)| phi(o, q, *k, ng0[*k] * cum[l].0, nh0[*k] * cum[l].1))
+                            .filter(|row| feeders[row.target].len() == 1)
+                            .map(|row| {
+                                phi(
+                                    o,
+                                    q,
+                                    row.target,
+                                    base_no_gold[row.target] * row.by_progress[l].no_gold,
+                                    base_no_hint[row.target] * row.by_progress[l].no_hint,
+                                )
+                            })
                             .product()
                     };
-                    let comp: Vec<Vec<f64>> = (0..chains.len())
-                        .map(|ci| (0..=chains[ci].0.1 as usize).map(|l| single(ci, l)).collect())
+                    let single_products: Vec<Vec<f64>> = (0..chains.len())
+                        .map(|chain_index| {
+                            (0..=chains[chain_index].kind.1 as usize).map(|l| single(chain_index, l)).collect()
+                        })
                         .collect();
                     // the pair's group: both cards' single targets and the shared ones, over (la, lb)
-                    let pairv: Option<Vec<Vec<f64>>> = pair.map(|(a, b)| {
-                        (0..=chains[a].0.1 as usize)
+                    let pair_products: Option<Vec<Vec<f64>>> = pair.map(|(a, b)| {
+                        (0..=chains[a].kind.1 as usize)
                             .map(|la| {
-                                (0..=chains[b].0.1 as usize)
+                                (0..=chains[b].kind.1 as usize)
                                     .map(|lb| {
-                                        let mut v = comp[a][la] * comp[b][lb];
-                                        for (k, cum_a) in &chains[a].1 {
-                                            if feeders[*k].len() == 2 {
-                                                let cum_b = &chains[b].1.iter().find(|x| x.0 == *k).unwrap().1;
+                                        let mut v = single_products[a][la] * single_products[b][lb];
+                                        for target in &chains[a].targets {
+                                            let k = target.target;
+                                            let cum_a = &target.by_progress;
+                                            if feeders[k].len() == 2 {
+                                                let cum_b = &chains[b]
+                                                    .targets
+                                                    .iter()
+                                                    .find(|row| row.target == k)
+                                                    .unwrap()
+                                                    .by_progress;
                                                 v *= phi(
                                                     o,
                                                     q,
-                                                    *k,
-                                                    ng0[*k] * cum_a[la].0 * cum_b[lb].0,
-                                                    nh0[*k] * cum_a[la].1 * cum_b[lb].1,
+                                                    k,
+                                                    base_no_gold[k] * cum_a[la].no_gold * cum_b[lb].no_gold,
+                                                    base_no_hint[k] * cum_a[la].no_hint * cum_b[lb].no_hint,
                                                 );
                                             }
                                         }
@@ -1030,30 +1151,36 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
                             })
                             .collect()
                     });
-                    let mut tot = 0.0;
-                    for (m, &pn) in pmf.iter().enumerate() {
-                        if pn == 0.0 {
+                    let mut total = 0.0;
+                    for (m, &event_probability) in event_probabilities.iter().enumerate() {
+                        if event_probability == 0.0 {
                             continue;
                         }
-                        let mut prod = other;
-                        if let Some(k) = &kl {
-                            for ci in 0..chains.len() {
-                                if chains[ci].1.is_empty() || pair.is_some_and(|(a, b)| ci == a || ci == b) {
+                        let mut product = other;
+                        if let Some(k) = &chain_levels {
+                            for chain_index in 0..chains.len() {
+                                if chains[chain_index].targets.is_empty()
+                                    || pair.is_some_and(|(a, b)| chain_index == a || chain_index == b)
+                                {
                                     continue;
                                 }
-                                prod *= k.marg[ci][m].iter().zip(&comp[ci]).map(|(p, c)| p * c).sum::<f64>();
-                            }
-                            if let (Some(pv), Some(pmm)) = (&pairv, &pm) {
-                                prod *= pmm[m]
+                                product *= k.marg[chain_index][m]
                                     .iter()
-                                    .zip(pv)
+                                    .zip(&single_products[chain_index])
+                                    .map(|(p, c)| p * c)
+                                    .sum::<f64>();
+                            }
+                            if let (Some(pair_values), Some(pair_rows)) = (&pair_products, &pair_marginals) {
+                                product *= pair_rows[m]
+                                    .iter()
+                                    .zip(pair_values)
                                     .map(|(r, s)| r.iter().zip(s).map(|(p, c)| p * c).sum::<f64>())
                                     .sum::<f64>();
                             }
                         }
-                        tot += pn * prod;
+                        total += event_probability * product;
                     }
-                    best = best.max(tot);
+                    best = best.max(total);
                 }
                 fixed * best * (1.0 + 1e-9)
             })

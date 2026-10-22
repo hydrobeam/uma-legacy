@@ -218,13 +218,18 @@ passing the tools does not establish that a reader can understand the code. Keep
   can be appropriate in a hot loop; explain their indexing invariant rather than wrapping them just for appearance.
 - **Functions:** give each function one coherent operation or phase. A long workflow should show its phases in order,
   with inputs and results explicit. Extract around meaningful boundaries, not an arbitrary line limit.
-- **Dependencies:** values that travel together through several functions are one value: a trainee and her parents
-  are one record, and the read-only state a family of functions shares (data, pool, legacies, score base) is one
-  context struct, borrowed once, with documented fields, named in full where it is used. Keep what a function may
-  change separate from what it reads: a read-only context, a `&mut` scratch or output struct, and small `Copy`
-  options (as in a parser that takes `&mut Parser`, a `Cursor` and `ParseOpts`). Group by concept, not by call site,
-  and prefer an existing domain record over another overlapping bundle. A struct unpacked into a dozen short locals on
-  entry means the concept has not been named yet.
+- **Dependencies:** values that travel together through several functions are one value: a trainee and her parents are
+  one record, and the read-only state a family of functions shares (data, pool, legacies, score base) is one context
+  struct, borrowed once, with documented fields, named in full where it is used. Keep what a function may change
+  separate from what it reads: a read-only context, a `&mut` scratch or output struct, and small `Copy` options (as in a
+  parser that takes `&mut Parser`, a `Cursor` and `ParseOpts`). Group by concept, not by call site, and prefer an
+  existing domain record over another overlapping bundle. A struct unpacked into a dozen short locals on entry means the
+  concept has not been named yet. A context is built once, where its contents come into being, and borrowed downward: a
+  phase's entry point builds it and the functions below take `&Context` (and the one mutable owner, such as `&mut Sim`)
+  plus small values; call sites do not assemble context structs from loose locals. What changes during the phase (a
+  score base refitted between phases) stays out of the long-lived context, which hands out the short-lived view through
+  a method. Records store the records they are about (a row keeps its `lineage`), so calls pass `row.lineage` rather
+  than rebuilding it.
 - **Calls:** a reader checks a call against the signature without counting arguments. Adjacent arguments of one type
   that could be swapped unnoticed (`k.x, k.a, k.b`), or a long argument list (past five or so, as a guide, not a limit),
   usually mean a record is missing (a trainee and her parents; a scoring context). A function asked for one value
