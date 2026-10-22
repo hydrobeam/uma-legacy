@@ -74,7 +74,7 @@ impl Env<'_> {
         // (`f.deck.white_hint_chances`, `f.deck.gold_hint_chances`), so these products match `p` up to the deck chains'
         // correlation. The scenario's golds: bought, landing GEN_GOLD.
         let scales = self.scale(&nc);
-        let ewo = &self.own_event_chances[t][o];
+        let ewo = &self.model.ews[t][o];
         let buy = |i: usize| -> Value {
             if let Some(pos) = self.uncertain_targets.iter().position(|&x| x == i) {
                 let (v, dw, dg, e) = (st[pos], f.deck.white_hint_chances[pos], f.deck.gold_hint_chances[pos], ewo[pos]);
@@ -144,8 +144,8 @@ impl Env<'_> {
     /// one factor per target, so it is multilinear in x and `interp_in` at any x in [0, 1]^nu gives it exactly.
     /// `corners` at q0 = 0 (a cached deck's table, `Cache::add`), memoised by (deck class, entries, filler). Exact: the
     /// table reads trainee t only through her model (outfit coverage, own-skill chances: `set_trainee` from
-    /// `own_event_chances`), which her deck class holds to the bit, and the deck only through its entries and filler;
-    /// the memo is kept between jobs of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her model
+    /// `Model::ews`), which her deck class holds to the bit, and the deck only through its entries and filler;
+    /// the memo is kept between jobs of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her folded buffer
     /// at its last corner, q = 0 for every target (1 - (1 - 0) x 1); a hit sets the same state
     pub(crate) fn corners_kept(&mut self, t: crate::uma::UmaIndex, sel: &SelectedDeck) -> Vec<Vec<f64>> {
         let key = (self.deck_class[t], sel.entries.clone(), sel.filler_cards);
@@ -167,7 +167,7 @@ impl Env<'_> {
         let no = self.model.n_outfits(t);
         let mut corners = vec![vec![0.0f64; 1 << nu]; no];
         // The exact odds per corner at scale 1: prepare the deck once (`joint_prep`, which reads no chance or model
-        // state), then evaluate it per corner with the same sums as `exact`.
+        // data), then evaluate it per corner with the same sums as `exact`.
         let scales = self.scale(&vec![6; ntar]);
         let ents: Vec<crate::deck::sources::SourceEntry<&TargetSources>> = sel
             .entries
@@ -186,8 +186,8 @@ impl Env<'_> {
                 let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 };
                 q[i] = 1.0 - (1.0 - q0[i]) * x;
             }
-            set_ews(&mut self.model.ews[t], &self.own_event_chances[t], &self.uncertain_targets, &q);
-            joint_eval_in(&self.model, t, &[0.0], &pre, ntar, false, false, Some(&mut ext), &mut sx);
+            set_ews(&mut self.folded_events[t], &self.model.ews[t], &self.uncertain_targets, &q);
+            joint_eval_in(self.model, self.joint_query(t), &pre, ntar, false, false, Some(&mut ext), &mut sx);
             for o in 0..no {
                 corners[o][c] = ext.per_outfit[o];
             }

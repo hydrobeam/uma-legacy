@@ -14,10 +14,23 @@ pub(super) mod reference;
 pub(crate) mod upper;
 /// The trainee and ordered inheritance chances to evaluate against one deck.
 #[derive(Clone, Copy)]
-struct JointQuery<'chance> {
-    /// Index in `Model::opts` and `Model::ews`.
-    trainee: crate::uma::UmaIndex,
-    inheritance_chances: &'chance [f64],
+pub(crate) struct JointQuery<'chance> {
+    /// Index in `Model::opts`.
+    pub(crate) trainee: crate::uma::UmaIndex,
+    pub(crate) inheritance_chances: &'chance [f64],
+    /// Per outfit and uncertain target: own events, or the career's folded event/inheritance chances.
+    pub(crate) event_chances: &'chance [Vec<f64>],
+}
+
+impl<'chance> JointQuery<'chance> {
+    /// A loop search keeps inheritance separate from the model's own-event chances.
+    pub(crate) fn unfolded(
+        model: &'chance Model,
+        trainee: crate::uma::UmaIndex,
+        inheritance_chances: &'chance [f64],
+    ) -> Self {
+        Self { trainee, inheritance_chances, event_chances: &model.ews[trainee] }
+    }
 }
 
 /// Which exact landing probabilities the caller needs.
@@ -47,8 +60,8 @@ pub(super) struct ChainEntry {
     pub(super) source_index: Option<usize>,
 }
 
-/// Exact chances that all targets land, and all but one, for trainee `u` with one deck, at each inheritance chance in
-/// `inheritance_chances`: P(all), P(all but one), and the outfit option in `model.opts[u]` per q, choosing the
+/// Exact chances that all targets land, and all but one, for `query.trainee` with one deck, using her explicit
+/// `event_chances` and ordered `inheritance_chances`: P(all), P(all but one), and the outfit option per q, choosing the
 /// higher P(all).
 /// `entries`: the deck's sources and chain kinds; `filler`: cards without target hints, which still take chain
 /// slots (as 2-link SRs). The per-target odds (`src_miss`) are the marginals of the same model; the metric the
@@ -60,20 +73,18 @@ pub(super) struct ChainEntry {
 /// dependence is included in the same enumeration.
 pub(super) fn joint(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<TargetSources>],
     filler: usize,
     requested_target_count: usize,
     all_but_one: bool,
 ) -> Vec<JointChances> {
-    joint_b(model, u, inheritance_chances, entries, filler, requested_target_count, all_but_one)
+    joint_b(model, query, entries, filler, requested_target_count, all_but_one)
 }
 /// `joint` with the sources owned or borrowed (it only reads them)
 pub(crate) fn joint_b<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<S>],
     filler: usize,
     requested_target_count: usize,
@@ -81,7 +92,7 @@ pub(crate) fn joint_b<S: std::borrow::Borrow<TargetSources>>(
 ) -> Vec<JointChances> {
     joint_checked(
         model,
-        JointQuery { trainee: u, inheritance_chances },
+        query,
         entries,
         filler,
         JointOptions { target_count: requested_target_count, all_but_one, marginals: true },
@@ -100,7 +111,7 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
     if sb_check() {
         let er: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
-        if let Some(sv) = state_value(model, query.trainee, query.inheritance_chances, &er, filler) {
+        if let Some(sv) = state_value(model, query, &er, filler) {
             SBCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 for (v, x) in sv.iter().zip(&r) {
@@ -121,7 +132,7 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
     if cf_check() > 0.0 {
         let er: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
-        if let Some(sv) = state_value_cf(model, query.trainee, query.inheritance_chances, &er, filler) {
+        if let Some(sv) = state_value_cf(model, query, &er, filler) {
             CFCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 for (v, x) in sv.iter().zip(&r) {
@@ -142,7 +153,7 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
             .iter()
             .map(|entry| SourceEntry { sources: entry.sources.borrow().clone(), kind: entry.kind })
             .collect();
-        let x = joint_trainee_ref(model, query.trainee, query.inheritance_chances, &own, filler, options.target_count);
+        let x = joint_trainee_ref(model, query, &own, filler, options.target_count);
         for (a, b) in r.iter().zip(&x) {
             let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
             assert!(
@@ -176,8 +187,7 @@ pub(crate) struct JointExt {
 /// targets landing (bit k = uncertain target k), 2^nu entries each. None leaves every number as it is.
 pub(crate) fn joint_fast<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<S>],
     filler: usize,
     requested_target_count: usize,
@@ -186,7 +196,7 @@ pub(crate) fn joint_fast<S: std::borrow::Borrow<TargetSources>>(
 ) -> Vec<JointChances> {
     evaluate_joint(
         model,
-        JointQuery { trainee: u, inheritance_chances },
+        query,
         entries,
         filler,
         JointOptions { target_count: requested_target_count, all_but_one, marginals: true },

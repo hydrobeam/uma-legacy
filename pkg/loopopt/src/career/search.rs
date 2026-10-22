@@ -176,8 +176,8 @@ impl Env<'_> {
     }
     /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
     /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
-    /// took). The model state after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over the pairs left
-    /// it (every reader of the model state sets it first)
+    /// took). The folded buffer after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over the pairs left
+    /// it (every reader of the folded buffer sets it first)
     pub(crate) fn ranked_pairs(
         &mut self,
         p: &Pool,
@@ -200,7 +200,8 @@ impl Env<'_> {
     fn ceiling_at(&mut self, t: UmaIndex, q: &[f64], c: f64, rho: f64, fixed: f64) -> f64 {
         self.set_trainee(t, q);
         let (dw, dg) = self.deck_odds_ceilings[t].as_ref().unwrap();
-        let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
+        let chances = self.deck_chances();
+        let pv = (0..self.model.n_outfits(t)).map(|o| chances.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
         rho * c * fixed * pv
     }
     /// `solve`'s candidates: per trainee of `trainees` with legal deck odds (in order; `tp` her position), per legal pair
@@ -209,7 +210,7 @@ impl Env<'_> {
     /// with what does not depend on the trainee computed once per pair (the parents' race parts and relation points
     /// between them, the carrier counts and so the spark scale c) or once per trainee and legacy (her relation points
     /// with it, its grandparent slots' miss factors). A slot without a spark of target k multiplies by 1 where
-    /// `inherit` skips it (exact), and every model state `ceiling` leaves (`set_trainee` at each candidate's q in
+    /// `inherit` skips it (exact), and every folded buffer `ceiling` leaves (`set_trainee` at each candidate's q in
     /// turn) is the same.
     /// `keep`: a filter on the pairs (a, b) beside the rules (`solve`: every pair).
     pub(crate) fn gen_cands<C>(
@@ -359,7 +360,7 @@ impl Env<'_> {
                     }
                     q[k] = inherit_q(miss, mix2);
                 }
-                // `ceiling_at` without writing the model state: per outfit `outfit_fast` at q = 0 on the hint chances
+                // `ceiling_at` without writing the folded buffer: per outfit `outfit_fast` at q = 0 on the hint chances
                 // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its fold
                 // (an open factor: ew = 1 - (1 - e)(1 - q_k), white = GEN_WHITE (1 - (1 - dw)(1 - ew)), dg GOLD + (1 - dg) white)
                 for k in 0..nq.len() {
@@ -409,7 +410,7 @@ impl Env<'_> {
             let (gg, gw) = (crate::skills::GEN_GOLD, crate::skills::GEN_WHITE);
             let ft: Vec<Vec<Fac>> = self.outfit_coverage[t]
                 .iter()
-                .zip(&self.own_event_chances[t])
+                .zip(&self.model.ews[t])
                 .map(|(st, e0)| {
                     (0..st.len())
                         .map(|k| match st[k] {
@@ -439,7 +440,7 @@ impl Env<'_> {
                 t,
             };
             let last = trainee_cands(&cx, &mut q, &mut nq, &mut out, &mut mk);
-            // the model state the last candidate's `ceiling` left (q still holds its chances)
+            // the folded buffer the last candidate's `ceiling` left (q still holds its chances)
             if last {
                 self.set_trainee(t, &q);
             }
@@ -601,12 +602,10 @@ impl Env<'_> {
             }
             let (q, c) = self.lineage_q(p, lineage);
             // (the ceiling this candidate was ranked and stopped by is `ceiling` at these chances, to the bit:
-            // `gen_cands`' claim, checked with the model state put back)
+            // `gen_cands`' claim; only the trainee's reusable folded buffer changes)
             debug_assert!(
                 {
-                    let ew = self.model.ews[t].clone();
                     let ub = self.ceiling(t, &q, c);
-                    self.model.ews[t] = ew;
                     ub.map(f64::to_bits) == Some(cands[ci].ub.to_bits())
                 },
                 "gen_cands' ceiling of ({t}, {a}, {b}) is not ceiling(lineage)"
@@ -798,7 +797,7 @@ fn dominance_lists(p: &Pool) -> Vec<Vec<usize>> {
 ///   hold F's (D among them), so its best is at least v from the same decks in the same order up to D; its band
 ///   (decks with rho x product >= its best) is within F's, every deck of which F scored or ruled out against a
 ///   lower best, and the starts F did not have are decks legal at q, at most v (F's search is exact under the cap).
-///   So R is Done(v, D) with the same floats (the same model state, `set_trainee` at the same q); a tie or lower,
+///   So R is Done(v, D) with the same floats (the same folded buffer, `set_trainee` at the same q); a tie or lower,
 ///   it goes into `done` exactly where R's own search would have put it.
 /// - Bounded at th1: no deck above F's seed, or the best product deck below th1 / (rho c (1 + 1e-9)); a higher bar
 ///   gives a higher seed, so R is Bounded too (no `ruled` entry: R's would only repeat what F's proves).
@@ -821,7 +820,7 @@ type TwinKey = (u16, Vec<u64>, u64);
 #[derive(Clone, Copy)]
 struct TwinSearch<'search> {
     trainee: UmaIndex,
-    /// Her inheritance chances q, already folded into the model.
+    /// Her inheritance chances q, already folded into the trainee buffer.
     chances: &'search [f64],
     /// C, the spark scale.
     spark_scale: f64,

@@ -553,7 +553,7 @@ impl ExactAnchorChances {
     fn rise_inputs<'rise>(&'rise self, environment: &'rise Env) -> RiseInputs<'rise> {
         RiseInputs {
             outfit_coverage: &environment.outfit_coverage[self.lineage.trainee],
-            event_chances: &environment.own_event_chances[self.lineage.trainee],
+            event_chances: &environment.model.ews[self.lineage.trainee],
             uncertain_targets: &environment.uncertain_targets,
             base_misses: &self.base_misses,
             star_misses: &self.star_misses,
@@ -1023,7 +1023,7 @@ pub(crate) fn outcome_hi(
         }
         // her outfits' skill coverage and own chances (as `Env::rise` reads them)
         let (outfit_coverage, event_chances) =
-            (&simulator.env.outfit_coverage[candidate_trainee], &simulator.env.own_event_chances[candidate_trainee]);
+            (&simulator.env.outfit_coverage[candidate_trainee], &simulator.env.model.ews[candidate_trainee]);
         scratch.relation_points.clear(); // (`Env::lineage_qc`'s table: another trainee)
         // the main search's found careers of her deck class that it fully checked (`found_anchors`)
         let deck_class = simulator.env.deck_class[candidate_trainee];

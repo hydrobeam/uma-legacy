@@ -6,7 +6,7 @@ use crate::deck::chains::{
 use crate::deck::hints::{hint_base, hint_miss, hint_spec, miss_draws};
 use crate::deck::joint::reference::joint_trainee_ref;
 use crate::deck::joint::upper::upper_na;
-use crate::deck::joint::{JointExt, LandPre, joint, joint_fast, land_factor};
+use crate::deck::joint::{JointExt, JointQuery, LandPre, joint, joint_fast, land_factor};
 use crate::deck::sources::{
     ChainOutcome, EventOutcome, Group, SourceEntry, Sources, TargetReward, TargetSources, TrainingHint, deck_entries,
     group_gh, group_nuod, group_nuod_lvl, src_miss,
@@ -424,8 +424,16 @@ fn joint_fast_matches_reference() {
     ];
     for fill in [0usize, 2] {
         for u in [0, 5, 20].map(crate::uma::UmaIndex) {
-            let x = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), true, None);
-            let y = joint_trainee_ref(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len());
+            let x = joint_fast(
+                &m,
+                JointQuery::unfolded(&m, u, &[0.1, 0.5, 0.9]),
+                &ents,
+                fill,
+                sj.targets.len(),
+                true,
+                None,
+            );
+            let y = joint_trainee_ref(&m, JointQuery::unfolded(&m, u, &[0.1, 0.5, 0.9]), &ents, fill, sj.targets.len());
             for (p, r) in x.iter().zip(&y) {
                 assert!(
                     (p.all - r.all).abs() < 1e-13
@@ -434,7 +442,15 @@ fn joint_fast_matches_reference() {
                     "fill {fill} uma {u}: {p:?} vs {r:?}"
                 );
             }
-            let z = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), false, None);
+            let z = joint_fast(
+                &m,
+                JointQuery::unfolded(&m, u, &[0.1, 0.5, 0.9]),
+                &ents,
+                fill,
+                sj.targets.len(),
+                false,
+                None,
+            );
             for (p, r) in z.iter().zip(&y) {
                 assert!((p.all - r.all).abs() < 1e-13);
             }
@@ -491,10 +507,18 @@ fn career_fold_and_scale() {
     let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1e-300);
     for u in [0, 5, 20].map(crate::uma::UmaIndex) {
         for q in [0.1, 0.6] {
-            let x = joint_fast(&m, u, &[q], &ents, 1, sj.targets.len(), true, None)[0];
-            let mut f = Model::new(&d, &sk, &sj);
-            f.ews[u] = m.ews[u].iter().map(|o| o.iter().map(|e| 1.0 - (1.0 - e) * (1.0 - q)).collect()).collect();
-            let y = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, None)[0];
+            let x = joint_fast(&m, JointQuery::unfolded(&m, u, &[q]), &ents, 1, sj.targets.len(), true, None)[0];
+            let folded: Vec<Vec<f64>> =
+                m.ews[u].iter().map(|o| o.iter().map(|e| 1.0 - (1.0 - e) * (1.0 - q)).collect()).collect();
+            let y = joint_fast(
+                &m,
+                JointQuery { trainee: u, inheritance_chances: &[0.0], event_chances: &folded },
+                &ents,
+                1,
+                sj.targets.len(),
+                true,
+                None,
+            )[0];
             assert!(
                 rel(y.all, x.all) < 1e-12 && rel(y.all_but_one, x.all_but_one) < 1e-12 && x.outfit == y.outfit,
                 "fold uma {u} q {q}: {x:?} vs {y:?}"
@@ -506,7 +530,15 @@ fn career_fold_and_scale() {
                 sets: vec![],
                 per_outfit: vec![],
             };
-            let z = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, Some(&mut ext))[0];
+            let z = joint_fast(
+                &m,
+                JointQuery { trainee: u, inheritance_chances: &[0.0], event_chances: &folded },
+                &ents,
+                1,
+                sj.targets.len(),
+                true,
+                Some(&mut ext),
+            )[0];
             let c = su.iter().product::<f64>() * 1.1f64.powi(-2);
             assert!(rel(z.all, c * y.all) < 1e-12 && z.outfit == y.outfit, "scale uma {u}: {} vs {}", z.all, c * y.all);
             assert!(z.all_but_one >= z.all && z.all_but_one <= 1.0);
@@ -539,7 +571,7 @@ fn career_fold_and_scale() {
             sets: vec![0.0],
             per_outfit: vec![],
         };
-        let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
+        let j = joint_fast(&m2, JointQuery::unfolded(&m2, u, &[0.3]), &ents2, 0, 2, true, Some(&mut ext))[0];
         let (m0, m1) = (ext.marginals[j.outfit * 2], ext.marginals[j.outfit * 2 + 1]);
         assert!(rel(m0 + m1, j.all + j.all_but_one) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.all, j.all_but_one);
         // the landed sets: they sum to 1, {both} is P(all), and each target's sets sum to its marginal
@@ -622,10 +654,10 @@ fn upper_bound_covers_exact() {
         for fill in [0usize, 1, 3] {
             for u in [0, 5, 20].map(crate::uma::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
-                let x = joint_fast(&m, u, &qs, ents, fill, sj.targets.len(), false, None);
+                let x = joint_fast(&m, JointQuery::unfolded(&m, u, &qs), ents, fill, sj.targets.len(), false, None);
                 let er: Vec<SourceEntry<&TargetSources>> =
                     ents.iter().map(|entry| SourceEntry { sources: &entry.sources, kind: entry.kind }).collect();
-                if let Some(ub) = upper_na(&m, u, &qs, &er, fill) {
+                if let Some(ub) = upper_na(&m, JointQuery::unfolded(&m, u, &qs), &er, fill) {
                     covered += 1;
                     for (i, y) in x.iter().enumerate() {
                         assert!(
@@ -710,8 +742,7 @@ fn unchecked_inline_event_disables_orthant_bound() {
     assert!(
         upper_na(
             &model,
-            crate::uma::UmaIndex(0),
-            &[0.0],
+            JointQuery::unfolded(&model, crate::uma::UmaIndex(0), &[0.0]),
             &[SourceEntry { sources: &src, kind: sb.kind(&card, None) }],
             0
         )
@@ -824,10 +855,10 @@ fn group_level_orthant_check() {
         for fill in [0usize, 2] {
             for u in [0, 5, 20].map(crate::uma::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
-                let x = joint_fast(&m, u, &qs, &ents, fill, sj.targets.len(), false, None);
+                let x = joint_fast(&m, JointQuery::unfolded(&m, u, &qs), &ents, fill, sj.targets.len(), false, None);
                 let er: Vec<SourceEntry<&TargetSources>> =
                     ents.iter().map(|entry| SourceEntry { sources: &entry.sources, kind: entry.kind }).collect();
-                let sv = state_value_cf(&m, u, &qs, &er, fill).unwrap();
+                let sv = state_value_cf(&m, JointQuery::unfolded(&m, u, &qs), &er, fill).unwrap();
                 for (i, y) in x.iter().enumerate() {
                     assert!(
                         sv[i] >= y.all * (1.0 - 1e-12),
@@ -878,8 +909,7 @@ fn joint_equals_product_without_correlation() {
         for q in [0.3, 0.75] {
             let j = joint(
                 &m,
-                u,
-                &[q],
+                JointQuery::unfolded(&m, u, &[q]),
                 &[
                     SourceEntry { sources: a.clone(), kind: ChainKind::NONE },
                     SourceEntry { sources: b.clone(), kind: ChainKind::NONE },

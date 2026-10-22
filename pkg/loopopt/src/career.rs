@@ -206,10 +206,9 @@ struct Env<'data> {
     data: &'data Data,
     /// The job's targets, owned umas and the rank's star mix.
     skill_job: &'data SkillJob,
-    model: Model<'data>,
-    /// Per uma, per outfit option, the chance her own events hint each uncertain target's white (`Model::ews` before
-    /// any inheritance chance is folded in).
-    own_event_chances: UmaTable<Vec<Vec<f64>>>,
+    model: &'data Model<'data>,
+    /// Reusable per-trainee buffers: own-event chances with the current lineage's inheritance folded in.
+    folded_events: UmaTable<Vec<Vec<f64>>>,
     /// The uncertain targets (not guaranteed gold), as job-target indices.
     uncertain_targets: Vec<usize>,
     /// The other targets (guaranteed gold), as job-target indices.
@@ -304,7 +303,8 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     CHAIN_EVENTS.with(|c| c.set(jobs.deck.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
     let t_all = Instant::now();
     let input = JobInputs { data: d, skills: sk, cards: cr, job: v };
-    let CareerSetup { mut env, trainees, setup_fingerprint } = match career_setup(&input, &jobs) {
+    let model = Model::new(d, sk, &jobs.skills);
+    let CareerSetup { mut env, trainees, setup_fingerprint } = match career_setup(&input, &jobs, &model) {
         Ok(setup) => setup,
         Err(error) => return error,
     };
@@ -415,11 +415,16 @@ struct CareerSetup<'data> {
 /// The job's Env: the model, the deck space, each owned uma's deck-odds ceiling, the kept deck memo of this setup and
 /// the deck classes. Errors (no trainee, fewer than two legacies, a deck space the search refuses) come before
 /// anything kept is touched.
-fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Result<CareerSetup<'data>, Value> {
+fn career_setup<'data>(
+    input: &JobInputs<'data>,
+    jobs: &'data CareerJobs,
+    model: &'data Model<'data>,
+) -> Result<CareerSetup<'data>, Value> {
     let (d, sk, cr, v) = (input.data, input.skills, input.cards, input.job);
     let (sj, dj, cj) = (&jobs.skills, &jobs.deck, &jobs.career);
-    let model = Model::new(d, sk, sj);
-    let own_event_chances = model.ews.clone();
+    let folded_events = UmaTable(
+        model.ews.iter().map(|outfits| outfits.iter().map(|chances| vec![0.0; chances.len()]).collect()).collect(),
+    );
     let uncertain_groups: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
     let uncertain_count = uncertain_groups.len();
     let target_count = sj.targets.len();
@@ -473,7 +478,7 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
         data: d,
         skill_job: sj,
         model,
-        own_event_chances,
+        folded_events,
         uncertain_targets,
         fixed_targets,
         target_count,
@@ -566,7 +571,7 @@ fn assign_deck_classes(env: &mut Env) {
             k.extend(o.iter().map(|&x| u64::from(x)));
         }
         k.push(u64::MAX);
-        for o in &env.own_event_chances[u] {
+        for o in &env.model.ews[u] {
             k.push(o.len() as u64);
             k.extend(o.iter().map(|x| x.to_bits()));
         }

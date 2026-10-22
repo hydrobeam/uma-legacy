@@ -6,8 +6,8 @@ use crate::data::Data;
 use crate::deck::caps::src_class;
 use crate::deck::dominance::{DeckId, PDeck};
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
-use crate::deck::joint::joint_b;
 use crate::deck::joint::upper::upper_na;
+use crate::deck::joint::{JointQuery, joint_b};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::optimize::members;
 use crate::uma::UmaIndex;
@@ -108,7 +108,14 @@ impl Multi<'_> {
         let k = src_class(e.iter().map(|y| &*y.sources));
         let mut sv = 0.0;
         for t in 0..sc.member_count {
-            let j = joint_b(model, f[t], &sc.chances_by_member[t], &e, fl, self.requested_target_count, false);
+            let j = joint_b(
+                model,
+                JointQuery::unfolded(model, f[t], &sc.chances_by_member[t]),
+                &e,
+                fl,
+                self.requested_target_count,
+                false,
+            );
             for (i, &q) in sc.chances_by_member[t].iter().enumerate() {
                 let p = self.fixed * model.trainee_fast(f[t], q, &x.dw, &x.dg);
                 if p > 0.0 {
@@ -144,7 +151,7 @@ impl Multi<'_> {
         }
         if sc.decks.is_empty() {
             let SearchOutcome { decks: r, .. } = space.search(
-                model,
+                &model.deck_chances(),
                 members(&f),
                 &sc.member_ids,
                 &[SearchClause { lineages: sc.lineages.clone(), threshold: 0.0 }],
@@ -166,7 +173,7 @@ impl Multi<'_> {
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete } = space.search(
-            model,
+            &model.deck_chances(),
             members(&f),
             &sc.member_ids,
             &[SearchClause { lineages: sc.lineages.clone(), threshold: sc.need() }],
@@ -204,8 +211,13 @@ impl Multi<'_> {
                 let t1 = Instant::now();
                 let ub: Option<f64> = (0..sc.member_count)
                     .map(|t| {
-                        upper_na(model, f[t], &sc.chances_by_member[t], &e, sel.filler_cards)
-                            .map(|b| b.iter().sum::<f64>())
+                        upper_na(
+                            model,
+                            JointQuery::unfolded(model, f[t], &sc.chances_by_member[t]),
+                            &e,
+                            sel.filler_cards,
+                        )
+                        .map(|b| b.iter().sum::<f64>())
                     })
                     .sum();
                 tally.bound_seconds.set(tally.bound_seconds.get() + t1.elapsed().as_secs_f64());

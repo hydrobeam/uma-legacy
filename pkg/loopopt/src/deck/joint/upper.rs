@@ -1,8 +1,8 @@
 //! The negative-association upper bound on a deck's joint P(all) (`upper_na`), over the per-chain target tables it
 //! builds. The landing factor and miss rows it shares with the exact sum are in `joint`; the state-conditioned bound
-//! is in `capfree`.
+//! is in `state_bound`.
 use crate::deck::chains::{ChainKind, event_pmf_job, key_level};
-use crate::deck::joint::{MissFactors, land_factor};
+use crate::deck::joint::{JointQuery, MissFactors, land_factor};
 use crate::deck::sources::{
     LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint, group_gh, group_nuod,
 };
@@ -29,8 +29,7 @@ struct BoundChain {
 /// Returns None when either dependence check is unproven; callers must then use a different bound or score exactly.
 pub(crate) fn upper_na(
     model: &Model,
-    trainee: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Option<Vec<f64>> {
@@ -158,17 +157,18 @@ pub(crate) fn upper_na(
         }
     }
     let event_probabilities = event_pmf_job();
-    let outfits = &model.opts[trainee];
+    let outfits = &model.opts[query.trainee];
     let fixed = model.fixed_factor();
     let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 {
-        land_factor(outfits[o].coverage[k], model.ews[trainee][o][k], q, ng, nh)
+        land_factor(outfits[o].coverage[k], query.event_chances[o][k], q, ng, nh)
     };
     let pair_marginals: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &chain_levels) {
         (Some((a, b)), Some(k)) => Some(k.pair_margs(a, b)),
         _ => None,
     };
     Some(
-        inheritance_chances
+        query
+            .inheritance_chances
             .iter()
             .map(|&q| {
                 let mut best = 0.0f64;
