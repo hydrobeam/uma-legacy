@@ -1,6 +1,8 @@
 //! Per-uma exact values, chance-grid ceilings and skyline clusters, including shared product ceilings.
 //! These tables bound deck and loop searches; they do not enumerate loop structures or report results.
 use super::{CardEntryKey, DeckSources, ExactQueryKey, Multi, SelectionKey, lin_of, qkey};
+use crate::Instant;
+use crate::data::{Data, Sched, probs, wval};
 use crate::deck::caps::src_class;
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
 use crate::deck::joint::upper::upper_na;
@@ -8,9 +10,9 @@ use crate::deck::joint::{JointChances, joint, joint_b};
 use crate::deck::kept::{Cl, DeckEval, DeckId, PDeck, k_filter, split};
 use crate::deck::sources::{SourceEntry, Sources, TargetSources};
 use crate::deck::space::{HintCoordinate, UCHK};
+use crate::optimize::{members, pair_ceilings};
 use crate::skills::{Model, OutfitOption};
 use crate::uma::{UmaIndex, UmaTable};
-use crate::{Data, Instant, Sched, members, pair_ceilings, probs, wval};
 use std::borrow::Cow;
 use std::rc::Rc;
 

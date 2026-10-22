@@ -59,7 +59,6 @@
 //! keeps her own schedule (the career model's); the loop planner coordinates schedules across members, this does not.
 //! The loop adds every veteran without dominance pruning. Its rotation keeps the better of the previous veteran and
 //! the new one for the next two loop careers (`rot_update`), keeping the previous veteran on a tie.
-use crate::Data;
 use crate::career::cache::Cache;
 use crate::career::inherit::{ExactOptions, Inheritance, RelOf, SlotSink, aff_factor, inherit, insp_miss, spark_scale};
 use crate::career::outcomes::interp_in;
@@ -70,6 +69,7 @@ use crate::career::search::{Bar, DeckRes, Ref};
 use crate::career::sim::play::PathState;
 use crate::career::state::ProductProof;
 use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
+use crate::data::Data;
 use crate::deck::space::SelectedDeck;
 use crate::deck::{CardsRaw, d_true};
 use crate::skills::{GEN_GOLD, SkillsRaw};

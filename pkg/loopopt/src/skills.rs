@@ -17,11 +17,8 @@
 //! Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages, the trainee her own grandparent twice;
 //! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
 //! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
+use crate::data::Data;
 use crate::uma::{UmaIndex, UmaTable};
-use crate::{
-    Choice, Data, NT, Sched, chart_race_name, interchangeable, option_chance, row_label, short_name, streak_penalty,
-    when,
-};
 use serde::Deserialize;
 use serde_json::{Value, json};
 /// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
@@ -587,86 +584,6 @@ impl OutfitPre {
         sel(g * GEN_GOLD + (1.0 - g) * white, GEN_GOLD, m2)
     }
 }
-/// Structured schedule chart: shared G1s (affinity) and optional G1s (one runner, race sparks only).
-pub(crate) fn chart_rows(d: &Data, members: &[UmaIndex], schedules: &[Sched]) -> Value {
-    let n = members.len();
-    let streaks: Vec<Vec<usize>> = (0..n)
-        .map(|i| {
-            let mut streak = 0;
-            (0..NT)
-                .map(|turn| {
-                    match schedules[i][turn] {
-                        Choice::Rest => streak = 0,
-                        Choice::Opt(_) => streak = (streak + 1).min(6),
-                    };
-                    streak
-                })
-                .collect()
-        })
-        .collect();
-    let mut runners: Vec<Vec<bool>> = vec![vec![false; n]; d.nr];
-    for i in 0..n {
-        for turn in 0..NT {
-            if let Choice::Opt(option) = schedules[i][turn] {
-                let chosen = &d.umas[members[i]].opts[turn][option as usize];
-                if chosen.race >= 0 {
-                    runners[chosen.race as usize][i] = true;
-                }
-            }
-        }
-    }
-    let mut rows: Vec<(usize, i32)> = vec![];
-    for turn in 0..NT {
-        for i in 0..n {
-            if let Choice::Opt(option) = schedules[i][turn] {
-                let chosen = &d.umas[members[i]].opts[turn][option as usize];
-                if chosen.race >= 0 && !rows.contains(&(turn, chosen.race)) {
-                    rows.push((turn, chosen.race));
-                }
-            }
-        }
-    }
-    rows.sort_unstable();
-    let out: Vec<Value> = rows
-        .iter()
-        .map(|&(turn, race)| {
-            let mut runner_count = 0;
-            let cells: Vec<Value> = (0..n)
-                .map(|i| match schedules[i][turn] {
-                    Choice::Opt(option) => {
-                        let chosen = &d.umas[members[i]].opts[turn][option as usize];
-                        if chosen.race == race {
-                            runner_count += 1;
-                            let streak = streaks[i][turn];
-                            // Win chance accounts for aptitude grades (distance + surface, out of 110) and consecutive races.
-                            json!({"p": (option_chance(d, chosen, streak) * 100.0).round(), "goal": chosen.goal,
-                           "apt": 110 - chosen.bp, "row": streak,
-                           "pen": streak_penalty(d, chosen.goal, streak)})
-                        } else {
-                            Value::Null
-                        }
-                    }
-                    Choice::Rest => Value::Null,
-                })
-                .collect();
-            let shared = runners[race as usize].iter().filter(|x| **x).count() >= 2;
-            let alts: Vec<String> = interchangeable(d, members, schedules, turn, race)
-                .iter()
-                .map(|&alternative| chart_race_name(&d.race_names[alternative as usize]))
-                .collect();
-            json!({"race": row_label(d, members, schedules, turn, race), "when": when(turn), "year": turn / 24,
-               "shared": shared, "cells": cells, "runners": runner_count, "alts": alts})
-        })
-        .collect();
-    Value::Array(out)
-}
-
-pub(crate) fn member_json(d: &Data, m: &[UmaIndex]) -> Vec<Value> {
-    m.iter()
-        .map(|&x| json!({"id": d.umas[x].id, "name": d.umas[x].name, "short": short_name(&d.umas[x].name)}))
-        .collect()
-}
-
 /// Checks a job's `sizes` and `require` against the pool: an error message, or the smallest size searched.
 pub(crate) fn check_sizes(sizes: &[usize], pool: usize, req: usize) -> Result<usize, String> {
     if sizes.is_empty() || sizes.iter().any(|&s| s != 3 && s != 4) {
@@ -686,7 +603,7 @@ pub(crate) fn check_sizes(sizes: &[usize], pool: usize, req: usize) -> Result<us
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load, rel_tables};
+    use crate::data::{load, rel_tables};
     use std::sync::OnceLock;
     fn data() -> &'static Data {
         static D: OnceLock<Data> = OnceLock::new();

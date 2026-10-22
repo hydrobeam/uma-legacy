@@ -1,3 +1,4 @@
+use crate::data::load;
 use crate::deck::capfree::state_value_cf;
 use crate::deck::chains::{
     CHAIN_EVENTS, ChainKind, chain_marginals, chain_marginals_dense, chain_marginals_ref, chain_states, event_pmf,
@@ -13,8 +14,8 @@ use crate::deck::sources::{
 };
 use crate::deck::space::{MAX_KINDS, kinds_all, top_asc, top_desc};
 use crate::deck::*;
+use crate::skills;
 use crate::skills::{GEN_GOLD, Model, SkillJob, SkillsRaw};
-use crate::{load, skills};
 use serde_json::{Value, json};
 /// A three-link chain card played to its end.
 const THREE_LINKS: ChainKind = ChainKind { links: 3, stop: 3, stop_risk: 0 };

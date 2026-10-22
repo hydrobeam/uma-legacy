@@ -1,10 +1,10 @@
 //! Candidate searches, rotation setup and proxy limits.
-use crate::Data;
 use crate::career::plan::{ParentPool, PlanJob};
 use crate::career::pool::Pool;
 use crate::career::search::{Bar, Found, RankedPair};
 use crate::career::sim::{DeckRequest, Sim, SimJob, SimulationOptions, SimulationRoster};
 use crate::career::{Ancestor, Env, JobInputs, Legacy, Lineage};
+use crate::data::Data;
 use crate::skills::SkillJob;
 use serde_json::{Value, json};
 pub(crate) const fn p_margin() -> f64 {

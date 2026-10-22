@@ -26,17 +26,18 @@
 //! goals, race clashes and streak penalties as the loop scheduler; the report lists every G1 she could enter.
 //!
 //! The next career the page picks (`next`) is `plan::index_rule`; the simulator (`simulate`) is `sim`.
+use crate::Instant;
 use crate::career::decks::{CfStats, DECK_KEEP, DECK_KEEP_CAP, DeckKey, DeckMemo, JOB_NO};
 use crate::career::pool::Pool;
 use crate::career::search::{Ref, SearchRequest, Solved, solve_kept};
 use crate::career::state::{ProductProof, SEEN, SEEN_KEEP, json_without, setup_fp, setup_hash, state_in, state_out};
+use crate::data::Data;
 use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P};
 use crate::deck::sources::{deck_entries, src_miss};
 use crate::deck::space::{DeckSpace, SelectedDeck, deck_space};
 use crate::deck::{Card, CardsRaw, DeckJob, d_true};
 use crate::skills::{Model, SkillJob, SkillsRaw};
 use crate::uma::{UmaIndex, UmaTable};
-use crate::{Data, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -758,7 +759,7 @@ mod tests {
     fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
         let r = concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/");
         let rd = |f: &str| std::fs::read_to_string(format!("{r}{f}")).unwrap();
-        let d = crate::load_str(&rd("data.json"));
+        let d = crate::data::load_str(&rd("data.json"));
         let sk: SkillsRaw = serde_json::from_str(&rd("web_skills.json")).unwrap();
         let cr: CardsRaw = serde_json::from_str(&rd("web_cards.json")).unwrap();
         let mut v: Value = serde_json::from_str(
@@ -865,7 +866,7 @@ mod tests {
             let ks: Vec<usize> = (0..env.target_count).collect();
             let trainees: Vec<UmaIndex> = env.owned.clone();
             let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<u64>>();
-            let (mut n, mut tg, mut tg_t) = (0usize, vec![], crate::NONE);
+            let (mut n, mut tg, mut tg_t) = (0usize, vec![], crate::optimize::NONE);
             for fix in [vec![], vec![2usize]] {
                 let cands = env.gen_cands(&p, &fix, &trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
                 assert!(!cands.is_empty());

@@ -2,7 +2,9 @@
 use crate::career::inherit::aff_factor;
 use crate::career::pool::{Pool, RaceWin};
 use crate::career::{Env, Lineage};
-use crate::{Choice, NT, Uma, best_response, chart_race_name, pk, probs, scored_position, streak_penalty, when};
+use crate::chart::{chart_race_name, when};
+use crate::data::{Choice, NT, Uma, pk, probs, scored_position, streak_penalty};
+use crate::schedule::best_response;
 use serde_json::{Value, json};
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
 const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];
@@ -230,8 +232,11 @@ impl Env<'_> {
             }
         }
         // her own race table (pinks counted): solved directly (the memo is keyed by uma id)
-        let br =
-            if pu.is_some() { crate::best_response_solve(d, u, &wr, None) } else { best_response(d, u, &wr, None) };
+        let br = if pu.is_some() {
+            crate::schedule::best_response_solve(d, u, &wr, None)
+        } else {
+            best_response(d, u, &wr, None)
+        };
         let Some((s, _)) = br else { return RaceSchedule { rows: json!([]), win_chances: vec![0.0; d.nr] } };
         let wp = probs(d, u, &s);
         let won = |x: usize, r: usize| p.veterans[x].wins.iter().find(|w| w.race == r).map_or(0.0, |w| w.chance);

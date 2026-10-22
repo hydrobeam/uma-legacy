@@ -4,13 +4,16 @@ use self::shared::SharedResult;
 use self::tables::{
     ByBound, ExactCacheEntry, ExactCeiling, Grid, NG, class_clusters, classes, full_clusters, pair_table,
 };
+use crate::Instant;
+use crate::data::{Choice, Data, NT, Sched, Uma, feasible};
 use crate::deck::kept::{Cl, Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
 use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::optimize::{Res, members};
+use crate::schedule::best_response;
 use crate::skills::{MemberLineage, Model, SkillJob, check_sizes, lins};
 use crate::uma::{UmaIndex, UmaTable};
-use crate::{Choice, Data, Instant, NT, Res, Sched, Uma, best_response, feasible, members};
 use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};

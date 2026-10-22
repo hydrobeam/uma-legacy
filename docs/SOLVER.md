@@ -5,10 +5,18 @@ The Rust crate in `pkg/loopopt/`; crate paths below are relative to it, while `d
 era). The CLI resolves a job's file names from the working directory; run it from the era's data folder.
 Building and running it: `docs/BUILD.md`.
 
-The loop search's modules:
+The affinity core and loop search's modules:
 
 | File | Holds |
 |---|---|
+| `src/lib.rs` | Crate wiring, deterministic hashing, the native/wasm clock and the public CLI entry point |
+| `src/data.rs` | Raw and loaded race data, schedule choices, relation tables, ceiling fingerprints, win probabilities and feasibility |
+| `src/schedule.rs` | Exact single-uma best responses, scratch buffers and scoped memo |
+| `src/optimize.rs` | Loop affinity scoring, ascent, group moves, local search and pairwise ceilings |
+| `src/chart.rs` | Race/member labels and structured schedule charts |
+| `src/cli.rs` | CLI jobs, event enrichment, kept-state persistence, dispatch and bound diagnostics |
+| `src/tests.rs` | Affinity-core correctness tests against independent fixtures and model invariants |
+| `src/skills.rs` | Skill targets, outfit choices and lineage inheritance probabilities |
 | `src/deck/multi.rs` | `Multi`, its inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
 | `src/deck/multi/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
 | `src/deck/multi/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
@@ -108,7 +116,7 @@ the pairwise-ceiling table `export/add_pb.py` merges in. The wasm interface (`sr
 
 ### Schedule chart
 
-A result's `schedule` (`skills::chart_rows`) lists races in calendar order, one cell per member (required non-G1 goal
+A result's `schedule` (`chart::chart_rows`) lists races in calendar order, one cell per member (required non-G1 goal
 races are not listed):
 - **Shared G1s:** races (by identity, in either year) run by 2+ members. Their expected shared wins contribute affinity. A shared row with one runner means the other members run that race in the other year; it need not be her second attempt.
 - **Unshared G1s:** run by one member only. They contribute no shared wins and can pass down race sparks. Skipping one never lowers affinity, since it can only shorten a streak, but a goal race may still be required.

@@ -1,4 +1,6 @@
 //! The joint deck and loop search (`run_deck`): structures in bands, schedules, ceilings and the shared-deck path.
+use crate::Instant;
+use crate::data::Data;
 use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P, ChainKind, chain_marginals};
 use crate::deck::kept::{DeckEval, Kept, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank};
 use crate::deck::multi::run_multi;
@@ -8,7 +10,6 @@ use crate::deck::sources::{
 use crate::deck::space::deck_space;
 use crate::deck::{CardsRaw, DeckJob, kmax_top};
 use crate::skills::{Model, SkillJob, SkillsRaw};
-use crate::{Data, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
