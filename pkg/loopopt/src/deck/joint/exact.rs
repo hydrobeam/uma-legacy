@@ -1,0 +1,591 @@
+//! The exact joint landing odds of one deck: `joint_prep` collapses its chain states and groups the coupled outcome
+//! groups once per deck, and `evaluate_prepared` sums them per inheritance chance and outfit, in reusable buffers
+//! (`JointScratch`). The unoptimized form `JOINT_CHECK` compares it with is in `reference`.
+use crate::deck::chains::{ChainKind, ChainState, chain_states};
+use crate::deck::joint::{ChainEntry, JointChances, JointExt, JointOptions, JointQuery, LandPre};
+use crate::deck::sources::{
+    ChainOutcome, EventOutcome, Group, SourceEntry, TargetReward, TargetSources, TrainingHint, group_gh,
+};
+use crate::skills::{GEN_GOLD, Model, OutfitOption};
+/// One landed-target subset and its probability in the current outcome product.
+#[derive(Clone, Copy)]
+struct SubsetProbability {
+    targets: usize,
+    probability: f64,
+}
+
+/// The deck-dependent part of `joint_fast`, before inheritance chances or outfit state are applied.
+/// Collapsed states retain first-seen order; each weight is summed in the original chain-state order.
+pub(crate) struct JointPrep<'group> {
+    /// Miss factors and coupled groups from sources outside the chains.
+    base: ChainFactors,
+    chains: Vec<ChainProgress>,
+    /// One class index per relevant chain position, and that collapsed state's probability.
+    states: Vec<CollapsedChainState>,
+    groups: Vec<CoupledGroup<'group>>,
+}
+struct CollapsedChainState {
+    /// Class index at each relevant chain position.
+    classes: Vec<u8>,
+    probability: f64,
+}
+
+/// Cumulative factors after a chain prefix, or from all sources outside the chains.
+struct ChainFactors {
+    no_gold: Vec<f64>,
+    no_hint: Vec<f64>,
+    coupled: Vec<usize>,
+}
+/// A chain position whose progress can change target factors. Progress before the next source-bearing link shares a class.
+struct ChainProgress {
+    position: usize,
+    levels: Vec<ChainFactors>,
+    class_of_progress: Vec<u8>,
+}
+/// A coupled group's ascending target indices and outcomes. The implicit no-reward outcome is last if above 1e-15.
+struct CoupledGroup<'group> {
+    targets: Vec<usize>,
+    outcomes: Vec<EventOutcome<&'group [TargetReward]>>,
+}
+pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
+    uncertain_count: usize,
+    entries: &[SourceEntry<S>],
+    filler: usize,
+) -> JointPrep<'_> {
+    fn add_group<'group>(
+        group: &'group Group,
+        groups: &mut Vec<CoupledGroup<'group>>,
+        coupled: &mut Vec<usize>,
+        no_gold: &mut [f64],
+        no_hint: &mut [f64],
+    ) {
+        let marginals = group_gh(group);
+        if marginals.len() >= 2 {
+            let mut outcomes: Vec<EventOutcome<&[TargetReward]>> = group
+                .iter()
+                .map(|outcome| EventOutcome { probability: outcome.probability, rewards: &*outcome.rewards })
+                .collect();
+            let rest = 1.0 - group.iter().map(|outcome| outcome.probability).sum::<f64>();
+            if rest > 1e-15 {
+                outcomes.push(EventOutcome { probability: rest, rewards: &[][..] });
+            }
+            groups.push(CoupledGroup { targets: marginals.iter().map(|entry| entry.0).collect(), outcomes });
+            coupled.push(groups.len() - 1);
+            return;
+        }
+        for (k, gold, any_hint) in marginals {
+            no_gold[k] *= 1.0 - gold;
+            no_hint[k] *= 1.0 - any_hint;
+        }
+    }
+    let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count]);
+    let mut base_coupled: Vec<usize> = vec![];
+    let mut groups: Vec<CoupledGroup> = vec![];
+    for SourceEntry { sources: src, .. } in entries {
+        let src: &TargetSources = src.borrow();
+        for &TrainingHint { target: k, probability: p } in &src.training_hints {
+            base_no_hint[k] *= 1.0 - p;
+        }
+        for group in &src.fixed_outcomes {
+            add_group(group, &mut groups, &mut base_coupled, &mut base_no_gold, &mut base_no_hint);
+        }
+    }
+    let mut chain_entries: Vec<ChainEntry> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.kind != ChainKind::NONE)
+        .map(|(i, entry)| ChainEntry { kind: entry.kind, source_index: Some(i) })
+        .collect();
+    for _ in 0..filler {
+        chain_entries.push(ChainEntry { kind: ChainKind::FILLER, source_index: None });
+    }
+    chain_entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.source_index.cmp(&b.source_index)));
+    let kinds: Vec<ChainKind> = chain_entries.iter().map(|entry| entry.kind).collect();
+    let states = if kinds.is_empty() {
+        std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
+    } else {
+        chain_states(&kinds)
+    };
+    let mut chains: Vec<ChainProgress> = vec![];
+    for (position, &ChainEntry { kind, source_index: entry }) in chain_entries.iter().enumerate() {
+        let Some(i) = entry else { continue };
+        let src: &TargetSources = entries[i].sources.borrow();
+        if src.chain_outcomes.is_empty() {
+            continue;
+        }
+        let (mut no_gold, mut no_hint, mut coupled) =
+            (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count], vec![]);
+        let mut levels =
+            vec![ChainFactors { no_gold: no_gold.clone(), no_hint: no_hint.clone(), coupled: coupled.clone() }];
+        let mut class_of_progress = vec![0u8];
+        for link in 1..=kind.stop {
+            let mut changed = false;
+            for ChainOutcome { link: group_link, outcomes: group } in &src.chain_outcomes {
+                if *group_link == link {
+                    add_group(group, &mut groups, &mut coupled, &mut no_gold, &mut no_hint);
+                    changed = true;
+                }
+            }
+            if changed {
+                levels.push(ChainFactors {
+                    no_gold: no_gold.clone(),
+                    no_hint: no_hint.clone(),
+                    coupled: coupled.clone(),
+                });
+            }
+            class_of_progress.push((levels.len() - 1) as u8);
+        }
+        if levels.len() > 1 {
+            chains.push(ChainProgress { position, levels, class_of_progress });
+        }
+    }
+    // Preserve first-seen order separately from the map: it controls the later floating-point sums.
+    let mut collapsed: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
+    let mut order: Vec<Vec<u8>> = vec![];
+    for ChainState { progress, probability } in states.iter() {
+        let key: Vec<u8> =
+            chains.iter().map(|chain| chain.class_of_progress[progress[chain.position] as usize]).collect();
+        if let Some(weight) = collapsed.get_mut(&key) {
+            *weight += probability;
+        } else {
+            collapsed.insert(key.clone(), *probability);
+            order.push(key);
+        }
+    }
+    let states = order
+        .into_iter()
+        .map(|key| {
+            let probability = collapsed[&key];
+            CollapsedChainState { classes: key, probability }
+        })
+        .collect();
+    JointPrep {
+        base: ChainFactors { no_gold: base_no_gold, no_hint: base_no_hint, coupled: base_coupled },
+        chains,
+        states,
+        groups,
+    }
+}
+/// Evaluate a prepared deck with fresh scratch. Disabling marginals leaves the extension's marginal buffer empty.
+pub(super) fn joint_eval(
+    model: &Model,
+    query: JointQuery,
+    prepared: &JointPrep,
+    options: JointOptions,
+    extension: Option<&mut JointExt>,
+) -> Vec<JointChances> {
+    evaluate_prepared(model, query, prepared, options, extension, &mut JointScratch::default())
+}
+#[derive(Clone, Copy)]
+struct LandingProbability {
+    all: f64,
+    all_but_one: f64,
+}
+
+/// `joint_eval`'s working buffers, kept by a caller that evaluates many times (`Env::corners`): each call sets every
+/// one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets' inner
+/// buffers are cleared where first used, as fresh ones are), so only their capacity carries over
+#[derive(Default)]
+pub(crate) struct JointScratch {
+    landed_sets: Vec<Vec<f64>>,
+    totals: Vec<LandingProbability>,
+    landing_factors: Vec<[f64; 3]>,
+    no_gold: Vec<f64>,
+    no_hint: Vec<f64>,
+    coupled_groups: Vec<usize>,
+    cluster_of_target: Vec<usize>,
+    hint_levels: Vec<u8>,
+    target_parents: Vec<usize>,
+    cluster_targets: Vec<Vec<usize>>,
+    cluster_groups: Vec<Vec<usize>>,
+    in_cluster: Vec<bool>,
+    all_land: Vec<f64>,
+    one_misses: Vec<f64>,
+    cluster_all_land: Vec<f64>,
+    cluster_one_misses: Vec<f64>,
+    outcome_indices: Vec<usize>,
+    cluster_distribution: Vec<f64>,
+    cluster_masks: Vec<usize>,
+    subsets: Vec<SubsetProbability>,
+    next_subsets: Vec<SubsetProbability>,
+    next_distribution: Vec<f64>,
+}
+impl JointScratch {
+    /// Clear values while retaining capacities, including each cluster's inner buffers.
+    fn reset(&mut self, target_count: usize, query_outfit_count: usize, want_sets: bool) {
+        self.landed_sets.resize(if want_sets { query_outfit_count } else { 0 }, vec![]);
+        self.totals.clear();
+        self.totals.resize(query_outfit_count, LandingProbability { all: 0.0, all_but_one: 0.0 });
+        // Per (chance, outfit, target): no coupled hint, coupled white hint, coupled gold hint.
+        self.landing_factors.clear();
+        self.landing_factors.resize(query_outfit_count * target_count, [0.0f64; 3]);
+        self.no_gold.clear();
+        self.no_gold.resize(target_count, 1.0);
+        self.no_hint.clear();
+        self.no_hint.resize(target_count, 1.0);
+        self.coupled_groups.clear();
+        self.cluster_of_target.clear();
+        self.cluster_of_target.resize(target_count, usize::MAX);
+        self.hint_levels.clear();
+        self.hint_levels.resize(target_count, 0);
+        // Each chain state writes these buffers before reading them. Cluster distributions are dense:
+        // entry j holds cluster_masks[j], and each outcome combination writes subsets in the same order.
+        self.target_parents.clear();
+        self.in_cluster.clear();
+        self.in_cluster.resize(target_count, false);
+        for v in [&mut self.all_land, &mut self.one_misses, &mut self.cluster_all_land, &mut self.cluster_one_misses] {
+            v.clear();
+            v.resize(query_outfit_count, 0.0);
+        }
+        self.outcome_indices.clear();
+        self.cluster_distribution.clear();
+        self.cluster_masks.clear();
+        self.subsets.clear();
+        self.next_subsets.clear();
+        self.next_distribution.clear();
+    }
+
+    /// Union targets connected by coupled outcome groups, retaining first-seen cluster order.
+    fn build_clusters(&mut self, groups: &[CoupledGroup], target_count: usize) -> usize {
+        self.target_parents.clear();
+        self.target_parents.extend(0..target_count);
+        const fn root(p: &mut [usize], mut x: usize) -> usize {
+            while p[x] != x {
+                p[x] = p[p[x]];
+                x = p[x];
+            }
+            x
+        }
+        for &g in &self.coupled_groups {
+            let targets = &groups[g].targets;
+            for w2 in targets.windows(2) {
+                let (a, b) = (root(&mut self.target_parents, w2[0]), root(&mut self.target_parents, w2[1]));
+                if a != b {
+                    self.target_parents[a.max(b)] = a.min(b);
+                }
+            }
+        }
+        self.cluster_of_target.fill(usize::MAX);
+        let mut cluster_count = 0usize;
+        for &g in &self.coupled_groups {
+            let r = root(&mut self.target_parents, groups[g].targets[0]);
+            let cluster_index = match self.cluster_of_target[r] {
+                usize::MAX => {
+                    if cluster_count == self.cluster_targets.len() {
+                        self.cluster_targets.push(vec![]);
+                        self.cluster_groups.push(vec![]);
+                    }
+                    self.cluster_targets[cluster_count].clear();
+                    self.cluster_groups[cluster_count].clear();
+                    self.cluster_of_target[r] = cluster_count;
+                    cluster_count += 1;
+                    cluster_count - 1
+                }
+                c => c,
+            };
+            self.cluster_groups[cluster_index].push(g);
+        }
+        for k in 0..target_count {
+            if self.cluster_of_target[root(&mut self.target_parents, k)] != usize::MAX {
+                let cluster_index = self.cluster_of_target[root(&mut self.target_parents, k)];
+                self.cluster_targets[cluster_index].push(k);
+            }
+        }
+        for k in 0..target_count {
+            self.in_cluster[k] = self.cluster_of_target[root(&mut self.target_parents, k)] != usize::MAX;
+        }
+        cluster_count
+    }
+}
+
+/// `joint_eval` with reused buffers from `scratch`.
+pub(crate) fn joint_eval_in(
+    model: &Model,
+    u: crate::uma::UmaIndex,
+    inheritance_chances: &[f64],
+    prepared: &JointPrep,
+    requested_target_count: usize,
+    all_but_one: bool,
+    marginals: bool,
+    extension: Option<&mut JointExt>,
+    scratch: &mut JointScratch,
+) -> Vec<JointChances> {
+    evaluate_prepared(
+        model,
+        JointQuery { trainee: u, inheritance_chances },
+        prepared,
+        JointOptions { target_count: requested_target_count, all_but_one, marginals },
+        extension,
+        scratch,
+    )
+}
+
+fn evaluate_prepared(
+    model: &Model,
+    query: JointQuery,
+    prepared: &JointPrep,
+    options: JointOptions,
+    mut extension: Option<&mut JointExt>,
+    workspace: &mut JointScratch,
+) -> Vec<JointChances> {
+    let target_count = model.uncertain.len();
+    let mut scratch = std::mem::take(workspace);
+    let JointPrep { base, chains, states, groups } = prepared;
+    let outfits = &model.opts[query.trainee];
+    let outfit_count = outfits.len();
+    let chance_count = query.inheritance_chances.len();
+    let fixed_target_count = model.n_fixed_gold as usize;
+    let fixed = match &extension {
+        Some(x) => x.scales.guaranteed.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
+        None => model.fixed_factor(),
+    };
+    let want_sets = extension.as_ref().is_some_and(|x| !x.sets.is_empty()) && target_count <= 16;
+    if let Some(x) = extension.as_deref_mut() {
+        if options.marginals {
+            x.marginals = vec![0.0; chance_count * outfit_count * target_count];
+        }
+        if want_sets {
+            x.sets = vec![0.0; (chance_count * outfit_count) << target_count];
+        }
+    }
+    // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
+    let unit_scales = extension.as_ref().is_none_or(|x| x.scales.uncertain.iter().all(|&s| s == 1.0));
+    let query_outfit_count = chance_count * outfit_count;
+    scratch.reset(target_count, query_outfit_count, want_sets);
+    let mut outcomes: Vec<&[EventOutcome<&[TargetReward]>]> = vec![];
+    for state in states {
+        let state_probability = state.probability;
+        scratch.no_gold.copy_from_slice(&base.no_gold);
+        scratch.no_hint.copy_from_slice(&base.no_hint);
+        scratch.coupled_groups.clear();
+        scratch.coupled_groups.extend(base.coupled.iter().copied());
+        for (j, chain) in chains.iter().enumerate() {
+            let factors = &chain.levels[state.classes[j] as usize];
+            for k in 0..target_count {
+                scratch.no_gold[k] *= factors.no_gold[k];
+                scratch.no_hint[k] *= factors.no_hint[k];
+            }
+            scratch.coupled_groups.extend(factors.coupled.iter().copied());
+        }
+        for (qi, &q) in query.inheritance_chances.iter().enumerate() {
+            for (o, OutfitOption { coverage: st, .. }) in outfits.iter().enumerate() {
+                let ew = &model.ews[query.trainee][o];
+                let base = (qi * outfit_count + o) * target_count;
+                for k in 0..target_count {
+                    let lp = LandPre::new(st[k], ew[k], q);
+                    scratch.landing_factors[base + k] =
+                        [lp.f(scratch.no_gold[k], scratch.no_hint[k]), lp.f(scratch.no_gold[k], 0.0), lp.f(0.0, 0.0)];
+                    if !unit_scales && let Some(x) = &extension {
+                        for v in &mut scratch.landing_factors[base + k] {
+                            *v *= x.scales.uncertain[k];
+                        }
+                    }
+                }
+            }
+        }
+        let cluster_count = scratch.build_clusters(groups, target_count);
+        // per (q, outfit): (P(all land), P(exactly one misses)) of each independent unit, combined
+        scratch.all_land.fill(1.0);
+        scratch.one_misses.fill(0.0);
+        let push = |all: &mut [f64], one: &mut [f64], i: usize, a: f64, b: f64| {
+            one[i] = one[i] * a + all[i] * b;
+            all[i] *= a;
+        };
+        for i in 0..query_outfit_count {
+            for k in 0..target_count {
+                if !scratch.in_cluster[k] {
+                    let f = scratch.landing_factors[i * target_count + k][0];
+                    push(&mut scratch.all_land, &mut scratch.one_misses, i, f, 1.0 - f);
+                    if options.marginals
+                        && let Some(x) = extension.as_deref_mut()
+                    {
+                        x.marginals[i * target_count + k] += state_probability * f;
+                    }
+                }
+            }
+        }
+        // the landed sets: independent targets first, clusters below (their targets join through `scratch.cluster_distribution`)
+        if want_sets {
+            for i in 0..query_outfit_count {
+                let d = &mut scratch.landed_sets[i];
+                d.clear();
+                d.resize(1 << target_count, 0.0);
+                d[0] = 1.0;
+                for k in 0..target_count {
+                    if scratch.in_cluster[k] {
+                        continue;
+                    }
+                    let (f, b) = (scratch.landing_factors[i * target_count + k][0], 1usize << k);
+                    for m in 0..(1usize << target_count) {
+                        if m & b == 0 && d[m] != 0.0 {
+                            let x = d[m];
+                            d[m] = x * (1.0 - f);
+                            d[m | b] += x * f;
+                        }
+                    }
+                }
+            }
+        }
+        for (targets, group_indices) in
+            scratch.cluster_targets[..cluster_count].iter().zip(&scratch.cluster_groups[..cluster_count])
+        {
+            outcomes.clear();
+            outcomes.extend(group_indices.iter().map(|&g| &*groups[g].outcomes));
+            scratch.cluster_all_land.fill(0.0);
+            scratch.cluster_one_misses.fill(0.0);
+            // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
+            if want_sets {
+                let nsub = 1usize << targets.len();
+                scratch.cluster_distribution.clear();
+                scratch.cluster_distribution.resize(query_outfit_count * nsub, 0.0);
+                scratch.cluster_masks.clear();
+                scratch.cluster_masks.resize(nsub, 0);
+            }
+            scratch.outcome_indices.clear();
+            scratch.outcome_indices.resize(outcomes.len(), 0);
+            loop {
+                let outcome_probability: f64 =
+                    (0..outcomes.len()).map(|i| outcomes[i][scratch.outcome_indices[i]].probability).product();
+                for &k in targets {
+                    scratch.hint_levels[k] = 0;
+                }
+                for i in 0..outcomes.len() {
+                    for &TargetReward { target: k, level: l } in outcomes[i][scratch.outcome_indices[i]].rewards {
+                        scratch.hint_levels[k] = scratch.hint_levels[k].max(if l >= 2 { 2 } else { 1 });
+                    }
+                }
+                for i in 0..query_outfit_count {
+                    let (mut a, mut b) = (1.0f64, 0.0f64);
+                    for &k in targets {
+                        let f = scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
+                        b = b * f + a * (1.0 - f);
+                        a *= f;
+                    }
+                    scratch.cluster_all_land[i] += outcome_probability * a;
+                    scratch.cluster_one_misses[i] += outcome_probability * b;
+                    if options.marginals
+                        && let Some(x) = extension.as_deref_mut()
+                    {
+                        for &k in targets {
+                            x.marginals[i * target_count + k] += state_probability
+                                * outcome_probability
+                                * scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
+                        }
+                    }
+                    if want_sets {
+                        scratch.subsets.clear();
+                        scratch.subsets.push(SubsetProbability { targets: 0, probability: outcome_probability });
+                        for &k in targets {
+                            let f = scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
+                            scratch.next_subsets.clear();
+                            for &SubsetProbability { targets: m, probability: p } in &scratch.subsets {
+                                scratch.next_subsets.push(SubsetProbability { targets: m, probability: p * (1.0 - f) });
+                                scratch
+                                    .next_subsets
+                                    .push(SubsetProbability { targets: m | 1 << k, probability: p * f });
+                            }
+                            std::mem::swap(&mut scratch.subsets, &mut scratch.next_subsets);
+                        }
+                        let ci = &mut scratch.cluster_distribution
+                            [i * scratch.subsets.len()..(i + 1) * scratch.subsets.len()];
+                        for (j, &SubsetProbability { targets: m, probability: p }) in scratch.subsets.iter().enumerate()
+                        {
+                            ci[j] += p;
+                            scratch.cluster_masks[j] = m;
+                        }
+                    }
+                }
+                let mut i = 0;
+                while i < outcomes.len() {
+                    scratch.outcome_indices[i] += 1;
+                    if scratch.outcome_indices[i] < outcomes[i].len() {
+                        break;
+                    }
+                    scratch.outcome_indices[i] = 0;
+                    i += 1;
+                }
+                if i == outcomes.len() {
+                    break;
+                }
+            }
+            for i in 0..query_outfit_count {
+                push(
+                    &mut scratch.all_land,
+                    &mut scratch.one_misses,
+                    i,
+                    scratch.cluster_all_land[i],
+                    scratch.cluster_one_misses[i],
+                );
+            }
+            // (each entry m0 | m of a row is written once, m0 holding no target of this cluster: the order is free)
+            if want_sets {
+                let nsub = scratch.cluster_masks.len();
+                for i in 0..query_outfit_count {
+                    let d = &mut scratch.landed_sets[i];
+                    scratch.next_distribution.clear();
+                    scratch.next_distribution.resize(1 << target_count, 0.0);
+                    for (m0, &x) in d.iter().enumerate() {
+                        if x == 0.0 {
+                            continue;
+                        }
+                        for (&m, &p) in
+                            scratch.cluster_masks.iter().zip(&scratch.cluster_distribution[i * nsub..(i + 1) * nsub])
+                        {
+                            scratch.next_distribution[m0 | m] += x * p;
+                        }
+                    }
+                    std::mem::swap(d, &mut scratch.next_distribution);
+                }
+            }
+        }
+        for i in 0..query_outfit_count {
+            let (mut a, mut b) = (scratch.all_land[i], scratch.one_misses[i]);
+            if options.all_but_one {
+                for j in 0..fixed_target_count {
+                    let g = match &extension {
+                        Some(x) => GEN_GOLD * x.scales.guaranteed[j],
+                        None => GEN_GOLD,
+                    };
+                    b = b * g + a * (1.0 - g);
+                    a *= g;
+                }
+            } else {
+                a *= fixed;
+            }
+            // P(at least options.target_count - 1 land) over target_count + fixed_target_count targets
+            let m = if options.target_count <= target_count + fixed_target_count {
+                if options.target_count == 0 { 1.0 } else { a + b }
+            } else {
+                0.0
+            };
+            scratch.totals[i].all += state_probability * a;
+            scratch.totals[i].all_but_one += state_probability * if options.all_but_one { m } else { 0.0 };
+            if want_sets && let Some(x) = extension.as_deref_mut() {
+                for (m, &p) in scratch.landed_sets[i].iter().enumerate() {
+                    x.sets[(i << target_count) + m] += state_probability * p;
+                }
+            }
+        }
+    }
+    if let Some(x) = extension {
+        x.per_outfit.clear();
+        x.per_outfit.extend(scratch.totals.iter().map(|a| a.all));
+    }
+    let r = (0..chance_count)
+        .map(|qi| {
+            let mut b = 0;
+            for o in 1..outfit_count {
+                if scratch.totals[qi * outfit_count + o].all > scratch.totals[qi * outfit_count + b].all {
+                    b = o;
+                }
+            }
+            JointChances {
+                all: scratch.totals[qi * outfit_count + b].all,
+                all_but_one: scratch.totals[qi * outfit_count + b].all_but_one,
+                outfit: b,
+            }
+        })
+        .collect();
+    *workspace = scratch;
+    r
+}
