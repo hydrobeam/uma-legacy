@@ -183,9 +183,9 @@ struct LandingProbability {
     all_but_one: f64,
 }
 
-/// `joint_eval`'s working buffers, kept by a caller that evaluates many times (`Env::corners`): each call sets every
-/// one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets' inner
-/// buffers are cleared where first used, as fresh ones are), so only their capacity carries over
+/// `joint_eval`'s working buffers, kept by a caller that evaluates many times (`CareerSetup::corners`): each call sets
+/// every one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets'
+/// inner buffers are cleared where first used, as fresh ones are), so only their capacity carries over
 #[derive(Default)]
 pub(crate) struct JointScratch {
     landed_sets: Vec<Vec<f64>>,

@@ -279,7 +279,7 @@ pub(crate) struct TargetSources {
     /// `group_assoc` also certifies some two-target groups with joint rewards.
     pub(super) uncertified_association: bool,
     /// every group of it passes `group_nuod_lvl`: the state-conditioned bound holds for it without any cap (the
-    /// cap-free deck search, `Env::best_deck_cf`, covers only decks of such entries)
+    /// cap-free deck search, `CareerSetup::best_deck_cf`, covers only decks of such entries)
     pub(super) certified_cap_free: bool,
 }
 impl TargetSources {

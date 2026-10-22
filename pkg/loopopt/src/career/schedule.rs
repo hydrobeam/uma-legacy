@@ -1,7 +1,7 @@
 //! Aptitude sparks and career race schedules.
 use crate::career::inherit::aff_factor;
 use crate::career::pool::{Pool, RaceWin};
-use crate::career::{Env, Lineage};
+use crate::career::{CareerSetup, Lineage};
 use crate::chart::{chart_race_name, when};
 use crate::data::{Choice, NT, Uma, scored_position};
 use crate::optimize::FILL_EPS;
@@ -81,7 +81,7 @@ fn conv(a: &[f64], b: &[f64]) -> Vec<f64> {
     w
 }
 
-/// A career's race schedule (`Env::schedule`).
+/// A career's race schedule (`CareerSetup::schedule`).
 pub(crate) struct RaceSchedule {
     /// Every G1 she could enter, in turn order, as the report's rows.
     pub(crate) rows: Value,
@@ -89,7 +89,7 @@ pub(crate) struct RaceSchedule {
     pub(crate) win_chances: Vec<f64>,
 }
 
-impl Env<'_> {
+impl CareerSetup<'_> {
     /// The lineage trainee's aptitudes over the career with her parents (MODEL.md, aptitude sparks): at the start, per
     /// aptitude the six legacies' pink stars summed raise her base grade 1/2/3/4 grades at 1/4/7/10 stars, at most to
     /// A; at each April inspiration (Classic, Senior) every legacy's pink spark fires with base 1/3/5% by stars x (1 +

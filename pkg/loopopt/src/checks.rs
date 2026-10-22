@@ -29,7 +29,7 @@ pub(crate) struct Checks {
     /// evaluates the bound below the root to make that check. The CLI prints `SBCHK` and `SBN` on exit.
     pub(crate) sb_check: bool,
     /// `SBOUND` (3 unless set to a number): the state-conditioned bound in the career's capped band pass
-    /// (`Env::best_deck_capped`): 3 at each configuration's root, beside the cap; 1 also at depth 1; 2 the band
+    /// (`CareerSetup::best_deck_capped`): 3 at each configuration's root, beside the cap; 1 also at depth 1; 2 the band
     /// without the cap (the bound at every node, a leaf kept when its state-conditioned value reaches the bar); 0 off.
     pub(crate) sbound: u8,
     /// `SBOUND` set to anything: the CLI prints the state bound's counts (`SBN`) on exit.
@@ -53,7 +53,7 @@ pub(crate) struct Checks {
     pub(crate) upper_check: bool,
     /// `UPPER_WHY` set: `upper_na` prints the outcome group that keeps it from bounding a deck.
     pub(crate) upper_why: bool,
-    /// `SIM_CHECK_UB` set: the simulator checks its fast ceiling against `Env::ceiling` at every candidate it
+    /// `SIM_CHECK_UB` set: the simulator checks its fast ceiling against `CareerSetup::ceiling` at every candidate it
     /// considers; a difference panics.
     pub(crate) sim_check_ub: bool,
     /// `CAP_RERUN=0`: a career deck search whose exact scorings breach their class's cap is not rerun cap-free; the

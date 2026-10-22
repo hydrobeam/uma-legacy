@@ -1,12 +1,12 @@
 //! Legacy slots, affinity and inheritance chances.
 use crate::career::pool::{Pool, Who, shared};
-use crate::career::{Env, Lineage};
+use crate::career::{CareerSetup, Lineage, SearchState};
 use crate::deck::joint::{JointExt, joint_fast};
 use crate::deck::sources::TargetSources;
 use crate::deck::space::SelectedDeck;
 /// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
-/// inheritance chance (`inherit`, `Env::lineage_qc`, `Env::gen_cands`, `Evaluator::fast_ub`, the planner's her-slot
-/// setups).
+/// inheritance chance (`inherit`, `CareerSetup::lineage_qc`, `CareerSetup::gen_cands`, `Evaluator::fast_ub`, the
+/// planner's her-slot setups).
 /// A slot's affinity factor 1 + A / 100, A its relation part plus its race part
 #[inline(always)]
 pub(crate) fn aff_factor(rel: f64, race: f64) -> f64 {
@@ -45,10 +45,10 @@ pub(crate) fn spark_scale(n: i32) -> f64 {
     1.1f64.powi(std::hint::black_box(n - 6))
 }
 
-/// `Env::rise`'s factor for one outfit and uncertain target: how far the landing chance can grow from inheritance
-/// chance q0 to q, with her own event hint chance `ew` and her outfit's coverage `st` of it (1 where it cannot grow).
-/// The one form behind `solve`'s Ref and ruled prunes and `outcome_hi`'s anchors (`rise_leaves`, `rise_factors`,
-/// `AnchorBound::root_min`)
+/// `CareerSetup::rise`'s factor for one outfit and uncertain target: how far the landing chance can grow from
+/// inheritance chance q0 to q, with her own event hint chance `ew` and her outfit's coverage `st` of it (1 where it
+/// cannot grow). The one form behind `solve`'s Ref and ruled prunes and `outcome_hi`'s anchors (`rise_leaves`,
+/// `rise_factors`, `AnchorBound::root_min`)
 #[inline(always)]
 pub(crate) fn rise_factor(st: u8, ew: f64, q: f64, q0: f64) -> f64 {
     if st > 0 || q <= q0 { 1.0 } else { (1.0 - (1.0 - ew) * (1.0 - q)) / (1.0 - (1.0 - ew) * (1.0 - q0)) }
@@ -60,28 +60,28 @@ pub(crate) fn part_sum(x0: f64, parts: impl IntoIterator<Item = f64>) -> f64 {
     parts.into_iter().fold(x0, |s, v| s + v)
 }
 
-/// The trainee's relation points a slot walk (`Env::walk_slots`) reads: with legacy x of the pool (`pt`) and with x's
-/// grandparent slot gi (`gt`)
+/// The trainee's relation points a slot walk (`CareerSetup::walk_slots`) reads: with legacy x of the pool (`pt`) and
+/// with x's grandparent slot gi (`gt`)
 pub(crate) trait RelPts {
     fn pt(&self, x: usize) -> f64;
     fn gt(&self, x: usize, gi: usize) -> f64;
 }
 
-/// trainee t's, from the relation tables (`Env::pair`, `Env::tri`)
-pub(crate) struct RelOf<'env, 'data> {
-    pub(crate) env: &'env Env<'data>,
-    pub(crate) p: &'env Pool,
+/// trainee t's, from the relation tables (`CareerSetup::pair`, `CareerSetup::tri`)
+pub(crate) struct RelOf<'setup, 'data> {
+    pub(crate) setup: &'setup CareerSetup<'data>,
+    pub(crate) p: &'setup Pool,
     pub(crate) t: crate::uma::UmaIndex,
 }
 
 impl RelPts for RelOf<'_, '_> {
     #[inline(always)]
     fn pt(&self, x: usize) -> f64 {
-        self.env.pair(Some(self.t), self.p.veterans[x].uma_index)
+        self.setup.pair(Some(self.t), self.p.veterans[x].uma_index)
     }
     #[inline(always)]
     fn gt(&self, x: usize, gi: usize) -> f64 {
-        self.env.tri(Some(self.t), self.p.veterans[x].uma_index, self.p.parents[x][gi].uma_index)
+        self.setup.tri(Some(self.t), self.p.veterans[x].uma_index, self.p.parents[x][gi].uma_index)
     }
 }
 
@@ -129,7 +129,7 @@ impl Inherit {
     }
 }
 
-/// `Inherit` without a skipped slot, in fixed arrays (at most `LQN` job targets; `Env::lineage`'s): the same
+/// `Inherit` without a skipped slot, in fixed arrays (at most `LQN` job targets; `CareerSetup::lineage`'s): the same
 /// factors multiplied in the same slot order
 const LQN: usize = 16;
 
@@ -169,12 +169,12 @@ impl SlotSink<'_> for Inherit {
     }
 }
 
-/// A legacy slot of the planner's veteran-to-be (`Env::her_slot`): the trainee's inheritance with her slot left out,
-/// and what her veteran in the slot adds.
+/// A legacy slot of the planner's veteran-to-be (`CareerSetup::her_slot`): the trainee's inheritance with her slot left
+/// out, and what her veteran in the slot adds.
 pub(crate) struct HerSlot {
     /// q0: per job target, the trainee's inheritance chance with her slot left out.
     pub(crate) chances_without_her: Vec<f64>,
-    /// x0: per uncertain target (`Env::uncertain_targets` order), 1 - q0.
+    /// x0: per uncertain target (`CareerSetup::uncertain_targets` order), 1 - q0.
     pub(crate) misses_without_her: Vec<f64>,
     /// xms: her miss factor squared per star count (1 at 0 stars).
     pub(crate) miss_by_stars: [f64; 4],
@@ -197,7 +197,7 @@ pub(crate) struct Slot {
 }
 
 /// Fold inheritance into the trainee buffer `cur`, reading her immutable own-event chances `ew0`.
-/// Kept separate from `Env` so callers can keep the deck space borrowed.
+/// Kept separate from `CareerSetup` so callers can keep the deck space borrowed.
 pub(crate) fn set_ews(cur: &mut Vec<Vec<f64>>, ew0: &[Vec<f64>], uncv: &[usize], q: &[f64]) {
     // (in place when the shape is already this one: the same values)
     if cur.len() == ew0.len() && cur.iter().zip(ew0).all(|(c, o)| c.len() == o.len().min(uncv.len())) {
@@ -211,16 +211,17 @@ pub(crate) fn set_ews(cur: &mut Vec<Vec<f64>>, ew0: &[Vec<f64>], uncv: &[usize],
     }
 }
 
-/// What `Env::exact` computes beside P(all).
+/// What `CareerSetup::exact` computes beside P(all).
 #[derive(Clone, Copy)]
 pub(crate) struct ExactOptions {
     /// Also P(all but one) (else 0).
     pub(crate) all_but_one: bool,
-    /// Also the chance of each set of uncertain targets landing (`JointExt::sets`, read by `Env::outcome_sets`).
+    /// Also the chance of each set of uncertain targets landing (`JointExt::sets`, read by
+    /// `CareerSetup::outcome_sets`).
     pub(crate) landed_sets: bool,
 }
 
-/// One career's exact numbers (`Env::exact`), at her best outfit.
+/// One career's exact numbers (`CareerSetup::exact`), at her best outfit.
 pub(crate) struct CareerChances {
     pub(crate) p_all: f64,
     /// P(every target but at most one lands); 0 unless asked for.
@@ -239,7 +240,7 @@ pub(crate) struct Inheritance {
     pub(crate) carriers: Vec<i32>,
 }
 
-/// `Inheritance` with the spark scale C of its carrier counts (`Env::lineage`).
+/// `Inheritance` with the spark scale C of its carrier counts (`CareerSetup::lineage`).
 pub(crate) struct LineageChances {
     /// The chance q_k per job target.
     pub(crate) chances: Vec<f64>,
@@ -259,7 +260,7 @@ pub(crate) fn inherit(sl: &[Slot], ntar: usize) -> Inheritance {
     acc.finish()
 }
 
-impl Env<'_> {
+impl CareerSetup<'_> {
     pub(crate) fn pair(&self, a: Option<crate::uma::UmaIndex>, b: Option<crate::uma::UmaIndex>) -> f64 {
         match (a, b) {
             (Some(a), Some(b)) => f64::from(self.data.pair[a][b]),
@@ -325,7 +326,7 @@ impl Env<'_> {
             }
         }
         let mut v = V(Vec::with_capacity(2 + p.parents[a].len() + p.parents[b].len()));
-        self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut v);
+        self.walk_slots(p, a, b, &RelOf { setup: self, p, t }, &mut v);
         v.0
     }
     /// Legacy `iv`'s slot as a parent of trainee t beside partner y (`HerSlot`; None when she is not one of the two);
@@ -333,7 +334,7 @@ impl Env<'_> {
     pub(crate) fn her_slot(&self, p: &Pool, lineage: Lineage) -> Option<HerSlot> {
         let Lineage { trainee: t, first_parent: y, second_parent: iv } = lineage;
         let mut acc = Inherit::new(self.target_count, Some(iv));
-        self.walk_slots(p, y, iv, &RelOf { env: self, p, t }, &mut acc);
+        self.walk_slots(p, y, iv, &RelOf { setup: self, p, t }, &mut acc);
         let fa = acc.her?;
         let Inheritance { chances: q0, carriers: nc0 } = acc.finish();
         let xm = |st: u8| insp_miss2(f64::from(st), fa);
@@ -350,21 +351,30 @@ impl Env<'_> {
             guaranteed: self.fixed_targets.iter().map(|&i| spark_scale(nc[i])).collect(),
         }
     }
-    pub(crate) const fn deck_chances(&self) -> crate::skills::DeckChances<'_> {
-        crate::skills::DeckChances { model: self.model, event_chances: &self.folded_events }
+    /// The deck search's chances: the model with the search state's folded buffers.
+    pub(crate) const fn deck_chances<'search>(
+        &'search self,
+        state: &'search SearchState,
+    ) -> crate::skills::DeckChances<'search> {
+        crate::skills::DeckChances { model: self.model, event_chances: &state.folded_events }
     }
-    pub(crate) fn joint_query(&self, trainee: crate::uma::UmaIndex) -> crate::deck::joint::JointQuery<'_> {
+    /// Trainee `trainee`'s exact-scoring query at her folded chances (`set_trainee`).
+    pub(crate) fn joint_query<'search>(
+        &'search self,
+        state: &'search SearchState,
+        trainee: crate::uma::UmaIndex,
+    ) -> crate::deck::joint::JointQuery<'search> {
         crate::deck::joint::JointQuery {
             chain_events: self.space.deck_job.chain_events(),
             checks: self.space.deck_job.checks,
             trainee,
             inheritance_chances: &[0.0],
-            event_chances: &self.folded_events[trainee],
+            event_chances: &state.folded_events[trainee],
         }
     }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
-    pub(crate) fn set_trainee(&mut self, t: crate::uma::UmaIndex, q: &[f64]) {
-        set_ews(&mut self.folded_events[t], &self.model.ews[t], &self.uncertain_targets, q);
+    pub(crate) fn set_trainee(&self, state: &mut SearchState, t: crate::uma::UmaIndex, q: &[f64]) {
+        set_ews(&mut state.folded_events[t], &self.model.ews[t], &self.uncertain_targets, q);
     }
     /// a deck's entries (sources borrowed from the deck space: `joint` only reads them)
     pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<crate::deck::sources::SourceEntry<&TargetSources>> {
@@ -377,6 +387,7 @@ impl Env<'_> {
     /// carrier counts `nc`; `options` says what else to compute
     pub(crate) fn exact(
         &self,
+        state: &SearchState,
         t: crate::uma::UmaIndex,
         sel: &SelectedDeck,
         nc: &[i32],
@@ -391,7 +402,7 @@ impl Env<'_> {
         };
         let crate::deck::joint::JointChances { all: p_all, all_but_one: p_all_but_one, outfit } = joint_fast(
             self.model,
-            self.joint_query(t),
+            self.joint_query(state, t),
             &self.ents_of(sel),
             sel.filler_cards,
             self.target_count,
@@ -424,7 +435,7 @@ impl Env<'_> {
         if self.target_count > LQN {
             let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
             let mut acc = Inherit::new(self.target_count, None);
-            self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut acc);
+            self.walk_slots(p, a, b, &RelOf { setup: self, p, t }, &mut acc);
             let Inheritance { chances, carriers } = acc.finish();
             let spark_scale = self.c_of(&carriers);
             return LineageChances { chances, carriers, spark_scale };
@@ -459,7 +470,7 @@ impl Env<'_> {
     fn lineage_acc(&self, p: &Pool, lineage: Lineage) -> InheritA {
         let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         let mut acc = InheritA { n: self.target_count, miss: [1.0; LQN], mix2: [1.0; LQN], nc: [0; LQN] };
-        self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut acc);
+        self.walk_slots(p, a, b, &RelOf { setup: self, p, t }, &mut acc);
         acc
     }
     /// the spark scale C of carrier counts nc: `scale`'s factors multiplied from 1.0, uncertain targets then fixed ones

@@ -33,10 +33,10 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let legacies = input.legacies;
     let data = input.resources.data;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
-    let (nodes_at_start, exact_scorings_at_start) = (env.space.nodes.get(), env.exact_scorings);
+    let (nodes_at_start, exact_scorings_at_start) = (env.setup.space.nodes.get(), env.state.exact_scorings);
     // Named loop members supplement the candidates; this setup does not run the loop search.
     let loop_rotation = match &settings.loop_members {
-        Some(ids) => rotation(env, ids),
+        Some(ids) => rotation(&env.setup, ids),
         None => LoopRotation { members: vec![], member_info: vec![], note: None },
     };
     let main_career = input.solved.found[0].clone();
@@ -44,15 +44,15 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         stage_candidates(env, input, &main_career, &loop_rotation.members);
     let loop_ms = now_ms() - started_ms;
     let allowed_trainees: Vec<crate::uma::UmaIndex> =
-        input.trainees.iter().copied().filter(|&u| env.deck_odds_ceilings[u].is_some()).collect();
+        input.trainees.iter().copied().filter(|&u| env.setup.deck_odds_ceilings[u].is_some()).collect();
     let searches_started_ms = now_ms();
-    let env_budget = env.budget;
+    let env_budget = env.state.budget;
     // (the candidates' career searches below under the cap, as `capped` sets it: the Sim it takes is made after them)
     if settings.search_work > 0 {
-        env.budget = settings.search_work;
-        env.hard_work_cap = settings.search_work;
+        env.state.budget = settings.search_work;
+        env.state.hard_work_cap = settings.search_work;
     }
-    env.use_seen = true;
+    env.state.use_seen = true;
     let mut searches = input.new_searches(&main_career, env_budget);
     if settings.sur != 1 {
         for &u in &candidate_trainees {
@@ -62,8 +62,8 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
             }
         }
     }
-    env.hard_work_cap = 0;
-    env.budget = env_budget;
+    env.state.hard_work_cap = 0;
+    env.state.budget = env_budget;
     let mut search_ms = now_ms() - searches_started_ms;
     let mut sim = sim_for(env, input.resources, settings)?;
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
@@ -71,11 +71,11 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // it) depends on the job alone, not on what the pruning happened to check fully (earlier jobs' proofs, the order, a
     // kept plan).
     for found in &input.solved.found {
-        sim.evaluator.cache.add(sim.env, found.trainee, &found.deck);
+        sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, found.trainee, &found.deck);
     }
     for &u in &candidate_trainees {
         if let Some(found) = searches.best_careers[u].found() {
-            sim.evaluator.cache.add(sim.env, u, &found.deck);
+            sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, u, &found.deck);
         }
     }
     // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
@@ -99,7 +99,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         candidate_trainees.iter().map(|&u| searches.best_careers[u].found().cloned()).collect();
     let candidate_count = candidate_trainees.len();
     let current_odds: Vec<f64> = careers.iter().map(|f| f.as_ref().map_or(0.0, |f| f.value)).collect();
-    let sj = sim.env.skill_job;
+    let sj = sim.env.setup.skill_job;
     // per candidate whether a full veteran of hers exists (a free side of the trios)
     let has_full_veteran: Vec<bool> = candidate_trainees
         .iter()
@@ -180,14 +180,14 @@ fn stage_candidates(
         let lineage_charas =
             std::iter::once(legacies[parent].chara).chain(legacies[parent].parents.iter().map(|p| p.chara));
         for chara in lineage_charas {
-            if let Some(u) = env.uma_index(chara) {
+            if let Some(u) = env.setup.uma_index(chara) {
                 push(u, &mut trainees);
             }
         }
     }
     for legacy in legacies.iter().rev() {
         if !legacy.borrowed
-            && let Some(u) = env.uma_index(legacy.chara)
+            && let Some(u) = env.setup.uma_index(legacy.chara)
         {
             push(u, &mut trainees);
         }
@@ -197,8 +197,11 @@ fn stage_candidates(
     }
     trainees.truncate(IDX_CANDS);
     if let Some(fit) = &settings.fit {
-        trainees =
-            fit.iter().filter_map(|&(chara, ..)| env.uma_index(chara)).filter(|u| input.trainees.contains(u)).collect();
+        trainees = fit
+            .iter()
+            .filter_map(|&(chara, ..)| env.setup.uma_index(chara))
+            .filter(|u| input.trainees.contains(u))
+            .collect();
     }
     // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
     // parents) is filled from the planner's own model: the owned umas ranked by their odds with a full loop lineage
@@ -283,10 +286,16 @@ pub(crate) fn proxy_career(
     trainee: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
-    let deck_class = simulator.env.deck_class[trainee];
+    let deck_class = simulator.env.setup.deck_class[trainee];
     for winner in winners {
-        if winner.trainee != trainee && simulator.env.deck_class[winner.trainee] == deck_class {
-            simulator.evaluator.cache.add(simulator.env, trainee, &winner.deck);
+        if winner.trainee != trainee && simulator.env.setup.deck_class[winner.trainee] == deck_class {
+            simulator.evaluator.cache.add(
+                &simulator.env.setup,
+                &mut simulator.env.state,
+                &mut simulator.env.memo,
+                trainee,
+                &winner.deck,
+            );
         }
     }
     best_sur(simulator, parents, trainee, 1e9, buf)
@@ -542,7 +551,7 @@ pub(crate) fn set_plan_wins(
     trainee: crate::uma::UmaIndex,
     career: &Found,
 ) {
-    let win_chances = simulator.evaluator.wins(simulator.env, pool, found_lineage(trainee, career));
+    let win_chances = simulator.evaluator.wins(&simulator.env.setup, pool, found_lineage(trainee, career));
     wins_by_trainee[trainee] =
         win_chances.iter().enumerate().filter(|(_, chance)| **chance > 0.5).map(|(race, _)| race).collect();
 }

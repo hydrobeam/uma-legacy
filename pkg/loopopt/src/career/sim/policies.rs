@@ -102,7 +102,7 @@ impl Sim<'_, '_> {
             return Rc::clone(career);
         }
         let pick = state.best.expect("no legal career");
-        let career = Rc::new(self.evaluator.cached_cur(self.env, &state.pool, pick, false));
+        let career = Rc::new(self.evaluator.cached_cur(&self.env.setup, &mut self.env.state, &state.pool, pick, false));
         state.current = Some(Rc::clone(&career));
         career
     }
@@ -124,7 +124,8 @@ impl Sim<'_, '_> {
                 let Some(builder) = self.trace_builder(&state, finisher_odds, &mut interpolation_scratch) else {
                     break;
                 };
-                let career = self.evaluator.cached_cur(self.env, &state.pool, builder.pick, false);
+                let career =
+                    self.evaluator.cached_cur(&self.env.setup, &mut self.env.state, &state.pool, builder.pick, false);
                 let veteran = self.draw(&career, &state.legacies, keys, career_index);
                 self.add_veteran(&mut state, veteran, true, &mut interpolation_scratch);
                 let after = state.member_best[0].map_or(finisher_odds, |pick| pick.value);
@@ -213,8 +214,12 @@ impl Sim<'_, '_> {
                 first_parent: parents[0].min(parents[1]),
                 second_parent: parents[0].max(parents[1]),
             };
-            let (inheritance_chances, spark_scale) = self.env.lineage_q(&state.pool, lineage);
-            let ceiling = self.env.ceiling(trainee, &inheritance_chances, spark_scale).unwrap_or(f64::INFINITY);
+            let (inheritance_chances, spark_scale) = self.env.setup.lineage_q(&state.pool, lineage);
+            let ceiling = self
+                .env
+                .setup
+                .ceiling(&mut self.env.state, trainee, &inheritance_chances, spark_scale)
+                .unwrap_or(f64::INFINITY);
             let mut interpolation_scratch = vec![];
             let (value, deck) = self
                 .evaluator
@@ -230,13 +235,34 @@ impl Sim<'_, '_> {
                     &mut interpolation_scratch,
                 )
                 .expect("loop career without a deck");
-            self.evaluator.cached_cur(self.env, &state.pool, SurrogatePick { value, lineage, deck }, true)
+            self.evaluator.cached_cur(
+                &self.env.setup,
+                &mut self.env.state,
+                &state.pool,
+                SurrogatePick { value, lineage, deck },
+                true,
+            )
         } else {
-            self.env.use_seen = true;
-            let search = self.env.solve(&state.pool, &parents, &[trainee], false, 1);
+            self.env.state.use_seen = true;
+            let search = self.env.setup.solve(
+                &mut self.env.state,
+                &mut self.env.audit,
+                &mut self.env.memo,
+                &state.pool,
+                &parents,
+                &[trainee],
+                false,
+                1,
+            );
             let found = search.found.first().expect("loop bootstrap: no legal career for a member");
-            self.evaluator.cache.absorb(self.env, &search.refs);
-            self.evaluator.make_cur(self.env, &state.pool, Career { lineage: found.lineage(), deck: &found.deck }, true)
+            self.evaluator.cache.absorb(&self.env.setup, &mut self.env.state, &mut self.env.memo, &search.refs);
+            self.evaluator.make_cur(
+                &self.env.setup,
+                &mut self.env.state,
+                &state.pool,
+                Career { lineage: found.lineage(), deck: &found.deck },
+                true,
+            )
         };
         let career = Rc::new(career);
         state.current = Some(Rc::clone(&career));
@@ -260,9 +286,12 @@ impl Sim<'_, '_> {
             let mut total = 0.0;
             for lineage in state.rotation.careers(&state.pool, &simulator.members, member_index, parent_index) {
                 let trainee = lineage.trainee;
-                let (inheritance_chances, spark_scale) = simulator.env.lineage_q(&state.pool, lineage);
-                let ceiling =
-                    simulator.env.ceiling(trainee, &inheritance_chances, spark_scale).unwrap_or(f64::INFINITY);
+                let (inheritance_chances, spark_scale) = simulator.env.setup.lineage_q(&state.pool, lineage);
+                let ceiling = simulator
+                    .env
+                    .setup
+                    .ceiling(&mut simulator.env.state, trainee, &inheritance_chances, spark_scale)
+                    .unwrap_or(f64::INFINITY);
                 total += simulator
                     .evaluator
                     .deck_for(
@@ -286,7 +315,7 @@ impl Sim<'_, '_> {
             let exact = |simulator: &mut Self, parent_index: usize| -> f64 {
                 let mut total = 0.0;
                 for lineage in state.rotation.careers(&state.pool, &simulator.members, member_index, parent_index) {
-                    let (inheritance_chances, spark_scale) = simulator.env.lineage_q(&state.pool, lineage);
+                    let (inheritance_chances, spark_scale) = simulator.env.setup.lineage_q(&state.pool, lineage);
                     total += simulator.exact_best(lineage.trainee, &inheritance_chances, spark_scale).value;
                 }
                 total
@@ -302,13 +331,13 @@ impl Sim<'_, '_> {
     /// The caller checks that `pick` is an object. Its required fields supply the
     /// exact probabilities; resolving the win chances also fills the schedule cache.
     fn cur_from_solver_pick(&mut self, pool: &Pool, pick: &Value) -> Cur {
-        let trainee = self.env.uma_index(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
+        let trainee = self.env.setup.uma_index(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
         let (parent_a, parent_b) =
             (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
         let outcome_sets: Vec<f64> =
             pick["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
         let lineage = Lineage { trainee, first_parent: parent_a, second_parent: parent_b };
-        let win_probs = self.evaluator.wins(self.env, pool, lineage);
+        let win_probs = self.evaluator.wins(&self.env.setup, pool, lineage);
         Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), os: outcome_sets, wp: win_probs, rotation: false }
     }
     /// the in-process career search's pick (greedy_exact: the best career by P(all))

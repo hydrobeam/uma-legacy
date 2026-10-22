@@ -165,11 +165,11 @@ impl RollPool<'_> {
 }
 
 fn roll_answer(simulator: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[u8]) -> Value {
-    let (uncv, fixed_t) = (simulator.env.uncertain_targets.clone(), simulator.env.fixed_targets.clone());
-    if stars.len() != simulator.env.target_count {
-        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), simulator.env.target_count)});
+    let setup = &simulator.env.setup;
+    if stars.len() != setup.target_count {
+        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), setup.target_count)});
     }
-    let outcome = OutcomeIndex::from_stars(stars, &uncv, &fixed_t);
+    let outcome = OutcomeIndex::from_stars(stars, &setup.uncertain_targets, &setup.fixed_targets);
     let score_base = kept.base.base();
     let y = kept.scored.roll(&score_base, outcome);
     let mut hi = None;

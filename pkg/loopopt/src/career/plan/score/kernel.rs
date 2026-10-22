@@ -106,7 +106,7 @@ pub(crate) struct Scored {
     pub(crate) completes_goal: bool,
     /// The rank's star mix (1, 2, 3 stars).
     pub(crate) star_mix: [f64; 3],
-    /// The uncertain targets as job-target indices, ascending (`Env::uncertain_targets`).
+    /// The uncertain targets as job-target indices, ascending (`CareerSetup::uncertain_targets`).
     pub(crate) uncertain_targets: Vec<usize>,
     /// Per mask of the guaranteed targets landed, its landed set over the job targets (`fm_masks`).
     pub(crate) fixed_landed_masks: Vec<TargetMask>,

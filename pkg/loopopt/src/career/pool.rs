@@ -1,7 +1,7 @@
 //! Veteran pools and legal parent pairs.
-use crate::career::{Ancestor, Env, Legacy};
+use crate::career::{Ancestor, CareerSetup, Legacy};
 use crate::uma::UmaIndex;
-/// What `Env::who` reads of a legacy or of one of her recorded parents.
+/// What `CareerSetup::who` reads of a legacy or of one of her recorded parents.
 struct VeteranTraits<'veteran> {
     chara: u32,
     /// (skill group, stars) of her white sparks.
@@ -42,7 +42,7 @@ impl<'veteran> VeteranTraits<'veteran> {
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
 /// pink sparks, and the star mix when the stars are random (stars and pinks shared with the lineage slots made from
-/// her: `Env::slots` takes them without copying).
+/// her: `CareerSetup::slots` takes them without copying).
 #[derive(Clone)]
 pub(crate) struct Who {
     /// Her index in Data::umas (None: a character the data does not list).
@@ -81,7 +81,7 @@ pub(crate) struct RaceWin {
 }
 
 /// The veterans the parents come from, each with her own parents; per veteran and parent, the race part of that
-/// grandparent slot's affinity, 3 x shared(veteran, parent) (constant per veteran: `Env::slots` reads it)
+/// grandparent slot's affinity, 3 x shared(veteran, parent) (constant per veteran: `CareerSetup::slots` reads it)
 #[derive(Clone)]
 pub(crate) struct Pool {
     /// Per veteran (legacy index), herself.
@@ -127,7 +127,7 @@ impl Pool {
         self.parents_ok(a, b) && self.trainee_ok(trainee_chara, a, b)
     }
 
-    /// Whether veteran `x` is at least as good a parent as veteran `y` in every career (`Env::solve`, dominated
+    /// Whether veteran `x` is at least as good a parent as veteran `y` in every career (`CareerSetup::solve`, dominated
     /// veterans): she is at least as good in her own right (`Who::at_least_as_good_as`: the same character, stars at
     /// least y's on every job target, G1 wins a superset of y's), and she has the same number of parents, each (in
     /// order) at least as good as y's the same way. Only fixed stars and certain wins (a veteran before her result is
@@ -165,7 +165,7 @@ impl Pool {
             .collect()
     }
 
-    /// Undo one `Env::pool_push`, keeping all four per-veteran arrays aligned.
+    /// Undo one `CareerSetup::pool_push`, keeping all four per-veteran arrays aligned.
     pub(crate) fn pop_veteran(&mut self) {
         self.veterans.pop();
         self.parents.pop();
@@ -197,7 +197,7 @@ pub(crate) fn shared(a: &Who, b: &Who) -> f64 {
     shared_wins
 }
 
-impl Env<'_> {
+impl CareerSetup<'_> {
     /// The index in Data::umas of character `chara` (None: a character the data does not list).
     pub(crate) fn uma_index(&self, chara: u32) -> Option<UmaIndex> {
         self.data.umas.iter().position(|uma| uma.id == chara).map(UmaIndex)

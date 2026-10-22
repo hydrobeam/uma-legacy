@@ -19,8 +19,8 @@ struct FinisherCeiling {
 /// would take her uma in (a veteran of hers) with that real full veteran a free side. Per candidate side (real or fresh) her full veteran can
 /// pair with, C's step: 1 / the best allowed C's value with the two full veterans as parents (every allowed uma but hers and the
 /// partner's, best ceiling first, the value taken until no ceiling can beat the best, as `plan_combinations` does).
-/// Her full veteran is the new veteran in `extended_pool` (`Env::veteran`: every target at the rank's star mix), valued as
-/// every fresh side is
+/// Her full veteran is the new veteran in `extended_pool` (`CareerSetup::veteran`: every target at the rank's star
+/// mix), valued as every fresh side is
 /// (the trios' own full veterans use the rank's mix too), so the trios with her compare like for like with the others; one per
 /// call, not per star pattern (the full set's stars vary per leaf: per leaf it would be 4^nu searches for C).
 /// (B's candidate index, partner side real, C's step)
@@ -35,11 +35,11 @@ pub(crate) fn her_trios(
     let data = simulator.d;
     let trainee_id = data.umas[trainee].id;
     let mut trios = vec![];
-    // the pool with her (`Evaluator::push_her`: `Env::pool` of the legacies and hers), with each side pushed in turn
-    // (the same Pool as `Env::pool` of those and the side) and popped after
+    // the pool with her (`Evaluator::push_her`: `CareerSetup::pool` of the legacies and hers), with each side pushed in
+    // turn (the same Pool as `CareerSetup::pool` of those and the side) and popped after
     let partner_index = extended_pool.veterans.len();
     let (mut inheritance_chances, mut finishers): (Vec<f64>, Vec<FinisherCeiling>) =
-        (Vec::with_capacity(simulator.env.target_count), vec![]);
+        (Vec::with_capacity(simulator.env.setup.target_count), vec![]);
     for candidate in 0..score_base.candidates.len() {
         let partner_trainee = score_base.candidates[candidate];
         if data.umas[partner_trainee].id == trainee_id {
@@ -48,7 +48,7 @@ pub(crate) fn her_trios(
         for TrioSideVeteran { uses_existing, legacy } in
             score_base.trio_sides.get(candidate).map_or(&[][..], |value| &**value)
         {
-            simulator.env.pool_push(extended_pool, legacy);
+            simulator.env.setup.pool_push(extended_pool, legacy);
             // (C ranges over the trainees on one pair: `lineage` and `ceiling` per trainee, not `gen_cands`, whose
             // per-trainee tables cover every legacy of the pool)
             finishers.clear();
@@ -64,10 +64,12 @@ pub(crate) fn her_trios(
                             && legal_pair(data, &*extended_pool, *lineage)
                     })
                     .filter_map(|lineage| {
-                        let scale = simulator.env.lineage_into(&*extended_pool, lineage, &mut inheritance_chances);
+                        let scale =
+                            simulator.env.setup.lineage_into(&*extended_pool, lineage, &mut inheritance_chances);
                         simulator
                             .env
-                            .ceiling(lineage.trainee, &inheritance_chances, scale)
+                            .setup
+                            .ceiling(&mut simulator.env.state, lineage.trainee, &inheritance_chances, scale)
                             .map(|upper_bound| FinisherCeiling { upper_bound, lineage })
                     }),
             );
@@ -110,8 +112,8 @@ pub(crate) fn her_ends(simulator: &Sim, score_base: &ScoreBase, legacies: &[Lega
     let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
     HerEnds {
         own_candidate: score_base.candidates.iter().position(|&u| u == x),
-        completes_goal: is_full(simulator.env.skill_job, &legacies[a].sparks)
-            && is_full(simulator.env.skill_job, &legacies[b].sparks),
+        completes_goal: is_full(simulator.env.setup.skill_job, &legacies[a].sparks)
+            && is_full(simulator.env.setup.skill_job, &legacies[b].sparks),
     }
 }
 
@@ -156,8 +158,8 @@ pub(crate) struct CareerScore {
 /// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
 /// decks' corner tables, folded one target at a time); her own full veteran ends her stage when she is a candidate.
 ///
-/// `context.pool` must be `Env::pool(context.legacies)` (the planner's callers): her veteran is then an entry
-/// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
+/// `context.pool` must be `CareerSetup::pool(context.legacies)` (the planner's callers): her veteran is then an entry
+/// pushed (`CareerSetup::pool_push` builds an entry as `CareerSetup::pool` does). `score_career_of` takes any pool.
 pub(crate) fn score_career(
     simulator: &mut Sim,
     context: &ScoringContext,
@@ -192,7 +194,7 @@ pub(crate) fn score_career_of(
 struct Setup {
     /// The candidate she may lift, as an index into `ScoreBase::candidates`.
     candidate: usize,
-    /// x0: per uncertain target (`Env::uncertain_targets` order), the miss product without her.
+    /// x0: per uncertain target (`CareerSetup::uncertain_targets` order), the miss product without her.
     misses_without_her: Vec<f64>,
     /// pw: per job target, the spark scale without and with her spark.
     target_spark_scales: Vec<[f64; 2]>,
@@ -252,7 +254,7 @@ fn prepare_setups(
             }
         }
         for RankedPartner { lineage, .. } in partners.into_iter().flatten() {
-            let Some(slot) = simulator.env.her_slot(pool, lineage) else {
+            let Some(slot) = simulator.env.setup.her_slot(pool, lineage) else {
                 continue;
             };
             let deck_count = simulator.evaluator.cache.decks[candidate_trainee].len();
@@ -283,17 +285,18 @@ fn evaluate_career(
     let recorded_pool = provenance == PoolProvenance::RecordedLegacies;
 
     let candidate_count = context.score_base.candidates.len();
-    let target_count = simulator.env.target_count;
-    let uncertain_target_count = simulator.env.uncertain_targets.len();
-    let star_mix = simulator.env.skill_job.star_dist;
+    let target_count = simulator.env.setup.target_count;
+    let uncertain_target_count = simulator.env.setup.uncertain_targets.len();
+    let star_mix = simulator.env.setup.skill_job.star_dist;
     let HerEnds { own_candidate, completes_goal } =
         her_ends(simulator, context.score_base, context.legacies, career.lineage);
     let current_started = now_ms();
-    let current = simulator.evaluator.make_cur(simulator.env, context.pool, career, false);
+    let current =
+        simulator.evaluator.make_cur(&simulator.env.setup, &mut simulator.env.state, context.pool, career, false);
     let pool_started = now_ms();
     prof("sc_cur_ms", pool_started - current_started);
     let mut extended_pool =
-        simulator.evaluator.push_her(simulator.env, context.legacies, context.pool, recorded_pool, &current);
+        simulator.evaluator.push_her(&simulator.env.setup, context.legacies, context.pool, recorded_pool, &current);
     let new_veteran = extended_pool.pool.veterans.len() - 1;
     // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
     let setups_started = now_ms();
@@ -305,8 +308,8 @@ fn evaluate_career(
     // at scale 1: the tables folded one coordinate at a time (interp's order and arithmetic), every setup's tables at once
     // (`FoldContext::fold`); per outcome (leaf, guaranteed golds fm) and lifted candidate, that value times the setup's spark scale,
     // the best over her setups and her odds now (`FoldContext::emit`): the products and maxima the outcome loop took per outcome
-    let fixed_target_count = simulator.env.fixed_targets.len();
-    let fixed_landed_masks = fm_masks(&simulator.env.fixed_targets);
+    let fixed_target_count = simulator.env.setup.fixed_targets.len();
+    let fixed_landed_masks = fm_masks(&simulator.env.setup.fixed_targets);
     // the candidates with setups (candidate order): her slot per candidate, per setup, and odds now per slot
     let mut slot_by_candidate: Vec<Option<usize>> = vec![None; candidate_count];
     let mut current_probabilities: Vec<f64> = vec![];
@@ -328,7 +331,7 @@ fn evaluate_career(
         own_candidate,
         completes_goal,
         star_mix,
-        uncertain_targets: simulator.env.uncertain_targets.clone(),
+        uncertain_targets: simulator.env.setup.uncertain_targets.clone(),
         fixed_landed_masks,
         misses_without_her: setups.iter_mut().map(|setup| std::mem::take(&mut setup.misses_without_her)).collect(),
         miss_by_stars: setups.iter().map(|setup| setup.miss_by_stars).collect(),

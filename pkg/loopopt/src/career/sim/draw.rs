@@ -60,7 +60,7 @@ impl Sim<'_, '_> {
             landed_mask = last_failed_mask;
         }
         let mut sparks = vec![];
-        for (i, target) in self.env.skill_job.targets.iter().enumerate() {
+        for (i, target) in self.env.setup.skill_job.targets.iter().enumerate() {
             if landed_mask >> i & 1 == 0 {
                 continue;
             }

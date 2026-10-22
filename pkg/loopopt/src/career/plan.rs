@@ -376,7 +376,13 @@ fn search_best_career(
 ) {
     let search = best_of(simulator.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
     if let Some(found) = &search.found {
-        simulator.evaluator.cache.add(simulator.env, trainee, &found.deck);
+        simulator.evaluator.cache.add(
+            &simulator.env.setup,
+            &mut simulator.env.state,
+            &mut simulator.env.memo,
+            trainee,
+            &found.deck,
+        );
     }
     searches.record_best_career(trainee, search);
 }
