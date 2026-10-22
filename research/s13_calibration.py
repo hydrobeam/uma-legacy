@@ -311,6 +311,8 @@ def drop_reason(r: Run, M: Model, outfits: list[int]) -> str | None:
         return "R card in deck"
     if r["outfit"] not in outfits:
         return "outfit not in web_skills"
+    if len(parents) != 2:
+        return "parents not recorded"
     if parents[0]["chara"] == parents[1]["chara"] or chara in (parents[0]["chara"], parents[1]["chara"]):
         return "same parent twice"
     return None
