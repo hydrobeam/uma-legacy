@@ -1,4 +1,4 @@
-// ---------- search: scheduling, and the engine (a Web Worker running the WebAssembly solver) ----------
+// ---------- search: the planner's deck search, its scheduling and its status line (the solver's worker: engine.js) ----------
 // The search runs by itself: any change to a setting schedules one (after a short pause, so a run of clicks is one
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';

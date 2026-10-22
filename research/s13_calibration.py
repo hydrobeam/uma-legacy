@@ -422,13 +422,15 @@ def build_jobs(
 
 
 def fingerprint(jobdir: str, files: Iterable[str]) -> str:
-    """a hash of the jobs, solver, data.json, cards_lb.json and events_lb.json; web_skills.json is not included"""
+    """a hash of the jobs and of every file the solver reads for them: the binary, data.json, web_skills.json (each
+    job's skills_file), cards_lb.json (its cards_file) and events_lb.json"""
     h = hashlib.sha256()
     for f in sorted(files):
         h.update(open(os.path.join(jobdir, f + ".json"), "rb").read())
     for p in (
         common.SOLVER,
         os.path.join(GD, "data.json"),
+        os.path.join(GD, "web_skills.json"),
         os.path.join(OUTD, "cards_lb.json"),
         os.path.join(OUTD, "events_lb.json"),
     ):

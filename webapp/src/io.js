@@ -39,8 +39,7 @@ function exportText() {
   return JSON.stringify({ app: 'legacy-loop-planner', version: 1, readable, results, settings: { era: ERA, ...settings } }, null, 1);
 }
 // What an import may set, per setting: a value of another shape (a hand edit, an old format) is left out, and the
-// setting keeps its value. Without this a wrong type was saved before the page tripped on it, and every later load
-// failed on the saved settings.
+// setting keeps its value (saved, a wrong type would break every later load).
 const obj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const VALID = {
   targets: (v) => Array.isArray(v) && v.every(t => obj(t) && Number.isInteger(t.group)),

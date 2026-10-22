@@ -1,4 +1,4 @@
-// DOM shorthands shared by every module.
+// DOM shorthands the page modules share.
 /** @type {(id: string) => HTMLElement} */
 export const $ = (id) => document.getElementById(id);
 // the same lookup for an element whose kind the caller knows (a dialog, a text or check box, a text area): no check is

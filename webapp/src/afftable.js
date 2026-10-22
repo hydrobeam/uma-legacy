@@ -2,8 +2,7 @@
 // Each of the six legacies has its own affinity, which weighs its own inheritance rolls: a parent's counts her relation
 // with the trainee and the other parent, the trio relations with her own two parents and the G1s she shares with all
 // three (3 points each); a grandparent's, her trio relation and the G1s she shares with the parent between them. The
-// total is the six summed. legs: [{ face, name, tag?, rel, race, aff, gps: [{ face, name, tag?, rel, race, aff }] }]
-// (Legacy 1 first); face an element (her portrait).
+// total is the six summed.
 import { el } from './dom.js';
 // her affinity as the game's heart and the number
 /** @param {number|null|undefined} affinity @param {string} [cls] @returns {HTMLSpanElement|null} */

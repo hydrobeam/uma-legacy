@@ -1,5 +1,5 @@
 // Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
-// dist/index.html, next to the data, images, wasm and worker it embeds.
+// dist/assets/main.<hash>.js, which dist/index.html loads after its data script.
 import { $, $dialog, $input, backdropCloses } from './dom.js';
 import { SAVED, ERA } from './settings.js';
 import { PRESET, loadData } from './data.js';
@@ -29,7 +29,7 @@ import './gmtip.js';   // the game-style tooltips (both planner pages)
 $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
 const setEra = (era) => { if (era === ERA) return; eraScenario(era); SAVED.era = era; writeSaved(); location.reload(); };
 $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
-// everything below needs the era's data (inline for Global, fetched for the GM era)
+// everything below needs the era's data (Global's from the page's data script, the GM era's fetched)
 if (ERA === 'gm') { ui.status = { kind: 'loading', text: 'Loading the JP Grand Masters-era data…' }; paintRunNote(); }   // fetched: about a second
 loadData().then(start, (e) => { ui.status = { kind: 'error', text: e.message }; paintRunNote(); });
 function start() {
@@ -55,7 +55,7 @@ function start() {
 
   renderRoster(); renderTargets();   // renderTargets draws the card picker too (it lists the cards that give a target)
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
-  // (showing the default example under other settings flashed a result that wasn't theirs)
+  // (the example under other settings would show a result that isn't theirs)
   const first = firstResult();
   if (first) {
     ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets });

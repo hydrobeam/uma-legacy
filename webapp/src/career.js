@@ -1,4 +1,5 @@
-// Career planner page: entry point. build.py bundles this and the modules it imports into dist/career.html.
+// Career planner page: entry point. build.py bundles this and the modules it imports into dist/assets/career.<hash>.js,
+// which dist/career.html loads.
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
@@ -57,8 +58,8 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {string} text
  * @property {{label: string, run: () => void}|null} [act]  a button after the text (e.g. Try sample veterans)
  *
- * The career job (`buildJob`; the solver's `CareerJob`, deck/career.rs); a plan job adds `next` and `no_reports`, a
- * comparison `compare`.
+ * The career job (`buildJob`; the solver reads it as `SkillJob` + `DeckJob` + `CareerJob`, web.rs); a plan job adds
+ * `next` and `no_reports`, a comparison `compare`.
  * @typedef {object} CareerJob
  * @property {'career'} cmd
  * @property {{group: number}[]} targets
@@ -75,8 +76,8 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number[]} fix  the parents chosen, by legacy index
  * @property {boolean} per_trainee
  * @property {number} top  careers to return
- * @property {undefined} [rollout]  never set by `buildJob` (a leftover of the rollout planner `baseOf` and the plan job
- *   still clear)
+ * @property {undefined} [rollout]  never set by `buildJob`, and the solver reads no such field: a leftover of the
+ *   rollout planner that `baseOf`, `planKey` and the plan job still clear
  * @property {undefined} [p_now]  likewise
  * @property {'later'|'never'} [borrowed_parent]  left out at 'allow'
  * @property {{roll?: number[]}} [next]  a plan job: its settings (`roll`: a roll's spark stars, per target)
@@ -94,13 +95,15 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number} expected  the targets she lands, expected
  * @property {number} bound
  * @property {import('./results.js').ResultDeck} deck
- * @property {{group: number, q: number, carriers: number}[]} pinks  per aptitude: the chance a parent passes its pink on
+ * @property {{group: number, q: number, carriers: number}[]} pinks  per pink the six legacies carry: the chance at least
+ *   one of the two inheritance events passes it on, and its carriers
  * @property {{base: number[], start: number[], fire: object[], pink_gen: {group: number, p: number}[]}} aptitudes  her
  *   aptitude grades (codes 1..8 = G..S) and her veteran's pink spark (pink.mjs)
- * @property {CareerScheduleRow[]|null} schedule  every G1 she could enter, in turn order (the best career's only)
- * @property {number[]|null} outcome_sets  [mask]: the chance of landing exactly the targets in mask (the best career's
- *   only, up to 12 targets)
- * @property {number|null} g1_wins  her G1 wins, expected (the best career's only)
+ * @property {CareerScheduleRow[]|null} schedule  every G1 she could enter, in turn order (the search's
+ *   best career and the plan's pick only)
+ * @property {number[]|null} outcome_sets  [mask]: the chance of landing exactly the targets in mask (as
+ *   `schedule`, up to 12 targets)
+ * @property {number|null} g1_wins  her G1 wins, expected (as `schedule`)
  * @property {boolean} [looped]  a plan option: both parents are 8/8s
  *
  * A row of a career's schedule (deck/career/schedule.rs): the loop schedule's row, one cell (hers), with the race's turn.
@@ -138,7 +141,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number} q  the chance inheritance gives it
  * @property {number} carriers  legacies with its spark
  * @property {number} p  the chance she lands it
- * @property {boolean} gold  a gold target
+ * @property {boolean} gold  a gold the scenario hands out (`buy.scenario`)
  * @property {CareerBuy} buy
  *
  * How she buys a target and lands it as a spark (outcomes.rs `report`): the chance she buys it as gold and as white,
@@ -167,7 +170,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number|null} stage_cost
  * @property {number|null} index  the careers she saves toward a fully looped parent, net
  * @property {number|null} saving
- * @property {number|null} lift  the chance she improves on the parents
+ * @property {number|null} lift  the chance her result lowers the careers to a fully looped parent
  * @property {boolean} near  close to the pick
  * @property {number|null} score  the table's order
  *
@@ -249,7 +252,7 @@ function waitEl() {
   const p = el('p'); p.innerHTML = runnerHTML(true); p.append('Warming up! The deck, sparks and comparison will be here as soon as the planner picks her career.');
   body.append(p); box.append(body); w.append(box); return w;
 }
-// the plan's line: finished, or stopped by its time limit, or failed
+// the plan's line: its time, or why it failed
 function planNote() {
   if (planState.state === 'error') return ` Plan not made: ${planState.text}`;
   if (planState.state !== 'done') return '';
@@ -279,7 +282,7 @@ function schedule() {
 const idxOf = (id) => vets.findIndex(v => v.id === id);
 class Blocked extends Error { constructor(kind, text, act) { super(text); this.kind = kind; this.act = act; } }
 // the borrowed-parent choice (Career setup): 'allow' (one per career, now and later), 'later' (none in this career; the
-// plan's later careers still borrow), 'never'; the job's `borrowed_parent`, left out at 'allow' (the job as before)
+// plan's later careers still borrow), 'never'; the job's `borrowed_parent`, left out at 'allow' (the solver's default)
 const BORROW_CHOICES = { allow: 'Allowed', later: 'None left today', never: 'Never' };
 const borrowChoice = () => (Object.hasOwn(BORROW_CHOICES, state.borrowPar) ? state.borrowPar : 'allow');
 function buildJob() {
@@ -301,7 +304,8 @@ function buildJob() {
   if (!plan.trainee && exclude.length >= UMAS.length) throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
   const allPlaced = plan.trainee && fixed.length === 2;
-  // a place left open: the K best careers by odds (the plan then picks among them and a few more, `search`)
+  // a place left open: the K best careers by odds (their trainees are among the plan's stage candidates; the plan
+  // scores every owned uma, `planPhase`)
   /** @type {CareerJob} */
   const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: true,
     star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
@@ -314,7 +318,7 @@ const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every(t
 // a career on two 8/8 parents: her own 8/8 there is a fully looped parent (the plan says so; a search's row is read off the veterans)
 const looped = (r) => r.looped ?? r.parents.every(i => isFull(vets[i]));
 const ROLL_K = 6;   // careers a search returns with a place open (the plan's candidates; `buildJob`)
-// the job of today's best career over everything (no place set, one result, no rollout): the comparison's baseline
+// the job of today's best career over everything (no place set, one result): the comparison's baseline
 const baseOf = (job) => ({ ...job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], per_trainee: false, top: 1, rollout: undefined, p_now: undefined });
 const baseKey = (job) => JSON.stringify(baseOf(job));
 // the answer's plan (the planner's candidates and its pick; none with the trainee chosen), and the entered veteran
@@ -439,7 +443,8 @@ function searchedText(m) {
   const n = m.r.candidates, seconds = (m.ms / 1000).toFixed(1);
   return n > 1 ? `Weighed ${n.toLocaleString()} careers in ${seconds} s.` : `Scored in ${seconds} s.`;
 }
-// the search's status: done, with a caveat when the exact check ran out of time; or, when no career can land every
+// the search's status: done, with a caveat when the search could not prove the best odds' order (`proven_top`: its
+// work budget ran out); or, when no career can land every
 // target, which targets nothing can give (no veteran or parent carries their spark; no deck, outfit or event gives them
 // either, or some career would have them)
 /** @returns {Status} */
@@ -481,7 +486,7 @@ const roleText = (o) => o.role === 'plan' ? 'One of the two parents in today\'s 
   : o.role === 'loop' ? 'In your loop' : o.role === 'candidate' ? 'A possible parent, not on today\'s cheapest route' : 'Not on today\'s estimated route';
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
 const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
-// an option's score: one career deep, plus (for the few highest and the best odds) what her veteran opens for the next
+// an option's Saves per run: the plan's `score` (her net saving; null when the plan scored nothing), else `index`
 const scoreOf = (o) => o.score ?? o.index;
 const fmtN = (x) => Math.round(x).toLocaleString();
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
@@ -541,9 +546,8 @@ function traineeEl(r) {
   }
   return n;
 }
-// affinity: the game's heart and the number (named "Affinity N" for screen readers and the tooltip)
-// her affinity, legacy by legacy (afftable.js), from the report's six slots (career.rs slots()); Legacy 1 and 2 follow
-// the career's parents (a slot's legacy is her index among your veterans)
+// her affinity, in all and legacy by legacy (afftable.js), from the report's six slots (deck/career/inherit.rs `slots`);
+// Legacy 1 and 2 follow the career's parents (a slot's legacy is her index among your veterans)
 const legacyAff = (r) => r.slots.reduce((a, x) => a + x.aff, 0);
 function affTable(r) {
   const nm = (x) => x.name || umaName(x.chara);
@@ -604,7 +608,7 @@ function openNode(spec) {
 // a dialog of its own from the popup (the uma or parent picker): the popup closes first
 const fromNode = (fn) => () => { if (nodeDlg?.open) nodeDlg.close(); fn(); };
 // Refill the popup for the node on show (`nodeOpen`): its title and body, and its actions in the footer. A node that is
-// gone (a removed veteran, a parent place emptied) closes it instead.
+// gone (a removed veteran, a grandparent whose parent place emptied) closes it instead.
 function fillNode() {
   if (!nodeOpen || !nodeDlg) return;
   const r = shown(), body = $('node-body'); body.textContent = ''; const sp = nodeOpen;
@@ -883,13 +887,13 @@ function rolledBought(r, sparks) {
 }
 // her pink spark drawn (`drawPink`)
 const rolledPink = (r) => drawPink(r.aptitudes);
-// a random result of this career: the set of landed targets drawn from its exact odds, each spark's stars from the rank,
-// each G1 she runs won with its chance (it differs every time; the career's first showing is one of these too)
 // a spark's stars, drawn from the rank band's star mix (state.rank: the chances of 1, 2 and 3 stars)
 function starDraw() {
   const mix = state.rank.split(',').map(Number);
   return () => { const u = Math.random(); return u < mix[0] ? 1 : u < mix[0] + mix[1] ? 2 : 3; };
 }
+// a random result of this career: the set of landed targets drawn from its exact odds, each spark's stars from the rank,
+// each G1 she runs won with its chance (it differs every time; the career's first showing is one of these too)
 function rolledOutcome(r) {
   const star = starDraw();
   const sparks = {};
@@ -922,8 +926,8 @@ function rollDraft() {
   quickCompare(request);
 }
 // A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target; the
-// solver evaluates the plan's pick at that one outcome from what it kept of the plan, sim/plan.rs `roll_kept`, so no plan
-// runs again): y, exact for her sparks, her G1 wins at their chances, and, where y < 0.5, y_hi, the most her veteran's
+// solver evaluates the plan's pick at that one outcome from what it kept of the plan, sim/plan/roll.rs `roll_kept`, so no
+// plan runs again unless the worker kept none): y, exact for her sparks, her G1 wins at their chances, and, where y < 0.5, y_hi, the most her veteran's
 // direct lifts could save there (ceilings over every partner): a zero is proven when y_hi < 0.5, else the exact
 // comparison checks it. null when the plan isn't for this career (then Reroll compares exactly).
 function rollReq(d, r) {
@@ -958,7 +962,9 @@ async function quickCompare(request) {
   } catch (e) { if (gone()) return; simulation.error = e.message; simulation.state = 'error'; }
   simulation.kind = null; renderSimulation();
   if (simulation.state !== 'done' || gone()) return;
-  // a roll that saves careers goes straight to the exact comparison (which finds the best career with her too)
+  // a roll that saves careers goes straight to the exact comparison (which finds the best career with her too): the
+  // plan's saving can undercount how many (it tries her with a few partners at cached decks), so the exact count
+  // replaces it (about 1 roll in 20; the others stay instant)
   if (y >= 0.5) { runComparison(true); return; }
   try {
     const m = await runJob({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
@@ -967,9 +973,8 @@ async function quickCompare(request) {
     simulation.r = m.r;
   } catch (e) { if (gone()) return; simulation.error = e.message; simulation.state = 'error'; }
   renderSimulation();
-  // a roll that saves careers: the plan's saving can undercount how many (it tries her with a few partners at cached
-  // decks), so the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant). A zero
-  // whose bound allows a saving (`hi`) is checked the same way, shown meanwhile as no saving, checking
+  // a zero whose bound allows a saving (`hi`) is checked by the exact comparison too, shown meanwhile as no saving,
+  // checking
   if (simulation.state === 'done' && !gone()) {
     // after the roll has stood a moment: rolling on starts none (a running check would be stopped, the worker with it)
     if (hi != null && hi >= 0.5) { simulation.provisional = true; renderSimulation();
@@ -1035,13 +1040,11 @@ async function runComparison(refine = false) {
       baselineCache = { key, result: simulation.baseline };
     }
     // the planner's question (exact odds, estimated careers): the best career with her as a parent, and the planner's
-    // expected careers to a fully looped parent once its next career runs, without and with her (an n/n: goal step 1 done)
+    // expected careers to a fully looped parent (each plan's `v0`, V) from the veterans now, without and with her
     const legaciesWithHer = [...base.legacies, draftJob(simulation.draft)], herIndex = base.legacies.length;
     const m = await runJob({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
     if (gone()) return;
     if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
-    // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
-    // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
     const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as a run's plan job, once she is added
     let planNow = planState.state === 'done' && !last.job.fix.length ? planState.r : null;
@@ -1180,9 +1183,8 @@ function renderSimulation() {
   if (top) { top.replaceChildren(shown() ? simulationBody() : ''); fitSparks(top); }
   if (k?.startsWith('sim:') && !ae.isConnected) document.querySelector(`[data-k="${CSS.escape(k)}"]`)?.focus();
 }
-// the options the planner weighed (only what it picks: the places left open), with "Use this": per option its odds now
-// and its net saving per run; without a plan (the trainee chosen, or the plan failed), the K best careers by odds
-// (places: the places the table's careers fill: yours, or the plan's when the table is the last plan's)
+// who an option places: only the places left open, the trainee and the parents (places: the places the table's careers
+// fill: yours, or the plan's when the table is the last plan's)
 function pickWhat(r, places = plan) {
   const what = el('div', 'altw');
   if (!places.trainee) { what.append(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 32), ` ${r.trainee.name}`); }
@@ -1204,7 +1206,7 @@ const OPT_SHOW = 8;
 function optionsEl() {
   const box = sectionEl('alts', 'Career choices');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
-  // with the plan: the 8 highest savings (every uma is scored) and the best odds always; with
+  // with the plan: the 8 highest savings (every uma is scored), the best odds, the pick and the career on show; with
   // every place chosen, the last plan's table on the same setup and veterans, with your career in it (from the search
   // when the plan didn't list it: no saving), and a way back to the places it ran with
   const on = shown(), ref = refFor(), mineOnly = !!plan.trainee && plan.parents.every(Boolean);

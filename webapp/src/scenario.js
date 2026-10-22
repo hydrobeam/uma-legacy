@@ -1,7 +1,7 @@
 // ---------- scenario picker: a button showing the chosen scenario, opening a grid of the scenarios ----------
 // Same pattern as the sort menus (sortmenu.js): role=menu, tiles are menuitemradio buttons. Opening focuses the chosen
 // tile; arrows move between tiles (two columns), Escape or a click outside the button and the grid closes it, and so
-// does focus leaving the picker. Picking a scenario also sets its guaranteed golds and its default lineage rank.
+// does focus leaving the picker. Picking a scenario also brings its guaranteed golds and sets its default lineage rank.
 import { $ } from './dom.js';
 import { SCENARIOS, SCEN_GOLDS, SK, RANKS } from './data.js';
 import { ERA } from './settings.js';
@@ -15,13 +15,14 @@ export const scenarioOf = (v) => LIST.find(s => s.v === v) || LIST[0];
 // the lineage rank control: a two-option toggle (B to S+ / SS and up) with the game's rank badges; data-value carries the
 // chosen star mix, each option's tooltip its rank score range and star mix
 export function paintRank() {
-  const rank = $('rank'); if (!rank) return;   // the career page has no rank control (it uses each legacy's real stars)
+  const rank = $('rank'); if (!rank) return;
   rank.dataset.value = state.rank;
   rank.querySelectorAll('button').forEach(b => { const on = b.dataset.v === state.rank; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
 }
 // the lineage rank a scenario starts from (its `ss`)
 const rankOf = (sc) => sc.ss ? RANKS.ss : RANKS.below;
-// switch to scenario v: its guaranteed golds and its default lineage rank (both can be changed by hand afterwards)
+// switch to scenario v (its guaranteed golds follow state.scen: state.js goldGiven) and its default lineage rank, which
+// can be changed by hand afterwards
 function setScenario(v) {
   const sc = scenarioOf(v); state.scen = sc.v;
   state.rank = rankOf(sc); paintRank();

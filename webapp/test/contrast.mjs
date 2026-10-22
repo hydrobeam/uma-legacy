@@ -13,7 +13,7 @@ export default async function contrast(b) {
   await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg'); fails.push(...await pg.evaluate(AUDIT));
   const shown = artless(fails); check('contrast: every text run meets WCAG AAA', !shown.length, shown.slice(0, 5).join(' | '));
   await pg.context().close();
-  const p2 = await open(b, { before: (p) => p.route('**/img.*/scen/**', r => r.abort()) });   // the first search done
+  const p2 = await open(b, { before: (p) => p.route('**/img.*/scen/**', r => r.abort()) });   // no scenario logos: the badges stand in
   await still(p2);   // the results' fade back from the searching dim, as above
   await p2.click('#x-scen'); const bf = (await p2.evaluate(AUDIT)).filter(x => /^b\./.test(x) || /scen|stile|slogo|snm|ssub/.test(x));
   check('contrast: scenario badges (no logo files) meet WCAG AAA', !bf.length, bf.join(' | '));

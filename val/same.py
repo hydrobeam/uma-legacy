@@ -23,6 +23,10 @@ ref = args[1] if len(args) > 1 else "ref"
 TIMING_KEYS = {"timing_s"} | ({"wall_s", "init_s", "plan_s"} if mode == "--sim" else set())
 
 
+# a key absent from one side: unequal to every value, null included (.get() alone would read it as None)
+MISSING = object()
+
+
 def is_timing(key):
     return key in TIMING_KEYS or key.endswith("_ms")
 
@@ -39,7 +43,7 @@ def paths(reference, candidate, at=""):
             path
             for key in sorted(set(reference) | set(candidate))
             if not is_timing(key)
-            for path in paths(reference.get(key), candidate.get(key), f"{at}.{key}")
+            for path in paths(reference.get(key, MISSING), candidate.get(key, MISSING), f"{at}.{key}")
         ]
     if isinstance(reference, list) and isinstance(candidate, list) and len(reference) == len(candidate):
         return [

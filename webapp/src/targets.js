@@ -25,7 +25,7 @@ export function tileEl(group) {
 // row's, else the add box), so the keyboard doesn't fall back to the page top
 /** @param {number|null} [focus] */
 export function renderTargets(focus = null) {
-  const count = document.getElementById('o-skills-n'); if (count) count.textContent = String(state.targets.length);   // the setup panel's Target skills button
+  const count = document.getElementById('o-skills-n'); if (count) count.textContent = String(state.targets.length);   // the Target skills button (o-skills: on neither page now)
   const box = $('targets'); box.textContent = '';
   state.targets.forEach((t, i) => {
     const names = namesOf(t.group);
