@@ -1,14 +1,28 @@
 //! Anchor bounds and the best partners after an outcome.
+use super::fold::RiseInputs;
+use super::step::{CandidateLift, OwnFullLanding, StepScratch};
 use super::{
     Lo, ScoreBase, fm_masks, her_ends, her_pool, her_pool_done, her_trios, leaf_products, leaf_set, legal_pair,
     rise_leaves, v_after,
 };
 use crate::deck::career::sim::plan::cont::OwnTrio;
 use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
-use crate::deck::career::sim::{
-    Data, DeckRes, Env, HerSlot, Legacy, Pool, Sim, Solved, holds_fix, now_ms, prof, rise_factor,
-};
+use crate::deck::career::sim::{DeckRes, Env, Pool, Sim, Solved, holds_fix, now_ms, prof, rise_factor};
 use crate::deck::career::{Career, Lineage};
+
+/// Ceiling factors are flattened [outfit][uncertain target][star level].
+struct CeilingFactors<'factors> {
+    values: &'factors [f64],
+    target_count: usize,
+    outfit_count: usize,
+    scale: f64,
+}
+
+/// Two alternating prefix-product buffers, reused by dense and sparse leaf expansion.
+struct LeafProductWorkspace<'work> {
+    current: &'work mut Vec<f64>,
+    next: &'work mut Vec<f64>,
+}
 
 /// `outcome_hi`'s bound for one (candidate, partner), bd per leaf: the least of the ceiling rfc = rf x the best fast
 /// outfit's product and, over the anchors (f, qa), f x `rise_leaves`(qa); the same f64s as `rfc.min(anc)` with anc
@@ -18,200 +32,215 @@ use crate::deck::career::{Career, Lineage};
 /// so a leaf's product is at least its prefix's product times the least factor of each remaining digit; with slack
 /// BB_SLACK for rounding (far more than the (1 + 2^-53)^(2 nu + 4) the chains can drift) that bounds f x the leaf's
 /// value from below at every leaf under the prefix (correctly rounded products are monotone). Where the bound reaches
-/// the most bd holds under the prefix (`tmax`), the anchor lowers no leaf there: the subtree is skipped.
-struct AncBb {
-    nu: usize,
-    no: usize,
-    tmax: Vec<Vec<f64>>,
-    pp: Vec<f64>,
-    smin: Vec<f64>,
-    nodes: u64,
-    roots: u64,
-    sparse: bool,
-    acc: Vec<f64>,
+/// the most bd holds under the prefix (`prefix_maxima`), the anchor lowers no leaf there: the subtree is skipped.
+struct AnchorBound {
+    target_count: usize,
+    outfit_count: usize,
+    prefix_maxima: Vec<Vec<f64>>,
+    prefix_products: Vec<f64>,
+    suffix_minima: Vec<f64>,
+    visited_nodes: u64,
+    open_roots: u64,
+    sparse_leaves: bool,
+    marked_accumulators: Vec<f64>,
 }
 
 const BB_SLACK: f64 = 1.0 - 1e-12;
 
-impl AncBb {
+impl AnchorBound {
     const fn new() -> Self {
-        Self { nu: 0, no: 0, tmax: vec![], pp: vec![], smin: vec![], nodes: 0, roots: 0, sparse: false, acc: vec![] }
+        Self {
+            target_count: 0,
+            outfit_count: 0,
+            prefix_maxima: vec![],
+            prefix_products: vec![],
+            suffix_minima: vec![],
+            visited_nodes: 0,
+            open_roots: 0,
+            sparse_leaves: false,
+            marked_accumulators: vec![],
+        }
     }
-    /// bd per leaf (level nu of `tmax`)
-    fn bd(&self) -> &[f64] {
-        &self.tmax[self.nu]
+    /// bd per leaf (level nu of `prefix_maxima`)
+    fn leaf_bounds(&self) -> &[f64] {
+        &self.prefix_maxima[self.target_count]
     }
     /// a fresh (candidate, partner) with `no` outfits for the anchors and the ceiling's fast outfits gc ([outfit][target
     /// k][her stars], nfo of them): bd = rfc (per leaf rf x, from 0.0, the most of each outfit's product in
     /// `leaf_products`' order: the old ceiling's f64s) at the marked leaves (`Marks`), -inf at the others (so no anchor
     /// is folded in where nothing reads the bound: every test below compares with a most that holds marked leaves only),
-    /// `tmax` built
+    /// `prefix_maxima` built
     fn reset(
         &mut self,
-        nu: usize,
-        no: usize,
-        gc: &[f64],
-        nfo: usize,
-        rf: f64,
-        mk: &Marks,
-        pre: &mut Vec<f64>,
-        tmp: &mut Vec<f64>,
+        anchor_outfit_count: usize,
+        ceiling: &CeilingFactors,
+        marks: &Marks,
+        products: &mut LeafProductWorkspace,
     ) {
-        self.nu = nu;
-        self.no = no;
-        self.pp.clear();
-        self.pp.resize((nu + 1) * no, 1.0);
-        self.smin.clear();
-        self.smin.resize((nu + 1) * no, 1.0);
-        self.tmax.resize(nu + 1, vec![]);
+        self.target_count = ceiling.target_count;
+        self.outfit_count = anchor_outfit_count;
+        self.prefix_products.clear();
+        self.prefix_products.resize((ceiling.target_count + 1) * anchor_outfit_count, 1.0);
+        self.suffix_minima.clear();
+        self.suffix_minima.resize((ceiling.target_count + 1) * anchor_outfit_count, 1.0);
+        self.prefix_maxima.resize(ceiling.target_count + 1, vec![]);
         let nan_inf = |b: f64| if b.is_nan() { f64::INFINITY } else { b };
-        let mut bd = std::mem::take(&mut self.tmax[nu]);
-        if nu == 0 {
-            bd.clear();
-            bd.push(if mk.lv[0][0] { nan_inf(rf * if nfo > 0 { 1.0 } else { 0.0 }) } else { f64::NEG_INFINITY });
-            self.tmax[0] = bd;
+        let mut leaf_bounds = std::mem::take(&mut self.prefix_maxima[ceiling.target_count]);
+        if ceiling.target_count == 0 {
+            leaf_bounds.clear();
+            leaf_bounds.push(if marks.prefix_marks[0][0] {
+                nan_inf(ceiling.scale * if ceiling.outfit_count > 0 { 1.0 } else { 0.0 })
+            } else {
+                f64::NEG_INFINITY
+            });
+            self.prefix_maxima[0] = leaf_bounds;
             return;
         }
-        let np = 1usize << (2 * (nu - 1));
-        if !mk.dense {
+        let prefix_count = 1usize << (2 * (ceiling.target_count - 1));
+        if !marks.dense {
             // few marked leaves: only the marked prefixes are built (`reset_marked`). Every other entry of every level is
             // -inf, as the full build leaves it (an unmarked leaf's -inf, a prefix the most of its quarters): set here
-            // once per AncBb (it serves one `Marks`), and nothing raises it after (`run` and the direct anchors only
+            // once per AnchorBound (it serves one `Marks`), and nothing raises it after (`run` and the direct anchors only
             // lower a leaf; a prefix is again the most of its quarters)
-            if !self.sparse || bd.len() != np * 4 {
-                bd.clear();
-                bd.resize(np * 4, f64::NEG_INFINITY);
-                for j in 0..nu {
-                    let t = &mut self.tmax[j];
+            if !self.sparse_leaves || leaf_bounds.len() != prefix_count * 4 {
+                leaf_bounds.clear();
+                leaf_bounds.resize(prefix_count * 4, f64::NEG_INFINITY);
+                for j in 0..ceiling.target_count {
+                    let t = &mut self.prefix_maxima[j];
                     t.clear();
                     t.resize(1usize << (2 * j), f64::NEG_INFINITY);
                 }
-                self.sparse = true;
+                self.sparse_leaves = true;
             }
-            self.tmax[nu] = bd;
-            self.reset_marked(nu, gc, nfo, rf, mk, pre, tmp);
+            self.prefix_maxima[ceiling.target_count] = leaf_bounds;
+            self.reset_marked(ceiling, marks, products);
             return;
         }
-        self.sparse = false;
-        bd.clear();
-        bd.resize(np * 4, 0.0);
-        let mut g: Vec<[f64; 4]> = Vec::with_capacity(nu);
-        for o in 0..nfo {
+        self.sparse_leaves = false;
+        leaf_bounds.clear();
+        leaf_bounds.resize(prefix_count * 4, 0.0);
+        let mut g: Vec<[f64; 4]> = Vec::with_capacity(ceiling.target_count);
+        for o in 0..ceiling.outfit_count {
             g.clear();
-            g.extend((0..nu).map(|k| {
-                let b = (o * nu + k) * 4;
-                [gc[b], gc[b + 1], gc[b + 2], gc[b + 3]]
+            g.extend((0..ceiling.target_count).map(|k| {
+                let b = (o * ceiling.target_count + k) * 4;
+                [ceiling.values[b], ceiling.values[b + 1], ceiling.values[b + 2], ceiling.values[b + 3]]
             }));
-            leaf_products(&g[..nu - 1], pre, tmp);
+            leaf_products(&g[..ceiling.target_count - 1], products.current, products.next);
             // the last digit's level straight into the running most
-            for (dg, &gl) in g[nu - 1].iter().enumerate() {
-                for (c, &pv) in bd[dg * np..(dg + 1) * np].iter_mut().zip(pre.iter()) {
-                    let pr = pv * gl;
-                    if pr > *c {
-                        *c = pr;
+            for (stars, &last_factor) in g[ceiling.target_count - 1].iter().enumerate() {
+                for (c, &prefix_product) in leaf_bounds[stars * prefix_count..(stars + 1) * prefix_count]
+                    .iter_mut()
+                    .zip(products.current.iter())
+                {
+                    let product = prefix_product * last_factor;
+                    if product > *c {
+                        *c = product;
                     }
                 }
             }
         }
-        for c in &mut bd {
-            *c = nan_inf(rf * *c);
+        for c in &mut leaf_bounds {
+            *c = nan_inf(ceiling.scale * *c);
         }
-        for &l in &mk.unm {
-            bd[l] = f64::NEG_INFINITY;
+        for &l in &marks.unmarked_leaves {
+            leaf_bounds[l] = f64::NEG_INFINITY;
         }
-        self.tmax[nu] = bd;
+        self.prefix_maxima[ceiling.target_count] = leaf_bounds;
         self.levels();
     }
     /// `reset`'s rebuild at the marked prefixes only (sparse marks, every other entry -inf already): per outfit the
-    /// products level by level down `Marks::ix` (each prefix's its parent's times its last digit's factor, from 1.0:
+    /// products level by level down `Marks::prefix_indices` (each prefix's its parent's times its last digit's factor, from 1.0:
     /// `leaf_products`' f64s at those leaves), the running most per marked leaf over the outfits in order from 0.0, rf x it
     /// (NaN as +inf) into bd, then each marked prefix's most of its four quarters as `levels` takes it
     #[inline(never)]
-    fn reset_marked(
-        &mut self,
-        nu: usize,
-        gc: &[f64],
-        nfo: usize,
-        rf: f64,
-        mk: &Marks,
-        cur: &mut Vec<f64>,
-        nxt: &mut Vec<f64>,
-    ) {
-        let nml = mk.ix[nu].len();
-        let mut acc = std::mem::take(&mut self.acc);
-        acc.clear();
-        acc.resize(nml, 0.0);
-        for o in 0..nfo {
-            let g = &gc[o * nu * 4..(o + 1) * nu * 4];
-            cur.clear();
-            cur.push(1.0);
-            for j in 1..=nu {
-                let gk = &g[(j - 1) * 4..j * 4];
-                let sh = 2 * (j - 1);
-                if j == nu {
-                    for ((a, &pc), &pa) in acc.iter_mut().zip(&mk.ix[j]).zip(&mk.par[j]) {
-                        let v = cur[pa as usize] * gk[(pc >> sh) as usize & 3];
+    fn reset_marked(&mut self, ceiling: &CeilingFactors, marks: &Marks, products: &mut LeafProductWorkspace) {
+        let marked_leaf_count = marks.prefix_indices[ceiling.target_count].len();
+        let mut accumulator = std::mem::take(&mut self.marked_accumulators);
+        accumulator.clear();
+        accumulator.resize(marked_leaf_count, 0.0);
+        for o in 0..ceiling.outfit_count {
+            let g = &ceiling.values[o * ceiling.target_count * 4..(o + 1) * ceiling.target_count * 4];
+            products.current.clear();
+            products.current.push(1.0);
+            for j in 1..=ceiling.target_count {
+                let target_factors = &g[(j - 1) * 4..j * 4];
+                let digit_shift = 2 * (j - 1);
+                if j == ceiling.target_count {
+                    for ((a, &prefix), &parent) in
+                        accumulator.iter_mut().zip(&marks.prefix_indices[j]).zip(&marks.parent_indices[j])
+                    {
+                        let v =
+                            products.current[parent as usize] * target_factors[(prefix >> digit_shift) as usize & 3];
                         if v > *a {
                             *a = v;
                         }
                     }
                 } else {
-                    nxt.clear();
-                    nxt.extend(
-                        mk.ix[j]
-                            .iter()
-                            .zip(&mk.par[j])
-                            .map(|(&pc, &pa)| cur[pa as usize] * gk[(pc >> sh) as usize & 3]),
-                    );
-                    std::mem::swap(cur, nxt);
+                    products.next.clear();
+                    products.next.extend(marks.prefix_indices[j].iter().zip(&marks.parent_indices[j]).map(
+                        |(&prefix, &parent)| {
+                            products.current[parent as usize] * target_factors[(prefix >> digit_shift) as usize & 3]
+                        },
+                    ));
+                    std::mem::swap(products.current, products.next);
                 }
             }
         }
         {
-            let bd = &mut self.tmax[nu];
-            for (&l, &a) in mk.ix[nu].iter().zip(&acc) {
-                let b = rf * a;
-                bd[l as usize] = if b.is_nan() { f64::INFINITY } else { b };
+            let leaf_bounds = &mut self.prefix_maxima[ceiling.target_count];
+            for (&l, &a) in marks.prefix_indices[ceiling.target_count].iter().zip(&accumulator) {
+                let b = ceiling.scale * a;
+                leaf_bounds[l as usize] = if b.is_nan() { f64::INFINITY } else { b };
             }
         }
-        self.acc = acc;
-        for j in (0..nu).rev() {
-            let np = 1usize << (2 * j);
-            let (lo, hi) = self.tmax.split_at_mut(j + 1);
-            let (lv, up) = (&mut lo[j], &hi[0]);
-            for &p in &mk.ix[j] {
+        self.marked_accumulators = accumulator;
+        for j in (0..ceiling.target_count).rev() {
+            let prefix_count = 1usize << (2 * j);
+            let (lo, hi) = self.prefix_maxima.split_at_mut(j + 1);
+            let (level, children) = (&mut lo[j], &hi[0]);
+            for &p in &marks.prefix_indices[j] {
                 let p = p as usize;
-                lv[p] = up[p].max(up[np + p]).max(up[2 * np + p]).max(up[3 * np + p]);
+                level[p] = children[p]
+                    .max(children[prefix_count + p])
+                    .max(children[2 * prefix_count + p])
+                    .max(children[3 * prefix_count + p]);
             }
         }
     }
     /// per prefix the most bd holds under it (level j: the 4^j prefixes of j digits; prefix p of j digits holds leaves
     /// p + 4^j r: the most of level j + 1's four quarters; no NaN here)
     fn levels(&mut self) {
-        for j in (0..self.nu).rev() {
-            let np = 1usize << (2 * j);
-            let mut lv = std::mem::take(&mut self.tmax[j]);
-            let up = &self.tmax[j + 1];
-            lv.clear();
-            lv.extend((0..np).map(|p| up[p].max(up[np + p]).max(up[2 * np + p]).max(up[3 * np + p])));
-            self.tmax[j] = lv;
+        for j in (0..self.target_count).rev() {
+            let prefix_count = 1usize << (2 * j);
+            let mut level = std::mem::take(&mut self.prefix_maxima[j]);
+            let children = &self.prefix_maxima[j + 1];
+            level.clear();
+            level.extend((0..prefix_count).map(|p| {
+                children[p]
+                    .max(children[prefix_count + p])
+                    .max(children[2 * prefix_count + p])
+                    .max(children[3 * prefix_count + p])
+            }));
+            self.prefix_maxima[j] = level;
         }
     }
-    /// an anchor's suffix products of its least factors (`smin`), and whether its bound at the root is below th (the most bd
-    /// holds, tmax[0][0], or a bar at least that: tmax only falls, so a no now is a no later too); f > 0, g its factors as `run`'s
+    /// an anchor's suffix products of its least factors (`suffix_minima`), and whether its bound at the root is below th (the most bd
+    /// holds, prefix_maxima[0][0], or a bar at least that: the prefix maxima only fall, so a no now is a no later too); f > 0, g its factors as `run`'s
     fn root_open(&mut self, f: f64, g: &[f64], th: f64) -> bool {
-        let (nu, no) = (self.nu, self.no);
-        if nu == 0 {
+        let (target_count, outfit_count) = (self.target_count, self.outfit_count);
+        if target_count == 0 {
             return true;
         }
         let mut lb = 0.0f64;
-        for o in 0..no {
-            for j in (0..nu).rev() {
-                let gk = &g[(o * nu + j) * 4..(o * nu + j) * 4 + 4];
-                let mn = gk[0].min(gk[1]).min(gk[2]).min(gk[3]);
-                self.smin[o * (nu + 1) + j] = self.smin[o * (nu + 1) + j + 1] * mn;
+        for o in 0..outfit_count {
+            for j in (0..target_count).rev() {
+                let target_factors = &g[(o * target_count + j) * 4..(o * target_count + j) * 4 + 4];
+                let mn = target_factors[0].min(target_factors[1]).min(target_factors[2]).min(target_factors[3]);
+                self.suffix_minima[o * (target_count + 1) + j] =
+                    self.suffix_minima[o * (target_count + 1) + j + 1] * mn;
             }
-            let l = self.smin[o * (nu + 1)];
+            let l = self.suffix_minima[o * (target_count + 1)];
             if l > lb {
                 lb = l;
             }
@@ -219,27 +248,22 @@ impl AncBb {
         f * BB_SLACK * lb < th
     }
     /// `root_open`'s answer for an anchor (f > 0, chances qa) from its 0-star factors alone (`rise_factors`' expressions;
-    /// the same products in the same order; `smin` is not written, `run` writes it). Premises (the caller's): e, qa, x0 in
+    /// the same products in the same order; `suffix_minima` is not written, `run` writes it). Premises (the caller's): e, qa, x0 in
     /// [0, 1], xms falling and >= 0, nu > 0. Derived: qn = 1 - x0 xms[s] rises with s (rounding is monotone); a factor is 1
     /// where qn <= qa, else N(qn) / D, D = N(qa) = 1 - (1 - e)(1 - qa) in [0, 1] and N rising with qn: N >= D, so it is
     /// >= 1 (+inf where D = 0, as N > 0 there), never NaN, and rises with qn: each digit's least is its 0-star factor
-    fn root_min(
-        &self,
-        f: f64,
-        sts: &[Vec<u8>],
-        ews: &[Vec<f64>],
-        x0: &[f64],
-        xms: &[f64; 4],
-        qa: &[f64],
-        uncv: &[usize],
-        th: f64,
-    ) -> bool {
-        let nu = self.nu;
+    fn root_min(&self, f: f64, inputs: &RiseInputs, anchor_chances: &[f64], th: f64) -> bool {
+        let target_count = self.target_count;
         let mut lb = 0.0f64;
-        for (st, ew) in sts.iter().zip(ews) {
+        for (st, ew) in inputs.outfit_coverage.iter().zip(inputs.event_chances) {
             let mut l = 1.0f64;
-            for k in (0..nu).rev() {
-                l *= rise_factor(st[k], ew[k], 1.0 - x0[k] * xms[0], qa[uncv[k]]);
+            for k in (0..target_count).rev() {
+                l *= rise_factor(
+                    st[k],
+                    ew[k],
+                    1.0 - inputs.base_misses[k] * inputs.star_misses[0],
+                    anchor_chances[inputs.uncertain_targets[k]],
+                );
             }
             if l > lb {
                 lb = l;
@@ -249,92 +273,138 @@ impl AncBb {
     }
     /// fold one anchor in: f > 0, g its factors [outfit][target k][her stars], all > 0
     fn run(&mut self, f: f64, g: &[f64]) {
-        let (nu, no) = (self.nu, self.no);
-        if nu == 0 {
-            let v = f * if no > 0 { 1.0 } else { 0.0 };
-            if v < self.tmax[0][0] {
-                self.tmax[0][0] = v;
+        let (target_count, outfit_count) = (self.target_count, self.outfit_count);
+        if target_count == 0 {
+            let v = f * if outfit_count > 0 { 1.0 } else { 0.0 };
+            if v < self.prefix_maxima[0][0] {
+                self.prefix_maxima[0][0] = v;
             }
             return;
         }
-        if !self.root_open(f, g, self.tmax[0][0]) {
+        if !self.root_open(f, g, self.prefix_maxima[0][0]) {
             return;
         }
-        for o in 0..no {
-            self.pp[o] = 1.0;
+        for o in 0..outfit_count {
+            self.prefix_products[o] = 1.0;
         }
-        self.roots += 1;
+        self.open_roots += 1;
         self.dfs(0, 0, f, f * BB_SLACK, g);
     }
     fn dfs(&mut self, j: usize, p: usize, f: f64, fs: f64, g: &[f64]) {
-        let (nu, no) = (self.nu, self.no);
-        self.nodes += 1;
-        for dg in 0..4usize {
-            let pc = p | dg << (2 * j);
-            for o in 0..no {
-                self.pp[(j + 1) * no + o] = self.pp[j * no + o] * g[(o * nu + j) * 4 + dg];
+        let (target_count, outfit_count) = (self.target_count, self.outfit_count);
+        self.visited_nodes += 1;
+        for stars in 0..4usize {
+            let prefix = p | stars << (2 * j);
+            for o in 0..outfit_count {
+                self.prefix_products[(j + 1) * outfit_count + o] =
+                    self.prefix_products[j * outfit_count + o] * g[(o * target_count + j) * 4 + stars];
             }
-            if j + 1 == nu {
+            if j + 1 == target_count {
                 let mut rv = 0.0f64;
-                for o in 0..no {
-                    let pr = self.pp[nu * no + o];
-                    if pr > rv {
-                        rv = pr;
+                for o in 0..outfit_count {
+                    let product = self.prefix_products[target_count * outfit_count + o];
+                    if product > rv {
+                        rv = product;
                     }
                 }
                 let v = f * rv;
-                let b = &mut self.tmax[nu][pc];
+                let b = &mut self.prefix_maxima[target_count][prefix];
                 if v < *b {
                     *b = v;
                 }
             } else {
                 let mut lb = 0.0f64;
-                for o in 0..no {
-                    let l = self.pp[(j + 1) * no + o] * self.smin[o * (nu + 1) + j + 1];
+                for o in 0..outfit_count {
+                    let l = self.prefix_products[(j + 1) * outfit_count + o]
+                        * self.suffix_minima[o * (target_count + 1) + j + 1];
                     if l > lb {
                         lb = l;
                     }
                 }
-                if fs * lb >= self.tmax[j + 1][pc] {
+                if fs * lb >= self.prefix_maxima[j + 1][prefix] {
                     continue;
                 }
-                self.dfs(j + 1, pc, f, fs, g);
+                self.dfs(j + 1, prefix, f, fs, g);
             }
         }
-        let up = &self.tmax[j + 1];
+        let children = &self.prefix_maxima[j + 1];
         let s = 1usize << (2 * j);
-        self.tmax[j][p] = up[p].max(up[p + s]).max(up[p + 2 * s]).max(up[p + 3 * s]);
+        self.prefix_maxima[j][p] = children[p].max(children[p + s]).max(children[p + 2 * s]).max(children[p + 3 * s]);
     }
 }
 
-/// The leaves (and outcomes) whose bound something reads: `lv[j][p]`, prefix p of j digits holds a marked leaf (level nu:
-/// the leaves); `dense` when most leaves are marked (the ceiling is then computed at every leaf, vectorised; `unm` the
-/// unmarked leaves); else `ix[j]` the marked prefixes of j digits ascending and `par[j]` each one's parent's place in
-/// `ix[j - 1]` (level 0 none)
+/// Prefix marks identify exactly the leaves whose bounds are read. Sparse traversal keeps
+/// ascending prefix indices and each prefix's position in the previous level. Dense traversal
+/// folds every leaf, then sets unmarked leaves to negative infinity.
 struct Marks {
-    lv: Vec<Vec<bool>>,
+    marked_leaf_count: usize,
+    prefix_marks: Vec<Vec<bool>>,
     dense: bool,
-    unm: Vec<usize>,
-    ix: Vec<Vec<u32>>,
-    par: Vec<Vec<u32>>,
+    unmarked_leaves: Vec<usize>,
+    prefix_indices: Vec<Vec<u32>>,
+    parent_indices: Vec<Vec<u32>>,
+}
+
+impl Marks {
+    fn new(cells: &[usize], target_count: usize, fixed_target_count: usize, leaf_count: usize) -> Self {
+        let mut marks = Self {
+            prefix_marks: vec![vec![]; target_count + 1],
+            dense: false,
+            unmarked_leaves: vec![],
+            prefix_indices: vec![vec![]; target_count + 1],
+            parent_indices: vec![vec![]; target_count + 1],
+            marked_leaf_count: 0,
+        };
+        marks.prefix_marks[target_count] = vec![false; leaf_count];
+        for &i in cells {
+            marks.prefix_marks[target_count][i >> fixed_target_count] = true;
+        }
+        for j in (0..target_count).rev() {
+            let prefix_count = 1usize << (2 * j);
+            let children = &marks.prefix_marks[j + 1];
+            marks.prefix_marks[j] = (0..prefix_count)
+                .map(|p| {
+                    children[p]
+                        || children[prefix_count + p]
+                        || children[2 * prefix_count + p]
+                        || children[3 * prefix_count + p]
+                })
+                .collect();
+        }
+        marks.marked_leaf_count = marks.prefix_marks[target_count].iter().filter(|&&b| b).count();
+        marks.dense = 4 * marks.marked_leaf_count >= leaf_count;
+        if marks.dense {
+            marks.unmarked_leaves = (0..leaf_count).filter(|&l| !marks.prefix_marks[target_count][l]).collect();
+        } else {
+            for j in 0..=target_count {
+                marks.prefix_indices[j] =
+                    (0..marks.prefix_marks[j].len()).filter(|&p| marks.prefix_marks[j][p]).map(|p| p as u32).collect();
+                if j > 0 {
+                    // prefix p of j digits: parent p mod 4^(j-1), found in the ascending `prefix_indices[j - 1]`
+                    let (parents, prefixes) = (&marks.prefix_indices[j - 1], &marks.prefix_indices[j]);
+                    let parent_mask = (1u32 << (2 * (j - 1))) - 1;
+                    marks.parent_indices[j] =
+                        prefixes.iter().map(|&p| parents.binary_search(&(p & parent_mask)).unwrap() as u32).collect();
+                }
+            }
+        }
+        marks
+    }
 }
 
 /// `rise_leaves`'s factors for chances qa, [outfit][target k][her stars] (the same expressions), into g
-fn rise_factors(
-    sts: &[Vec<u8>],
-    ews: &[Vec<f64>],
-    x0: &[f64],
-    xms: &[f64; 4],
-    qa: &[f64],
-    uncv: &[usize],
-    g: &mut Vec<f64>,
-) {
-    let nu = uncv.len();
+fn rise_factors(inputs: &RiseInputs, anchor_chances: &[f64], g: &mut Vec<f64>) {
+    let nu = inputs.uncertain_targets.len();
     g.clear();
-    for (st, ew) in sts.iter().zip(ews) {
+    for (st, ew) in inputs.outfit_coverage.iter().zip(inputs.event_chances) {
         for k in 0..nu {
             for sg in 0..4 {
-                g.push(rise_factor(st[k], ew[k], 1.0 - x0[k] * xms[sg], qa[uncv[k]]));
+                g.push(rise_factor(
+                    st[k],
+                    ew[k],
+                    1.0 - inputs.base_misses[k] * inputs.star_misses[sg],
+                    anchor_chances[inputs.uncertain_targets[k]],
+                ));
             }
         }
     }
@@ -343,44 +413,42 @@ fn rise_factors(
 /// `outcome_hi` at one outcome (her stars `leaf`, landed set m): each candidate's odds `up` at the most any partner's
 /// bound allows (into `up`), then `saving_lo`; `c1` scratch
 fn hi_at(
-    bs: &ScoreBase,
-    hs: &[(usize, Vec<f64>, Vec<f64>)],
+    score_base: &ScoreBase,
+    bounds: &[ExactPartnerBound],
     leaf: usize,
-    m: usize,
-    full_m: usize,
-    xi: Option<usize>,
-    her: &[OwnTrio],
-    goal: bool,
-    c1: &mut [f64],
-    up: &mut [f64],
+    landed_mask: usize,
+    own: &OwnFullLanding,
+    step_costs: &mut [f64],
+    candidate_probabilities: &mut [f64],
 ) -> f64 {
-    up.copy_from_slice(bs.pnow);
-    for (ui, bd, sc) in hs {
-        let v = sc[m] * bd[leaf];
-        if v > up[*ui] {
-            up[*ui] = v;
+    candidate_probabilities.copy_from_slice(score_base.pnow);
+    for bound in bounds {
+        let value = bound.spark_scales[landed_mask] * bound.leaf_bounds[leaf];
+        if value > candidate_probabilities[bound.candidate] {
+            candidate_probabilities[bound.candidate] = value;
         }
     }
-    saving_lo(bs, up, m, full_m, xi, her, goal, c1)
+    saving_lo(score_base, candidate_probabilities, landed_mask, own, step_costs)
 }
 
 /// V - V_lo at candidate odds `up`: each step that rose at `Cont::cost_lo`, her own 8/8 (`xi`, `her_trios`) on the full
 /// set, the goal's V; `c1` scratch
 fn saving_lo(
-    bs: &ScoreBase,
-    up: &[f64],
-    m: usize,
-    full_m: usize,
-    xi: Option<usize>,
-    her: &[OwnTrio],
-    goal: bool,
-    c1: &mut [f64],
+    score_base: &ScoreBase,
+    candidate_probabilities: &[f64],
+    landed_mask: usize,
+    own: &OwnFullLanding,
+    step_costs: &mut [f64],
 ) -> f64 {
     // (the candidates above their threshold, `score_career`'s pnow (1 + 1e-9), in candidate order)
-    let lifted: Vec<(usize, usize, f64)> =
-        (0..bs.cands.len()).filter(|&ui| up[ui] > bs.pnow[ui] * (1.0 + 1e-9)).map(|ui| (ui, ui, up[ui])).collect();
-    c1.copy_from_slice(bs.c1);
-    v_after(bs, &mut Lo, c1, &mut vec![], &lifted, m, full_m, xi, her, goal)
+    let lifted: Vec<CandidateLift> = (0..score_base.cands.len())
+        .filter(|&candidate| candidate_probabilities[candidate] > score_base.pnow[candidate] * (1.0 + 1e-9))
+        .map(|candidate| CandidateLift { slot: candidate, candidate, probability: candidate_probabilities[candidate] })
+        .collect();
+    step_costs.copy_from_slice(score_base.c1);
+    let mut changed_candidates = vec![];
+    let mut scratch = StepScratch { costs: step_costs, changed_candidates: &mut changed_candidates };
+    v_after(score_base, &mut Lo, &mut scratch, &lifted, landed_mask, own)
 }
 
 /// The pick's bound's exact anchors (`outcome_hi`): her best deck searched with her at each of these stars on every
@@ -399,38 +467,114 @@ const HI_SEARCHES: usize = 0;
 /// the same
 const HI_RISE: f64 = 1.5;
 
-/// `outcome_hi` for one (candidate ui, partner y): her slot's miss factors, the bound per leaf (`AncBb`), each marked
+/// `outcome_hi` for one (candidate ui, partner y): her slot's miss factors, the bound per leaf (`AnchorBound`), each marked
 /// outcome's most of the partners' (`tu`: candidate ui's row of the table). Its own function, entered once per partner,
 /// so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*)
-struct HiCx<'base> {
-    bs: &'base ScoreBase<'base>,
-    d: &'base Data,
-    legs: &'base [Legacy],
-    pool: &'base Pool,
-    fix: &'base [usize],
-    uncv: &'base [usize],
-    mk: &'base Marks,
-    mc: &'base [usize],
-    lm: &'base [u32],
-    nu: usize,
-    ntar: usize,
-    nm: usize,
-    nf: usize,
-    ncell: usize,
-    nmc: usize,
-    iv: usize,
-    rf: f64,
+struct UpperBoundContext<'score, 'base> {
+    scoring: &'score ScoringContext<'score, 'base>,
+    fixed_parents: &'score [usize],
+    uncertain_targets: &'score [usize],
+    marked_outcomes: MarkedOutcomes<'score>,
+    ceiling_scale: f64,
 }
 
-/// `hi_partner`'s scratch, kept across partners (each call writes what it reads)
-struct HiScr {
-    bb: AncBb,
-    g1: Vec<f64>,
-    gc: Vec<f64>,
-    lp: Vec<f64>,
-    lp_tmp: Vec<f64>,
-    qz: Vec<f64>,
-    tg: Vec<f64>,
+/// Compact outcome-table indexing used for every candidate and partner.
+struct MarkedOutcomes<'marks> {
+    marks: &'marks Marks,
+    cell_indices: &'marks [usize],
+    landed_masks: &'marks [u32],
+    target_count: usize,
+    outcome_count: usize,
+    fixed_target_count: usize,
+    cell_count: usize,
+    marked_cell_count: usize,
+}
+
+/// Reused across partners; each call writes every entry it reads.
+struct UpperBoundScratch {
+    anchor_bound: AnchorBound,
+    rise_factors: Vec<f64>,
+    ceiling_factors: Vec<f64>,
+    leaf_products: Vec<f64>,
+    next_leaf_products: Vec<f64>,
+    inheritance_chances: Vec<f64>,
+    relation_points: Vec<f64>,
+}
+
+struct CandidateBoundInputs<'partner> {
+    extended_pool: &'partner Pool,
+    candidate_index: usize,
+    outfit_coverage: &'partner [Vec<u8>],
+    event_chances: &'partner [Vec<f64>],
+    event_chances_valid: bool,
+    anchor_indices: &'partner [usize],
+    anchors: &'partner [Option<FoundAnchor>],
+}
+
+/// A partner changes within the candidate phase; the candidate's tables stay borrowed.
+struct PartnerBoundInputs<'partner, 'inputs> {
+    candidate: &'partner CandidateBoundInputs<'inputs>,
+    lineage: Lineage,
+}
+
+impl<'inputs> CandidateBoundInputs<'inputs> {
+    const fn partner(&self, score_base: &ScoreBase, first_parent: usize) -> PartnerBoundInputs<'_, 'inputs> {
+        PartnerBoundInputs {
+            candidate: self,
+            lineage: Lineage {
+                trainee: score_base.cands[self.candidate_index],
+                first_parent,
+                second_parent: self.extended_pool.me.len() - 1,
+            },
+        }
+    }
+}
+
+/// Parallel anchor buffers preserve evaluation order. Anchor i owns factors[i * stride..(i + 1) * stride].
+#[derive(Default)]
+struct AnchorBatch {
+    factors: Vec<f64>,
+    values: Vec<f64>,
+    direct: bool,
+    retained: Vec<(f64, Vec<f64>)>,
+}
+
+struct AnchorPriority {
+    bound_at_two_stars: f64,
+    anchor_index: usize,
+}
+
+struct ExactPartnerBound {
+    candidate: usize,
+    leaf_bounds: Vec<f64>,
+    spark_scales: Vec<f64>,
+}
+
+struct ExactAnchorChances {
+    lineage: Lineage,
+    initial_chances: Vec<f64>,
+    base_misses: Vec<f64>,
+    star_misses: [f64; 4],
+}
+
+impl ExactAnchorChances {
+    /// Borrow outfit and target tables only after the mutable deck search finishes.
+    fn rise_inputs<'rise>(&'rise self, environment: &'rise Env) -> RiseInputs<'rise> {
+        RiseInputs {
+            outfit_coverage: &environment.sts0[self.lineage.trainee],
+            event_chances: &environment.ew0[self.lineage.trainee],
+            uncertain_targets: &environment.uncv,
+            base_misses: &self.base_misses,
+            star_misses: &self.star_misses,
+        }
+    }
+}
+
+struct PartnerBoundOutput<'output> {
+    candidate_bounds: &'output mut [f64],
+    exact_bounds: &'output mut Vec<ExactPartnerBound>,
+    exact_chances: &'output mut Vec<ExactAnchorChances>,
+    retained_anchors: &'output mut Option<Vec<(f64, Vec<f64>)>>,
 }
 
 /// One (candidate, partner)'s anchors as `hi_partner` keeps them for the next call of the same pick (a roll's: none until
@@ -464,6 +608,12 @@ pub(in crate::deck::career::sim::plan) struct OutcomeBounds<'bounds> {
     pub(in crate::deck::career::sim::plan) own_trios: &'bounds [OwnTrio],
 }
 
+/// A cell's probability and its landed job-target bits are distinct from its cell index.
+struct OutcomeChance {
+    probability: f64,
+    landed_mask: usize,
+}
+
 /// One outcome and its estimated saving, before bounding that same outcome.
 #[derive(Clone, Copy)]
 pub(in crate::deck::career::sim::plan) struct OutcomeEstimate {
@@ -476,72 +626,67 @@ pub(in crate::deck::career::sim::plan) struct OutcomeEstimate {
 #[inline(never)]
 #[allow(clippy::absurd_extreme_comparisons, reason = "HI_SEARCHES is a tuning constant, now 0 (anchors off)")]
 fn hi_partner(
-    s: &Sim,
-    hx: &HiCx,
-    pv: &Pool,
-    ui: usize,
-    u: usize,
-    y: usize,
-    sts: &[Vec<u8>],
-    ews: &[Vec<f64>],
-    ew_ok: bool,
-    fr: &[usize],
-    fr_of: &[Option<FoundAnchor>],
-    tu: &mut [f64],
-    hp: &mut HiScr,
-    hs: &mut Vec<(usize, Vec<f64>, Vec<f64>)>,
-    hq: &mut Vec<(usize, Vec<f64>, Vec<f64>, [f64; 4])>,
-    ac: &mut Option<Vec<(f64, Vec<f64>)>>,
+    simulator: &Sim,
+    context: &UpperBoundContext,
+    partner: &PartnerBoundInputs,
+    scratch: &mut UpperBoundScratch,
+    output: &mut PartnerBoundOutput,
 ) {
-    let HiCx { bs, d, legs, pool, fix, uncv, mk, mc, lm, nu, ntar, nm, nf, ncell, nmc, iv, rf } = *hx;
-    let HiScr { bb, g1, gc, lp, lp_tmp, qz, tg } = hp;
+    let candidate = partner.candidate;
     // her slot's miss factors and spark scales (`Env::her_slot`, as `score_career`'s setups)
-    let Some(HerSlot { q0, x0, xms, pw }) =
-        s.env.her_slot(pv, Lineage { trainee: u, first_parent: y, second_parent: iv })
-    else {
+    let Some(slot) = simulator.env.her_slot(candidate.extended_pool, partner.lineage) else {
         return;
     };
+    let rise =
+        RiseInputs::for_slot(candidate.outfit_coverage, candidate.event_chances, context.uncertain_targets, &slot);
     // the best outfit's product per leaf: per outfit and target the factor A - B (1 - q') at each of her four star
     // levels, 1 - q' = x0 xm (`outfit_fast` at her chances folded in, as `Sim::fast_ub` takes it)
-    let t0 = now_ms();
-    gc.clear();
-    for o in &s.fastc[u] {
-        for k in 0..nu {
-            let (aa, bb) = o[k];
+    let ceiling_started = now_ms();
+    scratch.ceiling_factors.clear();
+    for o in &simulator.fastc[partner.lineage.trainee] {
+        for k in 0..context.uncertain_targets.len() {
+            let (intercept, miss_coefficient) = o[k];
             for sg in 0..4 {
-                gc.push(aa - bb * (x0[k] * xms[sg]));
+                scratch.ceiling_factors.push(intercept - miss_coefficient * (slot.x0[k] * slot.xms[sg]));
             }
         }
     }
     // the anchored rise bound per leaf: the least over today's pairs (y, z) keeping the places of
     // (pnow / c_yz) rise(q'(leaf), q_yz), q'_k(leaf) = 1 - x0[k] xm[her stars], and over the main search's proven
     // careers of her deck class (E_best(q_f) = val_f there: val_f rise(q', q_f)); at most the ceiling too (under
-    // EXACT_RHO): bd = min(rf ceil, anc) per leaf, by `AncBb` (anchors in any order: a min)
-    bb.reset(nu, sts.len(), gc, s.fastc[u].len(), rf, mk, lp, lp_tmp);
-    let t1 = now_ms();
+    // EXACT_RHO): bd = min(rf ceil, anc) per leaf, by `AnchorBound` (anchors in any order: a min)
+    let ceiling = CeilingFactors {
+        values: &scratch.ceiling_factors,
+        target_count: context.uncertain_targets.len(),
+        outfit_count: simulator.fastc[partner.lineage.trainee].len(),
+        scale: context.ceiling_scale,
+    };
+    let mut products =
+        LeafProductWorkspace { current: &mut scratch.leaf_products, next: &mut scratch.next_leaf_products };
+    scratch.anchor_bound.reset(candidate.outfit_coverage.len(), &ceiling, context.marked_outcomes.marks, &mut products);
+    let anchors_started = now_ms();
     // the anchors whose bound at the root is open (f, factors), and whether any went in whole
-    let mut direct = false;
-    let (mut gs, mut fs): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
-    // (`AncBb::root_min`'s premises but the anchor's chances)
-    let safe = ew_ok
-        && nu > 0
-        && xms[0] >= xms[1]
-        && xms[1] >= xms[2]
-        && xms[2] >= xms[3]
-        && xms[3] >= 0.0
-        && x0.iter().all(|v| (0.0..=1.0).contains(v));
-    // The most the ceiling holds at any leaf (`AncBb::reset`'s bd at the leaf of each digit's largest factor: per outfit the
+    let mut batch = AnchorBatch::default();
+    // (`AnchorBound::root_min`'s premises but the anchor's chances)
+    let monotone_factors = candidate.event_chances_valid
+        && !context.uncertain_targets.is_empty()
+        && slot.xms[0] >= slot.xms[1]
+        && slot.xms[1] >= slot.xms[2]
+        && slot.xms[2] >= slot.xms[3]
+        && slot.xms[3] >= 0.0
+        && slot.x0.iter().all(|v| (0.0..=1.0).contains(v));
+    // The most the ceiling holds at any leaf (`AnchorBound::reset`'s bd at the leaf of each digit's largest factor: per outfit the
     // product in the leaves' order from 1.0, the most over outfits from 0.0, rf x it; with every factor >= 0 rounding is
     // monotone, so no leaf's is above it), +inf where a factor is negative or NaN. An anchor whose root test fails against
     // it fails at every set of marked leaves (the test's own bar, the most bd holds at the marked leaves, is at most it):
-    // the anchors kept for later calls (`ac`, a roll's: the same pair, pool and odds now at every outcome) are the others,
+    // the anchors kept for later calls (`retained_anchors`, a roll's: the same pair, pool and odds now at every outcome) are the others,
     // in their order, so a later call folds in the same anchors as computing them all would, minus ones that lower nothing
-    let tcap = {
-        let (no, mut acc, mut ok) = (s.fastc[u].len(), 0.0f64, true);
+    let ceiling_maximum = {
+        let (no, mut acc, mut ok) = (simulator.fastc[partner.lineage.trainee].len(), 0.0f64, true);
         for o in 0..no {
             let mut p = 1.0f64;
-            for k in 0..nu {
-                let g = &gc[(o * nu + k) * 4..][..4];
+            for k in 0..context.uncertain_targets.len() {
+                let g = &scratch.ceiling_factors[(o * context.uncertain_targets.len() + k) * 4..][..4];
                 ok &= g.iter().all(|v| *v >= 0.0);
                 p *= g[0].max(g[1]).max(g[2]).max(g[3]);
             }
@@ -549,59 +694,57 @@ fn hi_partner(
                 acc = p;
             }
         }
-        let b = rf * acc;
+        let b = context.ceiling_scale * acc;
         if ok && !b.is_nan() { b } else { f64::INFINITY }
     };
-    let building = ac.is_none();
-    let mut kept: Vec<(f64, Vec<f64>)> = vec![];
-    let mut add = |bb: &mut AncBb,
-                   f: f64,
-                   qa: &[f64],
-                   gs: &mut Vec<f64>,
-                   fs: &mut Vec<f64>,
-                   direct: &mut bool,
-                   kept: &mut Vec<(f64, Vec<f64>)>| {
-        if f > 0.0 && safe && uncv.iter().all(|&i| (0.0..=1.0).contains(&qa[i])) {
+    let building_cache = output.retained_anchors.is_none();
+    let mut add = |anchor_bound: &mut AnchorBound, f: f64, anchor_chances: &[f64], batch: &mut AnchorBatch| {
+        if f > 0.0
+            && monotone_factors
+            && context.uncertain_targets.iter().all(|&i| (0.0..=1.0).contains(&anchor_chances[i]))
+        {
             // every factor >= 1, each digit's least its 0-star one: the root test on those alone, the rest only
             // for an anchor it keeps (as the test below would: all factors > 0, `root_open` the same answer)
-            if building {
-                if !bb.root_min(f, sts, ews, &x0, &xms, qa, uncv, tcap) {
+            if building_cache {
+                if !anchor_bound.root_min(f, &rise, anchor_chances, ceiling_maximum) {
                     return;
                 }
-                kept.push((f, qa.to_vec()));
+                batch.retained.push((f, anchor_chances.to_vec()));
             }
-            if !bb.root_min(f, sts, ews, &x0, &xms, qa, uncv, bb.tmax[0][0]) {
+            if !anchor_bound.root_min(f, &rise, anchor_chances, anchor_bound.prefix_maxima[0][0]) {
                 return;
             }
-            rise_factors(sts, ews, &x0, &xms, qa, uncv, g1);
+            rise_factors(&rise, anchor_chances, &mut scratch.rise_factors);
             debug_assert!(
-                g1.iter().all(|&v| v > 0.0) && bb.root_open(f, g1, bb.tmax[0][0]),
+                scratch.rise_factors.iter().all(|&v| v > 0.0)
+                    && anchor_bound.root_open(f, &scratch.rise_factors, anchor_bound.prefix_maxima[0][0]),
                 "a candidate kept for a rise has positive factors and an open root"
             );
-            fs.push(f);
-            gs.extend_from_slice(g1);
+            batch.values.push(f);
+            batch.factors.extend_from_slice(&scratch.rise_factors);
             return;
         }
-        rise_factors(sts, ews, &x0, &xms, qa, uncv, g1);
-        if f > 0.0 && g1.iter().all(|&v| v > 0.0) {
-            if building {
-                if !bb.root_open(f, g1, tcap) {
+        rise_factors(&rise, anchor_chances, &mut scratch.rise_factors);
+        if f > 0.0 && scratch.rise_factors.iter().all(|&v| v > 0.0) {
+            if building_cache {
+                if !anchor_bound.root_open(f, &scratch.rise_factors, ceiling_maximum) {
                     return;
                 }
-                kept.push((f, qa.to_vec()));
+                batch.retained.push((f, anchor_chances.to_vec()));
             }
-            if bb.root_open(f, g1, bb.tmax[0][0]) {
-                fs.push(f);
-                gs.extend_from_slice(g1);
+            if anchor_bound.root_open(f, &scratch.rise_factors, anchor_bound.prefix_maxima[0][0]) {
+                batch.values.push(f);
+                batch.factors.extend_from_slice(&scratch.rise_factors);
             }
         } else {
             // outside the bound's premises: every leaf, as before
-            if building {
-                kept.push((f, qa.to_vec()));
+            if building_cache {
+                batch.retained.push((f, anchor_chances.to_vec()));
             }
-            *direct = true;
-            let rz = rise_leaves(sts, ews, &x0, &xms, qa, uncv, lp, lp_tmp);
-            for (av, rv) in bb.tmax[bb.nu].iter_mut().zip(&rz) {
+            batch.direct = true;
+            let leaf_rises =
+                rise_leaves(&rise, anchor_chances, &mut scratch.leaf_products, &mut scratch.next_leaf_products);
+            for (av, rv) in anchor_bound.prefix_maxima[anchor_bound.target_count].iter_mut().zip(&leaf_rises) {
                 let v = f * rv;
                 if v < *av {
                     *av = v;
@@ -609,94 +752,143 @@ fn hi_partner(
             }
         }
     };
-    if let Some(ks) = ac.as_ref() {
-        for (f, qa) in ks {
-            add(bb, *f, qa, &mut gs, &mut fs, &mut direct, &mut kept);
+    if let Some(ks) = output.retained_anchors.as_ref() {
+        for (f, anchor_chances) in ks {
+            add(&mut scratch.anchor_bound, *f, anchor_chances, &mut batch);
         }
     } else {
-        if bs.pnow[ui] > 0.0 {
-            let mut nz = 0usize;
-            for z in (0..legs.len()).filter(|&z| {
-                legal_pair(d, pool, Lineage { trainee: u, first_parent: y, second_parent: z }) && holds_fix(fix, y, z)
-            }) {
-                let cz =
-                    s.env.lineage_qc(pool, Lineage { trainee: u, first_parent: y, second_parent: z }, uncv, qz, tg);
-                if cz <= 0.0 {
+        if context.scoring.score_base.pnow[candidate.candidate_index] > 0.0 {
+            let mut legal_anchors = 0usize;
+            for lineage in (0..context.scoring.legacies.len())
+                .map(|second_parent| Lineage { second_parent, ..partner.lineage })
+                .filter(|&lineage| {
+                    legal_pair(simulator.d, context.scoring.pool, lineage)
+                        && holds_fix(context.fixed_parents, lineage.first_parent, lineage.second_parent)
+                })
+            {
+                let anchor_scale = simulator.env.lineage_qc(
+                    context.scoring.pool,
+                    lineage,
+                    context.uncertain_targets,
+                    &mut scratch.inheritance_chances,
+                    &mut scratch.relation_points,
+                );
+                if anchor_scale <= 0.0 {
                     continue;
                 }
-                nz += 1;
-                add(bb, bs.pnow[ui] / cz, qz, &mut gs, &mut fs, &mut direct, &mut kept);
+                legal_anchors += 1;
+                add(
+                    &mut scratch.anchor_bound,
+                    context.scoring.score_base.pnow[candidate.candidate_index] / anchor_scale,
+                    &scratch.inheritance_chances,
+                    &mut batch,
+                );
             }
-            if nz > 0 {
-                prof("hi_z", nz as f64);
+            if legal_anchors > 0 {
+                prof("hi_z", legal_anchors as f64);
             }
         }
-        for &i in fr {
-            let FoundAnchor { inheritance_chances: fq, value: fv, .. } = fr_of[i].as_ref().unwrap();
-            add(bb, *fv, fq, &mut gs, &mut fs, &mut direct, &mut kept);
+        for &i in candidate.anchor_indices {
+            let FoundAnchor { inheritance_chances: anchor_chances, value: anchor_value, .. } =
+                candidate.anchors[i].as_ref().unwrap();
+            add(&mut scratch.anchor_bound, *anchor_value, anchor_chances, &mut batch);
         }
-        prof("hi_kept", kept.len() as f64);
-        *ac = Some(kept);
+        prof("hi_kept", batch.retained.len() as f64);
+        *output.retained_anchors = Some(batch.retained);
     }
-    if direct {
-        bb.levels();
+    if batch.direct {
+        scratch.anchor_bound.levels();
     }
     // the likeliest lowest first (f x the best outfit's product at 2 stars on every target): only speed
-    let ga = sts.len() * nu * 4;
-    let mut ord: Vec<(f64, usize)> = fs
+    let factor_stride = candidate.outfit_coverage.len() * context.uncertain_targets.len() * 4;
+    let mut anchor_order: Vec<AnchorPriority> = batch
+        .values
         .iter()
         .enumerate()
         .map(|(i, &f)| {
-            let gi = &gs[i * ga..(i + 1) * ga];
-            (
-                f * (0..sts.len())
-                    .map(|o| (0..nu).map(|k| gi[(o * nu + k) * 4 + 2]).product::<f64>())
-                    .fold(0.0f64, f64::max),
-                i,
-            )
+            let gi = &batch.factors[i * factor_stride..(i + 1) * factor_stride];
+            AnchorPriority {
+                bound_at_two_stars: f
+                    * (0..candidate.outfit_coverage.len())
+                        .map(|o| {
+                            (0..context.uncertain_targets.len())
+                                .map(|k| gi[(o * context.uncertain_targets.len() + k) * 4 + 2])
+                                .product::<f64>()
+                        })
+                        .fold(0.0f64, f64::max),
+                anchor_index: i,
+            }
         })
         .collect();
-    ord.sort_by(|p, q| p.0.total_cmp(&q.0).then(p.1.cmp(&q.1)));
-    let t3 = now_ms();
-    let nodes0 = bb.nodes;
-    for &(_, i) in &ord {
-        bb.run(fs[i], &gs[i * ga..(i + 1) * ga]);
+    anchor_order.sort_by(|p, q| {
+        p.bound_at_two_stars.total_cmp(&q.bound_at_two_stars).then(p.anchor_index.cmp(&q.anchor_index))
+    });
+    let fold_started = now_ms();
+    let nodes_before = scratch.anchor_bound.visited_nodes;
+    for priority in &anchor_order {
+        let i = priority.anchor_index;
+        scratch.anchor_bound.run(batch.values[i], &batch.factors[i * factor_stride..(i + 1) * factor_stride]);
     }
-    prof("hi_nodes", (bb.nodes - nodes0) as f64);
-    prof("hi_open", fs.len() as f64);
-    prof("hi_roots", bb.roots as f64);
-    bb.roots = 0;
-    let t4 = now_ms();
+    prof("hi_nodes", (scratch.anchor_bound.visited_nodes - nodes_before) as f64);
+    prof("hi_open", batch.values.len() as f64);
+    prof("hi_roots", scratch.anchor_bound.open_roots as f64);
+    scratch.anchor_bound.open_roots = 0;
+    let emit_started = now_ms();
     // the spark scale per landed set m: every m's when the marked cells are as many (or the exact anchors keep them), else each
     // marked cell's own (the same product)
-    let scm = |m: usize| -> f64 { (0..ntar).map(|k| pw[k][(m >> k) & 1]).product() };
-    let sc: Vec<f64> = if HI_SEARCHES > 0 || nmc >= nm { (0..nm).map(&scm).collect() } else { vec![] };
+    let scale_for_mask =
+        |m: usize| -> f64 { (0..context.marked_outcomes.target_count).map(|k| slot.pw[k][(m >> k) & 1]).product() };
+    let spark_scales: Vec<f64> =
+        if HI_SEARCHES > 0 || context.marked_outcomes.marked_cell_count >= context.marked_outcomes.outcome_count {
+            (0..context.marked_outcomes.outcome_count).map(&scale_for_mask).collect()
+        } else {
+            vec![]
+        };
     // each outcome's most of the partners' sc[m] bd[leaf] (from pnow; in partner order per candidate, as `hi_at`)
-    let bd = bb.bd();
-    if nmc == ncell && nf == 0 {
-        for ((t, &m), &b) in tu.iter_mut().zip(lm).zip(bd) {
-            let v = sc[m as usize] * b;
+    let leaf_bounds = scratch.anchor_bound.leaf_bounds();
+    if context.marked_outcomes.marked_cell_count == context.marked_outcomes.cell_count
+        && context.marked_outcomes.fixed_target_count == 0
+    {
+        for ((t, &m), &b) in
+            output.candidate_bounds.iter_mut().zip(context.marked_outcomes.landed_masks).zip(leaf_bounds)
+        {
+            let v = spark_scales[m as usize] * b;
             if v > *t {
                 *t = v;
             }
         }
     } else {
-        for ((t, &i), &m) in tu.iter_mut().zip(mc).zip(lm) {
-            let v = (if sc.is_empty() { scm(m as usize) } else { sc[m as usize] }) * bd[i >> nf];
+        for ((t, &i), &m) in output
+            .candidate_bounds
+            .iter_mut()
+            .zip(context.marked_outcomes.cell_indices)
+            .zip(context.marked_outcomes.landed_masks)
+        {
+            let v = (if spark_scales.is_empty() { scale_for_mask(m as usize) } else { spark_scales[m as usize] })
+                * leaf_bounds[i >> context.marked_outcomes.fixed_target_count];
             if v > *t {
                 *t = v;
             }
         }
     }
-    prof("hi_ceil_ms", t1 - t0);
-    prof("hi_anc_ms", t3 - t1);
-    prof("hi_bb_ms", t4 - t3);
-    prof("hi_fold_ms", now_ms() - t4);
+    prof("hi_ceil_ms", anchors_started - ceiling_started);
+    prof("hi_anc_ms", fold_started - anchors_started);
+    prof("hi_bb_ms", emit_started - fold_started);
+    prof("hi_fold_ms", now_ms() - emit_started);
     prof("hi_pairs", 1.0);
     // (both read only by the exact anchors, HI_SEARCHES > 0)
     if HI_SEARCHES > 0 {
-        hs.push((ui, bb.bd().to_vec(), sc));
-        hq.push((u, q0, x0, xms));
+        output.exact_bounds.push(ExactPartnerBound {
+            candidate: candidate.candidate_index,
+            leaf_bounds: scratch.anchor_bound.leaf_bounds().to_vec(),
+            spark_scales,
+        });
+        output.exact_chances.push(ExactAnchorChances {
+            lineage: partner.lineage,
+            initial_chances: slot.q0,
+            base_misses: slot.x0,
+            star_misses: slot.xms,
+        });
     }
 }
 
@@ -734,213 +926,224 @@ fn hi_partner(
 ///     saving. Not bounded (channel 2, out of scope by design): what the replan's refits do (Cont fitted
 ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
 pub(in crate::deck::career::sim::plan) fn outcome_hi(
-    s: &mut Sim,
+    simulator: &mut Sim,
     context: &ScoringContext,
     career: Career,
     bounds: &OutcomeBounds,
     outcome: OutcomeEstimate,
-    acache: &mut Vec<PartnerAnchors>,
+    anchor_cache: &mut Vec<PartnerAnchors>,
 ) -> f64 {
-    let d = s.d;
-    let x = career.lineage.trainee;
-    let want = &[(outcome.index.0, outcome.saving)];
+    let data = simulator.d;
+    let trainee = career.lineage.trainee;
+    let want = &[outcome];
 
-    let n = context.score_base.cands.len();
-    let ntar = s.env.ntar;
-    let nu = s.env.uncv.len();
-    let uncv = s.env.uncv.clone();
-    let fixed_t = s.env.fixed_t.clone();
-    let w = s.env.sj.star_dist;
-    let (xi, goal) = her_ends(s, context.score_base, context.legacies, career.lineage);
-    let c = s.make_cur(context.pool, career, false);
-    let pv = her_pool(s, context.legacies, context.pool, true, career.lineage, &c);
-    let iv = pv.me.len() - 1;
+    let candidate_count = context.score_base.cands.len();
+    let target_count = simulator.env.ntar;
+    let uncertain_target_count = simulator.env.uncv.len();
+    let star_mix = simulator.env.sj.star_dist;
+    let (own_candidate, completes_goal) = her_ends(simulator, context.score_base, context.legacies, career.lineage);
+    let current = simulator.make_cur(context.pool, career, false);
+    let extended_pool = her_pool(simulator, context.legacies, context.pool, true, career.lineage, &current);
+    let uncertain_targets = &simulator.env.uncv;
+    let new_veteran = extended_pool.me.len() - 1;
     // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
-    let nleaf = 1usize << (2 * nu);
-    let nm = 1usize << ntar;
+    let leaf_count = 1usize << (2 * uncertain_target_count);
+    let outcome_count = 1usize << target_count;
     // (candidate, bound at scale 1 per leaf, spark scale per m): kept only for the exact anchors (`HI_SEARCHES` > 0); else
     // each outcome reads `tab`, the same maxima folded in as each partner is done
-    let mut hs: Vec<(usize, Vec<f64>, Vec<f64>)> = vec![];
-    let mut hq: Vec<(usize, Vec<f64>, Vec<f64>, [f64; 4])> = vec![]; // per partner: (trainee, q0, x0, xms), for the anchors
-    let rf = s.env.space.rho_top() * s.fixed;
-    let (lp, lp_tmp): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
-    // an outcome (her stars `leaf`, the fixed targets landed fm: cell leaf << nf | fm): its chance and landed set
-    let nf = fixed_t.len();
-    let ncell = nleaf << nf;
+    let mut exact_bounds: Vec<ExactPartnerBound> = vec![];
+    let mut exact_chances: Vec<ExactAnchorChances> = vec![];
+    let ceiling_scale = simulator.env.space.rho_top() * simulator.fixed;
+    let (leaf_products_buffer, next_leaf_products): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
+    // an outcome (her stars `leaf`, the fixed targets landed fm: cell (leaf << nf) | fm): its chance and landed set
+    let fixed_target_count = simulator.env.fixed_t.len();
+    let cell_count = leaf_count << fixed_target_count;
     // (`score_career`'s cells: the landed set of her stars' leaf and the fixed targets' fm, its chance os[m] x her stars')
-    let fmm = fm_masks(&fixed_t);
+    let fixed_landed_masks = fm_masks(&simulator.env.fixed_t);
     let cell = |i: usize| {
-        let (mu, pr_st) = leaf_set(i >> nf, &uncv, w);
-        let m = mu | fmm[i & ((1usize << nf) - 1)].bits();
-        (c.os[m] * pr_st, m)
+        let outcome = leaf_set(i >> fixed_target_count, uncertain_targets, star_mix);
+        let m = outcome.landed_mask | fixed_landed_masks[i & ((1usize << fixed_target_count) - 1)].bits();
+        OutcomeChance { probability: current.os[m] * outcome.star_probability, landed_mask: m }
     };
     // the outcomes whose bound is read (`want`, ascending, each with its y < 0.5: the page reads y_hi only there) that
     // can happen; elsewhere the bound is not computed (no cell's value depends on another's: each is the most over
     // partners of a per-leaf least, computed alone)
-    let wc: Vec<(f64, usize)> = want.iter().map(|&(i, _)| cell(i)).collect();
-    let mc: Vec<usize> = want.iter().zip(&wc).filter(|(_, p)| p.0 > 0.0).map(|(w, _)| w.0).collect();
-    let mut mk = Marks {
-        lv: vec![vec![]; nu + 1],
-        dense: false,
-        unm: vec![],
-        ix: vec![vec![]; nu + 1],
-        par: vec![vec![]; nu + 1],
-    };
-    mk.lv[nu] = vec![false; nleaf];
-    for &i in &mc {
-        mk.lv[nu][i >> nf] = true;
-    }
-    for j in (0..nu).rev() {
-        let np = 1usize << (2 * j);
-        let up = &mk.lv[j + 1];
-        mk.lv[j] = (0..np).map(|p| up[p] || up[np + p] || up[2 * np + p] || up[3 * np + p]).collect();
-    }
-    let nml = mk.lv[nu].iter().filter(|&&b| b).count();
-    mk.dense = 4 * nml >= nleaf;
-    if mk.dense {
-        mk.unm = (0..nleaf).filter(|&l| !mk.lv[nu][l]).collect();
-    } else {
-        for j in 0..=nu {
-            mk.ix[j] = (0..mk.lv[j].len()).filter(|&p| mk.lv[j][p]).map(|p| p as u32).collect();
-            if j > 0 {
-                // prefix p of j digits: parent p mod 4^(j-1), found in the ascending `ix[j - 1]`
-                let (lo, cu) = (&mk.ix[j - 1], &mk.ix[j]);
-                let m = (1u32 << (2 * (j - 1))) - 1;
-                mk.par[j] = cu.iter().map(|&p| lo.binary_search(&(p & m)).unwrap() as u32).collect();
-            }
-        }
-    }
-    prof("hi_cells", mc.len() as f64);
-    prof("hi_mleaves", nml as f64);
-    if mc.is_empty() {
+    let requested_chances: Vec<OutcomeChance> = want.iter().map(|estimate| cell(estimate.index.0)).collect();
+    let marked_cells: Vec<usize> = want
+        .iter()
+        .zip(&requested_chances)
+        .filter(|(_, chance)| chance.probability > 0.0)
+        .map(|(estimate, _)| estimate.index.0)
+        .collect();
+    let marks = Marks::new(&marked_cells, uncertain_target_count, fixed_target_count, leaf_count);
+    prof("hi_cells", marked_cells.len() as f64);
+    prof("hi_mleaves", marks.marked_leaf_count as f64);
+    if marked_cells.is_empty() {
         return 0.0;
     }
     // the cells the table holds: the marked ones, or with most leaves marked every possible one, folded as before
     // (vectorised where every cell is possible; an unmarked leaf's bound is -inf, so its cells keep p_now, never read)
-    let mc: Vec<usize> = if mk.dense { (0..ncell).filter(|&i| cell(i).0 > 0.0).collect() } else { mc };
-    let ms: Vec<usize> = mc.iter().map(|&i| cell(i).1).collect();
-    let lm: Vec<u32> = ms.iter().map(|&m| m as u32).collect();
-    let nmc = mc.len();
-    // per candidate and marked outcome her odds' bound so far: pnow, then the most of every partner's (`hi_at` without `hs`)
-    let mut tab: Vec<f64> = (0..n).flat_map(|ui| std::iter::repeat_n(context.score_base.pnow[ui], nmc)).collect();
+    let marked_cells: Vec<usize> =
+        if marks.dense { (0..cell_count).filter(|&i| cell(i).probability > 0.0).collect() } else { marked_cells };
+    let landed_masks: Vec<usize> = marked_cells.iter().map(|&i| cell(i).landed_mask).collect();
+    let compact_masks: Vec<u32> = landed_masks.iter().map(|&m| m as u32).collect();
+    let marked_cell_count = marked_cells.len();
+    // per candidate and marked outcome her odds' bound so far: pnow, then the most of every partner's (`hi_at` without the exact-anchor tables)
+    let mut candidate_bounds: Vec<f64> = (0..candidate_count)
+        .flat_map(|candidate| std::iter::repeat_n(context.score_base.pnow[candidate], marked_cell_count))
+        .collect();
     // an anchor's chances (`Env::lineage_qc`: only the uncertain targets' entries, the ones the factors read)
-    let mut hp = HiScr { bb: AncBb::new(), g1: vec![], gc: vec![], lp, lp_tmp, qz: vec![0.0f64; ntar], tg: vec![] };
-    let hx = HiCx {
-        bs: context.score_base,
-        d,
-        legs: context.legacies,
-        pool: context.pool,
-        fix: bounds.fixed_parents,
-        uncv: &uncv,
-        mk: &mk,
-        mc: &mc,
-        lm: &lm,
-        nu,
-        ntar,
-        nm,
-        nf,
-        ncell,
-        nmc,
-        iv,
-        rf,
+    let mut scratch = UpperBoundScratch {
+        anchor_bound: AnchorBound::new(),
+        rise_factors: vec![],
+        ceiling_factors: vec![],
+        leaf_products: leaf_products_buffer,
+        next_leaf_products,
+        inheritance_chances: vec![0.0f64; target_count],
+        relation_points: vec![],
+    };
+    let upper_bound = UpperBoundContext {
+        scoring: context,
+        fixed_parents: bounds.fixed_parents,
+        uncertain_targets,
+        marked_outcomes: MarkedOutcomes {
+            marks: &marks,
+            cell_indices: &marked_cells,
+            landed_masks: &compact_masks,
+            target_count,
+            outcome_count,
+            fixed_target_count,
+            cell_count,
+            marked_cell_count,
+        },
+        ceiling_scale,
     };
     // (each (candidate, partner)'s anchors as a call keeps them for the next, `acache`: in this loop's order)
-    let mut np = 0usize;
-    for ui in 0..n {
-        let u = context.score_base.cands[ui];
-        if d.umas[u].id == d.umas[x].id || context.score_base.c1[ui] == 0.0 || s.fastc[u].is_empty() {
+    let mut partner_count = 0usize;
+    for candidate in 0..candidate_count {
+        let candidate_trainee = context.score_base.cands[candidate];
+        if data.umas[candidate_trainee].id == data.umas[trainee].id
+            || context.score_base.c1[candidate] == 0.0
+            || simulator.fastc[candidate_trainee].is_empty()
+        {
             continue;
         }
         // her outfits' skill coverage and own chances (as `Env::rise` reads them)
-        let (sts, ews) = (&s.env.sts0[u], &s.env.ew0[u]);
-        hp.tg.clear(); // (`Env::lineage_qc`'s table: another trainee)
+        let (outfit_coverage, event_chances) =
+            (&simulator.env.sts0[candidate_trainee], &simulator.env.ew0[candidate_trainee]);
+        scratch.relation_points.clear(); // (`Env::lineage_qc`'s table: another trainee)
         // the main search's found careers of her deck class that it fully checked (`found_anchors`)
-        let ct = s.env.cls[u];
-        let fr: Vec<usize> = (0..bounds.found_anchors.len())
-            .filter(|&i| bounds.found_anchors[i].as_ref().is_some_and(|f| f.deck_class == ct))
+        let deck_class = simulator.env.cls[candidate_trainee];
+        let anchor_indices: Vec<usize> = (0..bounds.found_anchors.len())
+            .filter(|&i| bounds.found_anchors[i].as_ref().is_some_and(|f| f.deck_class == deck_class))
             .collect();
-        // `AncBb::root_min`'s premises on her own chances
-        let ew_ok = ews.iter().all(|ew| ew.iter().all(|e| (0.0..=1.0).contains(e)));
-        for y in (0..iv).filter(|&y| legal_pair(d, &pv, Lineage { trainee: u, first_parent: y, second_parent: iv })) {
-            if acache.len() <= np {
-                acache.push(PartnerAnchors { candidate: CandidateIndex(ui), partner: y, anchors: None });
+        // `AnchorBound::root_min`'s premises on her own chances
+        let event_chances_valid = event_chances.iter().all(|ew| ew.iter().all(|e| (0.0..=1.0).contains(e)));
+        let candidate_inputs = CandidateBoundInputs {
+            extended_pool: &extended_pool,
+            candidate_index: candidate,
+            outfit_coverage,
+            event_chances,
+            event_chances_valid,
+            anchor_indices: &anchor_indices,
+            anchors: bounds.found_anchors,
+        };
+        for partner in 0..new_veteran {
+            let partner_inputs = candidate_inputs.partner(context.score_base, partner);
+            if !legal_pair(data, &extended_pool, partner_inputs.lineage) {
+                continue;
             }
-            if acache[np].candidate != CandidateIndex(ui) || acache[np].partner != y {
-                acache[np] = PartnerAnchors { candidate: CandidateIndex(ui), partner: y, anchors: None };
+            if anchor_cache.len() <= partner_count {
+                anchor_cache.push(PartnerAnchors { candidate: CandidateIndex(candidate), partner, anchors: None });
             }
-            hi_partner(
-                s,
-                &hx,
-                &pv,
-                ui,
-                u,
-                y,
-                sts,
-                ews,
-                ew_ok,
-                &fr,
-                bounds.found_anchors,
-                &mut tab[ui * nmc..(ui + 1) * nmc],
-                &mut hp,
-                &mut hs,
-                &mut hq,
-                &mut acache[np].anchors,
-            );
-            np += 1;
+            if anchor_cache[partner_count].candidate != CandidateIndex(candidate)
+                || anchor_cache[partner_count].partner != partner
+            {
+                anchor_cache[partner_count] =
+                    PartnerAnchors { candidate: CandidateIndex(candidate), partner, anchors: None };
+            }
+            let mut partner_output = PartnerBoundOutput {
+                candidate_bounds: &mut candidate_bounds
+                    [candidate * marked_cell_count..(candidate + 1) * marked_cell_count],
+                exact_bounds: &mut exact_bounds,
+                exact_chances: &mut exact_chances,
+                retained_anchors: &mut anchor_cache[partner_count].anchors,
+            };
+            hi_partner(simulator, &upper_bound, &partner_inputs, &mut scratch, &mut partner_output);
+            partner_count += 1;
         }
     }
-    her_pool_done(s, context.pool, true, pv);
-    let HiScr { mut lp, mut lp_tmp, .. } = hp;
-    let full_m = nm - 1;
+    her_pool_done(simulator, context.pool, true, extended_pool);
+    let UpperBoundScratch { leaf_products: mut leaf_products_buffer, mut next_leaf_products, .. } = scratch;
+    let own = OwnFullLanding {
+        candidate_index: own_candidate,
+        completes_goal,
+        trios: bounds.own_trios,
+        full_mask: outcome_count - 1,
+    };
     // per wanted cell its bound (0 where it can't happen), from its place among the cells held (`mc`, ascending)
-    let mut ys = [0.0];
-    let at: Vec<Option<usize>> =
-        want.iter().zip(&wc).map(|(w, p)| if p.0 > 0.0 { mc.binary_search(&w.0).ok() } else { None }).collect();
-    let mut c1 = context.score_base.c1.to_vec();
-    let mut up = vec![0.0f64; n];
-    let t5 = now_ms();
+    let mut savings = [0.0];
+    let at: Vec<Option<usize>> = want
+        .iter()
+        .zip(&requested_chances)
+        .map(
+            |(estimate, chance)| {
+                if chance.probability > 0.0 { marked_cells.binary_search(&estimate.index.0).ok() } else { None }
+            },
+        )
+        .collect();
+    let mut step_costs = context.score_base.c1.to_vec();
+    let mut candidate_probabilities = vec![0.0f64; candidate_count];
+    let savings_started = now_ms();
     for (k, &j) in at.iter().enumerate() {
         let Some(j) = j else { continue };
-        for ui in 0..n {
-            up[ui] = tab[ui * nmc + j];
+        for candidate in 0..candidate_count {
+            candidate_probabilities[candidate] = candidate_bounds[candidate * marked_cell_count + j];
         }
-        ys[k] = saving_lo(context.score_base, &up, ms[j], full_m, xi, bounds.own_trios, goal, &mut c1);
+        savings[k] = saving_lo(context.score_base, &candidate_probabilities, landed_masks[j], &own, &mut step_costs);
     }
-    drop(tab);
-    prof("hi_ys_ms", now_ms() - t5);
+    drop(candidate_bounds);
+    prof("hi_ys_ms", now_ms() - savings_started);
     // exact anchors (`HI_SEARCHES`) for the partners that hold the most likely outcomes of the band (y < 0.5 <= y_hi) in
     // it: per band outcome, most likely first, the partners that must all fall for it to leave the band (every partner
     // above p_now of each candidate whose odds move V; none further than HI_RISE above p_now), taken whole while they fit
-    let mut band: Vec<usize> = (0..want.len()).filter(|&k| at[k].is_some() && ys[k].max(want[k].1) >= 0.5).collect();
-    band.sort_by(|&i, &j| wc[j].0.partial_cmp(&wc[i].0).unwrap().then(want[i].0.cmp(&want[j].0)));
-    let cap = HI_SEARCHES / HI_STARS.len();
+    let mut band: Vec<usize> =
+        (0..want.len()).filter(|&k| at[k].is_some() && savings[k].max(want[k].saving) >= 0.5).collect();
+    band.sort_by(|&i, &j| {
+        requested_chances[j]
+            .probability
+            .partial_cmp(&requested_chances[i].probability)
+            .unwrap()
+            .then(want[i].index.0.cmp(&want[j].index.0))
+    });
+    let search_limit = HI_SEARCHES / HI_STARS.len();
     let mut chosen: Vec<usize> = vec![];
     for &k in &band {
-        if chosen.len() >= cap {
+        if chosen.len() >= search_limit {
             break;
         }
-        let (leaf, m) = (want[k].0 >> nf, wc[k].1);
-        let h = hi_at(context.score_base, &hs, leaf, m, full_m, xi, bounds.own_trios, goal, &mut c1, &mut up);
+        let (leaf, m) = (want[k].index.0 >> fixed_target_count, requested_chances[k].landed_mask);
+        let h = hi_at(context.score_base, &exact_bounds, leaf, m, &own, &mut step_costs, &mut candidate_probabilities);
         let (mut need, mut far): (Vec<usize>, bool) = (vec![], false);
-        for ui in 0..n {
-            if up[ui] <= context.score_base.pnow[ui] * (1.0 + 1e-9) {
+        for candidate in 0..candidate_count {
+            if candidate_probabilities[candidate] <= context.score_base.pnow[candidate] * (1.0 + 1e-9) {
                 continue;
             }
-            let keep = up[ui];
-            up[ui] = context.score_base.pnow[ui];
-            let h2 = saving_lo(context.score_base, &up, m, full_m, xi, bounds.own_trios, goal, &mut c1);
-            up[ui] = keep;
+            let keep = candidate_probabilities[candidate];
+            candidate_probabilities[candidate] = context.score_base.pnow[candidate];
+            let h2 = saving_lo(context.score_base, &candidate_probabilities, m, &own, &mut step_costs);
+            candidate_probabilities[candidate] = keep;
             if h2 >= h - 1e-9 {
                 continue;
             }
-            for (pi, (pu, bd, sc)) in hs.iter().enumerate() {
-                if *pu != ui {
+            for (partner_index, bound) in exact_bounds.iter().enumerate() {
+                if bound.candidate != candidate {
                     continue;
                 }
-                let v = sc[m] * bd[leaf];
-                if v > context.score_base.pnow[ui] * (1.0 + 1e-9) {
-                    need.push(pi);
-                    if v > HI_RISE * context.score_base.pnow[ui] {
+                let v = bound.spark_scales[m] * bound.leaf_bounds[leaf];
+                if v > context.score_base.pnow[candidate] * (1.0 + 1e-9) {
+                    need.push(partner_index);
+                    if v > HI_RISE * context.score_base.pnow[candidate] {
                         far = true;
                     }
                 }
@@ -949,27 +1152,28 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
         if far || need.is_empty() {
             continue;
         }
-        need.retain(|pi| !chosen.contains(pi));
-        if chosen.len() + need.len() <= cap {
+        need.retain(|partner_index| !chosen.contains(partner_index));
+        if chosen.len() + need.len() <= search_limit {
             chosen.extend(need);
         }
     }
     // each one: her best deck searched at her s stars on every uncertain target (q^s, `HI_STARS`), proven (`best_deck`
     // full, under the caps): value(y, her) <= c' E_best(q^s) rise(q', q^s) for every outcome (rise 1 where her stars <= s)
-    for &pi in &chosen {
-        let (u, q0, x0, xms) = &hq[pi];
-        let (sts, ews) = (s.env.sts0[*u].clone(), s.env.ew0[*u].clone());
+    for &partner_index in &chosen {
+        let anchor = &exact_chances[partner_index];
         for &st in &HI_STARS {
-            let mut q = q0.clone();
-            for k in 0..nu {
-                q[uncv[k]] = 1.0 - x0[k] * xms[st];
+            let mut q = anchor.initial_chances.clone();
+            for k in 0..uncertain_target_count {
+                q[simulator.env.uncv[k]] = 1.0 - anchor.base_misses[k] * anchor.star_misses[st];
             }
-            s.env.set_trainee(*u, &q);
-            s.env.work = 0;
+            simulator.env.set_trainee(anchor.lineage.trainee, &q);
+            simulator.env.work = 0;
             let mut nsc = 0;
-            if let DeckRes::Done(v, _, true) = s.env.best_deck(*u, 1.0, 0.0, &[], &mut nsc) {
-                let rz = rise_leaves(&sts, &ews, x0, xms, &q, &uncv, &mut lp, &mut lp_tmp);
-                for (bv, r) in hs[pi].1.iter_mut().zip(&rz) {
+            if let DeckRes::Done(v, _, true) = simulator.env.best_deck(anchor.lineage.trainee, 1.0, 0.0, &[], &mut nsc)
+            {
+                let rise = anchor.rise_inputs(simulator.env);
+                let rz = rise_leaves(&rise, &q, &mut leaf_products_buffer, &mut next_leaf_products);
+                for (bv, r) in exact_bounds[partner_index].leaf_bounds.iter_mut().zip(&rz) {
                     let v2 = v * r;
                     if v2 < *bv {
                         *bv = v2;
@@ -980,21 +1184,18 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
     }
     if !chosen.is_empty() {
         for &k in &band {
-            ys[k] = hi_at(
+            savings[k] = hi_at(
                 context.score_base,
-                &hs,
-                want[k].0 >> nf,
-                wc[k].1,
-                full_m,
-                xi,
-                bounds.own_trios,
-                goal,
-                &mut c1,
-                &mut up,
+                &exact_bounds,
+                want[k].index.0 >> fixed_target_count,
+                requested_chances[k].landed_mask,
+                &own,
+                &mut step_costs,
+                &mut candidate_probabilities,
             );
         }
     }
-    ys[0]
+    savings[0]
 }
 
 /// The pick's own 8/8 as a trio side (`her_trios`) for `outcome_hi`, taken as the plan ends (the deck cache then:
@@ -1034,7 +1235,8 @@ pub(in crate::deck::career::sim::plan) fn found_anchors(
     msv.found
         .iter()
         .map(|f| {
-            let (fq, _) = env.lineage_q(pool, Lineage { trainee: f.t, first_parent: f.a, second_parent: f.b });
+            let lineage = Lineage { trainee: f.t, first_parent: f.a, second_parent: f.b };
+            let (fq, _) = env.lineage_q(pool, lineage);
             msv.refs.get(f.t).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| FoundAnchor {
                 deck_class: env.cls[f.t],
                 inheritance_chances: r.q.clone(),
