@@ -45,9 +45,9 @@ impl DeckSpace<'_> {
         let fixed = chances.model.fixed_factor();
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // Per chain level; the ordinary bound is off when an entry fails group_assoc certification (`state_value`).
-        // The cap-free band (`BandBound::CapFree`, one trainee at one chance; `Env::best_deck_cf`): two proven bounds
-        // at every node and leaf (`StateBound::cheap`, then `StateBound::full`, on the state-conditioned tables of mode
-        // 2) are its only prunes, no cap in any test; it needs every legal entry `certified_cap_free` (else
+        // The cap-free band (`BandBound::CapFree`, one trainee at one chance; `CareerSetup::best_deck_cf`): two proven
+        // bounds at every node and leaf (`StateBound::cheap`, then `StateBound::full`, on the state-conditioned tables
+        // of mode 2) are its only prunes, no cap in any test; it needs every legal entry `certified_cap_free` (else
         // UnsupportedCapFreeProof) and stops past its node limit (CapFreeNodeLimit).
         let one_lineage = !best && clauses.len() == 1 && clauses[0].lineages.len() == 1;
         let cap_free_node_limit = match band_bound {
@@ -158,6 +158,7 @@ impl DeckSpace<'_> {
     /// these tables and their lazy caches for both phases; none need copying or dynamic dispatch.
     pub(crate) fn search_with_bounds(
         &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         chances: &DeckChances,
         trainees: &[crate::uma::UmaIndex],
         clauses: &[SearchClause],
@@ -505,6 +506,7 @@ impl DeckSpace<'_> {
             c.set(v);
         });
         self.traverse_configurations(
+            state_bounds,
             chances,
             clauses,
             controls,

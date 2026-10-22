@@ -10,6 +10,22 @@ use crate::deck::space::{GroupSlots, TraversalEntryGroup};
 use crate::skills::{Model, OutfitOption};
 use std::cell::RefCell;
 use std::rc::Rc;
+/// A state's real filler and pal slots distinguish configurations with the same chain code.
+#[derive(PartialEq, Eq, Hash)]
+pub(super) struct StateBoundKey {
+    pub(super) set_id: usize,
+    pub(super) code: u64,
+    pub(super) real_filler_count: usize,
+    pub(super) pal_entry_count: usize,
+}
+
+/// Configuration tables shared by all deck searches within one job and its fixed deck space.
+/// The career's DeckSearchMemo or loop search state owns this; searches borrow it mutably.
+#[derive(Default)]
+pub(crate) struct StateBoundMemo {
+    pub(super) configurations: crate::FxMap<StateBoundKey, Rc<StateBoundConfig>>,
+}
+
 /// Landing factors and entry misses used by both state-conditioned bounds.
 #[derive(Clone, Copy)]
 pub(super) struct LandingBoundTables<'table> {

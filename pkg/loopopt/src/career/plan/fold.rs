@@ -340,9 +340,10 @@ impl<'rise> RiseInputs<'rise> {
 }
 
 impl RiseInputs<'_> {
-    /// Per leaf (as `leaf_products`) the best outfit's `Env::rise` of trainee (sts, ews: her outfits' coverage and own
-    /// chances) from chances qa (job-target order) to q'(leaf), q'_k = 1 - x0[k] xms[her stars on uncertain target k]:
-    /// per outfit and target the factor at each of her four star levels (1 where it can't rise), their product per leaf
+    /// Per leaf (as `leaf_products`) the best outfit's `CareerSetup::rise` of trainee (sts, ews: her outfits' coverage
+    /// and own chances) from chances qa (job-target order) to q'(leaf), q'_k = 1 - x0[k] xms[her stars on uncertain
+    /// target k]: per outfit and target the factor at each of her four star levels (1 where it can't rise), their
+    /// product per leaf
     pub(crate) fn leaves(
         &self,
         anchor_chances: &[f64],

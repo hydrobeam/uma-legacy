@@ -4,7 +4,7 @@ use crate::career::inherit::{ExactOptions, Inheritance, aff_factor, inherit, set
 use crate::career::pool::Pool;
 use crate::career::schedule::{RaceSchedule, apt_pink, pink_p};
 use crate::career::search::Found;
-use crate::career::{Ancestor, Env, Legacy, Lineage};
+use crate::career::{Ancestor, CareerSetup, DeckSearchMemo, Legacy, Lineage, SearchState};
 use crate::deck::joint::JointExt;
 use crate::deck::joint::exact::{JointScratch, joint_eval_in, joint_prep};
 use crate::deck::sources::TargetSources;
@@ -28,9 +28,9 @@ pub(crate) fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
     cur[0]
 }
 
-impl Env<'_> {
+impl CareerSetup<'_> {
     /// One career's report: trainee and outfit, parents, the six legacy slots, per target odds, aptitudes, deck, schedule.
-    pub(crate) fn report(&mut self, p: &Pool, f: &Found, with_schedule: bool) -> Value {
+    pub(crate) fn report(&self, state: &mut SearchState, p: &Pool, f: &Found, with_schedule: bool) -> Value {
         let d = self.data;
         let ntar = self.target_count;
         let nu = self.uncertain_count;
@@ -40,9 +40,14 @@ impl Env<'_> {
         let uid = d.umas[t].id;
         let sl = self.slots(p, lineage);
         let Inheritance { chances: q, carriers: nc } = inherit(&sl, ntar);
-        self.set_trainee(t, &q);
-        let exact =
-            self.exact(t, &f.deck, &nc, ExactOptions { all_but_one: true, landed_sets: with_schedule && ntar <= 12 });
+        self.set_trainee(state, t, &q);
+        let exact = self.exact(
+            state,
+            t,
+            &f.deck,
+            &nc,
+            ExactOptions { all_but_one: true, landed_sets: with_schedule && ntar <= 12 },
+        );
         let (o, ext) = (exact.outfit, &exact.ext);
         let mut pt = vec![0.0f64; ntar];
         for (pos, &i) in self.uncertain_targets.iter().enumerate() {
@@ -145,24 +150,36 @@ impl Env<'_> {
     /// `corners` at q0 = 0 (a cached deck's table, `Cache::add`), memoised by (deck class, entries, filler). Exact: the
     /// table reads trainee t only through her model (outfit coverage, own-skill chances: `set_trainee` from
     /// `Model::ews`), which her deck class holds to the bit, and the deck only through its entries and filler;
-    /// the memo is kept between jobs of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her folded buffer
+    /// the memo is kept between jobs of one setup (`KeptState::decks`: the same model and entries). `corners` leaves her folded buffer
     /// at its last corner, q = 0 for every target (1 - (1 - 0) x 1); a hit sets the same state
-    pub(crate) fn corners_kept(&mut self, t: crate::uma::UmaIndex, sel: &SelectedDeck) -> Vec<Vec<f64>> {
+    pub(crate) fn corners_kept(
+        &self,
+        state: &mut SearchState,
+        memo: &mut DeckSearchMemo,
+        t: crate::uma::UmaIndex,
+        sel: &SelectedDeck,
+    ) -> Vec<Vec<f64>> {
         let key = (self.deck_class[t], sel.entries.clone(), sel.filler_cards);
         let z = vec![0.0; self.target_count];
-        if let Some(r) = self.corner_memo.get(&key) {
+        if let Some(r) = memo.corners.get(&key) {
             let r = (**r).clone();
-            self.set_trainee(t, &z);
+            self.set_trainee(state, t, &z);
             return r;
         }
         let tc = now_ms();
-        let r = self.corners(t, sel, &z);
+        let r = self.corners(state, t, sel, &z);
         prof("corner_ms", now_ms() - tc);
         prof("corner_builds", 1.0);
-        self.corner_memo.insert(key, std::rc::Rc::new(r.clone()));
+        memo.corners.insert(key, std::rc::Rc::new(r.clone()));
         r
     }
-    fn corners(&mut self, t: crate::uma::UmaIndex, sel: &SelectedDeck, q0: &[f64]) -> Vec<Vec<f64>> {
+    fn corners(
+        &self,
+        state: &mut SearchState,
+        t: crate::uma::UmaIndex,
+        sel: &SelectedDeck,
+        q0: &[f64],
+    ) -> Vec<Vec<f64>> {
         let (nu, ntar) = (self.uncertain_count, self.target_count);
         let no = self.model.n_outfits(t);
         let mut corners = vec![vec![0.0f64; 1 << nu]; no];
@@ -175,19 +192,19 @@ impl Env<'_> {
             .map(|&j| crate::deck::sources::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
             .collect();
         let pre = joint_prep(self.space.deck_job.chain_events(), self.model.uncertain.len(), &ents, sel.filler_cards);
-        // (one chance vector and one `JointExt` for every corner: joint_eval only reads `scales`; `marginals` is not read here,
-        // so not summed)
+        // (one chance vector and one `JointExt` for every corner: `JointPrep::evaluate` only reads `scales`; `marginals` is
+        // not read here, so not summed)
         let mut q = q0.to_vec();
         let mut ext = JointExt { scales, marginals: vec![], sets: vec![], per_outfit: vec![] };
-        // (and one set of joint_eval's buffers)
+        // (and one set of `JointPrep::evaluate`'s buffers)
         let mut sx = JointScratch::default();
         for c in 0..(1usize << nu) {
             for (k, &i) in self.uncertain_targets.iter().enumerate() {
                 let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 };
                 q[i] = 1.0 - (1.0 - q0[i]) * x;
             }
-            set_ews(&mut self.folded_events[t], &self.model.ews[t], &self.uncertain_targets, &q);
-            joint_eval_in(self.model, self.joint_query(t), &pre, ntar, false, false, Some(&mut ext), &mut sx);
+            set_ews(&mut state.folded_events[t], &self.model.ews[t], &self.uncertain_targets, &q);
+            joint_eval_in(self.model, self.joint_query(state, t), &pre, ntar, false, false, Some(&mut ext), &mut sx);
             for o in 0..no {
                 corners[o][c] = ext.per_outfit[o];
             }

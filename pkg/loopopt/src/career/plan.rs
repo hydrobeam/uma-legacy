@@ -342,7 +342,7 @@ struct PlanSearches {
     no_borrow_incomplete: crate::uma::UmaTable<bool>,
     /// Each uma's best career on two real full veteran parents, where searched (`add_looped_rows`).
     looped_careers: crate::uma::UmaTable<CachedSearch>,
-    /// A kept plan of this very pool, and one of this pool less its last veteran (taken out of `BESTS` while this
+    /// A kept plan of this very pool, and one of this pool less its last veteran (taken out of `KeptState::bests` while this
     /// plan runs and put back after it: every reroll of a career reuses the same one).
     kept_same_pool: Option<Bests>,
     kept_previous_pool: Option<Bests>,
@@ -376,7 +376,13 @@ fn search_best_career(
 ) {
     let search = best_of(simulator.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
     if let Some(found) = &search.found {
-        simulator.evaluator.cache.add(simulator.env, trainee, &found.deck);
+        simulator.evaluator.cache.add(
+            &simulator.env.setup,
+            &mut simulator.env.state,
+            &mut simulator.env.memo,
+            trainee,
+            &found.deck,
+        );
     }
     searches.record_best_career(trainee, search);
 }
@@ -417,7 +423,11 @@ struct PlanRows {
 /// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
 /// real full veteran (free) with full veteran parents, a strong side of the trios.
-pub(crate) fn index_rule<'data>(env: &mut Env<'data>, input: &PlanInputs<'_, 'data>) -> Value {
+pub(crate) fn index_rule<'data>(
+    env: &mut Env<'data>,
+    kept: &mut crate::career::state::KeptState,
+    input: &PlanInputs<'_, 'data>,
+) -> Value {
     let started_ms = now_ms();
     let pick_career = input.pick_solved().found[0].clone();
     progress(1, 0, 0);
@@ -426,7 +436,7 @@ pub(crate) fn index_rule<'data>(env: &mut Env<'data>, input: &PlanInputs<'_, 'da
     // (the phases' scratch for deck values)
     let mut deck_values = vec![];
     let PlanSetup { mut sim, candidates, mut searches, mut profile, cache_before_builders } =
-        match setup_plan_candidates(env, input, started_ms, pick_career, &mut deck_values) {
+        match setup_plan_candidates(env, kept, input, started_ms, pick_career, &mut deck_values) {
             Ok(prepared) => prepared,
             Err(error) => return error,
         };

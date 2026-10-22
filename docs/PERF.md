@@ -59,12 +59,24 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
 
 ## Pitfalls in this codebase
 
-- Career inheritance folding must reuse `Env::folded_events` in place (`set_ews`'s matching-shape path), including
-  the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances, without
-  copying them per candidate. `joint_eval_in` still takes explicit scratch; `refolding_reuses_outfit_buffers` checks buffer reuse.
-- `work.exact` counts `Env::exact_scorings`, the career's own `best_deck` scorings: a memo hit adds what its search
-  scored, and `CF_CHECK`'s side search puts it back (`SearchEffects`). Count a new exact scoring there, through
-  `Env::score_exact`, or the counter moves.
+- Loop-search caches and counters live in `LoopSearchState`, passed mutably beside the read-only `Multi` context.
+  Keep this state across certification passes: a lower-cap retry reuses exact results, chance-grid cells and
+  schedules, and starts its allowance from the work already spent. `bb_max` and `sky_top` take their reusable
+  cluster buffers explicitly; their heaps return the same allocation to those buffers. Reporting only reads
+  `Tally`. State-bound configurations live in a job-wide `StateBoundMemo`, owned by `LoopSearchState` or the career's
+  `DeckSearchMemo`, and passed by `&mut` through enumeration. Keep this owner across searches, but never carry its
+  space-specific keys into another job. `DeckSpace` retains its other interior caches.
+- The worker's five retained collections live in `KeptState`; nested career jobs borrow it explicitly. Index simulation
+  swaps the whole record (roll states included) and restores it afterward. Publish deck and corner memos at the career
+  entry point after every completed path, including early answers; publishing from `Env::drop` hides that mutation.
+  Saved-state JSON still omits deck memos; importing it preserves those process-local tables.
+- Career inheritance folding must reuse `SearchState::folded_events` in place (`set_ews`'s matching-shape path),
+  including the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances,
+  without copying them per candidate. `joint_eval_in` still takes explicit scratch; `refolding_reuses_outfit_buffers`
+  checks buffer reuse.
+- `work.exact` counts `SearchState::exact_scorings`, the career's own `best_deck` scorings: a memo hit adds what its
+  search scored, and `CF_CHECK`'s side search puts it back (`SearchEffects`). Count a new exact scoring there, through
+  `CareerSetup::score_exact`, or the counter moves.
 - `DominanceIndex` visit order matters: the remembered dominators feed the recent-winner ring and `lastrow`. Prefilters must
   preserve descending bucket order and ascending row order within each bucket (`deck/dominance.rs`, `DominanceIndex::count`).
 - Float order: preserve sums and products in order. Reordering a maximum must also preserve tied winners and the
@@ -120,13 +132,13 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
 - One shared deck, three or four trainees: the loop search's scoring (`loop_search/shared.rs`, `Multi::score_shared`, and
   `loop_search/report.rs`, `Multi::shared_picks`)
   calls `joint_b` once per trainee, and each call rebuilds `joint_prep`, which depends on the deck, not the trainee.
-  Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and
-  the product of event outcomes on every call, though they depend only on the ordered active groups (`Env::corners`
+  Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and the
+  product of event outcomes on every call, though they depend only on the ordered active groups (`CareerSetup::corners`
   repeats it at each of 2^nu corners); a plan compiled per group list could replay every weighted addition in order
   (equal rewards' weights are not merged: that regroups sums). Measured 2026-10-21 (callgrind, pal_U shared): neither
-  `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive).
-  The profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `loop_search/bands.rs`.
-  Reprofile before acting on that measurement.
+  `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive). The
+  profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `loop_search/bands.rs`. Reprofile
+  before acting on that measurement.
 - Training groups: a card's inclusion-exclusion weight depends only on the subset's size, so it could be summed once
   per size (`3^m - 1` additions to `2^(m+1) - 2`, same order per subset), and `group_nuod`'s `O(4^m)` subset scan has
   the same symmetry. The jobs in `val/jobs.json` and `val/plan/jobs.json` have at most three uncertain targets in
@@ -245,7 +257,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
   pair, now `RollKeep::partner_anchors`: 18,895). The page sends `next.roll` in its own call before the quick
   search; a saving roll goes straight to the exact comparison (`webapp/src/career.js`, `quickCompare`).
 - In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
-  work persisted). Since 4689795 the stored work includes the main search (`LAST_SOLVE`), so a reload can reuse a
+  work persisted). Since 4689795 the stored work includes the main search (`KeptState::searches`), so a reload can reuse a
   matching stored search (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state
   31-149 KB).
 - Reroll (2026-10-10, from the plan's table then): about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run
@@ -290,8 +302,8 @@ untracked; reproducing their figures requires those inputs and the named revisio
   that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
   lose one (today: the same pool, or one more veteran at the end).
 - Not worth doing (measured 2026-10-21): a memo of `sc_prep`'s dominance and flat checks per (trainee, deck prefix):
-  `sc_prep` is 1.1M of p10's 19.7G instructions; `Env::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB copies
-  a job.
+  `sc_prep` is 1.1M of p10's 19.7G instructions; `CareerSetup::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB
+  copies a job.
 - Where the time is (callgrind, 2026-10-21): p10 spends 88.6% of its instructions in the deck search
   (`DeckSpace::search`, 260 runs from 211 `best_deck` calls: the main search 29.6%, `best_of` 47.9%, `deck_for` 15%)
   and 6.3% in `score_career`; `rec`'s cost is spread (no source line above 2% self). Exports 1 and 2 (native, main):
@@ -314,7 +326,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
 | Caching the main search's ceilings for the per-uma solves | about 0.3% | about 13 MB on 315 veterans, 60+ MB on 400, with a pool key |
 | An index on `ruled` | scans about 1 ms per job | nothing to gain |
 | `her_trios`' C ranking through `gen_cands` (one pair, every trainee) | exact; p16 instructions +4.5% | `gen_cands`' per-trainee tables cover every legacy of the pool, for one pair |
-| Carrying `ruled` across pools (per setup, like SEEN) | changes outputs | `certified` takes a proxy career a foreign proof certifies, possibly another pair or deck of equal value |
+| Carrying `ruled` across pools (per setup, like `KeptState::seen`) | changes outputs | `certified` takes a proxy career a foreign proof certifies, possibly another pair or deck of equal value |
 | Seed each builder's floor with the previous builder's career | -7% / -4% / +5% | noise |
 | Pass 2 against the bar the candidate must beat (not its own best) | -6% | worse with class sharing (fewer proofs to share) |
 | Classmate's best deck as the product search's starting bar | nodes -4% (p16), -0.3% (p10) | bound looseness, not the incumbent, sets pass 1's tree |

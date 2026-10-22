@@ -990,7 +990,7 @@ fn top_k_is_stable_sort_prefix() {
     }
 }
 /// The ng/nh landing factor's forms agree to the bit: `land_factor`, `LandPre::f` (its constants taken once) and the
-/// expression `joint_eval` and `upper_na` wrote out before they called it, on random and non-finite inputs
+/// expression `JointPrep::evaluate` and `upper_na` wrote out before they called it, on random and non-finite inputs
 #[test]
 fn land_factor_forms_match() {
     use crate::skills::GEN_WHITE;

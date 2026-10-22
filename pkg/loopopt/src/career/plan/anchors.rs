@@ -11,7 +11,7 @@ use crate::career::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
 use crate::career::pool::{Pool, holds_fix};
 use crate::career::search::{CareerSearchResult, DeckRes};
 use crate::career::sim::Sim;
-use crate::career::{Career, Env, Lineage};
+use crate::career::{Career, CareerSetup, Lineage};
 /// Ceiling factors are flattened [outfit][uncertain target][star level].
 struct CeilingFactors<'factors, 'env, 'data> {
     values: &'factors [f64],
@@ -21,7 +21,7 @@ struct CeilingFactors<'factors, 'env, 'data> {
 
 impl CeilingFactors<'_, '_, '_> {
     const fn target_count(&self) -> usize {
-        self.simulator.env.uncertain_targets.len()
+        self.simulator.env.setup.uncertain_targets.len()
     }
 
     fn outfit_count(&self) -> usize {
@@ -29,7 +29,7 @@ impl CeilingFactors<'_, '_, '_> {
     }
 
     fn scale(&self) -> f64 {
-        self.simulator.env.space.rho_top() * self.simulator.evaluator.fixed
+        self.simulator.env.setup.space.rho_top() * self.simulator.evaluator.fixed
     }
 }
 
@@ -566,11 +566,11 @@ struct ExactAnchorChances {
 
 impl ExactAnchorChances {
     /// Borrow outfit and target tables only after the mutable deck search finishes.
-    fn rise_inputs<'rise>(&'rise self, environment: &'rise Env) -> RiseInputs<'rise> {
+    fn rise_inputs<'rise>(&'rise self, setup: &'rise CareerSetup) -> RiseInputs<'rise> {
         RiseInputs {
-            outfit_coverage: &environment.outfit_coverage[self.lineage.trainee],
-            event_chances: &environment.model.ews[self.lineage.trainee],
-            uncertain_targets: &environment.uncertain_targets,
+            outfit_coverage: &setup.outfit_coverage[self.lineage.trainee],
+            event_chances: &setup.model.ews[self.lineage.trainee],
+            uncertain_targets: &setup.uncertain_targets,
             base_misses: &self.base_misses,
             star_misses: &self.star_misses,
         }
@@ -621,12 +621,12 @@ fn hi_partner(
     output: &mut PartnerBoundOutput,
 ) {
     let candidate = partner.candidate;
-    let uncertain_targets = &simulator.env.uncertain_targets;
-    let outfit_coverage = &simulator.env.outfit_coverage[partner.lineage.trainee];
-    let event_chances = &simulator.env.model.ews[partner.lineage.trainee];
-    let ceiling_scale = simulator.env.space.rho_top() * simulator.evaluator.fixed;
-    // her slot's miss factors and spark scales (`Env::her_slot`, as `score_career`'s setups)
-    let Some(slot) = simulator.env.her_slot(candidate.extended_pool, partner.lineage) else {
+    let uncertain_targets = &simulator.env.setup.uncertain_targets;
+    let outfit_coverage = &simulator.env.setup.outfit_coverage[partner.lineage.trainee];
+    let event_chances = &simulator.env.setup.model.ews[partner.lineage.trainee];
+    let ceiling_scale = simulator.env.setup.space.rho_top() * simulator.evaluator.fixed;
+    // her slot's miss factors and spark scales (`CareerSetup::her_slot`, as `score_career`'s setups)
+    let Some(slot) = simulator.env.setup.her_slot(candidate.extended_pool, partner.lineage) else {
         return;
     };
     let rise = RiseInputs::for_slot(outfit_coverage, event_chances, uncertain_targets, &slot);
@@ -750,7 +750,7 @@ fn hi_partner(
                         && holds_fix(context.fixed_parents, lineage.first_parent, lineage.second_parent)
                 })
             {
-                let anchor_scale = simulator.env.lineage_qc(
+                let anchor_scale = simulator.env.setup.lineage_qc(
                     context.scoring.pool,
                     lineage,
                     uncertain_targets,
@@ -882,19 +882,19 @@ impl RollKeep {
     /// veteran's DIRECT lifts. The outcomes, base and credit for her own full veteran (`her_trios`) are `score_career`'s; each stage
     /// candidate's odds with her as a parent, with EVERY legal partner y (not the table value of her IDX_PARTNERS best), are
     /// bounded from the candidate's exact best now (pnow): every pair (y, z) of today's pool that keeps the plan's places is
-    /// a career of hers worth at most pnow, so (`Env::rise`: E(q') <= E(q) x rise(q', q) for every deck)
+    /// a career of hers worth at most pnow, so (`CareerSetup::rise`: E(q') <= E(q) x rise(q', q) for every deck)
     ///     value(y, her) = c' E_best(q') <= c' (pnow / c_yz) rise(q', q_yz),
     /// the least over z (the veteran most like her: rise 1 when one already carries what she does), and over the main
     /// search's found careers f of her deck class that it fully checked (a `Ref` at q_f: every deck of every classmate is
-    /// worth at most val_f there, `Env::seen`, under the caps every search assumes; the found careers are the search's
-    /// answer, so the anchors depend on the job alone)
+    /// worth at most val_f there, `SearchState::seen`, under the caps every search assumes; the found careers are the
+    /// search's answer, so the anchors depend on the job alone)
     ///     value(y, her) <= c' val_f rise(q', q_f);
     /// and, for the partners keeping this outcome in the band (y < 0.5 <= the bound so far; `HI_SEARCHES`, `HI_RISE`),
     /// over her best deck searched at her s = 2, 3 stars on every uncertain target (q^s, `best_deck` fully checked: E_best
     /// there, under the caps every search assumes)
     ///     value(y, her) <= c' E_best(q^s) rise(q', q^s),
     /// rise 1 where her stars are at most s (this outcome is bounded again after); also at most the ceiling
-    /// (`Env::ceiling` through `Evaluator::fastc`, under the top cap: per outfit and target A - B (1 - q'),
+    /// (`CareerSetup::ceiling` through `Evaluator::fastc`, under the top cap: per outfit and target A - B (1 - q'),
     /// `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
     /// (`Cont::cost_lo`). Derived, per outcome:
     /// (1) For each partner, the bound >= the best career's exact value >= the table value `score_career` reads. A cached
@@ -905,7 +905,8 @@ impl RollKeep {
     ///     `with_her`) does not fall when a step cost rises; so V_lo <= V_table and y_hi >= y.
     /// (3) Each anchor A (a pair (y, z), a found career, a search at q^s) has a value E_A with E_best(q_A) <= E_A (a career
     ///     of today's pool is worth at most pnow; a fully checked deck search is the best under the caps). Every deck D legal
-    ///     for the candidate has E_D(q') <= E_D(q_A) rise(q', q_A) (`Env::rise`) <= E_A rise(q', q_A), so her best career
+    ///     for the candidate has E_D(q') <= E_D(q_A) rise(q', q_A) (`CareerSetup::rise`) <= E_A rise(q', q_A), so her
+    /// best career
     ///     with partner y is at most c' E_A rise(q', q_A) for every A, and at most its ceiling. In the exact replan with her
     ///     in the pool, with today's Cont and trios, her step then costs at least cost_lo(up_hi): y_hi bounds the direct-lift
     ///     saving. Not bounded (channel 2, out of scope by design): what the replan's refits do (Cont fitted
@@ -926,14 +927,16 @@ impl RollKeep {
         let trainee = career.lineage.trainee;
 
         let candidate_count = context.score_base.candidates.len();
-        let target_count = simulator.env.target_count;
-        let uncertain_target_count = simulator.env.uncertain_targets.len();
-        let star_mix = simulator.env.skill_job.star_dist;
+        let target_count = simulator.env.setup.target_count;
+        let uncertain_target_count = simulator.env.setup.uncertain_targets.len();
+        let star_mix = simulator.env.setup.skill_job.star_dist;
         let HerEnds { own_candidate, completes_goal } =
             her_ends(simulator, context.score_base, context.legacies, career.lineage);
-        let current = simulator.evaluator.make_cur(simulator.env, context.pool, career, false);
-        let extended_pool = simulator.evaluator.push_her(simulator.env, context.legacies, context.pool, true, &current);
-        let uncertain_targets = &simulator.env.uncertain_targets;
+        let current =
+            simulator.evaluator.make_cur(&simulator.env.setup, &mut simulator.env.state, context.pool, career, false);
+        let extended_pool =
+            simulator.evaluator.push_her(&simulator.env.setup, context.legacies, context.pool, true, &current);
+        let uncertain_targets = &simulator.env.setup.uncertain_targets;
         let new_veteran = extended_pool.pool.veterans.len() - 1;
         // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
         let leaf_count = 1usize << (2 * uncertain_target_count);
@@ -944,10 +947,10 @@ impl RollKeep {
         let mut exact_chances: Vec<ExactAnchorChances> = vec![];
         let (leaf_products_buffer, next_leaf_products): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
         // an outcome (her stars `leaf`, the fixed targets landed fm: cell (leaf << nf) | fm): its chance and landed set
-        let fixed_target_count = simulator.env.fixed_targets.len();
+        let fixed_target_count = simulator.env.setup.fixed_targets.len();
         let cell_count = leaf_count << fixed_target_count;
         // (`score_career`'s cells: the landed set of her stars' leaf and the fixed targets' fm, its chance os[m] x her stars')
-        let fixed_landed_masks = fm_masks(&simulator.env.fixed_targets);
+        let fixed_landed_masks = fm_masks(&simulator.env.setup.fixed_targets);
         let cell = |i: usize| {
             let outcome = leaf_set(i >> fixed_target_count, uncertain_targets, star_mix);
             let m = outcome.landed_mask | fixed_landed_masks[i & ((1usize << fixed_target_count) - 1)].bits();
@@ -973,7 +976,8 @@ impl RollKeep {
         let mut candidate_bounds: Vec<f64> = (0..candidate_count)
             .flat_map(|candidate| std::iter::repeat_n(context.score_base.current_odds[candidate], marked_cell_count))
             .collect();
-        // an anchor's chances (`Env::lineage_qc`: only the uncertain targets' entries, the ones the factors read)
+        // an anchor's chances (`CareerSetup::lineage_qc`: only the uncertain targets' entries, the ones the factors
+        // read)
         let mut scratch = UpperBoundScratch {
             anchor_bound: AnchorBound::new(),
             rise_factors: vec![],
@@ -1008,10 +1012,10 @@ impl RollKeep {
                 continue;
             }
             // Her own chances, for the monotonicity premise shared by her partners.
-            let event_chances = &simulator.env.model.ews[candidate_trainee];
-            scratch.relation_points.clear(); // (`Env::lineage_qc`'s table: another trainee)
+            let event_chances = &simulator.env.setup.model.ews[candidate_trainee];
+            scratch.relation_points.clear(); // (`CareerSetup::lineage_qc`'s table: another trainee)
             // the main search's found careers of her deck class that it fully checked (`found_anchors`)
-            let deck_class = simulator.env.deck_class[candidate_trainee];
+            let deck_class = simulator.env.setup.deck_class[candidate_trainee];
             let anchor_indices: Vec<usize> = (0..self.found_anchors.len())
                 .filter(|&i| self.found_anchors[i].as_ref().is_some_and(|f| f.deck_class == deck_class))
                 .collect();
@@ -1113,15 +1117,22 @@ impl RollKeep {
             for &st in &HI_STARS {
                 let mut q = anchor.initial_chances.clone();
                 for k in 0..uncertain_target_count {
-                    q[simulator.env.uncertain_targets[k]] = 1.0 - anchor.base_misses[k] * anchor.star_misses[st];
+                    q[simulator.env.setup.uncertain_targets[k]] = 1.0 - anchor.base_misses[k] * anchor.star_misses[st];
                 }
-                simulator.env.set_trainee(anchor.lineage.trainee, &q);
-                simulator.env.work = 0;
+                simulator.env.setup.set_trainee(&mut simulator.env.state, anchor.lineage.trainee, &q);
+                simulator.env.state.work = 0;
                 let mut nsc = 0;
-                if let DeckRes::Done(v, _, true) =
-                    simulator.env.best_deck(anchor.lineage.trainee, 1.0, 0.0, &[], &mut nsc)
-                {
-                    let rise = anchor.rise_inputs(simulator.env);
+                if let DeckRes::Done(v, _, true) = simulator.env.setup.best_deck(
+                    &mut simulator.env.state,
+                    &mut simulator.env.audit,
+                    &mut simulator.env.memo,
+                    anchor.lineage.trainee,
+                    1.0,
+                    0.0,
+                    &[],
+                    &mut nsc,
+                ) {
+                    let rise = anchor.rise_inputs(&simulator.env.setup);
                     let rz = rise.leaves(&q, &mut leaf_products_buffer, &mut next_leaf_products);
                     for (bv, r) in exact_bounds[partner_index].leaf_bounds.iter_mut().zip(&rz) {
                         let v2 = v * r;
@@ -1161,12 +1172,12 @@ pub(crate) fn pick_her(
     if !full_lo || ends.own_candidate.is_some() || ends.completes_goal || context.score_base.trio_sides.is_empty() {
         return vec![];
     }
-    let c = s.evaluator.make_cur(s.env, context.pool, career, false);
-    let full_m = (1usize << s.env.target_count) - 1;
+    let c = s.evaluator.make_cur(&s.env.setup, &mut s.env.state, context.pool, career, false);
+    let full_m = (1usize << s.env.setup.target_count) - 1;
     if c.os[full_m] <= 0.0 {
         return vec![];
     }
-    let mut pv = s.evaluator.push_her(s.env, context.legacies, context.pool, true, &c);
+    let mut pv = s.evaluator.push_her(&s.env.setup, context.legacies, context.pool, true, &c);
     let iv = pv.pool.veterans.len() - 1;
     let r = her_trios(s, context.score_base, &mut pv.pool, iv, career.lineage.trainee, buf);
     s.evaluator.pop_her(context.pool, pv);
@@ -1175,15 +1186,15 @@ pub(crate) fn pick_her(
 
 /// `outcome_hi`'s found-career anchors: per found career of the main search `msv` (its order), (her deck class, q_f,
 /// val_f) when the search fully checked it (a Ref at the career's own chances: val_f is the best value of any deck at q_f
-/// for every trainee of the class, `Env::seen`, scale 1), else none
-pub(crate) fn found_anchors(env: &Env, pool: &Pool, msv: &CareerSearchResult) -> Vec<Option<FoundAnchor>> {
+/// for every trainee of the class, `SearchState::seen`, scale 1), else none
+pub(crate) fn found_anchors(setup: &CareerSetup, pool: &Pool, msv: &CareerSearchResult) -> Vec<Option<FoundAnchor>> {
     msv.found
         .iter()
         .map(|f| {
             let lineage = Lineage { trainee: f.trainee, first_parent: f.first_parent, second_parent: f.second_parent };
-            let (fq, _) = env.lineage_q(pool, lineage);
+            let (fq, _) = setup.lineage_q(pool, lineage);
             msv.refs.get(f.trainee).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| FoundAnchor {
-                deck_class: env.deck_class[f.trainee],
+                deck_class: setup.deck_class[f.trainee],
                 inheritance_chances: r.q.clone(),
                 value: r.val,
             })

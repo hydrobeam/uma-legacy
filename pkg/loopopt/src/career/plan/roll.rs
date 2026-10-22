@@ -9,7 +9,7 @@ use crate::career::plan::{CandidateIndex, OutcomeIndex, PlanJob, ScoringContext,
 use crate::career::pool::Pool;
 use crate::career::search::Found;
 use crate::career::sim::Sim;
-use crate::career::state::setup_hash;
+use crate::career::state::{KeptState, hash_text};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
@@ -86,26 +86,21 @@ impl RollKeep {
     }
 }
 
-thread_local! { static ROLLS: std::cell::RefCell<Vec<RollKeep>> = const { std::cell::RefCell::new(Vec::new()) }; }
-
 /// plans' roll states kept (the most recent last): the run's plan and the plan Compare makes with her added
 const ROLL_KEEP: usize = 4;
 
 /// a plan job's roll key: the whole job but its roll (`next.roll`) and the page's flags that change no plan
 /// (`no_reports`, `compare`)
 pub(crate) fn roll_key(job: &Value) -> u64 {
-    setup_hash(&crate::career::state::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
+    hash_text(&crate::career::state::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
 }
 
-pub(crate) fn keep_roll(roll: RollKeep) {
-    ROLLS.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        cache.retain(|entry| entry.key != roll.key);
-        cache.push(roll);
-        while cache.len() > ROLL_KEEP {
-            cache.remove(0);
-        }
-    });
+pub(crate) fn keep_roll(kept: &mut KeptState, roll: RollKeep) {
+    kept.rolls.retain(|entry| entry.key != roll.key);
+    kept.rolls.push(roll);
+    while kept.rolls.len() > ROLL_KEEP {
+        kept.rolls.remove(0);
+    }
 }
 
 /// The plan's answer to a roll (`next.roll`: her stars per job target, 0 where it did not land) from its kept roll state,
@@ -115,6 +110,7 @@ pub(crate) fn keep_roll(roll: RollKeep) {
 /// (`outcome_hi` at that one cell). Rounded as the table was: y to 0.01, y_hi up to 0.01 (null where y >= 0.5)
 pub(crate) fn roll_kept<'data>(
     env: &mut Env<'data>,
+    worker: &mut KeptState,
     input: &JobInputs<'data>,
     legs: &[Legacy],
     pool: &Pool,
@@ -123,19 +119,16 @@ pub(crate) fn roll_kept<'data>(
 ) -> Option<Value> {
     let stars = pj.roll.as_ref()?;
     let key = roll_key(input.job);
-    let mut kept = ROLLS.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        let index = cache.iter().position(|roll| roll.key == key)?;
-        Some(cache.remove(index))
-    })?;
+    let index = worker.rolls.iter().position(|roll| roll.key == key)?;
+    let mut kept = worker.rolls.remove(index);
     // (the roll's own timers and counters, `prof`; what the job counted before goes back after)
     let started = now_ms();
     let prof_before = PROF.with(|prof| std::mem::take(&mut *prof.borrow_mut()));
-    let answer = match sim_for(env, input, pj) {
+    let answer = match sim_for(env, worker, input, pj) {
         Ok(mut sim) => roll_answer(&mut sim, &RollPool { legacies: legs, pool, fixed_parents: fix }, &mut kept, stars),
         Err(error) => error,
     };
-    keep_roll(kept);
+    keep_roll(worker, kept);
     let mut answer = answer;
     let roll_prof = PROF.with(|prof| std::mem::replace(&mut *prof.borrow_mut(), prof_before));
     if answer.is_object() {
@@ -165,11 +158,11 @@ impl RollPool<'_> {
 }
 
 fn roll_answer(simulator: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[u8]) -> Value {
-    let (uncv, fixed_t) = (simulator.env.uncertain_targets.clone(), simulator.env.fixed_targets.clone());
-    if stars.len() != simulator.env.target_count {
-        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), simulator.env.target_count)});
+    let setup = &simulator.env.setup;
+    if stars.len() != setup.target_count {
+        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), setup.target_count)});
     }
-    let outcome = OutcomeIndex::from_stars(stars, &uncv, &fixed_t);
+    let outcome = OutcomeIndex::from_stars(stars, &setup.uncertain_targets, &setup.fixed_targets);
     let score_base = kept.base.base();
     let y = kept.scored.roll(&score_base, outcome);
     let mut hi = None;
@@ -183,7 +176,7 @@ fn roll_answer(simulator: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, s
 }
 
 /// the kept roll states for the page to store (`state_out`), every float as its bits
-pub(crate) fn rolls_out() -> Value {
+pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
     use crate::career::state::{fvec, hx, sel_out, ux};
     let trios_out = |trios: &[OwnTrio]| {
         trios
@@ -204,22 +197,19 @@ pub(crate) fn rolls_out() -> Value {
             "act": sd.active_candidates.iter().map(|active| json!([active.candidate.0, active.slot, hx(active.threshold), hx(active.current_chance)])).collect::<Vec<_>>(),
             "her": trios_out(&sd.own_trios)})
     };
-    ROLLS.with(|c| {
-        Value::Array(
-            c.borrow()
-                .iter()
-                .map(|roll| {
-                    let lineage = roll.lineage;
-                    json!({
-                        "k": ux(roll.key), "x": [lineage.trainee, lineage.first_parent, lineage.second_parent],
-                        "sel": sel_out(&roll.deck), "her": trios_out(&roll.own_trios),
-                        "anc": roll.found_anchors.iter().map(|a| a.as_ref().map(|anchor| json!([anchor.deck_class, fvec(&anchor.inheritance_chances), hx(anchor.value)]))).collect::<Vec<_>>(),
-                        "base": base_out(&roll.base),
-                        "sd": scored_out(&roll.scored)})
-                })
-                .collect(),
-        )
-    })
+    Value::Array(
+        rolls.iter()
+            .map(|roll| {
+                let lineage = roll.lineage;
+                json!({
+                    "k": ux(roll.key), "x": [lineage.trainee, lineage.first_parent, lineage.second_parent],
+                    "sel": sel_out(&roll.deck), "her": trios_out(&roll.own_trios),
+                    "anc": roll.found_anchors.iter().map(|a| a.as_ref().map(|anchor| json!([anchor.deck_class, fvec(&anchor.inheritance_chances), hx(anchor.value)]))).collect::<Vec<_>>(),
+                    "base": base_out(&roll.base),
+                    "sd": scored_out(&roll.scored)})
+            })
+            .collect(),
+    )
 }
 
 /// Kept roll states from the page's store (`state_in`); None refuses the store whole. (Absent in a state stored before
@@ -434,8 +424,4 @@ impl Scored {
             && !self.slot_by_setup.iter().any(|&sl| sl >= self.slot_count)
             && self.current_probabilities.len() == self.slot_count
     }
-}
-
-pub(crate) fn rolls_set(r: Vec<RollKeep>) {
-    ROLLS.with(|c| *c.borrow_mut() = r);
 }

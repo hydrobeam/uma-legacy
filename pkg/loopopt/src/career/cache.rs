@@ -3,8 +3,8 @@
 //! (derived; `corners`), so 2^nu exact evaluations per (trainee, deck) give it at any chances. Decks come from the
 //! searches' fully checked decks (`Ref`, also kept for `rise`) and from deck searches where a bound says the cached
 //! decks may fall short.
-use crate::career::Env;
 use crate::career::search::Ref;
+use crate::career::{CareerSetup, DeckSearchMemo, SearchState};
 use crate::deck::space::SelectedDeck;
 use crate::uma::{UmaIndex, UmaTable};
 /// A cached deck of one trainee and per outfit its corner table (P(all), every spark scale 1, at q_k in {0, 1} per
@@ -36,8 +36,16 @@ impl Cache {
         Self { decks: (0..trainees).map(|_| vec![]).collect(), refs: UmaTable(vec![vec![]; trainees]), tables: 0 }
     }
 
-    /// Cache a trainee's deck and corner tables, unless that selection is already present.
-    pub(super) fn add(&mut self, env: &mut Env, trainee: UmaIndex, deck: &SelectedDeck) {
+    /// Cache a trainee's deck and corner tables, unless that selection is already present (the tables are built in
+    /// her folded buffer, `CareerSetup::corners_kept`, and kept in the memo).
+    pub(super) fn add(
+        &mut self,
+        setup: &CareerSetup,
+        state: &mut SearchState,
+        memo: &mut DeckSearchMemo,
+        trainee: UmaIndex,
+        deck: &SelectedDeck,
+    ) {
         if self.decks[trainee].iter().any(|cached| {
             cached.sel.entries == deck.entries
                 && cached.sel.plain_pals == deck.plain_pals
@@ -45,17 +53,23 @@ impl Cache {
         }) {
             return;
         }
-        let tab = env.corners_kept(trainee, deck);
+        let tab = setup.corners_kept(state, memo, trainee, deck);
         self.tables += 1;
         self.decks[trainee].push(CachedDeck { sel: deck.clone(), tab });
     }
 
     /// Absorb a search's fully checked decks. A repeated deck still contributes its proof at the
     /// search's inheritance chances; deduplicating decks must not discard these `rise` anchors.
-    pub(super) fn absorb(&mut self, env: &mut Env, refs: &UmaTable<Vec<Ref>>) {
+    pub(super) fn absorb(
+        &mut self,
+        setup: &CareerSetup,
+        state: &mut SearchState,
+        memo: &mut DeckSearchMemo,
+        refs: &UmaTable<Vec<Ref>>,
+    ) {
         for (trainee, checked_decks) in refs.indexed() {
             for checked in checked_decks {
-                self.add(env, trainee, &checked.deck);
+                self.add(setup, state, memo, trainee, &checked.deck);
                 self.refs[trainee].push(checked.clone());
             }
         }

@@ -28,8 +28,8 @@ pub(crate) enum BandBound {
     /// The state-conditioned bound beside the caps, in `mode` (`Checks::sbound`, `SBOUND`: 3 at each
     /// configuration's root, 1 also at depth 1, 2 at every node without the caps, 0 off).
     StateBound { mode: u8 },
-    /// The cap-free band (`Env::best_deck_cf`): two proven bounds at every node and leaf are its only prunes, no cap;
-    /// it stops (`CapFreeNodeLimit`) once the space's node count (`DeckSpace::nodes`) passes `node_limit`.
+    /// The cap-free band (`CareerSetup::best_deck_cf`): two proven bounds at every node and leaf are its only prunes,
+    /// no cap; it stops (`CapFreeNodeLimit`) once the space's node count (`DeckSpace::nodes`) passes `node_limit`.
     CapFree { node_limit: usize },
 }
 
@@ -109,6 +109,7 @@ impl DeckSpace<'_> {
     /// Reaching `max_decks` ends the band immediately and reports `OutputLimit`, even if that was the last deck.
     pub(crate) fn search(
         &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         chances: &DeckChances,
         trainees: &[crate::uma::UmaIndex],
         trainee_ids: &[u32],
@@ -119,6 +120,6 @@ impl DeckSpace<'_> {
             Ok(setup) => setup,
             Err(outcome) => return outcome,
         };
-        self.search_with_bounds(chances, trainees, clauses, setup)
+        self.search_with_bounds(state_bounds, chances, trainees, clauses, setup)
     }
 }

@@ -4,7 +4,6 @@ use crate::deck::chains::{ChainKind, chain_marginals};
 use crate::deck::dominance::{Name, PDeck};
 use crate::deck::joint::MissFactors;
 use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources};
-use crate::deck::state_bound::StateBoundConfig;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::skills::{Model, OutfitOption, SkillsRaw};
 use std::collections::HashMap;
@@ -83,15 +82,6 @@ struct LegalTableKey {
     plain_pal_count: usize,
 }
 
-/// A state's real filler and pal slots distinguish configurations with the same chain code.
-#[derive(PartialEq, Eq, Hash)]
-pub(super) struct StateBoundKey {
-    pub(super) set_id: usize,
-    pub(super) code: u64,
-    pub(super) real_filler_count: usize,
-    pub(super) pal_entry_count: usize,
-}
-
 /// Dominance is specific to one group of one reduced entry set and chain code.
 #[derive(PartialEq, Eq, Hash)]
 pub(super) struct DominanceKey {
@@ -136,9 +126,7 @@ pub(crate) struct DeckSpace<'data> {
     counts: std::cell::OnceCell<std::rc::Rc<Vec<Vec<usize>>>>,
     /// per entry, its locked card's bit (0 if none), and all locked bits together
     locked_card_bits: std::cell::OnceCell<LockedCards>,
-    /// The state-conditioned bound's tables (`StateBoundConfig`) per entry set and configuration, and
-    /// per set id the legal entries' miss rows per chain level: functions of the entry set and configuration alone
-    pub(super) state_bound_cache: std::cell::RefCell<crate::FxMap<StateBoundKey, std::rc::Rc<StateBoundConfig>>>,
+    /// Per set id, the legal entries' miss rows per chain level.
     pub(super) state_row_cache: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<Option<Vec<MissFactors>>>>>>,
     /// the product search's dominance table (`dom_table`) per (set id, key code, group): functions of those alone
     pub(super) dominance_cache: std::cell::RefCell<crate::FxMap<DominanceKey, std::rc::Rc<Vec<Vec<Dominator>>>>>,
@@ -626,7 +614,6 @@ pub(crate) fn deck_space<'data>(
         legal_table_cache: std::cell::RefCell::default(),
         counts: std::cell::OnceCell::default(),
         locked_card_bits: std::cell::OnceCell::default(),
-        state_bound_cache: std::cell::RefCell::default(),
         state_row_cache: std::cell::RefCell::default(),
         dominance_cache: std::cell::RefCell::default(),
     }

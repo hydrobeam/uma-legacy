@@ -27,10 +27,12 @@
 //!
 //! The next career the page picks (`next`) is `plan::index_rule`; the simulator (`simulate`) is `sim`.
 use crate::Instant;
-use crate::career::decks::{CfStats, DECK_KEEP, DECK_KEEP_CAP, DeckMemo, DeckSearchKey, JOB_NO};
+use crate::career::decks::{CfStats, DECK_KEEP_CAP, DeckMemo, DeckSearchKey, JOB_NO};
 use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Ref, SearchRequest, solve_kept};
-use crate::career::state::{ProductProof, SEEN, SEEN_KEEP, json_without, setup_fp, setup_hash, state_in, state_out};
+use crate::career::state::{
+    KEPT, KeptState, ProductProof, SEEN_KEEP, hash_text, json_without, setup_fp, state_in, state_out,
+};
 use crate::data::Data;
 use crate::deck::sources::deck_entries;
 use crate::deck::space::{DeckSpace, SelectedDeck, deck_space};
@@ -47,7 +49,7 @@ mod outcomes;
 mod pool;
 mod schedule;
 mod search;
-mod state;
+pub(crate) mod state;
 
 mod cache;
 mod evaluator;
@@ -139,8 +141,8 @@ pub(crate) struct Legacy {
     /// its own parents (the new trainee's grandparents); empty when unknown
     #[serde(default)]
     pub parents: Vec<Ancestor>,
-    /// internal (a veteran before her result is known, `Env::veteran`): win chance per race index in place of `wins`,
-    /// and the star mix her sparks are drawn from in place of fixed stars
+    /// internal (a veteran before her result is known, `CareerSetup::veteran`): win chance per race index in place of
+    /// `wins`, and the star mix her sparks are drawn from in place of fixed stars
     #[serde(skip)]
     win_p: Vec<f64>,
     #[serde(skip)]
@@ -202,13 +204,23 @@ enum BorrowedParent {
     Never,
 }
 
+/// A career job's solver environment, split by who changes what: the setup every search reads (`&`), the search's own
+/// state (`&mut`), the deck searches' certificates and diagnostics, and their memo. Methods are `CareerSetup`'s and
+/// take the parts they change. The career entry point publishes the memo explicitly after the job finishes.
 struct Env<'data> {
+    setup: CareerSetup<'data>,
+    state: SearchState,
+    audit: DeckSearchAudit,
+    memo: DeckSearchMemo,
+}
+
+/// What every search of a job reads, built once (`career_setup`: the deck classes and ceilings included) and never
+/// written after.
+struct CareerSetup<'data> {
     data: &'data Data,
     /// The job's targets, owned umas and the rank's star mix.
     skill_job: &'data SkillJob,
     model: &'data Model<'data>,
-    /// Reusable per-trainee buffers: own-event chances with the current lineage's inheritance folded in.
-    folded_events: UmaTable<Vec<Vec<f64>>>,
     /// The uncertain targets (not guaranteed gold), as job-target indices.
     uncertain_targets: Vec<usize>,
     /// The other targets (guaranteed gold), as job-target indices.
@@ -226,6 +238,22 @@ struct Env<'data> {
     /// neither; `Model::opts` without the labels).
     outfit_coverage: UmaTable<Vec<Vec<u8>>>,
     owned: Vec<UmaIndex>,
+    /// each trainee's deck class, as the index of its first trainee: trainees with the same outfit coverage and
+    /// own-skill chances of the targets, the same relevant cards barred and as many plain pals face the same deck
+    /// problem (her best deck and its value are one function of the inheritance chances; `rise` and
+    /// `deck_odds_ceilings` agree), so a proof one of them makes (`Ref`, `ruled`) holds for all of them. Within a class
+    /// only the slots' affinity (so q) differs.
+    deck_class: UmaTable<UmaIndex>,
+    /// borrowed veterans a pair of parents may hold in every pool this setup builds (`Pool::max_borrowed`): 1, 0 under
+    /// `borrowed_parent` "never"
+    max_borrowed: u8,
+}
+
+/// What a search changes as it runs: the folded chances it searches at, its work and budget, and what it proved for
+/// later searches of the job.
+struct SearchState {
+    /// Reusable per-trainee buffers: own-event chances with the current lineage's inheritance folded in.
+    folded_events: UmaTable<Vec<Vec<f64>>>,
     budget: usize,
     work: usize,
     /// Exact scorings the job's deck searches made (`best_deck`'s `joint_b` calls, a memo hit's as if it ran):
@@ -235,12 +263,6 @@ struct Env<'data> {
     /// its chances for every trainee of the class): later searches bound with them (`rise`), but don't start from them,
     /// so ties resolve as in a lone search
     seen: UmaTable<Vec<Ref>>,
-    /// each trainee's deck class, as the index of its first trainee: trainees with the same outfit coverage and own-skill
-    /// chances of the targets, the same relevant cards barred and as many plain pals face the same deck problem (her
-    /// best deck and its value are one function of the inheritance chances; `rise` and `deck_odds_ceilings` agree), so
-    /// a proof one of them makes (`Ref`, `ruled`) holds for all of them. Within a class only the slots' affinity (so q)
-    /// differs.
-    deck_class: UmaTable<UmaIndex>,
     /// whether `solve` bounds with `seen`: off for the search whose fully checked decks seed the simulator's cache
     /// (so the simulator's values do not depend on what earlier searches proved)
     use_seen: bool,
@@ -252,6 +274,14 @@ struct Env<'data> {
     /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
     /// best: careers below it are pruned as if the bar were already there); NEG_INFINITY for every other search
     pub(crate) floor: f64,
+    /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
+    hard_work_cap: usize,
+}
+
+/// What the job's deck searches certified and the cap audit's diagnostics, reported with the job's answer
+/// (`note_job_certificates`).
+#[derive(Clone)]
+struct DeckSearchAudit {
     /// per structure class (`cap_class`), the largest exact / product value of any deck `best_deck` scored (the class's
     /// assumed cap must exceed it; the planner reports it and `val/planval.py` fails when it comes near the cap)
     pub(crate) max_ratio: [f64; 4],
@@ -268,36 +298,41 @@ struct Env<'data> {
     /// down the cap ladder), and how many bands overflowed; a search below the top cap is not `full`
     pub(crate) cert: f64,
     pub(crate) overflows: usize,
-    /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
-    hard_work_cap: usize,
+}
+
+/// The deck searches' memo, kept between jobs of one setup (`KeptState::decks`).
+struct DeckSearchMemo {
     /// `best_deck` calls without start decks, by what they read (`DeckSearchKey`): the outcome and what the call did besides
-    /// (kept between jobs of one setup, `DECK_KEEP`)
-    deck_memo: crate::FxMap<DeckSearchKey, DeckMemo>,
-    /// `corners_kept`'s tables by (deck class, the deck's entries, filler), kept between jobs of one setup with `deck_memo`
-    corner_memo: crate::FxMap<(UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
+    decks: crate::FxMap<DeckSearchKey, DeckMemo>,
+    /// `corners_kept`'s tables by (deck class, the deck's entries, filler)
+    corners: crate::FxMap<(UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
     /// the setup the memo is kept under, and this job's number
-    memo_fingerprint: u64,
+    fingerprint: u64,
     job_number: u64,
-    /// borrowed veterans a pair of parents may hold in every pool this Env builds (`Pool::max_borrowed`): 1, 0 under
-    /// `borrowed_parent` "never"
-    max_borrowed: u8,
+    /// State-bound configurations belong to this job's deck space, never to the retained cross-job memo.
+    state_bounds: crate::deck::state_bound::StateBoundMemo,
 }
 
 /// a new data set (the worker's `init`): nothing kept from the old one
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn forget_kept_decks() {
-    DECK_KEEP.with(|c| c.borrow_mut().clear());
+    KEPT.with(|c| c.borrow_mut().decks.clear());
 }
 
 pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
+    KEPT.with(|kept| run_career_in(d, sk, cr, v, &mut kept.borrow_mut()))
+}
+
+/// Run one job against the caller's retained work; simulator jobs reuse this borrow without entering worker TLS.
+pub(crate) fn run_career_in(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, kept: &mut KeptState) -> Value {
     // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
     match v["cmd"].as_str() {
-        Some("state_out") => return state_out(),
-        Some("state_in") => return state_in(&v["state"]),
+        Some("state_out") => return state_out(kept),
+        Some("state_in") => return state_in(kept, &v["state"]),
         _ => {}
     }
     if let Some(roll) = v.get("roll").filter(|roll| !roll.is_null()) {
-        return run_carried_roll(d, sk, cr, v, roll);
+        return run_carried_roll(d, sk, cr, v, roll, kept);
     }
     let jobs = match CareerJobs::parse(v) {
         Ok(jobs) => jobs,
@@ -306,56 +341,63 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let t_all = Instant::now();
     let input = JobInputs { data: d, skills: sk, cards: cr, job: v };
     let model = Model::new(d, sk, &jobs.skills);
-    let CareerSetup { mut env, trainees, setup_fingerprint } = match career_setup(&input, &jobs, &model) {
+    let CareerBuild { mut env, trainees, setup_fingerprint } = match career_setup(&input, &jobs, &model, kept) {
         Ok(setup) => setup,
         Err(error) => return error,
     };
-    let cj = &jobs.career;
-    let legs = &cj.legacies;
-    let rho_top = env.space.rho_top();
-    restore_seen(&mut env, setup_fingerprint);
-    if let Some(sm) = &cj.simulate {
-        return crate::career::sim::play::simulate(&mut env, &input, legs, &trainees, sm);
-    }
-    let pool = env.pool(legs);
-    // (tests: the job's Env and pool handed to a check instead of the search)
-    #[cfg(test)]
-    if let Some(h) = tests::ENV_HOOK.with(|c| c.borrow_mut().take()) {
-        h(&mut env, &pool);
-        return json!({});
-    }
-    let mut run = CareerRun { input: &input, job: cj, trainees: &trainees, pool: &pool, pick_pool: None };
-    if let Some(roll) = answer_kept_roll(&mut env, &run) {
-        return json!({"next": {"roll": roll}});
-    }
-    // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
-    // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
-    let own_pool = (cj.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_borrowed: 0, ..pool.clone() });
-    run.pick_pool = own_pool.as_ref();
-    env.use_seen = true;
-    // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
-    // search was kept from the job before
-    let (sn0, sj0) = (env.space.nodes.get(), env.exact_scorings);
-    let sv = solve_kept(&mut env, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
-    let search_work = json!({"nodes": env.space.nodes.get() - sn0, "exact": env.exact_scorings - sj0});
-    env.use_seen = true;
-    if jobs.deck.checks.career_work {
-        eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven);
-    }
-    if sv.cands == 0 {
-        keep_seen(&env, setup_fingerprint);
-        return json!({"error": if cj.borrowed_parent == BorrowedParent::Allow { "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed." }
+    let out = (|| {
+        let cj = &jobs.career;
+        let legs = &cj.legacies;
+        let rho_top = env.setup.space.rho_top();
+        if let Some(sm) = &cj.simulate {
+            return crate::career::sim::play::simulate(&mut env, kept, &input, legs, &trainees, sm);
+        }
+        let pool = env.setup.pool(legs);
+        // (tests: the job's Env and pool handed to a check instead of the search)
+        #[cfg(test)]
+        if let Some(h) = tests::ENV_HOOK.with(|c| c.borrow_mut().take()) {
+            h(&mut env, &pool);
+            return json!({});
+        }
+        let mut run = CareerRun { input: &input, job: cj, trainees: &trainees, pool: &pool, pick_pool: None };
+        if let Some(roll) = answer_kept_roll(&mut env, kept, &run) {
+            return json!({"next": {"roll": roll}});
+        }
+        // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
+        // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
+        let own_pool = (cj.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_borrowed: 0, ..pool.clone() });
+        run.pick_pool = own_pool.as_ref();
+        env.state.use_seen = true;
+        // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
+        // search was kept from the job before
+        let (sn0, sj0) = (env.setup.space.nodes.get(), env.state.exact_scorings);
+        let sv = solve_kept(&mut env, kept, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
+        let search_work = json!({"nodes": env.setup.space.nodes.get() - sn0, "exact": env.state.exact_scorings - sj0});
+        env.state.use_seen = true;
+        if jobs.deck.checks.career_work {
+            eprintln!(
+                "career search: work {} of {}, solved {}, proven {}",
+                sv.work, env.state.budget, sv.solved, sv.proven
+            );
+        }
+        if sv.cands == 0 {
+            keep_seen(kept, &env.state, setup_fingerprint);
+            return json!({"error": if cj.borrowed_parent == BorrowedParent::Allow { "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed." }
         else { "No legal career: a trainee needs two of your own veterans of other characters (not her own, not the same as each other): borrowed parents are off." } });
-    }
-    let mut out = search_output(&mut env, &run, &sv, search_work, rho_top);
-    if let Some(x) = &cj.next
-        && !sv.found.is_empty()
-    {
-        out["next"] = plan_next(&mut env, &run, &sv, x);
-    }
-    keep_seen(&env, setup_fingerprint);
-    note_job_certificates(&env, &mut out, rho_top);
-    out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
+        }
+        let mut out = search_output(&mut env, &run, &sv, search_work, rho_top);
+        if let Some(x) = &cj.next
+            && !sv.found.is_empty()
+        {
+            out["next"] = plan_next(&mut env, kept, &run, &sv, x);
+        }
+        keep_seen(kept, &env.state, setup_fingerprint);
+        note_job_certificates(&env.setup, &env.audit, &mut out, rho_top);
+        out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
+        out
+    })();
+    // Publish reusable tables after every completed path, including early answers and simulator jobs.
+    env.memo.keep(kept);
     out
 }
 
@@ -363,17 +405,17 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
 /// plan job with `next.roll` on its own first, so its saving shows before the search): the job runs without it, then
 /// the plan job with `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as
 /// `roll`
-fn run_carried_roll(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, roll: &Value) -> Value {
+fn run_carried_roll(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, roll: &Value, kept: &mut KeptState) -> Value {
     let mut search_job = v.clone();
     if let Some(object) = search_job.as_object_mut() {
         object.remove("roll");
     }
-    let mut out = run_career(d, sk, cr, &search_job);
+    let mut out = run_career_in(d, sk, cr, &search_job, kept);
     let mut plan_job = roll["job"].clone();
     out["roll"] = match plan_job.get_mut("next").and_then(|next| next.as_object_mut()) {
         Some(next) => {
             next.insert("roll".into(), roll["stars"].clone());
-            let plan_out = run_career(d, sk, cr, &plan_job);
+            let plan_out = run_career_in(d, sk, cr, &plan_job, kept);
             if plan_out["next"]["roll"].is_null() {
                 json!({"error": plan_out["error"].as_str().or_else(|| plan_out["next"]["error"].as_str()).unwrap_or("the plan has no roll")})
             } else {
@@ -406,22 +448,23 @@ impl CareerJobs {
 }
 
 /// A job's solver environment and what it was built for.
-struct CareerSetup<'data> {
+struct CareerBuild<'data> {
     env: Env<'data>,
     /// The job's trainees (uma indices), owned umas in roster order.
     trainees: Vec<UmaIndex>,
-    /// `setup_fp` of the job: what earlier jobs of this setup proved is kept under it (`SEEN`).
+    /// `setup_fp` of the job: what earlier jobs of this setup proved is kept under it (`KeptState::seen`).
     setup_fingerprint: u64,
 }
 
-/// The job's Env: the model, the deck space, each owned uma's deck-odds ceiling, the kept deck memo of this setup and
-/// the deck classes. Errors (no trainee, fewer than two legacies, a deck space the search refuses) come before
+/// The job's Env: the model, the deck space, each owned uma's deck-odds ceiling, the deck classes, the kept deck memo
+/// of this setup and what earlier jobs of the setup proved (`KeptState::seen`). Errors (no trainee, fewer than two legacies, a deck space the search refuses) come before
 /// anything kept is touched.
 fn career_setup<'data>(
     input: &JobInputs<'data>,
     jobs: &'data CareerJobs,
     model: &'data Model<'data>,
-) -> Result<CareerSetup<'data>, Value> {
+    worker: &mut KeptState,
+) -> Result<CareerBuild<'data>, Value> {
     let (d, sk, cr, v) = (input.data, input.skills, input.cards, input.job);
     let (sj, dj, cj) = (&jobs.skills, &jobs.deck, &jobs.career);
     let folded_events = UmaTable(
@@ -455,7 +498,7 @@ fn career_setup<'data>(
     let outfit_coverage: UmaTable<Vec<Vec<u8>>> =
         model.opts.iter().map(|m| m.iter().map(|x| x.coverage.clone()).collect()).collect();
     let budget = dj.checks.exact_budget.unwrap_or(CAREER_BUDGET);
-    // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
+    // the kept `best_deck` memo of this setup (`KeptState::decks`), and this job's number
     let setup_fingerprint = setup_fp(v);
     let memo_fingerprint = {
         use std::hash::{Hash, Hasher};
@@ -468,19 +511,20 @@ fn career_setup<'data>(
         c.set(c.get() + 1);
         c.get()
     });
-    let kept = DECK_KEEP
-        .with(|c| {
-            let mut c = c.borrow_mut();
-            c.iter().position(|e| e.0 == memo_fingerprint).map(|i| c.remove(i).1)
-        })
-        .unwrap_or_default();
-    let deck_memo = if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { HashMap::default() };
-    let corner_memo = if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { HashMap::default() };
-    let mut env = Env {
+    let kept =
+        worker.decks.iter().position(|e| e.0 == memo_fingerprint).map(|i| worker.decks.remove(i).1).unwrap_or_default();
+    let memo = DeckSearchMemo {
+        decks: if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { HashMap::default() },
+        corners: if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { HashMap::default() },
+        fingerprint: memo_fingerprint,
+        job_number,
+        state_bounds: crate::deck::state_bound::StateBoundMemo::default(),
+    };
+    let deck_class = deck_classes(d, model, &space, &outfit_coverage, &deck_odds_ceilings);
+    let setup = CareerSetup {
         data: d,
         skill_job: sj,
         model,
-        folded_events,
         uncertain_targets,
         fixed_targets,
         target_count,
@@ -490,6 +534,11 @@ fn career_setup<'data>(
         deck_odds_ceilings,
         outfit_coverage,
         owned,
+        deck_class,
+        max_borrowed: u8::from(cj.borrowed_parent != BorrowedParent::Never),
+    };
+    let mut state = SearchState {
+        folded_events,
         budget,
         work: 0,
         exact_scorings: 0,
@@ -499,21 +548,17 @@ fn career_setup<'data>(
         last_product_bound: None,
         floor: f64::NEG_INFINITY,
         hard_work_cap: 0,
+    };
+    restore_seen(worker, &setup, &mut state, setup_fingerprint);
+    let audit = DeckSearchAudit {
         max_ratio: [0.0; 4],
         cap_breach: 0,
         cap_free_stats: CfStats::default(),
         max_deck: Default::default(),
         cert: f64::INFINITY,
         overflows: 0,
-        deck_memo,
-        corner_memo,
-        memo_fingerprint,
-        job_number,
-        deck_class: d.umas.indices().collect(),
-        max_borrowed: u8::from(cj.borrowed_parent != BorrowedParent::Never),
     };
-    assign_deck_classes(&mut env);
-    Ok(CareerSetup { env, trainees, setup_fingerprint })
+    Ok(CareerBuild { env: Env { setup, state, audit, memo }, trainees, setup_fingerprint })
 }
 
 /// Per uma (None when she does not train), the best possible deck odds per uncertain target, a ceiling for every
@@ -562,25 +607,32 @@ fn deck_odds_ceilings(
         .collect()
 }
 
-/// Deck classes (`Env::deck_class`): the key holds everything of a trainee the deck search reads (outfit coverage,
-/// own-skill chances to the bit, `deck_odds_ceilings`, the relevant cards she may not take, how many plain pals she
-/// may); each trainee's class is the first trainee with her key.
-fn assign_deck_classes(env: &mut Env) {
+/// Deck classes (`CareerSetup::deck_class`): the key holds everything of a trainee the deck search reads (outfit
+/// coverage, own-skill chances to the bit, `deck_odds_ceilings`, the relevant cards she may not take, how many plain
+/// pals she may); each trainee's class is the first trainee with her key.
+fn deck_classes(
+    d: &Data,
+    model: &Model,
+    space: &DeckSpace,
+    outfit_coverage: &UmaTable<Vec<Vec<u8>>>,
+    deck_odds_ceilings: &UmaTable<Option<(Vec<f64>, Vec<f64>)>>,
+) -> UmaTable<UmaIndex> {
     let mut first: crate::FxMap<Vec<u64>, UmaIndex> = crate::FxMap::default();
-    for u in env.data.umas.indices() {
-        let uid = env.data.umas[u].id;
+    let mut deck_class: UmaTable<UmaIndex> = d.umas.indices().collect();
+    for u in d.umas.indices() {
+        let uid = d.umas[u].id;
         let mut k: Vec<u64> = vec![];
-        for o in &env.outfit_coverage[u] {
+        for o in &outfit_coverage[u] {
             k.push(o.len() as u64);
             k.extend(o.iter().map(|&x| u64::from(x)));
         }
         k.push(u64::MAX);
-        for o in &env.model.ews[u] {
+        for o in &model.ews[u] {
             k.push(o.len() as u64);
             k.extend(o.iter().map(|x| x.to_bits()));
         }
         k.push(u64::MAX);
-        match &env.deck_odds_ceilings[u] {
+        match &deck_odds_ceilings[u] {
             Some((w, g)) => {
                 k.push(1);
                 k.extend(w.iter().chain(g).map(|x| x.to_bits()));
@@ -589,50 +641,50 @@ fn assign_deck_classes(env: &mut Env) {
         }
         k.push(u64::MAX);
         k.extend(
-            (0..env.space.card_indices.len())
-                .filter(|&j| env.space.cards[env.space.card_indices[j]].blocks(uid, env.space.deck_job.checks))
+            (0..space.card_indices.len())
+                .filter(|&j| space.cards[space.card_indices[j]].blocks(uid, space.deck_job.checks))
                 .map(|j| j as u64),
         );
         k.push(u64::MAX);
-        k.push(env.space.legal_plain(&[uid]).len() as u64);
-        env.deck_class[u] = *first.entry(k).or_insert(u);
+        k.push(space.legal_plain(&[uid]).len() as u64);
+        deck_class[u] = *first.entry(k).or_insert(u);
     }
+    deck_class
 }
 
-/// What earlier jobs on this setup proved (the page's worker keeps it between jobs, `SEEN`), when it fits this Env.
-fn restore_seen(env: &mut Env, setup_fingerprint: u64) {
-    if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == setup_fingerprint).map(|e| e.1.clone()))
-        && env.seen_fits(&s)
+/// What earlier jobs on this setup proved (the page's worker keeps it between jobs, `KeptState::seen`), when it fits this setup.
+fn restore_seen(kept: &KeptState, setup: &CareerSetup, state: &mut SearchState, setup_fingerprint: u64) {
+    if let Some((_, seen)) = kept.seen.iter().find(|e| e.0 == setup_fingerprint)
+        && setup.seen_fits(seen)
     {
-        env.seen = s;
+        // The worker retains its proofs while this job extends its own copy.
+        state.seen = seen.clone();
     }
 }
 
 /// Keep this job's fully checked decks for the next job on its setup (the last `SEEN_KEEP` per class, four setups).
-fn keep_seen(env: &Env, setup_fingerprint: u64) {
-    SEEN.with(|c| {
-        let mut c = c.borrow_mut();
-        c.retain(|e| e.0 != setup_fingerprint);
-        c.push((
-            setup_fingerprint,
-            env.seen.iter().map(|rs| rs[rs.len().saturating_sub(SEEN_KEEP)..].to_vec()).collect(),
-        ));
-        if c.len() > 4 {
-            c.remove(0);
-        }
-    });
+fn keep_seen(kept: &mut KeptState, state: &SearchState, setup_fingerprint: u64) {
+    let cache = &mut kept.seen;
+    cache.retain(|e| e.0 != setup_fingerprint);
+    cache.push((
+        setup_fingerprint,
+        state.seen.iter().map(|rs| rs[rs.len().saturating_sub(SEEN_KEEP)..].to_vec()).collect(),
+    ));
+    if cache.len() > 4 {
+        cache.remove(0);
+    }
 }
 
 /// A roll of a plan this worker keeps (`next.roll`): answered from its roll state, no search (`plan::roll::roll_kept`);
 /// None when the job carries no roll or the worker keeps no state for it (the job then runs, its plan answering it).
-fn answer_kept_roll<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>) -> Option<Value> {
+fn answer_kept_roll<'data>(env: &mut Env<'data>, kept: &mut KeptState, run: &CareerRun<'_, 'data>) -> Option<Value> {
     let cj = run.job;
     let plan_job = cj
         .next
         .as_ref()
         .filter(|x| x.get("roll").is_some_and(|r| !r.is_null()))
         .and_then(|x| serde_json::from_value::<crate::career::plan::PlanJob>(x.clone()).ok())?;
-    crate::career::plan::roll::roll_kept(env, run.input, &cj.legacies, run.pool, &cj.fix, &plan_job)
+    crate::career::plan::roll::roll_kept(env, kept, run.input, &cj.legacies, run.pool, &cj.fix, &plan_job)
 }
 
 /// What the job's main search and its plan read.
@@ -662,11 +714,11 @@ impl CareerRun<'_, '_> {
     fn pick_search_request(&self) -> SearchRequest<'_> {
         SearchRequest { pool: self.pick_pool.unwrap_or(self.pool), ..self.search_request() }
     }
-    /// The key a main search is kept under (`LAST_SOLVE`): the hash of the job's text without the keys `drop`
+    /// The key a main search is kept under (`KeptState::searches`): the hash of the job's text without the keys `drop`
     /// (`json_without`: no clone). The page sends a career job, then the same job with `next`: the plan job reuses
     /// that job's main search (a search is deterministic for its job, so the result is the one it would compute).
     fn search_key(&self, drop: &[&str]) -> u64 {
-        setup_hash(&json_without(self.input.job, drop, &[]))
+        hash_text(&json_without(self.input.job, drop, &[]))
     }
 }
 
@@ -677,10 +729,10 @@ fn search_output(env: &mut Env, run: &CareerRun, sv: &CareerSearchResult, search
     let results: Vec<Value> = if cj.no_reports {
         vec![]
     } else {
-        sv.found.iter().enumerate().map(|(i, f)| env.report(run.pool, f, i == 0)).collect()
+        sv.found.iter().enumerate().map(|(i, f)| env.setup.report(&mut env.state, run.pool, f, i == 0)).collect()
     };
     let mut out = json!({"results": results, "candidates": sv.cands, "solved": sv.solved, "bounded": sv.bounded, "scored": sv.scored, "skipped": sv.skipped,
-           "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": rho_top.min(sv.cert), "class_caps": env.space.caps(), "work": search_work});
+           "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": rho_top.min(sv.cert), "class_caps": env.setup.space.caps(), "work": search_work});
     // a deck band over EXACT_CAP decks (in the main search or any later one of this job) was certified at a lower cap
     // only: `cap` says which, `complete` is false
     if sv.cert < rho_top {
@@ -693,7 +745,13 @@ fn search_output(env: &mut Env, run: &CareerRun, sv: &CareerSearchResult, search
 }
 
 /// The job's `next`: the page's next career (`plan::index_rule`) on the main search `sv`.
-fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &CareerSearchResult, next: &Value) -> Value {
+fn plan_next<'data>(
+    env: &mut Env<'data>,
+    kept: &mut KeptState,
+    run: &CareerRun<'_, 'data>,
+    sv: &CareerSearchResult,
+    next: &Value,
+) -> Value {
     let cj = run.job;
     let settings = match serde_json::from_value::<crate::career::plan::PlanJob>(next.clone()) {
         Ok(settings) => settings,
@@ -705,13 +763,18 @@ fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Caree
         // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
         // key (so a plan after an "allow" run takes it as it is)
         Some(pick_pool) => {
-            borrowing =
-                solve_kept(env, run.search_key(&["next", "no_reports", "borrowed_parent"]), &run.search_request());
+            borrowing = solve_kept(
+                env,
+                kept,
+                run.search_key(&["next", "no_reports", "borrowed_parent"]),
+                &run.search_request(),
+            );
             (&borrowing, Some(crate::career::plan::PickSearch { pool: pick_pool, solved: sv }))
         }
     };
     crate::career::plan::index_rule(
         env,
+        kept,
         &crate::career::plan::PlanInputs {
             resources: run.input,
             legacies: &cj.legacies,
@@ -727,31 +790,32 @@ fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Caree
 
 /// What every search of the job certified, into its answer: band overflows (`cap`, `complete`), decks past their
 /// class's assumed cap, and the cap-free searches.
-fn note_job_certificates(env: &Env, out: &mut Value, rho_top: f64) {
-    if env.overflows > 0 {
+fn note_job_certificates(setup: &CareerSetup, audit: &DeckSearchAudit, out: &mut Value, rho_top: f64) {
+    if audit.overflows > 0 {
         out["complete"] = json!(false);
-        out["cap"] = json!(rho_top.min(env.cert));
-        out["band_overflows"] = json!(env.overflows);
+        out["cap"] = json!(rho_top.min(audit.cert));
+        out["band_overflows"] = json!(audit.overflows);
     }
     // a scored deck past its class's assumed cap (in any search of the job): per class [class, ratio, cap]
-    if env.cap_breach > 0 {
-        let caps = env.space.caps();
+    if audit.cap_breach > 0 {
+        let caps = setup.space.caps();
         out["cap_exceeded"] = json!(
             (0..4)
-                .filter(|&k| env.max_ratio[k] > caps[k] * (1.0 + 1e-9))
-                .map(|k| json!([k, env.max_ratio[k], caps[k]]))
+                .filter(|&k| audit.max_ratio[k] > caps[k] * (1.0 + 1e-9))
+                .map(|k| json!([k, audit.max_ratio[k], caps[k]]))
                 .collect::<Vec<_>>()
         );
     }
     // the deck searches that saw a breach and were answered by the cap-free search (`best_deck_cf`; every search of the
     // job, the plan's included), how many of those (or of a `cap_free` job's searches) proved nothing (then `complete`
     // is false), breaches left unanswered (`CAP_RERUN=0`), and the cap-free work
-    if env.space.deck_job.cap_free {
+    if setup.space.deck_job.cap_free {
         out["cap_free"] = json!(true);
     }
-    if env.cap_free_stats != CfStats::default() {
-        out["cap_rerun"] = json!({"searches": env.cap_free_stats.reruns, "unproven": env.cap_free_stats.open, "unanswered": env.cap_free_stats.unhandled, "work": env.cap_free_stats.work});
-        if env.cap_free_stats.open > 0 || env.cap_free_stats.unhandled > 0 {
+    let cap_free = &audit.cap_free_stats;
+    if *cap_free != CfStats::default() {
+        out["cap_rerun"] = json!({"searches": cap_free.reruns, "unproven": cap_free.open, "unanswered": cap_free.unhandled, "work": cap_free.work});
+        if cap_free.open > 0 || cap_free.unhandled > 0 {
             out["complete"] = json!(false);
         }
     }
@@ -872,37 +936,38 @@ mod tests {
                     g.star_mix = Some([0.2, 0.3, 0.5]);
                 }
             }
-            let ks: Vec<usize> = (0..env.target_count).collect();
-            let trainees: Vec<UmaIndex> = env.owned.clone();
+            let Env { ref setup, ref mut state, .. } = *env;
+            let ks: Vec<usize> = (0..setup.target_count).collect();
+            let trainees = &setup.owned;
             let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<u64>>();
             let (mut n, mut tg, mut tg_t) = (0usize, vec![], crate::optimize::NONE);
             for fix in [vec![], vec![2usize]] {
-                let cands = env.gen_cands(&p, &fix, &trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
+                let cands = setup.gen_cands(state, &p, &fix, trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
                 assert!(!cands.is_empty());
                 for (ub, t, a, b) in cands {
                     let lineage = Lineage { trainee: t, first_parent: a, second_parent: b };
-                    let inherit::LineageChances { chances: q, spark_scale: c, .. } = env.lineage(&p, lineage);
+                    let inherit::LineageChances { chances: q, spark_scale: c, .. } = setup.lineage(&p, lineage);
                     assert_eq!(
                         ub.to_bits(),
-                        env.ceiling(t, &q, c).unwrap().to_bits(),
+                        setup.ceiling(state, t, &q, c).unwrap().to_bits(),
                         "gen_cands ceiling t {t} pair {a} {b}"
                     );
                     if t != tg_t {
                         tg.clear();
                         tg_t = t;
                     }
-                    let mut qq = vec![0.0f64; env.target_count];
-                    let cq = env.lineage_qc(&p, lineage, &ks, &mut qq, &mut tg);
+                    let mut qq = vec![0.0f64; setup.target_count];
+                    let cq = setup.lineage_qc(&p, lineage, &ks, &mut qq, &mut tg);
                     assert_eq!((bits(&qq), cq.to_bits()), (bits(&q), c.to_bits()), "lineage_qc t {t} pair {a} {b}");
                     for (y, iv) in [(a, b), (b, a)] {
                         let her_lineage = Lineage { trainee: t, first_parent: y, second_parent: iv };
-                        let sl = env.slots(&p, her_lineage);
+                        let sl = setup.slots(&p, her_lineage);
                         let pos = sl.iter().position(|z| z.parent && z.legacy == iv).unwrap();
                         let mut sl0 = sl.clone();
-                        sl0[pos].stars = std::rc::Rc::new(vec![0; env.target_count]);
+                        sl0[pos].stars = std::rc::Rc::new(vec![0; setup.target_count]);
                         sl0[pos].mix = None;
-                        let inherit::Inheritance { chances: q0, carriers: nc0 } = inherit(&sl0, env.target_count);
-                        let hs = env.her_slot(&p, her_lineage).unwrap();
+                        let inherit::Inheritance { chances: q0, carriers: nc0 } = inherit(&sl0, setup.target_count);
+                        let hs = setup.her_slot(&p, her_lineage).unwrap();
                         let fa = aff_factor(sl[pos].rel, sl[pos].race);
                         assert_eq!(bits(&hs.chances_without_her), bits(&q0));
                         assert_eq!(
@@ -927,7 +992,7 @@ mod tests {
     /// the round trip answers as before it. A malformed store (a count past `STATE_MAX_N`, an index past its list, a NaN,
     /// a chance outside [0, 1], a deck past six cards, a truncated vector, a roll state that does not fit together) is
     /// refused whole with an error, nothing installed; one whose decks or careers do not fit the setup it meets
-    /// (`Env::seen_fits`, `solved_fits`) is not used there.
+    /// (`CareerSetup::seen_fits`, `solved_fits`) is not used there.
     #[test]
     fn state_round_trips_and_refuses_malformed() {
         let (d, sk, cr, v) = p16();
@@ -938,6 +1003,17 @@ mod tests {
         assert!(plan.get("error").is_none(), "{}", plan["error"]);
         let out = state_out();
         let st = out["state"].clone();
+        KEPT.with(|worker| {
+            let mut worker = worker.borrow_mut();
+            let deck_setups = worker.decks.len();
+            assert!(deck_setups > 0, "the completed job did not publish deck memos");
+            let saved = state::kept_swap(&mut worker, KeptState::default());
+            assert!(worker.bests.is_empty() && worker.seen.is_empty() && worker.searches.is_empty());
+            assert!(worker.rolls.is_empty() && worker.decks.is_empty(), "simulation must isolate rolls and decks");
+            state::kept_swap(&mut worker, saved);
+            assert_eq!(state::state_out(&worker), out, "simulation must restore every serialized collection");
+            assert_eq!(worker.decks.len(), deck_setups);
+        });
         for k in ["bests", "seen", "solve", "rolls"] {
             assert!(st[k].as_array().is_some_and(|a| !a.is_empty()), "{k}: nothing kept");
         }
@@ -1034,7 +1110,7 @@ mod tests {
             let u = std::rc::Rc::clone(&used);
             ENV_HOOK.with(|c| {
                 *c.borrow_mut() =
-                    Some(Box::new(move |env: &mut Env, _: &Pool| u.set(env.seen.iter().any(|r| !r.is_empty()))));
+                    Some(Box::new(move |env: &mut Env, _: &Pool| u.set(env.state.seen.iter().any(|r| !r.is_empty()))));
             });
             let mut job = v.clone();
             job.as_object_mut().unwrap().remove("next");

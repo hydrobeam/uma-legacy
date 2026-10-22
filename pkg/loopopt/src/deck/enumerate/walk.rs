@@ -159,7 +159,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 continue;
             }
             let Some(required_characters) = self.required_after_dominance(
-                &mut scratch.nodes.dominance_products,
+                scratch,
                 cursor,
                 constraints,
                 p,
@@ -199,7 +199,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 ..*constraints
             };
             if !self.hopeful(
-                scratch.nodes,
+                scratch,
                 results,
                 DeckCursor { remaining: cursor.remaining - 1, ..cursor },
                 &child_constraints,
@@ -240,7 +240,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
     /// Gold-miss products are initialized lazily per touched target, tracked by the per-call bit mask.
     fn required_after_dominance(
         &self,
-        gold_products: &mut [f64; 32],
+        scratch: &mut WalkScratch<'_>,
         cursor: DeckCursor,
         constraints: &DeckConstraints,
         position: usize,
@@ -263,7 +263,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         if !earlier_dominators.is_empty() {
             // (the deck's picks in group cursor.group so far, all at positions below `cursor.start`)
             let group_picks = &selection[selection.len() - (groups[cursor.group].slots - cursor.remaining)..];
-            let mut computed_targets = 0u32;
+            let (gold_products, mut computed_targets) = (&mut scratch.nodes.dominance_products, 0u32);
             for &Dominator { position: a, gold_gap_targets: gap_targets } in earlier_dominators {
                 let a = a as usize;
                 let dominator_entry = entries[a];
@@ -327,8 +327,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
     /// only the selected card's touched targets differ from those rows.
     fn hopeful(
         &self,
-        nodes: &mut NodeScratch,
-        results: &SearchResults,
+        scratch: &mut WalkScratch<'_>,
+        results: &mut SearchResults,
         cursor: DeckCursor,
         constraints: &DeckConstraints,
         position: usize,
@@ -344,6 +344,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         // Read the bound tables after the cap-free early return, where this bound is first needed.
         let search = self.search;
         let target_count = search.controls.target_count;
+        let nodes = &mut *scratch.nodes;
         // The child and every entry still eligible contribute to the highest class any completion can reach.
         let rho = if search.controls.best {
             search.controls.rho
