@@ -30,7 +30,7 @@ jobs:
           node-version-file: webapp/package.json
           cache: npm
           cache-dependency-path: webapp/package-lock.json
-      - name: Lint (rustfmt, clippy native and wasm, shellcheck, ruff, Biome)
+      - name: Lint (rustfmt, clippy native and wasm, shellcheck, ruff, Biome, tsc)
         run: ./build.sh lint
       - name: Release build and tests
         run: ./build.sh native
