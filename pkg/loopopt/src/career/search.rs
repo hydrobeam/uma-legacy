@@ -6,11 +6,12 @@ use crate::career::state::{KeptSolve, KeptState, ProductProof, SOLVE_KEEP};
 use crate::career::{CareerSetup, Env, Lineage, SearchState};
 use crate::deck::space::SelectedDeck;
 use crate::uma::{UmaIndex, UmaTable};
-/// How a bound proves a career out (`CareerSetup::ceiling_out`, `refs_out`, `ruled_out`): `Below(th)`, `solve`'s prune,
-/// the bound below the bar with its slack s, b (1 + s) < th (a computed bound a hair under the true one still proves
-/// it); or `AtMost(v)`, `certified`'s, the bound at most v up to rounding, b <= v (1 + 1e-12): the career can't beat v,
-/// and a tie proves value equality, all a certificate claims. The 1e-12 is rounding only: v is a proxy's value through
-/// its deck's corner table and the bound the same deck's exact value, the same number computed two ways.
+/// How a bound proves a career out (`CareerSetup::ceiling_out`, `refs_out`, `ruled_out`): `Below(threshold)`, `solve`'s
+/// prune, the bound below the bar with its slack s, b (1 + s) < threshold (a computed bound a hair under the true one
+/// still proves it); or `AtMost(limit)`, `certified`'s, the bound at most limit up to rounding, b <= limit (1 + 1e-12):
+/// the career can't beat limit, and a tie proves value equality, all a certificate claims. The 1e-12 is rounding only:
+/// limit is a proxy's value through its deck's corner table and the bound the same deck's exact value, the same number
+/// computed two ways.
 #[derive(Clone, Copy)]
 pub(crate) enum Bar {
     Below(f64),
@@ -29,9 +30,9 @@ impl Bar {
 
 /// `CareerSetup::ranked_pairs`' pairs, sorted lazily as `solve`'s candidates are: `gen_cands` emits one trainee's pairs
 /// in (a, b) order, so the stable sort by ceiling (descending, `partial_cmp`: 0 and -0 tie) is the total order (ceiling
-/// descending, a, b), unique per pair; each step past the ordered prefix `v[..upto]` selects the next chunk (everything
-/// before it orders before everything after it) and sorts only the chunk, so the sequence is the full sort's, element
-/// for element, and a caller that stops early sorts little
+/// descending, a, b), unique per pair; each step past the ordered prefix `candidates[..sorted_until]` selects the next
+/// chunk (everything before it orders before everything after it) and sorts only the chunk, so the sequence is the full
+/// sort's, element for element, and a caller that stops early sorts little
 pub(crate) struct Ranked {
     candidates: Vec<RankedPair>,
     sorted_until: usize,
@@ -121,8 +122,8 @@ pub(crate) enum DeckRes {
 }
 
 #[derive(Clone)]
-/// (`cert`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see
-/// `DeckSearchAudit::cert`)
+/// (`certified_cap`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see
+/// `DeckSearchAudit::certified_cap`)
 pub(crate) struct CareerSearchResult {
     pub(crate) found: Vec<Found>,
     pub(crate) refs: UmaTable<Vec<Ref>>,
@@ -194,10 +195,10 @@ impl CareerSetup<'_> {
             )
         })
     }
-    /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
-    /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
-    /// took). The folded buffer after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over the pairs left
-    /// it (every reader of the folded buffer sets it first)
+    /// `trainee`'s legal pairs of `pool` holding `fixed_parents` and kept by `keep`, with their ceilings (`gen_cands`:
+    /// `ceiling` at `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every
+    /// ranked scan took). The folded buffer after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over
+    /// the pairs left it (every reader of the folded buffer sets it first)
     pub(crate) fn ranked_pairs(
         &self,
         state: &mut SearchState,
@@ -245,14 +246,14 @@ impl CareerSetup<'_> {
             .fold(0.0f64, f64::max);
         rho * career_spark_scale * fixed * product_value
     }
-    /// `solve`'s candidates: per trainee of `trainees` with legal deck odds (in order; `tp` her position), per legal pair
-    /// a < b of `p` (all of `fix` among them, at most `p.max_borrowed` borrowed, neither her character), `mk(ceiling, tp, t, a, b)`,
-    /// in that order. The numbers are `lineage` then `ceiling`'s, operation for operation, without the allocations and
-    /// with what does not depend on the trainee computed once per pair (the parents' race parts and relation points
-    /// between them, the carrier counts and so the spark scale c) or once per trainee and legacy (her relation points
-    /// with it, its grandparent slots' miss factors). A slot without a spark of target k multiplies by 1 where
-    /// `inherit` skips it (exact), and every folded buffer `ceiling` leaves (`set_trainee` at each candidate's q in
-    /// turn) is the same.
+    /// `solve`'s candidates: per trainee of `trainees` with legal deck odds (in order; `trainee_position` her
+    /// position), per legal pair a < b of `pool` (all of `fixed_parents` among them, at most `pool.max_borrowed`
+    /// borrowed, neither her character), `make_candidate(ceiling, trainee_position, trainee, a, b)`, in that order. The
+    /// numbers are `lineage` then `ceiling`'s, operation for operation, without the allocations and with what does not
+    /// depend on the trainee computed once per pair (the parents' race parts and relation points between them, the
+    /// carrier counts and so the spark scale c) or once per trainee and legacy (her relation points with it, its
+    /// grandparent slots' miss factors). A slot without a spark of target k multiplies by 1 where `inherit` skips it
+    /// (exact), and every folded buffer `ceiling` leaves (`set_trainee` at each candidate's q in turn) is the same.
     /// `keep`: a filter on the pairs (a, b) beside the rules (`solve`: every pair).
     pub(crate) fn gen_cands<C>(
         &self,
@@ -351,8 +352,8 @@ impl CareerSetup<'_> {
         );
         let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
         let mut q = vec![0.0f64; target_count];
-        // per legacy x: her relation points with the trainee, and per grandparent slot its relation points and its
-        // factors per target (flat, from `grandparent_offsets[x]`)
+        // per legacy: her relation points with the trainee, and per grandparent slot its relation points and its
+        // factors per target (flat, from `grandparent_offsets[legacy]`)
         let mut parent_relations = vec![0.0f64; legacy_count];
         let grandparent_offsets: Vec<usize> = std::iter::once(0)
             .chain((0..legacy_count).scan(0, |total, legacy| {
@@ -419,19 +420,19 @@ impl CareerSetup<'_> {
                     )
                 });
                 for k in 0..target_count {
-                    let (mut miss, mut mix_product) = (1.0f64, 1.0f64);
+                    let (mut miss, mut random_star_misses) = (1.0f64, 1.0f64);
                     for (side, parent) in [first_parent, second_parent].into_iter().enumerate() {
                         let (slot_miss, slot_mix) =
                             fac(pool.veterans[parent].stars[k], pool.veterans[parent].star_mix, affinity_factors[side]);
                         miss *= slot_miss;
-                        mix_product *= slot_mix;
+                        random_star_misses *= slot_mix;
                         for j in grandparent_offsets[parent]..grandparent_offsets[parent + 1] {
                             let (slot_miss, slot_mix) = context.grandparent_factors[j * target_count + k];
                             miss *= slot_miss;
-                            mix_product *= slot_mix;
+                            random_star_misses *= slot_mix;
                         }
                     }
-                    q[k] = inherit_q(miss, mix_product);
+                    q[k] = inherit_q(miss, random_star_misses);
                 }
                 // `ceiling_at` without writing the folded buffer: per outfit `outfit_fast` at q = 0 on the hint chances
                 // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its
@@ -539,17 +540,18 @@ impl CareerSetup<'_> {
 }
 
 impl Env<'_> {
-    /// The best careers: trainees from `trainees` (uma indices), two legacies of `p` as parents (all of `fix` among
-    /// them, at most one borrowed), each with her best deck; `top` of them, one per trainee when `per_trainee`.
-    /// Candidates are kept as (ceiling, trainee, parents) only (a pool of 400 veterans has millions); their chances
-    /// are recomputed when one is solved (the same numbers, so the same results). The search is `complete` unless a
-    /// deck search was not `full`, a cap breach went unanswered, or the hard work cap stopped candidate evaluation.
+    /// The best careers: trainees from `trainees` (uma indices), two legacies of `pool` as parents (all of
+    /// `fixed_parents` among them, at most one borrowed), each with her best deck; `top` of them, one per trainee when
+    /// `per_trainee`. Candidates are kept as (ceiling, trainee, parents) only (a pool of 400 veterans has millions);
+    /// their chances are recomputed when one is solved (the same numbers, so the same results). The search is
+    /// `complete` unless a deck search was not `full`, a cap breach went unanswered, or the hard work cap stopped
+    /// candidate evaluation.
     pub(crate) fn solve(&mut self, request: SearchRequest) -> CareerSearchResult {
         let SearchRequest { pool, fixed_parents, trainees, per_trainee, top } = request;
         let data = self.setup.data;
         self.state.work = 0; // each search has its own work budget
         let previous_certificate = std::mem::replace(&mut self.audit.certified_cap, f64::INFINITY);
-        // (`tp`: the trainee's position in `trainees`; generated in (tp, a, b) order)
+        // (`trainee_position`: the trainee's position in `trainees`; generated in (trainee_position, a, b) order)
         // (packed as u16, not a `Lineage`: a pool of 400 veterans has millions of candidates)
         struct Candidate {
             ceiling: f64,
@@ -590,9 +592,10 @@ impl Env<'_> {
             },
         );
         // Best ceiling first, ties in generation order: the order a stable sort by ceiling gives (partial_cmp, so 0 and
-        // -0 tie as there), as a total order on (ceiling descending, tp, a, b), unique per candidate. Sorted lazily
-        // (`upto`): the loop below reads a short prefix, so each step selects the next chunk (everything before it is
-        // ordered before everything after it) and sorts only the chunk; the prefix is the full sort's, element for element.
+        // -0 tie as there), as a total order on (ceiling descending, trainee_position, a, b), unique per candidate.
+        // Sorted lazily (`sorted_until`): the loop below reads a short prefix, so each step selects the next chunk
+        // (everything before it is ordered before everything after it) and sorts only the chunk; the prefix is the full
+        // sort's, element for element.
         let candidate_order = |first: &Candidate, second: &Candidate| {
             second
                 .ceiling
@@ -603,7 +606,7 @@ impl Env<'_> {
                 .then(first.second_parent.cmp(&second.second_parent))
         };
         let mut sorted_until = 0usize;
-        // cands[..upto] in final order; makes it reach past i
+        // candidates[..sorted_until] in final order; makes it reach past i
         let sort_to = |candidates: &mut [Candidate], i: usize, sorted_until: &mut usize| {
             if i < *sorted_until || *sorted_until >= candidates.len() {
                 return;

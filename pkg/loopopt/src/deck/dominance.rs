@@ -17,8 +17,8 @@ pub(super) fn dominates(dominator: &[f64], coordinates: &[f64]) -> bool {
 
 /// Coarse signature for a fast necessary test of dominance: the first SIG_FIELDS coordinates as levels
 /// floor(LEVELS * v) (capped at LEVELS - 1), each in a field of FB bits whose top bit is a guard. `entry`
-/// signatures use the value itself, `query` ones the value less DOM_EPS, so `by` dominating `x` implies every
-/// field of entry(by) >= the matching field of query(x). A 64-bit word holds 16 fields of 8 levels, enough for
+/// signatures use the value itself, `query` ones the value less DOM_EPS, so `dominator` dominating `coordinates`
+/// implies every field of entry(dominator) >= the matching field of query(coordinates). A 64-bit word holds 16 fields of 8 levels, enough for
 /// 8 targets x (gold, any hint), and is cheap in WebAssembly as well as natively.
 pub(super) type Sig = u64;
 pub(super) const FB: usize = 4;
@@ -51,14 +51,14 @@ pub(super) const fn sig_ge(entry: Sig, query: Sig) -> bool {
 
 pub(super) const NBUCKET: usize = 128;
 
-/// Decks whose coordinate sums fall in one slice of [0, nd]: flat arrays (entry and query signatures,
-/// coordinates, ids) plus a level index of the entry signatures: for each word of 64 decks and each signature
-/// field f and level l >= 1, the bits of the decks whose field f is at least l. ANDing one word per field of a
-/// query gives the decks that pass the signature test, 64 at a time; they are then visited in index order, the
-/// same order as a plain scan.
+/// Decks whose coordinate sums fall in one slice of [0, coordinate_count]: flat arrays (entry and query signatures,
+/// coordinates, ids) plus a level index of the entry signatures: for each word of 64 decks and each signature field f
+/// and level l >= 1, the bits of the decks whose field f is at least l. ANDing one word per field of a query gives the
+/// decks that pass the signature test, 64 at a time; they are then visited in index order, the same order as a plain
+/// scan.
 #[derive(Default)]
-/// `lq` is the mirror index of the query signatures (bit set when field f is at most l, l < LEVELS - 1), for the
-/// removal test "x's entry signature over the deck's query one".
+/// `query_levels` is the mirror index of the query signatures (bit set when field f is at most l, l < LEVELS - 1), for
+/// the removal test "x's entry signature over the deck's query one".
 pub(super) struct Bucket {
     // These columns share deck indices. Compaction must move every column together.
     pub(super) list: Vec<DeckEval>,
@@ -298,8 +298,8 @@ impl DominanceIndex {
     pub(super) fn insert(&mut self, deck: DeckEval) {
         self.insert_at(deck, None);
     }
-    /// `insert` with the deck's coordinates given apart (`deck.dv` then left as it is: the enumeration's single-result
-    /// path, where nothing reads a kept deck's `dv` again, leaves it empty)
+    /// `insert` with the deck's coordinates given apart (`deck.dominance_values` then left as it is: the enumeration's
+    /// single-result path, where nothing reads a kept deck's `dominance_values` again, leaves it empty)
     pub(super) fn insert_dv(&mut self, deck: DeckEval, dominance_values: &[f64]) {
         self.insert_at(deck, Some(dominance_values));
     }
@@ -563,7 +563,7 @@ impl PDeck {
         key
     }
 }
-/// `PDeck::id`'s key: equal exactly when the (ids, ends, vars, plain pal count) are (the lengths kept)
+/// `PDeck::id`'s key: equal exactly when the (ids, ends, variants, plain pal count) are (the lengths kept)
 pub(super) const DECK_ID_N: usize = 8;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) struct DeckId {

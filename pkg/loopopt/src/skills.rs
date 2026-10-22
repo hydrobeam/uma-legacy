@@ -353,7 +353,7 @@ impl<'data> Model<'data> {
             })
             .collect()
     }
-    /// best outfit for trainee `u` given per-career proc q: (product over uncertain skills, option index)
+    /// best outfit for trainee `uma` given per-career proc q: (product over uncertain skills, option index)
     fn trainee(&self, uma: UmaIndex, q: f64) -> (f64, usize) {
         let mut best = (-1.0, 0);
         for (k, OutfitOption { coverage, .. }) in self.outfit_options[uma].iter().enumerate() {
@@ -464,7 +464,7 @@ impl<'data> Model<'data> {
         let miss = ((1.0 - self.base) * (1.0 - GP_RATE * self.base).powi(2)).powi(2);
         1.0 - miss.powi(INSPIRATIONS)
     }
-    /// Best-outfit product over the uncertain targets for trainee `u` at proc `q` (the per-lineage term of
+    /// Best-outfit product over the uncertain targets for trainee `uma` at proc `q` (the per-lineage term of
     /// the structure's metric, before the fixed-gold factor); increasing in q and in every deck odd.
     #[inline]
     pub(crate) fn trainee_fast(
@@ -489,7 +489,7 @@ impl<'data> Model<'data> {
     pub(crate) fn fixed_factor(&self) -> f64 {
         self.fixed()
     }
-    /// `trainee_fast` for one outfit option `outfit` of trainee `u`.
+    /// `trainee_fast` for one outfit option `outfit` of trainee `uma`.
     #[inline]
     pub(crate) fn outfit_fast(
         &self,
@@ -853,9 +853,9 @@ mod tests {
         let job2: SkillJob =
             serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101_901, 101_902]}))
                 .unwrap();
-        let gold_masks = Model::new(data, &skills, &job2);
-        assert!(gold_masks.no_outfit[ix(1019)]);
-        assert!(!gold_masks.no_outfit[ix(1001)]);
+        let model2 = Model::new(data, &skills, &job2);
+        assert!(model2.no_outfit[ix(1019)]);
+        assert!(!model2.no_outfit[ix(1001)]);
     }
 
     /// The lineage tables: the 12-lineage loop, and the three-member rotation (each member

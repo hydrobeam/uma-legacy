@@ -167,7 +167,7 @@ fn dp_exact_in(
                         let current_row = &mut current_values[classic_streak * NS..classic_streak * NS + NS];
                         let choice_row = &mut best_choices[classic_streak * NS..classic_streak * NS + NS];
                         for senior_streak in 0..NS {
-                            // nxt == -inf gives x == -inf, which never passes the strict '>' (same as skipping it)
+                            // a next_row value of -inf gives candidate_value == -inf, which never passes the strict '>' (same as skipping it)
                             let candidate_value =
                                 reward(classic_streak, senior_streak) + next_row[senior_next_streaks[senior_streak]];
                             if candidate_value > current_row[senior_streak] {

@@ -198,7 +198,7 @@ pub(crate) fn shared(a: &Who, b: &Who) -> f64 {
 }
 
 impl CareerSetup<'_> {
-    /// The index in Data::umas of character `chara` (None: a character the data does not list).
+    /// The index in Data::umas of character `character_id` (None: a character the data does not list).
     pub(crate) fn uma_index(&self, character_id: u32) -> Option<UmaIndex> {
         self.data.umas.iter().position(|uma| uma.id == character_id).map(UmaIndex)
     }

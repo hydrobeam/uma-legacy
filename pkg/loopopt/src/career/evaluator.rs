@@ -39,7 +39,7 @@ pub(crate) struct Cur {
     /// A loop rotation career: her veteran may replace her member's rotation veteran (`rot_update`).
     pub(super) rotation: bool,
 }
-/// The evaluator's work counters (`Evaluator::n`).
+/// The evaluator's work counters (`Evaluator::counters`).
 #[derive(Default, Clone, Copy)]
 pub(super) struct Counters {
     /// Candidate careers valued.
@@ -144,9 +144,10 @@ pub(crate) struct Evaluator {
     working_pool: Option<(PoolIdentity, Pool)>,
 }
 
-/// Per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`Evaluator::fastc`; none
-/// without legal deck odds). `outfit_fast` at q = 0 on the hint chances `set_trainee` would write, split: A = dg GOLD +
-/// (1 - dg) WHITE and B = (1 - dg) WHITE (1 - dw)(1 - e) where she lacks the skill, B = 0 where she has it
+/// Per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q)
+/// (`Evaluator::ceiling_factors`; none without legal deck odds). `outfit_fast` at q = 0 on the hint chances
+/// `set_trainee` would write, split: A = dg GOLD + (1 - dg) WHITE and B = (1 - dg) WHITE (1 - dw)(1 - e) where she
+/// lacks the skill, B = 0 where she has it
 fn ceiling_factors(setup: &CareerSetup) -> UmaTable<Vec<Vec<(f64, f64)>>> {
     setup
         .data
@@ -204,7 +205,7 @@ fn career_numbers(
 }
 
 impl Evaluator {
-    /// The job's evaluator: an empty deck cache, `fastc` and the fixed gold factor
+    /// The job's evaluator: an empty deck cache, `ceiling_factors` and the fixed gold factor
     pub(super) fn new(setup: &CareerSetup, margin: f64, fill_missing_decks: bool) -> Self {
         Self {
             cache: Cache::new(setup.data.umas.len()),
@@ -218,10 +219,10 @@ impl Evaluator {
             working_pool: None,
         }
     }
-    /// A working copy of `pool` (the planner's `CareerSetup::pool(legs)`), equal to it: the one kept by `put_pool` when
+    /// A working copy of `pool` (the planner's `CareerSetup::pool(legacies)`), equal to it: the one kept by `put_pool` when
     /// it was made from this pool (the same address, length and borrowing rule: the pool a caller passes is borrowed,
     /// so unchanged, or, as the simulator's, only grown), else a clone. A user pushes its extra entries
-    /// (`CareerSetup::pool_push` builds an entry as `CareerSetup::pool` does, so the pool of legs and those) and pops
+    /// (`CareerSetup::pool_push` builds an entry as `CareerSetup::pool` does, so the pool of legacies and those) and pops
     /// them before `put_pool`
     pub(super) fn take_pool(&mut self, pool: &Pool) -> Pool {
         match self.working_pool.take() {
@@ -314,12 +315,12 @@ impl Evaluator {
     ) -> Option<(f64, usize)> {
         let Env { setup, state, .. } = env;
         let mut reference_bound = request.ceiling;
-        for result in &self.cache.refs[request.trainee] {
+        for reference in &self.cache.refs[request.trainee] {
             reference_bound = reference_bound.min(setup.ref_bound(
                 request.trainee,
                 request.inheritance_chances,
                 request.spark_scale,
-                result,
+                reference,
             ));
             if reference_bound * (1.0 + 1e-9) < request.threshold {
                 return None;

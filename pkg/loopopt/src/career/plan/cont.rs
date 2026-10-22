@@ -271,7 +271,7 @@ pub(crate) struct Cont {
     /// per n (0..=CONT_N): `plan` reads them instead of evaluating the powers per call (the same expressions, so the
     /// same values). Empty in a default Cont.
     pub(crate) tables: std::rc::Rc<Vec<ContStep>>,
-    /// `plan`'s and `cost_lo`'s results by the bits of p. Exact: both read p and lam, phi, pinf and tab alone, which are
+    /// `plan`'s and `cost_lo`'s results by the bits of p. Exact: both read p and lam, phi, pinf and tables alone, which are
     /// kept unchanged after construction (a refit makes new Conts). A clone shares the memos and
     /// carries the same parameters; a new or default Cont gets its own
     pub(crate) memo: std::rc::Rc<ContMemo>,

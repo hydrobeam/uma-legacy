@@ -84,20 +84,20 @@ pub(crate) fn bests_in(value: &Value) -> Option<Vec<Bests>> {
             // (checked conversions: on wasm32 usize is 32 bits, and a stored count or index must not wrap into range)
             let n = len_in(&stored["n"])?;
             let per_uma = |key: &str| -> Option<UmaTable<CachedSearch>> {
-                let mut value = UmaTable(vec![CachedSearch::Unsearched; n]);
+                let mut searches = UmaTable(vec![CachedSearch::Unsearched; n]);
                 for row in stored[key].as_array()? {
                     let fields = row.as_array()?;
                     let uma = usz(fields.first()?)?;
                     if uma >= n {
                         return None;
                     }
-                    value[UmaIndex(uma)] = CachedSearch::Known(if fields.get(1)?.is_null() {
+                    searches[UmaIndex(uma)] = CachedSearch::Known(if fields.get(1)?.is_null() {
                         None
                     } else {
                         Some(found_in(fields.get(1)?)?)
                     });
                 }
-                Some(value)
+                Some(searches)
             };
             // Older stored states omit these flags; those searches are treated as proven.
             let flags = |key: &str| -> UmaTable<bool> {

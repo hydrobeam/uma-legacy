@@ -61,7 +61,7 @@ pub(crate) fn setup_fp(value: &Value) -> u64 {
     ))
 }
 
-/// The JSON text of `v` with its top-level keys `drop` left out, and of its `next` object's keys `next_drop`: the text of a
+/// The JSON text of `value` with its top-level keys `drop` left out, and of its `next` object's keys `next_drop`: the text of a
 /// clone with those keys removed, byte for byte, without the clone. serde_json's `Map` is a `BTreeMap` here (no
 /// `preserve_order`), so the kept keys are written in the same order, by the same serializer (`Value`'s `Display` is
 /// `to_writer`'s compact form), and an object left empty is "{}" either way

@@ -50,7 +50,7 @@ pub(crate) fn upper_na(
                 && let Some(group) = sources
                     .fixed_outcomes
                     .iter()
-                    .chain(sources.chain_outcomes.iter().map(|chain_outcomes| &chain_outcomes.outcomes))
+                    .chain(sources.chain_outcomes.iter().map(|outcome| &outcome.outcomes))
                     .find(|candidate| group_gh(candidate).len() >= 2 && !group_nuod(candidate))
             {
                 eprintln!("why: group {group:?}");

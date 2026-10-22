@@ -46,12 +46,13 @@ pub(crate) fn spark_scale(n: i32) -> f64 {
 }
 
 /// `CareerSetup::rise`'s factor for one outfit and uncertain target: how far the landing chance can grow from
-/// inheritance chance `base_chance` to q, with her own event hint chance `hint_chance` and her outfit's coverage
-/// `outfit_stars` of it (1 where it cannot grow). The one form behind `solve`'s Ref and ruled prunes and `outcome_hi`'s
-/// anchors (`rise_leaves`, `rise_factors`, `AnchorBound::root_min`)
+/// inheritance chance `base_chance` to q, with her own event hint chance `hint_chance` and her outfit's `coverage` of
+/// it (the hint level it guarantees, 0, 1 or 2; the factor is 1 where it is above 0 or q cannot grow). The one form
+/// behind `solve`'s Ref and ruled prunes and `outcome_hi`'s anchors (`rise_leaves`, `rise_factors`,
+/// `AnchorBound::root_min`)
 #[inline(always)]
-pub(crate) fn rise_factor(outfit_stars: u8, hint_chance: f64, q: f64, base_chance: f64) -> f64 {
-    if outfit_stars > 0 || q <= base_chance {
+pub(crate) fn rise_factor(coverage: u8, hint_chance: f64, q: f64, base_chance: f64) -> f64 {
+    if coverage > 0 || q <= base_chance {
         1.0
     } else {
         (1.0 - (1.0 - hint_chance) * (1.0 - q)) / (1.0 - (1.0 - hint_chance) * (1.0 - base_chance))
@@ -235,10 +236,10 @@ pub(crate) fn set_ews(
         && event_chances
             .iter()
             .zip(own_event_chances)
-            .all(|(chance, own)| chance.len() == own.len().min(uncertain_targets.len()))
+            .all(|(outfit_chances, own)| outfit_chances.len() == own.len().min(uncertain_targets.len()))
     {
-        for (chance, own) in event_chances.iter_mut().zip(own_event_chances) {
-            for ((chance, e), &i) in chance.iter_mut().zip(own).zip(uncertain_targets) {
+        for (outfit_chances, own) in event_chances.iter_mut().zip(own_event_chances) {
+            for ((chance, e), &i) in outfit_chances.iter_mut().zip(own).zip(uncertain_targets) {
                 *chance = 1.0 - (1.0 - e) * (1.0 - q[i]);
             }
         }
@@ -333,7 +334,7 @@ impl CareerSetup<'_> {
         sink: &mut S,
     ) {
         // (the parents' shared wins once: shared(a, b) and shared(b, a) are the same products summed in the same order)
-        let shared_race = 3.0 * shared(&pool.veterans[first_parent], &pool.veterans[second_parent]);
+        let shared_race_affinity = 3.0 * shared(&pool.veterans[first_parent], &pool.veterans[second_parent]);
         for (parent, partner) in [(first_parent, second_parent), (second_parent, first_parent)] {
             let veteran = &pool.veterans[parent];
             let grandparent_count = pool.parents[parent].len();
@@ -341,7 +342,7 @@ impl CareerSetup<'_> {
                 relations.pt(parent) + self.pair(veteran.uma_index, pool.veterans[partner].uma_index),
                 (0..grandparent_count).map(|grandparent_slot| relations.gt(parent, grandparent_slot)),
             );
-            let race = part_sum(shared_race, pool.grandparent_race_affinity[parent].iter().copied());
+            let race = part_sum(shared_race_affinity, pool.grandparent_race_affinity[parent].iter().copied());
             sink.slot(parent, None, veteran, relation_points, race);
             for (grandparent_slot, grandparent) in pool.parents[parent].iter().enumerate() {
                 sink.slot(
@@ -476,11 +477,11 @@ impl CareerSetup<'_> {
         self.outfit_coverage[trainee]
             .iter()
             .zip(&self.model.event_chances[trainee])
-            .map(|(outfit_stars, hint_chances)| {
+            .map(|(coverage, hint_chances)| {
                 self.uncertain_targets
                     .iter()
                     .enumerate()
-                    .map(|(k, &i)| rise_factor(outfit_stars[k], hint_chances[k], q[i], base_chances[i]))
+                    .map(|(k, &i)| rise_factor(coverage[k], hint_chances[k], q[i], base_chances[i]))
                     .product::<f64>()
             })
             .fold(0.0f64, f64::max)
@@ -524,7 +525,7 @@ impl CareerSetup<'_> {
         );
         self.c_of(&accumulator.carriers)
     }
-    /// `inherit`'s accumulation over the lineage's six slots (ntar <= LQN)
+    /// `inherit`'s accumulation over the lineage's six slots (`target_count` <= LQN)
     #[inline(always)]
     fn lineage_acc(&self, pool: &Pool, lineage: Lineage) -> InheritA {
         let Lineage { trainee, first_parent, second_parent } = lineage;

@@ -208,7 +208,7 @@ impl DeckSpace<'_> {
         };
         // every chance and outfit odd in [0, 1] and a fixed factor >= 0: then a deck's value rises with each of its odds
         // (white < gold) and every quantity in its evaluation is in [0, 1] up to rounding, which the dominance skip
-        // (`dom`), the lazy configurations (`PendingConfig`) and the key bound (`keyskip`) rely on
+        // (`use_dominance`), the lazy configurations (`PendingConfig`) and the key bound (`keyskip`) rely on
         let in_unit = |x: f64| (0.0..=1.0).contains(&x);
         let valid = fixed >= 0.0
             && clauses.iter().all(|clause| {
@@ -414,17 +414,17 @@ impl DeckSpace<'_> {
                 let (mut best_bound, mut best_order) = (0.0f64, 0.0f64);
                 for offset in 0..outfit_count {
                     let row = i + offset;
-                    let per_target = outfits[row].eval(q, white_chances, gold_chances);
+                    let outfit_value = outfits[row].eval(q, white_chances, gold_chances);
                     let (mut bound, order_bound) = if zero_masks[row] != 0 {
                         (
-                            per_target.min(
+                            outfit_value.min(
                                 outfits[row].eval_in(q, white_chances, gold_chances, zero_masks[row])
                                     * (divisors[row] * ratio_products[row]),
                             ),
-                            per_target.min(empty_values[row] * if group_count > 0 { f64::INFINITY } else { 1.0 }),
+                            outfit_value.min(empty_values[row] * if group_count > 0 { f64::INFINITY } else { 1.0 }),
                         )
                     } else {
-                        let ratio_bound = per_target.min(empty_values[row] * ratio_products[row]);
+                        let ratio_bound = outfit_value.min(empty_values[row] * ratio_products[row]);
                         (ratio_bound, ratio_bound)
                     };
                     // (a low split: the lower B, outside the visiting order)

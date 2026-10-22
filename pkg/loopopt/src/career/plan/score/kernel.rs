@@ -411,7 +411,7 @@ impl Scored {
         // per leaf (at its row) her landed set on the uncertain targets and her stars' chance: the product over k of w[her
         // stars on target k - 1] where she has any, in k order from 1.0 (every leaf: the leaves with digit k > 0 extend those
         // below 4^k; else per leaf, `leaf_set`, the same f64s)
-        // (they depend on w and uncv alone: built for every leaf, they are kept until those change, `cache.key`)
+        // (they depend on w and `uncertain_targets` alone: built for every leaf, they are kept until those change, `cache.key`)
         if L::ALL {
             let same = cache.key.len() == 3 + uncertain_target_count
                 && cache.key[..3].iter().zip(&w).all(|(&k, weight)| k == weight.to_bits())

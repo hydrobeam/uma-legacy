@@ -225,8 +225,8 @@ impl Sim<'_, '_> {
             }
         }
     }
-    /// Follow `options.base` from the initial state (survival 1, career 0) until the survival S < eps or max_careers, recording
-    /// pick changes, checks and audits into `trace`.
+    /// Follow `options.base` from the initial state (survival 1, career 0) until the survival S < `survival_cutoff` or
+    /// `max_careers`, recording pick changes, checks and audits into `trace`.
     fn play(&mut self, state: &mut PathState, options: PlayOptions, trace: &mut PathTrace) -> PathResult {
         let PlayOptions { base, keys, survival_cutoff, run } = options;
         let (mut survival, mut career_index) = (1.0f64, 0usize);

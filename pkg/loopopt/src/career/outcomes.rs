@@ -78,7 +78,8 @@ impl CareerSetup<'_> {
         // per target, buying it and landing it (MODEL.md, skills): bought as gold (her outfit's gold, or a deck gold hint)
         // or white (her outfit's white; else not gold and hinted by the deck, her own events or inheritance), each landing
         // with GEN_GOLD / GEN_WHITE x her spark scale; the deck's hint chances are its per-target marginals
-        // (`f.deck.white_hint_chances`, `f.deck.gold_hint_chances`), so these products match `p` up to the deck chains'
+        // (`found.deck.white_hint_chances`, `found.deck.gold_hint_chances`), so these products match `p` up to the deck
+        // chains'
         // correlation. The scenario's golds: bought, landing GEN_GOLD.
         let scales = self.scale(&carriers);
         let outfit_event_chances = &self.model.event_chances[trainee][outfit];
@@ -138,7 +139,7 @@ impl CareerSetup<'_> {
         let aptitudes = self.pink_career(pool, lineage).map(|pink| {
             let pink_gen = Self::pink_gen(&pink);
             json!({"base": pink.base, "start": pink.start,
-                   "fire": pink.fire.iter().map(|found| json!({"group": apt_pink(found.aptitude), "apt": found.aptitude, "p": found.chance, "slot": found.slot, "stars": found.stars})).collect::<Vec<_>>(),
+                   "fire": pink.fire.iter().map(|spark| json!({"group": apt_pink(spark.aptitude), "apt": spark.aptitude, "p": spark.chance, "slot": spark.slot, "stars": spark.stars})).collect::<Vec<_>>(),
                    "pink_gen": (0..10).map(|k| json!({"group": apt_pink(k), "p": pink_gen[k]})).collect::<Vec<_>>()})
         });
         let outcomes =

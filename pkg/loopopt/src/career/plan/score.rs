@@ -304,7 +304,7 @@ fn evaluate_career(
     let mut setups = prepare_setups(simulator, context.score_base, &extended_pool.pool, trainee, score_buffer);
     prof("sc_setup_ms", now_ms() - setups_started);
     let fold_started = now_ms();
-    // per setup, per star pattern of the uncertain targets (base 4, position k = uncv[k]; 0 absent), the best table value
+    // per setup, per star pattern of the uncertain targets (base 4, position k = uncertain_targets[k]; 0 absent), the best table value
     // at scale 1: the tables folded one coordinate at a time (interp's order and arithmetic), every setup's tables at once
     // (`FoldContext::fold`); per outcome (leaf, guaranteed golds fm) and lifted candidate, that value times the setup's spark scale,
     // the best over her setups and her odds now (`FoldContext::emit`): the products and maxima the outcome loop took per outcome

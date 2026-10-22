@@ -246,8 +246,8 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
         schedules
     }
 
-    /// Optimistic start, ascent and group moves, then `iters` rounds of iterated local search (1-2 members perturbed
-    /// against noisy weights, re-ascent, group moves), then the optional G1s that cost no affinity.
+    /// Optimistic start, ascent and group moves, then `iterations` rounds of iterated local search (1-2 members
+    /// perturbed against noisy weights, re-ascent, group moves), then the optional G1s that cost no affinity.
     fn solve(&self, iterations: usize, seed: u64, margin: f64) -> [Sched; N] {
         let mut rng = Rng(seed.wrapping_mul(2_654_435_761).wrapping_add(1) | 1);
         let mut schedules = self.optimistic_start();

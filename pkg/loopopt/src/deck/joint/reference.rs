@@ -177,7 +177,7 @@ fn reference_joint(
                     let mut all = fixed;
                     landed_count_distribution[..=uncertain_count + fixed_target_count]
                         .iter_mut()
-                        .for_each(|count| *count = 0.0);
+                        .for_each(|probability| *probability = 0.0);
                     landed_count_distribution[0] = 1.0;
                     for k in 0..uncertain_count {
                         let gold_chance = if coupled_gold[k] { 1.0 } else { 1.0 - no_gold[k] };

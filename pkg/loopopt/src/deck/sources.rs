@@ -322,12 +322,12 @@ impl TargetSources {
                 }
             }
         }
-        chain_misses.sort_by_key(|last| last.target);
+        chain_misses.sort_by_key(|misses| misses.target);
         self.chain_misses = chain_misses;
         self.uncertified_orthant = self
             .fixed_outcomes
             .iter()
-            .chain(self.chain_outcomes.iter().map(|misses| &misses.outcomes))
+            .chain(self.chain_outcomes.iter().map(|chain| &chain.outcomes))
             .any(|group| group_gh(group).len() >= 2 && !group_nuod(group));
         self.uncertified_association = self
             .fixed_outcomes
@@ -665,9 +665,9 @@ impl Sources<'_> {
             })
             .collect()
     }
-    /// The choices worth taking at an event listed in `alts` (None: not listed), as outcome groups over the targets:
-    /// those with a target that no other choice beats on every target (P(gold) and P(any hint)); of two with the same
-    /// odds, both are kept unless their outcomes are the same (then the first).
+    /// The choices worth taking at an event listed in `choice_events` (None: not listed), as outcome groups over the
+    /// targets: those with a target that no other choice beats on every target (P(gold) and P(any hint)); of two with
+    /// the same odds, both are kept unless their outcomes are the same (then the first).
     pub(super) fn choices(&self, id: u32, link: u8) -> Option<Vec<Group>> {
         let event = self.deck_job.choice_events.iter().find(|event| event.0 == id && event.1 == link)?;
         let weights = self
@@ -921,7 +921,7 @@ pub(crate) fn deck_entries<'data>(
         deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
     };
     // a card the scenario bans can't be in the deck, owned, borrowed or locked
-    let banned: &[u32] = cards.restrict.get(&deck_job.scenario).map_or(&[], |variant| variant.as_slice());
+    let banned: &[u32] = cards.restrict.get(&deck_job.scenario).map_or(&[], |banned_ids| banned_ids.as_slice());
     if let Some(card) = deck_job
         .lock_cards
         .iter()

@@ -312,7 +312,7 @@ fn outcomes_of_one_event_are_exclusive() {
     assert!((gold_misses[0] - 0.6).abs() < 1e-12, "{gold_misses:?}"); // P(no gold) = 1 - 0.8 * 0.5
     assert!((gold_misses[0] * white_misses[0] - 0.2).abs() < 1e-12, "{white_misses:?}"); // P(no hint) = 1 - 0.8
 }
-/// Measured outcome shares (`alt_w`) replace equal outcomes: 3:1 between two skills, link firing 80%.
+/// Measured outcome shares (`choice_weights`) replace equal outcomes: 3:1 between two skills, link firing 80%.
 #[test]
 fn outcome_shares_weight_alts() {
     let c = halo();

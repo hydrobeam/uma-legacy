@@ -192,20 +192,20 @@ impl Multi<'_> {
         let lineage_count = lineages.len();
         let mut per_trainee = vec![(0.0, 0usize); member_count];
         let mut picks: Vec<Vec<usize>> = vec![vec![]; member_count];
-        for (l, &MemberLineage { trainee, .. }) in lineages.iter().enumerate() {
-            per_trainee[trainee].0 += per_lineage[l].all;
-            per_trainee[trainee].1 += 1;
-            picks[trainee].push(per_lineage[l].outfit);
+        for (l, &MemberLineage { trainee: member, .. }) in lineages.iter().enumerate() {
+            per_trainee[member].0 += per_lineage[l].all;
+            per_trainee[member].1 += 1;
+            picks[member].push(per_lineage[l].outfit);
         }
         let minus1 = per_lineage.iter().map(|chances| chances.all_but_one).sum::<f64>() / lineage_count as f64;
         // the chance of exactly k targets, k = 0 ..= n (exact over each lineage's landed sets, as `p_all`), averaged over
         // the lineages: the uncertain targets' sets from the joint model, each guaranteed gold on its own (GEN_GOLD)
         let mut landed = vec![0.0f64; requested_target_count + 1];
         // (each member's deck's sources once, read by each of her lineages)
-        let deck_sources: Vec<_> = (0..member_count).map(|trainee| self.ents_of(decks[trainee])).collect();
+        let deck_sources: Vec<_> = (0..member_count).map(|member| self.ents_of(decks[member])).collect();
         for l in 0..lineage_count {
-            let trainee = lineages[l].trainee;
-            let (entries, filler_count) = (&deck_sources[trainee].entries, deck_sources[trainee].filler_count);
+            let member = lineages[l].trainee;
+            let (entries, filler_count) = (&deck_sources[member].entries, deck_sources[member].filler_count);
             let target_count = uncertain_groups.len();
             let mut joint_extras = JointExt {
                 scales: crate::deck::joint::SparkScales {
@@ -218,7 +218,7 @@ impl Multi<'_> {
             };
             joint_fast(
                 model,
-                JointQuery::unfolded(model, self.inputs.deck_job, member_slice[trainee], &[inheritance_chances[l]]),
+                JointQuery::unfolded(model, self.inputs.deck_job, member_slice[member], &[inheritance_chances[l]]),
                 entries,
                 filler_count,
                 requested_target_count,
@@ -282,7 +282,7 @@ impl Multi<'_> {
         let win_chances: Vec<Vec<f64>> =
             (0..member_count).map(|i| data.win_chances(&data.umas[member_slice[i]], &schedule.schedules[i])).collect();
         let deck_odds: Vec<(&[f64], &[f64])> = (0..member_count)
-            .map(|trainee| (&*decks[trainee].white_hint_chances, &*decks[trainee].gold_hint_chances))
+            .map(|member| (&*decks[member].white_hint_chances, &*decks[member].gold_hint_chances))
             .collect();
         let mut detail = model.detail(
             member_slice,

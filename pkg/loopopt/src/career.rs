@@ -958,19 +958,19 @@ mod tests {
             (&["a", "x"], &["roll"]),
         ];
         for v in &cases {
-            for (data, nd) in drops {
+            for (dropped_keys, next_dropped) in drops {
                 let mut k = v.clone();
                 if let Some(o) = k.as_object_mut() {
-                    for x in data {
+                    for x in dropped_keys {
                         o.remove(*x);
                     }
                     if let Some(n) = o.get_mut("next").and_then(|n| n.as_object_mut()) {
-                        for x in nd {
+                        for x in next_dropped {
                             n.remove(*x);
                         }
                     }
                 }
-                assert_eq!(json_without(v, data, nd), k.to_string());
+                assert_eq!(json_without(v, dropped_keys, next_dropped), k.to_string());
             }
         }
     }

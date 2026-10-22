@@ -703,8 +703,8 @@ impl PlanInputs<'_, '_> {
     // highest score less 1e-9 (the argmax's tolerance), or the base row a looped pick repeats (`undup`). A row's score
     // changes only when it is scored again, which keeps a fresh one, and an exactly searched row is scored again only
     // when every row is (a refit). The highest exact saving among the rows scored since every row last
-    // was scored is at most the final top; thr(t) = t - NEAR.max(0.05 |t|) rises with t; a row below thr(best_exact_saving) (less a slack far
-    // above its rounding) is not near the final top unless it is scored again. Kept also: every row a later row repeats
+    // was scored is at most the final top; near_floor(t) = t - NEAR.max(0.05 |t|) rises with t; a row below
+    // near_floor(best_exact_saving) (less a slack far above its rounding) is not near the final top unless it is scored again. Kept also: every row a later row repeats
     // (same uma and pair: a looped or nb row the pick moves from; a row whose career changes is scored again). Only the
     // pick's is read (`RollKeep`); the highest exact saving is over runnable rows (`is_runnable`).
     fn prune_plan_scorings(&self, runs: &mut [PlanRow]) {

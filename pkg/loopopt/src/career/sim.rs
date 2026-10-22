@@ -10,7 +10,7 @@
 //!   E = sum over careers t of S_t,   S_0 = 1,   S_{t+1} = S_t (1 - p_t)
 //!
 //! with p_t the exact P(all) of career t; the path continues through failures only (each failed veteran drawn from the
-//! career's exact landed-set distribution with the all-landed set removed), and stops when S_t < eps or at
+//! career's exact landed-set distribution with the all-landed set removed), and stops when S_t < `survival_cutoff` or at
 //! `max_careers`, where the tail S_t / p_t (career t repeated forever) is added.
 //!
 //! The modules call each other on purpose: `run_career_in` (career.rs) runs `simulate` for a job with `simulate`, and the

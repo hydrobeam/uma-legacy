@@ -296,7 +296,7 @@ pub(crate) fn loop_ceiling(
             win_chances: vec![],
             mix: Some(star),
         };
-    // (`CareerSetup::pool` of legs and the two: the working copy of `pool` with them pushed, then popped)
+    // (`CareerSetup::pool` of the legacies and the two: the working copy of `pool` with them pushed, then popped)
     let mut working_pool = simulator.evaluator.take_pool(pool);
     simulator.env.setup.pool_push(&mut working_pool, &veteran(first_builder, second_builder, trainee));
     simulator.env.setup.pool_push(&mut working_pool, &veteran(second_builder, first_builder, trainee));
@@ -366,7 +366,7 @@ pub(crate) fn hint_umas(
         mix: Some(star),
     };
     let mut out: Vec<HintUma> = vec![];
-    // (`CareerSetup::pool` of the legacies and the two: one copy of `pool`, `CareerSetup::pool(legs)`, the two pushed
+    // (`CareerSetup::pool` of the legacies and the two: one copy of `pool`, `CareerSetup::pool(legacies)`, the two pushed
     // and popped per uma)
     let mut working_pool = pool.clone();
     for &trainee in trainees {

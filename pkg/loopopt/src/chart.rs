@@ -87,7 +87,7 @@ pub(crate) fn chart_race_name(name: &str) -> String {
         .map_or_else(|| name.chars().take(22).collect(), |(_, short)| short.to_string())
 }
 
-/// The option member i runs at turn t, if she races then.
+/// The option `uma` runs at `turn` on `schedule`, if she races then.
 fn chosen<'data>(data: &'data Data, uma: UmaIndex, schedule: &Sched, turn: usize) -> Option<&'data OptRaw> {
     match schedule[turn] {
         Choice::Opt(option_index) => Some(&data.umas[uma].race_options[turn][option_index as usize]),
@@ -106,7 +106,7 @@ fn row_label(data: &Data, members: &[UmaIndex], schedules: &[Sched], turn: usize
     names.join("/")
 }
 
-/// G1s that can replace shared race `race` at turn `t` with no change to the score: every member running it there
+/// G1s that can replace shared race `race` at `turn` with no change to the score: every member running it there
 /// is offered the alternative at that turn with the same win-rate basis (so the same odds at the same streak
 /// position), it is nobody's goal, and neither race appears anywhere else in any member's schedule (so all pair
 /// overlaps are preserved when all runners switch together).

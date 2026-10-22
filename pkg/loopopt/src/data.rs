@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) const NT: usize = 72;
 
-/// One race option at a turn. `prog` (the race program id) is read only by the tests, whose fixtures name options by it.
+/// One race option at a turn. `program_id` (the race program id) is read only by the tests, whose fixtures name options
+/// by it.
 #[derive(Deserialize, Clone)]
 pub(crate) struct OptRaw {
     #[cfg_attr(not(test), allow(dead_code, reason = "read only by the tests, whose fixtures name options by it"))]
@@ -208,7 +209,8 @@ pub(crate) const fn scored_position(goal: bool, k: usize) -> usize {
 }
 
 impl Data {
-    /// Win chance of an attempt with win-rate basis `bp` (as low as -20) at scored streak position `k` (1..=6).
+    /// Win chance of an attempt with win-rate basis `win_rate_basis` (as low as -20) at scored streak position `k`
+    /// (1..=6).
     pub(crate) fn attempt_chance(&self, win_rate_basis: i32, k: usize) -> f64 {
         self.win_table[(win_rate_basis + 20) as usize][k]
     }
@@ -424,7 +426,8 @@ impl Data {
                 Choice::Rest => k = 0,
                 Choice::Opt(option_index) => {
                     k = (k + 1).min(6);
-                    // ent[t][o+1].p[k] == option_chance(op, k) bit for bit (copied from the same table at load)
+                    // choices[turn][option_index + 1].win_chances[k] == option_chance(option, k) bit for bit (copied
+                    // from the same table at load)
                     let choice = &uma.choices[turn][option_index as usize + 1];
                     if choice.race >= 0 {
                         chances[choice.race as usize] *= 1.0 - choice.win_chances[k];

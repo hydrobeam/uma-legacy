@@ -153,9 +153,9 @@ impl CareerSetup<'_> {
                     pink_career.fire.iter().filter(|spark| spark.aptitude == k).map(|spark| spark.chance).collect();
                 let one = pbinom(&fire_chances);
                 let two = conv(&one, &one);
-                let grade_distribution = |success_counts: &[f64]| {
+                let grade_distribution = |success_distribution: &[f64]| {
                     let mut distribution: Vec<(u8, f64)> = vec![];
-                    for (i, &weight) in success_counts.iter().enumerate() {
+                    for (i, &weight) in success_distribution.iter().enumerate() {
                         if weight <= 0.0 {
                             continue;
                         }
@@ -225,9 +225,9 @@ impl CareerSetup<'_> {
         let mut spark_chances = [0.0f64; 10];
         for k in 0..10 {
             let others: Vec<f64> = (0..10).filter(|&j| j != k).map(|j| q[j]).collect();
-            let other_success_counts = pbinom(&others);
+            let others_distribution = pbinom(&others);
             spark_chances[k] =
-                q[k] * other_success_counts.iter().enumerate().map(|(i, mass)| mass / (i + 1) as f64).sum::<f64>();
+                q[k] * others_distribution.iter().enumerate().map(|(i, mass)| mass / (i + 1) as f64).sum::<f64>();
         }
         spark_chances
     }

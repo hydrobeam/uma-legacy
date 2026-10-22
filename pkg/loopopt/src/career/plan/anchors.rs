@@ -906,8 +906,8 @@ impl RollKeep {
     /// there, under the caps every search assumes)
     ///     value(y, her) <= c' E_best(q^s) rise(q', q^s),
     /// rise 1 where her stars are at most s (this outcome is bounded again after); also at most the ceiling
-    /// (`CareerSetup::ceiling` through `Evaluator::fastc`, under the top cap: per outfit and target A - B (1 - q'),
-    /// `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
+    /// (`CareerSetup::ceiling` through `Evaluator::ceiling_factors`, under the top cap: per outfit and target
+    /// A - B (1 - q'), `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
     /// (`Cont::cost_lo`). Derived, per outcome:
     /// (1) For each partner, the bound >= the best career's exact value >= the table value `score_career` reads. A cached
     ///     deck's corner table is multilinear in the targets' miss chances, as P(all) of a fixed deck is (each chance enters

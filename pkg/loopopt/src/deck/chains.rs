@@ -386,7 +386,7 @@ pub(super) fn chain_states(events: ChainEvents, kinds: &[ChainKind]) -> std::rc:
     states
 }
 
-/// Per chain-kind key (sorted kinds, fillers as (2, 2)): for each position, P(links done = l | N = n), n = 0..=nmax,
+/// Per chain-kind key (sorted kinds, fillers as (2, 2)): for each position, P(links done = l | N = n), n = 0..=max_events,
 /// and whether the progress vector given every n is negatively upper-orthant dependent:
 ///   P(X_i >= t_i for all i) <= prod_i P(X_i >= t_i)   for every threshold vector t,
 /// checked exactly (to 1e-12) over the key's state distribution. Early ends and stop risk are included (stop risk as

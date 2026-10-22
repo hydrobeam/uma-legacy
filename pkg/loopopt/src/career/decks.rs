@@ -60,11 +60,11 @@ fn cf_budget(checks: &crate::checks::Checks) -> usize {
 /// Work units per cap-free node: its bounds sum over event counts and chain states.
 const CF_NODE_WORK: usize = 15;
 
-/// A memoised `best_deck` outcome: the result, its product search's proof (`last_pv`), the work and exact scorings it
-/// added (and its cap-free searches', `cf`)
+/// A memoised `best_deck` outcome: the result, its product search's proof (`product_bound`), the work and exact
+/// scorings it added (and its cap-free searches', `cap_free`)
 pub(crate) struct DeckMemo {
     result: DeckRes,
-    product_value: Option<f64>,
+    product_bound: Option<f64>,
     work: usize,
     scored: usize,
     certified_cap: f64,
@@ -223,7 +223,7 @@ impl Env<'_> {
     ///
     /// A band of more than EXACT_CAP decks is not scored: the band is built again at the next lower cap of the ladder
     /// (EXACT_STEPS, then 1: decks whose product value reaches the best exact one; each class at most that), the first
-    /// that fits is scored, its cap is noted in `cert` (the answer is exact under it; 0 when even the last overflows:
+    /// that fits is scored, its cap is noted in `certified_cap` (the answer is exact under it; 0 when even the last overflows:
     /// the best of the product deck and the starts, certified under nothing) and the call is not `full` (no Ref: a
     /// Ref is a proof under the top cap, kept by later searches and jobs). Without an overflow nothing changes.
     ///
@@ -251,7 +251,7 @@ impl Env<'_> {
         {
             state.work += stored.work;
             *scored += stored.scored;
-            state.last_product_bound = stored.product_value;
+            state.last_product_bound = stored.product_bound;
             audit.certified_cap = audit.certified_cap.min(stored.certified_cap);
             audit.overflows += stored.overflows;
             audit.cap_free_stats.add(&stored.cap_free);
@@ -307,7 +307,7 @@ impl Env<'_> {
                 key,
                 DeckMemo {
                     result: result.clone(),
-                    product_value: state.last_product_bound,
+                    product_bound: state.last_product_bound,
                     work: state.work - start.work,
                     scored: *scored - start.scored,
                     certified_cap,

@@ -23,7 +23,7 @@ fn fixture(name: &str) -> serde_json::Value {
 fn ix(data: &Data, id: u32) -> UmaIndex {
     UmaIndex(data.umas.iter().position(|uma| uma.id == id).unwrap())
 }
-/// The option with race program `prog` at 1-based turn `turn`.
+/// The option with race program `program_id` at 1-based turn `turn`.
 fn opt_at(uma: &Uma, turn: usize, program_id: u32) -> Choice {
     Choice::Opt(uma.race_options[turn - 1].iter().position(|option| option.program_id == program_id).unwrap() as u8)
 }

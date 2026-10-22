@@ -273,9 +273,10 @@ impl<L: Leaves> FoldContext<'_, L> {
     }
 }
 
-/// Leaf `leaf`'s landed set on the uncertain targets (digit k: her stars on target uncv[k], 0 absent) and her stars'
-/// chance: the product over k of w[stars - 1] where she has any, in k order from 1.0 (the f64 `evaluate_outcomes`' per-leaf
-/// table holds: each of its entries is a lower leaf's times its top digit's w, the same product in the same order)
+/// Leaf `leaf`'s landed set on the uncertain targets (digit k: her stars on target uncertain_targets[k], 0 absent) and
+/// her stars' chance: the product over k of w[stars - 1] where she has any, in k order from 1.0 (the f64
+/// `evaluate_outcomes`' per-leaf table holds: each of its entries is a lower leaf's times its top digit's w, the same
+/// product in the same order)
 pub(crate) fn leaf_set(leaf: usize, uncertain_targets: &[usize], star_mix: [f64; 3]) -> LeafOutcome {
     let mut landed_mask = 0usize;
     let mut star_probability = 1.0f64;
@@ -340,10 +341,10 @@ impl<'rise> RiseInputs<'rise> {
 }
 
 impl RiseInputs<'_> {
-    /// Per leaf (as `leaf_products`) the best outfit's `CareerSetup::rise` of trainee (sts, ews: her outfits' coverage
-    /// and own chances) from chances qa (job-target order) to q'(leaf), q'_k = 1 - x0[k] xms[her stars on uncertain
-    /// target k]: per outfit and target the factor at each of her four star levels (1 where it can't rise), their
-    /// product per leaf
+    /// Per leaf (as `leaf_products`) the best outfit's `CareerSetup::rise` of trainee (`outfit_coverage`,
+    /// `event_chances`: her outfits' coverage and own chances) from chances qa (job-target order) to q'(leaf),
+    /// q'_k = 1 - x0[k] xms[her stars on uncertain target k]: per outfit and target the factor at each of her four star
+    /// levels (1 where it can't rise), their product per leaf
     pub(crate) fn leaves(
         &self,
         anchor_chances: &[f64],

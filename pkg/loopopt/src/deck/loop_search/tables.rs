@@ -527,7 +527,7 @@ impl<'data> Multi<'data> {
         }
         tally.scored_decks += 1;
         tally.spend(200);
-        let deck_class = src_class(entries.iter().map(|result| &*result.sources));
+        let deck_class = src_class(entries.iter().map(|entry| &*entry.sources));
         for (i, &q) in chances.iter().enumerate() {
             let product_value =
                 self.fixed * model.trainee_fast(uma, q, &deck.white_hint_chances, &deck.gold_hint_chances);
@@ -776,11 +776,11 @@ impl<'data> Multi<'data> {
                 let row = &exact_ceilings[uma];
                 (i..NG).find(|&j| !row[j].value.is_nan() && row[j].certified_cap >= cap)
             };
-            let target_point = match j {
+            let grid_point = match j {
                 None => i.max(self.grid.idx(self.maximum_chances[uma])),
                 Some(j) => i + (j - i) / 2,
             };
-            self.xtab(state, uma, target_point, cap);
+            self.xtab(state, uma, grid_point, cap);
         }
     }
 }

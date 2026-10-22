@@ -106,8 +106,8 @@ pub(crate) struct DeckJob {
     #[serde(default)]
     #[serde(rename = "alts")]
     pub choice_events: Vec<(u32, u8, Vec<Vec<Vec<(u32, u8)>>>)>,
-    /// measured outcome weights for `alts` events: (card, link, [choice][outcome] -> share); an event not listed here
-    /// keeps equally likely outcomes (event_shares.json, applied by the event builders)
+    /// measured outcome weights for `choice_events` events: (card, link, [choice][outcome] -> share); an event not
+    /// listed here keeps equally likely outcomes (event_shares.json, applied by the event builders)
     #[serde(default)]
     #[serde(rename = "alt_w")]
     pub choice_weights: Vec<(u32, u8, Vec<Vec<f64>>)>,
