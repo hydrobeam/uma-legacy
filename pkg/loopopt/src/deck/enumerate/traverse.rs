@@ -41,7 +41,7 @@ pub(in crate::deck::enumerate) struct SearchControl {
 }
 
 /// Read-only views into preparation's tables. The lazy-bound callbacks borrow those same
-/// tables, owned_suffix preparation retains their ownership until traversal returns.
+/// tables, so preparation retains their ownership until traversal returns.
 #[derive(Clone, Copy)]
 pub(in crate::deck::enumerate) struct PreparedTables<'tab> {
     pub(in crate::deck::enumerate) ebit: &'tab [u128],
@@ -110,7 +110,7 @@ impl DeckSpace<'_> {
 }
 
 /// A deck holds at most `allowed_borrow` (0 or 1) borrowed cards; the tables above take each group's best entries
-/// whatever they are, owned_suffix with borrowing they count several borrowed cards at once (every card the player lacks
+/// whatever they are, so with borrowing they count several borrowed cards at once (every card the player lacks
 /// is one), which leaves the bound loose. Per (key, group): the products of its r best owned entries, and of
 /// r - 1 owned with its best borrowed one, for the miss chances (lowest first) and the ratios (highest first).
 #[derive(Clone)]
@@ -362,8 +362,8 @@ impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Deck
             search.cache_parent_rows,
         );
         // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
-        // ratio products r depend on nothing else, owned_suffix they are constants of the configuration: tabulated on
-        // first use of their row (the same expressions, owned_suffix the same f64s as computing them per node); row
+        // ratio products r depend on nothing else, so they are constants of the configuration: tabulated on
+        // first use of their row (the same expressions, so the same f64s as computing them per node); row
         // (loff[g] + left) * ncan + can, a row of 2 controls.target_count factors (a then b) and one of outfit_row_count ratios
         let ncan = if bt.has_borrowed_entries { 2 } else { 1 };
         let mut loff = vec![0usize; ng + 1];

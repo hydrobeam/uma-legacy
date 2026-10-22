@@ -145,7 +145,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
             return false;
         }
         let list = groups[cursor.group].0;
-        // the deck owned_suffix far is row sel.len(); a child's row is the next one (overwritten per child)
+        // the deck so far is row sel.len(); a child's row is the next one (overwritten per child)
         let row_offset = path.sel.len() * target_count;
         // this parent's id and depth (the per-parent rows of `hopeful`)
         path.parent_id += 1;
@@ -260,7 +260,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         let mut nd = constraints.required_characters;
         let dl = &doms[cursor.group][position];
         if !dl.is_empty() {
-            // (the deck's picks in group cursor.group owned_suffix far, all at positions below `cursor.start`)
+            // (the deck's picks in group cursor.group so far, all at positions below `cursor.start`)
             let sg = &selection[selection.len() - (groups[cursor.group].1 - cursor.remaining)..];
             let (pr, mut prm) = (&mut scratch.nodes.dominance_products, 0u32);
             for &(a, sm) in dl {
@@ -402,12 +402,12 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                     (search.outfit_row_count, search.tables.orow, &*search.inheritance_chances);
                 // A child is its parent plus one card: for a target the card does not touch (its miss
                 // chances exactly 1.0) the child's pw[t] = parent's pw[t] * 1.0 is the parent's, bit for
-                // bit, and owned_suffix are nodes.white_chances[t], nodes.gold_chances[t] and every outfit's A factor of t (the same expressions on
+                // bit, and so are nodes.white_chances[t], nodes.gold_chances[t] and every outfit's A factor of t (the same expressions on
                 // the same f64s; ka, kb depend only on the row, the same for all children of one parent
                 // and borrowing variant). So the factors are computed once per parent (here, at its first
                 // child), a child recomputes only its touched targets', and A is the product in target
                 // order (`OutfitPre::eval`'s). The factors before the first touched target t0 are the
-                // parent's, and owned_suffix is their product from 1.0 (`prefix_products`, kept per parent): a child's product
+                // parent's, and so is their product from 1.0 (`prefix_products`, kept per parent): a child's product
                 // starts there and multiplies on from t0, the same multiplications in the same order
                 let c = &mut nodes.parent_targets[node.parent_depth * 2 + usize::from(has_borrowed_entries && can)];
                 if c.parent_id != node.parent_id {
@@ -491,8 +491,8 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 (0..clauses.len()).any(|ci| rho * cvx[ci] * bound_check_scale * (1.0 + 1e-9) >= clauses[ci].1)
             }
         };
-        // the per-target values A first (each outfit's term is min(A, B r) <= A, owned_suffix the clause sums with
-        // A alone are upper bounds of the real ones: when they fail, owned_suffix does the real test; A is finite,
+        // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
+        // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
         // its inputs being probabilities, and a NaN falls through to the real test)
         nodes.clause_values.fill(0.0);
         let PreparedTables { oq, og, orow, .. } = search.tables;
@@ -708,7 +708,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
             let s = if leafd { 1.0 } else { cap_free_check_scale.max(1.0) };
             // the cheap bound first, the state-conditioned one only where it passes
             let ubc = scratch.state_bound.cheap(sel);
-            // (CF_CHECK: both always, owned_suffix the check below tests each: an exact value above either is above their minimum)
+            // (CF_CHECK: both always, so the check below tests each: an exact value above either is above their minimum)
             let ub = if cap_free_check_scale == 0.0 && ubc * s * (1.0 + 1e-9) < state_bound_threshold {
                 ubc
             } else {

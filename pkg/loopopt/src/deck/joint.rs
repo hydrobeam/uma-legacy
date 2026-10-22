@@ -657,7 +657,7 @@ fn evaluate_prepared(
                     scratch.cluster_one_misses[i],
                 );
             }
-            // (each entry m0 | m of a row is written once, m0 holding outfit_count target of this cluster: the order is free)
+            // (each entry m0 | m of a row is written once, m0 holding no target of this cluster: the order is free)
             if want_sets {
                 let nsub = scratch.cluster_masks.len();
                 for i in 0..query_outfit_count {

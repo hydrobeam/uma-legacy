@@ -292,7 +292,7 @@ impl<'cfg> StateBound<'cfg> {
             None
         };
         let event_probabilities = if cap_free { event_pmf_job() } else { Rc::new(vec![]) };
-        // (the event counts summed state_terms by state_terms, those of P(n) >= 1e-12; the rest's mass, each such state_terms at most A
+        // (the event counts summed term by term, those of P(n) >= 1e-12; the rest's mass, each such term at most A
         // at every slot's most links done)
         let event_counts: Vec<usize> =
             (0..event_probabilities.len()).filter(|&n| event_probabilities[n] >= 1e-12).collect();
@@ -438,8 +438,8 @@ impl StateBoundContext<'_> {
 
     /// The cap-free band's bound (`cap_free`): per chain state x the lower of `plain`'s per-target bound A_x and a ratio
     /// bound B_x, summed over states, the best outfit. Derived: given x the deck's state value is a product over
-    /// targets of phi_k at its misses given x (phi_k = G - (G - W) group_count - W a nh, a = (1 - e)(1 - q)); its log gains
-    /// less from a card the lower the misses already are (phi(group_count y, nh y') / phi(group_count, nh) rises with group_count and with
+    /// targets of phi_k at its misses given x (phi_k = G - (G - W) ng - W a nh, a = (1 - e)(1 - q)); its log gains
+    /// less from a card the lower the misses already are (phi(ng y, nh y') / phi(ng, nh) rises with ng and with
     /// nh for y' <= y <= 1), so over the targets N with phi_k(1, 1) > 0 the completion's product is at most the
     /// partial deck's times each open slot's card's ratio from no card, at most the best ratio of its group at the
     /// slot's level (`CapFreeRatios::group`); the zero-base targets Z take A's factors. Every completion's state value
@@ -447,7 +447,7 @@ impl StateBoundContext<'_> {
     /// `Src::cf_ok`) bounds its exact value.
     /// `cut` (> 0: the value a node must reach to pass): the states are taken heaviest first and the sum stops once
     /// it decides the test, returning its partial sum plus the weight left times every state's most (A with every
-    /// slot at its most links done, at least any state's state_terms): an upper bound either way, below `cut` exactly
+    /// slot at its most links done, at least any state's term): an upper bound either way, below `cut` exactly
     /// when the full sum's test would fail to the slack. 0: the full sum, in state order.
     fn full(&self, state_cache: &mut StateBoundCache, sel: &[usize], cut: f64) -> f64 {
         let context = self;
@@ -574,7 +574,7 @@ impl StateBoundContext<'_> {
             }
             bn
         };
-        // the state's state_terms per outfit from x* and its bn (open slots only): y*, every open slot at its group's
+        // the state's term per outfit from x* and its bn (open slots only): y*, every open slot at its group's
         // lowest, then A at y* (and Z's part of it, bz), with an open slot min(A, bz bn r) (r: the open slots' best
         // ratios at x's levels), else A
         let terms =
@@ -615,9 +615,9 @@ impl StateBoundContext<'_> {
         // With an open chain slot, the states share work. A state's filled part (its misses x* given x and, per
         // outfit, the ratio bound's factor of the targets outside Z at x*) depends only on its levels at the
         // filled positions, so it is computed once per class (the same expressions on the same f64s: the same
-        // values). And the state_terms of a state is a symmetric function of the levels at one group's open positions
+        // values). And the term of a state is a symmetric function of the levels at one group's open positions
         // (those slots share their group's lowest rows and best ratios, multiplied in), so the states that agree
-        // up to that order have one state_terms (exactly, in real arithmetic), taken from the first of them visited:
+        // up to that order have one term (exactly, in real arithmetic), taken from the first of them visited:
         // the sum is the same, up to the rounding of the products.
         let ucache = state_cache;
         let memo = !open_slots.is_empty() && maximum_level < 16;
