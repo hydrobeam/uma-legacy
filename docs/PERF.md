@@ -270,7 +270,8 @@ untracked; reproducing their figures requires those inputs and the named revisio
   per chain state, outcomes as count-indexed brackets refined only where the pick is undecided, decks by local search
   with the exact search as verifier, and a second tier whose decisions match the exact one's within a stated
   tolerance instead of byte for byte.
-- The page's planner against simpler policies: the simulator's `index` policy runs it on the same draws as
+- The page's planner against simpler policies: the simulator's `index` policy (`src/career/sim/policies.rs`)
+  runs it on the same draws (`src/career/sim/draw.rs`) as
   `greedy` (about 0.2-0.5 s per plan step measured on 10-16-veteran pools, minutes
   per run of a few hundred careers).
 - Cooperative cancel (a superseded plan keeps its worker and caches): a SharedArrayBuffer flag polled at the progress
