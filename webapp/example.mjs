@@ -17,8 +17,9 @@ function call(request) {
 }
 const readJson = (file) => JSON.parse(fs.readFileSync(DATA + file));
 call({ cmd: 'init', data: readJson('data.json'), skills: readJson('web_skills.json'), cards: readJson('web_cards.json'), events: readJson('card_events.json') });
-// what the data holds ahead of its start (export/upcoming.py): left out, as the page leaves it out until then
-const now = Date.now() / 1000, later = (kind) => readJson('upcoming.json')[kind].filter(([, start]) => start > now).map(([id]) => id);
+// what the data holds ahead of its start (export/upcoming.py: dated after the export): left out, as the page leaves it
+// out until then. Taken as of the export rather than today, so the example changes only with the data or the solver.
+const later = (kind) => readJson('upcoming.json')[kind].map(([id]) => id);
 // the page's defaults (data.js PRESET, job.js EXTRA and jobTargets, state.js DEFAULTS)
 const r = call({ cmd: 'deck', targets: [{ group: 20159 }, { group: 20049, guaranteed: 2 }, { group: 20166 }, { group: 20046, guaranteed: 2 }, { group: 20161 }, { group: 21010 }, { group: 20165 }, { group: 20203 }],
   extra: [[1003, 20190, 1], [1078, 20165, 1]], star_dist: [0.5, 0.45, 0.05], borrow: true, top_decks: 1, per_uma: true,
