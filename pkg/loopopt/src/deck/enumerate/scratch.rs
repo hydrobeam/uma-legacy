@@ -31,21 +31,21 @@ pub(crate) struct NodeScratch {
     // (a parent's odds for its A factors, the first target_count slots written before each use)
     pub(crate) parent_white: [f64; 32],
     pub(crate) parent_gold: [f64; 32],
-    // (`ConfigurationContext::dom`'s per-target ppg * rlo: written before read in each call)
+    // (`ConfigurationContext::required_after_dominance`'s per-target ppg * rlo: written before read in each call)
     pub(crate) dominance_products: [f64; 32],
     // (RB_CHECK: the node bounds on the current path, per depth its clause sums, the root's at depth 0)
     pub(crate) diagnostic_bounds: Vec<Vec<f64>>,
 }
 
 impl NodeScratch {
-    /// Grow A's rows to `parent_row_count` and, with `a_rows`, B's to `depth_count`.
+    /// Grow A's rows to `parent_row_count` and, with `cache_ratio_rows`, B's to `depth_count`.
     pub(crate) fn grow_parent_rows(
         &mut self,
         parent_row_count: usize,
         depth_count: usize,
         outfit_row_count: usize,
         target_count: usize,
-        a_rows: bool,
+        cache_ratio_rows: bool,
     ) {
         while self.parent_targets.len() < parent_row_count {
             self.parent_targets.push(ParentTargetBounds {
@@ -54,7 +54,7 @@ impl NodeScratch {
                 prefix_products: vec![1.0; outfit_row_count * (target_count + 1)],
             });
         }
-        if a_rows {
+        if cache_ratio_rows {
             while self.parent_ratios.len() < depth_count {
                 self.parent_ratios.push(ParentRatioBounds {
                     parent_id: usize::MAX,
@@ -68,16 +68,16 @@ impl NodeScratch {
         }
     }
 
-    /// Clear the node bound's per-configuration constants for `nrow` rows (see `ConfigurationContext::hopeful`)
-    pub(crate) fn reset_constants(&mut self, nrow: usize, target_count: usize, column_count: usize) {
+    /// Clear the node bound's per-configuration constants for `row_count` rows (see `ConfigurationContext::hopeful`)
+    pub(crate) fn reset_constants(&mut self, row_count: usize, target_count: usize, column_count: usize) {
         self.target_constants.clear();
-        self.target_constants.resize(nrow * 2 * target_count, 0.0);
+        self.target_constants.resize(row_count * 2 * target_count, 0.0);
         self.ratio_constants.clear();
-        self.ratio_constants.resize(nrow * column_count, 0.0);
+        self.ratio_constants.resize(row_count * column_count, 0.0);
         self.has_target_constants.clear();
-        self.has_target_constants.resize(nrow, false);
+        self.has_target_constants.resize(row_count, false);
         self.has_ratio_constants.clear();
-        self.has_ratio_constants.resize(nrow, false);
+        self.has_ratio_constants.resize(row_count, false);
     }
 }
 
@@ -108,14 +108,14 @@ impl ConfigScratch {
         group_ratios: &[&[f64]],
     ) {
         let Self { suffix_white, suffix_gold, suffix_ratios, .. } = self;
-        let ng = configuration.groups.len();
+        let group_count = configuration.groups.len();
         suffix_white.clear();
-        suffix_white.resize((ng + 1) * controls.target_count, 1.0);
+        suffix_white.resize((group_count + 1) * controls.target_count, 1.0);
         suffix_gold.clear();
-        suffix_gold.resize((ng + 1) * controls.target_count, 1.0);
+        suffix_gold.resize((group_count + 1) * controls.target_count, 1.0);
         suffix_ratios.clear();
-        suffix_ratios.resize((ng + 1) * controls.column_count, 1.0);
-        for g in (0..ng).rev() {
+        suffix_ratios.resize((group_count + 1) * controls.column_count, 1.0);
+        for g in (0..group_count).rev() {
             let (gw, gg) = (
                 gm_w(group_misses[g], controls.target_count, configuration.groups[g].slots),
                 gm_g(group_misses[g], controls.target_count, configuration.groups[g].slots),
@@ -125,11 +125,11 @@ impl ConfigScratch {
                 suffix_gold[g * controls.target_count + t] = suffix_gold[(g + 1) * controls.target_count + t] * gg[t];
             }
         }
-        for g in (0..ng).rev() {
-            let rpg = group_ratios[g];
+        for g in (0..group_count).rev() {
+            let group_ratios = group_ratios[g];
             for i in 0..controls.column_count {
                 suffix_ratios[g * controls.column_count + i] = suffix_ratios[(g + 1) * controls.column_count + i]
-                    * rpg[i * (controls.size + 1) + configuration.groups[g].slots];
+                    * group_ratios[i * (controls.size + 1) + configuration.groups[g].slots];
             }
         }
     }
@@ -137,15 +137,15 @@ impl ConfigScratch {
     /// The suffix class masks of `groups`, from the entries' `class_masks`.
     pub(crate) fn fill_class_suffixes(&mut self, groups: &[TraversalEntryGroup<'_>], class_masks: &[u64]) {
         let Self { class_suffix, group_offsets, .. } = self;
-        let ng = groups.len();
+        let group_count = groups.len();
         group_offsets.clear();
         group_offsets.push(0);
-        for g in 0..ng {
+        for g in 0..group_count {
             group_offsets.push(group_offsets[g] + groups[g].entries.len());
         }
         class_suffix.clear();
-        class_suffix.resize(group_offsets[ng] + 1, 0);
-        for g in (0..ng).rev() {
+        class_suffix.resize(group_offsets[group_count] + 1, 0);
+        for g in (0..group_count).rev() {
             for (p, &j) in groups[g].entries.iter().enumerate().rev() {
                 class_suffix[group_offsets[g] + p] = class_suffix[group_offsets[g] + p + 1] | class_masks[j];
             }
@@ -160,12 +160,12 @@ impl ConfigScratch {
         all_locked: u8,
     ) -> bool {
         let available_locks = &mut self.available_locks;
-        let ng = groups.len();
-        available_locks.truncate(ng + 1);
-        available_locks.resize_with(ng + 1, Vec::new);
-        available_locks[ng].clear();
-        available_locks[ng].push(0);
-        for g in (0..ng).rev() {
+        let group_count = groups.len();
+        available_locks.truncate(group_count + 1);
+        available_locks.resize_with(group_count + 1, Vec::new);
+        available_locks[group_count].clear();
+        available_locks[group_count].push(0);
+        for g in (0..group_count).rev() {
             let l = groups[g].entries;
             let next = available_locks[g + 1][0];
             let v = &mut available_locks[g];

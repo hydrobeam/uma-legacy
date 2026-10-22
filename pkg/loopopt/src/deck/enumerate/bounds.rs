@@ -200,50 +200,52 @@ pub(crate) struct RatioColumns<'table> {
     pub(crate) target_count: usize,
 }
 
-pub(crate) fn prepare_ratio_prefixes(columns: &RatioColumns<'_>) -> RatioPrefixes {
-    let outfit_row_count = columns.outfit_rows.len();
-    let column_count = columns.row_indices.len();
-    // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every columns.zero_masks 0) is
-    // the product of its row's factors over a target mask (columns.nonzero_masks[c] for a split column, else all the row's targets, as
-    // `outfit_fast` multiplies them), in target order from 1.0, over a divisor (columns.divisors[c], columns.empty_values[i]), or infinite (no
-    // split and columns.empty_values[i] not > 0: `ratio_divisors` None). At a target the card does not touch (miss chances
-    // exactly 1.0, outside `KeyMisses::touched_targets`) its odds are 1 - 1 = 0, giving its factor in `empty_factors`.
-    // Per column, `factor_prefixes` multiplies these factors over the mask's targets below each t in the same order; a card's ratio starts
-    // from the prefix at its first touched target: the same f64s
-    let empty_factors: Vec<f64> = (0..outfit_row_count)
-        .flat_map(|i| {
-            let (o, q) = (&columns.outfits[i], columns.outfit_rows[i].inheritance);
-            (0..columns.target_count).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
-        })
-        .collect();
-    let ratio_divisors: Vec<Option<RatioDivisor>> = (0..column_count)
-        .map(|c| {
-            let i = columns.row_indices[c];
-            let n = columns.outfits[i].len();
-            if columns.zero_masks[c] != 0 {
-                Some(RatioDivisor { targets: columns.nonzero_masks[c], value: columns.divisors[c] })
-            } else if columns.empty_values[i] > 0.0 {
-                Some(RatioDivisor {
-                    targets: if n >= 32 { u32::MAX } else { (1u32 << n) - 1 },
-                    value: columns.empty_values[i],
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
-    let factor_prefixes: Vec<f64> = (0..column_count)
-        .flat_map(|c| {
-            let i = columns.row_indices[c];
-            let m = ratio_divisors[c].map_or(0, |x| x.targets);
-            let mut v = vec![1.0f64; columns.target_count + 1];
-            for t in 0..columns.target_count {
-                v[t + 1] = if m >> t & 1 != 0 { v[t] * empty_factors[i * columns.target_count + t] } else { v[t] };
-            }
-            v
-        })
-        .collect();
-    RatioPrefixes { empty_factors, ratio_divisors, factor_prefixes }
+impl RatioColumns<'_> {
+    pub(crate) fn prepare_prefixes(&self) -> RatioPrefixes {
+        let outfit_row_count = self.outfit_rows.len();
+        let column_count = self.row_indices.len();
+        // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every zero mask 0) is
+        // the product of its row's factors over a target mask (the column's nonzero mask for a split column, else all the row's targets, as
+        // `outfit_fast` multiplies them), in target order from 1.0, over a divisor (the column's divisor or the row's empty value), or infinite (no
+        // split and the row's empty value not > 0: `ratio_divisors` None). At a target the card does not touch (miss chances
+        // exactly 1.0, outside `KeyMisses::touched_targets`) its odds are 1 - 1 = 0, giving its factor in `empty_factors`.
+        // Per column, `factor_prefixes` multiplies these factors over the mask's targets below each t in the same order; a card's ratio starts
+        // from the prefix at its first touched target: the same f64s
+        let empty_factors: Vec<f64> = (0..outfit_row_count)
+            .flat_map(|i| {
+                let (o, q) = (&self.outfits[i], self.outfit_rows[i].inheritance);
+                (0..self.target_count).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
+            })
+            .collect();
+        let ratio_divisors: Vec<Option<RatioDivisor>> = (0..column_count)
+            .map(|c| {
+                let i = self.row_indices[c];
+                let n = self.outfits[i].len();
+                if self.zero_masks[c] != 0 {
+                    Some(RatioDivisor { targets: self.nonzero_masks[c], value: self.divisors[c] })
+                } else if self.empty_values[i] > 0.0 {
+                    Some(RatioDivisor {
+                        targets: if n >= 32 { u32::MAX } else { (1u32 << n) - 1 },
+                        value: self.empty_values[i],
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let factor_prefixes: Vec<f64> = (0..column_count)
+            .flat_map(|c| {
+                let i = self.row_indices[c];
+                let m = ratio_divisors[c].map_or(0, |x| x.targets);
+                let mut v = vec![1.0f64; self.target_count + 1];
+                for t in 0..self.target_count {
+                    v[t + 1] = if m >> t & 1 != 0 { v[t] * empty_factors[i * self.target_count + t] } else { v[t] };
+                }
+                v
+            })
+            .collect();
+        RatioPrefixes { empty_factors, ratio_divisors, factor_prefixes }
+    }
 }
 
 impl DeckSpace<'_> {
@@ -252,7 +254,7 @@ impl DeckSpace<'_> {
     /// is one, B's pal status when the job fixes the pals) with every miss chance in [0, 1] and at most B's, white and
     /// gold, for every target; with the targets where A's gold miss is the lower (bit t).
     ///
-    /// Why the product search (`best`) may skip a child B of a node (`dom` in `search`): let A be such an entry, free at
+    /// Why the product search (`best`) may skip a child B of a node (`required_after_dominance` in `search`): let A be such an entry, free at
     /// the node (no pick of its character) and taking B's place in the pick order: a sibling (position in [start, p),
     /// right after the node's picks of group g) or an earlier one no later pick of g touches B's targets with (their
     /// factors are exactly 1.0 there). Any deck D through B and D' = D - B + A then multiply their miss chances in the
@@ -266,7 +268,7 @@ impl DeckSpace<'_> {
     /// never such a D: the decks through B are skipped when nothing of A's character can follow B, else those without a
     /// pick of A's character (`required_characters`). Only which decks are visited (the rest in the same order) and
     /// how the bar rises change: the deck found, its value and odds do not.
-    pub(super) fn dom_table(
+    pub(super) fn dominance_table(
         &self,
         key: DominanceKey,
         entries: &[usize],

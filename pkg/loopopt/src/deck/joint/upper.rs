@@ -18,6 +18,13 @@ struct BoundChain {
     targets: Vec<BoundTarget>,
 }
 
+/// The one pair of chain positions whose shared targets are integrated together.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ChainPair {
+    first: usize,
+    second: usize,
+}
+
 /// Upper bound on exact P(all), per inheritance chance, including the fixed-gold factor.
 /// Each chain card is grouped with the targets it feeds. Given N = n, the checked upper-orthant inequality lets
 /// the expectation of the product be bounded by the product of expectations over those groups. One pair of cards
@@ -37,13 +44,13 @@ pub(crate) fn upper_na(
     // every group touching two or more targets must be negatively upper-orthant dependent, or the per-target
     // marginals below could understate a group whose outcomes hint targets together
     // (checked once per source, when it is built: `TargetSources::uncertified_orthant`)
-    for SourceEntry { sources: src, .. } in entries {
-        if src.uncertified_orthant {
+    for SourceEntry { sources, .. } in entries {
+        if sources.uncertified_orthant {
             if query.checks.upper_why
-                && let Some(g) = src
+                && let Some(g) = sources
                     .fixed_outcomes
                     .iter()
-                    .chain(src.chain_outcomes.iter().map(|x| &x.outcomes))
+                    .chain(sources.chain_outcomes.iter().map(|x| &x.outcomes))
                     .find(|g| group_gh(g).len() >= 2 && !group_nuod(g))
             {
                 eprintln!("why: group {g:?}");
@@ -52,33 +59,33 @@ pub(crate) fn upper_na(
         }
     }
     let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; target_count], vec![1.0f64; target_count]);
-    for SourceEntry { sources: src, .. } in entries {
-        for &TrainingHint { target: k, probability: p } in &src.training_hints {
+    for SourceEntry { sources, .. } in entries {
+        for &TrainingHint { target: k, probability: p } in &sources.training_hints {
             base_no_hint[k] *= 1.0 - p;
         }
         // (`fixed_misses`: the fixed groups' target and miss factors in group order, as group_gh gives them: the same
         // factors in the same order, computed once per source)
-        for &TargetMisses { target: k, no_gold: mg, no_hint: mh } in &src.fixed_misses {
-            base_no_gold[k] *= mg;
-            base_no_hint[k] *= mh;
+        for &TargetMisses { target: k, no_gold: miss_gold, no_hint: miss_hint } in &sources.fixed_misses {
+            base_no_gold[k] *= miss_gold;
+            base_no_hint[k] *= miss_hint;
         }
     }
     // chain cards in key order (fillers included): (kind, per target: cumulative (miss gold, miss any) after l links)
     let mut chains: Vec<BoundChain> = vec![];
-    for SourceEntry { sources: src, kind } in entries {
+    for SourceEntry { sources, kind } in entries {
         if *kind == ChainKind::NONE {
             continue;
         }
         let stop = kind.stop as usize;
-        let targets: Vec<BoundTarget> = src
+        let targets: Vec<BoundTarget> = sources
             .chain_misses
             .iter()
-            .map(|TargetChainMisses { target: k, links: per }| {
+            .map(|TargetChainMisses { target: k, links }| {
                 let mut cumulative = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; stop + 1];
                 for l in 1..=stop {
                     cumulative[l] = cumulative[l - 1];
-                    for &LinkMisses { link: lk, no_gold: g, no_hint: h } in per {
-                        if lk as usize == l {
+                    for &LinkMisses { link, no_gold: g, no_hint: h } in links {
+                        if link as usize == l {
                             cumulative[l].no_gold *= g;
                             cumulative[l].no_hint *= h;
                         }
@@ -107,17 +114,17 @@ pub(crate) fn upper_na(
             feeders[target.target].push(chain_index);
         }
     }
-    let mut pair: Option<(usize, usize)> = None;
+    let mut pair: Option<ChainPair> = None;
     let mut maxed: Vec<Option<MissFactors>> = vec![None; target_count];
     for k in 0..target_count {
         let use_full_progress = match feeders[k].len() {
             0 | 1 => false,
             2 => {
-                let p = (feeders[k][0], feeders[k][1]);
-                if pair.is_some_and(|x| x != p) {
+                let candidate_pair = ChainPair { first: feeders[k][0], second: feeders[k][1] };
+                if pair.is_some_and(|previous| previous != candidate_pair) {
                     true
                 } else {
-                    pair = Some(p);
+                    pair = Some(candidate_pair);
                     false
                 }
             }
@@ -145,12 +152,12 @@ pub(crate) fn upper_na(
             }
         }
     }
-    let fed: Vec<bool> = (0..target_count).map(|k| !feeders[k].is_empty()).collect();
+    let has_feeder: Vec<bool> = (0..target_count).map(|k| !feeders[k].is_empty()).collect();
     let chain_levels = if kinds.is_empty() { None } else { Some(key_level(query.chain_events, &kinds)) };
     if let Some(k) = &chain_levels {
         let ok = match pair {
             None => k.nuod,
-            Some((a, b)) => k.pair_ok(a, b),
+            Some(ChainPair { first: a, second: b }) => k.pair_ok(a, b),
         };
         if !ok {
             return None;
@@ -159,11 +166,11 @@ pub(crate) fn upper_na(
     let event_probabilities = event_pmf_job(query.chain_events);
     let outfits = &model.opts[query.trainee];
     let fixed = model.fixed_factor();
-    let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 {
-        land_factor(outfits[o].coverage[k], query.event_chances[o][k], q, ng, nh)
+    let phi = |o: usize, q: f64, k: usize, no_gold: f64, no_hint: f64| -> f64 {
+        land_factor(outfits[o].coverage[k], query.event_chances[o][k], q, no_gold, no_hint)
     };
     let pair_marginals: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &chain_levels) {
-        (Some((a, b)), Some(k)) => Some(k.pair_margs(a, b)),
+        (Some(ChainPair { first: a, second: b }), Some(k)) => Some(k.pair_margs(a, b)),
         _ => None,
     };
     Some(
@@ -173,12 +180,12 @@ pub(crate) fn upper_na(
             .map(|&q| {
                 let mut best = 0.0f64;
                 for o in 0..outfits.len() {
-                    let mut other = 1.0;
+                    let mut outside_product = 1.0;
                     for k in 0..target_count {
                         if let Some(MissFactors { no_gold: g, no_hint: h }) = maxed[k] {
-                            other *= phi(o, q, k, g, h);
-                        } else if !fed[k] {
-                            other *= phi(o, q, k, base_no_gold[k], base_no_hint[k]);
+                            outside_product *= phi(o, q, k, g, h);
+                        } else if !has_feeder[k] {
+                            outside_product *= phi(o, q, k, base_no_gold[k], base_no_hint[k]);
                         }
                     }
                     // per single card and links done: the product over the targets only it feeds
@@ -204,7 +211,7 @@ pub(crate) fn upper_na(
                         })
                         .collect();
                     // the pair's group: both cards' single targets and the shared ones, over (la, lb)
-                    let pair_products: Option<Vec<Vec<f64>>> = pair.map(|(a, b)| {
+                    let pair_products: Option<Vec<Vec<f64>>> = pair.map(|ChainPair { first: a, second: b }| {
                         (0..=chains[a].kind.stop as usize)
                             .map(|la| {
                                 (0..=chains[b].kind.stop as usize)
@@ -212,9 +219,9 @@ pub(crate) fn upper_na(
                                         let mut v = single_products[a][la] * single_products[b][lb];
                                         for target in &chains[a].targets {
                                             let k = target.target;
-                                            let cum_a = &target.by_progress;
+                                            let first_misses = &target.by_progress;
                                             if feeders[k].len() == 2 {
-                                                let cum_b = &chains[b]
+                                                let second_misses = &chains[b]
                                                     .targets
                                                     .iter()
                                                     .find(|row| row.target == k)
@@ -224,8 +231,12 @@ pub(crate) fn upper_na(
                                                     o,
                                                     q,
                                                     k,
-                                                    base_no_gold[k] * cum_a[la].no_gold * cum_b[lb].no_gold,
-                                                    base_no_hint[k] * cum_a[la].no_hint * cum_b[lb].no_hint,
+                                                    base_no_gold[k]
+                                                        * first_misses[la].no_gold
+                                                        * second_misses[lb].no_gold,
+                                                    base_no_hint[k]
+                                                        * first_misses[la].no_hint
+                                                        * second_misses[lb].no_hint,
                                                 );
                                             }
                                         }
@@ -240,11 +251,13 @@ pub(crate) fn upper_na(
                         if event_probability == 0.0 {
                             continue;
                         }
-                        let mut product = other;
+                        let mut product = outside_product;
                         if let Some(k) = &chain_levels {
                             for chain_index in 0..chains.len() {
                                 if chains[chain_index].targets.is_empty()
-                                    || pair.is_some_and(|(a, b)| chain_index == a || chain_index == b)
+                                    || pair.is_some_and(|ChainPair { first: a, second: b }| {
+                                        chain_index == a || chain_index == b
+                                    })
                                 {
                                     continue;
                                 }
