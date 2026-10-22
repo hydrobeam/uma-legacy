@@ -302,66 +302,60 @@ Their joint test gives $\chi^2$ = {{3.reliability_chi2|.1f}}, $p$ = {{3.reliabil
 
 Computed by `research/s04_races.py`.
 
-The table tested is the community one (`docs/MODEL.md`). A trainee's chance of winning a race she enters is
+The table tested is the community one (`docs/MODEL.md`). A trainee wins a race she enters with chance
 $p = \mathrm{clamp}(110 - c_{\text{dist}} - c_{\text{surf}} - \mathrm{PEN}_s,\ 0,\ 100)/100$. In words: 110%, less a
 cost for each of her aptitude grades for the race's distance and surface, less a penalty for racing in a row. The
 costs are 0 for S and A, rising to 90 for G. The penalty $\mathrm{PEN}_s$ is 0, 0, 5, 20, 30, 50 at streak position
 $s$ = 1 to 6 or more.
 
-A race's position $j$ counts consecutive race turns; any race counts, and a turn without one resets it. A *goal race*
+A race's position $j$ counts consecutive race turns: any race counts, and a turn without one resets it. A *goal race*
 is one the career requires; a *chosen race* is one IT chose. The community table charges every race its own position,
 $s = j$. The adopted model (**fitted**, below) charges a goal race the position before it, $s = \max(j - 1, 1)$, so goal
-races pay 0, 0, 0, 5, 20, 30. The planner counts $j$ up to 6.
+races pay 0, 0, 0, 5, 20, 30. The planner counts $j$ up to 6. The tests take IT's choice of each chosen race as
+given, and stats are not modelled.
 
 ### Findings
 
-- **A goal race takes the penalty of the race before it.** It still counts toward the position of the races after
-  it. Why is not known; the runs only show that it does.
-- **Grades must include inherited aptitude sparks.** On base grades the table predicts too few wins. Pink sparks raise
-  grades at the start of a career and at each inspiration, from that April on.
-- **Races in a row lower the chance.** The previous race's result shows no detectable additional effect in these contrasts.
-- **The table is retained.** Free cell rates have no clear held-out advantage.
-- **Known misses**: chances of 70 or less, and chosen races at the 1st and 2nd race in a row, win slightly less than
-  predicted. Goal races 7th or later in a row, which the planner charges as the 6th, win less than it predicts.
+- **A goal race takes the penalty of the race before it, and still counts toward the position of the races after it.**
+  On runs left out of the fit, this predicts better than the community table and better than leaving goal races out
+  of the count. Why the game does this is not known.
+- **Grades must include inherited aptitude sparks.** On base grades, which a planned loop uses, the table predicts too
+  few wins. Pink sparks raise grades by the rule in `docs/MODEL.md`: at the start of a career, and from the April of
+  each inspiration that fires one.
+- **The streak penalty is kept.** The previous race's result shows no detectable further effect.
+- **The table is kept.** A free win rate per cell has no clear held-out advantage.
+- **Known misses.** Chances of 70 or less, and chosen races 1st or 2nd in a row, win slightly less than predicted.
+  Goal races 7th or later in a row win less than the planner predicts, since it charges them as the 6th.
 
-IT's chosen races won at these rates. The community table's chance is in parentheses. Grades include those raised by
-inherited aptitude sparks, and S is shown as A, since both cost 0. A dot marks a cell with under 30 attempts; only
-grade pairs with 200 or more attempts are shown.
+IT's chosen races won at these rates, with the community table's chance in parentheses. Grades include those raised by
+inherited aptitude sparks; S is shown as A, since both cost 0. A dot marks a cell with under 30 attempts. Only grade
+pairs with 200 or more attempts are shown.
 
 {{4.race_grid_by_aptitude_and_streak|s}}
 
 ### Evidence
 
-The runs record every race a career ran: {{4.race_attempts_at_the_34|,.0f}} attempts at the 34 single-race G1s. Of them, {{4.race_goal_attempts|,.0f}} were goal
-races and {{4.race_chosen_attempts|,.0f}} chosen. {{4.race_win_rate_observed|.1%}} were won.
+The runs record {{4.race_attempts_at_the_34|,.0f}} attempts at the 34 single-race G1s, {{4.race_goal_attempts|,.0f}} of them goal races.
 
-The table calls some races certain, 0% or 100%, and a handful went the other way. That would give the table a
-log-likelihood of $-\infty$. So every model compared has its 0% and 100% pulled in to a fitted floor and ceiling, the
-same two parameters in each, and the comparisons follow rule 1 of *How to read*.
+The table calls some races certain, 0% or 100%, and a handful went the other way, so its log-likelihood would be
+$-\infty$. Every model compared therefore has its 0% and 100% pulled in to a fitted floor and ceiling. With the same
+two parameters in each, the in-sample comparisons follow rule 1 of *How to read*.
 
 | Claim | Estimate [95%] | Test | Verdict |
 |---|---|---|---|
-| Raised grades, not base | raised: {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] | {{4.race_ll_recalibrated_pink_table_recalibrated_base_table_nats|,.0f}} nats better than base | raised grades |
+| Raised grades, not base | observed / predicted: base {{4.race_obs_per_pred_base|.3f}} [{{4.race_obs_per_pred_base_95_pct_low|.3f}}, {{4.race_obs_per_pred_base_95_pct_high|.3f}}], raised {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] | raised fits {{4.race_ll_recalibrated_pink_table_recalibrated_base_table_nats|,.0f}} nats better | raised grades |
+| A pink counts from the April of its inspiration | won {{4.proc_timing_observed|.3f}} [{{4.proc_timing_observed_95_pct_low|.3f}}, {{4.proc_timing_observed_95_pct_high|.3f}}] of {{4.proc_timing_attempts|,.0f}} Senior January-March attempts where the timing matters | predicted {{4.proc_timing_predicted_from_april|.3f}} from April, {{4.proc_timing_predicted_from_the_year_start|.3f}} from the year's start | from April |
 | The streak penalty is real | | without it, {{4.race_ll_recalibrated_pink_table_recalibrated_pink_no_penalty_nats|,.0f}} nats worse | kept |
-| Goal races pay one position less | community table, goal races 4th+: {{4.race_community_table_goal_j_ge_4_obs_per_pred|.3f}} [{{4.race_community_table_goal_j_ge_4_obs_per_pred_95_pct_low|.3f}}, {{4.race_community_table_goal_j_ge_4_obs_per_pred_95_pct_high|.3f}}] | held out, forms table below | shift adopted |
-| The previous result does not matter | every loss / win contrast covers 1 | $z$ = {{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred_z|.2f}} from the 4th race on | no effect |
-| A pink counts from the April of its inspiration | won {{4.proc_timing_observed|.3f}} [{{4.proc_timing_observed_95_pct_low|.3f}}, {{4.proc_timing_observed_95_pct_high|.3f}}] | predicted {{4.proc_timing_predicted_from_april|.3f}} from April, {{4.proc_timing_predicted_from_the_year_start|.3f}} from the year's start | from April |
-| One formula is enough | per-cell rates {{4.race_ll_pink_cells_bp_x_j_x_goal_recalibrated_pink_table_nats|.0f}} nats better in-sample | held out {{4.held_out_cells_vs_table_nats|.0f}} ± {{4.held_out_cells_vs_table_se|.0f}} nats, $z$ = {{4.held_out_cells_vs_table_z|.2f}} | table kept |
+| A loss changes the next race's chance | after a loss over after a win, 4th race on: {{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred_95_pct_high|.3f}}] | run-clustered; at the 2nd and 3rd the interval also covers 1 | not detected |
+| Goal races pay one position less | community table, goal races 4th on: {{4.race_community_table_goal_j_ge_4_obs_per_pred|.3f}} [{{4.race_community_table_goal_j_ge_4_obs_per_pred_95_pct_low|.3f}}, {{4.race_community_table_goal_j_ge_4_obs_per_pred_95_pct_high|.3f}}] | held out, forms table below | shift adopted |
+| One formula is enough | | a free rate per chance, streak position and race kind, {{4.race_pink_cells_bp_x_j_x_goal|.0f}} cells, held out: {{4.held_out_cells_vs_table_nats|.0f}} ± {{4.held_out_cells_vs_table_se|.0f}} nats, $z$ = {{4.held_out_cells_vs_table_z|.2f}} | table kept |
+| Chances of 70 or less win less | {{4.race_pink_bp_lt_70_obs_per_pred|.3f}} [{{4.race_pink_bp_lt_70_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_lt_70_obs_per_pred_95_pct_high|.3f}}] over {{4.race_pink_bp_lt_70_attempts|,.0f}} attempts | interval below 1 | known miss |
 
-*Base or raised grades.* Base aptitudes are what a planned loop has. Raised grades follow the aptitude-spark rule in
-`docs/MODEL.md`.
+By scenario, every interval covers the prediction once chosen races 1st and 2nd in a row are left out.
 
-| Grades | Predicted win rate | Observed / predicted [95%] | Where the table gives 70 or less |
-|---|---|---|---|
-| base | {{4.race_win_rate_predicted_base|.1%}} | {{4.race_obs_per_pred_base|.3f}} [{{4.race_obs_per_pred_base_95_pct_low|.3f}}, {{4.race_obs_per_pred_base_95_pct_high|.3f}}] | {{4.race_base_bp_lt_70_obs_per_pred|.2f}} over {{4.race_base_bp_lt_70_attempts|,.0f}} attempts |
-| raised | {{4.race_win_rate_predicted_pink|.1%}} | {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] | {{4.race_pink_bp_lt_70_obs_per_pred|.2f}} |
-
-Outside chosen races at the 1st and 2nd race in a row, every scenario is consistent with the prediction. Over all attempts, the scenarios
-outside their intervals are: {{4.race_pink_scenarios_outside_their_interval|s}}.
-
-*Goal races.* Under the community table, goal races from the 4th race in a row win more than predicted, while chosen
-races there match. Three forms were scored on runs left out of the fit, five folds by run over {{4.held_out_runs|,.0f}} runs, each with
-the same fitted floor and ceiling:
+*Goal races.* Under the community table, goal races from the 4th race in a row win more than predicted. Three forms
+were scored on runs left out of the fit, five folds by run over {{4.held_out_runs|,.0f}} runs, each form with its own
+fitted floor and ceiling:
 
 | Form | Goal race at position $j$ pays | Races after it count it | Held out, against the adopted form |
 |---|---|---|---|
@@ -369,7 +363,9 @@ the same fitted floor and ceiling:
 | Community table | $\mathrm{PEN}_j$ | yes | {{4.held_out_goal_shift_vs_community_table_nats|,.0f}} ± {{4.held_out_goal_shift_vs_community_table_se|.0f}} nats worse, $z$ = {{4.held_out_goal_shift_vs_community_table_z|.2f}} |
 | Exclusion | $\mathrm{PEN}$ at the chosen races before it | no | {{4.held_out_goal_shift_vs_exclusion_nats|,.0f}} ± {{4.held_out_goal_shift_vs_exclusion_se|.0f}} nats worse, $z$ = {{4.held_out_goal_shift_vs_exclusion_z|.2f}} |
 
-In-sample the adopted form fits {{4.race_ll_recalibrated_pink_table_recalibrated_community_table_nats|,.0f}} nats better than the community table. With the adopted shift, the grouped goal-race intervals cover the prediction, and chosen races from the 3rd on. Chosen races at the 1st and 2nd fall slightly short, a known miss.
+With the shift, the goal-race rows from the 1st to the 6th or later cover the prediction, as do chosen races from the
+3rd on. Chosen races 1st and 2nd in a row fall slightly short, a known miss. Goal races 7th or later, part of the 6th
+or later row, fall well short: the other known miss.
 
 | Race in a row | Goal races: observed / predicted [95%] | Attempts | Chosen races: observed / predicted [95%] | Attempts |
 |---|---|---|---|---|
@@ -380,33 +376,6 @@ In-sample the adopted form fits {{4.race_ll_recalibrated_pink_table_recalibrated
 | 5th | {{4.race_pink_goal_j_5_obs_per_pred|.3f}} [{{4.race_pink_goal_j_5_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_goal_j_5_obs_per_pred_95_pct_high|.3f}}] | {{4.race_pink_goal_j_5_attempts|,.0f}} | {{4.race_pink_chosen_j_5_obs_per_pred|.3f}} [{{4.race_pink_chosen_j_5_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_chosen_j_5_obs_per_pred_95_pct_high|.3f}}] | {{4.race_pink_chosen_j_5_attempts|,.0f}} |
 | 6th or later | {{4.race_pink_goal_j_6_obs_per_pred|.3f}} [{{4.race_pink_goal_j_6_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_goal_j_6_obs_per_pred_95_pct_high|.3f}}] | {{4.race_pink_goal_j_6_attempts|,.0f}} | {{4.race_pink_chosen_j_6_obs_per_pred|.3f}} [{{4.race_pink_chosen_j_6_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_chosen_j_6_obs_per_pred_95_pct_high|.3f}}] | {{4.race_pink_chosen_j_6_attempts|,.0f}} |
 | goal, 7th or later | {{4.race_pink_goal_j_ge_7_obs_per_pred|.2f}} [{{4.race_pink_goal_j_ge_7_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_goal_j_ge_7_obs_per_pred_95_pct_high|.2f}}] | {{4.race_pink_goal_j_ge_7_attempts|,.0f}} | | |
-
-*Every chance?* On raised grades, the pointwise intervals cover the prediction down to a chance of 80:
-
-| Table's chance | Attempts | Observed / predicted [95%] |
-|---|---|---|
-| 110 | {{4.race_pink_bp_110_attempts|,.0f}} | {{4.race_pink_bp_110_obs_per_pred|.3f}} [{{4.race_pink_bp_110_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_110_obs_per_pred_95_pct_high|.3f}}] |
-| 100 | {{4.race_pink_bp_100_attempts|,.0f}} | {{4.race_pink_bp_100_obs_per_pred|.3f}} [{{4.race_pink_bp_100_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_100_obs_per_pred_95_pct_high|.3f}}] |
-| 90 | {{4.race_pink_bp_90_attempts|,.0f}} | {{4.race_pink_bp_90_obs_per_pred|.3f}} [{{4.race_pink_bp_90_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_90_obs_per_pred_95_pct_high|.3f}}] |
-| 80 | {{4.race_pink_bp_80_attempts|,.0f}} | {{4.race_pink_bp_80_obs_per_pred|.3f}} [{{4.race_pink_bp_80_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_80_obs_per_pred_95_pct_high|.3f}}] |
-| 70 or less | {{4.race_pink_bp_lt_70_attempts|,.0f}} | {{4.race_pink_bp_lt_70_obs_per_pred|.3f}} [{{4.race_pink_bp_lt_70_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_lt_70_obs_per_pred_95_pct_high|.3f}}] |
-
-*A pink's timing.* The records say which inspiration fired a pink, and inspirations sit at fixed turns. The timing
-matters on {{4.proc_timing_attempts|,.0f}} Senior January-March attempts; the claims table compares them.
-
-*The previous race's result.* The test divides observed / predicted after a loss by the same after a win, with a
-run-clustered interval. Every contrast covers 1; this supports retaining the race-count penalty without establishing absence of a win-history effect.
-
-| Race in a row | After a win [95%] | Attempts | After a loss [95%] | Attempts | Loss / win [95%] |
-|---|---|---|---|---|---|
-| 2nd | {{4.race_in_a_streak_j_2_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_2_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_2_after_a_win_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_2_after_a_win_attempts|,.0f}} | {{4.race_in_a_streak_j_2_after_a_loss_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_2_after_a_loss_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_2_after_a_loss_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_2_after_a_loss_attempts|,.0f}} | {{4.race_in_a_streak_j_2_after_a_loss_per_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_2_after_a_loss_per_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_2_after_a_loss_per_after_a_win_obs_per_pred_95_pct_high|.3f}}] |
-| 3rd | {{4.race_in_a_streak_j_3_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_3_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_3_after_a_win_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_3_after_a_win_attempts|,.0f}} | {{4.race_in_a_streak_j_3_after_a_loss_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_3_after_a_loss_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_3_after_a_loss_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_3_after_a_loss_attempts|,.0f}} | {{4.race_in_a_streak_j_3_after_a_loss_per_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_3_after_a_loss_per_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_3_after_a_loss_per_after_a_win_obs_per_pred_95_pct_high|.3f}}] |
-| 4th or later | {{4.race_in_a_streak_j_4_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_4_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_4_after_a_win_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_4_after_a_win_attempts|,.0f}} | {{4.race_in_a_streak_j_4_after_a_loss_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_4_after_a_loss_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_4_after_a_loss_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_4_after_a_loss_attempts|,.0f}} | {{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred_95_pct_high|.3f}}] |
-
-*One formula.* Giving each of the {{4.race_pink_cells_bp_x_j_x_goal|.0f}} (chance, streak position, goal or chosen) cells its own win rate fits better
-in-sample. The gain exceeds the {{4.race_ll_threshold_pink_cells_bp_x_j_x_goal|.0f}} nats of the nominal independent-attempt threshold for {{4.race_ll_pink_cells_bp_x_j_x_goal_extra_parameters|.0f}} extra parameters if attempts were independent. The shared career state can make those attempts dependent. Held out, the per-cell rates predict no better, so the table stands.
-
-The test is conditional on IT having chosen each non-goal race. Stats are not modelled.
 
 ## 5. Affinity
 
