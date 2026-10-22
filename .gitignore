@@ -18,6 +18,7 @@
 !/pkg/loopopt/
 /pkg/loopopt/*
 !/pkg/loopopt/src/
+!/pkg/loopopt/src/uma.rs
 !/pkg/loopopt/tests/
 !/pkg/loopopt/export/
 !/pkg/loopopt/data/
