@@ -186,7 +186,8 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number|null} p_inf  her effective ceiling, the odds her lifts approach (null when lam is 0: no building)
  * @property {number} lam  the chance a building career lifts her odds, before it falls with the remaining gap
  * @property {number} phi  the share of the remaining log-odds gap to p_inf that each lift closes
- * @property {number} builds  the lifts (`Cont::plan`'s successes) she builds before rerunning her best career
+ * @property {number} building_careers  the expected careers she spends building lifts (each building career lifts
+ *   her odds only by chance) before rerunning her best career; 0 when she does not build
  * @property {number} p_switch  her odds once building stops
  * @property {number} careers  her step's expected careers (0 when `real`)
  *
@@ -1288,12 +1289,12 @@ function openSaveWhy(planReport) {
   const routeStep = (m, i) => { const careers = routePlan?.careers?.[i]; const c = careers != null ? ` (about ${fmtN(careers)} careers)` : '';
     if (m.real) return `your ${n}/${n} of ${m.trainee} (no careers)`;
     const who = m.has_full_veteran ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
-    return m.builds > 0 ? `${who}lift ${m.trainee}'s odds with about ${m.builds} building careers (${fmtIn(m.p)} now, to about ${fmtIn(m.p_switch)}), then rerun her until she lands ${n}/${n}${c}`
+    return m.building_careers > 0 ? `${who}lift ${m.trainee}'s odds with about ${fmtN(m.building_careers)} building careers (${fmtIn(m.p)} now, to about ${fmtIn(m.p_switch)}), then rerun her until she lands ${n}/${n}${c}`
       : `${who}rerun ${m.trainee}'s best career (${fmtIn(m.p)}) until she lands ${n}/${n}${c}`; };
   const route = routePlan && routeMembers.length >= 2 && careersToday ? `First ${routeStep(routeMembers[0], 0)}; then ${routeStep(routeMembers[1], 1)}; then ${routePlan.c} with those two ${n}/${n}s as parents${routePlan.careers?.[2] != null ? ` (about ${fmtN(routePlan.careers[2])} careers)` : ''}. About ${careersToday} careers in all.` : 'No estimate: no route from the veterans you have now.';
   // the example: the route's first step of an uma without a full veteran yet, her rerun odds (after its building careers, if any) lifted by
   // 6% (one helpful parent)
-  const example = routeMembers.find(m => !m.real && (m.builds > 0 ? m.p_switch : m.p) > 0), exampleOdds = example && (example.builds > 0 ? example.p_switch : example.p);
+  const example = routeMembers.find(m => !m.real && (m.building_careers > 0 ? m.p_switch : m.p) > 0), exampleOdds = example && (example.building_careers > 0 ? example.p_switch : example.p);
   const exampleText = example ? `Say her veteran, as a parent, lifts ${esc(example.trainee)}'s odds for her reruns from ${fmtIn(exampleOdds)} to ${fmtIn(exampleOdds * 1.06)}. Those reruns then take <b>about ${fmtN(1 / exampleOdds - 1 / (exampleOdds * 1.06))} fewer careers</b>. Most of her possible results lift nothing, so the planner averages over all of them, weighted by how likely each is.` : '';
   // for anyone: the two columns in a sentence each, the key points in bold and italics, how the saving is worked out in
   // three plain sentences; today's estimate and a worked example behind dropdowns (no formula)

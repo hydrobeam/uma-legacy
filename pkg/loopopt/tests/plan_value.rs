@@ -26,7 +26,7 @@ fn v_does_not_depend_on_the_output() {
     let full = run(&job, "full");
     // (the setup: V's sides build before they grind, so Cont is in V)
     assert!(
-        full["members"].as_array().unwrap().iter().any(|m| m["builds"].as_i64().unwrap() > 0),
+        full["members"].as_array().unwrap().iter().any(|m| m["building_careers"].as_f64().unwrap() > 0.0),
         "{}",
         full["members"]
     );
