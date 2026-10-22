@@ -168,7 +168,7 @@ struct KeptState {
     bests: Vec<plan::kept::Bests>,
     seen: Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>,
     searches: Vec<crate::career::state::KeptSolve>,
-    decks: Vec<(u64, crate::career::decks::Kept)>,
+    decks: Vec<(u64, crate::career::decks::DeckSearchCache)>,
 }
 /// Replace the worker's kept state, returning the previous state (`index`: module notes).
 fn kept_swap(replacement: KeptState) -> KeptState {
@@ -183,7 +183,7 @@ fn kept_swap(replacement: KeptState) -> KeptState {
 }
 /// The best career so far by the surrogate (`Sim::consider_at`).
 #[derive(Clone, Copy)]
-struct Pick {
+struct SurrogatePick {
     /// Spark scale C times her best cached deck's table value.
     value: f64,
     /// Trainee and parents, first parent the lower legacy index.
@@ -600,7 +600,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         ) else {
             return;
         };
-        let pick = Pick { value: tv, lineage: lineage.ordered(), deck: di };
+        let pick = SurrogatePick { value: tv, lineage: lineage.ordered(), deck: di };
         if let Some(k) = self.member_by_trainee.get(t).copied().flatten()
             && tv > bar
         {

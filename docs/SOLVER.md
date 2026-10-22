@@ -17,11 +17,16 @@ The affinity core and loop search's modules:
 | `src/cli.rs` | CLI jobs, event enrichment, kept-state persistence, dispatch and bound diagnostics |
 | `src/tests.rs` | Affinity-core correctness tests against independent fixtures and model invariants |
 | `src/skills.rs` | Skill targets, outfit choices and lineage inheritance probabilities |
-| `src/deck/multi.rs` | `Multi`, its inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
-| `src/deck/multi/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
-| `src/deck/multi/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
-| `src/deck/multi/bands.rs` | Loop bands, schedules, certification and solved passes |
-| `src/deck/multi/report.rs` | Reported picks, JSON and diagnostic summaries |
+| `src/deck/frontier.rs` | Deck-job setup and nondominated frontier enumeration |
+| `src/deck/dominance.rs` | Dominance signatures, buckets, `DominanceIndex` and returned deck records |
+| `src/deck/state_bound.rs` | State-conditioned values, bounds, configuration and ratio tables |
+| `src/deck/loop_search.rs` | `Multi`, its inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
+| `src/deck/loop_search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
+| `src/deck/loop_search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
+| `src/deck/loop_search/bands.rs` | Loop bands, schedules, certification and solved passes |
+| `src/deck/loop_search/report.rs` | Reported picks, JSON and diagnostic summaries |
+
+The `kept` module is `career/plan/kept.rs`: cached career plans and searches between planner jobs.
 
 Searches parent loops (four-uma loops and three-uma rotations) and support decks for landing target skills in
 Independent Training, reports each uma's race schedule, and plans careers to a looped parent (`/career`). Its

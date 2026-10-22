@@ -111,7 +111,7 @@ pub(crate) fn print_cli_job(
     let mut out = if mode == "career" {
         crate::career::run_career(data, skills, cards, job)
     } else {
-        crate::deck::loops::run_deck(data, skills, cards, job)
+        crate::deck::frontier::run_deck(data, skills, cards, job)
     };
     out["timing_s"] = serde_json::json!(started.elapsed().as_secs_f64());
     println!("{out}");

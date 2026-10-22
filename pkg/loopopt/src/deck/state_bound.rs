@@ -2,10 +2,11 @@
 //! its cheap bound (`cheap`) tried before the per-state one (`full`); and the search-wide ratio tables the cap-free
 //! bounds read (`CapFreeRatios`). Also the state-conditioned value they bound, at a whole deck (`state_value`,
 //! `state_value_cf`), and the configuration tables they read (`StateBoundConfig`).
+//! Exact joint evaluation belongs to `joint`.
 use crate::deck::chains::{ChainKind, ChainState, KeyLevel, chain_states, event_pmf_job, key_level};
 use crate::deck::joint::{ChainEntry, LandPre, MissFactors, land_factor, src_levels};
 use crate::deck::sources::{SourceEntry, TargetSources};
-use crate::deck::space::{EntryGroup, GroupSlots};
+use crate::deck::space::{GroupSlots, TraversalEntryGroup};
 use crate::skills::{Model, OutfitOption};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -223,7 +224,7 @@ struct EventBoundCache {
 /// turn), over its tables `configuration` (`StateBoundConfig`; None when unused, and then no bound is asked for)
 struct StateBoundContext<'cfg> {
     configuration: Option<Rc<StateBoundConfig>>,
-    groups: &'cfg [EntryGroup<'cfg>],
+    groups: &'cfg [TraversalEntryGroup<'cfg>],
     model: &'cfg Model<'cfg>,
     trainee: crate::uma::UmaIndex,
     entry_rows: &'cfg [Option<Vec<MissFactors>>],
@@ -256,7 +257,7 @@ impl<'cfg> StateBound<'cfg> {
     /// `groups` supplies entries and slots; `configured_groups` supplies their search-wide group indices and slots.
     pub(super) fn new(
         configuration: Option<Rc<StateBoundConfig>>,
-        groups: &'cfg [EntryGroup<'cfg>],
+        groups: &'cfg [TraversalEntryGroup<'cfg>],
         configured_groups: &[GroupSlots],
         model: &'cfg Model<'cfg>,
         tables: LandingBoundTables<'cfg>,

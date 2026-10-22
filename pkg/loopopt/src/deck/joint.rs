@@ -2,12 +2,12 @@
 //! the records the exact sum (`exact`), its reference (`reference`) and the negative-association bound (`upper`) share,
 //! with the per-target landing factor (`land_factor`, `LandPre`) and miss rows (`src_levels`) the state bounds also take.
 //! It also holds the switches and check counters of the state-conditioned and cap-free searches (`SB_ON`, `CF_ON`).
-use crate::deck::capfree::{state_value, state_value_cf};
 use crate::deck::caps::JCOUNT;
 use crate::deck::chains::ChainKind;
 use crate::deck::joint::exact::{joint_eval, joint_prep};
 use crate::deck::joint::reference::joint_trainee_ref;
 use crate::deck::sources::{LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint};
+use crate::deck::state_bound::{state_value, state_value_cf};
 use crate::skills::{GEN_GOLD, Model};
 pub(crate) mod exact;
 pub(super) mod reference;

@@ -152,10 +152,6 @@ const fn d_one() -> usize {
 pub(crate) const fn d_true() -> bool {
     true
 }
-/// Skyline depth of the deck enumeration: 1 (the exact search scores every deck it needs from `DeckSpace`)
-const fn kmax_top(_dj: &DeckJob) -> usize {
-    1
-}
 fn d_scenario() -> String {
     "unity".into()
 }
@@ -169,16 +165,16 @@ const fn d_rar() -> u8 {
     2
 } // SR: R cards have no chain events, so this only filters chain cards
 
-mod capfree;
 pub(crate) mod caps;
 pub(crate) mod chains;
+mod dominance;
 pub(crate) mod enumerate;
+pub(crate) mod frontier;
 mod hints;
 pub(crate) mod joint;
-mod kept;
-pub(crate) mod loops;
-mod multi;
+mod loop_search;
 pub(crate) mod sources;
 pub(crate) mod space;
+mod state_bound;
 #[cfg(test)]
 mod tests;

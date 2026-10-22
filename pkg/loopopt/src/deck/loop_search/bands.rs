@@ -2,7 +2,7 @@
 //! Deck scoring and ceiling tables belong to `shared` and `tables`; result formatting belongs to `report`.
 use super::shared::SharedDecks;
 use super::tables::Best;
-use super::{DeckKey, Multi};
+use super::{Multi, SharedDeckKey};
 use crate::data::{Choice, NT, probs, wval};
 use crate::deck::caps::{EXACT_BUDGET, EXACT_RHO, EXACT_STEPS};
 use crate::deck::enumerate::ScoredDeck;
@@ -19,7 +19,7 @@ struct LoopCandidate {
 }
 
 /// A solved loop: members, schedule, lineage chances, per-member bests (per-uma decks) and value
-pub(super) struct Solved {
+pub(super) struct SolvedLoop {
     pub(super) members: [UmaIndex; 4],
     pub(super) schedule: Res,
     pub(super) inheritance_chances: Vec<f64>,
@@ -37,13 +37,13 @@ pub(super) struct DeckBest {
 
 /// One pass's solved loops, cutoff and unexamined bound, counters, and shared-deck results.
 pub(super) struct Pass {
-    pub(super) solved: Vec<Solved>,
+    pub(super) solved: Vec<SolvedLoop>,
     pub(super) kth: f64,
     pub(super) next_bound: f64,
     pub(super) scanned: usize,
     pub(super) generated: usize,
     pub(super) schedule_rejects: usize,
-    pub(super) deck_best: crate::FxMap<DeckKey, DeckBest>,
+    pub(super) deck_best: crate::FxMap<SharedDeckKey, DeckBest>,
     pub(super) lists: Vec<SharedDecks>,
     /// (per-uma decks: the solved loops' values, in solve order)
     values: Vec<f64>,
@@ -320,7 +320,7 @@ impl Multi<'_> {
             }
             let val = sl[0].value / nl as f64;
             for ScoredDeck { value: v, deck: x } in sl.iter() {
-                let id = DeckKey {
+                let id = SharedDeckKey {
                     card_ids: x.ids.clone(),
                     end_links: x.ends.clone(),
                     variants: x.vars.clone(),
@@ -335,7 +335,7 @@ impl Multi<'_> {
                     *e = DeckBest { value: v / nl as f64, solved_index: p.solved.len(), list_index: p.lists.len() };
                 }
             }
-            p.solved.push(Solved { members: f, schedule: r, inheritance_chances: qs, bests: vec![], value: val });
+            p.solved.push(SolvedLoop { members: f, schedule: r, inheritance_chances: qs, bests: vec![], value: val });
             p.lists.push(sl);
             let mut vs: Vec<f64> = p.deck_best.values().map(|x| x.value).collect();
             vs.sort_by(|a, b| b.partial_cmp(a).unwrap());
@@ -354,7 +354,7 @@ impl Multi<'_> {
             return None;
         }
         let val = tot / nl as f64;
-        p.solved.push(Solved { members: f, schedule: r, inheritance_chances: qs, bests, value: val });
+        p.solved.push(SolvedLoop { members: f, schedule: r, inheritance_chances: qs, bests, value: val });
         p.values.push(val);
         let mut vs = p.values.clone();
         vs.sort_by(|a, b| b.partial_cmp(a).unwrap());

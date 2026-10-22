@@ -27,9 +27,9 @@
 //!
 //! The next career the page picks (`next`) is `plan::index_rule`; the simulator (`simulate`) is `sim`.
 use crate::Instant;
-use crate::career::decks::{CfStats, DECK_KEEP, DECK_KEEP_CAP, DeckKey, DeckMemo, JOB_NO};
+use crate::career::decks::{CfStats, DECK_KEEP, DECK_KEEP_CAP, DeckMemo, DeckSearchKey, JOB_NO};
 use crate::career::pool::Pool;
-use crate::career::search::{Ref, SearchRequest, Solved, solve_kept};
+use crate::career::search::{CareerSearchResult, Ref, SearchRequest, solve_kept};
 use crate::career::state::{ProductProof, SEEN, SEEN_KEEP, json_without, setup_fp, setup_hash, state_in, state_out};
 use crate::data::Data;
 use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P};
@@ -268,9 +268,9 @@ struct Env<'data> {
     pub(crate) overflows: usize,
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard_work_cap: usize,
-    /// `best_deck` calls without start decks, by what they read (`DeckKey`): the outcome and what the call did besides
+    /// `best_deck` calls without start decks, by what they read (`DeckSearchKey`): the outcome and what the call did besides
     /// (kept between jobs of one setup, `DECK_KEEP`)
-    deck_memo: crate::FxMap<DeckKey, DeckMemo>,
+    deck_memo: crate::FxMap<DeckSearchKey, DeckMemo>,
     /// `corners_kept`'s tables by (deck class, the deck's entries, filler), kept between jobs of one setup with `deck_memo`
     corner_memo: crate::FxMap<(UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
     /// the setup the memo is kept under, and this job's number
@@ -663,7 +663,7 @@ impl CareerRun<'_, '_> {
 
 /// The main search's answer: the reports of its careers (the race schedule only for the best one, the one the page
 /// shows; each takes a schedule search) and its counters.
-fn search_output(env: &mut Env, run: &CareerRun, sv: &Solved, search_work: Value, rho_top: f64) -> Value {
+fn search_output(env: &mut Env, run: &CareerRun, sv: &CareerSearchResult, search_work: Value, rho_top: f64) -> Value {
     let cj = run.job;
     let results: Vec<Value> = if cj.no_reports {
         vec![]
@@ -684,7 +684,7 @@ fn search_output(env: &mut Env, run: &CareerRun, sv: &Solved, search_work: Value
 }
 
 /// The job's `next`: the page's next career (`plan::index_rule`) on the main search `sv`.
-fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Solved, next: &Value) -> Value {
+fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &CareerSearchResult, next: &Value) -> Value {
     let cj = run.job;
     let settings = match serde_json::from_value::<crate::career::plan::PlanJob>(next.clone()) {
         Ok(settings) => settings,

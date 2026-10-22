@@ -128,7 +128,7 @@ fn handle(req: &str) -> serde_json::Value {
                 let dkb = dk.borrow();
                 let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
                 crate::deck::sources::apply_event_lists(&mut job, ev);
-                crate::deck::loops::run_deck(d, sk, cr, &job)
+                crate::deck::frontier::run_deck(d, sk, cr, &job)
             })
         }),
         // state_out / state_in read no events

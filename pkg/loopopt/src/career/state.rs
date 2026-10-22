@@ -2,7 +2,7 @@
 
 use crate::career::Env;
 use crate::career::pool::Pool;
-use crate::career::search::{Found, Ref, Solved};
+use crate::career::search::{CareerSearchResult, Found, Ref};
 use crate::deck::space::{MAX_DECK, SelectedDeck};
 use serde_json::{Value, json};
 /// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
@@ -73,7 +73,7 @@ thread_local! {
 pub(crate) struct KeptSolve {
     /// The job's key (`CareerRun::search_key`).
     pub(crate) key: u64,
-    pub(crate) solved: Solved,
+    pub(crate) solved: CareerSearchResult,
     /// What its product searches proved (`Env::ruled` as the search left it).
     pub(crate) ruled: Ruled,
 }
@@ -277,7 +277,7 @@ fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<crat
     Some(vv)
 }
 
-/// LAST_SOLVE as [key, search, proofs] per kept search: every field of `Solved`, floats as bit patterns
+/// LAST_SOLVE as [key, search, proofs] per kept search: every field of `CareerSearchResult`, floats as bit patterns
 fn solve_out() -> Value {
     LAST_SOLVE.with(|c| Value::Array(c.borrow().iter().map(|KeptSolve { key: k, solved: s, ruled: r }| json!([ux(*k), {
         "found": s.found.iter().map(found_out).collect::<Vec<_>>(), "refs": lists_out(&s.refs, ref_out),
@@ -295,7 +295,7 @@ fn solve_in(v: &Value) -> Option<Vec<KeptSolve>> {
             if n.len() != 6 {
                 return None;
             }
-            let sv = Solved {
+            let sv = CareerSearchResult {
                 found: s["found"].as_array()?.iter().map(found_in).collect::<Option<_>>()?,
                 refs: lists_in(&s["refs"], ref_in)?,
                 work: n[0],
@@ -367,7 +367,7 @@ impl Env<'_> {
     }
     /// a stored main search (`LAST_SOLVE`) of pool `p`: per uma its refs and product proofs, careers of its trainees and
     /// veterans
-    pub(crate) fn solved_fits(&self, sv: &Solved, ruled: &Ruled, p: &Pool) -> bool {
+    pub(crate) fn solved_fits(&self, sv: &CareerSearchResult, ruled: &Ruled, p: &Pool) -> bool {
         let n = self.data.umas.len();
         ruled.len() == n
             && ruled.iter().flatten().all(|proof| proof.inheritance_chances.len() == self.target_count)

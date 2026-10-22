@@ -63,7 +63,7 @@ pub(crate) struct SkillsRaw {
 }
 
 #[derive(Deserialize, Clone)]
-pub(crate) struct Target {
+pub(crate) struct SkillTarget {
     pub group: u32,
     /// 0 = none, 1 = white guaranteed, 2 = gold guaranteed
     #[serde(default)]
@@ -75,7 +75,7 @@ pub(crate) struct Target {
 }
 #[derive(Deserialize)]
 pub(crate) struct SkillJob {
-    pub targets: Vec<Target>,
+    pub targets: Vec<SkillTarget>,
     /// Assumed 1/2/3-star shares of the lineage's sparks; defaults to the below-17,500-rank mix (`dstar`).
     /// The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2).
     #[serde(default = "dstar")]
@@ -339,7 +339,7 @@ impl<'data> Model<'data> {
     /// 3 pb(P, X)), in both slots that read them. q rises with every affinity, so this is >= every such q in exact
     /// arithmetic. Not in the same order: a parent slot's affinity here is S + xm (S the terms before X's), where the
     /// lineage adds (S + tri) + 3 o, so the two can round apart by an ulp, and this can sit that much below a lineage's
-    /// q. Harmless where it is read (`multi.rs`: the q grid's top and each uma's ceiling cell), as the tests against
+    /// q. Harmless where it is read (`deck/loop_search.rs`: the q grid's top and each uma's ceiling cell), as the tests against
     /// those ceilings carry relative slacks of 1e-12 or more. With `rot` the X slot may also be the trainee's own
     /// character (a three-member rotation: tri(T, P, T) + 3·o(P, T), the trio 0).
     pub(crate) fn q_ub_trainee(&self, t: UmaIndex, pool: &[UmaIndex], pb: &UmaTable<UmaTable<f64>>, rot: bool) -> f64 {

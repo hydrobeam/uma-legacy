@@ -1,6 +1,5 @@
 //! Configuration traversal and its borrowed-card and state bounds.
 use crate::Instant;
-use crate::deck::capfree::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound, StateBoundConfig};
 use crate::deck::chains::{ChainKind, ChainState, chain_states};
 use crate::deck::enumerate::bounds::{DominanceRequest, OutfitRow, OutfitRun, SplitColumns};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationQueue, SearchConfig};
@@ -9,7 +8,10 @@ use crate::deck::enumerate::scratch::{ConfigScratch, GroupBounds, NodeScratch};
 use crate::deck::enumerate::walk::{ConfigurationContext, DeckConstraints, DeckCursor, WalkScratch};
 use crate::deck::enumerate::{ScoredDeck, SearchClause, SearchOutcome, SearchStop};
 use crate::deck::joint::{LandPre, MissFactors, SBN};
-use crate::deck::space::{DeckSpace, Dominator, EntryGroup, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck};
+use crate::deck::space::{
+    DeckSpace, Dominator, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck, TraversalEntryGroup,
+};
+use crate::deck::state_bound::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound, StateBoundConfig};
 use crate::skills::Model;
 use std::collections::HashMap;
 /// Immutable controls selected before traversal. Scalar copies do not change the search's buffers.
@@ -296,10 +298,10 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         let key_misses = space.key_miss(configuration.code);
         let (white_misses, gold_misses, touched_targets) =
             (&key_misses.white, &key_misses.gold, (&*key_misses.touched_targets));
-        let groups: Vec<EntryGroup<'_>> = configuration
+        let groups: Vec<TraversalEntryGroup<'_>> = configuration
             .groups
             .iter()
-            .map(|group| EntryGroup { entries: tables.groups_all[group.group], slots: group.slots })
+            .map(|group| TraversalEntryGroup { entries: tables.groups_all[group.group], slots: group.slots })
             .collect();
         // Per configured group: its blocks from the key's miss and ratio tables.
         // (blocks: group_misses[g]'s row r by `gm_w`, `gm_g`; group_ratios[g]'s column ix at ix (controls.size + 1))
@@ -483,7 +485,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
     fn dominance(
         &self,
         configuration: &SearchConfig,
-        groups: &[EntryGroup<'_>],
+        groups: &[TraversalEntryGroup<'_>],
         misses: EntryMisses<'_>,
     ) -> ConfigurationDominance {
         let SearchControl { use_dominance, set_id, .. } = self.controls;
@@ -594,7 +596,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
         &self,
         borrow_cache: &mut HashMap<BorrowKey, std::rc::Rc<BorrowBounds>>,
         configuration: &SearchConfig,
-        groups: &[EntryGroup<'_>],
+        groups: &[TraversalEntryGroup<'_>],
         misses: EntryMisses<'_>,
         ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
     ) -> BorrowTables {
@@ -669,7 +671,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
     fn state_cfg(
         &self,
         configuration: &SearchConfig,
-        groups: &[EntryGroup<'_>],
+        groups: &[TraversalEntryGroup<'_>],
     ) -> Option<std::rc::Rc<StateBoundConfig>> {
         let SearchControl { target_count, kind_count, set_id, state_bound_mode, .. } = self.controls;
         let (space, state_rows, filler, ng) =

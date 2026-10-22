@@ -121,7 +121,7 @@ pub(crate) enum DeckRes {
 
 #[derive(Clone)]
 /// (`cert`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see `Env::cert`)
-pub(crate) struct Solved {
+pub(crate) struct CareerSearchResult {
     pub(crate) found: Vec<Found>,
     pub(crate) refs: UmaTable<Vec<Ref>>,
     pub(crate) work: usize,
@@ -459,7 +459,7 @@ impl Env<'_> {
         trainees: &[UmaIndex],
         per_trainee: bool,
         top: usize,
-    ) -> Solved {
+    ) -> CareerSearchResult {
         let d = self.data;
         self.work = 0; // each search has its own work budget
         let cert0 = std::mem::replace(&mut self.cert, f64::INFINITY);
@@ -688,7 +688,7 @@ impl Env<'_> {
         let n = cands.len();
         let cert = self.cert;
         self.cert = cert0.min(cert);
-        Solved {
+        CareerSearchResult {
             found: done
                 .into_iter()
                 .take(top)
@@ -848,7 +848,7 @@ pub(crate) struct SearchRequest<'request> {
 
 /// The main search of the job keyed `key` (`LAST_SOLVE`): the kept one, with what its product searches proved
 /// (`env.ruled` as a combined job's plan finds it), else searched now and kept
-pub(crate) fn solve_kept(env: &mut Env, key: u64, request: &SearchRequest) -> Solved {
+pub(crate) fn solve_kept(env: &mut Env, key: u64, request: &SearchRequest) -> CareerSearchResult {
     let kept = LAST_SOLVE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let index = cache.iter().position(|entry| entry.key == key)?;

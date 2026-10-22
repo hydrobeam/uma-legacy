@@ -8,7 +8,7 @@ use crate::career::plan::search::legal_pair;
 use crate::career::plan::step::{CandidateLift, Lo, OwnFullLanding, StepScratch, v_after};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
 use crate::career::pool::{Pool, holds_fix};
-use crate::career::search::{DeckRes, Solved};
+use crate::career::search::{CareerSearchResult, DeckRes};
 use crate::career::sim::Sim;
 use crate::career::{Career, Env, Lineage};
 /// Ceiling factors are flattened [outfit][uncertain target][star level].
@@ -1221,7 +1221,7 @@ pub(crate) fn pick_her(
 /// `outcome_hi`'s found-career anchors: per found career of the main search `msv` (its order), (her deck class, q_f,
 /// val_f) when the search fully checked it (a Ref at the career's own chances: val_f is the best value of any deck at q_f
 /// for every trainee of the class, `Env::seen`, scale 1), else none
-pub(crate) fn found_anchors(env: &Env, pool: &Pool, msv: &Solved) -> Vec<Option<FoundAnchor>> {
+pub(crate) fn found_anchors(env: &Env, pool: &Pool, msv: &CareerSearchResult) -> Vec<Option<FoundAnchor>> {
     msv.found
         .iter()
         .map(|f| {

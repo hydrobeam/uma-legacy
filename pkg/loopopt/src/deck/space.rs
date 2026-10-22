@@ -1,10 +1,10 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
-use crate::deck::capfree::StateBoundConfig;
 use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class, cv_mask, test_caps};
 use crate::deck::chains::{ChainKind, chain_marginals};
+use crate::deck::dominance::{Name, PDeck};
 use crate::deck::joint::MissFactors;
-use crate::deck::kept::{Name, PDeck};
 use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources, src_miss};
+use crate::deck::state_bound::StateBoundConfig;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::skills::{Model, OutfitOption, SkillsRaw};
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ pub(crate) struct GroupSlots {
 
 /// A configured group with its legal entry indices borrowed for traversal.
 #[derive(Clone, Copy)]
-pub(crate) struct EntryGroup<'entries> {
+pub(crate) struct TraversalEntryGroup<'entries> {
     /// Entries in the unchanged pick order.
     pub(crate) entries: &'entries [usize],
     pub(crate) slots: usize,

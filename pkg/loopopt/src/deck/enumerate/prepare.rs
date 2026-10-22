@@ -1,6 +1,5 @@
 //! Search legality and the shared bounds used by enumeration.
 use crate::Instant;
-use crate::deck::capfree::{CapFreeRatios, LandingBoundTables};
 use crate::deck::chains::ChainKind;
 use crate::deck::enumerate::bounds::{
     OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds, prepare_ratio_prefixes, rb_check,
@@ -12,6 +11,7 @@ use crate::deck::enumerate::{
 };
 use crate::deck::joint::{CF_LIM, CF_ON, LandPre, SB_ON, SB_USED, cf_check, sb_mode, src_levels};
 use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SPT, SelectedDeck, gm_g, gm_w, top_desc};
+use crate::deck::state_bound::{CapFreeRatios, LandingBoundTables};
 use crate::skills::Model;
 impl DeckSpace<'_> {
     /// Resolve legality and proof modes before preparing configuration bounds or visiting a deck.

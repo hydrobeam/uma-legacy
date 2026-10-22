@@ -6,7 +6,7 @@ use self::tables::{
 };
 use crate::Instant;
 use crate::data::{Choice, Data, NT, Sched, Uma, feasible};
-use crate::deck::kept::{Cl, Name, PDeck};
+use crate::deck::dominance::{Cl, Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
 use crate::deck::{Card, CardsRaw, DeckJob};
@@ -120,7 +120,7 @@ struct SelectionKey {
 }
 /// A deck's identity in the shared-deck results: (card ids, end links, variants, plain pals)
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct DeckKey {
+struct SharedDeckKey {
     card_ids: Vec<u32>,
     end_links: Vec<u8>,
     variants: Vec<u32>,
