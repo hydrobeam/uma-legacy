@@ -48,6 +48,7 @@
 !/webapp/package.json
 !/webapp/package-lock.json
 !/webapp/biome.json
+!/webapp/tsconfig.json
 !/val/
 /val/*
 !/val/runval.py

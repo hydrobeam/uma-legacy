@@ -1,6 +1,6 @@
 // ---------- roster: one tile per outfit ----------
 // Owned / not owned, per outfit (solver: exclude + exclude_outfits).
-import { $ } from './dom.js';
+import { $, $input } from './dom.js';
 import { UMAS } from './data.js';
 import { state } from './state.js';
 import { umaAv } from './images.js';
@@ -8,10 +8,12 @@ import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
 const STATE_LABEL = { own: 'owned', out: 'not owned' };
 // her ownership: 'out' when marked not owned or every outfit of hers is, else her roster mark ('own' by default)
+/** @param {import('./data.js').Uma} u @returns {'own'|'out'} */
 export function umaState(u) {
   const outfits = u.outfits || [], mark = state.roster[u.id] || 'own';
   return mark === 'own' && outfits.length && outfits.every(o => state.outfits[o.id] === false) ? 'out' : mark;
 }
+/** @type {(u: import('./data.js').Uma) => boolean} every outfit of hers is marked not owned */
 export const noOutfit = (u) => (u.outfits || []).length > 0 && u.outfits.every(o => state.outfits[o.id] === false);
 // one tile's ownership: the uma's mark, else the outfit's (o null: an uma without outfits in the data)
 const tileState = (u, o) => state.roster[u.id] === 'out' || (o && state.outfits[o.id] === false) ? 'out' : 'own';
@@ -21,6 +23,10 @@ const tileOutfits = (u) => u.outfits?.length ? u.outfits : [null];
 // target the same way; empty when none of hers covers one). Among the offered, the first; with none offered, among your
 // owned outfits her original (<id>01), else the first.
 // Returns { list: the chosen first, then the other offered ones (equally good), any: no outfit of hers covers a target }
+/**
+ * @typedef {{list: {id: number, label: string}[], any: boolean}} OutfitPick
+ * @param {number} id a character id @param {{id: number, label: string}[]} [offered] @returns {OutfitPick}
+ */
 export function pickOutfit(id, offered = []) {
   const u = UMAS.find(x => x.id === id), mine = (u?.outfits || []).filter(o => state.outfits[o.id] !== false);
   if (offered.length) return { list: offered, any: false };
@@ -28,6 +34,7 @@ export function pickOutfit(id, offered = []) {
   return { list: chosen ? [{ id: chosen.id, label: chosen.label }] : [], any: true };
 }
 // what her popup says about the outfit chosen: that any of hers would do, or the equally good others
+/** @type {(pick: OutfitPick) => string} */
 export const outfitNote = (pick) => pick.any ? 'Any outfit works: none of hers covers a target.'
   : pick.list.length > 1 ? `Also works: ${pick.list.slice(1).map(o => o.label).join(', ')}.` : '';
 function rosterCount() {
@@ -38,14 +45,15 @@ function rosterCount() {
 }
 // after an ownership change: every tile's look (or her tiles only) and the count; the list itself stays (its order
 // doesn't depend on ownership)
+/** @param {number|null} [umaId] her tiles only */
 export function paintRoster(umaId = null) {
-  for (const tile of $('roster').children) if (umaId == null || +tile.dataset.uma === umaId) tile._paint();
+  for (const tile of /** @type {HTMLCollectionOf<HTMLElement>} */ ($('roster').children)) if (umaId == null || +tile.dataset.uma === umaId) tile._paint();
   rosterCount();
 }
 // the filter hides tiles (name or outfit containing the text) instead of rebuilding the list on every keystroke
 function filterRoster() {
-  const filter = $('r-filter').value.trim().toLowerCase();
-  for (const tile of $('roster').children) tile.hidden = !!filter && !tile._searchName.includes(filter) && !tile._outfitLabel.includes(filter);
+  const filter = $input('r-filter').value.trim().toLowerCase();
+  for (const tile of /** @type {HTMLCollectionOf<HTMLElement>} */ ($('roster').children)) tile.hidden = !!filter && !tile._searchName.includes(filter) && !tile._outfitLabel.includes(filter);
 }
 // a click on a tile: owned <-> not owned, for its outfit (or the uma, on a tile without one)
 function toggleTile(u, o) {
@@ -89,7 +97,7 @@ export function renderRoster() {
 }
 export function initRoster() {
   sortMenu('rs', 'r', () => renderRoster());
-  $('r-filter').oninput = filterRoster;
+  $input('r-filter').oninput = filterRoster;
   $('r-all').onclick = () => { state.roster = {}; state.outfits = {}; save(); paintRoster(); };
   $('r-none').onclick = () => { for (const u of UMAS) state.roster[u.id] = 'out'; save(); paintRoster(); };
 }

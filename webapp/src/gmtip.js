@@ -24,17 +24,17 @@ function tipHide() {
 }
 // moving onto a child of the element showing its balloon keeps it (its title is lifted, so a lookup for [title] would
 // find an ancestor, put the title back and the browser would show its own tooltip beside ours)
-document.addEventListener('mouseover', (e) => {
+document.addEventListener('mouseover', (/** @type {TargetedEvent} */ e) => {
   if (tipFor?.contains(e.target)) return;
   const target = e.target.closest?.('[title]');
   tipHide();
   if (target) tipTimer = setTimeout(() => tipShow(target), 400);
 });
-document.addEventListener('mouseout', (e) => {
+document.addEventListener('mouseout', (/** @type {TargetedEvent<Element, MouseEvent & {relatedTarget: Element | null}>} */ e) => {
   const keep = tipFor || e.target.closest?.('[title]');
   if (!e.relatedTarget || !keep?.contains(e.relatedTarget)) tipHide();
 });
-document.addEventListener('focusin', (e) => {
+document.addEventListener('focusin', (/** @type {TargetedEvent} */ e) => {
   const target = e.target.closest?.('[title]');
   tipHide();
   if (target && e.target.matches(':focus-visible')) tipShow(target);

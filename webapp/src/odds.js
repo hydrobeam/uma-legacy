@@ -1,6 +1,7 @@
 // ---------- the odds popup (both planner pages): the chance of landing exactly k of the n targets ----------
 import { el, backdropCloses } from './dom.js';
 // under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
+/** @type {(p: number) => string} */
 export const pct = (p) => {
   const percent = p * 100;
   if (p === 0) return '0%';
@@ -11,6 +12,7 @@ export const pct = (p) => {
 // the dialog, made on first use; `opener`: the element focused before it opened, focused again when it closes
 let dialog = null, opener = null;
 // ex[k]: the chance of exactly k (k = 0 .. n); pAll: the all-n figure shown (the solver's exact one); expected: the mean count
+/** @param {{title: string, n: number, ex: number[], pAll: number, expected: number}} spec */
 export function openOdds({ title, n, ex, pAll, expected }) {
   opener = document.activeElement;
   if (!dialog) {

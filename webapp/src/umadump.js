@@ -56,6 +56,7 @@ function records(json) {
 // a veteran per top position ("p1", "p2", ...) with her parents at "p1-1" and "p1-2". A spark's factorId x 10 + its level
 // is the game's factor_id (master.mdb succession_factor); saddle ids are the game's win saddles. null when the text is not
 // one; its veterans count as yours (the export doesn't say)
+/** @param {string} text @returns {import('./vets.js').Veteran[]|null} */
 export function parseTree(text) {
   let json; try { json = JSON.parse(text); } catch { return null; }
   if (json?.type !== 'lineage-planner' || !Array.isArray(json.payload)) return null;
@@ -67,6 +68,7 @@ export function parseTree(text) {
   }));
 }
 // veterans from umadump's export text; throws an Error with a message for the page when it is not an export
+/** @param {string} text @returns {import('./vets.js').Veteran[]} */
 export function parseExport(text) {
   let json; try { json = JSON.parse(text); } catch { throw new Error('That is not JSON. Pick umadump\'s trained_chara_data.json or rental_chara_data.json.'); }
   const found = records(json);

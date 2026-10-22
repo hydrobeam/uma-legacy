@@ -1,7 +1,7 @@
 // ---------- race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all of them ----------
 // One member (the career page): no "All three" / "All four" tab; `shared` then means a parent won the race (it builds affinity when
 // she is a parent herself).
-import { $, esc } from './dom.js';
+import { $, $dialog, esc } from './dom.js';
 import { RACEIDS } from './data.js';
 import { umaAv, srcFor } from './images.js';
 import { pickOutfit } from './roster.js';
@@ -67,6 +67,7 @@ const turnName = (turn) => `${YEARS[(turn / 24) | 0]} Year, ${turn % 2 ? 'Late' 
 // July); fill(year, slot index, slot element) fills each slot
 // On the planner pages (html.game) it is the game's Scheduled Races, all three years side by side: each year 4 x 6 slots, Junior's
 // first three rows the game's grey cells for April to June (labelled as the game labels them, each half-month twice).
+/** @param {(year: number, slot: number, cell: HTMLElement) => void} fill @returns {HTMLDivElement} */
 export function agendaGrid(fill) {
   const game = document.documentElement.classList.contains('game');
   const ag = document.createElement('div'); ag.className = `agenda${game ? ' game' : ''}`;
@@ -193,7 +194,7 @@ export function winsAgenda(opts) {
     menu.textContent = ''; menu.setAttribute('aria-label', `${turnName(turn)}: G1s held`);
     const h = document.createElement('p'); h.className = 'hint'; h.textContent = `${turnName(turn)}: which G1 did she win?`; menu.appendChild(h);
     const inSchedule = (ix) => info(ix)?.turn === turn;
-    for (const ix of [...offered].sort((x, y) => inSchedule(y) - inSchedule(x) || raceName.get(x).localeCompare(raceName.get(y)))) {
+    for (const ix of [...offered].sort((x, y) => Number(inSchedule(y)) - Number(inSchedule(x)) || raceName.get(x).localeCompare(raceName.get(y)))) {
       // each race as its banner (the name stays for the screen reader and when the banner is missing)
       const b = document.createElement('button'); b.type = 'button'; b.className = 'btn wpick'; b.title = raceName.get(ix);
       const bn = banner(raceName.get(ix)); if (bn) { bn.loading = 'eager'; b.appendChild(bn); b.classList.add('art'); }
@@ -216,7 +217,7 @@ export function winsAgenda(opts) {
   menu.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(true); return; }
     if (e.key !== 'Tab') return;
-    const buttons = [...menu.querySelectorAll('button')], i = buttons.indexOf(document.activeElement);
+    const buttons = [...menu.querySelectorAll('button')], i = buttons.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
     if (!buttons.length || (e.shiftKey ? i <= 0 : i === buttons.length - 1)) { e.preventDefault(); closeMenu(true); }
   });
   draw();
@@ -224,12 +225,13 @@ export function winsAgenda(opts) {
 }
 // the race schedule window: one tab per member, her races on the calendar
 // loop: {members: [{id, name, short?}], outfits: [{outfits}] (per member), schedule: ScheduleRow[]}
+/** @param {{members: {id: number, name: string, short?: string}[], outfits: {outfits: {id: number, label: string}[]}[], schedule: ScheduleRow[]}} loop */
 export function openSched(loop) {
   const members = loop.members, schedule = loop.schedule, body = $('sched-body'); body.textContent = '';
   const outfitOf = (k) => pickOutfit(loop.members[k].id, loop.outfits[k].outfits).list[0]?.id ?? null;
   const head = document.createElement('div'); head.className = 'row between dhead';   // stays at the top while the dialog scrolls
   head.innerHTML = '<h3 id="sched-title">Race schedule</h3>';
-  const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('sched-dlg').close(); head.appendChild(close);
+  const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $dialog('sched-dlg').close(); head.appendChild(close);
   const tabs = document.createElement('div'); tabs.className = 'stabs'; tabs.setAttribute('role', 'tablist');
   const view = document.createElement('div'); view.className = 'sview'; view.id = 'sched-view'; view.setAttribute('role', 'tabpanel');
   // tabs: one in the Tab order (the selected), the arrows (and Home/End) move between them and select
@@ -242,7 +244,7 @@ export function openSched(loop) {
   if (!single) btns.push(tabBtn('all', members.length === 3 ? 'All three' : 'All four', null));
   const tabKey = (j) => (j === members.length ? 'all' : j);
   tabs.addEventListener('keydown', (e) => {
-    const i = btns.indexOf(document.activeElement); if (i < 0) return;
+    const i = btns.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement)); if (i < 0) return;
     const to = { ArrowRight: (i + 1) % btns.length, ArrowLeft: (i - 1 + btns.length) % btns.length, Home: 0, End: btns.length - 1 }[e.key];
     if (to === undefined) return; e.preventDefault(); show(tabKey(to)); btns[to].focus(); });
   const keyEl = document.createElement('span'); keyEl.className = 'agkey';
@@ -275,7 +277,7 @@ export function openSched(loop) {
     });
     view.appendChild(ag);
   }
-  body.append(head, tabs, view); show(0); $('sched-dlg').showModal();
+  body.append(head, tabs, view); show(0); $dialog('sched-dlg').showModal();
 }
 // the "All three" / "All four" tab: every member's schedule as one table
 // (turns written as on the member tabs, "Early Apr", the year being the group row; the members' columns headed by their

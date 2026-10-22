@@ -19,8 +19,46 @@ import { openOdds } from './odds.js';
  * @property {number[]} [end_chain_at] per card: the chain link to end its story at (0: none)
  * @property {string[]} [choices] per card: the skill to prioritise at its chain link
  * @property {{group: number, white: number, gold: number}[]} odds per target: the chance the deck hints its white, its gold
+ * @property {number[]} [plain_ids] the plain pals' ids
+ * @property {number} [pals] how many pals it holds
+ * @property {string|null} [borrowed] the borrowed card, by name (null: none)
+ *
+ * A member of a loop (skills.rs `member_json`).
+ * @typedef {{id: number, name: string, short: string}} LoopMember
+ *
+ * A loop in a result (deck/multi.rs `loop_json`); member k is `members[k]`, with `outfits[k]` and `per_trainee[k]`.
+ * @typedef {object} ResultLoop
+ * @property {LoopMember[]} members
+ * @property {number} p_all  the chance every member lands every target
+ * @property {number} p_minus1  the chance each lands all but at most one
+ * @property {number} rank_value  what the results are ranked by
+ * @property {{outfits: {id: number, label: string}[], covers: {group: number, level: number}[]}[]} outfits  per member: her
+ *   outfits that cover a target, and what they cover
+ * @property {number[]} per_trainee  per member: her chance of landing every target
+ * @property {number[]} [landed]  the chance of landing exactly k targets, k = 0 ..= n, averaged over the loop's careers
+ * @property {import('./agenda.js').ScheduleRow[]} schedule  the race schedule (`chart_rows`)
+ * @property {{lineages: import('./affinity.js').Lineage[]}} detail  the affinity detail
+ *
+ * One result of the loop search: the loop and its deck.
+ * @typedef {object} LoopResult
+ * @property {ResultLoop} loop
+ * @property {ResultDeck} deck  the deck most members share (one deck for the loop: that deck)
+ * @property {ResultDeck[]} [decks]  per member, when each has her own
+ *
+ * The loop search's report (deck/multi.rs), or its refusal (`error`).
+ * @typedef {object} LoopReport
+ * @property {string} [error]  why it did not search
+ * @property {LoopResult[]} top  the best loops, best first
+ * @property {boolean} per_uma  a deck per member (false: one deck for the loop)
+ * @property {number} decks_built  decks the search built
+ * @property {number} foursomes  loop structures the job's sizes allow
+ * @property {boolean} proven  the search ended by its stop rule: no unexamined loop can win
+ * @property {{rho: number, rho_target: number, complete: boolean}} exact  what the answer rests on (`exact_json`): the
+ *   highest cap certified, the one sought, and whether the search ended by its stop rule
  */
+/** @param {ResultLoop} loop */
 const loopKey = (loop) => loop.members.map((m, k) => `${m.id}:${loop.outfits[k].outfits.map(o => o.id).join('/')}`).join(' ');
+/** @param {ResultDeck} deck */
 const deckKey = (deck) => deck.cards.join('|');
 const SHOWN = 0.005;   // hint odds and their changes under half a percent are not shown
 // the chance of at least the white: a gold hint counts for the white too
@@ -31,6 +69,7 @@ const iconHTML = (group, gold) => { const icon = skillIcon(group, gold); return 
 const borrowedLast = (deck, indices) => borLast(deck.cards).filter(i => indices.includes(i));
 const allIndices = (list) => list.map((_, i) => i);
 // one card of a deck as a button opening its panel: its art, name and title, and what to do with it in IT
+/** @param {ResultDeck} deck @param {number} i the card's place in it */
 function cardChip(deck, i) {
   const named = deck.cards[i], pals = new Set(deck.pal_cards || []);
   const borrowed = /\(borrowed\)$/.test(named), base = named.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
@@ -48,6 +87,7 @@ function cardChip(deck, i) {
 // per target the deck can hint: the gold's odds, then the white's (the chance of at least the white): the two numbers
 // the landing odds depend on. Shown on demand (the (i) button by the deck's title): one tile per hint: icon, name and
 // percentage over a bar (the icons alone don't tell skills apart: the game draws one icon per effect type)
+/** @param {ResultDeck} deck */
 function hintOddsHTML(deck) {
   const tile = (group, gold, name, p, tip) => {
     const percent = Math.round(p * 100);
@@ -65,6 +105,7 @@ function hintOddsHTML(deck) {
 // largest change first; two shown, a click on the list shows them all (and again folds it). who: the members on
 // that deck; a hint all of them have on their own outfit's skill list is no change for them (its gold: they have the
 // gold; the white: they have at least the white), so it isn't listed (her deck drops it because she doesn't need it)
+/** @param {ResultLoop} loop @param {ResultDeck} shared @param {ResultDeck} deck @param {number[]} who */
 function swapDeltasHTML(loop, shared, deck, who) {
   const before = new Map(shared.odds.map(o => [o.group, o])), changes = [];
   const ownLevel = (group) => Math.min(...who.map(k => (loop.outfits[k].covers.find(c => c.group === group) || { level: 0 }).level));
@@ -85,11 +126,13 @@ function swapDeltasHTML(loop, shared, deck, who) {
 const INFO_BUTTON = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
 // a member's portrait (her outfit's when the loop fixes one): a button opening her panel, as her name at the top does,
 // with her name as its tooltip
+/** @param {ResultLoop} loop @param {number} k the member @param {number} size in px */
 function faceButton(loop, k, size) {
   const member = loop.members[k], outfits = loop.outfits[k].outfits, one = outfits.length === 1;
   const avatar = umaAv(member.id, one ? outfits[0].id : null, size), name = member.name + (one ? ` ${outfits[0].label}` : '');
   return `<button type="button" class="facebtn" data-uma="${member.id}" title="${esc(name)}" aria-label="${esc(name)}" aria-haspopup="dialog" aria-expanded="false">${avatar.outerHTML}</button>`;
 }
+/** @param {ResultDeck} deck @param {string} title markup */
 function deckBlock(deck, title) {
   const block = document.createElement('div'); block.className = 'deck';
   block.innerHTML = `<div class="dtitle"><b>${title}</b></div>${INFO_BUTTON}<div class="dcards">${borrowedLast(deck, allIndices(deck.cards)).map(i => cardChip(deck, i)).join('')}</div>${hintOddsHTML(deck)}`;
@@ -97,6 +140,7 @@ function deckBlock(deck, title) {
 }
 // another member's deck by its changes to the shared one, one row: her face (each with her name as its tooltip), the
 // cards that go (greyed) ➜ the cards that come in, and what it does to the odds. `who`: the members on this deck
+/** @param {ResultLoop} loop @param {ResultDeck} shared @param {ResultDeck} deck @param {number[]} who */
 function swapRow(loop, shared, deck, who) {
   const names = who.map(k => loop.members[k].name);
   const whose = `${names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`}’s deck`;   // "X’s deck", "X and Y’s deck"
@@ -110,6 +154,7 @@ function swapRow(loop, shared, deck, who) {
   return row;
 }
 // the deck(s) of a result into its card: one deck for all, or the deck most members share and the swaps from it
+/** @param {HTMLElement} card @param {ResultLoop} loop @param {ResultDeck} shared @param {ResultDeck[]|null} decks per member */
 function appendDecks(card, loop, shared, decks) {
   const members = loop.members;
   if (!decks || decks.every(d => deckKey(d) === deckKey(shared))) {
@@ -141,6 +186,7 @@ function appendDecks(card, loop, shared, decks) {
 }
 // the loop's members: face and name (a button opening her panel), the outfit named, the targets on her own outfit's
 // skill list (she has them when she is the trainee) and the odds with her as the trainee
+/** @param {ResultLoop} loop */
 function membersEl(loop) {
   const box = document.createElement('div'); box.className = `members${loop.members.length === 3 ? ' n3' : ''}`;
   loop.members.forEach((m, k) => {
@@ -149,7 +195,7 @@ function membersEl(loop) {
     const pick = pickOutfit(m.id, offered.outfits), outfit = pick.list[0]?.label || '';
     member.innerHTML = `<button type="button" class="head memb" aria-haspopup="dialog" aria-expanded="false"><span class="nm"></span></button><span class="of"></span><span class="sk"></span>` +
       `<span class="own" title="The odds that every target lands in a run with her as the trainee">as trainee: <span class="num">${fmtIn(loop.per_trainee[k])}</span></span>`;
-    member.dataset.uma = m.id; member.dataset.outfit = offered.outfits.length === 1 ? offered.outfits[0].id : '';
+    member.dataset.uma = String(m.id); member.dataset.outfit = String(offered.outfits.length === 1 ? offered.outfits[0].id : '');
     member.dataset.outfitLabel = outfit; member.dataset.outfitNote = outfitNote(pick);
     member.querySelector('.nm').textContent = m.name; member.querySelector('.of').textContent = outfit;
     member.querySelector('.head').prepend(umaAv(m.id, pick.list[0]?.id ?? null, 38));
@@ -167,6 +213,7 @@ function membersEl(loop) {
 const smallButton = (text) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn sbtn'; b.textContent = text; return b; };
 // the result's dialogs: the odds of each count landed (the solver's, exact over the landed sets, as the career
 // planner's), the race schedule and the affinity
+/** @param {ResultLoop} loop @param {number} n how many targets */
 function actionsEl(loop, n) {
   const row = document.createElement('div'); row.className = 'row lacts';
   if (loop.landed) {
@@ -180,6 +227,11 @@ function actionsEl(loop, n) {
 }
 // one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
 // only one result is shown), top: the #1 result (to say what differs from it)}
+/**
+ * @param {ResultLoop} loop
+ * @param {RenderMeta & {deck: ResultDeck, decks: ResultDeck[]|null}} meta
+ * @param {{rank: number, top: LoopResult}} ctx
+ */
 function loopCard(loop, meta, ctx) {
   const n = meta.targets.length;
   const card = document.createElement('article'); card.className = `loop${ctx.rank <= 1 ? ' first' : ''}`;
@@ -196,6 +248,12 @@ function loopCard(loop, meta, ctx) {
 // the game's green arrow (white-edged, dark green outline) between the card that goes and the one that comes in
 const ARROW = '<svg viewBox="0 0 30 24" width="30" height="24" focusable="false"><path d="M2 8h13V2.5L28 12 15 21.5V16H2z" fill="#7ecf08" stroke="#3c7a00" stroke-width="2" stroke-linejoin="round"/>'
   + '<path d="M4.5 10h12.5V7.3L24 12" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+/**
+ * What a result is drawn for.
+ * @typedef {object} RenderMeta
+ * @property {{group: number}[]} targets  the job's targets
+ */
+/** @param {LoopReport} res a report with at least one loop @param {RenderMeta} meta */
 export function renderDeck(res, meta) {
   // focus inside the old result (an open panel's Owned switch, say) would fall back to the page top: keep it in the results
   const box = $('results'), refocus = popHasFocus() || box.contains(document.activeElement);

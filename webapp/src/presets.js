@@ -4,7 +4,7 @@
 // The list: per preset its name and count (a click opens its skills as the editor's tiles, with Rename), Load, Overwrite
 // (with the targets now) and a trash can; under it, Save current skills opens a small popup for the name (offered as
 // "Preset N+1", N the presets now). Starting from a preset is load, edit the targets, save under a new name.
-import { $, el, backdropCloses } from './dom.js';
+import { $, $dialog, $input, el, backdropCloses } from './dom.js';
 import { PRESET } from './data.js';
 import { state } from './state.js';
 import { save } from './save.js';
@@ -24,6 +24,10 @@ export const loadExample = () => apply(PRESET);   // the planner's "no targets" 
 
 // imported presets join the player's (an import never deletes one): an identical one is skipped, a different one under
 // a taken name comes in as "name (imported)"
+/**
+ * @typedef {{name: string, groups: number[]}} Preset  a named set of target skill groups
+ * @param {Preset[]|null|undefined} mine @param {Preset[]} theirs @returns {Preset[]}
+ */
 export function mergePresets(mine, theirs) {
   const out = (mine || []).map(p => ({ name: p.name, groups: [...p.groups] }));
   for (const p of theirs) {
@@ -53,14 +57,14 @@ function renderList(msg = '') {
     if (sameSkills(p.groups, current)) { row.classList.add('cur'); view.append(el('span', 'pcur', 'current')); }
     view.onclick = () => openView(p);
     const buttons = el('div', 'pbtns'), button = (text) => { const b = el('button', 'btn', text); b.type = 'button'; buttons.append(b); return b; };
-    button('Load').onclick = () => { apply(p.groups); $('preset-dlg').close(); };
+    button('Load').onclick = () => { apply(p.groups); $dialog('preset-dlg').close(); };
     button('Overwrite').onclick = () => { p.groups = [...current]; save(); renderList(`Overwrote “${p.name}” with your ${skillCount(current.length)}.`); };
     const trash = button(''); trash.classList.add('ptrash'); trash.innerHTML = TRASH; trash.setAttribute('aria-label', 'Delete'); trash.title = 'Delete';
     trash.onclick = () => { state.presets = state.presets.filter(q => q !== p); save(); renderList(`Deleted “${p.name}”.`); };
     row.append(view, buttons); box.append(row);
   }
   $('pr-msg').textContent = msg;
-  $('pr-save').disabled = !state.targets.length;
+  /** @type {HTMLButtonElement} */ ($('pr-save')).disabled = !state.targets.length;
   $('pr-save').title = state.targets.length ? '' : 'Add target skills first';
 }
 
@@ -72,14 +76,14 @@ function openView(p) {
   for (const g of p.groups) box.append(tileEl(g));
   if (!p.groups.length) box.append(el('p', 'hint', 'No skills.'));
   renameMode(false);
-  $('pr-view').showModal();
+  $dialog('pr-view').showModal();
 }
 function renameMode(on) {
   $('prv-ren').hidden = !on; $('prv-rename').textContent = on ? 'Save name' : 'Rename';
-  if (on) { const input = $('prv-name'); input.value = viewing.name; input.focus(); input.select(); }
+  if (on) { const input = $input('prv-name'); input.value = viewing.name; input.focus(); input.select(); }
 }
 function commitRename() {
-  const name = $('prv-name').value.trim();
+  const name = $input('prv-name').value.trim();
   if (!name || name === viewing.name) { renameMode(false); return; }
   if (nameTaken(name, viewing)) { $('prv-msg').textContent = `“${name}” is taken: names are unique.`; return; }
   const old = viewing.name; viewing.name = name; save();
@@ -87,24 +91,24 @@ function commitRename() {
 }
 
 function saveNew() {
-  const name = $('prn-name').value.trim().slice(0, NAME_MAX);
+  const name = $input('prn-name').value.trim().slice(0, NAME_MAX);
   if (!name) { $('prn-msg').textContent = 'Give it a name.'; return; }
   if (nameTaken(name)) { $('prn-msg').textContent = `“${name}” is taken: pick another name, or use that preset's Overwrite.`; return; }
   state.presets = [...state.presets, { name, groups: state.targets.map(t => t.group) }]; save();
-  $('pr-new').close(); renderList(`Saved “${name}”.`);
+  $dialog('pr-new').close(); renderList(`Saved “${name}”.`);
 }
 
 export function initPresets(render) {
   rerender = render;
-  const list = $('preset-dlg'); if (!list) return;
+  const list = $dialog('preset-dlg'); if (!list) return;
   $('t-preset').onclick = () => { renderList(); list.showModal(); };
-  for (const dialog of [list, $('pr-new'), $('pr-view')]) { backdropCloses(dialog); dialog.querySelectorAll('.dclose').forEach(done => { done.onclick = () => dialog.close(); }); }
+  for (const dialog of [list, $dialog('pr-new'), $dialog('pr-view')]) { backdropCloses(dialog); dialog.querySelectorAll('.dclose').forEach(done => { done.onclick = () => dialog.close(); }); }
   $('pr-save').onclick = () => { if (!state.targets.length) return;
-    $('prn-name').value = suggestName(); $('prn-msg').textContent = ''; $('pr-new').showModal(); $('prn-name').select(); };
+    $input('prn-name').value = suggestName(); $('prn-msg').textContent = ''; $dialog('pr-new').showModal(); $input('prn-name').select(); };
   $('prn-save').onclick = saveNew;
-  $('prn-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); saveNew(); } };
+  $input('prn-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); saveNew(); } };
   $('prv-rename').onclick = () => { if ($('prv-ren').hidden) renameMode(true); else commitRename(); };
-  $('prv-name').onkeydown = (e) => {
+  $input('prv-name').onkeydown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renameMode(false); }   // the rename, not the popup
   };

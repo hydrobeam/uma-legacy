@@ -18,7 +18,7 @@ const focusables = () => [...pop.querySelectorAll('input, a[href], button')];
 function back() { const opener = popFor; closePop(); if (opener?.isConnected) opener.focus(); }
 pop.addEventListener('keydown', (e) => {
   if (e.key !== 'Tab') return;
-  const items = focusables(), i = items.indexOf(document.activeElement);
+  const items = focusables(), i = items.indexOf(/** @type {HTMLElement} */ (document.activeElement));
   if (!items.length || (e.shiftKey ? i <= 0 : i === items.length - 1)) { e.preventDefault(); back(); }
 });
 export function markOwn() {
@@ -56,6 +56,7 @@ function openUmaPop(btn, member = btn.closest('.mem')) {   // member: her member
     `<div class="pfoot"><label class="sw"><input type="checkbox" role="switch" data-act="uma"${owned() ? ' checked' : ''}>Owned</label>` +
     `<a class="gtl" href="${umaUrl(u, outfitId)}" target="_blank" rel="noopener">GameTora ↗︎</a></div>`;
   placePop(btn);
+  /** @type {HTMLInputElement} */
   const toggle = pop.querySelector('[data-act="uma"]');
   toggle.onchange = () => {
     if (toggle.checked) {
@@ -93,13 +94,14 @@ function openCardPop(chip) {
     `<div class="pfoot">${c && !borrowed ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${owned ? ' checked' : ''}>Owned</label>` : '<span></span>'}` +
     `${c ? `<a class="gtl" href="${gametoraUrl(c)}" target="_blank" rel="noopener">GameTora ↗︎</a>` : ''}</div>`;
   placePop(chip, true);
+  /** @type {HTMLInputElement} */
   const toggle = pop.querySelector('[data-act="own"]');
   if (toggle) toggle.onchange = () => { if (toggle.checked) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); paintCards(); markOwn(); };
 }
 // a click on what is already open closes it; on another card or name, its panel opens instead
 const toggleFor = (button, open) => { if (popFor === button) closePop(); else open(); };
 export function initPopover() {
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', (/** @type {TargetedEvent} */ e) => {
     const chip = e.target.closest('.deck .dc'), name = e.target.closest('.mem .memb');
     if (chip) { toggleFor(chip, () => openCardPop(chip)); return; }
     if (name) { toggleFor(name, () => openUmaPop(name)); return; }
