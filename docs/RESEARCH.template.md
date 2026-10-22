@@ -1119,39 +1119,42 @@ nor the scenario's.
 
 ## 12. The composed career model
 
-The composition is **derived given the independence assumptions** in sections 1-11 and below; there is nothing further
-to fit and no script. An independent implementation (`val/joint_check.py`) reproduces the solver's exact odds on every
-reference loop (section 6).
+The composition is **derived** from sections 1-11 under the independence assumptions stated here; nothing further is
+fitted and no script computes it. An independent implementation, `val/joint_check.py`, reproduces the solver's exact
+odds on every reference loop (section 6).
 
 A target lands if the deck hints the gold and it sparks, or else if any source hints the white and that sparks. For a
 target $k$ not guaranteed:
 
 $$p_k = (1 - m^{g}_k)\,G_k + W_k\left[m^{g}_k - m^{0}_k(1 - e_k)(1 - q_k)\right].$$
 
-Here $G_k = 0.4\cdot 1.1^{n_k}$ and $W_k = 0.2\cdot 1.1^{n_k}$ are the spark chances (section 1). $m^g_k$ is the chance
-the deck gives no gold hint and $m^0_k$ the chance it gives neither tier, jointly over its sources. $e_k$ is the chance
-the trainee's own events hint the white, and $q_k$ that it is inherited (section 3). A skill on the trainee's outfit
-replaces the bracket by $m^g_k$ for a white, or gives $p_k = G_k$ for a gold. A scenario-guaranteed gold gives $G_k$.
-Inheritance only ever supplies the white. The miss product assumes the deck, own-event acquisition and inheritance
-are independent conditional on the model inputs.
+$G_k = 0.4\cdot 1.1^{n_k}$ and $W_k = 0.2\cdot 1.1^{n_k}$ are the gold and white spark chances, with $n_k$ ancestors
+carrying the target (section 1). $m^g_k$ is the chance the deck gives no gold hint, and $m^0_k$ the chance it gives no
+hint of either tier, each joint over the deck's sources. $e_k$ is the chance the trainee's own events hint the white,
+and $q_k$ the chance it is inherited (section 3). The bracket is the chance the white is hinted without the gold. Its
+miss product assumes the deck, own events and inheritance independent given the model inputs. Inheritance only ever
+supplies the white.
 
-Targets are not independent. Chain cards share one run's $N$, a card's training draws are joint (section 7), and one
-event's outcomes exclude each other (section 9). So the model fixes the final chain state $c$, with the links where
-chains stopped, and the joint training and deck-event outcomes $H$. Independent training processes across cards and
-independent event-outcome groups conditional on chain progress are assumed. Given $c,H$ and the lineage inputs,
-the remaining inheritance, own-event and generation outcomes are assumed independent across targets, so the
-per-target chances multiply:
+A white on the trainee's outfit replaces the bracket by $m^g_k$. A gold on her outfit, or one the scenario guarantees,
+gives $p_k = G_k$.
+
+Targets are not independent. Chain cards share one run's chain-event count $N$ (section 8), a card's training draws
+are joint (section 7), and one event's outcomes exclude each other (section 9). So the model conditions on the final
+chain state $c$, which records where each chain stopped, and on the joint training and deck-event outcomes $H$. Given
+$c$, $H$ and the lineage inputs, the remaining inheritance, own-event and generation outcomes are assumed independent
+across targets, so the per-target chances multiply:
 
 $$P(\text{all}) = \sum_{c} P(c)\, E_{H\mid c}\!\left[\prod_{k} p_k(c,H)\right] \qquad (\text{exact under the assumptions}).$$
 
-Multiplying the targets' marginal chances given $c$ alone would discard those dependencies. The implementation
-enumerates connected target groups and multiplies independent groups (`joint_eval_in`).
+This also assumes training independent across cards, and event-outcome groups independent given chain progress.
+Multiplying the targets' marginal chances given $c$ alone would discard the dependence through $H$. The implementation
+enumerates connected groups of targets and multiplies independent groups (`joint_eval_in`).
 
-*Real legacies.* The same model uses each veteran's real stars, real G1 wins and recorded parents. An unknown parent
-brings no relation points, but her sparks count. $n_k$ is then the number of legacies actually carrying $k$. Since
-$q_k$ and $e_k$ enter only as $(1 - e_k)(1 - q_k)$, $e_k$ is replaced by $1 - (1 - e_k)(1 - q_k)$.
-Relative to the loop's generation constants, $1.1^{n_k - 6}$ scales target $k$'s landing factor; the total scale is
-$\prod_k 1.1^{n_k - 6} = 1.1^{\sum_k(n_k - 6)}$, including guaranteed targets (**derived**).
+*Real legacies.* The same model takes each veteran's real stars, G1 wins and recorded parents. An unknown parent brings
+no relation points, but her sparks count. Since $e_k$ and $q_k$ enter only through $(1 - e_k)(1 - q_k)$, the real
+lineage's inheritance is folded in by replacing $e_k$ with $1 - (1 - e_k)(1 - q_k)$. $n_k$ becomes the number of
+legacies actually carrying $k$, so against the loop's $n_k = 6$ target $k$'s landing factor scales by $1.1^{n_k - 6}$.
+The total scale is $\prod_k 1.1^{n_k - 6} = 1.1^{\sum_k(n_k - 6)}$, guaranteed targets included (**derived**).
 
 ## 13. Calibration against real careers
 
@@ -1159,179 +1162,133 @@ Computed by `research/s13_calibration.py`.
 
 ### Findings
 
-- **Aggregate acquisition is consistent with the product approximation on prioritised-or-unknown rows** (Results). Most of the shortfall
-  over all rows, {{13.3_acquired_shortfall_share_on_non_prioritised_rows|.0%}}, sits on rows the run's list shows not prioritised.
-- **Aggregate inheritance without Tail Held High is consistent with the model**: it reads {{3.inheritance_without_tail_held_high_obs_per_pred|.3f}} of the model.
+- **Acquisition matches the product approximation on prioritised-or-unknown rows** (Results). Over all rows it reads
+  slightly optimistic, and rows the run's list shows not prioritised carry {{13.3_acquired_shortfall_share_on_non_prioritised_rows|.0%}} of that shortfall.
+- **Inheritance matches the model apart from Tail Held High**: the other seven targets read {{3.inheritance_without_tail_held_high_obs_per_pred|.3f}} of the model.
 - **Known miss: Tail Held High is inherited less often than predicted**, the only target of eight whose interval
   excludes 1. The cause is not known.
-- **Deck hints read optimistic, with shortfalls concentrated in event sources.** Event hints of targets not prioritised land
-  at {{13.1_events_only_not_prioritised_obs_per_pred|.2f}} of the model.
+- **Deck hints read optimistic, and the shortfall sits in event sources.** Training-pool hints match the model. Event
+  hints of targets not prioritised read {{13.1_events_only_not_prioritised_obs_per_pred|.2f}} of the model.
 - **Known miss: prioritised targets' event hints read just below the model.**
 - **Known miss: Trackblazer's training-hint base over-predicts these runs.** The other scenarios' intervals cover 1.
-- **The spark-weighted acquisition check reads {{13.p_all_eight_ratio_all|.2f}} of the exact joint model**: a weak test that does not measure spark generation.
-- **Beyond the eight targets**, inheritance reads slightly short of the model, spread over many skills: a known miss.
-  Training-pool hints are under-predicted.
+- **Several single cards miss their prediction.** The priority list explains some; the rest are open. Playtime's
+  Over!'s event sources almost never hint it.
+- **The spark-weighted all-targets check reads {{13.p_all_eight_ratio_all|.2f}} of the exact joint model**: a weak test that does not
+  measure spark generation.
+- **Beyond the eight targets, two known misses**: inheritance reads slightly short of the model, spread over many
+  skills, and training-pool hints are under-predicted.
 
 ### What is compared
 
 Each real career is rebuilt as the model sees one: the trainee in her outfit, the scenario, the six cards at their own
 limit breaks, both parents with their recorded parents, every ancestor's white sparks, and race wins giving the
-recorded shared-G1 counts. The model gives, for each default target, the chance of each step (sections 3-12). The run
-record says what happened.
+recorded shared-G1 counts. The model gives each default target's chance at each step (sections 3-12), and the run
+record shows what happened.
 
 | Careers | URA Finale | Unity Cup | Grand Concert | Trackblazer | Run-target rows | On her outfit | Scenario golds |
 |---|---|---|---|---|---|---|---|
 | {{13.runs_used|,.0f}} | {{13.ura_finale_runs|.0f}} | {{13.unity_cup_runs|,.0f}} | {{13.grand_concert_runs|,.0f}} | {{13.trackblazer_runs|.0f}} | {{13.run_target_rows|,.0f}} | {{13.rows_on_her_outfit|,.0f}} | {{13.scenario_gold_rows|,.0f}} |
 
-Rows on her outfit and scenario golds are *certain*: they could only count as successes, so tests 1 and 3 leave them
-out. The rest are *open targets*. Intervals are clustered by run, since a run's eight targets share its deck and
-lineage. The runs end before skills are bought, so "acquired" means hinted, the model's own meaning.
+Rows on her outfit and scenario golds are *certain*, so tests 1 and 3 leave them out; the rest are *open targets*.
+Unity Cup's guaranteed golds show in {{13.unity_cup_s_guaranteed_golds_runs_with_both|,.0f}} of its {{13.unity_cup_runs|,.0f}} runs. The runs end before skills are bought, so
+"acquired" means hinted, the model's own meaning.
 
-The deck and acquisition tests use the career report's `buy` product approximation across cards. Its white chance is
-conditional on no gold in that approximation; it is not an unconditional white marginal. Shared chain progress can
-make these predictions differ from the joint engine's acquisition probabilities. The landing test uses exact spark
-marginals, and the all-target spark-weighted check uses exact `p_all`.
+Tests 1 and 3 score the career report's `buy` product approximation, which multiplies chances across cards, not the
+exact joint engine of section 12; shared chain progress makes the two differ. The landing and all-targets checks use
+the exact engine's $p_k$ and $P(\text{all})$.
 
 1. **Deck hint**: does a deck card hint the skill, by training or by its events, as often as sections 7-9 predict? The
-   prediction is $d^g + (1 - d^g)d^w$, with $d^g$ the gold chance and $d^w$ the white chance conditional on no gold in
-   the product approximation; observed is a deck card credited with a hint of the skill. Only rows where no
-   inspiration hinted the skill are used (section 7). The rows split by where the deck's chance comes from:
-   **training pool only** or **events only**. Events only splits again by whether the target was **prioritised**
-   (section 9), for runs that show a list.
+   prediction is $d^g + (1 - d^g)d^w$, with $d^g$ the gold chance and $d^w$ the white chance given no gold. Only rows
+   where no inspiration hinted the skill count, which treats inspiration as independent of the deck (section 7). The
+   rows split by where the deck's chance comes from, **training pool only** or **events only**, and events only by
+   whether the run's list shows the target **prioritised** (section 9).
 2. **Inheritance**: does an inspiration of the skill fire as often as $q$ (section 3)?
 3. **Acquired**: does the skill end up hinted, from any source, as often as all modelled sources together predict?
-   This is what the odds rest on. It is also read on rows with the target prioritised or the run showing no list;
-   the latter have unknown priority status.
-4. **Landing**: the model's $p$ against the same chance computed from what the run acquired: $0.4 \cdot 1.1^n$ if the
-   gold was hinted, $0.2 \cdot 1.1^n$ if only the white. It checks the acquired step through the spark step. It does
-   not test spark generation (section 1).
+   This is what the odds rest on. The **prioritised or unknown** rows pool prioritised targets with the runs that show
+   no list, whose priorities are unknown.
 
-| Test | Rows | Predicted | Observed [95%] | Obs / pred [95%] |
+| Test | Rows | Predicted | Obs / pred [95%] | Verdict |
 |---|---|---|---|---|
-| 1. Deck hint, no inspiration | {{13.1_deck_hint_no_inspiration_rows|,.0f}} | {{13.1_deck_hint_no_inspiration_predicted|.3f}} | {{13.1_deck_hint_no_inspiration_observed|.3f}} [{{13.1_deck_hint_observed_95_pct_low|.3f}}, {{13.1_deck_hint_observed_95_pct_high|.3f}}] | {{13.1_deck_hint_no_inspiration_obs_per_pred|.3f}} [{{13.1_deck_hint_no_inspiration_ratio_95_pct_low|.3f}}, {{13.1_deck_hint_no_inspiration_ratio_95_pct_high|.3f}}] |
-| 1. Training pool only | {{13.1_training_pool_only_rows|,.0f}} | {{13.1_training_pool_only_predicted|.3f}} | {{13.1_training_pool_only_observed|.3f}} | {{13.1_training_pool_only_obs_per_pred|.3f}} [{{13.1_training_pool_only_ratio_95_pct_low|.3f}}, {{13.1_training_pool_only_ratio_95_pct_high|.3f}}] |
-| 1. Events only | {{13.1_events_only_rows|,.0f}} | {{13.1_events_only_predicted|.3f}} | {{13.1_events_only_observed|.3f}} | {{13.1_events_only_obs_per_pred|.3f}} [{{13.1_events_only_ratio_95_pct_low|.3f}}, {{13.1_events_only_ratio_95_pct_high|.3f}}] |
-| 1. Events only, target prioritised | {{13.1_events_only_prioritised_rows|.0f}} | {{13.1_events_only_prioritised_predicted|.3f}} | {{13.1_events_only_prioritised_observed|.3f}} | {{13.1_events_only_prioritised_obs_per_pred|.3f}} [{{13.1_events_only_prioritised_ratio_95_pct_low|.3f}}, {{13.1_events_only_prioritised_ratio_95_pct_high|.4f}}] |
-| 1. Events only, not prioritised | {{13.1_events_only_not_prioritised_rows|.0f}} | {{13.1_events_only_not_prioritised_predicted|.3f}} | {{13.1_events_only_not_prioritised_observed|.3f}} | {{13.1_events_only_not_prioritised_obs_per_pred|.3f}} [{{13.1_events_only_not_prioritised_ratio_95_pct_low|.3f}}, {{13.1_events_only_not_prioritised_ratio_95_pct_high|.3f}}] |
-| 2. Inheritance | {{13.2_inheritance_rows|,.0f}} | {{13.2_inheritance_predicted|.3f}} | {{13.2_inheritance_observed|.3f}} [{{13.2_inheritance_observed_95_pct_low|.3f}}, {{13.2_inheritance_observed_95_pct_high|.3f}}] | {{13.2_inheritance_obs_per_pred|.3f}} [{{13.2_inheritance_ratio_95_pct_low|.3f}}, {{13.2_inheritance_ratio_95_pct_high|.3f}}] |
-| 2. Inheritance, without Tail Held High | {{3.inheritance_without_tail_held_high_rows|,.0f}} | | | {{3.inheritance_without_tail_held_high_obs_per_pred|.3f}} [{{3.inheritance_without_tail_held_high_ratio_95_pct_low|.3f}}, {{3.inheritance_without_tail_held_high_ratio_95_pct_high|.3f}}] |
-| 2. Inheritance, Tail Held High | | | | {{13.tail_held_high_inheritance|.3f}} [{{13.tail_held_high_inheritance_95_pct_low|.3f}}, {{13.tail_held_high_inheritance_95_pct_high|.3f}}] |
-| 3. Acquired, any source | {{13.3_acquired_any_source_rows|,.0f}} | {{13.3_acquired_any_source_predicted|.3f}} | {{13.3_acquired_any_source_observed|.3f}} [{{13.3_acquired_any_source_observed_95_pct_low|.3f}}, {{13.3_acquired_any_source_observed_95_pct_high|.3f}}] | {{13.3_acquired_any_source_obs_per_pred|.3f}} [{{13.3_acquired_any_source_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_ratio_95_pct_high|.3f}}] |
-| 3. Acquired, deck or inspiration only | {{13.3_acquired_deck_or_inspiration_only_rows|,.0f}} | {{13.3_acquired_deck_or_inspiration_only_predicted|.3f}} | {{13.3_acquired_deck_or_inspiration_only_observed|.3f}} | {{13.3_acquired_deck_or_inspiration_only_obs_per_pred|.3f}} [{{13.3_acquired_deck_or_inspiration_only_ratio_95_pct_low|.3f}}, {{13.3_acquired_deck_or_inspiration_only_ratio_95_pct_high|.3f}}] |
-| 3. Acquired, any source, prioritised or no list shown | {{13.3_acquired_any_source_prioritised_or_no_list_shown_rows|,.0f}} | {{13.3_acquired_any_source_prioritised_or_no_list_shown_predicted|.3f}} | {{13.3_acquired_any_source_prioritised_or_no_list_shown_observed|.3f}} | {{13.3_acquired_any_source_prioritised_or_no_list_shown_obs_per_pred|.3f}} [{{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_high|.3f}}] |
-| 3. Acquired, deck or inspiration only, prioritised or no list shown | {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_rows|,.0f}} | {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_predicted|.3f}} | {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_observed|.3f}} | {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_obs_per_pred|.3f}} [{{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_ratio_95_pct_low|.3f}}, {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_ratio_95_pct_high|.3f}}] |
-| 3. Acquired, prioritised | {{13.3_acquired_prioritised_rows|,.0f}} | {{13.3_acquired_prioritised_predicted|.3f}} | {{13.3_acquired_prioritised_observed|.3f}} | {{13.3_acquired_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_prioritised_ratio_95_pct_high|.3f}}] |
-| 3. Acquired, not prioritised | {{13.3_acquired_not_prioritised_rows|,.0f}} | {{13.3_acquired_not_prioritised_predicted|.3f}} | {{13.3_acquired_not_prioritised_observed|.3f}} | {{13.3_acquired_not_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_not_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_not_prioritised_ratio_95_pct_high|.3f}}] |
-| 4. Landing, sums of $p$ | {{13.4_landing_rows|,.0f}} | {{13.4_landing_sum_of_p|,.1f}} | {{13.4_landing_sum_observed_equivalent|,.1f}} | {{13.4_landing_ratio|.3f}} |
+| 1. Deck hint | {{13.1_deck_hint_no_inspiration_rows|,.0f}} | {{13.1_deck_hint_no_inspiration_predicted|.3f}} | {{13.1_deck_hint_no_inspiration_obs_per_pred|.3f}} [{{13.1_deck_hint_no_inspiration_ratio_95_pct_low|.3f}}, {{13.1_deck_hint_no_inspiration_ratio_95_pct_high|.3f}}] | optimistic |
+| training pool only | {{13.1_training_pool_only_rows|,.0f}} | {{13.1_training_pool_only_predicted|.3f}} | {{13.1_training_pool_only_obs_per_pred|.3f}} [{{13.1_training_pool_only_ratio_95_pct_low|.3f}}, {{13.1_training_pool_only_ratio_95_pct_high|.3f}}] | covers 1 |
+| events only | {{13.1_events_only_rows|,.0f}} | {{13.1_events_only_predicted|.3f}} | {{13.1_events_only_obs_per_pred|.3f}} [{{13.1_events_only_ratio_95_pct_low|.3f}}, {{13.1_events_only_ratio_95_pct_high|.3f}}] | optimistic |
+| events only, target prioritised | {{13.1_events_only_prioritised_rows|.0f}} | {{13.1_events_only_prioritised_predicted|.3f}} | {{13.1_events_only_prioritised_obs_per_pred|.3f}} [{{13.1_events_only_prioritised_ratio_95_pct_low|.3f}}, {{13.1_events_only_prioritised_ratio_95_pct_high|.4f}}] | known miss |
+| events only, not prioritised | {{13.1_events_only_not_prioritised_rows|.0f}} | {{13.1_events_only_not_prioritised_predicted|.3f}} | {{13.1_events_only_not_prioritised_obs_per_pred|.3f}} [{{13.1_events_only_not_prioritised_ratio_95_pct_low|.3f}}, {{13.1_events_only_not_prioritised_ratio_95_pct_high|.3f}}] | far below: the priority assumption fails |
+| 2. Inheritance | {{13.2_inheritance_rows|,.0f}} | {{13.2_inheritance_predicted|.3f}} | {{13.2_inheritance_obs_per_pred|.3f}} [{{13.2_inheritance_ratio_95_pct_low|.3f}}, {{13.2_inheritance_ratio_95_pct_high|.3f}}] | below 1 through Tail Held High |
+| without Tail Held High | {{3.inheritance_without_tail_held_high_rows|,.0f}} | | {{3.inheritance_without_tail_held_high_obs_per_pred|.3f}} [{{3.inheritance_without_tail_held_high_ratio_95_pct_low|.3f}}, {{3.inheritance_without_tail_held_high_ratio_95_pct_high|.3f}}] | covers 1 |
+| Tail Held High | | | {{13.tail_held_high_inheritance|.3f}} [{{13.tail_held_high_inheritance_95_pct_low|.3f}}, {{13.tail_held_high_inheritance_95_pct_high|.3f}}] | known miss |
+| 3. Acquired, any source | {{13.3_acquired_any_source_rows|,.0f}} | {{13.3_acquired_any_source_predicted|.3f}} | {{13.3_acquired_any_source_obs_per_pred|.3f}} [{{13.3_acquired_any_source_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_ratio_95_pct_high|.3f}}] | slightly optimistic |
+| prioritised or unknown | {{13.3_acquired_any_source_prioritised_or_no_list_shown_rows|,.0f}} | {{13.3_acquired_any_source_prioritised_or_no_list_shown_predicted|.3f}} | {{13.3_acquired_any_source_prioritised_or_no_list_shown_obs_per_pred|.3f}} [{{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_high|.3f}}] | covers 1 |
+| prioritised | {{13.3_acquired_prioritised_rows|,.0f}} | {{13.3_acquired_prioritised_predicted|.3f}} | {{13.3_acquired_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_prioritised_ratio_95_pct_high|.3f}}] | covers 1 |
+| not prioritised | {{13.3_acquired_not_prioritised_rows|,.0f}} | {{13.3_acquired_not_prioritised_predicted|.3f}} | {{13.3_acquired_not_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_not_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_not_prioritised_ratio_95_pct_high|.3f}}] | optimistic |
 
 ### Evidence
 
-*The priority list matters.* On the runs that show a list, prioritised targets are acquired at the model's rate and
-the others less often: the two "3. Acquired" rows split by priority. The pooled test averages the two with the runs
-that show no list.
+*Where the deck loses its points.* The deck's rows predicted 0.6 or more hold {{13.deck_shortfall_in_buckets_predicted_0_6_and_above|.0%}} of its shortfall,
+and {{13.their_rows_with_an_event_source|.0%}} of those rows have an event source. On prioritised-or-unknown rows, the deck and inspiration alone
+read {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_obs_per_pred|.3f}} of the model. Unmodelled scenario and trainee events close the gap to the any-source row: they gave
+{{13.acquisitions_from_unmodelled_events|.0f}} target acquisitions, {{13.acquisitions_from_unmodelled_events_share_of_rows|.1%}} of open rows. Agreement after adding them can hide errors in the parts, and it
+does not validate candidate rankings.
 
-*Where the deck loses its points.* The shortfall is concentrated in event sources: test 1's split.
-Unmodelled scenario and trainee events supply the few points the deck loses: {{13.acquisitions_from_unmodelled_events|.0f}} target acquisitions, {{13.acquisitions_from_unmodelled_events_share_of_rows|.1%}} of
-rows. On prioritised-or-unknown rows, the deck and inspiration alone read {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_obs_per_pred|.3f}} of the model.
-Agreement after adding unmodelled acquisitions can conceal component errors and does not validate candidate rankings.
+*Landing.* Each open row's spark chance is recomputed from what the run acquired: $0.4 \cdot 1.1^n$ if the gold was
+hinted, $0.2 \cdot 1.1^n$ if only the white. Summed, it reads {{13.4_landing_ratio|.3f}} of the model's $p$, in line with acquisition. It
+does not test spark generation (section 1).
 
 *Per target*, observed / predicted:
 
-| Target | Deck hint [95%] | Inheritance | Acquired | Landing |
-|---|---|---|---|---|
-| Uma Stan / Superstan | {{13.uma_stan_deck_hint|.2f}} [{{13.uma_stan_deck_hint_95_pct_low|.2f}}, {{13.uma_stan_deck_hint_95_pct_high|.2f}}] | {{13.uma_stan_inheritance|.3f}} | {{13.uma_stan_acquired|.3f}} | {{13.uma_stan_landing|.3f}} |
-| Nimble Navigator / No Stopping Me! | {{13.nimble_navigator_deck_hint|.2f}} [{{13.nimble_navigator_deck_hint_95_pct_low|.2f}}, {{13.nimble_navigator_deck_hint_95_pct_high|.2f}}] | {{13.nimble_navigator_inheritance|.3f}} | {{13.nimble_navigator_acquired|.3f}} | {{13.nimble_navigator_landing|.3f}} |
-| Playtime's Over! / See Ya Later! | {{13.playtime_s_over_deck_hint|.3f}} [{{13.playtime_s_over_deck_hint_95_pct_low|.2f}}, {{13.playtime_s_over_deck_hint_95_pct_high|.2f}}] | {{13.playtime_s_over_inheritance|.3f}} | {{13.playtime_s_over_acquired|.3f}} | {{13.playtime_s_over_landing|.3f}} |
-| Ramp Up / It's On! | {{13.ramp_up_deck_hint|.3f}} [{{13.ramp_up_deck_hint_95_pct_low|.2f}}, {{13.ramp_up_deck_hint_95_pct_high|.2f}}] | {{13.ramp_up_inheritance|.3f}} | {{13.ramp_up_acquired|.3f}} [{{13.ramp_up_acquired_95_pct_low|.2f}}, {{13.ramp_up_acquired_95_pct_high|.2f}}] | {{13.ramp_up_landing|.3f}} |
-| Tail Held High / Tail Nine | {{13.tail_held_high_deck_hint|.3f}} [{{13.tail_held_high_deck_hint_95_pct_low|.2f}}, {{13.tail_held_high_deck_hint_95_pct_high|.2f}}] | {{13.tail_held_high_inheritance|.3f}} [{{13.tail_held_high_inheritance_95_pct_low|.2f}}, {{13.tail_held_high_inheritance_95_pct_high|.2f}}] | {{13.tail_held_high_acquired|.3f}} | {{13.tail_held_high_landing|.3f}} |
-| Racing Spirit: Stamina | no deck source | {{13.racing_spirit_stamina_inheritance|.3f}} | {{13.racing_spirit_stamina_acquired|.3f}} | {{13.racing_spirit_stamina_landing|.3f}} |
-| Slipstream / Perfect Spot! | {{13.slipstream_deck_hint|.3f}} [{{13.slipstream_deck_hint_95_pct_low|.2f}}, {{13.slipstream_deck_hint_95_pct_high|.2f}}] | {{13.slipstream_inheritance|.3f}} | {{13.slipstream_acquired|.3f}} | {{13.slipstream_landing|.3f}} |
-| Risky Business / Nothing Ventured | {{13.risky_business_deck_hint|.3f}} [{{13.risky_business_deck_hint_95_pct_low|.2f}}, {{13.risky_business_deck_hint_95_pct_high|.2f}}] | {{13.risky_business_inheritance|.3f}} | {{13.risky_business_acquired|.3f}} [{{13.risky_business_acquired_95_pct_low|.2f}}, {{13.risky_business_acquired_95_pct_high|.2f}}] | {{13.risky_business_landing|.3f}} |
-
-*Training-pool hints by scenario* test $\beta$ and $d$ (section 7). Only Trackblazer's interval excludes 1: its $\beta$
-over-predicts these runs.
-
-| Scenario | Grand Concert | Unity Cup | URA Finale | Trackblazer |
-|---|---|---|---|---|
-| Observed / predicted [95%] | {{13.1_training_pool_only_grand_concert_obs_per_pred|.3f}} [{{13.1_training_pool_only_grand_concert_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_grand_concert_ratio_95_pct_high|.2f}}] | {{13.1_training_pool_only_unity_cup_obs_per_pred|.3f}} [{{13.1_training_pool_only_unity_cup_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_unity_cup_ratio_95_pct_high|.2f}}] | {{13.1_training_pool_only_ura_finale_obs_per_pred|.3f}} [{{13.1_training_pool_only_ura_finale_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_ura_finale_ratio_95_pct_high|.2f}}] | {{13.1_training_pool_only_trackblazer_obs_per_pred|.3f}} [{{13.1_training_pool_only_trackblazer_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_trackblazer_ratio_95_pct_high|.2f}}] |
-
-By the lowest limit break of the sourcing cards, every interval covers 1:
-
-| Lowest limit break | LB4 | LB3 | LB0-2 |
+| Target | Deck hint [95%] | Inheritance | Acquired |
 |---|---|---|---|
-| Observed / predicted | {{13.1_training_pool_only_lowest_lb_4|.3f}} | {{13.1_training_pool_only_lowest_lb_3|.3f}} | {{13.1_training_pool_only_lb0_2_lowest_ratio|.2f}}-{{13.1_training_pool_only_lb0_2_highest_ratio|.2f}}, {{13.1_training_pool_only_lb0_2_fewest_rows|.0f}}-{{13.1_training_pool_only_lb0_2_most_rows|.0f}} rows each |
-
-*Unity Cup's guaranteed golds* show in {{13.unity_cup_s_guaranteed_golds_runs_with_both|.0f}} of {{13.unity_cup_runs|.0f}} Unity Cup runs each.
+| Uma Stan / Superstan | {{13.uma_stan_deck_hint|.2f}} [{{13.uma_stan_deck_hint_95_pct_low|.2f}}, {{13.uma_stan_deck_hint_95_pct_high|.2f}}] | {{13.uma_stan_inheritance|.3f}} | {{13.uma_stan_acquired|.3f}} |
+| Nimble Navigator / No Stopping Me! | {{13.nimble_navigator_deck_hint|.2f}} [{{13.nimble_navigator_deck_hint_95_pct_low|.2f}}, {{13.nimble_navigator_deck_hint_95_pct_high|.2f}}] | {{13.nimble_navigator_inheritance|.3f}} | {{13.nimble_navigator_acquired|.3f}} |
+| Playtime's Over! / See Ya Later! | {{13.playtime_s_over_deck_hint|.3f}} [{{13.playtime_s_over_deck_hint_95_pct_low|.2f}}, {{13.playtime_s_over_deck_hint_95_pct_high|.2f}}] | {{13.playtime_s_over_inheritance|.3f}} | {{13.playtime_s_over_acquired|.3f}} |
+| Ramp Up / It's On! | {{13.ramp_up_deck_hint|.3f}} [{{13.ramp_up_deck_hint_95_pct_low|.2f}}, {{13.ramp_up_deck_hint_95_pct_high|.2f}}] | {{13.ramp_up_inheritance|.3f}} | {{13.ramp_up_acquired|.3f}} [{{13.ramp_up_acquired_95_pct_low|.2f}}, {{13.ramp_up_acquired_95_pct_high|.2f}}] |
+| Tail Held High / Tail Nine | {{13.tail_held_high_deck_hint|.3f}} [{{13.tail_held_high_deck_hint_95_pct_low|.2f}}, {{13.tail_held_high_deck_hint_95_pct_high|.2f}}] | {{13.tail_held_high_inheritance|.3f}} [{{13.tail_held_high_inheritance_95_pct_low|.2f}}, {{13.tail_held_high_inheritance_95_pct_high|.2f}}] | {{13.tail_held_high_acquired|.3f}} |
+| Racing Spirit: Stamina | no deck source | {{13.racing_spirit_stamina_inheritance|.3f}} | {{13.racing_spirit_stamina_acquired|.3f}} |
+| Slipstream / Perfect Spot! | {{13.slipstream_deck_hint|.3f}} [{{13.slipstream_deck_hint_95_pct_low|.2f}}, {{13.slipstream_deck_hint_95_pct_high|.2f}}] | {{13.slipstream_inheritance|.3f}} | {{13.slipstream_acquired|.3f}} |
+| Risky Business / Nothing Ventured | {{13.risky_business_deck_hint|.3f}} [{{13.risky_business_deck_hint_95_pct_low|.2f}}, {{13.risky_business_deck_hint_95_pct_high|.2f}}] | {{13.risky_business_inheritance|.3f}} | {{13.risky_business_acquired|.3f}} [{{13.risky_business_acquired_95_pct_low|.2f}}, {{13.risky_business_acquired_95_pct_high|.2f}}] |
 
 *Gold acquisition*, observed / predicted:
 
 | Gold | Rows | Observed / predicted [95%] |
 |---|---|---|
-| Nothing Ventured | {{13.gold_acquisition_nothing_ventured_rows|.0f}} | {{13.gold_acquisition_nothing_ventured|.3f}} [{{13.gold_acquisition_nothing_ventured_95_pct_low|.2f}}, {{13.gold_acquisition_nothing_ventured_95_pct_high|.2f}}] |
-| Perfect Spot! | {{13.gold_acquisition_perfect_spot_rows|.0f}} | {{13.gold_acquisition_perfect_spot|.3f}} [{{13.gold_acquisition_perfect_spot_95_pct_low|.2f}}, {{13.gold_acquisition_perfect_spot_95_pct_high|.2f}}] |
-| It's On!, outside Unity Cup | {{13.gold_acquisition_it_s_on_rows|.0f}} | {{13.gold_acquisition_it_s_on|.3f}} [{{13.gold_acquisition_it_s_on_95_pct_low|.2f}}, {{13.gold_acquisition_it_s_on_95_pct_high|.2f}}] |
-| No Stopping Me!, outside Unity Cup | {{13.gold_acquisition_no_stopping_me_rows|.0f}} | {{13.gold_acquisition_no_stopping_me|.3f}} |
-| See Ya Later! | {{13.gold_acquisition_see_ya_later_rows|,.0f}} | {{13.gold_acquisition_see_ya_later|.3f}} |
+| Nothing Ventured | {{13.gold_acquisition_nothing_ventured_rows|,.0f}} | {{13.gold_acquisition_nothing_ventured|.3f}} [{{13.gold_acquisition_nothing_ventured_95_pct_low|.2f}}, {{13.gold_acquisition_nothing_ventured_95_pct_high|.2f}}] |
+| Perfect Spot! | {{13.gold_acquisition_perfect_spot_rows|,.0f}} | {{13.gold_acquisition_perfect_spot|.3f}} [{{13.gold_acquisition_perfect_spot_95_pct_low|.2f}}, {{13.gold_acquisition_perfect_spot_95_pct_high|.2f}}] |
+| It's On!, outside Unity Cup | {{13.gold_acquisition_it_s_on_rows|,.0f}} | {{13.gold_acquisition_it_s_on|.3f}} [{{13.gold_acquisition_it_s_on_95_pct_low|.2f}}, {{13.gold_acquisition_it_s_on_95_pct_high|.2f}}] |
 
-*Reliability.* The rows are grouped by the model's predicted chance. If the model is calibrated, each bucket's observed
-rate matches its mean prediction, shown in parentheses:
+*Training-pool hints by scenario* test $\beta$ and $d$ (section 7). Only Trackblazer's interval excludes 1: its $\beta$
+over-predicts these runs. Split instead by the lowest limit break of the sourcing cards, the LB0, LB1 and LB2 intervals
+each cover 1.
 
-| Predicted | Deck hint: rows | Observed | Acquired: rows | Observed |
+| Scenario | Grand Concert | Unity Cup | URA Finale | Trackblazer |
 |---|---|---|---|---|
-| 0 | {{13.reliability_deck_hint_0_rows|,.0f}} | {{13.reliability_deck_hint_0_observed|.3f}} | {{13.reliability_acquired_0_rows|,.0f}} | {{13.reliability_acquired_0_observed|.3f}} |
-| above 0 to 0.20 | {{13.reliability_deck_hint_0_00_0_20_rows|,.0f}} | {{13.reliability_deck_hint_0_00_0_20_observed|.3f}} ({{13.reliability_deck_hint_0_00_0_20_mean_predicted|.2f}}) | {{13.reliability_acquired_0_00_0_20_rows|,.0f}} | {{13.reliability_acquired_0_00_0_20_observed|.3f}} ({{13.reliability_acquired_0_00_0_20_mean_predicted|.2f}}) |
-| 0.20-0.40 | {{13.reliability_deck_hint_0_20_0_40_rows|,.0f}} | {{13.reliability_deck_hint_0_20_0_40_observed_sentence|.3f}} [{{13.reliability_deck_hint_0_20_0_40_observed_95_pct_low|.3f}}, {{13.reliability_deck_hint_0_20_0_40_observed_95_pct_high|.3f}}] ({{13.reliability_deck_hint_0_20_0_40_mean_predicted_three_places|.3f}}) | {{13.reliability_acquired_0_20_0_40_rows|,.0f}} | {{13.reliability_acquired_0_20_0_40_observed|.3f}} ({{13.reliability_acquired_0_20_0_40_mean_predicted|.2f}}) |
-| 0.40-0.60 | {{13.reliability_deck_hint_0_40_0_60_rows|,.0f}} | {{13.reliability_deck_hint_0_40_0_60_observed|.3f}} ({{13.reliability_deck_hint_0_40_0_60_mean_predicted|.2f}}) | {{13.reliability_acquired_0_40_0_60_rows|,.0f}} | {{13.reliability_acquired_0_40_0_60_observed|.3f}} ({{13.reliability_acquired_0_40_0_60_mean_predicted|.2f}}) |
-| 0.60-0.80 | {{13.reliability_deck_hint_0_60_0_80_rows|,.0f}} | {{13.reliability_deck_hint_0_60_0_80_observed|.3f}} ({{13.reliability_deck_hint_0_60_0_80_mean_predicted|.2f}}) | {{13.reliability_acquired_0_60_0_80_rows|,.0f}} | {{13.reliability_acquired_0_60_0_80_observed|.3f}} ({{13.reliability_acquired_0_60_0_80_mean_predicted|.2f}}) |
-| 0.80-0.95 | {{13.reliability_deck_hint_0_80_0_95_rows|,.0f}} | {{13.reliability_deck_hint_0_80_0_95_observed|.3f}} ({{13.reliability_deck_hint_0_80_0_95_mean_predicted|.2f}}) | {{13.reliability_acquired_0_80_0_95_rows|,.0f}} | {{13.reliability_acquired_0_80_0_95_observed|.3f}} ({{13.reliability_acquired_0_80_0_95_mean_predicted|.2f}}) |
-| 0.95-1 | {{13.reliability_deck_hint_0_95_1_00_rows|,.0f}} | {{13.reliability_deck_hint_0_95_1_00_observed|.3f}} ({{13.reliability_deck_hint_0_95_1_00_mean_predicted|.2f}}) | {{13.reliability_acquired_0_95_1_00_rows|,.0f}} | {{13.reliability_acquired_0_95_1_00_observed|.3f}} ({{13.reliability_acquired_0_95_1_00_mean_predicted|.2f}}) |
+| Observed / predicted [95%] | {{13.1_training_pool_only_grand_concert_obs_per_pred|.3f}} [{{13.1_training_pool_only_grand_concert_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_grand_concert_ratio_95_pct_high|.2f}}] | {{13.1_training_pool_only_unity_cup_obs_per_pred|.3f}} [{{13.1_training_pool_only_unity_cup_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_unity_cup_ratio_95_pct_high|.2f}}] | {{13.1_training_pool_only_ura_finale_obs_per_pred|.3f}} [{{13.1_training_pool_only_ura_finale_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_ura_finale_ratio_95_pct_high|.2f}}] | {{13.1_training_pool_only_trackblazer_obs_per_pred|.3f}} [{{13.1_training_pool_only_trackblazer_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_trackblazer_ratio_95_pct_high|.2f}}] |
 
-The deck's over-prediction sits in its top buckets, the event rewards. The buckets predicted 0.6 and above hold
-{{13.deck_shortfall_in_buckets_predicted_0_6_and_above|.0%}} of the shortfall, and {{13.their_rows_with_an_event_source|.0%}} of their rows have an event source. The 0.20-0.40 bucket, almost all
-training-pool rows, is within its interval.
+*Every open target in one run.* The share of runs acquiring all their open targets matches the mean product of their
+per-target predictions:
 
-*Per run.* A run has {{13.per_run_open_targets|.2f}} open targets on average.
+| Runs | Product of the model's odds | Observed [95%] |
+|---|---|---|
+| all | {{13.per_run_all_open_acquired_product_of_odds|.4f}} | {{13.per_run_all_open_acquired_observed|.4f}} [{{13.per_run_all_open_acquired_95_pct_low|.4f}}, {{13.per_run_all_open_acquired_95_pct_high|.4f}}] |
+| {{13.per_run_priority_assumption_fits_runs|,.0f}} with every open target prioritised or unknown | {{13.per_run_priority_assumption_fits_all_open_acquired_product_of_odds|.4f}} | {{13.per_run_priority_assumption_fits_all_open_acquired_observed|.4f}} [{{13.per_run_priority_assumption_fits_all_open_acquired_95_pct_low|.4f}}, {{13.per_run_priority_assumption_fits_all_open_acquired_95_pct_high|.4f}}] |
 
-| Per run | Runs | Model | Observed [95%] |
-|---|---|---|---|
-| targets acquired | all | {{13.per_run_acquired_expected|.3f}} | {{13.per_run_acquired_observed|.3f}} |
-| targets acquired | {{13.per_run_priority_assumption_fits_runs|,.0f}} where the priority assumption fits | {{13.per_run_priority_assumption_fits_acquired_expected|.3f}} | {{13.per_run_priority_assumption_fits_acquired_observed|.3f}} |
-| all open targets acquired, model as product of odds | all | {{13.per_run_all_open_acquired_product_of_odds|.4f}} | {{13.per_run_all_open_acquired_observed|.4f}} [{{13.per_run_all_open_acquired_95_pct_low|.4f}}, {{13.per_run_all_open_acquired_95_pct_high|.4f}}] |
-| all open targets acquired, model as product of odds | where the priority assumption fits | {{13.per_run_priority_assumption_fits_all_open_acquired_product_of_odds|.4f}} | {{13.per_run_priority_assumption_fits_all_open_acquired_observed|.4f}} [{{13.per_run_priority_assumption_fits_all_open_acquired_95_pct_low|.4f}}, {{13.per_run_priority_assumption_fits_all_open_acquired_95_pct_high|.4f}}] |
+*Spark-weighted acquisition of all targets.* $P(\text{all eight})$ is recomputed from what each run acquired and
+compared with the model's exact $P(\text{all})$; Results gives the ratio, its interval bootstrapping whole runs. Only
+{{13.runs_acquiring_every_open_target|.0f}} runs acquired every open target, too few to separate the exact joint from the product.
 
-The table's "priority assumption fits" group includes runs with no list, whose priorities are unknown.
-The all-open acquisition predictions multiply the approximate per-target acquisition probabilities.
+*Single cards.* Where one card is the deck's only source of a target, the deck test scores that card alone. The table
+lists every such pair of 40 or more rows whose interval excludes 1.
 
-*Spark-weighted acquisition of all targets.* $P(\text{all eight})$ is recomputed from what each run acquired and compared with the model's exact
-$P(\text{all})$. The intervals bootstrap whole runs:
-
-| Scenarios | Observed / predicted [95%] |
-|---|---|
-| all | {{13.p_all_eight_ratio_all|.3f}} [{{13.p_all_eight_ratio_all_95_pct_low|.2f}}, {{13.p_all_eight_ratio_all_95_pct_high|.2f}}] |
-| Unity Cup | {{13.p_all_eight_ratio_unity_cup|.3f}} [{{13.p_all_eight_ratio_unity_cup_95_pct_low|.2f}}, {{13.p_all_eight_ratio_unity_cup_95_pct_high|.2f}}] |
-| Grand Concert | {{13.p_all_eight_ratio_grand_concert|.2f}} [{{13.p_all_eight_ratio_grand_concert_95_pct_low|.2f}}, {{13.p_all_eight_ratio_grand_concert_95_pct_high|.2f}}] |
-| URA Finale | {{13.p_all_eight_ratio_ura_finale|.2f}} [{{13.p_all_eight_ratio_ura_finale_95_pct_low|.2f}}, {{13.p_all_eight_ratio_ura_finale_95_pct_high|.2f}}] |
-
-Trackblazer's model value is {{13.trackblazer_s_model_p_all|.0f}}. The interval allows up to about {{13.p_all_eight_optimism_the_interval_allows_1_per_95_pct_low|.1f}}× optimism. Only {{13.runs_acquiring_every_open_target|.0f}} runs acquired every
-open target, too few to separate the exact joint from the product.
-
-*Single-source cards.* In a single-source pair a card is the deck's only source of the target, so the deck test scores
-that card alone. The table lists every pair of 40 or more rows whose interval excludes 1. It adds two whose intervals
-reach 1, Gold Ship's and Sweep Tosho's.
-
-| Card > target | Pred | Obs | Ratio [95%] | Rows | Likely reason |
-|---|---|---|---|---|---|
-| Sasami Anshinzawa [This Might Sting!] > Risky Business | {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_predicted|.3f}} | {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_observed|.3f}} | {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_ratio|.2f}} [{{13.this_might_sting_sasami_anshinzawa_gt_risky_business_ratio_95_pct_low|.2f}}, {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_ratio_95_pct_high|.2f}}] | {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_rows|.0f}} | the model assumes Risky Business prioritised, which takes finale choice 2 |
-| Riko Kashimoto [Planned Perfection] > Ramp Up | {{13.planned_perfection_riko_kashimoto_gt_ramp_up_predicted|.3f}} | {{13.planned_perfection_riko_kashimoto_gt_ramp_up_observed|.3f}} | {{13.planned_perfection_riko_kashimoto_gt_ramp_up_ratio|.2f}} [{{13.planned_perfection_riko_kashimoto_gt_ramp_up_ratio_95_pct_low|.2f}}, {{13.planned_perfection_riko_kashimoto_gt_ramp_up_ratio_95_pct_high|.2f}}] | {{13.planned_perfection_riko_kashimoto_gt_ramp_up_rows|.0f}} | open; her Lone Wolf choice, when prioritised, accounts for part |
-| King Halo [Tonight, We Waltz] > Uma Stan | {{13.tonight_we_waltz_king_halo_gt_uma_stan_predicted|.3f}} | {{13.tonight_we_waltz_king_halo_gt_uma_stan_observed|.3f}} | {{13.tonight_we_waltz_king_halo_gt_uma_stan_ratio|.2f}} [{{13.tonight_we_waltz_king_halo_gt_uma_stan_ratio_95_pct_low|.2f}}, {{13.tonight_we_waltz_king_halo_gt_uma_stan_ratio_95_pct_high|.2f}}] | {{13.tonight_we_waltz_king_halo_gt_uma_stan_rows|.0f}} | Uma Stan sits on a choice that needs a priority |
-| Gold Ship [That Time I Became the Strongest] > Uma Stan | {{13.that_time_i_became_the_strongest_gold_ship_gt_uma_stan_predicted|.3f}} | {{13.that_time_i_became_the_strongest_gold_ship_gt_uma_stan_observed|.3f}} | {{13.that_time_i_became_the_strongest_gold_ship_gt_uma_stan_ratio|.2f}} [{{13.that_time_i_became_the_strongest_gold_ship_gt_uma_stan_ratio_95_pct_low|.2f}}, {{13.that_time_i_became_the_strongest_gold_ship_gt_uma_stan_ratio_95_pct_high|.2f}}] | {{13.that_time_i_became_the_strongest_gold_ship_gt_uma_stan_rows|.0f}} | open |
-| Mayano Top Gun [Cute + Cute = ?] > Nimble Navigator | {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_predicted|.3f}} | {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_observed|.3f}} | {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_ratio|.2f}} [{{13.cute_cute_mayano_top_gun_gt_nimble_navigator_ratio_95_pct_low|.2f}}, {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_ratio_95_pct_high|.2f}}] | {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_rows|.0f}} | open |
-| Maruzensky [Sentimental Flare ♪] > Slipstream | {{13.sentimental_flare_maruzensky_gt_slipstream_predicted|.3f}} | {{13.sentimental_flare_maruzensky_gt_slipstream_observed|.3f}} | {{13.sentimental_flare_maruzensky_gt_slipstream_ratio|.2f}} [{{13.sentimental_flare_maruzensky_gt_slipstream_ratio_95_pct_low|.2f}}, {{13.sentimental_flare_maruzensky_gt_slipstream_ratio_95_pct_high|.2f}}] | {{13.sentimental_flare_maruzensky_gt_slipstream_rows|.0f}} | open |
-| Daitaku Helios [Let's Get This Party Lit!] > Slipstream | {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_predicted|.3f}} | {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_observed|.3f}} | {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio|.2f}} [{{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio_95_pct_low|.2f}}, {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio_95_pct_high|.2f}}] | {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_rows|.0f}} | open |
-| Daitaku Helios [Sunlit Angel ♪] > Slipstream | {{13.sunlit_angel_daitaku_helios_gt_slipstream_predicted|.3f}} | {{13.sunlit_angel_daitaku_helios_gt_slipstream_observed|.3f}} | {{13.sunlit_angel_daitaku_helios_gt_slipstream_ratio|.2f}} [{{13.sunlit_angel_daitaku_helios_gt_slipstream_ratio_95_pct_low|.2f}}, {{13.sunlit_angel_daitaku_helios_gt_slipstream_ratio_95_pct_high|.2f}}] | {{13.sunlit_angel_daitaku_helios_gt_slipstream_rows|.0f}} | open |
-| Sweep Tosho [Lamplit Training of a Witch-to-Be] > Slipstream | {{13.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_predicted|.3f}} | {{13.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_observed|.3f}} | {{13.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_ratio|.2f}} [{{13.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_ratio_95_pct_low|.2f}}, {{13.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_ratio_95_pct_high|.3f}}] | {{13.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_rows|.0f}} | open |
-| Nakayama Festa [Trusting the Dice] > Risky Business | {{13.trusting_the_dice_nakayama_festa_gt_risky_business_predicted|.3f}} | {{13.trusting_the_dice_nakayama_festa_gt_risky_business_observed|.3f}} | {{13.trusting_the_dice_nakayama_festa_gt_risky_business_ratio|.2f}} [{{13.trusting_the_dice_nakayama_festa_gt_risky_business_ratio_95_pct_low|.2f}}, {{13.trusting_the_dice_nakayama_festa_gt_risky_business_ratio_95_pct_high|.2f}}] | {{13.trusting_the_dice_nakayama_festa_gt_risky_business_rows|.0f}} | open |
-| Tokai Teio [Step! Smile! Wink!] > Nimble Navigator | {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_predicted|.3f}} | {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_observed|.3f}} | {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_ratio|.2f}} [{{13.step_smile_wink_tokai_teio_gt_nimble_navigator_ratio_95_pct_low|.2f}}, {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_ratio_95_pct_high|.2f}}] | {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_rows|.0f}} | open |
+| Card > target | Rows | Predicted | Obs / pred [95%] | Likely reason |
+|---|---|---|---|---|
+| Sasami Anshinzawa [This Might Sting!] > Risky Business | {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_rows|.0f}} | {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_predicted|.3f}} | {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_ratio|.2f}} [{{13.this_might_sting_sasami_anshinzawa_gt_risky_business_ratio_95_pct_low|.2f}}, {{13.this_might_sting_sasami_anshinzawa_gt_risky_business_ratio_95_pct_high|.2f}}] | the model assumes Risky Business prioritised, which takes finale choice 2 |
+| Riko Kashimoto [Planned Perfection] > Ramp Up | {{13.planned_perfection_riko_kashimoto_gt_ramp_up_rows|.0f}} | {{13.planned_perfection_riko_kashimoto_gt_ramp_up_predicted|.3f}} | {{13.planned_perfection_riko_kashimoto_gt_ramp_up_ratio|.2f}} [{{13.planned_perfection_riko_kashimoto_gt_ramp_up_ratio_95_pct_low|.2f}}, {{13.planned_perfection_riko_kashimoto_gt_ramp_up_ratio_95_pct_high|.2f}}] | open; her Lone Wolf choice, when prioritised, accounts for part |
+| King Halo [Tonight, We Waltz] > Uma Stan | {{13.tonight_we_waltz_king_halo_gt_uma_stan_rows|.0f}} | {{13.tonight_we_waltz_king_halo_gt_uma_stan_predicted|.3f}} | {{13.tonight_we_waltz_king_halo_gt_uma_stan_ratio|.2f}} [{{13.tonight_we_waltz_king_halo_gt_uma_stan_ratio_95_pct_low|.2f}}, {{13.tonight_we_waltz_king_halo_gt_uma_stan_ratio_95_pct_high|.2f}}] | Uma Stan sits on a choice that needs a priority |
+| Mayano Top Gun [Cute + Cute = ?] > Nimble Navigator | {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_rows|.0f}} | {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_predicted|.3f}} | {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_ratio|.2f}} [{{13.cute_cute_mayano_top_gun_gt_nimble_navigator_ratio_95_pct_low|.2f}}, {{13.cute_cute_mayano_top_gun_gt_nimble_navigator_ratio_95_pct_high|.2f}}] | open |
+| Maruzensky [Sentimental Flare ♪] > Slipstream | {{13.sentimental_flare_maruzensky_gt_slipstream_rows|.0f}} | {{13.sentimental_flare_maruzensky_gt_slipstream_predicted|.3f}} | {{13.sentimental_flare_maruzensky_gt_slipstream_ratio|.2f}} [{{13.sentimental_flare_maruzensky_gt_slipstream_ratio_95_pct_low|.2f}}, {{13.sentimental_flare_maruzensky_gt_slipstream_ratio_95_pct_high|.2f}}] | open |
+| Daitaku Helios [Let's Get This Party Lit!] > Slipstream | {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_rows|.0f}} | {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_predicted|.3f}} | {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio|.2f}} [{{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio_95_pct_low|.2f}}, {{13.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio_95_pct_high|.2f}}] | open |
+| Daitaku Helios [Sunlit Angel ♪] > Slipstream | {{13.sunlit_angel_daitaku_helios_gt_slipstream_rows|.0f}} | {{13.sunlit_angel_daitaku_helios_gt_slipstream_predicted|.3f}} | {{13.sunlit_angel_daitaku_helios_gt_slipstream_ratio|.2f}} [{{13.sunlit_angel_daitaku_helios_gt_slipstream_ratio_95_pct_low|.2f}}, {{13.sunlit_angel_daitaku_helios_gt_slipstream_ratio_95_pct_high|.2f}}] | open |
+| Nakayama Festa [Trusting the Dice] > Risky Business | {{13.trusting_the_dice_nakayama_festa_gt_risky_business_rows|.0f}} | {{13.trusting_the_dice_nakayama_festa_gt_risky_business_predicted|.3f}} | {{13.trusting_the_dice_nakayama_festa_gt_risky_business_ratio|.2f}} [{{13.trusting_the_dice_nakayama_festa_gt_risky_business_ratio_95_pct_low|.2f}}, {{13.trusting_the_dice_nakayama_festa_gt_risky_business_ratio_95_pct_high|.2f}}] | open |
+| Tokai Teio [Step! Smile! Wink!] > Nimble Navigator | {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_rows|.0f}} | {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_predicted|.3f}} | {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_ratio|.2f}} [{{13.step_smile_wink_tokai_teio_gt_nimble_navigator_ratio_95_pct_low|.2f}}, {{13.step_smile_wink_tokai_teio_gt_nimble_navigator_ratio_95_pct_high|.2f}}] | open |
 
 *King Halo's Uma Stan follows the priority.* The expectation and the exact Poisson-binomial tail are the model's:
 
@@ -1342,20 +1299,13 @@ reach 1, Gold Ship's and Sweep Tosho's.
 
 *Smaller pairs.* Below 40 rows, {{13.pairs_under_40_rows_excluding_1|.0f}} more pairs exclude 1. {{13.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources|.0f}} of them are event sources of Playtime's Over!: Yukino Bijin
 [Dancing Light into the Night], Yaeno Muteki [Fiery Discipline] and Sirius Symboli [Escorte Étoile]. They hinted it in
-{{13.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources_hinted|.0f}} of {{13.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources_runs|.0f}} runs. The model predicted {{13.pairs_under_40_rows_excluding_1_playtime_s_over_lowest_predicted|.2f}}-{{13.pairs_under_40_rows_excluding_1_playtime_s_over_highest_predicted|.2f}}. Their event puts the skill on choice 2, which ends the chain
-before its last link, so IT takes it only when the skill is prioritised. That cause is untested here:
-
-| Those runs | Count | Skill prioritised | Skill hinted |
-|---|---|---|---|
-| showing a priority list | {{13.playtime_s_over_event_sources_runs_showing_a_priority_list|.0f}} | {{13.playtime_s_over_event_sources_prioritised|.0f}} | {{13.playtime_s_over_event_sources_hinted_with_a_list_shown|.0f}} |
-| without a list | {{13.playtime_s_over_event_sources_runs_without_a_list|.0f}} | | {{13.playtime_s_over_event_sources_hinted_without_a_list|.0f}} |
+{{13.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources_hinted|.0f}} of {{13.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources_runs|.0f}} runs. The model predicted {{13.pairs_under_40_rows_excluding_1_playtime_s_over_lowest_predicted|.2f}}-{{13.pairs_under_40_rows_excluding_1_playtime_s_over_highest_predicted|.2f}}. Their event puts the skill on choice 2, which ends the
+chain before its last link, so IT takes it only when the skill is prioritised. Only {{13.playtime_s_over_event_sources_runs_showing_a_priority_list|.0f}} of those runs show a
+priority list, too few to test that cause.
 
 *Other skills.* Every non-target skill a deck card or spark could give, on a 30% sample of {{13.other_skills_runs_sampled|,.0f}} runs:
 
 | Test | Rows | Observed / predicted [95%] | Verdict |
 |---|---|---|---|
 | inheritance | {{13.other_skills_inheritance_rows|,.0f}} | {{13.other_skills_inheritance|.3f}} [{{13.other_skills_inheritance_95_pct_low|.3f}}, {{13.other_skills_inheritance_95_pct_high|.3f}}] | slightly short: known miss; no one skill carries more than {{13.other_skills_largest_one_skill_s_share_of_the_inheritance_shortfall|.0%}} of it |
-| training-pool hints | {{13.other_skills_training_pool_rows|,.0f}} | {{13.other_skills_training_pool_hints|.3f}} [{{13.other_skills_training_pool_95_pct_low|.3f}}, {{13.other_skills_training_pool_95_pct_high|.3f}}] | under-predicted |
-
-The deck test leaves out rows with an inspiration, so it is conditional on no spark, treated as independent of the
-deck.
+| training-pool hints | {{13.other_skills_training_pool_rows|,.0f}} | {{13.other_skills_training_pool_hints|.3f}} [{{13.other_skills_training_pool_95_pct_low|.3f}}, {{13.other_skills_training_pool_95_pct_high|.3f}}] | under-predicted: known miss |
