@@ -6,7 +6,7 @@ use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P, ChainKind, chain_margi
 use crate::deck::dominance::{
     DeckEval, DominanceIndex, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank,
 };
-use crate::deck::loop_search::run_multi;
+use crate::deck::loop_search::{LoopJobInputs, run_multi};
 use crate::deck::sources::{
     Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries, src_miss,
 };
@@ -95,7 +95,16 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     }
     let stats = json!({"decks_built": ct.decks_built, "decks_on_frontier": n_front, "relevant_cards": en.entry_count, "cards_dropped": n_card_dropped,
                        "decks_swapped": ct.decks_swapped, "plain_pals": ent.plain_names});
-    run_multi(d, cr, &model, &sj, &dj, &pd, stats, space.as_ref().unwrap())
+    let inputs = LoopJobInputs {
+        data: d,
+        cards: cr,
+        model: &model,
+        skill_job: &sj,
+        deck_job: &dj,
+        skyline: &pd,
+        deck_space: space.as_ref().unwrap(),
+    };
+    run_multi(inputs, stats)
 }
 
 /// Whether the player owns a card (a locked card counts as owned)

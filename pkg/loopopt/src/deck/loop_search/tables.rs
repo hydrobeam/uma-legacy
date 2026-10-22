@@ -1,6 +1,6 @@
 //! Per-uma exact values, chance-grid ceilings and skyline clusters, including shared product ceilings.
 //! These tables bound deck and loop searches; they do not enumerate loop structures or report results.
-use super::{CardEntryKey, DeckSources, ExactQueryKey, Multi, SelectionKey, lin_of, qkey};
+use super::{CardEntryKey, ChanceKey, DeckSources, ExactQueryKey, Multi, SelectionKey, lin_of};
 use crate::Instant;
 use crate::data::{Data, Sched, dot};
 use crate::deck::caps::src_class;
@@ -369,7 +369,7 @@ impl<'data> Multi<'data> {
     /// Exact value of trainee u at chances qs under cap lv: the best exact P(all) over her best legal skyline decks
     /// and every legal deck whose product value times lv reaches it (each first through the proven bound).
     pub(super) fn exact_best(&self, u: UmaIndex, qs: &[f64], lv: f64) -> Rc<Best> {
-        let key = ExactQueryKey { trainee: u, chances: qkey(qs) };
+        let key = ExactQueryKey { trainee: u, chances: ChanceKey::new(qs) };
         if let Some(entry) = self.exact_cache.borrow().get(&key)
             && entry.certified_cap >= lv
             && let Some(result) = &entry.reported_best
