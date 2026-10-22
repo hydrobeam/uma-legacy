@@ -17,8 +17,8 @@ fn rand_tag(job: &Value) -> u64 {
     job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)))
 }
 
-/// The weak pool (each veteran keeps about half the target sparks): the landed-set distribution agrees with the
-/// career's own odds, and the schedule lists every G1 she can enter.
+/// The weak pool: the landed-set distribution agrees with the career's own odds, and the schedule includes
+/// both run and skipped G1s.
 #[test]
 fn weak_pool_outcomes_and_schedule() {
     let mut job: Value = serde_json::from_str(

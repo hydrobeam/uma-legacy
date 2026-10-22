@@ -355,7 +355,7 @@ impl<'cfg> StateBound<'cfg> {
         }
     }
 
-    /// The configuration's root bound: no deck of it can reach the bar `sb_bar` below it (0 without a bound)
+    /// The configuration's root upper bound, used to prune against `sb_bar`; returns 0 when no bound is enabled.
     pub(super) fn root(&mut self, cfs: f64, sb_bar: f64, sbm: u8) -> f64 {
         if self.context.cap_free {
             let x = self.cheap(&[]);

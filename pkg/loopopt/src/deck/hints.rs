@@ -1,8 +1,6 @@
 //! Training hints: the base draw count per scenario and the chance a card's draws miss a target.
 
-/// A scenario's display name. (Training-hint draws per run by scenario are `hint_base` and `hint_spec` below:
-/// h = base x (1 + hf/100) x (1 + d x specialty/100), fitted 2026-10-11 on 3,179 runs with the Lv-5 cap,
-/// docs/RESEARCH.md section 7; Grand Masters (JP) has no runs: the pooled fit, a placeholder.)
+/// A scenario's display name; unknown names pass through unchanged.
 pub(super) fn scenario_name(scenario: &str) -> &str {
     match scenario {
         "unity" => "Unity Cup",
@@ -14,7 +12,8 @@ pub(super) fn scenario_name(scenario: &str) -> &str {
     }
 }
 pub(crate) fn hint_base(scenario: &str) -> f64 {
-    // fitted on uma-it IT runs (docs/RESEARCH.md section 7); Grand Masters has no data: the pooled fit, a placeholder
+    // Retained training-hint fit; current checks: docs/RESEARCH.md section 7 (`7.form_runs`).
+    // Grand Masters uses the pooled fit as a placeholder.
     match scenario {
         "gc" => 1.97,
         "ura" => 1.34,
@@ -47,7 +46,7 @@ pub(super) fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
         return (1.0 - k as f64 / n as f64).powi(t as i32);
     } // no skill can leave the pool before the last draw
     // state: how many of the n - k other skills have taken 0, 1, .., cap draws (cap: left the pool); a sorted map, so
-    // sums run in one order (a std HashMap's order changes from run to run, and so did the last bits of every result)
+    // sums run in one order rather than depend on a HashMap's iteration order
     let mut states: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::default();
     let mut initial_counts = vec![0u8; cap + 1];
     initial_counts[0] = (n - k) as u8;

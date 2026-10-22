@@ -1,9 +1,7 @@
 //! A roll of the plan's pick (`next.roll`, docs/SOLVER.md *Next career*): the careers her veteran saves at one outcome
-//! and its bound, worked out from the plan's kept roll state, equal to the values the plan's full outcome table held at
-//! that outcome before the table was dropped from the output (`fixtures/plan_roll.json`: `outcomes.y` and `y_hi` of the
-//! val/plan jobs' outputs at 5834a65, at the all-zero and all-max outcomes and samples of y >= 0.5, of y < 0.5 <= y_hi
-//! and of y_hi < 0.5, as her stars per job target). Also: a roll carried by another job (`roll`, as the page's Reroll
-//! sends it), a roll with no plan kept (the plan runs first), and a roll in a new process after `state_out` /
+//! and its bound, worked out from the plan's kept roll state, match the frozen (stars, y, y_hi) values in
+//! `fixtures/plan_roll.json`. Also: a roll carried by another job (`roll`),
+//! a roll with no plan kept (the plan runs first), and a roll in a new process after `state_out` /
 //! `state_in` (the stored roll state, no plan).
 use serde_json::{Value, json};
 use std::{
@@ -112,7 +110,7 @@ fn rolls_carried_cold_and_after_a_reload() {
     let rolls = fx["p16"]["rolls"].as_array().unwrap();
     let (w0, w1) = (rolls[0].as_array().unwrap(), rolls[rolls.len() - 1].as_array().unwrap());
     let plan = job("p16");
-    // the page's Reroll: its search job (her veteran fixed as a parent) carries the roll of the plan on show
+    // A search job carries a roll of the plan through the top-level `roll` field.
     let mut search = plan.clone();
     let o = search.as_object_mut().unwrap();
     o.remove("next");

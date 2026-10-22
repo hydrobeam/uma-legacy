@@ -105,8 +105,8 @@ fn card_blocks_own_character_and_group_members() {
     let halo = cr.cards.iter().find(|c| c.name.contains("Tonight, We Waltz")).unwrap();
     assert!(halo.blocks(halo.chara) && !halo.blocks(1001));
 }
-/// Calibration against the uma-it runs the event count was fitted on: a 3-link card next to one other finishes its
-/// chain 89% of the time (observed; the binomial gives 86.6%), next to two others 60%, and alone almost always.
+/// Retained chain-model regression values, plus the effect of freeing a slot by ending a chain early.
+/// Current calibration: docs/RESEARCH.md section 8 (`8.fit_of_n_runs`).
 #[test]
 fn chain_model_calibration() {
     let m = chain_marginals(&[THREE_LINKS, THREE_LINKS]);
@@ -127,7 +127,7 @@ fn chain_model_calibration() {
             && (pm.iter().enumerate().map(|(e, p)| e as f64 * p).sum::<f64>() - 7.35).abs() < 1e-9
     );
 }
-/// A card's training draws over two targets in its pool: each target keeps its own chance 1 - (1 - 1/n)^h, both
+/// A card's training draws over two targets in its pool: each target keeps its marginal from `hint_miss`, both
 /// are hinted together less often than independent chances would say, and the outcomes are a distribution.
 #[test]
 fn training_draws_over_two_targets() {

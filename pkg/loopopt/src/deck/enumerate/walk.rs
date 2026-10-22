@@ -149,7 +149,7 @@ impl<V: Fn(&super::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_
             return false;
         }
         let list = groups[cursor.group].entries;
-        // the deck so far is row sel.len(); a child's row is the next one (overwritten per child)
+        // The deck so far is row path.entries.len(); a child's row is the next one (overwritten per child).
         let row_offset = path.entries.len() * target_count;
         // this parent's id and depth (the per-parent rows of `hopeful`)
         path.parent_id += 1;
@@ -335,12 +335,11 @@ impl<V: Fn(&super::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_
         if self.search.controls.cap_free {
             return true;
         }
-        // (each table is read where it is first needed: a read through `search` or `bt` written before the node's stores
-        // stays there, as the compiler cannot tell those stores leave it unchanged, and the early return then pays it)
+        // Read the bound tables after the cap-free early return, where this bound is first needed.
         let search = self.search;
         let target_count = search.controls.target_count;
         let nodes = &mut *scratch.nodes;
-        // the cap of every deck the child can still reach: its cards' classes and every entry cursor.remaining
+        // The child and every entry still eligible contribute to the highest class any completion can reach.
         let rho = if search.controls.best {
             search.controls.rho
         } else {

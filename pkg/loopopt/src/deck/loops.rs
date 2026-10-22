@@ -9,7 +9,7 @@ use super::{
 
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
 /// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with
-/// per-uma decks, for all four members with a shared deck.
+/// per-uma decks, for every structure member with a shared deck.
 pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
     run_deck_relaxed(d, sk, cr, v)
 }
@@ -114,12 +114,12 @@ fn multisets(
 }
 
 /// ---- card dominance (exact) ----
-/// Card A can stand in for card B in any deck when both are pals or both have the same chain length (so the
+/// Card A can stand in for card B in the product search when both have the same chain kind (so the
 /// deck's chain odds do not change), A is owned whenever B is, and A at its weakest still beats B at its
 /// strongest on every target: A's miss chances with its chain links at their lowest possible odds (the most
 /// crowded deck) are no higher than B's with every link firing, for both "no gold hint" and "no hint at all".
 /// Swapping B for A then gives a deck at least as good on every dominance coordinate, with the same pal
-/// count. The swap is blocked only if A is already in the deck or shares a character with one of the other
+/// count when required. The swap is blocked if B is locked or A shares a character with one of the other
 /// deck_size - 1 cards, so B is dropped when kept dominators with at least deck_size - 1 + top_decks
 /// distinct characters exist: every deck with B then has top_decks distinct kept decks at least as good
 /// (swap the deck's other dropped cards first, then B for each unblocked dominator).
@@ -308,7 +308,8 @@ fn debug_robust(
 
 /// ---- dominance coordinates ----
 /// For a target the trainee's outfit does not give, the metric's landing chance is
-///   p = W + W*g - W*(1 - q)*(1 - h)  (W = GEN_WHITE),   g = P(gold hint), h = P(any hint) = 1 - (1 - w)*(1 - g);
+///   p = W + W*g - W*(1 - e)*(1 - q)*(1 - h)  (W = GEN_WHITE), e = P(own-event white hint),
+///   g = P(gold hint), h = P(any deck hint) = 1 - (1 - w)*(1 - g);
 /// with the white on the outfit p = W + W*g, and with the gold it is constant. So the metric only
 /// rises with g and h, and a deck at least as high in every (g, h) is never worse. (w, g) dominance implies
 /// (g, h) dominance, so this prunes at least as much. Coordinates no relevant card can move are dropped,

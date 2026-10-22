@@ -165,12 +165,10 @@ pub(crate) fn add_looped_rows(
     let sj = sim.env.skill_job;
     // Looped careers: per uma whose career above has parents that are not both 8/8s, her best career on two real 8/8
     // veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her own 8/8 a fully
-    // looped parent (the goal), and the trios' last step is such a career: without these rows the career V itself
-    // prices (C on A's and B's 8/8s) was never among the options, and a uma whose best-odds pair happened to be two 8/8s
-    // took the goal's credit alone (inputs of 2026-10-17: Taiki Shuttle 0.454 over Inari One's looped career, 1.000).
+    // looped parent (the goal), so these rows make the trios' runnable last steps available as options.
     // Exact (the surrogate's under `sur` 1); pairs by ceiling, stopping below the best found. Not among Cont's builders
     // (Cont is fitted on each uma's best career) and not added to the cache (what the tables read stays the job's
-    // winners), so V and every other row are as before.
+    // winners). Their scoring preparation can still search for decks that later scorings read.
     // Per uma her best looped career where searched (`Unsearched` or `Known`, including no legal pair), kept with
     // the plan's best careers: a kept plan of this very pool gives it as kept; one of this pool less its last veteran
     // gives it as kept unless she is an 8/8 (then only her pairs are new: the better of the kept one and those, a tie
@@ -404,7 +402,7 @@ pub(crate) fn score_and_promote_rows(
         fit_trios(sim, context, continuations, &full_veterans, buf);
     // pass 2: every career scored against V (exact over her outcomes): E[V - V with her veteran] - 1
     // (a row that is never the pick, a builder with a borrowed parent under "later", is not scored: no score, no kept scoring)
-    progress(4, 0, plan_rows.rows.len()); // pass 2: every career against V
+    progress(4, 0, plan_rows.rows.len());
     if !plan_rows.rows.is_empty() && fit.current_value.is_finite() {
         score_every_row(sim, context, &fit, &mut plan_rows.rows, buf);
         // the proxies a shown row or the pick's near-tie band can turn on: searched exactly (their

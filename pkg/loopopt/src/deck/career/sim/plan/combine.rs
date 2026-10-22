@@ -80,7 +80,7 @@ pub(crate) struct PlanScores {
 /// A builder row's lift of one candidate.
 #[derive(Clone, Copy)]
 struct BuilderLift {
-    /// `lift_eff` at the candidate's odds now.
+    /// `LiftStats::efficiency` at the candidate's odds now.
     efficiency: f64,
     /// The builder's uma (`Data::umas`).
     builder: crate::UmaIndex,

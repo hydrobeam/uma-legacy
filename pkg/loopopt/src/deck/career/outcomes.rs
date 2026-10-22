@@ -137,7 +137,7 @@ impl Env<'_> {
     /// Corner table of trainee t with deck `sel`: per outfit, P(all) with every spark-generation scale 1 at the 2^nu
     /// points q_k = 1 - (1 - q0_k) x_k, x_k in {0, 1} (index bit k = uncertain target k at x_k = 1). Derived: q_k enters
     /// every landing factor only through (1 - e)(1 - q_k), affinely, and P(all) per outfit is a sum of products with
-    /// one factor per target, so it is multilinear in x and `interp` at any x in [0, 1]^nu gives it exactly.
+    /// one factor per target, so it is multilinear in x and `interp_in` at any x in [0, 1]^nu gives it exactly.
     /// `corners` at q0 = 0 (a cached deck's table, `Cache::add`), memoised by (deck class, entries, filler). Exact: the
     /// table reads trainee t only through her model (outfit coverage, own-skill chances: `set_trainee` from
     /// `own_event_chances`), which her deck class holds to the bit, and the deck only through its entries and filler;
@@ -162,8 +162,8 @@ impl Env<'_> {
         let (nu, ntar) = (self.uncertain_count, self.target_count);
         let no = self.model.n_outfits(t);
         let mut corners = vec![vec![0.0f64; 1 << nu]; no];
-        // per corner `exact(t, sel, [6; ntar], false, false)`: the deck's part of `joint_fast` (`joint_prep`, which reads
-        // no chance and no model state) once, its evaluation per corner (the same sums; the scale is 1 throughout)
+        // The exact odds per corner at scale 1: prepare the deck once (`joint_prep`, which reads no chance or model
+        // state), then evaluate it per corner with the same sums as `exact`.
         let scales = self.scale(&vec![6; ntar]);
         let ents: Vec<crate::deck::SourceEntry<&TargetSources>> = sel
             .entries

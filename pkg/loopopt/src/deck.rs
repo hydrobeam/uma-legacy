@@ -1,8 +1,10 @@
 //! Joint deck + loop search for skill targets.
 //!
 //! Deck model (per training run):
-//!   - training hints: each card gives h = base(scenario) x (1 + hint_frequency/100) draws, each uniform over its
-//!     skill options still below Lv 5 (the stat option is never drawn; a skill at Lv 5 leaves the pool, so a card
+//!   - training hints: the scenario, hint frequency and specialty priority set each card's draw count
+//!     (`Sources::draws`),
+//!     each draw uniform over its skill options still below Lv 5 (the stat option is never drawn; a skill at Lv 5
+//!     leaves the pool, so a card
 //!     giving +5 levels per draw never repeats one), `hint_miss`; a card's draws hint two of its targets together less
 //!     often than independent odds would say;
 //!   - chain events: the number in a run is Binomial(CHAIN_N, CHAIN_P); each advances a chain picked among the
@@ -13,14 +15,14 @@
 //!
 //! Deck hint odds per target: 1 - prod(1 - p) over sources, separately for white and gold.
 //!
-//! Search (exact for the model under the assumed caps `EXACT_CAPS`): race schedules maximise affinity and do not
-//! depend on the deck. Every deck legal for a trainee (the character rule included) is enumerated by chain-kind key
+//! Search: race schedules are optimized for affinity and do not depend on the deck. Under the assumed caps
+//! `EXACT_CAPS`, every deck legal for a trainee (the character rule included) is enumerated by chain-kind key
 //! (`DeckSpace`) and ranked by the product of its per-target odds; decks and loops that could still win are scored
 //! exactly (`joint_fast`), bounded by their structure class's cap on exact over product odds. Four-uma loops and
 //! three-uma rotations (`sizes`) are generated in bands of a separable bound and solved (schedules, then exact
 //! values) only while a ceiling (pairwise affinity ceilings first, then the structure's own schedules, with per-uma
 //! tables of exact values by inheritance chance) can still beat the k-th best. A pass over its work budget falls back
-//! to lower caps, then to product odds alone (`exact.rho`). Per-uma decks (the default, `run_multi`) give each trainee
+//! to lower caps, then to product odds alone (`exact.rho`). Per-uma decks (`per_uma`, `run_multi`) give each trainee
 //! her own best legal deck; a shared deck must be legal for every member. docs/SOLVER.md "Deck + loop search".
 use super::{
     Choice, Data, Deserialize, FxMap, Instant, NONE, NT, Res, Sched, Serialize, Uma, best_response, chart_race_name,
@@ -131,8 +133,8 @@ pub(crate) struct DeckJob {
     /// own expected race wins; "goals" = career objectives only; "none" = shared wins count for nothing.
     #[serde(default)]
     pub schedule: Option<String>,
-    /// one deck per uma instead of one shared deck: each trainee runs her own best legal deck (across her three
-    /// lineages); `top_decks` then counts loops
+    /// one deck per uma instead of one shared deck: each trainee runs her own best legal deck across her lineages
+    /// (three in a four-uma loop, one in a rotation); `top_decks` then counts structures
     #[serde(default)]
     pub per_uma: bool,
     /// internal: return the skyline decks only (used for a uma's own-card-free deck set in per-uma mode)

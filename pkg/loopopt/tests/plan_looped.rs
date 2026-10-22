@@ -2,8 +2,7 @@
 //! The val/plan p16 pool with two of its veterans (El Condor Pasa #5 and Tamamo Cross #15) given their missing targets
 //! at 1 star: two real 8/8s, so the cheapest trio has both sides real and its last step (Agnes Digital on those two) is a
 //! career you can run now. Its full result alone saves one career per run in V's own units (V = 1/p of it), so the pick
-//! saves at least one. Before the looped rows it was never offered: the rows held each uma's best-odds career only, and
-//! Agnes Digital's is on #14 (6/8) + #15, so the pick was that career, saving 0.43, and labelled the trio's last run.
+//! saves at least one.
 use serde_json::Value;
 use std::{fs, process::Command};
 

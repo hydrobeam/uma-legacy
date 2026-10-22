@@ -1,14 +1,13 @@
 //! The skill-target model (`Model`) that the deck search and the career planner score structures with, and the
 //! schedule chart they report.
 //!
-//! Model per training run (one self-copy-free lineage, trainee T):
+//! Loop model per training run (trainee T):
 //!   - every target skill's spark sits on all 6 legacies, with stars drawn from a rank distribution
 //!     (the expected base rate stands in for a legacy's unknown stars: exact for one roll, but over the career's two rolls
 //!     it slightly overstates the chance, since a legacy's stars are the same in both: docs/RESEARCH.md section 2);
 //!   - a skill is acquired if guaranteed, on T's own outfit skill list, hinted by the deck, or proc'd from the lineage
 //!     (P = 1 - prod(1 - base*(1+aff/100))^INSPIRATIONS over the six legacies, parents and grandparents alike);
-//!   - each legacy's affinity follows uma-it-optimizer's fit on 8,155 Independent Training receipts
-//!     (github.com/Acrith/uma-it-optimizer, tools/loop/affinity.py): a parent P counts pair(T,P), the whole
+//!   - each legacy's affinity follows docs/RESEARCH.md section 5: a parent P counts pair(T,P), the whole
 //!     pair(P1,P2), 3 per G1 shared with the other parent, and for each of P's own parents G the trio (T,P,G) plus
 //!     3 per G1 shared with G; a grandparent G under P counts trio(T,P,G) plus 3 per G1 shared with P. In a loop P's
 //!     own parents are the other parent and the fourth member, so the parents' shared G1s count twice for each;
@@ -23,12 +22,11 @@ use crate::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
 
 /// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
-/// the six ancestors already carrying that spark (aoneko_pochi's curve; hakuraku.moe/notes/spark_generation fits it to
-/// ~1.2M white/gold observations from CM10-CM12 room data, p >= 0.84). In a running loop all six carry every target.
+/// the six ancestors already carrying that spark (assumed; docs/RESEARCH.md section 1).
+/// In a running loop all six carry every target.
 pub(crate) const GEN_WHITE: f64 = 0.2 * 1.771_561;
 pub(crate) const GEN_GOLD: f64 = 0.4 * 1.771_561;
-/// Grandparents' base rate relative to parents'. 1: they fire less only because their affinity is lower (receipts:
-/// halving predicted half of what fired).
+/// Grandparents' base rate relative to parents'; docs/RESEARCH.md section 3, `3.grandparent_weight_fitted`.
 const GP_RATE: f64 = 1.0;
 /// Inspirations per career (both inheritance models: a spark lands when either inspiration fires it, so a miss is one
 /// inspiration's miss squared)
@@ -78,8 +76,8 @@ pub(crate) struct Target {
 #[derive(Deserialize)]
 pub(crate) struct SkillJob {
     pub targets: Vec<Target>,
-    /// 1/2/3-star shares of the lineage's sparks: 0.50/0.45/0.05 below rank score 17,500, 0.20/0.70/0.10 from 17,500 up
-    /// (hakuraku.moe/notes/spark_generation: 528,637 and 196,646 white sparks from CM10-CM12 room data)
+    /// Assumed 1/2/3-star shares of the lineage's sparks; defaults to the below-17,500-rank mix (`dstar`).
+    /// The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2).
     #[serde(default = "dstar")]
     pub star_dist: [f64; 3],
     #[serde(default)]
@@ -189,7 +187,7 @@ pub(crate) struct Model<'data> {
     /// per uma index: every listed outfit is excluded
     pub(crate) no_outfit: UmaTable<bool>,
     job: &'data SkillJob,
-    /// coverage tuples without labels, for the allocation-free hot path
+    /// coverage vectors without labels, for the allocation-free hot path
     sts: UmaTable<Vec<Vec<u8>>>,
     /// per uma index, per option: chance the trainee's own events hint each uncertain target's white
     pub(crate) ews: UmaTable<Vec<Vec<f64>>>,
@@ -304,7 +302,8 @@ impl<'data> Model<'data> {
 
     /// per-lineage proc q from slot affinities computed with overlap function `o(a, b)` (member positions), for the
     /// lineages of `lins(f.len())`. In a rotation X = T: tri(T, P, T) = 0 (`rel_tables` counts a group only for distinct
-    /// characters; fitted on 101,536 inspiration trials) and o(P, T) is the overlap with the trainee's own schedule.
+    /// characters; docs/RESEARCH.md section 5, `5.trials_attributable_to_one_ancestor`).
+    /// o(P, T) is the overlap with the trainee's own schedule.
     pub(crate) fn lineage_q(&self, f: &[UmaIndex], o: &dyn Fn(usize, usize) -> f64) -> Vec<f64> {
         self.lineage_q_arr(f, o)[..lins(f.len()).len()].to_vec()
     }

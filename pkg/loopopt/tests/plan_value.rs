@@ -1,8 +1,5 @@
-//! V is the plan's, whatever the job asks to be shown. `next.value_only` once gave V alone by skipping pass 1, so no
-//! builder was scored and every Cont was the default (lam 0: grinding at her odds now): the V of the planner before
-//! Cont, not the plan's (on export 3, 52,813 against 27,390). The knob is gone; a job that still names it gets the full
-//! plan. val/plan boot_mob, whose cheapest trio builds before it grinds (Cont's 16 successes per side), so a V without
-//! Cont would differ.
+//! The obsolete `next.value_only` field must not change the plan's V, continuation fit or chosen trio.
+//! The boot_mob fixture exercises a continuation that builds before grinding.
 use serde_json::{Value, json};
 use std::{fs, process::Command};
 

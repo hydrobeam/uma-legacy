@@ -2,10 +2,8 @@
 //! and the per-key level tables.
 use super::HashMap;
 
-/// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P): fitted on 1,299 uma-it Independent Training runs whose chain
-/// progress is readable from event hints (an earlier fit on 879 runs and a refit on 1,792, with markers read from IT's
-/// default choice, chose the same) (mean 7.35, variance 4.8; no difference between scenarios; a Poisson count,
-/// variance = mean, fits much worse). Decks with two chain cards finish both chains in 83% of such runs, 80% predicted.
+/// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P). The retained fit and its checks are in docs/RESEARCH.md
+/// section 8 (`8.fit_of_n_runs`); the current evidence does not make this count law exact for every deck or scenario.
 pub(super) const CHAIN_N: u32 = 21;
 pub(super) const CHAIN_P: f64 = 0.35;
 /// A deck entry's chain kind. A card played normally stops at its last link; a chosen early end stops sooner. While it
@@ -62,8 +60,7 @@ pub(super) fn event_pmf_job() -> std::rc::Rc<Vec<f64>> {
 pub(super) fn binom_coef(n: u32, k: u32) -> f64 {
     (0..k).fold(1.0f64, |a, i| a * f64::from(n - i) / f64::from(i + 1))
 }
-/// Cache key of the event-count distribution in use: (n, bits of p). (An XOR of the two collided: (21, 0.35) and
-/// (22, 0.7) gave one key.)
+/// Cache key of the event-count distribution in use: (n, bits of p), kept separately to avoid XOR collisions.
 pub(super) fn pmf_key() -> (u32, u64) {
     CHAIN_EVENTS.with(|c| {
         let (n, p) = c.get();

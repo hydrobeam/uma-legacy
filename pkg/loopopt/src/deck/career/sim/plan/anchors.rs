@@ -65,11 +65,9 @@ impl AnchorBound {
     fn leaf_bounds(&self) -> &[f64] {
         &self.prefix_maxima[self.target_count]
     }
-    /// a fresh (candidate, partner) with `no` outfits for the anchors and the ceiling's fast outfits gc ([outfit][target
-    /// k][her stars], nfo of them): bd = rfc (per leaf rf x, from 0.0, the most of each outfit's product in
-    /// `leaf_products`' order: the old ceiling's f64s) at the marked leaves (`Marks`), -inf at the others (so no anchor
-    /// is folded in where nothing reads the bound: every test below compares with a most that holds marked leaves only),
-    /// `prefix_maxima` built
+    /// A fresh (candidate, partner): initialize each marked leaf's bound from the ceiling's maximum outfit product,
+    /// in `leaf_products`' order, and build `prefix_maxima`. Unmarked leaves stay -inf, so no anchor is folded in
+    /// where nothing reads the bound; prefix maxima include only marked leaves.
     fn reset(
         &mut self,
         anchor_outfit_count: usize,
@@ -410,7 +408,7 @@ fn rise_factors(inputs: &RiseInputs, anchor_chances: &[f64], g: &mut Vec<f64>) {
     }
 }
 
-/// `outcome_hi` at one outcome (her stars `leaf`, landed set m): each candidate's odds `up` at the most any partner's
+/// `outcome_hi` at one outcome (her stars `leaf`, `landed_mask`): each candidate's odds at the most any partner's
 /// bound allows (into `candidate_probabilities`), then `saving_lo`; `step_costs` scratch
 fn hi_at(
     score_base: &ScoreBase,
@@ -451,25 +449,17 @@ fn saving_lo(
     v_after(score_base, &mut Lo, &mut scratch, &lifted, landed_mask, own)
 }
 
-/// The pick's bound's exact anchors (`outcome_hi`): her best deck searched with her at each of these stars on every
-/// uncertain target, for at most HI_SEARCHES / 2 partners (with no limit p16 took 5 and left the same). Callgrind per
-/// search: p16 55M, gm16 151M instructions (the val/plan jobs +6.0% and +11.1% in all). A leaf whose stars are all at
-/// most 1 is rare at the rank's mix: adding 1 star moved p16's provisional 0.0275 -> 0.0272, gm16 0.0796 -> 0.0742 for
-/// +8.8% and +16.5%
+/// Optional exact anchors for `outcome_hi`: search with her at each of these star levels on every uncertain target.
 const HI_STARS: [usize; 2] = [2, 3];
 
-/// Off by default (not worth the plan's +6-11%); 10 gives the numbers above.
+/// Budget in deck searches for the optional anchors; zero disables them.
 const HI_SEARCHES: usize = 0;
 
-/// ... and only for band outcomes whose partners' bounds are within this factor of p_now: a cost rule, not part of the
-/// bound. It skips p10 and p11, whose band needs partners at 2.5 times p_now and more: there 15 searches (at 1, 2 and 3
-/// stars) freed nothing (p11: 233 ms native spent), and only 63 (805 ms) moved p10 (0.474 -> 0.378); 1.3 and 1.5 chose
-/// the same
+/// Only search anchors whose partners' bounds are within this factor of the candidate's current odds.
+/// This limits work; it is not part of the bound's proof.
 const HI_RISE: f64 = 1.5;
 
-/// `outcome_hi` for one (candidate ui, partner y): her slot's miss factors, the bound per leaf (`AnchorBound`), each marked
-/// outcome's most of the partners' (`tu`: candidate ui's row of the table). Its own function, entered once per partner,
-/// so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*)
+/// Inputs shared by `hi_partner` across candidates and partners: the scoring, legal parent places and marked outcomes.
 struct UpperBoundContext<'score, 'base> {
     scoring: &'score ScoringContext<'score, 'base>,
     fixed_parents: &'score [usize],
@@ -911,9 +901,8 @@ fn hi_partner(
 /// there, under the caps every search assumes)
 ///     value(y, her) <= c' E_best(q^s) rise(q', q^s),
 /// rise 1 where her stars are at most s (the band's outcomes are bounded again after); also at most the ceiling
-/// (`Env::ceiling` through `Sim::fastc`, under EXACT_RHO: per outfit and target A - B (1 - q'), `outfit_fast`'s factor at
-/// q'; before 2026-10-09 the bound took A + B q', B more per target, valid and on p16 3.3 times as high at the pick's
-/// partners). A candidate's step costs the lowest cost at those odds
+/// (`Env::ceiling` through `Sim::fastc`, under the top cap: per outfit and target A - B (1 - q'),
+/// `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
 /// (`Cont::cost_lo`). Derived, per outcome:
 /// (1) For each partner, the bound >= the best career's exact value >= the table value `score_career` reads. A cached
 ///     deck's corner table is multilinear in the targets' miss chances, as P(all) of a fixed deck is (each chance enters
@@ -954,7 +943,7 @@ pub(crate) fn outcome_hi(
     let leaf_count = 1usize << (2 * uncertain_target_count);
     let outcome_count = 1usize << target_count;
     // (candidate, bound at scale 1 per leaf, spark scale per m): kept only for the exact anchors (`HI_SEARCHES` > 0); else
-    // each outcome reads `tab`, the same maxima folded in as each partner is done
+    // each outcome reads `candidate_bounds`, the same maxima folded in as each partner is done
     let mut exact_bounds: Vec<ExactPartnerBound> = vec![];
     let mut exact_chances: Vec<ExactAnchorChances> = vec![];
     let ceiling_scale = simulator.env.space.rho_top() * simulator.fixed;
@@ -1022,7 +1011,7 @@ pub(crate) fn outcome_hi(
         },
         ceiling_scale,
     };
-    // (each (candidate, partner)'s anchors as a call keeps them for the next, `acache`: in this loop's order)
+    // Retained anchors follow this loop's (candidate, partner) order.
     let mut partner_count = 0usize;
     for candidate in 0..candidate_count {
         let candidate_trainee = context.score_base.candidates[candidate];
@@ -1085,7 +1074,7 @@ pub(crate) fn outcome_hi(
         trios: bounds.own_trios,
         full_mask: outcome_count - 1,
     };
-    // per wanted cell its bound (0 where it can't happen), from its place among the cells held (`mc`, ascending)
+    // Per wanted cell its bound (0 where it can't happen), from its place in the ascending marked cells.
     let mut savings = [0.0];
     let at: Vec<Option<usize>> = want
         .iter()
