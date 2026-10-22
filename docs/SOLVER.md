@@ -215,6 +215,12 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
 - **Gold and white**: a card's gold and white of one skill are combined exactly (deck `odds`: `gold` = P(gold hint),
   `white` = P(white hint | no gold hint)); `TargetSources::src_miss` accumulates the corresponding miss factors.
 
+The environment switches named here (`JOINT_CHECK`, `CF_CHECK`, `SBOUND` and the others) are read once per process into
+`Checks` (`checks.rs`, each field saying what it does), which every job borrows (`DeckJob::checks`). What a search
+runs under is passed to it: a band's extra bound (`BandBound`: the class caps alone, the state-conditioned bound, or
+cap-free with its node limit) and the job's chain events (`ChainEvents`). Only the checks' counters (`SBCHK`, `CFCHK`
+and the like) are thread-local, totals the CLI prints on exit.
+
 Exact odds. Targets do not land independently: chain cards share one run's chain events (one binomial count), so their chain progress is coupled, and an event's outcomes can give one target or another. A deck's exact value for a trainee at inheritance chance q, V(u, q, D), is computed over the joint distribution of chain progress, given which every source is independent except outcome groups touching two or more targets, which are enumerated per cluster of targets they join (`joint_fast`; `joint_trainee_ref` is the full enumeration, and `JOINT_CHECK=1` compares both in the `joint_checked` wrapper; direct calls to `joint_fast` bypass it). The search ranks loops and decks by exact values. The product of per-target odds, V̂ (`rank_value` in the output), is only used to bound and order the work:
 - **Assumed caps, per deck class.** The capped search assumes V ≤ ρ·V̂, with ρ set by the deck's class
   (`EXACT_CAPS`, `cap_class`, with entry masks from `TargetSources::cv_mask`): 1.05 when at most two targets are fed by chain links (`TargetSources::chain_misses`) and every outcome

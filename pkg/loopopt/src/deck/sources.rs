@@ -961,7 +961,7 @@ pub(crate) fn deck_entries<'data>(
         plain_chars.push(c.chara);
         let best =
             cards.iter().filter(|x| x.pal && x.chara == c.chara && is_owned(x.id)).max_by_key(|x| x.rarity).unwrap();
-        plain.push((pool_ids.iter().filter(|&&u| best.blocks(u)).count(), best.id, best.name.clone()));
+        plain.push((pool_ids.iter().filter(|&&u| best.blocks(u, dj.checks)).count(), best.id, best.name.clone()));
     }
     plain.sort_by_key(|x| x.0); // stable: ties keep card order
     for (_, id, name) in plain {

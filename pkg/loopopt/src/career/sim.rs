@@ -585,8 +585,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     fn consider_at(&mut self, st: &mut PathState, lineage: Lineage, q: &[f64], c: f64, bar: f64, buf: &mut Vec<f64>) {
         let t = lineage.trainee;
         let Some(ub) = self.env.ceiling(t, q, c) else { return };
-        static CHECK_UB: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *CHECK_UB.get_or_init(|| std::env::var("SIM_CHECK_UB").is_ok()) {
+        if self.env.space.deck_job.checks.sim_check_ub {
             let f = self.fast_ub(st, lineage);
             assert!((f - ub).abs() <= 1e-12 * ub, "fast_ub {f} vs ceiling {ub}");
         }

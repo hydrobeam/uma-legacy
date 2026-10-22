@@ -15,8 +15,22 @@ mod walk;
 pub(crate) enum SearchMode {
     /// Keep the first highest-value deck strictly above the initial floor.
     Best { seed: f64 },
-    /// Collect decks that can reach a clause's threshold under its structure-class cap.
-    Band { ratio_cap: f64, max_decks: usize },
+    /// Collect decks that can reach a clause's threshold under its structure-class cap, pruned also by `bound`.
+    Band { ratio_cap: f64, max_decks: usize, bound: BandBound },
+}
+
+/// What a band search prunes by beside its class caps. The state bounds need one clause of one lineage (one trainee
+/// at one chance: the career's searches); any other band runs as `Capped`.
+#[derive(Clone, Copy)]
+pub(crate) enum BandBound {
+    /// The class caps alone.
+    Capped,
+    /// The state-conditioned bound beside the caps, in `mode` (`Checks::sbound`, `SBOUND`: 3 at each
+    /// configuration's root, 1 also at depth 1, 2 at every node without the caps, 0 off).
+    StateBound { mode: u8 },
+    /// The cap-free band (`Env::best_deck_cf`): two proven bounds at every node and leaf are its only prunes, no cap;
+    /// it stops (`CapFreeNodeLimit`) once the space's node count (`DeckSpace::nodes`) passes `node_limit`.
+    CapFree { node_limit: usize },
 }
 
 /// Why enumeration stopped before checking all relevant decks. This is not an exact-scoring certificate.
@@ -51,6 +65,9 @@ pub(crate) struct SearchOutcome {
     pub(crate) decks: Vec<ScoredDeck<SelectedDeck>>,
     /// None means enumeration finished under the requested bounds; exact scoring may still be needed.
     pub(crate) incomplete: Option<SearchStop>,
+    /// The band was built without the class caps (state-bound mode 2, or cap-free): every deck in it may reach the
+    /// threshold, none was cut by a cap. False on a search that stopped before its setup.
+    pub(crate) uncapped: bool,
 }
 
 /// Search-wide legal entries and proof configuration. Own the cached tables so the traversal

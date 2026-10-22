@@ -1,5 +1,5 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
-use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class, test_caps};
+use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class};
 use crate::deck::chains::{ChainKind, chain_marginals};
 use crate::deck::dominance::{Name, PDeck};
 use crate::deck::joint::MissFactors;
@@ -8,7 +8,6 @@ use crate::deck::state_bound::StateBoundConfig;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::skills::{Model, OutfitOption, SkillsRaw};
 use std::collections::HashMap;
-thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = const { std::cell::Cell::new((0, 0.0, 0)) }; pub(super) static SPT: std::cell::Cell<(f64, f64, usize, usize)> = const { std::cell::Cell::new((0.0, 0.0, 0, 0)) }; }
 
 /// A configuration's required cards from one chain-kind group.
 #[derive(Clone, Copy)]
@@ -197,7 +196,7 @@ impl<'data> DeckSpace<'data> {
             }
             c /= 7;
         }
-        let marg = chain_marginals(&ks);
+        let marg = chain_marginals(self.deck_job.chain_events(), &ks);
         let empty: Vec<f64> = vec![];
         let mut mw = vec![1.0f64; n * target_count];
         let mut mg = vec![1.0f64; n * target_count];
@@ -277,7 +276,9 @@ impl<'data> DeckSpace<'data> {
             )
         };
         let legal: Vec<usize> = (0..self.card_indices.len())
-            .filter(|&j| trainee_ids.iter().all(|&id| !self.cards[self.card_indices[j]].blocks(id)))
+            .filter(|&j| {
+                trainee_ids.iter().all(|&id| !self.cards[self.card_indices[j]].blocks(id, self.deck_job.checks))
+            })
             .collect();
         let keys: Vec<String> = legal.iter().map(|&j| proj(&self.sources[j])).collect();
         let empty = proj(&TargetSources::default());
@@ -473,9 +474,9 @@ impl<'data> DeckSpace<'data> {
             LockedCards { entry_bits: lock_bits, all_bits: all_locked }
         })
     }
-    /// the class caps (`EXACT_CAPS`, or all at AUDIT_CAP under `cap_audit`)
+    /// the class caps (`EXACT_CAPS`, `CAPS_TEST`'s in their place, or all at AUDIT_CAP under `cap_audit`)
     pub(crate) fn caps(&self) -> [f64; 4] {
-        if self.deck_job.cap_audit { [AUDIT_CAP; 4] } else { test_caps().unwrap_or(EXACT_CAPS) }
+        if self.deck_job.cap_audit { [AUDIT_CAP; 4] } else { self.deck_job.checks.caps_test.unwrap_or(EXACT_CAPS) }
     }
     /// most decks one band search may return: EXACT_CAP, ten times that under `cap_audit` (its bands are far larger)
     pub(crate) const fn band_cap(&self) -> usize {
@@ -494,7 +495,10 @@ impl<'data> DeckSpace<'data> {
         self.caps()[self.sel_class(x)].min(rho)
     }
     pub(crate) fn legal_plain(&self, trainee_ids: &[u32]) -> Vec<&PlainPal<'data>> {
-        self.plain_pals.iter().filter(|x| trainee_ids.iter().all(|&id| !x.card.blocks(id))).collect()
+        self.plain_pals
+            .iter()
+            .filter(|x| trainee_ids.iter().all(|&id| !x.card.blocks(id, self.deck_job.checks)))
+            .collect()
     }
     pub(crate) fn pdeck(&self, x: &SelectedDeck, trainee_ids: &[u32]) -> PDeck {
         let source_builder = Sources { dj: self.deck_job, unc: &self.target_groups };

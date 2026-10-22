@@ -34,34 +34,38 @@ pub(crate) struct CliBoundReport;
 
 impl Drop for CliBoundReport {
     fn drop(&mut self) {
-        if std::env::var("SB_CHECK").is_ok() {
-            crate::deck::joint::SBCHK.with(|counts| {
+        let checks = crate::checks::get();
+        if checks.sb_check {
+            crate::checks::SBCHK.with(|counts| {
                 let counts = counts.borrow();
                 eprintln!(
                     "SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}",
-                    counts.0, counts.1, counts.2, counts.3, counts.4, counts.5
+                    counts.decks, counts.max_ratio, counts.min_ratio, counts.below, counts.leaves, counts.violations
                 );
             });
         }
-        if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() {
-            crate::deck::joint::SBN.with(|counts| {
+        if checks.sbound_report || checks.sb_check {
+            crate::checks::SBN.with(|counts| {
                 let counts = counts.borrow();
-                eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", counts.0, counts.1, counts.2);
+                eprintln!(
+                    "SBN cfgs cut {} bound evals {} nodes cut {}",
+                    counts.configurations_cut, counts.evaluations, counts.nodes_cut
+                );
             });
         }
-        if std::env::var("RB_CHECK").is_ok() {
-            crate::deck::enumerate::bounds::RBCHK.with(|counts| {
+        if checks.rb_report {
+            crate::checks::RBCHK.with(|counts| {
                 let counts = counts.borrow();
                 eprintln!(
                     "RBCHK leaves {} tests {} violations {} max value/bound {:.9}",
-                    counts.0, counts.1, counts.2, counts.3
+                    counts.leaves, counts.tests, counts.violations, counts.max_ratio
                 );
             });
         }
-        if std::env::var("CF_CHECK").is_ok() {
-            crate::deck::joint::CFCHK.with(|counts| {
+        if checks.cf_report {
+            crate::checks::CFCHK.with(|counts| {
                 let counts = counts.borrow();
-                eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", counts.0, counts.1, counts.2, counts.3, counts.4, counts.5, counts.6, counts.7, counts.8);
+                eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", counts.searches, counts.capped_below, counts.cap_free_below, counts.unproven, counts.leaves, counts.leaf_violations, counts.scorings, counts.scoring_violations, counts.max_ratio);
             });
         }
     }
@@ -81,8 +85,8 @@ pub(crate) fn apply_cli_events(job: &mut serde_json::Value, skills: &skills::Ski
 
 /// Restore the career worker's kept work before any jobs run, as the page does across reloads.
 pub(crate) fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &crate::deck::CardsRaw) {
-    if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
-        let state: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    if let Some(path) = &crate::checks::get().state_in {
+        let state: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let out = crate::career::run_career(
             data,
             skills,
@@ -95,9 +99,9 @@ pub(crate) fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, 
 
 /// Save the career worker's kept work once, after all job outputs have been printed.
 pub(crate) fn save_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &crate::deck::CardsRaw) {
-    if let Ok(path) = std::env::var("LOOPOPT_STATE_OUT") {
+    if let Some(path) = &crate::checks::get().state_out {
         let out = crate::career::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_out"}));
-        std::fs::write(&path, out.to_string()).unwrap();
+        std::fs::write(path, out.to_string()).unwrap();
     }
 }
 

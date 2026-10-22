@@ -493,7 +493,7 @@ pub(crate) fn score_and_promote_rows(
         .copied();
     let index_ms = now_ms() - profile.index_started_ms;
     let env = &simulator.env;
-    let work = json!({"nodes": env.space.nodes.get() - profile.nodes_at_start, "exact": crate::deck::caps::JCOUNT.with(std::cell::Cell::get) - profile.exact_scorings_at_start, "max_ratio": env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.max_ratio, "class_max_deck": env.max_decks(), "cap": env.space.rho_top().min(env.cert), "class_caps": env.space.caps()});
+    let work = json!({"nodes": env.space.nodes.get() - profile.nodes_at_start, "exact": env.exact_scorings - profile.exact_scorings_at_start, "max_ratio": env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.max_ratio, "class_max_deck": env.max_decks(), "cap": env.space.rho_top().min(env.cert), "class_caps": env.space.caps()});
     let any_scored = runs.iter().any(|r| r.scoring.is_some());
     PlanScores { fit, best_combo, any_scored, combo_ms, index_ms, work }
 }

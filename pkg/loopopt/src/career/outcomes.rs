@@ -174,7 +174,7 @@ impl Env<'_> {
             .iter()
             .map(|&j| crate::deck::sources::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
             .collect();
-        let pre = joint_prep(self.model.uncertain.len(), &ents, sel.filler_cards);
+        let pre = joint_prep(self.space.deck_job.chain_events(), self.model.uncertain.len(), &ents, sel.filler_cards);
         // (one chance vector and one `JointExt` for every corner: joint_eval only reads `scales`; `marginals` is not read here,
         // so not summed)
         let mut q = q0.to_vec();

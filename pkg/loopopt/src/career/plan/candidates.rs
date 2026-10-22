@@ -33,8 +33,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let legacies = input.legacies;
     let data = input.resources.data;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
-    let (nodes_at_start, exact_scorings_at_start) =
-        (env.space.nodes.get(), crate::deck::caps::JCOUNT.with(std::cell::Cell::get));
+    let (nodes_at_start, exact_scorings_at_start) = (env.space.nodes.get(), env.exact_scorings);
     // Named loop members supplement the candidates; this setup does not run the loop search.
     let loop_rotation = match &settings.loop_members {
         Some(ids) => rotation(env, ids),

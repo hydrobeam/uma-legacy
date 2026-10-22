@@ -48,6 +48,7 @@ struct CoupledGroup<'group> {
     outcomes: Vec<EventOutcome<&'group [TargetReward]>>,
 }
 pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
+    chain_events: crate::deck::chains::ChainEvents,
     uncertain_count: usize,
     entries: &[SourceEntry<S>],
     filler: usize,
@@ -104,7 +105,7 @@ pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
     let states = if kinds.is_empty() {
         std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
     } else {
-        chain_states(&kinds)
+        chain_states(chain_events, &kinds)
     };
     let mut chains: Vec<ChainProgress> = vec![];
     for (position, &ChainEntry { kind, source_index: entry }) in chain_entries.iter().enumerate() {
