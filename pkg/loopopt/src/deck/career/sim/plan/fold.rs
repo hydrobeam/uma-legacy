@@ -1,5 +1,6 @@
 //! Folding spark outcomes and their rises.
 use super::{EstBufs, Leaves};
+use crate::deck::career::sim::plan::TargetMask;
 use crate::deck::career::sim::rise_factor;
 
 /// `score_career`'s fold buffers, kept between calls (each call writes what it reads): per level the folded tables, the
@@ -39,7 +40,7 @@ pub(in crate::deck::career::sim::plan) struct FoldCx<'fold, L: Leaves> {
     pub(in crate::deck::career::sim::plan) xs: &'fold [Vec<[f64; 4]>],
     pub(in crate::deck::career::sim::plan) xc: &'fold [Vec<[f64; 4]>],
     pub(in crate::deck::career::sim::plan) uncv: &'fold [usize],
-    pub(in crate::deck::career::sim::plan) fmm: &'fold [usize],
+    pub(in crate::deck::career::sim::plan) fmm: &'fold [TargetMask],
     pub(in crate::deck::career::sim::plan) scf: &'fold [f64],
     pub(in crate::deck::career::sim::plan) sslot: &'fold [usize],
     pub(in crate::deck::career::sim::plan) p0: &'fold [f64],
@@ -69,6 +70,7 @@ fn fold_emit<L: Leaves>(cx: &FoldCx<L>, leaf: usize, mu: usize, f: &[f64], u: &m
         return;
     }
     for (fm, &mf) in cx.fmm.iter().enumerate() {
+        let mf = mf.bits();
         let m = mu | mf;
         let row = &mut u[((lr << cx.nf) | fm) * cx.na..][..cx.na];
         row.copy_from_slice(cx.p0);
@@ -106,6 +108,7 @@ fn fold_emit16<L: Leaves>(
     }
     let (ba, bb) = (1usize << cx.uncv[k], 1usize << cx.uncv[k + 1]);
     for (fm, &mf) in cx.fmm.iter().enumerate() {
+        let mf = mf.bits();
         // per leaf of the block, where its spark scales start (m-major)
         let mo: [usize; 16] =
             std::array::from_fn(|b| (mu | mf | if b & 3 > 0 { ba } else { 0 } | if b >> 2 > 0 { bb } else { 0 }) * ns);

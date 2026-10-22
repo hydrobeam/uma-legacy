@@ -1,5 +1,6 @@
 //! Career reports, outcome sets and corner tables.
 use super::{Ancestor, Env, Found, Legacy, Pool, aff_factor, apt_pink, inherit, now_ms, pink_p, prof, set_ews};
+use crate::deck::career::Lineage;
 use crate::deck::{GEN_GOLD, JointExt, JointScratch, Kind, Sel, Src, Value, joint_eval_in, joint_prep, json};
 
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x, with a buffer the
@@ -202,14 +203,8 @@ impl Env<'_> {
 
     /// The veteran career (t, a, b) leaves, before her result is known: trainee t, a spark of every target with stars
     /// drawn from the rank mix (`star_dist`), her schedule's win chances `wp`, parents a and b.
-    pub(in crate::deck::career) fn veteran(
-        &self,
-        legs: &[Legacy],
-        t: usize,
-        a: usize,
-        b: usize,
-        wp: Vec<f64>,
-    ) -> Legacy {
+    pub(in crate::deck::career) fn veteran(&self, legs: &[Legacy], lineage: Lineage, wp: Vec<f64>) -> Legacy {
+        let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         let anc = |l: &Legacy| Ancestor {
             chara: l.chara,
             sparks: l.sparks.clone(),

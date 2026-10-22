@@ -1,8 +1,27 @@
 //! The roll of the plan's pick and its kept state.
-use super::{Cont, HiAnc, IDX_PARTNERS, PlanJob, ScoreBase, Trio, fm_masks, h64, outcome_hi, sc_roll, sim_for};
-use crate::deck::career::sim::{CardsRaw, Data, Env, Legacy, PROF, Pool, Sel, Sim, SkillsRaw, Value, json, now_ms};
+use super::{
+    Cont, IDX_PARTNERS, PartnerAnchors, PlanJob, ScoreBase, Trio, fm_masks, h64, outcome_hi, sc_roll, sim_for,
+};
+use crate::deck::career::sim::plan::anchors::{FoundAnchor, OutcomeBounds, OutcomeEstimate};
+use crate::deck::career::sim::plan::cont::OwnTrio;
+use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, ScoringContext, TargetMask};
+use crate::deck::career::sim::{Env, Legacy, PROF, Pool, Sel, Sim, Value, json, now_ms};
+use crate::deck::career::{Career, JobInputs, Lineage};
 
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
+/// Candidate whose step may change at an outcome.
+#[derive(Clone, Copy)]
+pub(in crate::deck::career::sim::plan) struct ActiveCandidate {
+    /// Position in the fixed planner candidate table.
+    pub(in crate::deck::career::sim::plan) candidate: CandidateIndex,
+    /// Slot in the prepared outcome table, if this candidate has one.
+    pub(in crate::deck::career::sim::plan) slot: Option<usize>,
+    /// Odds above which this candidate's step can improve.
+    pub(in crate::deck::career::sim::plan) threshold: f64,
+    /// Candidate's odds in the original pool.
+    pub(in crate::deck::career::sim::plan) current_chance: f64,
+}
+
 /// One scoring's outcome evaluation as `sc_eval` reads it (built by `score_career_`; a plan keeps its pick's for a roll,
 /// `RollKeep`). Per setup her miss factor's parts (x0 per uncertain target, xm per star level) and her spark scales (pw
 /// per job target, without and with her spark), with what the fold and the outcome loop read of them (`derive`: xs, xc
@@ -18,7 +37,7 @@ pub(in crate::deck::career::sim) struct Scored {
     pub(in crate::deck::career::sim::plan) goal: bool,
     pub(in crate::deck::career::sim::plan) w: [f64; 3],
     pub(in crate::deck::career::sim::plan) uncv: Vec<usize>,
-    pub(in crate::deck::career::sim::plan) fmm: Vec<usize>,
+    pub(in crate::deck::career::sim::plan) fmm: Vec<TargetMask>,
     pub(in crate::deck::career::sim::plan) x0: Vec<Vec<f64>>,
     pub(in crate::deck::career::sim::plan) xm: Vec<[f64; 4]>,
     pub(in crate::deck::career::sim::plan) pw: Vec<Vec<[f64; 2]>>,
@@ -28,8 +47,8 @@ pub(in crate::deck::career::sim) struct Scored {
     pub(in crate::deck::career::sim::plan) sslot: Vec<usize>,
     pub(in crate::deck::career::sim::plan) p0: Vec<f64>,
     pub(in crate::deck::career::sim::plan) os: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) act: Vec<(usize, Option<usize>, f64, f64)>,
-    pub(in crate::deck::career::sim::plan) her: Vec<(usize, bool, f64)>,
+    pub(in crate::deck::career::sim::plan) act: Vec<ActiveCandidate>,
+    pub(in crate::deck::career::sim::plan) her: Vec<OwnTrio>,
     pub(in crate::deck::career::sim::plan) xs: Vec<Vec<[f64; 4]>>,
     pub(in crate::deck::career::sim::plan) xc: Vec<Vec<[f64; 4]>>,
     pub(in crate::deck::career::sim::plan) scf: Vec<f64>,
@@ -51,7 +70,9 @@ impl Scored {
         let (nm, ntar) = (1usize << self.ntar, self.ntar);
         self.scf = Vec::with_capacity(nm * self.ns());
         for m in 0..nm {
-            self.scf.extend(self.pw.iter().map(|pw| (0..ntar).map(|k| pw[k][(m >> k) & 1]).product::<f64>()));
+            self.scf.extend(self.pw.iter().map(|pw| {
+                (0..ntar).map(|k| pw[k][usize::from(TargetMask::from_bits(m).contains(k))]).product::<f64>()
+            }));
         }
     }
     pub(in crate::deck::career::sim::plan) const fn ns(&self) -> usize {
@@ -62,8 +83,8 @@ impl Scored {
     pub(in crate::deck::career::sim::plan) const fn pl(&self) -> bool {
         (1usize << self.nf) * self.na > self.ns()
     }
-    pub(in crate::deck::career::sim::plan) const fn full_m(&self) -> usize {
-        (1usize << self.ntar) - 1
+    pub(in crate::deck::career::sim::plan) const fn full_m(&self) -> TargetMask {
+        TargetMask::from_bits((1usize << self.ntar) - 1)
     }
     /// a leaf's representative: every collapsed target's nonzero digit set to 1 (`sc_outcomes`)
     pub(in crate::deck::career::sim::plan) fn rep_of(&self, l: usize) -> usize {
@@ -123,10 +144,10 @@ pub(in crate::deck::career) struct RollKeep {
     pub(in crate::deck::career::sim::plan) a: usize,
     pub(in crate::deck::career::sim::plan) b: usize,
     pub(in crate::deck::career::sim::plan) sel: Sel,
-    pub(in crate::deck::career::sim::plan) her_hi: Vec<(usize, bool, f64)>,
-    pub(in crate::deck::career::sim::plan) anc: Vec<Option<(usize, Vec<f64>, f64)>>,
+    pub(in crate::deck::career::sim::plan) her_hi: Vec<OwnTrio>,
+    pub(in crate::deck::career::sim::plan) anc: Vec<Option<FoundAnchor>>,
     /// the bound's anchors per (candidate, partner), kept by its first roll for the next (`HiAnc`; not stored by `state_out`)
-    pub(in crate::deck::career::sim::plan) hi_anc: Vec<HiAnc>,
+    pub(in crate::deck::career::sim::plan) hi_anc: Vec<PartnerAnchors>,
 }
 
 thread_local! { static ROLLS: std::cell::RefCell<Vec<RollKeep>> = const { std::cell::RefCell::new(Vec::new()) }; }
@@ -158,17 +179,14 @@ pub(in crate::deck::career::sim::plan) fn keep_roll(roll: RollKeep) {
 /// (`outcome_hi` at that one cell). Rounded as the table was: y to 0.01, y_hi up to 0.01 (null where y >= 0.5)
 pub(in crate::deck::career) fn roll_kept<'data>(
     env: &mut Env<'data>,
-    d: &'data Data,
-    sk: &'data SkillsRaw,
-    cr: &'data CardsRaw,
-    job: &'data Value,
+    input: &JobInputs<'data>,
     legs: &[Legacy],
     pool: &Pool,
     fix: &[usize],
     pj: &PlanJob,
 ) -> Option<Value> {
     let stars = pj.roll.as_ref()?;
-    let key = roll_key(job);
+    let key = roll_key(input.job);
     let mut kept = ROLLS.with(|cache| {
         let mut cache = cache.borrow_mut();
         let index = cache.iter().position(|roll| roll.key == key)?;
@@ -177,8 +195,8 @@ pub(in crate::deck::career) fn roll_kept<'data>(
     // (the roll's own timers and counters, `prof`; what the job counted before goes back after)
     let started = now_ms();
     let prof_before = PROF.with(|prof| std::mem::take(&mut *prof.borrow_mut()));
-    let answer = match sim_for(env, d, sk, cr, job, pj) {
-        Ok(mut sim) => roll_answer(&mut sim, d, legs, pool, fix, &mut kept, stars),
+    let answer = match sim_for(env, input, pj) {
+        Ok(mut sim) => roll_answer(&mut sim, legs, pool, fix, &mut kept, stars),
         Err(error) => error,
     };
     keep_roll(kept);
@@ -191,44 +209,22 @@ pub(in crate::deck::career) fn roll_kept<'data>(
     Some(answer)
 }
 
-fn roll_answer(
-    s: &mut Sim,
-    d: &Data,
-    legs: &[Legacy],
-    pool: &Pool,
-    fix: &[usize],
-    k: &mut RollKeep,
-    stars: &[u8],
-) -> Value {
+fn roll_answer(s: &mut Sim, legs: &[Legacy], pool: &Pool, fix: &[usize], k: &mut RollKeep, stars: &[u8]) -> Value {
     let (uncv, fixed_t) = (s.env.uncv.clone(), s.env.fixed_t.clone());
     if stars.len() != s.env.ntar {
         return json!({"error": format!("roll: {} stars for {} targets", stars.len(), s.env.ntar)});
     }
-    // the outcome: per uncertain target her stars (at most 3) as base-4 digits in `uncv` order, per guaranteed one
-    // whether it landed
-    let leaf = uncv.iter().enumerate().fold(0usize, |l, (j, &i)| l | (stars[i].min(3) as usize) << (2 * j));
-    let fm = fixed_t.iter().enumerate().fold(0usize, |m, (j, &i)| if stars[i] > 0 { m | 1 << j } else { m });
+    let outcome = OutcomeIndex::from_stars(stars, &uncv, &fixed_t);
     let mut ac = std::mem::take(&mut k.hi_anc);
     let bs = k.base.base();
-    let y = sc_roll(&bs, &k.sd, leaf, fm);
-    let hi = (y < 0.5).then(|| {
-        outcome_hi(
-            s,
-            d,
-            &bs,
-            legs,
-            pool,
-            fix,
-            &k.anc,
-            &[(leaf << fixed_t.len() | fm, y)],
-            &k.her_hi,
-            k.x,
-            k.a,
-            k.b,
-            &k.sel,
-            &mut ac,
-        )[0]
-    });
+    let y = sc_roll(&bs, &k.sd, outcome);
+    let mut hi = None;
+    if y < 0.5 {
+        let context = ScoringContext { score_base: &bs, legacies: legs, pool };
+        let career = Career { lineage: Lineage { trainee: k.x, first_parent: k.a, second_parent: k.b }, deck: &k.sel };
+        let bounds = OutcomeBounds { fixed_parents: fix, found_anchors: &k.anc, own_trios: &k.her_hi };
+        hi = Some(outcome_hi(s, &context, career, &bounds, OutcomeEstimate { index: outcome, saving: y }, &mut ac));
+    }
     k.hi_anc = ac;
     // (y_hi >= y is derived, `outcome_hi` (1)-(3): checked here, within rounding, where the max below would hide a bound
     // that drifted under the estimate; the max stays for the page)
@@ -239,18 +235,22 @@ fn roll_answer(
 /// the kept roll states for the page to store (`state_out`), every float as its bits
 pub(in crate::deck::career) fn rolls_out() -> Value {
     use crate::deck::career::{fvec, hx, sel_out, ux};
-    let tri = |v: &[(usize, bool, f64)]| v.iter().map(|&(i, r, c)| json!([i, r, hx(c)])).collect::<Vec<_>>();
+    let tri = |v: &[OwnTrio]| {
+        v.iter()
+            .map(|&OwnTrio { candidate: CandidateIndex(i), uses_existing: r, finisher_cost: c }| json!([i, r, hx(c)]))
+            .collect::<Vec<_>>()
+    };
     ROLLS.with(|c| Value::Array(c.borrow().iter().map(|r| { let (sd, b) = (&r.sd, &r.base); json!({
         "k": ux(r.key), "x": [r.x, r.a, r.b], "sel": sel_out(&r.sel), "her": tri(&r.her_hi),
-        "anc": r.anc.iter().map(|a| a.as_ref().map(|(c, q, v)| json!([c, fvec(q), hx(*v)]))).collect::<Vec<_>>(),
+        "anc": r.anc.iter().map(|a| a.as_ref().map(|anchor| json!([anchor.deck_class, fvec(&anchor.inheritance_chances), hx(anchor.value)]))).collect::<Vec<_>>(),
         "base": {"cands": b.cands, "c1": fvec(&b.c1), "v0": hx(b.v0), "pnow": fvec(&b.pnow), "m23": fvec(&b.m23),
                  "cont": b.cont.iter().map(|c| json!([hx(c.lam), hx(c.phi), hx(c.pinf), !c.tab.is_empty()])).collect::<Vec<_>>(),
-                 "combos": b.combos.iter().map(|&(ia, ib, c3, ra, rb)| json!([ia, ib, hx(c3), ra, rb])).collect::<Vec<_>>()},
+                 "combos": b.combos.iter().map(|&Trio { candidate_a: CandidateIndex(ia), candidate_b: CandidateIndex(ib), finisher_cost: c3, a_uses_existing: ra, b_uses_existing: rb }| json!([ia, ib, hx(c3), ra, rb])).collect::<Vec<_>>()},
         "sd": {"n": [sd.nu, sd.nf, sd.ntar, sd.na], "xi": sd.xi, "goal": sd.goal, "w": fvec(&sd.w), "uncv": sd.uncv, "fmm": sd.fmm,
                "x0": sd.x0.iter().map(|v| fvec(v)).collect::<Vec<_>>(), "xm": sd.xm.iter().map(|v| fvec(v)).collect::<Vec<_>>(),
                "pw": sd.pw.iter().map(|v| fvec(&v.iter().flatten().copied().collect::<Vec<f64>>())).collect::<Vec<_>>(),
                "tsi": sd.tsi, "t0": fvec(&sd.t0), "col": sd.col, "sslot": sd.sslot, "p0": fvec(&sd.p0), "os": fvec(&sd.os),
-               "act": sd.act.iter().map(|&(ui, sl, th, pn)| json!([ui, sl, hx(th), hx(pn)])).collect::<Vec<_>>(), "her": tri(&sd.her)}}) }).collect()))
+               "act": sd.act.iter().map(|&ActiveCandidate { candidate: CandidateIndex(ui), slot: sl, threshold: th, current_chance: pn }| json!([ui, sl, hx(th), hx(pn)])).collect::<Vec<_>>(), "her": tri(&sd.her)}}) }).collect()))
 }
 
 pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
@@ -258,8 +258,17 @@ pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
     // (absent in a state stored before them: none)
     let Some(a) = v.as_array() else { return v.is_null().then(Vec::new) };
     let uv = |v: &Value| -> Option<Vec<usize>> { v.as_array()?.iter().map(usz).collect() };
-    let tri = |v: &Value| -> Option<Vec<(usize, bool, f64)>> {
-        v.as_array()?.iter().map(|t| Some((usz(&t[0])?, t[1].as_bool()?, fx(&t[2])?))).collect()
+    let tri = |v: &Value| -> Option<Vec<OwnTrio>> {
+        v.as_array()?
+            .iter()
+            .map(|t| {
+                Some(OwnTrio {
+                    candidate: CandidateIndex(usz(&t[0])?),
+                    uses_existing: t[1].as_bool()?,
+                    finisher_cost: fx(&t[2])?,
+                })
+            })
+            .collect()
     };
     let arr4 = |v: &Value| -> Option<[f64; 4]> {
         let x = fvec_r(v)?;
@@ -292,7 +301,15 @@ pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
             let combos = b["combos"]
                 .as_array()?
                 .iter()
-                .map(|t| Some((usz(&t[0])?, usz(&t[1])?, fx(&t[2])?, t[3].as_bool()?, t[4].as_bool()?)))
+                .map(|t| {
+                    Some(Trio {
+                        candidate_a: CandidateIndex(usz(&t[0])?),
+                        candidate_b: CandidateIndex(usz(&t[1])?),
+                        finisher_cost: fx(&t[2])?,
+                        a_uses_existing: t[3].as_bool()?,
+                        b_uses_existing: t[4].as_bool()?,
+                    })
+                })
                 .collect::<Option<Vec<Trio>>>()?;
             let base = KeptBase {
                 cands: uv(&b["cands"])?,
@@ -316,7 +333,12 @@ pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 .as_array()?
                 .iter()
                 .map(|t| {
-                    Some((usz(&t[0])?, if t[1].is_null() { None } else { Some(usz(&t[1])?) }, fx(&t[2])?, fx(&t[3])?))
+                    Some(ActiveCandidate {
+                        candidate: CandidateIndex(usz(&t[0])?),
+                        slot: if t[1].is_null() { None } else { Some(usz(&t[1])?) },
+                        threshold: fx(&t[2])?,
+                        current_chance: fx(&t[3])?,
+                    })
                 })
                 .collect::<Option<Vec<_>>>()?;
             let mut sd = Scored {
@@ -328,7 +350,7 @@ pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 goal: s["goal"].as_bool()?,
                 w,
                 uncv: uv(&s["uncv"])?,
-                fmm: uv(&s["fmm"])?,
+                fmm: uv(&s["fmm"])?.into_iter().map(TargetMask::from_bits).collect(),
                 x0: s["x0"].as_array()?.iter().map(fvec_r).collect::<Option<_>>()?,
                 xm: s["xm"].as_array()?.iter().map(arr4).collect::<Option<_>>()?,
                 pw,
@@ -353,14 +375,14 @@ pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 && base.pnow.len() == nc
                 && base.m23.len() == nc
                 && base.cont.len() <= nc
-                && base.combos.iter().all(|t| t.0 < nc && t.1 < nc);
+                && base.combos.iter().all(|t| t.candidate_a.0 < nc && t.candidate_b.0 < nc);
             // her setups (at most IDX_PARTNERS per candidate), the candidates the loop lifts (those with a slot in slot
             // order, one per slot), her own candidate index and trio sides: candidate indices
             let fits_cands = ns <= IDX_PARTNERS * nc
-                && sd.act.iter().filter_map(|a| a.1).eq(0..sd.na)
-                && sd.act.iter().all(|a| a.0 < nc)
+                && sd.act.iter().filter_map(|a| a.slot).eq(0..sd.na)
+                && sd.act.iter().all(|a| a.candidate.0 < nc)
                 && sd.xi.is_none_or(|x| x < nc)
-                && sd.her.iter().all(|h| h.0 < nc);
+                && sd.her.iter().all(|h| h.candidate.0 < nc);
             if !fits_base
                 || !fits_cands
                 || !sd.uncv.windows(2).all(|p| p[0] < p[1])
@@ -390,11 +412,23 @@ pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
             let anc = e["anc"]
                 .as_array()?
                 .iter()
-                .map(|a| if a.is_null() { Some(None) } else { Some(Some((usz(&a[0])?, pvec_r(&a[1])?, fx(&a[2])?))) })
+                .map(|a| {
+                    if a.is_null() {
+                        Some(None)
+                    } else {
+                        Some(Some(FoundAnchor {
+                            deck_class: usz(&a[0])?,
+                            inheritance_chances: pvec_r(&a[1])?,
+                            value: fx(&a[2])?,
+                        }))
+                    }
+                })
                 .collect::<Option<Vec<_>>>()?;
             // (the anchors' chances: one per job target; her trio sides at the plan's end: candidate indices)
             let her_hi = tri(&e["her"])?;
-            if anc.iter().flatten().any(|a| a.1.len() != sd.ntar) || her_hi.iter().any(|h| h.0 >= nc) {
+            if anc.iter().flatten().any(|a| a.inheritance_chances.len() != sd.ntar)
+                || her_hi.iter().any(|h| h.candidate.0 >= nc)
+            {
                 return None;
             }
             Some(RollKeep {

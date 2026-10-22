@@ -1,10 +1,11 @@
 //! The page's next career (`next` on a career job, `index_rule`; docs/SOLVER.md "Next career"): the career that brings
 //! a fully looped parent closest per run, scored exactly over every result she can roll, with each candidate's
 //! continuation (`Cont`) fitted to the pool. It values careers through the simulator's deck cache (`Sim`, `Cache`).
+use crate::deck::career::JobInputs;
 use crate::deck::career::sim::{
-    Cache, CardsRaw, Data, Deserialize, Env, Found, Legacy, Pool, Ref, Sim, SkillsRaw, Solved, Value, now_ms, progress,
+    Cache, Deserialize, Env, Found, Legacy, Pool, Ref, Sim, Solved, Value, now_ms, progress,
 };
-use anchors::{HiAnc, found_anchors, outcome_hi, pick_her};
+use anchors::{PartnerAnchors, found_anchors, outcome_hi, pick_her};
 use candidates::{
     exact_no_borrow_career, exact_plan_career, score_and_admit_proxies, set_plan_wins, setup_plan_candidates,
 };
@@ -44,6 +45,101 @@ mod rows;
 mod score;
 mod search;
 mod step;
+
+/// Position in the planner's fixed candidate order, distinct from Data::umas.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::deck::career::sim) struct CandidateIndex(pub(in crate::deck::career::sim) usize);
+
+impl std::ops::Index<CandidateIndex> for PlanCandidates {
+    type Output = usize;
+
+    fn index(&self, index: CandidateIndex) -> &Self::Output {
+        &self.trainees[index.0]
+    }
+}
+
+/// A set of targets; bit positions follow the table's documented target order.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+struct TargetMask(usize);
+
+impl TargetMask {
+    const fn from_bits(bits: usize) -> Self {
+        Self(bits)
+    }
+
+    const fn bits(self) -> usize {
+        self.0
+    }
+
+    const fn contains(self, target: usize) -> bool {
+        self.0 & (1usize << target) != 0
+    }
+
+    const fn insert(&mut self, target: usize) {
+        self.0 |= 1usize << target;
+    }
+
+    fn iter(self) -> impl Iterator<Item = usize> {
+        let mut remaining = self.0;
+        std::iter::from_fn(move || {
+            if remaining == 0 {
+                return None;
+            }
+            let target = remaining.trailing_zeros() as usize;
+            remaining &= remaining - 1;
+            Some(target)
+        })
+    }
+}
+
+/// Packed outcome cell: base-four uncertain stars followed by fixed-target landing bits.
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+struct OutcomeIndex(usize);
+
+impl OutcomeIndex {
+    fn from_stars(stars: &[u8], uncovered_targets: &[usize], fixed_targets: &[usize]) -> Self {
+        let leaf = uncovered_targets
+            .iter()
+            .enumerate()
+            .fold(0usize, |leaf, (digit, &target)| leaf | (usize::from(stars[target].min(3)) << (2 * digit)));
+        let mut fixed = TargetMask::default();
+        for (bit, &target) in fixed_targets.iter().enumerate() {
+            if stars[target] > 0 {
+                fixed.insert(bit);
+            }
+        }
+        Self((leaf << fixed_targets.len()) | fixed.bits())
+    }
+
+    const fn leaf(self, fixed_target_count: usize) -> usize {
+        self.0 >> fixed_target_count
+    }
+
+    const fn fixed_mask(self, fixed_target_count: usize) -> TargetMask {
+        TargetMask::from_bits(self.0 & ((1usize << fixed_target_count) - 1))
+    }
+}
+
+/// Immutable continuation and pool inputs shared by career scorings.
+pub(in crate::deck::career::sim) struct ScoringContext<'score, 'base> {
+    /// Continuations and trio costs in candidate order.
+    pub(in crate::deck::career::sim) score_base: &'score ScoreBase<'base>,
+    /// Recorded lineages, in parent-index order.
+    pub(in crate::deck::career::sim) legacies: &'score [Legacy],
+    /// Pool in which the career's parents are indexed.
+    pub(in crate::deck::career::sim) pool: &'score Pool,
+}
+
+/// Whether the search pool was built directly from the recorded legacies.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PoolProvenance {
+    RecordedLegacies,
+    Extended,
+}
 
 #[derive(Deserialize, Clone)]
 pub(in crate::deck::career) struct PlanJob {
@@ -88,18 +184,23 @@ pub(in crate::deck::career) struct PlanJob {
 /// Inputs shared by the phases. Under `borrowed_parent: "later"`, `pick` is the pool
 /// without borrowed parents and its main search. The candidates, builders, trios and
 /// scoring partners still use `pool` and `sv`; only runnable rows use the pick's pool.
-struct PlanInputs<'plan, 'data> {
-    d: &'data Data,
-    sk: &'data SkillsRaw,
-    cr: &'data CardsRaw,
-    job: &'data Value,
-    legs: &'plan [Legacy],
-    pool: &'plan Pool,
-    sv: &'plan Solved,
-    fix: &'plan [usize],
-    trainees: &'plan [usize],
-    pj: &'plan PlanJob,
-    pick: Option<(&'plan Pool, &'plan Solved)>,
+pub(in crate::deck::career) struct PlanInputs<'plan, 'data> {
+    /// Immutable data and settings for this job.
+    pub(in crate::deck::career) resources: &'plan JobInputs<'data>,
+    /// Recorded veterans in parent-index order.
+    pub(in crate::deck::career) legacies: &'plan [Legacy],
+    /// Search pool, including any borrowed veterans.
+    pub(in crate::deck::career) pool: &'plan Pool,
+    /// Main career search, including its proofs.
+    pub(in crate::deck::career) solved: &'plan Solved,
+    /// Parent indices required by the job.
+    pub(in crate::deck::career) fixed_parents: &'plan [usize],
+    /// Allowed trainees in search order.
+    pub(in crate::deck::career) trainees: &'plan [usize],
+    /// Settings for the next-career planner.
+    pub(in crate::deck::career) settings: &'plan PlanJob,
+    /// Runnable pool and search when borrowed parents are deferred.
+    pub(in crate::deck::career) pick: Option<(&'plan Pool, &'plan Solved)>,
 }
 
 impl<'plan> PlanInputs<'plan, '_> {
@@ -110,7 +211,7 @@ impl<'plan> PlanInputs<'plan, '_> {
 
     /// The main search runnable rows fall back to: the pick's, else `sv`.
     fn pick_solved(&self) -> &'plan Solved {
-        self.pick.map_or(self.sv, |p| p.1)
+        self.pick.map_or(self.solved, |p| p.1)
     }
 
     /// A career that may run: its parents are legal on the pick's pool (the borrowing rule). Rows repeating another
@@ -205,22 +306,8 @@ struct BaseRows {
 /// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
 /// real 8/8 (free) with 8/8 parents, a strong side of the trios.
-pub(in crate::deck::career) fn index_rule<'data>(
-    env: &mut Env<'data>,
-    d: &'data Data,
-    sk: &'data SkillsRaw,
-    cr: &'data CardsRaw,
-    job: &'data Value,
-    legs: &[Legacy],
-    pool: &Pool,
-    sv: &Solved,
-    fix: &[usize],
-    trainees: &[usize],
-    pj: &PlanJob,
-    pick: Option<(&Pool, &Solved)>,
-) -> Value {
+pub(in crate::deck::career) fn index_rule<'data>(env: &mut Env<'data>, input: &PlanInputs<'_, 'data>) -> Value {
     let t_all = now_ms();
-    let input = PlanInputs { d, sk, cr, job, legs, pool, sv, fix, trainees, pj, pick };
     let gp = input.pick_solved().found[0].clone();
     progress(1, 0, 0);
     // First in, dropped last, after every memo belonging to this plan.
@@ -228,19 +315,19 @@ pub(in crate::deck::career) fn index_rule<'data>(
     // (the phases' scratch for deck values)
     let mut buf = vec![];
     let PlanSetup { sim: mut s, candidates, mut searches, mut profile, cache0 } =
-        match setup_plan_candidates(env, &input, t_all, gp, &mut buf) {
+        match setup_plan_candidates(env, input, t_all, gp, &mut buf) {
             Ok(prepared) => prepared,
             Err(error) => return error,
         };
     let BaseRows { mut runs, mut wins_by_trainee } =
-        score_and_admit_proxies(&mut s, &input, &candidates, &mut searches, &mut profile, &mut buf);
-    let looped = add_looped_rows(&mut s, &input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
+        score_and_admit_proxies(&mut s, input, &candidates, &mut searches, &mut profile, &mut buf);
+    let looped = add_looped_rows(&mut s, input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
     runs.extend(looped);
-    let no_borrow = add_no_borrow_rows(&mut s, &input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
+    let no_borrow = add_no_borrow_rows(&mut s, input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
     runs.extend(no_borrow);
     let scores = score_and_promote_rows(
         &mut s,
-        &input,
+        input,
         &candidates,
         &mut searches,
         &mut runs,
@@ -248,8 +335,8 @@ pub(in crate::deck::career) fn index_rule<'data>(
         &mut profile,
         &mut buf,
     );
-    let proxy_check = check_plan_proxies(&mut s, &input, &candidates, &searches.best, &runs, &scores, cache0, &mut buf);
-    assemble_plan_output(s, &input, &candidates, searches, runs, &scores, &profile, proxy_check, &mut buf)
+    let proxy_check = check_plan_proxies(&mut s, input, &candidates, &searches.best, &runs, &scores, cache0, &mut buf);
+    assemble_plan_output(s, input, &candidates, searches, runs, &scores, &profile, proxy_check, &mut buf)
 }
 
 /// What setup hands the phases: the simulator, the fixed candidates, the search history, the profile, and (with

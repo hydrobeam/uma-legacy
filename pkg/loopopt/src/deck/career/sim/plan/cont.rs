@@ -1,4 +1,5 @@
 //! The continuation (`Cont`) and its memo: the fitted expected careers to finish after a candidate.
+use crate::deck::career::sim::plan::CandidateIndex;
 use crate::deck::career::sim::{FxMap, Legacy};
 
 /// What a career is scored against: stage-1 costs per candidate (index into `cands`; 0 = her 8/8 exists), stages 2-3 per
@@ -39,13 +40,43 @@ pub(in crate::deck::career::sim) enum Want {
 }
 
 /// (A, B, C's step, A from a real 8/8, B from a real 8/8)
-pub(in crate::deck::career::sim) type Trio = (usize, usize, f64, bool, bool);
+#[derive(Clone, Copy)]
+pub(in crate::deck::career::sim) struct Trio {
+    /// First side's position in the candidate table.
+    pub(in crate::deck::career::sim) candidate_a: CandidateIndex,
+    /// Second side's position in the candidate table.
+    pub(in crate::deck::career::sim) candidate_b: CandidateIndex,
+    /// Expected careers for the finisher after both sides are full veterans.
+    pub(in crate::deck::career::sim) finisher_cost: f64,
+    /// The first side already exists as a full veteran.
+    pub(in crate::deck::career::sim) a_uses_existing: bool,
+    /// The second side already exists as a full veteran.
+    pub(in crate::deck::career::sim) b_uses_existing: bool,
+}
+
+/// One candidate paired with the new veteran as a full trio side.
+#[derive(Clone, Copy)]
+pub(in crate::deck::career::sim) struct OwnTrio {
+    /// Partner's position in the candidate table.
+    pub(in crate::deck::career::sim) candidate: CandidateIndex,
+    /// The partner already exists as a full veteran.
+    pub(in crate::deck::career::sim) uses_existing: bool,
+    /// Expected careers for the finisher after both sides are full veterans.
+    pub(in crate::deck::career::sim) finisher_cost: f64,
+}
 
 /// V over the trios at step costs c1
 pub(in crate::deck::career::sim::plan) fn trio_v(c1: &[f64], combos: &[Trio]) -> f64 {
     // (a plain comparison: no value here is NaN, so the same minimum as f64::min)
     let mut best = f64::INFINITY;
-    for &(ia, ib, c3, ra, rb) in combos {
+    for &Trio {
+        candidate_a: CandidateIndex(ia),
+        candidate_b: CandidateIndex(ib),
+        finisher_cost: c3,
+        a_uses_existing: ra,
+        b_uses_existing: rb,
+    } in combos
+    {
         let v = (if ra { 0.0 } else { c1[ia] }) + (if rb { 0.0 } else { c1[ib] }) + c3;
         if v < best {
             best = v;

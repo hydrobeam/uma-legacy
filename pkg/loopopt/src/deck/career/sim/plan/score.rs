@@ -3,7 +3,11 @@ use super::{
     All, Est, EstBufs, FOLD_SCRATCH, FoldCx, FoldScratch, IDX_PARTNERS, Leaves, One, OneLeaf, ScoreBase, Scored, Setup,
     Want, fold_rec, is_full, leaf_set, legal_pair, one_of, trio_v, v_after, val,
 };
-use crate::deck::career::sim::{Cur, Data, Env, Legacy, Pool, Sel, Sim, now_ms, prof};
+use crate::deck::career::sim::plan::cont::OwnTrio;
+use crate::deck::career::sim::plan::roll::ActiveCandidate;
+use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, PoolProvenance, ScoringContext, TargetMask};
+use crate::deck::career::sim::{Cur, Env, Legacy, Pool, Sim, now_ms, prof};
+use crate::deck::career::{Career, Lineage};
 
 /// A career's own 8/8 as a trio side when her uma is not a stage candidate (her outcome lands every target): the replan
 /// would take her uma in (a veteran of hers) with that real 8/8 a free side. Per candidate side (real or fresh) her 8/8 can
@@ -15,13 +19,13 @@ use crate::deck::career::sim::{Cur, Data, Env, Legacy, Pool, Sel, Sim, now_ms, p
 /// (B's candidate index, partner side real, C's step)
 pub(in crate::deck::career::sim::plan) fn her_trios(
     s: &mut Sim,
-    d: &Data,
     bs: &ScoreBase,
     p8: &mut Pool,
     iv: usize,
     x: usize,
     buf: &mut Vec<f64>,
-) -> Vec<(usize, bool, f64)> {
+) -> Vec<OwnTrio> {
+    let d = s.d;
     let her_id = d.umas[x].id;
     let mut out = vec![];
     // the pool with her (`her_pool`: `Env::pool` of the legacies and hers), with each side pushed in turn (the same Pool
@@ -43,10 +47,16 @@ pub(in crate::deck::career::sim::plan) fn her_trios(
                     .iter()
                     .copied()
                     .filter(|&cu| {
-                        d.umas[cu].id != her_id && d.umas[cu].id != d.umas[pu].id && legal_pair(d, &*p8, cu, iv, il)
+                        d.umas[cu].id != her_id
+                            && d.umas[cu].id != d.umas[pu].id
+                            && legal_pair(d, &*p8, Lineage { trainee: cu, first_parent: iv, second_parent: il })
                     })
                     .filter_map(|cu| {
-                        let c = s.env.lineage_into(&*p8, cu, iv, il, &mut q);
+                        let c = s.env.lineage_into(
+                            &*p8,
+                            Lineage { trainee: cu, first_parent: iv, second_parent: il },
+                            &mut q,
+                        );
                         s.env.ceiling(cu, &q, c).map(|ub| (ub, cu))
                     }),
             );
@@ -56,13 +66,13 @@ pub(in crate::deck::career::sim::plan) fn her_trios(
                 if ub * (1.0 + 1e-9) <= best {
                     break;
                 }
-                let v = val(s, &*p8, cu, iv, il, buf);
+                let v = val(s, &*p8, Lineage { trainee: cu, first_parent: iv, second_parent: il }, buf);
                 if v > best {
                     best = v;
                 }
             }
             if best > 0.0 {
-                out.push((ib, *real, 1.0 / best));
+                out.push(OwnTrio { candidate: CandidateIndex(ib), uses_existing: *real, finisher_cost: 1.0 / best });
             }
             Env::pool_pop(p8);
         }
@@ -71,8 +81,12 @@ pub(in crate::deck::career::sim::plan) fn her_trios(
 }
 
 /// V after her with her own 8/8 a trio side (`her_trios`), at the candidates' step costs c1 (a real partner side free)
-pub(in crate::deck::career::sim::plan) fn with_her(v: f64, her: &[(usize, bool, f64)], c1: &[f64]) -> f64 {
-    her.iter().map(|&(ib, real, c3)| (if real { 0.0 } else { c1[ib] }) + c3).fold(v, f64::min)
+pub(in crate::deck::career::sim::plan) fn with_her(v: f64, her: &[OwnTrio], c1: &[f64]) -> f64 {
+    her.iter()
+        .map(|&OwnTrio { candidate: CandidateIndex(ib), uses_existing: real, finisher_cost: c3 }| {
+            (if real { 0.0 } else { c1[ib] }) + c3
+        })
+        .fold(v, f64::min)
 }
 
 /// Career x's place among the stage candidates (`xi`) and whether its parents a, b are both 8/8s (the goal: her own 8/8 a
@@ -81,25 +95,23 @@ pub(in crate::deck::career::sim::plan) fn her_ends(
     s: &Sim,
     bs: &ScoreBase,
     legs: &[Legacy],
-    x: usize,
-    a: usize,
-    b: usize,
+    lineage: Lineage,
 ) -> (Option<usize>, bool) {
+    let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
     (bs.cands.iter().position(|&u| u == x), is_full(s.env.sj, &legs[a].sparks) && is_full(s.env.sj, &legs[b].sparks))
 }
 
 /// Per mask fm of the scenario-guaranteed targets landed (bit j: `fixed_t[j]`), its landed set over the job targets: an
 /// outcome's cell is leaf << nf | fm, its landed set the leaf's (`leaf_set`) | this (`score_career`, `outcome_hi`)
-pub(in crate::deck::career::sim::plan) fn fm_masks(fixed_t: &[usize]) -> Vec<usize> {
+pub(in crate::deck::career::sim::plan) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
     (0..(1usize << fixed_t.len()))
-        .map(|fm| {
-            let mut m = 0;
-            for (j, &i) in fixed_t.iter().enumerate() {
-                if fm >> j & 1 == 1 {
-                    m |= 1 << i;
-                }
+        .map(|bits| {
+            let fixed = TargetMask::from_bits(bits);
+            let mut landed = TargetMask::default();
+            for bit in fixed.iter() {
+                landed.insert(fixed_t[bit]);
             }
-            m
+            landed
         })
         .collect()
 }
@@ -111,12 +123,11 @@ pub(in crate::deck::career::sim::plan) fn her_pool(
     legs: &[Legacy],
     pool: &Pool,
     of_legs: bool,
-    x: usize,
-    a: usize,
-    b: usize,
+    lineage: Lineage,
     c: &Cur,
 ) -> Pool {
-    let veteran = s.env.veteran(legs, x, a, b, c.wp.to_vec());
+    let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
+    let veteran = s.env.veteran(legs, Lineage { trainee: x, first_parent: a, second_parent: b }, c.wp.to_vec());
     if of_legs {
         debug_assert_eq!(pool.me.len(), legs.len(), "one legacy per pool member");
         let mut extended = s.take_pool(pool);
@@ -165,19 +176,13 @@ pub(in crate::deck::career::sim) struct CareerScore {
 /// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
 pub(in crate::deck::career::sim) fn score_career(
     s: &mut Sim,
-    d: &Data,
-    bs: &ScoreBase,
-    legs: &[Legacy],
-    pool: &Pool,
-    x: usize,
-    a: usize,
-    b: usize,
-    sel: &Sel,
+    context: &ScoringContext,
+    career: Career,
     want: Want,
     buf: &mut Vec<f64>,
 ) -> CareerScore {
     let started = now_ms();
-    let score = score_career_(s, d, bs, legs, pool, true, x, a, b, sel, want, buf);
+    let score = score_career_(s, context, career, want, PoolProvenance::RecordedLegacies, buf);
     prof("score_ms", now_ms() - started);
     prof("score_calls", 1.0);
     score
@@ -186,19 +191,13 @@ pub(in crate::deck::career::sim) fn score_career(
 /// `score_career` for a pool built otherwise (`sim`'s): the pool with her veteran built from `legs` and her
 pub(in crate::deck::career::sim) fn score_career_of(
     s: &mut Sim,
-    d: &Data,
-    bs: &ScoreBase,
-    legs: &[Legacy],
-    pool: &Pool,
-    x: usize,
-    a: usize,
-    b: usize,
-    sel: &Sel,
+    context: &ScoringContext,
+    career: Career,
     want: Want,
     buf: &mut Vec<f64>,
 ) -> CareerScore {
     let started = now_ms();
-    let score = score_career_(s, d, bs, legs, pool, false, x, a, b, sel, want, buf);
+    let score = score_career_(s, context, career, want, PoolProvenance::Extended, buf);
     prof("score_ms", now_ms() - started);
     prof("score_calls", 1.0);
     score
@@ -206,38 +205,36 @@ pub(in crate::deck::career::sim) fn score_career_of(
 
 fn score_career_(
     s: &mut Sim,
-    d: &Data,
-    bs: &ScoreBase,
-    legs: &[Legacy],
-    pool: &Pool,
-    of_legs: bool,
-    x: usize,
-    a: usize,
-    b: usize,
-    sel: &Sel,
+    context: &ScoringContext,
+    career: Career,
     want: Want,
+    provenance: PoolProvenance,
     buf: &mut Vec<f64>,
 ) -> CareerScore {
-    let n = bs.cands.len();
+    let d = s.d;
+    let x = career.lineage.trainee;
+    let of_legs = provenance == PoolProvenance::RecordedLegacies;
+
+    let n = context.score_base.cands.len();
     let ntar = s.env.ntar;
     let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone();
     let fixed_t = s.env.fixed_t.clone();
     let w = s.env.sj.star_dist;
-    let (xi, goal) = her_ends(s, bs, legs, x, a, b);
+    let (xi, goal) = her_ends(s, context.score_base, context.legacies, career.lineage);
     let t_mc = now_ms();
-    let c = s.make_cur(pool, x, a, b, sel, false);
+    let c = s.make_cur(context.pool, career, false);
     let t_lv = now_ms();
     prof("sc_cur_ms", t_lv - t_mc);
-    let mut pv = her_pool(s, legs, pool, of_legs, x, a, b, &c);
+    let mut pv = her_pool(s, context.legacies, context.pool, of_legs, career.lineage, &c);
     let iv = pv.me.len() - 1;
     // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
     let t_su = now_ms();
     prof("sc_pool_ms", t_su - t_lv);
     let mut setups: Vec<Setup> = vec![];
     for ui in 0..n {
-        let u = bs.cands[ui];
-        if d.umas[u].id == d.umas[x].id || bs.c1[ui] == 0.0 || !bs.c1[ui].is_finite() {
+        let u = context.score_base.cands[ui];
+        if d.umas[u].id == d.umas[x].id || context.score_base.c1[ui] == 0.0 || !context.score_base.c1[ui].is_finite() {
             continue;
         }
         // her best IDX_PARTNERS (2) partners by value, ties in partner order: every legal partner valued in order (each
@@ -245,10 +242,10 @@ fn score_career_(
         const _: () = assert!(IDX_PARTNERS == 2, "the partner pick below keeps exactly two");
         let mut ps: [Option<(f64, usize)>; 2] = [None, None];
         for y in 0..iv {
-            if !legal_pair(d, &pv, u, y, iv) {
+            if !legal_pair(d, &pv, Lineage { trainee: u, first_parent: y, second_parent: iv }) {
                 continue;
             }
-            let v = val(s, &pv, u, y, iv, buf);
+            let v = val(s, &pv, Lineage { trainee: u, first_parent: y, second_parent: iv }, buf);
             match ps {
                 [None, _] => ps[0] = Some((v, y)),
                 [Some(b1), _] if v > b1.0 => {
@@ -261,7 +258,9 @@ fn score_career_(
             }
         }
         for (_, y) in ps.into_iter().flatten() {
-            let Some(hs) = s.env.her_slot(&pv, u, y, iv) else { continue };
+            let Some(hs) = s.env.her_slot(&pv, Lineage { trainee: u, first_parent: y, second_parent: iv }) else {
+                continue;
+            };
             let nd = s.cache.decks[u].len();
             if s.cache.decks[u].iter().all(|dk| dk.tab.is_empty()) {
                 continue;
@@ -283,7 +282,7 @@ fn score_career_(
     for st in &setups {
         if aslot[st.ui].is_none() {
             aslot[st.ui] = Some(p0.len());
-            p0.push(bs.pnow[st.ui]);
+            p0.push(context.score_base.pnow[st.ui]);
         }
     }
     let na = p0.len();
@@ -319,25 +318,34 @@ fn score_career_(
     // the kept tables and, per uncertain target, collapsed (`sc_prep`; with no setup slot no outcome reads a table: every
     // target)
     if na > 0 {
-        sc_prep(s, bs, &setups, &mut sd);
+        sc_prep(s, context.score_base, &setups, &mut sd);
     }
     prof("sc_fold_ms", now_ms() - t_fo);
     // the candidates the loop below can lift, in candidate order: those with setups, and (never, as the odds are not
     // negative) one whose odds now already clear her threshold pnow (1 + 1e-9); every other keeps up = pnow, below it
-    let thr: Vec<f64> = (0..n).map(|ui| bs.pnow[ui] * (1.0 + 1e-9)).collect();
-    let active: Vec<usize> = (0..n).filter(|&ui| aslot[ui].is_some() || bs.pnow[ui] > thr[ui]).collect();
+    let thr: Vec<f64> = (0..n).map(|ui| context.score_base.pnow[ui] * (1.0 + 1e-9)).collect();
+    let active: Vec<usize> =
+        (0..n).filter(|&ui| aslot[ui].is_some() || context.score_base.pnow[ui] > thr[ui]).collect();
     // her own 8/8 as a trio side when her uma is not a stage candidate (the full set only; `her_trios`)
     let full_m = (1usize << ntar) - 1;
     let t_h = now_ms();
-    sd.her = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 {
-        her_trios(s, d, bs, &mut pv, iv, x, buf)
+    sd.her = if xi.is_none() && !goal && !context.score_base.sides.is_empty() && c.os[full_m] > 0.0 {
+        her_trios(s, context.score_base, &mut pv, iv, x, buf)
     } else {
         vec![]
     };
     prof("sc_her_ms", now_ms() - t_h);
     // per active candidate: (index, her slot or none, her threshold, her odds now)
-    sd.act = active.iter().map(|&ui| (ui, aslot[ui], thr[ui], bs.pnow[ui])).collect();
-    her_pool_done(s, pool, of_legs, pv);
+    sd.act = active
+        .iter()
+        .map(|&ui| ActiveCandidate {
+            candidate: CandidateIndex(ui),
+            slot: aslot[ui],
+            threshold: thr[ui],
+            current_chance: context.score_base.pnow[ui],
+        })
+        .collect();
+    her_pool_done(s, context.pool, of_legs, pv);
     if want == Want::Touch {
         return CareerScore {
             expected_saving: 0.0,
@@ -348,7 +356,7 @@ fn score_career_(
     }
     let mut sc = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
     let (ey, lift, _, stats, full_lo, [n_out, n_ch, n_cost, n_same, n_one]) =
-        sc_eval(bs, &sd, &All, if want == Want::Keep { Want::Score } else { want }, &mut sc);
+        sc_eval(context.score_base, &sd, &All, if want == Want::Keep { Want::Score } else { want }, &mut sc);
     FOLD_SCRATCH.with(|c| *c.borrow_mut() = sc);
     prof("sc_out", n_out as f64);
     prof("sc_trio", n_ch as f64);
@@ -434,12 +442,14 @@ fn sc_eval<L: Leaves>(
 /// A roll's y (`roll_answer`): the kept scoring evaluated at one outcome (her stars `leaf`, the guaranteed targets
 /// landed `fm`), `sc_eval` at `OneLeaf` (the leaf and its representative); 0 where the outcome can't happen, as the
 /// plan's full table held
-pub(in crate::deck::career::sim::plan) fn sc_roll(bs: &ScoreBase, sd: &Scored, leaf: usize, fm: usize) -> f64 {
+pub(in crate::deck::career::sim::plan) fn sc_roll(bs: &ScoreBase, sd: &Scored, outcome: OutcomeIndex) -> f64 {
+    let leaf = outcome.leaf(sd.nf);
+    let fm = outcome.fixed_mask(sd.nf).bits();
     let lv = OneLeaf::new(leaf, sd.rep_of(leaf));
     let mut sc = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
     let (_, _, ys, _, _, _) = sc_eval(bs, sd, &lv, Want::Ys, &mut sc);
     FOLD_SCRATCH.with(|c| *c.borrow_mut() = sc);
-    ys[lv.row(leaf) << sd.nf | fm]
+    ys[(lv.row(leaf) << sd.nf) | fm]
 }
 
 /// `score_career_`'s tables (with na > 0 setup slots): every setup's tables, the dominated ones dropped, as level 0 of the
@@ -593,7 +603,7 @@ fn sc_outcomes<L: Leaves>(
     let lo_bits = cm & (usize::MAX / 3);
     // the candidates it can lift: with a slot (in slot order) and without
     let (mut uis, mut ths, mut actn) = (vec![], vec![], vec![]);
-    for &(ui, sl, th, pn) in &sd.act {
+    for &ActiveCandidate { candidate: CandidateIndex(ui), slot: sl, threshold: th, current_chance: pn } in &sd.act {
         match sl {
             Some(sl) => {
                 assert_eq!(sl, uis.len(), "slotted candidates come in slot order");
@@ -613,7 +623,8 @@ fn sc_outcomes<L: Leaves>(
     // V after her found lazily (`sc_loop`): no step, stage 2-3 cost or C's step NaN, -0.0 or below 0, so no sum of them is
     // NaN or -0.0 and equal minima are the same bits
     let ok = |c: f64| c >= 0.0 && c.to_bits() != (-0.0f64).to_bits();
-    let lazy = bs.c1.iter().all(|&c| ok(c)) && bs.m23.iter().all(|&c| ok(c)) && bs.combos.iter().all(|t| ok(t.2));
+    let lazy =
+        bs.c1.iter().all(|&c| ok(c)) && bs.m23.iter().all(|&c| ok(c)) && bs.combos.iter().all(|t| ok(t.finisher_cost));
     let cx = OutCx {
         bs,
         os: &sd.os,
@@ -632,7 +643,7 @@ fn sc_outcomes<L: Leaves>(
         nf: sd.nf,
         ns: sd.ns(),
         na,
-        full_m: sd.full_m(),
+        full_m: sd.full_m().bits(),
         cm,
         lo_bits,
         pst,
@@ -661,7 +672,7 @@ fn sc_outcomes<L: Leaves>(
 struct OutCx<'out, 'base, L: Leaves> {
     bs: &'out ScoreBase<'base>,
     os: &'out [f64],
-    fmm: &'out [usize],
+    fmm: &'out [TargetMask],
     u: &'out [f64],
     scf: &'out [f64],
     rg: &'out [usize],
@@ -669,7 +680,7 @@ struct OutCx<'out, 'base, L: Leaves> {
     uis: &'out [usize],
     ths: &'out [f64],
     actn: &'out [(usize, f64, f64)],
-    her: &'out [(usize, bool, f64)],
+    her: &'out [OwnTrio],
     xi: Option<usize>,
     goal: bool,
     want_ys: bool,
@@ -783,7 +794,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         // (a representative that other leaves read: y computed wherever her landed set can happen, even at chance 0 itself)
         let read = COL && r == leaf && leaf & cm != 0;
         for (fm, &mf) in fmm.iter().enumerate() {
-            let m = mu | mf;
+            let m = mu | mf.bits();
             let pr = os[m] * pr_st;
             if pr <= 0.0 && !(read && os[m] > 0.0) {
                 continue;

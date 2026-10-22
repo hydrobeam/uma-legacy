@@ -5,7 +5,9 @@ use super::{
     exact_plan_career, is_full, lift_eff, memo_stat, plan_combinations, plan_continuations, plan_sides, same_career,
     score_career, set_plan_wins, stamp_ok, stamped, trio_v,
 };
+use crate::deck::career::sim::plan::ScoringContext;
 use crate::deck::career::sim::{Found, Sel, Sim, Value, json, now_ms, prof, progress};
+use crate::deck::career::{Career, Lineage};
 
 /// Scores within this many careers per run of the best (or 5% of it) count as tied
 const NEAR: f64 = 0.25;
@@ -109,7 +111,8 @@ pub(in crate::deck::career::sim::plan) fn add_looped_rows(
 ) -> Vec<PlanRow> {
     let mut added: Vec<PlanRow> = vec![];
     let base_s = candidates.stats_base();
-    let PlanInputs { d, legs, pool, fix, pj, .. } = *input;
+    let PlanInputs { legacies: legs, pool, fixed_parents: fix, settings: pj, .. } = *input;
+    let d = input.resources.data;
     let pick_pool = input.pick_pool();
     let nl = legs.len();
     let sj = s.env.sj;
@@ -201,8 +204,13 @@ pub(in crate::deck::career::sim::plan) fn add_looped_rows(
                     // (its stats feed only `proxy_check`; without it the scoring runs for its state effects alone: its `val`
                     // searches, under this block's cap, add decks later scorings read)
                     let want = if pj.proxy_check { Want::Stats } else { Want::Touch };
-                    let CareerScore { lift_stats: st, .. } =
-                        score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, want, buf);
+                    let CareerScore { lift_stats: st, .. } = score_career(
+                        s,
+                        &ScoringContext { score_base: &base_s, legacies: legs, pool },
+                        Career { lineage: Lineage { trainee: x, first_parent: f.a, second_parent: f.b }, deck: &f.sel },
+                        want,
+                        buf,
+                    );
                     added.push(PlanRow::new(x, f, st, RowOrigin::Looped, true, None));
                 }
             }
@@ -225,7 +233,7 @@ pub(in crate::deck::career::sim::plan) fn add_no_borrow_rows(
     buf: &mut Vec<f64>,
 ) -> Vec<PlanRow> {
     let mut added: Vec<PlanRow> = vec![];
-    let PlanInputs { fix, pick, .. } = *input;
+    let PlanInputs { fixed_parents: fix, pick, .. } = *input;
     let pick_pool = input.pick_pool();
     let n = candidates.trainees.len();
     let is_runnable = |career: &Found| input.is_runnable(career);
@@ -268,7 +276,8 @@ pub(in crate::deck::career::sim::plan) fn score_and_promote_rows(
     profile: &mut PlanProfile,
     buf: &mut Vec<f64>,
 ) -> PlanScores {
-    let PlanInputs { d, legs, pool, fix, .. } = *input;
+    let PlanInputs { legacies: legs, pool, fixed_parents: fix, .. } = *input;
+    let d = input.resources.data;
     let pick_pool = input.pick_pool();
     let n = candidates.trainees.len();
     let sj = s.env.sj;
@@ -459,7 +468,8 @@ pub(in crate::deck::career::sim::plan) fn check_plan_proxies(
     cache0: Option<super::Cache>,
     buf: &mut Vec<f64>,
 ) -> Value {
-    let PlanInputs { d, legs, pool, sv, fix, pj, .. } = *input;
+    let PlanInputs { legacies: legs, pool, solved: sv, fixed_parents: fix, settings: pj, .. } = *input;
+    let d = input.resources.data;
     let n = candidates.trainees.len();
     // measurement (`proxy_check`): each builder's career from her deck class's winning decks (the main search's and the
     // candidates' best careers of her class, legal for her and valued at her own chances) through the surrogate, no career
@@ -506,12 +516,29 @@ pub(in crate::deck::career::sim::plan) fn check_plan_proxies(
                     match best_sur(s, pool, fix, x, 1e9, buf) {
                         None => (None, vec![0.0; n], None),
                         Some(f) => {
-                            let CareerScore { lift_stats: st, .. } =
-                                score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
+                            let CareerScore { lift_stats: st, .. } = score_career(
+                                s,
+                                &ScoringContext { score_base: &base_s, legacies: legs, pool },
+                                Career {
+                                    lineage: Lineage { trainee: x, first_parent: f.a, second_parent: f.b },
+                                    deck: &f.sel,
+                                },
+                                Want::Stats,
+                                buf,
+                            );
                             let pe = effs(x, &st);
                             let psc = scores.any_scored.then(|| {
-                                score_career(s, d, &base, legs, pool, x, f.a, f.b, &f.sel, Want::Score, buf)
-                                    .expected_saving
+                                score_career(
+                                    s,
+                                    &ScoringContext { score_base: &base, legacies: legs, pool },
+                                    Career {
+                                        lineage: Lineage { trainee: x, first_parent: f.a, second_parent: f.b },
+                                        deck: &f.sel,
+                                    },
+                                    Want::Score,
+                                    buf,
+                                )
+                                .expected_saving
                                     - 1.0
                             });
                             (Some(f), pe, psc)
@@ -544,15 +571,23 @@ fn score_plan_row(
     r: &PlanRow,
     buf: &mut Vec<f64>,
 ) -> (f64, f64, Option<KeptScoring>) {
-    let PlanInputs { d, legs, pool, .. } = *input;
+    let PlanInputs { legacies: legs, pool, .. } = *input;
     let is_runnable = |f: &Found| input.is_runnable(f);
 
     if !is_runnable(&r.career) {
         return (f64::NEG_INFINITY, 0.0, None);
     }
     let base = fit.score_base(candidates);
-    let CareerScore { expected_saving, improvement_chance, kept, .. } =
-        score_career(s, d, &base, legs, pool, r.trainee, r.career.a, r.career.b, &r.career.sel, Want::Keep, buf);
+    let CareerScore { expected_saving, improvement_chance, kept, .. } = score_career(
+        s,
+        &ScoringContext { score_base: &base, legacies: legs, pool },
+        Career {
+            lineage: Lineage { trainee: r.trainee, first_parent: r.career.a, second_parent: r.career.b },
+            deck: &r.career.sel,
+        },
+        Want::Keep,
+        buf,
+    );
     (expected_saving - 1.0, improvement_chance, kept)
 }
 

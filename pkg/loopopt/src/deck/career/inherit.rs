@@ -1,5 +1,6 @@
 //! Legacy slots, affinity and inheritance chances.
 use super::{Env, Pool, Who, shared};
+use crate::deck::career::Lineage;
 use crate::deck::{JointExt, Kind, Sel, Src, joint_fast};
 
 /// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
@@ -277,7 +278,8 @@ impl Env<'_> {
     }
     /// Legacy `iv`'s slot as a parent of trainee t beside partner y (`HerSlot`; None when she is not one of the two);
     /// what `score_career`'s setups and `outcome_hi`'s partners take
-    pub(in crate::deck) fn her_slot(&self, p: &Pool, t: usize, y: usize, iv: usize) -> Option<HerSlot> {
+    pub(in crate::deck) fn her_slot(&self, p: &Pool, lineage: Lineage) -> Option<HerSlot> {
+        let Lineage { trainee: t, first_parent: y, second_parent: iv } = lineage;
         let mut acc = Inherit::new(self.ntar, Some(iv));
         self.walk_slots(p, y, iv, &RelOf { env: self, p, t }, &mut acc);
         let fa = acc.her?;
@@ -352,20 +354,14 @@ impl Env<'_> {
         )
     }
     /// `lineage`'s chances and spark scale C (the same numbers), without the carriers
-    pub(in crate::deck::career) fn lineage_q(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Vec<f64>, f64) {
+    pub(in crate::deck::career) fn lineage_q(&self, p: &Pool, lineage: Lineage) -> (Vec<f64>, f64) {
         let mut q = Vec::with_capacity(self.ntar);
-        let c = self.lineage_into(p, t, a, b, &mut q);
+        let c = self.lineage_into(p, lineage, &mut q);
         (q, c)
     }
     /// `lineage`'s chances into `q` (cleared first) and its spark scale C, the same numbers
-    pub(in crate::deck::career) fn lineage_into(
-        &self,
-        p: &Pool,
-        t: usize,
-        a: usize,
-        b: usize,
-        q: &mut Vec<f64>,
-    ) -> f64 {
+    pub(in crate::deck::career) fn lineage_into(&self, p: &Pool, lineage: Lineage, q: &mut Vec<f64>) -> f64 {
+        let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         q.clear();
         if self.ntar > LQN {
             let (qq, _, c) = self.lineage(p, t, a, b);
@@ -398,13 +394,12 @@ impl Env<'_> {
     pub(in crate::deck::career) fn lineage_qc(
         &self,
         p: &Pool,
-        t: usize,
-        a: usize,
-        b: usize,
+        lineage: Lineage,
         ks: &[usize],
         q: &mut [f64],
         tg: &mut Vec<f64>,
     ) -> f64 {
+        let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         const G: usize = 4;
         const QN: usize = 16;
         if p.gp[a].len() > G || p.gp[b].len() > G || self.ntar > QN {
