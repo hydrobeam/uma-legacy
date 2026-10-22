@@ -38,7 +38,7 @@
 //! latest veterans of the previous two members in rotation order; bootstrap below), and `trace` (building for
 //! `loop_members[0]` with the others as builders: the measurement `Cont`'s shape is fitted to), and `index` (the page's
 //! plan: `index_rule` on the step's pool, run as the page's plan job in process, its `choice` the career run). A policy
-//! picks the next career (`Cur`) from the state (`St`) in `play`; `trace` runs its own loop and returns its rows.
+//! picks the next career (`Cur`) from the state (`PathState`) in `play`; `trace` runs its own loop and returns its rows.
 //!
 //! `index` and the worker's kept state: a plan job reads and leaves the kept plans (`plan::BESTS`), proofs (`SEEN`),
 //! main searches (`LAST_SOLVE`) and deck memos (`DECK_KEEP`). Each run starts with all four empty (`kept_swap`; the
@@ -54,6 +54,7 @@
 //! The loop adds every veteran without dominance pruning. Its rotation keeps the better of the previous veteran and
 //! the new one for the next two loop careers (`rot_update`), keeping the previous veteran on a tie.
 use super::cache::Cache;
+use super::inherit::{ExactOptions, Inheritance, LineageChances};
 use super::{
     Ancestor, Bar, CardsRaw, Data, DeckRes, Deserialize, Env, Found, FxMap, GEN_GOLD, HerSlot, Legacy, PROF, Pool, Ref,
     RelOf, Sel, SkillJob, SkillsRaw, SlotSink, Solved, Value, Who, aff_factor, d_true, holds_fix, inherit, insp_miss,
@@ -197,42 +198,54 @@ impl Keys {
     }
 }
 
-/// The best career so far by the surrogate: value (C x table), trainee, parents (a < b), deck index in the cache
+/// The best career so far by the surrogate (`Sim::consider_at`).
 #[derive(Clone, Copy)]
 struct Pick {
-    val: f64,
-    t: usize,
-    a: usize,
-    b: usize,
-    d: usize,
+    /// Spark scale C times her best cached deck's table value.
+    value: f64,
+    /// Trainee and parents, first parent the lower legacy index.
+    lineage: Lineage,
+    /// The deck's index among her cached decks (`Cache::decks`).
+    deck: usize,
 }
-/// A career to run, with its exact numbers: P(all), landed-set chances (bit i = job target i), win chance per race
+/// A career to run, with its exact numbers
 struct Cur {
-    t: usize,
-    a: usize,
-    b: usize,
-    p: f64,
+    lineage: Lineage,
+    p_all: f64,
+    /// Chance of each landed set (bit i = job target i).
     os: Vec<f64>,
+    /// Her chance of at least one win, per race index.
     wp: Rc<Vec<f64>>,
-    rot: bool,
+    /// A loop rotation career: her veteran may replace her member's rotation veteran (`rot_update`).
+    rotation: bool,
 }
 /// Loop rotation: the next member's position and each member's latest rotation veteran
 #[derive(Clone, Default)]
-struct Rot {
-    pos: usize,
+struct Rotation {
+    /// Careers run so far; the next member is this modulo the member count.
+    position: usize,
+    /// Per member, her rotation veteran's legacy index.
     latest: Vec<Option<usize>>,
+}
+/// A veteran's stars per job target and her distinct G1 wins, sorted: what dominance pruning compares.
+#[derive(Clone)]
+struct VeteranResult {
+    stars: Vec<u8>,
+    wins: Vec<usize>,
 }
 /// One path's state: veterans, the solver's pool, owned veterans per family (dominance), the surrogate's best
 #[derive(Clone)]
-struct St {
-    legs: Vec<Legacy>,
+struct PathState {
+    legacies: Vec<Legacy>,
     pool: Pool,
-    fam: crate::FxMap<String, Vec<(Vec<u8>, Vec<usize>)>>,
+    /// Per family (`family`), the results of the owned veterans in it.
+    families: crate::FxMap<String, Vec<VeteranResult>>,
     best: Option<Pick>,
-    cur: Option<Rc<Cur>>,
-    rot: Rot,
-    /// `next`: each loop member's best career (by member index)
-    mb: Vec<Option<Pick>>,
+    /// The career the policy runs next, kept until the state changes.
+    current: Option<Rc<Cur>>,
+    rotation: Rotation,
+    /// `trace`: each loop member's best career (by member index)
+    member_best: Vec<Option<Pick>>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -242,14 +255,33 @@ enum Base {
     Trace,
     Index,
 }
+/// The simulator's work counters (`Sim::n`).
 #[derive(Default, Clone, Copy)]
-struct Count {
-    cands: usize,
-    ceil_pass: usize,
+struct Counters {
+    /// Candidate careers valued.
+    candidates: usize,
+    /// Candidates whose ceiling cleared the bar.
+    ceiling_passes: usize,
+    /// Cached-table valuations (`deck_for`).
     tables: usize,
+    /// Deck searches ("refreshes").
     searches: usize,
-    partial: usize,
-    added: usize,
+    /// Deck searches that did not finish (no `Ref`).
+    partial_searches: usize,
+    /// Veterans added to a path's pool.
+    veterans_added: usize,
+}
+
+/// `trace`: a builder's best career and what it does for the trainee built for (A, best odds p).
+#[derive(Clone, Copy)]
+struct BuilderCareer {
+    /// lam (1/p - 1/p1): the expected fall in A's careers needed, per career run.
+    efficiency: f64,
+    pick: Pick,
+    /// lam: the chance her veteran raises A's best odds.
+    lift_chance: f64,
+    /// p1: A's mean odds when raised (p when never).
+    lifted_odds: f64,
 }
 
 /// Owned roster tables moved into a simulator.
@@ -274,39 +306,63 @@ struct SimulationOptions {
 struct Sim<'env, 'data> {
     env: &'env mut Env<'data>,
     d: &'data Data,
-    sk: &'data SkillsRaw,
-    cr: &'data CardsRaw,
+    skills: &'data SkillsRaw,
+    cards: &'data CardsRaw,
     job: &'data Value,
     cfg: SimJob,
     cache: Cache,
     trainees: Vec<usize>,
-    hi: Vec<f64>,
-    order: Vec<usize>,
-    star: [f64; 3],
-    sched: crate::FxMap<(usize, Vec<usize>), Rc<Vec<f64>>>,
-    n: Count,
+    /// Per uma, her static ceiling (q = 1 on every target; 0 when she is not owned)
+    static_ceilings: Vec<f64>,
+    /// The failed landed sets (every set but the full one), fewest landed first, ties by mask: the draw's order
+    failed_sets: Vec<usize>,
+    /// The rank's 1/2/3-star shares of a landed target's spark
+    star_mix: [f64; 3],
+    /// Win chances per (trainee, her parents' wins and pink inputs) (`wins`)
+    win_chances: crate::FxMap<(usize, Vec<usize>), Rc<Vec<f64>>>,
+    n: Counters,
     members: Vec<usize>,
     /// per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`fast_ub`)
     fastc: Vec<Vec<Vec<(f64, f64)>>>,
     fixed: f64,
     /// trace: trainee → loop member index (empty under the other policies)
-    mi: Vec<Option<usize>>,
+    member_by_trainee: Vec<Option<usize>>,
     /// the simulator's own path (false when the plan uses this machinery): audits are taken only there
-    main: bool,
+    record_audits: bool,
     audits: Vec<Value>,
     /// the plan only (false for every policy here): a trainee without a cached deck gets her best deck searched without
     /// a bar (so she has one from then on), instead of a search at the bar that caches nothing when it ends Bounded
-    fill: bool,
+    fill_missing_decks: bool,
     /// a lineage's chances, reused (`lineage_into`)
     qs: Vec<f64>,
-    /// the planner's working copy of its pool (`take_pool`), with the address, length and borrowing rule of the pool it
-    /// copies
-    wpool: Option<((usize, usize, u8), Pool)>,
+    /// the planner's working copy of its pool (`take_pool`), with the identity of the pool it copies
+    working_pool: Option<(PoolIdentity, Pool)>,
 }
-/// index, this run: plan jobs run, each one's seconds, the picks' roles (`next.options[].role`), picks that were the best
-/// odds career (`best_odds`)
-type IxCount = (usize, Vec<f64>, std::collections::BTreeMap<String, usize>, usize);
-thread_local! { static IX: std::cell::RefCell<IxCount> = std::cell::RefCell::new(Default::default()); }
+/// Which pool a working copy was made from (`Sim::take_pool`): its address, length and borrowing rule.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PoolIdentity {
+    address: usize,
+    veterans: usize,
+    max_borrowed: u8,
+}
+impl PoolIdentity {
+    fn of(pool: &Pool) -> Self {
+        Self { address: pool as *const Pool as usize, veterans: pool.me.len(), max_borrowed: pool.max_bor }
+    }
+}
+/// `index`, this run: what its plan jobs did.
+#[derive(Default)]
+struct IndexRunCounts {
+    /// Plan jobs run.
+    plans: usize,
+    /// Each plan job's seconds, rounded to the millisecond.
+    plan_seconds: Vec<f64>,
+    /// Per role of the chosen option (`next.options[].role`), how many picks had it.
+    roles: std::collections::BTreeMap<String, usize>,
+    /// Picks that were the best-odds career (`best_odds`).
+    best_odds_picks: usize,
+}
+thread_local! { static IX: std::cell::RefCell<IndexRunCounts> = std::cell::RefCell::new(IndexRunCounts::default()); }
 
 fn canon(chara: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
     let (mut s, mut p, mut w) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
@@ -386,7 +442,8 @@ struct DeckRequest<'chances> {
 
 impl<'env, 'data> Sim<'env, 'data> {
     /// The simulator's machinery for a job (`simulate`'s, and the plan's through `plan::sim_for`): the landed sets in
-    /// order of size, each owned trainee's ceiling at q = 1 (`hi`), the rank's star mix, `fastc`, the fixed gold factor
+    /// order of size, each owned trainee's ceiling at q = 1 (`static_ceilings`), the rank's star mix, `fastc`, the
+    /// fixed gold factor
     fn new(
         env: &'env mut Env<'data>,
         input: &JobInputs<'data>,
@@ -396,39 +453,39 @@ impl<'env, 'data> Sim<'env, 'data> {
     ) -> Self {
         let ntar = env.ntar;
         let full = (1usize << ntar) - 1;
-        let mut order: Vec<usize> = (0..full).collect();
-        order.sort_by_key(|&m| (m.count_ones(), m));
+        let mut failed_sets: Vec<usize> = (0..full).collect();
+        failed_sets.sort_by_key(|&m| (m.count_ones(), m));
         let n = input.data.umas.len();
         let one = vec![1.0f64; ntar];
-        let hi: Vec<f64> = (0..n)
+        let static_ceilings: Vec<f64> = (0..n)
             .map(|t| if env.owned.contains(&t) { env.ceiling(t, &one, 1.0).unwrap_or(0.0) } else { 0.0 })
             .collect();
-        let star = env.sj.star_dist;
+        let star_mix = env.sj.star_dist;
         let fastc = fastc(env);
         let fixed = env.model.fixed_factor();
         Sim {
             env,
             d: input.data,
-            sk: input.skills,
-            cr: input.cards,
+            skills: input.skills,
+            cards: input.cards,
             job: input.job,
             cfg,
             cache: Cache::new(n),
             trainees: roster.trainees,
-            hi,
-            order,
-            star,
-            sched: std::collections::HashMap::default(),
-            n: Count::default(),
+            static_ceilings,
+            failed_sets,
+            star_mix,
+            win_chances: std::collections::HashMap::default(),
+            n: Counters::default(),
             members: roster.members,
             fastc,
             fixed,
-            main: options.record_audits,
+            record_audits: options.record_audits,
             audits: vec![],
-            fill: options.fill_missing_decks,
-            mi: roster.member_by_trainee,
+            fill_missing_decks: options.fill_missing_decks,
+            member_by_trainee: roster.member_by_trainee,
             qs: vec![],
-            wpool: None,
+            working_pool: None,
         }
     }
     /// A working copy of `pool` (the planner's `Env::pool(legs)`), equal to it: the one kept by `put_pool` when it was
@@ -436,19 +493,19 @@ impl<'env, 'data> Sim<'env, 'data> {
     /// unchanged, or, as the simulator's, only grown), else a clone. A user pushes its extra entries (`Env::pool_push`
     /// builds an entry as `Env::pool` does, so the pool of legs and those) and pops them before `put_pool`
     pub(super) fn take_pool(&mut self, pool: &Pool) -> Pool {
-        let id = (pool as *const Pool as usize, pool.me.len(), pool.max_bor);
-        match self.wpool.take() {
-            Some((k, p)) if k == id => p,
+        match self.working_pool.take() {
+            Some((identity, copy)) if identity == PoolIdentity::of(pool) => copy,
             _ => pool.clone(),
         }
     }
     /// `take_pool`'s copy back, its extra entries popped
     pub(super) fn put_pool(&mut self, pool: &Pool, p: Pool) {
         debug_assert_eq!(p.me.len(), pool.me.len(), "put_pool takes back the pool take_pool lent");
-        self.wpool = Some(((pool as *const Pool as usize, pool.me.len(), pool.max_bor), p));
+        self.working_pool = Some((PoolIdentity::of(pool), p));
     }
     fn key(&self, c: &Cur) -> String {
-        format!("{}:{},{}", self.d.umas[c.t].id, c.a, c.b)
+        let Lineage { trainee, first_parent, second_parent } = c.lineage;
+        format!("{}:{},{}", self.d.umas[trainee].id, first_parent, second_parent)
     }
     /// P(all) at chances q with spark scale c through trainee t's cached decks: (value, deck index; usize::MAX: none)
     fn tval(&self, t: usize, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
@@ -509,7 +566,7 @@ impl<'env, 'data> Sim<'env, 'data> {
             let r = self.env.best_deck(
                 request.trainee,
                 request.spark_scale,
-                if self.fill && di == usize::MAX { 0.0 } else { request.threshold },
+                if self.fill_missing_decks && di == usize::MAX { 0.0 } else { request.threshold },
                 &sr,
                 &mut sc,
             );
@@ -523,16 +580,17 @@ impl<'env, 'data> Sim<'env, 'data> {
                 if full {
                     self.cache.refs[request.trainee].push(Ref { q: request.inheritance_chances.to_vec(), val: v, sel });
                 } else {
-                    self.n.partial += 1;
+                    self.n.partial_searches += 1;
                 }
                 (tv, di) = self.tval(request.trainee, request.inheritance_chances, request.spark_scale, buf);
             }
         }
         if di == usize::MAX { None } else { Some((tv, di)) }
     }
-    /// `Env::ceiling` of candidate (t, a, b) without allocations (the same slots, affinities and formula as `slots`,
+    /// `Env::ceiling` of a candidate lineage without allocations (the same slots, affinities and formula as `slots`,
     /// `inherit` and `outfit_fast`; equal up to rounding, so it only filters, with a slack)
-    fn fast_ub(&self, st: &St, t: usize, a: usize, b: usize) -> f64 {
+    fn fast_ub(&self, st: &PathState, lineage: Lineage) -> f64 {
+        let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         let env = &*self.env;
         let p = &st.pool;
         let ntar = env.ntar;
@@ -594,64 +652,55 @@ impl<'env, 'data> Sim<'env, 'data> {
         }
         env.space.rho_top() * c * self.fixed * best
     }
-    /// value candidate (t, a, b) against the best so far
-    /// the value a career of trainee t must beat to matter: the best overall, or under `next` a member's own best
-    fn bar(&self, st: &St, t: usize) -> f64 {
-        match self.mi.get(t).copied().flatten() {
-            Some(k) => st.mb[k].map_or(0.0, |p| p.val),
-            None => st.best.map_or(0.0, |p| p.val),
+    /// the value a career of trainee t must beat to matter: the best overall, or under `trace` a member's own best
+    fn bar(&self, st: &PathState, t: usize) -> f64 {
+        match self.member_by_trainee.get(t).copied().flatten() {
+            Some(k) => st.member_best[k].map_or(0.0, |p| p.value),
+            None => st.best.map_or(0.0, |p| p.value),
         }
     }
-    fn consider(&mut self, st: &mut St, t: usize, a: usize, b: usize, buf: &mut Vec<f64>) {
-        let bv = self.bar(st, t);
-        self.n.cands += 1;
+    /// value a candidate lineage against the best so far
+    fn consider(&mut self, st: &mut PathState, lineage: Lineage, buf: &mut Vec<f64>) {
+        let bar = self.bar(st, lineage.trainee);
+        self.n.candidates += 1;
         let mut q = std::mem::take(&mut self.qs);
-        let c = self.env.lineage_into(&st.pool, Lineage { trainee: t, first_parent: a, second_parent: b }, &mut q);
-        self.consider_at(st, t, a, b, &q, c, bv, buf);
+        let c = self.env.lineage_into(&st.pool, lineage, &mut q);
+        self.consider_at(st, lineage, &q, c, bar, buf);
         self.qs = q;
     }
-    /// `consider` at the candidate's chances q and spark scale c
-    fn consider_at(
-        &mut self,
-        st: &mut St,
-        t: usize,
-        a: usize,
-        b: usize,
-        q: &[f64],
-        c: f64,
-        bv: f64,
-        buf: &mut Vec<f64>,
-    ) {
+    /// `consider` at the candidate's chances q and spark scale c, against `bar`
+    fn consider_at(&mut self, st: &mut PathState, lineage: Lineage, q: &[f64], c: f64, bar: f64, buf: &mut Vec<f64>) {
+        let t = lineage.trainee;
         let Some(ub) = self.env.ceiling(t, q, c) else { return };
         static CHECK_UB: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *CHECK_UB.get_or_init(|| std::env::var("SIM_CHECK_UB").is_ok()) {
-            let f = self.fast_ub(st, t, a, b);
+            let f = self.fast_ub(st, lineage);
             assert!((f - ub).abs() <= 1e-12 * ub, "fast_ub {f} vs ceiling {ub}");
         }
-        if ub * (1.0 + 1e-9) < bv {
+        if ub * (1.0 + 1e-9) < bar {
             return;
         }
-        self.n.ceil_pass += 1;
+        self.n.ceiling_passes += 1;
         let Some((tv, di)) = self.deck_for(
-            DeckRequest { trainee: t, inheritance_chances: q, spark_scale: c, ceiling: ub, threshold: bv },
+            DeckRequest { trainee: t, inheritance_chances: q, spark_scale: c, ceiling: ub, threshold: bar },
             buf,
         ) else {
             return;
         };
-        let pk = Pick { val: tv, t, a: a.min(b), b: a.max(b), d: di };
-        if let Some(k) = self.mi.get(t).copied().flatten()
-            && tv > bv
+        let pick = Pick { value: tv, lineage: lineage.ordered(), deck: di };
+        if let Some(k) = self.member_by_trainee.get(t).copied().flatten()
+            && tv > bar
         {
-            st.mb[k] = Some(pk);
-            st.cur = None;
+            st.member_best[k] = Some(pick);
+            st.current = None;
         }
-        if tv > st.best.map_or(0.0, |p| p.val) {
-            st.best = Some(pk);
-            st.cur = None;
+        if tv > st.best.map_or(0.0, |p| p.value) {
+            st.best = Some(pick);
+            st.current = None;
         }
     }
-    fn legal(&self, st: &St, t: usize, a: usize, b: usize) -> bool {
-        st.pool.pair_ok(self.d.umas[t].id, a, b)
+    fn legal(&self, st: &PathState, lineage: Lineage) -> bool {
+        st.pool.pair_ok(self.d.umas[lineage.trainee].id, lineage.first_parent, lineage.second_parent)
     }
     /// her chance per race of at least one win, cached per (trainee, the parents' wins)
     pub(super) fn wins(&mut self, pool: &Pool, lineage: Lineage) -> Rc<Vec<f64>> {
@@ -663,7 +712,7 @@ impl<'env, 'data> Sim<'env, 'data> {
             .collect();
         k.sort_unstable();
         // her pink sparks change her win chances: their inputs join the key (start grades, each spark's aptitude and chance)
-        if let Some(pc) = self.env.pink_career(pool, lineage.trainee, lineage.first_parent, lineage.second_parent) {
+        if let Some(pc) = self.env.pink_career(pool, lineage) {
             k.push(usize::MAX);
             k.extend(pc.start.iter().map(|&g| g as usize));
             for f in &pc.fire {
@@ -671,42 +720,42 @@ impl<'env, 'data> Sim<'env, 'data> {
                 k.push((f.p * 1e9).round() as usize);
             }
         }
-        if let Some(x) = self.sched.get(&(lineage.trainee, k.clone())) {
+        if let Some(x) = self.win_chances.get(&(lineage.trainee, k.clone())) {
             return Rc::clone(x);
         }
-        let w = Rc::new(self.env.schedule(pool, lineage.trainee, lineage.first_parent, lineage.second_parent).1);
-        self.sched.insert((lineage.trainee, k), Rc::clone(&w));
+        let w = Rc::new(self.env.schedule(pool, lineage).win_chances);
+        self.win_chances.insert((lineage.trainee, k), Rc::clone(&w));
         w
     }
-    /// career (t, a, b) with deck `sel`: its exact numbers
-    pub(super) fn make_cur(&mut self, pool: &Pool, career: Career, rot: bool) -> Cur {
-        let Lineage { trainee: t, first_parent: a, second_parent: b } = career.lineage;
-        let sel = career.deck;
-        let (q, nc) = inherit(&self.env.slots(pool, t, a, b), self.env.ntar);
+    /// the career with its deck: its exact numbers; `rotation`: a loop rotation career (`Cur::rotation`)
+    pub(super) fn make_cur(&mut self, pool: &Pool, career: Career, rotation: bool) -> Cur {
+        let lineage = career.lineage;
+        let t = lineage.trainee;
+        let Inheritance { chances: q, carriers: nc } = inherit(&self.env.slots(pool, lineage), self.env.ntar);
         self.env.set_trainee(t, &q);
-        let (j, ext) = self.env.exact(t, sel, &nc, true, true);
-        let os = self.env.outcome_sets(j.2, &ext);
-        let wp = self.wins(pool, Lineage { trainee: t, first_parent: a, second_parent: b });
-        Cur { t, a, b, p: j.0, os, wp, rot }
+        let exact = self.env.exact(t, career.deck, &nc, ExactOptions { all_but_one: true, landed_sets: true });
+        let os = self.env.outcome_sets(exact.outfit, &exact.ext);
+        let wp = self.wins(pool, lineage);
+        Cur { lineage, p_all: exact.p_all, os, wp, rotation }
     }
-    fn greedy_cur(&mut self, st: &mut St) -> Rc<Cur> {
-        if let Some(c) = &st.cur {
+    /// a cached pick's career (her cached deck cloned out of the cache)
+    fn pick_cur(&mut self, pool: &Pool, pick: Pick, rotation: bool) -> Cur {
+        let deck = self.cache.decks[pick.lineage.trainee][pick.deck].sel.clone();
+        self.make_cur(pool, Career { lineage: pick.lineage, deck: &deck }, rotation)
+    }
+    fn greedy_cur(&mut self, st: &mut PathState) -> Rc<Cur> {
+        if let Some(c) = &st.current {
             return Rc::clone(c);
         }
-        let pk = st.best.expect("no legal career");
-        let sel = self.cache.decks[pk.t][pk.d].sel.clone();
-        let c = Rc::new(self.make_cur(
-            &st.pool,
-            Career { lineage: Lineage { trainee: pk.t, first_parent: pk.a, second_parent: pk.b }, deck: &sel },
-            false,
-        ));
-        st.cur = Some(Rc::clone(&c));
+        let pick = st.best.expect("no legal career");
+        let c = Rc::new(self.pick_cur(&st.pool, pick, false));
+        st.current = Some(Rc::clone(&c));
         c
     }
     /// `trace`: building for loop_members[0] (A) with the others as builders. Each career: per builder her best career's
     /// exact chance of raising A's best odds (lam) and mean odds raised to (p1); the most efficient (lam (1/p - 1/p1)) runs,
     /// her veteran joins; recorded per career: A's odds before, the builder, lam, p1, and A's odds after
-    fn trace(&mut self, st0: &St) -> Value {
+    fn trace(&mut self, st0: &PathState) -> Value {
         let a = self.members[0];
         let nb = self.members.len();
         let mut out = vec![];
@@ -717,32 +766,31 @@ impl<'env, 'data> Sim<'env, 'data> {
             let mut rows = vec![];
             let tm = std::time::Instant::now();
             for t in 0..self.cfg.max_careers {
-                let Some(pka) = st.mb[0] else { break };
-                let pa = pka.val;
+                let Some(pka) = st.member_best[0] else { break };
+                let pa = pka.value;
+                // this career's scoring of the builders: A alone, at her best odds now, on this career's pool
                 let one = [a];
-                let mut bestb: Option<(f64, Pick, f64, f64)> = None;
+                let pw = [pa];
+                let base = plan::ScoreBase {
+                    cands: &one,
+                    c1: &[1.0],
+                    m23: &[0.0],
+                    v0: 0.0,
+                    pnow: &pw,
+                    cont: &[],
+                    combos: &[],
+                    sides: &[],
+                    all: &[],
+                };
+                let scoring = ScoringContext { score_base: &base, legacies: &st.legacies, pool: &st.pool };
+                let mut best_builder: Option<BuilderCareer> = None;
                 for k in 1..nb {
-                    let Some(pk) = st.mb[k] else { continue };
-                    let sel = self.cache.decks[pk.t][pk.d].sel.clone();
-                    let pw = [pa];
-                    let base = plan::ScoreBase {
-                        cands: &one,
-                        c1: &[1.0],
-                        m23: &[0.0],
-                        v0: 0.0,
-                        pnow: &pw,
-                        cont: &[],
-                        combos: &[],
-                        sides: &[],
-                        all: &[],
-                    };
+                    let Some(pk) = st.member_best[k] else { continue };
+                    let sel = self.cache.decks[pk.lineage.trainee][pk.deck].sel.clone();
                     let plan::CareerScore { lift_stats: stt, .. } = plan::score_career_of(
                         self,
-                        &ScoringContext { score_base: &base, legacies: &st.legs, pool: &st.pool },
-                        Career {
-                            lineage: Lineage { trainee: pk.t, first_parent: pk.a, second_parent: pk.b },
-                            deck: &sel,
-                        },
+                        &scoring,
+                        Career { lineage: pk.lineage, deck: &sel },
                         plan::Want::Stats,
                         &mut buf,
                     );
@@ -753,28 +801,31 @@ impl<'env, 'data> Sim<'env, 'data> {
                     } else {
                         (0.0, pa)
                     };
-                    if bestb.is_none_or(|b| e > b.0) {
-                        bestb = Some((e, pk, pl, p1));
+                    if best_builder.is_none_or(|b| e > b.efficiency) {
+                        best_builder =
+                            Some(BuilderCareer { efficiency: e, pick: pk, lift_chance: pl, lifted_odds: p1 });
                     }
                 }
-                let Some((_, pk, lam, p1)) = bestb else { break };
-                let sel = self.cache.decks[pk.t][pk.d].sel.clone();
-                let cur = self.make_cur(
-                    &st.pool,
-                    Career { lineage: Lineage { trainee: pk.t, first_parent: pk.a, second_parent: pk.b }, deck: &sel },
-                    false,
-                );
-                let (vet, _) = self.draw(&cur, &st.legs, keys, t);
+                let Some(builder) = best_builder else { break };
+                let cur = self.pick_cur(&st.pool, builder.pick, false);
+                let vet = self.draw(&cur, &st.legacies, keys, t);
                 self.add_vet(&mut st, vet, true, &mut buf);
-                let after = st.mb[0].map_or(pa, |p| p.val);
-                rows.push(json!([t, pa, self.d.umas[pk.t].name, lam, p1, after]));
+                let after = st.member_best[0].map_or(pa, |p| p.value);
+                rows.push(json!([
+                    t,
+                    pa,
+                    self.d.umas[builder.pick.lineage.trainee].name,
+                    builder.lift_chance,
+                    builder.lifted_odds,
+                    after
+                ]));
             }
             eprintln!(
                 "trace run {}: {} careers, A from {:.3e} to {:.3e}, {:.1} s",
                 run,
                 rows.len(),
-                st0.mb[0].map_or(0.0, |p| p.val),
-                st.mb[0].map_or(0.0, |p| p.val),
+                st0.member_best[0].map_or(0.0, |p| p.value),
+                st.member_best[0].map_or(0.0, |p| p.value),
                 tm.elapsed().as_secs_f64()
             );
             out.push(json!({"run": run, "rows": rows}));
@@ -782,17 +833,18 @@ impl<'env, 'data> Sim<'env, 'data> {
         json!({"trace": out, "trainee": self.d.umas[a].name, "builders": self.members[1..].iter().map(|&u| self.d.umas[u].name.clone()).collect::<Vec<_>>()})
     }
     /// the loop's next career (module notes: rotation and bootstrap)
-    fn loop_cur(&mut self, st: &mut St) -> Rc<Cur> {
-        if let Some(c) = &st.cur {
+    fn loop_cur(&mut self, st: &mut PathState) -> Rc<Cur> {
+        if let Some(c) = &st.current {
             return Rc::clone(c);
         }
         let nm = self.members.len();
-        let pos = st.rot.pos % nm;
+        let pos = st.rotation.position % nm;
         let t = self.members[pos];
-        let prev: Vec<usize> = [1, 2].iter().filter_map(|&k| st.rot.latest[(pos + nm - k) % nm]).collect();
+        let prev: Vec<usize> = [1, 2].iter().filter_map(|&k| st.rotation.latest[(pos + nm - k) % nm]).collect();
         let c = if prev.len() == 2 {
-            let (a, b) = (prev[0].min(prev[1]), prev[0].max(prev[1]));
-            let (q, c) = self.env.lineage_q(&st.pool, Lineage { trainee: t, first_parent: a, second_parent: b });
+            let lineage =
+                Lineage { trainee: t, first_parent: prev[0].min(prev[1]), second_parent: prev[0].max(prev[1]) };
+            let (q, c) = self.env.lineage_q(&st.pool, lineage);
             let ub = self.env.ceiling(t, &q, c).unwrap_or(f64::INFINITY);
             let mut buf = vec![];
             let (_, di) = self
@@ -802,56 +854,54 @@ impl<'env, 'data> Sim<'env, 'data> {
                 )
                 .expect("loop career without a deck");
             let sel = self.cache.decks[t][di].sel.clone();
-            self.make_cur(
-                &st.pool,
-                Career { lineage: Lineage { trainee: t, first_parent: a, second_parent: b }, deck: &sel },
-                true,
-            )
+            self.make_cur(&st.pool, Career { lineage, deck: &sel }, true)
         } else {
             self.env.use_seen = true;
             let sv = self.env.solve(&st.pool, &prev, &[t], false, 1);
             let f = sv.found.first().expect("loop bootstrap: no legal career for a member");
             self.cache.absorb(self.env, &sv.refs);
-            self.make_cur(
-                &st.pool,
-                Career {
-                    lineage: Lineage { trainee: f.t, first_parent: f.a, second_parent: f.b },
-                    deck: &f.sel.clone(),
-                },
-                true,
-            )
+            self.make_cur(&st.pool, Career { lineage: f.lineage(), deck: &f.sel }, true)
         };
         let c = Rc::new(c);
-        st.cur = Some(Rc::clone(&c));
+        st.current = Some(Rc::clone(&c));
         c
+    }
+    /// The loop careers veteran v of member m is a parent of (members m + 1 and m + 2, the other parent their current
+    /// rotation veteran; a term without one, or with her own character, is left out), in that order
+    fn rotation_careers(&self, st: &PathState, m: usize, v: usize) -> Vec<Lineage> {
+        let nm = self.members.len();
+        let rotation = &st.rotation;
+        let mut careers = vec![];
+        for k in 1..=2 {
+            let t = self.members[(m + k) % nm];
+            let other = if k == 1 { rotation.latest[(m + nm - 1) % nm] } else { rotation.latest[(m + 1) % nm] };
+            let Some(o) = other else { continue };
+            if o == v || st.pool.me[o].chara == st.pool.me[v].chara {
+                continue;
+            }
+            careers.push(Lineage { trainee: t, first_parent: v.min(o), second_parent: v.max(o) });
+        }
+        careers
     }
     /// The loop's rotation after a member's career (her veteran the pool's last): the member keeps the better of her
     /// rotation veteran and the new one, by the sum of the surrogate P(all) of the two loop careers she is a parent of
-    /// (members pos + 1 and pos + 2, the other parent their current rotation veteran; a term without one is left out
-    /// for both); the first one she has is kept as is. Then the next member trains.
-    fn rot_update(&mut self, st: &mut St) {
+    /// (`rotation_careers`, for both); the first one she has is kept as is. Then the next member trains.
+    fn rot_update(&mut self, st: &mut PathState) {
         let nm = self.members.len();
-        let m = st.rot.pos % nm;
-        let vi = st.legs.len() - 1;
-        st.rot.pos += 1;
-        st.cur = None;
-        let Some(old) = st.rot.latest[m] else {
-            st.rot.latest[m] = Some(vi);
+        let m = st.rotation.position % nm;
+        let vi = st.legacies.len() - 1;
+        st.rotation.position += 1;
+        st.current = None;
+        let Some(old) = st.rotation.latest[m] else {
+            st.rotation.latest[m] = Some(vi);
             return;
         };
         let mut buf = vec![];
-        let mut score = |s: &mut Self, v: usize| -> f64 {
+        let mut surrogate = |s: &mut Self, v: usize| -> f64 {
             let mut tot = 0.0;
-            for k in 1..=2 {
-                let p = (m + k) % nm;
-                let t = s.members[p];
-                let other = if k == 1 { st.rot.latest[(m + nm - 1) % nm] } else { st.rot.latest[(m + 1) % nm] };
-                let Some(o) = other else { continue };
-                if o == v || st.pool.me[o].chara == st.pool.me[v].chara {
-                    continue;
-                }
-                let (q, c) =
-                    s.env.lineage_q(&st.pool, Lineage { trainee: t, first_parent: v.min(o), second_parent: v.max(o) });
+            for lineage in s.rotation_careers(st, m, v) {
+                let t = lineage.trainee;
+                let (q, c) = s.env.lineage_q(&st.pool, lineage);
                 let ub = s.env.ceiling(t, &q, c).unwrap_or(f64::INFINITY);
                 tot += s
                     .deck_for(
@@ -868,31 +918,22 @@ impl<'env, 'data> Sim<'env, 'data> {
             }
             tot
         };
-        let (so, sn) = (score(self, old), score(self, vi));
-        if self.cfg.audit && self.main && st.rot.pos.is_multiple_of(self.cfg.audit_every) {
+        let (so, sn) = (surrogate(self, old), surrogate(self, vi));
+        if self.cfg.audit && self.record_audits && st.rotation.position.is_multiple_of(self.cfg.audit_every) {
             // the keep-or-replace decision under exact values (a full deck search per term)
-            let ex = |s: &mut Self, v: usize| -> f64 {
+            let exact = |s: &mut Self, v: usize| -> f64 {
                 let mut tot = 0.0;
-                for k in 1..=2 {
-                    let p = (m + k) % nm;
-                    let t = s.members[p];
-                    let other = if k == 1 { st.rot.latest[(m + nm - 1) % nm] } else { st.rot.latest[(m + 1) % nm] };
-                    let Some(o) = other else { continue };
-                    if o == v || st.pool.me[o].chara == st.pool.me[v].chara {
-                        continue;
-                    }
-                    let (q, c) = s
-                        .env
-                        .lineage_q(&st.pool, Lineage { trainee: t, first_parent: v.min(o), second_parent: v.max(o) });
-                    tot += s.exact_best(t, &q, c).0;
+                for lineage in s.rotation_careers(st, m, v) {
+                    let (q, c) = s.env.lineage_q(&st.pool, lineage);
+                    tot += s.exact_best(lineage.trainee, &q, c).value;
                 }
                 tot
             };
-            let (eo, en) = (ex(self, old), ex(self, vi));
-            self.audits.push(json!({"t": st.rot.pos, "rotation": [so, sn, eo, en, (sn > so) == (en > eo)]}));
+            let (eo, en) = (exact(self, old), exact(self, vi));
+            self.audits.push(json!({"t": st.rotation.position, "rotation": [so, sn, eo, en, (sn > so) == (en > eo)]}));
         }
         if sn > so {
-            st.rot.latest[m] = Some(vi);
+            st.rotation.latest[m] = Some(vi);
         }
     }
     /// Builds a runnable career from a selected internal solver result.
@@ -904,26 +945,19 @@ impl<'env, 'data> Sim<'env, 'data> {
             (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
         let outcome_sets: Vec<f64> =
             pick["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
-        let win_probs = self.wins(pool, Lineage { trainee, first_parent: parent_a, second_parent: parent_b });
-        Cur {
-            t: trainee,
-            a: parent_a,
-            b: parent_b,
-            p: pick["p_all"].as_f64().unwrap(),
-            os: outcome_sets,
-            wp: win_probs,
-            rot: false,
-        }
+        let lineage = Lineage { trainee, first_parent: parent_a, second_parent: parent_b };
+        let win_probs = self.wins(pool, lineage);
+        Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), os: outcome_sets, wp: win_probs, rotation: false }
     }
     /// the in-process career search's pick (greedy_exact: the best career by P(all))
-    fn exact_cur(&mut self, st: &St) -> Cur {
+    fn exact_cur(&mut self, st: &PathState) -> Cur {
         let mut job = self.job.clone();
         let o = job.as_object_mut().unwrap();
         o.remove("simulate");
-        o.insert("legacies".into(), Value::Array(st.legs.iter().map(leg_json).collect()));
+        o.insert("legacies".into(), Value::Array(st.legacies.iter().map(leg_json).collect()));
         o.insert("top".into(), json!(1));
         o.insert("per_trainee".into(), json!(false));
-        let out = run_career(self.d, self.sk, self.cr, &job);
+        let out = run_career(self.d, self.skills, self.cards, &job);
         let pick = out["results"][0].clone();
         assert!(pick.is_object(), "solver gave no pick: {}", out.to_string().chars().take(300).collect::<String>());
         self.cur_from_solver_pick(&st.pool, &pick)
@@ -931,18 +965,18 @@ impl<'env, 'data> Sim<'env, 'data> {
     /// `index`: the page's plan for this pool (the career job with the pool as legacies, no places, the page's `top`,
     /// `next`, `no_reports`: the plan job the page sends, docs/SOLVER.md "Next career"), in process; its `choice` runs.
     /// The job's `trainees` stay (the page sends none: every owned uma)
-    fn index_cur(&mut self, st: &St) -> Cur {
+    fn index_cur(&mut self, st: &PathState) -> Cur {
         let mut job = self.job.clone();
         let o = job.as_object_mut().unwrap();
         o.remove("simulate");
-        o.insert("legacies".into(), Value::Array(st.legs.iter().map(leg_json).collect()));
+        o.insert("legacies".into(), Value::Array(st.legacies.iter().map(leg_json).collect()));
         o.insert("fix".into(), json!([]));
         o.insert("top".into(), json!(PAGE_TOP));
         o.insert("per_trainee".into(), json!(false));
         o.insert("next".into(), self.cfg.next.clone());
         o.insert("no_reports".into(), json!(true));
         let tm = std::time::Instant::now();
-        let out = run_career(self.d, self.sk, self.cr, &job);
+        let out = run_career(self.d, self.skills, self.cards, &job);
         let pick = out["next"]["choice"].clone();
         assert!(
             pick.is_object(),
@@ -951,25 +985,26 @@ impl<'env, 'data> Sim<'env, 'data> {
         );
         IX.with(|ix| {
             let mut ix = ix.borrow_mut();
-            ix.0 += 1;
-            ix.1.push((tm.elapsed().as_secs_f64() * 1e3).round() / 1e3);
+            ix.plans += 1;
+            ix.plan_seconds.push((tm.elapsed().as_secs_f64() * 1e3).round() / 1e3);
             if let Some(c) =
                 out["next"]["options"].as_array().and_then(|v| v.iter().find(|x| x["chosen"].as_bool() == Some(true)))
             {
-                *ix.2.entry(c["role"].as_str().unwrap_or("?").to_string()).or_default() += 1;
+                *ix.roles.entry(c["role"].as_str().unwrap_or("?").to_string()).or_default() += 1;
                 if c["best_odds"].as_bool() == Some(true) {
-                    ix.3 += 1;
+                    ix.best_odds_picks += 1;
                 }
             }
         });
         self.cur_from_solver_pick(&st.pool, &pick)
     }
-    /// the veteran a failed career leaves and her landed mask
-    fn draw(&self, c: &Cur, legs: &[Legacy], keys: Keys, t: usize) -> (Legacy, usize) {
-        let tot: f64 = self.order.iter().map(|&m| c.os[m]).sum();
+    /// the veteran career number t leaves when it fails: her landed set drawn from the failed sets, her stars from the
+    /// rank's mix, her wins from her schedule's chances
+    fn draw(&self, c: &Cur, legs: &[Legacy], keys: Keys, t: usize) -> Legacy {
+        let tot: f64 = self.failed_sets.iter().map(|&m| c.os[m]).sum();
         let mut u = keys.u(t, STREAM_SET, 0) * tot;
         let (mut mask, mut last) = (usize::MAX, usize::MAX);
-        for &m in &self.order {
+        for &m in &self.failed_sets {
             if c.os[m] <= 0.0 {
                 continue;
             }
@@ -989,9 +1024,9 @@ impl<'env, 'data> Sim<'env, 'data> {
                 continue;
             }
             let x = keys.u(t, STREAM_STAR, i);
-            let s = if x < self.star[0] {
+            let s = if x < self.star_mix[0] {
                 1
-            } else if x < self.star[0] + self.star[1] {
+            } else if x < self.star_mix[0] + self.star_mix[1] {
                 2
             } else {
                 3
@@ -1004,87 +1039,83 @@ impl<'env, 'data> Sim<'env, 'data> {
                 .filter(|&(ri, &p)| p > 0.0 && keys.u(t, STREAM_WIN, ri) < p)
                 .map(|(ri, _)| ri)
                 .collect();
-        let anc = |l: &Legacy| Ancestor {
-            chara: l.chara,
-            sparks: l.sparks.clone(),
-            wins: l.wins.clone(),
-            pinks: l.pinks.clone(),
-        };
-        (
-            Legacy {
-                chara: self.d.umas[c.t].id,
-                borrowed: false,
-                sparks,
-                wins,
-                pinks: vec![],
-                parents: vec![anc(&legs[c.a]), anc(&legs[c.b])],
-                ..Default::default()
-            },
-            mask,
-        )
+        let Lineage { trainee, first_parent, second_parent } = c.lineage;
+        Legacy {
+            chara: self.d.umas[trainee].id,
+            borrowed: false,
+            sparks,
+            wins,
+            pinks: vec![],
+            parents: vec![Ancestor::of_legacy(&legs[first_parent]), Ancestor::of_legacy(&legs[second_parent])],
+            ..Default::default()
+        }
     }
-    fn stars_wins(&self, l: &Legacy) -> (Vec<u8>, Vec<usize>) {
-        let st = self
+    fn veteran_result(&self, l: &Legacy) -> VeteranResult {
+        let stars = self
             .env
             .sj
             .targets
             .iter()
             .map(|t| l.sparks.iter().filter(|s| s.0 == t.group).map(|s| s.1).max().unwrap_or(0))
             .collect();
-        let mut w = l.wins.clone();
-        w.sort_unstable();
-        w.dedup();
-        (st, w)
+        let mut wins = l.wins.clone();
+        wins.sort_unstable();
+        wins.dedup();
+        VeteranResult { stars, wins }
     }
-    fn dominated(&self, st: &St, l: &Legacy) -> bool {
-        let (s, w) = self.stars_wins(l);
-        st.fam.get(&family(l)).is_some_and(|v| {
-            v.iter()
-                .any(|(s2, w2)| s2.iter().zip(&s).all(|(x, y)| x >= y) && w.iter().all(|r| w2.binary_search(r).is_ok()))
+    /// whether an owned veteran of her family has at least her stars on every target and every G1 she won
+    fn dominated(&self, st: &PathState, l: &Legacy) -> bool {
+        let new = self.veteran_result(l);
+        st.families.get(&family(l)).is_some_and(|owned| {
+            owned.iter().any(|old| {
+                old.stars.iter().zip(&new.stars).all(|(x, y)| x >= y)
+                    && new.wins.iter().all(|r| old.wins.binary_search(r).is_ok())
+            })
         })
     }
     /// a veteran joins the pool; `eval`: the surrogate values every new candidate (she is one of its parents)
-    fn add_vet(&mut self, st: &mut St, l: Legacy, eval: bool, buf: &mut Vec<f64>) {
+    fn add_vet(&mut self, st: &mut PathState, l: Legacy, eval: bool, buf: &mut Vec<f64>) {
         // (her entry as `Env::pool` builds it, win chances and star mix kept)
         self.env.pool_push(&mut st.pool, &l);
         if !l.borrowed {
-            let sw = self.stars_wins(&l);
-            st.fam.entry(family(&l)).or_default().push(sw);
+            let result = self.veteran_result(&l);
+            st.families.entry(family(&l)).or_default().push(result);
         }
-        st.legs.push(l);
-        self.n.added += 1;
+        st.legacies.push(l);
+        self.n.veterans_added += 1;
         if !eval {
             return;
         }
-        let vi = st.legs.len() - 1;
+        let vi = st.legacies.len() - 1;
         let trainees = self.trainees.clone();
         for &t in &trainees {
-            if self.hi[t] * (1.0 + 1e-9) < self.bar(st, t) {
+            if self.static_ceilings[t] * (1.0 + 1e-9) < self.bar(st, t) {
                 continue;
             }
             for b in 0..vi {
-                if !self.legal(st, t, b, vi) {
+                let lineage = Lineage { trainee: t, first_parent: b, second_parent: vi };
+                if !self.legal(st, lineage) {
                     continue;
                 }
                 // the allocation-free ceiling first (`fast_ub`, the same bound to rounding)
-                if self.fast_ub(st, t, b, vi) * (1.0 + 1e-6) < self.bar(st, t) {
-                    self.n.cands += 1;
+                if self.fast_ub(st, lineage) * (1.0 + 1e-6) < self.bar(st, t) {
+                    self.n.candidates += 1;
                     continue;
                 }
-                self.consider(st, t, b, vi, buf);
+                self.consider(st, lineage, buf);
             }
         }
     }
     /// the initial state: the job's pool, every candidate valued (best ceiling first)
-    fn initial(&mut self, legs: &[Legacy], base: Base) -> St {
-        let mut st = St {
-            legs: vec![],
+    fn initial(&mut self, legs: &[Legacy], base: Base) -> PathState {
+        let mut st = PathState {
+            legacies: vec![],
             pool: self.env.pool(&[]),
-            fam: std::collections::HashMap::default(),
+            families: std::collections::HashMap::default(),
             best: None,
-            cur: None,
-            rot: Rot { pos: 0, latest: vec![None; self.members.len()] },
-            mb: vec![None; self.members.len()],
+            current: None,
+            rotation: Rotation { position: 0, latest: vec![None; self.members.len()] },
+            member_best: vec![None; self.members.len()],
         };
         let mut buf = vec![];
         for l in legs {
@@ -1100,61 +1131,71 @@ impl<'env, 'data> Sim<'env, 'data> {
             self.cache.absorb(self.env, &sv.refs);
             // (every legal career's ceiling, `gen_cands`: `ceiling` at `lineage`'s chances, to the bit; in (trainee,
             // pair) order, then best first)
-            let mut cs = self.env.gen_cands(&st.pool, &[], &trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
-            cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-            for (ub, t, a, b) in cs {
-                let floor = st.mb.iter().fold(st.best.map_or(0.0, |p| p.val), |m, p| m.min(p.map_or(0.0, |p| p.val)));
-                if ub * (1.0 + 1e-9) < floor {
+            let mut candidates = self.env.gen_cands(&st.pool, &[], &trainees, |_, _| true, RankedCareer::new);
+            candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
+            for candidate in candidates {
+                let floor = st
+                    .member_best
+                    .iter()
+                    .fold(st.best.map_or(0.0, |p| p.value), |m, p| m.min(p.map_or(0.0, |p| p.value)));
+                if candidate.ceiling * (1.0 + 1e-9) < floor {
                     break;
                 }
-                if ub * (1.0 + 1e-9) < self.bar(&st, t) {
+                if candidate.ceiling * (1.0 + 1e-9) < self.bar(&st, candidate.lineage.trainee) {
                     continue;
                 }
-                self.consider(&mut st, t, a, b, &mut buf);
+                self.consider(&mut st, candidate.lineage, &mut buf);
             }
         }
         st
     }
 
-    /// One audit row: career (t, a, b) valued by the surrogate's table (her cached decks, no refresh) against a fresh
-    /// exact deck search there: [kind, table value, exact value, (exact - table) / exact, landed-set total variation
-    /// between the two decks, search finished]. Kinds: 0 the pick, 1 a random candidate, 3 a
-    /// loop career.
-    fn audit_row(&mut self, pool: &Pool, t: usize, a: usize, b: usize, kind: u8) -> Value {
-        let (q, nc, c) = self.env.lineage(pool, t, a, b);
+    /// One audit row: a career valued by the surrogate's table (her cached decks, no refresh) against a fresh exact
+    /// deck search there: [kind, table value, exact value, (exact - table) / exact, landed-set total variation between
+    /// the two decks, search finished].
+    fn audit_row(&mut self, pool: &Pool, lineage: Lineage, kind: AuditKind) -> Value {
+        let t = lineage.trainee;
+        let LineageChances { chances: q, carriers: nc, spark_scale: c } = self.env.lineage(pool, lineage);
         let mut buf = vec![];
         let (tv, di) = self.tval(t, &q, c, &mut buf);
-        let (exv, sel, full) = self.exact_best(t, &q, c);
-        let sets = |env: &mut Env, sel: &Sel| {
-            env.set_trainee(t, &q);
-            let (j, ext) = env.exact(t, sel, &nc, false, true);
-            env.outcome_sets(j.2, &ext)
-        };
+        let best = self.exact_best(t, &q, c);
         let tvd = if di == usize::MAX {
             1.0
         } else {
-            let s1 = sets(self.env, &self.cache.decks[t][di].sel.clone());
-            let s2 = sets(self.env, &sel);
-            0.5 * s1.iter().zip(&s2).map(|(x, y)| (x - y).abs()).sum::<f64>()
+            let cached = self.cache.decks[t][di].sel.clone();
+            self.landed_set_distance(t, &q, &nc, &cached, &best.deck)
         };
-        json!([kind, tv, exv, if exv > 0.0 { (exv - tv) / exv } else { 0.0 }, tvd, full])
+        let exv = best.value;
+        json!([kind as u8, tv, exv, if exv > 0.0 { (exv - tv) / exv } else { 0.0 }, tvd, best.finished])
     }
-    /// trainee t's exact best deck at chances q (a full deck search): (value with spark scale c, deck, finished)
-    fn exact_best(&mut self, t: usize, q: &[f64], c: f64) -> (f64, Sel, bool) {
+    /// total variation distance between the landed-set distributions of two decks of trainee t at chances q (carriers
+    /// nc)
+    fn landed_set_distance(&mut self, t: usize, q: &[f64], nc: &[i32], first: &Sel, second: &Sel) -> f64 {
+        let mut sets = |sel: &Sel| {
+            self.env.set_trainee(t, q);
+            let exact = self.env.exact(t, sel, nc, ExactOptions { all_but_one: false, landed_sets: true });
+            self.env.outcome_sets(exact.outfit, &exact.ext)
+        };
+        let s1 = sets(first);
+        let s2 = sets(second);
+        0.5 * s1.iter().zip(&s2).map(|(x, y)| (x - y).abs()).sum::<f64>()
+    }
+    /// trainee t's exact best deck at chances q (a full deck search), its value with spark scale c
+    fn exact_best(&mut self, t: usize, q: &[f64], c: f64) -> ExactDeck {
         self.env.set_trainee(t, q);
         self.env.work = 0;
         let mut sc = 0;
         let r = self.env.best_deck(t, c, 0.0, &[], &mut sc);
         self.env.last_pv = None;
         match r {
-            DeckRes::Done(v, sel, full) => (c * v, sel, full),
+            DeckRes::Done(v, deck, finished) => ExactDeck { value: c * v, deck, finished },
             _ => panic!("audit: no legal deck"),
         }
     }
     /// The greedy audit at a pick change: the exact career search's pick against the surrogate's, and audit rows for
     /// the pick and `audit_sample` random candidates with the newest veteran as a parent (ceiling at least 0.3 x B; every
     /// candidate of the pool at the start)
-    fn audit_greedy(&mut self, st: &mut St, keys: Keys, t_career: usize) -> Value {
+    fn audit_greedy(&mut self, st: &mut PathState, keys: Keys, t_career: usize) -> Value {
         let cur = self.greedy_cur(st);
         let trainees = self.trainees.clone();
         let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
@@ -1162,11 +1203,12 @@ impl<'env, 'data> Sim<'env, 'data> {
             sv.found.first().map(|f| (f.val, format!("{}:{},{}", self.d.umas[f.t].id, f.a.min(f.b), f.a.max(f.b))));
         let sk = self.key(&cur);
         let differs = ex.as_ref().is_none_or(|x| x.1 != sk);
-        let mut rows = vec![self.audit_row(&st.pool.clone(), cur.t, cur.a, cur.b, 0)];
-        let bv = st.best.map_or(0.0, |p| p.val);
-        let n = st.legs.len();
+        let mut rows = vec![self.audit_row(&st.pool, cur.lineage, AuditKind::Pick)];
+        let bv = st.best.map_or(0.0, |p| p.value);
+        let n = st.legacies.len();
         let vi = n - 1;
         let all = t_career == 0;
+        let picked = cur.lineage.ordered();
         let mut cs = vec![];
         for &t in &trainees {
             for a in 0..n {
@@ -1174,11 +1216,12 @@ impl<'env, 'data> Sim<'env, 'data> {
                     if !all && b != vi {
                         continue;
                     }
-                    if !self.legal(st, t, a, b) || (t, a, b) == (cur.t, cur.a.min(cur.b), cur.a.max(cur.b)) {
+                    let lineage = Lineage { trainee: t, first_parent: a, second_parent: b };
+                    if !self.legal(st, lineage) || lineage == picked {
                         continue;
                     }
-                    if self.fast_ub(st, t, a, b) >= 0.3 * bv {
-                        cs.push((t, a, b));
+                    if self.fast_ub(st, lineage) >= 0.3 * bv {
+                        cs.push(lineage);
                     }
                 }
             }
@@ -1187,44 +1230,46 @@ impl<'env, 'data> Sim<'env, 'data> {
             let j = i + (keys.u(t_career, 9, i) * (cs.len() - i) as f64) as usize;
             let last = cs.len() - 1;
             cs.swap(i, j.min(last));
-            let (t, a, b) = cs[i];
-            rows.push(self.audit_row(&st.pool.clone(), t, a, b, 1));
+            rows.push(self.audit_row(&st.pool, cs[i], AuditKind::Random));
         }
-        json!({"t": t_career, "pool": n, "sur": sk, "sur_p": cur.p, "ex": ex.as_ref().map(|x| x.1.clone()), "ex_p": ex.as_ref().map(|x| x.0),
+        json!({"t": t_career, "pool": n, "sur": sk, "sur_p": cur.p_all, "ex": ex.as_ref().map(|x| x.1.clone()), "ex_p": ex.as_ref().map(|x| x.0),
                "differs": differs, "proven": sv.proven, "rows": rows})
     }
     /// the surrogate against exact searches on this pool (the argmax career, and the newest veteran's lineages)
-    fn check(&mut self, st: &mut St, all: bool) -> Value {
+    fn check(&mut self, st: &mut PathState, all: bool) -> Value {
         let cur = self.greedy_cur(st);
         let trainees = self.trainees.clone();
         let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
         let ex = sv.found.first().map(|f| (f.val, format!("{}:{},{}", self.d.umas[f.t].id, f.a, f.b)));
-        let argmax = json!({"pool": st.legs.len(), "sur": self.key(&cur), "sur_p": cur.p, "sur_val": st.best.map(|p| p.val),
+        let argmax = json!({"pool": st.legacies.len(), "sur": self.key(&cur), "sur_p": cur.p_all, "sur_val": st.best.map(|p| p.value),
                             "ex": ex.as_ref().map(|x| x.1.clone()), "ex_p": ex.as_ref().map(|x| x.0), "proven": sv.proven});
         let mut rows = vec![];
         if self.cfg.check_lineages > 0 {
-            let bv = st.best.map_or(0.0, |p| p.val);
-            let n = st.legs.len();
+            let bv = st.best.map_or(0.0, |p| p.value);
+            let n = st.legacies.len();
             let vi = n - 1;
             // (the legal careers with her, or every one, `gen_cands`' ceilings, at least check_frac x the best)
-            let mut cs: Vec<(f64, usize, usize, usize)> = self
+            let mut cs: Vec<RankedCareer> = self
                 .env
-                .gen_cands(&st.pool, &[], &trainees, |_, b| all || b == vi, |ub, _, t, a, b| (ub, t, a, b))
+                .gen_cands(&st.pool, &[], &trainees, |_, b| all || b == vi, RankedCareer::new)
                 .into_iter()
-                .filter(|x| x.0 >= self.cfg.check_frac * bv)
+                .filter(|x| x.ceiling >= self.cfg.check_frac * bv)
                 .collect();
-            cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+            cs.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
             cs.truncate(self.cfg.check_lineages);
             if let Some(p) = st.best
-                && !cs.iter().any(|x| (x.1, x.2, x.3) == (p.t, p.a, p.b))
+                && !cs.iter().any(|x| x.lineage == p.lineage)
             {
-                let (q, c) =
-                    self.env.lineage_q(&st.pool, Lineage { trainee: p.t, first_parent: p.a, second_parent: p.b });
-                cs.push((self.env.ceiling(p.t, &q, c).unwrap(), p.t, p.a, p.b));
+                let (q, c) = self.env.lineage_q(&st.pool, p.lineage);
+                cs.push(RankedCareer {
+                    ceiling: self.env.ceiling(p.lineage.trainee, &q, c).unwrap(),
+                    lineage: p.lineage,
+                });
             }
             let mut buf = vec![];
-            for (ub, t, a, b) in cs {
-                let (q, nc, c) = self.env.lineage(&st.pool, t, a, b);
+            for RankedCareer { ceiling: ub, lineage } in cs {
+                let t = lineage.trainee;
+                let LineageChances { chances: q, carriers: nc, spark_scale: c } = self.env.lineage(&st.pool, lineage);
                 let rb = self.cache.refs[t].iter().map(|r| self.env.ref_bound(t, &q, c, r)).fold(ub, f64::min);
                 let (tv, di) = self.tval(t, &q, c, &mut buf);
                 self.env.set_trainee(t, &q);
@@ -1235,19 +1280,13 @@ impl<'env, 'data> Sim<'env, 'data> {
                 let DeckRes::Done(v, sel, full) = r else { continue };
                 let exv = c * v;
                 // landed sets: the cached argmax deck against the exact best deck (total variation distance)
-                let sets = |env: &mut Env, sel: &Sel| {
-                    env.set_trainee(t, &q);
-                    let (j, ext) = env.exact(t, sel, &nc, false, true);
-                    env.outcome_sets(j.2, &ext)
-                };
                 let tvd = if di == usize::MAX {
                     1.0
                 } else {
-                    let s1 = sets(self.env, &self.cache.decks[t][di].sel.clone());
-                    let s2 = sets(self.env, &sel);
-                    0.5 * s1.iter().zip(&s2).map(|(x, y)| (x - y).abs()).sum::<f64>()
+                    let cached = self.cache.decks[t][di].sel.clone();
+                    self.landed_set_distance(t, &q, &nc, &cached, &sel)
                 };
-                let pick = st.best.is_some_and(|p| (p.t, p.a, p.b) == (t, a, b));
+                let pick = st.best.is_some_and(|p| p.lineage == lineage);
                 rows.push(json!([
                     ub,
                     rb,
@@ -1264,21 +1303,11 @@ impl<'env, 'data> Sim<'env, 'data> {
         json!({"argmax": argmax, "lineages": rows})
     }
 
-    /// Follow `base` (from state st at career t with survival s) until s < eps or max_careers; with `decide` given (the
-    /// run index), record pick changes, checks and audits. Returns (sum of S including the tail, careers, tail,
-    /// final p, pruned-veteran count).
-    fn play(
-        &mut self,
-        st: &mut St,
-        base: Base,
-        keys: Keys,
-        mut s: f64,
-        mut t: usize,
-        eps: f64,
-        decide: Option<u32>,
-        rec: &mut Vec<Value>,
-        checks: &mut Vec<Value>,
-    ) -> (f64, usize, f64, f64, usize) {
+    /// Follow `options.base` from state st (survival 1, career 0) until the survival S < eps or max_careers, recording
+    /// pick changes, checks and audits into `trace`.
+    fn play(&mut self, st: &mut PathState, options: PlayOptions, trace: &mut PathTrace) -> PathResult {
+        let PlayOptions { base, keys, eps, run } = options;
+        let (mut s, mut t) = (1.0f64, 0usize);
         let mut e = 0.0f64;
         let mut pruned = 0usize;
         let mut buf = vec![];
@@ -1287,8 +1316,8 @@ impl<'env, 'data> Sim<'env, 'data> {
         // Exact and index policies keep their decision until the pool changes.
         let mut kept_decision: Option<Rc<Cur>> = None;
         let mut since_check = 0usize;
-        if decide.is_some() && self.cfg.check > 0 && base == Base::Greedy {
-            checks.push(self.check(st, true));
+        if self.cfg.check > 0 && base == Base::Greedy {
+            trace.checks.push(self.check(st, true));
         }
         loop {
             let cur: Rc<Cur> = if exact {
@@ -1315,47 +1344,45 @@ impl<'env, 'data> Sim<'env, 'data> {
                     }
                 }
             };
-            if let Some(run) = decide {
-                let k = self.key(&cur);
-                if k != last_key {
-                    rec.push(json!({"t": t, "pick": k, "trainee": self.d.umas[cur.t].name, "p": cur.p, "pool": st.legs.len(), "s": s}));
-                    last_key = k;
-                    if self.cfg.audit && base == Base::Greedy && !exact {
-                        let a = self.audit_greedy(st, keys, t);
-                        self.audits.push(a);
-                    }
+            let k = self.key(&cur);
+            if k != last_key {
+                trace.pick_changes.push(json!({"t": t, "pick": k, "trainee": self.d.umas[cur.lineage.trainee].name, "p": cur.p_all, "pool": st.legacies.len(), "s": s}));
+                last_key = k;
+                if self.cfg.audit && base == Base::Greedy && !exact {
+                    let a = self.audit_greedy(st, keys, t);
+                    self.audits.push(a);
                 }
-                if self.cfg.audit && base == Base::Loop && t.is_multiple_of(self.cfg.audit_every) {
-                    let r = self.audit_row(&st.pool.clone(), cur.t, cur.a, cur.b, 3);
-                    self.audits.push(json!({"t": t, "pool": st.legs.len(), "rows": [r]}));
-                }
-                if self.cfg.progress > 0 && t.is_multiple_of(self.cfg.progress) && t > 0 {
-                    eprintln!(
-                        "  {} run {}: {} careers, pool {}, S {:.4}, p {:.3e}",
-                        self.cfg.policy,
-                        run,
-                        t,
-                        st.legs.len(),
-                        s,
-                        cur.p
-                    );
-                }
+            }
+            if self.cfg.audit && base == Base::Loop && t.is_multiple_of(self.cfg.audit_every) {
+                let r = self.audit_row(&st.pool, cur.lineage, AuditKind::Loop);
+                self.audits.push(json!({"t": t, "pool": st.legacies.len(), "rows": [r]}));
+            }
+            if self.cfg.progress > 0 && t.is_multiple_of(self.cfg.progress) && t > 0 {
+                eprintln!(
+                    "  {} run {}: {} careers, pool {}, S {:.4}, p {:.3e}",
+                    self.cfg.policy,
+                    run,
+                    t,
+                    st.legacies.len(),
+                    s,
+                    cur.p_all
+                );
             }
             if s < eps || t >= self.cfg.max_careers {
-                let tail = s / cur.p;
-                return (e + tail, t, tail, cur.p, pruned);
+                let tail = s / cur.p_all;
+                return PathResult { expected_careers: e + tail, careers: t, tail, final_p_all: cur.p_all, pruned };
             }
             e += s;
-            s *= 1.0 - cur.p;
-            let (vet, _) = self.draw(&cur, &st.legs, keys, t);
+            s *= 1.0 - cur.p_all;
+            let vet = self.draw(&cur, &st.legacies, keys, t);
             t += 1;
             match base {
                 Base::Loop => {
                     self.add_vet(st, vet, false, &mut buf);
-                    if cur.rot {
+                    if cur.rotation {
                         self.rot_update(st);
                     }
-                    st.cur = None;
+                    st.current = None;
                     kept_decision = None;
                 }
                 Base::Trace => unreachable!("trace runs its own loop"),
@@ -1368,14 +1395,81 @@ impl<'env, 'data> Sim<'env, 'data> {
                     self.add_vet(st, vet, !exact && base == Base::Greedy, &mut buf);
                     kept_decision = None;
                     since_check += 1;
-                    if decide.is_some() && base == Base::Greedy && self.cfg.check > 0 && since_check >= self.cfg.check {
+                    if base == Base::Greedy && self.cfg.check > 0 && since_check >= self.cfg.check {
                         since_check = 0;
-                        checks.push(self.check(st, false));
+                        trace.checks.push(self.check(st, false));
                     }
                 }
             }
         }
     }
+}
+
+/// A legal career and its ceiling (`Env::gen_cands`' order).
+#[derive(Clone, Copy)]
+struct RankedCareer {
+    ceiling: f64,
+    lineage: Lineage,
+}
+impl RankedCareer {
+    /// `gen_cands`' constructor: (ceiling, trainee position, trainee, a, b)
+    const fn new(ceiling: f64, _: usize, trainee: usize, first_parent: usize, second_parent: usize) -> Self {
+        Self { ceiling, lineage: Lineage { trainee, first_parent, second_parent } }
+    }
+}
+
+/// What an audit row is of (`Sim::audit_row`; its number is the row's first entry).
+#[derive(Clone, Copy)]
+enum AuditKind {
+    /// The surrogate's pick at a pick change.
+    Pick = 0,
+    /// A random candidate with the newest veteran.
+    Random = 1,
+    /// A loop career.
+    Loop = 3,
+}
+
+/// A trainee's exact best deck (`Sim::exact_best`).
+struct ExactDeck {
+    /// Its exact value times the spark scale.
+    value: f64,
+    deck: Sel,
+    /// The deck search finished (proven best).
+    finished: bool,
+}
+
+/// How a run's path is followed (`Sim::play`).
+#[derive(Clone, Copy)]
+struct PlayOptions {
+    base: Base,
+    keys: Keys,
+    /// Stop once the survival S falls below this.
+    eps: f64,
+    /// The run index (progress lines).
+    run: u32,
+}
+
+/// What a path records as it goes (`Sim::play`).
+#[derive(Default)]
+struct PathTrace {
+    /// Each change of the career picked: career index, pick, trainee, P(all), pool size, survival.
+    pick_changes: Vec<Value>,
+    /// The surrogate's checks against exact searches (`Sim::check`).
+    checks: Vec<Value>,
+}
+
+/// One run's result (`Sim::play`).
+struct PathResult {
+    /// E: the sum of the survivals S_t, the tail S / p included (module notes).
+    expected_careers: f64,
+    /// Careers run before the path stopped.
+    careers: usize,
+    /// The tail S / p added at the stop.
+    tail: f64,
+    /// P(all) of the career the path stopped at.
+    final_p_all: f64,
+    /// New veterans dropped as dominated.
+    pruned: usize,
 }
 
 pub(super) fn simulate<'data>(
@@ -1439,18 +1533,18 @@ pub(super) fn simulate<'data>(
         }
         if base == Base::Index {
             kept_swap(KeptState::default());
-            IX.with(|ix| *ix.borrow_mut() = Default::default());
+            IX.with(|ix| *ix.borrow_mut() = IndexRunCounts::default());
         }
         let tm = std::time::Instant::now();
         let n0 = s.n;
         let mut st = st0.clone();
-        let (mut rec, mut checks) = (vec![], vec![]);
+        let mut trace = PathTrace::default();
         let keys = Keys::Main { seed: cfg.seed, run: run as u32 };
-        let (e, careers, tail, fp, pruned) =
-            s.play(&mut st, base, keys, 1.0, 0, eps, Some(run as u32), &mut rec, &mut checks);
+        let PathResult { expected_careers: e, careers, tail, final_p_all: fp, pruned } =
+            s.play(&mut st, PlayOptions { base, keys, eps, run: run as u32 }, &mut trace);
         let n1 = s.n;
         es.push(e);
-        let segs = rec;
+        let PathTrace { pick_changes: segs, checks } = trace;
         let finalk = segs.last().map_or(Value::Null, |x| x["pick"].clone());
         let wall = tm.elapsed().as_secs_f64();
         eprintln!(
@@ -1461,23 +1555,22 @@ pub(super) fn simulate<'data>(
             careers,
             tail,
             fp,
-            st.legs.len(),
+            st.legacies.len(),
             wall
         );
-        runs.push(json!({"run": run, "E": e, "careers": careers, "tail": tail, "final_p": fp, "final": finalk, "pool": st.legs.len(), "pruned": pruned,
-            "wall_s": wall, "candidates": n1.cands - n0.cands, "ceiling_pass": n1.ceil_pass - n0.ceil_pass, "tables": n1.tables - n0.tables,
-            "refreshes": n1.searches - n0.searches, "partial_searches": n1.partial - n0.partial, "segs": segs, "checks": checks, "audits": std::mem::take(&mut s.audits)}));
+        runs.push(json!({"run": run, "E": e, "careers": careers, "tail": tail, "final_p": fp, "final": finalk, "pool": st.legacies.len(), "pruned": pruned,
+            "wall_s": wall, "candidates": n1.candidates - n0.candidates, "ceiling_pass": n1.ceiling_passes - n0.ceiling_passes, "tables": n1.tables - n0.tables,
+            "refreshes": n1.searches - n0.searches, "partial_searches": n1.partial_searches - n0.partial_searches, "segs": segs, "checks": checks, "audits": std::mem::take(&mut s.audits)}));
         if base == Base::Index {
             let ix = IX.with(|ix| std::mem::take(&mut *ix.borrow_mut()));
-            runs.last_mut().unwrap()["index"] =
-                json!({"plans": ix.0, "plan_s": ix.1, "roles": ix.2, "best_odds": ix.3});
+            runs.last_mut().unwrap()["index"] = json!({"plans": ix.plans, "plan_s": ix.plan_seconds, "roles": ix.roles, "best_odds": ix.best_odds_picks});
         }
     }
     if let Some(kept) = kept_before_simulation {
         kept_swap(kept);
     }
     json!({"simulate": sim, "policy": cfg.policy, "runs": runs, "E": stats(&es), "init_s": init_s, "decks": s.cache.n_decks(), "deck_tables": s.cache.tables,
-           "refreshes": s.n.searches, "schedules": s.sched.len()})
+           "refreshes": s.n.searches, "schedules": s.win_chances.len()})
 }
 
 #[cfg(test)]

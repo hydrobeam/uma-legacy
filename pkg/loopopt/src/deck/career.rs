@@ -41,7 +41,7 @@ use inherit::{
 use outcomes::interp_in;
 use pool::{Pool, Who, dominates, holds_fix, shared};
 use schedule::{apt_pink, pink_p};
-use search::{Bar, DeckRes, Found, Ref, Solved, solve_kept};
+use search::{Bar, DeckRes, Found, Ref, SearchRequest, Solved, solve_kept};
 use state::{LAST_SOLVE, SEEN};
 use state::{
     Ruled, SEEN_KEEP, SOLVE_KEEP, STATE_MAX_N, found_in, found_out, fvec, fvec_r, fx, hx, len_in, pvec_r, sel_in,
@@ -62,7 +62,7 @@ mod cache;
 mod sim;
 
 /// A trainee and her parents in the supplied legacy pool; parent order is significant.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::deck) struct Lineage {
     /// Trainee's index in Data::umas.
     pub(in crate::deck) trainee: usize,
@@ -70,6 +70,17 @@ pub(in crate::deck) struct Lineage {
     pub(in crate::deck) first_parent: usize,
     /// Second parent's index, preserving the caller's order.
     pub(in crate::deck) second_parent: usize,
+}
+
+impl Lineage {
+    /// The same career with the lower legacy index as the first parent.
+    pub(in crate::deck) fn ordered(self) -> Self {
+        Self {
+            trainee: self.trainee,
+            first_parent: self.first_parent.min(self.second_parent),
+            second_parent: self.first_parent.max(self.second_parent),
+        }
+    }
 }
 
 /// A borrowed deck and the lineage that will train with it.
@@ -106,6 +117,18 @@ pub(crate) struct Ancestor {
     /// sprint .. long; reported (inheritance chance per aptitude), not part of the odds
     #[serde(default)]
     pub pinks: Vec<(u32, u8)>,
+}
+
+impl Ancestor {
+    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks.
+    fn of_legacy(legacy: &Legacy) -> Self {
+        Self {
+            chara: legacy.chara,
+            sparks: legacy.sparks.clone(),
+            wins: legacy.wins.clone(),
+            pinks: legacy.pinks.clone(),
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Default)]
@@ -265,45 +288,132 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         Some("state_in") => return state_in(&v["state"]),
         _ => {}
     }
-    // a roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll now sends the
-    // plan job with `next.roll` on its own first, so its saving shows before the search): the job runs without it, then the plan job with
-    // `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as `roll`
     if let Some(roll) = v.get("roll").filter(|roll| !roll.is_null()) {
-        let mut search_job = v.clone();
-        if let Some(object) = search_job.as_object_mut() {
-            object.remove("roll");
-        }
-        let mut out = run_career(d, sk, cr, &search_job);
-        let mut plan_job = roll["job"].clone();
-        out["roll"] = match plan_job.get_mut("next").and_then(|next| next.as_object_mut()) {
-            Some(next) => {
-                next.insert("roll".into(), roll["stars"].clone());
-                let plan_out = run_career(d, sk, cr, &plan_job);
-                if plan_out["next"]["roll"].is_null() {
-                    json!({"error": plan_out["error"].as_str().or_else(|| plan_out["next"]["error"].as_str()).unwrap_or("the plan has no roll")})
-                } else {
-                    plan_out["next"]["roll"].clone()
-                }
-            }
-            None => json!({"error": "roll: the job is not a plan job (no `next`)"}),
-        };
-        return out;
+        return run_carried_roll(d, sk, cr, v, roll);
     }
-    let sj: SkillJob = match SkillJob::deserialize(v) {
-        Ok(x) => x,
-        Err(e) => return json!({"error": e.to_string()}),
+    let jobs = match CareerJobs::parse(v) {
+        Ok(jobs) => jobs,
+        Err(error) => return error,
     };
-    let dj: DeckJob = match DeckJob::deserialize(v) {
-        Ok(x) => x,
-        Err(e) => return json!({"error": e.to_string()}),
-    };
-    let cj: CareerJob = match CareerJob::deserialize(v) {
-        Ok(x) => x,
-        Err(e) => return json!({"error": e.to_string()}),
-    };
-    CHAIN_EVENTS.with(|c| c.set(dj.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
+    CHAIN_EVENTS.with(|c| c.set(jobs.deck.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
     let t_all = Instant::now();
-    let model = Model::new(d, sk, &sj);
+    let input = JobInputs { data: d, skills: sk, cards: cr, job: v };
+    let CareerSetup { mut env, trainees, setup_fingerprint } = match career_setup(&input, &jobs) {
+        Ok(setup) => setup,
+        Err(error) => return error,
+    };
+    let cj = &jobs.career;
+    let legs = &cj.legacies;
+    let rho_top = env.space.rho_top();
+    restore_seen(&mut env, setup_fingerprint);
+    if let Some(sm) = &cj.simulate {
+        return sim::simulate(&mut env, &input, legs, &trainees, sm);
+    }
+    let pool = env.pool(legs);
+    // (tests: the job's Env and pool handed to a check instead of the search)
+    #[cfg(test)]
+    if let Some(h) = tests::ENV_HOOK.with(|c| c.borrow_mut().take()) {
+        h(&mut env, &pool);
+        return json!({});
+    }
+    let mut run = CareerRun { input: &input, job: cj, trainees: &trainees, pool: &pool, pick_pool: None };
+    if let Some(roll) = answer_kept_roll(&mut env, &run) {
+        return json!({"next": {"roll": roll}});
+    }
+    // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
+    // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
+    let own_pool = (cj.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_bor: 0, ..pool.clone() });
+    run.pick_pool = own_pool.as_ref();
+    env.use_seen = true;
+    // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
+    // search was kept from the job before
+    let (sn0, sj0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
+    let sv = solve_kept(&mut env, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
+    let search_work =
+        json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - sj0});
+    env.use_seen = true;
+    if std::env::var("CAREER_WORK").is_ok() {
+        eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven);
+    }
+    if sv.cands == 0 {
+        keep_seen(&env, setup_fingerprint);
+        return json!({"error": if cj.borrowed_parent == BorrowedParent::Allow { "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed." }
+        else { "No legal career: a trainee needs two of your own veterans of other characters (not her own, not the same as each other): borrowed parents are off." } });
+    }
+    let mut out = search_output(&mut env, &run, &sv, search_work, rho_top);
+    if let Some(x) = &cj.next
+        && !sv.found.is_empty()
+    {
+        out["next"] = plan_next(&mut env, &run, &sv, x);
+    }
+    keep_seen(&env, setup_fingerprint);
+    note_job_certificates(&env, &mut out, rho_top);
+    out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
+    out
+}
+
+/// A roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll now sends the
+/// plan job with `next.roll` on its own first, so its saving shows before the search): the job runs without it, then
+/// the plan job with `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as
+/// `roll`
+fn run_carried_roll(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, roll: &Value) -> Value {
+    let mut search_job = v.clone();
+    if let Some(object) = search_job.as_object_mut() {
+        object.remove("roll");
+    }
+    let mut out = run_career(d, sk, cr, &search_job);
+    let mut plan_job = roll["job"].clone();
+    out["roll"] = match plan_job.get_mut("next").and_then(|next| next.as_object_mut()) {
+        Some(next) => {
+            next.insert("roll".into(), roll["stars"].clone());
+            let plan_out = run_career(d, sk, cr, &plan_job);
+            if plan_out["next"]["roll"].is_null() {
+                json!({"error": plan_out["error"].as_str().or_else(|| plan_out["next"]["error"].as_str()).unwrap_or("the plan has no roll")})
+            } else {
+                plan_out["next"]["roll"].clone()
+            }
+        }
+        None => json!({"error": "roll: the job is not a plan job (no `next`)"}),
+    };
+    out
+}
+
+/// The three readings of one career job's JSON.
+struct CareerJobs {
+    /// Targets, owned umas and the rank's star mix.
+    skills: SkillJob,
+    /// The deck space: cards, deck size, locks, chain events.
+    deck: DeckJob,
+    /// Legacies, trainees, places and the planner's settings.
+    career: CareerJob,
+}
+
+impl CareerJobs {
+    /// The job read three ways, in this order; the first error is the answer.
+    fn parse(v: &Value) -> Result<Self, Value> {
+        let skills = SkillJob::deserialize(v).map_err(|e| json!({"error": e.to_string()}))?;
+        let deck = DeckJob::deserialize(v).map_err(|e| json!({"error": e.to_string()}))?;
+        let career = CareerJob::deserialize(v).map_err(|e| json!({"error": e.to_string()}))?;
+        Ok(Self { skills, deck, career })
+    }
+}
+
+/// A job's solver environment and what it was built for.
+struct CareerSetup<'data> {
+    env: Env<'data>,
+    /// The job's trainees (uma indices), owned umas in roster order.
+    trainees: Vec<usize>,
+    /// `setup_fp` of the job: what earlier jobs of this setup proved is kept under it (`SEEN`).
+    setup_fingerprint: u64,
+}
+
+/// The job's Env: the model, the deck space, each owned uma's deck-odds ceiling, the kept deck memo of this setup and
+/// the deck classes. Errors (no trainee, fewer than two legacies, a deck space the search refuses) come before
+/// anything kept is touched.
+fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Result<CareerSetup<'data>, Value> {
+    let (d, sk, cr, v) = (input.data, input.skills, input.cards, input.job);
+    let (sj, dj, cj) = (&jobs.skills, &jobs.deck, &jobs.career);
+    let model = Model::new(d, sk, sj);
     let ew0 = model.ews.clone();
     let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
     let nu = unc.len();
@@ -321,60 +431,23 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let trainees: Vec<usize> =
         owned.iter().copied().filter(|&i| cj.trainees.is_empty() || cj.trainees.contains(&d.umas[i].id)).collect();
     if trainees.is_empty() {
-        return json!({"error": "No trainee to search: pick at least one owned uma."});
+        return Err(json!({"error": "No trainee to search: pick at least one owned uma."}));
     }
-    let legs = &cj.legacies;
-    if legs.len() < 2 {
-        return json!({"error": "Add at least two veterans to choose parents from."});
+    if cj.legacies.len() < 2 {
+        return Err(json!({"error": "Add at least two veterans to choose parents from."}));
     }
     let pool_ids: Vec<u32> = trainees.iter().map(|&i| d.umas[i].id).collect();
-    let ent = match deck_entries(cr, &dj, &unc, &pool_ids) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let space = deck_space(cr, &dj, sk, &unc, &ent);
-
-    // ---- per uma: the best possible deck odds per target (a ceiling for every legal deck) ----
-    let size = dj.deck_size;
-    let strong: Vec<(Vec<f64>, Vec<f64>)> = (0..space.rel.len())
-        .map(|j| {
-            let (mut mw, mut mg) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-            src_miss(&space.srcs[j], &vec![1.0; space.kind[j].1 as usize], &mut mw, &mut mg);
-            let mh: Vec<f64> = (0..nu).map(|k| mg[k] * mw[k]).collect();
-            (mg, mh)
-        })
-        .collect();
-    let dmax: Vec<Option<(Vec<f64>, Vec<f64>)>> = (0..n)
-        .map(|u| {
-            if !owned.contains(&u) {
-                return None;
-            }
-            let uid = d.umas[u].id;
-            let legal: Vec<usize> = (0..space.rel.len()).filter(|&j| !space.cards[space.rel[j]].blocks(uid)).collect();
-            let lowest = |f: &dyn Fn(usize) -> f64| {
-                let mut m: Vec<f64> = legal.iter().map(|&j| f(j)).collect();
-                m.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                m.iter().take(size).product::<f64>()
-            };
-            let (mut dw, mut dg) = (vec![0.0f64; nu], vec![0.0f64; nu]);
-            for k in 0..nu {
-                let (g, h) = (1.0 - lowest(&|j| strong[j].0[k]), 1.0 - lowest(&|j| strong[j].1[k]));
-                // (g, h) = (P(gold hint), P(any hint)); the product formula takes dw with (1 - dw)(1 - dg) = 1 - h
-                dg[k] = g;
-                dw[k] = if g < 1.0 { (1.0 - (1.0 - h) / (1.0 - g)).max(0.0) } else { 1.0 };
-            }
-            Some((dw, dg))
-        })
-        .collect();
+    let ent = deck_entries(cr, dj, &unc, &pool_ids)?;
+    let space = deck_space(cr, dj, sk, &unc, &ent);
+    let dmax = deck_odds_ceilings(d, &space, &owned, nu, dj.deck_size);
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let rho_top = space.rho_top();
     // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
-    let fp = setup_fp(v);
+    let setup_fingerprint = setup_fp(v);
     let memo_fp = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        fp.hash(&mut h);
+        setup_fingerprint.hash(&mut h);
         pool_ids.hash(&mut h);
         h.finish()
     };
@@ -392,7 +465,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let corner_memo = if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { HashMap::default() };
     let mut env = Env {
         d,
-        sj: &sj,
+        sj,
         model,
         ew0,
         uncv,
@@ -425,119 +498,165 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         cls: (0..n).collect(),
         max_bor: u8::from(cj.borrowed_parent != BorrowedParent::Never),
     };
-    // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
-    // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
-    {
-        let mut first: crate::FxMap<Vec<u64>, usize> = crate::FxMap::default();
-        for u in 0..n {
-            let uid = env.d.umas[u].id;
-            let mut k: Vec<u64> = vec![];
-            for o in &env.sts0[u] {
-                k.push(o.len() as u64);
-                k.extend(o.iter().map(|&x| u64::from(x)));
+    assign_deck_classes(&mut env);
+    Ok(CareerSetup { env, trainees, setup_fingerprint })
+}
+
+/// Per uma (None when she does not train), the best possible deck odds per uncertain target, a ceiling for every
+/// legal deck: (dw, dg) with dg the chance of a gold hint and (1 - dw)(1 - dg) the chance of no hint, from her
+/// `deck_size` most likely hinting legal entries.
+fn deck_odds_ceilings(
+    d: &Data,
+    space: &DeckSpace,
+    owned: &[usize],
+    nu: usize,
+    deck_size: usize,
+) -> Vec<Option<(Vec<f64>, Vec<f64>)>> {
+    // per relevant entry: (miss of a gold hint, miss of any hint) per uncertain target
+    let strong: Vec<(Vec<f64>, Vec<f64>)> = (0..space.rel.len())
+        .map(|j| {
+            let (mut mw, mut mg) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+            src_miss(&space.srcs[j], &vec![1.0; space.kind[j].1 as usize], &mut mw, &mut mg);
+            let mh: Vec<f64> = (0..nu).map(|k| mg[k] * mw[k]).collect();
+            (mg, mh)
+        })
+        .collect();
+    (0..d.umas.len())
+        .map(|u| {
+            if !owned.contains(&u) {
+                return None;
             }
-            k.push(u64::MAX);
-            for o in &env.ew0[u] {
-                k.push(o.len() as u64);
-                k.extend(o.iter().map(|x| x.to_bits()));
+            let uid = d.umas[u].id;
+            let legal: Vec<usize> = (0..space.rel.len()).filter(|&j| !space.cards[space.rel[j]].blocks(uid)).collect();
+            let lowest = |f: &dyn Fn(usize) -> f64| {
+                let mut m: Vec<f64> = legal.iter().map(|&j| f(j)).collect();
+                m.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                m.iter().take(deck_size).product::<f64>()
+            };
+            let (mut dw, mut dg) = (vec![0.0f64; nu], vec![0.0f64; nu]);
+            for k in 0..nu {
+                let (g, h) = (1.0 - lowest(&|j| strong[j].0[k]), 1.0 - lowest(&|j| strong[j].1[k]));
+                // (g, h) = (P(gold hint), P(any hint)); the product formula takes dw with (1 - dw)(1 - dg) = 1 - h
+                dg[k] = g;
+                dw[k] = if g < 1.0 { (1.0 - (1.0 - h) / (1.0 - g)).max(0.0) } else { 1.0 };
             }
-            k.push(u64::MAX);
-            match &env.dmax[u] {
-                Some((w, g)) => {
-                    k.push(1);
-                    k.extend(w.iter().chain(g).map(|x| x.to_bits()));
-                }
-                None => k.push(0),
-            }
-            k.push(u64::MAX);
-            k.extend(
-                (0..env.space.rel.len()).filter(|&j| env.space.cards[env.space.rel[j]].blocks(uid)).map(|j| j as u64),
-            );
-            k.push(u64::MAX);
-            k.push(env.space.legal_plain(&[uid]).len() as u64);
-            env.cls[u] = *first.entry(k).or_insert(u);
+            Some((dw, dg))
+        })
+        .collect()
+}
+
+/// Deck classes (`Env::cls`): the key holds everything of a trainee the deck search reads (outfit coverage, own-skill
+/// chances to the bit, `dmax`, the relevant cards she may not take, how many plain pals she may); each trainee's class
+/// is the first trainee with her key.
+fn assign_deck_classes(env: &mut Env) {
+    let mut first: crate::FxMap<Vec<u64>, usize> = crate::FxMap::default();
+    for u in 0..env.d.umas.len() {
+        let uid = env.d.umas[u].id;
+        let mut k: Vec<u64> = vec![];
+        for o in &env.sts0[u] {
+            k.push(o.len() as u64);
+            k.extend(o.iter().map(|&x| u64::from(x)));
         }
+        k.push(u64::MAX);
+        for o in &env.ew0[u] {
+            k.push(o.len() as u64);
+            k.extend(o.iter().map(|x| x.to_bits()));
+        }
+        k.push(u64::MAX);
+        match &env.dmax[u] {
+            Some((w, g)) => {
+                k.push(1);
+                k.extend(w.iter().chain(g).map(|x| x.to_bits()));
+            }
+            None => k.push(0),
+        }
+        k.push(u64::MAX);
+        k.extend((0..env.space.rel.len()).filter(|&j| env.space.cards[env.space.rel[j]].blocks(uid)).map(|j| j as u64));
+        k.push(u64::MAX);
+        k.push(env.space.legal_plain(&[uid]).len() as u64);
+        env.cls[u] = *first.entry(k).or_insert(u);
     }
-    // what earlier jobs on this setup proved (the page's worker keeps it between jobs; `fp` above)
-    if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone()))
+}
+
+/// What earlier jobs on this setup proved (the page's worker keeps it between jobs, `SEEN`), when it fits this Env.
+fn restore_seen(env: &mut Env, setup_fingerprint: u64) {
+    if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == setup_fingerprint).map(|e| e.1.clone()))
         && env.seen_fits(&s)
     {
         env.seen = s;
     }
-    let keep = |env: &Env| {
-        SEEN.with(|c| {
-            let mut c = c.borrow_mut();
-            c.retain(|e| e.0 != fp);
-            c.push((fp, env.seen.iter().map(|rs| rs[rs.len().saturating_sub(SEEN_KEEP)..].to_vec()).collect()));
-            if c.len() > 4 {
-                c.remove(0);
-            }
-        });
-    };
-    if let Some(sm) = &cj.simulate {
-        return sim::simulate(&mut env, &JobInputs { data: d, skills: sk, cards: cr, job: v }, legs, &trainees, sm);
-    }
-    let pool = env.pool(legs);
-    // (tests: the job's Env and pool handed to a check instead of the search)
-    #[cfg(test)]
-    if let Some(h) = tests::ENV_HOOK.with(|c| c.borrow_mut().take()) {
-        h(&mut env, &pool);
-        return json!({});
-    }
-    // a roll of a plan this worker keeps (`next.roll`): answered from its roll state, no search (`sim::plan::roll_kept`);
-    // else the job runs as below, its plan answering the roll
-    if let Some(nj) = cj
+}
+
+/// Keep this job's fully checked decks for the next job on its setup (the last `SEEN_KEEP` per class, four setups).
+fn keep_seen(env: &Env, setup_fingerprint: u64) {
+    SEEN.with(|c| {
+        let mut c = c.borrow_mut();
+        c.retain(|e| e.0 != setup_fingerprint);
+        c.push((
+            setup_fingerprint,
+            env.seen.iter().map(|rs| rs[rs.len().saturating_sub(SEEN_KEEP)..].to_vec()).collect(),
+        ));
+        if c.len() > 4 {
+            c.remove(0);
+        }
+    });
+}
+
+/// A roll of a plan this worker keeps (`next.roll`): answered from its roll state, no search (`sim::plan::roll_kept`);
+/// None when the job carries no roll or the worker keeps no state for it (the job then runs, its plan answering it).
+fn answer_kept_roll<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>) -> Option<Value> {
+    let cj = run.job;
+    let plan_job = cj
         .next
         .as_ref()
         .filter(|x| x.get("roll").is_some_and(|r| !r.is_null()))
-        .and_then(|x| serde_json::from_value::<sim::plan::PlanJob>(x.clone()).ok())
-        && let Some(r) = sim::plan::roll_kept(
-            &mut env,
-            &JobInputs { data: d, skills: sk, cards: cr, job: v },
-            legs,
-            &pool,
-            &cj.fix,
-            &nj,
-        )
-    {
-        return json!({"next": {"roll": r}});
+        .and_then(|x| serde_json::from_value::<sim::plan::PlanJob>(x.clone()).ok())?;
+    sim::plan::roll_kept(env, run.input, &cj.legacies, run.pool, &cj.fix, &plan_job)
+}
+
+/// What the job's main search and its plan read.
+struct CareerRun<'run, 'data> {
+    input: &'run JobInputs<'data>,
+    job: &'run CareerJob,
+    /// The job's trainees (uma indices).
+    trainees: &'run [usize],
+    /// The job's pool of legacies, borrowing as `borrowed_parent` allows in the plan's look-ahead.
+    pool: &'run Pool,
+    /// `borrowed_parent` "later": `pool` without borrowed parents, where the career picked comes from.
+    pick_pool: Option<&'run Pool>,
+}
+
+impl CareerRun<'_, '_> {
+    /// The main search over `pool` with the job's places, trainees and result count.
+    fn search_request(&self) -> SearchRequest<'_> {
+        SearchRequest {
+            pool: self.pool,
+            fixed_parents: &self.job.fix,
+            trainees: self.trainees,
+            per_trainee: self.job.per_trainee,
+            top: self.job.top,
+        }
     }
-    // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
-    // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
-    let ppool = (cj.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_bor: 0, ..pool.clone() });
-    env.use_seen = true;
-    // the page sends a career job, then the same job with `next`: the plan job reuses that job's main search (the solver
-    // worker keeps the last one; a search is deterministic for its job, so the result is the one it would compute)
-    // (the hash of the job's text without those keys; `json_without`: no clone)
-    let key_of = |drop: &[&str]| setup_hash(&json_without(v, drop, &[]));
-    // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
-    // search was kept from the job before
-    let (sn0, sj0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
-    let sv = solve_kept(
-        &mut env,
-        key_of(&["next", "no_reports"]),
-        ppool.as_ref().unwrap_or(&pool),
-        &cj.fix,
-        &trainees,
-        cj.per_trainee,
-        cj.top,
-    );
-    let search_work =
-        json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - sj0});
-    env.use_seen = true;
-    if std::env::var("CAREER_WORK").is_ok() {
-        eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven);
+    /// The main search of the career picked: over `pick_pool` when there is one.
+    fn pick_search_request(&self) -> SearchRequest<'_> {
+        SearchRequest { pool: self.pick_pool.unwrap_or(self.pool), ..self.search_request() }
     }
-    if sv.cands == 0 {
-        keep(&env);
-        return json!({"error": if cj.borrowed_parent == BorrowedParent::Allow { "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed." }
-        else { "No legal career: a trainee needs two of your own veterans of other characters (not her own, not the same as each other): borrowed parents are off." } });
+    /// The key a main search is kept under (`LAST_SOLVE`): the hash of the job's text without the keys `drop`
+    /// (`json_without`: no clone). The page sends a career job, then the same job with `next`: the plan job reuses
+    /// that job's main search (a search is deterministic for its job, so the result is the one it would compute).
+    fn search_key(&self, drop: &[&str]) -> u64 {
+        setup_hash(&json_without(self.input.job, drop, &[]))
     }
-    // the race schedule only for the best career (the one the page shows; each takes a schedule search)
+}
+
+/// The main search's answer: the reports of its careers (the race schedule only for the best one, the one the page
+/// shows; each takes a schedule search) and its counters.
+fn search_output(env: &mut Env, run: &CareerRun, sv: &Solved, search_work: Value, rho_top: f64) -> Value {
+    let cj = run.job;
     let results: Vec<Value> = if cj.no_reports {
         vec![]
     } else {
-        sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect()
+        sv.found.iter().enumerate().map(|(i, f)| env.report(run.pool, f, i == 0)).collect()
     };
     let mut out = json!({"results": results, "candidates": sv.cands, "solved": sv.solved, "bounded": sv.bounded, "scored": sv.scored, "skipped": sv.skipped,
            "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": rho_top.min(sv.cert), "class_caps": env.space.caps(), "work": search_work});
@@ -549,55 +668,45 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     if cj.compare {
         out["compare"] = json!(true);
     }
-    if let Some(x) = &cj.next
-        && !sv.found.is_empty()
-    {
-        out["next"] = match serde_json::from_value::<sim::plan::PlanJob>(x.clone()) {
-            Ok(nj) => match &ppool {
-                None => sim::plan::index_rule(
-                    &mut env,
-                    &sim::plan::PlanInputs {
-                        resources: &JobInputs { data: d, skills: sk, cards: cr, job: v },
-                        legacies: legs,
-                        pool: &pool,
-                        solved: &sv,
-                        fixed_parents: &cj.fix,
-                        trainees: &trainees,
-                        settings: &nj,
-                        pick: None,
-                    },
-                ),
-                // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
-                // key (so a plan after an "allow" run takes it as it is)
-                Some(pp) => {
-                    let sva = solve_kept(
-                        &mut env,
-                        key_of(&["next", "no_reports", "borrowed_parent"]),
-                        &pool,
-                        &cj.fix,
-                        &trainees,
-                        cj.per_trainee,
-                        cj.top,
-                    );
-                    sim::plan::index_rule(
-                        &mut env,
-                        &sim::plan::PlanInputs {
-                            resources: &JobInputs { data: d, skills: sk, cards: cr, job: v },
-                            legacies: legs,
-                            pool: &pool,
-                            solved: &sva,
-                            fixed_parents: &cj.fix,
-                            trainees: &trainees,
-                            settings: &nj,
-                            pick: Some((pp, &sv)),
-                        },
-                    )
-                }
-            },
-            Err(e) => json!({"error": format!("next: {e}")}),
-        };
-    }
-    keep(&env);
+    out
+}
+
+/// The job's `next`: the page's next career (`sim::plan::index_rule`) on the main search `sv`.
+fn plan_next<'data>(env: &mut Env<'data>, run: &CareerRun<'_, 'data>, sv: &Solved, next: &Value) -> Value {
+    let cj = run.job;
+    let settings = match serde_json::from_value::<sim::plan::PlanJob>(next.clone()) {
+        Ok(settings) => settings,
+        Err(e) => return json!({"error": format!("next: {e}")}),
+    };
+    let borrowing;
+    let (solved, pick) = match run.pick_pool {
+        None => (sv, None),
+        // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
+        // key (so a plan after an "allow" run takes it as it is)
+        Some(pick_pool) => {
+            borrowing =
+                solve_kept(env, run.search_key(&["next", "no_reports", "borrowed_parent"]), &run.search_request());
+            (&borrowing, Some((pick_pool, sv)))
+        }
+    };
+    sim::plan::index_rule(
+        env,
+        &sim::plan::PlanInputs {
+            resources: run.input,
+            legacies: &cj.legacies,
+            pool: run.pool,
+            solved,
+            fixed_parents: &cj.fix,
+            trainees: run.trainees,
+            settings: &settings,
+            pick,
+        },
+    )
+}
+
+/// What every search of the job certified, into its answer: band overflows (`cap`, `complete`), decks past their
+/// class's assumed cap, and the cap-free searches.
+fn note_job_certificates(env: &Env, out: &mut Value, rho_top: f64) {
     if env.overflows > 0 {
         out["complete"] = json!(false);
         out["cap"] = json!(rho_top.min(env.cert));
@@ -625,8 +734,6 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
             out["complete"] = json!(false);
         }
     }
-    out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
-    out
 }
 
 #[cfg(test)]
@@ -752,7 +859,8 @@ mod tests {
                 let cands = env.gen_cands(&p, &fix, &trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
                 assert!(!cands.is_empty());
                 for (ub, t, a, b) in cands {
-                    let (q, _, c) = env.lineage(&p, t, a, b);
+                    let lineage = Lineage { trainee: t, first_parent: a, second_parent: b };
+                    let inherit::LineageChances { chances: q, spark_scale: c, .. } = env.lineage(&p, lineage);
                     assert_eq!(
                         ub.to_bits(),
                         env.ceiling(t, &q, c).unwrap().to_bits(),
@@ -763,22 +871,17 @@ mod tests {
                         tg_t = t;
                     }
                     let mut qq = vec![0.0f64; env.ntar];
-                    let cq = env.lineage_qc(
-                        &p,
-                        Lineage { trainee: t, first_parent: a, second_parent: b },
-                        &ks,
-                        &mut qq,
-                        &mut tg,
-                    );
+                    let cq = env.lineage_qc(&p, lineage, &ks, &mut qq, &mut tg);
                     assert_eq!((bits(&qq), cq.to_bits()), (bits(&q), c.to_bits()), "lineage_qc t {t} pair {a} {b}");
                     for (y, iv) in [(a, b), (b, a)] {
-                        let sl = env.slots(&p, t, y, iv);
+                        let her_lineage = Lineage { trainee: t, first_parent: y, second_parent: iv };
+                        let sl = env.slots(&p, her_lineage);
                         let pos = sl.iter().position(|z| z.parent && z.legacy == iv).unwrap();
                         let mut sl0 = sl.clone();
                         sl0[pos].stars = std::rc::Rc::new(vec![0; env.ntar]);
                         sl0[pos].mix = None;
-                        let (q0, nc0) = inherit(&sl0, env.ntar);
-                        let hs = env.her_slot(&p, Lineage { trainee: t, first_parent: y, second_parent: iv }).unwrap();
+                        let inherit::Inheritance { chances: q0, carriers: nc0 } = inherit(&sl0, env.ntar);
+                        let hs = env.her_slot(&p, her_lineage).unwrap();
                         let fa = aff_factor(sl[pos].rel, sl[pos].race);
                         assert_eq!(bits(&hs.q0), bits(&q0));
                         assert_eq!(

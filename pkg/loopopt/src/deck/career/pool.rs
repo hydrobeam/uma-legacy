@@ -1,16 +1,60 @@
 //! Veteran pools and legal parent pairs.
-use super::{Env, Legacy};
+use super::{Ancestor, Env, Legacy};
+
+/// What `Env::who` reads of a legacy or of one of her recorded parents.
+struct VeteranTraits<'veteran> {
+    chara: u32,
+    /// (skill group, stars) of her white sparks.
+    sparks: &'veteran [(u32, u8)],
+    /// Races (data.json `races`) of the single-race G1s she won; read when `win_chances` is empty.
+    wins: &'veteran [usize],
+    /// A veteran before her result is known: her win chance per race index (empty: `wins` are certain).
+    win_chances: &'veteran [f64],
+    /// (aptitude factor group, stars) of her pink sparks.
+    pinks: &'veteran [(u32, u8)],
+    /// The star mix her sparks are drawn from (None: fixed stars).
+    star_mix: Option<[f64; 3]>,
+}
+
+impl<'veteran> VeteranTraits<'veteran> {
+    fn of_legacy(legacy: &'veteran Legacy) -> Self {
+        Self {
+            chara: legacy.chara,
+            sparks: &legacy.sparks,
+            wins: &legacy.wins,
+            win_chances: &legacy.win_p,
+            pinks: &legacy.pinks,
+            star_mix: legacy.mix,
+        }
+    }
+    /// A recorded parent: fixed stars and certain wins.
+    fn of_ancestor(ancestor: &'veteran Ancestor) -> Self {
+        Self {
+            chara: ancestor.chara,
+            sparks: &ancestor.sparks,
+            wins: &ancestor.wins,
+            win_chances: &[],
+            pinks: &ancestor.pinks,
+            star_mix: None,
+        }
+    }
+}
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
 /// pink sparks, and the star mix when the stars are random.
 #[derive(Clone)]
 /// (stars and pinks shared with the lineage slots made from her: `Env::slots` takes them without copying)
 pub(in crate::deck::career) struct Who {
+    /// Her index in Data::umas (None: a character the data does not list).
     pub(in crate::deck::career) ix: Option<usize>,
     pub(in crate::deck::career) chara: u32,
+    /// (race index, win chance), sorted by race; chance 1 for a win on record.
     pub(in crate::deck::career) wins: Vec<(usize, f64)>,
+    /// Stars (0..=3) of her spark of each job target, in job-target order.
     pub(in crate::deck::career) stars: std::rc::Rc<Vec<u8>>,
+    /// (aptitude factor group, stars) of her pink sparks.
     pub(in crate::deck::career) pinks: std::rc::Rc<Vec<(u32, u8)>>,
+    /// The star mix her sparks are drawn from (a veteran before her result is known); None: `stars` are fixed.
     pub(in crate::deck::career) mix: Option<[f64; 3]>,
 }
 
@@ -20,9 +64,13 @@ pub(in crate::deck::career) struct Who {
 /// pick's pool under "later")
 #[derive(Clone)]
 pub(in crate::deck::career) struct Pool {
+    /// Per veteran (legacy index), herself.
     pub(in crate::deck::career) me: Vec<Who>,
+    /// Per veteran, her recorded parents (the trainee's grandparent slots under her), in record order.
     pub(in crate::deck::career) gp: Vec<Vec<Who>>,
+    /// Per veteran, whether she is borrowed.
     pub(in crate::deck::career) borrowed: Vec<bool>,
+    /// Per veteran and recorded parent, 3 x shared(veteran, parent): that grandparent slot's race affinity.
     pub(in crate::deck::career) gpc: Vec<Vec<f64>>,
     pub(in crate::deck::career) max_bor: u8,
 }
@@ -113,38 +161,29 @@ impl Env<'_> {
             .map(|t| sp.iter().filter(|s| s.0 == t.group).map(|s| s.1.min(3)).max().unwrap_or(0))
             .collect()
     }
-    fn who(
-        &self,
-        chara: u32,
-        sparks: &[(u32, u8)],
-        wins: &[usize],
-        win_p: &[f64],
-        pinks: &[(u32, u8)],
-        mix: Option<[f64; 3]>,
-    ) -> Who {
-        let mut w: Vec<(usize, f64)> = if win_p.is_empty() {
-            let mut v = wins.to_vec();
+    fn who(&self, traits: &VeteranTraits) -> Who {
+        let mut w: Vec<(usize, f64)> = if traits.win_chances.is_empty() {
+            let mut v = traits.wins.to_vec();
             v.sort_unstable();
             v.dedup();
             v.into_iter().map(|r| (r, 1.0)).collect()
         } else {
-            win_p.iter().enumerate().filter(|x| *x.1 > 0.0).map(|(r, &p)| (r, p)).collect()
+            traits.win_chances.iter().enumerate().filter(|x| *x.1 > 0.0).map(|(r, &p)| (r, p)).collect()
         };
         w.sort_by_key(|x| x.0);
         Who {
-            ix: self.uix(chara),
-            chara,
+            ix: self.uix(traits.chara),
+            chara: traits.chara,
             wins: w,
-            stars: std::rc::Rc::new(self.stars_of(sparks)),
-            pinks: std::rc::Rc::new(pinks.to_vec()),
-            mix,
+            stars: std::rc::Rc::new(self.stars_of(traits.sparks)),
+            pinks: std::rc::Rc::new(traits.pinks.to_vec()),
+            mix: traits.star_mix,
         }
     }
     /// `pool` of the legacies so far plus `l` (pop with `pool_pop`)
     pub(in crate::deck::career) fn pool_push(&self, p: &mut Pool, l: &Legacy) {
-        let me = self.who(l.chara, &l.sparks, &l.wins, &l.win_p, &l.pinks, l.mix);
-        let gp: Vec<Who> =
-            l.parents.iter().map(|g| self.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect();
+        let me = self.who(&VeteranTraits::of_legacy(l));
+        let gp: Vec<Who> = l.parents.iter().map(|g| self.who(&VeteranTraits::of_ancestor(g))).collect();
         p.gpc.push(gp.iter().map(|g| 3.0 * shared(&me, g)).collect());
         p.me.push(me);
         p.gp.push(gp);
