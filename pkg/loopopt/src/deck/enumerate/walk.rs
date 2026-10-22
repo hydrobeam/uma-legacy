@@ -4,7 +4,9 @@ use super::{
     BorrowTables, DOM_GAP, DeckPath, DeckSearchContext, NodeScratch, ParentRatioBounds, PreparedTables, SearchConfig,
     SearchControl, SearchResults,
 };
-use crate::deck::{CFCHK, Kind, SBCHK, SBN, Sel, Src, StateBound, cap_class, gm_g, gm_w, joint_fast, sb_check};
+use crate::deck::{
+    CFCHK, Kind, SBCHK, SBN, SelectedDeck, Src, StateBound, cap_class, gm_g, gm_w, joint_fast, sb_check,
+};
 
 /// Read-only tables for one configuration, borrowed separately from the node workspace.
 pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
@@ -851,7 +853,16 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         let mk = |v: f64| {
             let mut e = sel.to_vec();
             e.sort_unstable();
-            (v, Sel { ents: e, plain, filler, dw: dw.to_vec(), dg: dg.to_vec() })
+            (
+                v,
+                SelectedDeck {
+                    entries: e,
+                    plain_pals: plain,
+                    filler_cards: filler,
+                    white_hint_chances: dw.to_vec(),
+                    gold_hint_chances: dg.to_vec(),
+                },
+            )
         };
         if best {
             let v = val(&clauses[0], dw, dg);

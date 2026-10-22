@@ -46,7 +46,7 @@ impl<'veteran> VeteranTraits<'veteran> {
 /// (stars and pinks shared with the lineage slots made from her: `Env::slots` takes them without copying)
 pub(crate) struct Who {
     /// Her index in Data::umas (None: a character the data does not list).
-    pub(crate) ix: Option<usize>,
+    pub(crate) uma_index: Option<usize>,
     pub(crate) chara: u32,
     /// (race index, win chance), sorted by race; chance 1 for a win on record.
     pub(crate) wins: Vec<(usize, f64)>,
@@ -55,46 +55,47 @@ pub(crate) struct Who {
     /// (aptitude factor group, stars) of her pink sparks.
     pub(crate) pinks: std::rc::Rc<Vec<(u32, u8)>>,
     /// The star mix her sparks are drawn from (a veteran before her result is known); None: `stars` are fixed.
-    pub(crate) mix: Option<[f64; 3]>,
+    pub(crate) star_mix: Option<[f64; 3]>,
 }
 
 /// The veterans the parents come from, each with her own parents; per veteran and parent, the race part of that
 /// grandparent slot's affinity, 3 x shared(veteran, parent) (constant per veteran: `Env::slots` reads it)
-/// `max_bor`: how many borrowed veterans a pair of parents may hold (1; 0 under `borrowed_parent` "never", and for the
-/// pick's pool under "later")
 #[derive(Clone)]
 pub(crate) struct Pool {
     /// Per veteran (legacy index), herself.
-    pub(crate) me: Vec<Who>,
+    pub(crate) veterans: Vec<Who>,
     /// Per veteran, her recorded parents (the trainee's grandparent slots under her), in record order.
-    pub(crate) gp: Vec<Vec<Who>>,
+    pub(crate) parents: Vec<Vec<Who>>,
     /// Per veteran, whether she is borrowed.
     pub(crate) borrowed: Vec<bool>,
     /// Per veteran and recorded parent, 3 x shared(veteran, parent): that grandparent slot's race affinity.
-    pub(crate) gpc: Vec<Vec<f64>>,
-    pub(crate) max_bor: u8,
+    pub(crate) grandparent_race_affinity: Vec<Vec<f64>>,
+    /// How many borrowed veterans a pair of parents may hold (1; 0 under `borrowed_parent` "never", and for the pick's
+    /// pool under "later").
+    pub(crate) max_borrowed: u8,
 }
 
 impl Pool {
-    /// whether veterans a and b hold at most `max_bor` borrowed ones between them
+    /// whether veterans a and b hold at most `max_borrowed` borrowed ones between them
     #[inline]
     pub(crate) fn bor_ok(&self, a: usize, b: usize) -> bool {
-        u8::from(self.borrowed[a]) + u8::from(self.borrowed[b]) <= self.max_bor
+        u8::from(self.borrowed[a]) + u8::from(self.borrowed[b]) <= self.max_borrowed
     }
     /// whether a veteran borrowed or not (`borrowed`) can be a parent at all: her share of `bor_ok`
     #[inline]
     pub(crate) fn bor_one(&self, borrowed: bool) -> bool {
-        u8::from(borrowed) <= self.max_bor
+        u8::from(borrowed) <= self.max_borrowed
     }
-    /// The pair rules that hold for every trainee: two veterans, of different characters, at most `max_bor` borrowed
+    /// The pair rules that hold for every trainee: two veterans, of different characters, at most
+    /// `max_borrowed` borrowed
     #[inline]
     pub(crate) fn parents_ok(&self, a: usize, b: usize) -> bool {
-        a != b && self.me[a].chara != self.me[b].chara && self.bor_ok(a, b)
+        a != b && self.veterans[a].chara != self.veterans[b].chara && self.bor_ok(a, b)
     }
     /// The trainee's rule (character `tid`): neither parent is her character
     #[inline]
     pub(crate) fn trainee_ok(&self, tid: u32, a: usize, b: usize) -> bool {
-        self.me[a].chara != tid && self.me[b].chara != tid
+        self.veterans[a].chara != tid && self.veterans[b].chara != tid
     }
     /// Legal parents a, b for a trainee of character `tid`: `parents_ok` and `trainee_ok`. The one rule every pair loop
     /// takes (`solve`'s candidates, the planner's and the simulator's scans), so a proof over its pairs covers `solve`'s
@@ -124,13 +125,15 @@ pub(crate) fn holds_fix(fix: &[usize], a: usize, b: usize) -> bool {
 pub(crate) fn dominates(p: &Pool, x: usize, y: usize) -> bool {
     let ge = |a: &Who, b: &Who| {
         a.chara == b.chara
-            && a.mix.is_none()
-            && b.mix.is_none()
+            && a.star_mix.is_none()
+            && b.star_mix.is_none()
             && a.stars.iter().zip(b.stars.iter()).all(|(s, t)| s >= t)
             && a.wins.iter().chain(&b.wins).all(|w| w.1 == 1.0)
             && b.wins.iter().all(|w| a.wins.iter().any(|v| v.0 == w.0))
     };
-    ge(&p.me[x], &p.me[y]) && p.gp[x].len() == p.gp[y].len() && p.gp[x].iter().zip(&p.gp[y]).all(|(a, b)| ge(a, b))
+    ge(&p.veterans[x], &p.veterans[y])
+        && p.parents[x].len() == p.parents[y].len()
+        && p.parents[x].iter().zip(&p.parents[y]).all(|(a, b)| ge(a, b))
 }
 
 /// G1s two legacies both won (expected count when a win is a chance)
@@ -152,10 +155,10 @@ pub(crate) fn shared(a: &Who, b: &Who) -> f64 {
 
 impl Env<'_> {
     pub(crate) fn uix(&self, id: u32) -> Option<usize> {
-        self.d.umas.iter().position(|u| u.id == id)
+        self.data.umas.iter().position(|u| u.id == id)
     }
     fn stars_of(&self, sp: &[(u32, u8)]) -> Vec<u8> {
-        self.sj
+        self.skill_job
             .targets
             .iter()
             .map(|t| sp.iter().filter(|s| s.0 == t.group).map(|s| s.1.min(3)).max().unwrap_or(0))
@@ -172,39 +175,39 @@ impl Env<'_> {
         };
         w.sort_by_key(|x| x.0);
         Who {
-            ix: self.uix(traits.chara),
+            uma_index: self.uix(traits.chara),
             chara: traits.chara,
             wins: w,
             stars: std::rc::Rc::new(self.stars_of(traits.sparks)),
             pinks: std::rc::Rc::new(traits.pinks.to_vec()),
-            mix: traits.star_mix,
+            star_mix: traits.star_mix,
         }
     }
     /// `pool` of the legacies so far plus `l` (pop with `pool_pop`)
     pub(crate) fn pool_push(&self, p: &mut Pool, l: &Legacy) {
         let me = self.who(&VeteranTraits::of_legacy(l));
         let gp: Vec<Who> = l.parents.iter().map(|g| self.who(&VeteranTraits::of_ancestor(g))).collect();
-        p.gpc.push(gp.iter().map(|g| 3.0 * shared(&me, g)).collect());
-        p.me.push(me);
-        p.gp.push(gp);
+        p.grandparent_race_affinity.push(gp.iter().map(|g| 3.0 * shared(&me, g)).collect());
+        p.veterans.push(me);
+        p.parents.push(gp);
         p.borrowed.push(l.borrowed);
     }
     /// Undo one `pool_push`, keeping all four per-veteran arrays aligned.
     pub(crate) fn pool_pop(p: &mut Pool) {
-        p.me.pop();
-        p.gp.pop();
+        p.veterans.pop();
+        p.parents.pop();
         p.borrowed.pop();
-        p.gpc.pop();
+        p.grandparent_race_affinity.pop();
     }
     /// the solver's pool of `legs`: each one's entry as `pool_push` builds it (the one construction, the simulator's too)
     pub(crate) fn pool(&self, legs: &[Legacy]) -> Pool {
         let n = legs.len();
         let mut p = Pool {
-            me: Vec::with_capacity(n),
-            gp: Vec::with_capacity(n),
+            veterans: Vec::with_capacity(n),
+            parents: Vec::with_capacity(n),
             borrowed: Vec::with_capacity(n),
-            gpc: Vec::with_capacity(n),
-            max_bor: self.max_bor,
+            grandparent_race_affinity: Vec::with_capacity(n),
+            max_borrowed: self.max_borrowed,
         };
         for l in legs {
             self.pool_push(&mut p, l);

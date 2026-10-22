@@ -1,7 +1,7 @@
 //! Exact career deck searches and their kept memos.
 use super::{DeckRes, Env};
 use crate::deck::enumerate::{SearchMode, SearchOutcome};
-use crate::deck::{EXACT_BUDGET, EXACT_STEPS, Kind, Sel, Src, Value, joint_b, json, upper_na};
+use crate::deck::{EXACT_BUDGET, EXACT_STEPS, Kind, SelectedDeck, Src, Value, joint_b, json, upper_na};
 
 /// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads
 /// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the model state the search runs on,
@@ -9,7 +9,7 @@ use crate::deck::{EXACT_BUDGET, EXACT_STEPS, Kind, Sel, Src, Value, joint_b, jso
 /// and the work spent before the call (the work budget's tests read it)
 #[derive(PartialEq, Eq, Hash)]
 pub(crate) struct DeckKey {
-    /// `Env::cls` of the trainee.
+    /// `Env::deck_class` of the trainee.
     class: usize,
     /// Her folded event-hint chances, outfit by outfit, as bits.
     hint_chances: Vec<u64>,
@@ -21,7 +21,7 @@ pub(crate) struct DeckKey {
     work: usize,
 }
 
-/// The cap-free searches' counters (`Env::cfs`)
+/// The cap-free searches' counters (`Env::cap_free_stats`)
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub(crate) struct CfStats {
     pub(crate) reruns: usize,
@@ -71,7 +71,7 @@ pub(crate) struct DeckMemo {
     overflows: usize,
     cf: CfStats,
     /// the deck-search nodes and exact scorings it spent; per class, the call's own largest exact / product ratio and the
-    /// deck that first reached it (`note_ratio` from nothing); the last job that used it (`Env::job`)
+    /// deck that first reached it (`note_ratio` from nothing); the last job that used it (`Env::job_number`)
     nodes: usize,
     joints: usize,
     ratio: [Option<RatioDeck>; 4],
@@ -83,7 +83,7 @@ pub(crate) struct DeckMemo {
 struct RatioDeck {
     ratio: f64,
     trainee: usize,
-    deck: Sel,
+    deck: SelectedDeck,
 }
 
 /// One deck search's question beside the chances folded into the model (`set_trainee`).
@@ -101,7 +101,7 @@ struct DeckSearch {
 #[derive(Clone)]
 struct ValuedDeck {
     value: f64,
-    deck: Sel,
+    deck: SelectedDeck,
 }
 
 /// The capped search's answer and its best product deck when it found one (`Env::best_deck_capped`).
@@ -115,7 +115,7 @@ struct SearchEffects {
     work: usize,
     last_pv: Option<f64>,
     max_ratio: [f64; 4],
-    max_deck: [Option<(usize, Sel)>; 4],
+    max_deck: [Option<(usize, SelectedDeck)>; 4],
     cap_breach: usize,
     cfs: CfStats,
     cert: f64,
@@ -128,11 +128,11 @@ impl SearchEffects {
     fn save(env: &Env) -> Self {
         Self {
             work: env.work,
-            last_pv: env.last_pv,
+            last_pv: env.last_product_bound,
             max_ratio: env.max_ratio,
             max_deck: env.max_deck.clone(),
             cap_breach: env.cap_breach,
-            cfs: env.cfs,
+            cfs: env.cap_free_stats,
             cert: env.cert,
             overflows: env.overflows,
             nodes: env.space.nodes.get(),
@@ -141,11 +141,11 @@ impl SearchEffects {
     }
     fn restore(self, env: &mut Env) {
         env.work = self.work;
-        env.last_pv = self.last_pv;
+        env.last_product_bound = self.last_pv;
         env.max_ratio = self.max_ratio;
         env.max_deck = self.max_deck;
         env.cap_breach = self.cap_breach;
-        env.cfs = self.cfs;
+        env.cap_free_stats = self.cfs;
         env.cert = self.cert;
         env.overflows = self.overflows;
         env.space.nodes.set(self.nodes);
@@ -172,7 +172,7 @@ thread_local! {
     /// order), the last few. Exact: a `DeckKey` reads the same model, space and caps in every job of one setup, and the
     /// work budget's argument holds for any budget (`best_deck`)
     pub(crate) static DECK_KEEP: std::cell::RefCell<Vec<(u64, Kept)>> = const { std::cell::RefCell::new(Vec::new()) };
-    /// jobs run so far (`Env::job`)
+    /// jobs run so far (`Env::job_number`)
     pub(crate) static JOB_NO: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
@@ -191,7 +191,7 @@ pub(crate) const DECK_KEEP_CAP: usize = 8192;
 impl Drop for Env<'_> {
     fn drop(&mut self) {
         let kept = Kept { decks: std::mem::take(&mut self.deck_memo), corners: std::mem::take(&mut self.corner_memo) };
-        let fingerprint = self.memo_fp;
+        let fingerprint = self.memo_fingerprint;
         DECK_KEEP.with(|cache| {
             let mut cache = cache.borrow_mut();
             cache.retain(|entry| entry.0 != fingerprint);
@@ -205,7 +205,7 @@ impl Drop for Env<'_> {
 
 impl Env<'_> {
     /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
-    fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &Sel) {
+    fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &SelectedDeck) {
         self.note_breach(k, r);
         if r > self.max_ratio[k] {
             self.max_ratio[k] = r;
@@ -220,7 +220,7 @@ impl Env<'_> {
     }
     /// per class, the deck that set `max_ratio` (trainee name, cards), for the cap audit
     pub(crate) fn max_decks(&self) -> Value {
-        json!(self.max_deck.iter().map(|x| x.as_ref().map(|(t, s)| json!({"trainee": self.d.umas[*t].name, "cards": self.space.pdeck(s, &[self.d.umas[*t].id]).names}))).collect::<Vec<_>>())
+        json!(self.max_deck.iter().map(|x| x.as_ref().map(|(t, s)| json!({"trainee": self.data.umas[*t].name, "cards": self.space.pdeck(s, &[self.data.umas[*t].id]).names}))).collect::<Vec<_>>())
     }
     /// Trainee t's best deck at the chances already folded in (`set_trainee`), as the per-uma search finds it: the best
     /// product deck, then every deck whose product value times its class's cap (`cap_class`; at most EXACT_RHO, the top
@@ -242,12 +242,19 @@ impl Env<'_> {
     /// trainee the same chances: no relation points) then search once per class; a hit adds the same work and
     /// scorings and leaves the same proof, so everything after it is as if the search had run (only the node and
     /// exact-scoring counters, and `max_ratio`, which the same decks already set, see nothing).
-    pub(crate) fn best_deck(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
+    pub(crate) fn best_deck(
+        &mut self,
+        t: usize,
+        c: f64,
+        th: f64,
+        starts: &[&SelectedDeck],
+        scored: &mut usize,
+    ) -> DeckRes {
         if !starts.is_empty() {
             return self.best_deck_run(DeckSearch { trainee: t, spark_scale: c, bar: th }, starts, scored);
         }
         let key = DeckKey {
-            class: self.cls[t],
+            class: self.deck_class[t],
             hint_chances: self.model.ews[t].iter().flatten().map(|x| x.to_bits()).collect(),
             spark_scale: c.to_bits(),
             bar: if th <= 0.0 { 0 } else { th.to_bits() },
@@ -258,16 +265,16 @@ impl Env<'_> {
         {
             self.work += m.work;
             *scored += m.scored;
-            self.last_pv = m.pv;
+            self.last_product_bound = m.pv;
             self.cert = self.cert.min(m.cert);
             self.overflows += m.overflows;
-            self.cfs.add(&m.cf);
+            self.cap_free_stats.add(&m.cf);
             // first use in this job of an outcome an earlier job stored (`DECK_KEEP`): this job's own search would have
             // run here, so its node and exact-scoring counters and its per-class ratios count as if it had (a later use
             // in the same job leaves them, as the memo always has). A class's ratio and deck change only when the call's
             // own maximum is above the job's: `note_ratio` keeps the first deck strictly above, so the same as the run
-            if m.job != self.job {
-                m.job = self.job;
+            if m.job != self.job_number {
+                m.job = self.job_number;
                 self.space.nodes.set(self.space.nodes.get() + m.nodes);
                 crate::deck::JCOUNT.with(|c| c.set(c.get() + m.joints));
                 Self::merge_ratios(&mut self.max_ratio, &mut self.max_deck, &m.ratio);
@@ -289,7 +296,7 @@ impl Env<'_> {
             overflows: self.overflows,
             nodes: self.space.nodes.get(),
             joints: crate::deck::JCOUNT.with(std::cell::Cell::get),
-            cap_free: self.cfs,
+            cap_free: self.cap_free_stats,
         };
         // (the call's own per-class maxima, from nothing, then merged into the job's: see the hit above)
         let (r0, d0) =
@@ -307,16 +314,16 @@ impl Env<'_> {
                 key,
                 DeckMemo {
                     res: res.clone(),
-                    pv: self.last_pv,
+                    pv: self.last_product_bound,
                     work: self.work - start.work,
                     scored: *scored - start.scored,
                     cert,
                     overflows: self.overflows - start.overflows,
-                    cf: self.cfs.since(&start.cap_free),
+                    cf: self.cap_free_stats.since(&start.cap_free),
                     nodes: self.space.nodes.get() - start.nodes,
                     joints: crate::deck::JCOUNT.with(std::cell::Cell::get) - start.joints,
                     ratio,
-                    job: self.job,
+                    job: self.job_number,
                 },
             );
         }
@@ -326,7 +333,7 @@ impl Env<'_> {
     /// is strictly above, as `note_ratio` keeps the first deck strictly above
     fn merge_ratios(
         max_ratio: &mut [f64; 4],
-        max_deck: &mut [Option<(usize, Sel)>; 4],
+        max_deck: &mut [Option<(usize, SelectedDeck)>; 4],
         ratio: &[Option<RatioDeck>; 4],
     ) {
         for k in 0..4 {
@@ -344,7 +351,7 @@ impl Env<'_> {
     /// capped call's band overflows and certificate undone). Without a breach the capped answer stands, unchanged. Job
     /// field `cap_free`: the cap-free search alone. `CAP_RERUN=0` (checks): no rerun, the breach leaves the search not
     /// `complete` (as before the rerun existed).
-    fn best_deck_run(&mut self, search: DeckSearch, starts: &[&Sel], scored: &mut usize) -> DeckRes {
+    fn best_deck_run(&mut self, search: DeckSearch, starts: &[&SelectedDeck], scored: &mut usize) -> DeckRes {
         if self.space.dj.cap_free {
             return self.best_deck_cf(search, starts, scored, None, None);
         }
@@ -358,13 +365,13 @@ impl Env<'_> {
         }
         static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *OFF.get_or_init(|| std::env::var("CAP_RERUN").is_ok_and(|v| v == "0")) {
-            self.cfs.unhandled += 1;
+            self.cap_free_stats.unhandled += 1;
             return res;
         }
         // The cap-free answer supersedes this call's certificate and overflow count.
         self.cert = cert_before;
         self.overflows = overflows_before;
-        self.cfs.reruns += 1;
+        self.cap_free_stats.reruns += 1;
         let capped = match &res {
             DeckRes::Done(v, s, _) => Some(ValuedDeck { value: *v, deck: s.clone() }),
             _ => None,
@@ -373,7 +380,13 @@ impl Env<'_> {
     }
     /// CF_CHECK: the cap-free search beside a capped one, everything it changes put back, and their answers compared
     /// (`CFCHK`)
-    fn cf_beside(&mut self, search: DeckSearch, starts: &[&Sel], res: &DeckRes, product_deck: &Option<ValuedDeck>) {
+    fn cf_beside(
+        &mut self,
+        search: DeckSearch,
+        starts: &[&SelectedDeck],
+        res: &DeckRes,
+        product_deck: &Option<ValuedDeck>,
+    ) {
         let saved = SearchEffects::save(self);
         let mut sc = 0usize;
         let r = self.best_deck_cf(search, starts, &mut sc, product_deck.clone(), None);
@@ -419,20 +432,20 @@ impl Env<'_> {
     /// the bar, the incumbent or the career's bar th / c if higher, is built and scored best product value first,
     /// through `upper_na`. Proven (`full`) when the band finished (no node limit, no band overflow, every legal entry
     /// covered: `Src::cf_ok`) within CF_BUDGET work; then a best below th / c is `Bounded` (every deck is), else
-    /// `Done`. Unproven: the better of its best and the capped answer (`capped`), not full, counted in `cfs.open`. Its
-    /// work is counted apart (`cfs.work`), so the career's budget sees what it saw without the rerun; nodes and exact
-    /// scorings are counted as usual.
+    /// `Done`. Unproven: the better of its best and the capped answer (`capped`), not full, counted in
+    /// `cap_free_stats.open`. Its work is counted apart (`cap_free_stats.work`), so the career's budget sees what it
+    /// saw without the rerun; nodes and exact scorings are counted as usual.
     fn best_deck_cf(
         &mut self,
         search: DeckSearch,
-        starts: &[&Sel],
+        starts: &[&SelectedDeck],
         scored: &mut usize,
         product_deck: Option<ValuedDeck>,
         capped: Option<ValuedDeck>,
     ) -> DeckRes {
         let DeckSearch { trainee: t, spark_scale: c, bar: th } = search;
-        let ntar = self.ntar;
-        let uid = self.d.umas[t].id;
+        let ntar = self.target_count;
+        let uid = self.data.umas[t].id;
         let budget = cf_budget();
         let mut work = 0usize;
         let (pv, sel) = if let Some(ValuedDeck { value, deck }) = product_deck {
@@ -448,16 +461,18 @@ impl Env<'_> {
             );
             work += 2 * (self.space.nodes.get() - n0) + 10_000;
             // (a `cap_free` job records no product proof: `solve` and the plan bound with those through EXACT_RHO)
-            self.last_pv = if incomplete.is_some() || self.space.dj.cap_free { None } else { r.first().map(|x| x.0) };
+            self.last_product_bound =
+                if incomplete.is_some() || self.space.dj.cap_free { None } else { r.first().map(|x| x.0) };
             if let Some(x) = r.into_iter().next() {
                 x
             } else {
-                self.cfs.work += work;
+                self.cap_free_stats.work += work;
                 return DeckRes::NoDeck;
             }
         };
-        let score =
-            |env: &Env, sel: &Sel| joint_b(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
+        let score = |env: &Env, sel: &SelectedDeck| {
+            joint_b(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler_cards, ntar, false)[0].0
+        };
         let mut best = (score(self, &sel), sel);
         *scored += 1;
         work += 200;
@@ -495,12 +510,13 @@ impl Env<'_> {
                 full = false;
                 break;
             }
-            if s.ents == best.1.ents && s.plain == best.1.plain && s.filler == best.1.filler {
+            if s.entries == best.1.entries && s.plain_pals == best.1.plain_pals && s.filler_cards == best.1.filler_cards
+            {
                 continue;
             }
             let k = self.space.sel_class(&s);
-            let e: Vec<(&Src, Kind)> = s.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
-            if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler) {
+            let e: Vec<(&Src, Kind)> = s.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
+            if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler_cards) {
                 work += 25;
                 if ub[0] * (1.0 + 1e-9) < best.0.max(the) {
                     continue;
@@ -519,9 +535,9 @@ impl Env<'_> {
         if work > budget {
             full = false;
         }
-        self.cfs.work += work;
+        self.cap_free_stats.work += work;
         if !full {
-            self.cfs.open += 1;
+            self.cap_free_stats.open += 1;
             if let Some(ValuedDeck { value, deck }) = capped
                 && value > best.0
             {
@@ -536,10 +552,10 @@ impl Env<'_> {
     }
     /// The capped search (the deck search under the assumed caps, `EXACT_CAPS`), and its best product deck when it found
     /// one (the cap-free rerun starts from it)
-    fn best_deck_capped(&mut self, search: DeckSearch, starts: &[&Sel], scored: &mut usize) -> CappedSearch {
+    fn best_deck_capped(&mut self, search: DeckSearch, starts: &[&SelectedDeck], scored: &mut usize) -> CappedSearch {
         let DeckSearch { trainee: t, spark_scale: c, bar: th } = search;
-        let ntar = self.ntar;
-        let uid = self.d.umas[t].id;
+        let ntar = self.target_count;
+        let uid = self.data.umas[t].id;
         let n0 = self.space.nodes.get();
         // the product search starts at the bar the career must clear (a hair below the cut below): it prunes every
         // branch that cannot reach it and finds nothing when no deck can, and a deck that clears it is the one an
@@ -553,7 +569,7 @@ impl Env<'_> {
         // what it proves (`ruled`): the deck found is the best (the first deck above the seed the search keeps is only
         // ever replaced by a better one, and a branch is pruned only below the best so far); none found, every deck is
         // at most the seed. Nothing when enumeration was incomplete (more than 128 card characters).
-        self.last_pv = if incomplete.is_some() {
+        self.last_product_bound = if incomplete.is_some() {
             None
         } else if let Some(x) = r.first() {
             Some(x.0)
@@ -570,8 +586,9 @@ impl Env<'_> {
         if rho * c * pv * (1.0 + 1e-9) < th {
             return CappedSearch { result: DeckRes::Bounded, product_deck: Some(ValuedDeck { value: pv, deck: sel }) };
         }
-        let score =
-            |env: &Env, sel: &Sel| joint_b(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
+        let score = |env: &Env, sel: &SelectedDeck| {
+            joint_b(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler_cards, ntar, false)[0].0
+        };
         let product_deck = Some(ValuedDeck { value: pv, deck: sel.clone() });
         let mut best = (score(self, &sel), sel);
         *scored += 1;
@@ -632,7 +649,10 @@ impl Env<'_> {
                     cut = true;
                     break;
                 }
-                if s.ents == best.1.ents && s.plain == best.1.plain && s.filler == best.1.filler {
+                if s.entries == best.1.entries
+                    && s.plain_pals == best.1.plain_pals
+                    && s.filler_cards == best.1.filler_cards
+                {
                     continue;
                 }
                 // below the bar at its own class's cap (the bar rose since the band was built)
@@ -640,8 +660,9 @@ impl Env<'_> {
                 if !nocap && self.space.caps()[k].min(rho) * v * (1.0 + 1e-9) < best.0 {
                     continue;
                 }
-                let e: Vec<(&Src, Kind)> = s.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
-                if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler) {
+                let e: Vec<(&Src, Kind)> =
+                    s.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
+                if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler_cards) {
                     self.work += 25;
                     if ub[0] * (1.0 + 1e-9) < best.0 {
                         continue;

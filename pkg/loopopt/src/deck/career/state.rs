@@ -1,7 +1,7 @@
 //! The worker's saved searches and their validation.
 use super::sim;
 use super::{Env, Found, Pool, Ref, Solved};
-use crate::deck::{MAX_DECK, Sel, Value, json};
+use crate::deck::{MAX_DECK, SelectedDeck, Value, json};
 
 /// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
 /// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
@@ -144,42 +144,48 @@ pub(crate) fn len_in(v: &Value) -> Option<usize> {
     usz(v).filter(|&n| n <= STATE_MAX_N)
 }
 
-pub(crate) fn sel_out(s: &Sel) -> Value {
-    json!([s.ents, s.plain, s.filler, fvec(&s.dw), fvec(&s.dg)])
+pub(crate) fn sel_out(s: &SelectedDeck) -> Value {
+    json!([s.entries, s.plain_pals, s.filler_cards, fvec(&s.white_hint_chances), fvec(&s.gold_hint_chances)])
 }
 
-pub(crate) fn sel_in(v: &Value) -> Option<Sel> {
+pub(crate) fn sel_in(v: &Value) -> Option<SelectedDeck> {
     let a = v.as_array()?;
     let ents: Vec<usize> = a.first()?.as_array()?.iter().map(usz).collect::<Option<_>>()?;
     let (plain, filler) = (usz(a.get(1)?)?, usz(a.get(2)?)?);
     let (dw, dg) = (pvec_r(a.get(3)?)?, pvec_r(a.get(4)?)?);
     // (a deck: at most MAX_DECK cards, a white and a gold chance per target)
     let cards = ents.len().checked_add(plain)?.checked_add(filler)?;
-    (cards <= MAX_DECK && dw.len() == dg.len()).then_some(Sel { ents, plain, filler, dw, dg })
+    (cards <= MAX_DECK && dw.len() == dg.len()).then_some(SelectedDeck {
+        entries: ents,
+        plain_pals: plain,
+        filler_cards: filler,
+        white_hint_chances: dw,
+        gold_hint_chances: dg,
+    })
 }
 
 fn ref_out(r: &Ref) -> Value {
-    json!([fvec(&r.q), hx(r.val), sel_out(&r.sel)])
+    json!([fvec(&r.q), hx(r.val), sel_out(&r.deck)])
 }
 
 fn ref_in(v: &Value) -> Option<Ref> {
     let a = v.as_array()?;
-    Some(Ref { q: pvec_r(a.first()?)?, val: fx(a.get(1)?)?, sel: sel_in(a.get(2)?)? })
+    Some(Ref { q: pvec_r(a.first()?)?, val: fx(a.get(1)?)?, deck: sel_in(a.get(2)?)? })
 }
 
 pub(crate) fn found_out(f: &Found) -> Value {
-    json!([f.t, f.a, f.b, hx(f.val), hx(f.ub), sel_out(&f.sel)])
+    json!([f.trainee, f.first_parent, f.second_parent, hx(f.value), hx(f.ceiling), sel_out(&f.deck)])
 }
 
 pub(crate) fn found_in(v: &Value) -> Option<Found> {
     let a = v.as_array()?;
     Some(Found {
-        t: usz(a.first()?)?,
-        a: usz(a.get(1)?)?,
-        b: usz(a.get(2)?)?,
-        val: fx(a.get(3)?)?,
-        ub: fx(a.get(4)?)?,
-        sel: sel_in(a.get(5)?)?,
+        trainee: usz(a.first()?)?,
+        first_parent: usz(a.get(1)?)?,
+        second_parent: usz(a.get(2)?)?,
+        value: fx(a.get(3)?)?,
+        ceiling: fx(a.get(4)?)?,
+        deck: sel_in(a.get(5)?)?,
     })
 }
 
@@ -327,27 +333,32 @@ pub(crate) fn state_in(v: &Value) -> Value {
 impl Env<'_> {
     // ---- what a stored state (`state_in`) says of a setup, checked where it meets this one ----
     /// a stored deck: entries of this job's deck space, within its deck size, a chance per uncertain target
-    fn sel_fits(&self, s: &Sel) -> bool {
-        s.ents.iter().all(|&j| j < self.space.rel.len())
-            && s.ents.len() + s.plain + s.filler <= self.space.dj.deck_size
-            && s.dw.len() == self.nu
+    fn sel_fits(&self, s: &SelectedDeck) -> bool {
+        s.entries.iter().all(|&j| j < self.space.rel.len())
+            && s.entries.len() + s.plain_pals + s.filler_cards <= self.space.dj.deck_size
+            && s.white_hint_chances.len() == self.uncertain_count
     }
     /// a stored fully checked deck: a chance per job target, and its deck
     fn ref_fits(&self, r: &Ref) -> bool {
-        r.q.len() == self.ntar && self.sel_fits(&r.sel)
+        r.q.len() == self.target_count && self.sel_fits(&r.deck)
     }
     /// stored proofs (`SEEN`): per deck class (one per uma) the fully checked decks
     pub(crate) fn seen_fits(&self, seen: &[Vec<Ref>]) -> bool {
-        seen.len() == self.d.umas.len() && seen.iter().flatten().all(|r| self.ref_fits(r))
+        seen.len() == self.data.umas.len() && seen.iter().flatten().all(|r| self.ref_fits(r))
     }
     /// a stored main search (`LAST_SOLVE`) of pool `p`: per uma its refs and product proofs, careers of its trainees and
     /// veterans
     pub(crate) fn solved_fits(&self, sv: &Solved, ruled: &Ruled, p: &Pool) -> bool {
-        let n = self.d.umas.len();
+        let n = self.data.umas.len();
         ruled.len() == n
-            && ruled.iter().flatten().all(|(q, _)| q.len() == self.ntar)
+            && ruled.iter().flatten().all(|(q, _)| q.len() == self.target_count)
             && sv.refs.len() == n
             && sv.refs.iter().flatten().all(|r| self.ref_fits(r))
-            && sv.found.iter().all(|f| f.t < n && f.a < p.me.len() && f.b < p.me.len() && self.sel_fits(&f.sel))
+            && sv.found.iter().all(|f| {
+                f.trainee < n
+                    && f.first_parent < p.veterans.len()
+                    && f.second_parent < p.veterans.len()
+                    && self.sel_fits(&f.deck)
+            })
     }
 }

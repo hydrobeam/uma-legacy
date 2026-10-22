@@ -19,7 +19,7 @@ pub(crate) fn assemble_plan_output<'data>(
     buf: &mut Vec<f64>,
 ) -> Value {
     let PlanContext { input, candidates } = *context;
-    let sj = sim.env.sj;
+    let sj = sim.env.skill_job;
     let legacies = input.legacies;
     let pool = input.pool;
     let data = context.data();
@@ -42,7 +42,7 @@ pub(crate) fn assemble_plan_output<'data>(
     // (no row that can be the pick, `is_runnable`: the same, the pick's main search's)
     if !runs.iter().any(|r| is_runnable(&r.career)) {
         for f in &input.pick_solved().found {
-            runs.push(PlanRow::proxy(f.t, f.clone(), vec![], RowOrigin::Fallback, None));
+            runs.push(PlanRow::proxy(f.trainee, f.clone(), vec![], RowOrigin::Fallback, None));
         }
     }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
@@ -62,7 +62,10 @@ pub(crate) fn assemble_plan_output<'data>(
         option.insert("role".into(), json!(row_role(candidates, scores, x, looped)));
         option.insert(
             "best_odds".into(),
-            json!(x == candidates.pick_career.t && unordered_parents(f) == unordered_parents(&candidates.pick_career)),
+            json!(
+                x == candidates.pick_career.trainee
+                    && unordered_parents(f) == unordered_parents(&candidates.pick_career)
+            ),
         );
         option.insert("chosen".into(), json!(i == pick));
         // both parents 8/8s: her 8/8 here is a fully looped parent
@@ -98,8 +101,8 @@ pub(crate) fn assemble_plan_output<'data>(
     // roll state kept here): the pick, her uncertain targets (`uncv`) and the scenario's guaranteed ones (`fixed`)
     let outcomes = match runs.get(pick) {
         Some(row) if row.scoring.is_some() => {
-            json!({"trainee": data.umas[row.trainee].id, "parents": [row.career.a, row.career.b],
-        "uncv": env.uncv, "fixed": env.fixed_t})
+            json!({"trainee": data.umas[row.trainee].id, "parents": [row.career.first_parent, row.career.second_parent],
+        "uncv": env.uncertain_targets, "fixed": env.fixed_targets})
         }
         _ => Value::Null,
     };
@@ -163,7 +166,7 @@ fn pick_roll_state(
         base: KeptBase::of(&base),
         lineage: row.lineage(),
         // (the roll state outlives the plan's rows)
-        deck: row.career.sel.clone(),
+        deck: row.career.deck.clone(),
         own_trios,
         found_anchors: found_anchors(sim.env, input.pool, input.solved),
         partner_anchors: vec![],
@@ -195,7 +198,7 @@ fn keep_plan_searches(context: &PlanContext, searches: PlanSearches) -> Incomple
     let key = bests_key(input.resources.job, input.fixed_parents, context.legacy_count());
     let mut kept_best = searches.best_careers.clone();
     // The main search's best is per job, searched again (cheap) next time.
-    kept_best[context.candidates.main_career.t] = CachedSearch::Unsearched;
+    kept_best[context.candidates.main_career.trainee] = CachedSearch::Unsearched;
     BESTS.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache.retain(|plan| plan.key != key);

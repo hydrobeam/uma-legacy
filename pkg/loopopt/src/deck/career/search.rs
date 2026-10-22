@@ -4,7 +4,7 @@ use super::{
     Env, Pool, SOLVE_KEEP, aff_factor, dominates, holds_fix, inherit_q, insp_miss, mix_term, now_ms, part_sum, prof,
     shared, spark_scale,
 };
-use crate::deck::Sel;
+use crate::deck::SelectedDeck;
 use crate::deck::career::Lineage;
 
 /// How a bound proves a career out (`Env::ceiling_out`, `refs_out`, `ruled_out`): `Below(th)`, `solve`'s prune, the bound
@@ -68,18 +68,24 @@ impl Iterator for Ranked {
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
 #[derive(Clone)]
 pub(crate) struct Found {
-    pub(crate) t: usize,
-    pub(crate) a: usize,
-    pub(crate) b: usize,
-    pub(crate) val: f64,
-    pub(crate) ub: f64,
-    pub(crate) sel: Sel,
+    /// The trainee (uma index).
+    pub(crate) trainee: usize,
+    /// The first parent (legacy index).
+    pub(crate) first_parent: usize,
+    /// The second parent (legacy index).
+    pub(crate) second_parent: usize,
+    /// The career's value C x E: the spark scale times her best deck's exact value.
+    pub(crate) value: f64,
+    /// The ceiling the search bounded the career with before solving it.
+    pub(crate) ceiling: f64,
+    /// Her best deck.
+    pub(crate) deck: SelectedDeck,
 }
 
 impl Found {
     /// Her trainee and parents, in the order recorded.
     pub(crate) const fn lineage(&self) -> Lineage {
-        Lineage { trainee: self.t, first_parent: self.a, second_parent: self.b }
+        Lineage { trainee: self.trainee, first_parent: self.first_parent, second_parent: self.second_parent }
     }
 }
 
@@ -90,14 +96,14 @@ impl Found {
 pub(crate) struct Ref {
     pub(crate) q: Vec<f64>,
     pub(crate) val: f64,
-    pub(crate) sel: Sel,
+    pub(crate) deck: SelectedDeck,
 }
 
 #[derive(Clone)]
 pub(crate) enum DeckRes {
     NoDeck,
     Bounded,
-    Done(f64, Sel, bool),
+    Done(f64, SelectedDeck, bool),
 }
 
 #[derive(Clone)]
@@ -169,7 +175,7 @@ impl Env<'_> {
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
     pub(crate) fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {
-        self.dmax[t].as_ref()?;
+        self.deck_odds_ceilings[t].as_ref()?;
         let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
         Some(self.ceiling_at(t, q, c, rho, fixed))
     }
@@ -177,12 +183,12 @@ impl Env<'_> {
     #[inline]
     fn ceiling_at(&mut self, t: usize, q: &[f64], c: f64, rho: f64, fixed: f64) -> f64 {
         self.set_trainee(t, q);
-        let (dw, dg) = self.dmax[t].as_ref().unwrap();
+        let (dw, dg) = self.deck_odds_ceilings[t].as_ref().unwrap();
         let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
         rho * c * fixed * pv
     }
     /// `solve`'s candidates: per trainee of `trainees` with legal deck odds (in order; `tp` her position), per legal pair
-    /// a < b of `p` (all of `fix` among them, at most `p.max_bor` borrowed, neither her character), `mk(ceiling, tp, t, a, b)`,
+    /// a < b of `p` (all of `fix` among them, at most `p.max_borrowed` borrowed, neither her character), `mk(ceiling, tp, t, a, b)`,
     /// in that order. The numbers are `lineage` then `ceiling`'s, operation for operation, without the allocations and
     /// with what does not depend on the trainee computed once per pair (the parents' race parts and relation points
     /// between them, the carrier counts and so the spark scale c) or once per trainee and legacy (her relation points
@@ -198,9 +204,9 @@ impl Env<'_> {
         keep: impl Fn(usize, usize) -> bool,
         mut mk: impl FnMut(f64, usize, usize, usize, usize) -> C,
     ) -> Vec<C> {
-        let d = self.d;
-        let nl = p.me.len();
-        let ntar = self.ntar;
+        let d = self.data;
+        let nl = p.veterans.len();
+        let ntar = self.target_count;
         // a slot's (miss, mix) factors of target k: `inherit`'s, 1 for the one it leaves alone (its affinity factor fa
         // computed once per slot)
         #[inline(always)]
@@ -214,7 +220,7 @@ impl Env<'_> {
             }
         }
         // `spark_scale` per carrier count n
-        let maxs = (0..nl).map(|x| 1 + p.gp[x].len()).max().unwrap_or(0) * 2;
+        let maxs = (0..nl).map(|x| 1 + p.parents[x].len()).max().unwrap_or(0) * 2;
         let pw: Vec<f64> = (0..=maxs).map(|n| spark_scale(n as i32)).collect();
         struct Pre {
             a: usize,
@@ -227,7 +233,9 @@ impl Env<'_> {
         // per legacy and target, how many of her slots (her own, her parents') carry the spark
         let cnt: Vec<usize> = (0..nl)
             .flat_map(|x| {
-                (0..ntar).map(move |k| std::iter::once(&p.me[x]).chain(&p.gp[x]).filter(|w| w.stars[k] != 0).count())
+                (0..ntar).map(move |k| {
+                    std::iter::once(&p.veterans[x]).chain(&p.parents[x]).filter(|w| w.stars[k] != 0).count()
+                })
             })
             .collect();
         let mut nc = vec![0usize; ntar];
@@ -241,18 +249,26 @@ impl Env<'_> {
             if !p.parents_ok(a, b) || !holds_fix(fix, a, b) || !keep(a, b) {
                 continue;
             }
-            let sh = 3.0 * shared(&p.me[a], &p.me[b]);
-            let race = [a, b].map(|x| part_sum(sh, p.gpc[x].iter().copied()));
-            let pp = [self.pair(p.me[a].ix, p.me[b].ix), self.pair(p.me[b].ix, p.me[a].ix)];
+            let sh = 3.0 * shared(&p.veterans[a], &p.veterans[b]);
+            let race = [a, b].map(|x| part_sum(sh, p.grandparent_race_affinity[x].iter().copied()));
+            let pp = [
+                self.pair(p.veterans[a].uma_index, p.veterans[b].uma_index),
+                self.pair(p.veterans[b].uma_index, p.veterans[a].uma_index),
+            ];
             for k in 0..ntar {
                 nc[k] = cnt[a * ntar + k] + cnt[b * ntar + k];
             }
-            let c =
-                self.uncv.iter().map(|&i| pw[nc[i]]).chain(self.fixed_t.iter().map(|&i| pw[nc[i]])).product::<f64>();
+            let c = self
+                .uncertain_targets
+                .iter()
+                .map(|&i| pw[nc[i]])
+                .chain(self.fixed_targets.iter().map(|&i| pw[nc[i]]))
+                .product::<f64>();
             pairs.push(Pre { a, b, c, race, pp });
         }
-        let mut out: Vec<C> =
-            Vec::with_capacity(pairs.len() * trainees.iter().filter(|&&t| self.dmax[t].is_some()).count());
+        let mut out: Vec<C> = Vec::with_capacity(
+            pairs.len() * trainees.iter().filter(|&&t| self.deck_odds_ceilings[t].is_some()).count(),
+        );
         let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
         let mut q = vec![0.0f64; ntar];
         // per legacy x: her relation points with the trainee, and per grandparent slot its relation points and its
@@ -260,7 +276,7 @@ impl Env<'_> {
         let mut pt = vec![0.0f64; nl];
         let go: Vec<usize> = std::iter::once(0)
             .chain((0..nl).scan(0, |s, x| {
-                *s += p.gp[x].len();
+                *s += p.parents[x].len();
                 Some(*s)
             }))
             .collect();
@@ -316,7 +332,7 @@ impl Env<'_> {
                 for k in 0..ntar {
                     let (mut miss, mut mix2) = (1.0f64, 1.0f64);
                     for (s, x) in [a, b].into_iter().enumerate() {
-                        let (fm, fx) = fac(p.me[x].stars[k], p.me[x].mix, fa[s]);
+                        let (fm, fx) = fac(p.veterans[x].stars[k], p.veterans[x].star_mix, fa[s]);
                         miss *= fm;
                         mix2 *= fx;
                         for j in go[x]..go[x + 1] {
@@ -353,28 +369,31 @@ impl Env<'_> {
             last
         }
         for (tp, &t) in trainees.iter().enumerate() {
-            if self.dmax[t].is_none() {
+            if self.deck_odds_ceilings[t].is_none() {
                 continue;
             }
             let (ti, tid) = (Some(t), d.umas[t].id);
             for x in 0..nl {
-                let px = &p.me[x];
-                pt[x] = self.pair(ti, px.ix);
-                for (gi, g) in p.gp[x].iter().enumerate() {
+                let px = &p.veterans[x];
+                pt[x] = self.pair(ti, px.uma_index);
+                for (gi, g) in p.parents[x].iter().enumerate() {
                     let j = go[x] + gi;
-                    gr[j] = self.tri(ti, px.ix, g.ix);
-                    let fa = aff_factor(gr[j], p.gpc[x][gi]);
+                    gr[j] = self.tri(ti, px.uma_index, g.uma_index);
+                    let fa = aff_factor(gr[j], p.grandparent_race_affinity[x][gi]);
                     for k in 0..ntar {
-                        gf[j * ntar + k] = fac(g.stars[k], g.mix, fa);
+                        gf[j * ntar + k] = fac(g.stars[k], g.star_mix, fa);
                     }
                 }
             }
-            let (dw, dg) = self.dmax[t].as_ref().unwrap();
-            debug_assert!(self.sts0[t].len() == self.model.n_outfits(t), "one skill table per outfit of trainee {t}");
+            let (dw, dg) = self.deck_odds_ceilings[t].as_ref().unwrap();
+            debug_assert!(
+                self.outfit_coverage[t].len() == self.model.n_outfits(t),
+                "one skill table per outfit of trainee {t}"
+            );
             let (gg, gw) = (crate::skills::GEN_GOLD, crate::skills::GEN_WHITE);
-            let ft: Vec<Vec<Fac>> = self.sts0[t]
+            let ft: Vec<Vec<Fac>> = self.outfit_coverage[t]
                 .iter()
-                .zip(&self.ew0[t])
+                .zip(&self.own_event_chances[t])
                 .map(|(st, e0)| {
                     (0..st.len())
                         .map(|k| match st[k] {
@@ -396,7 +415,7 @@ impl Env<'_> {
                 gr: &gr,
                 gf: &gf,
                 ft: &ft,
-                uncv: &self.uncv,
+                uncv: &self.uncertain_targets,
                 gw,
                 rho,
                 fixed,
@@ -426,7 +445,7 @@ impl Env<'_> {
         per_trainee: bool,
         top: usize,
     ) -> Solved {
-        let d = self.d;
+        let d = self.data;
         self.work = 0; // each search has its own work budget
         let cert0 = std::mem::replace(&mut self.cert, f64::INFINITY);
         // (`tp`: the trainee's position in `trainees`; generated in (tp, a, b) order)
@@ -444,7 +463,7 @@ impl Env<'_> {
             }
         }
         let t_gen = now_ms();
-        let nl = p.me.len();
+        let nl = p.veterans.len();
         assert!(
             nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize && trainees.len() <= u16::MAX as usize,
             "legacies, umas and trainees are packed as u16"
@@ -489,14 +508,15 @@ impl Env<'_> {
         let mut complete = true;
         // a breach no cap-free search answered (`CAP_RERUN=0`): the search may have pruned a better deck. A rerun that
         // proves nothing returns a deck search that is not full, so `complete` falls below as for any such search
-        let open0 = self.cfs.unhandled;
-        let mut done: Vec<(f64, usize, Sel)> = vec![];
+        let open0 = self.cap_free_stats.unhandled;
+        let mut done: Vec<(f64, usize, SelectedDeck)> = vec![];
         let floor = self.floor;
-        let kth = |done: &[(f64, usize, Sel)]| if done.len() < top { floor } else { done[top - 1].0.max(floor) };
+        let kth =
+            |done: &[(f64, usize, SelectedDeck)]| if done.len() < top { floor } else { done[top - 1].0.max(floor) };
         let (mut n_solved, mut n_bounded, mut n_scored) = (0usize, 0usize, 0usize);
         let mut next = 0;
         // one result per trainee: a candidate only matters if it beats the k-th best and its trainee's best so far
-        let thr = |done: &[(f64, usize, Sel)], cands: &[Cand], t: usize| {
+        let thr = |done: &[(f64, usize, SelectedDeck)], cands: &[Cand], t: usize| {
             if per_trainee {
                 done.iter().find(|x| cands[x.1].t as usize == t).map_or_else(|| kth(done), |x| x.0.max(kth(done)))
             } else {
@@ -524,7 +544,7 @@ impl Env<'_> {
             }
             && cands[next].ub * (1.0 + 1e-9) >= kth(&done)
         {
-            if self.hard > 0 && self.work > self.hard {
+            if self.hard_work_cap > 0 && self.work > self.hard_work_cap {
                 complete = false;
                 break;
             }
@@ -570,7 +590,7 @@ impl Env<'_> {
                 },
                 "gen_cands' ceiling of ({t}, {a}, {b}) is not ceiling(lineage)"
             );
-            let ct = self.cls[t];
+            let ct = self.deck_class[t];
             let seen: &[Ref] = if self.use_seen { &self.seen[ct] } else { &[] };
             // (the lowest of these bounds below th, as any one of them below it: the minimum is one of the bounds, and
             // rounding x (1 + 1e-9) is monotone; a NaN bound neither lowers the minimum nor passes the test)
@@ -616,7 +636,7 @@ impl Env<'_> {
                 unsolved.remove(&(cands[ci].t, cands[ci].a, cands[ci].b));
             }
             if full {
-                refs[t].push(Ref { q, val, sel: sel.clone() });
+                refs[t].push(Ref { q, val, deck: sel.clone() });
             } else {
                 complete = false;
             }
@@ -637,7 +657,7 @@ impl Env<'_> {
         } else {
             0.0
         };
-        if self.cfs.unhandled > open0 {
+        if self.cap_free_stats.unhandled > open0 {
             complete = false;
         }
         let proven = complete
@@ -652,12 +672,12 @@ impl Env<'_> {
                 .into_iter()
                 .take(top)
                 .map(|(val, ci, sel)| Found {
-                    t: cands[ci].t as usize,
-                    a: cands[ci].a as usize,
-                    b: cands[ci].b as usize,
-                    val,
-                    ub: cands[ci].ub,
-                    sel,
+                    trainee: cands[ci].t as usize,
+                    first_parent: cands[ci].a as usize,
+                    second_parent: cands[ci].b as usize,
+                    value: val,
+                    ceiling: cands[ci].ub,
+                    deck: sel,
                 })
                 .collect(),
             refs,
@@ -685,7 +705,7 @@ impl Env<'_> {
         n_scored: &mut usize,
     ) -> DeckRes {
         let TwinSearch { trainee: t, chances: q, spark_scale: c, bar: th, starts } = search;
-        let ct = self.cls[t];
+        let ct = self.deck_class[t];
         let tk = (t as u16, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
         match twins.get(&tk) {
             Some(Twin::Done(v, sel, pv)) => {
@@ -697,9 +717,9 @@ impl Env<'_> {
             Some(Twin::Bounded(th1)) if th >= *th1 => DeckRes::Bounded,
             Some(Twin::NoDeck) => DeckRes::NoDeck,
             _ => {
-                let starts: Vec<&Sel> = starts.iter().map(|r| &r.sel).collect();
+                let starts: Vec<&SelectedDeck> = starts.iter().map(|r| &r.deck).collect();
                 let res = self.best_deck(t, c, th, &starts, n_scored);
-                let pv = self.last_pv.take();
+                let pv = self.last_product_bound.take();
                 if let Some(s) = pv {
                     self.ruled[ct].push((q.to_vec(), s));
                 }
@@ -722,7 +742,7 @@ impl Env<'_> {
     /// A search's fully checked decks (`refs`, per trainee) into `seen` (per deck class), each new one once
     fn merge_seen(&mut self, refs: &[Vec<Ref>]) {
         for (t, rs) in refs.iter().enumerate() {
-            let ct = self.cls[t];
+            let ct = self.deck_class[t];
             for r in rs {
                 if !self.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) {
                     self.seen[ct].push(r.clone());
@@ -735,13 +755,13 @@ impl Env<'_> {
 /// Per legacy y, the legacies x at least as good in every career (`dominates`), ascending. Only veterans of one
 /// character can dominate each other (`dominates` tests the characters first), so the other pairs are skipped unasked.
 fn dominance_lists(p: &Pool) -> Vec<Vec<usize>> {
-    let nl = p.me.len();
+    let nl = p.veterans.len();
     let mut by_chara: crate::FxMap<u32, Vec<usize>> = crate::FxMap::default();
     for x in 0..nl {
-        by_chara.entry(p.me[x].chara).or_default().push(x);
+        by_chara.entry(p.veterans[x].chara).or_default().push(x);
     }
     (0..nl)
-        .map(|y| by_chara[&p.me[y].chara].iter().copied().filter(|&x| x != y && dominates(p, x, y)).collect())
+        .map(|y| by_chara[&p.veterans[y].chara].iter().copied().filter(|&x| x != y && dominates(p, x, y)).collect())
         .collect()
 }
 
@@ -767,7 +787,7 @@ fn dominance_lists(p: &Pool) -> Vec<Vec<usize>> {
 /// unbudgeted search gives); outputs are otherwise the same, only the work counters fall.
 enum Twin {
     /// Fully checked: value, deck, the product search's proof.
-    Done(f64, Sel, Option<f64>),
+    Done(f64, SelectedDeck, Option<f64>),
     /// Bounded at this bar.
     Bounded(f64),
     NoDeck,

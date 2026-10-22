@@ -182,7 +182,7 @@ pub(crate) struct PlanJob {
     roll: Option<Vec<u8>>,
 }
 
-/// Inputs shared by the phases. Under `borrowed_parent: "later"`, `pick` is the pool
+/// Inputs shared by the phases. Under `borrowed_parent: "later"`, `pick_search` is the pool
 /// without borrowed parents and its main search. The candidates, builders, trios and
 /// scoring partners still use `pool` and `solved`; only runnable rows use the pick's pool.
 pub(crate) struct PlanInputs<'plan, 'data> {
@@ -201,24 +201,34 @@ pub(crate) struct PlanInputs<'plan, 'data> {
     /// Settings for the next-career planner.
     pub(crate) settings: &'plan PlanJob,
     /// Runnable pool and search when borrowed parents are deferred.
-    pub(crate) pick: Option<(&'plan Pool, &'plan Solved)>,
+    pub(crate) pick_search: Option<PickSearch<'plan>>,
+}
+
+/// The pool the career picked comes from when it differs from the plan's, and its main search
+/// (`borrowed_parent` "later": the pool without borrowed parents).
+#[derive(Clone, Copy)]
+pub(crate) struct PickSearch<'plan> {
+    /// The pool without borrowed parents.
+    pub(crate) pool: &'plan Pool,
+    /// The main career search on that pool.
+    pub(crate) solved: &'plan Solved,
 }
 
 impl<'plan> PlanInputs<'plan, '_> {
     /// The pool runnable rows use: the pick's, else `pool`.
     fn pick_pool(&self) -> &'plan Pool {
-        self.pick.map_or(self.pool, |(pick_pool, _)| pick_pool)
+        self.pick_search.map_or(self.pool, |pick| pick.pool)
     }
 
     /// The main search runnable rows fall back to: the pick's, else `solved`.
     fn pick_solved(&self) -> &'plan Solved {
-        self.pick.map_or(self.solved, |(_, pick_solved)| pick_solved)
+        self.pick_search.map_or(self.solved, |pick| pick.solved)
     }
 
     /// A career that may run: its parents are legal on the pick's pool (the borrowing rule). Rows repeating another
     /// row's career are dropped later, at output.
     fn is_runnable(&self, f: &Found) -> bool {
-        self.pick_pool().bor_ok(f.a, f.b)
+        self.pick_pool().bor_ok(f.first_parent, f.second_parent)
     }
 }
 
@@ -320,17 +330,17 @@ impl<'context, 'data> PlanContext<'context, 'data> {
 
 /// A found career's trainee and parents. `trainee` is the uma the row or search is for.
 const fn found_lineage(trainee: usize, found: &Found) -> Lineage {
-    Lineage { trainee, first_parent: found.a, second_parent: found.b }
+    Lineage { trainee, first_parent: found.first_parent, second_parent: found.second_parent }
 }
 
 /// A found career as `score_career` takes it.
 const fn found_career(trainee: usize, found: &Found) -> Career<'_> {
-    Career { lineage: found_lineage(trainee, found), deck: &found.sel }
+    Career { lineage: found_lineage(trainee, found), deck: &found.deck }
 }
 
 /// A found career's parents in either order.
 fn unordered_parents(found: &Found) -> (usize, usize) {
-    (found.a.min(found.b), found.a.max(found.b))
+    (found.first_parent.min(found.second_parent), found.first_parent.max(found.second_parent))
 }
 
 /// Searches and their completeness, including the kept plans used to extend this pool. Per-uma vectors are indexed by
@@ -375,7 +385,7 @@ impl PlanSearches {
 fn search_best_career(sim: &mut Sim, context: &PlanContext, searches: &mut PlanSearches, trainee: usize) {
     let search = best_of(sim.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
     if let Some(found) = &search.found {
-        sim.cache.add(sim.env, trainee, &found.sel);
+        sim.cache.add(sim.env, trainee, &found.deck);
     }
     searches.record_best_career(trainee, search);
 }

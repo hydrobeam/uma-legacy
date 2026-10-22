@@ -102,7 +102,7 @@ impl PlanRow {
 
 /// Both parents of `career` are 8/8 veterans: her 8/8 from it is a fully looped parent
 pub(crate) fn has_looped_parents(sj: &SkillJob, legacies: &[Legacy], career: &Found) -> bool {
-    is_full(sj, &legacies[career.a].sparks) && is_full(sj, &legacies[career.b].sparks)
+    is_full(sj, &legacies[career.first_parent].sparks) && is_full(sj, &legacies[career.second_parent].sparks)
 }
 
 /// The plan's pick among its rows, and the top score it was taken within `near_floor` of.
@@ -126,7 +126,7 @@ pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[u
     }
     let top = if runs.is_empty() { 0.0 } else { total(pick) };
     for i in 0..runs.len() {
-        if vis(&runs[i].career) && total(i) >= near_floor(top) && runs[i].career.val > runs[pick].career.val {
+        if vis(&runs[i].career) && total(i) >= near_floor(top) && runs[i].career.value > runs[pick].career.value {
             pick = i;
         }
     }
@@ -157,7 +157,7 @@ pub(crate) fn add_looped_rows(
     let stats_base = candidates.stats_base();
     let legacies = input.legacies;
     let legacy_count = legacies.len();
-    let sj = sim.env.sj;
+    let sj = sim.env.skill_job;
     // Looped careers: per uma whose career above has parents that are not both 8/8s, her best career on two real 8/8
     // veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her own 8/8 a fully
     // looped parent (the goal), and the trios' last step is such a career: without these rows the career V itself
@@ -251,7 +251,7 @@ fn looped_career(
     if only_newest && !full_veterans.newest_is_full {
         return start;
     }
-    // (`pick_pool` and `pool` differ in `max_bor` alone, which the ceilings do not read)
+    // (`pick_pool` and `pool` differ in `max_borrowed` alone, which the ceilings do not read)
     let ParentPool { pool: pick_pool, fixed_parents } = context.pick_parents();
     let newest = context.legacy_count().wrapping_sub(1);
     let is_full = &full_veterans.is_full;
@@ -260,7 +260,7 @@ fn looped_career(
     });
     let mut best = start;
     for (ceiling, a, b) in pairs {
-        if ceiling <= best.as_ref().map_or(0.0, |f| f.val) {
+        if ceiling <= best.as_ref().map_or(0.0, |f| f.value) {
             break;
         }
         let pair = [a, b];
@@ -269,7 +269,7 @@ fn looped_career(
         let found = if settings.sur == 1 {
             best_sur(sim, ParentPool { pool: pick_pool, fixed_parents: &pair }, trainee, settings.sur_margin, buf)
         } else {
-            sim.env.floor = best.as_ref().map_or(f64::NEG_INFINITY, |f| f.val);
+            sim.env.floor = best.as_ref().map_or(f64::NEG_INFINITY, |f| f.value);
             let searched = sim.env.solve(pick_pool, &pair, &[trainee], false, 1);
             if !searched.complete {
                 searches.looped_incomplete[trainee] = true;
@@ -278,7 +278,7 @@ fn looped_career(
             searched.found.into_iter().next()
         };
         if let Some(found) = found
-            && found.val > best.as_ref().map_or(0.0, |f| f.val)
+            && found.value > best.as_ref().map_or(0.0, |f| f.value)
         {
             best = Some(found);
         }
@@ -298,12 +298,12 @@ pub(crate) fn add_no_borrow_rows(
     let mut added: Vec<PlanRow> = vec![];
     let PlanContext { input, candidates } = *context;
     let candidate_count = candidates.trainees.len();
-    // nb rows (`pick`): per base row whose career has a borrowed parent, her best career without one, a row of its own:
-    // through her cached decks (`best_sur`, as a builder's proxy) while proxies are on, searched exactly once a shown
-    // row or the pick's band can turn on it (pass 2); exact from the start when proxies are off. Like the looped rows
-    // neither Cont's builders nor added to the cache; no lifts (zeros: only Cont and `proxy_check` read a row's lifts; the
-    // looped rows' are zeros too unless `proxy_check`)
-    if input.pick.is_none() {
+    // nb rows (`pick_search`): per base row whose career has a borrowed parent, her best career without one, a row of
+    // its own: through her cached decks (`best_sur`, as a builder's proxy) while proxies are on, searched exactly once
+    // a shown row or the pick's band can turn on it (pass 2); exact from the start when proxies are off. Like the
+    // looped rows neither Cont's builders nor added to the cache; no lifts (zeros: only Cont and `proxy_check` read a
+    // row's lifts; the looped rows' are zeros too unless `proxy_check`)
+    if input.pick_search.is_none() {
         return added;
     }
     let started_ms = now_ms();
@@ -377,7 +377,7 @@ pub(crate) fn score_and_promote_rows(
     let PlanContext { input, candidates } = *context;
     let legacies = input.legacies;
     let data = context.data();
-    let sj = sim.env.sj;
+    let sj = sim.env.skill_job;
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
     let continuations = plan_continuations(sim, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
@@ -600,9 +600,11 @@ pub(crate) fn check_plan_proxies(
         };
         let same_pair = proxy.as_ref().is_some_and(|f| unordered_parents(f) == unordered_parents(&r.career));
         let same_deck = proxy.as_ref().is_some_and(|f| {
-            f.sel.ents == r.career.sel.ents && f.sel.plain == r.career.sel.plain && f.sel.filler == r.career.sel.filler
+            f.deck.entries == r.career.deck.entries
+                && f.deck.plain_pals == r.career.deck.plain_pals
+                && f.deck.filler_cards == r.career.deck.filler_cards
         });
-        rows.push(json!({"trainee": data.umas[x].name, "cand": is_candidate, "class": sim.env.cls[x], "exact_val": r.career.val, "proxy_val": proxy.as_ref().map(|f| f.val),
+        rows.push(json!({"trainee": data.umas[x].name, "cand": is_candidate, "class": sim.env.deck_class[x], "exact_val": r.career.value, "proxy_val": proxy.as_ref().map(|f| f.value),
         "same_pair": same_pair, "same_deck": same_deck, "score": r.net_saving(), "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
     }
     std::mem::swap(&mut sim.cache, &mut cache_before_builders);

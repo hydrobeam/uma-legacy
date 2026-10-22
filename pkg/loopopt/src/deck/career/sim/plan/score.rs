@@ -93,9 +93,9 @@ pub(crate) fn her_trios(
     let mut trios = vec![];
     // the pool with her (`her_pool`: `Env::pool` of the legacies and hers), with each side pushed in turn (the same Pool
     // as `Env::pool` of those and the side) and popped after
-    let partner_index = extended_pool.me.len();
+    let partner_index = extended_pool.veterans.len();
     let (mut inheritance_chances, mut finishers): (Vec<f64>, Vec<FinisherCeiling>) =
-        (Vec::with_capacity(simulator.env.ntar), vec![]);
+        (Vec::with_capacity(simulator.env.target_count), vec![]);
     for candidate in 0..score_base.cands.len() {
         let partner_trainee = score_base.cands[candidate];
         if data.umas[partner_trainee].id == trainee_id {
@@ -162,7 +162,10 @@ pub(crate) fn with_her(v: f64, her: &[OwnTrio], c1: &[f64]) -> f64 {
 /// fully looped parent, V after her 0): what `score_career`, `outcome_hi` and `pick_her` read of her first
 pub(crate) fn her_ends(s: &Sim, bs: &ScoreBase, legs: &[Legacy], lineage: Lineage) -> (Option<usize>, bool) {
     let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
-    (bs.cands.iter().position(|&u| u == x), is_full(s.env.sj, &legs[a].sparks) && is_full(s.env.sj, &legs[b].sparks))
+    (
+        bs.cands.iter().position(|&u| u == x),
+        is_full(s.env.skill_job, &legs[a].sparks) && is_full(s.env.skill_job, &legs[b].sparks),
+    )
 }
 
 /// Per mask fm of the scenario-guaranteed targets landed (bit j: `fixed_t[j]`), its landed set over the job targets: an
@@ -185,7 +188,7 @@ pub(crate) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
 pub(crate) fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, lineage: Lineage, c: &Cur) -> Pool {
     let veteran = s.env.veteran(legs, lineage, c.wp.to_vec());
     if of_legs {
-        debug_assert_eq!(pool.me.len(), legs.len(), "one legacy per pool member");
+        debug_assert_eq!(pool.veterans.len(), legs.len(), "one legacy per pool member");
         let mut extended = s.take_pool(pool);
         s.env.pool_push(&mut extended, &veteran);
         extended
@@ -276,7 +279,7 @@ fn prepare_setups(
 ) -> Vec<Setup> {
     let data = simulator.d;
     let candidate_count = score_base.cands.len();
-    let new_veteran = pool.me.len() - 1;
+    let new_veteran = pool.veterans.len() - 1;
     let mut setups: Vec<Setup> = vec![];
     for candidate in 0..candidate_count {
         let candidate_trainee = score_base.cands[candidate];
@@ -333,9 +336,9 @@ fn score_career_(
     let recorded_pool = provenance == PoolProvenance::RecordedLegacies;
 
     let candidate_count = context.score_base.cands.len();
-    let target_count = simulator.env.ntar;
-    let uncertain_target_count = simulator.env.uncv.len();
-    let star_mix = simulator.env.sj.star_dist;
+    let target_count = simulator.env.target_count;
+    let uncertain_target_count = simulator.env.uncertain_targets.len();
+    let star_mix = simulator.env.skill_job.star_dist;
     let (own_candidate, completes_goal) = her_ends(simulator, context.score_base, context.legacies, career.lineage);
     let current_started = now_ms();
     let current = simulator.make_cur(context.pool, career, false);
@@ -343,7 +346,7 @@ fn score_career_(
     prof("sc_cur_ms", pool_started - current_started);
     let mut extended_pool =
         her_pool(simulator, context.legacies, context.pool, recorded_pool, career.lineage, &current);
-    let new_veteran = extended_pool.me.len() - 1;
+    let new_veteran = extended_pool.veterans.len() - 1;
     // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
     let setups_started = now_ms();
     prof("sc_pool_ms", setups_started - pool_started);
@@ -354,8 +357,8 @@ fn score_career_(
     // at scale 1: the tables folded one coordinate at a time (interp's order and arithmetic), every setup's tables at once
     // (`fold_rec`); per outcome (leaf, guaranteed golds fm) and lifted candidate, that value times the setup's spark scale,
     // the best over her setups and her odds now (`fold_emit`): the products and maxima the outcome loop took per outcome
-    let fixed_target_count = simulator.env.fixed_t.len();
-    let fixed_landed_masks = fm_masks(&simulator.env.fixed_t);
+    let fixed_target_count = simulator.env.fixed_targets.len();
+    let fixed_landed_masks = fm_masks(&simulator.env.fixed_targets);
     // the candidates with setups (candidate order): her slot per candidate, per setup, and odds now per slot
     let mut slot_by_candidate: Vec<Option<usize>> = vec![None; candidate_count];
     let mut current_probabilities: Vec<f64> = vec![];
@@ -377,7 +380,7 @@ fn score_career_(
         xi: own_candidate,
         goal: completes_goal,
         w: star_mix,
-        uncv: simulator.env.uncv.clone(),
+        uncv: simulator.env.uncertain_targets.clone(),
         fmm: fixed_landed_masks,
         x0: setups.iter_mut().map(|setup| std::mem::take(&mut setup.x0)).collect(),
         xm: setups.iter().map(|setup| setup.xm).collect(),

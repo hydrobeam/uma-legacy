@@ -524,7 +524,7 @@ impl<'inputs> CandidateBoundInputs<'inputs> {
             lineage: Lineage {
                 trainee: score_base.cands[self.candidate_index],
                 first_parent,
-                second_parent: self.extended_pool.me.len() - 1,
+                second_parent: self.extended_pool.veterans.len() - 1,
             },
         }
     }
@@ -561,9 +561,9 @@ impl ExactAnchorChances {
     /// Borrow outfit and target tables only after the mutable deck search finishes.
     fn rise_inputs<'rise>(&'rise self, environment: &'rise Env) -> RiseInputs<'rise> {
         RiseInputs {
-            outfit_coverage: &environment.sts0[self.lineage.trainee],
-            event_chances: &environment.ew0[self.lineage.trainee],
-            uncertain_targets: &environment.uncv,
+            outfit_coverage: &environment.outfit_coverage[self.lineage.trainee],
+            event_chances: &environment.own_event_chances[self.lineage.trainee],
+            uncertain_targets: &environment.uncertain_targets,
             base_misses: &self.base_misses,
             star_misses: &self.star_misses,
         }
@@ -938,14 +938,14 @@ pub(crate) fn outcome_hi(
     let want = &[outcome];
 
     let candidate_count = context.score_base.cands.len();
-    let target_count = simulator.env.ntar;
-    let uncertain_target_count = simulator.env.uncv.len();
-    let star_mix = simulator.env.sj.star_dist;
+    let target_count = simulator.env.target_count;
+    let uncertain_target_count = simulator.env.uncertain_targets.len();
+    let star_mix = simulator.env.skill_job.star_dist;
     let (own_candidate, completes_goal) = her_ends(simulator, context.score_base, context.legacies, career.lineage);
     let current = simulator.make_cur(context.pool, career, false);
     let extended_pool = her_pool(simulator, context.legacies, context.pool, true, career.lineage, &current);
-    let uncertain_targets = &simulator.env.uncv;
-    let new_veteran = extended_pool.me.len() - 1;
+    let uncertain_targets = &simulator.env.uncertain_targets;
+    let new_veteran = extended_pool.veterans.len() - 1;
     // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
     let leaf_count = 1usize << (2 * uncertain_target_count);
     let outcome_count = 1usize << target_count;
@@ -956,10 +956,10 @@ pub(crate) fn outcome_hi(
     let ceiling_scale = simulator.env.space.rho_top() * simulator.fixed;
     let (leaf_products_buffer, next_leaf_products): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
     // an outcome (her stars `leaf`, the fixed targets landed fm: cell (leaf << nf) | fm): its chance and landed set
-    let fixed_target_count = simulator.env.fixed_t.len();
+    let fixed_target_count = simulator.env.fixed_targets.len();
     let cell_count = leaf_count << fixed_target_count;
     // (`score_career`'s cells: the landed set of her stars' leaf and the fixed targets' fm, its chance os[m] x her stars')
-    let fixed_landed_masks = fm_masks(&simulator.env.fixed_t);
+    let fixed_landed_masks = fm_masks(&simulator.env.fixed_targets);
     let cell = |i: usize| {
         let outcome = leaf_set(i >> fixed_target_count, uncertain_targets, star_mix);
         let m = outcome.landed_mask | fixed_landed_masks[i & ((1usize << fixed_target_count) - 1)].bits();
@@ -1030,10 +1030,10 @@ pub(crate) fn outcome_hi(
         }
         // her outfits' skill coverage and own chances (as `Env::rise` reads them)
         let (outfit_coverage, event_chances) =
-            (&simulator.env.sts0[candidate_trainee], &simulator.env.ew0[candidate_trainee]);
+            (&simulator.env.outfit_coverage[candidate_trainee], &simulator.env.own_event_chances[candidate_trainee]);
         scratch.relation_points.clear(); // (`Env::lineage_qc`'s table: another trainee)
         // the main search's found careers of her deck class that it fully checked (`found_anchors`)
-        let deck_class = simulator.env.cls[candidate_trainee];
+        let deck_class = simulator.env.deck_class[candidate_trainee];
         let anchor_indices: Vec<usize> = (0..bounds.found_anchors.len())
             .filter(|&i| bounds.found_anchors[i].as_ref().is_some_and(|f| f.deck_class == deck_class))
             .collect();
@@ -1164,7 +1164,7 @@ pub(crate) fn outcome_hi(
         for &st in &HI_STARS {
             let mut q = anchor.initial_chances.clone();
             for k in 0..uncertain_target_count {
-                q[simulator.env.uncv[k]] = 1.0 - anchor.base_misses[k] * anchor.star_misses[st];
+                q[simulator.env.uncertain_targets[k]] = 1.0 - anchor.base_misses[k] * anchor.star_misses[st];
             }
             simulator.env.set_trainee(anchor.lineage.trainee, &q);
             simulator.env.work = 0;
@@ -1213,12 +1213,12 @@ pub(crate) fn pick_her(
         return vec![];
     }
     let c = s.make_cur(context.pool, career, false);
-    let full_m = (1usize << s.env.ntar) - 1;
+    let full_m = (1usize << s.env.target_count) - 1;
     if c.os[full_m] <= 0.0 {
         return vec![];
     }
     let mut pv = her_pool(s, context.legacies, context.pool, true, career.lineage, &c);
-    let iv = pv.me.len() - 1;
+    let iv = pv.veterans.len() - 1;
     let r = her_trios(s, context.score_base, &mut pv, iv, career.lineage.trainee, buf);
     her_pool_done(s, context.pool, true, pv);
     r
@@ -1231,10 +1231,10 @@ pub(crate) fn found_anchors(env: &Env, pool: &Pool, msv: &Solved) -> Vec<Option<
     msv.found
         .iter()
         .map(|f| {
-            let lineage = Lineage { trainee: f.t, first_parent: f.a, second_parent: f.b };
+            let lineage = Lineage { trainee: f.trainee, first_parent: f.first_parent, second_parent: f.second_parent };
             let (fq, _) = env.lineage_q(pool, lineage);
-            msv.refs.get(f.t).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| FoundAnchor {
-                deck_class: env.cls[f.t],
+            msv.refs.get(f.trainee).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| FoundAnchor {
+                deck_class: env.deck_class[f.trainee],
                 inheritance_chances: r.q.clone(),
                 value: r.val,
             })

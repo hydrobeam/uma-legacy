@@ -9,7 +9,7 @@ use super::{
 use crate::deck::capfree::{BoundOptions, LandingBoundTables};
 use crate::deck::space::EntryMisses;
 use crate::deck::{
-    CapFreeRatios, DeckSpace, GTab, HashMap, Instant, Kind, LandPre, Model, SBN, SPT, SbCfg, Sel, StateBound,
+    CapFreeRatios, DeckSpace, GTab, HashMap, Instant, Kind, LandPre, Model, SBN, SPT, SbCfg, SelectedDeck, StateBound,
     chain_states,
 };
 
@@ -60,7 +60,7 @@ pub(crate) struct PreparedTables<'tab> {
 
 /// Reuse preparation's odds buffers and retain diagnostic rows across configurations.
 pub(crate) struct TraversalScratch {
-    pub(crate) out: Vec<(f64, Sel)>,
+    pub(crate) out: Vec<(f64, SelectedDeck)>,
     pub(crate) best_value: f64,
     pub(crate) dw: Vec<f64>,
     pub(crate) dg: Vec<f64>,
@@ -179,7 +179,7 @@ struct DeckSearchScratch {
 }
 
 pub(crate) struct SearchResults {
-    pub(crate) decks: Vec<(f64, Sel)>,
+    pub(crate) decks: Vec<(f64, SelectedDeck)>,
     pub(crate) best_value: f64,
 }
 

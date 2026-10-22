@@ -879,13 +879,13 @@ impl<'data> Multi<'data> {
                 if space.sel_cap(sel, lv) * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 {
                     continue;
                 }
-                if !ent.checked_selections.insert((sel.ents.clone(), sel.plain, sel.filler)) {
+                if !ent.checked_selections.insert((sel.entries.clone(), sel.plain_pals, sel.filler_cards)) {
                     continue;
                 }
                 // the proven bound first: a deck it puts below the best exact value cannot beat it
-                let e: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                let e: Vec<(&Src, Kind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                 let t1 = Instant::now();
-                let ubo = upper_na(model, u, qs, &e, sel.filler);
+                let ubo = upper_na(model, u, qs, &e, sel.filler_cards);
                 tally.t_ub.set(tally.t_ub.get() + t1.elapsed().as_secs_f64());
                 if let Some(ub) = ubo {
                     tally.spend(25);
@@ -1099,13 +1099,13 @@ impl<'data> Multi<'data> {
                 if space.sel_cap(sel, lv) * v * (1.0 + 1e-9) < thr {
                     continue;
                 }
-                if !seen.insert((sel.ents.clone(), sel.plain, sel.filler)) {
+                if !seen.insert((sel.entries.clone(), sel.plain_pals, sel.filler_cards)) {
                     continue;
                 }
-                let e: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                let e: Vec<(&Src, Kind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                 let t1 = Instant::now();
                 let ub: Option<f64> = (0..sc.nm)
-                    .map(|t| upper_na(model, f[t], &sc.qt[t], &e, sel.filler).map(|b| b.iter().sum::<f64>()))
+                    .map(|t| upper_na(model, f[t], &sc.qt[t], &e, sel.filler_cards).map(|b| b.iter().sum::<f64>()))
                     .sum();
                 tally.t_ub.set(tally.t_ub.get() + t1.elapsed().as_secs_f64());
                 if let Some(ub) = ub {

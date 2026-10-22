@@ -200,7 +200,7 @@ pub(crate) fn plan_combinations(
                     full_veterans[ui].iter().map(|&legacy| TrioSide { uses_existing: true, legacy }).collect();
                 if let Some(fresh) = &fresh_veterans[ui] {
                     sim.env.pool_push(working_pool, fresh);
-                    sides.push(TrioSide { uses_existing: false, legacy: working_pool.me.len() - 1 });
+                    sides.push(TrioSide { uses_existing: false, legacy: working_pool.veterans.len() - 1 });
                 }
                 sides
             };
@@ -239,7 +239,7 @@ pub(crate) fn plan_combinations(
                     }
                 }
             }
-            while working_pool.me.len() > pool.me.len() {
+            while working_pool.veterans.len() > pool.veterans.len() {
                 Env::pool_pop(&mut working_pool);
             }
             sim.put_pool(pool, working_pool);
