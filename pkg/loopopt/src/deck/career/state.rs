@@ -5,7 +5,7 @@ use crate::deck::{MAX_DECK, Sel, Value, json};
 
 /// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
 /// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
-pub(in crate::deck) fn setup_fp(v: &Value) -> u64 {
+pub(crate) fn setup_fp(v: &Value) -> u64 {
     // (also the page's flags that change no deck value: `compare`, the plan's own fields, so the plan and compare
     // jobs share what the search jobs proved, and `borrowed_parent`, a rule on the pairs as `fix` is)
     setup_hash(&json_without(
@@ -31,7 +31,7 @@ pub(in crate::deck) fn setup_fp(v: &Value) -> u64 {
 /// clone with those keys removed, byte for byte, without the clone. serde_json's `Map` is a `BTreeMap` here (no
 /// `preserve_order`), so the kept keys are written in the same order, by the same serializer (`Value`'s `Display` is
 /// `to_writer`'s compact form), and an object left empty is "{}" either way
-pub(in crate::deck) fn json_without(v: &Value, drop: &[&str], next_drop: &[&str]) -> String {
+pub(crate) fn json_without(v: &Value, drop: &[&str], next_drop: &[&str]) -> String {
     struct Strip<'val> {
         v: &'val Value,
         drop: &'val [&'val str],
@@ -52,7 +52,7 @@ pub(in crate::deck) fn json_without(v: &Value, drop: &[&str], next_drop: &[&str]
     serde_json::to_string(&Strip { v, drop, next_drop }).unwrap()
 }
 
-pub(in crate::deck::career) fn setup_hash(s: &str) -> u64 {
+pub(crate) fn setup_hash(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     s.hash(&mut h);
@@ -64,25 +64,25 @@ thread_local! {
     /// `no_reports` (the page's plan job repeats the job it follows), with what the search's product searches proved
     /// (`Env::ruled` as the search left it: a job that takes a kept search starts its plan from the Env state a combined
     /// job's plan starts from); kept across page reloads (`state_out`)
-    pub(in crate::deck::career) static LAST_SOLVE: std::cell::RefCell<Vec<(u64, Solved, Ruled)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static LAST_SOLVE: std::cell::RefCell<Vec<(u64, Solved, Ruled)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// per deck class, the product searches' proofs (`Env::ruled`)
-pub(in crate::deck::career) type Ruled = Vec<Vec<(Vec<f64>, f64)>>;
+pub(crate) type Ruled = Vec<Vec<(Vec<f64>, f64)>>;
 
 /// main searches kept (`LAST_SOLVE`): the page's run, and one it goes back to (a setting changed and back, a Compare or
 /// Reroll plan in between)
-pub(in crate::deck::career) const SOLVE_KEEP: usize = 3;
+pub(crate) const SOLVE_KEEP: usize = 3;
 
 thread_local! {
     /// per setup fingerprint (the last few), every fully checked deck found so far (`Env::seen`): what the page's
     /// earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact value
     /// there, which depend on the setup only (the job's trainees change no deck value: they only order plain pals).
-    pub(in crate::deck::career) static SEEN: std::cell::RefCell<Vec<(u64, Vec<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static SEEN: std::cell::RefCell<Vec<(u64, Vec<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Fully checked decks kept per trainee across jobs (the most recent): the bound loop over them stays cheap
-pub(in crate::deck::career) const SEEN_KEEP: usize = 256;
+pub(crate) const SEEN_KEEP: usize = 256;
 
 // ---------- the worker's kept work across page loads ----------
 // What a worker keeps between jobs (the kept plans, `sim::plan::BESTS`; the proofs, `SEEN`) leaves as `state_out` and comes
@@ -92,24 +92,24 @@ pub(in crate::deck::career) const SEEN_KEEP: usize = 256;
 // `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
 // 2: the kept plans carry each uma's looped career; 3: the kept main searches (`LAST_SOLVE`); 4: the plans' roll states
 // (`sim::plan::ROLLS`)
-pub(in crate::deck::career) const STATE_VERSION: u64 = 4;
+pub(crate) const STATE_VERSION: u64 = 4;
 
 /// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
 /// umas or deck classes a list covers: 69 umas in the Global data, 83 in JP) at most STATE_MAX_N, so nothing is allocated
 /// from a count past it; every index within the list it indexes; no float NaN (the bounds compare them); chances,
 /// odds and deck hint chances within [0, 1]; a deck at most `MAX_DECK` cards. What a store says of a setup (deck
 /// entries, chances per target) is checked where it meets that setup (`Env::seen_fits`, `solve_kept`).
-pub(in crate::deck::career) const STATE_MAX_N: usize = 1 << 10;
+pub(crate) const STATE_MAX_N: usize = 1 << 10;
 
-pub(in crate::deck::career) fn hx(x: f64) -> Value {
+pub(crate) fn hx(x: f64) -> Value {
     Value::String(format!("{:016x}", x.to_bits()))
 }
 
-pub(in crate::deck::career) fn ux(x: u64) -> Value {
+pub(crate) fn ux(x: u64) -> Value {
     Value::String(format!("{x:016x}"))
 }
 
-pub(in crate::deck::career) fn fx(v: &Value) -> Option<f64> {
+pub(crate) fn fx(v: &Value) -> Option<f64> {
     Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?)).filter(|x| !x.is_nan())
 }
 
@@ -118,37 +118,37 @@ fn px(v: &Value) -> Option<f64> {
     fx(v).filter(|x| (0.0..=1.0).contains(x))
 }
 
-pub(in crate::deck::career) fn uxr(v: &Value) -> Option<u64> {
+pub(crate) fn uxr(v: &Value) -> Option<u64> {
     u64::from_str_radix(v.as_str()?, 16).ok()
 }
 
-pub(in crate::deck::career) fn fvec(v: &[f64]) -> Value {
+pub(crate) fn fvec(v: &[f64]) -> Value {
     Value::Array(v.iter().map(|&x| hx(x)).collect())
 }
 
-pub(in crate::deck::career) fn fvec_r(v: &Value) -> Option<Vec<f64>> {
+pub(crate) fn fvec_r(v: &Value) -> Option<Vec<f64>> {
     v.as_array()?.iter().map(fx).collect()
 }
 
 /// a stored vector of chances (`px`)
-pub(in crate::deck::career) fn pvec_r(v: &Value) -> Option<Vec<f64>> {
+pub(crate) fn pvec_r(v: &Value) -> Option<Vec<f64>> {
     v.as_array()?.iter().map(px).collect()
 }
 
-pub(in crate::deck::career) fn usz(v: &Value) -> Option<usize> {
+pub(crate) fn usz(v: &Value) -> Option<usize> {
     usize::try_from(v.as_u64()?).ok()
 }
 
 /// a stored count (`STATE_MAX_N`)
-pub(in crate::deck::career) fn len_in(v: &Value) -> Option<usize> {
+pub(crate) fn len_in(v: &Value) -> Option<usize> {
     usz(v).filter(|&n| n <= STATE_MAX_N)
 }
 
-pub(in crate::deck::career) fn sel_out(s: &Sel) -> Value {
+pub(crate) fn sel_out(s: &Sel) -> Value {
     json!([s.ents, s.plain, s.filler, fvec(&s.dw), fvec(&s.dg)])
 }
 
-pub(in crate::deck::career) fn sel_in(v: &Value) -> Option<Sel> {
+pub(crate) fn sel_in(v: &Value) -> Option<Sel> {
     let a = v.as_array()?;
     let ents: Vec<usize> = a.first()?.as_array()?.iter().map(usz).collect::<Option<_>>()?;
     let (plain, filler) = (usz(a.get(1)?)?, usz(a.get(2)?)?);
@@ -167,11 +167,11 @@ fn ref_in(v: &Value) -> Option<Ref> {
     Some(Ref { q: pvec_r(a.first()?)?, val: fx(a.get(1)?)?, sel: sel_in(a.get(2)?)? })
 }
 
-pub(in crate::deck::career) fn found_out(f: &Found) -> Value {
+pub(crate) fn found_out(f: &Found) -> Value {
     json!([f.t, f.a, f.b, hx(f.val), hx(f.ub), sel_out(&f.sel)])
 }
 
-pub(in crate::deck::career) fn found_in(v: &Value) -> Option<Found> {
+pub(crate) fn found_in(v: &Value) -> Option<Found> {
     let a = v.as_array()?;
     Some(Found {
         t: usz(a.first()?)?,
@@ -293,13 +293,13 @@ fn solve_in(v: &Value) -> Option<Vec<(u64, Solved, Ruled)>> {
         .collect()
 }
 
-pub(in crate::deck::career) fn state_out() -> Value {
+pub(crate) fn state_out() -> Value {
     json!({"ok": true, "state": {"v": STATE_VERSION, "bests": sim::plan::bests_out(), "seen": seen_out(), "solve": solve_out(), "rolls": sim::plan::rolls_out()}})
 }
 
 /// replaces the kept plans, proofs, main searches and plans' roll states with the page's stored ones (all or nothing: a
 /// store that does not parse is refused)
-pub(in crate::deck::career) fn state_in(v: &Value) -> Value {
+pub(crate) fn state_in(v: &Value) -> Value {
     if v["v"].as_u64() != Some(STATE_VERSION) {
         return json!({"error": "state: another version"});
     }
@@ -337,12 +337,12 @@ impl Env<'_> {
         r.q.len() == self.ntar && self.sel_fits(&r.sel)
     }
     /// stored proofs (`SEEN`): per deck class (one per uma) the fully checked decks
-    pub(in crate::deck::career) fn seen_fits(&self, seen: &[Vec<Ref>]) -> bool {
+    pub(crate) fn seen_fits(&self, seen: &[Vec<Ref>]) -> bool {
         seen.len() == self.d.umas.len() && seen.iter().flatten().all(|r| self.ref_fits(r))
     }
     /// a stored main search (`LAST_SOLVE`) of pool `p`: per uma its refs and product proofs, careers of its trainees and
     /// veterans
-    pub(in crate::deck::career) fn solved_fits(&self, sv: &Solved, ruled: &Ruled, p: &Pool) -> bool {
+    pub(crate) fn solved_fits(&self, sv: &Solved, ruled: &Ruled, p: &Pool) -> bool {
         let n = self.d.umas.len();
         ruled.len() == n
             && ruled.iter().flatten().all(|(q, _)| q.len() == self.ntar)

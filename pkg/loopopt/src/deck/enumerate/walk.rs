@@ -7,84 +7,84 @@ use super::{
 use crate::deck::{CFCHK, Kind, SBCHK, SBN, Sel, Src, StateBound, cap_class, gm_g, gm_w, joint_fast, sb_check};
 
 /// Read-only tables for one configuration, borrowed separately from the node workspace.
-pub(in crate::deck::enumerate) struct ConfigurationContext<'walk, 'run, 'space, V> {
-    pub(in crate::deck::enumerate) search: &'walk DeckSearchContext<'run, 'space, V>,
-    pub(in crate::deck::enumerate) configuration: &'walk SearchConfig,
-    pub(in crate::deck::enumerate) filler: usize,
-    pub(in crate::deck::enumerate) plain: usize,
+pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
+    pub(crate) search: &'walk DeckSearchContext<'run, 'space, V>,
+    pub(crate) configuration: &'walk SearchConfig,
+    pub(crate) filler: usize,
+    pub(crate) plain: usize,
     /// Configuration groups in pick order: eligible entry indices and required slot count.
-    pub(in crate::deck::enumerate) groups: &'walk [(&'run [usize], usize)],
+    pub(crate) groups: &'walk [(&'run [usize], usize)],
     /// Per group, white/gold miss-product rows indexed by gm_w/gm_g.
-    pub(in crate::deck::enumerate) group_misses: &'walk [&'walk [f64]],
+    pub(crate) group_misses: &'walk [&'walk [f64]],
     /// Per group, column-major ratio prefixes with deck_size + 1 entries per column.
-    pub(in crate::deck::enumerate) group_ratios: &'walk [&'walk [f64]],
+    pub(crate) group_ratios: &'walk [&'walk [f64]],
     /// Entry-major probabilities, one target_count-wide row per entry.
-    pub(in crate::deck::enumerate) white_misses: &'walk [f64],
+    pub(crate) white_misses: &'walk [f64],
     /// Same entry/target indexing as white_misses.
-    pub(in crate::deck::enumerate) gold_misses: &'walk [f64],
+    pub(crate) gold_misses: &'walk [f64],
     /// Per-entry target masks; untouched targets have miss probability exactly one.
-    pub(in crate::deck::enumerate) touched_targets: &'walk [u32],
+    pub(crate) touched_targets: &'walk [u32],
     /// Target-major blocks for each remaining group suffix.
-    pub(in crate::deck::enumerate) suffix_white: &'walk [f64],
+    pub(crate) suffix_white: &'walk [f64],
     /// Gold misses in the same suffix layout as suffix_white.
-    pub(in crate::deck::enumerate) suffix_gold: &'walk [f64],
+    pub(crate) suffix_gold: &'walk [f64],
     /// Per group suffix, one product per ratio column.
-    pub(in crate::deck::enumerate) suffix_ratios: &'walk [f64],
+    pub(crate) suffix_ratios: &'walk [f64],
     /// Per group and candidate position, earlier dominator positions and their gold-gap masks.
-    pub(in crate::deck::enumerate) dominators: &'walk [std::rc::Rc<Vec<Vec<(u32, u32)>>>],
+    pub(crate) dominators: &'walk [std::rc::Rc<Vec<Vec<(u32, u32)>>>],
     /// Flat entry offsets for each group in dominance_suffix.
-    pub(in crate::deck::enumerate) dominance_offsets: &'walk [usize],
+    pub(crate) dominance_offsets: &'walk [usize],
     /// Characters available from each flat entry position onward.
-    pub(in crate::deck::enumerate) dominance_suffix: &'walk [u128],
-    pub(in crate::deck::enumerate) borrow_bounds: &'walk BorrowTables,
+    pub(crate) dominance_suffix: &'walk [u128],
+    pub(crate) borrow_bounds: &'walk BorrowTables,
     /// OR of class masks from each group/position onward.
-    pub(in crate::deck::enumerate) class_suffix: &'walk [u64],
+    pub(crate) class_suffix: &'walk [u64],
     /// Flat group starts in class_suffix.
-    pub(in crate::deck::enumerate) group_offsets: &'walk [usize],
+    pub(crate) group_offsets: &'walk [usize],
     /// Per group/start, lock bits still available in that suffix.
-    pub(in crate::deck::enumerate) available_locks: &'walk [Vec<u8>],
+    pub(crate) available_locks: &'walk [Vec<u8>],
     /// Group starts for rows indexed by remaining slots and borrowing state.
-    pub(in crate::deck::enumerate) remaining_offsets: &'walk [usize],
+    pub(crate) remaining_offsets: &'walk [usize],
     /// One without borrowing, two when owned/one-borrow bounds are distinguished.
-    pub(in crate::deck::enumerate) borrow_state_count: usize,
-    pub(in crate::deck::enumerate) group_count: usize,
-    pub(in crate::deck::enumerate) total_slots: usize,
+    pub(crate) borrow_state_count: usize,
+    pub(crate) group_count: usize,
+    pub(crate) total_slots: usize,
     /// State-conditioned bound retained for diagnostics.
-    pub(in crate::deck::enumerate) root_bound: f64,
+    pub(crate) root_bound: f64,
 }
 
 /// Reused node buffers, state-bound caches and diagnostics for the current walk.
-pub(in crate::deck::enumerate) struct WalkScratch<'walk> {
-    pub(in crate::deck::enumerate) nodes: &'walk mut NodeScratch,
-    pub(in crate::deck::enumerate) state_bound: StateBound<'walk>,
-    pub(in crate::deck::enumerate) depth_one_bound: f64,
-    pub(in crate::deck::enumerate) bound_path: Vec<f64>,
-    pub(in crate::deck::enumerate) limit_reached: bool,
-    pub(in crate::deck::enumerate) white_chances: [f64; 32],
-    pub(in crate::deck::enumerate) gold_chances: [f64; 32],
+pub(crate) struct WalkScratch<'walk> {
+    pub(crate) nodes: &'walk mut NodeScratch,
+    pub(crate) state_bound: StateBound<'walk>,
+    pub(crate) depth_one_bound: f64,
+    pub(crate) bound_path: Vec<f64>,
+    pub(crate) limit_reached: bool,
+    pub(crate) white_chances: [f64; 32],
+    pub(crate) gold_chances: [f64; 32],
 }
 
 /// Position and legality constraints of a partial deck. Masks use the prepared entry indexing.
 #[derive(Clone, Copy)]
-pub(in crate::deck::enumerate) struct DeckCursor {
+pub(crate) struct DeckCursor {
     /// Current configuration group and first entry position still eligible in it.
-    pub(in crate::deck::enumerate) group: usize,
-    pub(in crate::deck::enumerate) start: usize,
+    pub(crate) group: usize,
+    pub(crate) start: usize,
     /// Unfilled slots in this group.
-    pub(in crate::deck::enumerate) remaining: usize,
+    pub(crate) remaining: usize,
 }
 
 /// Legality masks change only when a card is chosen. Borrow these across group transitions.
 #[derive(Clone, Copy)]
-pub(in crate::deck::enumerate) struct DeckConstraints {
+pub(crate) struct DeckConstraints {
     /// Characters already selected; no character may occupy two slots.
-    pub(in crate::deck::enumerate) characters: u128,
-    pub(in crate::deck::enumerate) borrowed_count: usize,
+    pub(crate) characters: u128,
+    pub(crate) borrowed_count: usize,
     /// Locked cards already represented in the path.
-    pub(in crate::deck::enumerate) locked_cards: u8,
-    pub(in crate::deck::enumerate) class_mask: u64,
+    pub(crate) locked_cards: u8,
+    pub(crate) class_mask: u64,
     /// Dominance pruning requires these characters in any surviving completion.
-    pub(in crate::deck::enumerate) required_characters: u128,
+    pub(crate) required_characters: u128,
 }
 
 /// Parent and child miss products, in target order.
@@ -106,7 +106,7 @@ struct NodeIdentity {
 impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationContext<'_, '_, '_, V> {
     /// Walk completions in group/entry order. A true result means the output limit stopped the search.
     /// The context's hot slices are copied here so mutable node writes cannot force their repeated reload.
-    pub(in crate::deck::enumerate) fn rec(
+    pub(crate) fn rec(
         &self,
         scratch: &mut WalkScratch<'_>,
         results: &mut SearchResults,
@@ -797,7 +797,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
 
     /// A complete deck `sel` (its miss products `pw`, `pg`, class mask `cmk`): kept when it beats the bar (product
     /// search) or passes a clause at its class cap (band). True: the output is full, the search stops
-    pub(in crate::deck::enumerate) fn leaf(
+    pub(crate) fn leaf(
         &self,
         scratch: &mut WalkScratch<'_>,
         results: &mut SearchResults,

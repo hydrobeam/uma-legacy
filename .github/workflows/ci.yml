@@ -40,6 +40,7 @@ jobs:
           uv run val/same.py ci
           uv run val/planval.py pkg/loopopt/target/release/loopopt ci
           uv run val/same.py ci --plan
+          uv run val/simval.py pkg/loopopt/target/release/loopopt ci
           uv run val/mono.py pkg/loopopt/target/release/loopopt
 
   page:

@@ -15,63 +15,63 @@ use crate::deck::{
 
 /// Immutable controls selected before traversal. Scalar copies do not change the search's buffers.
 #[derive(Clone, Copy)]
-pub(in crate::deck::enumerate) struct SearchControl {
-    pub(in crate::deck::enumerate) best: bool,
-    pub(in crate::deck::enumerate) rho: f64,
-    pub(in crate::deck::enumerate) cap: usize,
-    pub(in crate::deck::enumerate) target_count: usize,
-    pub(in crate::deck::enumerate) size: usize,
-    pub(in crate::deck::enumerate) kind_count: usize,
-    pub(in crate::deck::enumerate) set_id: usize,
-    pub(in crate::deck::enumerate) fixed: f64,
-    pub(in crate::deck::enumerate) cap_free: bool,
-    pub(in crate::deck::enumerate) cap_free_node_limit: usize,
-    pub(in crate::deck::enumerate) cap_free_check_scale: f64,
-    pub(in crate::deck::enumerate) state_bound_mode: u8,
-    pub(in crate::deck::enumerate) state_bound_threshold: f64,
-    pub(in crate::deck::enumerate) bound_trainee: usize,
-    pub(in crate::deck::enumerate) bound_inheritance: f64,
-    pub(in crate::deck::enumerate) class_caps: [f64; 4],
-    pub(in crate::deck::enumerate) use_dominance: bool,
-    pub(in crate::deck::enumerate) lazy: bool,
-    pub(in crate::deck::enumerate) cap_free_outfit_count: usize,
-    pub(in crate::deck::enumerate) column_count: usize,
-    pub(in crate::deck::enumerate) bound_check_scale: f64,
-    pub(in crate::deck::enumerate) check_ratio_bounds: bool,
+pub(crate) struct SearchControl {
+    pub(crate) best: bool,
+    pub(crate) rho: f64,
+    pub(crate) cap: usize,
+    pub(crate) target_count: usize,
+    pub(crate) size: usize,
+    pub(crate) kind_count: usize,
+    pub(crate) set_id: usize,
+    pub(crate) fixed: f64,
+    pub(crate) cap_free: bool,
+    pub(crate) cap_free_node_limit: usize,
+    pub(crate) cap_free_check_scale: f64,
+    pub(crate) state_bound_mode: u8,
+    pub(crate) state_bound_threshold: f64,
+    pub(crate) bound_trainee: usize,
+    pub(crate) bound_inheritance: f64,
+    pub(crate) class_caps: [f64; 4],
+    pub(crate) use_dominance: bool,
+    pub(crate) lazy: bool,
+    pub(crate) cap_free_outfit_count: usize,
+    pub(crate) column_count: usize,
+    pub(crate) bound_check_scale: f64,
+    pub(crate) check_ratio_bounds: bool,
 }
 
 /// Read-only views into preparation's tables. The lazy-bound callbacks borrow those same
 /// tables, so preparation retains their ownership until traversal returns.
 #[derive(Clone, Copy)]
-pub(in crate::deck::enumerate) struct PreparedTables<'tab> {
-    pub(in crate::deck::enumerate) ebit: &'tab [u128],
-    pub(in crate::deck::enumerate) groups_all: &'tab [&'tab Vec<usize>],
-    pub(in crate::deck::enumerate) state_rows: &'tab [Option<Vec<(f64, f64)>>],
-    pub(in crate::deck::enumerate) landing_factors: &'tab [LandPre],
-    pub(in crate::deck::enumerate) lbit: &'tab [u8],
-    pub(in crate::deck::enumerate) all_lk: u8,
-    pub(in crate::deck::enumerate) oq: &'tab [(usize, usize, f64, usize)],
-    pub(in crate::deck::enumerate) og: &'tab [(usize, usize, usize)],
-    pub(in crate::deck::enumerate) orow: &'tab [crate::skills::OutfitPre],
-    pub(in crate::deck::enumerate) zm: &'tab [u32],
-    pub(in crate::deck::enumerate) nm: &'tab [u32],
-    pub(in crate::deck::enumerate) alt: &'tab [(usize, usize)],
+pub(crate) struct PreparedTables<'tab> {
+    pub(crate) ebit: &'tab [u128],
+    pub(crate) groups_all: &'tab [&'tab Vec<usize>],
+    pub(crate) state_rows: &'tab [Option<Vec<(f64, f64)>>],
+    pub(crate) landing_factors: &'tab [LandPre],
+    pub(crate) lbit: &'tab [u8],
+    pub(crate) all_lk: u8,
+    pub(crate) oq: &'tab [(usize, usize, f64, usize)],
+    pub(crate) og: &'tab [(usize, usize, usize)],
+    pub(crate) orow: &'tab [crate::skills::OutfitPre],
+    pub(crate) zm: &'tab [u32],
+    pub(crate) nm: &'tab [u32],
+    pub(crate) alt: &'tab [(usize, usize)],
 }
 
 /// Reuse preparation's odds buffers and retain diagnostic rows across configurations.
-pub(in crate::deck::enumerate) struct TraversalScratch {
-    pub(in crate::deck::enumerate) out: Vec<(f64, Sel)>,
-    pub(in crate::deck::enumerate) best_value: f64,
-    pub(in crate::deck::enumerate) dw: Vec<f64>,
-    pub(in crate::deck::enumerate) dg: Vec<f64>,
-    pub(in crate::deck::enumerate) av: Vec<f64>,
-    pub(in crate::deck::enumerate) rbs: Vec<Vec<f64>>,
+pub(crate) struct TraversalScratch {
+    pub(crate) out: Vec<(f64, Sel)>,
+    pub(crate) best_value: f64,
+    pub(crate) dw: Vec<f64>,
+    pub(crate) dg: Vec<f64>,
+    pub(crate) av: Vec<f64>,
+    pub(crate) rbs: Vec<Vec<f64>>,
 }
 
 impl DeckSpace<'_> {
     /// Traverse the prepared configurations in their visiting order (`ConfigOrder`): each one's root tests, then its
     /// tables and the depth-first walk of its decks (`DeckSearchContext::visit`), until one ends the search.
-    pub(in crate::deck::enumerate) fn traverse_configurations(
+    pub(crate) fn traverse_configurations(
         &self,
         model: &Model,
         clauses: &[(Vec<(usize, f64)>, f64)],
@@ -114,61 +114,61 @@ impl DeckSpace<'_> {
 /// is one), which leaves the bound loose. Per (key, group): the products of its r best owned entries, and of
 /// r - 1 owned with its best borrowed one, for the miss chances (lowest first) and the ratios (highest first).
 #[derive(Clone)]
-pub(in crate::deck::enumerate) struct MissProducts {
-    pub(in crate::deck::enumerate) white: Vec<f64>,
-    pub(in crate::deck::enumerate) gold: Vec<f64>,
+pub(crate) struct MissProducts {
+    pub(crate) white: Vec<f64>,
+    pub(crate) gold: Vec<f64>,
 }
 
-pub(in crate::deck::enumerate) struct BorrowBounds {
-    pub(in crate::deck::enumerate) own: Vec<MissProducts>,
-    pub(in crate::deck::enumerate) one: Vec<MissProducts>,
-    pub(in crate::deck::enumerate) owned_ratios: Vec<Vec<f64>>,
-    pub(in crate::deck::enumerate) borrow_ratios: Vec<Vec<f64>>,
+pub(crate) struct BorrowBounds {
+    pub(crate) own: Vec<MissProducts>,
+    pub(crate) one: Vec<MissProducts>,
+    pub(crate) owned_ratios: Vec<Vec<f64>>,
+    pub(crate) borrow_ratios: Vec<Vec<f64>>,
 }
 
 /// The one-borrowed-card tables of one configuration's groups and their suffixes (`own`: no borrowed card left to
 /// place; `one`: at most one, in one group); empty without borrowing (`has_borrowed_entries` false)
-pub(in crate::deck::enumerate) struct BorrowTables {
-    pub(in crate::deck::enumerate) has_borrowed_entries: bool,
-    pub(in crate::deck::enumerate) group_bounds: Vec<std::rc::Rc<BorrowBounds>>,
-    pub(in crate::deck::enumerate) owned_suffix: Vec<MissProducts>,
-    pub(in crate::deck::enumerate) borrow_suffix: Vec<MissProducts>,
-    pub(in crate::deck::enumerate) owned_ratio_suffix: Vec<Vec<f64>>,
-    pub(in crate::deck::enumerate) borrow_ratio_suffix: Vec<Vec<f64>>,
+pub(crate) struct BorrowTables {
+    pub(crate) has_borrowed_entries: bool,
+    pub(crate) group_bounds: Vec<std::rc::Rc<BorrowBounds>>,
+    pub(crate) owned_suffix: Vec<MissProducts>,
+    pub(crate) borrow_suffix: Vec<MissProducts>,
+    pub(crate) owned_ratio_suffix: Vec<Vec<f64>>,
+    pub(crate) borrow_ratio_suffix: Vec<Vec<f64>>,
 }
 
 /// The node bound's per-parent rows (see `ConfigurationContext::hopeful`), per (depth, borrowing variant); parent ids never repeat
 /// within a search
 /// (`factors`: A's factors, row ix * target_count; `prefix_products`: their products from 1.0 over the first t, row ix * (target_count + 1))
-pub(in crate::deck::enumerate) struct ParentTargetBounds {
-    pub(in crate::deck::enumerate) parent_id: usize,
-    pub(in crate::deck::enumerate) factors: Vec<f64>,
-    pub(in crate::deck::enumerate) prefix_products: Vec<f64>,
+pub(crate) struct ParentTargetBounds {
+    pub(crate) parent_id: usize,
+    pub(crate) factors: Vec<f64>,
+    pub(crate) prefix_products: Vec<f64>,
 }
 
 /// The same for B, per depth (B has no borrowing variant): the parent's odds 1 - ppw, 1 - ppg, and per row, built
 /// at the first child that evaluates its B (`st`: the parent id it was built for), its factors and their products
-pub(in crate::deck::enumerate) struct ParentRatioBounds {
-    pub(in crate::deck::enumerate) parent_id: usize,
-    pub(in crate::deck::enumerate) white_chances: [f64; 32],
-    pub(in crate::deck::enumerate) gold_chances: [f64; 32],
-    pub(in crate::deck::enumerate) row_stamps: Vec<usize>,
-    pub(in crate::deck::enumerate) factors: Vec<f64>,
-    pub(in crate::deck::enumerate) prefix_products: Vec<f64>,
+pub(crate) struct ParentRatioBounds {
+    pub(crate) parent_id: usize,
+    pub(crate) white_chances: [f64; 32],
+    pub(crate) gold_chances: [f64; 32],
+    pub(crate) row_stamps: Vec<usize>,
+    pub(crate) factors: Vec<f64>,
+    pub(crate) prefix_products: Vec<f64>,
 }
 
 /// What every configuration of one traversal reads: the search, its controls and tables, the clause value (`val`)
-pub(in crate::deck::enumerate) struct DeckSearchContext<'run, 'space, V> {
-    pub(in crate::deck::enumerate) space: &'run DeckSpace<'space>,
-    pub(in crate::deck::enumerate) model: &'run Model<'run>,
-    pub(in crate::deck::enumerate) clauses: &'run [(Vec<(usize, f64)>, f64)],
-    pub(in crate::deck::enumerate) controls: SearchControl,
-    pub(in crate::deck::enumerate) tables: PreparedTables<'run>,
-    pub(in crate::deck::enumerate) clause_value: V,
-    pub(in crate::deck::enumerate) outfit_row_count: usize,
+pub(crate) struct DeckSearchContext<'run, 'space, V> {
+    pub(crate) space: &'run DeckSpace<'space>,
+    pub(crate) model: &'run Model<'run>,
+    pub(crate) clauses: &'run [(Vec<(usize, f64)>, f64)],
+    pub(crate) controls: SearchControl,
+    pub(crate) tables: PreparedTables<'run>,
+    pub(crate) clause_value: V,
+    pub(crate) outfit_row_count: usize,
     // the per-parent rows need every outfit row to read the target_count targets
-    pub(in crate::deck::enumerate) cache_parent_rows: bool,
-    pub(in crate::deck::enumerate) inheritance_chances: Vec<f64>,
+    pub(crate) cache_parent_rows: bool,
+    pub(crate) inheritance_chances: Vec<f64>,
 }
 
 /// One traversal: its inputs, the buffers and caches its configurations share, the decks kept and the bar
@@ -178,9 +178,9 @@ struct DeckSearchScratch {
     borrow_cache: HashMap<(u64, usize), std::rc::Rc<BorrowBounds>>,
 }
 
-pub(in crate::deck::enumerate) struct SearchResults {
-    pub(in crate::deck::enumerate) decks: Vec<(f64, Sel)>,
-    pub(in crate::deck::enumerate) best_value: f64,
+pub(crate) struct SearchResults {
+    pub(crate) decks: Vec<(f64, Sel)>,
+    pub(crate) best_value: f64,
 }
 
 /// Owners returned by search preparation; traversal borrows their parts independently.

@@ -43,7 +43,7 @@ pub(super) struct SearchOutcome {
 
 /// Search-wide legal entries and proof configuration. Own the cached tables so the traversal
 /// can borrow their group/character slices without a self-referential context.
-struct SearchSetup {
+pub(crate) struct SearchSetup {
     best: bool,
     seed: f64,
     rho: f64,

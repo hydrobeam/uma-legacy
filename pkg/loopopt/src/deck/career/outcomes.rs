@@ -9,7 +9,7 @@ use crate::deck::{GEN_GOLD, JointExt, JointScratch, Kind, Sel, Src, Value, joint
 /// caller keeps (the simulator and the plan evaluate tables millions of times).
 /// Folds coordinate 0 first, halving the table each step: entry i after k folds is the full sweep's entry i << k (the
 /// same multiply-adds on the same values, so the same bits), and only those reach entry 0.
-pub(in crate::deck::career) fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
+pub(crate) fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
     cur.clear();
     cur.extend_from_slice(v);
     let mut n = cur.len();
@@ -24,7 +24,7 @@ pub(in crate::deck::career) fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64
 
 impl Env<'_> {
     /// One career's report: trainee and outfit, parents, the six legacy slots, per target odds, aptitudes, deck, schedule.
-    pub(in crate::deck::career) fn report(&mut self, p: &Pool, f: &Found, with_schedule: bool) -> Value {
+    pub(crate) fn report(&mut self, p: &Pool, f: &Found, with_schedule: bool) -> Value {
         let d = self.d;
         let ntar = self.ntar;
         let nu = self.nu;
@@ -139,7 +139,7 @@ impl Env<'_> {
     /// her deck class holds to the bit, and the deck only through its entries and filler; the memo is kept between jobs
     /// of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her model at its last corner, q = 0 for
     /// every target (1 - (1 - 0) x 1); a hit sets the same state
-    pub(in crate::deck) fn corners_kept(&mut self, t: usize, sel: &Sel) -> Vec<Vec<f64>> {
+    pub(crate) fn corners_kept(&mut self, t: usize, sel: &Sel) -> Vec<Vec<f64>> {
         let key = (self.cls[t], sel.ents.clone(), sel.filler);
         let z = vec![0.0; self.ntar];
         if let Some(r) = self.corner_memo.get(&key) {
@@ -184,7 +184,7 @@ impl Env<'_> {
     }
 
     /// Joint distribution of full target sets, including guaranteed gold generation.
-    pub(in crate::deck::career) fn outcome_sets(&self, outfit: usize, ext: &JointExt) -> Vec<f64> {
+    pub(crate) fn outcome_sets(&self, outfit: usize, ext: &JointExt) -> Vec<f64> {
         let su = &ext.sets[(outfit << self.nu)..((outfit + 1) << self.nu)];
         let mut ps = vec![0.0f64; 1 << self.ntar];
         for (mu, &x) in su.iter().enumerate() {
@@ -211,7 +211,7 @@ impl Env<'_> {
 
     /// The veteran career (t, a, b) leaves, before her result is known: trainee t, a spark of every target with stars
     /// drawn from the rank mix (`star_dist`), her schedule's win chances `wp`, parents a and b.
-    pub(in crate::deck::career) fn veteran(&self, legs: &[Legacy], lineage: Lineage, wp: Vec<f64>) -> Legacy {
+    pub(crate) fn veteran(&self, legs: &[Legacy], lineage: Lineage, wp: Vec<f64>) -> Legacy {
         let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         Legacy {
             chara: self.d.umas[t].id,

@@ -8,7 +8,7 @@ use crate::deck::{EXACT_BUDGET, EXACT_STEPS, Kind, Sel, Src, Value, joint_b, jso
 /// to the bit), the spark scale c, the bar th (every th <= 0 as one: each gives no seed and passes the ceiling test),
 /// and the work spent before the call (the work budget's tests read it)
 #[derive(PartialEq, Eq, Hash)]
-pub(in crate::deck::career) struct DeckKey {
+pub(crate) struct DeckKey {
     /// `Env::cls` of the trainee.
     class: usize,
     /// Her folded event-hint chances, outfit by outfit, as bits.
@@ -62,7 +62,7 @@ const CF_NODE_WORK: usize = 15;
 
 /// A memoised `best_deck` outcome: the result, its product search's proof (`last_pv`), the work and exact scorings it
 /// added (and its cap-free searches', `cf`)
-pub(in crate::deck::career) struct DeckMemo {
+pub(crate) struct DeckMemo {
     res: DeckRes,
     pv: Option<f64>,
     work: usize,
@@ -171,22 +171,22 @@ thread_local! {
     /// sets the model, the deck space and the class caps, `cap_audit` included) with the job's trainees (the plain pals'
     /// order), the last few. Exact: a `DeckKey` reads the same model, space and caps in every job of one setup, and the
     /// work budget's argument holds for any budget (`best_deck`)
-    pub(in crate::deck::career) static DECK_KEEP: std::cell::RefCell<Vec<(u64, Kept)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static DECK_KEEP: std::cell::RefCell<Vec<(u64, Kept)>> = const { std::cell::RefCell::new(Vec::new()) };
     /// jobs run so far (`Env::job`)
-    pub(in crate::deck::career) static JOB_NO: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    pub(crate) static JOB_NO: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// what a setup keeps between jobs: `Env::deck_memo` and `Env::corner_memo`
 #[derive(Default)]
-pub(in crate::deck::career) struct Kept {
-    pub(in crate::deck::career) decks: crate::FxMap<DeckKey, DeckMemo>,
-    pub(in crate::deck::career) corners: crate::FxMap<(usize, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
+pub(crate) struct Kept {
+    pub(crate) decks: crate::FxMap<DeckKey, DeckMemo>,
+    pub(crate) corners: crate::FxMap<(usize, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
 }
 
 /// setups whose memo is kept, and the entries past which a setup's memo starts afresh (at a job's start)
 const DECK_KEEP_SETUPS: usize = 4;
 
-pub(in crate::deck::career) const DECK_KEEP_CAP: usize = 8192;
+pub(crate) const DECK_KEEP_CAP: usize = 8192;
 
 impl Drop for Env<'_> {
     fn drop(&mut self) {
@@ -242,14 +242,7 @@ impl Env<'_> {
     /// trainee the same chances: no relation points) then search once per class; a hit adds the same work and
     /// scorings and leaves the same proof, so everything after it is as if the search had run (only the node and
     /// exact-scoring counters, and `max_ratio`, which the same decks already set, see nothing).
-    pub(in crate::deck::career) fn best_deck(
-        &mut self,
-        t: usize,
-        c: f64,
-        th: f64,
-        starts: &[&Sel],
-        scored: &mut usize,
-    ) -> DeckRes {
+    pub(crate) fn best_deck(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
         if !starts.is_empty() {
             return self.best_deck_run(DeckSearch { trainee: t, spark_scale: c, bar: th }, starts, scored);
         }

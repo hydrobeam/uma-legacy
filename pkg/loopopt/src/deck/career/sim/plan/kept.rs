@@ -5,18 +5,18 @@ use crate::deck::career::sim::{Env, Found, Ref, Sim, Value, json};
 /// A cached result may be available from searching, certification or reuse. A known empty result is
 /// reusable too; an unsearched entry still needs work. Completeness is tracked separately.
 #[derive(Clone)]
-pub(in crate::deck::career::sim::plan) enum CachedSearch {
+pub(crate) enum CachedSearch {
     Unsearched,
     Known(Option<Found>),
 }
 
 impl CachedSearch {
-    pub(in crate::deck::career::sim::plan) const fn is_unsearched(&self) -> bool {
+    pub(crate) const fn is_unsearched(&self) -> bool {
         matches!(self, Self::Unsearched)
     }
 
     /// The found career, if any. Callers deciding whether to search must use `is_unsearched` instead.
-    pub(in crate::deck::career::sim::plan) const fn found(&self) -> Option<&Found> {
+    pub(crate) const fn found(&self) -> Option<&Found> {
         match self {
             Self::Unsearched => None,
             Self::Known(found) => found.as_ref(),
@@ -44,27 +44,27 @@ fn cached_searches_out(searches: &[CachedSearch]) -> Vec<Value> {
 /// `CachedSearch` distinguishes an unsearched trainee from a search that returned no career.
 /// Search completeness is separate, in `base_incomplete` / `looped_incomplete`. Every vector is indexed by uma
 /// (`Data::umas`).
-pub(in crate::deck::career) struct Bests {
+pub(crate) struct Bests {
     /// The plan's setup and the pool it was planned on (`bests_key`).
-    pub(in crate::deck::career::sim::plan) key: (u64, u64),
+    pub(crate) key: (u64, u64),
     /// Her best career.
-    pub(in crate::deck::career::sim::plan) best_careers: Vec<CachedSearch>,
+    pub(crate) best_careers: Vec<CachedSearch>,
     /// Per trainee, the decks her best career's search checked fully (refs to absorb into the next search).
-    pub(in crate::deck::career::sim::plan) proof_refs: Vec<Vec<Vec<Ref>>>,
+    pub(crate) proof_refs: Vec<Vec<Vec<Ref>>>,
     /// her best looped career (`index_rule`), where searched: kept the same way (a pool plus one veteran adds looped pairs
     /// only when she is an 8/8)
-    pub(in crate::deck::career::sim::plan) looped_careers: Vec<CachedSearch>,
+    pub(crate) looped_careers: Vec<CachedSearch>,
     /// whether a search behind her kept best (and her looped best) was not complete (`Solved::complete` false: it ran
     /// out of work, a band overflowed, or a scored deck passed its class's cap)
-    pub(in crate::deck::career::sim::plan) base_incomplete: Vec<bool>,
-    pub(in crate::deck::career::sim::plan) looped_incomplete: Vec<bool>,
+    pub(crate) base_incomplete: Vec<bool>,
+    pub(crate) looped_incomplete: Vec<bool>,
 }
 
-thread_local! { pub(in crate::deck::career::sim::plan) static BESTS: std::cell::RefCell<Vec<Bests>> = const { std::cell::RefCell::new(Vec::new()) }; }
+thread_local! { pub(crate) static BESTS: std::cell::RefCell<Vec<Bests>> = const { std::cell::RefCell::new(Vec::new()) }; }
 
 /// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
 /// not kept: nothing reads them back)
-pub(in crate::deck::career) fn bests_out() -> Value {
+pub(crate) fn bests_out() -> Value {
     BESTS.with(|c| Value::Array(c.borrow().iter().map(|b| json!({"k": [crate::deck::career::ux(b.key.0), crate::deck::career::ux(b.key.1)], "n": b.best_careers.len(),
         "b": cached_searches_out(&b.best_careers),
         "l": cached_searches_out(&b.looped_careers),
@@ -72,7 +72,7 @@ pub(in crate::deck::career) fn bests_out() -> Value {
         "lu": (0..b.looped_incomplete.len()).filter(|&u| b.looped_incomplete[u]).collect::<Vec<_>>()})).collect()))
 }
 
-pub(in crate::deck::career) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
+pub(crate) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
     use crate::deck::career::{found_in, len_in, usz, uxr};
     v.as_array()?
         .iter()
@@ -116,17 +116,17 @@ pub(in crate::deck::career) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
         .collect()
 }
 
-pub(in crate::deck::career) fn bests_set(b: Vec<Bests>) {
+pub(crate) fn bests_set(b: Vec<Bests>) {
     BESTS.with(|c| *c.borrow_mut() = b);
 }
 
 /// the kept plans, taken out (the simulator's `index` policy starts each run without them, `sim::kept_swap`)
-pub(in crate::deck::career) fn bests_take() -> Vec<Bests> {
+pub(crate) fn bests_take() -> Vec<Bests> {
     BESTS.with(|c| std::mem::take(&mut *c.borrow_mut()))
 }
 
 /// Remove one kept plan while `index_rule` owns it; the plan puts retained entries back when it finishes.
-pub(in crate::deck::career::sim::plan) fn take_kept_plan(key: (u64, u64)) -> Option<Bests> {
+pub(crate) fn take_kept_plan(key: (u64, u64)) -> Option<Bests> {
     BESTS.with(|cache| {
         let mut cache = cache.borrow_mut();
         let index = cache.iter().position(|plan| plan.key == key);
@@ -134,7 +134,7 @@ pub(in crate::deck::career::sim::plan) fn take_kept_plan(key: (u64, u64)) -> Opt
     })
 }
 
-pub(in crate::deck::career::sim::plan) fn h64(s: &str) -> u64 {
+pub(crate) fn h64(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     s.hash(&mut h);
@@ -144,11 +144,7 @@ pub(in crate::deck::career::sim::plan) fn h64(s: &str) -> u64 {
 /// A kept plan's key: (setup and places, the first `legacy_count` legacies). The borrowed-parent rule is in the first
 /// unless "allow": `setup_fp` leaves it out, and a plan under "later" or "never" keeps other looped careers, under
 /// "never" other best careers too
-pub(in crate::deck::career::sim::plan) fn bests_key(
-    job: &Value,
-    fixed_parents: &[usize],
-    legacy_count: usize,
-) -> (u64, u64) {
+pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usize) -> (u64, u64) {
     // (the slice's text as the array's: the same serializer, no copy)
     let legacies_text = job
         .get("legacies")
@@ -168,32 +164,27 @@ pub(in crate::deck::career::sim::plan) fn bests_key(
 
 /// The kept plans a career search may reuse (`Bests`), taken out of `BESTS` while the plan runs.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct KeptPlans<'kept> {
+pub(crate) struct KeptPlans<'kept> {
     /// A kept plan of this very pool.
-    pub(in crate::deck::career::sim::plan) same_pool: Option<&'kept Bests>,
+    pub(crate) same_pool: Option<&'kept Bests>,
     /// A kept plan of this pool less its last veteran.
-    pub(in crate::deck::career::sim::plan) previous_pool: Option<&'kept Bests>,
+    pub(crate) previous_pool: Option<&'kept Bests>,
     /// The pool's recorded veterans; the last of them, index `legacy_count - 1`, is the one `previous_pool` lacks.
-    pub(in crate::deck::career::sim::plan) legacy_count: usize,
+    pub(crate) legacy_count: usize,
 }
 
 /// One trainee's best career search.
-pub(in crate::deck::career::sim::plan) struct BestCareer {
+pub(crate) struct BestCareer {
     /// Her best career, if she has a legal one.
-    pub(in crate::deck::career::sim::plan) found: Option<Found>,
+    pub(crate) found: Option<Found>,
     /// Per trainee, the decks the search checked fully: the refs to absorb.
-    pub(in crate::deck::career::sim::plan) proof_refs: Vec<Vec<Ref>>,
+    pub(crate) proof_refs: Vec<Vec<Ref>>,
     /// Every search behind it was complete (`Solved::complete`).
-    pub(in crate::deck::career::sim::plan) complete: bool,
+    pub(crate) complete: bool,
 }
 
 /// `trainee`'s best career in the pool, reusing a kept plan of this pool or of the pool less its last veteran
-pub(in crate::deck::career::sim::plan) fn best_of(
-    env: &mut Env,
-    parents: ParentPool,
-    trainee: usize,
-    kept: KeptPlans,
-) -> BestCareer {
+pub(crate) fn best_of(env: &mut Env, parents: ParentPool, trainee: usize, kept: KeptPlans) -> BestCareer {
     let ParentPool { pool, fixed_parents } = parents;
     // a kept plan of this very pool (the same job planned again: a reload, a setting changed and back): her best, as kept
     if let Some(same) = kept.same_pool
@@ -261,7 +252,7 @@ pub(in crate::deck::career::sim::plan) fn best_of(
 /// The part of the deck cache a scoring reads: its decks and fully checked decks (`Cache`, per trainee, both only grow)
 /// summed over the trainees it reads.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::deck::career::sim::plan) struct CacheStamp {
+pub(crate) struct CacheStamp {
     decks: usize,
     proofs: usize,
 }
@@ -289,7 +280,7 @@ fn cache_version(s: &Sim, trainees: Option<&[usize]>) -> CacheVersion {
 /// ran no deck search and added nothing, else None. A scoring of the same career against the same base, run when the
 /// cache is again at the stamp, reads the same decks and tables, takes the same branches (whether `deck_for` searches
 /// is decided by those alone) and gives the same f64s (`stamp_ok`), so it need not run
-pub(in crate::deck::career::sim::plan) fn stamped<R>(
+pub(crate) fn stamped<R>(
     s: &mut Sim,
     trainees: Option<&[usize]>,
     scoring: impl FnOnce(&mut Sim) -> R,
@@ -301,18 +292,14 @@ pub(in crate::deck::career::sim::plan) fn stamped<R>(
     (result, unchanged.then_some(after.stamp))
 }
 
-pub(in crate::deck::career::sim::plan) fn stamp_ok(
-    s: &Sim,
-    trainees: Option<&[usize]>,
-    stamp: Option<CacheStamp>,
-) -> bool {
+pub(crate) fn stamp_ok(s: &Sim, trainees: Option<&[usize]>, stamp: Option<CacheStamp>) -> bool {
     stamp == Some(cache_version(s, trainees).stamp)
 }
 
 /// the same career as `score_career` reads it: trainee, parents in order, every field of the deck (floats by bits). Not
 /// its value (`Found::val`, nor `ub`): `score_career` never reads them, and a proxy's value (the surrogate's corner-table
 /// interpolation) and the search's exact one differ in their last bits
-pub(in crate::deck::career::sim::plan) fn same_career(f: &Found, g: &Found) -> bool {
+pub(crate) fn same_career(f: &Found, g: &Found) -> bool {
     let bits = |a: &[f64], b: &[f64]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits());
     f.t == g.t
         && f.a == g.a

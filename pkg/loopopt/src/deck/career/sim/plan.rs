@@ -9,19 +9,19 @@ use anchors::{PartnerAnchors, found_anchors, outcome_hi, pick_her};
 use candidates::{exact_no_borrow_career, score_and_admit_proxies, set_plan_wins, setup_plan_candidates};
 use combine::{PlanCombination, PlanFit, PlanScores, plan_combinations, plan_continuations, plan_sides};
 use cont::{CEIL_SHARE, LB_CELLS, MemoReport, count_refit, trio_v};
-pub(in crate::deck::career::sim) use cont::{Cont, ScoreBase, Trio, Want};
+pub(crate) use cont::{Cont, ScoreBase, Trio, Want};
 use fold::{FOLD_SCRATCH, FoldCx, FoldScratch, fold_rec, leaf_products, leaf_set, rise_leaves};
 use kept::{
     BESTS, BestCareer, CacheStamp, CachedSearch, KeptPlans, best_of, bests_key, h64, same_career, stamp_ok, stamped,
     take_kept_plan,
 };
-pub(in crate::deck::career) use kept::{Bests, bests_set, bests_take};
-pub(in crate::deck::career) use kept::{bests_in, bests_out};
+pub(crate) use kept::{Bests, bests_set, bests_take};
+pub(crate) use kept::{bests_in, bests_out};
 use output::assemble_plan_output;
-pub(in crate::deck::career::sim) use roll::Scored;
+pub(crate) use roll::Scored;
 use roll::{KeptBase, keep_roll, roll_key};
-pub(in crate::deck::career) use roll::{RollKeep, roll_kept, rolls_in};
-pub(in crate::deck::career) use roll::{rolls_out, rolls_set};
+pub(crate) use roll::{RollKeep, roll_kept, rolls_in};
+pub(crate) use roll::{rolls_out, rolls_set};
 use rows::{
     PlanRow, RowOrigin, add_looped_rows, add_no_borrow_rows, check_plan_proxies, near_floor, pick_of,
     score_and_promote_rows,
@@ -50,7 +50,7 @@ mod step;
 /// Position in the planner's fixed candidate order, distinct from Data::umas.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::deck::career::sim) struct CandidateIndex(pub(in crate::deck::career::sim) usize);
+pub(crate) struct CandidateIndex(pub(crate) usize);
 
 impl std::ops::Index<CandidateIndex> for PlanCandidates {
     type Output = usize;
@@ -64,7 +64,7 @@ impl std::ops::Index<CandidateIndex> for PlanCandidates {
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
-struct TargetMask(usize);
+pub(crate) struct TargetMask(usize);
 
 impl TargetMask {
     const fn from_bits(bits: usize) -> Self {
@@ -126,13 +126,13 @@ impl OutcomeIndex {
 }
 
 /// Immutable continuation and pool inputs shared by career scorings.
-pub(in crate::deck::career::sim) struct ScoringContext<'score, 'base> {
+pub(crate) struct ScoringContext<'score, 'base> {
     /// Continuations and trio costs in candidate order.
-    pub(in crate::deck::career::sim) score_base: &'score ScoreBase<'base>,
+    pub(crate) score_base: &'score ScoreBase<'base>,
     /// Recorded lineages, in parent-index order.
-    pub(in crate::deck::career::sim) legacies: &'score [Legacy],
+    pub(crate) legacies: &'score [Legacy],
     /// Pool in which the career's parents are indexed.
-    pub(in crate::deck::career::sim) pool: &'score Pool,
+    pub(crate) pool: &'score Pool,
 }
 
 /// Whether the search pool was built directly from the recorded legacies.
@@ -143,7 +143,7 @@ enum PoolProvenance {
 }
 
 #[derive(Deserialize, Clone)]
-pub(in crate::deck::career) struct PlanJob {
+pub(crate) struct PlanJob {
     /// the surrogate's refresh margin (`sim` module notes)
     #[serde(default = "p_margin")]
     margin: f64,
@@ -185,23 +185,23 @@ pub(in crate::deck::career) struct PlanJob {
 /// Inputs shared by the phases. Under `borrowed_parent: "later"`, `pick` is the pool
 /// without borrowed parents and its main search. The candidates, builders, trios and
 /// scoring partners still use `pool` and `solved`; only runnable rows use the pick's pool.
-pub(in crate::deck::career) struct PlanInputs<'plan, 'data> {
+pub(crate) struct PlanInputs<'plan, 'data> {
     /// Immutable data and settings for this job.
-    pub(in crate::deck::career) resources: &'plan JobInputs<'data>,
+    pub(crate) resources: &'plan JobInputs<'data>,
     /// Recorded veterans in parent-index order.
-    pub(in crate::deck::career) legacies: &'plan [Legacy],
+    pub(crate) legacies: &'plan [Legacy],
     /// Search pool, including any borrowed veterans.
-    pub(in crate::deck::career) pool: &'plan Pool,
+    pub(crate) pool: &'plan Pool,
     /// Main career search, including its proofs.
-    pub(in crate::deck::career) solved: &'plan Solved,
+    pub(crate) solved: &'plan Solved,
     /// Parent indices required by the job.
-    pub(in crate::deck::career) fixed_parents: &'plan [usize],
+    pub(crate) fixed_parents: &'plan [usize],
     /// Allowed trainees in search order.
-    pub(in crate::deck::career) trainees: &'plan [usize],
+    pub(crate) trainees: &'plan [usize],
     /// Settings for the next-career planner.
-    pub(in crate::deck::career) settings: &'plan PlanJob,
+    pub(crate) settings: &'plan PlanJob,
     /// Runnable pool and search when borrowed parents are deferred.
-    pub(in crate::deck::career) pick: Option<(&'plan Pool, &'plan Solved)>,
+    pub(crate) pick: Option<(&'plan Pool, &'plan Solved)>,
 }
 
 impl<'plan> PlanInputs<'plan, '_> {
@@ -416,7 +416,7 @@ struct PlanRows {
 /// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
 /// real 8/8 (free) with 8/8 parents, a strong side of the trios.
-pub(in crate::deck::career) fn index_rule<'data>(env: &mut Env<'data>, input: &PlanInputs<'_, 'data>) -> Value {
+pub(crate) fn index_rule<'data>(env: &mut Env<'data>, input: &PlanInputs<'_, 'data>) -> Value {
     let started_ms = now_ms();
     let pick_career = input.pick_solved().found[0].clone();
     progress(1, 0, 0);

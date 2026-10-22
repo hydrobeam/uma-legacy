@@ -10,24 +10,24 @@ use crate::deck::career::sim::{Env, Legacy, Pool, Sim, Value};
 /// A and B index `PlanCandidates::trainees`; the finisher indexes `Data::umas` directly.
 /// Each side uses either an existing full veteran (a free step) or a newly built one.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct PlanCombination {
-    pub(in crate::deck::career::sim::plan) candidate_a_index: CandidateIndex,
-    pub(in crate::deck::career::sim::plan) candidate_b_index: CandidateIndex,
+pub(crate) struct PlanCombination {
+    pub(crate) candidate_a_index: CandidateIndex,
+    pub(crate) candidate_b_index: CandidateIndex,
     /// Expected careers for the finisher, after A and B are full veterans.
-    pub(in crate::deck::career::sim::plan) finisher_cost: f64,
-    pub(in crate::deck::career::sim::plan) finisher_trainee: usize,
-    pub(in crate::deck::career::sim::plan) a_uses_existing: bool,
-    pub(in crate::deck::career::sim::plan) b_uses_existing: bool,
+    pub(crate) finisher_cost: f64,
+    pub(crate) finisher_trainee: usize,
+    pub(crate) a_uses_existing: bool,
+    pub(crate) b_uses_existing: bool,
 }
 
 impl PlanCombination {
-    pub(in crate::deck::career::sim::plan) fn total_cost(&self, stage_costs: &[f64]) -> f64 {
+    pub(crate) fn total_cost(&self, stage_costs: &[f64]) -> f64 {
         let a_cost = if self.a_uses_existing { 0.0 } else { stage_costs[self.candidate_a_index.0] };
         let b_cost = if self.b_uses_existing { 0.0 } else { stage_costs[self.candidate_b_index.0] };
         a_cost + b_cost + self.finisher_cost
     }
 
-    pub(in crate::deck::career::sim::plan) const fn as_trio(&self) -> Trio {
+    pub(crate) const fn as_trio(&self) -> Trio {
         Trio {
             candidate_a: self.candidate_a_index,
             candidate_b: self.candidate_b_index,
@@ -40,22 +40,19 @@ impl PlanCombination {
 
 /// Continuation and trio values fitted together for scoring the plan's rows.
 /// Per-candidate buffers use the fixed order in `PlanCandidates::trainees`.
-pub(in crate::deck::career::sim::plan) struct PlanFit {
-    pub(in crate::deck::career::sim::plan) continuations: Vec<Cont>,
+pub(crate) struct PlanFit {
+    pub(crate) continuations: Vec<Cont>,
     /// Each candidate's step: the expected careers to a fresh 8/8 of hers under her continuation.
-    pub(in crate::deck::career::sim::plan) step_costs: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) trios: Vec<Trio>,
+    pub(crate) step_costs: Vec<f64>,
+    pub(crate) trios: Vec<Trio>,
     /// Per candidate, the trios' sides (`ScoreBase::sides`).
-    pub(in crate::deck::career::sim::plan) sides: Vec<Vec<(bool, Legacy)>>,
+    pub(crate) sides: Vec<Vec<(bool, Legacy)>>,
     /// V: the cheapest trio's careers.
-    pub(in crate::deck::career::sim::plan) current_value: f64,
+    pub(crate) current_value: f64,
 }
 
 impl PlanFit {
-    pub(in crate::deck::career::sim::plan) fn score_base<'fit>(
-        &'fit self,
-        candidates: &'fit PlanCandidates,
-    ) -> ScoreBase<'fit> {
+    pub(crate) fn score_base<'fit>(&'fit self, candidates: &'fit PlanCandidates) -> ScoreBase<'fit> {
         ScoreBase {
             cands: &candidates.trainees,
             c1: &self.step_costs,
@@ -71,13 +68,13 @@ impl PlanFit {
 }
 
 /// Pass 2's completed fit and reporting results, used by the proxy check and output assembly.
-pub(in crate::deck::career::sim::plan) struct PlanScores {
-    pub(in crate::deck::career::sim::plan) fit: PlanFit,
-    pub(in crate::deck::career::sim::plan) best_combo: Option<PlanCombination>,
-    pub(in crate::deck::career::sim::plan) any_scored: bool,
-    pub(in crate::deck::career::sim::plan) combo_ms: f64,
-    pub(in crate::deck::career::sim::plan) index_ms: f64,
-    pub(in crate::deck::career::sim::plan) work: Value,
+pub(crate) struct PlanScores {
+    pub(crate) fit: PlanFit,
+    pub(crate) best_combo: Option<PlanCombination>,
+    pub(crate) any_scored: bool,
+    pub(crate) combo_ms: f64,
+    pub(crate) index_ms: f64,
+    pub(crate) work: Value,
 }
 
 /// A builder row's lift of one candidate.
@@ -96,7 +93,7 @@ struct BuilderLift {
 /// Each candidate's continuation: lam and the first step from her most efficient exactly searched base builder, pinf
 /// from her full-loop ceiling with her two most efficient builders (of different umas), phi the share of the log-odds
 /// gap the first step closes; a given fit (`PlanJob::fit`) replaces the pool's
-pub(in crate::deck::career::sim::plan) fn plan_continuations(
+pub(crate) fn plan_continuations(
     sim: &mut Sim,
     context: &PlanContext,
     runs: &[PlanRow],
@@ -175,7 +172,7 @@ struct Finisher {
 
 /// Combinations in candidate-pair order, then fresh/existing side order. `full_veterans`: per candidate her real 8/8s
 /// (legacy indices); `step_costs`: per candidate, a fresh 8/8's step (a fresh side only where it is finite).
-pub(in crate::deck::career::sim::plan) fn plan_combinations(
+pub(crate) fn plan_combinations(
     sim: &mut Sim,
     context: &PlanContext,
     full_veterans: &[Vec<usize>],
@@ -264,7 +261,7 @@ fn fresh_veteran(sim: &mut Sim, context: &PlanContext, step_costs: &[f64], ui: u
 }
 
 /// The trios' sides per candidate (her real 8/8s, then the fresh 8/8 her best career now would leave), for `her_trios`
-pub(in crate::deck::career::sim::plan) fn plan_sides(
+pub(crate) fn plan_sides(
     sim: &mut Sim,
     context: &PlanContext,
     full_veterans: &[Vec<usize>],

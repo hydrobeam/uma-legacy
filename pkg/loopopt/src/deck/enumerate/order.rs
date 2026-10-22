@@ -34,15 +34,15 @@ impl Ord for QueuedConfig {
 /// The partial decks' miss products, one row of `target_count` per depth (the last row: the deck so far): `pw`, `pg` hold one
 /// row of target_count per depth 0 ..= the deck's slots, row d at d * target_count (the partial deck with d cards); `parent_id` the last parent
 /// id given out (kept across configurations)
-pub(in crate::deck::enumerate) struct DeckPath {
-    pub(in crate::deck::enumerate) sel: Vec<usize>,
-    pub(in crate::deck::enumerate) pw: Vec<f64>,
-    pub(in crate::deck::enumerate) pg: Vec<f64>,
-    pub(in crate::deck::enumerate) parent_id: usize,
+pub(crate) struct DeckPath {
+    pub(crate) sel: Vec<usize>,
+    pub(crate) pw: Vec<f64>,
+    pub(crate) pg: Vec<f64>,
+    pub(crate) parent_id: usize,
 }
 
 /// The configuration to visit next: computed from a pending one (lazy) or the eager list's
-pub(in crate::deck::enumerate) enum ConfigRef<'queue> {
+pub(crate) enum ConfigRef<'queue> {
     Computed(SearchConfig),
     Listed(&'queue SearchConfig),
 }
@@ -59,7 +59,7 @@ impl std::ops::Deref for ConfigRef<'_> {
 
 /// The configurations in visiting order: the eager list in its stable root order; or (lazy) the pending ones by
 /// bound, each computed (its root and the key's ratio tables) once it may come next, and popped best root first
-pub(in crate::deck::enumerate) struct ConfigOrder {
+pub(crate) struct ConfigOrder {
     lazy: bool,
     check_ratio_bounds: bool,
     configurations: Vec<SearchConfig>,
@@ -77,7 +77,7 @@ pub(in crate::deck::enumerate) struct ConfigOrder {
 }
 
 impl ConfigOrder {
-    pub(in crate::deck::enumerate) fn new(queue: ConfigurationQueue, controls: SearchControl) -> Self {
+    pub(crate) fn new(queue: ConfigurationQueue, controls: SearchControl) -> Self {
         let SearchControl { lazy, check_ratio_bounds, target_count, column_count, .. } = controls;
         let ConfigurationQueue { cfgs: configurations, pend: pending, pkeys: key_ratios } = queue;
         let mut pending_order: Vec<usize> = (0..pending.len()).collect();
@@ -109,7 +109,7 @@ impl ConfigOrder {
     }
 
     /// The next configuration to visit at the bar `best_value`, None when none is left
-    pub(in crate::deck::enumerate) fn next(
+    pub(crate) fn next(
         &mut self,
         space: &DeckSpace<'_>,
         best_value: f64,
