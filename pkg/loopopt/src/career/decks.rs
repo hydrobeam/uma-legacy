@@ -1,8 +1,11 @@
 //! Exact career deck searches and their kept memos.
-use super::{DeckRes, Env};
+use crate::career::Env;
+use crate::career::search::DeckRes;
+use crate::deck::caps::{EXACT_BUDGET, EXACT_STEPS};
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
-use crate::deck::{EXACT_BUDGET, EXACT_STEPS, SelectedDeck, Value, joint_b, json, upper_na};
-
+use crate::deck::joint::{joint_b, upper_na};
+use crate::deck::space::SelectedDeck;
+use serde_json::{Value, json};
 /// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads
 /// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the model state the search runs on,
 /// to the bit), the spark scale c, the bar th (every th <= 0 as one: each gives no seed and passes the ceiling test),
@@ -10,7 +13,7 @@ use crate::deck::{EXACT_BUDGET, EXACT_STEPS, SelectedDeck, Value, joint_b, json,
 #[derive(PartialEq, Eq, Hash)]
 pub(crate) struct DeckKey {
     /// `Env::deck_class` of the trainee.
-    class: crate::UmaIndex,
+    class: crate::uma::UmaIndex,
     /// Her folded event-hint chances, outfit by outfit, as bits.
     hint_chances: Vec<u64>,
     /// The spark scale c, as bits.
@@ -79,14 +82,14 @@ pub(crate) struct DeckMemo {
 #[derive(Clone)]
 struct RatioDeck {
     ratio: f64,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     deck: SelectedDeck,
 }
 
 /// One deck search's question beside the chances folded into the model (`set_trainee`).
 #[derive(Clone, Copy)]
 struct DeckSearch {
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     /// C, the career's spark scale.
     spark_scale: f64,
     /// th, the value (C x E) the career must beat; at most 0: none.
@@ -112,7 +115,7 @@ struct SearchEffects {
     work: usize,
     last_pv: Option<f64>,
     max_ratio: [f64; 4],
-    max_deck: [Option<(crate::UmaIndex, SelectedDeck)>; 4],
+    max_deck: [Option<(crate::uma::UmaIndex, SelectedDeck)>; 4],
     cap_breach: usize,
     cfs: CfStats,
     cert: f64,
@@ -133,7 +136,7 @@ impl SearchEffects {
             cert: env.cert,
             overflows: env.overflows,
             nodes: env.space.nodes.get(),
-            joints: crate::deck::JCOUNT.with(std::cell::Cell::get),
+            joints: crate::deck::caps::JCOUNT.with(std::cell::Cell::get),
         }
     }
     fn restore(self, env: &mut Env) {
@@ -146,7 +149,7 @@ impl SearchEffects {
         env.cert = self.cert;
         env.overflows = self.overflows;
         env.space.nodes.set(self.nodes);
-        crate::deck::JCOUNT.with(|c| c.set(self.joints));
+        crate::deck::caps::JCOUNT.with(|c| c.set(self.joints));
     }
 }
 
@@ -177,7 +180,7 @@ thread_local! {
 #[derive(Default)]
 pub(crate) struct Kept {
     pub(crate) decks: crate::FxMap<DeckKey, DeckMemo>,
-    pub(crate) corners: crate::FxMap<(crate::UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
+    pub(crate) corners: crate::FxMap<(crate::uma::UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
 }
 
 /// setups whose memo is kept, and the entries past which a setup's memo starts afresh (at a job's start)
@@ -202,7 +205,7 @@ impl Drop for Env<'_> {
 
 impl Env<'_> {
     /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
-    fn note_ratio(&mut self, k: usize, r: f64, t: crate::UmaIndex, sel: &SelectedDeck) {
+    fn note_ratio(&mut self, k: usize, r: f64, t: crate::uma::UmaIndex, sel: &SelectedDeck) {
         self.note_breach(k, r);
         if r > self.max_ratio[k] {
             self.max_ratio[k] = r;
@@ -241,7 +244,7 @@ impl Env<'_> {
     /// exact-scoring counters, and `max_ratio`, which the same decks already set, see nothing).
     pub(crate) fn best_deck(
         &mut self,
-        t: crate::UmaIndex,
+        t: crate::uma::UmaIndex,
         c: f64,
         th: f64,
         starts: &[&SelectedDeck],
@@ -273,7 +276,7 @@ impl Env<'_> {
             if m.job != self.job_number {
                 m.job = self.job_number;
                 self.space.nodes.set(self.space.nodes.get() + m.nodes);
-                crate::deck::JCOUNT.with(|c| c.set(c.get() + m.joints));
+                crate::deck::caps::JCOUNT.with(|c| c.set(c.get() + m.joints));
                 Self::merge_ratios(&mut self.max_ratio, &mut self.max_deck, &m.ratio);
             }
             let caps = self.space.caps();
@@ -292,7 +295,7 @@ impl Env<'_> {
             cert: std::mem::replace(&mut self.cert, f64::INFINITY),
             overflows: self.overflows,
             nodes: self.space.nodes.get(),
-            joints: crate::deck::JCOUNT.with(std::cell::Cell::get),
+            joints: crate::deck::caps::JCOUNT.with(std::cell::Cell::get),
             cap_free: self.cap_free_stats,
         };
         // (the call's own per-class maxima, from nothing, then merged into the job's: see the hit above)
@@ -318,7 +321,7 @@ impl Env<'_> {
                     overflows: self.overflows - start.overflows,
                     cf: self.cap_free_stats.since(&start.cap_free),
                     nodes: self.space.nodes.get() - start.nodes,
-                    joints: crate::deck::JCOUNT.with(std::cell::Cell::get) - start.joints,
+                    joints: crate::deck::caps::JCOUNT.with(std::cell::Cell::get) - start.joints,
                     ratio,
                     job: self.job_number,
                 },
@@ -330,7 +333,7 @@ impl Env<'_> {
     /// is strictly above, as `note_ratio` keeps the first deck strictly above
     fn merge_ratios(
         max_ratio: &mut [f64; 4],
-        max_deck: &mut [Option<(crate::UmaIndex, SelectedDeck)>; 4],
+        max_deck: &mut [Option<(crate::uma::UmaIndex, SelectedDeck)>; 4],
         ratio: &[Option<RatioDeck>; 4],
     ) {
         for k in 0..4 {
@@ -354,7 +357,7 @@ impl Env<'_> {
         }
         let (breaches_before, cert_before, overflows_before) = (self.cap_breach, self.cert, self.overflows);
         let CappedSearch { result: res, product_deck } = self.best_deck_capped(search, starts, scored);
-        if crate::deck::cf_check() > 0.0 {
+        if crate::deck::joint::cf_check() > 0.0 {
             self.cf_beside(search, starts, &res, &product_deck);
         }
         if self.cap_breach == breaches_before {
@@ -395,7 +398,7 @@ impl Env<'_> {
             DeckRes::Done(v, _, _) if *v >= the => Some(*v),
             _ => None,
         };
-        crate::deck::CFCHK.with(|k| {
+        crate::deck::joint::CFCHK.with(|k| {
             let mut k = k.borrow_mut();
             k.0 += 1;
             match &r {
@@ -488,8 +491,8 @@ impl Env<'_> {
         // a deck below th / c cannot make the career (every deck with c x value >= th is at least this)
         let the = if th.is_finite() && th > 0.0 { th / (c * (1.0 + 1e-9)) } else { f64::NEG_INFINITY };
         let n0 = self.space.nodes.get();
-        crate::deck::CF_ON.with(|x| x.set(true));
-        crate::deck::CF_LIM.with(|x| x.set(n0.saturating_add(budget.saturating_sub(work) / CF_NODE_WORK)));
+        crate::deck::joint::CF_ON.with(|x| x.set(true));
+        crate::deck::joint::CF_LIM.with(|x| x.set(n0.saturating_add(budget.saturating_sub(work) / CF_NODE_WORK)));
         let SearchOutcome { decks: mut more, incomplete } = self.space.search(
             &self.model,
             &[t],
@@ -500,8 +503,8 @@ impl Env<'_> {
             }],
             SearchMode::Band { ratio_cap: 1.0, max_decks: self.space.band_cap() },
         );
-        crate::deck::CF_ON.with(|x| x.set(false));
-        crate::deck::CF_LIM.with(|x| x.set(usize::MAX));
+        crate::deck::joint::CF_ON.with(|x| x.set(false));
+        crate::deck::joint::CF_LIM.with(|x| x.set(usize::MAX));
         work += CF_NODE_WORK * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
         let mut full = incomplete.is_none();
         more.sort_by(|x, y| y.value.partial_cmp(&x.value).unwrap());
@@ -616,8 +619,8 @@ impl Env<'_> {
         let mut rho = rho;
         while self.work <= self.budget {
             let n0 = self.space.nodes.get();
-            crate::deck::SB_ON.with(|c| c.set(true));
-            crate::deck::SB_USED.with(|c| c.set(0));
+            crate::deck::joint::SB_ON.with(|c| c.set(true));
+            crate::deck::joint::SB_USED.with(|c| c.set(0));
             let SearchOutcome { decks: mut more, incomplete } = self.space.search(
                 &self.model,
                 &[t],
@@ -625,9 +628,9 @@ impl Env<'_> {
                 &[SearchClause { lineages: vec![LineageChance { trainee: 0, inheritance: 0.0 }], threshold: best.0 }],
                 SearchMode::Band { ratio_cap: rho, max_decks: self.space.band_cap() },
             );
-            crate::deck::SB_ON.with(|c| c.set(false));
+            crate::deck::joint::SB_ON.with(|c| c.set(false));
             // the band built without the cap (SBOUND=2): every deck in it may beat the bar, none is cut by rho
-            let nocap = crate::deck::SB_USED.with(std::cell::Cell::get) == 2;
+            let nocap = crate::deck::joint::SB_USED.with(std::cell::Cell::get) == 2;
             self.work += 2 * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
             if incomplete.is_some() {
                 self.overflows += 1;

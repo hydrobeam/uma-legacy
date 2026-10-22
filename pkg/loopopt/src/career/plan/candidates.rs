@@ -1,13 +1,25 @@
 //! Candidate setup and exact and surrogate careers.
-use super::{
-    CachedSearch, CareerScore, HINT_FLOOR, IDX_CANDS, KeptPlans, LiftStats, PROXY_EFF, ParentPool, PlanCandidates,
-    PlanContext, PlanInputs, PlanProfile, PlanRow, PlanRows, PlanSearches, PlanSetup, RowOrigin, Want, best_of,
-    best_sur, bests_key, capped, certified, found_career, found_lineage, hint_umas, is_full, rotation, same_career,
-    score_career, search_best_career, sim_for, stamp_ok, stamped, take_kept_plan, unordered_parents,
+use crate::career::Env;
+use crate::career::clock::{now_ms, prof, progress};
+use crate::career::plan::cont::Want;
+use crate::career::plan::kept::{
+    CachedSearch, KeptPlans, best_of, bests_key, same_career, stamp_ok, stamped, take_kept_plan,
 };
-use crate::deck::career::sim::plan::search::{HintUma, LoopRotation};
-use crate::deck::career::sim::{Env, Found, Pool, SelectedDeck, Sim, Solved, Value, json, now_ms, prof, progress};
-
+use crate::career::plan::rows::{PlanRow, RowOrigin};
+use crate::career::plan::score::{CareerScore, LiftStats, score_career};
+use crate::career::plan::search::{
+    HINT_FLOOR, HintUma, IDX_CANDS, LoopRotation, PROXY_EFF, best_sur, capped, certified, hint_umas, is_full, rotation,
+    sim_for,
+};
+use crate::career::plan::{
+    ParentPool, PlanCandidates, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, PlanSetup, found_career,
+    found_lineage, search_best_career, unordered_parents,
+};
+use crate::career::pool::Pool;
+use crate::career::search::{Found, Solved};
+use crate::career::sim::Sim;
+use crate::deck::space::SelectedDeck;
+use serde_json::{Value, json};
 /// Choose the stage candidates, search their best careers, and build the simulator the later phases share.
 pub(crate) fn setup_plan_candidates<'env, 'data>(
     env: &'env mut Env<'data>,
@@ -21,7 +33,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let data = input.resources.data;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
     let (nodes_at_start, exact_scorings_at_start) =
-        (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
+        (env.space.nodes.get(), crate::deck::caps::JCOUNT.with(std::cell::Cell::get));
     // Named loop members supplement the candidates; this setup does not run the loop search.
     let loop_rotation = match &settings.loop_members {
         Some(ids) => rotation(env, ids),
@@ -31,7 +43,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let StageCandidates { trainees: candidate_trainees, hint } =
         stage_candidates(env, input, &main_career, &loop_rotation.members);
     let loop_ms = now_ms() - started_ms;
-    let allowed_trainees: Vec<crate::UmaIndex> =
+    let allowed_trainees: Vec<crate::uma::UmaIndex> =
         input.trainees.iter().copied().filter(|&u| env.deck_odds_ceilings[u].is_some()).collect();
     let searches_started_ms = now_ms();
     let env_budget = env.budget;
@@ -140,7 +152,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
 
 /// The stage-1 candidates (uma indices) and the page's record of those `hint_umas` added.
 struct StageCandidates {
-    trainees: Vec<crate::UmaIndex>,
+    trainees: Vec<crate::uma::UmaIndex>,
     hint: Vec<Value>,
 }
 
@@ -151,12 +163,12 @@ fn stage_candidates(
     env: &mut Env,
     input: &PlanInputs,
     main_career: &Found,
-    loop_members: &[crate::UmaIndex],
+    loop_members: &[crate::uma::UmaIndex],
 ) -> StageCandidates {
     let legacies = input.legacies;
     let settings = input.settings;
-    let mut trainees: Vec<crate::UmaIndex> = vec![main_career.trainee];
-    let push = |u: crate::UmaIndex, candidates: &mut Vec<crate::UmaIndex>| {
+    let mut trainees: Vec<crate::uma::UmaIndex> = vec![main_career.trainee];
+    let push = |u: crate::uma::UmaIndex, candidates: &mut Vec<crate::uma::UmaIndex>| {
         if !candidates.contains(&u) && input.trainees.contains(&u) {
             candidates.push(u);
         }
@@ -209,7 +221,7 @@ fn stage_candidates(
 fn new_searches(input: &PlanInputs, main_career: &Found, env_budget: usize) -> PlanSearches {
     let uma_count = input.resources.data.umas.len();
     let legacy_count = input.legacies.len();
-    let mut best_careers = crate::UmaTable(vec![CachedSearch::Unsearched; uma_count]);
+    let mut best_careers = crate::uma::UmaTable(vec![CachedSearch::Unsearched; uma_count]);
     best_careers[main_career.trainee] = CachedSearch::Known(Some(main_career.clone()));
     let kept_same_pool = take_kept_plan(bests_key(input.resources.job, input.fixed_parents, legacy_count));
     let kept_previous_pool = if legacy_count > 1 {
@@ -219,11 +231,11 @@ fn new_searches(input: &PlanInputs, main_career: &Found, env_budget: usize) -> P
     };
     PlanSearches {
         best_careers,
-        proof_refs: crate::UmaTable(vec![crate::UmaTable(vec![]); uma_count]),
-        base_incomplete: crate::UmaTable(vec![false; uma_count]),
-        looped_incomplete: crate::UmaTable(vec![false; uma_count]),
-        no_borrow_incomplete: crate::UmaTable(vec![false; uma_count]),
-        looped_careers: crate::UmaTable(vec![]),
+        proof_refs: crate::uma::UmaTable(vec![crate::uma::UmaTable(vec![]); uma_count]),
+        base_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
+        looped_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
+        no_borrow_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
+        looped_careers: crate::uma::UmaTable(vec![]),
         kept_same_pool,
         kept_previous_pool,
         env_budget,
@@ -236,7 +248,7 @@ const fn input_parents<'input>(input: &PlanInputs<'input, '_>) -> ParentPool<'in
 
 /// A winning deck of the main search or a candidate's best career, which a builder of the same deck class may use.
 pub(crate) struct ClassWinner {
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     deck: SelectedDeck,
 }
 
@@ -244,7 +256,7 @@ pub(crate) struct ClassWinner {
 pub(crate) fn class_winners(
     solved: &Solved,
     candidates: &PlanCandidates,
-    best_careers: &crate::UmaTable<CachedSearch>,
+    best_careers: &crate::uma::UmaTable<CachedSearch>,
 ) -> Vec<ClassWinner> {
     solved
         .found
@@ -264,7 +276,7 @@ pub(crate) fn proxy_career(
     sim: &mut Sim,
     winners: &[ClassWinner],
     parents: ParentPool,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let deck_class = sim.env.deck_class[trainee];
@@ -290,7 +302,7 @@ pub(crate) fn score_and_admit_proxies(
     if context.candidates.proxies_enabled {
         admit_near_top_proxies(sim, context, searches, profile, &mut rows, buf);
     }
-    let mut wins_by_trainee = crate::UmaTable(vec![vec![]; context.data().umas.len()]);
+    let mut wins_by_trainee = crate::uma::UmaTable(vec![vec![]; context.data().umas.len()]);
     for row in &rows {
         set_plan_wins(sim, context.input.pool, &mut wins_by_trainee, row.trainee, &row.career);
     }
@@ -312,7 +324,7 @@ fn pass_one_rows(
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let mut rows: Vec<PlanRow> = vec![];
-    let mut order: Vec<crate::UmaIndex> = vec![candidates.main_career.trainee];
+    let mut order: Vec<crate::uma::UmaIndex> = vec![candidates.main_career.trainee];
     for &trainee in &candidates.allowed_trainees {
         if trainee != candidates.main_career.trainee {
             order.push(trainee);
@@ -457,8 +469,8 @@ pub(crate) fn make_row_exact(
 fn plan_surrogate(
     sim: &mut Sim,
     input: &PlanInputs,
-    best_careers: &mut crate::UmaTable<CachedSearch>,
-    u: crate::UmaIndex,
+    best_careers: &mut crate::uma::UmaTable<CachedSearch>,
+    u: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Value> {
     let settings = input.settings;
@@ -518,8 +530,8 @@ fn exact_plan_career(
 pub(crate) fn set_plan_wins(
     sim: &mut Sim,
     pool: &Pool,
-    wins_by_trainee: &mut crate::UmaTable<Vec<usize>>,
-    trainee: crate::UmaIndex,
+    wins_by_trainee: &mut crate::uma::UmaTable<Vec<usize>>,
+    trainee: crate::uma::UmaIndex,
     career: &Found,
 ) {
     let win_chances = sim.wins(pool, found_lineage(trainee, career));
@@ -533,7 +545,7 @@ pub(crate) fn exact_no_borrow_career(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let settings = context.settings();

@@ -24,16 +24,9 @@
 //! tables of exact values by inheritance chance) can still beat the k-th best. A pass over its work budget falls back
 //! to lower caps, then to product odds alone (`exact.rho`). Per-uma decks (`per_uma`, `run_multi`) give each trainee
 //! her own best legal deck; a shared deck must be legal for every member. docs/SOLVER.md "Deck + loop search".
-use super::{
-    Choice, Data, Deserialize, FxMap, Instant, NONE, NT, Res, Sched, Serialize, Uma, best_response, chart_race_name,
-    feasible, members, optimize_fam, pair_ceilings, pk, probs, scored_position, streak_penalty, when, wval,
-};
-use crate::skills::{
-    GEN_GOLD, MemberLineage, Model, OutfitOption, SkillJob, SkillsRaw, chart_rows, check_sizes, lins, member_json,
-};
-use serde_json::{Value, json};
+use crate::{Choice, Data, NT, Sched, Uma, best_response, feasible};
+use serde::Deserialize;
 use std::collections::HashMap;
-
 #[derive(Deserialize, Clone)]
 pub(crate) struct Card {
     pub id: u32,
@@ -178,7 +171,7 @@ fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
 const fn d_one() -> usize {
     1
 }
-const fn d_true() -> bool {
+pub(crate) const fn d_true() -> bool {
     true
 }
 /// Skyline depth of the deck enumeration: 1 (the exact search scores every deck it needs from `DeckSpace`)
@@ -199,50 +192,15 @@ const fn d_rar() -> u8 {
 } // SR: R cards have no chain events, so this only filters chain cards
 
 mod capfree;
-mod caps;
-mod chains;
-mod enumerate;
+pub(crate) mod caps;
+pub(crate) mod chains;
+pub(crate) mod enumerate;
 mod hints;
-mod joint;
+pub(crate) mod joint;
 mod kept;
-mod loops;
+pub(crate) mod loops;
 mod multi;
-mod sources;
-mod space;
+pub(crate) mod sources;
+pub(crate) mod space;
 #[cfg(test)]
 mod tests;
-pub(crate) use self::caps::JCOUNT;
-pub(crate) use self::enumerate::RBCHK;
-pub(crate) use self::joint::{CF_LIM, CF_ON, CFCHK, SB_ON, SB_USED, SBCHK, SBN};
-pub(crate) use self::loops::run_deck;
-pub(crate) use self::sources::apply_events_db;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use self::sources::{EventLists, apply_event_lists, event_lists};
-use self::{
-    capfree::{CapFreeRatios, StateBound},
-    caps::{
-        AUDIT_CAP, EXACT_BUDGET, EXACT_CAP, EXACT_CAPS, EXACT_RHO, EXACT_STEPS, cap_class, cv_mask, src_class,
-        test_caps,
-    },
-    chains::{
-        CHAIN_EVENTS, CHAIN_N, CHAIN_P, ChainKind, KeyLevel, chain_marginals, chain_states, event_pmf_job, key_level,
-        stop_risk_code,
-    },
-    hints::{hint_base, hint_miss, hint_spec, scenario_name},
-    joint::{
-        JointExt, JointScratch, LandPre, StateBoundConfig, cf_check, joint, joint_b, joint_eval_in, joint_fast,
-        joint_prep, sb_check, sb_mode, src_levels, upper_na,
-    },
-    kept::{Cl, DeckEval, DeckId, Kept, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, split, tie_rank},
-    multi::run_multi,
-    sources::{Entries, Group, SourceEntry, Sources, TargetSources, deck_entries, group_gh, group_nuod, src_miss},
-    space::{
-        DeckSpace, GroupTable, LegalTables, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SPT, SelectedDeck, UCHK, deck_space,
-        gm_g, gm_w, kinds_all, top_desc,
-    },
-};
-
-mod career;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use career::forget_kept_decks;
-pub(crate) use career::run_career;

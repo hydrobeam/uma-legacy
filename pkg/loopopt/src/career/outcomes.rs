@@ -1,12 +1,15 @@
 //! Career reports, outcome sets and corner tables.
-use super::inherit::{ExactOptions, Inheritance};
-use super::schedule::RaceSchedule;
-use super::{Ancestor, Env, Found, Legacy, Pool, aff_factor, apt_pink, inherit, now_ms, pink_p, prof, set_ews};
-use crate::deck::career::Lineage;
-use crate::deck::{
-    GEN_GOLD, JointExt, JointScratch, OutfitOption, SelectedDeck, TargetSources, Value, joint_eval_in, joint_prep, json,
-};
-
+use crate::career::clock::{now_ms, prof};
+use crate::career::inherit::{ExactOptions, Inheritance, aff_factor, inherit, set_ews};
+use crate::career::pool::Pool;
+use crate::career::schedule::{RaceSchedule, apt_pink, pink_p};
+use crate::career::search::Found;
+use crate::career::{Ancestor, Env, Legacy, Lineage};
+use crate::deck::joint::{JointExt, JointScratch, joint_eval_in, joint_prep};
+use crate::deck::sources::TargetSources;
+use crate::deck::space::SelectedDeck;
+use crate::skills::{GEN_GOLD, OutfitOption};
+use serde_json::{Value, json};
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x, with a buffer the
 /// caller keeps (the simulator and the plan evaluate tables millions of times).
 /// Folds coordinate 0 first, halving the table each step: entry i after k folds is the full sweep's entry i << k (the
@@ -143,7 +146,7 @@ impl Env<'_> {
     /// `own_event_chances`), which her deck class holds to the bit, and the deck only through its entries and filler;
     /// the memo is kept between jobs of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her model
     /// at its last corner, q = 0 for every target (1 - (1 - 0) x 1); a hit sets the same state
-    pub(crate) fn corners_kept(&mut self, t: crate::UmaIndex, sel: &SelectedDeck) -> Vec<Vec<f64>> {
+    pub(crate) fn corners_kept(&mut self, t: crate::uma::UmaIndex, sel: &SelectedDeck) -> Vec<Vec<f64>> {
         let key = (self.deck_class[t], sel.entries.clone(), sel.filler_cards);
         let z = vec![0.0; self.target_count];
         if let Some(r) = self.corner_memo.get(&key) {
@@ -158,17 +161,17 @@ impl Env<'_> {
         self.corner_memo.insert(key, std::rc::Rc::new(r.clone()));
         r
     }
-    fn corners(&mut self, t: crate::UmaIndex, sel: &SelectedDeck, q0: &[f64]) -> Vec<Vec<f64>> {
+    fn corners(&mut self, t: crate::uma::UmaIndex, sel: &SelectedDeck, q0: &[f64]) -> Vec<Vec<f64>> {
         let (nu, ntar) = (self.uncertain_count, self.target_count);
         let no = self.model.n_outfits(t);
         let mut corners = vec![vec![0.0f64; 1 << nu]; no];
         // The exact odds per corner at scale 1: prepare the deck once (`joint_prep`, which reads no chance or model
         // state), then evaluate it per corner with the same sums as `exact`.
         let scales = self.scale(&vec![6; ntar]);
-        let ents: Vec<crate::deck::SourceEntry<&TargetSources>> = sel
+        let ents: Vec<crate::deck::sources::SourceEntry<&TargetSources>> = sel
             .entries
             .iter()
-            .map(|&j| crate::deck::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
+            .map(|&j| crate::deck::sources::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
             .collect();
         let pre = joint_prep(self.model.uncertain.len(), &ents, sel.filler_cards);
         // (one chance vector and one `JointExt` for every corner: joint_eval only reads `scales`; `marginals` is not read here,

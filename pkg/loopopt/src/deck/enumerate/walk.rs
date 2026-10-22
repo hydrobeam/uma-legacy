@@ -1,15 +1,16 @@
 //! The depth-first walk of decks in one configuration.
-use super::RBCHK;
-use super::{
-    BorrowTables, DOM_GAP, DeckPath, DeckSearchContext, NodeScratch, ParentRatioBounds, PreparedTables, SearchConfig,
-    SearchControl, SearchResults,
+use crate::deck::capfree::StateBound;
+use crate::deck::caps::cap_class;
+use crate::deck::enumerate::bounds::{DOM_GAP, RBCHK};
+use crate::deck::enumerate::config::SearchConfig;
+use crate::deck::enumerate::order::DeckPath;
+use crate::deck::enumerate::scratch::NodeScratch;
+use crate::deck::enumerate::traverse::{
+    BorrowTables, DeckSearchContext, ParentRatioBounds, PreparedTables, SearchControl, SearchResults,
 };
-use crate::deck::SourceEntry;
-use crate::deck::space::{Dominator, EntryGroup};
-use crate::deck::{
-    CFCHK, SBCHK, SBN, SelectedDeck, StateBound, TargetSources, cap_class, gm_g, gm_w, joint_fast, sb_check,
-};
-
+use crate::deck::joint::{CFCHK, SBCHK, SBN, joint_fast, sb_check};
+use crate::deck::sources::{SourceEntry, TargetSources};
+use crate::deck::space::{Dominator, EntryGroup, SelectedDeck, gm_g, gm_w};
 /// Read-only tables for one configuration, borrowed separately from the node workspace.
 pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
     pub(crate) search: &'walk DeckSearchContext<'run, 'space, V>,
@@ -107,7 +108,7 @@ struct NodeIdentity {
     touched_targets: u32,
 }
 
-impl<V: Fn(&super::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_, '_, '_, V> {
+impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_, '_, '_, V> {
     /// Walk completions in group/entry order. A true result means the output limit stopped the search.
     /// The context's hot slices are copied here so mutable node writes cannot force their repeated reload.
     pub(crate) fn rec(
@@ -512,7 +513,7 @@ impl<V: Fn(&super::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_
         let PreparedTables { outfit_rows, outfit_runs, outfits, .. } = search.tables;
         let fixed = search.controls.fixed;
         let mut nan = false;
-        for &super::bounds::OutfitRun { clause: ci, start: i, count: no } in outfit_runs {
+        for &crate::deck::enumerate::bounds::OutfitRun { clause: ci, start: i, count: no } in outfit_runs {
             let q = outfit_rows[i].inheritance;
             let mut m = 0.0f64;
             for o in 0..no {
@@ -648,7 +649,7 @@ impl<V: Fn(&super::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_
                 }
                 position
             };
-            for &super::bounds::OutfitRun { clause: ci, start: i, count: no } in outfit_runs {
+            for &crate::deck::enumerate::bounds::OutfitRun { clause: ci, start: i, count: no } in outfit_runs {
                 let q = outfit_rows[i].inheritance;
                 let mut m = 0.0f64;
                 for o in 0..no {
@@ -870,10 +871,10 @@ impl<V: Fn(&super::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_
                 }
             });
         }
-        let mk = |v: f64| -> super::ScoredDeck<SelectedDeck> {
+        let mk = |v: f64| -> crate::deck::enumerate::ScoredDeck<SelectedDeck> {
             let mut e = selection.to_vec();
             e.sort_unstable();
-            super::ScoredDeck {
+            crate::deck::enumerate::ScoredDeck {
                 value: v,
                 deck: SelectedDeck {
                     entries: e,

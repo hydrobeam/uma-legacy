@@ -1,8 +1,8 @@
 //! Reusable buffers for configuration and node bounds.
-use super::{DeckPath, ParentRatioBounds, ParentTargetBounds, SearchConfig};
-use crate::deck::space::EntryGroup;
-use crate::deck::{gm_g, gm_w};
-
+use crate::deck::enumerate::config::SearchConfig;
+use crate::deck::enumerate::order::DeckPath;
+use crate::deck::enumerate::traverse::{ParentRatioBounds, ParentTargetBounds};
+use crate::deck::space::{EntryGroup, gm_g, gm_w};
 /// The node bound's buffers and per-parent rows (`ConfigurationContext::hopeful`), and the dominance skip's, reused across
 /// configurations
 pub(crate) struct NodeScratch {

@@ -1,51 +1,33 @@
 //! The page's next career (`next` on a career job, `index_rule`; docs/SOLVER.md "Next career"): the career that brings
 //! a fully looped parent closest per run, scored exactly over every result she can roll, with each candidate's
 //! continuation (`Cont`) fitted to the pool. It values careers through the simulator's deck cache (`Sim`, `Cache`).
-use crate::deck::career::sim::{
-    Cache, Data, Deserialize, Env, Found, Legacy, Pool, Ref, Sim, Solved, Value, now_ms, progress,
+use crate::Data;
+use crate::career::cache::Cache;
+use crate::career::clock::{now_ms, progress};
+use crate::career::plan::candidates::{score_and_admit_proxies, setup_plan_candidates};
+use crate::career::plan::cont::{MemoReport, ScoreBase};
+use crate::career::plan::kept::{BestCareer, Bests, CachedSearch, KeptPlans, best_of};
+use crate::career::plan::output::assemble_plan_output;
+use crate::career::plan::rows::{
+    PlanRow, add_looped_rows, add_no_borrow_rows, check_plan_proxies, score_and_promote_rows,
 };
-use crate::deck::career::{Career, JobInputs, Lineage};
-use anchors::{PartnerAnchors, found_anchors, outcome_hi, pick_her};
-use candidates::{exact_no_borrow_career, score_and_admit_proxies, set_plan_wins, setup_plan_candidates};
-use combine::{PlanCombination, PlanFit, PlanScores, plan_combinations, plan_continuations, plan_sides};
-use cont::{CEIL_SHARE, CostBoundCell, LB_CELLS, MemoReport, TrioSideVeteran, count_refit, trio_v};
-pub(crate) use cont::{Cont, ScoreBase, Trio, Want};
-use fold::{FOLD_SCRATCH, FoldCx, FoldScratch, fold_rec, leaf_products, leaf_set, rise_leaves};
-use kept::{
-    BESTS, BestCareer, CacheStamp, CachedSearch, KeptPlans, best_of, bests_key, h64, same_career, stamp_ok, stamped,
-    take_kept_plan,
-};
-pub(crate) use kept::{Bests, bests_set, bests_take};
-pub(crate) use kept::{bests_in, bests_out};
-use output::assemble_plan_output;
-pub(crate) use roll::Scored;
-use roll::{KeptBase, keep_roll, roll_key};
-pub(crate) use roll::{RollKeep, roll_kept, rolls_in};
-pub(crate) use roll::{rolls_out, rolls_set};
-use rows::{
-    PlanRow, RowOrigin, add_looped_rows, add_no_borrow_rows, check_plan_proxies, near_floor, pick_of,
-    score_and_promote_rows,
-};
-pub(crate) use score::{CareerScore, LiftStats, score_career, score_career_of};
-use score::{
-    HerEnds, KeptScoring, fm_masks, her_ends, her_pool, her_pool_done, her_trios, sc_roll, v0_after, with_her,
-};
-use search::{
-    FullLoop, HINT_FLOOR, IDX_CANDS, IDX_PARTNERS, OPT_SHOW, PROXY_EFF, PROXY_SAVE, Setup, best_sur, capped, certified,
-    hint_umas, is_full, legal_pair, loop_ceiling, p_margin, p_swork, rotation, sim_for, val,
-};
-pub(crate) use step::{All, Leaves, OneLeaf};
-use step::{Est, EstBufs, Lo, One, one_of, v_after};
+use crate::career::plan::search::{p_margin, p_swork};
+use crate::career::pool::Pool;
+use crate::career::search::{Found, Ref, Solved};
+use crate::career::sim::Sim;
+use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
+use serde::Deserialize;
+use serde_json::Value;
 mod anchors;
 mod candidates;
 mod combine;
-mod cont;
+pub(super) mod cont;
 mod fold;
-mod kept;
+pub(super) mod kept;
 mod output;
-mod roll;
+pub(super) mod roll;
 mod rows;
-mod score;
+pub(super) mod score;
 mod search;
 mod step;
 
@@ -55,7 +37,7 @@ mod step;
 pub(crate) struct CandidateIndex(pub(crate) usize);
 
 impl std::ops::Index<CandidateIndex> for PlanCandidates {
-    type Output = crate::UmaIndex;
+    type Output = crate::uma::UmaIndex;
 
     fn index(&self, index: CandidateIndex) -> &Self::Output {
         &self.trainees[index.0]
@@ -199,7 +181,7 @@ pub(crate) struct PlanInputs<'plan, 'data> {
     /// Parent indices required by the job.
     pub(crate) fixed_parents: &'plan [usize],
     /// Allowed trainees in search order.
-    pub(crate) trainees: &'plan [crate::UmaIndex],
+    pub(crate) trainees: &'plan [crate::uma::UmaIndex],
     /// Settings for the next-career planner.
     pub(crate) settings: &'plan PlanJob,
     /// Runnable pool and search when borrowed parents are deferred.
@@ -251,15 +233,15 @@ struct PlanCandidates {
     pick_career: Found,
     /// The named loop's members (`PlanJob::loop_members`), as uma indices, with their {id, name} and why the rotation
     /// was refused.
-    loop_members: Vec<crate::UmaIndex>,
+    loop_members: Vec<crate::uma::UmaIndex>,
     loop_member_info: Vec<Value>,
     loop_member_note: Option<String>,
     /// The candidates `hint_umas` added, as the page shows them.
     hint: Vec<Value>,
     /// The stage candidates, as uma indices (`Data::umas`).
-    trainees: Vec<crate::UmaIndex>,
+    trainees: Vec<crate::uma::UmaIndex>,
     /// The umas a trio's finisher may be: the allowed trainees with a legal deck.
-    allowed_trainees: Vec<crate::UmaIndex>,
+    allowed_trainees: Vec<crate::uma::UmaIndex>,
     /// Initial candidate careers: later builder searches do not replace these.
     careers: Vec<Option<Found>>,
     /// Each candidate's odds now: her initial career's P(all), 0 without one.
@@ -331,12 +313,12 @@ impl<'context, 'data> PlanContext<'context, 'data> {
 }
 
 /// A found career's trainee and parents. `trainee` is the uma the row or search is for.
-const fn found_lineage(trainee: crate::UmaIndex, found: &Found) -> Lineage {
+const fn found_lineage(trainee: crate::uma::UmaIndex, found: &Found) -> Lineage {
     Lineage { trainee, first_parent: found.first_parent, second_parent: found.second_parent }
 }
 
 /// A found career as `score_career` takes it.
-const fn found_career(trainee: crate::UmaIndex, found: &Found) -> Career<'_> {
+const fn found_career(trainee: crate::uma::UmaIndex, found: &Found) -> Career<'_> {
     Career { lineage: found_lineage(trainee, found), deck: &found.deck }
 }
 
@@ -349,15 +331,15 @@ fn unordered_parents(found: &Found) -> (usize, usize) {
 /// `Data::umas`.
 struct PlanSearches {
     /// Each uma's best career, searched on demand (stage-1 candidates in setup, builders when scored exactly).
-    best_careers: crate::UmaTable<CachedSearch>,
+    best_careers: crate::uma::UmaTable<CachedSearch>,
     /// The decks each uma's best-career search checked fully, kept with the plan.
-    proof_refs: crate::UmaTable<crate::UmaTable<Vec<Ref>>>,
+    proof_refs: crate::uma::UmaTable<crate::uma::UmaTable<Vec<Ref>>>,
     /// Per uma, her searches were incomplete: her best, looped and no-borrow careers'.
-    base_incomplete: crate::UmaTable<bool>,
-    looped_incomplete: crate::UmaTable<bool>,
-    no_borrow_incomplete: crate::UmaTable<bool>,
+    base_incomplete: crate::uma::UmaTable<bool>,
+    looped_incomplete: crate::uma::UmaTable<bool>,
+    no_borrow_incomplete: crate::uma::UmaTable<bool>,
     /// Each uma's best career on two real 8/8 parents, where searched (`add_looped_rows`).
-    looped_careers: crate::UmaTable<CachedSearch>,
+    looped_careers: crate::uma::UmaTable<CachedSearch>,
     /// A kept plan of this very pool, and one of this pool less its last veteran (taken out of `BESTS` while this
     /// plan runs and put back after it: every reroll of a career reuses the same one).
     kept_same_pool: Option<Bests>,
@@ -376,7 +358,7 @@ impl PlanSearches {
     }
 
     /// Record `trainee`'s best-career search.
-    fn record_best_career(&mut self, trainee: crate::UmaIndex, search: BestCareer) {
+    fn record_best_career(&mut self, trainee: crate::uma::UmaIndex, search: BestCareer) {
         self.proof_refs[trainee] = search.proof_refs;
         self.best_careers[trainee] = CachedSearch::Known(search.found);
         self.base_incomplete[trainee] = !search.complete;
@@ -384,7 +366,12 @@ impl PlanSearches {
 }
 
 /// `trainee`'s best career searched now, its deck added to the cache the planner's tables read, and recorded
-fn search_best_career(sim: &mut Sim, context: &PlanContext, searches: &mut PlanSearches, trainee: crate::UmaIndex) {
+fn search_best_career(
+    sim: &mut Sim,
+    context: &PlanContext,
+    searches: &mut PlanSearches,
+    trainee: crate::uma::UmaIndex,
+) {
     let search = best_of(sim.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
     if let Some(found) = &search.found {
         sim.cache.add(sim.env, trainee, &found.deck);
@@ -417,7 +404,7 @@ struct PlanRows {
     rows: Vec<PlanRow>,
     /// indexed by uma (her index in `d.umas`), filled for each row's trainee: the G1 races her latest row's career
     /// wins with a chance above 0.5 (`set_plan_wins`), the continuation fit's shared-win input; empty for other umas
-    wins_by_trainee: crate::UmaTable<Vec<usize>>,
+    wins_by_trainee: crate::uma::UmaTable<Vec<usize>>,
 }
 
 /// The page's next career, exact where it can be and without simulation: the career that brings a FULLY LOOPED veteran

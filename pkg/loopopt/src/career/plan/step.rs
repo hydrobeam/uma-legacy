@@ -1,8 +1,7 @@
 //! Step costs and the leaves used to estimate the next career.
-use super::{Cont, CostBoundCell, LB_CELLS, ScoreBase, Trio, trio_v, v0_after, with_her};
-use crate::deck::career::sim::plan::CandidateIndex;
-use crate::deck::career::sim::plan::cont::OwnTrio;
-
+use crate::career::plan::CandidateIndex;
+use crate::career::plan::cont::{Cont, CostBoundCell, LB_CELLS, OwnTrio, ScoreBase, Trio, trio_v};
+use crate::career::plan::score::{v0_after, with_her};
 /// One candidate's improvement; slot indexes the estimate's per-row cost cache.
 #[derive(Clone, Copy)]
 pub(crate) struct CandidateLift {
@@ -35,8 +34,6 @@ pub(crate) struct CachedStepCost {
 }
 
 // Compatibility names for the planner module's existing imports.
-pub(crate) use EstimateBuffers as EstBufs;
-pub(crate) use StepEstimate as Est;
 
 /// How V after her (`v_after`) costs the steps of the candidates her veteran lifts: the estimate's (`StepEstimate`, `Cont::cost`,
 /// for y) or the lower bound's (`Lo`, `Cont::cost_lo`, for y_hi). Monomorphised: each path keeps its own code

@@ -1,15 +1,13 @@
 //! Folding spark outcomes and their rises.
-use super::Leaves;
-use crate::deck::career::sim::HerSlot;
-use crate::deck::career::sim::plan::TargetMask;
-use crate::deck::career::sim::rise_factor;
-
+use crate::career::inherit::{HerSlot, rise_factor};
+use crate::career::plan::TargetMask;
+use crate::career::plan::step::Leaves;
 /// Reusable scoring storage. Fold writes outcome_values before the outcome loop reads it.
 #[derive(Default)]
 pub(crate) struct FoldScratch {
     pub(crate) fold: FoldWorkspace,
     pub(crate) outcome_values: Vec<f64>,
-    pub(crate) outcomes: super::score::OutcomeScratch,
+    pub(crate) outcomes: crate::career::plan::score::OutcomeScratch,
 }
 
 /// Mutable fold levels and the last two levels' sixteen-leaf blocks.
@@ -63,7 +61,6 @@ pub(crate) struct FoldContext<'fold, L: Leaves> {
 }
 
 // Compatibility name for the planner module's existing import.
-pub(crate) use FoldContext as FoldCx;
 
 /// Position in the fold; leaf digits and landed target bits use different layouts.
 #[derive(Clone, Copy)]

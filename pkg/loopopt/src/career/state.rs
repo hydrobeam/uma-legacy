@@ -1,8 +1,10 @@
 //! The worker's saved searches and their validation.
-use super::sim;
-use super::{Env, Found, Pool, Ref, Solved};
-use crate::deck::{MAX_DECK, SelectedDeck, Value, json};
 
+use crate::career::Env;
+use crate::career::pool::Pool;
+use crate::career::search::{Found, Ref, Solved};
+use crate::deck::space::{MAX_DECK, SelectedDeck};
+use serde_json::{Value, json};
 /// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
 /// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
 pub(crate) fn setup_fp(v: &Value) -> u64 {
@@ -77,7 +79,7 @@ pub(crate) struct KeptSolve {
 }
 
 /// per deck class, the product searches' proofs (`Env::ruled`)
-pub(crate) type Ruled = crate::UmaTable<Vec<ProductProof>>;
+pub(crate) type Ruled = crate::uma::UmaTable<Vec<ProductProof>>;
 
 /// What one product search proved (`best_deck` pass 1): every legal deck's product value at chances q (fixed factor
 /// included, before the spark scale) is at most S.
@@ -97,14 +99,14 @@ thread_local! {
     /// per setup fingerprint (the last few), every fully checked deck found so far (`Env::seen`): what the page's
     /// earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact value
     /// there, which depend on the setup only (the job's trainees change no deck value: they only order plain pals).
-    pub(crate) static SEEN: std::cell::RefCell<Vec<(u64, crate::UmaTable<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static SEEN: std::cell::RefCell<Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Fully checked decks kept per trainee across jobs (the most recent): the bound loop over them stays cheap
 pub(crate) const SEEN_KEEP: usize = 256;
 
 // ---------- the worker's kept work across page loads ----------
-// What a worker keeps between jobs (the kept plans, `sim::plan::BESTS`; the proofs, `SEEN`) leaves as `state_out` and comes
+// What a worker keeps between jobs (the kept plans, `plan::kept::BESTS`; the proofs, `SEEN`) leaves as `state_out` and comes
 // back as `state_in`, so the first plan after a page reload reuses the work of the last session. Every float travels as
 // its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
 // keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
@@ -197,7 +199,7 @@ pub(crate) fn found_out(f: &Found) -> Value {
 pub(crate) fn found_in(v: &Value) -> Option<Found> {
     let a = v.as_array()?;
     Some(Found {
-        trainee: crate::UmaIndex(usz(a.first()?)?),
+        trainee: crate::uma::UmaIndex(usz(a.first()?)?),
         first_parent: usz(a.get(1)?)?,
         second_parent: usz(a.get(2)?)?,
         value: fx(a.get(3)?)?,
@@ -228,20 +230,20 @@ fn seen_out() -> Value {
     })
 }
 
-fn seen_in(v: &Value) -> Option<Vec<(u64, crate::UmaTable<Vec<Ref>>)>> {
+fn seen_in(v: &Value) -> Option<Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>> {
     v.as_array()?
         .iter()
         .map(|e| {
             let a = e.as_array()?;
             let (fp, n) = (uxr(a.first()?)?, len_in(a.get(1)?)?);
-            let mut vv = crate::UmaTable(vec![vec![]; n]);
+            let mut vv = crate::uma::UmaTable(vec![vec![]; n]);
             for c in a.get(2)?.as_array()? {
                 let ca = c.as_array()?;
                 let i = usz(ca.first()?)?;
                 if i >= n {
                     return None;
                 }
-                vv[crate::UmaIndex(i)] = ca.get(1)?.as_array()?.iter().map(ref_in).collect::<Option<_>>()?;
+                vv[crate::uma::UmaIndex(i)] = ca.get(1)?.as_array()?.iter().map(ref_in).collect::<Option<_>>()?;
             }
             Some((fp, vv))
         })
@@ -249,7 +251,7 @@ fn seen_in(v: &Value) -> Option<Vec<(u64, crate::UmaTable<Vec<Ref>>)>> {
 }
 
 /// per-uma (or per-class) lists as [length, [[index, [items]], ...]] (only the non-empty ones)
-fn lists_out<T>(vv: &crate::UmaTable<Vec<T>>, f: impl Fn(&T) -> Value) -> Value {
+fn lists_out<T>(vv: &crate::uma::UmaTable<Vec<T>>, f: impl Fn(&T) -> Value) -> Value {
     json!([
         vv.len(),
         vv.iter()
@@ -260,17 +262,17 @@ fn lists_out<T>(vv: &crate::UmaTable<Vec<T>>, f: impl Fn(&T) -> Value) -> Value 
     ])
 }
 
-fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<crate::UmaTable<Vec<T>>> {
+fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<crate::uma::UmaTable<Vec<T>>> {
     let a = v.as_array()?;
     let n = len_in(a.first()?)?;
-    let mut vv = crate::UmaTable(vec![vec![]; n]);
+    let mut vv = crate::uma::UmaTable(vec![vec![]; n]);
     for c in a.get(1)?.as_array()? {
         let ca = c.as_array()?;
         let i = usz(ca.first()?)?;
         if i >= n {
             return None;
         }
-        vv[crate::UmaIndex(i)] = ca.get(1)?.as_array()?.iter().map(&f).collect::<Option<_>>()?;
+        vv[crate::uma::UmaIndex(i)] = ca.get(1)?.as_array()?.iter().map(&f).collect::<Option<_>>()?;
     }
     Some(vv)
 }
@@ -317,7 +319,7 @@ fn solve_in(v: &Value) -> Option<Vec<KeptSolve>> {
 }
 
 pub(crate) fn state_out() -> Value {
-    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": sim::plan::bests_out(), "seen": seen_out(), "solve": solve_out(), "rolls": sim::plan::rolls_out()}})
+    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(), "seen": seen_out(), "solve": solve_out(), "rolls": crate::career::plan::roll::rolls_out()}})
 }
 
 /// replaces the kept plans, proofs, main searches and plans' roll states with the page's stored ones (all or nothing: a
@@ -332,18 +334,18 @@ pub(crate) fn state_in(v: &Value) -> Value {
         return json!({"error": "state: does not parse"});
     }
     let (Some(bests), Some(seen), Some(searches), Some(rolls)) = (
-        sim::plan::bests_in(&v["bests"]),
+        crate::career::plan::kept::bests_in(&v["bests"]),
         seen_in(&v["seen"]),
         solve_in(&v["solve"]),
-        sim::plan::rolls_in(&v["rolls"]),
+        crate::career::plan::roll::rolls_in(&v["rolls"]),
     ) else {
         return json!({"error": "state: does not parse"});
     };
     let (nb, ns, nm, nr) = (bests.len(), seen.len(), searches.len(), rolls.len());
-    sim::plan::bests_set(bests);
+    crate::career::plan::kept::bests_set(bests);
     SEEN.with(|cache| *cache.borrow_mut() = seen);
     LAST_SOLVE.with(|cache| *cache.borrow_mut() = searches);
-    sim::plan::rolls_set(rolls);
+    crate::career::plan::roll::rolls_set(rolls);
     json!({"ok": true, "bests": nb, "seen": ns, "solve": nm, "rolls": nr})
 }
 
@@ -360,7 +362,7 @@ impl Env<'_> {
         r.q.len() == self.target_count && self.sel_fits(&r.deck)
     }
     /// stored proofs (`SEEN`): per deck class (one per uma) the fully checked decks
-    pub(crate) fn seen_fits(&self, seen: &crate::UmaTable<Vec<Ref>>) -> bool {
+    pub(crate) fn seen_fits(&self, seen: &crate::uma::UmaTable<Vec<Ref>>) -> bool {
         seen.len() == self.data.umas.len() && seen.iter().flatten().all(|r| self.ref_fits(r))
     }
     /// a stored main search (`LAST_SOLVE`) of pool `p`: per uma its refs and product proofs, careers of its trainees and

@@ -1,7 +1,6 @@
 //! Roster indices and tables whose rows follow `Data::umas`.
 use serde::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
-
 /// An uma's position in `Data::umas`, distinct from a candidate or legacy-pool position.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]

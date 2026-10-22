@@ -30,7 +30,7 @@ speed record: where it stands, what is open, what was tried and rejected.
 - *Work counters* (`work.nodes`, `work.prof`, `sc_*`, `score_calls`, the per-phase node counts): byte for byte too; a
   change that removes work changes them, so it needs the owner's sign-off, and its commit names the counters that moved.
 - *Timings* (`timing_s`, `*_ms`): ignored.
-- *The worker's saved state* (IndexedDB): its format can change only with `STATE_VERSION` (`deck/career/state.rs`) bumped, so
+- *The worker's saved state* (IndexedDB): its format can change only with `STATE_VERSION` (`career/state.rs`) bumped, so
   an older state is refused whole and not misread.
 
 `val/cmp2.py` checks less than this (rounded P(all) per result; changed decks print "differ(ties?)" and pass) and
@@ -150,7 +150,7 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
 
 ## Planner
 
-The career page's plan (`next` job, `sim::plan::index_rule`; `docs/SOLVER.md`, *Next career*).
+The career page's plan (`next` job, `career::plan::index_rule`; `docs/SOLVER.md`, *Next career*).
 `val/planval.py` runs the nine jobs listed in `val/plan/jobs.json`; its comparison skips work counters as described
 in *Protocol*. The plan reports its work in `next.work` and phase timers and counters in `next.work.prof`, including
 `score_ms`, `gen_ms` and `corner_ms`. `val/mono.py` compares each pool with and without its last veteran, holding the

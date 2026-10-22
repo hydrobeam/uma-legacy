@@ -1,10 +1,9 @@
 //! Aptitude sparks and career race schedules.
-use super::{Env, Pool, RaceWin, aff_factor};
-use crate::deck::career::Lineage;
-use crate::deck::{
-    Choice, NT, Uma, Value, best_response, chart_race_name, json, pk, probs, scored_position, streak_penalty, when,
-};
-
+use crate::career::inherit::aff_factor;
+use crate::career::pool::{Pool, RaceWin};
+use crate::career::{Env, Lineage};
+use crate::{Choice, NT, Uma, best_response, chart_race_name, pk, probs, scored_position, streak_penalty, when};
+use serde_json::{Value, json};
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
 const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];
 
@@ -133,7 +132,7 @@ impl Env<'_> {
     /// grades; then after one inspiration; from Senior April after both). None when nothing changes (no aptitude data,
     /// or her grades and the base data agree at every turn).
     /// Also per turn and option her expected aptitude score (110 - grade costs), as the exporter's bp.
-    fn pink_uma(&self, pc: &PinkCareer, t: crate::UmaIndex) -> Option<(Uma, Vec<Vec<f64>>)> {
+    fn pink_uma(&self, pc: &PinkCareer, t: crate::uma::UmaIndex) -> Option<(Uma, Vec<Vec<f64>>)> {
         let d = self.data;
         if d.race_cat.len() < d.nr || d.race_ground.len() < d.nr {
             return None;

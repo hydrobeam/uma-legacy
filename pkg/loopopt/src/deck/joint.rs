@@ -1,20 +1,17 @@
 //! Joint landing odds of a deck: exact over chain progress and outcome groups, the negative-association bound, and the
 //! state-conditioned bound.
-use super::SourceEntry;
-use super::chains::ChainState;
-use super::sources::{
-    ChainOutcome, EventOutcome, LinkMisses, TargetChainMisses, TargetMisses, TargetReward, TrainingHint,
+use crate::deck::caps::JCOUNT;
+use crate::deck::chains::{ChainKind, ChainState, chain_states, event_pmf_job, key_level};
+use crate::deck::sources::{
+    ChainOutcome, EventOutcome, Group, LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetReward,
+    TargetSources, TrainingHint, group_gh, group_nuod,
 };
-use super::{
-    ChainKind, GEN_GOLD, Group, JCOUNT, Model, OutfitOption, TargetSources, chain_states, event_pmf_job, group_gh,
-    group_nuod, key_level,
-};
-
+use crate::skills::{GEN_GOLD, Model, OutfitOption};
 /// The trainee and ordered inheritance chances to evaluate against one deck.
 #[derive(Clone, Copy)]
 struct JointQuery<'chance> {
     /// Index in `Model::opts` and `Model::ews`.
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     inheritance_chances: &'chance [f64],
 }
 
@@ -31,11 +28,11 @@ struct JointOptions {
 
 /// Exact landing probabilities and the outfit maximizing the all-target chance.
 #[derive(Clone, Copy, Debug, Default)]
-pub(super) struct JointChances {
-    pub(super) all: f64,
-    pub(super) all_but_one: f64,
+pub(crate) struct JointChances {
+    pub(crate) all: f64,
+    pub(crate) all_but_one: f64,
     /// Option index within the queried trainee's outfits.
-    pub(super) outfit: usize,
+    pub(crate) outfit: usize,
 }
 
 /// A chain's source entry, or a filler which still consumes chain events.
@@ -65,7 +62,7 @@ struct SubsetProbability {
 /// dependence is included in the same enumeration.
 pub(super) fn joint(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<TargetSources>],
     filler: usize,
@@ -75,9 +72,9 @@ pub(super) fn joint(
     joint_b(model, u, inheritance_chances, entries, filler, requested_target_count, all_but_one)
 }
 /// `joint` with the sources owned or borrowed (it only reads them)
-pub(super) fn joint_b<S: std::borrow::Borrow<TargetSources>>(
+pub(crate) fn joint_b<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<S>],
     filler: usize,
@@ -179,9 +176,9 @@ pub(crate) struct JointExt {
 /// `scales.guaranteed`, in job order), and per (chance, outfit, uncertain target) the exact chance it
 /// lands, summed into `marginals`; with `sets` non-empty on entry, per (chance, outfit) the chance of each set of uncertain
 /// targets landing (bit k = uncertain target k), 2^nu entries each. None leaves every number as it is.
-pub(super) fn joint_fast<S: std::borrow::Borrow<TargetSources>>(
+pub(crate) fn joint_fast<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<S>],
     filler: usize,
@@ -211,7 +208,7 @@ fn evaluate_joint<S: std::borrow::Borrow<TargetSources>>(
 }
 /// The deck-dependent part of `joint_fast`, before inheritance chances or outfit state are applied.
 /// Collapsed states retain first-seen order; each weight is summed in the original chain-state order.
-pub(super) struct JointPrep<'group> {
+pub(crate) struct JointPrep<'group> {
     /// Miss factors and coupled groups from sources outside the chains.
     base: ChainFactors,
     chains: Vec<ChainProgress>,
@@ -242,7 +239,7 @@ struct CoupledGroup<'group> {
     targets: Vec<usize>,
     outcomes: Vec<EventOutcome<&'group [TargetReward]>>,
 }
-pub(super) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
+pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
     uncertain_count: usize,
     entries: &[SourceEntry<S>],
     filler: usize,
@@ -381,7 +378,7 @@ struct LandingProbability {
 /// one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets' inner
 /// buffers are cleared where first used, as fresh ones are), so only their capacity carries over
 #[derive(Default)]
-pub(super) struct JointScratch {
+pub(crate) struct JointScratch {
     landed_sets: Vec<Vec<f64>>,
     totals: Vec<LandingProbability>,
     landing_factors: Vec<[f64; 3]>,
@@ -494,9 +491,9 @@ impl JointScratch {
 }
 
 /// `joint_eval` with reused buffers from `scratch`.
-pub(super) fn joint_eval_in(
+pub(crate) fn joint_eval_in(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     prepared: &JointPrep,
     requested_target_count: usize,
@@ -789,7 +786,7 @@ fn evaluate_prepared(
 /// it in `joint_checked` and panics on a relative difference at or above 1e-11.
 pub(super) fn joint_trainee_ref(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<TargetSources>],
     filler: usize,
@@ -992,7 +989,7 @@ fn reference_joint(
 
 /// Per-target misses after conditioning on chain progress.
 #[derive(Clone, Copy)]
-pub(super) struct MissFactors {
+pub(crate) struct MissFactors {
     pub(super) no_gold: f64,
     pub(super) no_hint: f64,
 }
@@ -1017,9 +1014,9 @@ struct BoundChain {
 /// of targets outside those groups. Event outcomes and training hints are independent of the chain allocation.
 /// Event groups must pass `group_nuod`, since their per-target marginals replace the full outcome distribution.
 /// Returns None when either dependence check is unproven; callers must then use a different bound or score exactly.
-pub(super) fn upper_na(
+pub(crate) fn upper_na(
     model: &Model,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
@@ -1300,7 +1297,7 @@ pub(super) fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 {
 /// `land_factor` of one (outfit, target) at one chance, its constants taken once: 1 - ew and 1 - q kept apart, so
 /// nh * (1 - ew) * (1 - q) is multiplied in the same order (the same f64 for every ng, nh)
 #[derive(Clone, Copy)]
-pub(super) struct LandPre {
+pub(crate) struct LandPre {
     coverage: u8,
     no_event: f64,
     no_inheritance: f64,
@@ -1331,7 +1328,7 @@ impl LandPre {
 /// None when some entry fails the negative-association certification (`TargetSources::uncertified_association`, `group_assoc`).
 pub(super) fn state_value(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
@@ -1346,7 +1343,7 @@ pub(super) fn state_value(
 /// apply.
 pub(super) fn state_value_cf(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
@@ -1358,7 +1355,7 @@ pub(super) fn state_value_cf(
 }
 fn state_value_any(
     model: &Model,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
@@ -1435,7 +1432,7 @@ thread_local! { pub(crate) static SBN: std::cell::RefCell<(usize, usize, usize)>
 /// group has chain targets, per group its slots' positions (usize::MAX: level-independent), per group and chain level
 /// each target's lowest misses over the group's entries
 pub(super) struct StateBoundConfig {
-    pub(super) states: Vec<super::chains::ChainState>,
+    pub(super) states: Vec<crate::deck::chains::ChainState>,
     pub(super) slots: Vec<Vec<usize>>,
     pub(super) group_misses: Vec<Vec<MissFactors>>,
     /// the configuration's chain kinds in position order (fillers included) and each projected position's place among them

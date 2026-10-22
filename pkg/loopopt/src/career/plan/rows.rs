@@ -1,16 +1,25 @@
 //! Plan rows, their scoring and promotion.
-use super::{
-    Bests, CacheStamp, CachedSearch, CareerScore, KeptScoring, LiftStats, OPT_SHOW, PROXY_SAVE, ParentPool,
-    PlanCombination, PlanContext, PlanFit, PlanInputs, PlanProfile, PlanRows, PlanScores, PlanSearches, Trio, Want,
-    best_sur, capped, certified, count_refit, exact_no_borrow_career, found_career, found_lineage, is_full,
-    plan_combinations, plan_continuations, plan_sides, same_career, score_career, set_plan_wins, stamp_ok, stamped,
-    trio_v, unordered_parents,
+use crate::career::cache::Cache;
+use crate::career::clock::{now_ms, prof, progress};
+use crate::career::plan::candidates::{
+    MadeExact, class_winners, exact_no_borrow_career, make_row_exact, proxy_career, set_plan_wins,
 };
-use crate::deck::career::sim::plan::Cont;
-use crate::deck::career::sim::plan::candidates::{MadeExact, class_winners, make_row_exact, proxy_career};
-use crate::deck::career::sim::{Cache, Found, Legacy, Sim, SkillJob, Value, json, now_ms, prof, progress};
-use crate::deck::career::{Career, Lineage, RankedPair};
-
+use crate::career::plan::combine::{
+    PlanCombination, PlanFit, PlanScores, plan_combinations, plan_continuations, plan_sides,
+};
+use crate::career::plan::cont::{Cont, Trio, Want, count_refit, trio_v};
+use crate::career::plan::kept::{Bests, CacheStamp, CachedSearch, same_career, stamp_ok, stamped};
+use crate::career::plan::score::{CareerScore, KeptScoring, LiftStats, score_career};
+use crate::career::plan::search::{OPT_SHOW, PROXY_SAVE, best_sur, capped, certified, is_full};
+use crate::career::plan::{
+    ParentPool, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, found_career, found_lineage,
+    unordered_parents,
+};
+use crate::career::search::{Found, RankedPair};
+use crate::career::sim::Sim;
+use crate::career::{Career, Legacy, Lineage};
+use crate::skills::SkillJob;
+use serde_json::{Value, json};
 /// Scores within this many careers per run of the best (or 5% of it) count as tied
 const NEAR: f64 = 0.25;
 
@@ -34,7 +43,7 @@ pub(crate) enum RowOrigin {
 /// until pass 2 either reuses it (same career and valid stamp) or scores it again.
 pub(crate) struct PlanRow {
     /// The career's trainee (`Data::umas`).
-    pub(crate) trainee: crate::UmaIndex,
+    pub(crate) trainee: crate::uma::UmaIndex,
     pub(crate) career: Found,
     /// Per candidate (`PlanCandidates::trainees` order): P(her veteran lifts the candidate's odds) and the summed
     /// lifted odds (`CareerScore::lift_stats`); zeros where only Cont and `proxy_check` would read them.
@@ -62,7 +71,7 @@ pub(crate) struct RowScoring {
 impl PlanRow {
     /// A row whose career was searched exactly.
     pub(crate) const fn exact(
-        trainee: crate::UmaIndex,
+        trainee: crate::uma::UmaIndex,
         career: Found,
         lift_stats: Vec<LiftStats>,
         origin: RowOrigin,
@@ -72,7 +81,7 @@ impl PlanRow {
 
     /// A row whose career is a proxy (or, for `RowOrigin::Fallback`, the main search's), its lifts' stamp if any.
     pub(crate) const fn proxy(
-        trainee: crate::UmaIndex,
+        trainee: crate::uma::UmaIndex,
         career: Found,
         lift_stats: Vec<LiftStats>,
         origin: RowOrigin,
@@ -173,7 +182,7 @@ pub(crate) fn add_looped_rows(
     // the plan's best careers: a kept plan of this very pool gives it as kept; one of this pool less its last veteran
     // gives it as kept unless she is an 8/8 (then only her pairs are new: the better of the kept one and those, a tie
     // keeping the kept one)
-    searches.looped_careers = crate::UmaTable(vec![CachedSearch::Unsearched; context.data().umas.len()]);
+    searches.looped_careers = crate::uma::UmaTable(vec![CachedSearch::Unsearched; context.data().umas.len()]);
     progress(3, 0, 0); // the looped careers
     if input.fixed_parents.len() >= 2 {
         return added;
@@ -218,7 +227,7 @@ struct KeptLooped {
     incomplete: bool,
 }
 
-fn kept_looped(kept: Option<&Bests>, trainee: crate::UmaIndex) -> Option<KeptLooped> {
+fn kept_looped(kept: Option<&Bests>, trainee: crate::uma::UmaIndex) -> Option<KeptLooped> {
     let kept = kept?;
     match kept.looped_careers.get(trainee) {
         Some(CachedSearch::Known(found)) => Some(KeptLooped {
@@ -236,7 +245,7 @@ fn looped_career(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     full_veterans: &FullVeterans,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
@@ -494,7 +503,7 @@ pub(crate) fn score_and_promote_rows(
         .copied();
     let index_ms = now_ms() - profile.index_started_ms;
     let env = &sim.env;
-    let work = json!({"nodes": env.space.nodes.get() - profile.nodes_at_start, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - profile.exact_scorings_at_start, "max_ratio": env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.max_ratio, "class_max_deck": env.max_decks(), "cap": env.space.rho_top().min(env.cert), "class_caps": env.space.caps()});
+    let work = json!({"nodes": env.space.nodes.get() - profile.nodes_at_start, "exact": crate::deck::caps::JCOUNT.with(std::cell::Cell::get) - profile.exact_scorings_at_start, "max_ratio": env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.max_ratio, "class_max_deck": env.max_decks(), "cap": env.space.rho_top().min(env.cert), "class_caps": env.space.caps()});
     let any_scored = runs.iter().any(|r| r.scoring.is_some());
     PlanScores { fit, best_combo, any_scored, combo_ms, index_ms, work }
 }
@@ -565,7 +574,7 @@ pub(crate) fn check_plan_proxies(
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let score_base = scores.fit.score_base(candidates);
-    let efficiencies = |x: crate::UmaIndex, lift_stats: &[LiftStats]| -> Vec<f64> {
+    let efficiencies = |x: crate::uma::UmaIndex, lift_stats: &[LiftStats]| -> Vec<f64> {
         (0..candidate_count)
             .map(|ui| {
                 let lift = lift_stats[ui];

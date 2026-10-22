@@ -1,17 +1,19 @@
 //! Career scoring over the possible veterans and their continuations.
-use super::fold::{FoldCursor, LeafLayout, SlotTables};
-use super::step::{CandidateLift, OwnFullLanding, StepScratch};
-use super::{
-    All, Est as StepEstimate, EstBufs as EstimateBuffers, FOLD_SCRATCH, FoldCx as FoldContext, FoldScratch,
-    IDX_PARTNERS, Leaves, One, OneLeaf, ScoreBase, Scored, Setup, TrioSideVeteran, Want, fold_rec, is_full, leaf_set,
-    legal_pair, one_of, trio_v, v_after, val,
+use crate::career::clock::{now_ms, prof};
+use crate::career::plan::cont::{OwnTrio, ScoreBase, TrioSideVeteran, Want, trio_v};
+use crate::career::plan::fold::{
+    FOLD_SCRATCH, FoldContext, FoldCursor, FoldScratch, LeafLayout, SlotTables, fold_rec, leaf_set,
 };
-use crate::deck::career::sim::plan::cont::OwnTrio;
-use crate::deck::career::sim::plan::roll::ActiveCandidate;
-use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, PoolProvenance, ScoringContext, TargetMask};
-use crate::deck::career::sim::{Cur, Env, Legacy, Pool, Sim, now_ms, prof};
-use crate::deck::career::{Career, Lineage};
-
+use crate::career::plan::roll::{ActiveCandidate, Scored};
+use crate::career::plan::search::{IDX_PARTNERS, Setup, is_full, legal_pair, val};
+use crate::career::plan::step::{
+    All, CandidateLift, EstimateBuffers, Leaves, One, OneLeaf, OwnFullLanding, StepEstimate, StepScratch, one_of,
+    v_after,
+};
+use crate::career::plan::{CandidateIndex, OutcomeIndex, PoolProvenance, ScoringContext, TargetMask};
+use crate::career::pool::Pool;
+use crate::career::sim::{Cur, Sim};
+use crate::career::{Career, Env, Legacy, Lineage};
 /// Cached leaf probabilities depend only on the star mix and uncertain-target order.
 #[derive(Default)]
 struct LeafCache {
@@ -86,7 +88,7 @@ pub(crate) fn her_trios(
     score_base: &ScoreBase,
     extended_pool: &mut Pool,
     new_veteran: usize,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     score_buffer: &mut Vec<f64>,
 ) -> Vec<OwnTrio> {
     let data = simulator.d;
@@ -307,7 +309,7 @@ fn prepare_setups(
     simulator: &mut Sim,
     score_base: &ScoreBase,
     pool: &Pool,
-    trainee: crate::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     score_buffer: &mut Vec<f64>,
 ) -> Vec<Setup> {
     let data = simulator.d;
@@ -607,7 +609,7 @@ fn sc_eval<L: Leaves>(
 /// A roll's y (`roll_answer`): the kept scoring evaluated at one outcome (her stars `leaf`, the guaranteed targets
 /// landed `fm`), `sc_eval` at `OneLeaf` (the leaf and its representative); 0 where the outcome can't happen, as the
 /// plan's full table held
-pub(crate) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeIndex) -> f64 {
+pub(super) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeIndex) -> f64 {
     let leaf = outcome.leaf(scored.fixed_target_count);
     let fm = outcome.fixed_mask(scored.fixed_target_count).bits();
     let leaves = OneLeaf::new(leaf, scored.representative_of(leaf));

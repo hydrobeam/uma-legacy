@@ -3,9 +3,10 @@
 //! (derived; `corners`), so 2^nu exact evaluations per (trainee, deck) give it at any chances. Decks come from the
 //! searches' fully checked decks (`Ref`, also kept for `rise`) and from deck searches where a bound says the cached
 //! decks may fall short.
-use super::{Env, Ref, SelectedDeck};
-use crate::{UmaIndex, UmaTable};
-
+use crate::career::Env;
+use crate::career::search::Ref;
+use crate::deck::space::SelectedDeck;
+use crate::uma::{UmaIndex, UmaTable};
 /// A cached deck of one trainee and per outfit its corner table (P(all), every spark scale 1, at q_k in {0, 1} per
 /// uncertain target; index bit k set = q_k = 0, as `corners` builds them from q0 = 0)
 #[derive(Clone)]

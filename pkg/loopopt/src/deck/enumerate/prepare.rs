@@ -1,24 +1,24 @@
 //! Search legality and the shared bounds used by enumeration.
-use super::bounds::RatioColumns;
-use super::config::ConfigurationBounds;
-use super::{
-    ConfigurationScratch, ConfigurationTables, OutfitBounds, PreparedTables, RatioPrefixes, SearchControl, SearchMode,
-    SearchOutcome, SearchSetup, SearchStop, TraversalScratch, prepare_outfit_bounds, prepare_ratio_prefixes, rb_check,
+use crate::Instant;
+use crate::deck::capfree::{CapFreeRatios, LandingBoundTables};
+use crate::deck::chains::ChainKind;
+use crate::deck::enumerate::bounds::{
+    OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds, prepare_ratio_prefixes, rb_check,
 };
-use super::{LineageChance, ScoredDeck, SearchClause};
-use crate::deck::capfree::LandingBoundTables;
-use crate::deck::space::GroupSlots;
-use crate::deck::{
-    CF_LIM, CF_ON, CapFreeRatios, ChainKind, DeckSpace, GroupTable, Instant, LandPre, Model, SB_ON, SB_USED, SPT,
-    SelectedDeck, cf_check, gm_g, gm_w, sb_mode, src_levels, top_desc,
+use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationScratch, ConfigurationTables};
+use crate::deck::enumerate::traverse::{PreparedTables, SearchControl, TraversalScratch};
+use crate::deck::enumerate::{
+    LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome, SearchSetup, SearchStop,
 };
-
+use crate::deck::joint::{CF_LIM, CF_ON, LandPre, SB_ON, SB_USED, cf_check, sb_mode, src_levels};
+use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SPT, SelectedDeck, gm_g, gm_w, top_desc};
+use crate::skills::Model;
 impl DeckSpace<'_> {
     /// Resolve legality and proof modes before preparing configuration bounds or visiting a deck.
     pub(crate) fn configure_search(
         &self,
         model: &Model,
-        trainees: &[crate::UmaIndex],
+        trainees: &[crate::uma::UmaIndex],
         trainee_ids: &[u32],
         clauses: &[SearchClause],
         mode: SearchMode,
@@ -88,7 +88,7 @@ impl DeckSpace<'_> {
         let (bound_trainee, bound_inheritance) = if state_bound_mode > 0 {
             (trainees[clauses[0].lineages[0].trainee], clauses[0].lineages[0].inheritance)
         } else {
-            (crate::UmaIndex(0), 0.0)
+            (crate::uma::UmaIndex(0), 0.0)
         };
         // the trainee's `land_factor` per (outfit, target), row o * target_count + k (`LandPre`: the same values)
         let landing_factors: Vec<LandPre> = if state_bound_mode > 0 {
@@ -152,7 +152,7 @@ impl DeckSpace<'_> {
     pub(crate) fn search_with_bounds(
         &self,
         model: &Model,
-        trainees: &[crate::UmaIndex],
+        trainees: &[crate::uma::UmaIndex],
         clauses: &[SearchClause],
         setup: SearchSetup,
     ) -> SearchOutcome {
@@ -256,7 +256,8 @@ impl DeckSpace<'_> {
         // a card's ratio for column c (its single-card odds x, y): N's (a split column), the plain ratio, or infinite
         let ratio_at = |c: usize, x: &[f64], y: &[f64]| -> f64 {
             let i = row_indices[c];
-            let super::bounds::OutfitRow { trainee: u, inheritance: q, outfit: o, .. } = outfit_rows[i];
+            let crate::deck::enumerate::bounds::OutfitRow { trainee: u, inheritance: q, outfit: o, .. } =
+                outfit_rows[i];
             if zero_masks[c] != 0 {
                 outfits[i].eval_in(q, x, y, nonzero_masks[c]) / divisors[c]
             } else if empty_values[i] > 0.0 {
@@ -310,7 +311,7 @@ impl DeckSpace<'_> {
                     for c in 0..column_count {
                         let r = match ratio_divisors[c] {
                             None => f64::INFINITY,
-                            Some(super::bounds::RatioDivisor { targets: cm, value: den }) => {
+                            Some(crate::deck::enumerate::bounds::RatioDivisor { targets: cm, value: den }) => {
                                 let (i, s) = (row_indices[c], tm & cm);
                                 let p = if s == 0 {
                                     factor_prefixes[c * (target_count + 1) + target_count]
@@ -383,7 +384,7 @@ impl DeckSpace<'_> {
             }
             cv.fill(0.0);
             cvo.fill(0.0);
-            for &super::bounds::OutfitRun { clause: ci, start: i, count: no } in &outfit_runs {
+            for &crate::deck::enumerate::bounds::OutfitRun { clause: ci, start: i, count: no } in &outfit_runs {
                 let q = outfit_rows[i].inheritance;
                 let (mut m, mut mo) = (0.0f64, 0.0f64);
                 for o in 0..no {

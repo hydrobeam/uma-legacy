@@ -1,9 +1,12 @@
 //! Candidate searches, rotation setup and proxy limits.
-use super::{ParentPool, PlanJob};
-use crate::deck::career::sim::{Ancestor, Bar, Data, Env, Found, Legacy, Pool, Sim, SimJob, SkillJob, Value, json};
-use crate::deck::career::sim::{DeckRequest, SimulationOptions, SimulationRoster};
-use crate::deck::career::{JobInputs, Lineage, RankedPair};
-
+use crate::Data;
+use crate::career::plan::{ParentPool, PlanJob};
+use crate::career::pool::Pool;
+use crate::career::search::{Bar, Found, RankedPair};
+use crate::career::sim::{DeckRequest, Sim, SimJob, SimulationOptions, SimulationRoster};
+use crate::career::{Ancestor, Env, JobInputs, Legacy, Lineage};
+use crate::skills::SkillJob;
+use serde_json::{Value, json};
 pub(crate) const fn p_margin() -> f64 {
     1e9
 }
@@ -28,7 +31,7 @@ pub(crate) fn sim_for<'env, 'data>(
         env,
         input,
         cfg,
-        SimulationRoster { trainees, members: vec![], member_by_trainee: crate::UmaTable(vec![]) },
+        SimulationRoster { trainees, members: vec![], member_by_trainee: crate::uma::UmaTable(vec![]) },
         SimulationOptions { record_audits: false, fill_missing_decks: true },
     ))
 }
@@ -36,7 +39,7 @@ pub(crate) fn sim_for<'env, 'data>(
 /// The rotation for a loop base (`PlanJob::loop_members`), or why there is none.
 pub(crate) struct LoopRotation {
     /// Members as uma indices (`Data::umas`); empty when the base is refused.
-    pub(crate) members: Vec<crate::UmaIndex>,
+    pub(crate) members: Vec<crate::uma::UmaIndex>,
     /// Each named member's {id, name}, for the page.
     pub(crate) member_info: Vec<Value>,
     /// Why there is no rotation.
@@ -60,7 +63,7 @@ pub(crate) fn rotation(env: &Env, ids: &[u32]) -> LoopRotation {
             note: Some("no loop base (loop_members empty)".into()),
         };
     }
-    let members: Vec<Option<crate::UmaIndex>> =
+    let members: Vec<Option<crate::uma::UmaIndex>> =
         member_info.iter().map(|m| m["id"].as_u64().and_then(|id| env.uix(id as u32))).collect();
     if members.len() < 3
         || members.iter().any(|x| x.is_none_or(|t| !env.owned.contains(&t) || env.deck_odds_ceilings[t].is_none()))
@@ -89,7 +92,7 @@ pub(crate) fn legal_pair(d: &Data, p: &Pool, lineage: Lineage) -> bool {
 /// exact for the class; `ruled_out` over its product proofs) is at most f's value (`Bar::AtMost`), so no deck and pair
 /// beats it (a different deck or pair of equal value may exist; the value is the search's). With mob or affinity-free
 /// parents every classmate has the same chances, so one classmate's search proves the rest of her class.
-pub(crate) fn certified(env: &mut Env, parents: ParentPool, x: crate::UmaIndex, f: &Found) -> bool {
+pub(crate) fn certified(env: &mut Env, parents: ParentPool, x: crate::uma::UmaIndex, f: &Found) -> bool {
     let ParentPool { pool, fixed_parents } = parents;
     let deck_class = env.deck_class[x];
     // (each test computed alone, so the order the pairs are taken in changes no number; a NaN bound proves nothing)
@@ -136,7 +139,7 @@ pub(crate) fn val(s: &mut Sim, p: &Pool, lineage: Lineage, buf: &mut Vec<f64>) -
 pub(crate) fn best_sur(
     s: &mut Sim,
     parents: ParentPool,
-    u: crate::UmaIndex,
+    u: crate::uma::UmaIndex,
     margin: f64,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
@@ -243,9 +246,9 @@ pub(crate) const OPT_SHOW: usize = 8;
 /// hypothetical veterans are her parents.
 #[derive(Clone, Copy)]
 pub(crate) struct FullLoop {
-    pub(crate) trainee: crate::UmaIndex,
-    pub(crate) first_builder: crate::UmaIndex,
-    pub(crate) second_builder: crate::UmaIndex,
+    pub(crate) trainee: crate::uma::UmaIndex,
+    pub(crate) first_builder: crate::uma::UmaIndex,
+    pub(crate) second_builder: crate::uma::UmaIndex,
 }
 
 /// The trainee's odds with a full loop lineage: parents hypothetical veterans of the two builders (every target, stars
@@ -255,7 +258,7 @@ pub(crate) fn loop_ceiling(
     s: &mut Sim,
     pool: &Pool,
     full_loop: FullLoop,
-    wins: &dyn Fn(crate::UmaIndex) -> Vec<usize>,
+    wins: &dyn Fn(crate::uma::UmaIndex) -> Vec<usize>,
     buf: &mut Vec<f64>,
 ) -> f64 {
     let FullLoop { trainee, first_builder, second_builder } = full_loop;
@@ -264,8 +267,8 @@ pub(crate) fn loop_ceiling(
     let star = s.env.skill_job.star_dist;
     let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
     let ancestor =
-        |x: crate::UmaIndex| Ancestor { chara: d.umas[x].id, sparks: full.clone(), wins: wins(x), pinks: vec![] };
-    let veteran = |x: crate::UmaIndex, p1: crate::UmaIndex, p2: crate::UmaIndex| Legacy {
+        |x: crate::uma::UmaIndex| Ancestor { chara: d.umas[x].id, sparks: full.clone(), wins: wins(x), pinks: vec![] };
+    let veteran = |x: crate::uma::UmaIndex, p1: crate::uma::UmaIndex, p2: crate::uma::UmaIndex| Legacy {
         chara: d.umas[x].id,
         borrowed: false,
         sparks: full.clone(),
@@ -294,7 +297,7 @@ pub(crate) const HINT_FLOOR: usize = 4;
 /// An uma `hint_umas` adds to the stage candidates.
 pub(crate) struct HintUma {
     /// Index in `Data::umas`.
-    pub(crate) trainee: crate::UmaIndex,
+    pub(crate) trainee: crate::uma::UmaIndex,
     /// Her odds under the full loop lineage (`Env::ceiling`).
     pub(crate) ceiling: f64,
 }
@@ -309,8 +312,8 @@ pub(crate) struct HintUma {
 pub(crate) fn hint_umas(
     env: &mut Env,
     pool: &Pool,
-    candidates: &[crate::UmaIndex],
-    trainees: &[crate::UmaIndex],
+    candidates: &[crate::uma::UmaIndex],
+    trainees: &[crate::uma::UmaIndex],
     count: usize,
 ) -> Vec<HintUma> {
     let d = env.data;

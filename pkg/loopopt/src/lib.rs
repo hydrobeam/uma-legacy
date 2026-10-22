@@ -1,7 +1,7 @@
 //! # loopopt: Uma Musume legacy loop and deck optimizer
 //!
 //! The affinity core below optimizes race schedules for a loop's members by expected legacy affinity; the
-//! skill-target model (`skills`), the deck search and the career planner (`deck`) build on it. The CLI runs "deck"
+//! skill-target model (`skills`), the deck search and the career planner (`career`) build on it. The CLI runs "deck"
 //! and "career" jobs and `pbtable`; the page runs deck and career jobs through `web`.
 //!
 //! Objective, normalized to 4 runs:
@@ -30,9 +30,9 @@
 
 use serde::{Deserialize, Serialize};
 mod uma;
+use crate::uma::{UmaIndex, UmaPairTable, UmaTable};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use uma::{UmaIndex, UmaPairTable, UmaTable};
 /// wasm32-unknown-unknown has no clock (Instant::now panics); timings read as zero there.
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
@@ -1334,7 +1334,7 @@ struct CliBoundReport;
 impl Drop for CliBoundReport {
     fn drop(&mut self) {
         if std::env::var("SB_CHECK").is_ok() {
-            deck::SBCHK.with(|c| {
+            crate::deck::joint::SBCHK.with(|c| {
                 let c = c.borrow();
                 eprintln!(
                     "SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}",
@@ -1343,19 +1343,19 @@ impl Drop for CliBoundReport {
             });
         }
         if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() {
-            deck::SBN.with(|c| {
+            crate::deck::joint::SBN.with(|c| {
                 let c = c.borrow();
                 eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", c.0, c.1, c.2);
             });
         }
         if std::env::var("RB_CHECK").is_ok() {
-            deck::RBCHK.with(|c| {
+            crate::deck::enumerate::bounds::RBCHK.with(|c| {
                 let c = c.borrow();
                 eprintln!("RBCHK leaves {} tests {} violations {} max value/bound {:.9}", c.0, c.1, c.2, c.3);
             });
         }
         if std::env::var("CF_CHECK").is_ok() {
-            deck::CFCHK.with(|c| {
+            crate::deck::joint::CFCHK.with(|c| {
                 let c = c.borrow();
                 eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", c.0, c.1, c.2, c.3, c.4, c.5, c.6, c.7, c.8);
             });
@@ -1368,39 +1368,49 @@ impl Drop for CliBoundReport {
 fn apply_cli_events(job: &mut serde_json::Value, skills: &skills::SkillsRaw) {
     if let Some(path) = job["events_file"].as_str() {
         let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        deck::apply_events_db(job, skills, &db);
+        crate::deck::sources::apply_events_db(job, skills, &db);
         if job["roll"]["job"].is_object() {
-            deck::apply_events_db(&mut job["roll"]["job"], skills, &db);
+            crate::deck::sources::apply_events_db(&mut job["roll"]["job"], skills, &db);
         }
     }
 }
 
 /// Restore the career worker's kept work before any jobs run, as the page does across reloads.
-fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &deck::CardsRaw) {
+fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &crate::deck::CardsRaw) {
     if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
         let state: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        let out =
-            deck::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_in", "state": state["state"]}));
+        let out = crate::career::run_career(
+            data,
+            skills,
+            cards,
+            &serde_json::json!({"cmd": "state_in", "state": state["state"]}),
+        );
         eprintln!("state_in: {out}");
     }
 }
 
 /// Save the career worker's kept work once, after all job outputs have been printed.
-fn save_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &deck::CardsRaw) {
+fn save_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &crate::deck::CardsRaw) {
     if let Ok(path) = std::env::var("LOOPOPT_STATE_OUT") {
-        let out = deck::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_out"}));
+        let out = crate::career::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_out"}));
         std::fs::write(&path, out.to_string()).unwrap();
     }
 }
 
 /// Time solver dispatch only: file loading, event enrichment and output serialization stay outside.
 /// `mode` has already been validated by `cli_main`; a batch always uses its first job's career mode.
-fn print_cli_job(mode: &str, data: &Data, skills: &skills::SkillsRaw, cards: &deck::CardsRaw, job: &serde_json::Value) {
+fn print_cli_job(
+    mode: &str,
+    data: &Data,
+    skills: &skills::SkillsRaw,
+    cards: &crate::deck::CardsRaw,
+    job: &serde_json::Value,
+) {
     let started = Instant::now();
     let mut out = if mode == "career" {
-        deck::run_career(data, skills, cards, job)
+        crate::career::run_career(data, skills, cards, job)
     } else {
-        deck::run_deck(data, skills, cards, job)
+        crate::deck::loops::run_deck(data, skills, cards, job)
     };
     out["timing_s"] = serde_json::json!(started.elapsed().as_secs_f64());
     println!("{out}");
@@ -1428,7 +1438,7 @@ pub fn cli_main() {
         serde_json::from_str(&std::fs::read_to_string(job["skills_file"].as_str().expect("skills_file")).unwrap())
             .unwrap();
     apply_cli_events(&mut job, &skills);
-    let cards: deck::CardsRaw =
+    let cards: crate::deck::CardsRaw =
         serde_json::from_str(&std::fs::read_to_string(job["cards_file"].as_str().expect("cards_file")).unwrap())
             .unwrap();
 
@@ -1465,7 +1475,6 @@ pub fn cli_main() {
 mod tests {
     use super::*;
     use std::sync::OnceLock;
-
     fn data() -> &'static Data {
         static D: OnceLock<Data> = OnceLock::new();
         D.get_or_init(|| load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json")))
@@ -1861,6 +1870,7 @@ mod tests {
     }
 }
 
+mod career;
 mod deck;
 mod skills;
 #[cfg(target_arch = "wasm32")]

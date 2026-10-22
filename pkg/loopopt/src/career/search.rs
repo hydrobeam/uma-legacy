@@ -1,13 +1,11 @@
 //! Career candidates, bounds and the best careers.
-use super::{
-    Env, Pool, ProductProof, SOLVE_KEEP, aff_factor, dominates, holds_fix, inherit_q, insp_miss, mix_term, now_ms,
-    part_sum, prof, shared, spark_scale,
-};
-use super::{KeptSolve, LAST_SOLVE};
-use crate::deck::SelectedDeck;
-use crate::deck::career::Lineage;
-use crate::{UmaIndex, UmaTable};
-
+use crate::career::clock::{now_ms, prof};
+use crate::career::inherit::{aff_factor, inherit_q, insp_miss, mix_term, part_sum, spark_scale};
+use crate::career::pool::{Pool, dominates, holds_fix, shared};
+use crate::career::state::{KeptSolve, LAST_SOLVE, ProductProof, SOLVE_KEEP};
+use crate::career::{Env, Lineage};
+use crate::deck::space::SelectedDeck;
+use crate::uma::{UmaIndex, UmaTable};
 /// How a bound proves a career out (`Env::ceiling_out`, `refs_out`, `ruled_out`): `Below(th)`, `solve`'s prune, the bound
 /// below the bar with its slack s, b (1 + s) < th (a computed bound a hair under the true one still proves it); or
 /// `AtMost(v)`, `certified`'s, the bound at most v up to rounding, b <= v (1 + 1e-12): the career can't beat v, and a

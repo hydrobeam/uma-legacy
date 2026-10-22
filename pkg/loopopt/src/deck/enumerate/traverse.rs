@@ -1,21 +1,17 @@
 //! Configuration traversal and its borrowed-card and state bounds.
-use super::bounds::{DominanceRequest, OutfitRow, OutfitRun, SplitColumns};
-use super::config::ConfigurationBounds;
-use super::scratch::GroupBounds;
-use super::{
-    ConfigOrder, ConfigScratch, ConfigurationContext, ConfigurationQueue, DeckConstraints, DeckCursor, DeckPath,
-    NodeScratch, SearchConfig, SearchOutcome, SearchStop, WalkScratch,
-};
-use super::{ScoredDeck, SearchClause};
-use crate::deck::capfree::{BoundOptions, LandingBoundTables};
-use crate::deck::chains::ChainState;
-use crate::deck::joint::MissFactors;
-use crate::deck::space::{Dominator, EntryGroup, EntryMisses, GroupSlots};
-use crate::deck::{
-    CapFreeRatios, ChainKind, DeckSpace, GroupTable, HashMap, Instant, LandPre, Model, SBN, SPT, SelectedDeck,
-    StateBound, StateBoundConfig, chain_states,
-};
-
+use crate::Instant;
+use crate::deck::capfree::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound};
+use crate::deck::chains::{ChainKind, ChainState, chain_states};
+use crate::deck::enumerate::bounds::{DominanceRequest, OutfitRow, OutfitRun, SplitColumns};
+use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationQueue, SearchConfig};
+use crate::deck::enumerate::order::{ConfigOrder, DeckPath};
+use crate::deck::enumerate::scratch::{ConfigScratch, GroupBounds, NodeScratch};
+use crate::deck::enumerate::walk::{ConfigurationContext, DeckConstraints, DeckCursor, WalkScratch};
+use crate::deck::enumerate::{ScoredDeck, SearchClause, SearchOutcome, SearchStop};
+use crate::deck::joint::{LandPre, MissFactors, SBN, StateBoundConfig};
+use crate::deck::space::{DeckSpace, Dominator, EntryGroup, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck};
+use crate::skills::Model;
+use std::collections::HashMap;
 /// Immutable controls selected before traversal. Scalar copies do not change the search's buffers.
 #[derive(Clone, Copy)]
 pub(crate) struct SearchControl {
@@ -32,7 +28,7 @@ pub(crate) struct SearchControl {
     pub(crate) cap_free_check_scale: f64,
     pub(crate) state_bound_mode: u8,
     pub(crate) state_bound_threshold: f64,
-    pub(crate) bound_trainee: crate::UmaIndex,
+    pub(crate) bound_trainee: crate::uma::UmaIndex,
     pub(crate) bound_inheritance: f64,
     pub(crate) class_caps: [f64; 4],
     pub(crate) use_dominance: bool,

@@ -1,8 +1,8 @@
 //! Legal card-count configurations and their bounds.
-use super::{SearchClause, SearchControl};
-use crate::deck::space::{EntryMisses, GroupSlots, GroupTableRequest};
-use crate::deck::{DeckSpace, GroupTable, cap_class, gm_g, gm_w};
-
+use crate::deck::caps::cap_class;
+use crate::deck::enumerate::SearchClause;
+use crate::deck::enumerate::traverse::SearchControl;
+use crate::deck::space::{DeckSpace, EntryMisses, GroupSlots, GroupTable, GroupTableRequest, gm_g, gm_w};
 /// Legal groups and key counts used to enumerate configurations, in their original order.
 pub(crate) struct ConfigurationTables<'tab> {
     pub(crate) counts: &'tab [Vec<usize>],
