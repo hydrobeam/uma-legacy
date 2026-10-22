@@ -1,6 +1,6 @@
 """Section 11, conditional character events: secret and race-result events that give skill hints (GameTora
-training_events_char through gametora.py, current versions; skills from master.mdb), how many touch the default
-targets and whether any gives a gold. Also checks the one exception modelled as always acquired, Tokai Teio's Head-On:
+training_events_char through gametora.py, current versions; skills from master.mdb). Checks the one exception modelled
+as always acquired, Tokai Teio's Head-On:
 its event's condition (GameTora), her career goals (master.mdb single_mode_route_race; condition_value_1 read as the
 place the goal requires) and, in the run records (research/data/runs.jsonl, not included; Independent Training runs
 from uma-it), the runs training her.
@@ -18,10 +18,9 @@ conditional ones; they are separated here by game data (s10_random_events.event_
               run-clustered (common.cluster_ci: a run gives several rows when her events touch several targets; with one
               row per run, as within a (trainee, target) and on the current runs' pooled rows, it is the Wilson interval)
   crediting   each row at its (trainee, target) rate, as in section 10 (m multiplied by (1 - r), section 12):
-              relative change of each run's product of per-target odds, and acquisition observed against predicted
-              without and with crediting (obs / pred, run-clustered 95%, s10_random_events.calib_test; Bernoulli
-              log-likelihood over the rows with a positive prediction, tested against half the chi2 95% point of one degree
-              of freedom per fitted rate)
+              acquisition observed against predicted without crediting (obs / pred, run-clustered 95%,
+              s10_random_events.calib_test), and the Bernoulli log-likelihood gain from crediting over the rows with a
+              positive prediction, tested against half the chi2 95% point of one degree of freedom per fitted rate
 """
 
 import collections
@@ -33,7 +32,6 @@ import common
 from common import Finding, Value
 
 SEC: str = "11"
-TARGETS: set[int] = set(common.DEFAULT)  # skill groups of the eight default targets
 TEIO: int = 1003
 CROWN: tuple[str, str, str] = (
     "Satsuki Sho",
@@ -41,52 +39,15 @@ CROWN: tuple[str, str, str] = (
     "Kikuka Sho",
 )  # the Triple Crown's three races
 
-# a conditional event with hints: (trainee's character, the skill ids it can hint)
-HintEvent = tuple[int, list[int]]
-
 
 def hinted(gt: Any, ve: Any) -> list[int]:
     """the skill ids an event's choices can hint"""
     return [x for ch in gt.choices(ve[1]) for kind, x0, _ in gt.hints(ch[1]) for x in ([x0] if kind == "hint" else x0)]
 
 
-def conditional_hint_events(gt: Any) -> list[HintEvent]:
-    """every current conditional character event that gives a skill hint"""
-    ev: list[HintEvent] = []
-    for r in gt.load("training_events_char"):
-        for tag, ve in gt.conditional_events(r):
-            if not tag.startswith("current"):
-                continue
-            hs = hinted(gt, ve)
-            if hs:
-                ev.append((r[0], hs))
-    return ev
-
-
 def claims() -> list[Value | Finding]:
-    gt = common.gametora()
-    db = common.mdb()
-    grp = dict(db.execute("select id, group_id from skill_data"))
-    rar = dict(db.execute("select id, rarity from skill_data"))
-    sk = dict(db.execute("select [index],text from text_data where category=47"))
-    glob = {u["id"] for u in common.gjson("data.json")["umas"]}  # the trainees on Global
-    ev = conditional_hint_events(gt)
-    tg = [(u, hs) for u, hs in ev if any(grp.get(h) in TARGETS for h in hs)]
-    names = sorted({sk[h] for _, hs in tg for h in hs if grp.get(h) in TARGETS})
-    return [
-        Value(SEC, "umas with a hint event", len({u for u, _ in ev})),
-        Value(SEC, "events with hints", len(ev)),
-        Value(SEC, "umas with a hint event, Global", len({u for u, _ in ev if u in glob})),
-        Value(SEC, "events with hints, Global", sum(u in glob for u, _ in ev)),
-        Value(SEC, "events touching a default target", len(tg), note=", ".join(names)),
-        Value(
-            SEC,
-            "of them giving a gold",
-            sum(any(grp.get(h) in TARGETS and rar.get(h, 1) >= 2 for h in hs) for _, hs in tg),
-        ),
-        *head_on(sk),
-        *careers(),
-    ]
+    sk = dict(common.mdb().execute("select [index],text from text_data where category=47"))
+    return [*head_on(sk), *careers()]
 
 
 def head_on(sk: dict[int, str]) -> list[Value | Finding]:
@@ -160,48 +121,43 @@ class ConditionalRow:
     hit: bool  # the target credited to "Events"
 
 
-def conditional_rows(R: list[Any], rows: list[dict[str, Any]]) -> tuple[list[ConditionalRow], collections.Counter[str]]:
-    """the free calibration rows a conditional event could hint, and the rows left out by reason"""
+def conditional_rows(R: list[Any], rows: list[dict[str, Any]]) -> list[ConditionalRow]:
+    """the free calibration rows a conditional event could hint, leaving out those another of her events or the
+    scenario's can hint"""
     import s10_random_events as s10
 
     E = s10.event_groups()
     byid = {r["id"]: r for r in R}
     sel: list[ConditionalRow] = []
-    skipped: collections.Counter[str] = collections.Counter()
     for row in rows:
         r = byid[row["run"]]
         u, g = r["chara"], row["g"]
-        if not any(g in gs for gs, _ in E["cond"].get(u, [])):
-            continue
-        if not s10.free(row):
-            skipped["outfit or scenario gold"] += 1
+        if not any(g in gs for gs, _ in E["cond"].get(u, [])) or not s10.free(row):
             continue
         if g in E["ordinary"].get(u, set()) | E["outfit"].get(r["outfit"], set()) | E["scen"].get(r["scenario"], set()):
-            skipped["story, date, outfit or scenario event can hint it"] += 1
             continue
         hit = any("Events" in h["src"] for h in s10.hint_srcs(r)[g])
         sel.append(ConditionalRow(row=row, key=(u, g), mixed=g in E["shared"].get(u, set()), hit=hit))
-    return sel, skipped
+    return sel
 
 
 def careers() -> list[Value | Finding]:
-    """the conditional events touching default targets on real careers: rates, effect on the odds, calibration"""
+    """the conditional events touching default targets on real careers: rates and calibration"""
     R = common.runs()
     if R is None:
         return []
     import s10_random_events as s10
 
-    rows, runrows = s10.calib()
+    rows, _ = s10.calib()
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
     gn = common.skills()
-    sel, skipped = conditional_rows(R, rows)
+    sel = conditional_rows(R, rows)
     groups: dict[tuple[int, int], list[ConditionalRow]] = collections.defaultdict(list)  # (trainee, target) -> rows
     for x in sel:
         groups[x.key].append(x)
     rate = {k: sum(x.hit for x in xs) / len(xs) for k, xs in groups.items()}
     lab: Callable[[tuple[int, int]], str] = lambda k: f"{name.get(k[0])}, any outfit, {gn[k[1]][0]}"
     cond = [x for x in sel if not x.mixed]
-    mixed = [x for x in sel if x.mixed]
     kc = sum(x.hit for x in cond)
     _, lo, hi, _ = common.cluster_ci([int(x.hit) for x in cond], [1] * len(cond), [x.row["run"] for x in cond])
     out: list[Value | Finding] = [
@@ -210,14 +166,6 @@ def careers() -> list[Value | Finding]:
         Value(SEC, "careers: conditional-only rate", common.div(kc, len(cond))),
         Value(SEC, "careers: conditional-only rate 95% low", lo),
         Value(SEC, "careers: conditional-only rate 95% high", hi),
-        Value(SEC, "careers: rows with her random event too", len(mixed)),
-        Value(SEC, "careers: rows with her random event too, from her events", sum(x.hit for x in mixed)),
-        Value(
-            SEC,
-            "careers: rows left out, another event can hint it",
-            skipped["story, date, outfit or scenario event can hint it"],
-        ),
-        Value(SEC, "careers: rows left out, outfit or scenario gold", skipped["outfit or scenario gold"]),
     ]
     for k in sorted(groups, key=lab):
         xs = groups[k]
@@ -230,16 +178,12 @@ def careers() -> list[Value | Finding]:
             Value(SEC, f"{lab(k)}: rate 95% high", h_),
         ]
     rr = {id(x.row): rate[x.key] for x in sel}  # id(calibration row) -> its (trainee, target) rate
-    odds = s10.odds_change(runrows, lambda row: rr.get(id(row), 0.0))
-    out += s10.odds_values(SEC, odds)
-    out.append(Value(SEC, "odds change: runs lifted from zero", odds.lifted))
     t = s10.calib_test([x.row for x in sel], lambda row: rr[id(row)])
     tc = s10.calib_test([x.row for x in cond], lambda row: rr[id(row)])
     out += s10.calib_values(SEC, "calibration", t) + s10.calib_values(SEC, "calibration, conditional-only", tc)
     zc = [x for x in cond if s10.credit(x.row, 0.0)[1] <= 1e-12]
     out += [
         Value(SEC, "careers: conditional-only rows the model gives no chance", len(zc)),
-        Value(SEC, "careers: of them acquired", sum(x.row["o_any"] for x in zc)),
         Value(SEC, "careers: of them from her events", sum(x.hit for x in zc)),
     ]
     by_label = sorted(groups.items(), key=lambda kv: lab(kv[0]))
