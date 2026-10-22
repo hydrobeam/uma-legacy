@@ -141,7 +141,7 @@ impl Env<'_> {
     /// `own_event_chances`), which her deck class holds to the bit, and the deck only through its entries and filler;
     /// the memo is kept between jobs of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her model
     /// at its last corner, q = 0 for every target (1 - (1 - 0) x 1); a hit sets the same state
-    pub(crate) fn corners_kept(&mut self, t: usize, sel: &SelectedDeck) -> Vec<Vec<f64>> {
+    pub(crate) fn corners_kept(&mut self, t: crate::UmaIndex, sel: &SelectedDeck) -> Vec<Vec<f64>> {
         let key = (self.deck_class[t], sel.entries.clone(), sel.filler_cards);
         let z = vec![0.0; self.target_count];
         if let Some(r) = self.corner_memo.get(&key) {
@@ -156,7 +156,7 @@ impl Env<'_> {
         self.corner_memo.insert(key, std::rc::Rc::new(r.clone()));
         r
     }
-    fn corners(&mut self, t: usize, sel: &SelectedDeck, q0: &[f64]) -> Vec<Vec<f64>> {
+    fn corners(&mut self, t: crate::UmaIndex, sel: &SelectedDeck, q0: &[f64]) -> Vec<Vec<f64>> {
         let (nu, ntar) = (self.uncertain_count, self.target_count);
         let no = self.model.n_outfits(t);
         let mut corners = vec![vec![0.0f64; 1 << nu]; no];

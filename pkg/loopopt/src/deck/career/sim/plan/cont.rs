@@ -5,7 +5,7 @@ use crate::deck::career::sim::{FxMap, Legacy};
 /// What a career is scored against: stage-1 costs per candidate (index into `cands`; 0 = her 8/8 exists), stages 2-3 per
 /// A, V0, and the stage-1 odds now
 pub(crate) struct ScoreBase<'base> {
-    pub(crate) cands: &'base [usize],
+    pub(crate) cands: &'base [crate::UmaIndex],
     pub(crate) c1: &'base [f64],
     pub(crate) m23: &'base [f64],
     pub(crate) v0: f64,
@@ -17,7 +17,7 @@ pub(crate) struct ScoreBase<'base> {
     /// per candidate, the trios' sides: (a real 8/8 veteran of hers, the legacy): her real 8/8s and the 8/8 her best career
     /// now would leave; with `all` (the umas a trio's C may be), what `her_trios` pairs a new real 8/8 with. Empty: none
     pub(crate) sides: &'base [Vec<(bool, Legacy)>],
-    pub(crate) all: &'base [usize],
+    pub(crate) all: &'base [crate::UmaIndex],
 }
 
 /// Requested scoring outputs. Unrequested numeric results are placeholders, not measured zeroes:

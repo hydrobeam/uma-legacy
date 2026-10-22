@@ -591,7 +591,7 @@ pub(crate) struct PartnerAnchors {
 /// A fully checked career used as an exact anchor for its deck class.
 pub(crate) struct FoundAnchor {
     /// Deck class shared by trainees with the same legal deck search.
-    pub(crate) deck_class: usize,
+    pub(crate) deck_class: crate::UmaIndex,
     /// Inheritance chances at the exact check, in job target order.
     pub(crate) inheritance_chances: Vec<f64>,
     /// Best deck value at those chances and unit spark scale.

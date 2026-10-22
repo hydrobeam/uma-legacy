@@ -150,7 +150,7 @@ const PAGE_TOP: usize = 6;
 #[derive(Default)]
 struct KeptState {
     bests: Vec<plan::Bests>,
-    seen: Vec<(u64, Vec<Vec<Ref>>)>,
+    seen: Vec<(u64, crate::UmaTable<Vec<Ref>>)>,
     searches: Vec<(u64, Solved, super::Ruled)>,
     decks: Vec<(u64, super::Kept)>,
 }
@@ -287,11 +287,11 @@ struct BuilderCareer {
 /// Owned roster tables moved into a simulator.
 struct SimulationRoster {
     /// Trainees considered by later simulated careers, in search order.
-    trainees: Vec<usize>,
+    trainees: Vec<crate::UmaIndex>,
     /// Rotation members in the supplied order.
-    members: Vec<usize>,
+    members: Vec<crate::UmaIndex>,
     /// Rotation position for each Data::umas index, when tracing members.
-    member_by_trainee: Vec<Option<usize>>,
+    member_by_trainee: crate::UmaTable<Option<usize>>,
 }
 
 /// Independent simulator behaviours selected by its caller.
@@ -311,22 +311,22 @@ pub(crate) struct Sim<'env, 'data> {
     job: &'data Value,
     cfg: SimJob,
     cache: Cache,
-    trainees: Vec<usize>,
+    trainees: Vec<crate::UmaIndex>,
     /// Per uma, her static ceiling (q = 1 on every target; 0 when she is not owned)
-    static_ceilings: Vec<f64>,
+    static_ceilings: crate::UmaTable<f64>,
     /// The failed landed sets (every set but the full one), fewest landed first, ties by mask: the draw's order
     failed_sets: Vec<usize>,
     /// The rank's 1/2/3-star shares of a landed target's spark
     star_mix: [f64; 3],
     /// Win chances per (trainee, her parents' wins and pink inputs) (`wins`)
-    win_chances: crate::FxMap<(usize, Vec<usize>), Rc<Vec<f64>>>,
+    win_chances: crate::FxMap<(crate::UmaIndex, Vec<usize>), Rc<Vec<f64>>>,
     n: Counters,
-    members: Vec<usize>,
+    members: Vec<crate::UmaIndex>,
     /// per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`fast_ub`)
-    fastc: Vec<Vec<Vec<(f64, f64)>>>,
+    fastc: crate::UmaTable<Vec<Vec<(f64, f64)>>>,
     fixed: f64,
     /// trace: trainee → loop member index (empty under the other policies)
-    member_by_trainee: Vec<Option<usize>>,
+    member_by_trainee: crate::UmaTable<Option<usize>>,
     /// the simulator's own path (false when the plan uses this machinery): audits are taken only there
     record_audits: bool,
     audits: Vec<Value>,
@@ -402,8 +402,10 @@ fn stats(xs: &[f64]) -> Value {
 /// Per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`Sim::fastc`; none
 /// without legal deck odds). `outfit_fast` at q = 0 on the hint chances `set_trainee` would write, split: A = dg GOLD +
 /// (1 - dg) WHITE and B = (1 - dg) WHITE (1 - dw)(1 - e) where she lacks the skill, B = 0 where she has it
-fn fastc(env: &Env) -> Vec<Vec<Vec<(f64, f64)>>> {
-    (0..env.data.umas.len())
+fn fastc(env: &Env) -> crate::UmaTable<Vec<Vec<(f64, f64)>>> {
+    env.data
+        .umas
+        .indices()
         .map(|t| match &env.deck_odds_ceilings[t] {
             None => vec![],
             Some((dw, dg)) => env.outfit_coverage[t]
@@ -429,7 +431,7 @@ fn fastc(env: &Env) -> Vec<Vec<Vec<(f64, f64)>>> {
 #[derive(Clone, Copy)]
 struct DeckRequest<'chances> {
     /// Trainee's position in Data::umas.
-    trainee: usize,
+    trainee: crate::UmaIndex,
     /// Inheritance probability per job target.
     inheritance_chances: &'chances [f64],
     /// Product of inheritance spark multipliers.
@@ -457,7 +459,10 @@ impl<'env, 'data> Sim<'env, 'data> {
         failed_sets.sort_by_key(|&m| (m.count_ones(), m));
         let n = input.data.umas.len();
         let one = vec![1.0f64; ntar];
-        let static_ceilings: Vec<f64> = (0..n)
+        let static_ceilings: crate::UmaTable<f64> = env
+            .data
+            .umas
+            .indices()
             .map(|t| if env.owned.contains(&t) { env.ceiling(t, &one, 1.0).unwrap_or(0.0) } else { 0.0 })
             .collect();
         let star_mix = env.skill_job.star_dist;
@@ -508,7 +513,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         format!("{}:{},{}", self.d.umas[trainee].id, first_parent, second_parent)
     }
     /// P(all) at chances q with spark scale c through trainee t's cached decks: (value, deck index; usize::MAX: none)
-    fn tval(&self, t: usize, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
+    fn tval(&self, t: crate::UmaIndex, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
         // (1 - q per uncertain target, on the stack up to 32 of them)
         let nu = self.env.uncertain_targets.len();
         let (mut xa, xv): ([f64; 32], Vec<f64>);
@@ -657,7 +662,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         env.space.rho_top() * c * self.fixed * best
     }
     /// the value a career of trainee t must beat to matter: the best overall, or under `trace` a member's own best
-    fn bar(&self, st: &PathState, t: usize) -> f64 {
+    fn bar(&self, st: &PathState, t: crate::UmaIndex) -> f64 {
         match self.member_by_trainee.get(t).copied().flatten() {
             Some(k) => st.member_best[k].map_or(0.0, |p| p.value),
             None => st.best.map_or(0.0, |p| p.value),
@@ -1176,7 +1181,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     /// nc)
     fn landed_set_distance(
         &mut self,
-        t: usize,
+        t: crate::UmaIndex,
         q: &[f64],
         nc: &[i32],
         first: &SelectedDeck,
@@ -1192,7 +1197,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         0.5 * s1.iter().zip(&s2).map(|(x, y)| (x - y).abs()).sum::<f64>()
     }
     /// trainee t's exact best deck at chances q (a full deck search), its value with spark scale c
-    fn exact_best(&mut self, t: usize, q: &[f64], c: f64) -> ExactDeck {
+    fn exact_best(&mut self, t: crate::UmaIndex, q: &[f64], c: f64) -> ExactDeck {
         self.env.set_trainee(t, q);
         self.env.work = 0;
         let mut sc = 0;
@@ -1436,7 +1441,7 @@ struct RankedCareer {
 }
 impl RankedCareer {
     /// `gen_cands`' constructor: (ceiling, trainee position, trainee, a, b)
-    const fn new(ceiling: f64, _: usize, trainee: usize, first_parent: usize, second_parent: usize) -> Self {
+    const fn new(ceiling: f64, _: usize, trainee: crate::UmaIndex, first_parent: usize, second_parent: usize) -> Self {
         Self { ceiling, lineage: Lineage { trainee, first_parent, second_parent } }
     }
 }
@@ -1499,7 +1504,7 @@ pub(super) fn simulate<'data>(
     env: &mut Env<'data>,
     input: &JobInputs<'data>,
     legs: &[Legacy],
-    trainees: &[usize],
+    trainees: &[crate::UmaIndex],
     sim: &Value,
 ) -> Value {
     let cfg: SimJob = match serde_json::from_value(sim.clone()) {
@@ -1517,7 +1522,7 @@ pub(super) fn simulate<'data>(
         "index" => Base::Index,
         p => return json!({"error": format!("simulate: unknown policy {p}")}),
     };
-    let members: Vec<usize> = cfg.loop_members.iter().filter_map(|&id| env.uix(id)).collect();
+    let members: Vec<crate::UmaIndex> = cfg.loop_members.iter().filter_map(|&id| env.uix(id)).collect();
     if matches!(base, Base::Loop | Base::Trace)
         && (members.len() < 3
             || members.len() != cfg.loop_members.len()
@@ -1526,7 +1531,7 @@ pub(super) fn simulate<'data>(
         return json!({"error": "loop: loop_members must be at least three owned umas"});
     }
     let n = input.data.umas.len();
-    let mut mi = vec![None; if base == Base::Trace { n } else { 0 }];
+    let mut mi = crate::UmaTable(vec![None; if base == Base::Trace { n } else { 0 }]);
     if base == Base::Trace {
         for (k, &m) in members.iter().enumerate() {
             mi[m] = Some(k);

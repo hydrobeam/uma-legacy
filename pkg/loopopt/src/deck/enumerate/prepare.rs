@@ -16,7 +16,7 @@ impl DeckSpace<'_> {
     pub(crate) fn configure_search(
         &self,
         model: &Model,
-        us: &[usize],
+        us: &[crate::UmaIndex],
         ids: &[u32],
         clauses: &[(Vec<(usize, f64)>, f64)],
         mode: SearchMode,
@@ -81,7 +81,7 @@ impl DeckSpace<'_> {
         let state_bound_mode = if state_rows.is_empty() { 0 } else { state_bound_mode };
         let state_bound_threshold = if state_bound_mode > 0 { clauses[0].1 } else { 0.0 };
         let (bound_trainee, bound_inheritance) =
-            if state_bound_mode > 0 { (us[clauses[0].0[0].0], clauses[0].0[0].1) } else { (0, 0.0) };
+            if state_bound_mode > 0 { (us[clauses[0].0[0].0], clauses[0].0[0].1) } else { (crate::UmaIndex(0), 0.0) };
         // the trainee's `land_factor` per (outfit, target), row o * target_count + k (`LandPre`: the same values)
         let landing_factors: Vec<LandPre> = if state_bound_mode > 0 {
             (0..model.opts[bound_trainee].len())
@@ -144,7 +144,7 @@ impl DeckSpace<'_> {
     pub(crate) fn search_with_bounds(
         &self,
         model: &Model,
-        us: &[usize],
+        us: &[crate::UmaIndex],
         clauses: &[(Vec<(usize, f64)>, f64)],
         setup: SearchSetup,
     ) -> SearchOutcome {

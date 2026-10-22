@@ -32,7 +32,7 @@ pub(super) struct DeckSpace<'data> {
     pub(super) kinds_all: Vec<Kind>,
     // All caches belong to this fixed job and target set. Their abbreviated keys omit only those fixed inputs.
     pub(super) keys: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<(Vec<f64>, Vec<f64>, Vec<u32>)>>>,
-    pub(super) red: std::cell::RefCell<crate::FxMap<Vec<usize>, (std::rc::Rc<Vec<usize>>, usize)>>,
+    pub(super) red: std::cell::RefCell<crate::FxMap<Vec<crate::UmaIndex>, (std::rc::Rc<Vec<usize>>, usize)>>,
     pub(super) gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<GTab>>>,
     /// partial decks tested, over every search (the search's cost)
     pub(super) nodes: std::cell::Cell<usize>,
@@ -138,7 +138,7 @@ impl<'data> DeckSpace<'data> {
     /// targets: entries of one character with the same such rewards and chain kind keep the first; entries with none
     /// (they only take a slot) keep, per chain kind, pal status and borrowing, deck_size of them, characters no
     /// rewarding entry uses first. Any deck has an equal-valued deck from these.
-    pub(super) fn reduced(&self, model: &Model, us: &[usize], ids: &[u32]) -> Vec<usize> {
+    pub(super) fn reduced(&self, model: &Model, us: &[crate::UmaIndex], ids: &[u32]) -> Vec<usize> {
         let nu = self.unc.len();
         let relt: Vec<bool> =
             (0..nu).map(|k| us.iter().any(|&u| model.opts[u].iter().any(|(st, _)| st[k] < 2))).collect();
@@ -218,7 +218,12 @@ impl<'data> DeckSpace<'data> {
     }
     /// (reduced entries, an id per distinct list for other caches): trainees whose lists are equal (a deck class) share
     /// the id, so what is cached by it (`gm_cached`, `legal_tabs`) is built once for them all
-    pub(super) fn reduced_cached(&self, model: &Model, us: &[usize], ids: &[u32]) -> (std::rc::Rc<Vec<usize>>, usize) {
+    pub(super) fn reduced_cached(
+        &self,
+        model: &Model,
+        us: &[crate::UmaIndex],
+        ids: &[u32],
+    ) -> (std::rc::Rc<Vec<usize>>, usize) {
         if let Some(r) = self.red.borrow().get(us) {
             return r.clone();
         }

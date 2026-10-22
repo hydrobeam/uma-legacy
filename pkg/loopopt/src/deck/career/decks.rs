@@ -10,7 +10,7 @@ use crate::deck::{EXACT_BUDGET, EXACT_STEPS, Kind, SelectedDeck, Src, Value, joi
 #[derive(PartialEq, Eq, Hash)]
 pub(crate) struct DeckKey {
     /// `Env::deck_class` of the trainee.
-    class: usize,
+    class: crate::UmaIndex,
     /// Her folded event-hint chances, outfit by outfit, as bits.
     hint_chances: Vec<u64>,
     /// The spark scale c, as bits.
@@ -82,14 +82,14 @@ pub(crate) struct DeckMemo {
 #[derive(Clone)]
 struct RatioDeck {
     ratio: f64,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     deck: SelectedDeck,
 }
 
 /// One deck search's question beside the chances folded into the model (`set_trainee`).
 #[derive(Clone, Copy)]
 struct DeckSearch {
-    trainee: usize,
+    trainee: crate::UmaIndex,
     /// C, the career's spark scale.
     spark_scale: f64,
     /// th, the value (C x E) the career must beat; at most 0: none.
@@ -115,7 +115,7 @@ struct SearchEffects {
     work: usize,
     last_pv: Option<f64>,
     max_ratio: [f64; 4],
-    max_deck: [Option<(usize, SelectedDeck)>; 4],
+    max_deck: [Option<(crate::UmaIndex, SelectedDeck)>; 4],
     cap_breach: usize,
     cfs: CfStats,
     cert: f64,
@@ -180,7 +180,7 @@ thread_local! {
 #[derive(Default)]
 pub(crate) struct Kept {
     pub(crate) decks: crate::FxMap<DeckKey, DeckMemo>,
-    pub(crate) corners: crate::FxMap<(usize, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
+    pub(crate) corners: crate::FxMap<(crate::UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
 }
 
 /// setups whose memo is kept, and the entries past which a setup's memo starts afresh (at a job's start)
@@ -205,7 +205,7 @@ impl Drop for Env<'_> {
 
 impl Env<'_> {
     /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
-    fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &SelectedDeck) {
+    fn note_ratio(&mut self, k: usize, r: f64, t: crate::UmaIndex, sel: &SelectedDeck) {
         self.note_breach(k, r);
         if r > self.max_ratio[k] {
             self.max_ratio[k] = r;
@@ -244,7 +244,7 @@ impl Env<'_> {
     /// exact-scoring counters, and `max_ratio`, which the same decks already set, see nothing).
     pub(crate) fn best_deck(
         &mut self,
-        t: usize,
+        t: crate::UmaIndex,
         c: f64,
         th: f64,
         starts: &[&SelectedDeck],
@@ -333,7 +333,7 @@ impl Env<'_> {
     /// is strictly above, as `note_ratio` keeps the first deck strictly above
     fn merge_ratios(
         max_ratio: &mut [f64; 4],
-        max_deck: &mut [Option<(usize, SelectedDeck)>; 4],
+        max_deck: &mut [Option<(crate::UmaIndex, SelectedDeck)>; 4],
         ratio: &[Option<RatioDeck>; 4],
     ) {
         for k in 0..4 {

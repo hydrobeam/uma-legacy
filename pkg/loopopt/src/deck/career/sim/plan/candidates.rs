@@ -32,7 +32,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let StageCandidates { trainees: candidate_trainees, hint } =
         stage_candidates(env, input, &main_career, &loop_rotation.members);
     let loop_ms = now_ms() - started_ms;
-    let allowed_trainees: Vec<usize> =
+    let allowed_trainees: Vec<crate::UmaIndex> =
         input.trainees.iter().copied().filter(|&u| env.deck_odds_ceilings[u].is_some()).collect();
     let searches_started_ms = now_ms();
     let env_budget = env.budget;
@@ -143,18 +143,23 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
 
 /// The stage-1 candidates (uma indices) and the page's record of those `hint_umas` added.
 struct StageCandidates {
-    trainees: Vec<usize>,
+    trainees: Vec<crate::UmaIndex>,
     hint: Vec<Value>,
 }
 
 /// Stage-1 candidates (who A can be; whose odds a builder may lift): the best career's trainee, the named loop members,
 /// the umas of the best career's lineage, the umas you have veterans of, the search's other trainees; at most
 /// IDX_CANDS. A given fit (`PlanJob::fit`) names them instead.
-fn stage_candidates(env: &mut Env, input: &PlanInputs, main_career: &Found, loop_members: &[usize]) -> StageCandidates {
+fn stage_candidates(
+    env: &mut Env,
+    input: &PlanInputs,
+    main_career: &Found,
+    loop_members: &[crate::UmaIndex],
+) -> StageCandidates {
     let legacies = input.legacies;
     let settings = input.settings;
-    let mut trainees: Vec<usize> = vec![main_career.trainee];
-    let push = |u: usize, candidates: &mut Vec<usize>| {
+    let mut trainees: Vec<crate::UmaIndex> = vec![main_career.trainee];
+    let push = |u: crate::UmaIndex, candidates: &mut Vec<crate::UmaIndex>| {
         if !candidates.contains(&u) && input.trainees.contains(&u) {
             candidates.push(u);
         }
@@ -207,7 +212,7 @@ fn stage_candidates(env: &mut Env, input: &PlanInputs, main_career: &Found, loop
 fn new_searches(input: &PlanInputs, main_career: &Found, env_budget: usize) -> PlanSearches {
     let uma_count = input.resources.data.umas.len();
     let legacy_count = input.legacies.len();
-    let mut best_careers = vec![CachedSearch::Unsearched; uma_count];
+    let mut best_careers = crate::UmaTable(vec![CachedSearch::Unsearched; uma_count]);
     best_careers[main_career.trainee] = CachedSearch::Known(Some(main_career.clone()));
     let kept_same_pool = take_kept_plan(bests_key(input.resources.job, input.fixed_parents, legacy_count));
     let kept_previous_pool = if legacy_count > 1 {
@@ -217,11 +222,11 @@ fn new_searches(input: &PlanInputs, main_career: &Found, env_budget: usize) -> P
     };
     PlanSearches {
         best_careers,
-        proof_refs: vec![vec![]; uma_count],
-        base_incomplete: vec![false; uma_count],
-        looped_incomplete: vec![false; uma_count],
-        no_borrow_incomplete: vec![false; uma_count],
-        looped_careers: vec![],
+        proof_refs: crate::UmaTable(vec![crate::UmaTable(vec![]); uma_count]),
+        base_incomplete: crate::UmaTable(vec![false; uma_count]),
+        looped_incomplete: crate::UmaTable(vec![false; uma_count]),
+        no_borrow_incomplete: crate::UmaTable(vec![false; uma_count]),
+        looped_careers: crate::UmaTable(vec![]),
         kept_same_pool,
         kept_previous_pool,
         env_budget,
@@ -234,7 +239,7 @@ const fn input_parents<'input>(input: &PlanInputs<'input, '_>) -> ParentPool<'in
 
 /// A winning deck of the main search or a candidate's best career, which a builder of the same deck class may use.
 pub(crate) struct ClassWinner {
-    trainee: usize,
+    trainee: crate::UmaIndex,
     deck: SelectedDeck,
 }
 
@@ -242,7 +247,7 @@ pub(crate) struct ClassWinner {
 pub(crate) fn class_winners(
     solved: &Solved,
     candidates: &PlanCandidates,
-    best_careers: &[CachedSearch],
+    best_careers: &crate::UmaTable<CachedSearch>,
 ) -> Vec<ClassWinner> {
     solved
         .found
@@ -262,7 +267,7 @@ pub(crate) fn proxy_career(
     sim: &mut Sim,
     winners: &[ClassWinner],
     parents: ParentPool,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let deck_class = sim.env.deck_class[trainee];
@@ -288,7 +293,7 @@ pub(crate) fn score_and_admit_proxies(
     if context.candidates.proxies_enabled {
         admit_near_top_proxies(sim, context, searches, profile, &mut rows, buf);
     }
-    let mut wins_by_trainee: Vec<Vec<usize>> = vec![vec![]; context.data().umas.len()];
+    let mut wins_by_trainee = crate::UmaTable(vec![vec![]; context.data().umas.len()]);
     for row in &rows {
         set_plan_wins(sim, context.input.pool, &mut wins_by_trainee, row.trainee, &row.career);
     }
@@ -310,7 +315,7 @@ fn pass_one_rows(
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let mut rows: Vec<PlanRow> = vec![];
-    let mut order: Vec<usize> = vec![candidates.main_career.trainee];
+    let mut order: Vec<crate::UmaIndex> = vec![candidates.main_career.trainee];
     for &trainee in &candidates.allowed_trainees {
         if trainee != candidates.main_career.trainee {
             order.push(trainee);
@@ -458,8 +463,8 @@ pub(crate) fn make_row_exact(
 fn plan_surrogate(
     sim: &mut Sim,
     input: &PlanInputs,
-    best_careers: &mut [CachedSearch],
-    u: usize,
+    best_careers: &mut crate::UmaTable<CachedSearch>,
+    u: crate::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Value> {
     let settings = input.settings;
@@ -519,8 +524,8 @@ fn exact_plan_career(
 pub(crate) fn set_plan_wins(
     sim: &mut Sim,
     pool: &Pool,
-    wins_by_trainee: &mut [Vec<usize>],
-    trainee: usize,
+    wins_by_trainee: &mut crate::UmaTable<Vec<usize>>,
+    trainee: crate::UmaIndex,
     career: &Found,
 ) {
     let win_chances = sim.wins(pool, found_lineage(trainee, career));
@@ -534,7 +539,7 @@ pub(crate) fn exact_no_borrow_career(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let settings = context.settings();

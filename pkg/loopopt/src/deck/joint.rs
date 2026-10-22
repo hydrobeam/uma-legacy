@@ -6,7 +6,7 @@ use super::{GEN_GOLD, Group, JCOUNT, Kind, Model, Src, chain_states, event_pmf_j
 #[derive(Clone, Copy)]
 struct JointQuery<'chance> {
     /// Index in `Model::opts` and `Model::ews`.
-    trainee: usize,
+    trainee: crate::UmaIndex,
     inheritance_chances: &'chance [f64],
 }
 
@@ -34,7 +34,7 @@ struct JointOptions {
 /// dependence is included in the same enumeration.
 pub(super) fn joint(
     model: &Model,
-    u: usize,
+    u: crate::UmaIndex,
     qs: &[f64],
     ents: &[(Src, Kind)],
     filler: usize,
@@ -46,7 +46,7 @@ pub(super) fn joint(
 /// `joint` with the sources owned or borrowed (it only reads them)
 pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
     model: &Model,
-    u: usize,
+    u: crate::UmaIndex,
     qs: &[f64],
     ents: &[(S, Kind)],
     filler: usize,
@@ -140,7 +140,7 @@ pub(crate) struct JointExt {
 /// targets landing (bit k = uncertain target k), 2^nu entries each. None leaves every number as it is.
 pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(
     model: &Model,
-    u: usize,
+    u: crate::UmaIndex,
     qs: &[f64],
     ents: &[(S, Kind)],
     filler: usize,
@@ -444,7 +444,7 @@ impl JointScratch {
 /// `joint_eval` with its buffers from `sx`
 pub(super) fn joint_eval_in(
     model: &Model,
-    u: usize,
+    u: crate::UmaIndex,
     qs: &[f64],
     pre: &JointPrep,
     n_targets: usize,
@@ -730,7 +730,7 @@ fn evaluate_prepared(
 /// it beside the fast form on every call and panics on a relative difference above 1e-11.
 pub(super) fn joint_trainee_ref(
     model: &Model,
-    u: usize,
+    u: crate::UmaIndex,
     qs: &[f64],
     ents: &[(Src, Kind)],
     filler: usize,
@@ -945,7 +945,7 @@ struct BoundChain {
 /// Returns None when either dependence check is unproven; callers must then use a different bound or score exactly.
 pub(super) fn upper_na(
     model: &Model,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     inheritance_chances: &[f64],
     entries: &[(&Src, Kind)],
     filler: usize,
@@ -1257,7 +1257,7 @@ impl LandPre {
 /// None when some entry fails the negative-association certification (`Src::multi`, `group_assoc`).
 pub(super) fn state_value(
     model: &Model,
-    u: usize,
+    u: crate::UmaIndex,
     qs: &[f64],
     ents: &[(&Src, Kind)],
     filler: usize,
@@ -1272,7 +1272,7 @@ pub(super) fn state_value(
 /// apply.
 pub(super) fn state_value_cf(
     model: &Model,
-    u: usize,
+    u: crate::UmaIndex,
     qs: &[f64],
     ents: &[(&Src, Kind)],
     filler: usize,
@@ -1282,7 +1282,7 @@ pub(super) fn state_value_cf(
     }
     Some(state_value_any(model, u, qs, ents, filler))
 }
-fn state_value_any(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Vec<f64> {
+fn state_value_any(model: &Model, u: crate::UmaIndex, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Vec<f64> {
     let nu = model.uncertain.len();
     let mut ch: Vec<(Kind, Option<usize>)> =
         ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();

@@ -28,8 +28,9 @@ fn fast_metric_matches_reference() {
     let nu = m.uncertain.len();
     let fs: [&[usize]; 5] = [&[0, 5, 9, 20], &[3, 7, 11, 40], &[1, 2, 3, 4], &[0, 5, 9], &[3, 11, 40]];
     for (fi, &f) in fs.iter().enumerate() {
-        let qa = m.lineage_q_arr(f, &|_, _| 3.0);
-        let qv = m.lineage_q(f, &|_, _| 3.0);
+        let f: Vec<crate::UmaIndex> = f.iter().copied().map(crate::UmaIndex).collect();
+        let qa = m.lineage_q_arr(&f, &|_, _| 3.0);
+        let qv = m.lineage_q(&f, &|_, _| 3.0);
         assert_eq!(qv.len(), if f.len() == 4 { 12 } else { 3 });
         assert!(qa.iter().zip(&qv).all(|(a, b)| a.to_bits() == b.to_bits()));
         let dw: Vec<f64> = (0..nu).map(|k| ((k + fi) as f64 * 0.17) % 1.0).collect();
@@ -360,7 +361,7 @@ fn joint_fast_matches_reference() {
     let risk = stop_risk_code(&[(2, 1, 2)], 3);
     let ents = vec![(a, (3, 3, 0)), (b, (2, 2, 0)), (c, (3, 3, risk)), (e, (0, 0, 0))];
     for fill in [0usize, 2] {
-        for u in [0usize, 5, 20] {
+        for u in [0, 5, 20].map(crate::UmaIndex) {
             let x = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), true, None);
             let y = joint_trainee_ref(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len());
             for (p, r) in x.iter().zip(&y) {
@@ -399,7 +400,7 @@ fn career_fold_and_scale() {
     let c = Src { train: vec![(2, 0.2)], chains: vec![(1, two(2, 3))], ..Default::default() }.finish();
     let ents = vec![(a, (3, 3, 0)), (b, (2, 2, 0)), (c, (3, 3, 0))];
     let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1e-300);
-    for u in [0usize, 5, 20] {
+    for u in [0, 5, 20].map(crate::UmaIndex) {
         for q in [0.1, 0.6] {
             let x = joint_fast(&m, u, &[q], &ents, 1, sj.targets.len(), true, None)[0];
             let mut f = Model::new(&d, &sk, &sj);
@@ -422,7 +423,7 @@ fn career_fold_and_scale() {
         Src { train: vec![(0, 0.2)], chains: vec![(1, two(0, 1)), (2, g1(1, 1, 0.7))], ..Default::default() }.finish();
     let r = Src { fixed: vec![two(1, 0)], chains: vec![(1, g1(0, 2, 0.4))], ..Default::default() }.finish();
     let ents2 = vec![(p, (2, 2, 0)), (r, (2, 2, 0))];
-    for u in [0usize, 5, 20] {
+    for u in [0, 5, 20].map(crate::UmaIndex) {
         let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
         let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
         let (m0, m1) = (ext.marg[j.2 * 2], ext.marg[j.2 * 2 + 1]);
@@ -468,7 +469,7 @@ fn upper_bound_covers_exact() {
     let mut covered = 0;
     for ents in &decks {
         for fill in [0usize, 1, 3] {
-            for u in [0usize, 5, 20] {
+            for u in [0, 5, 20].map(crate::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, ents, fill, sj.targets.len(), false, None);
                 let er: Vec<(&Src, Kind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
@@ -534,7 +535,7 @@ fn unchecked_inline_event_disables_orthant_bound() {
     assert_eq!(src.chains[0].1[0].0, 0.5);
     assert_eq!(src.chains[0].1[0].1.len(), 21);
     assert!(src.not_nuod);
-    assert!(upper_na(&model, 0, &[0.0], &[(&src, sb.kind(&card, None))], 0).is_none());
+    assert!(upper_na(&model, crate::UmaIndex(0), &[0.0], &[(&src, sb.kind(&card, None))], 0).is_none());
 }
 
 /// The level check behind the cap-free bound (`group_nuod_lvl`): single-target outcomes pass, an outcome hinting two
@@ -578,7 +579,7 @@ fn group_level_orthant_check() {
         [vec![(a.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))], vec![(a, (3, 3, 0)), (c, (3, 3, 0)), (b, (2, 2, 0))]]
     {
         for fill in [0usize, 2] {
-            for u in [0usize, 5, 20] {
+            for u in [0, 5, 20].map(crate::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, &ents, fill, sj.targets.len(), false, None);
                 let er: Vec<(&Src, Kind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
@@ -614,7 +615,7 @@ fn joint_equals_product_without_correlation() {
     }
     let dw: Vec<f64> = mw.iter().map(|x| 1.0 - x).collect();
     let dg: Vec<f64> = mg.iter().map(|x| 1.0 - x).collect();
-    for u in [0usize, 5, 20] {
+    for u in [0, 5, 20].map(crate::UmaIndex) {
         for q in [0.3, 0.75] {
             let j = joint(&m, u, &[q], &[(a.clone(), (0, 0, 0)), (b.clone(), (0, 0, 0))], 0, sj.targets.len(), true);
             let p = m.fixed_factor() * m.trainee_fast(u, q, &dw, &dg);

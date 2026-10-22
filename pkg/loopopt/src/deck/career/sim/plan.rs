@@ -53,7 +53,7 @@ mod step;
 pub(crate) struct CandidateIndex(pub(crate) usize);
 
 impl std::ops::Index<CandidateIndex> for PlanCandidates {
-    type Output = usize;
+    type Output = crate::UmaIndex;
 
     fn index(&self, index: CandidateIndex) -> &Self::Output {
         &self.trainees[index.0]
@@ -197,7 +197,7 @@ pub(crate) struct PlanInputs<'plan, 'data> {
     /// Parent indices required by the job.
     pub(crate) fixed_parents: &'plan [usize],
     /// Allowed trainees in search order.
-    pub(crate) trainees: &'plan [usize],
+    pub(crate) trainees: &'plan [crate::UmaIndex],
     /// Settings for the next-career planner.
     pub(crate) settings: &'plan PlanJob,
     /// Runnable pool and search when borrowed parents are deferred.
@@ -249,15 +249,15 @@ struct PlanCandidates {
     pick_career: Found,
     /// The named loop's members (`PlanJob::loop_members`), as uma indices, with their {id, name} and why the rotation
     /// was refused.
-    loop_members: Vec<usize>,
+    loop_members: Vec<crate::UmaIndex>,
     loop_member_info: Vec<Value>,
     loop_member_note: Option<String>,
     /// The candidates `hint_umas` added, as the page shows them.
     hint: Vec<Value>,
     /// The stage candidates, as uma indices (`Data::umas`).
-    trainees: Vec<usize>,
+    trainees: Vec<crate::UmaIndex>,
     /// The umas a trio's finisher may be: the allowed trainees with a legal deck.
-    allowed_trainees: Vec<usize>,
+    allowed_trainees: Vec<crate::UmaIndex>,
     /// Initial candidate careers: later builder searches do not replace these.
     careers: Vec<Option<Found>>,
     /// Each candidate's odds now: her initial career's P(all), 0 without one.
@@ -329,12 +329,12 @@ impl<'context, 'data> PlanContext<'context, 'data> {
 }
 
 /// A found career's trainee and parents. `trainee` is the uma the row or search is for.
-const fn found_lineage(trainee: usize, found: &Found) -> Lineage {
+const fn found_lineage(trainee: crate::UmaIndex, found: &Found) -> Lineage {
     Lineage { trainee, first_parent: found.first_parent, second_parent: found.second_parent }
 }
 
 /// A found career as `score_career` takes it.
-const fn found_career(trainee: usize, found: &Found) -> Career<'_> {
+const fn found_career(trainee: crate::UmaIndex, found: &Found) -> Career<'_> {
     Career { lineage: found_lineage(trainee, found), deck: &found.deck }
 }
 
@@ -347,15 +347,15 @@ fn unordered_parents(found: &Found) -> (usize, usize) {
 /// `Data::umas`.
 struct PlanSearches {
     /// Each uma's best career, searched on demand (stage-1 candidates in setup, builders when scored exactly).
-    best_careers: Vec<CachedSearch>,
+    best_careers: crate::UmaTable<CachedSearch>,
     /// The decks each uma's best-career search checked fully, kept with the plan.
-    proof_refs: Vec<Vec<Vec<Ref>>>,
+    proof_refs: crate::UmaTable<crate::UmaTable<Vec<Ref>>>,
     /// Per uma, her searches were incomplete: her best, looped and no-borrow careers'.
-    base_incomplete: Vec<bool>,
-    looped_incomplete: Vec<bool>,
-    no_borrow_incomplete: Vec<bool>,
+    base_incomplete: crate::UmaTable<bool>,
+    looped_incomplete: crate::UmaTable<bool>,
+    no_borrow_incomplete: crate::UmaTable<bool>,
     /// Each uma's best career on two real 8/8 parents, where searched (`add_looped_rows`).
-    looped_careers: Vec<CachedSearch>,
+    looped_careers: crate::UmaTable<CachedSearch>,
     /// A kept plan of this very pool, and one of this pool less its last veteran (taken out of `BESTS` while this
     /// plan runs and put back after it: every reroll of a career reuses the same one).
     kept_same_pool: Option<Bests>,
@@ -374,7 +374,7 @@ impl PlanSearches {
     }
 
     /// Record `trainee`'s best-career search.
-    fn record_best_career(&mut self, trainee: usize, search: BestCareer) {
+    fn record_best_career(&mut self, trainee: crate::UmaIndex, search: BestCareer) {
         self.proof_refs[trainee] = search.proof_refs;
         self.best_careers[trainee] = CachedSearch::Known(search.found);
         self.base_incomplete[trainee] = !search.complete;
@@ -382,7 +382,7 @@ impl PlanSearches {
 }
 
 /// `trainee`'s best career searched now, its deck added to the cache the planner's tables read, and recorded
-fn search_best_career(sim: &mut Sim, context: &PlanContext, searches: &mut PlanSearches, trainee: usize) {
+fn search_best_career(sim: &mut Sim, context: &PlanContext, searches: &mut PlanSearches, trainee: crate::UmaIndex) {
     let search = best_of(sim.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
     if let Some(found) = &search.found {
         sim.cache.add(sim.env, trainee, &found.deck);
@@ -415,7 +415,7 @@ struct PlanRows {
     rows: Vec<PlanRow>,
     /// indexed by uma (her index in `d.umas`), filled for each row's trainee: the G1 races her latest row's career
     /// wins with a chance above 0.5 (`set_plan_wins`), the continuation fit's shared-win input; empty for other umas
-    wins_by_trainee: Vec<Vec<usize>>,
+    wins_by_trainee: crate::UmaTable<Vec<usize>>,
 }
 
 /// The page's next career, exact where it can be and without simulation: the career that brings a FULLY LOOPED veteran
