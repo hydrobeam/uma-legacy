@@ -426,17 +426,7 @@ fn event_reward(value: &Value) -> (&str, f64) {
     }
 }
 pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &Value) -> EventLists {
-    let lookup_skill = |name: &str| {
-        skills.skills.iter().find_map(|(group, white, gold)| {
-            if white == name {
-                Some((*group, 1u8))
-            } else if gold.as_deref() == Some(name) {
-                Some((*group, 2u8))
-            } else {
-                None
-            }
-        })
-    };
+    let lookup_skill = |name: &str| skills.names.get(name).copied();
     let [
         mut events,
         mut probabilistic_events,

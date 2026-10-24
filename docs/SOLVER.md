@@ -204,7 +204,7 @@ non-goal G1s leaves the score unchanged within tolerance.
 
 | Field | Meaning | Default |
 |---|---|---|
-| `skills_file` | outfit skill lists + skill catalog (`web_skills.json`, from `export/export_web.py`) | required |
+| `skills_file` | outfit skill lists, the skill catalog and the names an event reward can carry (the ○ beside a catalog ◎ included) (`web_skills.json`, from `export/export_web.py`) | required |
 | `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1 | required |
 | `star_dist` | spark star mix on the legacies `[p1★, p2★, p3★]`; supplied explicitly for another rank mix | `[0.50,0.45,0.05]` |
 | `owned` | uma ids you own (empty = whole roster) | `[]` |

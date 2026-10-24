@@ -187,11 +187,10 @@ def release_dates(data_dir):
 
 
 def event_summary(skills, events):
-    skills_by_name = {}
-    for group_id, white_name, gold_name in skills["skills"]:
-        skills_by_name[white_name] = SkillReference(group=group_id, rarity=1)
-        if gold_name:
-            skills_by_name[gold_name] = SkillReference(group=group_id, rarity=2)
+    # every name an event reward can carry (the ○ beside a catalog ◎ included): web_skills.json's `names`
+    skills_by_name = {
+        name: SkillReference(group=group_id, rarity=rarity) for name, (group_id, rarity) in skills["names"].items()
+    }
     event_skills = {}
     for card_id, card in events["cards"].items():
         out = []

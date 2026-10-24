@@ -127,13 +127,8 @@ def skills() -> dict[int, tuple[str, str | None]]:
 
 
 def skill_names() -> dict[str, tuple[int, int]]:
-    """skill name -> (group, 1 white / 2 gold)"""
-    out: dict[str, tuple[int, int]] = {}
-    for group, white, gold in gjson("web_skills.json")["skills"]:
-        out[white] = (group, 1)
-        if gold:
-            out[gold] = (group, 2)
-    return out
+    """skill name -> (group, 1 white / 2 gold): web_skills.json's `names` (the ○ beside a catalog ◎ included)"""
+    return {name: (group, level) for name, (group, level) in gjson("web_skills.json")["names"].items()}
 
 
 def factor_groups() -> dict[int, int]:

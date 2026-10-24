@@ -61,6 +61,9 @@ pub(crate) struct CardRaw(pub u32, pub String, pub Vec<(u32, u8)>);
 pub(crate) struct SkillsRaw {
     pub cards: std::collections::HashMap<String, Vec<CardRaw>>,
     pub skills: Vec<(u32, String, Option<String>)>,
+    /// every skill name an event reward can carry -> (group, 1 white / 2 gold): the catalog's names plus a group's
+    /// other whites (the ○ beside a catalog ◎)
+    pub names: std::collections::HashMap<String, (u32, u8)>,
 }
 
 #[derive(Deserialize, Clone)]
