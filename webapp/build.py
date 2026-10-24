@@ -190,11 +190,13 @@ def release_dates(data_dir):
     return release_times
 
 
-def event_summary(skills, events):
-    # every name an event reward can carry (the ○ beside a catalog ◎ included): web_skills.json's `names`
-    skills_by_name = {
-        name: SkillReference(group=group_id, rarity=rarity) for name, (group_id, rarity) in skills["names"].items()
-    }
+def skill_references(skills):
+    """Every name an event reward can carry (the ○ beside a catalog ◎ included): web_skills.json's `names`, with its
+    group and rarity."""
+    return {name: SkillReference(group=group_id, rarity=rarity) for name, (group_id, rarity) in skills["names"].items()}
+
+
+def event_summary(skills_by_name, events):
     event_skills = {}
     for card_id, card in events["cards"].items():
         out = []
@@ -217,13 +219,30 @@ def event_summary(skills, events):
     return event_skills
 
 
+def chain_ends(skills_by_name, card_events):
+    """The card's chain-ending choices, one per link that has one: the skills on the ending choice ("end") and on the
+    event's other choices ("go"), each [group, rarity]. IT takes the ending choice only for a prioritised skill on it,
+    so the page names it."""
+
+    def references(rewards):
+        names = [reward[0] if isinstance(reward, list) else reward for reward in rewards]
+        return [list(skills_by_name[name]) for name in names if name in skills_by_name]
+
+    continuing = dict(card_events.get("chain", []))  # link -> the skills on its other choices
+    return [
+        {"link": link_number, "end": references(rewards), "go": references(continuing.get(link_number, []))}
+        for link_number, rewards in card_events.get("end", [])
+    ]
+
+
 def era(data_dir, events_file):
     data = json.load(open(os.path.join(data_dir, "data.json")))
     skills = json.load(open(os.path.join(data_dir, "web_skills.json")))
     cards = json.load(open(os.path.join(data_dir, "web_cards.json")))
     events = json.load(open(os.path.join(data_dir, events_file)))
     release_times = release_dates(data_dir)
-    event_skills = event_summary(skills, events)
+    skills_by_name = skill_references(skills)
+    event_skills = event_summary(skills_by_name, events)
     ui_cards = []
     for card in cards["cards"]:
         # pals, group cards, R cards (no chain events: hints only, no chain slot) and SR/SSR cards with chains
@@ -245,6 +264,11 @@ def era(data_dir, events_file):
                 **(
                     {"pri": pri} if (pri := events["cards"].get(str(card["id"]), {}).get("prioritise")) else {}
                 ),  # skills to prioritise for IT to take the event choice the model credits
+                **(
+                    {"end": ends}
+                    if (ends := chain_ends(skills_by_name, events["cards"].get(str(card["id"]), {})))
+                    else {}
+                ),
                 **(
                     {"ban": ban}
                     if (ban := [scenario for scenario, ids in cards.get("restrict", {}).items() if card["id"] in ids])

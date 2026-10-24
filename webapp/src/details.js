@@ -428,6 +428,8 @@ function infoPane({ d, races, raceName, winsBtn, deck, legacies }) {
       cell.title = base + (bor ? ' (borrowed)' : '');
       if (c) cell.dataset.cid = String(c.id);
       cell.dataset.name = base;
+      const endAt = (deck.end_chain_at || [])[i] || 0; // the popover's chain-end advice
+      if (endAt) cell.dataset.end = String(endAt);
       cell.setAttribute('aria-label', `${base + (bor ? ' (borrowed)' : '')}. Card details`);
       cell.setAttribute('aria-haspopup', 'dialog');
       if (bor) cell.appendChild(el('span', 'udfr', 'Friends'));

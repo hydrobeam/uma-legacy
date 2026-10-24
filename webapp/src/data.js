@@ -22,7 +22,16 @@ export const ASSETS = parse('data-assets');
  * @property {[number, number, number, number][]} ev skills its events give: [skill group, level (1 white, 2 gold), story
  *   event link (0: not a chained event), chance the event gives it]
  * @property {string[]} [pri] skills to prioritise in IT so the event choice the model credits is taken
+ * @property {ChainEnd[]} [end] its chain-ending choices, one per story-event link that has one
  * @property {string[]} [ban] scenarios that do not allow it
+ */
+/**
+ * A story event's choice that ends the card's chain (build.py `chain_ends`). IT takes it only when a skill on it is
+ * prioritised.
+ * @typedef {object} ChainEnd
+ * @property {number} link the story-event link
+ * @property {[number, number][]} end skills on the ending choice: [skill group, level (1 white, 2 gold)]
+ * @property {[number, number][]} go skills on the event's other choices, the same way
  */
 /**
  * @typedef {object} Outfit

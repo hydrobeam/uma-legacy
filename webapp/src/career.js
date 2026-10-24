@@ -13,7 +13,7 @@ import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
-import { initCards, cardTitle, borLast } from './cards.js';
+import { initCards, cardTitle, borLast, chainEndNote } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initSetup } from './setup.js';
@@ -1345,7 +1345,12 @@ function deckEl(r, title = 'Deck') {
       pick = (d.choices || [])[i] || (c?.pri ? c.pri.join(', ') : '');
     const t = c ? cardTitle(c) : { nm: base, ti: '' },
       tag = bor ? 'borrowed' : c?.pal ? 'pal' : '';
-    const full = t.nm + (t.ti ? ` · ${t.ti}` : '') + (tag ? ` (${tag})` : '') + (pick ? ` · prioritise ${pick}` : '');
+    const full =
+      t.nm +
+      (t.ti ? ` · ${t.ti}` : '') +
+      (tag ? ` (${tag})` : '') +
+      (pick ? ` · prioritise ${pick}` : '') +
+      (endAt ? ` · ${chainEndNote(c, endAt)}` : '');
     const b = el('button', `dc${bor ? ' bor' : c?.pal ? ' pal' : ''}`);
     b.type = 'button';
     if (c) b.dataset.cid = String(c.id);
@@ -1357,7 +1362,7 @@ function deckEl(r, title = 'Deck') {
     b.setAttribute('aria-expanded', 'false');
     b.append(cardAv(c || null, 96), el('span', 'dn', full));
     if (pick) b.appendChild(el('i', '', `prioritise ${pick}`));
-    if (endAt) b.appendChild(el('i', '', `chain end: link ${endAt}`));
+    if (endAt) b.appendChild(el('i', '', chainEndNote(c, endAt)));
     box.appendChild(b);
   });
   return dk;

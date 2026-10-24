@@ -4,7 +4,7 @@ import { UMAS, CARD_BY_ID } from './data.js';
 import { state, goldGiven } from './state.js';
 import { save } from './save.js';
 import { umaState, paintRoster } from './roster.js';
-import { cardTitle, cardGives, giftsHTML, paintCards } from './cards.js';
+import { cardTitle, cardGives, giftsHTML, paintCards, chainEndAt } from './cards.js';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
 // Keyboard: opening moves the focus into the panel; Escape, or Tab past either end, closes it and returns the focus to
@@ -125,6 +125,26 @@ function gametoraUrl(c) {
   const page = c.gt || `${c.id}-${slugOf(c.name.replace(/^\[.*?\]\s*/, ''))}`; // the name without its [title]
   return `https://gametora.com/umamusume/supports/${page}`;
 }
+// what to prioritise for IT to take the chain-ending choice the search chose, and when it may not. In the run data IT
+// took it every time when only the ending choice held a prioritised skill (312 of 312), less often when the other
+// choice held one too or the skill's hint was already Lv 5 (small samples, so "may not")
+function chainEndHTML(c, link) {
+  const { take, others } = chainEndAt(c, link);
+  if (!take) return `<div>Take the chain-ending choice at link ${link}.</div>`;
+  const targets = new Set(state.targets.map((x) => x.group)),
+    rivals = others.filter((x) => targets.has(x.group)).map((x) => x.name),
+    otherNames = others.map((x) => x.name).join(' or ');
+  let caveat;
+  if (rivals.length)
+    caveat = `${rivals.join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} also a target: prioritising both makes the end uncertain.`;
+  else if (otherNames)
+    caveat = `IT may not take it if ${otherNames} is also prioritised, or if ${take}'s hint is already Lv 5.`;
+  else caveat = `IT may not take it if ${take}'s hint is already Lv 5.`;
+  return (
+    `<div>Prioritise ${esc(take)} in IT: it takes the chain-ending choice at link ${link}.</div>` +
+    `<div class="onote">${esc(caveat)}</div>`
+  );
+}
 function openCardPop(chip) {
   closePop();
   popFor = chip;
@@ -139,7 +159,7 @@ function openCardPop(chip) {
   pop.innerHTML =
     `<div><b>${esc(title.nm)}</b>${title.ti ? `<div class="ctt">${esc(title.ti)}</div>` : ''}</div>${borrowed ? '<div>Borrowed.</div>' : ''}` +
     (gifts.length ? `<div class="pgives">${giftsHTML(gifts)}</div>` : '') +
-    (chip.dataset.end ? `<div>Take the chain-ending choice at link ${chip.dataset.end}.</div>` : '') +
+    (chip.dataset.end ? chainEndHTML(c, +chip.dataset.end) : '') +
     `<div class="pfoot">${c && !borrowed ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${owned ? ' checked' : ''}>Owned</label>` : '<span></span>'}` +
     `${c ? `<a class="gtl" href="${gametoraUrl(c)}" target="_blank" rel="noopener">GameTora ↗︎</a>` : ''}</div>`;
   placePop(chip, true);

@@ -3,7 +3,7 @@ import { $, esc, fmtIn } from './dom.js';
 import { CARDS, CARD_BY_ID, SK } from './data.js';
 import { ui } from './state.js';
 import { umaAv, cardAv, skillIcon, setRunnerFrom } from './images.js';
-import { cardTitle, borLast } from './cards.js';
+import { cardTitle, borLast, chainEndNote } from './cards.js';
 import { closePop, markOwn, popHasFocus } from './popover.js';
 import { pickOutfit, outfitNote } from './roster.js';
 import { openSched } from './agenda.js';
@@ -84,14 +84,14 @@ function cardChip(deck, i) {
   // credited event choice needs (derived from the event data: c.pri)
   const endAt = (deck.end_chain_at || [])[i] || 0,
     pick = (deck.choices || [])[i] || (c?.pri ? c.pri.join(', ') : '');
-  const pickNote = pick ? ` · prioritise ${pick}` : '';
+  const pickNote = (pick ? ` · prioritise ${pick}` : '') + (endAt ? ` · ${chainEndNote(c, endAt)}` : '');
   const title = c ? cardTitle(c) : { nm: base, ti: '' };
   const tag = borrowed ? 'borrowed' : pals.has(base) ? 'pal' : '',
     full = title.nm + (title.ti ? ` · ${title.ti}` : '') + (tag ? ` (${tag})` : '') + pickNote;
   return (
     `<button type="button" class="dc${borrowed ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(title.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
     ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
-    `<span class="dn">${esc(full)}</span>${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`
+    `<span class="dn">${esc(full)}</span>${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>${esc(chainEndNote(c, endAt))}</i>` : ''}</button>`
   );
 }
 // per target the deck can hint: the gold's odds, then the white's (the chance of at least the white): the two numbers

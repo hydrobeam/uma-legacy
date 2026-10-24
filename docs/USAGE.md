@@ -26,7 +26,8 @@ skill as a spark, with each uma's race schedule. Results update by themselves 0.
   eight default targets. Presets are shared by both pages and carried by *Export / import settings*.
 
 **Results**, per loop: the odds that every target lands; each uma with her outfit and her odds as the trainee; the
-deck, with pals, the borrowed card and "prioritise …" on a card whose event needs that skill set as an IT priority;
+deck, with pals, the borrowed card and "prioritise …" on a card whose event needs that skill set as an IT priority
+("(chain end)" when that skill is on a choice that ends the card's chain early; its panel says when IT may not take it);
 with a deck per uma, the *Swaps* each other trainee makes to the shared deck and what they do to the odds. Buttons:
 **Odds** (the chance of landing each number of targets), **Race schedule** (all three years per uma; shared G1s build
 affinity) and **Affinity** (each career's affinity, legacy by legacy).

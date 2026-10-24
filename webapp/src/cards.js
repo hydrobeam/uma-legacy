@@ -56,6 +56,33 @@ export function cardGives(c, groups) {
   }
   return out;
 }
+/**
+ * The choice that ends card `c`'s chain at story-event link `link`, for a deck card the search ends there. IT takes it
+ * only when a skill on it is prioritised (always, in the run data, when no skill on the other choices is too).
+ * @typedef {object} ChainEndAdvice
+ * @property {string} take the ending choice's skills by name, '' when it names none the page knows
+ * @property {{group: number, name: string}[]} others the skills on the event's other choices
+ */
+/** @returns {ChainEndAdvice} */
+export function chainEndAt(c, link) {
+  const choice = c?.end?.find((x) => x.link === link),
+    named = (skills) => (skills || []).map(([group, level]) => ({ group, name: skillName(group, level) }));
+  return {
+    take: named(choice?.end)
+      .map((x) => x.name)
+      .join(' or '),
+    others: named(choice?.go),
+  };
+}
+const skillName = (group, level) => {
+  const names = SK.get(group) || { w: String(group), gd: String(group) };
+  return level === 2 ? names.gd : names.w;
+};
+// a chain-ending deck card's caption: the skill that makes IT take the ending choice
+export const chainEndNote = (c, link) => {
+  const { take } = chainEndAt(c, link);
+  return take ? `prioritise ${take} (chain end)` : `chain end: link ${link}`;
+};
 // the gifts as the game's small labels (the card list's tiles and a deck card's panel)
 /** @type {(gifts: CardGift[]) => string} */
 export const giftsHTML = (gifts) =>
