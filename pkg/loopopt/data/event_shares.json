@@ -1,10 +1,10 @@
 {
  "about": "Measured outcome shares that replace the equal-outcome convention (k of n outcomes: k/n) for generated SR/SSR chain events. Per card: the link, the choice (1-based) and each outcome's share keyed by the skill that marks it. Applied by the event builders (Global and both GM-era variants) to `chain` and as `alt_w` (outcome weights per choice) for the solver. Measured on uma-it runs where every outcome could show (docs/MODEL.md); set to the adopted value.",
  "cards": {
-  "30008": [{"link": 3, "choice": 1, "shares": {"Fast-Paced": 0.75, "Escape Artist": 0.25},
-             "src": "It's All to Win: Fast-Paced 33/40 = 0.82 [0.71, 0.90], 2026-10-06; set to 0.75"}],
-  "30017": [{"link": 3, "choice": 1, "shares": {"Center Stage": 0.75, "Prudent Positioning": 0.25},
-             "src": "My Umadol Way! ☆: Center Stage 37/51 = 0.73 [0.61, 0.81], 2026-10-06; set to 0.75"}],
+  "30008": [{"link": 3, "choice": 1, "shares": {"Fast-Paced": 0.65, "Escape Artist": 0.35},
+             "src": "It's All to Win: Fast-Paced 71/107 = 0.66 [0.59, 0.73] on the full run pool, 2026-10-23; set to 0.65 (docs/RESEARCH.md section 9)"}],
+  "30017": [{"link": 3, "choice": 1, "shares": {"Center Stage": 0.65, "Prudent Positioning": 0.35},
+             "src": "My Umadol Way! ☆: Center Stage 54/83 = 0.65 [0.56, 0.73] on the full run pool, 2026-10-23; set to 0.65 (docs/RESEARCH.md section 9)"}],
   "30108": [{"link": 3, "choice": 1, "shares": {"Nothing Ventured": 0.6, "Risky Business": 0.4},
              "src": "Upping the Ante: Nothing Ventured 138/228 = 0.61 [0.55, 0.66] (90%; shared Risky Business credits attributed by each card's own rate, blank runs with Risky Business at Lv 5 split by the event's firing rate), 601 runs with the card, 2026-10-11; set to 0.6 (docs/RESEARCH.md section 9)"}]
  }
