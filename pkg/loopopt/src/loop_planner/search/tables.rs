@@ -436,6 +436,7 @@ impl<'data> Multi<'data> {
         DeckSources {
             entries,
             filler_count: self.inputs.deck_job.deck_size.saturating_sub(deck.ids.len() + deck.plain_ids.len()),
+            chain_events: self.inputs.deck_job.chain_model().events(deck.chain_pals(&self.card_of)),
         }
     }
 
@@ -484,10 +485,10 @@ impl<'data> Multi<'data> {
         let model = self.inputs.model;
         let uma_id = self.inputs.data.umas[uma].id;
         let started = Instant::now();
-        let DeckSources { entries, filler_count } = self.ents_of(deck);
+        let DeckSources { entries, filler_count, chain_events } = self.ents_of(deck);
         let results = joint_b(
             model,
-            JointQuery::unfolded(model, self.inputs.deck_job, uma, chances),
+            JointQuery::unfolded(model, chain_events, uma, chances),
             &entries,
             filler_count,
             self.requested_target_count,
@@ -499,7 +500,7 @@ impl<'data> Multi<'data> {
                 entries.iter().map(|entry| SourceEntry { sources: &*entry.sources, kind: entry.kind }).collect();
             if let Some(upper_bounds) = upper_na(
                 model,
-                JointQuery::unfolded(model, self.inputs.deck_job, uma, chances),
+                JointQuery::unfolded(model, chain_events, uma, chances),
                 &borrowed_entries,
                 filler_count,
             ) {
@@ -665,7 +666,7 @@ impl<'data> Multi<'data> {
                 let bound_started = Instant::now();
                 let upper_bounds = upper_na(
                     model,
-                    JointQuery::unfolded(model, self.inputs.deck_job, uma, chances),
+                    JointQuery::unfolded(model, space.deck_events(selected, &[uma_id]), uma, chances),
                     &entries,
                     selected.filler_cards,
                 );
@@ -691,10 +692,10 @@ impl<'data> Multi<'data> {
     /// The entry's best with its per-lineage values (the deckless value when no deck is legal)
     fn best_of(&self, uma: UmaIndex, chances: &[f64], entry: &ExactCacheEntry) -> Best {
         if let Some(ScoredDeck { value: sum, deck }) = &entry.best {
-            let DeckSources { entries, filler_count } = self.ents_of(deck);
+            let DeckSources { entries, filler_count, chain_events } = self.ents_of(deck);
             let per_lineage = joint_b(
                 self.inputs.model,
-                JointQuery::unfolded(self.inputs.model, self.inputs.deck_job, uma, chances),
+                JointQuery::unfolded(self.inputs.model, chain_events, uma, chances),
                 &entries,
                 filler_count,
                 self.requested_target_count,
@@ -704,7 +705,7 @@ impl<'data> Multi<'data> {
         } else {
             let per_lineage = joint(
                 self.inputs.model,
-                JointQuery::unfolded(self.inputs.model, self.inputs.deck_job, uma, chances),
+                JointQuery::unfolded(self.inputs.model, self.inputs.deck_job.chain_model().events(0), uma, chances),
                 &[],
                 0,
                 self.requested_target_count,

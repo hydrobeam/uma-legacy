@@ -37,6 +37,14 @@ impl PDeck {
     pub(crate) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>, checks: &crate::checks::Checks) -> bool {
         self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).is_some_and(|card| card.blocks(uma, checks)))
     }
+    /// The deck's pals that set its chain-event rate (`Card::raises_chain_rate`), named and plain.
+    pub(crate) fn chain_pals(&self, card_of: &crate::FxMap<u32, &Card>) -> usize {
+        self.ids
+            .iter()
+            .chain(&self.plain_ids)
+            .filter(|id| card_of.get(id).is_some_and(|card| card.raises_chain_rate()))
+            .count()
+    }
     /// the deck's identity (cards, end links, variants, plain pals) as a fixed key: at most `DECK_ID_N` cards (a deck
     /// holds at most 6: the key codes count kinds in base 7), the unused places 0
     pub(crate) fn id(&self) -> DeckId {

@@ -116,7 +116,15 @@ impl Multi<'_> {
                 {
                     continue;
                 }
-                let deck = self.inputs.deck_space.pdeck(&bound.selection, &scan.member_ids);
+                let space = self.inputs.deck_space;
+                let mut deck = space.pdeck(&bound.selection, &scan.member_ids);
+                // (the catalogue's hint chances are at its first plain pals' chain events; this loop's plain pals can
+                // raise the rate less, so its odds are taken again at its own; `score_shared`'s exact values already are)
+                let events = space.deck_events(&bound.selection, &scan.member_ids);
+                if events.key() != space.deck_events(&bound.selection, &[]).key() {
+                    let odds = space.hint_chances_at(&bound.selection, events);
+                    (deck.white_hint_chances, deck.gold_hint_chances) = (odds.white, odds.gold);
+                }
                 self.score_shared(&mut state.tally, &mut scan, &deck);
                 if scan.decks.len() >= self.loop_limit {
                     break;
@@ -146,13 +154,13 @@ impl Multi<'_> {
         }
         let (model, structure) = (self.inputs.model, scan.members);
         let started = Instant::now();
-        let DeckSources { entries, filler_count } = self.ents_of(deck);
+        let DeckSources { entries, filler_count, chain_events } = self.ents_of(deck);
         let deck_class = src_class(entries.iter().map(|entry| &*entry.sources));
         let mut value_sum = 0.0;
         for member in 0..scan.member_count {
             let results = joint_b(
                 model,
-                JointQuery::unfolded(model, self.inputs.deck_job, structure[member], &scan.chances_by_member[member]),
+                JointQuery::unfolded(model, chain_events, structure[member], &scan.chances_by_member[member]),
                 &entries,
                 filler_count,
                 self.requested_target_count,
@@ -269,13 +277,14 @@ impl Multi<'_> {
                     .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
                     .collect();
                 let bound_started = Instant::now();
+                let chain_events = space.deck_events(selected, &scan.member_ids);
                 let upper_bound: Option<f64> = (0..scan.member_count)
                     .map(|member| {
                         upper_na(
                             model,
                             JointQuery::unfolded(
                                 model,
-                                self.inputs.deck_job,
+                                chain_events,
                                 structure[member],
                                 &scan.chances_by_member[member],
                             ),

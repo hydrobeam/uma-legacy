@@ -138,7 +138,7 @@ impl ConfigOrder {
                 );
                 let ratio_prefixes: &std::rc::Rc<GroupTable> = self.key_ratios[pending_config.ratio_key_index]
                     .get_or_insert_with(|| {
-                        let key_misses = space.key_miss(pending_config.code);
+                        let key_misses = space.key_miss(pending_config.code, pending_config.events);
                         std::rc::Rc::new((bounds.ratio_prefixes)(
                             &key_misses.white,
                             &key_misses.gold,
@@ -161,8 +161,10 @@ impl ConfigOrder {
                     configuration: SearchConfig {
                         root: self.order_bounds[0],
                         code: pending_config.code,
+                        events: pending_config.events,
                         real_filler_count: pending_config.real_filler_count,
                         pal_entry_count: pending_config.pal_entry_count,
+                        other_entry_count: pending_config.other_entry_count,
                         filler_count: pending_config.filler_count,
                         plain_pal_count: pending_config.plain_pal_count,
                         groups: pending_config.groups.clone(),

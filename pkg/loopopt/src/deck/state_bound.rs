@@ -10,13 +10,15 @@ use crate::deck::space::{GroupSlots, TraversalEntryGroup};
 use crate::skills::{Model, OutfitOption};
 use std::cell::RefCell;
 use std::rc::Rc;
-/// A state's real filler and pal slots distinguish configurations with the same chain code.
+/// A state's real filler and chainless slots, and its chain events, distinguish configurations with the same chain code.
 #[derive(PartialEq, Eq, Hash)]
 pub(super) struct StateBoundKey {
     pub(super) set_id: usize,
     pub(super) code: u64,
     pub(super) real_filler_count: usize,
     pub(super) pal_entry_count: usize,
+    pub(super) other_entry_count: usize,
+    pub(super) events: crate::deck::chains::EventsKey,
 }
 
 /// Configuration tables shared by all deck searches within one job and its fixed deck space.
@@ -39,7 +41,8 @@ pub(super) struct LandingBoundTables<'table> {
 
 #[derive(Clone, Copy)]
 pub(super) struct BoundOptions {
-    /// The job's chain-event distribution (the cap-free bounds' event counts and key levels).
+    /// The configuration's chain-event distribution, every one of its decks' (the cap-free bounds' event counts and key
+    /// levels).
     pub(super) chain_events: crate::deck::chains::ChainEvents,
     pub(super) cap_free: bool,
     pub(super) trainee: crate::uma::UmaIndex,

@@ -91,10 +91,11 @@ struct RatioExample {
     cards: Vec<Name>,
 }
 
-/// Borrowed or rebuilt source entries and the remaining filler slots of one detached deck.
+/// Borrowed or rebuilt source entries, the remaining filler slots and the chain events of one detached deck.
 struct DeckSources<'data> {
     entries: Vec<SourceEntry<Cow<'data, TargetSources>>>,
     filler_count: usize,
+    chain_events: crate::deck::chains::ChainEvents,
 }
 
 /// An entry's card identity, optional early end, and reward variant.

@@ -7,8 +7,9 @@
 //!     leaves the pool, so a card
 //!     giving +5 levels per draw never repeats one), `hint_miss`; a card's draws hint two of its targets together less
 //!     often than independent odds would say;
-//!   - chain events: the number in a run is Binomial(CHAIN_N, CHAIN_P); each advances a chain picked among the
-//!     remaining chain slots of the non-pal cards (a card with more links left is picked more often; links fire in
+//!   - chain events: the number in a run is Binomial(CHAIN_N, p), logit p = CHAIN_A + CHAIN_B x the deck's pals
+//!     (group cards excluded, plain pals included); each advances a chain picked among the
+//!     still-running chain cards of the deck, each equally likely whatever its links left (the card rule; links fire in
 //!     order). Pals and R cards have no chain slots. Both fitted on uma-it Independent Training runs (docs/MODEL.md);
 //!   - event rewards come from the job (`events`): (card, skill group, 1 white | 2 gold, link; 0 = whenever the
 //!     card is in the deck, e.g. pal golds).
@@ -76,8 +77,16 @@ pub(crate) struct Card {
     #[serde(default)]
     #[serde(rename = "charas")]
     pub blocked_characters: Vec<u32>,
+    /// the card's type: a stat ("speed" ...), "pal" or "group" (a pal card of a group of characters)
+    #[serde(default)]
+    #[serde(rename = "kind")]
+    pub card_type: String,
 }
 impl Card {
+    /// Whether the card counts in the deck's pals that set its chain-event rate (`ChainModel`): pal cards, not group cards.
+    pub(crate) fn raises_chain_rate(&self) -> bool {
+        self.pal && self.card_type != "group"
+    }
     /// The character rule. `RULE_OFF=1` (`Checks::rule_off`: brute-force checks only, val/permcheck.py and
     /// owncheck.py) switches it off.
     pub(crate) fn blocks(&self, uma: u32, checks: &crate::checks::Checks) -> bool {
@@ -95,9 +104,17 @@ pub(crate) struct CardsRaw {
 
 #[derive(Deserialize)]
 pub(crate) struct DeckJob {
-    /// chain events per run: Binomial(n, p); defaults CHAIN_N, CHAIN_P (for experiments)
+    /// experiments: chain events per run Binomial(n, p) for every deck, in place of the pal-count rate
     #[serde(default)]
     pub chain_events: Option<(u32, f64)>,
+    /// experiments: the pal-count rate's (intercept, slope) in place of (CHAIN_A, CHAIN_B); not with `chain_events`
+    #[serde(default)]
+    pub chain_budget: Option<(f64, f64)>,
+    /// experiments: "slots" picks the card a chain event advances in proportion to its links left and stops each
+    /// card-event stop risk on its own k of n (the model before the card rule), with either law; default "card", each
+    /// running card equally and every card-event stop at `CHAIN_STOP_SHARE`
+    #[serde(default)]
+    pub chain_rule: Option<String>,
     /// Independent Training scenario: "unity" (default), "gc" (Grand Concert), "ura", "trackblazer", "grandmasters" (JP); sets how many
     /// training-hint draws a card gives (`hint_base`)
     #[serde(default = "d_scenario")]
@@ -119,9 +136,14 @@ pub(crate) struct DeckJob {
     pub end_links: Vec<(u32, u8)>,
     #[serde(default)]
     pub ends: Vec<(u32, u8, u32, u8, f64)>,
-    /// links where IT's default choice ends a card's chain on some outcomes: (card, link, k outcomes, of n)
+    /// the job's own stops: (card, link, k, of n), the chain ending at that link on k of n firings, exactly (e.g. a
+    /// certain stop pinned as 1 of 1); at a link it names, the card-event stop below is left out
     #[serde(default)]
     pub stop_risk: Vec<(u32, u8, u8, u8)>,
+    /// links where IT's default choice ends a card's chain on some outcomes (card_events.json `stop_risk`, added by
+    /// `apply_event_lists`): (card, link, k outcomes, of n); the chain ends there on `chain_stop_share` of its firings
+    #[serde(default)]
+    pub event_stop_risk: Vec<(u32, u8, u8, u8)>,
     /// events that name two or more skills, in full (`ChoiceEvent`), the choices that keep the chain going, outcomes
     /// equally likely. At these links they replace `events` / `events_p`, which credit every skill on its own.
     #[serde(default)]
@@ -175,10 +197,30 @@ pub(crate) struct DeckJob {
     pub cap_free: bool,
 }
 impl DeckJob {
-    /// The job's chain-event distribution: `chain_events`, else Binomial(CHAIN_N, CHAIN_P).
-    pub(crate) fn chain_events(&self) -> chains::ChainEvents {
-        let (count, probability) = self.chain_events.unwrap_or((chains::CHAIN_N, chains::CHAIN_P));
-        chains::ChainEvents { count, probability }
+    /// The job's chain-event law: `chain_events` for every deck, else the pal-count rate at `chain_budget` or
+    /// (CHAIN_A, CHAIN_B); events pick cards by `chain_pick_rule`. A job setting both laws, or an unknown rule, is refused
+    /// where its entries are built (`deck_entries`).
+    pub(crate) fn chain_model(&self) -> chains::ChainModel {
+        let rule = self.chain_pick_rule();
+        if let Some((count, probability)) = self.chain_events {
+            chains::ChainModel::Fixed(chains::ChainEvents { count, probability, rule })
+        } else {
+            let (intercept, slope) = self.chain_budget.unwrap_or((chains::CHAIN_A, chains::CHAIN_B));
+            chains::ChainModel::pal_rate(intercept, slope, rule)
+        }
+    }
+    /// The job's pick rule: `chain_rule` "slots", else the card rule.
+    pub(crate) fn chain_pick_rule(&self) -> chains::PickRule {
+        if self.chain_rule.as_deref() == Some("slots") { chains::PickRule::Slots } else { chains::PickRule::Card }
+    }
+    /// The share (k of n) of its firings on which every default-choice stop risk (`stop_risk`) ends its chain:
+    /// `CHAIN_STOP_SHARE` under the card rule; None under the slots rule, the model before it, where each stop takes its
+    /// own k of n outcomes.
+    pub(crate) fn chain_stop_share(&self) -> Option<(u8, u8)> {
+        match self.chain_pick_rule() {
+            chains::PickRule::Card => Some(chains::CHAIN_STOP_SHARE),
+            chains::PickRule::Slots => None,
+        }
     }
 }
 

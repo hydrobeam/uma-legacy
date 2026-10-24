@@ -1,6 +1,6 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
 use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class};
-use crate::deck::chains::{ChainKind, chain_marginals};
+use crate::deck::chains::{ChainEvents, ChainKind, EventsKey, chain_marginals};
 use crate::deck::joint::MissFactors;
 use crate::deck::pdeck::{Name, PDeck};
 use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources};
@@ -68,11 +68,29 @@ pub(crate) struct HintCoordinate {
     pub(crate) gold: bool,
 }
 
-/// Group-miss tables depend on the reduced entry set and chain-count code.
+/// Per-entry miss tables depend on the chain-count code and the chain events they are taken at.
+#[derive(PartialEq, Eq, Hash)]
+pub(super) struct KeyMissKey {
+    code: u64,
+    events: EventsKey,
+}
+
+/// Group-miss tables depend on the reduced entry set, chain-count code and chain events.
 #[derive(PartialEq, Eq, Hash)]
 pub(super) struct GroupMissKey {
     pub(super) set_id: usize,
     pub(super) code: u64,
+    pub(super) events: EventsKey,
+}
+
+/// What makes entries without rewards interchangeable (`DeckSpace::reduced`): chain kind, pal status, chain-rate status
+/// (with a pal-count rate only) and borrowing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FillerClass {
+    kind: ChainKind,
+    pal: bool,
+    raises_rate: bool,
+    borrowed: bool,
 }
 
 /// Legal tables additionally depend on how many plain pals remain legal.
@@ -82,11 +100,12 @@ struct LegalTableKey {
     plain_pal_count: usize,
 }
 
-/// Dominance is specific to one group of one reduced entry set and chain code.
+/// Dominance is specific to one group of one reduced entry set, chain code and chain events.
 #[derive(PartialEq, Eq, Hash)]
 pub(super) struct DominanceKey {
     pub(super) set_id: usize,
     pub(super) code: u64,
+    pub(super) events: EventsKey,
     pub(super) group: usize,
 }
 /// Per deck-space entry, its miss chances at each number of its chain links done (`TargetSources::miss_levels`); None
@@ -119,7 +138,7 @@ pub(crate) struct DeckSpace<'data> {
     // every chain kind of any entry plus fillers (2, 2): key codes are counts in base 7 over this list
     pub(super) kinds_all: Vec<ChainKind>,
     // All caches belong to this fixed job and target set. Their abbreviated keys omit only those fixed inputs.
-    pub(super) key_miss_cache: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<KeyMisses>>>,
+    pub(super) key_miss_cache: std::cell::RefCell<crate::FxMap<KeyMissKey, std::rc::Rc<KeyMisses>>>,
     pub(super) reduced_cache: std::cell::RefCell<crate::FxMap<Vec<crate::uma::UmaIndex>, ReducedEntries>>,
     pub(super) group_miss_cache: std::cell::RefCell<crate::FxMap<GroupMissKey, std::rc::Rc<GroupTable>>>,
     /// partial decks tested, over every search (the search's cost)
@@ -132,18 +151,22 @@ pub(crate) struct DeckSpace<'data> {
     locked_card_bits: std::cell::OnceCell<LockedCards>,
     /// Per set id, the legal entries' miss rows per chain level.
     pub(super) state_row_cache: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<StateRows>>>,
-    /// the product search's dominance table (`dom_table`) per (set id, key code, group): functions of those alone
+    /// the product search's dominance table (`dom_table`) per (set id, key code, events, group): functions of those alone
     pub(super) dominance_cache: std::cell::RefCell<crate::FxMap<DominanceKey, std::rc::Rc<Vec<Vec<Dominator>>>>>,
 }
 /// `search`'s per-entry-set tables: each entry's character bit (`too_many_characters` if more than 128),
-/// the entries per chain kind and the pal (kind 0) entries, the locked cards each group can hold, the plain pals legal
+/// the entries per chain kind and the chainless (kind 0) entries, the locked cards each group can hold, the plain pals
+/// legal. With a pal-count chain rate (`ChainModel::pal_dependent`) the chainless entries are split in two groups, those
+/// that raise the rate (`pal_entries`) and the others (`other_entries`: group cards, R cards), so a configuration's
+/// counts fix its decks' pal count and so their chain events; otherwise all are `pal_entries`.
 pub(super) struct LegalTables {
     /// More than 128 characters cannot be represented by `character_bits`.
     pub(super) too_many_characters: bool,
     pub(super) character_bits: Vec<u128>,
     pub(super) by_kind: Vec<Vec<usize>>,
     pub(super) pal_entries: Vec<usize>,
-    /// Locked-card bits per group: `by_kind` followed by `pal_entries`.
+    pub(super) other_entries: Vec<usize>,
+    /// Locked-card bits per group: `by_kind` followed by `pal_entries` and `other_entries`.
     pub(super) group_lock_bits: Vec<u8>,
     pub(super) plain_pal_count: usize,
 }
@@ -162,6 +185,11 @@ pub(crate) struct SelectedDeck {
     /// Per uncertain target, the deck's chance of a gold hint.
     pub(crate) gold_hint_chances: Vec<f64>,
 }
+/// A deck's chance of a hint per uncertain target: white when it gives no gold, and gold.
+pub(crate) struct HintChances {
+    pub(crate) white: Vec<f64>,
+    pub(crate) gold: Vec<f64>,
+}
 /// Entry-major miss probabilities: entry * target_count + target, white and gold respectively.
 #[derive(Clone, Copy)]
 pub(crate) struct EntryMisses<'table> {
@@ -171,11 +199,11 @@ pub(crate) struct EntryMisses<'table> {
 }
 
 impl<'data> DeckSpace<'data> {
-    /// per-entry miss chances (white given no gold, gold), entry-major, under the chain odds of key `code`
-    /// per entry and target the miss chances (white, gold) under the key, and per entry the targets it touches (bit t:
-    /// a miss chance other than exactly 1.0)
-    pub(super) fn key_miss(&self, code: u64) -> std::rc::Rc<KeyMisses> {
-        if let Some(cached) = self.key_miss_cache.borrow().get(&code) {
+    /// per entry and target the miss chances (white given no gold, gold), entry-major, under the chain odds of key `code`
+    /// at `events`, and per entry the targets it touches (bit t: a miss chance other than exactly 1.0)
+    pub(super) fn key_miss(&self, code: u64, events: ChainEvents) -> std::rc::Rc<KeyMisses> {
+        let key = KeyMissKey { code, events: events.key() };
+        if let Some(cached) = self.key_miss_cache.borrow().get(&key) {
             return std::rc::Rc::clone(cached);
         }
         let target_count = self.target_groups.len();
@@ -188,7 +216,7 @@ impl<'data> DeckSpace<'data> {
             }
             remaining_code /= 7;
         }
-        let marginals = chain_marginals(self.deck_job.chain_events(), &kinds);
+        let marginals = chain_marginals(events, &kinds);
         let empty: Vec<f64> = vec![];
         let mut white_misses = vec![1.0f64; entry_count * target_count];
         let mut gold_misses = vec![1.0f64; entry_count * target_count];
@@ -210,15 +238,70 @@ impl<'data> DeckSpace<'data> {
             })
             .collect();
         let key_misses = std::rc::Rc::new(KeyMisses { white: white_misses, gold: gold_misses, touched_targets });
-        self.key_miss_cache.borrow_mut().insert(code, std::rc::Rc::clone(&key_misses));
+        self.key_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&key_misses));
         key_misses
+    }
+    /// The chain events every deck of key `code` is bounded at: the most favourable over the pal counts its free slots
+    /// (deck_size less its chain slots, the fillers' included) allow, so every chance computed at them is at least that
+    /// of any deck of the key. The key's own events when the rate does not depend on pals.
+    pub(super) fn key_events(&self, code: u64) -> ChainEvents {
+        let size = self.deck_job.deck_size;
+        let chain_slots: usize = (0..self.kinds_all.len()).map(|i| (code / 7u64.pow(i as u32) % 7) as usize).sum();
+        self.deck_job.chain_model().most_favourable(size - chain_slots.min(size))
+    }
+    /// Whether entry j's card counts in its deck's pals for the chain rate (`Card::raises_chain_rate`).
+    pub(crate) fn raises_rate(&self, j: usize) -> bool {
+        self.cards[self.card_indices[j]].raises_chain_rate()
+    }
+    /// Per count p of plain pals, how many of the first p legal for `trainee_ids` (the ones a deck takes) raise the
+    /// chain rate.
+    pub(super) fn plain_rate_pals(&self, trainee_ids: &[u32]) -> Vec<usize> {
+        let mut prefix = vec![0usize];
+        for plain_pal in self.legal_plain(trainee_ids) {
+            prefix.push(prefix[prefix.len() - 1] + usize::from(plain_pal.card.raises_chain_rate()));
+        }
+        prefix
+    }
+    /// The chain events of `deck` for `trainee_ids` (its pal count's, `ChainModel::events`).
+    pub(crate) fn deck_events(&self, deck: &SelectedDeck, trainee_ids: &[u32]) -> ChainEvents {
+        let named = deck.entries.iter().filter(|&&j| self.raises_rate(j)).count();
+        self.deck_job.chain_model().events(named + self.plain_rate_pals(trainee_ids)[deck.plain_pals])
+    }
+    /// The most favourable chain events `deck` can have in any loop: its named cards fixed, every plain pal counted as
+    /// raising the rate (which plain pals a loop's members leave legal, and so whether each does, depends on them).
+    pub(crate) fn deck_events_most(&self, deck: &SelectedDeck) -> ChainEvents {
+        let named = deck.entries.iter().filter(|&&j| self.raises_rate(j)).count();
+        self.deck_job.chain_model().most_favourable(named + deck.plain_pals)
+    }
+    /// `deck`'s hint chances per uncertain target (white given no gold, gold) at `events`: one minus the product of
+    /// its entries' misses under its chain-kind key (its entries' kinds and its filler cards, `key_miss`), the
+    /// entries in index order.
+    pub(crate) fn hint_chances_at(&self, deck: &SelectedDeck, events: ChainEvents) -> HintChances {
+        let place = |kind: ChainKind| {
+            7u64.pow(self.kinds_all.iter().position(|&listed| listed == kind).expect("a kind of the space") as u32)
+        };
+        let named_code: u64 =
+            deck.entries.iter().filter(|&&j| self.kind[j] != ChainKind::NONE).map(|&j| place(self.kind[j])).sum();
+        let misses = self.key_miss(named_code + deck.filler_cards as u64 * place(ChainKind::FILLER), events);
+        let target_count = self.target_groups.len();
+        let (mut white, mut gold) = (vec![1.0f64; target_count], vec![1.0f64; target_count]);
+        for &j in &deck.entries {
+            for t in 0..target_count {
+                white[t] *= misses.white[j * target_count + t];
+                gold[t] *= misses.gold[j * target_count + t];
+            }
+        }
+        HintChances {
+            white: white.iter().map(|miss| 1.0 - miss).collect(),
+            gold: gold.iter().map(|miss| 1.0 - miss).collect(),
+        }
     }
     /// Entries that matter for `trainees` (one per-uma trainee, or every structure member with a shared deck): legal
     /// ones (no
     /// card of any of them), with entries that are interchangeable for them merged. Targets every outfit of each has as
     /// a gold are constant in both the product and the exact value, so an entry is judged by its rewards for the other
     /// targets: entries of one character with the same such rewards and chain kind keep the first; entries with none
-    /// (they only take a slot) keep, per chain kind, pal status and borrowing, deck_size of them, characters no
+    /// (they only take a slot) keep, per chain kind, pal status (and chain-rate status) and borrowing, deck_size of them, characters no
     /// rewarding entry uses first. Any deck has an equal-valued deck from these.
     pub(super) fn reduced(&self, model: &Model, trainees: &[crate::uma::UmaIndex], trainee_ids: &[u32]) -> Vec<usize> {
         let target_count = self.target_groups.len();
@@ -288,8 +371,12 @@ impl<'data> DeckSpace<'data> {
         let keys: Vec<String> = legal.iter().map(|&j| projection_key(&self.sources[j])).collect();
         let empty = projection_key(&TargetSources::default());
         let is_locked = |j: usize| self.locked.contains(&self.card_indices[j]);
+        // (with a pal-count chain rate, an entry that raises it never stands in for one that does not: the swap would
+        // change the deck's chain events)
+        let pal_dependent = self.deck_job.chain_model().pal_dependent();
+        let rate_class = |j: usize| pal_dependent && self.raises_rate(j);
         let mut keep: Vec<usize> = vec![];
-        let mut seen: Vec<(u32, ChainKind, &String)> = vec![];
+        let mut seen: Vec<(u32, ChainKind, bool, &String)> = vec![];
         let mut used_characters: Vec<u32> = vec![];
         for (i, &j) in legal.iter().enumerate() {
             if keys[i] == empty && !is_locked(j) {
@@ -298,21 +385,29 @@ impl<'data> DeckSpace<'data> {
             let character = self.cards[self.card_indices[j]].character_id;
             if !is_locked(j)
                 && seen.iter().any(|seen_entry| {
-                    seen_entry.0 == character && seen_entry.1 == self.kind[j] && seen_entry.2 == &keys[i]
+                    seen_entry.0 == character
+                        && seen_entry.1 == self.kind[j]
+                        && seen_entry.2 == rate_class(j)
+                        && seen_entry.3 == &keys[i]
                 })
             {
                 continue;
             }
-            seen.push((character, self.kind[j], &keys[i]));
+            seen.push((character, self.kind[j], rate_class(j), &keys[i]));
             keep.push(j);
             used_characters.push(character);
         }
-        let mut filler_classes: Vec<((ChainKind, bool, bool), Vec<usize>)> = vec![];
+        let mut filler_classes: Vec<(FillerClass, Vec<usize>)> = vec![];
         for (i, &j) in legal.iter().enumerate() {
             if keys[i] != empty || is_locked(j) {
                 continue;
             }
-            let class_key = (self.kind[j], self.cards[self.card_indices[j]].pal, self.borrowed[j]);
+            let class_key = FillerClass {
+                kind: self.kind[j],
+                pal: self.cards[self.card_indices[j]].pal,
+                raises_rate: rate_class(j),
+                borrowed: self.borrowed[j],
+            };
             match filler_classes.iter_mut().find(|class| class.0 == class_key) {
                 Some(class) => class.1.push(j),
                 None => filler_classes.push((class_key, vec![j])),
@@ -437,8 +532,13 @@ impl<'data> DeckSpace<'data> {
                     .collect()
             })
             .collect();
-        let pal_entries: Vec<usize> = legal.iter().copied().filter(|&j| self.kind[j] == ChainKind::NONE).collect();
-        // Locked cards each group (`by_kind`, then `pal_entries`) can hold.
+        let pal_dependent = self.deck_job.chain_model().pal_dependent();
+        let (pal_entries, other_entries): (Vec<usize>, Vec<usize>) = legal
+            .iter()
+            .copied()
+            .filter(|&j| self.kind[j] == ChainKind::NONE)
+            .partition(|&j| !pal_dependent || self.raises_rate(j));
+        // Locked cards each group (`by_kind`, then `pal_entries` and `other_entries`) can hold.
         let lock_bit = |j: usize| {
             self.locked
                 .iter()
@@ -447,7 +547,7 @@ impl<'data> DeckSpace<'data> {
         };
         let group_lock_bits: Vec<u8> = by_kind
             .iter()
-            .chain(std::iter::once(&pal_entries))
+            .chain([&pal_entries, &other_entries])
             .map(|group_entries| group_entries.iter().fold(0u8, |mask, &j| mask | lock_bit(j)))
             .collect();
         let tables = std::rc::Rc::new(LegalTables {
@@ -455,6 +555,7 @@ impl<'data> DeckSpace<'data> {
             character_bits,
             by_kind,
             pal_entries,
+            other_entries,
             group_lock_bits,
             plain_pal_count,
         });

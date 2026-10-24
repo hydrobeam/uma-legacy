@@ -411,7 +411,8 @@ pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: 
 /// The job lists a card-event cache adds, in `EVENT_KEYS` order: the same for every job (the page's worker builds
 /// them once, at init).
 pub(crate) struct EventLists([Vec<Value>; 8]);
-const EVENT_KEYS: [&str; 8] = ["events", "events_p", "odds_events", "end_links", "ends", "stop_risk", "alts", "alt_w"];
+const EVENT_KEYS: [&str; 8] =
+    ["events", "events_p", "odds_events", "end_links", "ends", "event_stop_risk", "alts", "alt_w"];
 /// Each list after the job's own entries of it, in their order.
 pub(crate) fn apply_event_lists(job: &mut Value, lists: &EventLists) {
     for (key, add) in EVENT_KEYS.iter().zip(&lists.0) {
@@ -848,12 +849,26 @@ impl Sources<'_> {
         if card.pal || card.links == 0 {
             return ChainKind::NONE;
         }
-        let risk: Vec<(u8, u8, u8)> = self
+        // The job's own stops at their k of n exactly; each card-event (default-choice) stop at a link they leave free,
+        // at the model's one share (`chain_stop_share`; under the slots rule its own k of n).
+        let pinned: Vec<(u8, u8, u8)> = self
             .deck_job
             .stop_risk
             .iter()
             .filter(|risk_row| risk_row.0 == card.id)
             .map(|risk_row| (risk_row.1, risk_row.2, risk_row.3))
+            .collect();
+        let stop_share = self.deck_job.chain_stop_share();
+        let risk: Vec<(u8, u8, u8)> = self
+            .deck_job
+            .event_stop_risk
+            .iter()
+            .filter(|risk_row| risk_row.0 == card.id && !pinned.iter().any(|pin| pin.0 == risk_row.1))
+            .map(|risk_row| {
+                let (ending, outcomes) = stop_share.unwrap_or((risk_row.2, risk_row.3));
+                (risk_row.1, ending, outcomes)
+            })
+            .chain(pinned.iter().copied())
             .collect();
         let stop_at = stop.unwrap_or(card.links);
         ChainKind { links: card.links, stop: stop_at, stop_risk: stop_risk_code(&risk, stop_at) }
@@ -925,6 +940,12 @@ pub(crate) fn deck_entries<'data>(
         return Err(
             json!({"error": format!("At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.", target_groups.len())}),
         );
+    }
+    if deck_job.chain_events.is_some() && deck_job.chain_budget.is_some() {
+        return Err(json!({"error": "chain_events and chain_budget both set: give one chain-event law, not both."}));
+    }
+    if let Some(rule) = deck_job.chain_rule.as_deref().filter(|rule| !["card", "slots"].contains(rule)) {
+        return Err(json!({"error": format!("chain_rule: \"card\" or \"slots\", not \"{rule}\".")}));
     }
     let is_owned = |id: u32| {
         deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)

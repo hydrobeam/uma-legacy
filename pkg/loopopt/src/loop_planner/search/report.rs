@@ -130,7 +130,7 @@ impl Multi<'_> {
                     .unwrap()
                     .deck;
                 let SolvedLoop { members, inheritance_chances, .. } = &pass.solved[solved_index];
-                let DeckSources { entries, filler_count } = self.ents_of(deck);
+                let DeckSources { entries, filler_count, chain_events } = self.ents_of(deck);
                 let lineages = lin_of(members);
                 let member_count = crate::loop_planner::schedules::members(members).len();
                 let mut per_lineage = vec![JointChances::default(); lineages.len()];
@@ -140,7 +140,7 @@ impl Multi<'_> {
                     let member_chances: Vec<f64> = member_lineages.iter().map(|&l| inheritance_chances[l]).collect();
                     let results = joint_b(
                         self.inputs.model,
-                        JointQuery::unfolded(self.inputs.model, self.inputs.deck_job, members[member], &member_chances),
+                        JointQuery::unfolded(self.inputs.model, chain_events, members[member], &member_chances),
                         &entries,
                         filler_count,
                         self.requested_target_count,
@@ -222,7 +222,12 @@ impl Multi<'_> {
             };
             joint_fast(
                 model,
-                JointQuery::unfolded(model, self.inputs.deck_job, member_slice[member], &[inheritance_chances[l]]),
+                JointQuery::unfolded(
+                    model,
+                    deck_sources[member].chain_events,
+                    member_slice[member],
+                    &[inheritance_chances[l]],
+                ),
                 entries,
                 filler_count,
                 requested_target_count,

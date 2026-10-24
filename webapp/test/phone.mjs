@@ -70,7 +70,7 @@ export default async function phone(b) {
   );
   check(
     'phone: it shows the headline odds',
-    /^1 in 107 · see result/.test(await pg.locator('#run-pill').innerText()),
+    /^1 in 103 · see result/.test(await pg.locator('#run-pill').innerText()),
     await pg.locator('#run-pill').innerText(),
   );
   // edit a setting far down, then the button takes you back to the result

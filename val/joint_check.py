@@ -1,8 +1,10 @@
 """Independent check of the solver's exact landing odds (`joint_fast` in src/deck/joint/mod.rs).
 
 For every deck result of a validation run, recompute P(all targets land) from the job, the card data and the
-reported decks and loops, jointly over the chain process (job chain_events, default Binomial(21, 0.35) events, each advancing a random remaining
-chain slot, weight = links left, stop-risk mixture), over each event's outcomes and over one card's training draws
+reported decks and loops, jointly over the chain process (Binomial(CHAIN_N, p) events with logit p = CHAIN_A + CHAIN_B x
+the deck's pals, group cards not counted, or the job's chain_events; each event advancing a running chain card, all
+equally likely, or weighted by links left under job chain_rule "slots"; a card-event stop risk ending its chain on
+CHAIN_STOP_SHARE of its firings, its own k/n under "slots"; the constants read from src/deck/chains.rs), over each event's outcomes and over one card's training draws
 (P(no hint for a set A of its targets) by forward simulation of the draws, each uniform over the skills below Lv 5, a
 skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100) x
 (1 + d(scenario) x specialty/100), the two constants read from research/results.json as the solver's build reads
@@ -17,6 +19,7 @@ import itertools
 import json
 import math
 import os
+import re
 import sys
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -27,6 +30,22 @@ class SkillReference(NamedTuple):
 
     group: int
     tier: int
+
+
+def chain_constants():
+    """CHAIN_N, CHAIN_A, CHAIN_B and CHAIN_STOP_SHARE (as k, n) from the solver's source, read as its build reads them"""
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pkg/loopopt/src/deck/chains.rs")).read()
+    number = lambda name, kind: float(re.search(rf"const {name}: {kind} = (-?[\d._]+);", src).group(1).replace("_", ""))
+    share = re.search(r"const CHAIN_STOP_SHARE: \(u\d+, u\d+\) = \((\d+), (\d+)\);", src)
+    return (
+        int(number("CHAIN_N", "u32")),
+        number("CHAIN_A", "f64"),
+        number("CHAIN_B", "f64"),
+        (int(share[1]), int(share[2])),
+    )
+
+
+CHAIN_N, CHAIN_A, CHAIN_B, CHAIN_STOP_SHARE = chain_constants()
 
 
 class StopRisk(NamedTuple):
@@ -122,7 +141,7 @@ def hint_miss(k, n, h, hinc):
     return (1 - f) * draws_miss(k, n, t0, cap) + (f * draws_miss(k, n, t0 + 1, cap) if f else 0.0)
 
 
-def chain_distribution(kinds, event_probability):
+def chain_distribution(kinds, event_probability, slots=False):
     n = len(kinds)
     res = {}
     alts = []
@@ -146,7 +165,7 @@ def chain_distribution(kinds, event_probability):
             pe = event_probability(e)
             nxt = {}
             for s, p in cur.items():
-                ws = [(kinds[i].links - s[i]) if s[i] < stops[i] else 0 for i in range(n)]
+                ws = [((kinds[i].links - s[i]) if slots else 1) if s[i] < stops[i] else 0 for i in range(n)]
                 if not sum(ws):
                     res[s] = res.get(s, 0) + w * p * (1 - sum(event_probability(x) for x in range(e)))
                     continue
@@ -175,15 +194,16 @@ def check(out, job, d, alt_q=None):
             skill_targets[gd] = SkillReference(group=g, tier=2)
     cards = {c["id"]: c for c in read_data(job["cards_file"])["cards"]}
     card_events = read_data(job.get("events_file", "card_events.json"))["cards"]
-    # the solver's model, restated: chain events ~ Binomial(n, p); training draws h = base(scenario) x (1 + hf/100) x
-    # (1 + d(scenario) x specialty/100) over the card's skill options (nskill)
-    event_count, event_chance = job.get("chain_events") or (21, 0.35)
+    # the solver's model, restated: chain events ~ Binomial(n, p), p by the deck's pals unless the job fixes (n, p);
+    # training draws h = base(scenario) x (1 + hf/100) x (1 + d(scenario) x specialty/100) over the card's skill options
+    slots = job.get("chain_rule", "card") == "slots"
     base, spec_d = HINT["hint_base"](job.get("scenario", "unity")), HINT["hint_spec"](job.get("scenario", "unity"))
-    pmf = lambda e: (
-        math.comb(event_count, e) * event_chance**e * (1 - event_chance) ** (event_count - e)
-        if 0 <= e <= event_count
-        else 0.0
-    )
+
+    def event_law(pals):
+        """the deck's chain-event pmf"""
+        count, chance = job.get("chain_events") or (CHAIN_N, 1 / (1 + math.exp(-(CHAIN_A + CHAIN_B * pals))))
+        return lambda e: math.comb(count, e) * chance**e * (1 - chance) ** (count - e) if 0 <= e <= count else 0.0
+
     uncertain_targets = [t["group"] for t in job["targets"] if t.get("guaranteed", 0) != 2]
     fixed_target_count = len(job["targets"]) - len(uncertain_targets)
     target_count = len(uncertain_targets)
@@ -273,7 +293,11 @@ def check(out, job, d, alt_q=None):
             kind = ChainKind(
                 links=c["links"],
                 stop=stop,
-                risks=tuple(StopRisk(*r) for r in e.get("stop_risk", []) if r[0] < stop and r[0] <= 4),
+                risks=tuple(
+                    StopRisk(r[0], *(r[1:3] if slots else CHAIN_STOP_SHARE))
+                    for r in e.get("stop_risk", [])
+                    if r[0] < stop and r[0] <= 4
+                ),
             )
         return CardSources(
             training=TrainingHints(
@@ -306,8 +330,11 @@ def check(out, job, d, alt_q=None):
         sources = [card_sources(cid, e, lb) for cid, e, lb in zip(dk["card_ids"], dk["end_chain_at"], ch)]
         filler = deck_size - len(dk["card_ids"]) - len(dk.get("plain_ids", []))
         chs = [s for s in sources if s.kind]
+        pals = sum(1 for cid in dk["card_ids"] if cards[cid]["pal"] and cards[cid]["kind"] != "group")
         dist = chain_distribution(
-            [s.kind for s in chs] + [ChainKind(links=2, stop=2, risks=())] * filler, event_probability=pmf
+            [s.kind for s in chs] + [ChainKind(links=2, stop=2, risks=())] * filler,
+            event_probability=event_law(pals + len(dk.get("plain_ids", []))),
+            slots=slots,
         )
         memo = {}
 

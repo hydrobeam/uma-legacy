@@ -141,10 +141,11 @@ struct DeckSearchScratch {
     borrow_cache: HashMap<BorrowKey, std::rc::Rc<BorrowBounds>>,
 }
 
-/// Borrowing bounds for a chain code and group within this search's fixed entry set.
+/// Borrowing bounds for a chain code, chain events and group within this search's fixed entry set.
 #[derive(PartialEq, Eq, Hash)]
 struct BorrowKey {
     code: u64,
+    events: crate::deck::chains::EventsKey,
     group: usize,
 }
 
@@ -292,7 +293,9 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         {
             return None;
         }
-        let key_misses = space.key_miss(configuration.code);
+        // (every miss, bound and state distribution below is at the configuration's own chain events, those of each of
+        // its decks: `SearchConfig::events`)
+        let key_misses = space.key_miss(configuration.code, configuration.events);
         let (white_misses, gold_misses, touched_targets) =
             (&key_misses.white, &key_misses.gold, (&*key_misses.touched_targets));
         let groups: Vec<TraversalEntryGroup<'_>> = configuration
@@ -335,7 +338,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             },
             cap_free_ratios,
             BoundOptions {
-                chain_events: space.deck_job.chain_events(),
+                chain_events: configuration.events,
                 cap_free: controls.cap_free,
                 trainee: controls.bound_trainee,
                 fixed_factor: controls.fixed,
@@ -500,7 +503,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 .iter()
                 .map(|&GroupSlots { group: i, .. }| {
                     self.space.dominance_table(
-                        DominanceKey { set_id, code: configuration.code, group: i },
+                        DominanceKey { set_id, code: configuration.code, events: configuration.events.key(), group: i },
                         groups_all[i],
                         lock_bits,
                         misses,
@@ -618,7 +621,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 .map(|&GroupSlots { group: i, .. }| {
                     std::rc::Rc::clone(
                         borrow_cache
-                            .entry(BorrowKey { code: configuration.code, group: i })
+                            .entry(BorrowKey { code: configuration.code, events: configuration.events.key(), group: i })
                             .or_insert_with(|| std::rc::Rc::new(self.borrow_bounds(i, misses, ratio_at))),
                     )
                 })
@@ -694,6 +697,8 @@ impl<V> DeckSearchContext<'_, '_, V> {
             code: configuration.code,
             real_filler_count: configuration.real_filler_count,
             pal_entry_count: configuration.pal_entry_count,
+            other_entry_count: configuration.other_entry_count,
+            events: configuration.events.key(),
         };
         if state_bound_mode == 0 {
             None
@@ -716,7 +721,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
             let full = if chain_kinds.is_empty() {
                 std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
             } else {
-                chain_states(space.deck_job.chain_events(), &chain_kinds)
+                chain_states(configuration.events, &chain_kinds)
             };
             let has_chain: Vec<bool> = groups
                 .iter()

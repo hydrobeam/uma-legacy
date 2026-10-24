@@ -19,12 +19,12 @@ export default async function load(b) {
     };
   });
   check(
-    'headline: "1 in 107 runs to land all 8" alone (no 90% line), in the game font; no rank with one result',
-    /^1 in 107 runs to land all 8$/.test(head.odds) && !head.sub && !head.rank && /Zen Maru/.test(head.font),
+    'headline: "1 in 103 runs to land all 8" alone (no 90% line), in the game font; no rank with one result',
+    /^1 in 103 runs to land all 8$/.test(head.odds) && !head.sub && !head.rank && /Zen Maru/.test(head.font),
     JSON.stringify(head),
   );
-  // Odds opens the career planner's table for the loop: every count, 8/8 the headline's (1 in 107), 7/8 and 8/8 together
-  // the solver's 7-or-better (1 in 12.6), focus back on the button when it closes
+  // Odds opens the career planner's table for the loop: every count, 8/8 the headline's (1 in 103), 7/8 and 8/8 together
+  // the solver's 7-or-better (1 in 12.1), focus back on the button when it closes
   await pg.click('#results .loop .lacts button:has-text("Odds")');
   await dialog(pg, 'odds-dlg');
   const lrows = await pg.$$eval('#odds-dlg .oddtab tbody tr', (l) =>
@@ -33,12 +33,12 @@ export default async function load(b) {
   const pv = (s) => parseFloat(s) / 100;
   await pg.keyboard.press('Escape');
   check(
-    'loop odds: a popup with every count 8/8 .. 0/8, all 8 at the headline odds, 7 or better at 1 in 12.6, focus back on Odds',
+    'loop odds: a popup with every count 8/8 .. 0/8, all 8 at the headline odds, 7 or better at 1 in 12.1, focus back on Odds',
     lrows.length === 9 &&
       lrows[0][0] === '8/8' &&
       lrows[8][0] === '0/8' &&
-      Math.abs(1 / pv(lrows[0][1]) - 107) < 2 &&
-      Math.abs(1 / (pv(lrows[0][1]) + pv(lrows[1][1])) - 12.6) < 0.3 &&
+      Math.abs(1 / pv(lrows[0][1]) - 103) < 2 &&
+      Math.abs(1 / (pv(lrows[0][1]) + pv(lrows[1][1])) - 12.1) < 0.3 &&
       (await pg.evaluate(() => document.activeElement?.textContent === 'Odds')),
     JSON.stringify(lrows.slice(0, 3)),
   );

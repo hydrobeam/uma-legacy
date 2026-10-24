@@ -4,7 +4,9 @@
 //! val/plan jobs' outputs at 5834a65 with the goal races' streak shift (lib.rs `scored_position`), the lineage
 //! schedule's race weights from `FILL_EPS` (career/schedule.rs `schedule`) and the training-hint bases and specialty
 //! weights of research/results.json (deck/hints.rs, via build.rs, to 3 decimals) patched in, at the all-zero and
-//! all-max outcomes and samples of y >= 0.5, of y < 0.5 <= y_hi and of y_hi < 0.5, as her stars per job target). Also:
+//! all-max outcomes and samples of y >= 0.5, of y < 0.5 <= y_hi and of y_hi < 0.5, as her stars per job target; with
+//! the pal-count chain rate, the card rule and the stop share each (y, y_hi) re-taken from the rolls themselves, the
+//! full table being gone, at the same stars, so the samples' y bands are those of the old values). Also:
 //! a roll carried by another job (`roll`, as the page's Reroll sends it), a roll with no plan kept (the plan runs
 //! first), and a roll in a new process after `state_out` / `state_in` (the stored roll state, no plan).
 use serde_json::{Value, json};

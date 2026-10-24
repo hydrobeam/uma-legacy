@@ -244,7 +244,10 @@ Extra fields (on top of the shared fields above; scenario-guaranteed skills stay
 | `pals` | only decks with exactly this many pals | any |
 | `schedule` | experiment: `"solo"` (each uma maximises her own race wins), `"goals"` (career objectives only) or `"none"` (shared wins ignored) instead of loop-optimised schedules | optimised |
 | `scenario` | Independent Training scenario: `unity`, `gc` (Grand Concert), `ura`, `trackblazer`, `grandmasters` (JP); sets the training-hint base and specialty weight (Grand Masters, with no runs, uses one base and one weight fitted over the other scenarios) | `unity` |
-| `chain_events` | `[n, p]`: chain events per run ~ Binomial(n, p) (experiments) | `[21, 0.35]` |
+| `chain_events` | `[n, p]`: chain events per run ~ Binomial(n, p) for every deck, in place of the pal-count rate (experiments) | the pal-count rate |
+| `chain_budget` | `[a, b]`: the pal-count rate's logit p = a + b x pals in place of (`CHAIN_A`, `CHAIN_B`) (experiments); refused with `chain_events` | `[-1.09469, 0.168072]` |
+| `chain_rule` | `"slots"`: a chain event picks a running card in proportion to its links left instead of every running card equally, and each card-event stop risk ends its chain on its own k of n outcomes instead of 1/3 (experiments; with `chain_events: [21, 0.35]`, the model before the pal rate and the card rule) | `"card"` |
+| `stop_risk` | the job's own stops `[card, link, k, n]`: the chain ends at that link on exactly k of n firings (a pin of 1 of 1 is certain), in place of any card-event stop there | `[]` |
 | `cap_audit` | audit: every exact cap at 2.0 instead of `EXACT_CAPS`, and ten times the band limit `EXACT_CAP` (deck and career jobs; `val/capaudit.py`) | `false` |
 | `cap_free` | career jobs: every deck search cap-free (the search a cap breach reruns, *Cap-free rerun* below) instead of only those that saw a breach; no product-search proofs are kept (`ruled` bounds through the cap). For checks: slower | `false` |
 | `min_rarity` | lowest rarity for cards with chain events (2 = SR); cards without chain events (R cards) are always considered, drop them with `exclude_cards` | 2 |
@@ -259,8 +262,16 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
   pool after ceil(5 / `hinc`) draws, `hinc` = hint levels per draw at max limit break, so a +5 card never repeats a
   skill); one card's draws over several targets are joint (`miss_draws`). Non-pal cards without chain events take no
   chain slot; their training hints still count.
-- **Chain events**: Binomial(21, 0.35) per run (`CHAIN_N`, `CHAIN_P`; `chain_events` overrides), each advancing a
-  random remaining chain slot of a non-pal card. Pal finales are certain.
+- **Chain events**: Binomial(21, p) per run, logit p = -1.09469 + 0.168072 x pals, pals the deck's pal cards (group cards
+  not counted) and plain pals (`CHAIN_N`, `CHAIN_A`, `CHAIN_B`, `ChainModel`; `chain_budget` replaces a and b,
+  `chain_events` sets one Binomial for every deck), each advancing the chain of one of the deck's still-running chain
+  cards, each equally likely whatever its links left (the card rule, `PickRule`, `pick_weight`; `chain_rule` replaces it). Pal
+  finales are certain. Every chance the solver computes rises with p (a run with one more event is the same run with
+  one more pick, whatever the pick rule), so a bound over decks whose pal count is still
+  open takes the largest p among them (`ChainModel::most_favourable`: the key bound and card dominance's weakest odds
+  at the smallest); a search configuration's decks share one pal count (rate-raising chainless entries are a group of
+  their own, apart from group and R cards), so everything inside it is at its own p, and every deck is scored exactly
+  at its own.
 - **Outcome shares**: an outcome-dependent reward counts at its share of the outcomes, k of n at k/n before measured weights are applied. A measured share replaces k/n where one exists: `chance` in
   manual.json for hand-entered entries (Anshinzawa SSR's finale, Riko Kashimoto SSR's Ramp Up), and
   `event_shares.json` for generated chain events, which the builders turn into the chain shares and `alt_w`, the job
@@ -268,8 +279,10 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
 - **Early chain ends**: a choice that ends a card's chain (GameTora's 'ee' reward) is offered as a separate deck
   entry: the card's earlier links as usual, the ending choice's rewards at that link, and its remaining chain slots
   freed for the other cards. Choices that end the chain on only some outcomes are not offered, but when such a choice
-  is IT's default (first) choice the chain stops there with chance k/n (`stop_risk` in card_events.json; the chain
-  odds are the exact mixture over where it stops, freed slots going to the other cards).
+  is IT's default (first) choice the chain stops there on 1/3 of its firings, one share for every such link whatever its
+  k of n outcomes (`stop_risk` in card_events.json, the job's `event_stop_risk`; `CHAIN_STOP_SHARE`, k/n under
+  `chain_rule: "slots"`); a job's own `stop_risk` [card, link, k, n] stops on exactly k of n and replaces the card-event
+  stop at that link. The chain odds are the exact mixture over where it stops, freed slots going to the other cards.
 - **Links and choices**: multiple links can contribute to acquiring a target, but repeated hints do not generate extra sparks.
   An event's outcomes exclude each other, and where an event offers targets on different choices the card is offered
   once per choice worth taking (a choice no other beats on every target), like an early chain end; the deck output
@@ -283,7 +296,7 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
 The environment switches named here (`JOINT_CHECK`, `CF_CHECK`, `SBOUND` and the others) are read once per process into
 `Checks` (`checks.rs`, each field saying what it does), which the code reads where it needs it (`checks::get`). What a search
 runs under is passed to it: a band's extra bound (`BandBound`: the class caps alone, the state-conditioned bound, or
-cap-free with its node limit) and the job's chain events (`ChainEvents`). Only the checks' counters (`SBCHK`, `CFCHK`
+cap-free with its node limit) and each deck's chain events (`ChainEvents`). Only the checks' counters (`SBCHK`, `CFCHK`
 and the like) are thread-local, totals the CLI prints on exit.
 
 Exact odds. Targets do not land independently: chain cards share one run's chain events (one binomial count), so their chain progress is coupled, and an event's outcomes can give one target or another. A deck's exact value for a trainee at inheritance chance q, V(u, q, D), is computed over the joint distribution of chain progress, given which every source is independent except outcome groups touching two or more targets, which are enumerated per cluster of targets they join (`joint_fast`; `joint_trainee_ref` is the full enumeration, and `JOINT_CHECK=1` compares both in the `joint_checked` wrapper; direct calls to `joint_fast` bypass it). `joint_prep` retains the deck's collapsed states and coupled groups in `JointPrep`; `JointPrep::evaluate` uses fresh scratch, while `joint_eval_in` reuses explicit caller-owned buffers. The search ranks loops and decks by exact values. The product of per-target odds, V̂ (`rank_value` in the output), is only used to bound and order the work:
@@ -355,7 +368,10 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
 - **Shared deck** (`per_uma` false): a loop's value is the best exact sum over its lineages (12 or 3) among decks legal for all its members, divided by their number; ceilings are the lower of the per-uma tables and ρ times the best single skyline deck's product value over its lineages. `top_decks` counts distinct decks, each with its best loop; per loop, every deck at or above the k-th best distinct deck so far is kept.
   With fixed `pals` and several requested decks, a complete small deck catalogue also bounds each deck against the
   greater of the k-th value and that deck's own incumbent. Per-member exact values at maximum inheritance chances
-  bound the structures worth visiting; upward-rounded chance-grid values tighten that bound before scheduling.
+  bound the structures worth visiting; upward-rounded chance-grid values tighten that bound before scheduling. These
+  values and the product prefilters take the deck at the most favourable chain events any loop's copy of it can have
+  (`DeckSpace::deck_events_most`: every plain pal counted as raising the rate, since which plain pals a loop's members
+  leave legal decides it); a deck filled in for a loop is scored, and its odds reported, at that loop's own events.
   The ordinary queue retains its order and ties. Exhausting these candidates certifies the distinct results
   (`next_bound` is then the k-th value, a bound on new or improved results). A complete catalogue also caps the
   requested count when fewer usable identities exist; missing skyline seeds are filled from that catalogue before

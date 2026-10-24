@@ -354,7 +354,7 @@ impl CareerSetup<'_> {
         state.exact_scorings += 1;
         joint_b(
             self.model,
-            self.joint_query(state, trainee),
+            self.joint_query(state, trainee, self.deck_events(trainee, deck)),
             &self.ents_of(deck),
             deck.filler_cards,
             self.target_count,
@@ -543,7 +543,9 @@ impl Env<'_> {
             }
             let class = setup.space.sel_class(&candidate);
             let entries = setup.ents_of(&candidate);
-            if let Some(ub) = upper_na(setup.model, setup.joint_query(state, trainee), &entries, candidate.filler_cards)
+            let chain_events = setup.deck_events(trainee, &candidate);
+            if let Some(ub) =
+                upper_na(setup.model, setup.joint_query(state, trainee, chain_events), &entries, candidate.filler_cards)
             {
                 work += 25;
                 if ub[0] * (1.0 + 1e-9) < best.0.max(value_bar) {
@@ -700,9 +702,13 @@ impl Env<'_> {
                     continue;
                 }
                 let entries = setup.ents_of(&candidate);
-                if let Some(ub) =
-                    upper_na(setup.model, setup.joint_query(state, trainee), &entries, candidate.filler_cards)
-                {
+                let chain_events = setup.deck_events(trainee, &candidate);
+                if let Some(ub) = upper_na(
+                    setup.model,
+                    setup.joint_query(state, trainee, chain_events),
+                    &entries,
+                    candidate.filler_cards,
+                ) {
                     state.work += 25;
                     if ub[0] * (1.0 + 1e-9) < best.0 {
                         continue;

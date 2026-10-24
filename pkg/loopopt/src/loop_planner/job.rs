@@ -2,11 +2,11 @@
 //! Loop structures, schedules and exact deck searches belong to `search` and `deck::enumerate`.
 use crate::Instant;
 use crate::data::Data;
-use crate::deck::chains::{ChainEvents, ChainKind, chain_marginals};
+use crate::deck::chains::{ChainEvents, ChainKind, EventsKey, chain_marginals};
 use crate::deck::pdeck::{Name, PDeck};
 use crate::deck::sources::{Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries};
 use crate::deck::space::deck_space;
-use crate::deck::{CardsRaw, DeckJob};
+use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::loop_planner::dominance::{DeckEval, DominanceIndex, dominates, k_filter, kfilter_order, sig_of, tie_rank};
 use crate::loop_planner::search::{LoopJobInputs, run_multi};
 use crate::skills::{Model, SkillJob, SkillsRaw};
@@ -136,14 +136,33 @@ fn multisets(
     }
 }
 
+/// When a card can never stand in for another although both have one chain kind: with a fixed pal count (`pals`) a
+/// pal and a non-pal, and with a pal-count chain rate (`ChainModel::pal_dependent`) a card that raises the rate and one
+/// that does not, since the swap would change the deck's chain events.
+#[derive(Clone, Copy)]
+struct SwapRule {
+    pal_fixed: bool,
+    rate_fixed: bool,
+}
+impl SwapRule {
+    fn new(deck_job: &DeckJob) -> Self {
+        Self { pal_fixed: deck_job.pals.is_some(), rate_fixed: deck_job.chain_model().pal_dependent() }
+    }
+    fn blocks(self, a: &Card, b: &Card) -> bool {
+        (self.pal_fixed && a.pal != b.pal) || (self.rate_fixed && a.raises_chain_rate() != b.raises_chain_rate())
+    }
+}
+
 impl Entries<'_> {
     /// ---- card dominance (exact) ----
     /// Card A can stand in for card B in the product search when both have the same chain kind (so the
     /// deck's chain odds do not change), A is owned whenever B is, and A at its weakest still beats B at its
-    /// strongest on every target: A's miss chances with its chain links at their lowest possible odds (the most
-    /// crowded deck) are no higher than B's with every link firing, for both "no gold hint" and "no hint at all".
+    /// strongest on every target: A's miss chances with its chain links at their lowest possible odds (the lowest
+    /// over every set of other chain cards) are no higher than B's with every link firing, for both "no gold hint"
+    /// and "no hint at all".
     /// Swapping B for A then gives a deck at least as good on every dominance coordinate, with the same pal
-    /// count when required. The swap is blocked if B is locked or A shares a character with one of the other
+    /// count when required and the same chain events (`SwapRule`); A's weakest odds are taken at the lowest chain-event
+    /// rate any deck can have (`least_favourable`), so they hold in every deck. The swap is blocked if B is locked or A shares a character with one of the other
     /// deck_size - 1 cards, so B is dropped when kept dominators with at least deck_size - 1 + top_decks
     /// distinct characters exist: every deck with B then has top_decks distinct kept decks at least as good
     /// (swap the deck's other dropped cards first, then B for each unblocked dominator).
@@ -151,11 +170,11 @@ impl Entries<'_> {
     fn drop_dominated_cards(&mut self, deck_job: &DeckJob, target_count: usize) -> usize {
         let mut dropped_count = 0usize;
         // Pals and R cards both take no chain slot, so they can stand in for each other unless the job fixes the pal
-        // count
-        let pal_fixed = deck_job.pals.is_some();
+        // count or the pals set the chain rate
+        let swap_rule = SwapRule::new(deck_job);
         let original_count = self.card_indices.len();
         let bounds = miss_bounds(
-            deck_job.chain_events(),
+            deck_job.chain_model().least_favourable(deck_job.deck_size),
             &self.kind,
             &self.sources,
             deck_job.deck_size.saturating_sub(1),
@@ -186,8 +205,7 @@ impl Entries<'_> {
                         continue;
                     }
                     let dominator_card = self.cards[self.card_indices[dominator]];
-                    if self.kind[dominator] != self.kind[candidate]
-                        || (pal_fixed && dominator_card.pal != candidate_card.pal)
+                    if self.kind[dominator] != self.kind[candidate] || swap_rule.blocks(dominator_card, candidate_card)
                     {
                         continue;
                     }
@@ -222,7 +240,7 @@ impl Entries<'_> {
             }
         }
         if crate::checks::get().deck_debug_pairs {
-            debug_robust(self, &keep, &bounds, &tie_ranks, pal_fixed, target_count);
+            debug_robust(self, &keep, &bounds, &tie_ranks, swap_rule, target_count);
         }
         // All entry columns use the same original-index mask and keep their relative order.
         retain_entries(&mut self.card_indices, &keep);
@@ -260,6 +278,8 @@ fn miss_bounds(
             continue;
         }
         let mut mins = vec![1.0f64; key_data.stop as usize];
+        // (every multiset of at most `others` other chain cards, so no assumption that the most crowded deck is the
+        // weakest, under either pick rule)
         multisets(&kindset, 0, others, &mut vec![], &mut |other_kinds| {
             let mut key = vec![key_data];
             key.extend_from_slice(other_kinds);
@@ -310,7 +330,7 @@ fn debug_robust(
     keep: &[bool],
     bounds: &MissBounds,
     tie_ranks: &[usize],
-    pal_fixed: bool,
+    swap_rule: SwapRule,
     target_count: usize,
 ) {
     let entry_count = entries.card_indices.len();
@@ -328,7 +348,7 @@ fn debug_robust(
                         return false;
                     }
                     let a_card = entries.cards[entries.card_indices[a]];
-                    if entries.kind[a] != entries.kind[b] || (pal_fixed && a_card.pal != b_card.pal) {
+                    if entries.kind[a] != entries.kind[b] || swap_rule.blocks(a_card, b_card) {
                         return false;
                     }
                     let beats = (0..target_count).all(|k| {
@@ -510,7 +530,7 @@ struct DeckEnumerator<'env> {
     entry_count: usize,
     size: usize,
     allowed_borrow: usize,
-    pal_fixed: bool,
+    swap_rule: SwapRule,
     character_bits: Vec<u128>,
     borrowed_entries: Vec<bool>,
     is_locked: Vec<bool>,
@@ -519,9 +539,22 @@ struct DeckEnumerator<'env> {
     kind_places: Vec<u64>,
     filler_kind_index: usize,
     entries_by_kind: Vec<Vec<usize>>,
-    // entries without chain slots: pals, group cards and R cards
-    no_chain_entries: Vec<usize>,
+    // entries without chain slots (pals, group cards and R cards): with a pal-count chain rate those that raise it
+    // (`rate_entries`) apart from the others, so each enumerated split has one pal count; otherwise all in `rate_entries`
+    rate_entries: Vec<usize>,
+    other_entries: Vec<usize>,
+    // per plain-pal count p, how many of the first p plain pals raise the chain rate
+    plain_rate_pals: Vec<usize>,
     tie_ranks: Vec<usize>,
+}
+
+/// One count vector's key data at one chain-event distribution, with the entries no dominators rule out there.
+struct KeyAtEvents {
+    events: EventsKey,
+    key_data: ChainKeyData,
+    alive_by_kind: Vec<Vec<usize>>,
+    alive_rate: Vec<usize>,
+    alive_other: Vec<usize>,
 }
 
 impl<'env> DeckEnumerator<'env> {
@@ -560,7 +593,15 @@ impl<'env> DeckEnumerator<'env> {
         let entries_by_kind: Vec<Vec<usize>> = (0..kind_count)
             .map(|i| (0..entry_count).filter(|&j| kind[j] != ChainKind::NONE && kind[j] == chain_kinds[i]).collect())
             .collect();
-        let no_chain_entries: Vec<usize> = (0..entry_count).filter(|&j| kind[j] == ChainKind::NONE).collect();
+        let pal_dependent = deck_job.chain_model().pal_dependent();
+        let (rate_entries, other_entries): (Vec<usize>, Vec<usize>) = (0..entry_count)
+            .filter(|&j| kind[j] == ChainKind::NONE)
+            .partition(|&j| !pal_dependent || cards[relevant[j]].raises_chain_rate());
+        let mut plain_rate_pals = vec![0usize];
+        for id in &entries.plain_ids {
+            let raises = cards.iter().find(|card| card.id == *id).is_some_and(|card| card.raises_chain_rate());
+            plain_rate_pals.push(plain_rate_pals[plain_rate_pals.len() - 1] + usize::from(raises));
+        }
         Ok(DeckEnumerator {
             deck_job,
             entries,
@@ -569,7 +610,7 @@ impl<'env> DeckEnumerator<'env> {
             entry_count,
             size: deck_job.deck_size,
             allowed_borrow,
-            pal_fixed: deck_job.pals.is_some(),
+            swap_rule: SwapRule::new(deck_job),
             character_bits,
             borrowed_entries,
             is_locked,
@@ -577,13 +618,15 @@ impl<'env> DeckEnumerator<'env> {
             kind_places,
             filler_kind_index,
             entries_by_kind,
-            no_chain_entries,
+            rate_entries,
+            other_entries,
+            plain_rate_pals,
             tie_ranks,
         })
     }
 
-    /// The key data of a chain-kind key code (`ChainKeyData`)
-    fn make_key(&self, code: u64) -> ChainKeyData {
+    /// The key data of a chain-kind key code at chain events `events` (`ChainKeyData`)
+    fn make_key(&self, code: u64, events: ChainEvents) -> ChainKeyData {
         let (entry_count, target_count) = (self.entry_count, self.target_count);
         let (cards, relevant, kind, sources) =
             (&self.entries.cards, &self.entries.card_indices, &self.entries.kind, &self.entries.sources);
@@ -595,7 +638,7 @@ impl<'env> DeckEnumerator<'env> {
             }
             remaining_code /= 7;
         }
-        let marginals = chain_marginals(self.deck_job.chain_events(), &kinds);
+        let marginals = chain_marginals(events, &kinds);
         let empty: Vec<f64> = vec![];
         let mut white_misses = vec![1.0f64; entry_count * target_count];
         let mut gold_misses = vec![1.0f64; entry_count * target_count];
@@ -611,9 +654,8 @@ impl<'env> DeckEnumerator<'env> {
         let mut borrowed_dominators = vec![0u128; entry_count];
         for b in 0..entry_count {
             for a in 0..entry_count {
-                // same kind keeps the chain odds; with a fixed pal count (`pals`), same pal status keeps it
-                if a == b || kind[a] != kind[b] || (self.pal_fixed && cards[relevant[a]].pal != cards[relevant[b]].pal)
-                {
+                // same kind keeps the chain odds, `SwapRule` the pal count and chain events
+                if a == b || kind[a] != kind[b] || self.swap_rule.blocks(cards[relevant[a]], cards[relevant[b]]) {
                     continue;
                 }
                 let (a_range, b_range) =
@@ -699,19 +741,11 @@ impl<'env> DeckEnumerator<'env> {
         counts
     }
 
-    /// The decks of one count vector: its key's dead entries left out, every split of the (2, 2) count into real
-    /// entries and fillers and of the rest into pal-like entries and plain pals
-    fn enum_key(&self, counts: &[usize], options: FrontierOptions, workspace: &mut FrontierWorkspace) {
-        let (kind_count, filler_kind_index, size) = (self.chain_kinds.len(), self.filler_kind_index, self.size);
-        let (entries_by_kind, borrowed_entries) = (&self.entries_by_kind, &self.borrowed_entries);
-        let chain_slots: usize = counts.iter().sum();
-        // a key needs real entries of each non-filler kind
-        if (0..kind_count).any(|i| i != filler_kind_index && counts[i] > entries_by_kind[i].len()) {
-            return;
-        }
-        let code: u64 = counts.iter().zip(&self.kind_places).map(|(&count, &place)| count as u64 * place).sum();
-        // (built per count vector and dropped after it: each one has its own code, so no key repeats)
-        let key_data: &ChainKeyData = &self.make_key(code);
+    /// Key `code`'s data at `events` and the entries its dominators leave alive (those with fewer than the deck's other
+    /// slots plus the dominators asked for)
+    fn key_at_events(&self, code: u64, events: ChainEvents, options: FrontierOptions) -> KeyAtEvents {
+        let (borrowed_entries, size) = (&self.borrowed_entries, self.size);
+        let key_data = self.make_key(code, events);
         let alive = |j: usize| {
             self.is_locked[j]
                 || (key_data.owned_dominators[j]
@@ -719,40 +753,74 @@ impl<'env> DeckEnumerator<'env> {
                 .count_ones()
                     < (size - 1 + options.maximum_dominators) as u32
         };
-        let alive_by_kind: Vec<Vec<usize>> =
-            (0..kind_count).map(|i| entries_by_kind[i].iter().copied().filter(|&j| alive(j)).collect()).collect();
-        let alive_pal_like: Vec<usize> = self.no_chain_entries.iter().copied().filter(|&j| alive(j)).collect();
+        let alive_of = |group: &[usize]| -> Vec<usize> { group.iter().copied().filter(|&j| alive(j)).collect() };
+        let alive_by_kind: Vec<Vec<usize>> = self.entries_by_kind.iter().map(|group| alive_of(group)).collect();
+        let (alive_rate, alive_other) = (alive_of(&self.rate_entries), alive_of(&self.other_entries));
+        KeyAtEvents { events: events.key(), key_data, alive_by_kind, alive_rate, alive_other }
+    }
+
+    /// The decks of one count vector: its key's dead entries left out, every split of the (2, 2) count into real
+    /// entries and fillers and of the rest into chainless entries (rate-raising pals apart from the others when the
+    /// chain rate depends on pals) and plain pals
+    fn enum_key(&self, counts: &[usize], options: FrontierOptions, workspace: &mut FrontierWorkspace) {
+        let (kind_count, filler_kind_index, size) = (self.chain_kinds.len(), self.filler_kind_index, self.size);
+        let entries_by_kind = &self.entries_by_kind;
+        let chain_slots: usize = counts.iter().sum();
+        // a key needs real entries of each non-filler kind
+        if (0..kind_count).any(|i| i != filler_kind_index && counts[i] > entries_by_kind[i].len()) {
+            return;
+        }
+        let code: u64 = counts.iter().zip(&self.kind_places).map(|(&count, &place)| count as u64 * place).sum();
+        // (built per count vector and chain events and dropped after it: each count vector has its own code, so no key
+        // repeats; one entry unless the chain rate depends on pals)
+        let chain_model = self.deck_job.chain_model();
+        let mut key_tables: Vec<KeyAtEvents> = vec![];
         for real22 in 0..=counts[filler_kind_index].min(entries_by_kind[filler_kind_index].len()) {
             let filler = counts[filler_kind_index] - real22;
-            if (0..kind_count)
-                .any(|i| (if i == filler_kind_index { real22 } else { counts[i] }) > alive_by_kind[i].len())
-            {
-                continue;
-            }
             let free_slots = size - chain_slots;
-            for pal_like_count in 0..=free_slots.min(alive_pal_like.len()) {
-                let plain = free_slots - pal_like_count;
-                if plain > self.entries.plain_chars.len() {
-                    continue;
-                }
-                let target = chain_slots - filler + pal_like_count; // entries in the finished deck
-                let mut entry_groups: Vec<FrontierEntryGroup> = vec![];
-                for i in 0..kind_count {
-                    let count = if i == filler_kind_index { real22 } else { counts[i] };
-                    if count > 0 {
-                        entry_groups.push(FrontierEntryGroup { entries: alive_by_kind[i].clone(), required: count });
+            for rate_count in 0..=free_slots.min(self.rate_entries.len()) {
+                for other_count in 0..=(free_slots - rate_count).min(self.other_entries.len()) {
+                    let plain = free_slots - rate_count - other_count;
+                    if plain > self.entries.plain_chars.len() {
+                        continue;
                     }
+                    // every deck of the split has the same pal count, so one chain-event distribution
+                    let events = chain_model.events(rate_count + self.plain_rate_pals[plain]);
+                    let at = key_tables.iter().position(|tables| tables.events == events.key()).unwrap_or_else(|| {
+                        key_tables.push(self.key_at_events(code, events, options));
+                        key_tables.len() - 1
+                    });
+                    let KeyAtEvents { key_data, alive_by_kind, alive_rate, alive_other, .. } = &key_tables[at];
+                    if (0..kind_count)
+                        .any(|i| (if i == filler_kind_index { real22 } else { counts[i] }) > alive_by_kind[i].len())
+                        || rate_count > alive_rate.len()
+                        || other_count > alive_other.len()
+                    {
+                        continue;
+                    }
+                    let target = chain_slots - filler + rate_count + other_count; // entries in the finished deck
+                    let mut entry_groups: Vec<FrontierEntryGroup> = vec![];
+                    for i in 0..kind_count {
+                        let count = if i == filler_kind_index { real22 } else { counts[i] };
+                        if count > 0 {
+                            entry_groups
+                                .push(FrontierEntryGroup { entries: alive_by_kind[i].clone(), required: count });
+                        }
+                    }
+                    if rate_count > 0 {
+                        entry_groups.push(FrontierEntryGroup { entries: alive_rate.clone(), required: rate_count });
+                    }
+                    if other_count > 0 {
+                        entry_groups.push(FrontierEntryGroup { entries: alive_other.clone(), required: other_count });
+                    }
+                    self.enum_decks(
+                        key_data,
+                        &entry_groups,
+                        DeckShape { entry_count: target, plain_pals: plain, filler_cards: filler },
+                        options,
+                        workspace,
+                    );
                 }
-                if pal_like_count > 0 {
-                    entry_groups.push(FrontierEntryGroup { entries: alive_pal_like.clone(), required: pal_like_count });
-                }
-                self.enum_decks(
-                    key_data,
-                    &entry_groups,
-                    DeckShape { entry_count: target, plain_pals: plain, filler_cards: filler },
-                    options,
-                    workspace,
-                );
             }
         }
     }

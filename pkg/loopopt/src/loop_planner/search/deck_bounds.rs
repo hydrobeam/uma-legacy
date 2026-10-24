@@ -1,10 +1,11 @@
 //! A complete small deck space lets each known deck compete against its own incumbent loop.
 use super::bands::Pass;
 use super::{Multi, SharedDeckKey, lin_of};
+use crate::deck::chains::ChainEvents;
 use crate::deck::enumerate::{SearchClause, SearchMode};
 use crate::deck::joint::{JointQuery, joint_b};
 use crate::deck::pdeck::PDeck;
-use crate::deck::space::{DeckSpace, SelectedDeck};
+use crate::deck::space::{DeckSpace, HintChances, SelectedDeck};
 use crate::deck::state_bound::StateBoundMemo;
 use crate::uma::{NONE, UmaIndex, UmaTable};
 
@@ -17,8 +18,23 @@ pub(super) struct DeckBound {
     /// Retained to select legal plain pals when an undersupplied job needs every deck, including dominated seeds.
     pub(super) selection: SelectedDeck,
     key: SharedDeckKey,
+    /// The chain events the bounds take: the most favourable any loop's copy of the deck can have
+    /// (`DeckSpace::deck_events_most`). The catalogue's deck takes the first plain pals of all; a loop takes the first
+    /// its members leave legal, which may raise the rate less, and every exact and product value rises with the rate.
+    ceiling_events: ChainEvents,
+    /// The hint chances at `ceiling_events` when they differ from the catalogue deck's own (None: `deck`'s).
+    ceiling_odds: Option<HintChances>,
     /// Exact values at the upward-rounded chance grid; an empty row has not been evaluated yet.
     values: UmaTable<Vec<f64>>,
+}
+impl DeckBound {
+    /// The hint chances (white, gold) the product prefilters take: at `ceiling_events`.
+    fn ceiling_hint_chances(&self) -> (&[f64], &[f64]) {
+        match &self.ceiling_odds {
+            Some(HintChances { white, gold }) => (white, gold),
+            None => (&self.deck.white_hint_chances, &self.deck.gold_hint_chances),
+        }
+    }
 }
 
 pub(super) struct ImprovingDecks {
@@ -39,6 +55,7 @@ impl Multi<'_> {
             if !threshold.is_finite() {
                 return None;
             }
+            let (white_hint_chances, gold_hint_chances) = bound.ceiling_hint_chances();
             let mut product_values: Vec<f64> = self
                 .pool
                 .iter()
@@ -48,8 +65,8 @@ impl Multi<'_> {
                         * self.inputs.model.trainee_fast(
                             uma,
                             self.maximum_chances[uma],
-                            &bound.deck.white_hint_chances,
-                            &bound.deck.gold_hint_chances,
+                            white_hint_chances,
+                            gold_hint_chances,
                         )
                 })
                 .collect();
@@ -71,7 +88,7 @@ impl Multi<'_> {
                         self.inputs.model,
                         JointQuery::unfolded(
                             self.inputs.model,
-                            self.inputs.deck_job,
+                            bound.ceiling_events,
                             uma,
                             &[self.maximum_chances[uma]],
                         ),
@@ -131,15 +148,21 @@ impl Multi<'_> {
                 .decks
                 .into_iter()
                 .filter_map(|selected| {
-                    let deck = self.inputs.deck_space.pdeck(&selected.deck, &[]);
+                    let space = self.inputs.deck_space;
+                    let deck = space.pdeck(&selected.deck, &[]);
                     if !self.deck_has_loop(&deck) || !seen.insert(deck.id()) {
                         return None;
                     }
                     let key = SharedDeckKey::of(&deck);
+                    let ceiling_events = space.deck_events_most(&selected.deck);
+                    let ceiling_odds = (ceiling_events.key() != space.deck_events(&selected.deck, &[]).key())
+                        .then(|| space.hint_chances_at(&selected.deck, ceiling_events));
                     Some(DeckBound {
                         deck,
                         selection: selected.deck,
                         key,
+                        ceiling_events,
+                        ceiling_odds,
                         values: self.inputs.data.umas.indices().map(|_| vec![]).collect(),
                     })
                 })
@@ -194,6 +217,7 @@ impl Multi<'_> {
             if !threshold.is_finite() {
                 return true;
             }
+            let (white_hint_chances, gold_hint_chances) = bound.ceiling_hint_chances();
             let product = lineages
                 .iter()
                 .enumerate()
@@ -201,8 +225,8 @@ impl Multi<'_> {
                     self.inputs.model.trainee_fast(
                         structure[lineage.trainee],
                         chances[l],
-                        &bound.deck.white_hint_chances,
-                        &bound.deck.gold_hint_chances,
+                        white_hint_chances,
+                        gold_hint_chances,
                     )
                 })
                 .sum::<f64>()
@@ -218,7 +242,7 @@ impl Multi<'_> {
                     let sources = self.ents_of(&bound.deck);
                     bound.values[uma] = joint_b(
                         self.inputs.model,
-                        JointQuery::unfolded(self.inputs.model, self.inputs.deck_job, uma, &self.grid.chances),
+                        JointQuery::unfolded(self.inputs.model, bound.ceiling_events, uma, &self.grid.chances),
                         &sources.entries,
                         sources.filler_count,
                         self.requested_target_count,

@@ -216,8 +216,8 @@ impl CareerSetup<'_> {
             .iter()
             .map(|&j| crate::deck::sources::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
             .collect();
-        let prepared =
-            joint_prep(self.space.deck_job.chain_events(), self.model.uncertain.len(), &entries, deck.filler_cards);
+        let chain_events = self.deck_events(trainee, deck);
+        let prepared = joint_prep(chain_events, self.model.uncertain.len(), &entries, deck.filler_cards);
         // (one chance vector and one `JointExt` for every corner: `JointPrep::evaluate` only reads `scales`; `marginals` is
         // not read here, so not summed)
         let mut q = base_chances.to_vec();
@@ -232,7 +232,7 @@ impl CareerSetup<'_> {
             set_ews(&mut state.folded_events[trainee], &self.model.event_chances[trainee], &self.uncertain_targets, &q);
             joint_eval_in(
                 self.model,
-                self.joint_query(state, trainee),
+                self.joint_query(state, trainee, chain_events),
                 &prepared,
                 JointOptions { target_count, all_but_one: false, marginals: false },
                 Some(&mut ext),

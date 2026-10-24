@@ -51,6 +51,7 @@ impl DeckSpace<'_> {
             return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit), uncapped: false });
         }
         let plain_pal_count = legal_tables.plain_pal_count;
+        let plain_rate_pals = self.plain_rate_pals(trainee_ids);
         let kind_count = self.kinds_all.len();
         let filler_kind_index = self.kinds_all.iter().position(|&k| k == ChainKind::FILLER).unwrap();
         let kind_place_values: Vec<u64> = (0..kind_count).map(|i| 7u64.pow(i as u32)).collect();
@@ -147,6 +148,7 @@ impl DeckSpace<'_> {
             target_count,
             size,
             plain_pal_count,
+            plain_rate_pals,
             kind_count,
             filler_kind_index,
             kind_place_values,
@@ -185,6 +187,7 @@ impl DeckSpace<'_> {
             target_count,
             size,
             plain_pal_count,
+            plain_rate_pals,
             kind_count,
             filler_kind_index,
             kind_place_values,
@@ -204,7 +207,8 @@ impl DeckSpace<'_> {
             legal_entries: _legal_entries,
         } = setup;
         let character_bits: &[u128] = &legal_tables.character_bits;
-        let (by_kind, pal_entries) = (&legal_tables.by_kind, &legal_tables.pal_entries);
+        let (by_kind, pal_entries, other_entries) =
+            (&legal_tables.by_kind, &legal_tables.pal_entries, &legal_tables.other_entries);
         let clause_value = |clause: &SearchClause, white_chances: &[f64], gold_chances: &[f64]| {
             fixed
                 * clause
@@ -233,7 +237,7 @@ impl DeckSpace<'_> {
         let out: Vec<ScoredDeck<SelectedDeck>> = vec![];
         let best_value = if best { seed } else { f64::NEG_INFINITY };
         let counts = self.counts_all();
-        let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_entries)).collect();
+        let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain([pal_entries, other_entries]).collect();
         // the cap-free band's ratio tables (`CapFreeRatios`), built on first use
         let cap_free_outfit_count = if cap_free { chances.model.outfit_options[bound_trainee].len() } else { 0 };
         let cap_free_ratios = CapFreeRatios::new(
@@ -516,12 +520,14 @@ impl DeckSpace<'_> {
                 counts: &counts,
                 by_kind,
                 pal_entries,
+                other_entries,
                 kind_place_values: &kind_place_values,
                 groups_all: &groups_all,
                 group_lock_bits,
                 group_class_masks: &group_class_masks,
                 filler_kind_index,
                 plain_pal_count,
+                plain_rate_pals: &plain_rate_pals,
                 all_lock_bits,
                 skip_bounded_keys: keyskip,
             },

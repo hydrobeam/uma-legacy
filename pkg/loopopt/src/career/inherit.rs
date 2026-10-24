@@ -1,6 +1,7 @@
 //! Legacy slots, affinity and inheritance chances.
 use crate::career::pool::{Pool, Who, shared};
 use crate::career::{CareerSetup, Lineage, SearchState};
+use crate::deck::chains::ChainEvents;
 use crate::deck::joint::{JointExt, joint_fast};
 use crate::deck::sources::TargetSources;
 use crate::deck::space::SelectedDeck;
@@ -414,14 +415,19 @@ impl CareerSetup<'_> {
     ) -> crate::skills::DeckChances<'search> {
         crate::skills::DeckChances { model: self.model, event_chances: &state.folded_events }
     }
-    /// Trainee `trainee`'s exact-scoring query at her folded chances (`set_trainee`).
+    /// The chain events of `deck` in trainee `trainee`'s career (its pal count's: `DeckSpace::deck_events`).
+    pub(crate) fn deck_events(&self, trainee: crate::uma::UmaIndex, deck: &SelectedDeck) -> ChainEvents {
+        self.space.deck_events(deck, &[self.data.umas[trainee].id])
+    }
+    /// Trainee `trainee`'s exact-scoring query at her folded chances (`set_trainee`), for a deck with `chain_events`.
     pub(crate) fn joint_query<'search>(
         &'search self,
         state: &'search SearchState,
         trainee: crate::uma::UmaIndex,
+        chain_events: ChainEvents,
     ) -> crate::deck::joint::JointQuery<'search> {
         crate::deck::joint::JointQuery {
-            chain_events: self.space.deck_job.chain_events(),
+            chain_events,
             checks: crate::checks::get(),
             trainee,
             inheritance_chances: &[0.0],
@@ -458,7 +464,7 @@ impl CareerSetup<'_> {
         };
         let crate::deck::joint::JointChances { all: p_all, all_but_one: p_all_but_one, outfit } = joint_fast(
             self.model,
-            self.joint_query(state, trainee),
+            self.joint_query(state, trainee, self.deck_events(trainee, deck)),
             &self.ents_of(deck),
             deck.filler_cards,
             self.target_count,

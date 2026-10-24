@@ -254,7 +254,8 @@ impl RatioColumns<'_> {
 }
 
 impl DeckSpace<'_> {
-    /// The product search's dominance table for `key`: per position p in `entries`, the earlier
+    /// The product search's dominance table for `key` (its misses at the configuration's chain events; a group's entries
+    /// share their chain-rate status, `LegalTables`, so a swap within it keeps the deck's events): per position p in `entries`, the earlier
     /// positions a whose entry A could take B's place in any deck (borrowed only if B is, B's locked card if B
     /// is one, B's pal status when the job fixes the pals) with every miss chance in [0, 1] and at most B's, white and
     /// gold, for every target; with the targets where A's gold miss is the lower (bit t).

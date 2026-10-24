@@ -93,6 +93,8 @@ pub(crate) struct SearchSetup {
     target_count: usize,
     size: usize,
     plain_pal_count: usize,
+    /// per plain-pal count, how many of those raise the chain rate (`DeckSpace::plain_rate_pals`)
+    plain_rate_pals: Vec<usize>,
     kind_count: usize,
     filler_kind_index: usize,
     kind_place_values: Vec<u64>,

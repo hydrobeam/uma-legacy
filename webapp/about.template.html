@@ -134,9 +134,10 @@ skills still below hint level 5. The base and specialty weight <math><mi>d</mi><
 with 30% hint frequency and 50 specialty priority hints about 3.6 times in Unity Cup; with five hintable skills, a given
 one comes up in about half of careers.</li>
 <li><strong>Chain events:</strong> the number of story-chain events in a career is random, also estimated from real
-runs: 7.35 on average, between 5 and 10 in 83% of careers. Each one
-advances a non-pal card's chain, picked at random, a card with more links left more often; the same in every scenario.
-Three 3-link cards (9 links) usually leave some last links unplayed. Pals have their own storyline and take none.</li>
+runs, and rises with the deck's pal cards (group cards don't count): 5.27 on average with no pal, 6.70 with two, 8.31
+with four. Each one advances the chain of one of the deck's chain cards still running, each equally likely whatever its
+links left; the same in every scenario. Three 3-link cards (9 links) usually leave some last links unplayed. Pals have
+their own storyline and take none.</li>
 <li><strong>Event outcomes:</strong> equally likely unless measured (an event's k outcomes giving a target of its n:
 k/n). Measured at 75%: Sasami Anshinzawa SSR's Nothing Ventured, Riko Kashimoto SSR's Ramp Up; at 65%: Seiun Sky
 [Foolproof Plan]'s Fast-Paced, Smart Falcon [My Umadol Way! ☆]'s Center Stage; at 60%: Nakayama Festa [Trusting the
@@ -278,7 +279,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <li><strong>Event outcomes.</strong> Events are decoded from GameTora's event data: an event belongs to the chain link
   the game shows for it; a choice's rewards split into outcomes at each "or"; an outcome that ends the chain marks the
   choice as an early end (all outcomes) or, when it is IT's default choice and only some outcomes end it, a stop risk
-  (the chain stops there with chance <math><mi>k</mi><mo>/</mo><mi>n</mi></math>, step 7). An event gives one outcome per firing, so a gold and a white of
+  (the chain stops there on 1/3 of its firings, step 7). An event gives one outcome per firing, so a gold and a white of
   the same skill from one event are combined within the event before the sources are multiplied (within one outcome
   the gold counts), and two rewards at one link from separate rows multiply as independent. Outcomes are equally likely unless measured, k/n
   for k of an event's n outcomes (Sasami Anshinzawa SSR's finale, Riko Kashimoto SSR's Ramp Up: 75%; Seiun Sky
@@ -291,17 +292,18 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   and the chance of any hint is <math><mn>1</mn><mo>−</mo><mo>∏</mo><msub><mi>H</mi><mi>j</mi></msub></math>; the deck output gives the gold chance and the white chance given no gold.</li>
   </ul>
 
-  <p><strong>7. Chain progress.</strong> The number of chain events <math><mi>N</mi></math> in a career is <math><mi>N</mi><mo>∼</mo><mtext>Binomial</mtext><mrow><mo>(</mo><mn>21</mn><mo>,</mo><mn>0.35</mn><mo>)</mo></mrow></math>, a model chosen
-  from data gathered from shared Independent Training runs (how far each card's chain got, read from the event hints on
+  <p><strong>7. Chain progress.</strong> The number of chain events <math><mi>N</mi></math> in a career is <math><mi>N</mi><mo>∼</mo><mtext>Binomial</mtext><mrow><mo>(</mo><mn>21</mn><mo>,</mo><mi>p</mi><mo>)</mo></mrow></math>, with
+  <math><mi>p</mi></math> set by the deck's pals <math><mi>a</mi></math> (its pal cards, group cards not counted, and its plain pals), a model fitted
+  on data gathered from shared Independent Training runs (how far each card's chain got, read from the event hints on
   each run's page):</p>
-  <math display="block"><mi>P</mi><mrow><mo>(</mo><mi>N</mi><mo>=</mo><mi>e</mi><mo>)</mo></mrow><mo>=</mo><mrow><mrow><mo>(</mo><mfrac linethickness="0"><mn>21</mn><mi>e</mi></mfrac><mo>)</mo></mrow></mrow><msup><mn>0.35</mn><mi>e</mi></msup><msup><mn>0.65</mn><mrow><mn>21</mn><mo>−</mo><mi>e</mi></mrow></msup></math>
-  <p>Each event advances one chain entry <math><mi>i</mi></math> (a non-pal card with <math><msub><mi>L</mi><mi>i</mi></msub></math> links, <math><msub><mi>d</mi><mi>i</mi></msub></math> done), picked with
-  weight equal to its links left; an entry that reached its stop is out, and events left over when every entry has
-  stopped are lost:</p>
-  <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>entry&#160;</mtext><mi>i</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mrow><msub><mi>L</mi><mi>i</mi></msub><mo>−</mo><msub><mi>d</mi><mi>i</mi></msub></mrow><mrow><munder><mo>∑</mo><mi>j</mi></munder><mrow><mo>(</mo><msub><mi>L</mi><mi>j</mi></msub><mo>−</mo><msub><mi>d</mi><mi>j</mi></msub><mo>)</mo></mrow></mrow></mfrac></math>
+  <math display="block"><mtext>logit</mtext><mspace width="0.17em"></mspace><mi>p</mi><mo>=</mo><mo>−</mo><mn>1.09469</mn><mo>+</mo><mn>0.168072</mn><mspace width="0.17em"></mspace><mi>a</mi><mo>,</mo><mspace width="1em"></mspace><mi>P</mi><mrow><mo>(</mo><mi>N</mi><mo>=</mo><mi>e</mi><mo>)</mo></mrow><mo>=</mo><mrow><mrow><mo>(</mo><mfrac linethickness="0"><mn>21</mn><mi>e</mi></mfrac><mo>)</mo></mrow></mrow><msup><mi>p</mi><mi>e</mi></msup><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>p</mi><mo>)</mo></mrow><mrow><mn>21</mn><mo>−</mo><mi>e</mi></mrow></msup></math>
+  <p>Each event advances one chain entry <math><mi>i</mi></math> (a non-pal card with <math><msub><mi>L</mi><mi>i</mi></msub></math> links, <math><msub><mi>d</mi><mi>i</mi></msub></math> done), picked
+  with equal chance among the <math><mi>R</mi></math> entries still running, whatever their links left; an entry that reached its stop is out,
+  and events left over when every entry has stopped are lost:</p>
+  <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>entry&#160;</mtext><mi>i</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mi>R</mi></mfrac></math>
   <p>A card played to an early end (a choice that ends its chain) is an entry that stops at that link, its remaining
-  links freed for the others. If IT's default choice ends a chain on a share of its outcomes, the entry stops there with that
-  chance, as an exact mixture over where it stops. <math><msub><mi>m</mi><mi>l</mi></msub></math> is the chance entry <math><mi>i</mi></math>'s link <math><mi>l</mi></math> fires, computed exactly over
+  links freed for the others. Where IT's default choice ends a chain on some of its outcomes, the entry stops there on
+  1/3 of that link's firings, one share for every such link, as an exact mixture over where it stops. <math><msub><mi>m</mi><mi>l</mi></msub></math> is the chance entry <math><mi>i</mi></math>'s link <math><mi>l</mi></math> fires, computed exactly over
   <math><mi>N</mi></math> and the picks; pals and R cards take no chain events.</p>
 
   <p><strong>8. One deck for the loop, or one per uma.</strong> With a shared deck, one deck <math><mi>D</mi></math> from the legal decks <math><mi>𝒟</mi></math>
@@ -377,11 +379,11 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 
   <p><strong>11. The product skyline.</strong> Decks are compared on two numbers per open target, <math><mi>g</mi></math> and
   <math><mn>1</mn><mo>−</mo><mo>(</mo><mn>1</mn><mo>−</mo><mi>g</mi><mo>)</mo><mo>(</mo><mn>1</mn><mo>−</mo><mi>w</mi><mo>)</mo></math> (only those some card can move). The skyline is the decks no other deck matches or beats on every one;
-  <math><mover><mi>V</mi><mo>^</mo></mover></math>'s maximum over all decks, for any trainee and chance, is reached on it. It is built one combination of chain kinds at a
+  <math><mover><mi>V</mi><mo>^</mo></mover></math>'s maximum over all decks, for any trainee and chance, is reached on it. It is built one combination of chain kinds and pals at a
   time (step 12), which fixes every card's chain odds, with two exact shortcuts:</p>
   <ul>
-  <li><strong>Card dominance.</strong> A card is left out when at least six cards of other characters and the same chain kind
-  (owned whenever it is) beat it on every target even at their weakest (chain odds of the most crowded deck) against it
+  <li><strong>Card dominance.</strong> A card is left out when at least six cards of other characters, of the same chain kind and
+  pal standing (a pal card or not, so the swap keeps the deck's chain events), owned whenever it is, beat it on every target even at their weakest (their lowest chain odds over any deck) against it
   at its strongest (every link firing): any deck holding it has a swap at least as good.</li>
   <li><strong>Swap rule.</strong> Under a combination of chain kinds, a deck holding a card that a card outside it beats on
   every target, and that could legally replace it (same kind, a character not already in the deck, within the borrow
@@ -397,16 +399,19 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p><strong>12. Every legal deck.</strong> The exact search draws from every legal deck, not the skyline. For one trainee (or
   all the loop's members with a shared deck) the entries are those no member's character rule excludes; entries interchangeable
   for those trainees are merged (the same rewards on every target some outfit of theirs leaves open, or none: of the
-  latter, at most six per chain kind are kept, characters no rewarding card uses first), so every deck has an
+  latter, at most six per chain kind and pal standing are kept, characters no rewarding card uses first), so every deck has an
   equal-valued deck among those enumerated. A deck is a configuration and a choice within it:</p>
   <ul>
   <li>Configuration: how many entries of each chain kind (links, stop link, stop risk), with generic 2-link fillers
-  counted among the 2-link slots; how many entries without chain slots; plain pals for the remaining slots. Configurations
+  counted among the 2-link slots; how many pal cards and how many other entries without chain slots (group and R
+  cards); plain pals for the remaining slots. The configuration so fixes the deck's pals and so its chain events. Configurations
   whose groups cannot hold every locked card, or that miss a fixed pal count, are skipped.</li>
   <li>Within a configuration, entries are picked group by group in a fixed order: one per character, at most one
   borrowed card, every locked card placed (a branch that can no longer place one is cut).</li>
   </ul>
-  <p>Under a configuration every entry's chain odds are fixed, so each entry has per-target miss chances. A half-built
+  <p>Under a configuration every entry's chain odds are fixed, so each entry has per-target miss chances. A bound that
+  covers configurations of several pal counts at once takes the largest chain-event rate among them: every chance rises
+  with it. A half-built
   deck, with <math><mi>r</mi></math> picks left in some groups, is dropped when the best value any completion could reach, times <math><mi>ρ</mi></math>, is below
   the threshold. Per (trainee, chance, outfit), two bounds, the lower used:</p>
   <ul>

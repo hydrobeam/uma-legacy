@@ -1,12 +1,88 @@
 //! Chain events: the event count per run, the per-link marginals and the final-state distribution of a deck's chains,
 //! and the per-key level tables.
 use std::collections::HashMap;
-/// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P). The retained fit and its checks are in docs/RESEARCH.md
-/// section 8 (`8.fit_of_n_runs`); the current evidence does not make this count law exact for every deck or scenario.
+/// Chain events per run ~ Binomial(CHAIN_N, p), p set by the deck's pals: logit p = CHAIN_A + CHAIN_B x pals, pals its
+/// pal cards (group cards excluded) and plain pals (`ChainModel::PalRate`). Fitted in docs/RESEARCH.md section 8 on the
+/// 8,722 Independent Training runs from uma-it with readable chain markers, under the card rule and the stop share 1/3.
+/// The current evidence does not make this count law exact for every deck or scenario.
 pub(crate) const CHAIN_N: u32 = 21;
-pub(crate) const CHAIN_P: f64 = 0.35;
+pub(crate) const CHAIN_A: f64 = -1.09469;
+pub(crate) const CHAIN_B: f64 = 0.168_072;
+/// The share of its firings on which a link where IT's default choice ends the chain on some outcomes (`stop_risk`)
+/// ends it, as k of n: one share for every such link, in place of its own k of n outcomes (docs/RESEARCH.md section 8's
+/// STOP_SHARE). Packed like a stop risk (`stop_risk_code`), so the chain odds take it as the exact fraction 1/3.
+pub(crate) const CHAIN_STOP_SHARE: (u8, u8) = (1, 3);
+/// How a chain event picks the card it advances among the cards whose chains still run (`pick_weight`).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) enum PickRule {
+    /// Each running card equally, however many links it has left: the model (docs/RESEARCH.md section 8).
+    Card,
+    /// Each running card in proportion to its links left: the model before the card rule (job `chain_rule: "slots"`).
+    Slots,
+}
+/// A job's chain-event law: one distribution for every deck, or one per pal count. Every chance the solver computes
+/// rises with p (given more events the chains only advance further, whatever the pick rule: a run with n + 1 events
+/// is one with n and one more pick; and a link that fires loses no reward), so a bound
+/// over decks whose pal counts are not yet known takes the largest p among them (`most_favourable`).
+#[derive(Clone, Copy)]
+pub(crate) enum ChainModel {
+    /// The same distribution for every deck: the job's `chain_events`, or a pal rate without slope.
+    Fixed(ChainEvents),
+    /// Binomial(CHAIN_N, expit(intercept + slope x pals)), each event picking a card by `rule`.
+    PalRate { intercept: f64, slope: f64, rule: PickRule },
+}
+impl ChainModel {
+    /// A rate without slope is one distribution (`Fixed`), so its searches run as a fixed job's do.
+    pub(crate) fn pal_rate(intercept: f64, slope: f64, rule: PickRule) -> Self {
+        if slope == 0.0 {
+            Self::Fixed(ChainEvents { count: CHAIN_N, probability: expit(intercept), rule })
+        } else {
+            Self::PalRate { intercept, slope, rule }
+        }
+    }
+    /// Whether decks with different pal counts get different chain events.
+    pub(crate) const fn pal_dependent(self) -> bool {
+        matches!(self, Self::PalRate { .. })
+    }
+    /// The chain events of a deck with `pals` rate-raising pals (`Card::raises_chain_rate`, plain pals included).
+    pub(crate) fn events(self, pals: usize) -> ChainEvents {
+        match self {
+            Self::Fixed(events) => events,
+            Self::PalRate { intercept, slope, rule } => {
+                ChainEvents { count: CHAIN_N, probability: expit(intercept + slope * pals as f64), rule }
+            }
+        }
+    }
+    /// The largest p over pal counts 0..=`most_pals` (p is monotone in the count): every chance at these events is at
+    /// least the same chance at any of those counts' events.
+    pub(crate) fn most_favourable(self, most_pals: usize) -> ChainEvents {
+        let (none, most) = (self.events(0), self.events(most_pals));
+        if most.probability >= none.probability { most } else { none }
+    }
+    /// The smallest p over pal counts 0..=`most_pals`: every chance at these events is at most the same chance at any of
+    /// those counts' events.
+    pub(crate) fn least_favourable(self, most_pals: usize) -> ChainEvents {
+        let (none, most) = (self.events(0), self.events(most_pals));
+        if most.probability <= none.probability { most } else { none }
+    }
+}
+/// The logistic function 1 / (1 + e^-x).
+pub(crate) fn expit(x: f64) -> f64 {
+    1.0 / (1.0 + (-x).exp())
+}
+/// The weight a running entry (`done` of its `links` links fired, short of its stop) is picked with for the next chain
+/// event: 1 under the card rule, its links left under the slots rule. The one pick rule of `chain_walk` and
+/// `chain_marginals_ref`.
+#[inline(always)]
+fn pick_weight(links: u8, done: u8, rule: PickRule) -> f64 {
+    match rule {
+        PickRule::Card => 1.0,
+        PickRule::Slots => f64::from(links - done),
+    }
+}
 /// A deck entry's chain kind. A card played normally stops at its last link; a chosen early end stops sooner. While it
-/// runs, an entry is picked with weight = links it has left (length - done); once it reaches its stop it is out.
+/// runs, an entry is picked with weight `pick_weight` (1, or its links left under the slots rule); once it reaches its
+/// stop it is out.
 /// Ordered and hashed as the tuple (links, stop, stop risk).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub(crate) struct ChainKind {
@@ -34,23 +110,21 @@ pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
     )
 }
 
-/// A job's chain events per run: Binomial(count, probability) (`DeckJob::chain_events`). Passed by value to every
-/// chain computation; the caches below key on it, so jobs with different distributions never share an entry.
+/// A deck's chain process: Binomial(count, probability) events per run, each picking a card by `pick_weight` under
+/// `rule` (`ChainModel::events`). Passed by value to every chain computation; the caches below key
+/// on it, so decks with different processes never share an entry.
 #[derive(Clone, Copy)]
 pub(crate) struct ChainEvents {
     pub(crate) count: u32,
     pub(crate) probability: f64,
+    pub(crate) rule: PickRule,
 }
-impl Default for ChainEvents {
-    fn default() -> Self {
-        Self { count: CHAIN_N, probability: CHAIN_P }
-    }
-}
-/// Cache key of a chain-event distribution: n and the bits of p, kept separately to avoid XOR collisions.
+/// Cache key of a chain process: n, the bits of p and the pick rule, kept separately to avoid XOR collisions.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) struct EventsKey {
+pub(crate) struct EventsKey {
     count: u32,
     probability_bits: u64,
+    rule: PickRule,
 }
 /// Cache key of the chain caches (`chain_marginals`, `chain_states`, `key_level`): a deck's chain kinds and the
 /// event distribution.
@@ -60,13 +134,13 @@ struct ChainKey {
     events: EventsKey,
 }
 impl ChainEvents {
-    pub(super) const fn key(self) -> EventsKey {
-        EventsKey { count: self.count, probability_bits: self.probability.to_bits() }
+    pub(crate) const fn key(self) -> EventsKey {
+        EventsKey { count: self.count, probability_bits: self.probability.to_bits(), rule: self.rule }
     }
 }
 /// P(N = e) chain events per run for e = 0..=n, N ~ Binomial(`events`).
 pub(super) fn event_pmf(events: ChainEvents, n: usize) -> Vec<f64> {
-    let ChainEvents { count: trials, probability: chance } = events;
+    let ChainEvents { count: trials, probability: chance, .. } = events;
     (0..=n)
         .map(|e| {
             if e as u32 <= trials {
@@ -77,7 +151,7 @@ pub(super) fn event_pmf(events: ChainEvents, n: usize) -> Vec<f64> {
         })
         .collect()
 }
-/// `event_pmf` of the job's own event count (n = `events.count`), kept per (n, p): the same for every call of a job
+/// `event_pmf` over the whole count (n = `events.count`), the last (n, p) kept: a deck's calls repeat it
 pub(super) fn event_pmf_job(events: ChainEvents) -> std::rc::Rc<Vec<f64>> {
     thread_local! { static EP: std::cell::RefCell<Option<(EventsKey, std::rc::Rc<Vec<f64>>)>> = const { std::cell::RefCell::new(None) }; }
     let key = events.key();
@@ -153,7 +227,7 @@ fn for_each_realisation(kinds: &[ChainKind], mut visit: impl FnMut(f64, &[u8])) 
 /// index order: entry i's progress is the digit with stride prod_{j<i} (stops[j] + 1). Every transition raises the
 /// index, so this order is topological. `visit(progress, events, grid_index, probability)` receives reachable states
 /// up to `max_events`; `grid_strides` maps their progress to the caller's grid. Below `max_events`, an entry takes
-/// the next event with weight its links left over the sum among entries not stopped.
+/// the next event with its `pick_weight` under `rule` over the sum among entries not stopped.
 /// The one transition rule of `chain_marginals_dense`, `chain_states` and `key_level`.
 #[inline(always)]
 fn chain_walk(
@@ -161,6 +235,7 @@ fn chain_walk(
     stops: &[u8],
     max_events: usize,
     grid_strides: &[usize],
+    rule: PickRule,
     mut visit: impl FnMut(&[u8], usize, usize, f64),
 ) {
     let n = links.len();
@@ -183,14 +258,14 @@ fn chain_walk(
                 let mut total_weight = 0.0f64;
                 for i in 0..n {
                     if progress[i] < stops[i] {
-                        total_weight += f64::from(links[i] - progress[i]);
+                        total_weight += pick_weight(links[i], progress[i], rule);
                     }
                 }
                 if total_weight > 0.0 {
                     for i in 0..n {
                         if progress[i] < stops[i] {
                             probabilities[state_index + strides[i]] +=
-                                probability * f64::from(links[i] - progress[i]) / total_weight;
+                                probability * pick_weight(links[i], progress[i], rule) / total_weight;
                         }
                     }
                 }
@@ -269,7 +344,7 @@ pub(super) fn chain_marginals_dense(events: ChainEvents, kinds: &[ChainKind]) ->
     // done[e][i][k] = P(after e events entry i has >= k+1 links done)
     let mut done = vec![0.0f64; (last + 1) * n * width];
     let (links, stops): (Vec<u8>, Vec<u8>) = kinds.iter().map(|k| (k.links, k.stop)).unzip();
-    chain_walk(&links, &stops, last, &vec![0; n], |progress, event_count, _, probability| {
+    chain_walk(&links, &stops, last, &vec![0; n], events.rule, |progress, event_count, _, probability| {
         if event_count >= 1 {
             let base = event_count * n * width;
             for i in 0..n {
@@ -316,9 +391,12 @@ pub(super) fn chain_marginals_ref(events: ChainEvents, kinds: &[ChainKind]) -> H
     for e in 1..=max_events.min(total) {
         let mut next_states: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
         for (state, p) in &states {
-            let weights: Vec<f64> = (0..n)
-                .map(|i| if state[i] < kinds[i].stop { f64::from(kinds[i].links - state[i]) } else { 0.0 })
-                .collect();
+            let weights: Vec<f64> =
+                (0..n)
+                    .map(|i| {
+                        if state[i] < kinds[i].stop { pick_weight(kinds[i].links, state[i], events.rule) } else { 0.0 }
+                    })
+                    .collect();
             let weight_sum: f64 = weights.iter().sum();
             if weight_sum == 0.0 {
                 *next_states.entry(state.clone()).or_insert(0.0) += p;
@@ -381,7 +459,7 @@ pub(super) fn chain_states(events: ChainEvents, kinds: &[ChainKind]) -> std::rc:
         let total: usize = stops.iter().map(|&stop| stop as usize).sum();
         let event_weights = event_pmf(events, total);
         // (a state below the last level has an entry not stopped: final with P(N = L); at it, with P(N >= L))
-        chain_walk(&links, stops, total, &vec![0; n], |progress, event_count, _, probability| {
+        chain_walk(&links, stops, total, &vec![0; n], events.rule, |progress, event_count, _, probability| {
             let final_chance = if event_count < total {
                 event_weights[event_count]
             } else {
@@ -541,7 +619,7 @@ pub(super) fn key_level(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc
     let links: Vec<u8> = kinds.iter().map(|k| k.links).collect();
     for_each_realisation(kinds, |w, stops| {
         let total: usize = stops.iter().map(|&stop| stop as usize).sum();
-        chain_walk(&links, stops, total, &grid_strides, |_, event_count, grid_index, probability| {
+        chain_walk(&links, stops, total, &grid_strides, events.rule, |_, event_count, grid_index, probability| {
             if event_count <= max_events {
                 level_probabilities[event_count][grid_index] += w * probability;
             }

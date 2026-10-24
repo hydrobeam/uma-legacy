@@ -6,7 +6,7 @@
 // Both browsers run at once, each with LLP_JOBS test groups in parallel (default 4; LLP_JOBS=1 runs them one by one);
 // a group's lines print together when it ends. Exit code 1 if any check fails. Expectations come from the page's own
 // embedded data where possible, so a data update does not break the suite; the fixed numbers are the Global default
-// search's odds (R cards off, Unity Cup): 1 in 107 for all 8, 1 in 12.6 for 7 or better.
+// search's odds (R cards off, Unity Cup): 1 in 103 for all 8, 1 in 12.1 for 7 or better.
 // Each group is a module of webapp/test/ named after it (its checks, in order); webapp/test/helpers.mjs holds what they
 // share. Each group gets a fresh page (fresh storage) unless its module says otherwise.
 import { createRequire } from 'node:module';

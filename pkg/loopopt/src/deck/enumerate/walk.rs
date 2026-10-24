@@ -804,7 +804,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                     let leaf_value = joint_fast(
                         chances.model,
                         JointQuery {
-                            chain_events: space.deck_job.chain_events(),
+                            chain_events: self.configuration.events,
                             checks: crate::checks::get(),
                             trainee: bound_trainee,
                             inheritance_chances: &[bound_inheritance],

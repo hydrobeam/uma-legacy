@@ -6,7 +6,6 @@
 //! - `reference`: the unoptimized reference sum `JOINT_CHECK` and the tests compare `exact` with.
 //! - `upper`: the negative-association upper bound on P(all) (`upper_na`).
 use crate::checks::{CFCHK, SBCHK};
-use crate::deck::DeckJob;
 use crate::deck::chains::{ChainEvents, ChainKind};
 use crate::deck::joint::exact::joint_prep;
 use crate::deck::joint::reference::joint_trainee_ref;
@@ -16,10 +15,10 @@ use crate::skills::{GEN_GOLD, Model};
 pub(crate) mod exact;
 pub(super) mod reference;
 pub(crate) mod upper;
-/// The trainee and ordered inheritance chances to evaluate against one deck, under the job's chain events and checks.
+/// The trainee and ordered inheritance chances to evaluate against one deck, under its chain events and the job's checks.
 #[derive(Clone, Copy)]
 pub(crate) struct JointQuery<'chance> {
-    /// The job's chain-event distribution (`DeckJob::chain_events`).
+    /// The deck's chain-event distribution (`ChainModel::events` at its pal count).
     pub(crate) chain_events: ChainEvents,
     /// The job's diagnostic switches (`checks::get`): `joint_b`'s checks and `upper_na`'s report.
     pub(crate) checks: &'chance crate::checks::Checks,
@@ -34,12 +33,12 @@ impl<'chance> JointQuery<'chance> {
     /// A loop search keeps inheritance separate from the model's own-event chances.
     pub(crate) fn unfolded(
         model: &'chance Model,
-        deck_job: &DeckJob,
+        chain_events: ChainEvents,
         trainee: crate::uma::UmaIndex,
         inheritance_chances: &'chance [f64],
     ) -> Self {
         Self {
-            chain_events: deck_job.chain_events(),
+            chain_events,
             checks: crate::checks::get(),
             trainee,
             inheritance_chances,
