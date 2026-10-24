@@ -95,7 +95,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `test` / `testq` | the browser suite, full or its fast tier (see *Tests*) |
 | `serve` | `webapp/dist` on http://localhost:8000 (`PORT=…`) |
 | `val TAG` / `valq TAG` | validation (see *Tests*) |
-| `deploy` | builds the page and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
+| `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 
 The solver's training-hint constants (each scenario's base and specialty weight, `pkg/loopopt/src/deck/hints.rs`) are
@@ -295,7 +295,7 @@ can move results, commit, tag `vN` (the next after the latest), `./build.sh depl
 build's `git describe` version.
 
 Hosting is Cloudflare Pages by direct upload: project `uma-legacy` (`CF_PAGES_PROJECT` overrides), live at
-https://uma-legacy.pages.dev. `deploy` refuses when `webapp/` or `pkg/` have uncommitted changes
+https://uma-legacy.pages.dev. `deploy` refuses when `webapp/`, `pkg/` or `research/results.json` have uncommitted changes
 (`DEPLOY_DIRTY=1` overrides); `CF_PAGES_BRANCH=preview` publishes to the preview address; `SITE_URL` sets the
 link-preview tags' host. One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create
 uma-legacy --production-branch main --force` (`--force` keeps it on classic Pages; without it wrangler 4.147 delegated

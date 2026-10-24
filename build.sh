@@ -96,9 +96,9 @@ step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build
 step_serve() { MISSING=(); need_cmd node "$TOOLS_NODE"; need "webapp/dist/index.html: the built page (./build.sh)"; check serve; node "$W/serve.mjs" "${PORT:-8000}"; }
 # Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
-  local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg)
-  if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
-  step_page
+  local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg research/results.json)
+  if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/ or research/results.json; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
+  step_wasm; step_page   # the solver it ships is built from this tree, never one left from another
   (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
      --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty="$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false)")
 }
