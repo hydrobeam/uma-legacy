@@ -14,6 +14,10 @@ struct SubsetProbability {
     probability: f64,
 }
 
+/// The landed-set extension (the chance of each set of uncertain targets landing) is filled only up to this many
+/// uncertain targets (2^n sets per outfit); callers above it get no sets.
+pub(crate) const MAX_LANDED_SET_TARGETS: usize = 16;
+
 /// The deck-dependent part of `joint_fast`, before inheritance chances or outfit state are applied.
 /// Collapsed states retain first-seen order; each weight is summed in the original chain-state order.
 pub(crate) struct JointPrep<'group> {
@@ -339,7 +343,8 @@ fn evaluate_prepared(
         Some(extra) => extra.scales.guaranteed.iter().fold(1.0, |product, scale| product * GEN_GOLD * scale),
         None => model.fixed_factor(),
     };
-    let want_landed_sets = extension.as_ref().is_some_and(|extra| !extra.sets.is_empty()) && target_count <= 16;
+    let want_landed_sets =
+        extension.as_ref().is_some_and(|extra| !extra.sets.is_empty()) && target_count <= MAX_LANDED_SET_TARGETS;
     if let Some(extra) = extension.as_deref_mut() {
         if options.marginals {
             extra.marginals = vec![0.0; chance_count * outfit_count * target_count];

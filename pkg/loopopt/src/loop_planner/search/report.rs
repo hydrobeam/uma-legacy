@@ -78,7 +78,9 @@ impl Multi<'_> {
         let picks = if self.shared { self.shared_picks(&pass) } else { self.per_uma_picks(&pass, &empty_deck) };
         let top: Vec<Value> = picks.iter().map(|pick| self.loop_json(&pass, pick)).collect();
         let budget_out = self.inputs.deck_job.exact && certified_cap < self.maximum_exact_ratio;
-        let complete = pass.next_bound <= pass.kth_best * (1.0 + 4e-12);
+        // complete: nothing left to solve (an exhausted queue leaves no ceiling, even with fewer than k values found),
+        // or nothing left could beat the k-th best
+        let complete = pass.next_bound <= 0.0 || pass.next_bound <= pass.kth_best * (1.0 + 4e-12);
         let exact = self.exact_json(tally, &pass, certified_cap, complete, budget_out);
         let band_searches = tally.band_decks;
         let mut out = stats;
@@ -200,10 +202,12 @@ impl Multi<'_> {
         let minus1 = per_lineage.iter().map(|chances| chances.all_but_one).sum::<f64>() / lineage_count as f64;
         // the chance of exactly k targets, k = 0 ..= n (exact over each lineage's landed sets, as `p_all`), averaged over
         // the lineages: the uncertain targets' sets from the joint model, each guaranteed gold on its own (GEN_GOLD)
+        // (none above the exact engine's landed-set limit: the page then shows no per-count table)
+        let with_landed = uncertain_groups.len() <= crate::deck::joint::exact::MAX_LANDED_SET_TARGETS;
         let mut landed = vec![0.0f64; requested_target_count + 1];
         // (each member's deck's sources once, read by each of her lineages)
         let deck_sources: Vec<_> = (0..member_count).map(|member| self.ents_of(decks[member])).collect();
-        for l in 0..lineage_count {
+        for l in (0..lineage_count).filter(|_| with_landed) {
             let member = lineages[l].trainee;
             let (entries, filler_count) = (&deck_sources[member].entries, deck_sources[member].filler_count);
             let target_count = uncertain_groups.len();
@@ -296,7 +300,7 @@ impl Multi<'_> {
             }
         }
         let loop_summary = json!({"members": member_json(data, member_slice), "p_all": loop_value, "p_minus1": minus1,
-               "landed": landed, "rank_value": rank_value, "outfits": outfits,
+               "landed": with_landed.then_some(landed), "rank_value": rank_value, "outfits": outfits,
                "per_trainee": per_trainee.iter().map(|(sum, count)| sum / *count as f64).collect::<Vec<_>>(),
                "mean_proc": inheritance_chances.iter().sum::<f64>() / inheritance_chances.len() as f64,
                "schedule": chart_rows(data, member_slice, &schedule.schedules[..member_count]),
