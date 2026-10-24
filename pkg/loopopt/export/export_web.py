@@ -10,9 +10,10 @@ from era import c, names, BASE, OUT, outfit_released
 
 @dataclass
 class SkillNames:
-    """The first named white and gold skill in one skill group."""
+    """A skill group's catalog names: its white and its first named gold."""
 
     white: str | None = None
+    white_rank: tuple[int, int] = (2, 0)  # the white's place among the group's whites (lower is preferred)
     gold: str | None = None
 
 
@@ -34,20 +35,23 @@ skill_groups = {
         "select id, rarity, group_id, group_rate from skill_data where unique_skill_id_1 = 0 order by id"
     )
 }
-# catalog: groups with a white (rarity 1) skill that has a name; gold = rarity 2 in the same group
+# catalog: groups with a white (rarity 1) skill that has a name; gold = rarity 2 in the same group. A group's white is
+# named by its lowest non-negative rate: the ○ where a group has ○ and ◎ (what card hints and sparks give: every
+# training hint and white spark on such a group names the ○), else its lowest id (a group of one × keeps the ×)
 groups = {}
-for i, (r, g, _) in skill_groups.items():
+for i, (r, g, rate) in skill_groups.items():
     if r in (1, 2) and i in skill_names:
         e = groups.setdefault(g, SkillNames())
-        if r == 1 and e.white is None:
-            e.white = skill_names[i]
+        rank = (0, rate) if rate >= 0 else (1, 0)
+        if r == 1 and (e.white is None or rank < e.white_rank):
+            e.white, e.white_rank = skill_names[i], rank
         if r == 2 and e.gold is None:
             e.gold = skill_names[i]
 catalog = sorted(
     [[g, names.white, names.gold] for g, names in groups.items() if names.white], key=lambda x: x[1].lower()
 )
 # every name an event reward can carry -> [group, 1 white / 2 gold]: the catalog's own names, plus a group's other
-# whites at a non-negative rate (the ○ beside a catalog ◎: both are the group's white; a × is a different skill)
+# whites at a non-negative rate (the ◎ beside a catalog ○: one group, one white target; a × is a different skill)
 reward_names = {}
 for g, white, gold in catalog:
     reward_names[white] = [g, 1]
