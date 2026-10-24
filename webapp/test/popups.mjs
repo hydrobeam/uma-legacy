@@ -71,7 +71,7 @@ export default async function popups(b) {
   await pg.keyboard.press('Escape');
   await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click();
   await dialog(pg, 'why-dlg');
-  // the career page's table: each parent, then her two parents (relation, G1 wins shared, affinity), a Total row
+  // the career page's table: each parent, then her two parents (relation, points from shared G1s, affinity), a Total row
   const at = await pg.evaluate(() => {
     const t = document.querySelector('#why-dlg .afftab'),
       rows = [...t.tBodies].flatMap((b) => [...b.rows]);

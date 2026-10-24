@@ -36,6 +36,7 @@ import {
   sampleVets,
   newVet,
   importVets,
+  isVeteran,
   addVets,
   removeVet,
   clearVets,
@@ -2557,8 +2558,15 @@ function ownExport(text) {
 function importText(text) {
   const own = ownExport(text);
   if (own) {
+    const damaged = own.veterans.filter((v) => !isVeteran(v)).length;
+    if (damaged) {
+      $('v-msg').textContent =
+        `Not imported: ${damaged} veteran${damaged === 1 ? '' : 's'} in that export ${damaged === 1 ? 'is' : 'are'} damaged (no id or two parents).`;
+      return true;
+    }
+    // each keeps her source (one made by hand stays hand-made); an export from before sources were saved: imported
     importVets(
-      own.veterans.map((v) => ({ pinks: {}, wins: [], ...v, src: 'import' })),
+      own.veterans.map((v) => ({ pinks: {}, wins: [], src: 'import', ...v })),
       true,
     );
     setVTab('own');

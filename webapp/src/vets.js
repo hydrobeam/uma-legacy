@@ -51,8 +51,16 @@ function loadAll() {
 }
 const ALL = loadAll(),
   MINE = ALL[ERA] || {};
+/** a record the page can show and the solver can read: an id and two parent nodes (a damaged one is left out)
+ * @param {any} v @returns {boolean} */
+export const isVeteran = (v) =>
+  !!v &&
+  typeof v.id === 'string' &&
+  Array.isArray(v.parents) &&
+  v.parents.length === 2 &&
+  v.parents.every((p) => !!p && typeof p === 'object');
 /** @type {Veteran[]} every veteran of this era; a veteran's number on the page is her index here plus one */
-export const vets = (MINE.vets || []).map((v) => ({
+export const vets = (MINE.vets || []).filter(isVeteran).map((v) => ({
   pinks: {},
   ...v,
   parents: v.parents.map((p) => ({ pinks: {}, ...p })),
@@ -720,6 +728,9 @@ export function newVet(chara, sparks) {
 /** @param {Veteran[]} list @param {boolean} [all] @returns {{added: number, updated: number, borrowed: number, dropped: number}} */
 export function importVets(list, all = false) {
   const isImport = (v) => v.src === 'import';
+  // the borrow list's veterans by their id (umadump.js: a lender's viewer id after "tr"), not by the Yours/Borrowed
+  // switch, which the player may have flipped
+  const lent = (v) => isImport(v) && v.id.startsWith('tr');
   if (all) {
     for (let i = vets.length - 1; i >= 0; i--) if (isImport(vets[i])) vets.splice(i, 1);
   }
@@ -728,22 +739,29 @@ export function importVets(list, all = false) {
     fresh = [];
   let updated = 0,
     dropped = 0;
+  // a veteran already here takes the file's version in her place, on the tab the player keeps her on
+  const update = (old, v) => Object.assign(old, v, { borrowed: old.borrowed });
   for (const v of own) {
     const old = vetById(v.id);
     if (old) {
-      Object.assign(old, v);
+      update(old, v);
       updated++;
     } else fresh.push(v);
   }
   const afterOwnImports = vets.reduce((at, v, i) => (isImport(v) && !v.borrowed ? i + 1 : at), 0);
   vets.splice(afterOwnImports, 0, ...fresh);
   if (borrowed.length) {
+    // the earlier borrow list goes, but not one the player moved to Yours
     for (let i = vets.length - 1; i >= 0; i--)
-      if (isImport(vets[i]) && vets[i].borrowed) {
+      if (lent(vets[i]) && vets[i].borrowed) {
         vets.splice(i, 1);
         dropped++;
       }
-    vets.push(...borrowed);
+    for (const v of borrowed) {
+      const old = vetById(v.id);
+      if (old) update(old, v);
+      else vets.push(v);
+    }
   }
   dropMissing();
   changed();

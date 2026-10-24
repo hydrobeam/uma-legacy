@@ -31,7 +31,7 @@ export function affTable(legs, caption = 'Affinity') {
   const table = el('table', 'afftab'),
     whole = (x) => String(Math.round(x));
   table.innerHTML =
-    '<thead><tr><th scope="col"></th><th scope="col">Relation</th><th scope="col">G1 wins shared</th><th scope="col">Affinity</th></tr></thead><tfoot></tfoot>';
+    '<thead><tr><th scope="col"></th><th scope="col">Relation</th><th scope="col">From shared G1s</th><th scope="col">Affinity</th></tr></thead><tfoot></tfoot>';
   if (caption) table.prepend(Object.assign(el('caption'), { textContent: caption }));
   // one row: who (her face, name, tag, legacy number), then the legacy's relation, shared G1s and affinity
   const row = (cls, who, legacy) => {

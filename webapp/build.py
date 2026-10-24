@@ -163,7 +163,8 @@ class SkillReference(NamedTuple):
 
 
 def release_dates(data_dir):
-    # release dates for the roster's and card picker's default order; without master.mdb, id order
+    # release dates for the roster's and card picker's default order and the page's hiding of upcoming content;
+    # without master.mdb, id order (everything released) except the tracked upcoming.json's dated outfits and cards
     mdb = os.path.join(
         HERE, "..", "game", "jp" if os.path.basename(os.path.normpath(data_dir)) == "jp" else "global", "master.mdb"
     )
@@ -183,6 +184,9 @@ def release_dates(data_dir):
             con.execute("select id, start_date from support_card_data")
         )  # support cards carry their own date
         con.close()
+    elif os.path.exists(os.path.join(data_dir, "upcoming.json")):  # Global only: the JP data has nothing upcoming
+        upcoming = json.load(open(os.path.join(data_dir, "upcoming.json")))
+        release_times = {item_id: start for kind in ("outfits", "cards") for item_id, start in upcoming[kind]}
     return release_times
 
 

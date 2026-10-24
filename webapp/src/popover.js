@@ -173,8 +173,10 @@ export function initPopover() {
     }
     const face = e.target.closest('.loop .facebtn'); // a portrait in a deck title or swap row: the same panel
     if (face) {
+      // a "Same loop as #1" card has no member blocks: #1's (the same umas and outfits) stand in
+      const mem = `.mem[data-uma="${face.dataset.uma}"]`;
       toggleFor(face, () =>
-        openUmaPop(face, face.closest('.loop').querySelector(`.mem[data-uma="${face.dataset.uma}"]`)),
+        openUmaPop(face, face.closest('.loop').querySelector(mem) || document.querySelector(`.loop.first ${mem}`)),
       );
       return;
     }
