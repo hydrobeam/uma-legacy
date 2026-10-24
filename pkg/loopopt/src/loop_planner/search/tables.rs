@@ -32,7 +32,7 @@ pub(super) struct ExactCeiling {
 pub(super) struct Grid {
     minimum_chance: f64,
     step: f64,
-    chances: Vec<f64>,
+    pub(super) chances: Vec<f64>,
 }
 impl Grid {
     pub(super) fn new(lowest: f64, highest: f64) -> Self {

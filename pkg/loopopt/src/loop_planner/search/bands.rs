@@ -38,6 +38,7 @@ pub(super) struct DeckBest {
 
 /// One pass's solved loops, cutoff and unexamined bound, counters, and shared-deck results.
 pub(super) struct Pass {
+    pub(super) improving: Option<super::deck_bounds::ImprovingDecks>,
     pub(super) solved: Vec<SolvedLoop>,
     pub(super) kth_best: f64,
     pub(super) next_bound: f64,
@@ -71,12 +72,7 @@ impl Pass {
     /// and the cutoff becomes the `loop_limit`-th best deck's value
     fn add_shared(&mut self, solved: SolvedLoop, decks: SharedDecks, lineage_count: usize, loop_limit: usize) {
         for ScoredDeck { value, deck } in decks.iter() {
-            let key = SharedDeckKey {
-                card_ids: deck.ids.clone(),
-                end_links: deck.ends.clone(),
-                variants: deck.variants.clone(),
-                plain_pals: deck.plain_ids.len(),
-            };
+            let key = SharedDeckKey::of(deck);
             let best = self.deck_best.entry(key).or_insert(DeckBest {
                 value: f64::NEG_INFINITY,
                 solved_index: 0,
@@ -290,6 +286,7 @@ impl Multi<'_> {
         self.band(state, first_band_sum, f64::INFINITY, &mut candidates);
         candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
         let mut pass = Pass {
+            improving: None,
             solved: vec![],
             kth_best: f64::NEG_INFINITY,
             next_bound: 0.0,
@@ -301,6 +298,7 @@ impl Multi<'_> {
             values: vec![],
         };
         let mut queue = Queue { candidates, next: 0, upper_sum: first_band_sum };
+        let mut checked_improving = false;
         loop {
             if state.tally.aborted {
                 return None;
@@ -308,6 +306,23 @@ impl Multi<'_> {
             // Treat improvements within 4e-12 relative slack as ties, so equal-valued structures need not all be
             // solved.
             let kth_best = pass.kth_best;
+            if !checked_improving && pass.kth_best.is_finite() {
+                checked_improving = true;
+                if let Some(bounds) = &state.deck_bounds {
+                    pass.improving = self.improving_structures(bounds, &pass);
+                    if let Some(improving) = &mut pass.improving {
+                        for candidate in &queue.candidates[..queue.next] {
+                            improving.structures.remove(&candidate.members);
+                        }
+                    }
+                }
+            }
+            if pass.improving.as_ref().is_some_and(|improving| improving.structures.is_empty()) {
+                // Every remaining deck is below the k-th value or cannot improve its own incumbent. This is a
+                // bound on new/improved distinct results, even when a known deck's score exceeds the k-th value.
+                pass.next_bound = pass.kth_best;
+                return Some(pass);
+            }
             let beats = |ceiling: f64| ceiling > kth_best * (1.0 + 4e-12);
             if !(queue.next < queue.candidates.len() && beats(cap * queue.candidates[queue.next].ceiling)) {
                 if queue.upper_sum <= 0.0 || !beats(cap * self.sum_ceiling(queue.upper_sum)) {
@@ -318,6 +333,11 @@ impl Multi<'_> {
             }
             let LoopCandidate { ceiling: _, members: structure } = queue.candidates[queue.next];
             queue.next += 1;
+            if let Some(improving) = &mut pass.improving
+                && !improving.structures.remove(&structure)
+            {
+                continue;
+            }
             pass.scanned += 1;
             self.solve(state, structure, cap, &mut pass)?;
         }
@@ -358,6 +378,11 @@ impl Multi<'_> {
             .inputs
             .model
             .lineage_q_arr(members, &|first, second| self.pair_bounds[members[first]][members[second]]);
+        if let Some(bounds) = &mut state.deck_bounds
+            && !self.shared_can_improve(bounds, structure, &pair_ceiling_chances, pass)
+        {
+            return Some(());
+        }
         // cheapest first: the cell bounds as they stand, then the product ceiling with one deck per trainee
         let cell_ceiling = (0..lineage_count)
             .map(|l| self.cell(state, structure[lineages[l].trainee], self.grid.idx(pair_ceiling_chances[l]), cap).0)

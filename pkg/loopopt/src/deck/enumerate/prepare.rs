@@ -23,6 +23,7 @@ impl DeckSpace<'_> {
         mode: SearchMode,
     ) -> Result<SearchSetup, SearchOutcome> {
         let (best, seed, rho, cap, band_bound) = match mode {
+            SearchMode::All { max_decks } => (false, f64::NEG_INFINITY, 1.0, max_decks, BandBound::Capped),
             SearchMode::Best { seed } => (true, seed, 1.0, 1, BandBound::Capped),
             SearchMode::Band { ratio_cap, max_decks, bound } => (false, f64::NEG_INFINITY, ratio_cap, max_decks, bound),
         };
@@ -36,7 +37,15 @@ impl DeckSpace<'_> {
             return Err(SearchOutcome { decks: vec![], incomplete: None, uncapped: false });
         }
         let crate::deck::space::ReducedEntries { entries: legal_entries, set_id } =
-            self.reduced_cached(chances.model, trainees, trainee_ids);
+            if matches!(mode, SearchMode::All { .. }) {
+                // The unrestricted set gets a reserved cache id; reduced sets use consecutive ids from zero.
+                crate::deck::space::ReducedEntries {
+                    entries: std::rc::Rc::new((0..self.card_indices.len()).collect()),
+                    set_id: usize::MAX,
+                }
+            } else {
+                self.reduced_cached(chances.model, trainees, trainee_ids)
+            };
         let legal_tables = self.legal_tabs(&legal_entries, set_id, trainee_ids);
         if legal_tables.too_many_characters {
             return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit), uncapped: false });

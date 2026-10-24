@@ -100,6 +100,29 @@ impl Multi<'_> {
         }
         let mut scan = SharedScan::new(self.inputs.data, structure, lineage_chances, floor, self.loop_limit);
         self.seed_shared(state, &mut scan);
+        if scan.decks.len() < self.loop_limit
+            && let Some(bounds) = &state.deck_bounds
+        {
+            // Skyline seeds can omit weaker existing decks. Fill the requested places from the complete catalogue
+            // before the band uses its k-th cutoff; rebuild interchangeable plain pals for this loop's legality.
+            let plain_count = self.inputs.deck_space.legal_plain(&scan.member_ids).len();
+            for bound in bounds {
+                if bound.selection.plain_pals > plain_count
+                    || bound
+                        .deck
+                        .ids
+                        .iter()
+                        .any(|id| scan.member_ids.iter().any(|&uma| self.card_of[id].blocks(uma, crate::checks::get())))
+                {
+                    continue;
+                }
+                let deck = self.inputs.deck_space.pdeck(&bound.selection, &scan.member_ids);
+                self.score_shared(&mut state.tally, &mut scan, &deck);
+                if scan.decks.len() >= self.loop_limit {
+                    break;
+                }
+            }
+        }
         let complete = if cap > 1.0 && !scan.decks.is_empty() {
             self.band_shared(&mut state.state_bounds, &mut state.tally, &mut scan, cap)
         } else {

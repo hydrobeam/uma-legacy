@@ -20,9 +20,12 @@ mod scratch;
 mod traverse;
 mod walk;
 
-/// The two enumeration passes have different stopping rules and inputs.
+/// Enumeration passes have different stopping rules and inputs.
 #[derive(Clone, Copy)]
 pub(crate) enum SearchMode {
+    /// Enumerate the unreduced deck space, up to `max_decks`: empty trainee slices and one empty clause with a -inf
+    /// threshold. Keeping raw entries preserves every possible loop's deck identities.
+    All { max_decks: usize },
     /// Keep the first highest-value deck strictly above the initial floor.
     Best { seed: f64 },
     /// Collect decks that can reach a clause's threshold under its structure-class cap, pruned also by `bound`.

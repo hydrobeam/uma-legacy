@@ -5,6 +5,7 @@
 //! answers.
 //! - `tables`: per-uma exact values, chance-grid ceilings and skyline clusters, the bounds every pass reads.
 //! - `shared`: exact shared-deck scans and their cached results.
+//! - `deck_bounds`: individual-deck ceilings for small fixed-pal spaces.
 //! - `bands`: loop-structure bands, schedule solving and the budgeted certification passes.
 //! - `report`: the picks, JSON results and diagnostic summaries.
 use self::shared::SharedResult;
@@ -24,6 +25,7 @@ use crate::uma::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
 use std::borrow::Cow;
 mod bands;
+mod deck_bounds;
 mod report;
 mod shared;
 mod tables;
@@ -48,10 +50,15 @@ pub(super) struct LoopJobInputs<'data> {
 /// seed exact scoring; `DeckSpace` searches the remaining legal decks under their assumed structure-class caps.
 /// `stats`: the deck enumeration's counters, reported with the loops.
 pub(super) fn run_multi(inputs: LoopJobInputs, stats: Value) -> Value {
-    let (search, mut state) = match Multi::new(inputs) {
+    let (mut search, mut state) = match Multi::new(inputs) {
         Ok(search) => search,
         Err(error) => return error,
     };
+    state.deck_bounds = search.deck_bounds(&mut state.state_bounds);
+    if let Some(bounds) = &state.deck_bounds {
+        // Only a complete superset can prove there are fewer possible identities than requested.
+        search.loop_limit = search.loop_limit.min(bounds.len()).max(1);
+    }
     let (pass, certified_cap) = search.certify(&mut state);
     if pass.solved.is_empty() {
         return json!({"error": "No loop contains all the required umas."});
@@ -127,6 +134,17 @@ struct SharedDeckKey {
     variants: Vec<u32>,
     plain_pals: usize,
 }
+impl SharedDeckKey {
+    /// The key owns an identity snapshot independently of the scored deck retained in a pass.
+    fn of(deck: &PDeck) -> Self {
+        Self {
+            card_ids: deck.ids.clone(),
+            end_links: deck.ends.clone(),
+            variants: deck.variants.clone(),
+            plain_pals: deck.plain_ids.len(),
+        }
+    }
+}
 
 /// Read-only loop-search context after setup: the job, skyline classes and clusters, and fixed ceiling tables.
 /// Phases borrow this beside the mutable `LoopSearchState`; reporting only reads its tally.
@@ -173,6 +191,7 @@ struct Multi<'data> {
 /// Caches, reusable cluster buffers and work accounting for one loop job, retained across certification passes.
 /// Owned beside `Multi` by `run_multi`; only phases that fill or update them receive a mutable borrow.
 struct LoopSearchState {
+    deck_bounds: Option<Vec<deck_bounds::DeckBound>>,
     /// the clusters' bounds in reused buffers (`bb_max`, `sky_top`)
     cluster_bound_scratch: Vec<ByBound>,
     skyline_bound_scratch: Vec<ByBound>,
@@ -366,6 +385,7 @@ impl<'data> Multi<'data> {
             inputs,
         };
         let mut state = LoopSearchState {
+            deck_bounds: None,
             cluster_bound_scratch: Vec::new(),
             skyline_bound_scratch: Vec::new(),
             relaxed_ceiling_cache: UmaTable(vec![[f64::NAN; NG]; uma_count]),

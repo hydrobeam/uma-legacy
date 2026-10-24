@@ -3,10 +3,21 @@ use serde_json::{Value, json};
 use std::{fs, process::Command};
 
 fn run(job: &Value) -> Value {
+    run_command(job, Command::new(env!("CARGO_BIN_EXE_loopopt")))
+}
+
+fn run_bounded(job: &Value) -> Value {
+    // Kill the child on regression instead of leaving the test suite in an hours-long schedule search.
+    let mut command = Command::new("timeout");
+    command.args(["10s", env!("CARGO_BIN_EXE_loopopt")]);
+    run_command(job, command)
+}
+
+fn run_command(job: &Value, mut command: Command) -> Value {
     let tag = job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)));
     let path = std::env::temp_dir().join(format!("uma-rotations-{}-{tag}.json", std::process::id()));
     fs::write(&path, job.to_string()).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
+    let output = command
         .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
         .args(["data.json", path.to_str().unwrap()])
         .output()
@@ -14,6 +25,54 @@ fn run(job: &Value) -> Value {
     fs::remove_file(path).unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     serde_json::from_slice(&output.stdout).unwrap()
+}
+
+/// The runner-up is much weaker than the best deck. A bound against only the runner-up used to schedule thousands
+/// of loops that merely rediscovered the best deck; both multi-result jobs exceeded the timeout.
+#[test]
+fn fixed_pals_distinct_decks_finish() {
+    let mut j = job(false, json!([3, 4]), json!([]));
+    j["pals"] = json!(5);
+    let single = run_bounded(&j);
+    for count in [2, 3] {
+        j["top_decks"] = json!(count);
+        let result = run_bounded(&j);
+        assert_eq!(result["top"].as_array().unwrap().len(), count);
+        assert_eq!(result["top"][0], single["top"][0]);
+        assert_eq!(result["proven"], json!(true));
+        assert!(result["foursomes_solved"].as_u64().unwrap() < 10);
+        let decks: Vec<String> = result["top"].as_array().unwrap().iter().map(|row| row["deck"].to_string()).collect();
+        for (i, deck) in decks.iter().enumerate() {
+            assert!(!decks[..i].contains(deck));
+        }
+    }
+}
+
+/// The complete deck space contains one identity: requesting three must return that deck with its best loop.
+#[test]
+fn fixed_pals_fewer_decks_than_requested() {
+    let mut j = job(false, json!([3, 4]), json!([]));
+    j["deck_size"] = json!(1);
+    j["pals"] = json!(1);
+    j["owned_cards"] = json!([30052]);
+    j["lock_cards"] = json!([30052]);
+    let single = run_bounded(&j);
+    j["top_decks"] = json!(3);
+    let result = run_bounded(&j);
+    assert_eq!(result["top"], single["top"]);
+    assert_eq!(result["top"].as_array().unwrap().len(), 1);
+    assert_eq!(result["proven"], json!(true));
+
+    // Two versions of Light Hello: the skyline omits the weaker deck, which must still be returned.
+    j["owned_cards"] = json!([10083, 30052]);
+    j["lock_cards"] = json!([]);
+    for count in [2, 3] {
+        j["top_decks"] = json!(count);
+        let result = run_bounded(&j);
+        assert_eq!(result["top"].as_array().unwrap().len(), 2);
+        assert_eq!(result["top"][0], single["top"][0]);
+        assert_eq!(result["proven"], json!(true));
+    }
 }
 fn job(per_uma: bool, sizes: Value, require: Value) -> Value {
     let mut j: Value = serde_json::from_str(

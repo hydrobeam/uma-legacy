@@ -322,6 +322,10 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
                         } else {
                             (0..clauses.len())
                                 .map(|clause_index| {
+                                    if clauses[clause_index].threshold == f64::NEG_INFINITY {
+                                        // An unrestricted catalogue must include zero-valued decks too.
+                                        return f64::INFINITY;
+                                    }
                                     rho * clause_values[clause_index] / clauses[clause_index].threshold.max(1e-300)
                                 })
                                 .fold(f64::NEG_INFINITY, f64::max)
