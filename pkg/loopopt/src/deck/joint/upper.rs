@@ -4,7 +4,8 @@
 use crate::deck::chains::{ChainKind, event_pmf_job, key_level};
 use crate::deck::joint::{JointQuery, MissFactors, land_factor};
 use crate::deck::sources::{
-    LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint, group_gh, group_nuod,
+    LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint, group_gh,
+    group_orthant_certified,
 };
 use crate::skills::Model;
 struct BoundTarget {
@@ -32,7 +33,8 @@ struct ChainPair {
 /// The proof writes each rising group factor as a positive combination of indicators {X_i >= t}; the checked
 /// inequality bounds each term, giving U = sum_n P(N = n) product_groups E[group factor | n], times the factors
 /// of targets outside those groups. Event outcomes and training hints are independent of the chain allocation.
-/// Event groups must pass `group_nuod`, since their per-target marginals replace the full outcome distribution.
+/// Event groups must pass `group_orthant_certified` (the inequality at every hint level), since their per-target
+/// marginals replace the full outcome distribution and each target's factor rises with gold as well as with any hint.
 /// Returns None when either dependence check is unproven; callers must then use a different bound or score exactly.
 pub(crate) fn upper_na(
     model: &Model,
@@ -51,7 +53,7 @@ pub(crate) fn upper_na(
                     .fixed_outcomes
                     .iter()
                     .chain(sources.chain_outcomes.iter().map(|outcome| &outcome.outcomes))
-                    .find(|candidate| group_gh(candidate).len() >= 2 && !group_nuod(candidate))
+                    .find(|candidate| group_gh(candidate).len() >= 2 && !group_orthant_certified(candidate))
             {
                 eprintln!("why: group {group:?}");
             }

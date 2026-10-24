@@ -843,6 +843,9 @@ fn group_level_orthant_check() {
         EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 1, level: 1 }] },
     ];
     assert!(group_nuod(&g) && !group_nuod_lvl(&g));
+    // such a group must not reach `upper_na`: its marginals understate the gold-and-white outcome (a coverage-1
+    // trainee on target 0: exact W[0.5 W + 0.2 (G - W)] against the marginals' W[0.5 W + 0.1 (G - W)])
+    assert!(TargetSources { fixed_outcomes: vec![g], ..Default::default() }.finish().uncertified_orthant);
     // three targets, white only, joint terms below the products (a card's training draws)
     assert!(group_nuod_lvl(&vec![
         EventOutcome { probability: 0.2, rewards: vec![TargetReward { target: 0, level: 1 }] },

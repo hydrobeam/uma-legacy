@@ -339,8 +339,9 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   included; with two cards feeding one target, it checks every up-set of their pair. With every card grouped with
   the targets its chain feeds, E[Π groups | n] ≤ Π E[group | n]. A target that would join a larger group (three or
   more feeding cards, or two other than the one pair) is taken at every feeder's full progress instead, a constant
-  at least its factor on every chain state. Event outcomes enter at their marginal chances after `group_nuod`
-  checks their dependence. U = Σ_n P(n) Π E[· | n] ≥ V. The bound returns `None` when its dependence checks fail;
+  at least its factor on every chain state. Event outcomes enter at their marginal chances after `group_orthant_certified`
+  checks their dependence at every level (a target's factor rises with gold as well as with any hint): `group_nuod`
+  for a white-only group, `group_nuod_lvl` for one giving gold. U = Σ_n P(n) Π E[· | n] ≥ V. The bound returns `None` when its dependence checks fail;
   callers then use another bound or score exactly. `UPPER_CHECK=1` asserts U ≥ V for covered decks scored through
   the loop search's exact-value cache.
 - **Loop-search state.** Setup builds `Multi` and `LoopSearchState` once; `run_multi` owns both across certification

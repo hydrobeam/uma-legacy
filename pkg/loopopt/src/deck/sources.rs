@@ -220,6 +220,13 @@ pub(super) fn group_nuod(group: &Group) -> bool {
     GN.with(|cache| cache.borrow_mut().insert(key, certified));
     certified
 }
+/// What `upper_na` needs of a group: the orthant inequality at every hint level, since a target's factor rises with
+/// gold as well as with any hint. A white-only group has one level, so the any-hint check is that (`group_nuod`, up to
+/// 20 targets); a group giving gold needs `group_nuod_lvl` (up to 6).
+pub(super) fn group_orthant_certified(group: &Group) -> bool {
+    let gives_gold = group.iter().any(|outcome| outcome.rewards.iter().any(|reward| reward.level >= 2));
+    if gives_gold { group_nuod_lvl(group) } else { group_nuod(group) }
+}
 /// Whether a group's per-target hint levels (Y_k: 0 none, 1 white, 2 gold, the best level its outcome gives k) are
 /// negatively upper-orthant dependent at every level: for every set S of two or more of its targets and every s in
 /// {1, 2}^S, P(Y_k >= s_k for all k in S) <= prod_S P(Y_k >= s_k). What `certified_cap_free` needs: a nonnegative
@@ -340,7 +347,7 @@ impl TargetSources {
             .fixed_outcomes
             .iter()
             .chain(self.chain_outcomes.iter().map(|chain| &chain.outcomes))
-            .any(|group| group_gh(group).len() >= 2 && !group_nuod(group));
+            .any(|group| group_gh(group).len() >= 2 && !group_orthant_certified(group));
         self.uncertified_association = self
             .fixed_outcomes
             .iter()
