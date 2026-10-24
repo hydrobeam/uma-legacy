@@ -170,7 +170,7 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
 ## Planner
 
 The career page's plan (`next` job, `career::plan::index_rule`; `docs/SOLVER.md`, *Next career*).
-`val/planval.py` runs the nine jobs listed in `val/plan/jobs.json`; its comparison skips work counters as described
+`val/planval.py` runs the ten jobs listed in `val/plan/jobs.json`; its comparison skips work counters as described
 in *Protocol*. The plan reports its work in `next.work` and phase timers and counters in `next.work.prof`, including
 `score_ms`, `gen_ms` and `corner_ms`. `val/mono.py` compares each pool with and without its last veteran, holding the
 smaller pool's fit fixed, and fails on a rise in V above 1e-9 relative. Enable `next.proxy_check` when checking a
