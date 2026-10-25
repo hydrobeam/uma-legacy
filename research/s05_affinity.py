@@ -14,17 +14,40 @@ share its lineage, so the variance sums each run's squared residual, observed mi
 grid maximum-likelihood estimate, the same H0/H1 test with the affinity slope s in b (1 + s A / 100) refitted on the
 ordinary ancestors' trials (the fit's premise: the gap is not the ordinary trials' own misfit; section 3 keeps s = 1),
 the ordinary ancestors' observed / predicted at s = 1 as context, and the records' +3 per shared win.
+
+The planner's shared wins o(a, b) = sum_r P_a(r) P_b(r) use base aptitudes (section 4's table with the goal shift, on
+data.json's base bp), which section 4 shows under-predict wins. Measured here on every career's attempts at the 34:
+per (career, race), P(at least one win) on the base table against the record's win; over every pair of careers of
+different characters at the same race, the summed products of their wins against the summed products of their base
+chances (the planner's o for such a pair), with a delete-a-group jackknife interval over JACKKNIFE groups of runs by id,
+over every row and over pairs whose two base chances lie in one band (BASE_BANDS).
+Derived from it: dividing each record's shared-win part of A by that ratio gives the affinities the planner would
+compute for the lineage; observed / predicted on the ordinary trials with those affinities (the pooled ratio applied to
+every pair; IT's chosen schedules, not the planner's).
 """
 
-import collections, math
+import collections, itertools, math
 from collections.abc import Callable
 from typing import Any, NamedTuple
+import numpy as np
 import common
 from common import GRANDPARENT_ROWS, PAIR_ROW, Trial, lineage, relations, trials
 from common import Finding, Run, Value
 
 SEC: str = "5"
 CHI95: float = 1.920729
+JACKKNIFE: int = 20  # groups of runs (by run id) for the shared-win ratio's interval
+# bands of a career's base-table chance of winning a race, for where the shared-win shortfall lies
+BASE_BANDS: dict[str, tuple[float, float]] = {
+    "below 0.80": (0.0, 0.8),
+    "0.80-0.95": (0.8, 0.95),
+    "0.95 and up": (0.95, 2.0),
+}
+# section 4's race reading (s04_races.py; these belong in common.py): month order, the records' short race name
+MONTHS: dict[str, int] = {
+    m: i for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
+}
+ALIAS: dict[str, str] = {"M.C. Nambu Hai": "Mile Championship Nambu Hai"}
 
 
 class PassSum(NamedTuple):
@@ -33,6 +56,98 @@ class PassSum(NamedTuple):
     observed: int
     predicted: float
     z: float  # (observed - predicted) / its run-clustered sd
+
+
+class PairRatio(NamedTuple):
+    """observed over base-table products, summed over pairs of careers of different characters at the same race"""
+
+    rows: int  # (career, race) rows the pairs are drawn from
+    ratio: float
+    low: float  # its jackknife 95% interval
+    high: float
+
+
+class SharedWins(NamedTuple):
+    """the planner's base-aptitude shared wins against real careers' (shared_wins())"""
+
+    rows: int  # (career, race) rows
+    single: float  # observed / predicted P(at least one win) per (career, race)
+    pairs: PairRatio  # every row
+    by_base: dict[str, PairRatio]  # pairs whose two careers both have a base chance in the band (BASE_BANDS)
+
+
+def race_turn(year: int, turn: str) -> int:
+    """the turn index of a record's (year, 'Mon half'), as section 4"""
+    month, half = turn.split()
+    return (year - 1) * 24 + MONTHS[month] * 2 + int(half) - 1
+
+
+def base_win(bp: int, position: int, goal: bool, pen: list[int]) -> float:
+    """section 4's adopted table on base aptitudes: a goal race from the 2nd in a row pays the previous position's
+    penalty, positions capped at 6"""
+    s = min(position, 6) - 1 if goal and position >= 2 else position
+    return min(100, max(0, bp - pen[min(s, 6) - 1])) / 100
+
+
+def race_rows(R: list[Run]) -> np.ndarray:
+    """one row per (career, race at the 34 she ran): [run id, character, race index, P(at least one win) on the base
+    table, won at least once]; runs with two races on one turn, or a trainee not in data.json, are left out"""
+    d = common.gjson("data.json")
+    umas = {u["id"]: u for u in d["umas"]}
+    index = {n: i for i, n in enumerate(d["race_names"])}
+    rows: list[tuple[int, int, int, float, int]] = []
+    for r in R:
+        races = sorted(((race_turn(x["year"], x["turn"]), x) for x in r["races"]), key=lambda t: t[0])
+        u = umas.get(r["chara"])
+        if u is None or len({t for t, _ in races}) != len(races):
+            continue
+        miss: dict[int, float] = {}  # race index -> P(no win) over her attempts
+        won: dict[int, int] = {}
+        position, previous = 0, None
+        for t, x in races:
+            position = position + 1 if previous == t - 1 else 1  # any race counts toward the streak
+            previous = t
+            ri = index.get(ALIAS.get(x["race"], x["race"]))
+            offered = u["turns"][t] if ri is not None and t < len(u["turns"]) else []
+            option = next((o for o in offered if o["race"] == ri), None)
+            if option is None:
+                continue
+            miss[ri] = miss.get(ri, 1.0) * (1 - base_win(option["bp"], position, x["required"], d["pen"]))
+            won[ri] = won.get(ri, 0) | int(x["won"])
+        rows += [(r["id"], r["chara"], ri, 1 - m, won[ri]) for ri, m in miss.items()]
+    return np.array(rows, float)
+
+
+def shared_wins(R: list[Run]) -> SharedWins:
+    """per (career, race) and over pairs of careers of different characters at the same race, observed over the base
+    table's prediction; the pairs' interval by a delete-a-group jackknife over JACKKNIFE groups of runs (by id)"""
+    rows = race_rows(R)
+    run, chara, race, p, won = rows.T
+    _, by_race = np.unique(race, return_inverse=True)
+    _, by_race_chara = np.unique(race * 10**7 + chara, return_inverse=True)
+
+    def pair_sums(keep: np.ndarray) -> tuple[float, float]:
+        """(sum of won_a won_b, sum of p_a p_b) over pairs at the same race of different characters, rows in keep"""
+
+        def excess(group: np.ndarray) -> tuple[float, float]:  # sums over every pair within each group
+            W = np.bincount(group, won * keep)
+            S, SS = np.bincount(group, p * keep), np.bincount(group, p * p * keep)
+            return float((W * W - W).sum()), float((S * S - SS).sum())
+
+        (w_all, p_all), (w_same, p_same) = excess(by_race), excess(by_race_chara)
+        return w_all - w_same, p_all - p_same
+
+    group = run.astype(int) % JACKKNIFE
+
+    def pair_ratio(keep: np.ndarray) -> PairRatio:
+        """the ratio over the rows in keep (0 / 1), with its delete-a-group jackknife interval"""
+        whole = float(np.divide(*pair_sums(keep)))
+        leave_out = np.array([np.divide(*pair_sums(keep * (group != g))) for g in range(JACKKNIFE)])
+        se = math.sqrt((JACKKNIFE - 1) / JACKKNIFE * float(((leave_out - leave_out.mean()) ** 2).sum()))
+        return PairRatio(int(keep.sum()), whole, whole - 1.96 * se, whole + 1.96 * se)
+
+    by_base = {k: pair_ratio(((p >= lo) & (p < hi)).astype(float)) for k, (lo, hi) in BASE_BANDS.items()}
+    return SharedWins(len(p), float(won.sum() / p.sum()), pair_ratio(np.ones(len(p))), by_base)
 
 
 def roll(t: Trial, k: float, slope: float = 1.0) -> float:
@@ -119,7 +234,7 @@ def claims() -> list[Value | Finding]:
     R = common.runs()
     if R is None:
         return []
-    ts = trials(R)
+    ts = trials(R, race=True)
     self_gps = [t for t in ts if t.category == "G_self"]
     with_parents = [t for t in ts if t.category in ("G_self", "P_selfgp")]  # both move with tri(T, P, T)
 
@@ -173,6 +288,7 @@ def claims() -> list[Value | Finding]:
             f"{ratio('P')}; {ratio('G')}",
         )
     )
+    out += planned_shared_win_claims(R, ts)
     tc = table_check(R)
     rows = sum(v for k, v in tc.items() if k[0] == "all rows")
     bad = tc[("all rows", "other")]
@@ -183,6 +299,92 @@ def claims() -> list[Value | Finding]:
             "total = base + bonus) on every row: a further implementation agreeing, not the game's rule",
             rows > 0 and bad == 0,
             f"{rows - bad:,} of {rows:,} rows",
+        )
+    )
+    return out
+
+
+def planned_shared_win_claims(R: list[Run], ts: list[Trial]) -> list[Value | Finding]:
+    """the planner's base-aptitude shared wins against real careers', and what dividing the records' shared-win part
+    of affinity by that ratio does to observed / predicted on the ordinary parents' and grandparents' trials"""
+    sw = shared_wins(R)
+    shrink = 1 - 1 / sw.pairs.ratio  # the share of each shared-win count the planner's base aptitudes leave out
+    out: list[Value | Finding] = [
+        Value(SEC, "career-race rows at the 34", sw.rows),
+        Value(SEC, "wins per career and race, observed / base table", sw.single),
+        Value(SEC, "shared wins over pairs, observed / base table", sw.pairs.ratio),
+        Value(SEC, "shared wins over pairs, 95% low", sw.pairs.low),
+        Value(SEC, "shared wins over pairs, 95% high", sw.pairs.high),
+    ]
+    for band, c in sw.by_base.items():
+        out += [
+            Value(SEC, f"shared wins over pairs, base chance {band}: rows", c.rows),
+            Value(SEC, f"shared wins over pairs, base chance {band}: observed / base table", c.ratio),
+            Value(SEC, f"shared wins over pairs, base chance {band}: 95% low", c.low),
+            Value(SEC, f"shared wins over pairs, base chance {band}: 95% high", c.high),
+        ]
+    top = list(BASE_BANDS)[-1]
+    top_shrink = 1 - 1 / sw.by_base[top].ratio  # the same at the ratio of pairs both at the top band's chances
+    planned: dict[str, common.ClusterRatio] = {}  # at the pooled ratio
+    planned_top: dict[str, common.ClusterRatio] = {}  # at the top band's ratio
+    for cat, label in (("P", "parents"), ("G", "grandparents")):
+        sel = [t for t in ts if t.category == cat]
+        real = sum(min(1.0, t.base * (1 + t.affinity_h0 / 100)) for t in sel)
+        chance = [min(1.0, t.base * (1 + (t.affinity_h0 - shrink * t.race_part) / 100)) for t in sel]
+        planned[label] = common.cluster_ci([t.passed for t in sel], chance, [t.run for t in sel])
+        chance_top = [min(1.0, t.base * (1 + (t.affinity_h0 - top_shrink * t.race_part) / 100)) for t in sel]
+        planned_top[label] = common.cluster_ci([t.passed for t in sel], chance_top, [t.run for t in sel])
+        at_top = f"with the planner's shared wins at the {top} ratio"
+        out += [
+            Value(SEC, f"{label}: obs / pred {at_top}", planned_top[label].ratio),
+            Value(SEC, f"{label}: obs / pred {at_top}, 95% low", planned_top[label].low),
+            Value(SEC, f"{label}: obs / pred {at_top}, 95% high", planned_top[label].high),
+            Value(
+                SEC,
+                f"{label}: shared-win share of affinity",
+                sum(t.race_part for t in sel) / sum(t.affinity_h0 for t in sel),
+            ),
+            Value(SEC, f"{label}: predicted passes, planner's shared wins over the records'", sum(chance) / real),
+            Value(SEC, f"{label}: obs / pred with the planner's shared wins", planned[label].ratio),
+            Value(SEC, f"{label}: obs / pred with the planner's shared wins, 95% low", planned[label].low),
+            Value(SEC, f"{label}: obs / pred with the planner's shared wins, 95% high", planned[label].high),
+        ]
+    out.append(
+        common.finding(
+            SEC,
+            "On base aptitudes the planner's shared wins fall short of real careers': over pairs of careers of "
+            "different characters at the same race, both winning is more frequent than the base table's products "
+            "predict (jackknife 95% interval above 1)",
+            sw.pairs.low > 1,
+            f"pairs {sw.pairs.ratio:.4f} [{sw.pairs.low:.4f}, {sw.pairs.high:.4f}]; one career {sw.single:.4f}, over "
+            f"{sw.rows:,} career-race rows",
+        )
+    )
+    bands = list(sw.by_base.values())  # BASE_BANDS order, lowest chance first
+    out.append(
+        common.finding(
+            SEC,
+            "The shortfall grows as the base chance falls: in every band of the two careers' base chances the pair "
+            "ratio's jackknife 95% interval lies above 1, and each band's interval lies wholly above the next higher "
+            "band's",
+            all(c.low > 1 for c in bands) and all(a.low > b.high for a, b in itertools.pairwise(bands)),
+            "; ".join(
+                f"{k}: {c.ratio:.3f} [{c.low:.3f}, {c.high:.3f}] ({c.rows:,} rows)" for k, c in sw.by_base.items()
+            ),
+        )
+    )
+    out.append(
+        common.finding(
+            SEC,
+            f"The planner's net bias on parents' rolls depends on where its races fall: with each record's shared "
+            f"wins cut by the pooled pair ratio, observed / predicted over the ordinary parents' and the "
+            f"grandparents' trials each has its run-clustered 95% interval above 1; cut by the ratio of pairs both "
+            f"at base chances {top}, the parents' interval lies below 1",
+            all(c.low > 1 for c in planned.values()) and planned_top["parents"].high < 1,
+            "pooled: "
+            + "; ".join(f"{k} {c.ratio:.3f} [{c.low:.3f}, {c.high:.3f}]" for k, c in planned.items())
+            + f" | at {top}: "
+            + "; ".join(f"{k} {c.ratio:.3f} [{c.low:.3f}, {c.high:.3f}]" for k, c in planned_top.items()),
         )
     )
     return out

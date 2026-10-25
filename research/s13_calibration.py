@@ -26,11 +26,12 @@ common.fingerprint()):
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
 same parent twice or the trainee as a parent, shared-G1 counts that do not fit the race list."""
 
-import collections, math, os, random, sys
+import collections, math, os, sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from typing import Any, NamedTuple
+import numpy as np
 import common
 from common import Value, Finding, Run, finding, wilson, DEFAULT
 from common import CalRow, RunRows, Model, OUTD, card_variants, build_jobs, run_solver, rows_of
@@ -166,18 +167,31 @@ class Report:
         return res
 
 
-def bootstrap_interval[T](
-    statistic: Callable[[list[T]], float], xs: Sequence[T], draws: int = 1000, seed: int = 1
-) -> tuple[float, float]:
-    """the 95% percentile interval of statistic over seeded resamples of xs"""
-    rnd = random.Random(seed)
-    n = len(xs)
-    v: list[float] = []
-    for _ in range(draws):
-        s = [xs[rnd.randrange(n)] for _ in range(n)]
-        v.append(statistic(s))
-    v.sort()
-    return v[int(0.025 * draws)], v[int(0.975 * draws)]
+BOOTSTRAP_DRAWS: int = 10_000  # enough that the 95% bounds move by under 0.01 between seeds
+
+
+def ratio_draws(obs: Sequence[float], pred: Sequence[float], seed: int, draws: int = BOOTSTRAP_DRAWS) -> np.ndarray:
+    """sum(obs) / sum(pred) over seeded resamples of whole runs (one entry per run), in chunks to bound memory"""
+    o, p = np.asarray(obs, float), np.asarray(pred, float)
+    rng = np.random.default_rng(seed)
+    out: list[np.ndarray] = []
+    for start in range(0, draws, 500):
+        ix = rng.integers(0, len(o), (min(500, draws - start), len(o)))
+        out.append(o[ix].sum(1) / np.maximum(1e-300, p[ix].sum(1)))
+    return np.concatenate(out)
+
+
+def percentile_interval(v: np.ndarray) -> tuple[float, float]:
+    """the 95% percentile interval of bootstrap draws"""
+    lo, hi = np.quantile(v, [0.025, 0.975])
+    return float(lo), float(hi)
+
+
+def effective_runs(weights: Sequence[float]) -> float:
+    """(sum w)^2 / sum w^2: how many equally weighted runs carry the same information as these weighted ones (a
+    ratio of sums is a weighted mean, weight each run's prediction)"""
+    s, s2 = sum(weights), sum(w * w for w in weights)
+    return s * s / s2 if s2 else float("nan")
 
 
 # ---------------------------------------------------------------- row selections and predictions
@@ -338,6 +352,10 @@ def covers(s: Stat) -> bool:
     return s.ratio_low <= 1 <= s.ratio_high
 
 
+def covers_interval(v: RatioInterval) -> bool:
+    return v.low <= 1 <= v.high
+
+
 def below(s: Stat) -> bool:
     return s.ratio_high < 1
 
@@ -383,18 +401,12 @@ PLAYTIMES_OVER: int = 20166
 RACING_SPIRIT_STAMINA: int = 21010
 NO_DECK_SOURCE: set[int] = {RACING_SPIRIT_STAMINA}  # no deck card can hint it: no deck test per target
 TAIL_HELD_HIGH: int = 20161
-# the named exception of the inheritance tests: its inspirations read short of q in every pool (its single-ancestor
-# trials too, section 3) and no factor mapping error explains it; the q tests read the other seven targets, and it is
-# reported on its own
+# the target the per-roll and by-carrier inheritance tests leave out, and report on their own: the one target of eight
+# whose own interval excludes 1. The heterogeneity test (heterogeneity_chi2) reads whether the targets differ at all;
+# where they do not, leaving it out is a selection, which the findings say
 INHERITANCE_EXCEPTION: int = TAIL_HELD_HIGH
 INHERITANCE_INTERVAL_QUOTED: set[int] = {TAIL_HELD_HIGH}  # the per-target intervals the document quotes
 ACQUIRED_INTERVAL_QUOTED: set[int] = {20046, 20203}
-# the golds whose acquisition the document lists: (group, outside Unity Cup only)
-GOLD_TESTS: tuple[tuple[int, bool], ...] = (
-    (20203, False),
-    (20165, False),
-    (20046, True),
-)
 LARGE_PAIR: int = 40  # rows a single-source pair needs for the document's table
 
 
@@ -412,6 +424,30 @@ class Calibration:
     records: list[Run] | None  # the run records (their priority lists)
     card_id: dict[str, int]  # web_cards.json: card name -> id
     card_name: dict[int, str]  # id -> card name
+    legs: dict[tuple[int, int], list[Leg]]  # (run, target) -> the legacies carrying its spark, as the row's plegs
+
+
+class Leg(NamedTuple):
+    """one legacy carrying a target's spark: its generation, base b (3% per star) and affinity A"""
+
+    parent: bool
+    base: float
+    affinity: float
+
+
+def leg_details(res: dict[str, Any]) -> dict[tuple[int, int], list[Leg]]:
+    """(run, target) -> each legacy carrying the target's spark, in the order of the row's plegs (common.run_rows: the
+    career's slots with a star of it), from the solver's slots. Should move to common.py beside run_rows."""
+    out: dict[tuple[int, int], list[Leg]] = {}
+    for fid, o in res.items():
+        if not o.get("results"):
+            continue
+        career = o["results"][0]
+        for k, t in enumerate(career["targets"]):
+            out[int(fid.split("_")[0]), t["group"]] = [
+                Leg(s["kind"] == "parent", 0.03 * s["stars"][k], s["aff"]) for s in career["slots"] if s["stars"][k] > 0
+            ]
+    return out
 
 
 def calibration(R: list[Run] | None, M: Model, why: str | None) -> Calibration:
@@ -421,6 +457,7 @@ def calibration(R: list[Run] | None, M: Model, why: str | None) -> Calibration:
     rows: list[CalRow]
     runrows: list[RunRows]
     badrows: dict[str, int]
+    res: dict[str, Any] = {}
     if why:  # nothing computed: only the findings, as "needs data"
         bad, drop, rows, runrows, badrows = [], {}, [], [], {}
     else:
@@ -443,6 +480,7 @@ def calibration(R: list[Run] | None, M: Model, why: str | None) -> Calibration:
         R,
         card_id={c["name"]: c["id"] for c in web_cards},
         card_name={c["id"]: c["name"] for c in web_cards},
+        legs=leg_details(res),
     )
 
 
@@ -520,6 +558,12 @@ class InheritanceTests:
     buckets: list[Bucket]  # reliability by q (every row)
     misses: list[Bucket]  # buckets with a positive prediction outside their own interval
     joint: Chi2  # the buckets jointly
+    targets_differ: Chi2  # the eight targets' ratios against one common ratio (heterogeneity_chi2)
+    dependence: Dependence  # within a run, across targets
+    # every target, Tail Held High included (leaving out the one target whose interval excludes 1 is a selection)
+    every_spark_years: CountTest
+    every_hits: CountTest
+    by_carriers_every: dict[int, Stat]
 
 
 def spark_year_odds(r: CalRow) -> float:
@@ -535,19 +579,131 @@ def clustered_z(resid: list[float], rows: list[CalRow]) -> float:
     return math.copysign(math.sqrt(x2), sum(resid))
 
 
-def reliability_chi2(rows: list[CalRow]) -> Chi2:
-    """jointly over the buckets with a positive prediction (and some q strictly between 0 and 1): the run-clustered Wald
-    chi2 of the buckets' observed - expected (a run's targets fall in several buckets), one degree of freedom per
-    bucket, nothing fitted"""
+def reliability_chi2(
+    rows: list[CalRow], pred: Callable[[CalRow], float] = inspiration_odds, obs: RowFn = inspired
+) -> Chi2:
+    """jointly over the buckets with a positive prediction (and some prediction strictly between 0 and 1): the
+    run-clustered Wald chi2 of the buckets' observed - expected (a run's targets fall in several buckets), one degree of
+    freedom per bucket, nothing fitted"""
     resid: list[tuple[int, float]] = []
     runs: list[int] = []
     for j, (a, b) in enumerate(pairwise(EDGES)):
-        qs = [r for r in rows if a <= r["q"] < b]
-        if b <= ZERO_EDGE or not any(0 < r["q"] < 1 for r in qs):
+        qs = [r for r in rows if a <= pred(r) < b]
+        if b <= ZERO_EDGE or not any(0 < pred(r) < 1 for r in qs):
             continue
-        resid += [(j, r["o_insp"] - r["q"]) for r in qs]
+        resid += [(j, obs(r) - pred(r)) for r in qs]
         runs += [r["run"] for r in qs]
-    return Chi2(*common.cluster_chi2(resid, runs)) if resid else Chi2(0.0, 0, float("nan"))
+    return cluster_chi2_safe(resid, runs) if resid else Chi2(0.0, 0, float("nan"))
+
+
+def cluster_chi2_safe(resid: list[tuple[Any, float]], run: Sequence[Any]) -> Chi2:
+    """common.cluster_chi2 without the groups whose residuals are 0 in every run (no variance: e.g. a prediction of 1
+    always met), which make its covariance singular; should move into common.cluster_chi2"""
+    spread: collections.defaultdict[Any, float] = collections.defaultdict(float)
+    for g, d in resid:
+        spread[g] += d * d
+    keep = [(i, (g, d)) for i, (g, d) in enumerate(resid) if spread[g] > 0]
+    if not keep:
+        return Chi2(0.0, 0, NAN)
+    return Chi2(*common.cluster_chi2([x for _, x in keep], [run[i] for i, _ in keep]))
+
+
+def heterogeneity_chi2(rows: list[CalRow], pred: Callable[[CalRow], float], obs: RowFn, group: RowFn) -> Chi2:
+    """do the groups' observed / predicted ratios differ? Under one common ratio R (fitted: sum obs / sum pred), each
+    group's residual O_g - R E_g has mean 0. Run-clustered Wald chi2 on k - 1 of the k groups (the k residuals sum to
+    0), each run's contribution linearised for R's estimation (u_g = e_g - E_g / E x the run's total residual);
+    k - 1 degrees of freedom"""
+    from scipy.stats import chi2
+
+    groups = sorted({group(r) for r in rows})
+    if len(groups) < 2:
+        return Chi2(0.0, 0, NAN)
+    index = {g: i for i, g in enumerate(groups)}
+    E = sum(pred(r) for r in rows)
+    R = sum(1 for r in rows if obs(r)) / E
+    E_g = np.zeros(len(groups))
+    for r in rows:
+        E_g[index[group(r)]] += pred(r)
+    per_run: dict[int, np.ndarray] = collections.defaultdict(lambda: np.zeros(len(groups)))
+    for r in rows:
+        per_run[r["run"]][index[group(r)]] += (1 if obs(r) else 0) - R * pred(r)
+    e = np.array(list(per_run.values()))
+    u = e - np.outer(e.sum(1), E_g / E)
+    C = len(u)
+    total = u.sum(0)[:-1]
+    V = C / (C - 1) * (u[:, :-1].T @ u[:, :-1])
+    x2 = float(total @ np.linalg.solve(V, total))
+    return Chi2(x2, len(groups) - 1, float(chi2.sf(x2, len(groups) - 1)))
+
+
+class RollForm(NamedTuple):
+    """an alternative inheritance roll scored on the careers (the model unchanged): a legacy's per-roll chance
+    r = min(1, w b (1 + s A / 100)), the weight w on parents only, the slope s on every legacy's affinity A. Each form
+    frees one parameter, fitted by maximum likelihood on section 3's own selection of single-ancestor trials (ordinary
+    parents and grandparents: common.trials' categories P and G, as s03_inheritance.py fits them), with its
+    run-clustered 95% interval (common.robust_interval)"""
+
+    name: str  # "parent factor" (w free) or "affinity slope" (s free)
+    weight: float
+    slope: float
+    estimate: float  # the free parameter
+    low: float
+    high: float
+    trials: int
+
+
+SECTION_3_TRIALS: tuple[str, ...] = ("P", "G")  # the categories s03_inheritance.py fits its parent weight and slope on
+
+
+def roll_forms(R: list[Run] | None) -> list[RollForm]:
+    """the flat parent factor and the affinity slope, each refitted (should move to common.py, so section 3 and this
+    section share one estimator)"""
+    from scipy.optimize import minimize_scalar
+
+    ts = [t for t in common.trials(R) if t.category in SECTION_3_TRIALS] if R else []
+    if not ts:
+        return [RollForm(name, NAN, NAN, NAN, NAN, NAN, 0) for name in ("parent factor", "affinity slope")]
+    base = np.array([t.base for t in ts])
+    affinity = np.array([t.affinity_h0 for t in ts], float)
+    parent = np.array([t.category == "P" for t in ts])
+    passed = np.array([t.passed for t in ts], float)
+    _, run_ix = np.unique(np.array([t.run for t in ts]), return_inverse=True)
+
+    def per_trial_ll(w: float, s: float) -> np.ndarray:
+        p = np.clip(np.where(parent, w, 1.0) * base * (1 + s * affinity / 100), 1e-12, 1 - 1e-12)
+        return passed * np.log(p) + (1 - passed) * np.log(1 - p)
+
+    forms: list[RollForm] = []
+    for name, roll in (("parent factor", lambda x: (x, 1.0)), ("affinity slope", lambda x: (1.0, x))):
+        fit = minimize_scalar(
+            lambda x, roll=roll: -per_trial_ll(*roll(x)).sum(),
+            bounds=(0.5, 1.5),
+            method="bounded",
+            options={"xatol": 1e-7},
+        )
+        x = float(fit.x)
+        lo, hi, _ = common.robust_interval(
+            lambda t, roll=roll: dict(enumerate(np.bincount(run_ix, weights=per_trial_ll(*roll(t))))), x
+        )
+        forms.append(RollForm(name, *roll(x), x, lo, hi, len(ts)))
+    return forms
+
+
+def rolled_legs(legs: dict[tuple[int, int], list[Leg]], form: RollForm) -> Callable[[CalRow], list[float]]:
+    """a row's per-roll inspiration chances under the form (the model's own plegs where its legacies are unknown)"""
+
+    def chances(r: CalRow) -> list[float]:
+        ls = legs.get((r["run"], r["g"]))
+        if ls is None or len(ls) != len(r["plegs"]):
+            return r["plegs"]
+        return [min(1.0, (form.weight if x.parent else 1.0) * x.base * (1 + form.slope * x.affinity / 100)) for x in ls]
+
+    return chances
+
+
+def q_of_legs(legs: list[float]) -> float:
+    """P(at least one inspiration of the target over the two rolls) from its legs' per-roll chances"""
+    return 1 - (1 - (1 - math.prod(1 - x for x in legs))) ** 2
 
 
 def not_the_exception(r: CalRow) -> bool:
@@ -629,7 +785,198 @@ def inheritance_tests(cal: Calibration, out: list[Value]) -> InheritanceTests:
         Value(S3, "reliability q 0.40-0.60: observed 95% high", middle.observed_high),
         Value(S3, "reliability q 0.40-0.60: mean predicted, three places", middle.predicted),
     ]
-    return InheritanceTests(overall, without_exception, by_carriers, years, hits, buckets, misses, joint)
+    targets_differ = heterogeneity_chi2(rows, inspiration_odds, inspired, lambda r: r["g"])
+    dependence = within_run_dependence(cal.runs, every_row, inspiration_odds, inspired)
+    every_years, every_hits = per_roll_counts(rows, lambda r: r["plegs"])
+    by_carriers_every = rep.table(
+        "2. inheritance by carriers, every target", every_row, inspiration_odds, inspired, lambda r: r["nc"]
+    )
+    every_ratios = [by_carriers_every[k].ratio for k in range(1, 7) if k in by_carriers_every] or [NAN]
+    out += [
+        Value(
+            S13,
+            "2. inheritance, every target: spark-years obs / exp",
+            common.div(every_years.observed, every_years.expected),
+        ),
+        Value(S13, "2. inheritance, every target: spark-years z", every_years.z),
+        Value(
+            S13, "2. inheritance, every target: hits obs / exp", common.div(every_hits.observed, every_hits.expected)
+        ),
+        Value(S13, "2. inheritance, every target: hits z", every_hits.z),
+        Value(S13, "2. inheritance, every target, by carriers 1-6: lowest ratio", min(every_ratios)),
+        Value(S13, "2. inheritance, every target, by carriers 1-6: highest ratio", max(every_ratios)),
+        Value(
+            S13,
+            "2. inheritance, every target, by carriers 1-6: intervals excluding 1",
+            sum(1 for k in range(1, 7) if k in by_carriers_every and not covers(by_carriers_every[k])),
+        ),
+        Value(S13, "2. inheritance, within-run dependence: mean product", dependence.mean_product),
+        Value(S13, "2. inheritance, within-run dependence: 95% half-width", dependence.half_width),
+    ]
+    out += [
+        Value(S13, "2. inheritance, targets differ: chi2", targets_differ.statistic),
+        Value(S13, "2. inheritance, targets differ: degrees of freedom", targets_differ.buckets),
+        Value(S13, "2. inheritance, targets differ: p", targets_differ.p),
+        Value(S13, "2. inheritance, within-run dependence: target pairs", dependence.pairs),
+        Value(S13, "2. inheritance, within-run dependence: z", dependence.z),
+    ]
+    return InheritanceTests(
+        overall,
+        without_exception,
+        by_carriers,
+        years,
+        hits,
+        buckets,
+        misses,
+        joint,
+        targets_differ,
+        dependence,
+        every_years,
+        every_hits,
+        by_carriers_every,
+    )
+
+
+class Dependence(NamedTuple):
+    """do two targets of one run miss or beat their predictions together? The sum over runs of every pair of the run's
+    targets' residual products, sum_{i<j} (o_i - p_i)(o_j - p_j); with the targets independent given the model inputs
+    and each prediction right, its mean is 0. z: that sum over its run-clustered standard error"""
+
+    runs: int
+    pairs: int
+    mean_product: float
+    z: float
+    half_width: float  # of the mean product's 95% interval: how large a residual covariance the test could miss
+
+
+def within_run_dependence(runs: list[RunRows], sel: RowFn, pred: Callable[[CalRow], float], obs: RowFn) -> Dependence:
+    total = square = 0.0
+    pairs = used = 0
+    for pr in runs:
+        e = [(1 if obs(r) else 0) - pred(r) for r in pr["rows"] if r["g"] in DEFAULT and sel(r)]
+        if len(e) < 2:
+            continue
+        s = (sum(e) ** 2 - sum(x * x for x in e)) / 2
+        total += s
+        square += s * s
+        pairs += len(e) * (len(e) - 1) // 2
+        used += 1
+    return Dependence(
+        used,
+        pairs,
+        common.div(total, pairs),
+        common.div(total, math.sqrt(square)),
+        1.96 * common.div(math.sqrt(square), pairs),
+    )
+
+
+def per_roll_counts(rows: list[CalRow], legs: Callable[[CalRow], list[float]]) -> tuple[CountTest, CountTest]:
+    """years with an inspiration of the target and inspiration hits, observed against the legs' expectation over the two
+    rolls (a year fires with 1 - prod(1 - r_l), a legacy hits with r_l), z run-clustered"""
+
+    def year_odds(r: CalRow) -> float:
+        return 1 - math.prod(1 - x for x in legs(r))
+
+    years = CountTest(
+        sum(r["o_insp_years"] for r in rows),
+        sum(2 * year_odds(r) for r in rows),
+        clustered_z([r["o_insp_years"] - 2 * year_odds(r) for r in rows], rows),
+    )
+    hits = CountTest(
+        sum(r["o_insp_hits"] for r in rows),
+        sum(2 * sum(legs(r)) for r in rows),
+        clustered_z([r["o_insp_hits"] - 2 * sum(legs(r)) for r in rows], rows),
+    )
+    return years, hits
+
+
+def several_carriers(r: CalRow) -> bool:
+    """two or more legacies carry the target: rows that are not single-ancestor trials, the forms' fitting data"""
+    return r["nc"] >= 2
+
+
+@dataclass
+class RollFormTests:
+    """section 3's misses rescored under an alternative roll (RollForm; the model unchanged)"""
+
+    form: RollForm
+    q_rebuilt_error: float  # largest |q rebuilt from the row's legs at w = s = 1 - the solver's q|
+    spark_years: CountTest  # every target
+    ancestor_hits: CountTest
+    spark_years_without_exception: CountTest
+    overall: Stat
+    without_exception: Stat
+    exception: Stat
+    several: Stat  # rows with two or more carriers
+    several_model: Stat  # the same rows under the model
+    middle: Bucket  # the 0.40-0.60 band, by the rescored q
+    joint: Chi2  # the reliability buckets by the rescored q
+    targets_differ: Chi2
+
+
+def roll_form_tests(cal: Calibration, form: RollForm, out: list[Value]) -> RollFormTests:
+    rows, rep = cal.rows, cal.report
+    legs = rolled_legs(cal.legs, form)
+    q_scaled = {id(r): q_of_legs(legs(r)) for r in rows}
+
+    def q(r: CalRow) -> float:
+        return q_scaled[id(r)]
+
+    model = RollForm("model", 1.0, 1.0, 1.0, NAN, NAN, 0)
+    rebuilt = max((abs(q_of_legs(rolled_legs(cal.legs, model)(r)) - r["q"]) for r in rows), default=NAN)
+    years, hits = per_roll_counts(rows, legs)
+    years_rest, _ = per_roll_counts([r for r in rows if not_the_exception(r)], legs)
+    overall = rep.stat(every_row, q, inspired)
+    without_exception = rep.stat(not_the_exception, q, inspired)
+    exception = rep.stat(target_is(INHERITANCE_EXCEPTION), q, inspired)
+    several = rep.stat(several_carriers, q, inspired)
+    several_model = rep.stat(several_carriers, inspiration_odds, inspired)
+    middle = row_ci([r for r in rows if 0.4 <= q(r) < 0.6], q, inspired)
+    band = Bucket(0.4, 0.6, middle.rows, middle.observed, middle.predicted, middle.low, middle.high)
+    joint = reliability_chi2(rows, q, inspired)
+    differ = heterogeneity_chi2(rows, q, inspired, lambda r: r["g"])
+    pre = form.name
+    parameter = "weight" if form.name == "parent factor" else "slope"
+    out += [
+        Value(S13, f"{pre}: {parameter}", form.estimate, note="refitted on section 3's own selection of trials"),
+        Value(S13, f"{pre}: 95% low", form.low),
+        Value(S13, f"{pre}: 95% high", form.high),
+        Value(S13, f"{pre}: trials", form.trials),
+        Value(S13, f"{pre}: q rebuilt from the legs, largest error", rebuilt),
+        Value(S13, f"{pre}: spark-years obs / exp", common.div(years_rest.observed, years_rest.expected)),
+        Value(S13, f"{pre}: spark-years z", years_rest.z),
+        Value(S13, f"{pre}: every target, spark-years obs / exp", common.div(years.observed, years.expected)),
+        Value(S13, f"{pre}: every target, spark-years z", years.z),
+        Value(S13, f"{pre}: every target, hits obs / exp", common.div(hits.observed, hits.expected)),
+        Value(S13, f"{pre}: every target, hits z", hits.z),
+        *test_values(f"{pre}: inheritance", overall, RATIO),
+        *test_values(f"{pre}: inheritance without Tail Held High", without_exception, RATIO),
+        *test_values(f"{pre}: Tail Held High", exception, RATIO),
+        *test_values(f"{pre}: two or more carriers", several, ("rows", *RATIO)),
+        Value(S13, f"{pre}: q 0.40-0.60 observed", band.observed),
+        Value(S13, f"{pre}: q 0.40-0.60 mean predicted", band.predicted),
+        Value(S13, f"{pre}: q 0.40-0.60 observed 95% low", band.observed_low),
+        Value(S13, f"{pre}: q 0.40-0.60 observed 95% high", band.observed_high),
+        Value(S13, f"{pre}: reliability chi2 p", joint.p),
+        Value(S13, f"{pre}: targets differ p", differ.p),
+    ]
+    if form.name == "parent factor":  # the model on the same rows, once
+        out += test_values("2. inheritance, two or more carriers", several_model, ("rows", *RATIO))
+    return RollFormTests(
+        form,
+        rebuilt,
+        years,
+        hits,
+        years_rest,
+        overall,
+        without_exception,
+        exception,
+        several,
+        several_model,
+        band,
+        joint,
+        differ,
+    )
 
 
 @dataclass
@@ -702,11 +1049,12 @@ def acquisition_tests(cal: Calibration, out: list[Value]) -> AcquisitionTests:
     )
 
 
-def per_target_tests(cal: Calibration, out: list[Value]) -> dict[int, Stat]:
+def per_target_tests(cal: Calibration, out: list[Value]) -> tuple[dict[int, Stat], dict[int, Stat]]:
     """per default target: the deck test where a deck card can hint the target, inheritance and acquired (the intervals
-    the document quotes); returns the inheritance tests"""
+    the document quotes); returns the inheritance and the acquired tests"""
     rep = cal.report
     inheritance: dict[int, Stat] = {}
+    acquired: dict[int, Stat] = {}
     for g in DEFAULT:
         nm = cal.skill[g][0]
         if g not in NO_DECK_SOURCE:
@@ -723,14 +1071,14 @@ def per_target_tests(cal: Calibration, out: list[Value]) -> dict[int, Stat]:
                 Value(S13, f"{nm}: inheritance 95% low", s.ratio_low),
                 Value(S13, f"{nm}: inheritance 95% high", s.ratio_high),
             ]
-        s = acquisition_test(rep, target_is(g))
+        s = acquired[g] = acquisition_test(rep, target_is(g))
         out.append(Value(S13, f"{nm}: acquired", s.ratio))
         if g in ACQUIRED_INTERVAL_QUOTED:
             out += [
                 Value(S13, f"{nm}: acquired 95% low", s.ratio_low),
                 Value(S13, f"{nm}: acquired 95% high", s.ratio_high),
             ]
-    return inheritance
+    return inheritance, acquired
 
 
 @dataclass
@@ -749,6 +1097,8 @@ def pool_tests(cal: Calibration, out: list[Value]) -> PoolTests:
         by_scenario[scn] = deck_test(rep, pool_only, scenario_is(scn))
         out += test_values(f"1. training pool only, {common.SCEN[scn]}", by_scenario[scn], RATIO)
     low = [deck_test(rep, pool_only, lowest_lb_is(lb)) for lb in (0, 1, 2)]
+    for lb, st in zip((0, 1, 2), low):  # outside section 7's fit, which reads max-limit-break cards only
+        out += test_values(f"1. training pool only, lowest limit break {lb}", st, TABLE)
     return PoolTests(by_scenario, low)
 
 
@@ -757,30 +1107,81 @@ class UnityGolds(NamedTuple):
     with_both: int  # of them, both guaranteed golds hinted
 
 
-def gold_tests(cal: Calibration, out: list[Value]) -> UnityGolds:
-    """Unity Cup's guaranteed golds, and the acquisition of the golds the document lists"""
+@dataclass
+class GoldTests:
+    """Unity Cup's guaranteed golds, and the acquisition of every target's gold on open rows the deck can give it"""
+
+    unity: UnityGolds
+    by_gold: dict[int, Stat]  # target group -> its gold's test
+    pooled: Stat  # every gold together
+    joint: Chi2  # every gold calibrated: run-clustered Wald chi2 of each gold's observed - predicted, nothing fitted
+    uncertain: Stat  # the rows whose gold is not predicted certain (See Ya Later!'s certain rows left out)
+    uncertain_by_priority: dict[str, Stat]  # ... per priority status (PRIORITY_STATUS)
+
+
+def gold_row(r: CalRow) -> bool:
+    """an open target whose gold the deck can give (it is not the scenario's: Unity Cup's two are is_open's
+    scenario golds)"""
+    return is_open(r) and r["gold"] > 0
+
+
+def gold_odds(r: CalRow) -> float:
+    return r["gold"]
+
+
+def gold_hinted(r: CalRow) -> bool:
+    return r["o_gold"]
+
+
+def gold_tests(cal: Calibration, out: list[Value]) -> GoldTests:
     unity = [x for x in cal.runs if x["scen"] == 2]
     golds = UnityGolds(len(unity), sum(1 for x in unity if all(r["o_gold"] for r in x["rows"] if r["scen_gold"])))
     out.append(Value(S13, "Unity Cup's guaranteed golds: runs with both", golds.with_both))
-    for g, outside_unity in GOLD_TESTS:
+    by_gold: dict[int, Stat] = {}
+    for g in DEFAULT:
         nm = cal.skill[g][1]
-        s = cal.report.stat(
-            where(
-                is_open,
-                lambda r: r["gold"] > 0,
-                target_is(g),
-                lambda r, outside_unity=outside_unity: not outside_unity or r["scen"] != 2,
-            ),
-            lambda r: r["gold"],
-            lambda r: r["o_gold"],
-        )
+        if nm is None or (cal.rows and not any(gold_row(r) and r["g"] == g for r in cal.rows)):  # no deck gives it
+            continue
+        s = by_gold[g] = cal.report.stat(where(gold_row, target_is(g)), gold_odds, gold_hinted)
         out += [
             Value(S13, f"gold acquisition {nm}", s.ratio),
             Value(S13, f"gold acquisition {nm}: rows", s.rows),
             Value(S13, f"gold acquisition {nm}: 95% low", s.ratio_low),
             Value(S13, f"gold acquisition {nm}: 95% high", s.ratio_high),
         ]
-    return golds
+    pooled = cal.report.stat(gold_row, gold_odds, gold_hinted)
+    # the golds the joint test can read: some row with a prediction strictly between 0 and 1 (a gold predicted certain
+    # everywhere has no variance and is left out)
+    uncertain = {r["g"] for r in cal.rows if gold_row(r) and r["gold"] < 1}
+    rows = [r for r in cal.rows if gold_row(r) and r["g"] in uncertain]
+    joint = (
+        Chi2(
+            *cluster_chi2_safe(
+                [(r["g"], (1 if r["o_gold"] else 0) - r["gold"]) for r in rows], [r["run"] for r in rows]
+            )
+        )
+        if rows
+        else Chi2(0.0, 0, NAN)
+    )
+    out += [
+        *test_values("gold acquisition, every gold", pooled, TABLE),
+        Value(S13, "gold acquisition, every gold calibrated: chi2", joint.statistic),
+        Value(S13, "gold acquisition, every gold calibrated: golds", joint.buckets),
+        Value(S13, "gold acquisition, every gold calibrated: p", joint.p),
+    ]
+
+    def uncertain_gold(r: CalRow) -> bool:
+        return gold_row(r) and r["gold"] < 1
+
+    uncertain = cal.report.stat(uncertain_gold, gold_odds, gold_hinted)
+    by_priority = {
+        status: cal.report.stat(where(uncertain_gold, priority_is(prio)), gold_odds, gold_hinted)
+        for status, prio in PRIORITY_STATUS
+    }
+    out += test_values("gold acquisition, uncertain golds", uncertain, TABLE)
+    for status, st in by_priority.items():
+        out += test_values(f"gold acquisition, uncertain golds, {status}", st, TABLE)
+    return GoldTests(golds, by_gold, pooled, joint, uncertain, by_priority)
 
 
 @dataclass
@@ -794,6 +1195,22 @@ class DeckReliability:
     shortfall_top: float  # rows predicted 0.6 and above
     top_rows: int
     top_rows_with_event: int
+    by_priority: dict[str, list[Bucket]]  # acquisition reliability per priority status (PRIORITY_STATUS)
+    by_priority_joint: dict[str, Chi2]  # ... its positive buckets jointly (reliability_chi2)
+    # the same counting only modelled sources (a deck card's hint or an inspiration): the model's own claim
+    modelled_by_priority: dict[str, list[Bucket]]
+    modelled_by_priority_joint: dict[str, Chi2]
+    likely: dict[str, Stat]  # rows predicted 0.6 or more, any source, per priority status
+    likely_modelled: dict[str, Stat]  # ... modelled sources only
+    unlikely_modelled: dict[str, Stat]  # rows predicted above 0 and under 0.6, modelled sources only
+    mixture_share: float  # the prioritised share that mixes prioritised and not-prioritised rows into the unknown ratio
+
+
+PRIORITY_STATUS: tuple[tuple[str, bool | None], ...] = (
+    ("unknown priority", None),
+    ("prioritised", True),
+    ("not prioritised", False),
+)
 
 
 def deck_shortfall(rows: list[CalRow], sel: RowFn) -> float:
@@ -819,6 +1236,78 @@ def reliability_tests(cal: Calibration, out: list[Value]) -> DeckReliability:
         return deck_odds(r) >= 0.6
 
     top_rows = [r for r in rows if in_deck_test(r) and top(r)]
+    by_priority: dict[str, list[Bucket]] = {}
+    by_priority_joint: dict[str, Chi2] = {}
+    for status, prio in PRIORITY_STATUS:
+        sel = where(is_open, priority_is(prio))
+        by_priority[status] = rep.reliability(f"acquired, {status}", sel, acquisition_odds, acquired, EDGES)
+        joint = by_priority_joint[status] = reliability_chi2([r for r in rows if sel(r)], acquisition_odds, acquired)
+        for bucket in by_priority[status]:
+            if bucket.high_edge <= ZERO_EDGE:
+                continue
+            label = bucket_label(bucket)
+            out += [
+                Value(S13, f"reliability acquired, {status}, {label}: rows", bucket.rows),
+                Value(S13, f"reliability acquired, {status}, {label}: observed", bucket.observed),
+                Value(S13, f"reliability acquired, {status}, {label}: mean predicted", bucket.predicted),
+            ]
+        out += [
+            Value(S13, f"reliability acquired, {status}: chi2", joint.statistic),
+            Value(S13, f"reliability acquired, {status}: buckets", joint.buckets),
+            Value(S13, f"reliability acquired, {status}: p", joint.p),
+        ]
+    modelled_by_priority: dict[str, list[Bucket]] = {}
+    modelled_by_priority_joint: dict[str, Chi2] = {}
+    likely: dict[str, Stat] = {}
+    likely_modelled: dict[str, Stat] = {}
+    unlikely_modelled: dict[str, Stat] = {}
+    for status, prio in PRIORITY_STATUS:
+        sel = where(is_open, priority_is(prio))
+        buckets = modelled_by_priority[status] = rep.reliability(
+            f"acquired from a modelled source, {status}", sel, acquisition_odds, acquired_modelled, EDGES
+        )
+        joint = modelled_by_priority_joint[status] = reliability_chi2(
+            [r for r in rows if sel(r)], acquisition_odds, acquired_modelled
+        )
+        for bucket in buckets:
+            if bucket.high_edge > ZERO_EDGE:
+                out.append(
+                    Value(S13, f"reliability modelled, {status}, {bucket_label(bucket)}: observed", bucket.observed)
+                )
+        likely[status] = rep.stat(where(sel, lambda r: acquisition_odds(r) >= 0.6), acquisition_odds, acquired)
+        likely_modelled[status] = rep.stat(
+            where(sel, lambda r: acquisition_odds(r) >= 0.6), acquisition_odds, acquired_modelled
+        )
+        unlikely_modelled[status] = rep.stat(
+            where(sel, lambda r: 0 < acquisition_odds(r) < 0.6), acquisition_odds, acquired_modelled
+        )
+        out += [
+            Value(S13, f"reliability modelled, {status}: chi2", joint.statistic),
+            Value(S13, f"reliability modelled, {status}: p", joint.p),
+            *test_values(f"acquired, {status}, predicted 0.6 and above", likely[status], RATIO),
+            *test_values(
+                f"acquired from a modelled source, {status}, predicted 0.6 and above", likely_modelled[status], RATIO
+            ),
+            *test_values(
+                f"acquired from a modelled source, {status}, predicted under 0.6", unlikely_modelled[status], RATIO
+            ),
+        ]
+    # inference, not a test: the share w of prioritised rows with w x prioritised + (1 - w) x not prioritised equal to
+    # the unknown-priority ratio, on rows predicted 0.6 and above
+    mixture = common.div(
+        likely["unknown priority"].ratio - likely["not prioritised"].ratio,
+        likely["prioritised"].ratio - likely["not prioritised"].ratio,
+    )
+    out.append(Value(S13, "unknown priority, predicted 0.6 and above: prioritised share of a mixture", mixture))
+    # residual dependence between a run's targets on the deck and acquisition tests: reported, not tested, since the
+    # model itself makes these targets dependent (shared chain events, one event's exclusive outcomes)
+    for name, sel, pred, obs in (
+        ("deck hint", in_deck_test, deck_odds, deck_hinted),
+        ("acquired", is_open, acquisition_odds, acquired),
+    ):
+        dep = within_run_dependence(cal.runs, sel, pred, obs)
+        rep.line(f"\n## Within-run residual dependence, {name}: {dep.pairs} pairs over {dep.runs} runs, z {dep.z:+.2f}")
+        out.append(Value(S13, f"{name}, within-run dependence: z", dep.z))
     rel = DeckReliability(
         acquisition,
         [b for b in deck if b.rows and b.high_edge > ZERO_EDGE],
@@ -827,6 +1316,14 @@ def reliability_tests(cal: Calibration, out: list[Value]) -> DeckReliability:
         shortfall_top=deck_shortfall(rows, top),
         top_rows=len(top_rows),
         top_rows_with_event=sum(1 for r in top_rows if r["cards_ev"]),
+        by_priority=by_priority,
+        by_priority_joint=by_priority_joint,
+        modelled_by_priority=modelled_by_priority,
+        modelled_by_priority_joint=modelled_by_priority_joint,
+        likely=likely,
+        likely_modelled=likely_modelled,
+        unlikely_modelled=unlikely_modelled,
+        mixture_share=mixture,
     )
     out += [
         Value(S13, "deck shortfall in buckets predicted 0.6 and above", common.div(rel.shortfall_top, rel.shortfall)),
@@ -844,12 +1341,59 @@ class RunOdds:
     p_all: float  # the solver's P(every target lands)
     landing_observed: float  # the product of the observed-equivalent landings
     priority_assumed: bool  # no open target shown un-prioritised (each prioritised, or the run shows no list)
+    list_shown: bool  # the run shows a priority list
+    # the same product under the career report's approximation (per target: gold spark chance x P(gold) + white spark
+    # chance x P(white only)), counted by tier, and counted tier-blind (every acquisition scored as a white, on both sides)
+    tiered_predicted: float
+    blind_observed: float
+    blind_predicted: float
+
+
+def run_odds(pr: RunRows, list_shown: bool) -> RunOdds:
+    targets = [r for r in pr["rows"] if r["g"] in DEFAULT]
+    opened = [r for r in targets if is_open(r)]
+
+    def carriers(r: CalRow) -> float:
+        return 1.1 ** (r["nc"] - 6)
+
+    def tiered(r: CalRow) -> float:
+        g, w = common.SPARK_GOLD_6 * carriers(r), common.SPARK_WHITE_6 * carriers(r)
+        if r["scen_gold"] or r["outfit"] == 2:
+            return g
+        if r["outfit"] == 1:  # her outfit gives the white: the gold or else the white
+            return g * r["gold"] + w * (1 - r["gold"])
+        return g * r["gold"] + w * (r["acq"] - r["gold"])
+
+    def certain(r: CalRow) -> bool:
+        return bool(r["outfit"]) or r["scen_gold"]
+
+    return RunOdds(
+        math.prod(r["acq"] for r in opened),
+        all(r["o_any"] for r in opened),
+        pr["p_all"],
+        math.prod(r["l_obs"] for r in targets),
+        all(prioritised(r) is not False for r in opened),
+        list_shown,
+        math.prod(tiered(r) for r in targets),
+        math.prod(common.SPARK_WHITE_6 * carriers(r) * (r["o_any"] or certain(r)) for r in targets),
+        math.prod(common.SPARK_WHITE_6 * carriers(r) * (1.0 if certain(r) else r["acq"]) for r in targets),
+    )
 
 
 class RatioInterval(NamedTuple):
     ratio: float
     low: float
     high: float
+
+
+def ratio_interval(
+    xs: Sequence[RunOdds], obs: Callable[[RunOdds], float], pred: Callable[[RunOdds], float]
+) -> RatioInterval:
+    """sum obs / sum pred over runs, its 95% interval bootstrapping whole runs (seeded)"""
+    if not xs:
+        return RatioInterval(NAN, NAN, NAN)
+    o, p = [obs(x) for x in xs], [pred(x) for x in xs]
+    return RatioInterval(common.div(sum(o), sum(p)), *percentile_interval(ratio_draws(o, p, seed=1)))
 
 
 class AcquiredPerRun(NamedTuple):
@@ -878,6 +1422,19 @@ def acquired_per_run(runs: list[RunOdds]) -> AcquiredPerRun:
     return AcquiredPerRun(len(runs), n_all / n, lo, hi, sum(x.all_acquired_odds for x in runs) / n)
 
 
+class ListDifference(NamedTuple):
+    """the P(all eight) ratio on runs showing no list minus that on runs showing one: two-sample bootstrap (each set
+    resampled on its own, seeded), 95% percentile interval and the share of draws at or above 0"""
+
+    difference: float
+    low: float
+    high: float
+    share_at_or_above_0: float
+
+    def covers_0(self) -> bool:
+        return self.low <= 0 <= self.high
+
+
 @dataclass
 class PerRunTests:
     runs: list[RunOdds]  # in run-id order (the bootstrap draws)
@@ -885,24 +1442,172 @@ class PerRunTests:
     acquired_priority_assumed: AcquiredPerRun  # the runs whose open targets the priority assumption fits
     landing: RatioInterval  # P(all eight) observed-equivalent / predicted over every run, bootstrap 95%
     landing_by_list: dict[str, RatioInterval]  # the same on runs showing a priority list and on runs showing none
+    effective: dict[str, float]  # the effective number of runs behind each ratio (weights: the solver's P(all))
+    list_difference: ListDifference
+    # the same set of runs: P(all eight) under the report's approximation counted by tier, and counted tier-blind
+    tiered: dict[str, RatioInterval]
+    blind: dict[str, RatioInterval]
     exact_p_all: float  # the solver's exact P(all), summed over runs
     product_p_all: float  # the product of its per-target p, summed over runs
+    extras: PAllExtras
+
+
+class Interval3(NamedTuple):
+    estimate: float
+    low: float
+    high: float
+
+    def covers_0(self) -> bool:
+        return self.low <= 0 <= self.high
+
+
+@dataclass
+class PAllExtras:
+    """how fragile the P(all eight) ratio is, and where its shortfall comes from"""
+
+    bca: dict[str, tuple[float, float]]  # BCa 95% interval per run set
+    drop_top: dict[str, dict[int, float]]  # the ratio with the k runs of highest predicted P(all) left out
+    tier_difference: dict[str, Interval3]  # tier-blind minus by-tier ratio, paired bootstrap (the same resamples)
+    recalibrated: dict[str, RatioInterval]  # tier-blind with each open row's chance scaled by its cell's ratio
+    recalibrated_modelled: RatioInterval  # the same counting only modelled sources, every run
+
+
+DROP_TOP: tuple[int, ...] = (10, 25, 50)
+
+
+def bca_interval(obs: Sequence[float], pred: Sequence[float], draws: np.ndarray) -> tuple[float, float]:
+    """the bias-corrected and accelerated 95% interval of sum(obs) / sum(pred) from its bootstrap draws (Efron 1987):
+    bias from the share of draws below the estimate, acceleration from the jackknife (leave one run out)"""
+    from scipy.stats import norm
+
+    o, p = np.asarray(obs, float), np.asarray(pred, float)
+    theta = o.sum() / p.sum()
+    below = float((draws < theta).mean())
+    if not 0 < below < 1:
+        return percentile_interval(draws)
+    z0 = norm.ppf(below)
+    jack = (o.sum() - o) / np.maximum(1e-300, p.sum() - p)
+    d = jack.mean() - jack
+    a = float((d**3).sum() / (6 * ((d**2).sum()) ** 1.5)) if (d**2).sum() else 0.0
+    bounds = []
+    for z in (norm.ppf(0.025), norm.ppf(0.975)):
+        bounds.append(float(norm.cdf(z0 + (z0 + z) / (1 - a * (z0 + z)))))
+    lo, hi = np.quantile(draws, bounds)
+    return float(lo), float(hi)
+
+
+def paired_difference(
+    obs1: Sequence[float], pred1: Sequence[float], obs2: Sequence[float], pred2: Sequence[float], seed: int
+) -> Interval3:
+    """ratio 1 minus ratio 2 over the same runs, both ratios on the same seeded resamples of whole runs"""
+    o1, p1, o2, p2 = (np.asarray(x, float) for x in (obs1, pred1, obs2, pred2))
+    rng = np.random.default_rng(seed)
+    out: list[np.ndarray] = []
+    for start in range(0, BOOTSTRAP_DRAWS, 500):
+        ix = rng.integers(0, len(o1), (min(500, BOOTSTRAP_DRAWS - start), len(o1)))
+        out.append(
+            o1[ix].sum(1) / np.maximum(1e-300, p1[ix].sum(1)) - o2[ix].sum(1) / np.maximum(1e-300, p2[ix].sum(1))
+        )
+    d = np.concatenate(out)
+    return Interval3(float(o1.sum() / p1.sum() - o2.sum() / p2.sum()), *percentile_interval(d))
+
+
+def band_of(p: float) -> int:
+    """the reliability band (index into pairwise(EDGES)) of a prediction"""
+    return next(j for j, (a, b) in enumerate(pairwise(EDGES)) if a <= p < b)
+
+
+def cell_ratios(rows: list[CalRow], obs: RowFn) -> dict[tuple[bool | None, int], float]:
+    """observed / predicted acquisition per (priority status, band) over open rows: the recalibration's cells (in-sample)"""
+    sums: collections.defaultdict[tuple[bool | None, int], list[float]] = collections.defaultdict(lambda: [0.0, 0.0])
+    for r in rows:
+        if is_open(r):
+            cell = sums[prioritised(r), band_of(r["acq"])]
+            cell[0] += 1 if obs(r) else 0
+            cell[1] += r["acq"]
+    return {k: o / e for k, (o, e) in sums.items() if e > 0}
+
+
+def recalibrated_blind(pr: RunRows, ratios: dict[tuple[bool | None, int], float], obs: RowFn) -> tuple[float, float]:
+    """one run's tier-blind P(all eight), observed and predicted, each open row's chance scaled by its cell's ratio"""
+    targets = [r for r in pr["rows"] if r["g"] in DEFAULT]
+    o = p = 1.0
+    for r in targets:
+        w = common.SPARK_WHITE_6 * 1.1 ** (r["nc"] - 6)
+        certain = bool(r["outfit"]) or r["scen_gold"]
+        o *= w * (1.0 if certain or obs(r) else 0.0)
+        p *= w * (1.0 if certain else min(1.0, r["acq"] * ratios.get((prioritised(r), band_of(r["acq"])), 1.0)))
+    return o, p
+
+
+def p_all_extras(cal: Calibration, ordered: list[RunRows], runs: list[RunOdds], out: list[Value]) -> PAllExtras:
+    by_set = {
+        label: [i for i, x in enumerate(runs) if want is None or x.list_shown is want] for label, want in RUN_SETS
+    }
+    any_ratios, modelled_ratios = cell_ratios(cal.rows, acquired), cell_ratios(cal.rows, acquired_modelled)
+    recal = [recalibrated_blind(pr, any_ratios, acquired) for pr in ordered]
+    recal_m = [recalibrated_blind(pr, modelled_ratios, acquired_modelled) for pr in ordered]
+    bca: dict[str, tuple[float, float]] = {}
+    drop_top: dict[str, dict[int, float]] = {}
+    tier_difference: dict[str, Interval3] = {}
+    recalibrated: dict[str, RatioInterval] = {}
+    for label, ix in by_set.items():
+        sub = [runs[i] for i in ix]
+        if not sub:
+            bca[label], drop_top[label] = (NAN, NAN), {}
+            tier_difference[label], recalibrated[label] = Interval3(NAN, NAN, NAN), RatioInterval(NAN, NAN, NAN)
+            continue
+        o, p = [x.landing_observed for x in sub], [x.p_all for x in sub]
+        bca[label] = bca_interval(o, p, ratio_draws(o, p, seed=1))
+        top = sorted(range(len(sub)), key=lambda i: -p[i])
+        drop_top[label] = {}
+        for k in DROP_TOP:
+            keep = set(top[k:])
+            drop_top[label][k] = common.div(sum(o[i] for i in keep), sum(p[i] for i in keep))
+        tier_difference[label] = paired_difference(
+            [x.blind_observed for x in sub],
+            [x.blind_predicted for x in sub],
+            o,
+            [x.tiered_predicted for x in sub],
+            seed=4,
+        )
+        ro, rp = [recal[i][0] for i in ix], [recal[i][1] for i in ix]
+        recalibrated[label] = RatioInterval(
+            common.div(sum(ro), sum(rp)), *percentile_interval(ratio_draws(ro, rp, seed=5))
+        )
+        out += [
+            Value(S13, f"P(all eight) ratio, {label}: BCa 95% low", bca[label][0]),
+            Value(S13, f"P(all eight) ratio, {label}: BCa 95% high", bca[label][1]),
+            *[Value(S13, f"P(all eight) ratio, {label}: without the top {k}", v) for k, v in drop_top[label].items()],
+            Value(S13, f"P(all eight), tier-blind minus by tier, {label}", tier_difference[label].estimate),
+            Value(S13, f"P(all eight), tier-blind minus by tier, {label}: 95% low", tier_difference[label].low),
+            Value(S13, f"P(all eight), tier-blind minus by tier, {label}: 95% high", tier_difference[label].high),
+            Value(S13, f"P(all eight), tier-blind recalibrated, {label}", recalibrated[label].ratio),
+            Value(S13, f"P(all eight), tier-blind recalibrated, {label}: 95% low", recalibrated[label].low),
+            Value(S13, f"P(all eight), tier-blind recalibrated, {label}: 95% high", recalibrated[label].high),
+        ]
+    mo, mp = [x[0] for x in recal_m], [x[1] for x in recal_m]
+    recal_modelled = (
+        RatioInterval(common.div(sum(mo), sum(mp)), *percentile_interval(ratio_draws(mo, mp, seed=6)))
+        if mo
+        else RatioInterval(NAN, NAN, NAN)
+    )
+    out += [
+        Value(S13, "P(all eight), tier-blind recalibrated, modelled sources only, all", recal_modelled.ratio),
+        Value(S13, "P(all eight), tier-blind recalibrated, modelled sources only, all: 95% low", recal_modelled.low),
+        Value(S13, "P(all eight), tier-blind recalibrated, modelled sources only, all: 95% high", recal_modelled.high),
+        Value(S13, "P(all eight), recalibration cells", len(any_ratios)),
+    ]
+    return PAllExtras(bca, drop_top, tier_difference, recalibrated, recal_modelled)
+
+
+RUN_SETS: tuple[tuple[str, bool | None], ...] = (("all", None), ("list shown", True), ("no list shown", False))
 
 
 def per_run_tests(cal: Calibration, out: list[Value]) -> PerRunTests:
-    runs: list[RunOdds] = []
-    for pr in sorted(cal.runs, key=lambda x: x["id"]):  # bootstrap draws in run-id order
-        targets = [r for r in pr["rows"] if r["g"] in DEFAULT]
-        opened = [r for r in targets if is_open(r)]
-        runs.append(
-            RunOdds(
-                math.prod(r["acq"] for r in opened),
-                all(r["o_any"] for r in opened),
-                pr["p_all"],
-                math.prod(r["l_obs"] for r in targets),
-                all(prioritised(r) is not False for r in opened),
-            )
-        )
+    shown = {r["id"]: r["priority"] is not None for r in cal.records or []}
+    ordered = sorted(cal.runs, key=lambda x: x["id"])  # bootstrap draws in run-id order
+    runs = [run_odds(pr, shown.get(pr["id"], False)) for pr in ordered]
     acquired = acquired_per_run(runs)
     assumed = acquired_per_run([x for x in runs if x.priority_assumed])
     out += [
@@ -919,39 +1624,63 @@ def per_run_tests(cal: Calibration, out: list[Value]) -> PerRunTests:
         Value(S13, "per run, priority assumption fits: all open acquired, 95% low", assumed.all_acquired_low),
         Value(S13, "per run, priority assumption fits: all open acquired, 95% high", assumed.all_acquired_high),
     ]
-    predicted = sum(x.p_all for x in runs)
-    observed = sum(x.landing_observed for x in runs)
-    blo, bhi = (
-        (float("nan"),) * 2
-        if not runs
-        else bootstrap_interval(
-            lambda s: sum(x.landing_observed for x in s) / max(1e-300, sum(x.p_all for x in s)), runs
+
+    def landing_obs(x: RunOdds) -> float:
+        return x.landing_observed
+
+    def landing_pred(x: RunOdds) -> float:
+        return x.p_all
+
+    by_set: dict[str, list[RunOdds]] = {
+        label: [x for x in runs if want is None or x.list_shown is want] for label, want in RUN_SETS
+    }
+    landing_by_list: dict[str, RatioInterval] = {}
+    effective: dict[str, float] = {}
+    tiered: dict[str, RatioInterval] = {}
+    blind: dict[str, RatioInterval] = {}
+    for label, sub in by_set.items():
+        landing_by_list[label] = ratio_interval(sub, landing_obs, landing_pred)
+        effective[label] = effective_runs([x.p_all for x in sub])
+        tiered[label] = ratio_interval(sub, landing_obs, lambda x: x.tiered_predicted)
+        blind[label] = ratio_interval(sub, lambda x: x.blind_observed, lambda x: x.blind_predicted)
+        v = landing_by_list[label]
+        out += [
+            Value(S13, f"P(all eight) ratio, {label}", v.ratio, note=f"{len(sub)} runs"),
+            Value(S13, f"P(all eight) ratio, {label}: 95% low", v.low),  # bootstrap bounds: Monte Carlo (seeded)
+            Value(S13, f"P(all eight) ratio, {label}: 95% high", v.high),
+            Value(S13, f"P(all eight) ratio, {label}: runs", len(sub)),
+            Value(S13, f"P(all eight) ratio, {label}: effective runs", effective[label]),
+            Value(S13, f"P(all eight), report approximation by tier, {label}", tiered[label].ratio),
+            Value(S13, f"P(all eight), tier-blind, {label}", blind[label].ratio),
+            Value(S13, f"P(all eight), tier-blind, {label}: 95% low", blind[label].low),
+            Value(S13, f"P(all eight), tier-blind, {label}: 95% high", blind[label].high),
+        ]
+    with_list, without = by_set["list shown"], by_set["no list shown"]
+    if with_list and without:
+        d = ratio_draws([x.landing_observed for x in without], [x.p_all for x in without], seed=2) - ratio_draws(
+            [x.landing_observed for x in with_list], [x.p_all for x in with_list], seed=3
+        )
+        diff = ListDifference(
+            landing_by_list["no list shown"].ratio - landing_by_list["list shown"].ratio,
+            *percentile_interval(d),
+            float((d >= 0).mean()),
+        )
+    else:
+        diff = ListDifference(NAN, NAN, NAN, NAN)
+    out += [
+        Value(S13, "P(all eight) ratio, no list minus list", diff.difference),
+        Value(S13, "P(all eight) ratio, no list minus list: 95% low", diff.low),
+        Value(S13, "P(all eight) ratio, no list minus list: 95% high", diff.high),
+        Value(S13, "P(all eight) ratio, no list minus list: share of draws at or above 0", diff.share_at_or_above_0),
+    ]
+    out.append(
+        Value(
+            S13,
+            "per run: all open acquired, observed / product",
+            common.div(acquired.all_acquired_rate, acquired.all_acquired_odds_mean),
         )
     )
-    landing = RatioInterval(common.div(observed, predicted), blo, bhi)
-    shown = {r["id"]: r["priority"] is not None for r in common.runs() or []}
-    landing_by_list: dict[str, RatioInterval] = {}
-    for label, want in (("list shown", True), ("no list shown", False)):
-        sub = [x for pr, x in zip(sorted(cal.runs, key=lambda x: x["id"]), runs) if shown.get(pr["id"]) is want]
-        lo, hi = (
-            (float("nan"),) * 2
-            if not sub
-            else bootstrap_interval(
-                lambda s: sum(x.landing_observed for x in s) / max(1e-300, sum(x.p_all for x in s)), sub
-            )
-        )
-        ratio = common.div(sum(x.landing_observed for x in sub), sum(x.p_all for x in sub))
-        landing_by_list[label] = RatioInterval(ratio, lo, hi)
-        out += [
-            Value(S13, f"P(all eight) ratio, {label}", ratio, note=f"{len(sub)} runs"),
-            Value(S13, f"P(all eight) ratio, {label}: 95% low", lo),
-            Value(S13, f"P(all eight) ratio, {label}: 95% high", hi),
-        ]
-    out += [
-        Value(S13, "P(all eight) ratio, all", landing.ratio),  # bootstrap bounds: Monte Carlo (seeded)
-        Value(S13, "P(all eight) ratio, all: 95% low", blo),
-        Value(S13, "P(all eight) ratio, all: 95% high", bhi),
-    ]
+    extras = p_all_extras(cal, ordered, runs, out)
     # the solver's exact P(all) against the product of its per-target p, summed over runs
     exact = sum(x["p_all"] for x in cal.runs)
     product = sum(math.prod(r["p_pred"] for r in x["rows"]) for x in cal.runs)
@@ -959,10 +1688,15 @@ def per_run_tests(cal: Calibration, out: list[Value]) -> PerRunTests:
         runs,
         acquired,
         assumed,
-        landing,
+        landing_by_list["all"],
         landing_by_list,
+        effective,
+        diff,
+        tiered,
+        blind,
         exact,
         product,
+        extras,
     )
 
 
@@ -1096,6 +1830,12 @@ def priority_tests(cal: Calibration, out: list[Value]) -> PriorityTests:
 
     po = [deck_test(rep, from_playtime_card, target_is(PLAYTIMES_OVER), priority_is(v)) for v in (True, False, None)]
     out.append(Value(S13, "Playtime's Over! event sources: runs showing a priority list", po[0].rows + po[1].rows))
+    out += [
+        Value(S13, "Playtime's Over! event sources, prioritised: rows", po[0].rows),
+        Value(S13, "Playtime's Over! event sources, prioritised: hinted", po[0].hits),
+        Value(S13, "Playtime's Over! event sources, prioritised: ratio 95% low", po[0].ratio_low),
+        Value(S13, "Playtime's Over! event sources, prioritised: ratio 95% high", po[0].ratio_high),
+    ]
     return PriorityTests(sasami, king_halo, riko, po, playtime_cards)
 
 
@@ -1127,22 +1867,25 @@ class Tests:
     inheritance: InheritanceTests
     acquisition: AcquisitionTests
     target_inheritance: dict[int, Stat]
+    target_acquired: dict[int, Stat]
     pool: PoolTests
-    unity_golds: UnityGolds
+    golds: GoldTests
     reliability: DeckReliability
     per_run: PerRunTests
     single: SingleSourceTests
     priority: PriorityTests
     certainty: dict[str, Stat]
+    forms: list[RollFormTests]  # the parent factor, then the affinity slope
 
 
-def computed_values(cal: Calibration, out: list[Value]) -> Tests:
+def computed_values(cal: Calibration, forms: list[RollForm], out: list[Value]) -> Tests:
     """every value of the section, in the document's order, appended to out"""
     run_counts(cal, out)
     deck = deck_tests(cal, out)
     inheritance = inheritance_tests(cal, out)
+    form_tests = [roll_form_tests(cal, form, out) for form in forms]
     acquisition = acquisition_tests(cal, out)
-    target_inheritance = per_target_tests(cal, out)
+    target_inheritance, target_acquired = per_target_tests(cal, out)
     pool = pool_tests(cal, out)
     golds = gold_tests(cal, out)
     reliability = reliability_tests(cal, out)
@@ -1155,6 +1898,7 @@ def computed_values(cal: Calibration, out: list[Value]) -> Tests:
         inheritance,
         acquisition,
         target_inheritance,
+        target_acquired,
         pool,
         golds,
         reliability,
@@ -1162,6 +1906,7 @@ def computed_values(cal: Calibration, out: list[Value]) -> Tests:
         single,
         priority,
         certainty,
+        form_tests,
     )
 
 
@@ -1183,6 +1928,18 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         t.single,
         t.priority,
     )
+    acquired_below = [g for g in DEFAULT if g in t.target_acquired and t.target_acquired[g].ratio_high < 1]
+    out_fs = [
+        Finding(
+            S13,
+            "Known miss: per target, acquisition from any source reads below its prediction for "
+            + " and ".join(tn(g) for g in sorted(ACQUIRED_INTERVAL_QUOTED))
+            + " (each 95% interval entirely below 1)",
+            set(ACQUIRED_INTERVAL_QUOTED) <= set(acquired_below),
+            "targets below 1: "
+            + (", ".join(f"{tn(g)} {ratio_text(t.target_acquired[g])}" for g in acquired_below) or "none"),
+        )
+    ]
     byc = inh.by_carriers
     t_off = [g for g in DEFAULT if g in t.target_inheritance and not covers(t.target_inheritance[g])]
     exception = t.target_inheritance.get(INHERITANCE_EXCEPTION)
@@ -1211,12 +1968,14 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
 
     po = prio.playtime
     return [
+        *out_fs,
         # section 3
         finding(
             S3,
-            "inspiration odds q are calibrated apart from the named exception, Tail Held High: observed / predicted over the "
-            "other targets' run-target rows has a 95% interval covering 1",
-            lambda: covers(inh.without_exception),
+            "without Tail Held High, the other seven targets' observed / predicted inspiration has a 95% interval covering "
+            "1; the targets do not differ detectably (heterogeneity p above 0.05), so leaving Tail Held High out is a "
+            "selection of the one target whose own interval excludes 1, not evidence that it differs",
+            lambda: covers(inh.without_exception) and inh.targets_differ.p >= 0.05,
             lambda: (
                 exception_text()
                 + "; per target, intervals excluding 1: "
@@ -1225,13 +1984,14 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S3,
-            "Tail Held High, the named exception, reads short of its q: its interval lies entirely below 1",
-            lambda: exception is not None and below(exception),
+            "Tail Held High's own inheritance interval lies entirely below 1, the one target of eight whose interval does",
+            lambda: exception is not None and below(exception) and t_off == [INHERITANCE_EXCEPTION],
             exception_text,
         ),
         finding(
             S3,
-            "by carriers 1-6, without Tail Held High, every interval covers 1",
+            "by carriers 1-6, with Tail Held High left out (a selection: the one target whose own interval excludes 1; "
+            "the every-target version follows), every interval covers 1",
             lambda: all(k in byc and covers(byc[k]) for k in range(1, 7)),
             lambda: "; ".join(
                 f"{k}: {byc[k].ratio:.3f} [{byc[k].ratio_low:.3f}, {byc[k].ratio_high:.3f}]"
@@ -1241,7 +2001,7 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S3,
-            "known miss: per roll, without Tail Held High, spark-years and ancestor hits each read below the model (z < -1.96, "
+            "known miss: per roll, with Tail Held High left out (a selection), spark-years and ancestor hits each read below the model (z < -1.96, "
             "z run-clustered) by under 2%; the cause is not established at this level (parents at affinity 200 or more, a known "
             "miss of section 3, are a candidate, untested here)",
             lambda: (
@@ -1312,6 +2072,56 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
             )
             for nm, s in t.certainty.items()
         ],
+        finding(
+            S3,
+            "inheritance over all eight targets reads slightly below q: observed / predicted inspiration has a 95% "
+            "interval entirely below 1",
+            lambda: below(inh.overall),
+            lambda: ratio_text(inh.overall),
+        ),
+        finding(
+            S3,
+            "the eight targets' inheritance ratios do not differ detectably: against one common ratio, the run-clustered "
+            "Wald chi2 over the targets (7 degrees of freedom) has p of 0.05 or more",
+            lambda: inh.targets_differ.p >= 0.05,
+            lambda: (
+                f"chi2 {inh.targets_differ.statistic:.2f} on {inh.targets_differ.buckets} degrees of freedom, p "
+                f"{inh.targets_differ.p:.3f}; per target: "
+                + ", ".join(f"{tn(g)} {ratio_text(s)}" for g, s in t.target_inheritance.items())
+            ),
+        ),
+        finding(
+            S3,
+            "known miss: per roll, over every target (Tail Held High included), spark-years and ancestor hits each read "
+            "below the model (z < -1.96, run-clustered)",
+            lambda: inh.every_spark_years.z < -1.96 and inh.every_hits.z < -1.96,
+            lambda: (
+                f"spark-years {inh.every_spark_years.observed:,} vs {inh.every_spark_years.expected:,.1f} "
+                f"(z {inh.every_spark_years.z:+.2f}); hits {inh.every_hits.observed:,} vs "
+                f"{inh.every_hits.expected:,.1f} (z {inh.every_hits.z:+.2f})"
+            ),
+        ),
+        finding(
+            S3,
+            "by carriers 1-6, over every target, every point estimate lies below 1 (the pointwise intervals are listed; "
+            "how many exclude 1 is reported, not tested)",
+            lambda: all(k in inh.by_carriers_every and inh.by_carriers_every[k].ratio < 1 for k in range(1, 7)),
+            lambda: "; ".join(
+                f"{k}: {ratio_text(inh.by_carriers_every[k])}" for k in range(1, 7) if k in inh.by_carriers_every
+            ),
+        ),
+        finding(
+            S13,
+            "no dependence between the inspirations of one run's targets is detectable beyond the model, which takes them "
+            "independent given the lineage (pairwise residual products, run-clustered |z| < 1.96)",
+            lambda: abs(inh.dependence.z) < 1.96,
+            lambda: (
+                f"{inh.dependence.pairs:,} target pairs over {inh.dependence.runs:,} runs, mean product "
+                f"{inh.dependence.mean_product:+.5f} (95% half-width {inh.dependence.half_width:.5f}), z "
+                f"{inh.dependence.z:+.2f}"
+            ),
+        ),
+        *[x for pf in t.forms for x in roll_form_findings(pf)],
         # section 13
         finding(
             S13,
@@ -1332,9 +2142,10 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S13,
-            "inheritance is right apart from the named exception: without Tail Held High, observed / predicted inspiration has "
-            "a 95% interval covering 1; Tail Held High is the one target of eight with its interval off 1",
-            lambda: covers(inh.without_exception) and t_off == [INHERITANCE_EXCEPTION],
+            "inheritance reads slightly below q as a shortfall common to the targets: over every target the interval lies "
+            "entirely below 1, the targets do not differ detectably (heterogeneity p above 0.05), and Tail Held High is "
+            "the one target of eight whose own interval excludes 1",
+            lambda: below(inh.overall) and inh.targets_differ.p >= 0.05 and t_off == [INHERITANCE_EXCEPTION],
             lambda: (
                 exception_text()
                 + "; per-target exceptions: "
@@ -1404,8 +2215,8 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         finding(
             S13,
             "Unity Cup's two scenario golds show hinted in every sampled Unity Cup run (an observed n of n rate)",
-            lambda: t.unity_golds.runs > 0 and t.unity_golds.with_both == t.unity_golds.runs,
-            lambda: f"{t.unity_golds.with_both} of {t.unity_golds.runs} runs",
+            lambda: t.golds.unity.runs > 0 and t.golds.unity.with_both == t.golds.unity.runs,
+            lambda: f"{t.golds.unity.with_both} of {t.golds.unity.runs} runs",
         ),
         finding(
             S13,
@@ -1429,32 +2240,148 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S13,
-            "per run, acquiring every open target is calibrated where the priority assumption fits (runs whose every open "
-            "target is prioritised or that show no list): the all-open-acquired interval covers the mean product of the "
-            "model's odds",
-            per_run.acquired_priority_assumed.all_acquired_covered,
+            "per run, acquiring every open target shows no detected miss over every run or over the runs the priority "
+            "assumption fits (every open target prioritised, or no list shown): each all-open-acquired interval covers "
+            "the mean product of the model's odds (its ratio, below 1, is reported)",
             lambda: (
-                f"priority assumption fits: {per_run.acquired_priority_assumed.text()}; every run: {per_run.acquired.text()}"
+                per_run.acquired.all_acquired_covered() and per_run.acquired_priority_assumed.all_acquired_covered()
+            ),
+            lambda: (
+                f"every run: {per_run.acquired.text()}, ratio "
+                f"{common.div(per_run.acquired.all_acquired_rate, per_run.acquired.all_acquired_odds_mean):.3f}; "
+                f"priority assumption fits: {per_run.acquired_priority_assumed.text()}"
             ),
         ),
         finding(
             S13,
-            "known miss: landing P(all eight) reads below the model, the pooled bootstrap interval entirely below 1 (the "
-            "model is optimistic about landing every target)",
-            lambda: per_run.landing.high < 1,
-            lambda: f"{per_run.landing.ratio:.3f} [{per_run.landing.low:.2f}, {per_run.landing.high:.2f}]",
+            "known miss: landing P(all eight) reads below the model, the pooled bootstrap interval, percentile and BCa, "
+            "entirely below 1 (the model is optimistic about landing every target)",
+            lambda: per_run.landing.high < 1 and per_run.extras.bca["all"][1] < 1,
+            lambda: (
+                f"{per_run.landing.ratio:.3f} [{per_run.landing.low:.3f}, {per_run.landing.high:.3f}], BCa "
+                f"[{per_run.extras.bca['all'][0]:.3f}, {per_run.extras.bca['all'][1]:.3f}], "
+                f"{per_run.effective['all']:.0f} effective runs; without the top runs by predicted P(all): "
+                + ", ".join(f"{k} {v:.3f}" for k, v in per_run.extras.drop_top["all"].items())
+            ),
         ),
         finding(
             S13,
-            "the P(all eight) shortfall sits in the runs showing no priority list, where the model assumes every target "
-            "prioritised: their bootstrap interval lies entirely below 1, and the runs showing a list cover 1",
+            "P(all eight) on runs showing no priority list and on runs showing one: each point estimate is below 1; how "
+            "far each interval is from 1 is reported, not tested, since a few runs carry most of the predicted mass "
+            "and leaving out the top 10, 25 or 50 of them moves the ratio",
             lambda: (
-                per_run.landing_by_list["no list shown"].high < 1
-                and per_run.landing_by_list["list shown"].low <= 1 <= per_run.landing_by_list["list shown"].high
+                per_run.landing_by_list["no list shown"].ratio < 1 and per_run.landing_by_list["list shown"].ratio < 1
             ),
             lambda: "; ".join(
-                f"{k} {v.ratio:.3f} [{v.low:.2f}, {v.high:.2f}]" for k, v in per_run.landing_by_list.items()
+                f"{k} {v.ratio:.3f} [{v.low:.3f}, {v.high:.3f}], BCa [{per_run.extras.bca[k][0]:.3f}, "
+                f"{per_run.extras.bca[k][1]:.3f}], {per_run.effective[k]:.0f} effective runs, without the top "
+                + ", ".join(f"{n} {r:.3f}" for n, r in per_run.extras.drop_top[k].items())
+                for k, v in per_run.landing_by_list.items()
             ),
+        ),
+        finding(
+            S13,
+            "P(all eight): no difference between runs showing a priority list and runs showing none is detectable: the "
+            "two-sample bootstrap interval of the no-list ratio minus the list ratio covers 0",
+            per_run.list_difference.covers_0,
+            lambda: (
+                f"difference {per_run.list_difference.difference:+.3f} [{per_run.list_difference.low:+.3f}, "
+                f"{per_run.list_difference.high:+.3f}], share of draws at or above 0 "
+                f"{per_run.list_difference.share_at_or_above_0:.3f}"
+            ),
+        ),
+        finding(
+            S13,
+            "the gold tier carries part of the P(all eight) shortfall only on runs showing no list: the tier-blind minus "
+            "by-tier ratio (every acquisition scored as a white on both sides, against the same approximation by tier; "
+            "paired bootstrap on the same resamples) lies entirely above 0 there, and covers 0 over every run and on runs "
+            "showing a list",
+            lambda: (
+                per_run.extras.tier_difference["no list shown"].low > 0
+                and per_run.extras.tier_difference["all"].covers_0()
+                and per_run.extras.tier_difference["list shown"].covers_0()
+            ),
+            lambda: "; ".join(
+                f"{k}: by tier {per_run.tiered[k].ratio:.3f}, tier-blind {per_run.blind[k].ratio:.3f}, difference "
+                f"{per_run.extras.tier_difference[k].estimate:+.3f} [{per_run.extras.tier_difference[k].low:+.3f}, "
+                f"{per_run.extras.tier_difference[k].high:+.3f}]"
+                for k, _ in RUN_SETS
+            ),
+        ),
+        finding(
+            S13,
+            "in-sample: with each open row's acquisition chance scaled by the observed / predicted ratio of its cell "
+            "(priority status and band of prediction), the tier-blind P(all eight) ratio's interval covers 1 on every run "
+            "set: the acquisition part of the shortfall is the per-target miss at high predictions compounded over the "
+            "targets, not a failure of the joint",
+            lambda: all(covers_interval(per_run.extras.recalibrated[k]) for k, _ in RUN_SETS),
+            lambda: (
+                "; ".join(
+                    f"{k}: tier-blind {per_run.blind[k].ratio:.3f}, recalibrated {per_run.extras.recalibrated[k].ratio:.3f} "
+                    f"[{per_run.extras.recalibrated[k].low:.3f}, {per_run.extras.recalibrated[k].high:.3f}]"
+                    for k, _ in RUN_SETS
+                )
+                + f"; modelled sources only, every run {per_run.extras.recalibrated_modelled.ratio:.3f} "
+                f"[{per_run.extras.recalibrated_modelled.low:.3f}, {per_run.extras.recalibrated_modelled.high:.3f}]"
+            ),
+        ),
+        finding(
+            S13,
+            "known miss: gold acquisition, pooled over the golds the deck can give and the model does not predict "
+            "certain, reads below the model (run-clustered interval entirely below 1)",
+            lambda: below(t.golds.uncertain),
+            lambda: (
+                f"uncertain golds {ratio_text(t.golds.uncertain)}; every gold {ratio_text(t.golds.pooled)}; jointly chi2 {t.golds.joint.statistic:.1f} on "
+                f"{t.golds.joint.buckets} golds, p {t.golds.joint.p:.4f}; per gold: "
+                + "; ".join(f"{cal.skill[g][1]} {ratio_text(st)}" for g, st in t.golds.by_gold.items())
+            ),
+        ),
+        finding(
+            S13,
+            "the gold miss sits where the target is not shown prioritised: on those golds, prioritised rows have an "
+            "interval covering 1, while unknown-priority and not-prioritised rows each lie entirely below 1",
+            lambda: (
+                covers(t.golds.uncertain_by_priority["prioritised"])
+                and below(t.golds.uncertain_by_priority["unknown priority"])
+                and below(t.golds.uncertain_by_priority["not prioritised"])
+            ),
+            lambda: "; ".join(f"{k} {ratio_text(v)}" for k, v in t.golds.uncertain_by_priority.items()),
+        ),
+        finding(
+            S13,
+            "the golds jointly depart from the model: the run-clustered chi2 of every gold's observed - predicted, nothing "
+            "fitted, has p below 0.05",
+            lambda: t.golds.joint.p < 0.05,
+            lambda: f"chi2 {t.golds.joint.statistic:.1f} on {t.golds.joint.buckets} golds, p {t.golds.joint.p:.4f}",
+        ),
+        finding(
+            S13,
+            "known miss: on unknown-priority rows the model is optimistic where it rates targets likely: rows predicted "
+            "0.6 and above read below it from any source (interval entirely below 1), and counting only the sources the "
+            "model has (a deck card's hint or an inspiration) the bands jointly depart from it (run-clustered chi2 over "
+            "the bands with a positive prediction, nothing fitted, p below 0.05)",
+            lambda: (
+                below(rel.likely["unknown priority"]) and rel.modelled_by_priority_joint["unknown priority"].p < 0.05
+            ),
+            lambda: (
+                f"0.6 and above: any source {ratio_text(rel.likely['unknown priority'])}, modelled only "
+                f"{ratio_text(rel.likely_modelled['unknown priority'])}; modelled-only bands: "
+                + modelled_text(rel, "unknown priority")
+                + f"; any-source bands: {reliability_text(rel, 'unknown priority')}"
+            ),
+        ),
+        finding(
+            S13,
+            "on unknown-priority rows predicted under 0.6, counting only modelled sources, no departure is detectable "
+            "(interval covers 1): the excess the any-source bands show there comes from sources the model leaves out",
+            lambda: covers(rel.unlikely_modelled["unknown priority"]),
+            lambda: f"modelled only {ratio_text(rel.unlikely_modelled['unknown priority'])}",
+        ),
+        finding(
+            S13,
+            "on prioritised rows no departure by band is detectable (the same chi2, p above 0.05)",
+            lambda: rel.by_priority_joint["prioritised"].p > 0.05,
+            lambda: reliability_text(rel, "prioritised"),
         ),
         finding(
             S13,
@@ -1554,13 +2481,88 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
     ]
 
 
+def modelled_text(rel: DeckReliability, status: str) -> str:
+    j = rel.modelled_by_priority_joint[status]
+    return f"chi2 {j.statistic:.1f} on {j.buckets} bands, p {j.p:.2g}; " + "; ".join(
+        f"{bucket_label(b)}: {b.observed:.3f} vs {b.predicted:.3f}"
+        for b in rel.modelled_by_priority[status]
+        if b.rows and b.high_edge > ZERO_EDGE
+    )
+
+
+def reliability_text(rel: DeckReliability, status: str) -> str:
+    j = rel.by_priority_joint[status]
+    return f"chi2 {j.statistic:.1f} on {j.buckets} bands, p {j.p:.4f}; " + "; ".join(
+        f"{bucket_label(b)}: {b.observed:.3f} [{b.observed_low:.3f}, {b.observed_high:.3f}] vs {b.predicted:.3f}"
+        for b in rel.by_priority[status]
+        if b.rows and b.high_edge > ZERO_EDGE
+    )
+
+
+def roll_form_findings(pf: RollFormTests) -> list[Finding]:
+    """section 3's misses under an alternative roll (a check: the model is unchanged). The form is fitted on
+    single-ancestor trials of these same careers, so the rows with one carrier overlap its fit: in-sample, not held
+    out; the rows with two or more carriers are the part the fit did not read directly"""
+    form = pf.form
+    what = (
+        "each parent's per-roll chance scaled by a flat parent factor"
+        if form.name == "parent factor"
+        else "every legacy's affinity scaled by a slope"
+    )
+    pre = (
+        f"{form.name} (a check, the model unchanged, in-sample): with {what}, refitted on section 3's own selection of "
+        "single-ancestor trials,"
+    )
+
+    def z_text(c: CountTest) -> str:
+        return f"{c.observed:,} vs {c.expected:,.1f} (z {c.z:+.2f})"
+
+    return [
+        finding(
+            S3,
+            f"{pre} the per-roll counts over every target, spark-years and ancestor hits, each read within the model "
+            "(|z| < 1.96, run-clustered)",
+            lambda: abs(pf.spark_years.z) < 1.96 and abs(pf.ancestor_hits.z) < 1.96,
+            lambda: (
+                f"{form.name} {form.estimate:.4f} [{form.low:.4f}, {form.high:.4f}] on {form.trials:,} trials; "
+                f"spark-years {z_text(pf.spark_years)}; hits {z_text(pf.ancestor_hits)}; without Tail Held High "
+                f"spark-years {z_text(pf.spark_years_without_exception)}; q rebuilt from the legs within "
+                f"{pf.q_rebuilt_error:.1e}"
+            ),
+        ),
+        finding(
+            S3,
+            f"{pre} inheritance over all eight targets has an interval covering 1, and so has Tail Held High's",
+            lambda: covers(pf.overall) and covers(pf.exception),
+            lambda: f"every target {ratio_text(pf.overall)}; Tail Held High {ratio_text(pf.exception)}",
+        ),
+        finding(
+            S3,
+            f"{pre} the target rows with two or more carriers, outside the fitting trials, have an interval covering 1",
+            lambda: covers(pf.several),
+            lambda: f"scaled {ratio_text(pf.several)}; the model {ratio_text(pf.several_model)}",
+        ),
+        finding(
+            S3,
+            f"{pre} the q band 0.40-0.60 covers its mean prediction",
+            lambda: pf.middle.observed_low <= pf.middle.predicted <= pf.middle.observed_high,
+            lambda: (
+                f"{pf.middle.observed:.4f} [{pf.middle.observed_low:.4f}, {pf.middle.observed_high:.4f}] vs "
+                f"{pf.middle.predicted:.4f} on {pf.middle.rows:,} rows; reliability chi2 p {pf.joint.p:.3f}; targets "
+                f"differ p {pf.targets_differ.p:.3f}"
+            ),
+        ),
+    ]
+
+
 def claims(wide: bool | None = None) -> list[Value | Finding]:
     R = common.runs()
     why = "needs data" if R is None else "needs master.mdb" if common.mdb() is None else None
     M = Model()
     cal = calibration(R, M, why)
     values: list[Value] = []
-    tests = computed_values(cal, values)
+    forms = roll_forms(None if why else R)
+    tests = computed_values(cal, forms, values)
     fs = findings(cal, tests)
     if why:  # nothing computed: only the findings, as "needs data"
         for f in fs:
@@ -1570,11 +2572,11 @@ def claims(wide: bool | None = None) -> list[Value | Finding]:
     open(os.path.join(OUTD, "report8.txt"), "w").write("\n".join(cal.report.lines) + "\n")
     if wide is None:
         wide = "--wide" in sys.argv
-    out += wide_claims(R, M) if wide else wide_findings(None, None, why="not run (--wide)")
+    out += wide_claims(R, M, forms) if wide else wide_findings(None, None, why="not run (--wide)")
     return out
 
 
-def wide_claims(R: list[Run], M: Model) -> list[Value | Finding]:
+def wide_claims(R: list[Run], M: Model, forms: list[RollForm]) -> list[Value | Finding]:
     """inheritance and training-pool hints on every other skill a deck card or an ancestor's spark could give"""
     jobdir = os.path.join(OUTD, "jobsW")
     man, files, _ = build_jobs(R, M, True, jobdir)
@@ -1584,6 +2586,20 @@ def wide_claims(R: list[Run], M: Model) -> list[Value | Finding]:
     rep = Report(rows)
     s_i = inheritance_test(rep)
     s_p = deck_test(rep, lambda r: r["cards_pool"] and not r["cards_ev"])
+    legs = leg_details(res)
+    # under each alternative roll: every non-target row, and the rows with two or more carriers (outside its fit)
+    form_stats: list[tuple[RollForm, Stat, Stat]] = []
+    for form in forms:
+        chances = rolled_legs(legs, form)
+        q_form = {id(r): q_of_legs(chances(r)) for r in rows}
+        form_stats.append(
+            (
+                form,
+                rep.stat(every_row, lambda r, q_form=q_form: q_form[id(r)], inspired),
+                rep.stat(several_carriers, lambda r, q_form=q_form: q_form[id(r)], inspired),
+            )
+        )
+    several_model = rep.stat(several_carriers, inspiration_odds, inspired)
     # the inheritance shortfall (predicted minus observed inspirations) by skill: the largest one skill's share
     by_skill: collections.Counter[int] = collections.Counter()
     for r in rows:
@@ -1607,12 +2623,36 @@ def wide_claims(R: list[Run], M: Model) -> list[Value | Finding]:
         Value(S3, "non-target skills: inheritance 95% low", s_i.ratio_low),
         Value(S3, "non-target skills: inheritance 95% high", s_i.ratio_high),
         Value(S13, "other skills: largest one skill's share of the inheritance shortfall", top_share),
-        *wide_findings(s_i, s_p, top_share, common.skills()[top_group][0] if top_group else "none"),
+        *test_values("other skills: inheritance, two or more carriers", several_model, ("rows", *RATIO)),
+        *[
+            v
+            for form, every, several in form_stats
+            for v in (
+                *test_values(f"{form.name}: other skills' inheritance", every, RATIO),
+                *test_values(
+                    f"{form.name}: other skills' inheritance, two or more carriers", several, ("rows", *RATIO)
+                ),
+            )
+        ],
+        *wide_findings(
+            s_i,
+            s_p,
+            top_share,
+            common.skills()[top_group][0] if top_group else "none",
+            forms=form_stats,
+            several_model=several_model,
+        ),
     ]
 
 
 def wide_findings(
-    s_i: Stat | None, s_p: Stat | None, top_share: float = NAN, top_skill: str = "", why: str | None = None
+    s_i: Stat | None,
+    s_p: Stat | None,
+    top_share: float = NAN,
+    top_skill: str = "",
+    why: str | None = None,
+    forms: list[tuple[RollForm, Stat, Stat]] | None = None,
+    several_model: Stat | None = None,
 ) -> list[Finding]:
     """the conclusions drawn on the other skills (section 3's non-target rows, section 13's "Other skills"); not tested
     (why) when they were not computed"""
@@ -1637,6 +2677,19 @@ def wide_findings(
             lambda: s_p.ratio_low > 1,
             lambda: ratio_text(s_p),
         ),
+        *[
+            (
+                S3,
+                f"{name} (a check, the model unchanged, in-sample): rescored with it, the non-target skills' rows with two "
+                "or more carriers, which are not its fitting trials, have an inheritance interval covering 1",
+                lambda i=i: covers(forms[i][2]),
+                lambda i=i: (
+                    f"two or more carriers: scaled {ratio_text(forms[i][2])}, the model {ratio_text(several_model)}; "
+                    f"every row: scaled {ratio_text(forms[i][1])}, the model {ratio_text(s_i)}"
+                ),
+            )
+            for i, name in enumerate(("parent factor", "affinity slope"))
+        ],
     ]
     if why:
         return [Finding(section, statement, None, why) for section, statement, _, _ in statements]

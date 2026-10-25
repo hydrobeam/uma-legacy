@@ -298,14 +298,23 @@ class HeldOutComparison(NamedTuple):
     z: float
 
 
-def compare_held_out(a: Sequence[float] | np.ndarray, b: Sequence[float] | np.ndarray) -> HeldOutComparison:
+def compare_held_out(
+    a: Sequence[float] | np.ndarray, b: Sequence[float] | np.ndarray, clusters: Sequence[Any] | np.ndarray | None = None
+) -> HeldOutComparison:
     """paired comparison of two models' held-out log-likelihoods, one entry per run (each run scored by the model fitted
-    on the other folds): (sum of a - b in nats, its standard error, z). The normal approximation assumes independent
-    per-run differences; this standard error does not account for overlapping training folds."""
+    on the other folds), or per row with `clusters` naming each row's unit: (sum of a - b in nats, its standard error, z).
+    The standard error treats the units' summed differences as independent (each run, or each cluster: a card when the
+    compared term is a card property, since rows of one card share its residual); it does not account for overlapping
+    training folds."""
     import numpy as np
 
     d = np.asarray(a, float) - np.asarray(b, float)
-    se = float(np.sqrt(len(d)) * d.std(ddof=1)) if len(d) > 1 else float("nan")
+    if clusters is not None:
+        _, ix = np.unique(np.asarray(clusters), return_inverse=True)
+        d_units = np.bincount(ix, weights=d)
+    else:
+        d_units = d
+    se = float(np.sqrt(len(d_units)) * d_units.std(ddof=1)) if len(d_units) > 1 else float("nan")
     return HeldOutComparison(float(d.sum()), se, float(d.sum() / se) if se else float("nan"))
 
 
@@ -706,10 +715,11 @@ def chosen_end(cid: int) -> tuple[int, set[str], set[str]] | None:
 
 # ---------------------------------------------------------------- the choice rule's three cases
 # Where a run shows its priority list and a prioritised skill sits on a choice other than the top one ("steered"):
-#   one-sided  only the steered choice holds a prioritised skill, and none of its skills is at hint Lv 5 from another
-#              source: IT takes it;
-#   maxed      a steered skill ends the run at hint Lv 5 with a source besides this event (a proxy: the level when the
-#              event fired is not recorded);
+#   one-sided  only the steered choice holds a prioritised skill, and none of its skills was at hint Lv 5 from another
+#              source when the event fired: IT takes it;
+#   maxed      a steered skill was at hint Lv 5 from other sources before the event (maxed_elsewhere(): at Lv 5 at the
+#              end, from another source, and never credited to the card's event, whose credit would show it below Lv 5
+#              then);
 #   both       the top choice holds a prioritised skill too.
 STEER_CASES: tuple[str, ...] = ("one-sided", "maxed", "both")
 
@@ -729,9 +739,22 @@ def steer_case(priority: Sequence[str], steered: set[str], default: set[str], st
     return "maxed" if steered_maxed else "one-sided"
 
 
+def names_source(src: str, source: str) -> bool:
+    """a hint credit names `source` ("<card> event"), alone or in a shared credit ("A or <card> event")"""
+    return src.endswith(" event") and source[:-6] in [y.strip() for y in src[:-6].split(" or ")]
+
+
 def maxed_elsewhere(hs: dict[str, Any], skills: set[str], source: str) -> bool:
-    """a skill of `skills` ends the run at hint Lv 5 and some hint of it came from a source other than `source`"""
-    return any(s in hs and hs[s]["lv"] >= 5 and any(x != source for x in hs[s]["src"]) for s in skills)
+    """a skill of `skills` was at hint Lv 5 from other sources before the card's event (`source`, "<card> event")
+    fired: it ends the run at Lv 5, some hint of it came from another source, and none is credited to that event, alone
+    or shared (a credit from it shows the skill was below Lv 5 when it fired, since a hint at Lv 5 is not credited)"""
+    return any(
+        s in hs
+        and hs[s]["lv"] >= 5
+        and any(x != source for x in hs[s]["src"])
+        and not any(names_source(x, source) for x in hs[s]["src"])
+        for s in skills
+    )
 
 
 def choice_events() -> dict[int, list[tuple[str, list[list[set[str]]]]]]:
@@ -783,7 +806,9 @@ def steer_readings(R: list[Run] | None = None) -> list[SteerReading]:
     event gives among the card's events, that no other deck card's events can give, with background under BG_CLEAN;
     IT's choice is the one whose skill is credited to the card ("<card> event"), runs crediting both or neither left
     out, and runs whose every steered skill is already at hint Lv 5 from another source left out (the steered choice
-    could not show). Plus Anshinzawa's finale from section 9's hint-level reading."""
+    could not show). A reading in the maxed case is left out too: maxed_elsewhere() requires no credit from the card's
+    event, so a reading that took the steered choice can never be maxed and the case's share would be 0 by
+    construction. Plus Anshinzawa's finale from section 9's hint-level reading."""
     g = game()
     evs = choice_events()
     out: list[SteerReading] = []
@@ -823,7 +848,7 @@ def steer_readings(R: list[Run] | None = None) -> list[SteerReading]:
                 if took_st == took_top:
                     continue
                 case = steer_case(p, st, top, maxed_elsewhere(hs, st, src))
-                if case:
+                if case and case != "maxed":
                     out.append(SteerReading(label, case, took_st))
     return out + finale_steer_readings(R if R is not None else runs() or [])
 
@@ -871,7 +896,8 @@ def steer_chance(case: str | None) -> float:
 
 
 def end_chance(cid: int, r: Run) -> float:
-    """the chance IT takes the card's chain-ending choice in a run showing a priority list (section 9's three cases)"""
+    """the chance IT takes the card's chain-ending choice in a run showing a priority list (section 9's three cases; the
+    ending skill counts as maxed only when maxed_elsewhere() says it was at Lv 5 before the card's event fired)"""
     link_end = chosen_end(cid)
     if not link_end or r["priority"] is None:
         return 0.0
@@ -1058,18 +1084,28 @@ def anshin_runs(R: list[Run]) -> list[AnshinRun]:
 
 
 def classify(o: AnshinRun) -> str:
-    """the finale's reading: 'c1_win' / 'c2_win' (Nothing Ventured at or above C1_LV / below), 'c2_lose' (her Risky
-    Business alone), 'c2_lose?' (shared or doubtful credit), 'none_rb5' (nothing, Risky Business at Lv 5), 'none'"""
+    """the finale's reading: 'c1_win' / 'c2_win' (Nothing Ventured at or above C1_LV / below); without Nothing Ventured,
+    by her Risky Business when it is credited to her alone (each of her +1s is one event: the date-start event's
+    bottom choice, which IT takes when Risky Business is prioritised, and the finale's choice-2 loss): 'c2_lose' at Lv 2
+    (both her +1s) or at Lv 1 on a shown list without Risky Business, 'c1_blank' at Lv 1 with Risky Business prioritised
+    (the date-start's +1 alone: the finale's choice 1 gave nothing); 'c2_lose?' (doubtful) at Lv 1 with no list shown,
+    or when the credit is shared ("A or B event") or another source adds to her level, which then cannot be read;
+    'none_rb5' (nothing, Risky Business at Lv 5 from other sources), 'none'"""
     her: Callable[[tuple[int, list[str]] | None], Any] = lambda x: x and any("Anshinzawa" in s for s in x[1])
     nv, rb = o.NV, o.RB
     if nv:
         return "c1_win" if nv[0] >= C1_LV else "c2_win"
     if her(rb):
-        if any(" or " in s for s in rb[1]):
+        if rb[1] != [HER_A]:
             return "c2_lose?"
-        if o.rb_pri and HER_A not in rb[1]:
+        if rb[0] == 2:
+            return "c2_lose"
+        if not o.shown:  # whether the date-start's +1 came is unknown
             return "c2_lose?"
-        return "c2_lose"
+        date = 1 if o.rb_pri else 0  # the date-start event's +1
+        if rb[0] == date + 1:
+            return "c2_lose"
+        return "c1_blank" if rb[0] == date else "c2_lose?"
     if rb and rb[0] >= 5:
         return "none_rb5"
     return "none"
@@ -1078,14 +1114,18 @@ def classify(o: AnshinRun) -> str:
 # ---------------------------------------------------------------- the choice rule's three cases (computed in section 8)
 def finale_steer_readings(R: list[Run]) -> list[SteerReading]:
     """Anshinzawa's finale on the three cases: both its choices can give Nothing Ventured, so the generic scan
-    (steer_readings) cannot read it; its hint levels can (classify())"""
+    (steer_readings) cannot read it; its hint levels can (classify()). Maxed: Risky Business at Lv 5 at the end and
+    none of it credited to her (her date-start event, which comes first, would have been credited had it been below
+    Lv 5 then), so the finale fired with it at Lv 5; a run crediting her Risky Business was below Lv 5 at the date-start
+    and is read as one-sided. A choice-2 win shows by Nothing Ventured whatever Risky Business's level, so the reading
+    does not depend on the outcome."""
     out: list[SteerReading] = []
     for o in anshin_runs(R):
-        if o.festa or not o.shown or not o.rb_pri or o.c not in ("c1_win", "c2_win", "c2_lose"):
+        if o.festa or not o.shown or not o.rb_pri or o.c not in ("c1_win", "c1_blank", "c2_win", "c2_lose"):
             continue
-        maxed = bool(o.RB) and o.RB[0] >= 5
+        maxed = bool(o.RB) and o.RB[0] >= 5 and not any("Anshinzawa" in x for x in o.RB[1])
         case = "both" if o.nv_pri else "maxed" if maxed else "one-sided"
-        out.append(SteerReading("Anshinzawa's finale (hint levels)", case, o.c != "c1_win"))
+        out.append(SteerReading("Anshinzawa's finale (hint levels)", case, o.c not in ("c1_win", "c1_blank")))
     return out
 
 

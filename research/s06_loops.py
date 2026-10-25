@@ -22,7 +22,13 @@ schedule attempts race r at a subset of the turns that offer it, each at clamp(b
 100)% (pen_k >= 0), so P_a(r) <= Pmax_a(r) = 1 - prod over every turn offering r to a of (1 - clamp(bp, 0, 100)/100).
 Computed on every deck result of the validation reference outputs (val/ref__*.out, val/refpu__*.out) with
 val/joint_check.py's independent Python recomputation of the exact odds, the affinities rebuilt here from the reported
-pairs' o and relation parts; o itself is recomputed from the reported schedule chart, o_max from data.json."""
+pairs' o and relation parts; o itself is recomputed from the reported schedule chart, o_max from data.json. PB itself is
+checked against an independent MILP by the solver's tests (tests.rs pair_ceilings_match_milp, on frozen test data); the
+count of its pairs is reported. Also per result: the loops the search rejected only after building their schedule
+(exact.schedule_rejects), which no bound here covers; the winners' chart cells at aptitude basis <= 70 (section 4's known
+miss); and the race model in odds: every listed loop's odds under CHART_VARIANTS (losses scaled by assumed sizes,
+uniformly or at the lowest basis only; every win chance 1% lower), the winners' gain at the priced scale, whether any
+listed runner-up then passes its winner, and the 1% change against the smallest runner-up gap."""
 
 import collections, itertools, json, math, os, statistics, struct, sys
 from dataclasses import dataclass
@@ -144,15 +150,44 @@ def own_character_claims() -> list[Value | Finding]:
 VAL: str = os.path.join(common.ROOT, "val")
 
 
-def o_chart(lp: dict[str, Any]) -> Overlap:
+# A chart cell's win % under a changed race model
+ChartWin = Callable[[dict[str, Any]], float]
+
+
+def is_low_basis(cell: dict[str, Any]) -> bool:
+    """at aptitude basis bp = 110 - the cell's aptitude cost <= 70 (section 4's lowest bucket)"""
+    return 110 - cell["apt"] <= 70
+
+
+def loss_scaled(scale: float, only: Callable[[dict[str, Any]], bool] = lambda _: True) -> ChartWin:
+    """a cell that can be won (win % > 0), and passes `only`, loses with scale x (100 - win %)"""
+    return lambda c: 100 - (100 - c["p"]) * (scale if c["p"] > 0 and only(c) else 1.0)
+
+
+# Sizes assumed, not fitted. Base grades under-predict IT's wins (section 4: losses about half as often overall, most
+# of the gap at the lowest basis), so a loop whose members carry aptitude sparks loses less often than its chart says.
+# Uniform: every cell's losses scaled alike; low basis: only cells at bp <= 70, which moves loops unevenly.
+LOSS_SCALE_PRICED: float = 0.5  # the scale whose effect on the winners the document states
+CHART_VARIANTS: dict[str, ChartWin] = {
+    "uniform 0.5": loss_scaled(0.5),
+    "uniform 0": loss_scaled(0.0),  # every race the chart gives a chance is won
+    "low basis 0.5": loss_scaled(0.5, is_low_basis),
+    "low basis 0": loss_scaled(0.0, is_low_basis),
+    "wins 1% lower": lambda c: 0.99 * c["p"],  # section 4's 1% calibration allowance, against the odds
+}
+PRICED: str = "uniform 0.5"
+ONE_PCT: str = "wins 1% lower"
+
+
+def o_chart(lp: dict[str, Any], win: ChartWin = lambda c: c["p"]) -> Overlap:
     """o(a, b) from a result's schedule chart: P_a(r) = 1 - prod over a's attempts at race r (by name, either year) of
-    (1 - win %), the cell's win % including the streak penalty"""
+    (1 - win %), the cell's win % including the streak penalty, or as `win` changes it"""
     n = len(lp["members"])
     miss: list[dict[int, float]] = [collections.defaultdict(lambda: 1.0) for _ in range(n)]
     for row in lp["schedule"]:
         for a, c in enumerate(row["cells"]):
             if c is not None:
-                miss[a][row["race"]] *= 1 - c["p"] / 100
+                miss[a][row["race"]] *= 1 - win(c) / 100
     P = [{r: 1 - m for r, m in mm.items()} for mm in miss]
     return {(a, b): sum(v * P[b].get(r, 0.0) for r, v in P[a].items()) for a, b in itertools.combinations(range(n), 2)}
 
@@ -227,6 +262,7 @@ class ScheduleRow:
     floor: float = math.nan  # P_floor: every o = 0
     ceil: float = math.nan  # P_ceiling: every pair at o_max
     pb: float = math.nan  # P_PB: every pair at PB
+    scaled: dict[str, float] | None = None  # CHART_VARIANTS -> the odds with the chart's win chances so changed
 
 
 @dataclass
@@ -239,17 +275,38 @@ class MaxErrors:
     o: float = 0.0  # |o from the schedule chart - reported o| per pair
 
 
+class ChartCells(NamedTuple):
+    """a winner's schedule chart, cell by cell"""
+
+    attempts: int  # cells (race attempts)
+    low_basis: int  # at aptitude basis bp = 110 - the cell's aptitude cost <= 70 (section 4's known miss)
+    inconsistent: int  # cells whose win % is not clamp(bp - pen, 0, 100)
+
+
 class ScheduleBound(NamedTuple):
     rows: list[ScheduleRow]
     errors: MaxErrors
     penalties: set[int]  # every streak penalty in the eras' data.json
+    rejects: dict[str, int]  # result file -> loops the search rejected only after building their schedule
+    charts: dict[str, ChartCells]  # result file -> its winner's chart
+
+
+def chart_cells(lp: dict[str, Any]) -> ChartCells:
+    """count a loop's chart cells and those at the lowest aptitude basis"""
+    cells = [c for row in lp["schedule"] for c in row["cells"] if c is not None]
+    return ChartCells(
+        len(cells),
+        sum(110 - c["apt"] <= 70 for c in cells),
+        sum(c["p"] != min(100, max(0, 110 - c["apt"] - c["pen"])) for c in cells),
+    )
 
 
 def check_loop(
     t: dict[str, Any], data: dict[str, Any], name: str, is_top: bool, err: MaxErrors
 ) -> tuple[ScheduleRow, list[list[float]]]:
-    """one listed loop: its row, and its per-lineage q at the reported o, at o = 0, at o_max and at PB (in that order,
-    as joint_check reads them); the recomputation's deviations go into err"""
+    """one listed loop: its row, and its per-lineage q at the reported o, at o = 0, at o_max, at PB and at the chart's
+    o under each of CHART_VARIANTS (in that order, as joint_check reads them); the recomputation's deviations go into
+    err"""
     lp = t["loop"]
     det = lp["detail"]
     o_rep = {(p["a"], p["b"]): p["wins"] for p in det["pairs"]}
@@ -258,7 +315,7 @@ def check_loop(
     om = o_max(lp, data)
     opb = o_pb(lp, data)
     vs: list[list[float]] = []
-    for o in (o_rep, dict.fromkeys(o_rep, 0.0), om, opb):
+    for o in (o_rep, dict.fromkeys(o_rep, 0.0), om, opb, *(o_chart(lp, w) for w in CHART_VARIANTS.values())):
         vs.append([lineage_q(L, o, det)[0] for L in det["lineages"]])
     for L, q in zip(det["lineages"], vs[0]):
         err.q = max(err.q, abs(q - L["q"]))
@@ -293,8 +350,9 @@ def check_result_file(
         row, q_vectors[id(t)] = check_loop(t, data, name, t is tops[0], err)
         rows.append(row)
     _, alt = joint_check.check(dict(out, top=keep), job, data_dir, alt_q=lambda t: q_vectors[id(t)])
-    for r, (pf, p0, pc, pb) in zip(rows, alt):
+    for r, (pf, p0, pc, pb, *scaled) in zip(rows, alt):
         r.found, r.floor, r.ceil, r.pb = pf, p0, pc, pb
+        r.scaled = dict(zip(CHART_VARIANTS, scaled))
         err.p = max(err.p, abs(pf / r.rep - 1))
     return rows
 
@@ -303,7 +361,7 @@ def schedule_bound(tags: tuple[str, ...] = ("ref", "refpu")) -> ScheduleBound:
     """per deck result of the validation reference outputs: the winner's (and each listed runner-up loop's) P_found,
     P_floor, P_ceiling, recomputed by val/joint_check.py at q rebuilt from o"""
     sys.path.insert(0, VAL)
-    bound = ScheduleBound([], MaxErrors(), set())
+    bound = ScheduleBound([], MaxErrors(), set(), {}, {})
     for era, j in json.load(open(os.path.join(VAL, "jobs.json"))):
         job = json.load(open(os.path.join(VAL, "jobs", j + ".json")))
         if job.get("mode") != "deck":
@@ -315,16 +373,28 @@ def schedule_bound(tags: tuple[str, ...] = ("ref", "refpu")) -> ScheduleBound:
             f = os.path.join(VAL, f"{tag}__{era}__{j}.out")
             if not os.path.exists(f):
                 continue
-            bound.rows.extend(check_result_file(json.load(open(f)), job, dd, data, f"{tag}__{era}__{j}", bound.errors))
+            out = json.load(open(f))
+            name = f"{tag}__{era}__{j}"
+            bound.rows.extend(check_result_file(out, job, dd, data, name, bound.errors))
+            bound.rejects[name] = out["exact"]["schedule_rejects"]
+            bound.charts[name] = chart_cells(out["top"][0]["loop"])
     return bound
 
 
+# the solver's pair ceilings against an independent MILP (pkg/loopopt/src/tests.rs pair_ceilings_match_milp, on the
+# frozen test data tests/fixtures/data_v1.json; val/milp_fixtures.py writes it)
+PB_MILP: str = os.path.join(common.ROOT, "pkg", "loopopt", "tests", "fixtures", "pb_milp.json")
+
+
 def schedule_claims() -> list[Value | Finding]:
-    rows, err, pens = schedule_bound()
+    rows, err, pens, rejects, charts = schedule_bound()
     W = [r for r in rows if r.top]
     RU = [r for r in rows if not r.top]  # winners, runner-ups
     worth = [100 * (r.found / r.floor - 1) for r in W]
     gpb = [100 * (r.pb / r.found - 1) for r in W]
+    gmax = [100 * (r.ceil / r.found - 1) for r in W]  # the loose independent ceiling's gain
+    rejecting = {f: n for f, n in rejects.items() if n}
+    cells = ChartCells(*(sum(c[i] for c in charts.values()) for i in range(len(ChartCells._fields))))
     out: list[Value | Finding] = [
         Value(SEC, "schedules: result files", len(W)),
         Value(SEC, "schedules: recomputed odds max relative error", err.p),
@@ -334,7 +404,33 @@ def schedule_claims() -> list[Value | Finding]:
         Value(SEC, "schedules: PB ceiling gain max %", max(gpb)),
         Value(SEC, "schedules: PB ceiling gain median %", statistics.median(gpb)),
         Value(SEC, "schedules: PB ceiling gain min %", min(gpb)),
+        Value(SEC, "schedules: o_max ceiling gain min %", min(gmax)),
+        Value(SEC, "schedules: o_max ceiling gain max %", max(gmax)),
+        Value(SEC, "schedules: PB pairs checked against the MILP", len(json.load(open(PB_MILP)))),
+        Value(SEC, "schedules: rejected after scheduling", sum(rejects.values())),
+        Value(SEC, "schedules: result files with such rejects", len(rejecting)),
+        Value(SEC, "schedules: such rejects max per result", max(rejects.values())),
+        Value(SEC, "schedules: winners' chart attempts", cells.attempts),
+        Value(SEC, "schedules: winners' chart attempts at bp <=70", cells.low_basis),
+        Value(SEC, "schedules: winners' chart share at bp <=70", cells.low_basis / cells.attempts),
+        common.finding(
+            SEC,
+            "The search also rejects loops after building their schedule (exact.schedule_rejects, the reported pass "
+            "only): each failed a bound against the k-th best value found so far (the last listed place at that "
+            "point), not against the final listing or its winner, so how many a better schedule could have kept is unknown; no bound here "
+            "excludes them (counted per result)",
+            sum(rejects.values()) > 0,
+            f"{sum(rejects.values())} in {len(rejecting)} of {len(rejects)} results: "
+            + ", ".join(f"{f} {n}" for f, n in sorted(rejecting.items(), key=lambda x: -x[1])),
+        ),
+        common.finding(
+            SEC,
+            "Every winner's schedule chart states each win chance as clamp(110 - aptitude cost - streak penalty, 0, 100)",
+            cells.inconsistent == 0,
+            f"{cells.inconsistent} of {cells.attempts} cells off; {cells.low_basis} at bp <= 70",
+        ),
     ]
+    out += loss_scale_claims(W, RU)
     out.append(
         common.finding(
             SEC,
@@ -375,6 +471,52 @@ def schedule_claims() -> list[Value | Finding]:
     if RU:
         out += runner_up_claims(W, RU)
     return out
+
+
+def loss_scale_claims(W: list[ScheduleRow], RU: list[ScheduleRow]) -> list[Value | Finding]:
+    """the race model's base-grade simplification in odds: each winner's odds with its chart's losses scaled
+    (CHART_VARIANTS, uniform and at the lowest basis only), and whether a listed runner-up (changed alike) then passes
+    its winner; and what section 4's 1% allowance moves: each winner's odds with every chart win chance 1% lower,
+    against the smallest gain a listed runner-up needs to tie its winner"""
+    change: Callable[[str], list[float]] = lambda v: [100 * (r.scaled[v] / r.found - 1) for r in W]
+    gain, one_pct = change(PRICED), [abs(x) for x in change(ONE_PCT)]
+    winner = {w.file: w for w in W}
+    passes = {v: [r.file for r in RU if r.scaled[v] > winner[r.file].scaled[v]] for v in CHART_VARIANTS}
+    gap = [100 * (winner[r.file].found / r.found - 1) for r in RU]  # the gain each listed runner-up needs to tie
+    return [
+        Value(SEC, "schedules: loss scale priced", LOSS_SCALE_PRICED, note="assumed"),
+        Value(SEC, "schedules: winners' gain at the loss scale min %", min(gain)),
+        Value(SEC, "schedules: winners' gain at the loss scale max %", max(gain)),
+        Value(SEC, "schedules: winners' gain at the loss scale median %", statistics.median(gain)),
+        Value(SEC, "schedules: loss scalings tried", len(CHART_VARIANTS) - 1),
+        Value(SEC, "schedules: winners' odds change with wins 1% lower max %", max(one_pct)),
+        Value(SEC, "schedules: winners' odds change with wins 1% lower median %", statistics.median(one_pct)),
+        Value(SEC, "schedules: smallest runner-up gap to its winner %", min(gap)),
+        common.finding(
+            SEC,
+            f"Check (it cannot fail: the odds rise with o by derivation): with each chart cell's loss chance scaled by "
+            f"{LOSS_SCALE_PRICED} (assumed), every winner's odds rise",
+            all(g > 0 for g in gain),
+            f"gain {min(gain):.2f}-{max(gain):.2f}%, median {statistics.median(gain):.2f}%",
+        ),
+        common.finding(
+            SEC,
+            "Lowering the listed loops' scheduled losses, uniformly or at the lowest aptitude basis only, at the "
+            "assumed scales tried, reorders no listed top: no listed runner-up passes its winner (unlisted loops not "
+            "rechecked)",
+            not any(passes[v] for v in CHART_VARIANTS if v != ONE_PCT),
+            "; ".join(f"{v}: {', '.join(passes[v]) or 'none'}" for v in CHART_VARIANTS if v != ONE_PCT),
+        ),
+        common.finding(
+            SEC,
+            "Section 4's 1% allowance is not small in odds: every scheduled win chance 1% lower moves some winner's "
+            "odds by more than the smallest gain a listed runner-up needs to tie its winner; applied alike to every "
+            "listed loop, it reorders no listed top",
+            max(one_pct) > min(gap) and not passes[ONE_PCT],
+            f"winners' change up to {max(one_pct):.2f}% (median {statistics.median(one_pct):.2f}%); smallest runner-up "
+            f"gap {min(gap):.2f}%; runner-ups passing their winner: {', '.join(passes[ONE_PCT]) or 'none'}",
+        ),
+    ]
 
 
 def runner_up_claims(W: list[ScheduleRow], RU: list[ScheduleRow]) -> list[Value | Finding]:

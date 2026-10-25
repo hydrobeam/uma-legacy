@@ -18,12 +18,17 @@ model, Binomial(21, 0.35) with the card picked by links left, is the baseline th
     ratio (the thresholds used are in fit_findings); the same fit per scenario (scenarios with 30+ runs) against one N;
   - the pal-count budget (logit p = a + b x pals at n = CHAIN_N, pals excluding group cards): its fit, a scenario
     intercept and the own terms of Sasami Anshinzawa [This Might Sting!]'s decks and Inari One's careers on top of it;
-  - held out (5-fold): the free distribution, the binomial by likelihood, the budget, the budget with the slot rule and
-    the budget with ends wasted against today's model and against each other (held_out); the same with every fitted
+  - held out (5-fold): the free distribution, the binomial by likelihood, the budget and the budget with the slot rule
+    against today's model and against each other (held_out); the budget against today's model with every fitted
     nuisance measured on the training folds only (nested_held_out);
   - the stop share and no-list scale profiled on grids, the budget re-fitted at each value (profile_claims);
-  - freed vs wasted chain ends: each rule at its own stop share and no-list scale, set against synthetic pools generated
-    under each (ends_claims, a parametric bootstrap holding those constants fixed per pool);
+  - freed vs wasted chain ends (ends_claims): each rule's stop share and no-list scale from one coordinate search
+    (end_search), checked against the joint grid; the in-sample difference by what can end a run's chains (end_group);
+    held out with the constants searched on the training folds, and the mechanism alone with the budget fitted where no
+    chain can end; a mixture's freed share; the direct deck-mate contrasts (decks whose other chain cards are plain
+    3-link cards) against each rule's prediction; a re-fitting parametric bootstrap, BOOT_SIMS pools per rule, each
+    scored by the whole procedure, for every one of these statistics; and whether prioritising an ending skill ends the
+    chain (ending_choice_reading);
   - the marker allowance: the share of links implied fired (a later link shows on a clean marker) whose marker is
     missing, and the best p at n = 21 under allowances 0.002-0.02 and with none on the runs without a contradiction;
   - final links by pal count and by card (run-clustered Wald chi2 over cards with 60+ observations) against the final
@@ -45,7 +50,7 @@ deck). Intervals on rates over observations that come several to a run (final li
 started) are run-clustered (common.cluster_ci), the spread between cards a run-clustered Wald test
 (common.cluster_chi2)."""
 
-import collections, itertools, math, os, re, sys
+import collections, functools, itertools, math, os, re, sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
@@ -55,7 +60,8 @@ from scipy.stats import binom, chi2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
-from common import BG_CLEAN, chosen_end, chosen_end_share, end_chance, game, marker_background
+from common import BG_CLEAN, chosen_end, chosen_end_share, end_chance, game, marker_background, maxed_elsewhere
+from common import steer_case
 from common import Run
 
 
@@ -463,9 +469,12 @@ def budget_rows(pal_counts: np.ndarray, a: float, b: float) -> np.ndarray:
     return np.hstack([body, np.maximum(0.0, 1 - body.sum(1, keepdims=True))])
 
 
-def budget_fit(M: np.ndarray, pal_counts: np.ndarray, extra: np.ndarray | None = None) -> tuple[np.ndarray, float]:
+def budget_fit(
+    M: np.ndarray, pal_counts: np.ndarray, extra: np.ndarray | None = None, start: Sequence[float] | None = None
+) -> tuple[np.ndarray, float]:
     """the pal-count budget fitted by likelihood: (a, b, c...) and the log-likelihood; `extra` (one indicator, or one
-    column per indicator) adds a coefficient c each to the logit (a group's own effect on top of the pal count)"""
+    column per indicator) adds a coefficient c each to the logit (a group's own effect on top of the pal count); `start`
+    is the search's starting (a, b), by default one p = CP"""
     cols = [np.ones(len(M)), pal_counts] + ([extra] if extra is not None else [])
     X = np.column_stack(cols)
 
@@ -477,17 +486,16 @@ def budget_fit(M: np.ndarray, pal_counts: np.ndarray, extra: np.ndarray | None =
 
     x0 = np.zeros(X.shape[1])
     x0[0] = math.log(CP / (1 - CP))
+    if start is not None:
+        x0[:2] = start
     r = minimize(nll, x0, method="Nelder-Mead", options={"xatol": 1e-5, "fatol": 1e-4, "maxiter": 4000})
     return r.x, -float(r.fun)
 
 
-def held_out(
-    xs: list[Row], M: np.ndarray, M_today: np.ndarray, M_wasted: np.ndarray
-) -> dict[str, common.HeldOutComparison]:
+def held_out(xs: list[Row], M: np.ndarray, M_today: np.ndarray) -> dict[str, common.HeldOutComparison]:
     """5-fold cross-validation (common.fold by run id): each fold's runs are scored by forms fitted on the other four
     under the model's allocation (M, RULE): the free distribution, the binomial by likelihood (n 10..40, p re-fitted)
-    and the pal-count budget; the budget also under the slot rule (M_today) and with ends wasted (M_wasted); against
-    today's model, Binomial(21, 0.35) with the slot rule (N fixed: no budget fitted; the stop risks, end chances and
+    and the pal-count budget; the budget also under the slot rule (M_today); against today's model, Binomial(21, 0.35) with the slot rule (N fixed: no budget fitted; the stop risks, end chances and
     backgrounds are the same fitted ones as every form's), and pairwise. Per-run held-out
     log-likelihoods; {comparison: (nats, SE, z)} from common.compare_held_out, positive when the first form predicts
     unseen runs better"""
@@ -500,7 +508,6 @@ def held_out(
             "binomial by likelihood",
             "pal-count budget",
             "pal-count budget, slot rule",
-            "pal-count budget, ends wasted",
             "base",
         )
     }
@@ -518,17 +525,10 @@ def held_out(
         per["pal-count budget, slot rule"][test] = np.log(
             np.maximum(1e-300, (M_today[test] * budget_rows(P[test], a, b)).sum(1))
         )
-        (a, b), _ = budget_fit(M_wasted[train], P[train])
-        per["pal-count budget, ends wasted"][test] = np.log(
-            np.maximum(1e-300, (M_wasted[test] * budget_rows(P[test], a, b)).sum(1))
-        )
     out = {f: common.compare_held_out(per[f], per["base"]) for f in per if f != "base"}
     out["pal-count budget over free"] = common.compare_held_out(per["pal-count budget"], per["free"])
     out["pal-count budget over the same with the slot rule"] = common.compare_held_out(
         per["pal-count budget"], per["pal-count budget, slot rule"]
-    )
-    out["pal-count budget over the same with ends wasted"] = common.compare_held_out(
-        per["pal-count budget"], per["pal-count budget, ends wasted"]
     )
     return out
 
@@ -536,11 +536,11 @@ def held_out(
 def nested_held_out() -> dict[str, common.HeldOutComparison]:
     """5-fold held out with every fitted nuisance (marker backgrounds, steering shares, no-list end shares) measured on
     the training folds only (common.nuisance_runs), so nothing about a scored run enters its prediction except its own
-    deck, list and trainee: the pal-count budget under RULE and the same with ends wasted, each fitted on the training
-    runs, against today's model (Binomial(21, 0.35), slot rule). The stop share and no-list scale stay at the model's
-    values (profiled on the whole pool; profile_claims)"""
+    deck, list and trainee: the pal-count budget under RULE, fitted on the training runs, against today's model
+    (Binomial(21, 0.35), slot rule). The stop share and no-list scale stay at the model's values (profiled on the whole
+    pool; profile_claims)"""
     folds = {r["id"]: common.fold(r["id"]) for r in common.runs() or []}
-    per: dict[str, dict[int, float]] = {f: {} for f in ("budget", "ends wasted", "today")}
+    per: dict[str, dict[int, float]] = {f: {} for f in ("budget", "today")}
     for k in range(common.K_FOLDS):
         train_runs = [r for r in common.runs() or [] if folds[r["id"]] != k]
         with common.nuisance_runs(train_runs):
@@ -549,20 +549,18 @@ def nested_held_out() -> dict[str, common.HeldOutComparison]:
             train = np.array([folds[x.run["id"]] != k for x in xs])
             P = np.array([budget_pals(x.run) for x in xs], float)
             pairs = [(x.kinds, x.obs) for x in xs]
-            for form, rule in (("budget", RULE), ("ends wasted", "wasted")):
-                M = lk_matrix(pairs, EPS, rule)
-                (a, b), _ = budget_fit(M[train], P[train])
-                ll_test = np.log(np.maximum(1e-300, (M[~train] * budget_rows(P[~train], a, b)).sum(1)))
-                per[form].update(zip((x.run["id"] for x, t in zip(xs, train) if not t), ll_test))
+            M = lk_matrix(pairs, EPS, RULE)
+            (a, b), _ = budget_fit(M[train], P[train])
+            ll_test = np.log(np.maximum(1e-300, (M[~train] * budget_rows(P[~train], a, b)).sum(1)))
+            per["budget"].update(zip((x.run["id"] for x, t in zip(xs, train) if not t), ll_test))
             M0 = lk_matrix(pairs, EPS, "slots")
             ll0 = np.log(np.maximum(1e-300, M0[~train] @ np.asarray(lump(BIN))))
             per["today"].update(zip((x.run["id"] for x, t in zip(xs, train) if not t), ll0))
     _obs.clear()
-    ids = sorted(set(per["budget"]) & set(per["today"]) & set(per["ends wasted"]))
+    ids = sorted(set(per["budget"]) & set(per["today"]))
     arr = {f: np.array([v[i] for i in ids]) for f, v in per.items()}
     return {
         "pal-count budget over today's model": common.compare_held_out(arr["budget"], arr["today"]),
-        "pal-count budget over the same with ends wasted": common.compare_held_out(arr["budget"], arr["ends wasted"]),
     }
 
 
@@ -593,7 +591,6 @@ def fit_claims() -> list[common.Value | common.Finding]:
     note = f"every run, 0-5 pals; {dropped(ALL)} decks with a non-pal R card left out"
     M = lk_matrix([(x.kinds, x.obs) for x in xs])  # the model's allocation (RULE)
     M_today = lk_matrix([(x.kinds, x.obs) for x in xs], EPS, "slots")  # today's: links left
-    M_wasted = lk_matrix([(x.kinds, x.obs) for x in xs], EPS, "wasted")  # an ended card keeps taking picks
     pooled = em(M)
     llp = ll(pooled, M)
     mn, vr = mean_var(pooled)
@@ -601,7 +598,7 @@ def fit_claims() -> list[common.Value | common.Finding]:
     lp = ll(lump(POIS), M)
     prof = binom_profile(M)
     bn, bp, lb = max(prof, key=lambda x: x[2])
-    ho = held_out(xs, M, M_today, M_wasted)
+    ho = held_out(xs, M, M_today)
     nested = nested_held_out()
     l_cmp = cmp_ll(M)[0]
     out: list[common.Value | common.Finding] = [
@@ -757,7 +754,23 @@ def profile_claims() -> list[common.Value | common.Finding]:
     return out
 
 
-BOOT_SIMS: int = 8  # synthetic pools per hypothesis in ends_claims
+# ---------------------------------------------------------------- does an ended chain free its events?
+# Freed (RULE "cards", the model): a chain that ends early leaves the running cards, so later events go to the others.
+# Wasted ("wasted"): the ended card keeps taking its share of picks until its full length and shows none.
+MODEL_ENDS: tuple[float, float] = (STOP_SHARE, NOLIST_SCALE)  # the model's values, where every search starts
+END_RULES: tuple[str, ...] = ("cards", "wasted")
+END_NAMES: dict[str, str] = {"cards": "freed", "wasted": "wasted"}
+END_GROUPS: tuple[str, ...] = (
+    "cannot end early",
+    "default-choice stop only",
+    "chosen end, list shown",
+    "chosen end, no list shown",
+)
+BOOT_SIMS: int = 20  # synthetic pools per hypothesis (ends_bootstrap)
+BOOT_JOBS: int = 6  # worker processes for the pools
+BOOT_SEED: int = 20261024
+MIX_GRID: tuple[float, ...] = tuple(i / 20 for i in range(21))  # end_mixture's freed shares
+BG_SCALES: tuple[float, ...] = (0.5, 1.5)  # every marker background scaled by these, the comparison re-run
 
 
 def rows_at(stop: float, nolist: float) -> list[Row]:
@@ -768,12 +781,644 @@ def rows_at(stop: float, nolist: float) -> list[Row]:
     return dataset(ALL)
 
 
-def per_run_ll(xs: list[Row], obs: list[list[Obs]], rule: str) -> tuple[np.ndarray, tuple[float, float]]:
-    """per-run log-likelihoods of these observations under `rule` at the pal-count budget fitted on them, and the fit"""
-    P = np.array([budget_pals(x.run) for x in xs], float)
-    M = lk_matrix([(x.kinds, o) for x, o in zip(xs, obs)], EPS, rule)
-    (a, b), _ = budget_fit(M, P)
-    return np.log(np.maximum(1e-300, (M * budget_rows(P, a, b)).sum(1))), (a, b)
+_kinds_at: dict[tuple[float, float], list[list[Kind]]] = {}
+
+
+def kinds_at(stop: float, nolist: float) -> list[list[Kind]]:
+    """every run's chain kinds at this stop share and no-list scale, in dataset order (the observations themselves do
+    not depend on them); the model's values are restored after"""
+    if (stop, nolist) not in _kinds_at:
+        _kinds_at[(stop, nolist)] = [x.kinds for x in rows_at(stop, nolist)]
+        rows_at(*MODEL_ENDS)
+    return _kinds_at[(stop, nolist)]
+
+
+def run_ll(M: np.ndarray, P: np.ndarray, ab: Sequence[float]) -> np.ndarray:
+    """per-run log-likelihoods of likelihood rows M under the pal-count budget at (a, b)"""
+    return np.log(np.maximum(1e-300, (M * budget_rows(P, ab[0], ab[1])).sum(1)))
+
+
+class EndFit(NamedTuple):
+    """one rule's fitted chain-end constants and budget"""
+
+    stop: float
+    nolist: float
+    ab: tuple[float, float]
+    ll: float
+
+
+FitAt = Callable[[float, float], tuple[tuple[float, float], float]]
+
+
+def end_search(fit_at: FitAt) -> EndFit:
+    """the coordinate search over STOP_GRID and NOLIST_GRID from the model's values: the best stop share at the current
+    no-list scale, then the best no-list scale at that stop share, repeated until neither moves (at most four passes);
+    fit_at gives ((a, b), log-likelihood) at a point"""
+    stop, nolist = MODEL_ENDS
+    for _ in range(4):
+        s2 = max(STOP_GRID, key=lambda v: fit_at(v, nolist)[1])
+        n2 = max(NOLIST_GRID, key=lambda v: fit_at(s2, v)[1])
+        if (s2, n2) == (stop, nolist):
+            break
+        stop, nolist = s2, n2
+    ab, l_ = fit_at(stop, nolist)
+    return EndFit(stop, nolist, (float(ab[0]), float(ab[1])), l_)
+
+
+MatrixAt = Callable[[float, float], np.ndarray]
+
+
+def budget_search(M_at: MatrixAt, P: np.ndarray, sel: np.ndarray | slice = slice(None)) -> EndFit:
+    """end_search with the budget re-fitted on the rows `sel` at every point (each fit starting from the last)"""
+    cache: dict[tuple[float, float], tuple[tuple[float, float], float]] = {}
+    last: list[Sequence[float]] = [(-1.1, 0.17)]
+
+    def fit_at(st: float, nl: float) -> tuple[tuple[float, float], float]:
+        if (st, nl) not in cache:
+            ab, l_ = budget_fit(M_at(st, nl)[sel], P[sel], start=last[0])
+            last[0] = ab
+            cache[(st, nl)] = ((float(ab[0]), float(ab[1])), l_)
+        return cache[(st, nl)]
+
+    return end_search(fit_at)
+
+
+def fixed_search(M_at: MatrixAt, rows: np.ndarray, ab: Sequence[float], sel: np.ndarray) -> EndFit:
+    """end_search with the budget held at ab (its per-run rows `rows`), scored on the rows `sel`"""
+
+    def fit_at(st: float, nl: float) -> tuple[tuple[float, float], float]:
+        l_ = float(np.log(np.maximum(1e-300, (M_at(st, nl)[sel] * rows[sel]).sum(1))).sum())
+        return (float(ab[0]), float(ab[1])), l_
+
+    return end_search(fit_at)
+
+
+def pool_matrix(
+    cache: dict[tuple[str, float, float], np.ndarray], obs: list[list[Obs]], rule: str, st: float, nl: float
+) -> np.ndarray:
+    """the likelihood rows of these observations under `rule` at (st, nl), cached by (rule, st, nl)"""
+    if (rule, st, nl) not in cache:
+        cache[(rule, st, nl)] = lk_matrix(list(zip(kinds_at(st, nl), obs)), EPS, rule)
+    return cache[(rule, st, nl)]
+
+
+class EndStudy(NamedTuple):
+    """end_procedure on one pool of observations"""
+
+    fits: dict[str, EndFit]
+    per_run: dict[str, np.ndarray]  # each rule's per-run log-likelihood at its own fit
+    matrices: dict[tuple[str, float, float], np.ndarray]
+
+
+def end_procedure(obs: list[list[Obs]], P: np.ndarray, matrices: dict | None = None) -> EndStudy:
+    """the whole comparison on one pool of observations, the same for the real runs and every synthetic pool: for each
+    rule the coordinate search (end_search), the budget re-fitted at every point it visits; matrices caches the
+    likelihood rows by (rule, stop, nolist)"""
+    M_at = {} if matrices is None else matrices
+    fits = {rule: budget_search(functools.partial(pool_matrix, M_at, obs, rule), P) for rule in END_RULES}
+    per = {rule: run_ll(M_at[(rule, f.stop, f.nolist)], P, f.ab) for rule, f in fits.items()}
+    return EndStudy(fits, per, M_at)
+
+
+def end_group(x: Row) -> str:
+    """what can end one of the run's chains before its last link (x at the model's values): a chosen end (a separate
+    chain-ending choice with a chance above zero; list shown or not), else a default-choice stop risk, else nothing"""
+    if any(kind(cid) != k for cid, k in zip(x.chain, x.kinds)):
+        return END_GROUPS[2] if x.run["priority"] is not None else END_GROUPS[3]
+    return END_GROUPS[1] if any(k.stop_risk for k in x.kinds) else END_GROUPS[0]
+
+
+# the direct comparison: decks whose other chain cards are all plain 3-link cards, the one other card being
+#   P  a card whose chain-ending choice the run's shown list prioritises (end chance 0.5 or more)
+#   S  a card with a default-choice stop risk and no chain-ending choice
+#   C  a 2-link SR with neither;   D  none (every chain card a plain 3-link card)
+DECKMATES: dict[str, str] = {
+    "P": "prioritised chosen end",
+    "S": "default-choice stop",
+    "C": "2-link SR",
+}
+
+
+def deckmate_group(x: Row) -> tuple[str, int | None] | None:
+    """(group, the odd card's index) of a run for the direct comparison (x at the model's values), None outside it"""
+    plain = [k.links == 3 and not k.stop_risk for k in x.kinds]
+    if all(plain):
+        return "D", None
+    odd = [i for i, p in enumerate(plain) if not p]
+    if len(odd) != 1:
+        return None
+    f, r = odd[0], x.run
+    cid, k, ce = x.chain[odd[0]], kind(x.chain[odd[0]]), chosen_end(x.chain[odd[0]])
+    if k is None:
+        return None
+    if ce and r["priority"] is not None and ce[1] & set(r["priority"]) and end_chance(cid, r) >= 0.5:
+        return "P", f
+    if not ce and k.stop_risk:
+        return "S", f
+    if not ce and not k.stop_risk and k.links == 2:
+        return "C", f
+    return None
+
+
+DeckmateLink = tuple[float, float, int, float, float]  # (seen, background, run id, freed reach, wasted reach)
+
+
+def deckmate_cells(
+    base: list[Row], obs: list[list[Obs]], reach_by: dict[str, list[dict[tuple[int, int], float]]] | None = None
+) -> dict[tuple[int, int, int, int, bool], dict[str, list[DeckmateLink]]]:
+    """every deck-mate link of the direct comparison's runs, by cell (budget pals, chain cards, link, scenario, Inari
+    One's career or not: her careers reach fewer events and are unevenly spread over the groups) and group; reach_by gives each rule's per-run reach (0 when absent: a synthetic pool needs only what was seen)"""
+    cells: collections.defaultdict[tuple[int, int, int, int, bool], collections.defaultdict[str, list[DeckmateLink]]]
+    cells = collections.defaultdict(lambda: collections.defaultdict(list))
+    for i, (x, o) in enumerate(zip(base, obs)):
+        gf = deckmate_group(x)
+        if gf is None:
+            continue
+        grp, f = gf
+        key = (budget_pals(x.run), len(x.kinds), x.run["scenario"], x.run["chara"] == INARI)
+        for ci, lk, seen, bg in o:
+            if ci == f:
+                continue
+            rf = reach_by["cards"][i][(ci, lk)] if reach_by else 0.0
+            rw = reach_by["wasted"][i][(ci, lk)] if reach_by else 0.0
+            cells[(key[0], key[1], lk, key[2], key[3])][grp].append((float(seen), bg, x.run["id"], rf, rw))
+    return cells
+
+
+class Contrast(NamedTuple):
+    """deckmate_contrast: a group's background-corrected deck-mate rate minus plain decks', within cells"""
+
+    measured: float
+    se: float  # run-clustered
+    freed: float  # the same contrast of the freed model's reach
+    wasted: float
+    links: int
+
+
+def deckmate_contrast(cells: dict, g: str, base: str = "D") -> Contrast | None:
+    """the within-cell difference in background-corrected deck-mate rates, sum(seen - bg) / sum(1 - bg), between group g
+    and `base`, weighted by g's links per cell (cells with 15 or more links in each); its standard error from each
+    run's influence summed over every cell it feeds"""
+    use = [row for row in cells.values() if len(row[g]) >= 15 and len(row[base]) >= 15]
+    if not use:
+        return None
+    W = sum(len(row[g]) for row in use)
+    num = mf = mw = 0.0
+    infl: collections.defaultdict[int, float] = collections.defaultdict(float)
+    for row in use:
+        w = len(row[g]) / W
+        for grp, sign in ((g, 1.0), (base, -1.0)):
+            t = row[grp]
+            den = sum(1 - u[1] for u in t)
+            est = sum(u[0] - u[1] for u in t) / den
+            num += sign * w * est
+            mf += sign * w * sum(u[3] * (1 - u[1]) for u in t) / den
+            mw += sign * w * sum(u[4] * (1 - u[1]) for u in t) / den
+            for u in t:
+                infl[u[2]] += sign * w * ((u[0] - u[1]) - est * (1 - u[1])) / den
+    exact = [0.0 if abs(v) < 1e-12 else v for v in (num, mf, mw)]  # roundoff of a contrast that is zero by construction
+    return Contrast(exact[0], math.sqrt(sum(v * v for v in infl.values())), exact[1], exact[2], W)
+
+
+def end_subsets(base: list[Row], groups: np.ndarray) -> dict[str, np.ndarray]:
+    """the runs each freed - wasted statistic sums over: every run, each end group, and the no-list group without
+    Marvelous Sunday [Dazzling Day in the Snow]'s decks (she holds most of it)"""
+    marv = np.array([MARVELOUS in x.chain for x in base])
+    out = {"freed - wasted": np.ones(len(base), bool)}
+    out |= {f"freed - wasted, {g}": groups == g for g in END_GROUPS}
+    out[f"freed - wasted, {END_GROUPS[3]}, without {END_CARDS[MARVELOUS]}"] = (groups == END_GROUPS[3]) & ~marv
+    return out
+
+
+def end_statistics(
+    study: EndStudy, subsets: dict[str, np.ndarray], base: list[Row], obs: list[list[Obs]]
+) -> dict[str, float]:
+    """the statistics the bootstrap compares: freed - wasted log-likelihood over each subset of runs (end_subsets) with
+    its per-run standard error (the runs' differences treated as independent), and the measured deck-mate contrasts"""
+    d = study.per_run["cards"] - study.per_run["wasted"]
+    out: dict[str, float] = {}
+    for nm, m in subsets.items():
+        out[nm] = float(d[m].sum())
+        out[f"{nm}, per-run SE"] = float(math.sqrt(m.sum()) * d[m].std(ddof=1))
+    cells = deckmate_cells(base, obs)
+    for g, nm in DECKMATES.items():
+        c = deckmate_contrast(cells, g)
+        out[f"deck-mates, {nm} - plain"] = c.measured if c else float("nan")
+    return out
+
+
+_BOOT: dict[str, Any] = {}  # what the bootstrap's worker processes read (set before they fork)
+
+
+def boot_pool(job: tuple[str, int]) -> dict[str, float]:
+    """one synthetic pool: observations drawn under `truth` at its real-data fit, then the real runs' whole procedure"""
+    truth, i = job
+    rng = np.random.default_rng((BOOT_SEED, END_RULES.index(truth), i))
+    obs = simulate(_BOOT["rows"][truth], truth, _BOOT["fits"][truth].ab, rng)
+    study = end_procedure(obs, _BOOT["P"])
+    return end_statistics(study, _BOOT["subsets"], _BOOT["base"], obs)
+
+
+def ends_bootstrap(
+    base: list[Row], P: np.ndarray, subsets: dict[str, np.ndarray], fits: dict[str, EndFit]
+) -> dict[str, list]:
+    """BOOT_SIMS synthetic pools under each rule, each generated at that rule's real-data constants and budget and
+    scored by the real runs' whole procedure (both rules' constants re-searched, budgets re-fitted): {truth: [each
+    pool's statistics]}"""
+    import concurrent.futures, multiprocessing
+
+    for st, nl in itertools.product(STOP_GRID, NOLIST_GRID):
+        kinds_at(st, nl)  # computed once here, inherited by the workers
+    _BOOT.update(
+        rows={r: [x._replace(kinds=k) for x, k in zip(base, kinds_at(f.stop, f.nolist))] for r, f in fits.items()},
+        fits=fits,
+        P=P,
+        subsets=subsets,
+        base=base,
+    )
+    jobs = [(truth, i) for truth in END_RULES for i in range(BOOT_SIMS)]
+    ctx = multiprocessing.get_context("fork")
+    with concurrent.futures.ProcessPoolExecutor(BOOT_JOBS, mp_context=ctx) as ex:
+        done = list(ex.map(boot_pool, jobs))
+    return {truth: [s for (t, _), s in zip(jobs, done) if t == truth] for truth in END_RULES}
+
+
+def ends_held_out(
+    base: list[Row], P: np.ndarray, groups: np.ndarray, matrix: Callable[[str, float, float], np.ndarray]
+) -> tuple[dict[str, common.HeldOutComparison], dict[str, list[tuple[float, float]]]]:
+    """5-fold held out, each rule's constants searched on the training folds (end_search) with its budget re-fitted at
+    every point, then the test fold scored at that fit: freed over wasted in total and by end group; and the mechanism
+    alone: the budget fitted on the training runs where no chain can end (the two rules coincide there), held fixed,
+    each rule's constants searched on the training runs where one can, the test runs where one can scored. Also each
+    rule's constants per fold"""
+    folds = np.array([common.fold(x.run["id"]) for x in base])
+    can = groups != END_GROUPS[0]
+    per = {r: np.zeros(len(base)) for r in END_RULES}
+    fixed = {r: np.zeros(len(base)) for r in END_RULES}
+    chosen: dict[str, list[tuple[float, float]]] = {k: [] for r in END_RULES for k in (r, f"{r}, mechanism alone")}
+    for k in range(common.K_FOLDS):
+        train, test = folds != k, folds == k
+        for rule in END_RULES:
+            f = budget_search(functools.partial(matrix, rule), P, train)
+            chosen[rule].append((f.stop, f.nolist))
+            per[rule][test] = run_ll(matrix(rule, f.stop, f.nolist)[test], P[test], f.ab)
+        sel = train & ~can
+        ab0, _ = budget_fit(matrix("cards", *MODEL_ENDS)[sel], P[sel])
+        rows0 = budget_rows(P, ab0[0], ab0[1])
+        for rule in END_RULES:
+            f = fixed_search(functools.partial(matrix, rule), rows0, ab0, train & can)
+            chosen[f"{rule}, mechanism alone"].append((f.stop, f.nolist))
+            t = test & can
+            fixed[rule][t] = np.log(np.maximum(1e-300, (matrix(rule, f.stop, f.nolist)[t] * rows0[t]).sum(1)))
+    out = {"freed over wasted": common.compare_held_out(per["cards"], per["wasted"])}
+    out |= {
+        f"freed over wasted, {g}": common.compare_held_out(per["cards"][groups == g], per["wasted"][groups == g])
+        for g in END_GROUPS
+    }
+    out["mechanism alone: freed over wasted"] = common.compare_held_out(fixed["cards"][can], fixed["wasted"][can])
+    return out, chosen
+
+
+REFINE_STOP: tuple[float, ...] = (-1 / 30, -1 / 60, 0.0, 1 / 60, 1 / 30)  # refine's steps around a rule's best
+REFINE_NOLIST: tuple[float, ...] = (-0.05, -0.025, 0.0, 0.025, 0.05)
+
+
+def refine(M_at: MatrixAt, P: np.ndarray, f: EndFit) -> EndFit:
+    """a rule's best on a finer grid around its coordinate-search best (the grids' coarse steps could favour the rule
+    whose best sits on a grid point), the budget re-fitted at every point"""
+    best = f
+    for ds, dn in itertools.product(REFINE_STOP, REFINE_NOLIST):
+        st = f.stop if ds == 0 else round(f.stop + ds, 6)
+        nl = f.nolist if dn == 0 else round(f.nolist + dn, 6)
+        if not 0 < st < 1 or nl < 0:
+            continue
+        ab, l_ = budget_fit(M_at(st, nl), P, start=f.ab)
+        if l_ > best.ll:
+            best = EndFit(st, nl, (float(ab[0]), float(ab[1])), l_)
+    return best
+
+
+_link_levels: list[dict[int, dict[int, dict[str, set[int]]]]] = []
+
+
+def link_levels() -> dict[int, dict[int, dict[str, set[int]]]]:
+    """card -> chain link -> skill -> the fixed hint levels that link's outcomes give it (GameTora's outcomes, links from
+    master.mdb single_mode_story_data.show_progress_1; random levels left out)"""
+    if not _link_levels:
+        gt, db = common.gametora(), common.mdb()
+        sk = dict(db.execute("select [index], text from text_data where category = 47"))
+        title = dict(db.execute("select [index], text from text_data where category = 181"))
+        cchar = dict(db.execute("select id, chara_id from support_card_data"))
+        link_of = dict(
+            db.execute("select story_id, show_progress_1 from single_mode_story_data where show_progress_1 > 0")
+        )
+        out: collections.defaultdict[int, collections.defaultdict[int, collections.defaultdict[str, set[int]]]]
+        out = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(set)))
+        for cid, es in common.card_outcome_events(gt, title, cchar).items():
+            for _, sid, chs in es:
+                if link_of.get(sid):
+                    for ch in chs:
+                        for o in common.outcome_skills(ch, gt, sk):
+                            for skill, v in o.items():
+                                if isinstance(v, int):
+                                    out[cid][link_of[sid]][skill].add(v)
+        _link_levels.append(out)
+    return _link_levels[0]
+
+
+def impossible_links(base: list[Row]) -> set[tuple[int, int]]:
+    """the (card, link) pairs some run reads as seen through a marker credited to the card's event below every level
+    that link's outcomes give the skill (a credit the link cannot have made)"""
+    lv, out = link_levels(), set()
+    for x in base:
+        hs = {h["name"]: h for h in x.run["hints"]}
+        name = {c: common.bare(n) for c, _, n in x.run["deck"]}
+        for ci, lk, seen, _ in x.obs:
+            cid = x.chain[ci]
+            if not seen:
+                continue
+            for skill in game().markers[cid][lk]:
+                h = hs.get(skill)
+                levels = lv[cid][lk].get(skill)
+                credited = h and any(
+                    name[cid] in [y.strip() for y in src[:-6].split(" or ")]
+                    for src in h["src"]
+                    if src.endswith(" event")
+                )
+                if credited and levels and h["lv"] < min(levels):
+                    out.add((cid, lk))
+    return out
+
+
+def end_mixture(MF: np.ndarray, MW: np.ndarray, P: np.ndarray) -> dict[float, float]:
+    """the log-likelihood of a mixture, each run's chains freed with chance lam and wasted otherwise (each rule's rows at
+    its own fitted constants), the budget re-fitted at each lam of MIX_GRID"""
+    out: dict[float, float] = {}
+    start = np.array([-1.1, 0.17])
+    for lam in MIX_GRID:
+
+        def nll(beta: np.ndarray, lam: float = lam) -> float:
+            rows = budget_rows(P, beta[0], beta[1])
+            return -float(np.log(np.maximum(1e-300, lam * (MF * rows).sum(1) + (1 - lam) * (MW * rows).sum(1))).sum())
+
+        r = minimize(nll, start, method="Nelder-Mead", options={"xatol": 1e-5, "fatol": 1e-4, "maxiter": 4000})
+        start = r.x
+        out[lam] = -float(r.fun)
+    return out
+
+
+class Reading(NamedTuple):
+    """ending_choice_reading: the links after a chain-ending choice in one group"""
+
+    links: int
+    runs: int
+    seen: int
+    background: float  # links expected seen from their markers' background alone (the chain ended at the choice)
+    model: float  # links expected seen under the model (seen_chance of its reach)
+    never: float  # links expected seen if the chain never ended at the choice
+    continuing: float  # the share of chains that went on past the choice: (seen - background) / (never - background)
+    continuing_se: float  # Poisson: sqrt(seen) / (never - background)
+    continuing_bg: dict[float, float]  # the same share with every background scaled by READING_BG
+
+
+READING_BG: tuple[float, ...] = (0.8, 1.2)  # background scales for the ending-choice reading's continuing share
+MARVELOUS: int = 30074  # Marvelous Sunday [Dazzling Day in the Snow]
+END_CARDS: dict[int, str] = {
+    30074: "Marvelous Sunday [Dazzling Day in the Snow]",
+    30017: "Smart Falcon [My Umadol Way! ☆]",
+}
+
+
+def ending_choice_reading(base: list[Row], ab: Sequence[float]) -> dict[tuple[str, str], tuple]:
+    """Does prioritising the skill on a chain-ending choice end the chain? On runs showing a list, the links after each
+    card's chain-ending choice when its ending skill is prioritised alone (the one-sided case), when it is prioritised
+    but already at hint Lv 5 from elsewhere (the maxed case: at Lv 5 at the end of the run, from another source, with no
+    credit from the card's event), and when no skill on that
+    choice is prioritised: links seen against the counts their markers' background alone gives, the model expects (card
+    rule, budget at ab) and the chain would give if it never ended at the choice, and from these the share of chains
+    that went on; every card with an ending skill pooled, and END_CARDS alone"""
+    rows: collections.defaultdict[tuple[str, str], list[tuple[bool, float, float, float, int]]]
+    rows = collections.defaultdict(list)
+    for x in base:
+        r = x.run
+        if r["priority"] is None:
+            continue
+        pmf = binom_pmf(CN, 1 / (1 + math.exp(-(ab[0] + ab[1] * budget_pals(r)))))
+        hs = {h["name"]: h for h in r["hints"]}
+        for i, cid in enumerate(x.chain):
+            ce = chosen_end(cid)
+            if not ce or not ce[1]:
+                continue
+            link, ending, continuing = ce
+            name = next(common.bare(n) for c, _, n in r["deck"] if c == cid)
+            case = steer_case(r["priority"], ending, continuing, maxed_elsewhere(hs, ending, f"{name} event"))
+            grp = {"one-sided": "prioritised", None: "not prioritised", "maxed": "maxed"}.get(case)
+            if grp is None:
+                continue
+            pr = reach(x.kinds, pmf, RULE)
+            no_end = list(x.kinds)
+            no_end[i] = kind(cid) or no_end[i]  # the card without its chain-ending choice
+            pn = reach(no_end, pmf, RULE)
+            for ci, lk, seen, bg in x.obs:
+                if ci == i and lk > link:
+                    for who in ("every card", END_CARDS.get(cid)):
+                        if who:
+                            rows[(who, grp)].append((seen, bg, pr[(ci, lk)], pn[(ci, lk)], r["id"]))
+    return {k: reading_of(v) for k, v in rows.items()}
+
+
+def reading_of(v: list[tuple[bool, float, float, float, int]]) -> Reading:
+    """one group's Reading from its (seen, background, model reach, reach without the end, run id) links"""
+    seen = sum(u[0] for u in v)
+
+    def share(f: float) -> float:
+        bg = sum(min(1.0, u[1] * f) for u in v)
+        never = sum(seen_chance(u[3], min(1.0, u[1] * f)) for u in v)
+        return (seen - bg) / (never - bg)
+
+    bg, never = sum(u[1] for u in v), sum(seen_chance(u[3], u[1]) for u in v)
+    return Reading(
+        len(v),
+        len({u[4] for u in v}),
+        seen,
+        bg,
+        sum(seen_chance(u[2], u[1]) for u in v),
+        never,
+        share(1.0),
+        math.sqrt(seen) / (never - bg),
+        {f: share(f) for f in READING_BG},
+    )
+
+
+def ends_claims() -> list[common.Value | common.Finding]:
+    """Freed or wasted. Each rule's stop share and no-list scale come from the same coordinate search (end_search), on
+    the real runs and on every synthetic pool; the joint grid checks that the search finds the grid's best on the real
+    runs. Then: the in-sample difference, in total and by end group; held out with the constants searched on the training
+    folds (ends_held_out), and the mechanism alone; a mixture's freed share (end_mixture); the direct deck-mate
+    contrasts with each rule's prediction; and the re-fitting parametric bootstrap (ends_bootstrap), where each
+    statistic of the real runs falls among the pools generated under each rule. Plus the ending-choice reading
+    (ending_choice_reading), and the in-sample comparison re-run with every marker background scaled (BG_SCALES)"""
+    base = rows_at(*MODEL_ENDS)
+    P = np.array([budget_pals(x.run) for x in base], float)
+    groups = np.array([end_group(x) for x in base])
+    obs = [x.obs for x in base]
+    real_M: dict[tuple[str, float, float], np.ndarray] = {}
+
+    def matrix(rule: str, st: float, nl: float) -> np.ndarray:
+        if (rule, st, nl) not in real_M:
+            real_M[(rule, st, nl)] = lk_matrix(list(zip(kinds_at(st, nl), obs)), EPS, rule)
+        return real_M[(rule, st, nl)]
+
+    for st, nl in itertools.product(STOP_GRID, NOLIST_GRID):
+        for rule in END_RULES:
+            matrix(rule, st, nl)
+    cannot = groups == END_GROUPS[0]
+    assert np.allclose(real_M[("cards", *MODEL_ENDS)][cannot], real_M[("wasted", *MODEL_ENDS)][cannot])
+    study = end_procedure(obs, P, real_M)
+    joint = {
+        rule: max(
+            itertools.product(STOP_GRID, NOLIST_GRID),
+            key=lambda sn, rule=rule: budget_fit(matrix(rule, *sn), P, start=study.fits[rule].ab)[1],
+        )
+        for rule in END_RULES
+    }
+    subsets = end_subsets(base, groups)
+    stats = end_statistics(study, subsets, base, obs)
+    refined = {rule: refine(functools.partial(matrix, rule), P, study.fits[rule]) for rule in END_RULES}
+    ho, chosen = ends_held_out(base, P, groups, matrix)
+    mix = end_mixture(
+        matrix("cards", study.fits["cards"].stop, study.fits["cards"].nolist),
+        matrix("wasted", study.fits["wasted"].stop, study.fits["wasted"].nolist),
+        P,
+    )
+    reach_by = {
+        rule: [
+            reach(k, binom_pmf(CN, 1 / (1 + math.exp(-(f.ab[0] + f.ab[1] * p)))), rule)
+            for k, p in zip(kinds_at(f.stop, f.nolist), P)
+        ]
+        for rule, f in study.fits.items()
+    }
+    cells = deckmate_cells(base, obs, reach_by)
+    reading = ending_choice_reading(base, study.fits["cards"].ab)
+    scaled = {
+        f: end_procedure([[o._replace(background=min(1.0, o.background * f)) for o in ob] for ob in obs], P)
+        for f in BG_SCALES
+    }
+    bad = impossible_links(base)
+    kept = [[o for o in ob if (x.chain[o.card], o.link) not in bad] for x, ob in zip(base, obs)]
+    without_bad = end_procedure(kept, P)
+    boot = ends_bootstrap(base, P, subsets, study.fits)
+    rows_at(*MODEL_ENDS)
+    out: list[common.Value | common.Finding] = [
+        V("chain ends: synthetic pools per hypothesis", BOOT_SIMS),
+        V(
+            "chain ends: pools per hypothesis plus one",
+            BOOT_SIMS + 1,
+            note="the real runs beat every pool by luck 1 in this",
+        ),
+    ]
+    for rule, f in study.fits.items():
+        nm = END_NAMES[rule]
+        out += [
+            V(f"chain ends, {nm}: stop share", f.stop),
+            V(f"chain ends, {nm}: no-list scale", f.nolist),
+            V(f"chain ends, {nm}: the search finds the joint grid's best", float(joint[rule] == (f.stop, f.nolist))),
+            V(f"chain ends, {nm}: fold stop shares", ", ".join(sorted({f"{s_:.3g}" for s_, _ in chosen[rule]}))),
+            V(f"chain ends, {nm}: fold no-list scales", ", ".join(sorted({f"{n_:.3g}" for _, n_ in chosen[rule]}))),
+            V(
+                f"chain ends, {nm}: mechanism-alone fold constants",
+                ", ".join(sorted({f"{s_:.3g} / {n_:.3g}" for s_, n_ in chosen[f"{rule}, mechanism alone"]})),
+            ),
+            V(f"chain ends, {nm}: refined stop share", refined[rule].stop),
+            V(f"chain ends, {nm}: refined no-list scale", refined[rule].nolist),
+        ]
+    out += [
+        V(
+            "chain ends: freed - wasted, constants refined on the finer grid",
+            refined["cards"].ll - refined["wasted"].ll,
+        ),
+        V(
+            f"chain ends: no-list runs with {END_CARDS[MARVELOUS]}",
+            int(((groups == END_GROUPS[3]) & np.array([MARVELOUS in x.chain for x in base])).sum()),
+        ),
+    ]
+    for g in END_GROUPS:
+        out.append(V(f"chain ends: runs, {g}", int((groups == g).sum())))
+    for f, st_ in scaled.items():
+        d = float(st_.per_run["cards"].sum() - st_.per_run["wasted"].sum())
+        out.append(V(f"chain ends: freed - wasted, every background times {f:g}", d, note="each rule's search re-run"))
+    fw = without_bad.fits["cards"]
+    out += [
+        V(
+            "impossible credits: links left out",
+            len(bad),
+            note="every run; a link some run reads through such a credit",
+        ),
+        V("impossible credits: readings left out", sum(len(ob) - len(k) for ob, k in zip(obs, kept))),
+        V(
+            "impossible credits: freed - wasted without those links",
+            float(without_bad.per_run["cards"].sum() - without_bad.per_run["wasted"].sum()),
+        ),
+        V(
+            "impossible credits: budget a without those links",
+            fw.ab[0],
+            note=f"freed, at {fw.stop:.3f} / {fw.nolist:.2f}",
+        ),
+        V("impossible credits: budget b without those links", fw.ab[1]),
+        V("impossible credits: freed stop share without those links", fw.stop),
+        V("impossible credits: freed no-list scale without those links", fw.nolist),
+    ]
+    for nm, t_ in ho.items():
+        out += [V(f"chain ends held out: {nm}: {w}", x) for w, x in zip(("nats", "SE", "z"), t_)]
+    best_lam = max(mix, key=mix.get)
+    near = [lam for lam, l_ in mix.items() if mix[best_lam] - l_ <= CHI1]
+    out += [
+        V("chain ends, mixture: freed share", best_lam, note="each run's chains freed with this chance, else wasted"),
+        V("chain ends, mixture: lowest freed share within 1.92 nats", min(near)),
+        V("chain ends, mixture: highest freed share within 1.92 nats", max(near)),
+        V("chain ends, mixture: nats of all wasted below the best", mix[best_lam] - mix[0.0]),
+        V("chain ends, mixture: nats of all freed below the best", mix[best_lam] - mix[1.0]),
+    ]
+    for g, nm in DECKMATES.items():
+        c = deckmate_contrast(cells, g)
+        if c is None:
+            continue  # no cell with enough links in both groups
+        out += [
+            V(f"deck-mates, {nm} - plain: measured", c.measured),
+            V(f"deck-mates, {nm} - plain: SE", c.se),
+            V(f"deck-mates, {nm} - plain: freed predicts", c.freed),
+            V(f"deck-mates, {nm} - plain: wasted predicts", c.wasted),
+            V(f"deck-mates, {nm} - plain: links", c.links),
+            V(f"deck-mates, {nm} - plain: z from freed", (c.measured - c.freed) / c.se),
+            V(f"deck-mates, {nm} - plain: z from wasted", (c.measured - c.wasted) / c.se),
+            V(f"deck-mates, {nm} - plain: z from no gain", c.measured / c.se),
+        ]
+    for stat, real in stats.items():
+        out.append(V(f"chain ends: {stat}: real runs", real))
+        for truth in END_RULES:
+            v = np.array([s[stat] for s in boot[truth]])
+            nm = END_NAMES[truth]
+            out += [
+                V(f"chain ends: {stat}: pools if {nm}: mean", float(v.mean()), note=f"{BOOT_SIMS} pools"),
+                V(f"chain ends: {stat}: pools if {nm}: SD", float(v.std(ddof=1))),
+                V(f"chain ends: {stat}: pools if {nm} below the real runs", int((v < real).sum())),
+            ]
+    for (who, grp), rd in sorted(reading.items()):
+        out += [
+            V(f"ending choice, {who}, {grp}: later links read", rd.links),
+            V(f"ending choice, {who}, {grp}: runs", rd.runs),
+            V(f"ending choice, {who}, {grp}: later links seen", rd.seen),
+            V(f"ending choice, {who}, {grp}: expected from background alone", rd.background),
+            V(f"ending choice, {who}, {grp}: expected by the model", rd.model),
+            V(f"ending choice, {who}, {grp}: expected if the chain never ended", rd.never),
+            V(f"ending choice, {who}, {grp}: share of chains going on", rd.continuing),
+            V(f"ending choice, {who}, {grp}: share of chains going on, SE", rd.continuing_se),
+            *[
+                V(f"ending choice, {who}, {grp}: share of chains going on, every background times {f:g}", v)
+                for f, v in rd.continuing_bg.items()
+            ],
+        ]
+    return out
 
 
 def simulate(xs: list[Row], rule: str, ab: tuple[float, float], rng: np.random.Generator) -> list[list[Obs]]:
@@ -793,55 +1438,6 @@ def simulate(xs: list[Row], rule: str, ab: tuple[float, float], rng: np.random.G
                 for ci, lk, _, bg in x.obs
             ]
         )
-    return out
-
-
-def ends_claims() -> list[common.Value | common.Finding]:
-    """Does a chain that ends early free its events for the deck's other chain cards ('cards': the ended card leaves
-    the running cards) or waste them ('wasted': it keeps taking picks until its full length, showing none)? Each rule
-    gets its own stop share and no-list scale (one coordinate pass on STOP_GRID and NOLIST_GRID from the model's values,
-    the budget re-fitted at each point; freed keeps the model's values). The real runs' freed - wasted log-likelihood is
-    set against BOOT_SIMS synthetic pools generated under each rule at its own constants and budget, each pool scored
-    with the budget re-fitted but those constants held at their real-data values (a parametric bootstrap without the
-    constants' selection: its spreads leave that uncertainty out, and with this many pools only ranks are informative)"""
-    chosen = (STOP_SHARE, NOLIST_SCALE)
-    best = {"cards": chosen}
-    stop, nolist = chosen
-
-    def wasted_ll(st: float, nl: float) -> float:
-        xs = rows_at(st, nl)
-        return float(per_run_ll(xs, [x.obs for x in xs], "wasted")[0].sum())
-
-    stop = max(STOP_GRID, key=lambda v: wasted_ll(v, nolist))
-    nolist = max(NOLIST_GRID, key=lambda v: wasted_ll(stop, v))
-    best["wasted"] = (stop, nolist)
-    X = {rule: rows_at(*best[rule]) for rule in best}
-    real = {rule: per_run_ll(X[rule], [x.obs for x in X[rule]], rule) for rule in best}
-    gap = float(real["cards"][0].sum() - real["wasted"][0].sum())
-    rng = np.random.default_rng(20261024)
-    spread: dict[str, list[float]] = {}
-    for truth in best:
-        spread[truth] = []
-        for _ in range(BOOT_SIMS):
-            o = simulate(X[truth], truth, real[truth][1], rng)
-            spread[truth].append(
-                float(per_run_ll(X["cards"], o, "cards")[0].sum() - per_run_ll(X["wasted"], o, "wasted")[0].sum())
-            )
-    rows_at(*chosen)
-    out: list[common.Value | common.Finding] = [
-        V("chain ends: synthetic pools per hypothesis", BOOT_SIMS),
-        V("chain ends, wasted: stop share", best["wasted"][0]),
-        V("chain ends, wasted: no-list scale", best["wasted"][1]),
-        V("chain ends: freed - wasted log-likelihood, real runs", gap, note="each rule at its own constants"),
-    ]
-    for truth, nm in (("cards", "freed"), ("wasted", "wasted")):
-        m, sd = float(np.mean(spread[truth])), float(np.std(spread[truth], ddof=1))
-        out += [
-            V(f"chain ends: freed - wasted, synthetic pools if {nm}: mean", m, note=f"{BOOT_SIMS} pools"),
-            V(f"chain ends: freed - wasted, synthetic pools if {nm}: SD", sd),
-            V(f"chain ends: real runs from the {nm} mean, in SD", (gap - m) / sd),
-            V(f"chain ends: synthetic pools if {nm} scoring below the real runs", sum(v < gap for v in spread[truth])),
-        ]
     return out
 
 
@@ -1345,29 +1941,7 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
         "pal-count budget over free",
         "pal-count budget over the same with the slot rule",
     )
-    below_f = g["chain ends: synthetic pools if freed scoring below the real runs"]
-    below_w = g["chain ends: synthetic pools if wasted scoring below the real runs"]
-    fs.append(
-        F(
-            "Conditional on the rest of the model, ended chains free their events: every synthetic pool generated with an "
-            "ended card still taking its picks scores below the real runs on freed - wasted, and the real runs fall inside "
-            "the range of the pools generated with ends freeing their events (each hypothesis at its real-data constants, "
-            "not re-fitted per pool)",
-            below_w == BOOT_SIMS and 0 < below_f < BOOT_SIMS,
-            f"real {g['chain ends: freed - wasted log-likelihood, real runs']:+.1f} nats; {below_w:.0f} of {BOOT_SIMS} wasted "
-            f"pools below it (mean {g['chain ends: freed - wasted, synthetic pools if wasted: mean']:+.1f}), {below_f:.0f} of "
-            f"{BOOT_SIMS} freed pools below it (mean {g['chain ends: freed - wasted, synthetic pools if freed: mean']:+.1f})",
-        )
-    )
-    fs.append(
-        F(
-            "Held out, the pal-count budget with an ended chain's events going to the deck's other chain cards predicts "
-            "unseen runs better than the same with an ended card still taking its picks (5-fold, z > 1.96; a likelihood "
-            "comparison, not a direct test of the mechanism)",
-            hz["pal-count budget over the same with ends wasted"] > 1.96,
-            f"z {hz['pal-count budget over the same with ends wasted']:+.2f}",
-        )
-    )
+    fs += end_findings(g)
     nz = {k.split(": ")[1]: v for k, v in g.items() if k.startswith("nested held out:") and k.endswith(": z")}
     fs.append(
         F(
@@ -1423,6 +1997,154 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
                 f"-{g[f'{nm} profile: highest grid value within 1.92 nats']:.3g}"
                 for nm in ("stop share", "no-list scale")
             ),
+        )
+    )
+    return fs
+
+
+def end_findings(g: dict[str, Any]) -> list[common.Finding]:
+    """freed or wasted (ends_claims): the search, the bootstrap placements, held out, the mixture, the direct deck-mate
+    contrasts and the ending-choice reading"""
+    fs: list[common.Finding] = []
+    joint = [g[f"chain ends, {nm}: the search finds the joint grid's best"] for nm in END_NAMES.values()]
+    fs.append(
+        F(
+            "On the real runs, each rule's coordinate search over the stop share and no-list scale reaches the best point "
+            "of the full grid (the procedure the synthetic pools repeat finds each rule's best constants)",
+            all(j == 1 for j in joint),
+            ", ".join(
+                f"{nm}: {g[f'chain ends, {nm}: stop share']:.3f} / {g[f'chain ends, {nm}: no-list scale']:.2f}"
+                for nm in END_NAMES.values()
+            ),
+        )
+    )
+
+    def place(stat: str) -> tuple[int, int, str]:
+        bf = g[f"chain ends: {stat}: pools if freed below the real runs"]
+        bw = g[f"chain ends: {stat}: pools if wasted below the real runs"]
+        return (
+            bf,
+            bw,
+            f"{stat}: real {g[f'chain ends: {stat}: real runs']:+.3g}; freed pools "
+            f"{g[f'chain ends: {stat}: pools if freed: mean']:+.3g} ± {g[f'chain ends: {stat}: pools if freed: SD']:.2g} "
+            f"({bf} below), wasted pools {g[f'chain ends: {stat}: pools if wasted: mean']:+.3g} ± "
+            f"{g[f'chain ends: {stat}: pools if wasted: SD']:.2g} ({bw} below)",
+        )
+
+    lls = ["freed - wasted"] + [f"freed - wasted, {grp}" for grp in END_GROUPS]
+    pl = [place(st) for st in lls]
+    fs.append(
+        F(
+            "Conditional on the rest of the model, ended chains free their events: on the freed - wasted log-likelihood "
+            "the real runs score above every synthetic pool generated with ends wasted and inside the range of the pools "
+            "generated with ends freed, in total and within each group of runs by what can end a chain (re-fitting "
+            "parametric bootstrap: both rules' constants re-searched and budgets re-fitted in every pool)",
+            all(bw == BOOT_SIMS and 0 < bf < BOOT_SIMS for bf, bw, _ in pl),
+            "; ".join(t for _, _, t in pl),
+        )
+    )
+    nm_ = f"freed - wasted, {END_GROUPS[3]}, without {END_CARDS[MARVELOUS]}"
+    bf, bw, t_nm = place(nm_)
+    fs.append(
+        F(
+            f"On runs showing no list, the evidence comes from {END_CARDS[MARVELOUS]}'s decks: without them the real runs' "
+            "freed - wasted lies inside the range of both the freed and the wasted pools",
+            0 < bf < BOOT_SIMS and 0 < bw < BOOT_SIMS,
+            t_nm,
+        )
+    )
+    hz = {nm: g[f"chain ends held out: {nm}: z"] for nm in ("freed over wasted", "mechanism alone: freed over wasted")}
+    fs.append(
+        F(
+            "Held out, with each rule's stop share and no-list scale searched on the training folds, freed predicts unseen "
+            "runs better than wasted (5-fold, z > 1.96), and so does the mechanism alone: the budget fitted on the "
+            "training runs where no chain can end and held fixed, the runs where one can scored",
+            all(z > 1.96 for z in hz.values()),
+            "; ".join(f"{nm} z {z:+.2f}" for nm, z in hz.items()),
+        )
+    )
+    fs.append(
+        F(
+            "Freed stays ahead of wasted with every link left out that some run reads through a credit below the levels "
+            "its outcomes give (each rule's constants and budget re-fitted)",
+            g["impossible credits: freed - wasted without those links"] > 0,
+            f"{g['impossible credits: freed - wasted without those links']:+.1f} nats without "
+            f"{g['impossible credits: links left out']:.0f} links ({g['impossible credits: readings left out']:,.0f} "
+            f"readings); budget a {g['impossible credits: budget a without those links']:+.3f}, b "
+            f"{g['impossible credits: budget b without those links']:+.3f}",
+        )
+    )
+    sc = {f: g[f"chain ends: freed - wasted, every background times {f:g}"] for f in BG_SCALES}
+    fs.append(
+        F(
+            "Freed stays ahead of wasted in-sample with every marker background halved or raised by half (each rule's "
+            "constants and budget re-fitted)",
+            all(v > 0 for v in sc.values()),
+            ", ".join(f"times {f:g}: {v:+.1f} nats" for f, v in sc.items()),
+        )
+    )
+    lo, hi = (
+        g["chain ends, mixture: lowest freed share within 1.92 nats"],
+        g["chain ends, mixture: highest freed share within 1.92 nats"],
+    )
+    fs.append(
+        F(
+            "A mixture whose runs' chains are freed with chance lam and wasted otherwise puts lam's 1.92-nat range "
+            "away from 0 (every run wasted)",
+            lo > 0,
+            f"lam {g['chain ends, mixture: freed share']:.2f}, range {lo:.2f}-{hi:.2f}; all wasted "
+            f"{g['chain ends, mixture: nats of all wasted below the best']:.1f} nats below the best, all freed "
+            f"{g['chain ends, mixture: nats of all freed below the best']:.1f}",
+        )
+    )
+    c = "deck-mates, 2-link SR - plain"
+    fs.append(
+        F(
+            "The direct deck-mate comparison sees freed events where both rules agree they exist: the deck-mates of a "
+            "2-link SR gain, against plain 3-link decks, what both rules predict (|z| < 2 from each) and more than no "
+            "gain (z > 2: a finished chain's events go to the other cards, not lost with it)",
+            abs(g[f"{c}: z from freed"]) < 2 and abs(g[f"{c}: z from wasted"]) < 2 and g[f"{c}: z from no gain"] > 2,
+            f"measured {g[f'{c}: measured']:+.3f} ± {g[f'{c}: SE']:.3f}; freed {g[f'{c}: freed predicts']:+.3f}, wasted "
+            f"{g[f'{c}: wasted predicts']:+.3f}; z from no gain {g[f'{c}: z from no gain']:+.2f}",
+        )
+    )
+    early = ("deck-mates, default-choice stop - plain", "deck-mates, prioritised chosen end - plain")
+    fs.append(
+        F(
+            "Directly, the deck-mates of a card whose chain ends early (a default-choice stop, or a chain-ending choice "
+            "the list prioritises) gain between the two rules' predictions, within 2 SE of each: the direct comparison "
+            "does not decide between them",
+            all(abs(g[f"{e}: z from freed"]) < 2 and abs(g[f"{e}: z from wasted"]) < 2 for e in early),
+            "; ".join(
+                f"{e}: {g[f'{e}: measured']:+.3f} ± {g[f'{e}: SE']:.3f}, freed {g[f'{e}: freed predicts']:+.3f}, "
+                f"wasted {g[f'{e}: wasted predicts']:+.3f}"
+                for e in early
+            ),
+        )
+    )
+    fs.append(
+        F(
+            "With each rule's constants refined on a finer grid around its best, freed stays ahead of wasted in-sample",
+            g["chain ends: freed - wasted, constants refined on the finer grid"] > 0,
+            f"{g['chain ends: freed - wasted, constants refined on the finer grid']:+.1f} nats; freed "
+            f"{g['chain ends, freed: refined stop share']:.3f} / {g['chain ends, freed: refined no-list scale']:.3f}, "
+            f"wasted {g['chain ends, wasted: refined stop share']:.3f} / {g['chain ends, wasted: refined no-list scale']:.3f}",
+        )
+    )
+    k = "ending choice, every card"
+    seen_p, bg_p = g[f"{k}, prioritised: later links seen"], g[f"{k}, prioritised: expected from background alone"]
+    seen_n, mod_n = g[f"{k}, not prioritised: later links seen"], g[f"{k}, not prioritised: expected by the model"]
+    fs.append(
+        F(
+            "Prioritising the skill on a chain-ending choice ends the chain: with it prioritised alone, the links after "
+            "the choice show about as often as their markers' background alone gives (Poisson z < 2); with nothing on "
+            "that choice prioritised, they show as often as the model predicts (|z| < 2)",
+            (seen_p - bg_p) / math.sqrt(bg_p) < 2 and abs(seen_n - mod_n) / math.sqrt(mod_n) < 2,
+            f"prioritised: {seen_p:.0f} seen of {g[f'{k}, prioritised: later links read']:.0f}, background alone "
+            f"{bg_p:.1f}, if never ended {g[f'{k}, prioritised: expected if the chain never ended']:.1f}, chains going on "
+            f"{g[f'{k}, prioritised: share of chains going on']:.3f} ± "
+            f"{g[f'{k}, prioritised: share of chains going on, SE']:.3f}; not prioritised: {seen_n:.0f} of {g[f'{k}, not prioritised: later links read']:.0f}, model "
+            f"{mod_n:.1f}, background alone {g[f'{k}, not prioritised: expected from background alone']:.1f}",
         )
     )
     return fs

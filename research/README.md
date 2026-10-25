@@ -25,17 +25,17 @@ use; `render.py` turns the template into `docs/RESEARCH.md`. `--quick` skips sec
 
 | Script | Computes |
 |---|---|
-| `s02_stars.py` | §2 the band each scenario's careers reach (rank scores), the expected base per roll, what averaging the stars costs |
-| `s03_inheritance.py` | §3 the roll's parts on single-ancestor trials: grandparent weight, affinity slope (relation points and shared wins apart), base by stars, affinity bands |
-| `s04_races.py` | §4 the race win table against every G1 attempt in the runs: base and spark-raised aptitudes, the streak penalty, the previous race's result, when a pink takes effect, the table in the community layout |
-| `s05_affinity.py` | §5 the self-grandparent fit (trio points 0 against pair(T, P), κ) |
-| `s06_loops.py` | §6 the race weights; trainees with their own character as a grandparent; on the validation results, what shared wins are worth and how far any other schedule could raise the odds |
-| `s07_hints.py` | §7 training hints: the form study, bases and specialty weights per scenario, the Lv-5 cap, joint draws, spark deficit, held-out and same-card tests |
-| `s08_chains.py` | §8 chain events: the fit of N, the pal-count budget and its held-out, nested and profile tests, the allocation rule, freed against wasted chain ends (a parametric bootstrap), the marker allowance, final links by pals and by card, known misses |
-| `s09_outcomes.py` | §9 measured outcome shares and the choice-rule evidence, its three cases included |
-| `s10_random_events.py` | §10 random card events: the fitted rate and what leaving them out costs on real decks |
-| `s11_conditional.py` | §11 conditional character events: how often they fire in the runs, what leaving them out costs, Tokai Teio's Head-On |
-| `s13_calibration.py` | §13 the calibration against real careers, §3's test on whole careers, §9's certainty checks |
+| `s02_stars.py` | §2 the band each scenario's careers reach (rank scores, and below the ceiling by chosen offsets), the legacies' observed star mix, the expected base per roll, what averaging the stars costs over every carrier pattern |
+| `s03_inheritance.py` | §3 the roll's parts on single-ancestor trials: grandparent weight, affinity slope and a flat parent weight (all trials and parents alone, in-sample, held out and with a power check), affinity confounded with generation, relation points and shared wins apart, base by stars, affinity bands |
+| `s04_races.py` | §4 the race win table against every G1 attempt in the runs (each outfit's own aptitudes): base and spark-raised aptitudes, one calibration rule for every streak cell with loss ratios, the streak penalty, the previous race's result, when a pink takes effect, the goal shift held out by run and by character, a targeted low-aptitude cost, the table in the community layout |
+| `s05_affinity.py` | §5 the self-grandparent fit (trio points 0 against pair(T, P), κ); shared wins observed against the base-aptitude products |
+| `s06_loops.py` | §6 the race weights; trainees with their own character as a grandparent; on the validation results, what shared wins are worth, how far any other schedule could raise the odds, loops rejected after scheduling, what base grades cost in odds |
+| `s07_hints.py` | §7 training hints: the form study, bases and specialty weights per scenario with card-and-career bootstrap intervals, the Lv-5 cap, joint draws, the stat option, inspired pool skills and a removal share, held-out tests clustered by card and career, leave-cards-out folds and a wild card bootstrap, same-card tests |
+| `s08_chains.py` | §8 chain events: the fit of N, the pal-count budget and its held-out, nested and profile tests, the allocation rule, freed against wasted chain ends (each rule's own constants, held out with constants searched per fold, the mechanism alone, a mixture, direct deck-mate contrasts, a re-fitting parametric bootstrap, background and grid checks), whether prioritising an ending skill ends the chain, the marker allowance, final links by deck and by card, known misses |
+| `s09_outcomes.py` | §9 measured outcome shares, a scan of every readable choice against the equal rule, and the choice-rule evidence, its three cases included |
+| `s10_random_events.py` | §10 random card events: the fitted rate, what leaving them out costs on real decks, and the same targets on decks without such a card |
+| `s11_conditional.py` | §11 conditional character events: how often they fire in the runs, what leaving them out costs per trainee and target, Tokai Teio's Head-On |
+| `s13_calibration.py` | §13 the calibration against real careers (by source, priority and predicted band, every gold, P(all) with a two-sample bootstrap), §3's test on whole careers with the parent forms rescored, §9's certainty checks |
 
 §12 (the composed model) is derived and has no script. Comparisons follow the three rules in *How to read*: same
 parameter count, compared directly; an extra parameter, by likelihood ratio (detectable or not); whether a model

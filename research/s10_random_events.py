@@ -4,20 +4,26 @@ the model does on real careers. Every run record is used; one sample.
 
 Markers (GameTora training_events_shared, through gametora.py): a character's shared event with two or more choices
 whose top choice has a skill common to every outcome and whose other choices have no skill common to all their
-outcomes; the top choice's skill is her marker (one per character). A reading is one run with a card of hers in the deck (any rarity, group cards aside), someone else
+outcomes; the top choice's skill is her marker (one per character). A reading is one run with an SR or SSR card of
+hers in the deck (R cards are left out of the measured rate, a project rule; group cards aside), someone else
 training, and the marker not given by that card's own events; a hit is the marker credited to "<her name> event" or to
-"A or <her name> event", section 8's rule: a reading is unknown, and left out, when every credit naming her also names
-another deck card whose events (its own, section 8's skill pools, or its character's shared events) can give the
-marker. K = random events on offer: every shared event of the deck's characters plus the
+"A or <her name> event", section 8's rule: a reading is unknown, and left out whatever its credits, when another deck
+card's events (its own, section 8's skill pools, or its character's shared events) can give the marker. A reading
+whose marker is already at Lv 5 from other sources counts as a miss in the fits (so the rate is that of a firing that
+shows); the rate where it could show leaves those out. K = random events on offer: every shared event of the deck's
+characters plus the
 trainee's own.
-The fits are maximum likelihood over readings: a constant rate and the K form a (1 - b)^(K - 4). As stated in
-RESEARCH.md, the population includes R cards; `detail()` prints the SR/SSR-only fit beside it.
+The fits are maximum likelihood over readings: a constant rate and the K form a (1 - b)^(K - 4). K still counts an R
+card's character, whose shared events are on offer whatever the card's rarity.
 Findings: the K form against the constant held out (5-fold cross-validation by common.fold(run id), each run scored by
 the forms fitted on the other folds, compared with common.compare_held_out); tests on parameters (the slope in K; the
 covariates in a logistic model next to K: card effects at their limit break from master.mdb in one fit, tested jointly
-and each with Holm's adjustment, scenario, rarity within a character), run-clustered since a run gives several
+and each with Holm's adjustment, then again next to character intercepts, scenario, SR against SSR within a
+character),
+run-clustered since a run gives several
 readings: Huber-White sandwich Wald tests (robust(); likelihood ratios shown beside them); within-run independence
-(pairs of hits against Binomial(n, p) per run).
+(pairs of hits against independent firing, two-sided, with one rate per run and with a rate per reading from a
+logistic model of K, card effects, character and scenario).
 
 Effect on real careers (section 13's calibration rows: each run rebuilt on its own deck, default targets, the solver's
 per-target p, d^g, d^w, q, read through common's build_jobs / run_solver / rows_of, cached results reused):
@@ -33,6 +39,12 @@ per-target p, d^g, d^w, q, read through common's build_jobs / run_solver / rows_
               trainee's own at her measured rate); acquisition = d^g + (1 - d^g)(1 - m)
   odds        each run's product of per-target odds over the targets the model gives a positive chance without
               crediting, relative change from crediting (median and max over the runs with a credited row among them)
+  control     the same targets' free rows on decks where no card's character has them as her marker (and the trainee
+              is not that character): obs / pred left out, weighted to the treated rows' mix of targets, and the
+              treated minus control difference with a run-clustered standard error (each row's linearised contribution
+              to the two ratios, summed by run); stratified by target and predicted acquisition (the treated rows
+              against the control's acquisition rate per stratum); both again on decks where no card's training hints
+              (master.mdb single_mode_hint_gain) give the target; and the credited rows against the control
   calibration on the rows, acquisition (hinted from any source or owned) against the predicted acquisition with and
               without crediting: obs / pred with run-clustered 95% intervals (common.cluster_ci; a run can give
               several rows); held out, the same rows by 5-fold cross-validation (the rate fitted on the other folds'
@@ -162,6 +174,7 @@ class ReadingSet(NamedTuple):
     """readings(): the readings, and how many were left out as unknown"""
 
     rows: list[Reading]
+    r_cards: int  # readings of R cards, left out
     unknown: int  # another deck card's events can give the marker (marker_credit())
 
 
@@ -195,7 +208,7 @@ def readings(R: list[Run]) -> ReadingSet:
     pool = event_pools(sc)
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
     rows: list[Reading] = []
-    unknown = 0
+    unknown = r_cards = 0
     for r in R:
         dk = [d[0] for d in r["deck"]]
         byname = deck_names(r)
@@ -209,6 +222,9 @@ def readings(R: list[Run]) -> ReadingSet:
             ch = x["char_id"]
             m = marker.get(ch)
             if not m or ch == tr or m in cardsk[cid]:
+                continue
+            if x["rarity"] < 2:
+                r_cards += 1
                 continue
             nm = name.get(ch)
             srcs = [s for h in r["hints"] if h["name"] == m for s in h["src"]]
@@ -233,7 +249,7 @@ def readings(R: list[Run]) -> ReadingSet:
                     scen=r["scenario"],
                 )
             )
-    return ReadingSet(rows, unknown)
+    return ReadingSet(rows, r_cards, unknown)
 
 
 def fits(rows: Sequence[Reading]) -> Fits:
@@ -290,7 +306,7 @@ def claims() -> list[common.Value | common.Finding]:
     R = common.runs()
     if R is None:
         return []
-    rows, unk = readings(R)
+    rows, nr, unk = readings(R)
     f = fits(rows)
     g: dict[str, Any] = {}  # value name -> value, in the order they are listed
     y = sum(r["hit"] for r in rows)
@@ -300,16 +316,26 @@ def claims() -> list[common.Value | common.Finding]:
     g.update(
         {
             "readings": n,
+            "R-card readings left out": nr,
             "runs": len({r["run"] for r in rows}),
-            "clean hits": y - amb,
-            "ambiguous credits, unknown (left out)": unk,
-            "rate where it could show, ambiguous as hits": (y + unk) / (n + unk - cz),
+            "hits": y,
+            "hits through a shared credit naming her": amb,
+            "readings left out as unknown": unk,
+            "readings where the marker was already at Lv 5": cz,
+            "rate where it could show": y / (n - cz),
+            "rate where it could show, unknown readings as hits (upper bound)": (y + unk) / (n + unk - cz),
         }
     )
     g["constant p"] = f["const"][0]
     a, b = f["exp"][0]
     g["fitted P at K = 4"] = a
     g["fitted P at K = 14"] = a * (1 - b) ** 10
+    g["pairs both hitting: observed"], g["pairs both hitting: expected"], g["pairs both hitting: z"] = pairs_test(
+        rows, a, b
+    )
+    _, g["pairs both hitting, rates by reading: expected"], g["pairs both hitting, rates by reading: z"] = pairs_test_p(
+        rows, reading_rates(rows)
+    )
     g.update(robust(rows, f))
     h = held_out(rows)
     g["held out: runs"] = len(h["exp"])
@@ -444,7 +470,7 @@ def slope_test(x: ReadingArrays, f: Fits) -> dict[str, Any]:
 
 
 def covariate_tests(rows: Sequence[Reading], x: ReadingArrays) -> dict[str, Any]:
-    """the covariates next to K in a logistic model, rarity within a character"""
+    """the covariates next to K in a logistic model, SR against SSR within a character"""
     y, K, run = x.y, x.K, x.run
     g: dict[str, Any] = {}
     one = np.ones(len(rows))
@@ -474,7 +500,26 @@ def covariate_tests(rows: Sequence[Reading], x: ReadingArrays) -> dict[str, Any]
     g["scenario next to the card effects: robust Wald chi2"], _, g["scenario next to the card effects: robust p"] = (
         wald(b, V, list(range(5, X.shape[1])))
     )
-    # rarity within a character (characters with cards of more than one rarity)
+    # the card effects within a character: character intercepts next to K and the card effects (the gauge's effect
+    # across characters could be a difference between characters)
+    chars = sorted({r["char"] for r in rows})
+    D = [np.array([r["char"] == c for r in rows], float) for c in chars[1:]]
+    X = np.column_stack([one, K, *card_effects(rows), *D])
+    b = logit_fit(y, X)
+    V, Vn = sandwich(*logit_scores(y, X, run, b))
+    g["characters next to K and the card effects: robust Wald chi2"], g["characters: df"], g["characters: robust p"] = (
+        wald(b, V, list(range(5, X.shape[1])))
+    )
+    g["within a character: slope in K: robust z"], g["within a character: slope in K: model z"] = robust_z(b, V, Vn, 1)
+    ps = {nm: wald(b, V, [j])[2] for j, (_, nm) in enumerate(COVARIATES, 2)}
+    holm = holm_adjust(ps)
+    for j, (_, nm) in enumerate(COVARIATES, 2):
+        se = float(np.sqrt(V[j, j]))
+        g[f"within a character: {nm}: logit per 10 points"] = b[j]
+        g[f"within a character: {nm}: 95% low"] = b[j] - 1.96 * se
+        g[f"within a character: {nm}: 95% high"] = b[j] + 1.96 * se
+        g[f"within a character: {nm}: Holm p"] = holm[nm]
+    # SR against SSR within a character (characters with cards of both rarities; R cards are not read)
     ch, w = multi_rarity(rows)
     X = np.column_stack(
         [np.array([[rows[i]["char"] == c for c in ch] for i in w], float), K[w], [rows[i]["rar"] for i in w]]
@@ -559,6 +604,37 @@ def card_effect(cid: int, lb: int, typ: int) -> float:
     return v
 
 
+def reading_rates(rows: Sequence[Reading]) -> np.ndarray:
+    """each reading's fitted chance from a logistic model of K, the card effects, character intercepts and scenario"""
+    one = np.ones(len(rows))
+    K = np.array([r["K"] for r in rows], float)
+    chars = sorted({r["char"] for r in rows})
+    D = [np.array([r["char"] == c for r in rows], float) for c in chars[1:]]
+    X = np.column_stack([one, K, *card_effects(rows), *D, *scenario_columns(rows)])
+    y = np.array([r["hit"] for r in rows], float)
+    return 1 / (1 + np.exp(-(X @ logit_fit(y, X))))
+
+
+def pairs_test_p(rows: Sequence[Reading], p: np.ndarray) -> tuple[float, float, float]:
+    """within-run independence with a chance per reading: pairs of one run's readings that both hit against the count
+    independent firing at those chances gives (each run's hit count Poisson binomial; mean and variance exact)"""
+    by: collections.defaultdict[int, list[int]] = collections.defaultdict(list)
+    for i, r in enumerate(rows):
+        by[r["run"]].append(i)
+    o = e = v = 0.0
+    for ix in by.values():
+        dist = [1.0]
+        for q in p[ix]:
+            dist = [u * (1 - q) + w * q for u, w in zip([*dist, 0.0], [0.0, *dist])]
+        c2 = [k * (k - 1) / 2 for k in range(len(dist))]
+        m = sum(q * c for q, c in zip(dist, c2))
+        h = sum(rows[i]["hit"] for i in ix)
+        o += h * (h - 1) / 2
+        e += m
+        v += sum(q * c * c for q, c in zip(dist, c2)) - m * m
+    return o, e, (o - e) / math.sqrt(v)
+
+
 def pairs_test(rows: Sequence[Reading], a: float, b: float) -> tuple[float, float, float]:
     """within-run independence: pairs of readings of one run that both hit, against Binomial(n, p) per run with the
     fitted p (one K per run); the variance is exact per run"""
@@ -605,20 +681,23 @@ def form_findings(rows: Sequence[Reading], f: Fits, g: dict[str, Any]) -> list[c
         )
     ]
     out += held_out_findings(g)
-    o, e, z = pairs_test(rows, *ab)
+    o, e, z = g["pairs both hitting: observed"], g["pairs both hitting: expected"], g["pairs both hitting: z"]
+    ea, za = g["pairs both hitting, rates by reading: expected"], g["pairs both hitting, rates by reading: z"]
     out.append(
         F(
-            "Within a run events fire independently: pairs of one run's readings that both hit are within 1.96 sd of "
-            "the count independence predicts",
-            abs(z) < 1.96,
-            f"{o:.0f} pairs observed, {e:.1f} expected, z {z:+.2f}",
+            "Within a run, no departure from independent firing is detectable in either direction: pairs of one run's "
+            "readings that both hit are within 1.96 sd of the count independence predicts, with one rate per run and "
+            "with a rate per reading (K, card effects, character, scenario)",
+            abs(z) < 1.96 and abs(za) < 1.96,
+            f"{o:.0f} pairs observed; one rate per run {e:.1f} expected, z {z:+.2f}; rate per reading {ea:.1f}, z "
+            f"{za:+.2f}",
         )
     )
     return out
 
 
 def covariate_findings(rows: Sequence[Reading], g: dict[str, Any]) -> list[common.Finding]:
-    """card effects and scenario next to K, rarity within a character"""
+    """card effects and scenario next to K, SR against SSR within a character"""
     from scipy.stats import chi2
 
     out: list[common.Finding] = []
@@ -639,9 +718,10 @@ def covariate_findings(rows: Sequence[Reading], g: dict[str, Any]) -> list[commo
     )
     out.append(
         F(
-            "Next to K, of the card effects only the initial friendship gauge is detectable, and it raises the rate: in one "
-            "fit of friendship bonus, initial friendship gauge and specialty priority, the gauge's Holm-adjusted "
-            "run-clustered Wald p is below 0.05 with its 95% interval above 0, and the other two's are above 0.05",
+            "Across characters, next to K, of the card effects only the initial friendship gauge is detectable, and it "
+            "goes with a higher rate: in one fit of friendship bonus, initial friendship gauge and specialty priority, "
+            "the gauge's Holm-adjusted run-clustered Wald p is below 0.05 with its 95% interval above 0, and the other "
+            "two's are above 0.05",
             g[f"{gauge}: Holm p"] < 0.05
             and g[f"{gauge}: 95% low"] > 0
             and all(g[f"{k}: Holm p"] > 0.05 for k in others),
@@ -661,6 +741,28 @@ def covariate_findings(rows: Sequence[Reading], g: dict[str, Any]) -> list[commo
             f"{g['scenario next to the card effects: robust p']:.3f}; logit against URA Finale: {lv}",
         )
     )
+    within = "; ".join(
+        f"{k} {g[f'within a character: {k}: logit per 10 points']:+.3f} [{g[f'within a character: {k}: 95% low']:+.3f}, "
+        f"{g[f'within a character: {k}: 95% high']:+.3f}], Holm {g[f'within a character: {k}: Holm p']:.3f}"
+        for k in fr
+    )
+    out.append(
+        F(
+            "Known miss of the measured rate: it differs between characters (character intercepts next to K and the "
+            "card effects, run-clustered Wald p < 0.05; this can be how well each character's marker shows as much as "
+            "how often her event fires), and within a character no card effect is detectable (each Holm-adjusted p "
+            "above 0.05). That test is underpowered: the gauge's 95% interval within a character still contains its "
+            "effect across characters, so the two cannot be told apart",
+            g["characters: robust p"] < 0.05
+            and all(g[f"within a character: {k}: Holm p"] > 0.05 for k in fr)
+            and g["within a character: initial friendship gauge: 95% low"]
+            <= g["initial friendship gauge: logit per 10 points"]
+            <= g["within a character: initial friendship gauge: 95% high"],
+            f"characters {g['characters next to K and the card effects: robust Wald chi2']:.1f} (df "
+            f"{g['characters: df']:.0f}, p {g['characters: robust p']:.1e}); {within}; slope in K within a character: "
+            f"{rz(g, 'within a character: slope in K')}",
+        )
+    )
     rar = np.array([r["rar"] for r in rows], float)
     ch, w = multi_rarity(rows)
     D = np.array([[rows[i]["char"] == c for c in ch] for i in w], float)
@@ -668,9 +770,9 @@ def covariate_findings(rows: Sequence[Reading], g: dict[str, Any]) -> list[commo
     fe_r = logit_ll(yb[w], np.column_stack([D, Kb[w], rar[w]]))
     out.append(
         F(
-            "Rarity shows no effect within a character (character intercepts and K, characters with cards of more than "
-            "one rarity): run-clustered Wald |z| below 1.96 (95%); pooled across characters the likelihood-ratio statistic "
-            "is shown alongside",
+            "SR against SSR is not detectable within a character (character intercepts and K, characters with an SR "
+            "and an SSR card; R cards are left out of the rate): run-clustered Wald |z| below 1.96 (95%); pooled across "
+            "characters the likelihood-ratio statistic is shown alongside",
             abs(g["rarity within a character: robust z"]) < 1.96,
             f"within {len(ch)} characters ({len(w):,} readings): {rz(g, 'rarity within a character')}, LR {2 * (fe_r - fe):.2f}; "
             f"pooled LR {lr([rar]):.2f}",
@@ -686,9 +788,10 @@ def held_out_findings(g: dict[str, Any]) -> list[common.Finding]:
     nats, se, z = g[f"held out: {lab}: nats"], g[f"held out: {lab}: SE"], g[f"held out: {lab}: z"]
     return [
         F(
-            "The slope in K predicts unseen runs better than a constant rate: the form a (1 - b)^(K - 4) against a "
-            "constant has z > 1.96",
-            z > 1.96,
+            "On SR and SSR cards the K form is not shown to predict unseen runs better than a constant rate, though "
+            "its slope is detectable in sample: the form a (1 - b)^(K - 4) against a constant has a positive held-out "
+            "gain with z <= 1.96",
+            nats > 0 and z <= 1.96,
             f"{g['held out: runs']:,} runs, 5 folds: {nats:+.2f} nats, SE {se:.2f}, z {z:+.2f} ({lab})",
         )
     ]
@@ -737,6 +840,9 @@ def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow],
             if white[g] in cardsk[cid]:
                 skipped["card's own events give it"] += 1
                 continue
+            if x["rarity"] < 2:
+                skipped["R card"] += 1
+                continue
             nm = name.get(x["char_id"])
             ev = f"{nm} event"
             out.append(
@@ -773,6 +879,147 @@ def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow],
                 )
             )
     return out, skipped
+
+
+def control_rows(R: list[Run], treated: Sequence[RandomRow]) -> list[CalRow]:
+    """the control for the left-out comparison: free calibration rows of the same targets (a default target that is a
+    character's marker) where no deck card's character has that marker and the trainee is not that character, so no
+    shared random event of this kind can hint them"""
+    _, marker, _, sc = markers()
+    gn = common.skills()
+    white = {g: gn[g][0] for g in common.DEFAULT}
+    targets = {g for g, w in white.items() if w in set(marker.values())}
+    seen = {id(x["row"]) for x in treated}
+    byid = {r["id"]: r for r in R}
+    out: list[CalRow] = []
+    rows, _ = calib()
+    for row in rows:
+        if row["g"] not in targets or not free(row) or id(row) in seen:
+            continue
+        r = byid[row["run"]]
+        w = white[row["g"]]
+        holders = [
+            c for c, _, _ in r["deck"] if c in sc and sc[c].get("type") != "group" and marker.get(sc[c]["char_id"]) == w
+        ]
+        if not holders and marker.get(r["chara"]) != w:
+            out.append(row)
+    return out
+
+
+class ControlTest(NamedTuple):
+    """control_test(): the treated rows' obs / pred against the control's, both left out"""
+
+    treated: float  # obs / pred on the treated rows
+    control: float  # on the control rows, weighted to the treated rows' mix of targets
+    diff: float  # treated - control
+    se: float  # run-clustered (linearised ratios, summed by run)
+    z: float
+
+
+def control_test(
+    T: Sequence[CalRow], C: Sequence[CalRow], pred_t: Callable[[CalRow], float] | None = None
+) -> ControlTest:
+    """obs / pred on the treated rows T (left out, or pred_t) against the control rows C left out, the control's ratio
+    per target weighted by the treated rows' predicted acquisitions; the difference's standard error from each row's
+    linearised contribution to the two ratios, summed by run (a run can give rows to both)"""
+    p0 = lambda x: credit(x, 0.0)[1]
+    pt = pred_t or p0
+    ET = sum(pt(x) for x in T)
+    RT = sum(bool(x["o_any"]) for x in T) / ET
+    w = {g: sum(pt(x) for x in T if x["g"] == g) / ET for g in {x["g"] for x in T}}
+    EC = {g: sum(p0(x) for x in C if x["g"] == g) for g in w}
+    RC = {g: sum(bool(x["o_any"]) for x in C if x["g"] == g) / EC[g] for g in w}
+    rc = sum(w[g] * RC[g] for g in w)
+    infl: collections.defaultdict[int, float] = collections.defaultdict(float)
+    for x in T:
+        infl[x["run"]] += (bool(x["o_any"]) - RT * pt(x)) / ET
+    for x in C:
+        if x["g"] in w:
+            infl[x["run"]] -= w[x["g"]] * (bool(x["o_any"]) - RC[x["g"]] * p0(x)) / EC[x["g"]]
+    n = len(infl)
+    se = math.sqrt(n / (n - 1) * sum(v * v for v in infl.values()))
+    return ControlTest(RT, rc, RT - rc, se, (RT - rc) / se)
+
+
+PRED_BINS: tuple[float, ...] = (0.2, 0.4, 0.6, 0.8)  # cut points of predicted acquisition for the stratified control
+
+
+def stratified_control(T: Sequence[CalRow], C: Sequence[CalRow]) -> tuple[float, float, float]:
+    """the treated rows' acquisitions against what the control's acquisition rate gives them, stratum by stratum
+    (target, and predicted acquisition left out cut at PRED_BINS): (ratio, run-clustered SE, z of ratio - 1). Each
+    row's linearised contribution summed by run"""
+    import bisect
+
+    st: Callable[[CalRow], tuple[int, int]] = lambda x: (x["g"], bisect.bisect(PRED_BINS, credit(x, 0.0)[1]))
+    nt = collections.Counter(st(x) for x in T)
+    nc = collections.Counter(st(x) for x in C)
+    oc = collections.Counter(st(x) for x in C if x["o_any"])
+    rc = {k: oc[k] / nc[k] for k in nc}
+    T = [x for x in T if nc[st(x)]]  # a stratum with no control rows cannot be compared
+    E = sum(rc[st(x)] for x in T)
+    R = sum(bool(x["o_any"]) for x in T) / E
+    infl: collections.defaultdict[int, float] = collections.defaultdict(float)
+    for x in T:
+        infl[x["run"]] += (bool(x["o_any"]) - R * rc[st(x)]) / E
+    for x in C:
+        k = st(x)
+        if nt[k]:
+            infl[x["run"]] -= R * nt[k] / nc[k] * (bool(x["o_any"]) - rc[k]) / E
+    n = len(infl)
+    se = math.sqrt(n / (n - 1) * sum(v * v for v in infl.values()))
+    return R, se, (R - 1) / se
+
+
+def without_hint_source(rows: Sequence[CalRow], R: list[Run]) -> list[CalRow]:
+    """the rows whose deck has no card whose training hints (master.mdb single_mode_hint_gain) include the target's
+    white skill"""
+    db = common.mdb()
+    gn = common.skills()
+    sid = {v: k for k, v in db.execute("select [index], text from text_data where category = 47")}
+    pool: collections.defaultdict[int, set[int]] = collections.defaultdict(set)
+    for c, v in db.execute("select support_card_id, hint_value_1 from single_mode_hint_gain where hint_gain_type = 0"):
+        pool[c].add(v)
+    byid = {r["id"]: r for r in R}
+    return [x for x in rows if not any(sid.get(gn[x["g"]][0]) in pool[c] for c, _, _ in byid[x["run"]]["deck"])]
+
+
+def later_choice_targets() -> list[tuple[str, int, int]]:
+    """default targets a character's shared event gives on a choice below the top one, which IT reaches only when the
+    skill is prioritised: (skill, character, choice index) (GameTora, through gametora.py)"""
+    gt = common.gametora()
+    sk = dict(common.mdb().execute("select [index], text from text_data where category = 47"))
+    gn = common.skills()
+    white = {gn[g][0] for g in common.DEFAULT}
+    out: set[tuple[str, int, int]] = set()
+    for chara, es in gt.load("training_events_shared"):
+        for e in es:
+            for j, ch in enumerate(gt.choices(e[1])):
+                if j:
+                    out |= {(x, chara, j) for x in set().union(set(), *outcome_skill_sets(ch[1], gt, sk)) & white}
+    return sorted(out)
+
+
+def later_choice_runs(R: list[Run], skill: str, chara: int) -> tuple[int, int]:
+    """runs with a card of the character (not a group card), someone else training, the skill prioritised on a shown
+    list: (the skill credited to her event by section 8's rule, those runs whose credit is not unknown)"""
+    _, _, _, sc = markers()
+    pool = event_pools(sc)
+    nm = dict(common.mdb().execute("select [index], text from text_data where category = 6")).get(chara)
+    k = n = 0
+    for r in R:
+        p = r.get("priority")
+        if p is None or skill not in p or r["chara"] == chara:
+            continue
+        if not any(c in sc and sc[c]["char_id"] == chara and sc[c].get("type") != "group" for c, _, _ in r["deck"]):
+            continue
+        hit = marker_credit(
+            [x for h in r["hints"] if h["name"] == skill for x in h["src"]], nm, skill, deck_names(r), pool
+        )
+        if hit is None:
+            continue
+        n += 1
+        k += hit
+    return k, n
 
 
 def bern_ll(pr: float, acquired: Any) -> float:
@@ -814,7 +1061,7 @@ def careers_held_out(
 def careers(R: list[Run], ab: tuple[float, float], rows: Sequence[Reading]) -> list[common.Value | common.Finding]:
     """what leaving random events out does on real careers (section 13's rows), and what crediting them does"""
     V: Callable[[str, Any], common.Value] = lambda nm, v: common.Value(SEC, nm, v)
-    rr, _ = random_rows(R, ab)
+    rr, skipped = random_rows(R, ab)
     _, runrows = calib()
     dk = [x for x in rr if x["kind"] == "deck"]
     own = [x for x in rr if x["kind"] == "own"]
@@ -823,6 +1070,17 @@ def careers(R: list[Run], ab: tuple[float, float], rows: Sequence[Reading]) -> l
         x["rate"] = r_own
     rate = {id(x["row"]): x["rate"] for x in rr}
     t = calib_test([x["row"] for x in dk], lambda row: rate[id(row)])
+    ctrl = control_rows(R, rr)
+    tc = calib_test(ctrl, lambda row: 0.0)
+    T = [x["row"] for x in dk]
+    ct = control_test(T, ctrl)
+    cc = control_test(T, ctrl, lambda row: credit(row, rate[id(row)])[1])
+    cs = stratified_control(T, ctrl)
+    Th, Ch = without_hint_source(T, R), without_hint_source(ctrl, R)
+    ch = control_test(Th, Ch)
+    chs = stratified_control(Th, Ch)
+    later = later_choice_targets()
+    lr = [(skill, chara, later_choice_runs(R, skill, chara)) for skill, chara, _ in later]
     zero = [x for x in dk if credit(x["row"], 0.0)[1] <= 1e-12]
     c1, c0, nho = careers_held_out(dk, R, rows)
     ho = common.compare_held_out(c1, c0)
@@ -831,6 +1089,7 @@ def careers(R: list[Run], ab: tuple[float, float], rows: Sequence[Reading]) -> l
     lab = "odds change, targets with a positive chance, runs with a credited row"
     pre = "calibration"
     out: list[common.Value | common.Finding] = [
+        V("careers: rows whose card is an R card, left out", skipped["R card"]),
         V("careers: acquired through that event", sum(x["hit"] for x in dk)),
         V("careers: acquired through that event only", sum(x["only"] for x in dk)),
         V("careers: mean fitted rate there", float(np.mean([x["rate"] for x in dk])) if dk else float("nan")),
@@ -850,8 +1109,86 @@ def careers(R: list[Run], ab: tuple[float, float], rows: Sequence[Reading]) -> l
         V("held out: credited against left out: nats", ho.nats),
         V("held out: credited against left out: SE", ho.se),
         V("held out: credited against left out: z", ho.z),
+        V("control: rows", tc.n),
+        V("control: obs / pred, left out", tc.left_out.ratio),
+        V("control: ratio 95% low", tc.left_out.rlo),
+        V("control: ratio 95% high", tc.left_out.rhi),
+        V("control: weighted to the treated targets", ct.control),
+        V("control: difference", ct.diff),
+        V("control: difference SE", ct.se),
+        V("control: difference z", ct.z),
+        V("control: credited minus control", cc.diff),
+        V("control: credited minus control SE", cc.se),
+        V("control: credited minus control z", cc.z),
+        V("control, stratified: treated against the control's rate", cs[0]),
+        V("control, stratified: SE", cs[1]),
+        V("control, stratified: z", cs[2]),
+        V("control, no training-hint source: treated rows", len(Th)),
+        V("control, no training-hint source: control rows", len(Ch)),
+        V("control, no training-hint source: treated", ch.treated),
+        V("control, no training-hint source: control", ch.control),
+        V("control, no training-hint source: difference", ch.diff),
+        V("control, no training-hint source: difference z", ch.z),
+        V("control, no training-hint source, stratified: treated against the control's rate", chs[0]),
+        V("control, no training-hint source, stratified: z", chs[2]),
     ]
-    return out + career_findings(t, ho, len(c1), nho, zero)
+    name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
+    for skill, chara, (k, n) in lr:
+        out += [
+            V(f"later choice, {name.get(chara)}, {skill}: runs prioritising it", n),
+            V(f"later choice, {name.get(chara)}, {skill}: credited to her", k),
+        ]
+    return out + career_findings(t, ho, len(c1), nho, zero) + control_findings(ct, tc, lr, cc, cs, ch, chs)
+
+
+def control_findings(
+    ct: ControlTest,
+    tc: CalibTest,
+    lr: list[tuple[str, int, tuple[int, int]]],
+    cc: ControlTest,
+    cs: tuple[float, float, float],
+    ch: ControlTest,
+    chs: tuple[float, float, float],
+) -> list[common.Value | common.Finding]:
+    """the left-out shortfall against its control; the default targets the events touch"""
+    _, marker, _, _ = markers()
+    gn = common.skills()
+    white = {gn[g][0] for g in common.DEFAULT}
+    name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
+    tops = sorted((name.get(c), m) for c, m in marker.items() if m in white)
+    return [
+        F(
+            "Left out, the rows a deck card's random event could hint read above the same targets on decks with no "
+            "card that has them as its marker, by more than 1.96 run-clustered standard errors: weighted to the same "
+            "mix of targets, stratified by target and predicted acquisition, and on decks where no card's training "
+            "hints give the target",
+            lambda: ct.z > 1.96 and cs[2] > 1.96 and ch.z > 1.96,
+            lambda: (
+                f"treated {ct.treated:.3f}; control {tc.n} rows {tc.ratio_text(tc.left_out)}, weighted to the treated "
+                f"targets {ct.control:.3f}; difference {ct.diff:+.3f}, SE {ct.se:.3f}, z {ct.z:+.2f}; stratified "
+                f"{cs[0]:.3f} of the control's rate, z {cs[2]:+.2f}; no training-hint source: treated {ch.treated:.3f}, "
+                f"control {ch.control:.3f}, z {ch.z:+.2f}, stratified {chs[0]:.3f}, z {chs[2]:+.2f}"
+            ),
+        ),
+        F(
+            "Credited at the fitted rate, the same rows read as the control: their difference is within 1.96 "
+            "run-clustered standard errors",
+            lambda: abs(cc.z) < 1.96,
+            lambda: (
+                f"credited {cc.treated:.3f} against control {cc.control:.3f}: {cc.diff:+.3f}, SE {cc.se:.3f}, z {cc.z:+.2f}"
+            ),
+        ),
+        F(
+            "Two default targets are a character's top-choice marker (Vodka's Nimble Navigator, Nice Nature's Ramp "
+            "Up); one more sits on a later choice of a shared event, reached only when prioritised, and no run "
+            "prioritising it with that character's card credits it to her",
+            lambda: len(tops) == 2 and len(lr) == 1 and lr[0][2][0] == 0,
+            lambda: (
+                f"top-choice markers {tops}; later choices "
+                + "; ".join(f"{name.get(c)} {s}: {k} of {n} runs prioritising it" for s, c, (k, n) in lr)
+            ),
+        ),
+    ]
 
 
 def career_findings(
@@ -860,8 +1197,8 @@ def career_findings(
     """the careers' conclusions: t credited at the fitted rate"""
     return [
         F(
-            "Deck cards' random events, left out: hybrid reconstructed acquisition on the rows they could hint is under-predicted: obs / pred "
-            "has a 95% interval entirely above 1",
+            "Deck cards' random events, left out: hybrid reconstructed acquisition on the rows they could hint is "
+            "under-predicted (a known miss): obs / pred has a 95% interval entirely above 1",
             lambda: t.left_out.rlo > 1,
             lambda: (
                 f"{t.n} rows, {t.k} acquired; left out {t.ratio_text(t.left_out)}; credited {t.ratio_text(t.credited)}"
@@ -916,13 +1253,6 @@ def detail() -> None:
         t[r["rar"]][1] += r["hit"]
     print(
         "   by rarity (1 R, 2 SR, 3 SSR):", ", ".join(f"{k}: {h}/{n} = {h / n:.3f}" for k, (n, h) in sorted(t.items()))
-    )
-    sr = [r for r in rows if r["rar"] >= 2]
-    f = fits(sr)
-    (a, b), L = f["exp"]
-    print(
-        f"   SR/SSR only: {len(sr)} readings, {len({r['run'] for r in sr})} runs, {sum(r['hit'] for r in sr)} hits; "
-        f"constant {f['const'][0]:.3f} LL {f['const'][1]:.1f}; {a:.3f} (1 - {b:.3f})^(K-4) LL {L:.1f}"
     )
     careers_detail(R)
 

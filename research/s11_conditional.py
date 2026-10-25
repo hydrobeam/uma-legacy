@@ -21,6 +21,9 @@ conditional ones; they are separated here by game data (common.event_groups):
               acquisition observed against predicted without crediting (obs / pred, run-clustered 95%,
               common.calib_test), and the Bernoulli log-likelihood gain from crediting over the rows with a
               positive prediction, tested against half the chi2 95% point of one degree of freedom per fitted rate
+  per (trainee, target)  the model as it is: obs / pred (run-clustered 95%), the rows it gives no chance and how many
+              of them were acquired, and on the other rows the exact chance of at least as many acquisitions (Poisson
+              binomial over the rows' predictions)
 """
 
 import collections
@@ -140,6 +143,47 @@ def conditional_rows(R: list[Any], rows: list[dict[str, Any]]) -> list[Condition
     return sel
 
 
+def tail_p(ps: list[float], k: int) -> float:
+    """P(at least k successes) among independent rows with chances ps (Poisson binomial, exact)"""
+    dist = [1.0]
+    for q in ps:
+        dist = [a * (1 - q) + b * q for a, b in zip([*dist, 0.0], [0.0, *dist])]
+    return sum(dist[k:])
+
+
+@dataclass
+class GroupTest:
+    """one (trainee, target)'s rows, the model as it is: acquisition observed against predicted (group_test())"""
+
+    rows: int
+    acquired: int
+    pred: float  # summed predicted acquisition, left out
+    ratio: float  # obs / pred
+    rlo: float  # its run-clustered 95% interval (common.cluster_ci)
+    rhi: float
+    zero: int  # rows the model gives no chance
+    zero_acquired: int  # ... acquired
+    tail: float  # on the rows with a positive chance, P(at least as many acquired) under the model
+
+
+def group_test(xs: list[ConditionalRow]) -> GroupTest:
+    p0 = [common.credit(x.row, 0.0)[1] for x in xs]
+    ob = [int(bool(x.row["o_any"])) for x in xs]
+    ratio, lo, hi, _ = common.cluster_ci(ob, p0, [x.row["run"] for x in xs])
+    pos = [i for i, q in enumerate(p0) if q > 1e-12]
+    return GroupTest(
+        rows=len(xs),
+        acquired=sum(ob),
+        pred=sum(p0),
+        ratio=ratio,
+        rlo=lo,
+        rhi=hi,
+        zero=len(xs) - len(pos),
+        zero_acquired=sum(ob[i] for i in range(len(xs)) if i not in pos),
+        tail=tail_p([p0[i] for i in pos], sum(ob[i] for i in pos)),
+    )
+
+
 def careers() -> list[Value | Finding]:
     """the conditional events touching default targets on real careers: rates and calibration"""
     R = common.runs()
@@ -165,15 +209,25 @@ def careers() -> list[Value | Finding]:
         Value(SEC, "careers: conditional-only rate 95% low", lo),
         Value(SEC, "careers: conditional-only rate 95% high", hi),
     ]
+    gt: dict[str, GroupTest] = {}
     for k in sorted(groups, key=lab):
         xs = groups[k]
         h = sum(x.hit for x in xs)
         _, l_, h_, _ = common.cluster_ci([int(x.hit) for x in xs], [1] * len(xs), [x.row["run"] for x in xs])
+        g = gt[lab(k)] = group_test(xs)
         out += [
             Value(SEC, f"{lab(k)}: rows", len(xs)),
             Value(SEC, f"{lab(k)}: from her events", h),
             Value(SEC, f"{lab(k)}: rate 95% low", l_),
             Value(SEC, f"{lab(k)}: rate 95% high", h_),
+            Value(SEC, f"{lab(k)}: acquired", g.acquired),
+            Value(SEC, f"{lab(k)}: predicted", g.pred),
+            Value(SEC, f"{lab(k)}: obs / pred", g.ratio),
+            Value(SEC, f"{lab(k)}: obs / pred 95% low", g.rlo),
+            Value(SEC, f"{lab(k)}: obs / pred 95% high", g.rhi),
+            Value(SEC, f"{lab(k)}: rows the model gives no chance", g.zero),
+            Value(SEC, f"{lab(k)}: of them acquired", g.zero_acquired),
+            Value(SEC, f"{lab(k)}: tail p on the other rows", g.tail),
         ]
     rr = {id(x.row): rate[x.key] for x in sel}  # id(calibration row) -> its (trainee, target) rate
     t = common.calib_test([x.row for x in sel], lambda row: rr[id(row)])
@@ -186,7 +240,47 @@ def careers() -> list[Value | Finding]:
     ]
     by_label = sorted(groups.items(), key=lambda kv: lab(kv[0]))
     rates_text = "; ".join(f"{lab(k)} {sum(x.hit for x in xs)}/{len(xs)}" for k, xs in by_label)
-    return out + career_findings(cond, kc, lo, hi, rates_text, t, tc, zc, set(groups), {x.key for x in cond})
+    out += career_findings(cond, kc, lo, hi, rates_text, t, tc, zc, set(groups), {x.key for x in cond})
+    return out + group_findings(gt, len(cond))
+
+
+# the (trainee, target) rows the document names
+ARDAN, VODKA, DAIWA = (
+    "Mejiro Ardan, any outfit, Ramp Up",
+    "Vodka, any outfit, Nimble Navigator",
+    "Daiwa Scarlet, any outfit, Nimble Navigator",
+)
+
+
+def group_findings(gt: dict[str, GroupTest], ncond: int) -> list[Value | Finding]:
+    """per (trainee, target), the model as it is: the misses the pooled rows hide"""
+    F: Callable[[str, Any, Any], Finding] = lambda st, test, ev: common.finding(SEC, st, test, ev)
+    txt: Callable[[str], str] = lambda k: (
+        f"{k}: {gt[k].acquired} of {gt[k].rows} acquired, predicted {gt[k].pred:.2f}, obs / pred {gt[k].ratio:.2f} "
+        f"[{gt[k].rlo:.2f}, {gt[k].rhi:.2f}]; {gt[k].zero} rows at 0, {gt[k].zero_acquired} acquired; tail p on the "
+        f"rest {gt[k].tail:.3f}"
+        if k in gt
+        else f"{k}: no rows"
+    )
+    return [
+        F(
+            "Known miss: Mejiro Ardan's Ramp Up. The model gives some of her rows no chance at all, and every one of "
+            "them was acquired",
+            lambda: ARDAN in gt and gt[ARDAN].zero_acquired > 0 and gt[ARDAN].zero_acquired == gt[ARDAN].zero,
+            lambda: txt(ARDAN),
+        ),
+        F(
+            "Known miss: Vodka's Nimble Navigator on her own rows: obs / pred has a 95% interval entirely above 1",
+            lambda: VODKA in gt and gt[VODKA].rlo > 1,
+            lambda: txt(VODKA),
+        ),
+        F(
+            "Daiwa Scarlet's Nimble Navigator, most of the conditional-only rows, reads as the model predicts: obs / "
+            "pred has a 95% interval covering 1",
+            lambda: DAIWA in gt and gt[DAIWA].rows > ncond / 2 and gt[DAIWA].rlo <= 1 <= gt[DAIWA].rhi,
+            lambda: f"{txt(DAIWA)}; of {ncond} conditional-only rows",
+        ),
+    ]
 
 
 def career_findings(
