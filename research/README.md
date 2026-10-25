@@ -1,8 +1,8 @@
 # Research: the numbers behind docs/RESEARCH.md
 
 `docs/RESEARCH.md` is rendered: its prose lives in `docs/RESEARCH.template.md`, and every number it states about the
-runs, the game data or a derived quantity is a placeholder filled from what these scripts compute. No number is typed
-in by hand; a placeholder without a computed value stops the rendering.
+runs, the game data or a derived quantity is a placeholder filled from what these scripts compute. Only the assumed
+inputs are typed in, labelled assumed; a placeholder without a computed value stops the rendering.
 
 ```
 ./build.sh research                                   # compute everything, then render docs/RESEARCH.md
@@ -31,8 +31,8 @@ use; `render.py` turns the template into `docs/RESEARCH.md`. `--quick` skips sec
 | `s05_affinity.py` | §5 the self-grandparent fit (trio points 0 against pair(T, P), κ) |
 | `s06_loops.py` | §6 the race weights; trainees with their own character as a grandparent; on the validation results, what shared wins are worth and how far any other schedule could raise the odds |
 | `s07_hints.py` | §7 training hints: the form study, bases and specialty weights per scenario, the Lv-5 cap, joint draws, spark deficit, held-out and same-card tests |
-| `s08_chains.py` | §8 chain events: the fit of N and its held-out comparison, the marker allowance, final links by pals and by card, the allocation rule, the exact link tables, known misses |
-| `s09_outcomes.py` | §9 measured outcome shares and the choice-rule evidence |
+| `s08_chains.py` | §8 chain events: the fit of N, the pal-count budget and its held-out, nested and profile tests, the allocation rule, freed against wasted chain ends (a parametric bootstrap), the marker allowance, final links by pals and by card, known misses |
+| `s09_outcomes.py` | §9 measured outcome shares and the choice-rule evidence, its three cases included |
 | `s10_random_events.py` | §10 random card events: the fitted rate and what leaving them out costs on real decks |
 | `s11_conditional.py` | §11 conditional character events: how often they fire in the runs, what leaving them out costs, Tokai Teio's Head-On |
 | `s13_calibration.py` | §13 the calibration against real careers, §3's test on whole careers, §9's certainty checks |
@@ -41,8 +41,7 @@ use; `render.py` turns the template into `docs/RESEARCH.md`. `--quick` skips sec
 parameter count, compared directly; an extra parameter, by likelihood ratio (detectable or not); whether a model
 predicts better, by 5-fold cross-validation by run id (`common.fold`, `common.compare_held_out`).
 
-Analyses use the pooled runs subject to their stated eligibility restrictions. Most of section 9's outcome and choice
-counts use an earlier subset; its Festa calculation uses the full pool. What the runs cannot test is labelled **assumed** in the document and
+Analyses use the pooled runs subject to their stated eligibility restrictions. What the runs cannot test is labelled **assumed** in the document and
 claims no evidence: §1's spark curve and §2's star mixes (community figures). The bases of the spark types the odds do
 not use are listed only in `docs/MODEL.md`.
 
@@ -53,12 +52,12 @@ them the scripts compute only what needs game data, and `results.json` keeps the
 clone still renders the whole document. Everything else comes from the repository: `pkg/loopopt/data/global/`, the
 GameTora files (through `pkg/loopopt/export/gametora.py`) and `game/global/master.mdb`. Section 6 recomputes the odds of
 every validation result (`val/ref__*`, `val/refpu__*`) through `val/joint_check.py`: about a minute. Section 13 also runs the native
-solver (`cd pkg/loopopt && cargo build --release`): about a minute for the default targets, several more for the
-other-skills sample, one process; results are kept in `research/data/out/` and reused while nothing they read changes.
+solver (`cd pkg/loopopt && cargo build --release`): a few minutes for the default targets, more for the other-skills
+sample, one process; results are kept in `research/data/out/` and reused while nothing they read changes.
 numpy and scipy come with the `research` dependency group.
 
-The chain link checks compare observed markers with latent completion probabilities without the marker allowance
-used to fit the count distribution. Sections 10 and 11 reconstruct acquisition from exact landing marginals and
+The chain link checks score each observed marker against its link's reach probability with the marker's background
+and the allowance applied, as the fits do. Sections 10 and 11 reconstruct acquisition from exact landing marginals and
 approximate report gold chances on both sides of their comparisons. These checks do not establish exact acquisition
 calibration. Section 13 reports acquisition reliability, including zero predictions, for the report approximation.
 
