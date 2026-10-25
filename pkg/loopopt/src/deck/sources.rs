@@ -366,9 +366,10 @@ impl TargetSources {
 
     /// Multiply an entry's miss chances into the output slices; link_chances[l - 1] = P(chain link l fires).
     /// Gold misses get P(no gold hint) and white misses get
-    /// P(no white hint | no gold hint) = P(no hint) / P(no gold hint), both exact for the entry: its sources are
-    /// independent of each other, while a skill's gold and white from one event (e.g. on different outcomes) are not.
-    /// Links fire in order, so a skill offered at several links comes from the earliest one that fires:
+    /// P(no white hint | no gold hint) = P(no hint) / P(no gold hint), both exact for the entry given its chain
+    /// progress: given which links fire, its sources' rewards are independent of each other (and of the progress),
+    /// while a skill's gold and white from one event (e.g. on different outcomes) are not. Links fire in order, so a
+    /// skill offered at several links comes from the earliest link that fires and gives it:
     /// P(miss) = 1 - sum_l P(link l fires) * (P(not from links < l) - P(not from links <= l)).
     /// Both misses fall with every link chance, so the lowest possible link odds bound them from above.
     pub(crate) fn src_miss(&self, link_chances: &[f64], white_misses: &mut [f64], gold_misses: &mut [f64]) {

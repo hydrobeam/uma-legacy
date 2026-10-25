@@ -86,10 +86,12 @@ by more than 25% (the most seen is 18%). When a search runs long the margin shri
 schedules are the optimiser's best found, not proven best.</li>
 <li>The counted hints rely on the player's IT priorities; the deck card names the one the planner knows (Sasami
 Anshinzawa SSR: prioritise Risky Business).</li>
-<li><strong>Not modelled:</strong> random character events from support cards (each fires in about one career in seven where it can; on the runs
-where one counted, it raises the targets' landing odds by a median 13%); conditional and secret events, except Tokai Teio's Head-On; hint levels and skill-point costs; Grand
-Concert's low rate for the first choice of Sasami Anshinzawa SSR's finale.</li>
-<li><strong>Placeholders:</strong> Grand Masters' hint rate (base 1.991, specialty weight 0.129: one base and weight fitted over the other scenarios' runs) is a guess,
+<li><strong>Not modelled:</strong> random character events from support cards (each fires in about 15% of the careers
+where it can, a lower bound; on the runs where one counted, crediting it raises the product of the targets' landing
+chances by a median of about 14%); conditional and secret events, except Tokai Teio's Head-On; skill-point costs and the
+discount a hint level gives (a hinted target counts as learned; hint levels only retire a skill from a card's training
+draws at Lv 5).</li>
+<li><strong>Placeholders:</strong> Grand Masters' hint rate (<a href="#deck">The deck</a>, Training hints) is a guess,
 with no IT runs to set it. R cards are left
 out (R pals stay): their hint and event model is untested. The Grand Masters-era data is the JP game data cut at L'Arc's
 launch.</li>
@@ -129,8 +131,9 @@ sparks, not affinity.</p>
 <li><strong>Training hints:</strong> the game doesn't publish how often a card hints. These rates are inferred from what
 real shared IT runs show, not read from the game's data, so they are estimates. The rate scales
 with the card's hint frequency and specialty priority: <math><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mtext>hint frequency</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mi>d</mi><mo>×</mo><mtext>specialty priority</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow></math> hints per career, each a random pick among the card's
-skills still below hint level 5. The base and specialty weight <math><mi>d</mi></math> differ by scenario: Unity Cup 2.395 and 0.322, Grand Concert
-1.999 and 0.068, Trackblazer 1.702 and 0.107, URA Finale 1.380 and 0.359 (Grand Masters 1.991 and 0.129, a placeholder). A card
+skills still below hint level 5. The base and specialty weight <math><mi>d</mi></math> differ by scenario: Unity Cup 2.428 and 0.299, Grand Concert
+1.990 and 0.082, Trackblazer 1.579 and 0.162, URA Finale 1.369 and 0.393, Grand Masters 1.991 and 0.134 (a placeholder: one base
+and weight fitted over the other scenarios' runs). The model's steps use these values. A card
 with 30% hint frequency and 50 specialty priority hints about 3.6 times in Unity Cup; with five hintable skills, a given
 one comes up in about half of careers.</li>
 <li><strong>Chain events:</strong> the number of story-chain events in a career is random, also estimated from real
@@ -139,8 +142,8 @@ with four. Each one advances the chain of one of the deck's chain cards still ru
 links left; the same in every scenario. Three 3-link cards (9 links) usually leave some last links unplayed. Pals have
 their own storyline and take none.</li>
 <li><strong>Event outcomes:</strong> equally likely unless measured (an event's k outcomes giving a target of its n:
-k/n). Measured at 75%: Sasami Anshinzawa SSR's Nothing Ventured, Riko Kashimoto SSR's Ramp Up; at 65%: Seiun Sky
-[Foolproof Plan]'s Fast-Paced, Smart Falcon [My Umadol Way! ☆]'s Center Stage; at 60%: Nakayama Festa [Trusting the
+k/n). Measured at 75%: Sasami Anshinzawa SSR's Nothing Ventured (her finale), Riko Kashimoto SSR's Ramp Up; at 65%: Seiun Sky
+[Foolproof Plan]'s Fast-Paced; at 60%: Nakayama Festa [Trusting the
 Dice]'s Nothing Ventured.</li>
 <li>A card marked "prioritise X" needs X set as an IT priority for its event to give the counted reward.</li>
 <li>Every deck may borrow one friend's card, and does when that card makes it better. By default each uma gets her own best deck; a result shows the shared deck, then
@@ -195,7 +198,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   heads 3 careers. A three-uma rotation has 3 careers, one per trainee <math><mi>T</mi></math>: her parents are the other two, and each
   parent's own parents are the other parent and <math><mi>T</mi></math>, so <math><mi>X</mi><mo>=</mo><mi>T</mi></math> below (her own earlier veteran, with her
   schedule's wins). A trio counts only distinct umas, so <math><mtext>trio</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>T</mi><mo>)</mo><mo>=</mo><mn>0</mn></math>
-  (fitted on 174,056 inspirations from IT runs: counting it as <math><mtext>pair</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></math> predicts 16% more
+  (fitted on 271,842 inspiration trials from IT runs: counting it as <math><mtext>pair</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></math> predicts about 17% more
   passes from such grandparents than seen).</p>
 
   <p><strong>2. Affinity of each legacy.</strong> pair and trio are the game's relation points (the sum over the relation
@@ -245,21 +248,22 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   when another gives every target at least its chances of a gold and of any hint): the deck shows "link 2: Uma Stan",
   the skill to prioritise;</li>
   <li>per early end: played to a choice that ends its chain at link <math><mi>ℓ</mi></math>, the card's links before <math><mi>ℓ</mi></math> as usual, that choice's
-  rewards at <math><mi>ℓ</mi></math>, and its later links freed for the other cards.</li>
+  rewards at <math><mi>ℓ</mi></math>, and from there it is out of the running: later chain events go to the other cards.</li>
   </ul>
   <p>All of a card's entries share its character, so a deck holds at most one, and no two cards of one character. Slots
   left over hold owned pal characters with no useful card (no chain slot, no rewards; those blocking fewest umas first)
   or, failing that, a generic SR without target rewards (a 2-link chain slot: it still takes chain events). With
   "pals" set, the deck has exactly that many pal and group cards, the plain pals included.</p>
 
-  <p><strong>6b. A deck's hint odds.</strong> Group cards count as pals. Per target <math><mi>k</mi></math>,
+  <p><strong>6b. A deck's hint odds.</strong> Group cards count as pals for the deck's composition (the "pals" setting,
+  no chain slot), not for the chain-event rate (step 7). Per target <math><mi>k</mi></math>,
   every source <math><mi>j</mi></math> in the deck gives a gold chance <math><msub><mi>g</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></math> and a chance of any hint <math><msub><mi>h</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></math>; sources are
   independent:</p>
   <math display="block"><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><munder><mo>∏</mo><mi>j</mi></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>g</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mo>)</mo></mrow><mo>,</mo><mtext>   </mtext><msub><mi>w</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><munder><mo>∏</mo><mi>j</mi></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>h</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mo>)</mo></mrow></mrow><mrow><mn>1</mn><mo>−</mo><msub><mi>g</mi><mi>k</mi></msub></mrow></mfrac></math>
   <ul>
   <li><p><strong>Training hints.</strong> <math><mi>h</mi><mo>=</mo><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mtext>hint frequency</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mi>d</mi><mo>×</mo><mtext>specialty priority</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow></math> draws per career, read as <math><mrow><mo>⌊</mo><mi>h</mi><mo>⌋</mo></mrow></math> or <math><mrow><mo>⌊</mo><mi>h</mi><mo>⌋</mo></mrow><mo>+</mo><mn>1</mn></math> draws
-  with the fraction as the weight of the second. Base and <math><mi>d</mi></math>: Unity Cup 2.395 and 0.322, Grand Concert 1.999 and 0.068,
-  Trackblazer 1.702 and 0.107, URA Finale 1.380 and 0.359, Grand Masters 1.991 and 0.129 (placeholder). Each draw picks uniformly among the card's <math><mi>n</mi></math> hintable skills still below hint
+  with the fraction as the weight of the second. Base and <math><mi>d</mi></math> per scenario: <a href="#deck">The deck</a>,
+  Training hints. Each draw picks uniformly among the card's <math><mi>n</mi></math> hintable skills still below hint
   level 5; a skill leaves the pool after <math><mi>ν</mi><mo>=</mo><mrow><mo>⌈</mo><mn>5</mn><mo>/</mo><mtext>levels per hint</mtext><mo>⌉</mo></mrow></math> draws. With <math><mi>k</mi></math> of the <math><mi>n</mi></math> skills being targets and <math><mi>t</mi></math> draws:</p>
   <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>no target hinted</mtext><mo>)</mo></mrow><mo>=</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mfrac><mi>k</mi><mi>n</mi></mfrac><mo>)</mo></mrow><mi>t</mi></msup><mo>,</mo><mtext>  </mtext><mi>t</mi><mo>≤</mo><mi>ν</mi></math>
   <p>(beyond <math><mi>ν</mi></math> draws the shrinking pool is followed exactly: a state counts how many of the other skills have taken
@@ -271,8 +275,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math display="block"><mi>P</mi><mo>(</mo><mi>S</mi><mo>)</mo><mo>=</mo><munder><mo>∑</mo><mrow><mi>U</mi><mo>⊆</mo><mi>S</mi></mrow></munder><msup><mrow><mo>(</mo><mo>−</mo><mn>1</mn><mo>)</mo></mrow><mrow><mo>|</mo><mi>S</mi><mo>|</mo><mo>−</mo><mo>|</mo><mi>U</mi><mo>|</mo></mrow></msup><mi>M</mi><mo>(</mo><mi>m</mi><mo>−</mo><mo>|</mo><mi>U</mi><mo>|</mo><mo>)</mo></math>
   <p>an event with one outcome per subset (steps 13 and 19 treat it like any event).</p></li>
   <li><p><strong>Story chains.</strong> A card's chain link <math><mi>l</mi></math> fires with chance <math><msub><mi>m</mi><mi>l</mi></msub></math> (step 7); links fire in order,
-  so with <math><msub><mi>x</mi><mi>l</mi></msub></math> the chance link <math><mi>l</mi></math>'s reward gives the target, a skill offered at several links counts from the
-  earliest that fires:</p>
+  so with <math><msub><mi>x</mi><mi>l</mi></msub></math> the chance link <math><mi>l</mi></math>'s reward gives the target (rewards independent given the
+  chain's progress), a skill offered at several links counts from the earliest link that fires and gives it:</p>
   <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>no hint from the card</mtext><mo>)</mo></mrow><mo>=</mo><mn>1</mn><mo>−</mo><munder><mo>∑</mo><mi>l</mi></munder><msub><mi>m</mi><mi>l</mi></msub><mrow><mo>[</mo><munder><mo>∏</mo><mrow><msup><mi>l</mi><mo>′</mo></msup><mo>&lt;</mo><mi>l</mi></mrow></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>x</mi><msup><mi>l</mi><mo>′</mo></msup></msub><mo>)</mo></mrow><mo>−</mo><munder><mo>∏</mo><mrow><msup><mi>l</mi><mo>′</mo></msup><mo>≤</mo><mi>l</mi></mrow></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>x</mi><msup><mi>l</mi><mo>′</mo></msup></msub><mo>)</mo></mrow><mo>]</mo></mrow></math></li>
   <li><strong>Fixed events</strong> (pal events and other events that don't depend on the chain) give their chance
   directly.</li>
@@ -282,9 +286,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   (the chain stops there on 1/3 of its firings, step 7). An event gives one outcome per firing, so a gold and a white of
   the same skill from one event are combined within the event before the sources are multiplied (within one outcome
   the gold counts), and two rewards at one link from separate rows multiply as independent. Outcomes are equally likely unless measured, k/n
-  for k of an event's n outcomes (Sasami Anshinzawa SSR's finale, Riko Kashimoto SSR's Ramp Up: 75%; Seiun Sky
-  [Foolproof Plan]'s Fast-Paced, Smart Falcon [My Umadol Way! ☆]'s Center Stage: 65%; Nakayama Festa [Trusting the
-  Dice]'s Nothing Ventured: 60%). Where an event offers targets on different choices, the card is offered once per
+  for k of an event's n outcomes (the measured shares: <a href="#deck">The deck</a>, Event outcomes). Where an event offers targets on different choices, the card is offered once per
   choice worth taking (a choice no other beats on every target) and marked "prioritise X". A pal entry names the event and
   choice it relies on; the skill to prioritise is a skill on that choice and on no choice above it.</li>
   <li><strong>Pals.</strong> Pal finales always fire; first-year date events are left out.</li>
@@ -301,8 +303,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   with equal chance among the <math><mi>R</mi></math> entries still running, whatever their links left; an entry that reached its stop is out,
   and events left over when every entry has stopped are lost:</p>
   <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>entry&#160;</mtext><mi>i</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mi>R</mi></mfrac></math>
-  <p>A card played to an early end (a choice that ends its chain) is an entry that stops at that link, its remaining
-  links freed for the others. Where IT's default choice ends a chain on some of its outcomes, the entry stops there on
+  <p>A card played to an early end (a choice that ends its chain) is an entry that stops at that link, out of the running from
+  there, its remaining links unplayed. Where IT's default choice ends a chain on some of its outcomes, the entry stops there on
   1/3 of that link's firings, one share for every such link, as an exact mixture over where it stops. <math><msub><mi>m</mi><mi>l</mi></msub></math> is the chance entry <math><mi>i</mi></math>'s link <math><mi>l</mi></math> fires, computed exactly over
   <math><mi>N</mi></math> and the picks; pals and R cards take no chain events.</p>
 
@@ -372,8 +374,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   legal decks, even with interchangeable cards merged. Listing them takes 3–4 s and scoring each exactly 21–25 µs, so the
   best deck for one trainee at one inheritance chance takes about 6 minutes natively. The search needs that value for
   every uma it considers (68 in that pool) at several chances: hours to days per search. The exact value of a half-built
-  deck says nothing about its completions; <math><mover><mi>V</mi><mo>^</mo></mover></math> of a half-built deck bounds every completion (it rises with every deck
-  odd), so whole branches of millions of decks are cut at once. The proven bound <math><mi>U</mi></math> below costs about 3 µs a deck (45 s for all
+  deck says nothing about its completions; through <math><mover><mi>V</mi><mo>^</mo></mover></math> they can be bounded (step 12: each target at the best
+  miss chances the remaining picks could give, or the half-built deck's product times the best ratios of the cards
+  still to add), so whole branches of millions of decks are cut at once. The proven bound <math><mi>U</mi></math> below costs about 3 µs a deck (45 s for all
   15.1 million) and cannot bound a half-built deck either.</p>
 
 
@@ -423,9 +426,12 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   </ul>
   <p>Configurations are visited best root bound first; the search stops at the first one whose bound fails. In the
   pass that lists decks for exact scoring, a configuration is also skipped when a bound on the exact value of all its
-  decks, with no cap, is below the best exact value: given every card's chain progress, the targets are independent
-  except for one event's mutually exclusive outcomes, which only lower the value, so the average over progress states
-  of each target's best value given the state bounds every completion. At most 50,000 decks per search; more ends the
+  decks, with no cap, is below the best exact value: given every card's chain progress, the sources are independent,
+  so the average over progress states of each target's best value given the state bounds every completion, provided
+  each event's outcomes are negatively dependent across the targets they give. That holds when each outcome gives one
+  target; an event over two targets with an outcome giving both is checked exactly at every white and gold threshold;
+  one over three or more targets with an outcome giving several is not covered, and its configurations are not skipped
+  this way. At most 50,000 decks per search; more ends the
   pass (step 18).</p>
 
   <p><strong>13. A proven filter.</strong> Before a deck is scored exactly, it is bounded by <math><mi>U</mi><mo>≥</mo><mi>V</mi></math>. Let <math><mi>x</mi></math> be the vector of
@@ -438,8 +444,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math display="block"><mi>V</mi><mo>≤</mo><mi>U</mi><mo>=</mo><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>max</mo><mtext>outfit</mtext></munder><munder><mo>∑</mo><mi>n</mi></munder><mi>P</mi><mrow><mo>(</mo><mi>N</mi><mo>=</mo><mi>n</mi><mo>)</mo></mrow><munder><mo>∏</mo><mi>c</mi></munder><mi>E</mi><mrow><mo>[</mo><msub><mi>Φ</mi><mi>c</mi></msub><mo>∣</mo><mi>n</mi><mo>]</mo></mrow><munder><mo>∏</mo><mrow><mi>k</mi><mspace width="0.3em"/><mtext>not fed by a chain</mtext></mrow></munder><msub><mi>s</mi><mi>k</mi></msub></math>
   <p>Events and training draws enter at each target's marginal chance. That is an upper bound only when, for each such
   group touching two or more targets, the targets' hint indicators are negatively upper-orthant dependent too (for every
-  set <math><mi>S</mi></math> of its targets, <math><mi>P</mi><mo>(</mo><mtext>all of</mtext><mspace width="0.3em"/><mi>S</mi><mo>)</mo><mo>≤</mo><munder><mo>∏</mo><mrow><mi>k</mi><mo>∈</mo><mi>S</mi></mrow></munder><mi>P</mi><mo>(</mo><mi>k</mi><mo>)</mo></math>): true for outcomes that each give one target, which
-  exclude each other; checked exactly for every group, and a deck with a group that fails skips the filter. A target fed
+  set <math><mi>S</mi></math> of its targets, <math><mi>P</mi><mo>(</mo><mtext>all of</mtext><mspace width="0.3em"/><mi>S</mi><mo>)</mo><mo>≤</mo><munder><mo>∏</mo><mrow><mi>k</mi><mo>∈</mo><mi>S</mi></mrow></munder><mi>P</mi><mo>(</mo><mi>k</mi><mo>)</mo></math>), and, for an event that can give a gold, at every white and gold
+  threshold (a target's factor rises with a gold as well as with any hint): true for outcomes that each give one
+  target, which exclude each other; checked exactly for every group, and a deck with a group that fails skips the
+  filter. A target fed
   by two cards' chains puts both cards in one group; the progress check is then made over every up-set of that pair (any
   rising function of two coordinates is a positive combination of up-set indicators). A target fed by three or more chain cards, or by a
   second pair, is taken at its feeders' full progress (its factor only falls as links fail), so the rest keeps the
@@ -643,8 +651,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   wins, so a fresh n/n can beat a real one whose parents make a poorer lineage for C. Over every
   pair of candidates and every choice of sides:</p>
   <math display="block"><mi>V</mi><mo>=</mo><munder><mo>min</mo><mrow><mi>A</mi><mo>,</mo><mi>B</mi><mo>,</mo><mtext>sides</mtext></mrow></munder><mrow><mo>[</mo><mtext>side</mtext><mo>(</mo><mi>A</mi><mo>)</mo><mo>+</mo><mtext>side</mtext><mo>(</mo><mi>B</mi><mo>)</mo><mo>+</mo><munder><mo>min</mo><mi>C</mi></munder><mfrac><mn>1</mn><msub><mi>p</mi><mi>C</mi></msub></mfrac><mo>]</mo></mrow></math>
-  <p>With a real n/n of A and of B and C's odds on them, the goal is one stage away; with your own fully looped veteran,
-  <math><mi>V</mi><mo>=</mo><mn>0</mn></math>.</p>
+  <p>With a real n/n of A and of B and C's odds on them, the goal is one stage away. The goal is always the next fully
+  looped parent: a fully looped veteran you already have is a real n/n side (free) whose parents are n/n, so
+  <math><mi>V</mi></math> is never 0.</p>
 
   <p><strong>C6. Stage candidates.</strong> At most 8 umas: the best career's trainee, the umas of its lineage, the umas
   you hold veterans of (not borrowed), and the main search's other top trainees. If these give fewer than 4 (a loop being

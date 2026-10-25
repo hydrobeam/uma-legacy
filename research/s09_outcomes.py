@@ -1,60 +1,57 @@
 """Section 9: event choices and outcome shares, counted on the run records (research/data/runs.jsonl, not included;
 Independent Training runs from uma-it).
 
-The split-choice, Anshinzawa and Helios counts use seq < 2865; Festa and priority-list counts use all records.
+Every count uses every record.
 
 - Outcome shares (Riko Kashimoto, Seiun Sky, Smart Falcon, Tazuna Hayakawa, Agnes Tachyon, Marvelous Sunday, Gold Ship,
   King Halo, Light Hello): every SR/SSR card event choice with two or more outcomes (GameTora, through gametora.py).
   An outcome's marker is a (skill, level) only that outcome of the choice gives and no other event of the character
-  (her card's events, her shared events) gives at all. Runs: the card in the deck, someone else training. Outcomes that
+  (her card's events, her shared events) gives at all. Runs: the card in the deck, someone else training, and no other
+  deck card whose events (or its character's shared events) can give one of the choice's markers, seen or not (a shared
+  credit "A or B event" cannot say which card fired; Riko's firings and Helios's link 2 are read the same way). Outcomes that
   differ only by level count when the hint is credited solely to "<her name> event" at exactly that level; outcomes
   with different skills count when her event is credited and every outcome could show (each marker skill's level from
   other sources below 5).
-- Sasami Anshinzawa [This Might Sting!] finale: her Nothing Ventured +3 = choice 1 won, +1 = choice 2 won; her Risky
-  Business without Nothing Ventured = choice 2 lost; runs with Nakayama Festa [Trusting the Dice] left out (joint
-  credits). Daitaku Helios and Nakayama Festa: credits to her event on the skills of one link.
+- Sasami Anshinzawa [This Might Sting!] finale (common.classify): her Nothing Ventured at hint level C1_LV or above =
+  choice 1 won, below it = choice 2 won; her Risky Business without Nothing Ventured = choice 2 lost, read as doubtful
+  when its credit is shared ("A or B event") or Risky Business was prioritised without her own-event credit; nothing,
+  with Risky Business at Lv 5, kept apart; runs with Nakayama Festa [Trusting the Dice] left out (joint credits). Daitaku Helios and Nakayama Festa: credits to her event on the skills of one link.
 Intervals are 90% Wilson. Findings test each conclusion on them: the choice rule (prioritised against not), the measured
 shares against the equal rule (k of n outcomes, from the game data) and the model's adopted shares (event_shares.json,
 manual.json), Anshinzawa's dates, the shares off or near the equal rule.
 """
 
-import collections, json, os
+import collections, functools, json, os
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 import common
+from common import (
+    ANSHIN,
+    AnshinRun,
+    C1_LV,
+    FESTA,
+    Outcome,
+    STEER_CASES,
+    anshin_runs,
+    card_outcome_events,
+    credited,
+    deck_ids,
+    hints,
+    outcome_skills,
+    steer_readings,
+)
 from common import Finding, Hint, Run, Value
 
-# one outcome of a choice: skill name -> hint level, or '?' when the level is random
-Outcome = dict[str, int | str]
 # the marker an outcome is read by: (skill name, level), or None when it has none
 Sig = tuple[str, int | str] | None
 # a 90% Wilson interval
 Wil = Callable[[float, float], tuple[float, float]]
-# one card event: (title, story id, [each choice's rewards])
-CardEvent = tuple[str, int, list[Any]]
 
 SEC: str = "9"
-N_RECORDS: int = 2865
-ANSHIN: int = 30080  # Sasami Anshinzawa [This Might Sting!]
-FESTA: int = 30108  # Nakayama Festa [Trusting the Dice]
 RIKO: int = 30036  # Riko Kashimoto
 HELIOS: int = 30116  # Daitaku Helios
-HER_A: str = "Sasami Anshinzawa event"
-C1_LV: int = 3  # her finale's Nothing Ventured at this level or above: choice 1
 Z90: float = 1.645
-
-
-def deck_ids(r: Run) -> list[int]:
-    return [d[0] for d in r["deck"]]
-
-
-def hints(r: Run) -> dict[str, Hint]:
-    return {h["name"]: h for h in r["hints"]}
-
-
-def credited(hs: dict[str, Hint], skill: str, source: str) -> bool:
-    return skill in hs and source in hs[skill]["src"]
 
 
 def wil(k: float, n: float) -> tuple[float, float]:
@@ -80,48 +77,6 @@ class SplitChoice:
     nrun: int  # runs with the card, someone else training
 
 
-def outcome_skills(rewards: Any, gt: Any, sk: dict[int, str]) -> list[Outcome]:
-    """one choice -> [ {skill name: level or '?'} ] per outcome"""
-    out: list[Outcome] = []
-    for hs, _ in gt.outcomes(rewards):
-        o: Outcome = {}
-        for kind, x, lv in hs:
-            if kind == "hint" and x in sk:
-                level = str(lv).lstrip("+") if lv else "1"
-                o[sk[x]] = int(level) if level.isdigit() else "?"
-            elif kind == "random":
-                for i in x:
-                    if i in sk:
-                        o[sk[i]] = "?"
-        out.append(o)
-    return out
-
-
-def card_events(gt: Any, title: dict[int, str], cchar: dict[int, int]) -> dict[int, list[CardEvent]]:
-    """card -> its SR/SSR events and, for a pal, its character's friend events (a per-card variant where it has one)"""
-    evs: dict[int, list[CardEvent]] = collections.defaultdict(list)
-    for key in ("training_events_sr", "training_events_ssr"):
-        for cid, es in gt.load(key):
-            for e in es:
-                evs[cid].append((title.get(int(e[2]), str(e[2])), int(e[2]), [ch[1] for ch in gt.choices(e[1])]))
-    by_chara: dict[int, list[int]] = collections.defaultdict(list)
-    for cid, ch in cchar.items():
-        by_chara[ch].append(cid)
-    for row in gt.load("training_events_friend"):
-        base: dict[int, Any] = {}
-        var: dict[int, dict[Any, Any]] = collections.defaultdict(dict)  # by id(event)
-        for e, only, chs in gt.events(row, "friend"):
-            if only is None:
-                base[id(e)] = e
-            else:
-                var[id(e)][only] = chs
-        for k, e in base.items():
-            for cid in by_chara[row[0]]:
-                chs = var[k].get(cid, e[1])
-                evs[cid].append((title.get(int(e[2]), str(e[2])), int(e[2]), [ch[1] for ch in gt.choices(chs)]))
-    return evs
-
-
 def could_show(hs: dict[str, Hint], sig: Sig, was_credited: bool) -> bool:
     """an outcome would show: its marker skill's level from other sources is below 5"""
     h = hs.get(sig[0])
@@ -141,12 +96,13 @@ def split_choices(R: list[Run]) -> list[SplitChoice]:
     cchar = dict(db.execute("select id, chara_id from support_card_data"))
     crar = dict(db.execute("select id, rarity from support_card_data"))
     link = dict(db.execute("select story_id, show_progress_1 from single_mode_story_data where show_progress_1 > 0"))
-    evs = card_events(gt, title, cchar)
+    evs = card_outcome_events(gt, title, cchar)
     shared: dict[int, list[list[Any]]] = collections.defaultdict(list)  # character -> her shared events' choices
     for chara, es in gt.load("training_events_shared"):
         for e in es:
             shared[chara].append([ch[1] for ch in gt.choices(e[1])])
 
+    gives = other_card_skills()
     runs = [(r, set(deck_ids(r)), hints(r)) for r in R]
     out: list[SplitChoice] = []
     for cid, es in evs.items():
@@ -184,7 +140,9 @@ def split_choices(R: list[Run]) -> list[SplitChoice]:
                     sigs.append(m[0] if m else None)
                 if not any(sigs):
                     continue
-                cnt, cntr = count_credits(mine, outs, sigs, f"{nm} event")
+                marks = {m[0] for m in sigs if m}
+                read = [(r, hs) for r, hs in mine if not explained_elsewhere(r, cid, marks, gives)]
+                cnt, cntr = count_credits(read, outs, sigs, f"{nm} event")
                 out.append(
                     SplitChoice(
                         card=cname.get(cid, str(cid)),
@@ -200,6 +158,30 @@ def split_choices(R: list[Run]) -> list[SplitChoice]:
                     )
                 )
     return out
+
+
+@functools.cache
+def other_card_skills() -> dict[int, set[str]]:
+    """card -> every skill an event credited to its character can give: its own events (common.game().pool) and its
+    character's shared events (GameTora training_events_shared)"""
+    gt = common.gametora()
+    db = common.mdb()
+    sk = dict(db.execute("select [index], text from text_data where category = 47"))
+    cchar = dict(db.execute("select id, chara_id from support_card_data"))
+    by_chara: collections.defaultdict[int, set[str]] = collections.defaultdict(set)
+    for chara, es in gt.load("training_events_shared"):
+        for e in es:
+            for ch in gt.choices(e[1]):
+                by_chara[chara] |= {s for o in outcome_skills(ch[1], gt, sk) for s in o}
+    own = common.game().pool
+    return {cid: own.get(cid, set()) | by_chara.get(cchar.get(cid, -1), set()) for cid in set(own) | set(cchar)}
+
+
+def explained_elsewhere(r: Run, cid: int, marks: set[str], gives: dict[int, set[str]]) -> bool:
+    """another deck card's events can give one of the markers, seen or not: the record cannot tell the two sources
+    apart (a shared credit "A or B event"), and dropping only the shared credits would lose one outcome's readings and
+    not the others' (research/data rule: leave out decks that could explain the skill)"""
+    return any(marks & gives.get(x, set()) for x in deck_ids(r) if x != cid)
 
 
 def count_credits(
@@ -240,14 +222,15 @@ def equal(X: list[SplitChoice], cid: int, event: str, choice: int, skill: str) -
     return len(gives) / len(x.outs)
 
 
-def adopted(cid: int, skill: str) -> float:
-    """the model's share for one outcome: a measured split in event_shares.json, else the card's chance in manual.json"""
+def adopted(cid: int, skill: str) -> float | None:
+    """the model's share for one outcome: a measured split in event_shares.json, else the card's chance in manual.json;
+    None when the model leaves it at the equal rule"""
     for e in json.load(open(os.path.join(common.ROOT, "pkg/loopopt/data/event_shares.json")))["cards"].get(
         str(cid), []
     ):
         if skill in e["shares"]:
             return e["shares"][skill]
-    return dict(common.gjson("manual.json")["cards"][str(cid)]["chance"])[skill]
+    return dict(common.gjson("manual.json")["cards"].get(str(cid), {}).get("chance", [])).get(skill)
 
 
 def find(X: list[SplitChoice], cid: int, event: str, choice: int, skill: str) -> tuple[int, int] | tuple[None, None]:
@@ -259,62 +242,6 @@ def find(X: list[SplitChoice], cid: int, event: str, choice: int, skill: str) ->
                     c = x.cntr if all(x.sigs) and len({s[0] for s in x.sigs}) == len(x.sigs) else x.cnt
                     return c[j], sum(c)
     return None, None
-
-
-# ---------------------------------------------------------------- Sasami Anshinzawa's finale
-@dataclass
-class AnshinRun:
-    """one run with Anshinzawa's card (anshin_runs())"""
-
-    festa: bool  # Nakayama Festa's card in the deck too (joint credits)
-    shown: bool  # the run shows a priority list
-    nv_pri: bool  # Nothing Ventured prioritised
-    rb_pri: bool  # Risky Business prioritised
-    NV: tuple[int, list[str]] | None  # Nothing Ventured's (hint level, sources), if hinted
-    RB: tuple[int, list[str]] | None  # Risky Business's
-    c: str = ""  # the finale's reading (classify())
-
-
-def anshin_runs(R: list[Run]) -> list[AnshinRun]:
-    out: list[AnshinRun] = []
-    for r in R:
-        d = deck_ids(r)
-        if ANSHIN not in d:
-            continue
-        hs = hints(r)
-        pri = r.get("priority")
-        g = {s: (hs[s]["lv"], hs[s]["src"]) for s in ("Nothing Ventured", "Risky Business") if s in hs}
-        out.append(
-            AnshinRun(
-                festa=FESTA in d,
-                shown=pri is not None,
-                nv_pri="Nothing Ventured" in (pri or []),
-                rb_pri="Risky Business" in (pri or []),
-                NV=g.get("Nothing Ventured"),
-                RB=g.get("Risky Business"),
-            )
-        )
-    for o in out:
-        o.c = classify(o)
-    return out
-
-
-def classify(o: AnshinRun) -> str:
-    """the finale's reading: 'c1_win' / 'c2_win' (Nothing Ventured at or above C1_LV / below), 'c2_lose' (her Risky
-    Business alone), 'c2_lose?' (shared or doubtful credit), 'none_rb5' (nothing, Risky Business at Lv 5), 'none'"""
-    her: Callable[[tuple[int, list[str]] | None], Any] = lambda x: x and any("Anshinzawa" in s for s in x[1])
-    nv, rb = o.NV, o.RB
-    if nv:
-        return "c1_win" if nv[0] >= C1_LV else "c2_win"
-    if her(rb):
-        if any(" or " in s for s in rb[1]):
-            return "c2_lose?"
-        if o.rb_pri and HER_A not in rb[1]:
-            return "c2_lose?"
-        return "c2_lose"
-    if rb and rb[0] >= 5:
-        return "none_rb5"
-    return "none"
 
 
 # a count and its total
@@ -386,40 +313,87 @@ def riko_lone_wolf(R: list[Run], prioritised: bool = True) -> Count:
     return k, n
 
 
+RIKO_SKILLS: tuple[tuple[str, int], ...] = (("Ramp Up", 3), ("Maverick ○", 5), ("Lone Wolf", 3))
+# a run's priority list, as the per-run Ramp Up counts split it
+RIKO_LISTS: tuple[str, ...] = ("Ramp Up prioritised", "Lone Wolf prioritised", "neither prioritised", "no list shown")
+
+
 class RikoFirings(NamedTuple):
-    ramp_up: int  # top choice, Ramp Up firings
-    maverick: int  # top choice, Maverick firings
-    lone_wolf: int  # bottom choice firings
-    runs: int  # runs counted
-    runs_ramp_up: int  # of them, with Ramp Up
+    ramp_up: int  # top choice, Ramp Up firings (decks where no other card can give any of her three skills)
+    maverick: int  # top choice, Maverick firings (the same decks)
+    lone_wolf: int  # bottom choice firings (the same decks)
+    runs: int  # those decks' runs counted
+    per_run: dict[str, Count]  # by the run's list (RIKO_LISTS): (runs with her Ramp Up, runs where it could show)
+    by_maverick: dict[bool, Count]  # list shown, Lone Wolf not prioritised: by whether another deck card can give
+    # Maverick ○, (runs with her Ramp Up, runs)
+    maverick_background: Count  # decks where no card can give Maverick ○: (runs crediting it to "Events", runs)
+    top_runs: Count  # the clean decks' runs crediting Ramp Up or Maverick ○ and not Lone Wolf: (with Ramp Up, runs)
+
+
+def riko_list(p: list[str] | None) -> str:
+    """the run's priority list as RIKO_LISTS reads it (Lone Wolf first: it moves IT to the bottom choice)"""
+    if p is None:
+        return "no list shown"
+    if "Lone Wolf" in p:
+        return "Lone Wolf prioritised"
+    return "Ramp Up prioritised" if "Ramp Up" in p else "neither prioritised"
 
 
 def riko_firings(R: list[Run]) -> RikoFirings:
     """her "Unexpected Side": top choice Ramp Up +3 or Maverick ○ +5, bottom choice Lone Wolf +3 (its middle choice gives
-    nothing and cannot be seen). Credits are counted once per skill per run, where all three could show (each skill's
-    level from other sources below 5). Returns (Ramp Up, Maverick, Lone Wolf firings, runs counted, runs with Ramp Up)"""
-    sk = (("Ramp Up", 3), ("Maverick ○", 5), ("Lone Wolf", 3))
+    nothing and cannot be seen). Credits are counted once per skill per run, on decks where no other card's events can
+    give the skill read (explained_elsewhere()) and where it could show (its level from other sources below 5): the
+    firings on decks clear of all three, the per-run Ramp Up on decks clear of Ramp Up"""
+    gives = other_card_skills()
+    ev = "Riko Kashimoto event"
     c = [0, 0, 0]
-    n = k = 0
+    n = 0
+    per: dict[str, list[int]] = {k: [0, 0] for k in RIKO_LISTS}
+    bym: dict[bool, list[int]] = {True: [0, 0], False: [0, 0]}
+    bg = [0, 0]
+    top = [0, 0]
     for r in R:
-        if RIKO not in deck_ids(r) or r["chara"] == 9006:
-            continue
+        d = deck_ids(r)
         hs = hints(r)
-        hit = [j for j, (s, _) in enumerate(sk) if credited(hs, s, "Riko Kashimoto event")]
-        if any(s in hs and hs[s]["lv"] - (lv if j in hit else 0) >= 5 for j, (s, lv) in enumerate(sk)):
+        if not any("Maverick ○" in gives.get(x, set()) for x in d):
+            bg[1] += 1
+            bg[0] += credited(hs, "Maverick ○", "Events")
+        if RIKO not in d or r["chara"] == 9006:
             continue
-        n += 1
-        k += 0 in hit
-        for j in hit:
-            c[j] += 1
-    return RikoFirings(*c, n, k)
+        hit = [j for j, (s, _) in enumerate(RIKO_SKILLS) if credited(hs, s, ev)]
+        shows = [not (s in hs and hs[s]["lv"] - (lv if j in hit else 0) >= 5) for j, (s, lv) in enumerate(RIKO_SKILLS)]
+        if shows[0] and not explained_elsewhere(r, RIKO, {"Ramp Up"}, gives):
+            ls = riko_list(r.get("priority"))
+            per[ls][0] += 0 in hit
+            per[ls][1] += 1
+            if ls in ("Ramp Up prioritised", "neither prioritised"):
+                m = explained_elsewhere(r, RIKO, {"Maverick ○"}, gives)
+                bym[m][0] += 0 in hit
+                bym[m][1] += 1
+        if all(shows) and not explained_elsewhere(r, RIKO, {s for s, _ in RIKO_SKILLS}, gives):
+            n += 1
+            for j in hit:
+                c[j] += 1
+            if 2 not in hit and (0 in hit or 1 in hit):
+                top[0] += 0 in hit
+                top[1] += 1
+    return RikoFirings(
+        *c,
+        n,
+        {k: (v[0], v[1]) for k, v in per.items()},
+        {k: (v[0], v[1]) for k, v in bym.items()},
+        (bg[0], bg[1]),
+        (top[0], top[1]),
+    )
 
 
 def helios(R: list[Run]) -> Count:
-    """Tail Held High (link 2) among runs where link 3 visibly fired (her Perfect Spot!)"""
+    """Tail Held High (link 2) among runs where link 3 visibly fired (her Perfect Spot!), on decks where no other card's
+    events can give either (explained_elsewhere())"""
+    gives = other_card_skills()
     k = n = 0
     for r in R:
-        if HELIOS not in deck_ids(r) or r["chara"] == 1071:
+        if HELIOS not in deck_ids(r) or explained_elsewhere(r, HELIOS, {"Perfect Spot!", "Tail Held High"}, gives):
             continue
         hs = hints(r)
         if credited(hs, "Perfect Spot!", "Daitaku Helios event"):
@@ -542,14 +516,13 @@ def claims() -> list[Value | Finding]:
     R = common.runs()
     if R is None:
         return [finale_rule(split_choices([]))]
-    S = [r for r in R if r["seq"] < N_RECORDS]
-    a = anshin(S)
-    X = split_choices(S)
+    a = anshin(R)
+    X = split_choices(R)
     got: dict[str, Any] = {}  # value name -> value, in the order they are listed
     got.update(anshin_values(a))
     got.update(marker_share_values(X))
-    got.update(riko_values(S))
-    got.update(other_share_values(X, S))
+    got.update(riko_values(R))
+    got.update(other_share_values(X, R))
     fe = festa_numbers()
     if fe:
         got.update(fe)
@@ -562,7 +535,7 @@ def claims() -> list[Value | Finding]:
         "Anshinzawa: neither prioritised, choice 2 won": f"Risky Business alone not prioritised: {a.rb_not[0]}/{a.rb_not[1]}"
     }
     out: list[Value | Finding] = [common.Value(SEC, n, v, note=note.get(n, "")) for n, v in got.items()]
-    return out + findings(R, S, a, X, got)
+    return out + findings(R, a, X, got)
 
 
 def anshin_values(a: AnshinSummary) -> dict[str, Any]:
@@ -616,8 +589,10 @@ def riko_values(S: list[Run]) -> dict[str, Any]:
     k, n = riko_lone_wolf(S)
     got["Riko: Lone Wolf prioritised, bottom choice"] = k
     got["Riko: Lone Wolf prioritised runs"] = n
-    ru, mv, lw, nr, rr = riko_firings(S)
+    f = riko_firings(S)
+    rr, nr = (sum(v[i] for v in f.per_run.values()) for i in (0, 1))
     lo, hi = wil(rr, nr)
+    fire = f.ramp_up + f.maverick + f.lone_wolf
     got.update(
         {
             "Riko per run: runs with Ramp Up": rr,
@@ -625,9 +600,30 @@ def riko_values(S: list[Run]) -> dict[str, Any]:
             "Riko per run: share": rr / nr,
             "Riko per run: 90% low": lo,
             "Riko per run: 90% high": hi,
-            "Riko firings: top choice": ru + mv,
-            "Riko firings: all": ru + mv + lw,
-            "Riko firings: top-choice rate": (ru + mv) / (ru + mv + lw),
+        }
+    )
+    for ls, (k, n) in f.per_run.items():
+        got[f"Riko per run, {ls}: runs with Ramp Up"] = k
+        got[f"Riko per run, {ls}: runs"] = n
+        got[f"Riko per run, {ls}: share"] = k / n if n else None
+        got[f"Riko per run, {ls}: 90% low"], got[f"Riko per run, {ls}: 90% high"] = wil(k, n) if n else (None, None)
+    for m, (k, n) in f.by_maverick.items():
+        lab = "another card gives Maverick" if m else "no other card gives Maverick"
+        got[f"Riko per run, Lone Wolf not prioritised, {lab}: runs with Ramp Up"] = k
+        got[f"Riko per run, Lone Wolf not prioritised, {lab}: runs"] = n
+    got.update(
+        {
+            "Riko firings: clean decks": f.runs,
+            "Riko firings: top choice, Ramp Up": f.ramp_up,
+            "Riko firings: top choice, Maverick": f.maverick,
+            "Riko firings: bottom choice": f.lone_wolf,
+            "Riko firings: top choice": f.ramp_up + f.maverick,
+            "Riko firings: all": fire,
+            "Riko firings: top-choice rate": (f.ramp_up + f.maverick) / fire if fire else None,
+            "Riko: Maverick background, runs crediting Events": f.maverick_background[0],
+            "Riko: Maverick background, runs": f.maverick_background[1],
+            "Riko top-choice runs: with Ramp Up": f.top_runs[0],
+            "Riko top-choice runs": f.top_runs[1],
         }
     )
     return got
@@ -690,9 +686,7 @@ def iv(k: float, n: float) -> str:
     return f"{k}/{n} = {k / n:.2f} [{wil(k, n)[0]:.2f}, {wil(k, n)[1]:.2f}]"
 
 
-def findings(
-    R: list[Run], S: list[Run], a: AnshinSummary, X: list[SplitChoice], got: dict[str, Any]
-) -> list[Value | Finding]:
+def findings(R: list[Run], a: AnshinSummary, X: list[SplitChoice], got: dict[str, Any]) -> list[Value | Finding]:
     """the conclusions of section 9, each on its 90% Wilson intervals (the section's)"""
     out: list[Value | Finding] = []
     L = collections.Counter(len(r["priority"]) for r in R if r.get("priority") is not None)
@@ -704,11 +698,87 @@ def findings(
         )
     )
     out.append(finale_rule(X))
-    out += choice_rule_findings(S, a)
-    out += measured_share_findings(S, X, got)
+    out += choice_rule_findings(R, a)
+    out += measured_share_findings(R, X, got)
     out += anshin_findings(a)
-    out += equal_rule_findings(S, X)
+    out += equal_rule_findings(R, X)
     out += festa_findings(X)
+    return out
+
+
+def steer_claims(S: list[Run]) -> list[Value | Finding]:
+    """the choice rule's three cases (steer_readings): per case and event, how often IT took the steered choice; the
+    ranking test on Riko's both-prioritised runs"""
+    xs = steer_readings(S)
+    out: list[Value | Finding] = []
+    sh = {}
+    for case in STEER_CASES:
+        k = sum(x.taken for x in xs if x.case == case)
+        n = sum(1 for x in xs if x.case == case)
+        sh[case] = (k, n)
+        lo, hi = wil(k, n) if n else (float("nan"), float("nan"))
+        out += [
+            common.Value(SEC, f"steer {case}: taken", k),
+            common.Value(SEC, f"steer {case}: runs", n),
+            common.Value(SEC, f"steer {case}: share", k / n if n else None),
+            common.Value(SEC, f"steer {case}: 90% low", lo),
+            common.Value(SEC, f"steer {case}: 90% high", hi),
+        ]
+        for event in sorted({x.event for x in xs}):
+            ke = sum(x.taken for x in xs if x.case == case and x.event == event)
+            ne = sum(1 for x in xs if x.case == case and x.event == event)
+            out += [
+                common.Value(SEC, f"steer {case}, {event}: taken", ke),
+                common.Value(SEC, f"steer {case}, {event}: runs", ne),
+            ]
+    # Riko, both prioritised: does the ranking decide? Lone Wolf ranked above Maverick ○ / below it (Ramp Up absent)
+    ev = "Riko Kashimoto event"
+    rank = {"above": [0, 0], "below": [0, 0]}
+    for r in S:
+        p = r.get("priority")
+        if p is None or RIKO not in deck_ids(r) or "Lone Wolf" not in p or "Maverick ○" not in p or "Ramp Up" in p:
+            continue
+        hs = hints(r)
+        bottom = credited(hs, "Lone Wolf", ev)
+        top = credited(hs, "Ramp Up", ev) or credited(hs, "Maverick ○", ev)
+        if bottom == top:
+            continue
+        side = "above" if p.index("Lone Wolf") < p.index("Maverick ○") else "below"
+        rank[side][0] += bottom
+        rank[side][1] += 1
+    for side, (k, n) in rank.items():
+        out += [
+            common.Value(SEC, f"steer both, Riko, Lone Wolf ranked {side} Maverick: bottom choice", k),
+            common.Value(SEC, f"steer both, Riko, Lone Wolf ranked {side} Maverick: runs", n),
+        ]
+    (k1, n1), (km, nm), (kb, nb) = sh["one-sided"], sh["maxed"], sh["both"]
+    (ka, na), (kw, nw) = rank["above"], rank["below"]
+    out += [
+        F(
+            "Choice rule, one-sided case: with a prioritised skill on one choice only, not at hint Lv 5 from another "
+            "source, IT takes that choice (90% lower bound at least 0.95)",
+            n1 > 0 and wil(k1, n1)[0] >= 0.95,
+            f"{iv(k1, n1)}",
+        ),
+        F(
+            "Choice rule, both-prioritised case: with a prioritised skill on the default choice too, IT takes the "
+            "steered choice less often than in the one-sided case (disjoint 90% intervals)",
+            nb > 0 and wil(kb, nb)[1] < wil(k1, n1)[0],
+            f"both {iv(kb, nb)}; one-sided {iv(k1, n1)}",
+        ),
+        F(
+            "Choice rule, both-prioritised case: no effect of the ranking is detectable (Riko: Lone Wolf ranked above "
+            "Maverick ○ against below, 90% intervals overlap; not a test that rank has no effect)",
+            na > 0 and nw > 0 and wil(ka, na)[0] <= wil(kw, nw)[1] and wil(kw, nw)[0] <= wil(ka, na)[1],
+            f"above {iv(ka, na)}; below {iv(kw, nw)}",
+        ),
+        F(
+            "Choice rule, maxed case (the steered skill ends the run at hint Lv 5 with another source): IT takes the "
+            "steered choice less often than in the one-sided case (disjoint 90% intervals)",
+            nm > 0 and wil(km, nm)[1] < wil(k1, n1)[0],
+            f"maxed {iv(km, nm)}; one-sided {iv(k1, n1)}",
+        ),
+    ]
     return out
 
 
@@ -720,8 +790,9 @@ def choice_rule_findings(S: list[Run], a: AnshinSummary) -> list[Value | Finding
     k1, n1 = riko_lone_wolf(S)
     kn, nn = riko_lone_wolf(S, prioritised=False)
     return [
+        *steer_claims(S),
         F(
-            "Choice rule, Anshinzawa's finale: with Risky Business prioritised IT takes choice 2, with neither skill "
+            "Choice rule, Anshinzawa's finale: with Risky Business prioritised IT mostly takes choice 2, with neither skill "
             "prioritised it does not (the two 90% intervals are disjoint)",
             wil(k2, n2)[0] > wil(k0, n0)[1],
             f"prioritised {iv(k2, n2)}; neither {iv(k0, n0)}",
@@ -733,8 +804,8 @@ def choice_rule_findings(S: list[Run], a: AnshinSummary) -> list[Value | Finding
             f"{ke} of {ne} choice-1 runs with Risky Business prioritised",
         ),
         F(
-            "Choice rule, Riko Kashimoto: with Lone Wolf prioritised IT takes the bottom choice, without it never "
-            "(disjoint 90% intervals)",
+            "Choice rule, Riko Kashimoto: with Lone Wolf prioritised IT takes the bottom choice in most runs, without it almost "
+            "never (disjoint 90% intervals)",
             wil(k1, n1)[0] > wil(kn, nn)[1],
             f"Lone Wolf prioritised {iv(k1, n1)}; priority list without it {iv(kn, nn)}",
         ),
@@ -767,18 +838,46 @@ def measured_share_findings(S: list[Run], X: list[SplitChoice], got: dict[str, A
             (30017, "My Umadol Way!", 1, "Center Stage"),
         ),
     }
+    # readings on decks where no other card's events can give an outcome's marker (explained_elsewhere())
+    off = ("Anshinzawa finale, Nothing Ventured", "Seiun Sky link 3, Fast-Paced")
     out.append(
         F(
-            "The four measured shares depart from the equal rule: every 90% interval lies above its equal share "
-            "(k of n outcomes)",
-            all(wil(k, n)[0] > equal(X, *c) for k, n, c in rows.values()),
-            "; ".join(f"{t} {iv(k, n)} (equal {equal(X, *c):g})" for t, (k, n, c) in rows.items()),
+            "Anshinzawa's finale and Seiun Sky's link 3 depart from the equal rule: each 90% interval lies above its "
+            "equal share (k of n outcomes)",
+            all(wil(*rows[t][:2])[0] > equal(X, *rows[t][2]) for t in off),
+            "; ".join(f"{t} {iv(*rows[t][:2])} (equal {equal(X, *rows[t][2]):g})" for t in off),
+        )
+    )
+    t = "Smart Falcon link 3, Center Stage"
+    k, n, c = rows[t]
+    out.append(
+        F(
+            "Smart Falcon's link 3 is consistent with the equal rule: its 90% interval contains the equal share",
+            n > 0 and wil(k, n)[0] <= equal(X, *c) <= wil(k, n)[1],
+            f"{iv(k, n)} (equal {equal(X, *c):g})",
+        )
+    )
+    f = riko_firings(S)
+    t = 'Riko "Unexpected Side", Ramp Up'
+    k, n, c = rows[t]
+    kt, nt = f.top_runs
+    kb, nb = f.maverick_background
+    out.append(
+        F(
+            "Riko's top choice against the equal rule depends on reading a run that credits both its outcomes: counted "
+            "as two firings, the 90% interval contains the equal share; counted as one Ramp Up firing (Maverick ○ also "
+            "comes from other events), it lies above it",
+            n > 0 and nt > 0 and wil(k, n)[0] <= equal(X, *c) <= wil(k, n)[1] and wil(kt, nt)[0] > equal(X, *c),
+            f"per credit {iv(k, n)}; per run {iv(kt, nt)} (equal {equal(X, *c):g}); Maverick ○ credited to other events "
+            f"in {kb} of {nb} runs whose deck cannot give it",
         )
     )
     for t, (k, n, c) in rows.items():
         if t.startswith("Riko"):
             continue
         v = adopted(c[0], c[3])
+        if v is None:  # left at the equal rule, which the equal-rule findings above test
+            continue
         out.append(common.Value(SEC, f"adopted: {t}", v))
         out.append(
             F(
@@ -787,17 +886,18 @@ def measured_share_findings(S: list[Run], X: list[SplitChoice], got: dict[str, A
                 iv(k, n),
             )
         )
-    ru, mv, lw, nr, rr = riko_firings(S)
-    fire = ru + mv + lw
     v = adopted(RIKO, "Ramp Up")
     out.append(common.Value(SEC, 'adopted: Riko "Unexpected Side", Ramp Up', v))
+    k, n = (sum(x[i] for x in f.per_run.values()) for i in (0, 1))
+    kp, np_ = f.per_run["Ramp Up prioritised"]
+    per = "; ".join(f"{ls} {iv(*kn)}" for ls, kn in f.per_run.items() if kn[1])
     out.append(
         F(
-            f"Riko's adopted {v:g} is the chance a run gets her Ramp Up hint (the model's per-run chance), whichever choice "
-            f"IT took: {v:g} inside the per-run 90% interval",
-            wil(rr, nr)[0] <= v <= wil(rr, nr)[1],
-            f"per run {rr}/{nr} = {rr / nr:.3f} [{wil(rr, nr)[0]:.3f}, {wil(rr, nr)[1]:.3f}]; per firing {ru}/{fire} = {ru / fire:.3f} "
-            f"(Maverick {mv}, bottom-choice Lone Wolf {lw}): top-choice share {iv(ru, ru + mv)} x top-choice rate {iv(ru + mv, fire)}",
+            f"Riko's adopted {v:g} is the per-run chance of her Ramp Up hint on runs whose shown list prioritises Ramp Up "
+            f"and not Lone Wolf (a target prioritised, as the model assumes): {v:g} inside that 90% interval; pooled over "
+            "every list the chance is lower (a prioritised Lone Wolf takes her bottom choice), its interval below it",
+            np_ > 0 and wil(kp, np_)[0] <= v <= wil(kp, np_)[1] and wil(k, n)[1] < v,
+            f"pooled {iv(k, n)}; {per}",
         )
     )
     return out
@@ -831,9 +931,9 @@ def equal_rule_findings(S: list[Run], X: list[SplitChoice]) -> list[Value | Find
         "Agnes Tachyon link 1 choice 2, Murmur": (30101, "Researching the Limits", 2, "Murmur"),
         "Marvelous Sunday link 3, Position Pilfer": (30074, "Pure White Marvelousness", 1, "Position Pilfer"),
         "Light Hello finale, See Ya Later! +3": (30052, "At Rainbow Cove", 1, "See Ya Later!"),
+        "Gold Ship link 3, Innate Experience": (30057, "Assembling the Uma Lord", 1, "Innate Experience"),
     }
     on = {
-        "Gold Ship link 3, Innate Experience": (30057, "Assembling the Uma Lord", 1, "Innate Experience"),
         "King Halo link 3, Gap Closer": (30056, "Glittering Star of the Ball", 1, "Gap Closer"),
         "Daitaku Helios link 2, Tail Held High (given link 3)": (
             HELIOS,
@@ -880,7 +980,7 @@ def festa_findings(X: list[SplitChoice]) -> list[Value | Finding]:
 
 
 def detail() -> None:
-    S = [r for r in common.runs() if r["seq"] < N_RECORDS]
+    S = common.runs()
     a = anshin(S)
     print(
         "Anshinzawa finale by priority (no Festa): neither shown-prioritised",

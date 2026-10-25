@@ -1375,11 +1375,11 @@
      [
       [
        "Center Stage",
-       0.65
+       0.5
       ],
       [
        "Prudent Positioning",
-       0.35
+       0.5
       ]
      ]
     ]
@@ -1408,18 +1408,7 @@
     ]
    ],
    "status": "complete",
-   "src": "gametora training_events",
-   "alt_w": [
-    [
-     3,
-     [
-      [
-       0.35,
-       0.65
-      ]
-     ]
-    ]
-   ]
+   "src": "gametora training_events"
   },
   "30018": {
    "name": "[Even the Littlest Bud] Nishino Flower",
@@ -1969,7 +1958,7 @@
     ]
    ],
    "status": "complete",
-   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline). Ramp Up 0.75: measured on uma-it runs, 527/585 = 0.90 when the top choice is taken; IT takes the bottom choice (Lone Wolf) when Lone Wolf is prioritised; set to 0.75 (docs/MODEL.md)"
+   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline). Ramp Up 0.75: the per-run chance of her Ramp Up hint, set on 2026-10-24 from uma-it runs whose list prioritises Ramp Up and not Lone Wolf (the model's premise) and whose deck has no other card that can give it: 591/798 = 0.74 [0.71, 0.77] (adoption history; current evidence: docs/RESEARCH.md section 9). IT usually takes the bottom choice (Lone Wolf) when Lone Wolf is prioritised (docs/RESEARCH.md section 9)"
   },
   "30038": {
    "name": "[Peak Sakura Season] Sakura Chiyono O",
@@ -3073,7 +3062,7 @@
      1.0
     ]
    ],
-   "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure), which IT takes when Risky Business is prioritised. Nothing Ventured 0.75: measured on uma-it runs with Risky Business prioritised (58/77, 2026-10-06; docs/MODEL.md), not the 50/50 the 'di' convention gives. Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then.",
+   "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure), which IT usually takes when Risky Business is prioritised (docs/RESEARCH.md section 9). Nothing Ventured 0.75: set on 2026-10-06 from uma-it runs with Risky Business prioritised (58/77; adoption history; current evidence: docs/RESEARCH.md section 9), not the 50/50 the 'di' convention gives. Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then.",
    "event": [
     830080001,
     2

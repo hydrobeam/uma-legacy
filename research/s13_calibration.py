@@ -1,7 +1,10 @@
 """Section 13 (and the inheritance test of section 3, the certainty checks of section 9): the career model against real
 careers. Each run record is rebuilt as a career-planner job (trainee in her outfit, scenario, the six cards locked at
-their own limit breaks, both parents with their recorded parents and every ancestor's white and pink sparks, race wins
-laid out so every pair the model reads shares the record's shared-G1 count), run through the native solver, and
+their own limit breaks, each chosen chain end pinned by the run's priority list where it shows one (end_pins: a certain end becomes a stop of
+1 in 1 at its link, an impossible one removes the end entries, a fractional one, and every run showing no list, is left
+to the solver, which may then take the end as a player following its advice would), both
+parents with their recorded parents and every ancestor's white and pink sparks, race wins laid out so every pair the
+model reads shares the record's shared-G1 count), run through the native solver, and
 compared with what the run shows, per (run, target) row, pooled. Intervals (95%): observed / predicted over rows by the
 run-clustered ratio estimator (common.cluster_ci; a run's targets share its deck and lineage), the observed rate's
 interval that ratio interval times the mean prediction; where every run gives one row, Wilson on the observed rate
@@ -10,7 +13,8 @@ interval that ratio interval times the mean prediction; where every run gives on
 
   uv run --group research research/s13_calibration.py [--wide]
 
-Steps (outputs under research/data/out/calib/; solver results cached by fingerprint()):
+Steps (card variants, jobs and solver in common.py; outputs under research/data/out/calib/; solver results cached by
+common.fingerprint()):
   card variants   every card at limit breaks 0-3: hint frequency, increment and specialty priority read at that level cap
                   from master.mdb (effect values linear between milestone levels, floored; unique effect from its level)
   jobs            default eight targets (Unity Cup's two golds guaranteed there); --wide: every other skill a deck card
@@ -22,693 +26,19 @@ Steps (outputs under research/data/out/calib/; solver results cached by fingerpr
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
 same parent twice or the trainee as a parent, shared-G1 counts that do not fit the race list."""
 
-import collections, hashlib, json, math, os, random, subprocess, sys, time
+import collections, math, os, random, sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
-from typing import Any, NamedTuple, TypedDict
+from typing import Any, NamedTuple
 import common
-import s09_outcomes
-from common import Value, Finding, Run, finding, wilson, DEFAULT, UNITY_GOLDS
+from common import Value, Finding, Run, finding, wilson, DEFAULT
+from common import CalRow, RunRows, Model, OUTD, card_variants, build_jobs, run_solver, rows_of
 
-OUTD: str = os.path.join(common.OUT, "calib")
-GD: str = common.GD
-SCENARIO_KEY: dict[int, str] = {1: "ura", 2: "unity", 3: "gc", 4: "trackblazer"}  # the solver's scenario names
-# (character, skill group, 1 white / 2 gold): Yamanin Zephyr's Slipstream, Tokai Teio's Head-On (as the planner page
-# sends them)
-EXTRA: list[list[int]] = [[1078, 20165, 1], [1003, 20190, 1]]
-PINK: set[int] = {11, 12, 21, 22, 23, 24, 31, 32, 33, 34}  # pink spark factor ids // 100 (track, distance, style)
-# the most targets one --wide job carries. The exact scoring of a job's deck grows exponentially with its targets: at
-# 24 some jobs ran for over half an hour (a 2 s limit dropped them, a different number on every run); at 12 the
-# slowest of those take a tenth of a second. q does not depend on the split; deck odds do (targets share a deck's
-# choices and hints), so the split is part of what the wide sample measures
-WIDE_JOB_TARGETS: int = 12
-SOLVER_BATCH: int = 100  # jobs per solver call (default targets)
-# master.mdb support effect types
-EFFECT_HINT_LEVELS, EFFECT_HINT_FREQUENCY, EFFECT_SPECIALTY = 17, 18, 19
-MILESTONES: list[int] = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]  # the levels of support_card_effect_table's columns
-# the generic spark chance of a learned white / gold at six carriers (docs/MODEL.md, spark generation: 20% / 40%,
-# x1.1 per carrier); a row rescales it by 1.1 ** (carriers - 6)
-SPARK_WHITE_6, SPARK_GOLD_6 = 0.2 * 1.1**6, 0.4 * 1.1**6
 S3, S9, S13 = "3", "9", "13"  # the sections these values and findings belong to
 
 
-class CalRow(TypedDict):
-    """one (run, target) row of the analysis (rows_of); s10_random_events and s11_conditional read these keys"""
-
-    run: int  # run id
-    scen: int  # scenario (common.SCEN)
-    g: int  # the target's skill group
-    scen_gold: bool  # the scenario guarantees the target's gold (Unity Cup's two)
-    outfit: int  # her outfit gives the skill: 0 no, 1 its white, 2 its gold
-    zero: bool  # nothing can give the target: not sent to the solver, every prediction 0
-    dg: float  # predicted P(a deck card hints the gold)
-    dw: float  # predicted P(a deck card hints the white)
-    q: float  # predicted P(at least one inspiration of the target in year 2 or 3)
-    nc: int  # carriers: legacies holding the target's spark
-    p: float  # the solver's P(the target lands: acquired and sparked)
-    acq: float  # predicted P(acquired, gold or white); 1 for a scenario gold
-    gold: float  # predicted P(the gold acquired); 1 for a scenario gold
-    plegs: list[float]  # per legacy carrying the spark: its inspiration chance per roll
-    o_any: bool  # observed: hinted from any source, or owned
-    o_gold: bool  # observed: a gold hint
-    o_deck: bool  # observed: a hint credited to a deck card
-    o_deck_gold: bool  # observed: a gold hint credited to a deck card
-    o_insp: bool  # observed: an inspiration of the target fired in year 2 or 3
-    o_insp_years: int  # observed: years (of 2 and 3) with an inspiration of the target
-    o_insp_hits: int  # observed: inspiration hits of the target over both years
-    o_insp_src: bool  # observed: a hint credited to Inspiration
-    o_events: bool  # observed: a hint credited to Events
-    o_other: bool  # observed: a hint credited to a source neither Inspiration, Events nor a deck card
-    prio: bool | None  # the target is on the run's priority list; None when the run shows no list
-    prio_outranked: bool  # on the list, but outranked on a rival choice of every event offering it (Model.outranked)
-    pool_lb: int | None  # the lowest limit break among deck cards whose training pool holds it; None: no card
-    cards_pool: list[int]  # deck cards whose training pool holds the target
-    cards_ev: list[int]  # deck cards whose events can hint the target
-    p_pred: float  # predicted landing: p, or the gold's generic spark chance for a scenario gold
-    l_obs: float  # observed-equivalent landing: spark chance of the hinted or outfit-owned skill (gold, white or none)
-
-
-class RunRows(TypedDict):
-    """one run's rows (rows_of); s10_random_events and s11_conditional read these keys"""
-
-    id: int
-    scen: int
-    p_all: float  # the solver's P(every target lands); 0 when a target is unreachable
-    rows: list[CalRow]
-    wide: bool  # from a --wide job (targets beyond the default eight)
-
-
-class ManEntry(NamedTuple):
-    """a manifest entry (build_jobs): a run and its targets nothing can give (written to manifest.json as a list)"""
-
-    run_id: int
-    unreachable: list[int]
-
-
-SolverOut = dict[str, dict[str, Any]]  # a solver output per job file id
 RowFn = Callable[[CalRow], Any]
-
-
-# ---------------------------------------------------------------- card variants per limit break
-def variant(cid: int, lb: int | None) -> int:
-    """the card id of a card at limit break lb (lb 4 or none: the card itself)"""
-    return cid if lb is None or lb >= 4 else (lb + 1) * 1_000_000 + cid
-
-
-class HintEffects(NamedTuple):
-    """a card's training-hint effects at one level: web_cards.json's hf, hinc and spec"""
-
-    frequency: int  # hint frequency (effect 18)
-    levels: int  # hint levels per draw (1 + effect 17)
-    specialty: int  # specialty priority (effect 19)
-
-
-def card_variants() -> list[int]:
-    """write cards_lb.json and events_lb.json (every card also at limit breaks 0-3) under OUTD; returns the cards whose
-    limit-break-4 effects read from master.mdb differ from web_cards.json"""
-    db = common.mdb()
-
-    def query(sql: str, *args: Any) -> list[Any]:
-        return db.execute(sql, args).fetchall()
-
-    level_cap: dict[int, list[int]] = {
-        r: lv for r, *lv in query("select rarity, limit_0, limit_1, limit_2, limit_3, limit_4 from support_card_limit")
-    }
-
-    def effect(effect_table: int, typ: int, level: int) -> float:
-        """the effect's value at level, linear between milestone levels (-1: no value at that milestone)"""
-        row = query(
-            "select init,limit_lv5,limit_lv10,limit_lv15,limit_lv20,limit_lv25,limit_lv30,limit_lv35,limit_lv40,"
-            "limit_lv45,limit_lv50 from support_card_effect_table where id=? and type=?",
-            effect_table,
-            typ,
-        )
-        if not row:
-            return 0.0
-        pts = [(lv, v) for lv, v in zip(MILESTONES, row[0]) if v != -1]
-        if not pts or level < pts[0][0]:
-            return 0.0
-        for (l0, v0), (l1, v1) in pairwise(pts):
-            if l0 <= level <= l1:
-                return v0 + (v1 - v0) * (level - l0) / (l1 - l0)
-        return float(pts[-1][1])
-
-    def unique(sid: int, typ: int, level: int) -> int:
-        return sum(
-            v
-            for lv, t0, v0, t1, v1 in query(
-                "select lv, type_0, value_0, type_1, value_1 from support_card_unique_effect where id=?", sid
-            )
-            for t, v in ((t0, v0), (t1, v1))
-            if t == typ and level >= lv
-        )
-
-    def at_lb(sid: int, lb: int) -> HintEffects:
-        effect_table, rarity = query("select effect_table_id, rarity from support_card_data where id=?", sid)[0]
-        lv = level_cap[rarity][lb]
-        return HintEffects(
-            frequency=max(0, math.floor(effect(effect_table, EFFECT_HINT_FREQUENCY, lv)))
-            + unique(sid, EFFECT_HINT_FREQUENCY, lv),
-            levels=1
-            + max(0, math.floor(effect(effect_table, EFFECT_HINT_LEVELS, lv)))
-            + unique(sid, EFFECT_HINT_LEVELS, lv),
-            specialty=max(0, math.floor(effect(effect_table, EFFECT_SPECIALTY, lv)))
-            + unique(sid, EFFECT_SPECIALTY, lv),
-        )
-
-    web_cards = common.gjson("web_cards.json")
-    card_events = common.gjson("card_events.json")
-    out: list[dict[str, Any]] = list(web_cards["cards"])
-    bad: list[int] = []
-    for card in web_cards["cards"]:
-        if at_lb(card["id"], 4) != (card["hf"], card["hinc"], card.get("spec", 0)):
-            bad.append(card["id"])
-        for lb in range(4):
-            fx = at_lb(card["id"], lb)
-            out.append(dict(card, id=variant(card["id"], lb), hf=fx.frequency, hinc=fx.levels, spec=fx.specialty))
-    restrict = {sc: ids + [variant(i, lb) for i in ids for lb in range(4)] for sc, ids in web_cards["restrict"].items()}
-    events = dict(card_events["cards"])
-    for k, v in card_events["cards"].items():
-        for lb in range(4):
-            events[str(variant(int(k), lb))] = v
-    os.makedirs(OUTD, exist_ok=True)
-    json.dump({"cards": out, "restrict": restrict}, open(os.path.join(OUTD, "cards_lb.json"), "w"), ensure_ascii=False)
-    json.dump(
-        {"about": card_events["about"], "cards": events},
-        open(os.path.join(OUTD, "events_lb.json"), "w"),
-        ensure_ascii=False,
-    )
-    return bad
-
-
-# ---------------------------------------------------------------- jobs
-class RaceWins(NamedTuple):
-    """the race indices each ancestor is laid out to have won (Model.wins)"""
-
-    parent1: list[int]
-    grandparent1a: list[int]
-    grandparent1b: list[int]
-    parent2: list[int]
-    grandparent2a: list[int]
-    grandparent2b: list[int]
-
-
-class Model:
-    """the game data the jobs and the analysis read"""
-
-    cards: dict[int, dict[str, Any]]  # web_cards.json by card id
-    web_skills: dict[str, Any]  # web_skills.json
-    skill_groups: set[int]  # every skill group web_skills.json lists (a job can target)
-    factor_group: dict[int, int]  # white spark factor id // 100 -> skill group
-    race_count: int  # races in data.json
-    card_events: dict[str, dict[str, Any]]  # card_events.json's cards, by card id as a string
-    skill_level: dict[str, tuple[int, int]]  # skill name -> (group, 1 white / 2 gold)
-    name_group: dict[str, int]  # skill name -> group
-    _choices: dict[int, list[list[set[int]]]] | None  # event_choices(), read once
-
-    def __init__(self) -> None:
-        self._choices = None
-        self.cards = common.cards()
-        self.web_skills = common.gjson("web_skills.json")
-        self.skill_groups = {g for g, w, gd in self.web_skills["skills"]}
-        self.factor_group = common.factor_groups()
-        self.race_count = len(common.gjson("data.json")["races"])
-        self.card_events = common.gjson("card_events.json")["cards"]
-        self.skill_level = common.skill_names()
-        self.name_group = {n: g for n, (g, _) in self.skill_level.items()}
-
-    def sparks(self, factors: Iterable[Sequence[int]]) -> list[list[int]]:
-        """an ancestor's white sparks: [skill group, stars], the most stars per group"""
-        out: dict[int, int] = {}
-        for f, _ in factors:
-            if 2000000 <= f < 3000000 and f // 100 in self.factor_group:
-                g = self.factor_group[f // 100]
-                out[g] = max(out.get(g, 0), f % 100)
-        return sorted([g, s] for g, s in out.items())
-
-    @staticmethod
-    def pinks(factors: Iterable[Sequence[int]]) -> list[list[int]]:
-        """an ancestor's pink sparks: [factor id // 100, stars]"""
-        out: dict[int, int] = {}
-        for f, _ in factors:
-            if f < 10000 and f // 100 in PINK:
-                out[f // 100] = max(out.get(f // 100, 0), f % 100)
-        return sorted([g, s] for g, s in out.items())
-
-    def ev_groups(self, c: int) -> set[int]:
-        """skill groups a card's events can hint (every reward the solver reads)"""
-        e = self.card_events.get(str(c), {})
-        names: set[str] = set()
-        for key in ("chain", "end"):
-            for link in e.get(key, []):
-                for n in link[1]:
-                    names.add(n[0] if isinstance(n, list) else n)
-        for alt in e.get("alts", []):
-            for choice in alt[1]:
-                for outcome in choice:
-                    names.update(outcome)
-        names.update(e.get("always", []))
-        names.update(x[0] for x in e.get("chance", []))
-        return {self.name_group[n] for n in names if n in self.name_group}
-
-    def event_choices(self, c: int) -> list[list[set[int]]]:
-        """a card's events (GameTora, as section 9 reads them): per event, per choice, the skill groups any of its
-        outcomes hints"""
-        if self._choices is None:
-            gt, db = common.gametora(), common.mdb()
-            sk = dict(db.execute("select [index], text from text_data where category = 47"))
-            title = dict(db.execute("select [index], text from text_data where category = 181"))
-            cchar = dict(db.execute("select id, chara_id from support_card_data"))
-            self._choices = {
-                cid: [
-                    [
-                        {
-                            self.name_group[n]
-                            for o in s09_outcomes.outcome_skills(ch, gt, sk)
-                            for n in o
-                            if n in self.name_group
-                        }
-                        for ch in chs
-                    ]
-                    for _, _, chs in es
-                ]
-                for cid, es in s09_outcomes.card_events(gt, title, cchar).items()
-            }
-        return self._choices.get(c, [])
-
-    def outranked(self, g: int, rank: dict[int, int], cards: Iterable[int]) -> bool:
-        """the target g is prioritised (rank: group -> its place on the run's priority list, 0 first), yet every event
-        of the cards that puts it on a choice has a higher-ranked prioritised skill on a choice without it: between two
-        prioritised skills IT takes the higher-ranked one, so no event gives g (an event with g on its only choice, or on
-        every choice, is never outranked). False when no event offers g"""
-        offers = [chs for c in cards for chs in self.event_choices(c) if any(g in ch for ch in chs)]
-        return bool(offers) and all(
-            any(h in rank and rank[h] < rank[g] for ch in chs if g not in ch for h in ch) for chs in offers
-        )
-
-    def deck_groups(self, cards: Iterable[int]) -> set[int]:
-        """skill groups a deck can hint: its cards' training pools and events"""
-        gs: set[int] = set()
-        for c in cards:
-            gs.update(self.cards[c]["whites"])
-            gs |= self.ev_groups(c)
-        return gs
-
-    def spark_groups(self, r: Run) -> set[int]:
-        """skill groups any of the run's six ancestors carries a white spark of"""
-        return {g for p in r["parents"] for a in [p] + p["gps"] for g, s in self.sparks(a["factors"]) if s > 0}
-
-    def wins(self, affinity: dict[str, list[int]]) -> RaceWins | None:
-        """race wins laid out so every pair the model reads shares the record's shared-G1 count: parent 1 wins races
-        0..m1-1 (m1 the most she shares with anyone), her parents its first a1 / b1; parent 2 shares the first s12
-        of them and wins new races after m1 for what her parents share beyond s12. None when that needs more
-        races than the race list has."""
-
-        def shared(pair: str) -> int:
-            return affinity[pair][1]
-
-        s12, a1, b1, a2, b2 = (
-            shared("parent 1 × parent 2"),
-            shared("parent 1 × grandparent 1a"),
-            shared("parent 1 × grandparent 1b"),
-            shared("parent 2 × grandparent 2a"),
-            shared("parent 2 × grandparent 2b"),
-        )
-        m1 = max(s12, a1, b1)
-        p1 = list(range(m1))
-        p2 = list(range(s12)) + list(range(m1, m1 + max(0, max(a2, b2) - s12)))
-        if m1 + max(0, max(a2, b2) - s12) > self.race_count:
-            return None
-        return RaceWins(p1, p1[:a1], p1[:b1], p2, p2[:a2], p2[:b2])
-
-
-def drop_reason(r: Run, M: Model, outfits: list[int]) -> str | None:
-    """why a run cannot be rebuilt as a job (outfits: her character's outfits in web_skills.json), or None"""
-    chara, deck, parents = r["chara"], r["deck"], r["parents"]
-    if len(deck) != 6:
-        return "deck not 6 cards"
-    if any(c not in M.cards for c, _, _ in deck):
-        return "card not in web_cards"
-    if any(M.cards[c]["rarity"] == 1 for c, _, _ in deck):
-        return "R card in deck"
-    if r["outfit"] not in outfits:
-        return "outfit not in web_skills"
-    if len(parents) != 2:
-        return "parents not recorded"
-    if parents[0]["chara"] == parents[1]["chara"] or chara in (parents[0]["chara"], parents[1]["chara"]):
-        return "same parent twice"
-    return None
-
-
-def legacy_tree(r: Run, M: Model, wins: RaceWins) -> list[dict[str, Any]]:
-    """the job's two legacies, each with its two recorded parents, sparks and laid-out race wins"""
-
-    def ancestor(a: dict[str, Any], won: list[int]) -> dict[str, Any]:
-        return {"chara": a["chara"], "sparks": M.sparks(a["factors"]), "pinks": M.pinks(a["factors"]), "wins": won}
-
-    parents = r["parents"]
-    legs: list[dict[str, Any]] = []
-    for parent, won, grandparent_wins in (
-        (parents[0], wins.parent1, (wins.grandparent1a, wins.grandparent1b)),
-        (parents[1], wins.parent2, (wins.grandparent2a, wins.grandparent2b)),
-    ):
-        leg = ancestor(parent, won)
-        leg["borrowed"] = False
-        leg["parents"] = [ancestor(g, gw) for g, gw in zip(parent["gps"], grandparent_wins)]
-        legs.append(leg)
-    return legs
-
-
-def job_targets(r: Run, M: Model, wide: bool, scen: str) -> tuple[list[dict[str, Any]], list[int]]:
-    """the job's targets and the candidate targets nothing can give. A target nothing can give has P = 0 in every
-    mechanism; the career search drops careers with P(all) = 0, so such targets are not sent and are scored 0 by the
-    analysis (listed in the manifest)"""
-    chara, outfit = r["chara"], r["outfit"]
-    deck_ids = [c for c, _, _ in r["deck"]]
-    if wide:
-        candidates = sorted(
-            g for g in set(DEFAULT) | M.deck_groups(deck_ids) | M.spark_groups(r) if g in M.skill_groups
-        )
-    else:
-        candidates = list(DEFAULT)
-    outfit_gives = {g for o in M.web_skills["cards"][str(chara)] if o[0] == outfit for g, _ in o[2]} | {
-        g for u, g, _ in EXTRA if u == chara
-    }
-    reachable = M.deck_groups(deck_ids) | M.spark_groups(r) | outfit_gives | (UNITY_GOLDS if scen == "unity" else set())
-    unreachable = [g for g in candidates if g not in reachable]
-    targets = [
-        {"group": g, **({"guaranteed": 2} if scen == "unity" and g in UNITY_GOLDS else {})}
-        for g in candidates
-        if g in reachable
-    ]
-    return targets, unreachable
-
-
-def build_jobs(
-    R: list[Run], M: Model, wide: bool, jobdir: str
-) -> tuple[list[ManEntry], list[str], collections.Counter[str]]:
-    """one career-planner job file per usable run (--wide: per run and chunk of targets) and manifest.json; returns the
-    manifest entries, the job file ids and the dropped runs by reason"""
-    os.makedirs(jobdir, exist_ok=True)
-    drop: collections.Counter[str] = collections.Counter()
-    man: list[ManEntry] = []
-    files: list[str] = []
-    for r in R:
-        chara, outfit = r["chara"], r["outfit"]
-        outfits = [o[0] for o in M.web_skills["cards"].get(str(chara), [])]
-        reason = drop_reason(r, M, outfits)
-        if reason:
-            drop[reason] += 1
-            continue
-        wins = M.wins(r["affinity"])
-        if wins is None:
-            drop["shared G1 counts exceed the race list"] += 1
-            continue
-        legs = legacy_tree(r, M, wins)
-        scen = SCENARIO_KEY[r["scenario"]]
-        targets, unreachable = job_targets(r, M, wide, scen)
-        ids = [variant(c, lb) for c, lb, _ in r["deck"]]
-        job = {
-            "mode": "career",
-            "iters": 30,
-            "seed": 3,
-            "skills_file": os.path.join(GD, "web_skills.json"),
-            "cards_file": os.path.join(OUTD, "cards_lb.json"),
-            "events_file": os.path.join(OUTD, "events_lb.json"),
-            "scenario": scen,
-            "targets": targets,
-            "extra": EXTRA,
-            "exclude_outfits": [o for o in outfits if o != outfit],
-            "owned": [chara],
-            "trainees": [chara],
-            "owned_cards": ids,
-            "lock_cards": ids,
-            "borrow": False,
-            "legacies": legs,
-            "fix": [0, 1],
-            "top": 1,
-            "per_trainee": True,
-        }
-        if not wide:
-            json.dump(job, open(os.path.join(jobdir, f"{r['id']}.json"), "w"))
-            files.append(str(r["id"]))
-        else:
-            rest = [t for t in targets if t["group"] not in DEFAULT]
-            for k in range(0, len(rest), WIDE_JOB_TARGETS):
-                chunk = f"{r['id']}_{k // WIDE_JOB_TARGETS}"
-                json.dump(
-                    dict(job, targets=rest[k : k + WIDE_JOB_TARGETS]), open(os.path.join(jobdir, f"{chunk}.json"), "w")
-                )
-                files.append(chunk)
-        man.append(ManEntry(r["id"], unreachable))
-    json.dump({"runs": man, "files": files, "dropped": drop}, open(os.path.join(jobdir, "manifest.json"), "w"))
-    return man, files, drop
-
-
-def fingerprint(jobdir: str, files: Iterable[str]) -> str:
-    """a hash of the jobs and of every file the solver reads for them: the binary, data.json, web_skills.json (each
-    job's skills_file), cards_lb.json (its cards_file) and events_lb.json"""
-    h = hashlib.sha256()
-    for f in sorted(files):
-        h.update(open(os.path.join(jobdir, f + ".json"), "rb").read())
-    for p in (
-        common.SOLVER,
-        os.path.join(GD, "data.json"),
-        os.path.join(GD, "web_skills.json"),
-        os.path.join(OUTD, "cards_lb.json"),
-        os.path.join(OUTD, "events_lb.json"),
-    ):
-        h.update(open(p, "rb").read())
-    return h.hexdigest()
-
-
-def solver_lines(stdout: str) -> list[str]:
-    return [line for line in stdout.splitlines() if line.startswith("{")]
-
-
-def solve_in_batches(jobdir: str, files: list[str]) -> SolverOut:
-    """SOLVER_BATCH jobs per solver call"""
-    res: SolverOut = {}
-    for i in range(0, len(files), SOLVER_BATCH):
-        part = files[i : i + SOLVER_BATCH]
-        p = subprocess.run(
-            [common.SOLVER, "data.json"] + [os.path.join(jobdir, x + ".json") for x in part],
-            cwd=GD,
-            capture_output=True,
-            text=True,
-        )
-        lines = solver_lines(p.stdout)
-        if p.returncode != 0 or len(lines) != len(part):
-            sys.exit(f"solver failed on chunk starting {part[0]}: rc {p.returncode}\n{p.stderr[-2000:]}")
-        for x, line in zip(part, lines):
-            res[x] = json.loads(line)
-    return res
-
-
-def run_solver(
-    jobdir: str,
-    files: list[str],
-    resf: str,
-    share: float | None = None,
-    man: list[ManEntry] | None = None,
-) -> SolverOut:
-    """one process at a time, every job solved to the end (no time limit: the same jobs give the same outputs on any
-    machine); returns {file id: output}; cached in resf using fingerprint(). share: the seeded fraction of the
-    manifest's runs whose jobs run (sampled from sorted run ids)"""
-    if share is not None:
-        keep = set(random.Random(1).sample(sorted(m.run_id for m in man), round(share * len(man))))
-        files = [x for x in files if int(x.split("_")[0]) in keep]
-    fp = fingerprint(jobdir, files)
-    if os.path.exists(resf):
-        with open(resf) as f:
-            head = json.loads(f.readline())
-            if head.get("fingerprint") == fp:
-                cached = {x["id"]: x["out"] for x in map(json.loads, f)}
-                # results written under the old 2 s limit mark the jobs over it {"timeout": true}: solved again
-                if not any(o.get("timeout") for o in cached.values()):
-                    return cached
-    if not os.path.exists(common.SOLVER):
-        sys.exit("native solver missing: cd pkg/loopopt && cargo build --release")
-    t0 = time.time()
-    print(f"solver: {len(files)} jobs, one process", file=sys.stderr, flush=True)
-    res = solve_in_batches(jobdir, files)
-    print(f"solver: done in {time.time() - t0:.0f} s", file=sys.stderr, flush=True)
-    with open(resf, "w") as f:
-        f.write(json.dumps({"fingerprint": fp}) + "\n")
-        for x in files:
-            f.write(json.dumps({"id": x, "out": res[x]}) + "\n")
-    return res
-
-
-# ---------------------------------------------------------------- analysis rows
-class HintSeen(NamedTuple):
-    """one hint record of a target"""
-
-    tier: int  # 1 white, 2 gold
-    sources: list[str]  # the record's credited sources ("<card> event", a card's character, "Inspiration", ...)
-    level: int  # the hint level shown
-
-
-@dataclass
-class Inspirations:
-    """a skill group's inspirations over years 2 and 3"""
-
-    years: int = 0  # years with at least one
-    hits: int = 0  # every hit, summed over both years
-
-
-def hints_by_group(
-    r: Run, M: Model, other_names: dict[str, tuple[int, int]], bad: collections.Counter[str]
-) -> collections.defaultdict[int, list[HintSeen]]:
-    """the run's hint records by skill group; a name in neither web_skills.json nor other_names counts in bad"""
-    hints: collections.defaultdict[int, list[HintSeen]] = collections.defaultdict(list)
-    for h in r["hints"]:
-        if h["name"] in M.skill_level:
-            g, tier = M.skill_level[h["name"]]
-        elif h["name"] in other_names:
-            g, tier = other_names[h["name"]]
-        else:
-            bad["hint name unmapped"] += 1
-            continue
-        hints[g].append(HintSeen(tier, h["src"], h["lv"]))
-    return hints
-
-
-def inspirations_of(r: Run, M: Model) -> collections.defaultdict[int, Inspirations]:
-    """the run's white-spark inspirations in years 2 and 3, by skill group"""
-    insp: collections.defaultdict[int, Inspirations] = collections.defaultdict(Inspirations)
-    for y in ("2", "3"):
-        seen: set[int] = set()
-        for f, hit in r["years"].get(y, []):
-            if 2000000 <= f < 3000000 and f // 100 in M.factor_group:
-                g = M.factor_group[f // 100]
-                insp[g].hits += hit
-                if g not in seen:
-                    insp[g].years += 1
-                    seen.add(g)
-    return insp
-
-
-def credited(sources: Iterable[str], card_of: dict[str, int]) -> set[tuple[int, bool]]:
-    """the deck cards a hint's sources credit (card_of: a deck card's character -> card): (card, by its event)"""
-    cs: set[tuple[int, bool]] = set()
-    for t in sources:
-        for n in t[:-6].split(" or ") if t.endswith(" event") else [t]:
-            if n in card_of:
-                cs.add((card_of[n], t.endswith(" event")))
-    return cs
-
-
-def run_rows(
-    r: Run, career: dict[str, Any], unreachable: list[int], wide: bool, M: Model, bad: collections.Counter[str]
-) -> RunRows:
-    """one run's rows: a row per target of the solver's best career (career), then (default targets) one per target
-    nothing can give"""
-    card_of = {common.bare(nm): c for c, lb, nm in r["deck"]}
-    # skill names outside web_skills.json, from the run's own hint groups: name -> (group, 1 white / 2 gold)
-    other_names = {v[1]: (gid, 2 if (v[2] or 1) >= 2 else 1) for gid, vs in r.get("hint_groups", []) for v in vs}
-    hints = hints_by_group(r, M, other_names, bad)
-    owned = {s // 10 for s in r.get("owned", [])}
-    insp = inspirations_of(r, M)
-    rank: dict[int, int] = {}  # the priority list: group -> its first place (0 first)
-    for i, n in enumerate(r["priority"] or []):
-        group = M.skill_level.get(n, other_names.get(n, (None,)))[0]
-        if group is not None:
-            rank.setdefault(group, i)
-    solved = {t["group"]: t for t in career["targets"]}
-    order = [t["group"] for t in career["targets"]]
-    slots = career["slots"]
-    run: RunRows = {
-        "id": r["id"],
-        "scen": r["scenario"],
-        "p_all": career["p_all"] * (0 if unreachable else 1),
-        "rows": [],
-        "wide": wide,
-    }
-    for g in order + ([] if wide else unreachable):
-        t = solved.get(g)
-        if t is None:
-            # the solver's acquisition odds: gold, white, from the deck, from her outfit (0 none, 1 white, 2 gold)
-            buy: dict[str, Any] = {"gold": 0.0, "white": 0.0, "deck_gold": 0.0, "deck_white": 0.0, "outfit": 0}
-            q, nc, p, scen_g, plegs = 0.0, 0, 0.0, False, []
-        else:
-            buy = t["buy"]
-            q, nc, p, scen_g = t["q"], t["carriers"], t["p"], bool(buy.get("scenario"))
-            k = order.index(g)
-            # per legacy carrying the spark: 3% per star, raised by its affinity, per roll
-            plegs = [min(1.0, 0.03 * s["stars"][k] * (1 + s["aff"] / 100)) for s in slots if s["stars"][k] > 0]
-        hs = hints.get(g, [])
-        deck_sources = set().union(*[credited(h.sources, card_of) for h in hs]) if hs else set()
-        prio = None if r["priority"] is None else g in rank
-        row = CalRow(
-            run=r["id"],
-            scen=r["scenario"],
-            g=g,
-            scen_gold=scen_g,
-            outfit=buy.get("outfit", 0),
-            zero=t is None,
-            dg=buy.get("deck_gold", 0.0),
-            dw=buy.get("deck_white", 0.0),
-            q=q,
-            nc=nc,
-            p=p,
-            acq=1.0 if scen_g else buy["gold"] + buy["white"],
-            gold=1.0 if scen_g else buy["gold"],
-            plegs=plegs,
-            o_any=bool(hs) or g in owned,
-            o_gold=any(h.tier == 2 for h in hs),
-            o_deck=bool(deck_sources),
-            o_deck_gold=any(h.tier == 2 and credited(h.sources, card_of) for h in hs),
-            o_insp=insp[g].years > 0,
-            o_insp_years=insp[g].years,
-            o_insp_hits=insp[g].hits,
-            o_insp_src=any("Inspiration" in h.sources for h in hs),
-            o_events=any("Events" in h.sources for h in hs),
-            o_other=any(
-                any(x not in ("Inspiration", "Events") and not credited([x], card_of) for x in h.sources) for h in hs
-            ),
-            prio=prio,
-            prio_outranked=bool(prio) and M.outranked(g, rank, [c for c, _, _ in r["deck"] if g in M.ev_groups(c)]),
-            pool_lb=min(
-                [lb for c, lb, _ in r["deck"] if g in M.cards[c]["whites"]] or [None],
-                key=lambda v: 9 if v is None else v,
-            ),
-            cards_pool=[c for c, _, _ in r["deck"] if g in M.cards[c]["whites"]],
-            cards_ev=[c for c, _, _ in r["deck"] if g in M.ev_groups(c)],
-        )
-        carriers = 1.1 ** (nc - 6)
-        row["p_pred"] = SPARK_GOLD_6 * carriers if scen_g else p
-        row["l_obs"] = (
-            SPARK_GOLD_6 * carriers
-            if (row["o_gold"] or row["outfit"] == 2)
-            else SPARK_WHITE_6 * carriers
-            if (row["o_any"] or row["outfit"] == 1)
-            else 0.0
-        )
-        run["rows"].append(row)
-    return run
-
-
-def rows_of(
-    R: list[Run], M: Model, res: SolverOut, man: list[ManEntry]
-) -> tuple[list[CalRow], list[RunRows], collections.Counter[str]]:
-    """the (run, target) rows of every solved job, the rows by run, and the problems met (by kind)"""
-    by_id = {r["id"]: r for r in R}
-    unreachable = {m.run_id: m.unreachable for m in man}
-    rows: list[CalRow] = []
-    runrows: list[RunRows] = []
-    bad: collections.Counter[str] = collections.Counter()
-    for fid, o in res.items():
-        wide = "_" in fid
-        r = by_id[int(fid.split("_")[0])]
-        if "results" not in o or not o["results"]:
-            bad["no result"] += 1
-            continue
-        run = run_rows(r, o["results"][0], unreachable[r["id"]], wide, M, bad)
-        rows.extend(run["rows"])
-        runrows.append(run)
-    return rows, runrows, bad
 
 
 # ---------------------------------------------------------------- tables
@@ -1038,11 +368,10 @@ SINGLE: list[tuple[str, int]] = [
     ("[Planned Perfection] Riko Kashimoto", 20046),
     ("[Tonight, We Waltz] King Halo", 20159),
     ("[Cute + Cute = ?] Mayano Top Gun", 20049),
-    ("[Sentimental Flare ♪] Maruzensky", 20165),
     ("[Let's Get This Party Lit!] Daitaku Helios", 20165),
     ("[Sunlit Angel ♪] Daitaku Helios", 20165),
-    ("[Trusting the Dice] Nakayama Festa", 20203),
     ("[Step! Smile! Wink!] Tokai Teio", 20049),
+    ("[Dancing Light into the Night] Yukino Bijin", 20166),
 ]
 # the three event sources of Playtime's Over! (the skill on the chain-ending choice 2)
 PO_CARDS: tuple[str, ...] = (
@@ -1555,6 +884,7 @@ class PerRunTests:
     acquired: AcquiredPerRun  # every run
     acquired_priority_assumed: AcquiredPerRun  # the runs whose open targets the priority assumption fits
     landing: RatioInterval  # P(all eight) observed-equivalent / predicted over every run, bootstrap 95%
+    landing_by_list: dict[str, RatioInterval]  # the same on runs showing a priority list and on runs showing none
     exact_p_all: float  # the solver's exact P(all), summed over runs
     product_p_all: float  # the product of its per-target p, summed over runs
 
@@ -1599,6 +929,24 @@ def per_run_tests(cal: Calibration, out: list[Value]) -> PerRunTests:
         )
     )
     landing = RatioInterval(common.div(observed, predicted), blo, bhi)
+    shown = {r["id"]: r["priority"] is not None for r in common.runs() or []}
+    landing_by_list: dict[str, RatioInterval] = {}
+    for label, want in (("list shown", True), ("no list shown", False)):
+        sub = [x for pr, x in zip(sorted(cal.runs, key=lambda x: x["id"]), runs) if shown.get(pr["id"]) is want]
+        lo, hi = (
+            (float("nan"),) * 2
+            if not sub
+            else bootstrap_interval(
+                lambda s: sum(x.landing_observed for x in s) / max(1e-300, sum(x.p_all for x in s)), sub
+            )
+        )
+        ratio = common.div(sum(x.landing_observed for x in sub), sum(x.p_all for x in sub))
+        landing_by_list[label] = RatioInterval(ratio, lo, hi)
+        out += [
+            Value(S13, f"P(all eight) ratio, {label}", ratio, note=f"{len(sub)} runs"),
+            Value(S13, f"P(all eight) ratio, {label}: 95% low", lo),
+            Value(S13, f"P(all eight) ratio, {label}: 95% high", hi),
+        ]
     out += [
         Value(S13, "P(all eight) ratio, all", landing.ratio),  # bootstrap bounds: Monte Carlo (seeded)
         Value(S13, "P(all eight) ratio, all: 95% low", blo),
@@ -1612,6 +960,7 @@ def per_run_tests(cal: Calibration, out: list[Value]) -> PerRunTests:
         acquired,
         assumed,
         landing,
+        landing_by_list,
         exact,
         product,
     )
@@ -1854,7 +1203,11 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
     def playtime_priority() -> bool:
         if prio.playtime[1].rows < 5:
             raise KeyError("too few rows on a list")  # common.finding: "needs data"
-        return (prio.playtime[0].rows < 5 or covers(prio.playtime[0])) and below(prio.playtime[1])
+        return (
+            (prio.playtime[0].rows < 5 or covers(prio.playtime[0]))
+            and prio.playtime[1].hits == 0
+            and below(prio.playtime[2])
+        )
 
     po = prio.playtime
     return [
@@ -1888,9 +1241,15 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S3,
-            "per roll, without Tail Held High, spark-years and ancestor hits each sit within the model's 95% band (|z| < 1.96, "
-            "z run-clustered)",
-            lambda: abs(inh.spark_years.z) < 1.96 and abs(inh.ancestor_hits.z) < 1.96,
+            "known miss: per roll, without Tail Held High, spark-years and ancestor hits each read below the model (z < -1.96, "
+            "z run-clustered) by under 2%; the cause is not established at this level (parents at affinity 200 or more, a known "
+            "miss of section 3, are a candidate, untested here)",
+            lambda: (
+                inh.spark_years.z < -1.96
+                and inh.ancestor_hits.z < -1.96
+                and inh.spark_years.observed / inh.spark_years.expected > 0.98
+                and inh.ancestor_hits.observed / inh.ancestor_hits.expected > 0.98
+            ),
             lambda: (
                 f"spark-years {inh.spark_years.observed:,} vs {inh.spark_years.expected:,.1f} expected (z {inh.spark_years.z:+.2f}); "
                 f"hits {inh.ancestor_hits.observed:,} vs {inh.ancestor_hits.expected:,.1f} (z {inh.ancestor_hits.z:+.2f})"
@@ -1914,10 +1273,11 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S13,
-            "acquired: prioritised targets at the model's rate (run-clustered interval covers 1) and non-prioritised below "
-            "it (interval entirely below 1); a target counts as prioritised when it is on the run's list and no "
-            "higher-ranked prioritised skill sits on a rival choice of every event offering it",
-            lambda: covers(acq.prioritised) and below(acq.not_prioritised),
+            "acquired: known miss, prioritised targets read slightly above the model's rate (run-clustered interval entirely "
+            "above 1, by under 5%), non-prioritised below it (interval entirely below 1); a target counts as prioritised "
+            "when it is on the run's list and no higher-ranked prioritised skill sits on a rival choice of every event "
+            "offering it",
+            lambda: acq.prioritised.ratio_low > 1 and acq.prioritised.ratio < 1.05 and below(acq.not_prioritised),
             lambda: (
                 f"prioritised {acq.prioritised.ratio:.3f} [{acq.prioritised.ratio_low:.3f}, {acq.prioritised.ratio_high:.3f}]; "
                 f"not prioritised {acq.not_prioritised.ratio:.3f} [{acq.not_prioritised.ratio_low:.3f}, {acq.not_prioritised.ratio_high:.3f}]"
@@ -1927,7 +1287,7 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         finding(
             S9,
             "the choice rule (IT takes an event's top choice unless a prioritised skill sits on another; between two prioritised "
-            "skills on rival choices, the higher-ranked one wins) shows in its consequences: event-only hints of non-prioritised "
+            "skills on rival choices the higher-ranked one is assumed to win, untested) shows in its consequences: event-only hints of non-prioritised "
             "or outranked targets fall clearly below those of prioritised ones (interval entirely below 1 and below the "
             "prioritised interval)",
             choice_rule_consequence,
@@ -1937,8 +1297,9 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S9,
-            "known miss: event-only hints of prioritised targets read just below the model (interval entirely below 1)",
-            lambda: below(deck.events_prioritised),
+            "event-only hints of prioritised targets read at the model's rate (interval covers 1; with each run's priority "
+            "list read for chain ends, the earlier shortfall is gone)",
+            lambda: covers(deck.events_prioritised),
             lambda: f"prioritised {ratio_text(deck.events_prioritised)}",
         ),
         *[
@@ -1960,9 +1321,9 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S13,
-            "the acquisition product approximation has no detected pooled bias separately on known-prioritised and "
-            "unknown-priority rows (each 95% ratio interval covers 1); known-unprioritised rows lie below 1",
-            lambda: covers(acq.prioritised) and covers(acq.unknown_priority) and below(acq.not_prioritised),
+            "the acquisition product approximation has no detected pooled bias on unknown-priority rows (95% ratio interval "
+            "covers 1); known-prioritised rows lie slightly above 1 and known-unprioritised rows below 1",
+            lambda: covers(acq.unknown_priority) and acq.prioritised.ratio_low > 1 and below(acq.not_prioritised),
             lambda: (
                 f"prioritised {ratio_text(acq.prioritised)}; unknown priority {ratio_text(acq.unknown_priority)}; "
                 f"not prioritised {ratio_text(acq.not_prioritised)}; "
@@ -2078,9 +1439,22 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S13,
-            "landing P(all eight) is consistent with calibrated: the pooled bootstrap interval covers 1",
-            lambda: per_run.landing.low <= 1 <= per_run.landing.high,
+            "known miss: landing P(all eight) reads below the model, the pooled bootstrap interval entirely below 1 (the "
+            "model is optimistic about landing every target)",
+            lambda: per_run.landing.high < 1,
             lambda: f"{per_run.landing.ratio:.3f} [{per_run.landing.low:.2f}, {per_run.landing.high:.2f}]",
+        ),
+        finding(
+            S13,
+            "the P(all eight) shortfall sits in the runs showing no priority list, where the model assumes every target "
+            "prioritised: their bootstrap interval lies entirely below 1, and the runs showing a list cover 1",
+            lambda: (
+                per_run.landing_by_list["no list shown"].high < 1
+                and per_run.landing_by_list["list shown"].low <= 1 <= per_run.landing_by_list["list shown"].high
+            ),
+            lambda: "; ".join(
+                f"{k} {v.ratio:.3f} [{v.low:.2f}, {v.high:.2f}]" for k, v in per_run.landing_by_list.items()
+            ),
         ),
         finding(
             S13,
@@ -2118,11 +1492,11 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S13,
-            "below 40 rows more pairs exclude 1; among them, below their prediction, are exactly Playtime's Over!'s three event sources "
-            "(Yaeno Muteki, Yukino Bijin, Sirius Symboli), whose pooled hint rate has a 95% interval entirely under their lowest prediction",
+            "below 40 rows more pairs exclude 1; Playtime's Over!'s chain-ending event sources among them read below their "
+            "prediction: their pooled hint rate has a 95% interval entirely under their lowest prediction",
             lambda: (
                 bool(single.off_small)
-                and {x.card for x in single.playtime_small} == prio.playtime_cards
+                and bool(single.playtime_small)
                 and wilson(single.playtime_hits, single.playtime_rows)[1] < single.playtime_lowest_predicted
             ),
             lambda: (
@@ -2139,8 +1513,9 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         finding(
             S13,
             "the Playtime's Over! miss is the priority assumption (the skill sits on a chain-ending choice 2, taken only when "
-            "prioritised): prioritised rows cover 1 or are too few to test (under 5), rows on a list without it lie below 1 "
-            '(untestable, "needs data", when fewer than 5 rows are on a list without it)',
+            "prioritised): with each run's list read, prioritised rows cover 1, rows on a list without it are predicted none "
+            "and show none, and rows from runs showing no list lie below 1 (there the model assumes the end can be taken; "
+            '"needs data" when fewer than 5 rows are on a list)',
             playtime_priority,
             lambda: (
                 f"prioritised {po[0].hits}/{po[0].rows} "

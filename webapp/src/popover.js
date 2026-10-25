@@ -126,8 +126,10 @@ function gametoraUrl(c) {
   return `https://gametora.com/umamusume/supports/${page}`;
 }
 // what to prioritise for IT to take the chain-ending choice the search chose, and when it may not. In the run data IT
-// took it every time when only the ending choice held a prioritised skill (312 of 312), less often when the other
-// choice held one too or the skill's hint was already Lv 5 (small samples, so "may not")
+// took a prioritised skill's choice in every one of 312 readings where only that choice held one, across card events
+// (269 of them Sasami Anshinzawa SSR's finale); the rule is carried over to chain-ending choices here. It took it less
+// often when the top choice held a prioritised skill too (41 of 56) or the skill's hint was already Lv 5 from another
+// source (16 of 28): small samples, so "may not" (docs/RESEARCH.md section 9)
 function chainEndHTML(c, link) {
   const { take, others } = chainEndAt(c, link);
   if (!take) return `<div>Take the chain-ending choice at link ${link}.</div>`;

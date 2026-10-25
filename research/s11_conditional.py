@@ -5,10 +5,10 @@ its event's condition (GameTora), her career goals (master.mdb single_mode_route
 place the goal requires) and, in the run records (research/data/runs.jsonl, not included; Independent Training runs
 from uma-it), the runs training her.
 
-Effect on real careers (section 13's calibration rows, read through s10_random_events.calib: each run rebuilt on its
+Effect on real careers (section 13's calibration rows, read through common.calib: each run rebuilt on its
 own deck, default targets). Section 13's jobs carry no trainee event hints (e_k = 0 on every row) and the run records
 credit every trainee and scenario event alike as "Events", so neither separates ordinary trainee events from
-conditional ones; they are separated here by game data (s10_random_events.event_groups):
+conditional ones; they are separated here by game data (common.event_groups):
   rows        free rows (not on the trainee's outfit, not a scenario gold) whose trainee has a current conditional event
               that can hint the target; a row counts as conditional-only when none of her story or date events, her
               outfit's events, her shared random event, nor the run's scenario's events can hint it, so an "Events"
@@ -19,7 +19,7 @@ conditional ones; they are separated here by game data (s10_random_events.event_
               row per run, as within a (trainee, target) and on the current runs' pooled rows, it is the Wilson interval)
   crediting   each row at its (trainee, target) rate, as in section 10 (m multiplied by (1 - r), section 12):
               acquisition observed against predicted without crediting (obs / pred, run-clustered 95%,
-              s10_random_events.calib_test), and the Bernoulli log-likelihood gain from crediting over the rows with a
+              common.calib_test), and the Bernoulli log-likelihood gain from crediting over the rows with a
               positive prediction, tested against half the chi2 95% point of one degree of freedom per fitted rate
 """
 
@@ -124,19 +124,18 @@ class ConditionalRow:
 def conditional_rows(R: list[Any], rows: list[dict[str, Any]]) -> list[ConditionalRow]:
     """the free calibration rows a conditional event could hint, leaving out those another of her events or the
     scenario's can hint"""
-    import s10_random_events as s10
 
-    E = s10.event_groups()
+    E = common.event_groups()
     byid = {r["id"]: r for r in R}
     sel: list[ConditionalRow] = []
     for row in rows:
         r = byid[row["run"]]
         u, g = r["chara"], row["g"]
-        if not any(g in gs for gs, _ in E["cond"].get(u, [])) or not s10.free(row):
+        if not any(g in gs for gs, _ in E["cond"].get(u, [])) or not common.free(row):
             continue
         if g in E["ordinary"].get(u, set()) | E["outfit"].get(r["outfit"], set()) | E["scen"].get(r["scenario"], set()):
             continue
-        hit = any("Events" in h["src"] for h in s10.hint_srcs(r)[g])
+        hit = any("Events" in h["src"] for h in common.hint_srcs(r)[g])
         sel.append(ConditionalRow(row=row, key=(u, g), mixed=g in E["shared"].get(u, set()), hit=hit))
     return sel
 
@@ -146,9 +145,8 @@ def careers() -> list[Value | Finding]:
     R = common.runs()
     if R is None:
         return []
-    import s10_random_events as s10
 
-    rows, _ = s10.calib()
+    rows, _ = common.calib()
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
     gn = common.skills()
     sel = conditional_rows(R, rows)
@@ -178,10 +176,10 @@ def careers() -> list[Value | Finding]:
             Value(SEC, f"{lab(k)}: rate 95% high", h_),
         ]
     rr = {id(x.row): rate[x.key] for x in sel}  # id(calibration row) -> its (trainee, target) rate
-    t = s10.calib_test([x.row for x in sel], lambda row: rr[id(row)])
-    tc = s10.calib_test([x.row for x in cond], lambda row: rr[id(row)])
-    out += s10.calib_values(SEC, "calibration", t) + s10.calib_values(SEC, "calibration, conditional-only", tc)
-    zc = [x for x in cond if s10.credit(x.row, 0.0)[1] <= 1e-12]
+    t = common.calib_test([x.row for x in sel], lambda row: rr[id(row)])
+    tc = common.calib_test([x.row for x in cond], lambda row: rr[id(row)])
+    out += common.calib_values(SEC, "calibration", t) + common.calib_values(SEC, "calibration, conditional-only", tc)
+    zc = [x for x in cond if common.credit(x.row, 0.0)[1] <= 1e-12]
     out += [
         Value(SEC, "careers: conditional-only rows the model gives no chance", len(zc)),
         Value(SEC, "careers: of them from her events", sum(x.hit for x in zc)),
@@ -203,7 +201,7 @@ def career_findings(
     kall: set[tuple[int, int]],
     kcond: set[tuple[int, int]],
 ) -> list[Value | Finding]:
-    """the careers' conclusions: t on every row, tc on the conditional-only rows (s10_random_events.CalibTest)"""
+    """the careers' conclusions: t on every row, tc on the conditional-only rows (common.CalibTest)"""
     F: Callable[[str, Any, Any], Finding] = lambda st, test, ev: common.finding(SEC, st, test, ev)
     lim: Callable[[Collection[Any]], float] = lambda keys: chi2.ppf(0.95, len(keys)) / 2
     return [

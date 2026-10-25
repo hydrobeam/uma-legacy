@@ -20,43 +20,11 @@ import collections, math
 from collections.abc import Callable
 from typing import Any, NamedTuple
 import common
+from common import GRANDPARENT_ROWS, PAIR_ROW, Trial, lineage, relations, trials
 from common import Finding, Run, Value
 
 SEC: str = "5"
-BASE: tuple[float, float, float] = (0.03, 0.06, 0.09)  # b by the spark's stars (1, 2, 3)
-G_OF: dict[int, tuple[int, int]] = {0: (1, 2), 3: (4, 5)}  # ancestor slots: 0 P1, 1 G1a, 2 G1b, 3 P2, 4 G2a, 5 G2b
 CHI95: float = 1.920729
-PAIR_ROW: str = "parent 1 × parent 2"  # the record's affinity row of the two parents
-GRANDPARENT_ROWS: dict[int, str] = {
-    1: "parent 1 × grandparent 1a",
-    2: "parent 1 × grandparent 1b",
-    4: "parent 2 × grandparent 2a",
-    5: "parent 2 × grandparent 2b",
-}  # by slot
-
-# relation points of the groups holding every listed character
-Relation = Callable[..., int]
-
-
-class Relations(NamedTuple):
-    """master.mdb's succession tables"""
-
-    points: Relation  # relation points of the groups holding every listed character (set semantics)
-    factor_type: dict[int, int]  # succession factor id -> its type (4: a skill white)
-
-
-class Trial(NamedTuple):
-    """a single-ancestor trial (trials()): one (ancestor, skill white spark, career year 2 or 3)"""
-
-    category: str  # the ancestor: 'P' / 'G' an ordinary parent / grandparent; 'P_selfgp' a parent with a
-    # grandparent of the trainee's character, 'P_gpp' one with a grandparent of her own;
-    # 'G_self' a grandparent of the trainee's character, 'G_eqP' one equal to her parent
-    affinity_h0: int  # the ancestor's affinity A with tri(T, P, T) = 0
-    affinity_h1: int  # ... with tri(T, P, T) = pair(T, P)
-    base: float  # b by the spark's stars
-    passed: bool  # the factor showed among the year's inspirations
-    run: int  # run id
-    race_part: int | None  # the shared-win part of affinity_h0 (trials(race=True)), else None
 
 
 class PassSum(NamedTuple):
@@ -65,117 +33,6 @@ class PassSum(NamedTuple):
     observed: int
     predicted: float
     z: float  # (observed - predicted) / its run-clustered sd
-
-
-def relations() -> Relations:
-    db = common.mdb()
-    points_of_group = dict(db.execute("select relation_type, relation_point from succession_relation"))
-    groups_of: dict[int, set[int]] = collections.defaultdict(set)  # character -> the relation groups holding her
-    for t, ch in db.execute("select relation_type, chara_id from succession_relation_member"):
-        groups_of[ch].add(t)
-    ftype = dict(db.execute("select factor_id, factor_type from succession_factor"))
-
-    def points(*xs: int) -> int:  # relation points of the groups holding every listed character (set semantics)
-        return sum(points_of_group[t] for t in set.intersection(*[groups_of[x] for x in xs]))
-
-    return Relations(points, ftype)
-
-
-def lineage(r: Run) -> list[dict[str, Any]] | None:
-    """[P1, G1a, G1b, P2, G2a, G2b] as ancestor dictionaries, or None when a slot or its character is missing"""
-    out: list[dict[str, Any]] = []
-    for p in r.get("parents") or []:
-        out.append(p)
-        out.extend((p.get("gps") or [])[:2])
-    if len(out) != 6 or any(a is None or not a.get("chara") for a in out):
-        return None
-    return out
-
-
-def has_affinity_rows(aff: dict[str, list[int]]) -> bool:
-    """the record's affinity table has the parents' row and every parent x grandparent row"""
-    return all(label in aff for label in [*GRANDPARENT_ROWS.values(), PAIR_ROW])
-
-
-def six_affinities(
-    T: int, A: list[int], aff: dict[str, list[int]], S: Relation, h: int = 0, part: str = "all"
-) -> dict[int, int]:
-    """{slot: affinity} for the six ancestors (slots as G_OF) of trainee T, A the ancestors' characters by slot:
-    relation points S from master.mdb plus 3 x the record's shared G1 wins per pair (aff: row label -> [base, shared,
-    bonus, total]); when G equals T or P, h = 0 sets tri(T, P, G) to 0 and h = 1 to pair(T, P).
-    part 'rel' or 'race' keeps only relation points or shared-win terms"""
-    w = 0 if part == "rel" else 3
-    shared_parents = w * aff[PAIR_ROW][1]
-    shared_grandparent = {g: w * aff[label][1] for g, label in GRANDPARENT_ROWS.items()}
-    if part == "race":
-        S = lambda *xs: 0
-
-    def tri(p: int, g: int) -> int:
-        if A[g] in (T, A[p]):
-            return S(T, A[p]) if h else 0
-        return S(T, A[p], A[g])
-
-    d: dict[int, int] = {}
-    for p, o in ((0, 3), (3, 0)):
-        d[p] = S(T, A[p]) + S(A[p], A[o]) + shared_parents + sum(tri(p, g) + shared_grandparent[g] for g in G_OF[p])
-        for g in G_OF[p]:
-            d[g] = tri(p, g) + shared_grandparent[g]
-    return d
-
-
-def category(slot: int, A: list[int], T: int) -> str:
-    """the ancestor in `slot` as a Trial category (A the ancestors' characters by slot, T the trainee's)"""
-    if slot in (0, 3):
-        gs = G_OF[slot]
-        return "P_selfgp" if any(A[g] == T for g in gs) else "P_gpp" if any(A[g] == A[slot] for g in gs) else "P"
-    p = 0 if slot < 3 else 3
-    return "G_self" if A[slot] == T else "G_eqP" if A[slot] == A[p] else "G"
-
-
-def trials(R: list[Run], race: bool = False) -> list[Trial]:
-    """every single-ancestor trial of the runs: a skill white spark carried by exactly one of the six ancestors, in
-    career years 2 and 3; runs where the trainee equals a parent or the parents are one character are left out"""
-    S, ftype = relations()
-    out: list[Trial] = []
-    for r in R:
-        anc = lineage(r)
-        if anc is None:
-            continue
-        T = r["chara"]
-        A = [a["chara"] for a in anc]
-        if len({T, A[0], A[3]}) < 3:
-            continue
-        aff = r.get("affinity") or {}
-        if not has_affinity_rows(aff):
-            continue
-        yrs = r.get("years") or {}
-        if "2" not in yrs or "3" not in yrs:
-            continue
-        inspired = {y: {f for f, _ in yrs[y]} for y in ("2", "3")}  # year -> factors shown among its inspirations
-        aff0, aff1 = six_affinities(T, A, aff, S, h=0), six_affinities(T, A, aff, S, h=1)
-        race_parts = six_affinities(T, A, aff, S, h=0, part="race") if race else None
-        sparks = [
-            {f // 100: f for f, _ in (a.get("factors") or [])} for a in anc
-        ]  # per slot: factor group -> factor id
-        carriers = collections.Counter(n for s in sparks for n in s)
-        for i in range(6):
-            cat = category(i, A, T)
-            for n, f in sparks[i].items():
-                if ftype.get(f) != 4 or carriers[n] != 1:
-                    continue
-                for y in ("2", "3"):
-                    out.append(
-                        Trial(
-                            cat,
-                            aff0[i],
-                            aff1[i],
-                            BASE[f % 10 - 1],
-                            f in inspired[y],
-                            r["id"],
-                            race_parts[i] if race_parts is not None else None,
-                        )
-                    )
-    return out
 
 
 def roll(t: Trial, k: float, slope: float = 1.0) -> float:

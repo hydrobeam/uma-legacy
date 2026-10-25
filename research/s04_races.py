@@ -28,10 +28,11 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
 - the goal shift: the adopted table against the community table (every race at j) and against exclusion (goal races
   neither shifted nor counted: every race takes PEN at the count of chosen races before it in the run, plus one if it is
   chosen), each recalibrated, 5-fold held out by run (held_out_tables); goal and chosen races by streak position, and
-  goal races from the 4th in a row under the community table; detail() also compares the forms in-sample on each half
+  goal races 4th to 6th in a row under the community table; detail() also compares the forms in-sample on each half
   of the runs (record order).
-Findings: one per claim of section 4 (base under-predicts; pink-adjusted, goal races calibrated at every position and
-chosen races from the 3rd on, chosen races at the 1st and 2nd slightly over-predicted (a known miss), every scenario
+Findings: one per claim of section 4 (base under-predicts; pink-adjusted, goal races calibrated at each position to the 6th
+and chosen races from the 3rd on (each interval covering 1, or obs / pred within MATERIAL of 1), goal races from the 7th
+on under-predicted (a known miss), chosen races at the 1st and 2nd slightly over-predicted (a known miss), every scenario
 calibrated outside those; pink beats base; the streak penalty; the goal shift beats the community table and exclusion
 held out; the cells not better held out; the previous race's result, as obs / pred after a loss over after a win,
 run-clustered, at each streak position). The other cells, the certain-outcome counts and the fits behind them are
@@ -51,6 +52,9 @@ import common
 from common import Finding, Run, Value
 
 SEC: str = "4"
+# obs / pred within this of 1 is calibrated even where a large cell's interval excludes 1: a fifth of the table's
+# smallest step (PEN 5 on a chance near 100%)
+MATERIAL: float = 0.01
 ALIAS: dict[str, str] = {
     "M.C. Nambu Hai": "Mile Championship Nambu Hai"
 }  # the records' short name for the data.json race
@@ -483,8 +487,8 @@ class Calibrations(NamedTuple):
     base: Calib  # every attempt, base aptitudes
     pink: Calib  # every attempt, pink-adjusted
     cells: dict[str, dict[Any, Calib]]  # pink-adjusted, by 'bp', 'goal j', 'chosen j' and 'scenario'
-    from_fourth: dict[str, Calib]  # pink-adjusted, from the 4th race in a row: 'goal' and 'chosen'
-    community_goal_from_fourth: Calib  # goal races from the 4th in a row under the community table
+    from_fourth: dict[str, Calib]  # pink-adjusted: 'goal' races 4th to 6th in a row and 'chosen' from the 4th
+    community_goal_from_fourth: Calib  # goal races 4th to 6th in a row under the community table
 
 
 class LikelihoodComparison(NamedTuple):
@@ -534,6 +538,7 @@ def calibration_claims(A: list[Attempt]) -> tuple[list[Value | Finding], Calibra
         "goal j": by([a for a in A if a["goal"]], lambda a: jlab(a["j"]), "pa"),
         "chosen j": by([a for a in A if not a["goal"]], lambda a: jlab(a["j"]), "pa"),
         "scenario": by(A, lambda a: common.SCEN[a["scen"]], "pa"),
+        "goal j to 6th": by([a for a in A if a["goal"] and a["j"] <= 6], lambda a: str(a["j"]), "pa"),
         "scenario, goal or 3rd on": by(
             [a for a in A if a["goal"] or a["j"] >= 3], lambda a: common.SCEN[a["scen"]], "pa"
         ),  # every attempt but chosen races at the 1st and 2nd race in a row
@@ -542,10 +547,18 @@ def calibration_claims(A: list[Attempt]) -> tuple[list[Value | Finding], Calibra
     for lab in ("goal j", "chosen j"):
         for c, v in cells[lab].items():
             out += calib_values(f"race pink {lab} {c}", v)
-    fourth = {lab: [a for a in A if a["goal"] == (lab == "goal") and a["j"] >= 4] for lab in ("goal", "chosen")}
+    out += calib_values("race pink goal j 6 only", cells["goal j to 6th"]["6"])
+    out += ratio_values("race community table goal j>=4", calib([a for a in A if a["goal"] and a["j"] >= 4], "pc"))
+    # from the 4th race in a row; goal races to the 6th, since the 7th on is the known miss below
+    fourth = {
+        "goal": [a for a in A if a["goal"] and 4 <= a["j"] <= 6],
+        "chosen": [a for a in A if not a["goal"] and a["j"] >= 4],
+    }
     from_fourth = {lab: calib(S, "pa") for lab, S in fourth.items()}
     community = calib(fourth["goal"], "pc")
-    out += ratio_values("race community table goal j>=4", community)
+    out += ratio_values("race community table goal j 4-6", community)
+    out += calib_values("race pink goal j 4-6", from_fourth["goal"])
+    out += calib_values("race pink chosen j>=4", from_fourth["chosen"])
     seventh = calib([a for a in A if a["goal"] and a["j"] >= 7], "pa")
     out += calib_values("race pink goal j>=7", seventh)
     out.append(
@@ -601,13 +614,16 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
     base, pink, gj, ho = cal.base, cal.pink, cal.from_fourth, lik.held_out
     lo70 = cal.cells["bp"]["<=70"]
     sc = cal.cells["scenario"]
-    goal_j, chosen_j = cal.cells["goal j"], cal.cells["chosen j"]
+    goal_j, chosen_j = cal.cells["goal j to 6th"], cal.cells["chosen j"]
     covers: Callable[[Calib], bool] = lambda c: c.low <= 1 <= c.high
     early = {j: chosen_j.get(j) for j in ("1", "2")}  # chosen races at the 1st and 2nd race in a row
     later = {j: v for j, v in chosen_j.items() if j not in early}
+    tested = {f"goal j {c}": v for c, v in goal_j.items()} | {f"chosen j {c}": v for c, v in later.items()}
     rest_sc = cal.cells["scenario, goal or 3rd on"]
     held: Callable[[common.HeldOutComparison], str] = lambda c: f"{c.nats:+,.1f} +- {c.se:.1f} nats, z = {c.z:.2f}"
+    outside = [c for c, v in tested.items() if not covers(v)]
     return [
+        Value(SEC, "race pink cells outside their interval", ", ".join(outside) or "none"),
         F(
             "On base aptitudes (the solver's bp) the table under-predicts IT's wins: the obs/pred 95% interval lies "
             "entirely above 1",
@@ -615,12 +631,17 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
             cv(base),
         ),
         F(
-            "On pink-adjusted aptitudes the adopted table is calibrated on goal races at every streak position and on "
-            "chosen races from the 3rd race in a row on: each obs/pred 95% interval covers 1",
-            bool(goal_j) and bool(later) and all(covers(v) for v in [*goal_j.values(), *later.values()]),
-            "; ".join(f"goal j {c}: {cv(v)}" for c, v in goal_j.items())
-            + "; "
-            + "; ".join(f"chosen j {c}: {cv(v)}" for c, v in later.items()),
+            f"On pink-adjusted aptitudes the adopted table is calibrated on goal races at each streak position from the "
+            f"1st to the 6th and on chosen races from the 3rd race in a row on: each obs/pred 95% interval covers 1 or, "
+            f"where a cell's interval excludes it, its obs/pred is within {MATERIAL:.0%} of 1 (cells outside named)",
+            bool(goal_j) and bool(later) and all(covers(v) or abs(v.ratio - 1) < MATERIAL for v in tested.values()),
+            "outside: "
+            + (
+                "; ".join(f"{c}: {cv(tested[c])}, low {tested[c].low:.4f}, high {tested[c].high:.4f}" for c in outside)
+                or "none"
+            )
+            + " | every cell: "
+            + "; ".join(f"{c}: {cv(v)}" for c, v in tested.items()),
         ),
         F(
             "Known miss: chosen races at the 1st and 2nd race in a row are slightly over-predicted (each obs/pred 95% "
@@ -653,8 +674,9 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
             held(lik.shift_over_exclusion),
         ),
         F(
-            "Under the community table goal races from the 4th race in a row win more than predicted (obs/pred 95% "
-            "interval entirely above 1); with the shift they are calibrated (it covers 1), as chosen races there are",
+            "Under the community table goal races 4th to 6th in a row win more than predicted (obs/pred 95% interval "
+            "entirely above 1); with the shift they are calibrated (it covers 1), as chosen races from the 4th are (goal "
+            "races from the 7th on are the known miss of the streak state)",
             cal.community_goal_from_fourth.low > 1 and all(covers(v) for v in gj.values()),
             f"community table {cv(cal.community_goal_from_fourth)}; adopted: goal {cv(gj['goal'])}; chosen "
             f"{cv(gj['chosen'])}",

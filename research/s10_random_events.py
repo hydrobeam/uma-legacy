@@ -20,7 +20,7 @@ readings: Huber-White sandwich Wald tests (robust(); likelihood ratios shown bes
 (pairs of hits against Binomial(n, p) per run).
 
 Effect on real careers (section 13's calibration rows: each run rebuilt on its own deck, default targets, the solver's
-per-target p, d^g, d^w, q, read through s13_calibration's build_jobs / run_solver / rows_of, cached results reused):
+per-target p, d^g, d^w, q, read through common's build_jobs / run_solver / rows_of, cached results reused):
   rows        free rows (not on the trainee's outfit, not a scenario gold) where a deck card's character's marker is the
               target's white, under the reading's rules (not the trainee, not a group card, not given by the card's
               own events); the trainee's own shared event where it is identifiable: her marker is the target's white
@@ -40,17 +40,28 @@ per-target p, d^g, d^w, q, read through s13_calibration's build_jobs / run_solve
               prediction left out
 """
 
-import collections, itertools, math, os
+import collections, itertools, math
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from typing import Any, NamedTuple, TypedDict
 import numpy as np
 from scipy.optimize import minimize
 import common
+from common import (
+    CalRow,
+    CalibTest,
+    RunRows,
+    bernoulli_ll,
+    calib,
+    calib_test,
+    credit,
+    event_groups,
+    free,
+    hint_srcs,
+    marker_credit,
+)
 from common import Run
 
 SEC: str = "10"
-GEN_W, GEN_G = 0.2, 0.4  # section 12's W_k, G_k at n_k = 0
 
 
 class Reading(TypedDict):
@@ -69,8 +80,6 @@ class Reading(TypedDict):
     scen: int  # scenario id
 
 
-CalRow = dict[str, Any]  # one of section 13's calibration rows (s13_calibration.rows_of)
-RunRows = dict[str, Any]  # one of section 13's per-run rows: its calibration rows under 'rows'
 Fits = dict[str, Any]  # fits(): form -> (parameters, max LL)
 
 
@@ -81,7 +90,7 @@ class RandomRow(TypedDict):
     kind: str  # 'deck' (a deck card's character's event) or 'own' (the trainee's own)
     who: str | None  # the character's name
     rate: float | None  # the event's chance at the run's K ('own': filled in by careers())
-    hit: bool  # the target credited to that event (credited(): section 8's rule, unknown counts as not)
+    hit: bool  # the target credited to that event (marker_credit(): section 8's rule, unknown counts as not)
     only: bool  # ... and to nothing else, nor owned
     amb: bool  # credited only through an "A or B event" naming her
 
@@ -153,13 +162,12 @@ class ReadingSet(NamedTuple):
     """readings(): the readings, and how many were left out as unknown"""
 
     rows: list[Reading]
-    unknown: int  # every credit naming her also names another deck card whose events can give the marker
+    unknown: int  # another deck card's events can give the marker (marker_credit())
 
 
 def event_pools(sc: dict[int, dict[str, Any]]) -> dict[int, set[str]]:
     """support card -> every skill an event credited to its character can give: the card's own events (section 8's
-    skill pools, s08_chains.game().pool) and its character's shared events (GameTora training_events_shared)"""
-    import s08_chains
+    skill pools, common.game().pool) and its character's shared events (GameTora training_events_shared)"""
 
     gt = common.gametora()
     sk = dict(common.mdb().execute("select [index], text from text_data where category = 47"))
@@ -168,21 +176,8 @@ def event_pools(sc: dict[int, dict[str, Any]]) -> dict[int, set[str]]:
         for e in es:
             for ch in gt.choices(e[1]):
                 shared[chara] |= set().union(*outcome_skill_sets(ch[1], gt, sk))
-    own = s08_chains.game().pool
+    own = common.game().pool
     return {cid: own.get(cid, set()) | shared.get(x["char_id"], set()) for cid, x in sc.items()}
-
-
-def credited(
-    srcs: Sequence[str], nm: str, m: str, deck: dict[str, list[int]], pool: dict[int, set[str]]
-) -> bool | None:
-    """section 8's rule for the marker m of the character named nm, from the sources its hint was credited to: True when
-    a credit names her ("<nm> event", or "A or <nm> event"); None (unknown) when every credit naming her also names
-    another deck card (deck: bare name -> card ids) whose events can give m (pool); False when no credit names her"""
-    credits = [[y.strip() for y in s[:-6].split(" or ")] for s in srcs if s.endswith(" event")]
-    credits = [c for c in credits if nm in c]
-    if credits and all(any(y != nm and any(m in pool.get(c, ()) for c in deck.get(y, ())) for y in c) for c in credits):
-        return None
-    return bool(credits)
 
 
 def deck_names(r: Run) -> dict[str, list[int]]:
@@ -195,7 +190,7 @@ def deck_names(r: Run) -> dict[str, list[int]]:
 
 def readings(R: list[Run]) -> ReadingSet:
     """every reading of the runs: a deck card of a character with a marker, someone else training, the marker not given
-    by the card's own events; a reading whose credit is unknown (credited()) is left out and counted"""
+    by the card's own events; a reading whose credit is unknown (marker_credit()) is left out and counted"""
     nshared, marker, cardsk, sc = markers()
     pool = event_pools(sc)
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
@@ -217,7 +212,7 @@ def readings(R: list[Run]) -> ReadingSet:
                 continue
             nm = name.get(ch)
             srcs = [s for h in r["hints"] if h["name"] == m for s in h["src"]]
-            hit = credited(srcs, nm, m, byname, pool)
+            hit = marker_credit(srcs, nm, m, byname, pool)
             if hit is None:
                 unknown += 1
                 continue
@@ -241,18 +236,14 @@ def readings(R: list[Run]) -> ReadingSet:
     return ReadingSet(rows, unknown)
 
 
-def ll(y: np.ndarray, p: np.ndarray) -> float:
-    """the Bernoulli log-likelihood of outcomes y at chances p (clipped to [1e-9, 1 - 1e-9])"""
-    p = np.clip(p, 1e-9, 1 - 1e-9)
-    return float(np.sum(y * np.log(p) + (1 - y) * np.log(1 - p)))
-
-
 def fits(rows: Sequence[Reading]) -> Fits:
     """the constant's and the K form's maximum-likelihood fits over the readings: form -> (parameters, max LL)"""
     y = np.array([r["hit"] for r in rows], float)
     K = np.array([r["K"] for r in rows], float)
-    out: Fits = {"const": (y.mean(), ll(y, np.full_like(y, y.mean())))}
-    o = minimize(lambda s: -ll(y, s[0] * (1 - s[1]) ** (K - 4)), [0.2, 0.05], bounds=[(0.01, 0.99), (-0.5, 0.5)])
+    out: Fits = {"const": (y.mean(), bernoulli_ll(y, np.full_like(y, y.mean())))}
+    o = minimize(
+        lambda s: -bernoulli_ll(y, s[0] * (1 - s[1]) ** (K - 4)), [0.2, 0.05], bounds=[(0.01, 0.99), (-0.5, 0.5)]
+    )
     out["exp"] = (tuple(o.x), -o.fun)
     return out
 
@@ -474,6 +465,15 @@ def covariate_tests(rows: Sequence[Reading], x: ReadingArrays) -> dict[str, Any]
     b = logit_fit(y, X)
     V, _ = sandwich(*logit_scores(y, X, run, b))
     g["scenario: robust Wald chi2"], _, g["scenario: robust p"] = wald(b, V, list(range(2, X.shape[1])))
+    for j, (sid, _) in enumerate(scenario_levels(rows), 2):
+        g[f"scenario {sid}: logit against URA Finale"] = b[j]
+    # scenario next to K and the card effects (the gauge is a known miss of the rate): does it survive them?
+    X = np.column_stack([one, K, *card_effects(rows), *scenario_columns(rows)])
+    b = logit_fit(y, X)
+    V, _ = sandwich(*logit_scores(y, X, run, b))
+    g["scenario next to the card effects: robust Wald chi2"], _, g["scenario next to the card effects: robust p"] = (
+        wald(b, V, list(range(5, X.shape[1])))
+    )
     # rarity within a character (characters with cards of more than one rarity)
     ch, w = multi_rarity(rows)
     X = np.column_stack(
@@ -507,6 +507,11 @@ def card_effects(rows: Sequence[Reading]) -> list[np.ndarray]:
 def scenario_columns(rows: Sequence[Reading]) -> list[np.ndarray]:
     """an indicator per scenario but the first (by id)"""
     return [np.array([r["scen"] == v for r in rows], float) for v in sorted({r["scen"] for r in rows})[1:]]
+
+
+def scenario_levels(rows: Sequence[Reading]) -> list[tuple[str, int]]:
+    """(name, id) of each scenario scenario_columns() gives a column, in its order"""
+    return [(common.SCEN.get(v, str(v)), v) for v in sorted({r["scen"] for r in rows})[1:]]
 
 
 def holm_adjust(ps: dict[str, float]) -> dict[str, float]:
@@ -644,12 +649,16 @@ def covariate_findings(rows: Sequence[Reading], g: dict[str, Any]) -> list[commo
             f"{g['card effects: robust p']:.4f}; LR {lr(card_effects(rows)):.2f}); {each}",
         )
     )
+    lv = "; ".join(f"{sid} {g[f'scenario {sid}: logit against URA Finale']:+.3f}" for sid, _ in scenario_levels(rows))
     out.append(
         F(
-            "Scenario is not detectable next to K at the 5% level: run-clustered Wald p >= 0.05 (df 3)",
-            g["scenario: robust p"] >= 0.05,
+            "Known miss of the measured rate: scenario is detectable next to K at the 5% level (run-clustered Wald p < 0.05, "
+            "df 3), and stays so next to K and the card effects",
+            g["scenario: robust p"] < 0.05 and g["scenario next to the card effects: robust p"] < 0.05,
             f"scenario {g['scenario: robust Wald chi2']:.2f} (df {len(sc)}, limit {chi2.ppf(0.95, len(sc)):.2f}, p "
-            f"{g['scenario: robust p']:.3f}; LR {lr_sc:.2f})",
+            f"{g['scenario: robust p']:.3f}; LR {lr_sc:.2f}); next to the card effects "
+            f"{g['scenario next to the card effects: robust Wald chi2']:.2f}, p "
+            f"{g['scenario next to the card effects: robust p']:.3f}; logit against URA Finale: {lv}",
         )
     )
     rar = np.array([r["rar"] for r in rows], float)
@@ -677,110 +686,12 @@ def held_out_findings(g: dict[str, Any]) -> list[common.Finding]:
     nats, se, z = g[f"held out: {lab}: nats"], g[f"held out: {lab}: SE"], g[f"held out: {lab}: z"]
     return [
         F(
-            "The slope in K does not predict unseen runs better than a constant rate: the form a (1 - b)^(K - 4) against a "
-            "constant has z <= 1.96",
-            z <= 1.96,
+            "The slope in K predicts unseen runs better than a constant rate: the form a (1 - b)^(K - 4) against a "
+            "constant has z > 1.96",
+            z > 1.96,
             f"{g['held out: runs']:,} runs, 5 folds: {nats:+.2f} nats, SE {se:.2f}, z {z:+.2f} ({lab})",
         )
     ]
-
-
-# ---------------------------------------------------------------- effect on real careers (section 13's rows)
-def calib() -> tuple[list[CalRow], list[RunRows]]:
-    """section 13's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
-    s13_calibration.claims builds them; solver-result reuse follows s13_calibration.fingerprint"""
-    if "calib" not in common._cache:
-        import s13_calibration as s13
-
-        R = common.runs()
-        M = s13.Model()
-        s13.card_variants()
-        jobdir = os.path.join(s13.OUTD, "jobs8")
-        man, files, _ = s13.build_jobs(R, M, False, jobdir)
-        res = s13.run_solver(jobdir, files, os.path.join(s13.OUTD, "res8.jsonl"))
-        rows, runrows, _ = s13.rows_of(R, M, res, man)
-        common._cache["calib"] = (rows, runrows)
-    return common._cache["calib"]
-
-
-def event_groups() -> dict[str, Any]:
-    """skill groups each kind of event can hint (GameTora, through gametora.py): a trainee's story and date events
-    (training_events_char), each outfit's own events (training_events_char_card), a character's shared events
-    (training_events_shared), a trainee's current conditional events with their conditions, each scenario's events
-    (training_events_scenario; its ids are the game's scenario ids)"""
-    if "evgroups" in common._cache:
-        return common._cache["evgroups"]
-    gt = common.gametora()
-    grp = dict(common.mdb().execute("select id, group_id from skill_data"))
-
-    def of(chs: Any) -> set[int | None]:
-        return {
-            grp.get(x)
-            for ch in gt.choices(chs)
-            for kind, x0, _ in gt.hints(ch[1])
-            for x in ([x0] if kind == "hint" else x0)
-        }
-
-    def of_list(lst: Any) -> set[int | None]:
-        return set().union(
-            set(), *[of(e[1]) for e in (lst if isinstance(lst, list) else []) if isinstance(e, list) and len(e) >= 2]
-        )
-
-    ordinary: dict[int, set[int | None]] = {}
-    cond: collections.defaultdict[int, list[tuple[set[int | None], Any]]] = collections.defaultdict(list)
-    for row in gt.load("training_events_char"):
-        ordinary[row[0]] = of_list(row[2]) | of_list(row[3])
-        for tag, ve in gt.conditional_events(row):
-            if tag.startswith("current"):
-                cond[row[0]].append((of(ve[1]), gt.extra(ve, 0)))
-    outfit = {row[0]: of_list(row[1]) for row in gt.load("training_events_char_card")}
-    shared = {ch: of_list(es) for ch, es in gt.load("training_events_shared")}
-    scen = {
-        row[0]: set().union(set(), *[of_list(part) for part in row[1:]]) for row in gt.load("training_events_scenario")
-    }
-    common._cache["evgroups"] = out = {
-        "ordinary": ordinary,
-        "cond": cond,
-        "outfit": outfit,
-        "shared": shared,
-        "scen": scen,
-    }
-    return out
-
-
-def hint_srcs(r: Run) -> collections.defaultdict[int, list[common.Hint]]:
-    """skill group -> the run's hint records of it (white or gold), names mapped as section 13 maps them"""
-    names = common.skill_names()
-    pn = {v[1]: gid for gid, vs in r.get("hint_groups", []) for v in vs}
-    out: collections.defaultdict[int, list[common.Hint]] = collections.defaultdict(list)
-    for h in r["hints"]:
-        g = names[h["name"]][0] if h["name"] in names else pn.get(h["name"])
-        if g is not None:
-            out[g].append(h)
-    return out
-
-
-def free(row: CalRow) -> bool:
-    """the row can move: not on the trainee's outfit, not a scenario gold"""
-    return not row["outfit"] and not row["scen_gold"]
-
-
-def credit(row: CalRow, r: float) -> tuple[float, float]:
-    """Hybrid (landing, acquisition) with the reconstructed miss multiplied by (1 - r).
-
-    The row's p is an exact landing marginal, but dg is the report's approximate gold chance. Even at r = 0,
-    recovered acquisition is p / (GEN_W * 1.1**nc) - dg, not exact acquisition. Both comparison sides use this
-    reconstruction. A row on the trainee's outfit or a scenario gold does not move.
-    """
-    if not free(row):
-        return row["p"], row["acq"]
-    s = 1.1 ** row["nc"]
-    dg = row["dg"]
-    if dg >= 1:
-        return row["p"], 1.0
-    m = 1 - (row["p"] - dg * GEN_G * s) / ((1 - dg) * GEN_W * s)
-    mm = m * (1 - r)
-    return dg * GEN_G * s + (1 - dg) * GEN_W * s * (1 - mm), dg + (1 - dg) * (1 - mm)
 
 
 def odds_change(runrows: Sequence[RunRows], rate: Callable[[CalRow], float]) -> list[float]:
@@ -792,90 +703,6 @@ def odds_change(runrows: Sequence[RunRows], rate: Callable[[CalRow], float]) -> 
         if any(rate(x) > 0 and free(x) for x in pos):
             out.append(math.prod(credit(x, rate(x))[0] for x in pos) / math.prod(x["p"] for x in pos) - 1)
     return out
-
-
-class CalibSide(NamedTuple):
-    """calib_test() one way (left out or credited)"""
-
-    pred: float  # mean predicted acquisition
-    ratio: float  # obs / pred
-    rlo: float  # its run-clustered 95% interval
-    rhi: float
-    ll: float  # the Bernoulli log-likelihood over the rows with a positive prediction left out
-
-
-@dataclass
-class CalibTest:
-    """calib_test(): acquisition observed against predicted on a set of calibration rows"""
-
-    n: int  # rows
-    k: int  # acquired
-    obs: float
-    lo: float  # the observed rate's run-clustered 95% interval
-    hi: float
-    left_out: CalibSide
-    credited: CalibSide
-    n_pos: int  # rows with a positive prediction left out
-    n_zero: int  # the rest
-
-    def ratio_text(self, side: CalibSide) -> str:
-        """obs / pred [95%] as the findings print it"""
-        return f"{side.ratio:.3f} [{side.rlo:.2f}, {side.rhi:.2f}]"
-
-    def ll_gain(self) -> float:
-        return self.credited.ll - self.left_out.ll
-
-
-def calib_test(rs: Sequence[CalRow], rate: Callable[[CalRow], float]) -> CalibTest:
-    """acquisition observed (hinted from any source, or owned) against predicted, without and with crediting each row at
-    rate(row): rows, observed (its 95% interval run-clustered), predicted, obs / pred and its 95% interval each way
-    (common.cluster_ci: a run can give several rows, and the predictions differ by row); the Bernoulli log-likelihood each way
-    over the rows whose prediction without crediting is positive (a row predicted at 0 and acquired has no finite
-    likelihood; those rows are counted apart)"""
-    n = len(rs)
-    k = sum(1 for x in rs if x["o_any"])
-    ob = [1 if x["o_any"] else 0 for x in rs]
-    run = [x["run"] for x in rs]
-    _, lo, hi, _ = common.cluster_ci(ob, [1] * n, run)
-    p0 = [credit(x, 0.0)[1] for x in rs]
-    p1 = [credit(x, rate(x))[1] for x in rs]
-    pos = [i for i, q in enumerate(p0) if q > 1e-12]
-    sides: list[CalibSide] = []
-    for pr in (p0, p1):
-        ep = common.div(sum(pr), n)
-        ratio, rlo, rhi, _ = common.cluster_ci(ob, pr, run)
-        sides.append(
-            CalibSide(
-                ep,
-                ratio,
-                rlo,
-                rhi,
-                sum(math.log(pr[i]) if rs[i]["o_any"] else math.log(1 - pr[i]) for i in pos if 0 < pr[i] < 1)
-                + sum(0.0 if (pr[i] >= 1) == bool(rs[i]["o_any"]) else -math.inf for i in pos if not 0 < pr[i] < 1),
-            )
-        )
-    return CalibTest(
-        n=n,
-        k=k,
-        obs=common.div(k, n),
-        lo=lo,
-        hi=hi,
-        left_out=sides[0],
-        credited=sides[1],
-        n_pos=len(pos),
-        n_zero=n - len(pos),
-    )
-
-
-def calib_values(sec: str, pre: str, t: CalibTest) -> list[common.Value | common.Finding]:
-    """a calibration's obs / pred left out and the log-likelihood gain from crediting, as Values of section `sec`"""
-    V: Callable[[str, Any], common.Value] = lambda nm, v: common.Value(sec, nm, v)
-    return [
-        V(f"{pre}: obs / pred, left out", t.left_out.ratio),
-        V(f"{pre}: ratio 95% low, left out", t.left_out.rlo),
-        V(f"{pre}: ratio 95% high, left out", t.left_out.rhi),
-        V(f"{pre}: LL credited minus left out, positive rows", t.ll_gain()),
-    ]
 
 
 def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow], collections.Counter[str]]:
@@ -918,7 +745,7 @@ def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow],
                     kind="deck",
                     who=nm,
                     rate=a * (1 - b) ** (K - 4),
-                    hit=credited(srcs, nm, white[g], deck_names(r), pool) is True,
+                    hit=marker_credit(srcs, nm, white[g], deck_names(r), pool) is True,
                     only=ev in srcs and set(srcs) == {ev} and g not in {s // 10 for s in r.get("owned", [])},
                     amb=ev not in srcs and any(nm in t and " or " in t for t in srcs),
                 )

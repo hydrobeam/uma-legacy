@@ -2113,8 +2113,8 @@ function optionsEl() {
   const wrap = el('div', 'optwrap');
   wrap.appendChild(tb);
   box.appendChild(wrap);
-  // a row whose career search was not complete (`proven: false`: its work cap, a band overflow or a deck past its class's
-  // cap): the best it found, maybe not her best
+  // a row whose career search was not complete (`proven: false`: its work cap, a band overflow, or a deck past its
+  // class's cap that the cap-free rerun did not settle): the best it found, maybe not her best
   if (planReport && list.some((o) => o.proven === false))
     box.appendChild(
       el(

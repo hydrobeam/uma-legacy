@@ -1142,23 +1142,31 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
         )
         sp[c] = (lo <= pr <= hi, ob, pr, lo, hi)
     v = sp["none"]
+    r, lo, hi = (g[f"spark none obs/pred{k}"] for k in ("", " 95% low", " 95% high"))
     fs.append(
         F(
-            "With no other source of the skill the adopted rate is calibrated (prediction inside the run-clustered interval)",
-            v[0],
-            f"{v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}; obs/pred {g['spark none obs/pred']:.3f} "
-            f"[{g['spark none obs/pred 95% low']:.3f}, {g['spark none obs/pred 95% high']:.3f}]",
+            "With no other source of the skill the adopted rate is calibrated to within 2%: the run-clustered obs/pred "
+            "interval lies inside 0.98-1.02 (the bound the specialty bands use)",
+            lo >= 0.98 and hi <= 1.02,
+            f"{v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}; obs/pred {r:.4f} [{lo:.4f}, {hi:.4f}]",
         )
     )
+    v = sp["card event"]
     fs.append(
         F(
-            "A card's own event or another card's training leaves the adopted rate calibrated (prediction inside the interval)",
-            sp["card event"][0] and sp["other card training"][0],
-            "; ".join(
-                f"{c} {v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}"
-                for c, v in sp.items()
-                if c in ("card event", "other card training")
-            ),
+            "A card's own event leaves the adopted rate calibrated (prediction inside the interval)",
+            v[0],
+            f"{v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}",
+        )
+    )
+    v, w = sp["other card training"], sp["inspiration"]
+    fs.append(
+        F(
+            "Known miss (not modelled): a skill another card's training also hinted is hinted by this card's training less "
+            "than predicted (interval entirely below the prediction), by less than an inspired skill",
+            v[4] < v[2] and v[1] / v[2] > w[1] / w[2],
+            f"{v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}, obs/pred {v[1] / v[2]:.3f}; inspiration obs/pred "
+            f"{w[1] / w[2]:.3f}",
         )
     )
     v = sp["inspiration"]
@@ -1211,12 +1219,15 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
         )
     )
     x2, dfc, pc = g["specialty cells: joint chi2"], g["specialty cells: df"], g["specialty cells: p"]
+    fitted, pf = g["specialty cells: fitted parameters"], g["specialty cells: p less the fitted parameters"]
     fs.append(
         F(
-            "After the specialty term the (scenario, band) cells with 200+ rows are jointly consistent with the model (run-clustered "
-            "Wald chi2, p > 0.05)",
-            pc > 0.05,
-            f"chi2 {x2:.1f} on {dfc:.0f} cells, p = {pc:.3f}; largest single |z| {g['specialty cells max |z| after']:.2f} (descriptive)",
+            "After the specialty term the (scenario, band) cells with 200+ rows are not shown jointly consistent with the model: "
+            "the run-clustered Wald chi2 rejects at 0.05 on the cells less the parameters fitted on their rows (conservative) "
+            "and not on the cells alone (liberal); the right reference lies between",
+            pf < 0.05 <= pc,
+            f"chi2 {x2:.1f}: p = {pf:.3f} on {dfc - fitted:.0f} df ({dfc:.0f} cells less {fitted:.0f} fitted), "
+            f"{pc:.3f} on {dfc:.0f}; largest single |z| {g['specialty cells max |z| after']:.2f} (descriptive)",
         )
     )
     fs.append(
@@ -1232,10 +1243,10 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     gd = g["specialty model: free divisor gain, nats"]
     fs.append(
         F(
-            "On the adopted model (a base and d per scenario, the specialty fit's rows) a free divisor is detectable in-sample (LR "
-            "gain above 1.92 nats, the 1-parameter 5% bound) but does not predict unseen runs better than 1/100 (5-fold held out, "
-            "z <= 1.96): 1/100 stays",
-            gd > 1.92 and H("specialty model, free divisor vs 1/100")[2] <= 1.96,
+            "Known miss (assumed slope): on the adopted model (a base and d per scenario, the specialty fit's rows) a free "
+            "divisor is detectable in-sample (LR gain above 1.92 nats, the 1-parameter 5% bound; nominal, a composite "
+            "likelihood) and predicts unseen runs better than 1/100 (5-fold held out, z > 1.96); 1/100 stays assumed",
+            gd > 1.92 and H("specialty model, free divisor vs 1/100")[2] > 1.96,
             f"c = {g['specialty model: free divisor c']:.0f}; in-sample +{gd:.2f} nats, LR p = {chi2.sf(2 * gd, 1):.3f}; held out "
             + hs("specialty model, free divisor vs 1/100")
             + f" on {g['held out: specialty runs']:,.0f} runs",
@@ -1427,10 +1438,12 @@ def specialty_residuals(S: SpecialtyRows, fit: PerScenarioD, out: Out) -> None:
         add(out, f"specialty band {nm} after", y[q].sum() / fit.p_with[q].sum())
     zcell = []
     cres, crun = [], []
+    tested_scenarios = set()  # scenarios with a tested cell: each fitted a base and a d on those rows
     for k in (1, 2, 3, 4):
         for a, b, nm in SPEC_BANDS:
             q = (sc == k) & (sp >= a) & (sp < b)
             if q.sum() >= 200:  # z of obs / pred against 1, its standard error run-clustered (common.cluster_ci)
+                tested_scenarios.add(k)
                 r, _, hi, _ = common.cluster_ci(y[q], fit.p_with[q], S.run[q])
                 zcell.append((r - 1) / ((hi - r) / 1.96))
                 cres += [((k, nm), d) for d in y[q] - fit.p_with[q]]
@@ -1451,6 +1464,18 @@ def specialty_residuals(S: SpecialtyRows, fit: PerScenarioD, out: Out) -> None:
     )
     add(out, "specialty cells: df", dfc)
     add(out, "specialty cells: p", pc)
+    # the residuals are of a fit on these same rows: each tested scenario's base and d (score equations) pull its cells'
+    # sums toward zero, so chi2 on the cell count overstates p; less those parameters it is conservative
+    from scipy.stats import chi2
+
+    fitted = 2 * len(tested_scenarios)
+    add(out, "specialty cells: fitted parameters", fitted)
+    add(
+        out,
+        "specialty cells: p less the fitted parameters",
+        float(chi2.sf(x2c, dfc - fitted)) if dfc > fitted else None,
+        note="chi2 on cells - 2 per tested scenario (its base and d fitted on these rows): conservative",
+    )
 
 
 def specialty(A: Data, S: SpecialtyRows, fit: PerScenarioD) -> list[common.Value]:

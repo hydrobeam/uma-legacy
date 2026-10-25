@@ -61,8 +61,8 @@ game art are never committed.
 
 ## Reproducing it
 
-1. **The page, the solver and its checks** need only the tools above: `./build.sh`, then `./build.sh testq` (71 checks;
-   the checks of the art skip themselves without art) and `./build.sh valq TAG` (every job matches its reference).
+1. **The page, the solver and its checks** need only the tools above: `./build.sh`, then `./build.sh testq` (the checks
+   of the art skip themselves without art) and `./build.sh valq TAG` (every job matches its reference).
    This runs on the tracked data files, which were exported from the Global game database of 2026-10-10 and the JP
    one of 2025-10-09.
 2. **The data from the game:** with both `master.mdb` files in `game/`, `./build.sh data events pb`. With the same

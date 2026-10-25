@@ -20,7 +20,8 @@ evidence), `docs/RESEARCH.md` (the maths), `docs/USAGE.md` (the page), `docs/PER
   updates it in the same change, along with `docs/MODEL.md` and `docs/RESEARCH.md`.
 - **`docs/RESEARCH.md` is rendered** from `docs/RESEARCH.template.md` and `research/results.json` (`./build.sh research`):
   edit the template, never the rendered file; every number in it is a placeholder for a value a `research/` script
-  computes, and each section's conclusions are tested there (`research/README.md`).
+  computes, except the assumed inputs, which are typed in and labelled assumed, and each section's conclusions are
+  tested there (`research/README.md`).
 - **Game facts come from data**: `master.mdb`, the exported JSON and GameTora's files, never memory. GameTora's files
   are read and decoded only through `pkg/loopopt/export/gametora.py`.
 - **Pages** recreate the game's UI: its colours with a 3:1 contrast floor on the planner pages and WCAG AAA on /about,

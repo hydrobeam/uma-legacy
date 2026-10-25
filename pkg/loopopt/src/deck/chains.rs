@@ -2,15 +2,16 @@
 //! and the per-key level tables.
 use std::collections::HashMap;
 /// Chain events per run ~ Binomial(CHAIN_N, p), p set by the deck's pals: logit p = CHAIN_A + CHAIN_B x pals, pals its
-/// pal cards (group cards excluded) and plain pals (`ChainModel::PalRate`). Fitted in docs/RESEARCH.md section 8 on the
-/// 8,722 Independent Training runs from uma-it with readable chain markers, under the card rule and the stop share 1/3.
+/// pal cards (group cards excluded) and plain pals (`ChainModel::PalRate`). Fitted on uma-it Independent Training runs
+/// with readable chain markers, under the card rule and the stop share 1/3 (docs/RESEARCH.md section 8: the sample and
+/// the evidence).
 /// The current evidence does not make this count law exact for every deck or scenario.
 pub(crate) const CHAIN_N: u32 = 21;
 pub(crate) const CHAIN_A: f64 = -1.09469;
 pub(crate) const CHAIN_B: f64 = 0.168_072;
-/// The share of its firings on which a link where IT's default choice ends the chain on some outcomes (`stop_risk`)
-/// ends it, as k of n: one share for every such link, in place of its own k of n outcomes (docs/RESEARCH.md section 8's
-/// STOP_SHARE). Packed like a stop risk (`stop_risk_code`), so the chain odds take it as the exact fraction 1/3.
+/// The share of its firings on which a link where IT's default choice ends the chain on some outcomes (card_events.json
+/// `stop_risk`, the job's `event_stop_risk`) ends it, as k of n: one share for every such link, in place of its own k
+/// of n outcomes (docs/RESEARCH.md section 8's STOP_SHARE). Packed like a stop risk (`stop_risk_code`), so the chain odds take it as the exact fraction 1/3.
 pub(crate) const CHAIN_STOP_SHARE: (u8, u8) = (1, 3);
 /// How a chain event picks the card it advances among the cards whose chains still run (`pick_weight`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -90,8 +91,10 @@ pub(crate) struct ChainKind {
     pub(super) links: u8,
     /// The link it stops after.
     pub(crate) stop: u8,
-    /// Links where IT's default choice ends the chain on k of n outcomes, one byte per link 1..=4 ((k << 4) | n; 0 =
-    /// none), only links before the stop (`stop_risk_code`).
+    /// Links where the chain ends on k of n of the link's firings, one byte per link 1..=4 ((k << 4) | n; 0 = none),
+    /// only links before the stop (`stop_risk_code`). k / n is the effective fraction, not the event's outcome count: a
+    /// card-event stop (`DeckJob::event_stop_risk`) at `DeckJob::chain_stop_share` (its own k of n only under the slots
+    /// rule), a job's pinned stop (`DeckJob::stop_risk`) at its own k of n.
     pub(super) stop_risk: u32,
 }
 
@@ -307,8 +310,8 @@ pub(crate) fn chain_marginals(events: ChainEvents, kinds: &[ChainKind]) -> HashM
 }
 /// Kinds with a stop risk: the chance that IT's default choice ends a chain at a link is independent of how many
 /// chain events the run gets, so the run is a mixture over where each risky entry would stop. Each realisation is a
-/// plain kind (links, realised stop): the entry competes for events with its full chain until it stops, then frees
-/// its remaining slots, exactly as a chosen early end does. Exact.
+/// plain kind (links, realised stop): the entry competes for events with its full chain until it stops, then leaves
+/// the running cards, exactly as a chosen early end does. Exact.
 pub(super) fn chain_marginals_risk(events: ChainEvents, kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
     let n = kinds.len();
     let mut sums: Vec<Vec<f64>> = kinds.iter().map(|k| vec![0.0; k.stop as usize]).collect();

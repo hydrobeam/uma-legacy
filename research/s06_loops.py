@@ -381,15 +381,27 @@ def runner_up_claims(W: list[ScheduleRow], RU: list[ScheduleRow]) -> list[Value 
     """whether a listed runner-up loop's ceiling at the solver's PB reaches its winner's odds found"""
     winner_found = {w.file: w.found for w in W}
     ppb = [r for r in RU if r.pb >= winner_found[r.file]]
+    over = [100 * (r.pb / winner_found[r.file] - 1) for r in ppb]  # how far each such ceiling passes its winner, %
+    need = [100 * (winner_found[r.file] / r.found - 1) for r in ppb]  # the gain over its own odds found that would tie
+    line: Callable[[ScheduleRow], str] = lambda r: (
+        f"{r.file}: runner-up found {r.found:.6f}, PB ceiling {r.pb:.6f} vs winner {winner_found[r.file]:.6f}"
+    )
     return [
         Value(SEC, "schedules: runner-ups whose PB ceiling reaches the winner", len(ppb)),
+        Value(SEC, "schedules: result files with such a runner-up", len({r.file for r in ppb})),
+        Value(SEC, "schedules: runner-up PB ceiling over its winner max %", max(over, default=0.0)),
+        Value(SEC, "schedules: such a runner-up's gain needed to tie min %", min(need, default=math.nan)),
+        Value(SEC, "schedules: such a runner-up's gain needed to tie max %", max(need, default=math.nan)),
         common.finding(
             SEC,
-            "With the solver's pair ceilings, no schedule could reorder a listed top: no listed "
-            "runner-up loop's PB ceiling reaches its winner's odds found",
-            not ppb,
-            f"{len(ppb)} of {len(RU)} reach; "
-            + "; ".join(f"{r.file}: runner-up PB ceiling {r.pb:.6f} vs winner {winner_found[r.file]:.6f}" for r in RU),
+            "Known miss: the solver's pair ceilings do not certify every listed top: on some results a listed "
+            "runner-up loop's PB ceiling reaches its winner's odds found, so a schedule the search did not find could "
+            "reorder that top (each named, with its odds found)",
+            bool(ppb),
+            f"{len(ppb)} of {len(RU)} reach: "
+            + ("; ".join(line(r) for r in ppb) or "none")
+            + " | every runner-up: "
+            + "; ".join(line(r) for r in RU),
         ),
     ]
 

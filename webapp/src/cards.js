@@ -58,7 +58,9 @@ export function cardGives(c, groups) {
 }
 /**
  * The choice that ends card `c`'s chain at story-event link `link`, for a deck card the search ends there. IT takes it
- * only when a skill on it is prioritised (always, in the run data, when no skill on the other choices is too).
+ * only when a skill on it is prioritised. In the run data IT took a prioritised skill's choice in all 312 readings where
+ * only that choice held one, on card events (most of them Sasami Anshinzawa SSR's finale), carried over here to
+ * chain-ending choices; with the skill already at hint Lv 5 from another source, in 16 of 28 (docs/RESEARCH.md section 9).
  * @typedef {object} ChainEndAdvice
  * @property {string} take the ending choice's skills by name, '' when it names none the page knows
  * @property {{group: number, name: string}[]} others the skills on the event's other choices

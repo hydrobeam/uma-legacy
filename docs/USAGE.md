@@ -71,7 +71,7 @@ odds and *Saves per run*, how much it lowers that estimate of the careers to a f
 result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
 those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two full veteran parents
 (*n/n parents*, with n the number of targets), where a full veteran of hers is a fully looped parent; the second can save more with lower odds. A line under
-the table says when the search for a shown uma could not prove its answer (it ran out of its work budget, or a deck passed its cap):
+the table says when the search for a shown uma could not prove its answer (it ran out of its work budget, or a deck passed its cap and the cap-free retry could not settle the answer):
 her row is the best it found, and a better career may exist. The (i) by the title
 (*What these numbers mean*) explains them on the page. **Use this** sets the career's places; the table stays (the last plan's,
 while the veterans and settings are unchanged), with your career marked (*your choice* when the plan didn't list it),

@@ -8,7 +8,7 @@ an unselected veteran cannot be read from them. What is computed here:
   scenario, against the band the page picks for the scenario (webapp/src/data.js, `ss`);
 - that the solver's default mix (pkg/loopopt/src/skills.rs) is the page's below-17,500 mix (webapp/src/data.js RANKS);
 - what replacing a legacy's stars by the expected base per roll b = 0.03 (pi_1 + 2 pi_2 + 3 pi_3) costs: per run of
-  the records (research/data/runs.jsonl), with its six real affinities (s05_affinity), q with b in each of the two
+  the records (research/data/runs.jsonl), with its six real affinities (common.six_affinities), q with b in each of the two
   rolls against the exact 1 - prod_l E_s[(1 - min(1, b(s)(1 + A_l / 100)))^2] (a legacy's stars are the same in both
   rolls), for one target carried by all six legacies.
 """
@@ -17,7 +17,6 @@ import math, os, re, statistics
 from typing import NamedTuple
 import common
 from common import Finding, Value
-import s05_affinity
 
 SEC: str = "2"
 CUT: int = 17500  # the rank score from which the page uses the 17,500-and-up mix
@@ -103,18 +102,18 @@ def averaging_cost(page: dict[str, Mix]) -> list[Value | Finding]:
     R = common.runs()
     if R is None:
         return []
-    S, _ = s05_affinity.relations()
+    S, _ = common.relations()
     ratios: dict[str, list[float]] = {k: [] for k in page}
     for r in R:
-        anc = s05_affinity.lineage(r)
+        anc = common.lineage(r)
         aff = r.get("affinity") or {}
-        if anc is None or not s05_affinity.has_affinity_rows(aff):
+        if anc is None or not common.has_affinity_rows(aff):
             continue
         T = r["chara"]
         A = [a["chara"] for a in anc]
         if len({T, A[0], A[3]}) < 3:
             continue
-        affinities = s05_affinity.six_affinities(T, A, aff, S)
+        affinities = common.six_affinities(T, A, aff, S)
         for k, pi in page.items():
             b = expected_base(pi)
             miss_loop = math.prod((1 - min(1.0, b * (1 + a / 100))) ** 2 for a in affinities.values())

@@ -3,10 +3,9 @@
 //! Deck model (per training run):
 //!   - training hints: the scenario, hint frequency and specialty priority set each card's draw count
 //!     (`Sources::draws`),
-//!     each draw uniform over its skill options still below Lv 5 (the stat option is never drawn; a skill at Lv 5
-//!     leaves the pool, so a card
-//!     giving +5 levels per draw never repeats one), `hint_miss`; a card's draws hint two of its targets together less
-//!     often than independent odds would say;
+//!     each draw uniform over its skill options still below Lv 5 (the stat option is assumed never drawn; a skill
+//!     at Lv 5 leaves the pool, so a card giving +5 levels per draw never repeats one), `hint_miss`; a card's draws
+//!     hint two of its targets together less often than independent odds would say;
 //!   - chain events: the number in a run is Binomial(CHAIN_N, p), logit p = CHAIN_A + CHAIN_B x the deck's pals
 //!     (group cards excluded, plain pals included); each advances a chain picked among the
 //!     still-running chain cards of the deck, each equally likely whatever its links left (the card rule; links fire in
@@ -64,7 +63,8 @@ pub(crate) struct Card {
     #[serde(default)]
     #[serde(rename = "spec")]
     pub specialty_priority: f64,
-    /// training-hint options that are skills (the stat option is never drawn in Independent Training)
+    /// training-hint options that are skills (the stat option is assumed never drawn in Independent Training,
+    /// docs/MODEL.md)
     #[serde(default)]
     #[serde(rename = "nskill")]
     pub skill_count: u32,
@@ -213,9 +213,9 @@ impl DeckJob {
     pub(crate) fn chain_pick_rule(&self) -> chains::PickRule {
         if self.chain_rule.as_deref() == Some("slots") { chains::PickRule::Slots } else { chains::PickRule::Card }
     }
-    /// The share (k of n) of its firings on which every default-choice stop risk (`stop_risk`) ends its chain:
-    /// `CHAIN_STOP_SHARE` under the card rule; None under the slots rule, the model before it, where each stop takes its
-    /// own k of n outcomes.
+    /// The share (k of n) of its firings on which every card-event (default-choice) stop risk (`event_stop_risk`) ends
+    /// its chain: `CHAIN_STOP_SHARE` under the card rule; None under the slots rule, the model before it, where each stop
+    /// takes its own k of n outcomes. The job's pinned stops (`stop_risk`) keep their own k of n under either rule.
     pub(crate) fn chain_stop_share(&self) -> Option<(u8, u8)> {
         match self.chain_pick_rule() {
             chains::PickRule::Card => Some(chains::CHAIN_STOP_SHARE),

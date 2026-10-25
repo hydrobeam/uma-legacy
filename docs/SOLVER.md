@@ -258,7 +258,7 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
 - **Training hints**: h = base(scenario) x (1 + hint_frequency/100) x (1 + d(scenario) x specialty_priority/100)
   draws per card per run (`hint_base`, `hint_spec`: `docs/RESEARCH.md` section 7's fit, which `build.rs` reads from
   `research/results.json` and rounds to 3 decimals; hint frequency at max limit break, unique effect included; the floor or ceiling of h, weighted by the fraction), each
-  uniform over the card's skill options still below Lv 5 (`nskill`; the stat option is never drawn; a skill leaves the
+  uniform over the card's skill options still below Lv 5 (`nskill`; the stat option is assumed never drawn, docs/MODEL.md; a skill leaves the
   pool after ceil(5 / `hinc`) draws, `hinc` = hint levels per draw at max limit break, so a +5 card never repeats a
   skill); one card's draws over several targets are joint (`miss_draws`). Non-pal cards without chain events take no
   chain slot; their training hints still count.

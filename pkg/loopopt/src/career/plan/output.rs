@@ -75,8 +75,8 @@ pub(crate) fn assemble_plan_output<'data>(
         option.insert("looped".into(), json!(looped));
         // false: a builder the plan could not turn on, her career from her deck class's winning decks (no career search)
         option.insert("exact".into(), json!(row.exact || row.origin == RowOrigin::Fallback));
-        // her career search was not complete (its work cap `search_work`, a band overflow or a deck past its class's cap):
-        // the best it found, not proven her best
+        // her career search was not complete (its work cap `search_work`, a band overflow, or a deck past its class's
+        // cap that the cap-free rerun did not settle): the best it found, not proven her best
         if row.exact && incomplete.of(row.origin, trainee) {
             option.insert("proven".into(), json!(false));
         }

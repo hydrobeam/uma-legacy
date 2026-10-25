@@ -17,17 +17,19 @@ def close(actual, expected) -> None:
     assert np.allclose(actual, expected, rtol=1e-11, atol=1e-12), (actual, expected)
 
 
-def partition(markers: list[tuple[int, int]]) -> list[list[Obs]]:
-    """Every seen/unseen combination on the selected card-links, including inconsistent progress reports."""
+def partition(markers: list[tuple[int, int]], bg: float = 0.0) -> list[list[Obs]]:
+    """Every seen/unseen combination on the selected card-links, including inconsistent progress reports; every marker
+    with background bg (the chance it shows when its link did not fire)."""
     return [
-        [Obs(card, link, seen) for (card, link), seen in zip(markers, flags)]
+        [Obs(card, link, seen, bg) for (card, link), seen in zip(markers, flags)]
         for flags in itertools.product((False, True), repeat=len(markers))
     ]
 
 
 def observation_probability(progress: tuple[int, ...], obs: list[Obs], eps: float) -> float:
     return math.prod(
-        (1 - eps if seen else eps) if progress[card] >= link else float(not seen) for card, link, seen in obs
+        (1 - eps * (1 - bg) if seen else eps * (1 - bg)) if progress[card] >= link else (bg if seen else 1 - bg)
+        for card, link, seen, bg in obs
     )
 
 
@@ -78,8 +80,10 @@ def forward_levels(kinds: list[Kind], rule: str) -> list[dict[tuple[int, ...], f
     return levels
 
 
-def check_partition(kinds: list[Kind], markers: list[tuple[int, int]], rule: str, eps: float, oracle: bool) -> None:
-    observations = partition(markers)
+def check_partition(
+    kinds: list[Kind], markers: list[tuple[int, int]], rule: str, eps: float, oracle: bool, bg: float = 0.0
+) -> None:
+    observations = partition(markers, bg)
     matrix = chains.lk_matrix([(kinds, obs) for obs in observations], eps, rule)
     assert matrix.shape == (2 ** len(markers), KMAX + 1)
     assert np.all(matrix >= -1e-12) and np.all(matrix <= 1 + 1e-12)
@@ -106,16 +110,31 @@ def check_partition(kinds: list[Kind], markers: list[tuple[int, int]], rule: str
         for card, link in markers:
             close(reached[(card, link)], weights[states[:, positions[card]] >= link].sum())
             seen = [obs[markers.index((card, link))].seen for obs in observations]
-            close(probabilities[seen].sum(), (1 - eps) * reached[(card, link)])
+            close(probabilities[seen].sum(), chains.seen_chance(reached[(card, link)], bg, eps))
         for obs, probability in zip(observations, probabilities):
             observation_weights = weights.copy()
-            for card, link, seen in obs:
+            for card, link, seen, bg in obs:
                 fired = states[:, positions[card]] >= link
-                observation_weights *= np.where(fired, 1 - eps if seen else eps, float(not seen))
+                observation_weights *= np.where(
+                    fired, 1 - eps * (1 - bg) if seen else eps * (1 - bg), bg if seen else 1 - bg
+                )
             close(probability, observation_weights.sum())
             a, b = chains.run_levels(kinds, obs, eps, rule)
             padded = np.pad(pmf, (0, max(0, KMAX + 1 - len(pmf))))[: KMAX + 1]
             close(probability, a @ padded + b @ chains.survival(padded))
+
+
+def check_background() -> None:
+    """a marker with background 1 carries no information on N; with background, a later link seen over an unseen
+    earlier one is possible even without the allowance"""
+    kinds = [Kind(3, 3, ()), Kind(3, 3, ())]
+    blind = chains.lk_matrix([(kinds, [Obs(0, 3, True, 1.0), Obs(1, 1, False, 1.0)])], 0.0)
+    close(blind, np.zeros_like(blind))  # an unseen marker that always shows is impossible: no information, likelihood 0
+    blind = chains.lk_matrix([(kinds, [Obs(0, 3, True, 1.0)])], 0.0)
+    close(blind, np.ones_like(blind))  # a marker that always shows: every N alike
+    jump = chains.lk_matrix([(kinds, [Obs(0, 1, False, 0.0), Obs(0, 3, True, 0.3)])], 0.0)
+    assert jump.max() > 0, "a seen later link with background must not make an unseen earlier link impossible"
+    close(jump[0, 0], 0.3)  # N = 0: no link fired, the later marker shows from background alone
 
 
 def check_fit_cells() -> None:
@@ -160,15 +179,18 @@ def main() -> None:
         [Kind(2, 2, ()), Kind(3, 2, ((1, 1, 3),))],
         list(chains.with_activation([Kind(3, 3, ()), Kind(2, 2, ((1, 1, 2),))], 0.7)),
         list(chains.with_activation([Kind(3, 3, ())], 0.0)),
+        [Kind(3, 3, ((2, 0.215, 1),)), Kind(2, 2, ())],  # a chosen end taken with a measured share (kind_in_run)
     ]
     for rule in ("slots", "cards"):
         for kinds in small_decks:
             markers = [(card, link) for card, kind in enumerate(kinds) for link in range(1, kind.links + 1)]
             for eps in (0.0, EPS):
-                check_partition(kinds, markers, rule, eps, oracle=True)
+                for bg in (0.0, 0.3, 1.0):
+                    check_partition(kinds, markers, rule, eps, oracle=True, bg=bg)
         # All 18 markers would require 2**18 rows. Each of these three complete partitions has 2**6 rows.
         for link in (1, 2, 3):
             check_partition([Kind(3, 3, ())] * 6, [(card, link) for card in range(6)], rule, EPS, oracle=False)
+    check_background()
     check_fit_cells()
     print("s08 likelihood checks passed")
 

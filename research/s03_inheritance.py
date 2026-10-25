@@ -1,7 +1,7 @@
 """Section 3: the inheritance roll's parts, tested on single-ancestor trials from the run records
 (research/data/runs.jsonl, not included; Independent Training runs from uma-it).
 
-A trial (built by s05_affinity.trials) is one (ancestor, white skill spark, career year 2 or 3) where the spark's skill
+A trial (built by common.trials) is one (ancestor, white skill spark, career year 2 or 3) where the spark's skill
 is carried by exactly one of the six ancestors, so a year's inspiration of it can only come from her; it passes when the
 factor shows among that year's inspirations. The model gives one roll per year, r = min(1, b(s) (1 + A / 100)),
 b(s) = 3 / 6 / 9% by stars, A the ancestor's affinity (section 5, from master.mdb relation points and the record's
@@ -23,11 +23,10 @@ from typing import NamedTuple, Protocol
 from scipy.optimize import minimize_scalar
 import common
 from common import Finding, Value
-import s05_affinity
 
 
 class Trial(NamedTuple):
-    """an ordinary ancestor's trial with its affinity (from s05_affinity.Trial, tri(T, P, T) = 0)"""
+    """an ordinary ancestor's trial with its affinity (from common.Trial, tri(T, P, T) = 0)"""
 
     category: str  # 'P' a parent, 'G' a grandparent
     affinity: int  # A
@@ -60,7 +59,7 @@ RunLL = Callable[[float], dict[int, float]]
 
 
 class HasRun(Protocol):
-    """a trial of either kind (Trial, s05_affinity.Trial): what held_out needs to fold it by run"""
+    """a trial of either kind (Trial, common.Trial): what held_out needs to fold it by run"""
 
     @property
     def run(self) -> int: ...
@@ -99,7 +98,7 @@ def llr(
     return out
 
 
-def parts_llr(full: list[s05_affinity.Trial], relation_slope: float, race_slope: float) -> dict[int, float]:
+def parts_llr(full: list[common.Trial], relation_slope: float, race_slope: float) -> dict[int, float]:
     """{run: log-likelihood} with the two parts of A apart: r = b (1 + (s_rel (A - race) + s_race race) / 100)"""
     out: dict[int, float] = collections.defaultdict(float)
     for t in full:
@@ -171,7 +170,7 @@ def claims() -> list[Value | Finding]:
     R = common.runs()
     if R is None:
         return []
-    full = [t for t in s05_affinity.trials(R, race=True) if t.category in ("P", "G")]
+    full = [t for t in common.trials(R, race=True) if t.category in ("P", "G")]
     ts = [Trial(t.category, t.affinity_h0, t.base, t.passed, t.run) for t in full]
     return generation_claims(ts) + slope_claims(ts) + affinity_part_claims(full) + star_claims(ts) + band_claims(ts)
 
@@ -258,7 +257,7 @@ def slope_claims(ts: list[Trial]) -> list[Value | Finding]:
     return out
 
 
-def affinity_part_claims(full: list[s05_affinity.Trial]) -> list[Value | Finding]:
+def affinity_part_claims(full: list[common.Trial]) -> list[Value | Finding]:
     """the two parts of A apart: relation points and 3 x shared G1 wins (race), each with its own slope, fitted and
     held out against weight 1 with the other part fixed"""
     sc_hat, sc_lo, sc_hi = fit1(lambda x: parts_llr(full, relation_slope=1.0, race_slope=x), 0.0, 3.0)
@@ -290,25 +289,47 @@ def affinity_part_claims(full: list[s05_affinity.Trial]) -> list[Value | Finding
 
 
 def star_claims(ts: list[Trial]) -> list[Value | Finding]:
-    """obs / pred per star count (the base 3 / 6 / 9%)"""
+    """obs / pred per star count (the base 3 / 6 / 9%), on every trial and below MISS_FROM: the base is tested where
+    the affinity term holds, since the trials at MISS_FROM or above are the known miss of the affinity term"""
     out: list[Value | Finding] = []
-    miss: list[str] = []
+    below: list[str] = []  # each star count below MISS_FROM
+    below_cover = True  # every star count's interval below MISS_FROM covers 1
+    outside: list[
+        str
+    ] = []  # star counts outside their interval on every trial, with their trials at MISS_FROM or above
+    explained = True  # every such count's trials at MISS_FROM or above read below 1
     for b, st in STARS.items():
-        c = ratio([t for t in ts if t.base == b])
+        S = [t for t in ts if t.base == b]
+        c = ratio(S)
+        lo = ratio([t for t in S if t.affinity < MISS_FROM])
         out += [
             Value(SEC, f"{st} star trials", c.trials),
             Value(SEC, f"{st} star obs / pred", c.ratio),
             Value(SEC, f"{st} star 95% low", c.low),
             Value(SEC, f"{st} star 95% high", c.high),
+            Value(SEC, f"{st} star below {MISS_FROM} trials", lo.trials),
+            Value(SEC, f"{st} star below {MISS_FROM} obs / pred", lo.ratio),
+            Value(SEC, f"{st} star below {MISS_FROM} 95% low", lo.low),
+            Value(SEC, f"{st} star below {MISS_FROM} 95% high", lo.high),
         ]
+        below.append(f"{st} star {lo.ratio:.3f} [{lo.low:.3f}, {lo.high:.3f}] ({lo.trials:,} trials)")
+        below_cover &= lo.low <= 1 <= lo.high
         if c.trials and not c.low <= 1 <= c.high:
-            miss.append(f"{st} star {c.ratio:.3f} [{c.low:.2f}, {c.high:.2f}]")
+            hi = ratio([t for t in S if t.affinity >= MISS_FROM])
+            explained &= hi.high < 1
+            outside.append(
+                f"{st} star {c.ratio:.3f} [{c.low:.3f}, {c.high:.3f}] on every trial; at {MISS_FROM}+ "
+                f"{hi.ratio:.3f} [{hi.low:.3f}, {hi.high:.3f}] ({hi.trials:,} trials)"
+            )
+    out.append(Value(SEC, "star counts outside their own 95% interval on every trial", len(outside)))
     out.append(
         common.finding(
             SEC,
-            "The base by stars (3 / 6 / 9%) holds for each star count: every interval covers 1",
-            not miss,
-            "; ".join(miss) or "all cover 1",
+            f"The base by stars (3 / 6 / 9%) holds for each star count where the affinity term holds: below affinity "
+            f"{MISS_FROM} every star count's interval covers 1; a star count whose interval on every trial excludes 1 "
+            f"does so through its trials at {MISS_FROM} or above, the known miss (their interval entirely below 1)",
+            below_cover and explained,
+            f"below {MISS_FROM}: " + "; ".join(below) + " | every trial: " + ("; ".join(outside) or "all cover 1"),
         )
     )
     return out
