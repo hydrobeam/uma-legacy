@@ -1503,10 +1503,16 @@ With Risky Business prioritised alone, her date-start +1 never shows without a f
 {{9.anshinzawa_rb_prioritised_alone_her_1|.0f}} runs with it). That is why a lone +1 with both skills prioritised is
 read as choice 1 giving nothing.
 
-*Sasami Anshinzawa's adopted share.* Her adopted {{9.adopted_anshinzawa_finale_nothing_ventured|.2f}} is a per-run
-chance of her Nothing Ventured hint, which the model uses when Nothing Ventured is a target. The planner assumes the
-player prioritises every target, and her deck entry tells the player to prioritise Risky Business, so its premise is
-a list holding both. There the share is lower, a known miss:
+*Sasami Anshinzawa's adopted share.* Her finale offers two choices. Choice 1, the top one, gives Nothing Ventured
++3 on one of its two outcomes and nothing on the other. Choice 2 gives Nothing Ventured +1 on a win and her Risky
+Business +1 on a loss. The model's deck entry for her card takes choice 2 and tells the player to prioritise Risky
+Business, the one skill only that choice holds. It credits her Nothing Ventured hint with a per-run chance of
+{{9.adopted_anshinzawa_finale_nothing_ventured|.2f}}, set from runs with Risky Business prioritised, and counts Risky
+Business as certain whenever the gold misses.
+
+The planner also assumes the player prioritises every target. Risky Business / Nothing Ventured is one target, so on
+that premise the list holds both skills: Nothing Ventured on both choices and Risky Business on choice 2, which is
+section 9's both case. How often her Nothing Ventured shows depends on which skills the list holds:
 
 | List shown | Runs with her Nothing Ventured | Share [90%] |
 |---|---|---|
@@ -1515,8 +1521,40 @@ a list holding both. There the share is lower, a known miss:
 | Nothing Ventured prioritised, not Risky Business | {{9.anshinzawa_nv_per_run_nothing_ventured_prioritised_not_risky_business_runs_with_nv|.0f}} of {{9.anshinzawa_nv_per_run_nothing_ventured_prioritised_not_risky_business_runs|.0f}} | {{9.anshinzawa_nv_per_run_nothing_ventured_prioritised_not_risky_business_share|.2f}} [{{9.anshinzawa_nv_per_run_nothing_ventured_prioritised_not_risky_business_90_pct_low|.2f}}, {{9.anshinzawa_nv_per_run_nothing_ventured_prioritised_not_risky_business_90_pct_high|.2f}}] |
 | neither prioritised | {{9.anshinzawa_nv_per_run_neither_prioritised_runs_with_nv|.0f}} of {{9.anshinzawa_nv_per_run_neither_prioritised_runs|.0f}} | {{9.anshinzawa_nv_per_run_neither_prioritised_share|.2f}} [{{9.anshinzawa_nv_per_run_neither_prioritised_90_pct_low|.2f}}, {{9.anshinzawa_nv_per_run_neither_prioritised_90_pct_high|.2f}}] |
 
-With both prioritised IT takes choice 2 in {{9.steer_both_share|.2f}} of the readings (the both case above), and
-choice 1 gives Nothing Ventured on only one of its two outcomes.
+With exactly one of the two skills on the list, the share is about the same either way and covers the adopted
+{{9.adopted_anshinzawa_finale_nothing_ventured|.2f}}. With both, it is lower, and the adopted value lies above its
+interval: a known miss on the planner's own premise. The finale's readings show why, through which choice IT took:
+
+| List shown | Choice 1, Nothing Ventured | Choice 1, nothing | Choice 2, Nothing Ventured | Choice 2, Risky Business | Unreadable | Nothing shown | Nothing shown, Risky Business at Lv 5 |
+|---|---|---|---|---|---|---|---|
+| both prioritised (the planner's premise) | {{9.anshinzawa_readings_both_prioritised_choice_1_nothing_ventured|.0f}} | {{9.anshinzawa_readings_both_prioritised_choice_1_nothing|.0f}} | {{9.anshinzawa_readings_both_prioritised_choice_2_nothing_ventured|.0f}} | {{9.anshinzawa_readings_both_prioritised_choice_2_risky_business|.0f}} | {{9.anshinzawa_readings_both_prioritised_choice_2_or_not_unreadable|.0f}} | {{9.anshinzawa_readings_both_prioritised_nothing_shown|.0f}} | {{9.anshinzawa_readings_both_prioritised_nothing_shown_risky_business_at_lv_5|.0f}} |
+| Risky Business prioritised, not Nothing Ventured | {{9.anshinzawa_readings_risky_business_prioritised_not_nothing_ventured_choice_1_nothing_ventured|.0f}} | {{9.anshinzawa_readings_risky_business_prioritised_not_nothing_ventured_choice_1_nothing|.0f}} | {{9.anshinzawa_readings_risky_business_prioritised_not_nothing_ventured_choice_2_nothing_ventured|.0f}} | {{9.anshinzawa_readings_risky_business_prioritised_not_nothing_ventured_choice_2_risky_business|.0f}} | {{9.anshinzawa_readings_risky_business_prioritised_not_nothing_ventured_choice_2_or_not_unreadable|.0f}} | {{9.anshinzawa_readings_risky_business_prioritised_not_nothing_ventured_nothing_shown|.0f}} | {{9.anshinzawa_readings_risky_business_prioritised_not_nothing_ventured_nothing_shown_risky_business_at_lv_5|.0f}} |
+| Nothing Ventured prioritised, not Risky Business | {{9.anshinzawa_readings_nothing_ventured_prioritised_not_risky_business_choice_1_nothing_ventured|.0f}} | {{9.anshinzawa_readings_nothing_ventured_prioritised_not_risky_business_choice_1_nothing|.0f}} | {{9.anshinzawa_readings_nothing_ventured_prioritised_not_risky_business_choice_2_nothing_ventured|.0f}} | {{9.anshinzawa_readings_nothing_ventured_prioritised_not_risky_business_choice_2_risky_business|.0f}} | {{9.anshinzawa_readings_nothing_ventured_prioritised_not_risky_business_choice_2_or_not_unreadable|.0f}} | {{9.anshinzawa_readings_nothing_ventured_prioritised_not_risky_business_nothing_shown|.0f}} | {{9.anshinzawa_readings_nothing_ventured_prioritised_not_risky_business_nothing_shown_risky_business_at_lv_5|.0f}} |
+| neither prioritised | {{9.anshinzawa_readings_neither_prioritised_choice_1_nothing_ventured|.0f}} | {{9.anshinzawa_readings_neither_prioritised_choice_1_nothing|.0f}} | {{9.anshinzawa_readings_neither_prioritised_choice_2_nothing_ventured|.0f}} | {{9.anshinzawa_readings_neither_prioritised_choice_2_risky_business|.0f}} | {{9.anshinzawa_readings_neither_prioritised_choice_2_or_not_unreadable|.0f}} | {{9.anshinzawa_readings_neither_prioritised_nothing_shown|.0f}} | {{9.anshinzawa_readings_neither_prioritised_nothing_shown_risky_business_at_lv_5|.0f}} |
+
+With Risky Business alone IT takes choice 2 in nearly every reading, and choice 2 wins most of the time. With
+Nothing Ventured alone IT splits between the two choices, but both of them offer Nothing Ventured. With both on the
+list, IT takes choice 2 in only {{9.steer_both_share|.2f}} of the readings, the both case's rate, and falls back on
+choice 1 the rest of the time, where Nothing Ventured comes on one outcome of two. That rate is enough to account for
+the lower share: with the finale shown in {{9.anshinzawa_both_prioritised_finale_shown_from_risky_business_alone|.2f}}
+of runs (measured where IT always takes choice 2), choice 2 giving Nothing Ventured at its read share and choice 1 on
+half its outcomes (the equal rule, **assumed**), the expected share is
+{{9.anshinzawa_both_prioritised_expected_from_the_both_case|.2f}}, inside the observed interval. This is a check of
+consistency, not a test of the cause. Of the {{9.anshinzawa_nv_per_run_both_prioritised_runs|.0f}} runs whose list
+holds both, {{9.anshinzawa_both_prioritised_runs_ranking_nothing_ventured_above_risky_business|.0f}} rank Nothing Ventured
+above Risky Business, so whether the ranking matters cannot be tested here. ("Unreadable" is a run whose Risky Business credit is
+shared or mixed with other sources, so a choice-2 loss cannot be told from her date-start hint. On lists without Risky
+Business, "nothing shown" includes runs where choice 1 gave nothing, which cannot be told from a finale that did not
+show.)
+
+What this means for the planner (**derived**): where her card is a loop's only source of the gold and the white is
+otherwise certain, a target's landing chance is proportional to 1 plus the gold chance. At the both-lists share it is
+{{9.anshinzawa_both_prioritised_a_target_s_landing_chance_against_the_adopted_share|.2f}} of what the adopted value
+gives, and the loop's $P(\text{all})$ falls by the same factor. The model and the players' practice agree in either of two
+ways: the deck entry tells the player to prioritise Risky Business and leave Nothing Ventured off the list, which
+keeps the adopted value, or the share drops to the both-lists value, which keeps the premise. Neither is adopted yet.
+The lists are the players' own choices, not assigned, and the both-lists share rests on
+{{9.anshinzawa_nv_per_run_both_prioritised_runs|.0f}} runs.
 
 *Riko Kashimoto's adopted share.* The adopted value is the per-run chance of her Ramp Up hint. A run counts where
 no other deck card's events can give Ramp Up and its level from other sources stays below 5. On runs whose shown

@@ -1510,10 +1510,16 @@ With Risky Business prioritised alone, her date-start +1 never shows without a f
 285 runs with it). That is why a lone +1 with both skills prioritised is
 read as choice 1 giving nothing.
 
-*Sasami Anshinzawa's adopted share.* Her adopted 0.75 is a per-run
-chance of her Nothing Ventured hint, which the model uses when Nothing Ventured is a target. The planner assumes the
-player prioritises every target, and her deck entry tells the player to prioritise Risky Business, so its premise is
-a list holding both. There the share is lower, a known miss:
+*Sasami Anshinzawa's adopted share.* Her finale offers two choices. Choice 1, the top one, gives Nothing Ventured
++3 on one of its two outcomes and nothing on the other. Choice 2 gives Nothing Ventured +1 on a win and her Risky
+Business +1 on a loss. The model's deck entry for her card takes choice 2 and tells the player to prioritise Risky
+Business, the one skill only that choice holds. It credits her Nothing Ventured hint with a per-run chance of
+0.75, set from runs with Risky Business prioritised, and counts Risky
+Business as certain whenever the gold misses.
+
+The planner also assumes the player prioritises every target. Risky Business / Nothing Ventured is one target, so on
+that premise the list holds both skills: Nothing Ventured on both choices and Risky Business on choice 2, which is
+section 9's both case. How often her Nothing Ventured shows depends on which skills the list holds:
 
 | List shown | Runs with her Nothing Ventured | Share [90%] |
 |---|---|---|
@@ -1522,8 +1528,40 @@ a list holding both. There the share is lower, a known miss:
 | Nothing Ventured prioritised, not Risky Business | 85 of 108 | 0.79 [0.72, 0.84] |
 | neither prioritised | 125 of 243 | 0.51 [0.46, 0.57] |
 
-With both prioritised IT takes choice 2 in 0.51 of the readings (the both case above), and
-choice 1 gives Nothing Ventured on only one of its two outcomes.
+With exactly one of the two skills on the list, the share is about the same either way and covers the adopted
+0.75. With both, it is lower, and the adopted value lies above its
+interval: a known miss on the planner's own premise. The finale's readings show why, through which choice IT took:
+
+| List shown | Choice 1, Nothing Ventured | Choice 1, nothing | Choice 2, Nothing Ventured | Choice 2, Risky Business | Unreadable | Nothing shown | Nothing shown, Risky Business at Lv 5 |
+|---|---|---|---|---|---|---|---|
+| both prioritised (the planner's premise) | 15 | 7 | 21 | 2 | 11 | 0 | 5 |
+| Risky Business prioritised, not Nothing Ventured | 12 | 0 | 233 | 33 | 19 | 0 | 15 |
+| Nothing Ventured prioritised, not Risky Business | 37 | 0 | 48 | 2 | 9 | 11 | 1 |
+| neither prioritised | 125 | 0 | 0 | 1 | 5 | 106 | 6 |
+
+With Risky Business alone IT takes choice 2 in nearly every reading, and choice 2 wins most of the time. With
+Nothing Ventured alone IT splits between the two choices, but both of them offer Nothing Ventured. With both on the
+list, IT takes choice 2 in only 0.51 of the readings, the both case's rate, and falls back on
+choice 1 the rest of the time, where Nothing Ventured comes on one outcome of two. That rate is enough to account for
+the lower share: with the finale shown in 0.93
+of runs (measured where IT always takes choice 2), choice 2 giving Nothing Ventured at its read share and choice 1 on
+half its outcomes (the equal rule, **assumed**), the expected share is
+0.63, inside the observed interval. This is a check of
+consistency, not a test of the cause. Of the 61 runs whose list
+holds both, 61 rank Nothing Ventured
+above Risky Business, so whether the ranking matters cannot be tested here. ("Unreadable" is a run whose Risky Business credit is
+shared or mixed with other sources, so a choice-2 loss cannot be told from her date-start hint. On lists without Risky
+Business, "nothing shown" includes runs where choice 1 gave nothing, which cannot be told from a finale that did not
+show.)
+
+What this means for the planner (**derived**): where her card is a loop's only source of the gold and the white is
+otherwise certain, a target's landing chance is proportional to 1 plus the gold chance. At the both-lists share it is
+0.91 of what the adopted value
+gives, and the loop's $P(\text{all})$ falls by the same factor. The model and the players' practice agree in either of two
+ways: the deck entry tells the player to prioritise Risky Business and leave Nothing Ventured off the list, which
+keeps the adopted value, or the share drops to the both-lists value, which keeps the premise. Neither is adopted yet.
+The lists are the players' own choices, not assigned, and the both-lists share rests on
+61 runs.
 
 *Riko Kashimoto's adopted share.* The adopted value is the per-run chance of her Ramp Up hint. A run counts where
 no other deck card's events can give Ramp Up and its level from other sources stays below 5. On runs whose shown

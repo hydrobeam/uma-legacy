@@ -420,6 +420,16 @@ ANSHIN_LISTS: tuple[str, ...] = (
     "Nothing Ventured prioritised, not Risky Business",
     "neither prioritised",
 )
+# the finale's readings (classify), named for the document
+ANSHIN_READINGS: dict[str, str] = {
+    "c1_win": "choice 1, Nothing Ventured",
+    "c1_blank": "choice 1, nothing",
+    "c2_win": "choice 2, Nothing Ventured",
+    "c2_lose": "choice 2, Risky Business",
+    "c2_lose?": "choice 2 or not, unreadable",
+    "none": "nothing shown",
+    "none_rb5": "nothing shown, Risky Business at Lv 5",
+}
 TAKEN: dict[str, bool] = {"c1_win": False, "c1_blank": False, "c2_win": True, "c2_lose": True}  # readings: choice 2?
 
 
@@ -436,6 +446,7 @@ class AnshinSummary:
     choice2: Count  # Risky Business prioritised: readings taking choice 2, of the readings (TAKEN)
     nv_rbp: int  # Nothing Ventured hinted with Risky Business prioritised
     by_list: dict[str, Count]  # per ANSHIN_LISTS (list shown): runs with her Nothing Ventured, runs
+    readings_by_list: dict[str, collections.Counter[str]]  # per ANSHIN_LISTS: runs by the finale's reading (classify)
     c2_outcome: Count  # Risky Business prioritised alone, her events its only source: choice-2 wins, choice-2 readings
     nei: int  # runs with neither skill prioritised (list shown)
     nei_c2: int  # of them, choice 2 won
@@ -482,6 +493,7 @@ def anshin(R: list[Run]) -> AnshinSummary:
         choice2=(sum(TAKEN[o.c] for o in read), len(read)),
         nv_rbp=sum(o.NV is not None for o in rbp),
         by_list={ls: (sum(o.NV is not None for o in xs), len(xs)) for ls, xs in lists.items()},
+        readings_by_list={ls: collections.Counter(o.c for o in xs) for ls, xs in lists.items()},
         c2_outcome=(sum(o.c == "c2_win" for o in sole), len(sole)),
         nei=len(nei),
         nei_c2=sum(o.c == "c2_win" for o in nei),
@@ -807,6 +819,9 @@ def anshin_values(a: AnshinSummary) -> dict[str, Any]:
     got["Anshinzawa: runs with the card (no Festa)"] = a.n
     got["Anshinzawa: NV with RB prioritised"] = a.nv_rbp
     got["Anshinzawa: RB prioritised runs"] = a.rbp
+    for ls, c in a.readings_by_list.items():
+        for reading in ANSHIN_READINGS:
+            got[f"Anshinzawa readings, {ls}: {ANSHIN_READINGS[reading]}"] = c.get(reading, 0)
     for ls, (k, n) in a.by_list.items():
         lo, hi = wil(k, n) if n else (None, None)
         got[f"Anshinzawa NV per run, {ls}: runs with NV"] = k
@@ -1304,6 +1319,58 @@ def measured_share_findings(
         )
     v = adopted(ANSHIN, "Nothing Ventured")
     out.append(common.Value(SEC, "adopted: Anshinzawa finale, Nothing Ventured", v))
+    # Lists holding both skills against the both case's choice rate: the finale shows on a share of runs measured on
+    # lists with Risky Business alone (where IT takes choice 2 every time), choice 2 gives Nothing Ventured at its read
+    # share, choice 1 on one of its two outcomes (the equal rule, assumed)
+    k2, n2 = a.c2_outcome
+    ka, na = a.by_list[ANSHIN_LISTS[1]]
+    kt, nt = common.steer_shares()["both"]
+    shows = (ka / na) / (k2 / n2)
+    expected = shows * ((kt / nt) * (k2 / n2) + (1 - kt / nt) * 0.5)
+    kb, nb = a.by_list[ANSHIN_LISTS[0]]
+    both_lists = [
+        r["priority"]
+        for r in S
+        if r.get("priority")
+        and {"Nothing Ventured", "Risky Business"} <= set(r["priority"])
+        and ANSHIN in common.deck_ids(r)
+        and common.FESTA not in common.deck_ids(r)
+    ]
+    out += [
+        common.Value(
+            SEC,
+            "Anshinzawa, both prioritised: runs ranking Nothing Ventured above Risky Business",
+            sum(p.index("Nothing Ventured") < p.index("Risky Business") for p in both_lists),
+            note=f"of {len(both_lists)}",
+        ),
+        common.Value(SEC, "Anshinzawa, both prioritised: finale shown, from Risky Business alone", shows),
+        common.Value(SEC, "Anshinzawa, both prioritised: expected from the both case", expected),
+        common.Value(
+            SEC,
+            "Anshinzawa, both prioritised: a target's landing chance against the adopted share",
+            (1 + kb / nb) / (1 + v),
+            note="her card the only gold source, the white certain: landing is proportional to 1 + the gold chance",
+        ),
+    ]
+    one = [a.by_list[ls] for ls in ANSHIN_LISTS[1:3]]
+    out.append(
+        F(
+            f"Anshinzawa's adopted {v:g} lies inside the 90% interval on lists holding exactly one of the two skills, "
+            "Risky Business or Nothing Ventured",
+            all(n > 0 and wil(k, n)[0] <= v <= wil(k, n)[1] for k, n in one),
+            "; ".join(iv(k, n) for k, n in one),
+        )
+    )
+    out.append(
+        F(
+            "On lists holding both, the share is consistent with IT taking choice 2 only at the both case's rate: the "
+            "share that rate implies (the finale shown as on lists with Risky Business alone, choice 1 giving Nothing "
+            "Ventured on one of its two outcomes) lies inside the share's 90% interval (a consistency check, not a test "
+            "of the cause)",
+            nb > 0 and wil(kb, nb)[0] <= expected <= wil(kb, nb)[1],
+            f"expected {expected:.3f}; observed {iv(kb, nb)}",
+        )
+    )
     per = "; ".join(f"{ls} {iv(*kn)}" for ls, kn in a.by_list.items() if kn[1])
     kb, nb = a.by_list[ANSHIN_LISTS[0]]
     out.append(
