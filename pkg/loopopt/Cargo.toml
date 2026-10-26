@@ -15,7 +15,7 @@ crate-type = ["rlib", "cdylib"]
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 
-# build.rs reads the training-hint constants from research/results.json
+# build.rs reads the training-hint constants and the career planner's low-basis cost from research/results.json
 [build-dependencies]
 serde_json = "1"
 

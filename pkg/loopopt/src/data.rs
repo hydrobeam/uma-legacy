@@ -31,6 +31,10 @@ struct UmaRaw {
     #[serde(default)]
     #[serde(rename = "apt")]
     aptitudes: Vec<u8>,
+    /// (outfit card id, its aptitude codes) of each outfit whose own aptitudes differ from `apt` (the first outfit's)
+    #[serde(default)]
+    #[serde(rename = "outfit_apt")]
+    outfit_aptitudes: Vec<(u32, Vec<u8>)>,
 }
 #[derive(Deserialize)]
 pub(crate) struct DataRaw {
@@ -117,8 +121,10 @@ pub(crate) struct Uma {
     /// Per turn: the allowed choice codes when nothing is forced, rest first then options in index order, and their
     /// count.
     pub(crate) choice_codes: Vec<([u8; 6], usize)>,
-    /// Aptitude codes (`UmaRaw`); empty in older data.
+    /// Aptitude codes (`UmaRaw`, her first outfit's: the grades `race_options`' bp are from); empty in older data.
     pub(crate) aptitudes: Vec<u8>,
+    /// (outfit card id, aptitude codes) of each outfit whose own aptitudes differ from `aptitudes`.
+    pub(crate) outfit_aptitudes: Vec<(u32, Vec<u8>)>,
 }
 
 /// Precomputed per-choice data for dp_exact: race (-1 = none), win chance per streak position k (same values as
@@ -127,10 +133,33 @@ pub(crate) struct Uma {
 pub(crate) struct RaceChoice {
     pub(crate) race: i32,
     pub(crate) rest: bool,
+    /// The multi-turn goal it meets (one bit, or none).
     pub(crate) goal_bits: u32,
+    /// Win chance per streak position k, its goal shift applied (`scored_position`).
     pub(crate) win_chances: [f64; 7],
+    /// Win chance per streak position once its multi-turn goal is met. Such a goal is a choice goal (master.mdb
+    /// `determine_race` 3: she picks one of its races), so a second race of it run after the first is a chosen race:
+    /// no goal shift. Equal to `win_chances` for every other choice.
+    pub(crate) met_win_chances: [f64; 7],
 }
-const REST_CHOICE: RaceChoice = RaceChoice { race: -1, rest: true, goal_bits: 0, win_chances: [0.0; 7] };
+const REST_CHOICE: RaceChoice =
+    RaceChoice { race: -1, rest: true, goal_bits: 0, win_chances: [0.0; 7], met_win_chances: [0.0; 7] };
+
+impl RaceChoice {
+    /// Her win chance per streak position with the multi-turn goals `goals_met` met before this turn.
+    #[inline(always)]
+    pub(crate) const fn chances(&self, goals_met: u32) -> &[f64; 7] {
+        if self.goal_bits & goals_met == 0 { &self.win_chances } else { &self.met_win_chances }
+    }
+}
+
+/// One attempt of a repeated race as its win chance reads it: her streak position and the multi-turn goals met before
+/// its turn.
+#[derive(Clone, Copy)]
+pub(crate) struct AttemptState {
+    pub(crate) streak: usize,
+    pub(crate) goals_met: u32,
+}
 
 /// Two offers of one race, exactly 24 turns apart, sharing a career's aptitude history.
 #[derive(Clone)]
@@ -139,16 +168,26 @@ pub(crate) struct RepeatedRace {
     pub(crate) classic_turn: usize,
     pub(crate) classic_option: u8,
     pub(crate) senior_option: u8,
-    /// E[pClassic * pSenior] by actual streak positions 1..=6 (goal shifts already applied).
-    pub(crate) both_wins: [[f64; 7]; 7],
+    /// E[pClassic * pSenior] by actual streak positions 1..=6, per `RepeatedRace::met_index` (whether each attempt's
+    /// multi-turn goal was met before it: goal shifts applied as `RaceChoice::chances` applies them).
+    pub(crate) both_wins: [[[f64; 7]; 7]; 4],
 }
 
 impl RepeatedRace {
-    pub(crate) fn win_chance(&self, uma: &Uma, classic_streak: usize, senior_streak: usize) -> f64 {
-        let classic = &uma.choices[self.classic_turn][self.classic_option as usize + 1];
-        let senior = &uma.choices[self.classic_turn + 24][self.senior_option as usize + 1];
-        classic.win_chances[classic_streak] + senior.win_chances[senior_streak]
-            - self.both_wins[classic_streak][senior_streak]
+    /// The `both_wins` table of the attempts' goal states: bit 0 the Classic attempt's goal met, bit 1 the Senior's.
+    pub(crate) const fn met_index(classic_met: bool, senior_met: bool) -> usize {
+        (classic_met as usize) | ((senior_met as usize) << 1)
+    }
+    pub(crate) fn win_chance(&self, uma: &Uma, classic: AttemptState, senior: AttemptState) -> f64 {
+        let classic_choice = &uma.choices[self.classic_turn][self.classic_option as usize + 1];
+        let senior_choice = &uma.choices[self.classic_turn + 24][self.senior_option as usize + 1];
+        let met = Self::met_index(
+            classic_choice.goal_bits & classic.goals_met != 0,
+            senior_choice.goal_bits & senior.goals_met != 0,
+        );
+        classic_choice.chances(classic.goals_met)[classic.streak]
+            + senior_choice.chances(senior.goals_met)[senior.streak]
+            - self.both_wins[met][classic.streak][senior.streak]
     }
 }
 
@@ -169,8 +208,8 @@ pub(crate) struct Data {
 }
 
 /// Bump when best_response / pair_ceilings change in a way that could move a ceiling's bits: stored tables then
-/// stop matching and are recomputed.
-const PB_VERSION: u64 = 2;
+/// stop matching and are recomputed. 3: a choice goal's second race takes no goal shift.
+const PB_VERSION: u64 = 3;
 /// Fingerprint of everything a pairwise ceiling depends on: every uma's id, options (race, bp) per turn and goals,
 /// the streak penalties and the race count. Fx over fixed-width words, so native and wasm agree.
 pub(crate) fn pb_fingerprint(raw: &DataRaw) -> String {
@@ -223,9 +262,10 @@ fn pb_table_from(raw: &DataRaw) -> Option<UmaPairTable<f64>> {
 }
 
 /// The streak position whose penalty a race at streak position `k` takes (`docs/MODEL.md`, win chance in IT): a goal
-/// race (one the career's goals require) takes the previous position's, so it pays 0/0/0/5/20/30 where a chosen race
-/// pays 0/0/5/20/30/50. It still counts toward the position of the races after it. The streak state stops at 6
-/// (6th or later), so a goal race 7th or later in a row scores as the 6th.
+/// race (one the career's goals require; of a multi-turn goal, only the first she runs: `RaceChoice::met_win_chances`)
+/// takes the previous position's, so it pays 0/0/0/5/20/30 where a chosen race pays 0/0/5/20/30/50. It still counts
+/// toward the position of the races after it. The streak state stops at 6 (6th or later), so a goal race 7th or later
+/// in a row scores as the 6th.
 pub(crate) const fn scored_position(goal: bool, k: usize) -> usize {
     if goal && k >= 2 { k - 1 } else { k }
 }
@@ -237,7 +277,9 @@ impl Data {
         self.win_table[(win_rate_basis + 20) as usize][k]
     }
 
-    /// Win chance of one option at streak position `k` (1..=6), its goal shift included.
+    /// Win chance of one option at streak position `k` (1..=6), its goal shift included (the tests' reference for the
+    /// precomputed tables: a choice goal's option before its goal is met; `Uma::attempts` gives an attempt's shift).
+    #[cfg(test)]
     pub(crate) fn option_chance(&self, option: &OptRaw, k: usize) -> f64 {
         self.attempt_chance(option.win_rate_basis, scored_position(option.goal, k))
     }
@@ -284,10 +326,34 @@ fn check_repeated_races(umas: &[UmaRaw]) {
     }
 }
 
+/// `dp_exact` decides Classic turn t with Senior turn t + 24 and reads the multi-turn goals met so far from that
+/// pairing's order, so each multi-turn goal must lie within one year (Junior, Classic or Senior): then the goals met
+/// before an option of it are those met before its turn. An option meets at most one of them (`RaceChoice::goal_bits`).
+fn check_goal_groups(umas: &[UmaRaw]) {
+    for uma in umas {
+        let mut groups_of_option: std::collections::BTreeMap<(usize, usize), usize> = std::collections::BTreeMap::new();
+        for goal in &uma.goals {
+            let years: std::collections::BTreeSet<usize> = goal.iter().map(|&(turn, _)| (turn - 1) / 24).collect();
+            let turns: std::collections::BTreeSet<usize> = goal.iter().map(|&(turn, _)| turn).collect();
+            if turns.len() < 2 {
+                continue;
+            }
+            assert!(years.len() == 1, "{}: multi-turn goal {goal:?} spans more than one year", uma.name);
+            for &option in goal {
+                *groups_of_option.entry(option).or_default() += 1;
+            }
+        }
+        if let Some((option, _)) = groups_of_option.iter().find(|&(_, &groups)| groups > 1) {
+            panic!("{}: option {option:?} belongs to more than one multi-turn goal", uma.name);
+        }
+    }
+}
+
 pub(crate) fn load_raw(raw: DataRaw) -> Data {
     let pair_ceilings = pb_table_from(&raw);
     let roster_len = raw.umas.len();
     check_repeated_races(&raw.umas);
+    check_goal_groups(&raw.umas);
     let race_count = raw.race_names.len();
     let mut win_table = vec![[0.0f64; 7]; 140];
     for (i, row) in win_table.iter_mut().enumerate() {
@@ -320,9 +386,20 @@ pub(crate) fn load_raw(raw: DataRaw) -> Data {
 }
 pub(crate) type Sched = [Choice; NT];
 
+/// One attempt of a schedule (`Uma::attempts`).
+#[derive(Clone, Copy)]
+pub(crate) struct Attempt {
+    pub(crate) option: u8,
+    /// Her streak position, 1..=6.
+    pub(crate) streak: usize,
+    /// Whether it takes the goal shift (`scored_position`).
+    pub(crate) goal: bool,
+}
+
 impl Uma {
     /// Her tables from her data.json entry: a single-turn goal forces its options at that turn, a multi-turn goal is a
-    /// goal bit set on each of its options, and every turn's choices are precomputed for `dp_exact`.
+    /// goal bit set on each of its options (a choice goal: the goal shift only while the bit is unmet), and every
+    /// turn's choices are precomputed for `dp_exact`.
     fn from_raw(raw: UmaRaw, win_table: &[[f64; 7]], race_count: usize) -> Self {
         let mut forced: Vec<Option<Vec<u8>>> = vec![None; NT];
         let mut goal_bits = raw.turns.iter().map(|options| vec![0u32; options.len()]).collect::<Vec<_>>();
@@ -359,16 +436,14 @@ impl Uma {
             assert!(raw.turns[turn].len() <= 5, "more than 5 options at one turn");
             for (option_index, option) in raw.turns[turn].iter().enumerate() {
                 let chances = &win_table[(option.win_rate_basis + 20) as usize];
-                let mut win_chances = [0.0f64; 7];
-                for (k, chance) in win_chances.iter_mut().enumerate().skip(1) {
-                    *chance = chances[scored_position(option.goal, k)];
+                let goal_bits = goal_bits[turn][option_index];
+                let (mut win_chances, mut met_win_chances) = ([0.0f64; 7], [0.0f64; 7]);
+                for k in 1..=6 {
+                    win_chances[k] = chances[scored_position(option.goal, k)];
+                    met_win_chances[k] = chances[scored_position(option.goal && goal_bits == 0, k)];
                 }
-                choices[turn][option_index + 1] = RaceChoice {
-                    race: option.race,
-                    rest: false,
-                    goal_bits: goal_bits[turn][option_index],
-                    win_chances,
-                };
+                choices[turn][option_index + 1] =
+                    RaceChoice { race: option.race, rest: false, goal_bits, win_chances, met_win_chances };
             }
             let (codes, count) = &mut choice_codes[turn];
             if forced[turn].is_none() {
@@ -394,7 +469,34 @@ impl Uma {
             repeated_races: vec![],
             choice_codes,
             aptitudes: raw.aptitudes,
+            outfit_aptitudes: raw.outfit_aptitudes,
         }
+    }
+
+    /// The aptitude codes of her outfit `card` (her first outfit's, `aptitudes`, unless it has its own).
+    pub(crate) fn aptitudes_of(&self, card: u32) -> &[u8] {
+        self.outfit_aptitudes.iter().find(|(own_card, _)| *own_card == card).map_or(&self.aptitudes, |(_, own)| own)
+    }
+
+    /// Per turn of `schedule`, the attempt she makes there (None on a rest turn): its streak position and whether it
+    /// takes the goal shift (a goal race; of a multi-turn goal, the first she runs), for the charts and checks that
+    /// explain an attempt (`dp_exact`, `win_chances_into` and the career report's rows walk the same states in place).
+    pub(crate) fn attempts(&self, schedule: &Sched) -> [Option<Attempt>; NT] {
+        let mut attempts = [None; NT];
+        let (mut streak, mut goals_met) = (0usize, 0u32);
+        for turn in 0..NT {
+            match schedule[turn] {
+                Choice::Rest => streak = 0,
+                Choice::Opt(option_index) => {
+                    streak = (streak + 1).min(6);
+                    let goal_bits = self.goal_bits[turn][option_index as usize];
+                    let goal = self.race_options[turn][option_index as usize].goal && goal_bits & goals_met == 0;
+                    attempts[turn] = Some(Attempt { option: option_index, streak, goal });
+                    goals_met |= goal_bits;
+                }
+            }
+        }
+        attempts
     }
 
     /// Whether `schedule` is legal for her: every option exists, every single-turn goal is raced and every multi-turn
@@ -440,35 +542,30 @@ impl Data {
 
     /// `win_chances` into a reused buffer. Certain aptitudes retain the original miss-product arithmetic.
     pub(crate) fn win_chances_into(&self, uma: &Uma, schedule: &Sched, chances: &mut Vec<f64>) {
-        // per race, the chance she misses every attempt, then its complement
+        // per race, the chance she misses every attempt, then its complement; per turn the attempt's state, for the
+        // repeated races below
         chances.clear();
         chances.resize(self.race_count, 1.0);
-        let mut k = 0usize;
+        let mut states = [AttemptState { streak: 0, goals_met: 0 }; NT];
+        let (mut k, mut goals_met) = (0usize, 0u32);
         for turn in 0..NT {
             match schedule[turn] {
                 Choice::Rest => k = 0,
                 Choice::Opt(option_index) => {
                     k = (k + 1).min(6);
                     // choices[turn][option_index + 1].win_chances[k] == option_chance(option, k) bit for bit (copied
-                    // from the same table at load)
+                    // from the same table at load), its met_win_chances once a choice goal is met
                     let choice = &uma.choices[turn][option_index as usize + 1];
                     if choice.race >= 0 {
-                        chances[choice.race as usize] *= 1.0 - choice.win_chances[k];
+                        chances[choice.race as usize] *= 1.0 - choice.chances(goals_met)[k];
                     }
+                    states[turn] = AttemptState { streak: k, goals_met };
+                    goals_met |= choice.goal_bits;
                 }
             }
         }
         for chance in chances.iter_mut() {
             *chance = 1.0 - *chance;
-        }
-        if uma.repeated_races.is_empty() {
-            return;
-        }
-        let mut streaks = [0usize; NT];
-        let mut streak = 0;
-        for (turn, choice) in schedule.iter().enumerate() {
-            streak = if *choice == Choice::Rest { 0 } else { (streak + 1).min(6) };
-            streaks[turn] = streak;
         }
         for repeated in &uma.repeated_races {
             let classic_turn = repeated.classic_turn;
@@ -476,7 +573,7 @@ impl Data {
             if schedule[classic_turn] == Choice::Opt(repeated.classic_option)
                 && schedule[senior_turn] == Choice::Opt(repeated.senior_option)
             {
-                chances[repeated.race] = repeated.win_chance(uma, streaks[classic_turn], streaks[senior_turn]);
+                chances[repeated.race] = repeated.win_chance(uma, states[classic_turn], states[senior_turn]);
             }
         }
     }

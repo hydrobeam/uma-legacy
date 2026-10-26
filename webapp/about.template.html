@@ -322,7 +322,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   races per turn. A turn her career's story forbids racing offers only rest or her goal race there (Yamanin Zephyr
   can't run Classic late October, so no Tenno Sho (Autumn), Shuka Sho or Kikuka Sho that year; Sweep Tosho can't run
   the Classic Takarazuka Kinen). Goals: a goal tied to one turn forces one of its races there; a goal spanning turns needs one of its
-  (turn, race) picks. Aptitudes are those of the uma's first outfit; distance by length: up to 1400 m sprint, 1800 m mile,
+  (turn, race) picks, and is a choice: only the first of its races she runs is a goal race, any other a chosen one.
+  Aptitudes are those of the uma's first outfit (the career planner's: of the outfit the career runs, C2); distance by length: up to 1400 m sprint, 1800 m mile,
   2400 m medium, else long. Each uma's schedule is chosen to maximise the loop's expected shared G1 wins
   <math><munder><mo>∑</mo><mrow><mi>i</mi><mo>&lt;</mo><mi>j</mi></mrow></munder><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math>, every pair weighted alike: summed
   over a structure's careers, step 2 counts each pair's <math><mi>w</mi></math> 20 times in a four-uma loop and 10 times in a rotation
@@ -578,23 +579,27 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p>Shared G1s are counted per race from the legacies' recorded wins (relocated venues are the same race; multi-race
   title saddles count for nothing); a win that is only a chance (a veteran a career would leave, with her schedule's
   win chances) counts as an expected number. The trainee's own schedule doesn't enter: her affinity with her legacies
-  is set before she races. Her race schedule (step 9) uses her aptitudes after her legacies' pink sparks, and decides
+  is set before she races. Her race schedule (step 9) uses her outfit's aptitudes (of her deck's equally good outfits,
+  the one whose schedule scores best) after her legacies' pink sparks, and decides
   the wins her own veteran will carry. It aims at the G1s her parents won, each weighted by the chance each parent won
   it (their wins are the guide to what her later partners will have won); a G1 neither parent won is run only where it
-  costs those races nothing.</p>
+  costs those races almost nothing (a scalar tie-break, below).</p>
 
   <p><strong>C2b. Aptitudes, pink sparks and her schedule.</strong> Per aptitude <math><mi>k</mi></math> (four distances, two surfaces,
   four running styles), the pink stars of that aptitude on her six legacies are summed; the sum raises her starting
   grade by 1, 2, 3 or 4 grades at 1, 4, 7 or 10 stars, at most to A. At each of the two April inspirations every
   legacy's pink spark fires with</p>
   <math display="block"><mi>min</mi><mo>(</mo><mn>1</mn><mo>,</mo><msub><mi>β</mi><mi>σ</mi></msub><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><msub><mi>A</mi><mi>ℓ</mi></msub><mn>100</mn></mfrac><mo>)</mo></mrow><mo>)</mo><mo>,</mo><mspace width="1em"/><msub><mi>β</mi><mi>σ</mi></msub><mo>=</mo><mn>1</mn><mo>,</mo><mn>3</mn><mo>,</mo><mn>5</mn><mo>%</mo><mtext> at 1, 2, 3 stars</mtext></math>
-  <p>each firing +1 grade, at most S; firings are independent. A race's win chance (step 9's table) is the expectation
-  over her distance and surface grades at its turn: the starting grades before the Classic April, after one inspiration
+  <p>each firing +1 grade, at most S; firings are independent. A race's win chance (step 9's table, with 3 more points of
+  aptitude cost where 110 less her two aptitude costs is 70 or less: on grades with pinks the table predicts too many
+  wins there, research section 4; the loop planner keeps the table) is the expectation over her distance and surface
+  grades at its turn: the starting grades before the Classic April, after one inspiration
   until the Senior April, after both from then on. Her schedule maximises her expected wins of the G1s her parents won,
   each weighted by the chance each parent won it (a win she shares with a parent adds affinity to both when she is a
   parent herself); a G1 neither parent won counts only as a <math><msup><mn>10</mn><mrow><mo>−</mo><mn>7</mn></mrow></msup></math>
-  tie-break, so she runs it only where it costs those races nothing. Her veteran's pink spark: one aptitude, uniform over those she
-  ends at A or S, 1/2/3 stars at 20/70/10%.</p>
+  tie-break, so she runs it where it costs those races almost nothing (at most about 3.4·10<sup>−6</sup> expected weighted wins; nothing on certain wins without pinks). Her veteran's pink spark: one aptitude, uniform over those she
+  ends at A or S, 1/2/3 stars at 20/70/10%; a veteran a career would leave carries each possible pink at its chance, and
+  her children's grades average over them.</p>
 
   <p><strong>C3. Inheritance and spark generation.</strong> For target <math><mi>k</mi></math>, slot <math><mi>ℓ</mi></math> carrying its spark at
   <math><msub><mi>σ</mi><mi>ℓ</mi></msub></math> stars passes it at an inspiration with chance <math><mi>min</mi><mo>(</mo><mn>1</mn><mo>,</mo><mn>0.03</mn><msub><mi>σ</mi><mi>ℓ</mi></msub><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>A</mi><mi>ℓ</mi></msub><mo>/</mo><mn>100</mn><mo>)</mo><mo>)</mo></math>;
@@ -679,8 +684,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   leaves a veteran: her parents <math><mi>a</mi></math> and <math><mi>b</mi></math>, her G1 wins at her schedule's chances, and the targets she lands. Her
   outcome <math><mi>ω</mi></math> is the set of targets landed (the exact chance of each set from step 19, with her deck at her chances,
   the scenario's golds included) and each landed spark's stars (the rank's mix, independent per spark). Her veteran
-  carries exactly those sparks, her parents, and her G1 wins at her schedule's chances; no pink or other sparks enter
-  the model. For each outcome:</p>
+  carries exactly those sparks, her parents, her G1 wins at her schedule's chances and her possible pink spark (C2b),
+  which reaches only her children's schedules; no other sparks enter the model. For each outcome:</p>
   <ul>
   <li>every stage candidate's odds with her veteran as a parent, with each of the candidate's two best partners (by the
   same value), read from the candidate's cached best decks at the new chances: per open target, her slot multiplies the

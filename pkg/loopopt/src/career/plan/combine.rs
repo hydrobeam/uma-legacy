@@ -272,8 +272,13 @@ fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, step_costs: &[f64],
     let candidates = context.candidates;
     let career = candidates.careers[candidate].as_ref()?;
     let lineage = found_lineage(candidates.trainees[candidate], career);
-    let win_chances = simulator.evaluator.wins(&simulator.env.setup, context.input.pool, lineage);
-    Some(simulator.env.setup.veteran(context.input.legacies, lineage, win_chances.to_vec()))
+    let record = simulator.evaluator.career_wins(
+        &simulator.env.setup,
+        &mut simulator.env.state,
+        context.input.pool,
+        crate::career::Career { lineage, deck: &career.deck },
+    );
+    Some(simulator.env.setup.veteran(context.input.legacies, lineage, &record))
 }
 
 /// The trios' sides per candidate (her real full veterans, then the fresh full veteran her best career now would leave), for `her_trios`

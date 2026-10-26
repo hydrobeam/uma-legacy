@@ -136,18 +136,37 @@ pub(crate) struct Ancestor {
     /// sprint .. long; reported (inheritance chance per aptitude), not part of the odds
     #[serde(default)]
     pub pinks: Vec<(u32, u8)>,
+    /// internal (the parent of a veteran before her result is known is such a veteran): the pinks it may carry
+    /// (`Legacy::pink_chances`)
+    #[serde(skip)]
+    pub(crate) pink_chances: Vec<crate::career::schedule::PinkChance>,
 }
 
 impl Ancestor {
-    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks.
+    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks (or the pinks
+    /// she may carry).
     fn of_legacy(legacy: &Legacy) -> Self {
         Self {
             character_id: legacy.character_id,
             sparks: legacy.sparks.clone(),
             wins: legacy.wins.clone(),
             pinks: legacy.pinks.clone(),
+            pink_chances: legacy.pink_chances.clone(),
         }
     }
+}
+
+/// A legacy's recorded parents (the trainee's grandparents under her): at most two. More would count a target's
+/// carriers n past six (a gold spark's chance, 0.4 x 1.1^n, passes 1 at n = 10).
+fn recorded_parents<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<Ancestor>, D::Error> {
+    let parents = Vec::<Ancestor>::deserialize(deserializer)?;
+    if parents.len() > 2 {
+        return Err(serde::de::Error::custom(format!(
+            "a veteran has at most 2 parents on record, not {}",
+            parents.len()
+        )));
+    }
+    Ok(parents)
 }
 
 #[derive(Deserialize, Clone, Default)]
@@ -162,15 +181,18 @@ pub(crate) struct Legacy {
     pub wins: Vec<usize>,
     #[serde(default)]
     pub pinks: Vec<(u32, u8)>,
-    /// its own parents (the new trainee's grandparents); empty when unknown
-    #[serde(default)]
+    /// its own parents (the new trainee's grandparents), at most two; empty when unknown
+    #[serde(default, deserialize_with = "recorded_parents")]
     pub parents: Vec<Ancestor>,
     /// internal (a veteran before her result is known, `CareerSetup::veteran`): win chance per race index in place of
-    /// `wins`, and the star mix her sparks are drawn from in place of fixed stars
+    /// `wins`, the star mix her sparks are drawn from in place of fixed stars, and the pinks she may carry in place of
+    /// `pinks` (one at most: `CareerSetup::pink_chances`)
     #[serde(skip)]
     win_chances: Vec<f64>,
     #[serde(skip)]
     mix: Option<[f64; 3]>,
+    #[serde(skip)]
+    pink_chances: Vec<crate::career::schedule::PinkChance>,
 }
 
 const fn d_top() -> usize {

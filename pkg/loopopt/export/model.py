@@ -10,6 +10,8 @@ NAME = {int(k): v for k, v in B["name"].items()}
 APT = {
     int(k): v for k, v in B["apt"].items()
 }  # distance, surface, then running-style grades; base.json order, codes 1..8 = G..S
+# per uma, [card id, aptitudes] of her outfits whose own aptitudes differ from APT's (build_base.py)
+OUTFIT_APT = {int(k): v for k, v in B.get("outfit_apt", {}).items()}
 
 
 def off(code):  # S,A ->0, B->1 ... G->6
@@ -105,15 +107,24 @@ def pwin(base_chance, k):
 
 
 def goals(character_id, exclude_det2=True):
+    """her race goals (condition_type 1; fan-count and placement goals, condition_type 3 and 2, are not exported), one
+    list of permitted programs per goal. A goal over several turns is a choice goal (determine_race 3, asserted): she
+    picks one of its races, so the solver gives the goal shift only to the first she runs"""
     rows = q(
         "select sort_id,turn,condition_id,determine_race from single_mode_route_race where race_set_id=? and scenario_group_id=100 and condition_type=1 and turn<=72 order by sort_id,id",
         character_id,
     )
     group = {}
+    determinations = {}
     for sort_id, turn_number, program_id, determination in rows:
         if exclude_det2 and determination == 2:
             continue
         group.setdefault(sort_id, []).append(GoalRace(turn=turn_number, program=program_id))
+        determinations.setdefault(sort_id, set()).add(determination)
+    for sort_id, races in group.items():
+        # (with the determine_race 2 alternates kept, a goal's alternate may sit on another turn)
+        if exclude_det2 and len({race.turn for race in races}) > 1:
+            assert determinations[sort_id] == {3}, (NAME[character_id], sort_id, determinations[sort_id])
     return list(group.values())
 
 

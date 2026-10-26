@@ -10,6 +10,7 @@ use crate::career::cache::Cache;
 use crate::career::inherit::{ExactOptions, Inheritance, RelOf, SlotSink, aff_factor, inherit, insp_miss, spark_scale};
 use crate::career::outcomes::interp_in;
 use crate::career::pool::{Pool, Who};
+use crate::career::schedule::{ExpectedRecord, ScheduleKey, ScheduleOutfits};
 use crate::career::search::{Bar, DeckRes, Ref};
 use crate::career::state::ProductProof;
 use crate::career::{Career, CareerSetup, Env, Legacy, Lineage, SearchState};
@@ -34,8 +35,9 @@ pub(crate) struct Cur {
     pub(super) p_all: f64,
     /// Chance of each landed set (bit i = job target i).
     pub(super) outcome_sets: Vec<f64>,
-    /// Her chance of at least one win, per race index.
-    pub(super) win_chances: Rc<Vec<f64>>,
+    /// What her schedule and aptitudes leave her veteran: her win chance per race, her possible pinks, the outfit
+    /// her schedule runs.
+    pub(super) record: ExpectedRecord,
     /// A loop rotation career: her veteran may replace her member's rotation veteran (`rot_update`).
     pub(super) rotation: bool,
 }
@@ -87,34 +89,25 @@ pub(super) struct HerPool {
     /// a pool built for her.
     lent: bool,
 }
-/// Her chance per race of at least one win, per (trainee, her parents' wins and pink inputs) (`Evaluator::wins`).
+/// What a career's schedule leaves her veteran (`ExpectedRecord`), per what the schedule reads (`ScheduleKey`: the
+/// trainee, her outfits' grades, the race weights' bits, her legacies' pink inputs) (`Evaluator::wins`).
 #[derive(Default)]
-pub(super) struct WinChances(crate::FxMap<(UmaIndex, Vec<usize>), Rc<Vec<f64>>>);
+pub(super) struct WinChances(crate::FxMap<ScheduleKey, ExpectedRecord>);
 impl WinChances {
-    /// her chance per race of at least one win, cached per (trainee, the parents' wins)
-    fn of(&mut self, setup: &CareerSetup, pool: &Pool, lineage: Lineage) -> Rc<Vec<f64>> {
-        let mut key: Vec<usize> = pool.veterans[lineage.first_parent]
-            .wins
-            .iter()
-            .chain(&pool.veterans[lineage.second_parent].wins)
-            .map(|win| win.race)
-            .collect();
-        key.sort_unstable();
-        // her pink sparks change her win chances: their inputs join the key (start grades, each spark's aptitude and chance)
-        if let Some(pink) = setup.pink_career(pool, lineage) {
-            key.push(usize::MAX);
-            key.extend(pink.start.iter().map(|&grade| grade as usize));
-            for spark in &pink.fire {
-                key.push(spark.aptitude);
-                key.push((spark.chance * 1e9).round() as usize);
-            }
+    /// her schedule's record in the best of `outfits` for it (`CareerSetup::plan_schedule`), cached by what it reads
+    fn of(&mut self, setup: &CareerSetup, pool: &Pool, lineage: Lineage, outfits: ScheduleOutfits) -> ExpectedRecord {
+        let key = setup.schedule_key(pool, lineage, outfits);
+        if let Some(cached) = self.0.get(&key) {
+            return cached.clone();
         }
-        if let Some(cached) = self.0.get(&(lineage.trainee, key.clone())) {
-            return Rc::clone(cached);
-        }
-        let chances = Rc::new(setup.schedule(pool, lineage).win_chances);
-        self.0.insert((lineage.trainee, key), Rc::clone(&chances));
-        chances
+        let planned = setup.plan_schedule(pool, lineage, outfits);
+        let record = ExpectedRecord {
+            pink_chances: Rc::new(planned.pink.as_ref().map_or_else(Vec::new, CareerSetup::pink_chances)),
+            outfit: planned.outfit.card,
+            win_chances: Rc::new(planned.win_chances),
+        };
+        self.0.insert(key, record.clone());
+        record
     }
     /// Schedules computed so far.
     pub(super) fn schedules(&self) -> usize {
@@ -183,8 +176,8 @@ fn ceiling_factors(setup: &CareerSetup) -> UmaTable<Vec<Vec<(f64, f64)>>> {
         .collect()
 }
 
-/// The career with its deck: its exact numbers; `rotation`: a loop rotation career (`Cur::rotation`). Her win chances
-/// come from (and fill) `win_chances`.
+/// The career with its deck: its exact numbers; `rotation`: a loop rotation career (`Cur::rotation`). Her schedule's
+/// record, in the outfit option her exact odds pick, comes from (and fills) `win_chances`.
 fn career_numbers(
     setup: &CareerSetup,
     state: &mut SearchState,
@@ -200,8 +193,8 @@ fn career_numbers(
     let exact =
         setup.exact(state, trainee, career.deck, &carriers, ExactOptions { all_but_one: true, landed_sets: true });
     let outcome_sets = setup.outcome_sets(exact.outfit, &exact.extras);
-    let her_win_chances = win_chances.of(setup, pool, lineage);
-    Cur { lineage, p_all: exact.p_all, outcome_sets, win_chances: her_win_chances, rotation }
+    let record = win_chances.of(setup, pool, lineage, ScheduleOutfits::DeckOption(exact.outfit));
+    Cur { lineage, p_all: exact.p_all, outcome_sets, record, rotation }
 }
 
 impl Evaluator {
@@ -250,7 +243,7 @@ impl Evaluator {
         recorded_pool: bool,
         her: &Cur,
     ) -> HerPool {
-        let veteran = setup.veteran(legacies, her.lineage, her.win_chances.to_vec());
+        let veteran = setup.veteran(legacies, her.lineage, &her.record);
         if recorded_pool {
             debug_assert_eq!(pool.veterans.len(), legacies.len(), "one legacy per pool member");
             let mut extended = self.take_pool(pool);
@@ -488,9 +481,38 @@ impl Evaluator {
         self.inheritance_buffer = q;
         pick
     }
-    /// her chance per race of at least one win, cached per (trainee, the parents' wins)
-    pub(super) fn wins(&mut self, setup: &CareerSetup, pool: &Pool, lineage: Lineage) -> Rc<Vec<f64>> {
-        self.win_chances.of(setup, pool, lineage)
+    /// what her schedule leaves her veteran in the best of `outfits` for it (`ExpectedRecord`), cached by what the
+    /// schedule reads
+    pub(super) fn wins(
+        &mut self,
+        setup: &CareerSetup,
+        pool: &Pool,
+        lineage: Lineage,
+        outfits: ScheduleOutfits,
+    ) -> ExpectedRecord {
+        self.win_chances.of(setup, pool, lineage, outfits)
+    }
+    /// `wins` of a career with its deck: in the outfit option her exact odds pick (`CareerSetup::exact`, after folding
+    /// her chances in, as `make_cur` does), found only where her outfits' grades differ (any option reads the same
+    /// grades otherwise)
+    pub(super) fn career_wins(
+        &mut self,
+        setup: &CareerSetup,
+        state: &mut SearchState,
+        pool: &Pool,
+        career: Career,
+    ) -> ExpectedRecord {
+        let lineage = career.lineage;
+        let trainee = lineage.trainee;
+        let option = if setup.data.umas[trainee].outfit_aptitudes.is_empty() {
+            0
+        } else {
+            let Inheritance { chances: q, carriers } = inherit(&setup.slots(pool, lineage), setup.target_count);
+            setup.set_trainee(state, trainee, &q);
+            let options = ExactOptions { all_but_one: false, landed_sets: false };
+            setup.exact(state, trainee, career.deck, &carriers, options).outfit
+        };
+        self.win_chances.of(setup, pool, lineage, ScheduleOutfits::DeckOption(option))
     }
     /// the career with its deck: its exact numbers; `rotation`: a loop rotation career (`Cur::rotation`)
     pub(super) fn make_cur(

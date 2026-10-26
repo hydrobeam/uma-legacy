@@ -81,8 +81,9 @@ pub(crate) struct SkillTarget {
 pub(crate) struct SkillJob {
     pub targets: Vec<SkillTarget>,
     /// Assumed 1/2/3-star shares of the lineage's sparks; defaults to the below-17,500-rank mix (`dstar`).
-    /// The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2).
-    #[serde(default = "dstar")]
+    /// The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2). Checked as it is read
+    /// (`star_shares`).
+    #[serde(default = "dstar", deserialize_with = "star_shares")]
     pub star_dist: [f64; 3],
     #[serde(default)]
     pub owned: Vec<u32>,
@@ -112,6 +113,36 @@ pub(crate) struct SkillJob {
 }
 const fn dstar() -> [f64; 3] {
     [0.50, 0.45, 0.05]
+}
+
+/// How far a star mix's shares may sum from 1 (`star_shares`).
+const STAR_MIX_TOLERANCE: f64 = 1e-9;
+
+/// A job's star mix: three finite, non-negative shares (1, 2 and 3 stars) summing to 1 within `STAR_MIX_TOLERANCE`.
+/// Every reader then takes the same distribution: the inheritance's mix terms (`mix_term`, the loop's base chance)
+/// weight by the shares, and a drawn spark (`star_draw`) gets its third share as 1 less the other two, which is the
+/// third share to within the tolerance.
+fn star_shares<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<[f64; 3], D::Error> {
+    let shares = <[f64; 3]>::deserialize(deserializer)?;
+    let sum: f64 = shares.iter().sum();
+    if shares.iter().any(|share| !share.is_finite() || *share < 0.0) || (sum - 1.0).abs() > STAR_MIX_TOLERANCE {
+        return Err(serde::de::Error::custom(format!(
+            "star_dist: three non-negative shares of 1, 2 and 3 stars summing to 1, not {shares:?}"
+        )));
+    }
+    Ok(shares)
+}
+
+/// A spark's stars drawn from star mix `star_mix` with `uniform` in [0, 1) (the simulator's draw; the page's roll
+/// reads the mix the same way): 1 below the first share, 2 below the first two, else 3.
+pub(crate) fn star_draw(star_mix: [f64; 3], uniform: f64) -> u8 {
+    if uniform < star_mix[0] {
+        1
+    } else if uniform < star_mix[0] + star_mix[1] {
+        2
+    } else {
+        3
+    }
 }
 const fn diters() -> usize {
     30
@@ -979,5 +1010,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn star_dist_is_three_shares_of_one() {
+        let job = |star_dist: serde_json::Value| {
+            serde_json::from_value::<SkillJob>(json!({"targets": [{"group": 20159}], "star_dist": star_dist}))
+        };
+        assert_eq!(job(json!([0.2, 0.7, 0.1])).unwrap().star_dist, [0.2, 0.7, 0.1]);
+        for bad in [json!([0.5, 0.5, 0.5]), json!([1.2, -0.1, -0.1]), json!([0.5, 0.45])] {
+            assert!(job(bad.clone()).is_err(), "{bad} accepted");
+        }
+        // the draw reads the mix as the mix terms do: 1 star below the first share, 2 below the first two
+        assert_eq!([0.0, 0.19, 0.2, 0.89, 0.9].map(|u| star_draw([0.2, 0.7, 0.1], u)), [1, 1, 2, 2, 3]);
     }
 }

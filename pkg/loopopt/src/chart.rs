@@ -1,6 +1,6 @@
 //! Race and member labels and structured schedule charts for solver results.
 //! Win probabilities come from `data`; schedule optimization belongs to `loop_planner::schedules`.
-use crate::data::{Choice, Data, NT, OptRaw, Sched};
+use crate::data::{Attempt, Choice, Data, NT, OptRaw, Sched, scored_position};
 use crate::uma::UmaIndex;
 use serde_json::{Value, json};
 
@@ -160,20 +160,9 @@ pub(crate) fn interchangeable(
 /// Structured schedule chart: shared G1s (affinity) and optional G1s (one runner, race sparks only).
 pub(crate) fn chart_rows(data: &Data, members: &[UmaIndex], schedules: &[Sched]) -> Value {
     let member_count = members.len();
-    let streaks: Vec<Vec<usize>> = (0..member_count)
-        .map(|i| {
-            let mut streak = 0;
-            (0..NT)
-                .map(|turn| {
-                    match schedules[i][turn] {
-                        Choice::Rest => streak = 0,
-                        Choice::Opt(_) => streak = (streak + 1).min(6),
-                    };
-                    streak
-                })
-                .collect()
-        })
-        .collect();
+    // per member and turn, her attempt's streak position and goal shift (of a choice goal, the first she runs only)
+    let attempts: Vec<[Option<Attempt>; NT]> =
+        (0..member_count).map(|i| data.umas[members[i]].attempts(&schedules[i])).collect();
     let mut runners: Vec<Vec<bool>> = vec![vec![false; member_count]; data.race_count];
     for i in 0..member_count {
         for turn in 0..NT {
@@ -204,12 +193,15 @@ pub(crate) fn chart_rows(data: &Data, members: &[UmaIndex], schedules: &[Sched])
                 .map(|i| match chosen(data, members[i], &schedules[i], turn) {
                     Some(chosen) if chosen.race == race => {
                         runner_count += 1;
-                        let streak = streaks[i][turn];
+                        let Some(Attempt { streak, goal, .. }) = attempts[i][turn] else {
+                            unreachable!("member {i} runs race {race} at turn {turn}")
+                        };
                         // Win chance accounts for aptitude grades (distance + surface, out of 110) and consecutive
                         // races.
-                        json!({"p": (data.option_chance(chosen, streak) * 100.0).round(), "goal": chosen.goal,
+                        let chance = data.attempt_chance(chosen.win_rate_basis, scored_position(goal, streak));
+                        json!({"p": (chance * 100.0).round(), "goal": goal,
                            "apt": 110 - chosen.win_rate_basis, "row": streak,
-                           "pen": data.streak_penalty(chosen.goal, streak)})
+                           "pen": data.streak_penalty(goal, streak)})
                     }
                     _ => Value::Null,
                 })

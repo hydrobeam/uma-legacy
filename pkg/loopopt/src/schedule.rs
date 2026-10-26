@@ -1,7 +1,7 @@
 //! Exact single-uma schedule search and its scratch buffers and scoped best-response memo.
 //! Loop-wide optimization belongs to `loop_planner::schedules`; race data and win probabilities belong to `data`.
 use crate::FxMap;
-use crate::data::{Choice, Data, NT, RaceChoice, Sched, Uma, dot};
+use crate::data::{AttemptState, Choice, Data, NT, RaceChoice, Sched, Uma, dot};
 
 const NS: usize = 7; // streak state 0 (rested) ..= 6 (6+)
 const HALF: usize = 48; // turns 1..=48 = Junior+Classic, 49..=72 = Senior
@@ -22,6 +22,9 @@ impl Uma {
     /// Junior turns 1..24 run sequentially; then Classic turn t and Senior turn t+24 are decided together,
     /// so a race offered in both years (always exactly 24 turns apart) is scored exactly.
     /// State: (classic streak, senior streak, guessed classic streak at end of turn 48 [only if turn 49 has options], goal mask).
+    /// The goal mask also prices a choice goal's options (`RaceChoice::chances`): each multi-turn goal lies within one
+    /// year (`data::check_goal_groups`), so the mask at pair j holds, for an option's goal, exactly the goals met before
+    /// its turn.
     /// `force`: optional (turn, choice) the schedule must take at that turn.
     /// Implementation notes (performance): choices are codes (0 = rest, o+1 = option o) into per-uma precomputed tables;
     /// loops run choice-pair outer / state inner, but each state sees candidates in the same order (classic choice outer,
@@ -85,8 +88,14 @@ fn dp_exact_in(
         }
     }
     #[inline(always)]
-    const fn choice_chance(choice: &RaceChoice, k: usize) -> f64 {
-        if choice.race >= 0 { choice.win_chances[k] } else { 0.0 }
+    const fn choice_chance(choice: &RaceChoice, k: usize, goal_met: bool) -> f64 {
+        if choice.race < 0 {
+            0.0
+        } else if goal_met {
+            choice.met_win_chances[k]
+        } else {
+            choice.win_chances[k]
+        }
     }
     // ---- phase 2: pairs j = 0..24 (classic turn 24+j with senior turn 48+j)
     let paired_values = &mut scratch.paired_values;
@@ -118,35 +127,39 @@ fn dp_exact_in(
         let best_choices = &mut paired_choices[j * pair_stride..(j + 1) * pair_stride];
         for &classic_code in &classic_codes[..classic_code_count] {
             let classic_choice = &uma.choices[classic_turn][classic_code as usize];
-            // per classic streak sc: next streak kc and (separate-race) reward term 0.0 + w*p
+            // per classic streak sc and goal state (index 1: its choice goal met): next streak kc and (separate-race)
+            // reward term 0.0 + w*p
             let mut classic_next_streaks = [0usize; NS];
-            let mut classic_rewards = [0.0f64; NS];
-            let mut classic_chances = [0.0f64; NS];
+            let mut classic_rewards = [[0.0f64; NS]; 2];
+            let mut classic_chances = [[0.0f64; NS]; 2];
             for classic_streak in 0..NS {
                 let k = next_streak(classic_choice, classic_streak);
                 classic_next_streaks[classic_streak] = k;
-                classic_chances[classic_streak] = choice_chance(classic_choice, k);
-                classic_rewards[classic_streak] = if classic_choice.race >= 0 {
-                    0.0 + weights[classic_choice.race as usize] * classic_chances[classic_streak]
-                } else {
-                    0.0
-                };
+                for goal_met in [false, true] {
+                    let chance = choice_chance(classic_choice, k, goal_met);
+                    classic_chances[usize::from(goal_met)][classic_streak] = chance;
+                    classic_rewards[usize::from(goal_met)][classic_streak] = if classic_choice.race >= 0 {
+                        0.0 + weights[classic_choice.race as usize] * chance
+                    } else {
+                        0.0
+                    };
+                }
             }
             for &senior_code in &senior_codes[..senior_code_count] {
                 let senior_choice = &uma.choices[senior_turn][senior_code as usize];
                 let chosen_goal_bits = (classic_choice.goal_bits | senior_choice.goal_bits) as usize;
                 let mut senior_next_streaks = [0usize; NS];
-                let mut senior_rewards = [0.0f64; NS];
-                let mut senior_chances = [0.0f64; NS];
+                let mut senior_rewards = [[0.0f64; NS]; 2];
+                let mut senior_chances = [[0.0f64; NS]; 2];
                 for senior_streak in 0..NS {
                     let k = next_streak(senior_choice, senior_streak);
                     senior_next_streaks[senior_streak] = k;
-                    senior_chances[senior_streak] = choice_chance(senior_choice, k);
-                    senior_rewards[senior_streak] = if senior_choice.race >= 0 {
-                        weights[senior_choice.race as usize] * senior_chances[senior_streak]
-                    } else {
-                        0.0
-                    };
+                    for goal_met in [false, true] {
+                        let chance = choice_chance(senior_choice, k, goal_met);
+                        senior_chances[usize::from(goal_met)][senior_streak] = chance;
+                        senior_rewards[usize::from(goal_met)][senior_streak] =
+                            if senior_choice.race >= 0 { weights[senior_choice.race as usize] * chance } else { 0.0 };
+                    }
                 }
                 let same = classic_choice.race >= 0 && classic_choice.race == senior_choice.race;
                 let shared_race_weight = if same { weights[classic_choice.race as usize] } else { 0.0 };
@@ -156,22 +169,29 @@ fn dp_exact_in(
                     None
                 };
                 // Certain aptitudes retain the original operations and order, including the leading 0.0
-                // in separate-race rewards. Pink histories supply E[pc * ps] without changing the DP state.
-                let reward = |classic_streak: usize, senior_streak: usize| -> f64 {
+                // in separate-race rewards. Pink histories supply E[pc * ps] without changing the DP state. `goals_met`
+                // (the state's goal mask) prices a choice goal's option: its goal shift only while its goal is unmet.
+                let reward = |classic_streak: usize, senior_streak: usize, goals_met: u32| -> f64 {
+                    let classic_met = usize::from(classic_choice.goal_bits & goals_met != 0);
+                    let senior_met = usize::from(senior_choice.goal_bits & goals_met != 0);
                     if let Some(repeated) = repeated {
                         shared_race_weight
                             * repeated.win_chance(
                                 uma,
-                                classic_next_streaks[classic_streak],
-                                senior_next_streaks[senior_streak],
+                                AttemptState { streak: classic_next_streaks[classic_streak], goals_met },
+                                AttemptState { streak: senior_next_streaks[senior_streak], goals_met },
                             )
                     } else if same {
                         shared_race_weight
-                            * (1.0 - (1.0 - classic_chances[classic_streak]) * (1.0 - senior_chances[senior_streak]))
+                            * (1.0
+                                - (1.0 - classic_chances[classic_met][classic_streak])
+                                    * (1.0 - senior_chances[senior_met][senior_streak]))
                     } else {
-                        classic_rewards[classic_streak] + senior_rewards[senior_streak]
+                        classic_rewards[classic_met][classic_streak] + senior_rewards[senior_met][senior_streak]
                     }
                 };
+                // (whether either choice's reward reads the goal mask: a choice goal's option)
+                let reads_goals = (classic_choice.goal_bits | senior_choice.goal_bits) != 0;
                 if goal_block_size == 1 {
                     for classic_streak in 0..NS {
                         let next_row = &next_values
@@ -181,7 +201,7 @@ fn dp_exact_in(
                         for senior_streak in 0..NS {
                             // a next_row value of -inf gives candidate_value == -inf, which never passes the strict '>' (same as skipping it)
                             let candidate_value =
-                                reward(classic_streak, senior_streak) + next_row[senior_next_streaks[senior_streak]];
+                                reward(classic_streak, senior_streak, 0) + next_row[senior_next_streaks[senior_streak]];
                             if candidate_value > current_row[senior_streak] {
                                 current_row[senior_streak] = candidate_value;
                                 choice_row[senior_streak] = [classic_code, senior_code];
@@ -191,13 +211,18 @@ fn dp_exact_in(
                 } else {
                     for classic_streak in 0..NS {
                         for senior_streak in 0..NS {
-                            let pair_reward = reward(classic_streak, senior_streak);
+                            let unmet_reward = reward(classic_streak, senior_streak, 0);
                             let next_block = (classic_next_streaks[classic_streak] * NS
                                 + senior_next_streaks[senior_streak])
                                 * goal_block_size;
                             let current_block = (classic_streak * NS + senior_streak) * goal_block_size;
                             for boundary_streak in 0..boundary_streak_count {
                                 for goals_met in 0..goal_state_count {
+                                    let pair_reward = if reads_goals {
+                                        reward(classic_streak, senior_streak, goals_met as u32)
+                                    } else {
+                                        unmet_reward
+                                    };
                                     let candidate_value = pair_reward
                                         + next_values[next_block
                                             + boundary_streak * goal_state_count
@@ -252,8 +277,16 @@ fn dp_exact_in(
             let chosen_goal_bits = choice.goal_bits as usize;
             for streak in 0..NS {
                 let k = next_streak(choice, streak);
-                let reward = if choice.race >= 0 { weights[choice.race as usize] * choice.win_chances[k] } else { 0.0 };
+                // (index 1: a choice goal's option once its goal is met, `RaceChoice::chances`)
+                let rewards = [false, true].map(|goal_met| {
+                    if choice.race >= 0 {
+                        weights[choice.race as usize] * choice_chance(choice, k, goal_met)
+                    } else {
+                        0.0
+                    }
+                });
                 for goals_met in 0..goal_state_count {
+                    let reward = rewards[usize::from(goals_met & chosen_goal_bits != 0)];
                     let candidate_value = next_values[k * goal_state_count + (goals_met | chosen_goal_bits)] + reward;
                     let state_index = streak * goal_state_count + goals_met;
                     if candidate_value > current_values[state_index] {
@@ -349,7 +382,9 @@ impl Data {
     ) -> Option<(Sched, f64)> {
         let (schedule, dp_value) = uma.dp_exact(weights, force)?;
         let value = dot(weights, &self.win_chances(uma, &schedule));
-        assert!((value - dp_value).abs() < 1e-6, "dp_exact value {dp_value} != evaluated {value} for {}", uma.name);
+        // (values reach about 2,000 under the loop planner's weights, a rounding error of about 1e-11; the fill
+        // tie-break adds at most about 3.4e-6, so a looser bar could pass an error confined to it)
+        assert!((value - dp_value).abs() < 1e-9, "dp_exact value {dp_value} != evaluated {value} for {}", uma.name);
         assert!(uma.feasible(&schedule), "best response produced an infeasible schedule for {}", uma.name);
         Some((schedule, value))
     }
@@ -366,5 +401,61 @@ impl Drop for MemoScope {
     fn drop(&mut self) {
         let previous = self.0.take();
         BR_MEMO.with(|memo| *memo.borrow_mut() = previous);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::data::{Choice, Data, NT, load_str};
+    use crate::uma::UmaIndex;
+    use serde_json::json;
+
+    /// A forced non-G1 lead-in on 0-based turn 59, then a two-race choice goal on turns 60 (race 0) and 61 (race 1),
+    /// both at basis 100: running both, the second is 3rd in a row.
+    fn choice_goal_data(goal_turns: [usize; 2]) -> Data {
+        let mut turns = vec![vec![]; NT];
+        turns[59].push(json!({"prog": 0, "race": -1, "bp": 0, "goal": true}));
+        for (race, &turn) in goal_turns.iter().enumerate() {
+            turns[turn].push(json!({"prog": race + 1, "race": race, "bp": 100, "goal": true}));
+        }
+        load_str(
+            &json!({
+                "race_names": ["First", "Second"], "relations": [], "pen": [0, 0, 5, 20, 30, 50],
+                "umas": [{"id": 1, "name": "Synthetic", "turns": turns,
+                          "goals": [[[60, 0]], [[goal_turns[0] + 1, 0], [goal_turns[1] + 1, 0]]]}]
+            })
+            .to_string(),
+        )
+    }
+
+    #[test]
+    fn a_choice_goals_second_race_takes_no_goal_shift() {
+        let data = choice_goal_data([60, 61]);
+        let uma = &data.umas[UmaIndex(0)];
+        let mut both = [Choice::Rest; NT];
+        both[59..=61].fill(Choice::Opt(0));
+        // the first, 2nd in a row, takes the shift (1st's penalty, 0); the second, 3rd in a row, does not (5)
+        assert_eq!(data.win_chances(uma, &both), [1.0, 0.95]);
+        let (schedule, value) = data.best_response_solve(uma, &[1.0, 1.0], None).unwrap();
+        assert_eq!(schedule, both);
+        assert!((value - 1.95).abs() < 1e-12, "{value}");
+        // the second alone meets the goal, 1st in a row
+        let (schedule, value) = data.best_response_solve(uma, &[0.0, 1.0], None).unwrap();
+        assert_eq!((schedule[60], schedule[61]), (Choice::Rest, Choice::Opt(0)));
+        assert_eq!(value, 1.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "spans more than one year")]
+    fn a_multi_turn_goal_lies_within_one_year() {
+        // 1-based turns 47 (Classic) and 49 (Senior)
+        let mut turns = vec![vec![]; NT];
+        turns[46].push(json!({"prog": 1, "race": 0, "bp": 100, "goal": true}));
+        turns[48].push(json!({"prog": 2, "race": 1, "bp": 100, "goal": true}));
+        load_str(
+            &json!({"race_names": ["First", "Second"], "relations": [], "pen": [0, 0, 5, 20, 30, 50],
+                    "umas": [{"id": 1, "name": "Synthetic", "turns": turns, "goals": [[[47, 0], [49, 0]]]}]})
+            .to_string(),
+        );
     }
 }

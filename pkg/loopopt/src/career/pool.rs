@@ -1,4 +1,5 @@
 //! Veteran pools and legal parent pairs.
+use crate::career::schedule::PinkChance;
 use crate::career::{Ancestor, CareerSetup, Legacy};
 use crate::uma::UmaIndex;
 /// What `CareerSetup::who` reads of a legacy or of one of her recorded parents.
@@ -12,6 +13,8 @@ struct VeteranTraits<'veteran> {
     win_chances: &'veteran [f64],
     /// (aptitude factor group, stars) of her pink sparks.
     pinks: &'veteran [(u32, u8)],
+    /// A veteran before her result is known: the pinks she may carry, one at most (empty: `pinks` are hers).
+    pink_chances: &'veteran [PinkChance],
     /// The star mix her sparks are drawn from (None: fixed stars).
     star_mix: Option<[f64; 3]>,
 }
@@ -24,10 +27,12 @@ impl<'veteran> VeteranTraits<'veteran> {
             wins: &legacy.wins,
             win_chances: &legacy.win_chances,
             pinks: &legacy.pinks,
+            pink_chances: &legacy.pink_chances,
             star_mix: legacy.mix,
         }
     }
-    /// A recorded parent: fixed stars and certain wins.
+    /// A recorded parent: fixed stars and certain wins (and, the parent of a veteran before her result is known, her
+    /// possible pinks: `Ancestor::of_legacy`).
     fn of_ancestor(ancestor: &'veteran Ancestor) -> Self {
         Self {
             character_id: ancestor.character_id,
@@ -35,6 +40,7 @@ impl<'veteran> VeteranTraits<'veteran> {
             wins: &ancestor.wins,
             win_chances: &[],
             pinks: &ancestor.pinks,
+            pink_chances: &ancestor.pink_chances,
             star_mix: None,
         }
     }
@@ -54,6 +60,8 @@ pub(crate) struct Who {
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
     /// (aptitude factor group, stars) of her pink sparks.
     pub(crate) pinks: std::rc::Rc<Vec<(u32, u8)>>,
+    /// A veteran before her result is known: the pinks she may carry, one at most (empty: `pinks` are hers).
+    pub(crate) pink_chances: std::rc::Rc<Vec<PinkChance>>,
     /// The star mix her sparks are drawn from (a veteran before her result is known); None: `stars` are fixed.
     pub(crate) star_mix: Option<[f64; 3]>,
 }
@@ -240,6 +248,7 @@ impl CareerSetup<'_> {
             wins,
             stars: std::rc::Rc::new(self.job_target_stars(traits.sparks)),
             pinks: std::rc::Rc::new(traits.pinks.to_vec()),
+            pink_chances: std::rc::Rc::new(traits.pink_chances.to_vec()),
             star_mix: traits.star_mix,
         }
     }
@@ -268,5 +277,23 @@ impl CareerSetup<'_> {
             self.pool_push(&mut pool, legacy);
         }
         pool
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::career::Legacy;
+    use serde_json::json;
+
+    #[test]
+    fn a_legacy_records_at_most_two_parents() {
+        let legacy = |parent_count: usize| {
+            serde_json::from_value::<Legacy>(
+                json!({"chara": 1001, "parents": vec![json!({"chara": 1002}); parent_count]}),
+            )
+        };
+        assert_eq!(legacy(2).unwrap().parents.len(), 2);
+        let Err(error) = legacy(3) else { panic!("three parents accepted") };
+        assert!(error.to_string().contains("at most 2 parents"), "{error}");
     }
 }

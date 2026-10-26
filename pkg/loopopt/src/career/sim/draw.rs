@@ -1,7 +1,6 @@
 //! Keyed uniforms and veteran draws (landed set, stars, wins, pink), including the pinned random-number test.
 //! Policy selection and path execution live in the sibling modules.
 
-use crate::career::schedule::{PinkCareer, apt_pink};
 use crate::career::sim::play::PathState;
 use crate::career::sim::{Cur, Sim};
 use crate::career::{Ancestor, Legacy, Lineage};
@@ -58,55 +57,9 @@ pub(super) struct VeteranDraw {
     pub(super) outcomes: Outcomes,
 }
 
-/// The April inspirations a legacy's pink gets a chance to fire at (`schedule.rs`, `INSP_TURNS`; webapp/src/pink.mjs).
-const INSPIRATIONS: usize = 2;
-/// Aptitude codes 1..8 = G..S.
-const GRADE_A: u8 = 7;
-const GRADE_S: u8 = 8;
-
-/// Her pink spark drawn as the page's roll draws it (webapp/src/pink.mjs `drawPink`, docs/MODEL.md *Sparks the odds
-/// don't use*): from her start grades each legacy pink fires at each inspiration with its chance (+1 grade, at most S),
-/// then one aptitude uniform over those she ends at A or S, stars 20/70/10; none when she ends with none. `uniform(i)`:
-/// the i-th uniform of the draw, in pink.mjs's order (every fire chance per inspiration, then the aptitude, then the
-/// stars).
-// TODO(integration): swap for the model lane's shared helper, `CareerSetup::draw_veteran_pink(pool, lineage, outfit,
-// uniform)` (career/schedule.rs: the career's outfit from `Cur`'s record, `uniform` an FnMut over this draw's keyed
-// uniforms), so the plan's hypothetical veterans and these draws share one definition. Its order is this one's (fires
-// per inspiration, the aptitude, the stars; one more number first only for a veteran whose result is not known, which
-// the simulator's pools never hold), so the swap keeps the order of the uniforms (its grades are the outfit's).
-fn draw_pink(pink_career: &PinkCareer, uniform: impl Fn(usize) -> f64) -> Option<(u32, u8)> {
-    let mut grades = pink_career.start;
-    let mut item = 0;
-    let mut next_uniform = || {
-        item += 1;
-        uniform(item - 1)
-    };
-    for _ in 0..INSPIRATIONS {
-        for fire in &pink_career.fire {
-            if next_uniform() < fire.chance {
-                grades[fire.aptitude] = (grades[fire.aptitude] + 1).min(GRADE_S);
-            }
-        }
-    }
-    let at_least_a: Vec<usize> = (0..grades.len()).filter(|&aptitude| grades[aptitude] >= GRADE_A).collect();
-    if at_least_a.is_empty() {
-        return None;
-    }
-    let pick = (next_uniform() * at_least_a.len() as f64) as usize;
-    let star_draw = next_uniform();
-    let stars = if star_draw < 0.2 {
-        1
-    } else if star_draw < 0.9 {
-        2
-    } else {
-        3
-    };
-    Some((apt_pink(at_least_a[pick.min(at_least_a.len() - 1)]), stars))
-}
-
 impl Sim<'_, '_> {
     /// the veteran a career leaves: her landed set drawn from `draw.outcomes`' sets, her stars from the rank's mix,
-    /// her wins from her schedule's chances, her pink as the page draws it (`draw_pink`)
+    /// her wins from her schedule's chances, her pink as the page draws it (`CareerSetup::draw_veteran_pink`)
     pub(super) fn draw(&self, career: &Cur, path: &PathState, draw: VeteranDraw) -> Legacy {
         let VeteranDraw { keys, career_index, outcomes } = draw;
         let full_set = career.outcome_sets.len() - 1;
@@ -136,17 +89,11 @@ impl Sim<'_, '_> {
             if landed_mask >> i & 1 == 0 {
                 continue;
             }
-            let star_draw = keys.uniform(career_index, STREAM_STAR, i);
-            let stars = if star_draw < self.star_mix[0] {
-                1
-            } else if star_draw < self.star_mix[0] + self.star_mix[1] {
-                2
-            } else {
-                3
-            };
+            let stars = crate::skills::star_draw(self.star_mix, keys.uniform(career_index, STREAM_STAR, i));
             sparks.push((target.group, stars));
         }
         let wins: Vec<usize> = career
+            .record
             .win_chances
             .iter()
             .enumerate()
@@ -155,13 +102,11 @@ impl Sim<'_, '_> {
             })
             .map(|(race_index, _)| race_index)
             .collect();
-        let pinks: Vec<(u32, u8)> = self
-            .env
-            .setup
-            .pink_career(&path.pool, career.lineage)
-            .and_then(|pink_career| draw_pink(&pink_career, |item| keys.uniform(career_index, STREAM_PINK, item)))
-            .into_iter()
-            .collect();
+        let mut pink_item = 0;
+        let pinks = self.env.setup.draw_veteran_pink(&path.pool, career.lineage, career.record.outfit, || {
+            pink_item += 1;
+            keys.uniform(career_index, STREAM_PINK, pink_item - 1)
+        });
         let Lineage { trainee, first_parent, second_parent } = career.lineage;
         let legacies = &path.legacies;
         Legacy {
@@ -179,7 +124,7 @@ impl Sim<'_, '_> {
 #[cfg(test)]
 mod tests {
     use crate::career::CareerSetup;
-    use crate::career::schedule::{PinkCareer, PinkFire, apt_pink};
+    use crate::career::schedule::{PinkCareer, PinkFire, PinkOutcome, apt_pink, draw_pink};
 
     #[test]
     /// the random numbers are pinned: changing them would change every recorded run
@@ -199,14 +144,22 @@ mod tests {
         let start = [7, 6, 5, 1, 7, 6, 1, 1, 1, 1];
         let pink_career = PinkCareer {
             base: start,
-            start,
-            fire: vec![fire(1, 0.3, 0), fire(1, 0.2, 1), fire(2, 0.4, 2), fire(2, 0.5, 3), fire(5, 0.1, 4)],
+            outcomes: vec![PinkOutcome {
+                chance: 1.0,
+                start,
+                fire: vec![fire(1, 0.3, 0), fire(1, 0.2, 1), fire(2, 0.4, 2), fire(2, 0.5, 3), fire(5, 0.1, 4)],
+            }],
         };
         let exact = CareerSetup::pink_gen(&pink_career);
         let draws = 200_000u32;
         let (mut counts, mut star_counts) = ([0u32; 10], [0u32; 4]);
         for draw in 0..draws {
-            if let Some((group, stars)) = super::draw_pink(&pink_career, |item| super::u01(&[9, draw, item as u32])) {
+            let mut item = 0u32;
+            let uniform = || {
+                item += 1;
+                super::u01(&[9, draw, item - 1])
+            };
+            if let Some((group, stars)) = draw_pink(&pink_career, uniform) {
                 let aptitude = (0..10).find(|&k| apt_pink(k) == group).unwrap();
                 counts[aptitude] += 1;
                 star_counts[stars as usize] += 1;

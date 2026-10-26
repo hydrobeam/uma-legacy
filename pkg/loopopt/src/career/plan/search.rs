@@ -284,6 +284,7 @@ pub(crate) fn loop_ceiling(
         sparks: full.clone(),
         wins: wins(uma),
         pinks: vec![],
+        pink_chances: vec![],
     };
     let veteran =
         |uma: crate::uma::UmaIndex, first_parent: crate::uma::UmaIndex, second_parent: crate::uma::UmaIndex| Legacy {
@@ -295,6 +296,7 @@ pub(crate) fn loop_ceiling(
             parents: vec![ancestor(first_parent), ancestor(second_parent)],
             win_chances: vec![],
             mix: Some(star),
+            pink_chances: vec![],
         };
     // (`CareerSetup::pool` of the legacies and the two: the working copy of `pool` with them pushed, then popped)
     let mut working_pool = simulator.evaluator.take_pool(pool);
@@ -354,7 +356,13 @@ pub(crate) fn hint_umas(
         sides.push(0);
     }
     let (first_side, second_side) = (sides[0], sides[1]);
-    let ancestor = |character_id: u32| Ancestor { character_id, sparks: full.clone(), wins: vec![], pinks: vec![] };
+    let ancestor = |character_id: u32| Ancestor {
+        character_id,
+        sparks: full.clone(),
+        wins: vec![],
+        pinks: vec![],
+        pink_chances: vec![],
+    };
     let veteran = |character_id: u32, first_parent: u32, second_parent: u32| Legacy {
         character_id,
         borrowed: false,
@@ -364,6 +372,7 @@ pub(crate) fn hint_umas(
         parents: vec![ancestor(first_parent), ancestor(second_parent)],
         win_chances: vec![],
         mix: Some(star),
+        pink_chances: vec![],
     };
     let mut out: Vec<HintUma> = vec![];
     // (`CareerSetup::pool` of the legacies and the two: one copy of `pool`, `CareerSetup::pool(legacies)`, the two pushed

@@ -8,7 +8,7 @@ from typing import NamedTuple
 
 # Importing samerace applies the venue aliases before any program is exported.
 from samerace import PROG
-from model import G1CAL, ROSTER, NAME, APT, RN, PEN, options, is_g1, basep, cat
+from model import G1CAL, ROSTER, NAME, APT, OUTFIT_APT, RN, PEN, options, is_g1, basep, cat
 from rel import pt, mem
 from era import OUT
 
@@ -64,8 +64,12 @@ def export_uma(character, *, races, race_indices):
                 key = (choice["race"], turn <= 48)
                 assert key not in seen, (NAME[character], RN[races[choice["race"]]])
                 seen[key] = turn
-    # Ten aptitude codes in base.json order; bp above uses the first six.
-    return {"id": character, "name": NAME[character], "turns": turns, "goals": groups, "apt": list(APT[character])}
+    # Ten aptitude codes in base.json order; bp above uses the first six. `outfit_apt`: [card id, aptitudes] of each
+    # outfit whose own differ (the career planner's grades for a career in that outfit; bp stays the first outfit's)
+    exported = {"id": character, "name": NAME[character], "turns": turns, "goals": groups, "apt": list(APT[character])}
+    if character in OUTFIT_APT:
+        exported["outfit_apt"] = OUTFIT_APT[character]
+    return exported
 
 
 def export_relations():

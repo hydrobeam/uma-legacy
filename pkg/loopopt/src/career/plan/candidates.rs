@@ -14,7 +14,7 @@ use crate::career::plan::search::{
 };
 use crate::career::plan::{
     ParentPool, PlanCandidates, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, PlanSetup, found_career,
-    found_lineage, search_best_career,
+    search_best_career,
 };
 use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Found};
@@ -572,9 +572,14 @@ pub(crate) fn set_plan_wins(
     trainee: crate::uma::UmaIndex,
     career: &Found,
 ) {
-    let win_chances = simulator.evaluator.wins(&simulator.env.setup, pool, found_lineage(trainee, career));
+    let record = simulator.evaluator.career_wins(
+        &simulator.env.setup,
+        &mut simulator.env.state,
+        pool,
+        crate::career::plan::found_career(trainee, career),
+    );
     wins_by_trainee[trainee] =
-        win_chances.iter().enumerate().filter(|(_, chance)| **chance > 0.5).map(|(race, _)| race).collect();
+        record.win_chances.iter().enumerate().filter(|(_, chance)| **chance > 0.5).map(|(race, _)| race).collect();
 }
 
 /// The trainee's best career without a borrowed parent, on the pick's pool: the surrogate's under `sur` 1, else

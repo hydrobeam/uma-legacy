@@ -111,6 +111,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 p = clamp(110 − cost(distance grade) − cost(surface grade) − PEN[s], 0, 100) / 100
 cost: S,A=0  B=10  C=20  D=30  E=40  F=60  G=90      PEN[s] = 0,0,5,20,30,50 for s = 1..6+
 s = k for a chosen race; s = max(k − 1, 1) for a goal race (scored_position)
+career mode: 110 − both costs is 3 points lower where it is 70 or less (LOW_BASIS_COST, LOW_BASIS_MAX)
 ```
 
 The algorithm tests run on frozen data with older win chances (`tests/fixtures/data_v1.json`: PEN =
@@ -119,6 +120,12 @@ Global data's penalties; it does not check the exported aptitude costs.
 
 - **Streak position k:** counts consecutive turns with *any* race, goal races included. A rest resets it. A goal race
   (an option of one of the career's goals) takes the penalty of position k − 1; it still counts toward the races after it.
+  A goal over several turns is a choice goal: only the first of its options she runs is a goal race, the others are
+  chosen races (`RaceChoice::met_win_chances`, read through the DP's goal mask: each such goal lies within one year,
+  asserted at load, so the mask at Classic turn t paired with Senior turn t + 24 holds the goals met before each).
+- **Low-basis cost (career mode):** the career planner's table (`career_uma`) charges `LOW_BASIS_COST` more where the
+  aptitude basis (110 − both costs) is at most `LOW_BASIS_MAX`, both read from `research/results.json` when the solver
+  is built (`build.rs`; `docs/RESEARCH.md` §4); the loop planner's base table is unchanged.
 - **Turn** = 24·year + 2·(month−1) + half, with year 0 = Junior, 1 = Classic, 2 = Senior: turns 1–24, 25–48, 49–72; half 1 = Early, 2 = Late.
 - **Win probability per race:** P_a(r) = E[1 − Π(1 − p)] over uma a's attempts at race r, with the expectation over her shared pink aptitude history. A race can be run in Classic and Senior; it still counts once. For two attempts this is E[p_C] + E[p_S] − E[p_C p_S]; race outcomes are independent conditional on the grades. With certain aptitudes it reduces to 1 − (1−p_C)(1−p_S).
 
@@ -134,7 +141,7 @@ every pair's overlap 20 times over a loop's 12 lineages (`docs/RESEARCH.md` §6)
 weight for every pair, so both rank schedules identically; a three-uma rotation likewise weights its three pairs
 equally. Test `score_matches_per_legacy_sum` checks the closed form against a direct sum over every lineage and slot.
 
-- Aptitudes: each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; from her first outfit unless overridden at export); `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt). The loop scheduler reads exported base win chances; the career schedule also reads these aptitude fields for the legacies' pink sparks (`CareerSetup::pink_career`).
+- Aptitudes: each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; from her first outfit unless overridden at export) and `outfit_apt` ([card id, codes] of each outfit whose own differ); `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt). The loop scheduler reads exported base win chances (the first outfit's); the career schedule reads the aptitudes of the outfit the career runs, with the legacies' pink sparks (`CareerSetup::pink_career`).
 - `pair(a,b)` / `tri(a,b,c)`: the sum of `succession_relation.relation_point` over the relation groups shared by all of them. `data.json` stores the groups (`relations`: `[points, [roster indices]]`, groups with at least two roster members) and the solver builds both tables at load.
 - **Fixed rules** (race options from the exporter; affinity in the solver):
   - G1 only, +3 per shared G1.
@@ -206,7 +213,7 @@ non-goal G1s leaves the score unchanged within tolerance.
 |---|---|---|
 | `skills_file` | outfit skill lists, the skill catalog and the names an event reward can carry (the ○ beside a catalog ◎ included) (`web_skills.json`, from `export/export_web.py`) | required |
 | `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1 | required |
-| `star_dist` | spark star mix on the legacies `[p1★, p2★, p3★]`; supplied explicitly for another rank mix | `[0.50,0.45,0.05]` |
+| `star_dist` | spark star mix on the legacies `[p1★, p2★, p3★]`; supplied explicitly for another rank mix; three non-negative shares summing to 1 (within 1e-9), else the job is refused | `[0.50,0.45,0.05]` |
 | `owned` | uma ids you own (empty = whole roster) | `[]` |
 | `exclude` | uma ids to leave out | `[]` |
 | `require` | uma ids every result must contain (at most the largest of `sizes`; added to the pool even if not in `owned`) | `[]` |
@@ -420,7 +427,7 @@ and the search ranks both sizes together.
 
 The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed, or none:
 `borrowed_parent`), deck.
-Same files as deck mode, plus `legacies`; the shared and deck fields apply (`owned`/`exclude`/`exclude_outfits`
+Same files as deck mode, plus `legacies` (each with at most two recorded `parents`, else the job is refused); the shared and deck fields apply (`owned`/`exclude`/`exclude_outfits`
 choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of a veteran before her result is known: the plan's fresh full veterans, the simulator's draws; other loop fields are unused).
 `uv run val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
 Several career jobs run in one process with `target/release/loopopt data.json a.json b.json ...` (one output line each),
@@ -496,14 +503,23 @@ in the same search takes its outcome (`Twin`: interchangeable veterans, as a sam
 every parent pair one problem), and a deck search without start decks is memoised per job by what it reads (deck class,
 folded chances, spark scale, bar, work spent; `DeckSearchMemo::decks`), so classmates at the same chances search once.
 The search stops when the next ceiling is below the k-th best (one per trainee when `per_trainee` is true). Output per
-career: `trainee` (outfits, covers), `parents` (legacy indices), `slots` (six legacies: affinity parts, stars),
+career: `trainee` (`outfits`: those of her deck's outfit option at the grades her schedule runs, the schedule's own
+first, empty for "any outfit" when none covers a target and they share grades; `covers`; `schedule_outfit`: the card
+id whose grades her schedule and aptitudes use, the option's best for the schedule, 0 for her character's), `parents`
+(legacy indices), `slots` (six legacies: affinity parts, stars),
 `targets` (per target `q`, `carriers`, landing chance `p`, and `buy`: the chances she buys it as gold / white and lands
-it from each (`gold`, `white`, `land_gold`, `land_white`; land_gold + land_white = p) with its sources `deck_gold`,
-`deck_white`, `own_event`, `inherit`, `outfit` (0, 1 her white, 2 her gold), or `scenario`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
+it from each (`gold`, `white`, `land_gold`, `land_white`; land_gold + land_white = p to rounding: `gold` is exact over
+the deck's chain states, from a second evaluation at q = 1, where the landing marginal is affine in it, and the white
+part is the rest of p) with its sources `deck_gold`, `deck_white` (the deck's per-target hint chances, its sources'
+product at their marginal chances), `own_event`, `inherit`, `outfit` (0, 1 her white, 2 her gold), or `scenario`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
 the two inheritance rolls passes it on, 1/3/5% for 1/2/3 stars × (1 + affinity/100), capped at 1 per roll, and `carriers`; reported only: aptitudes
 do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: `base` and `start` codes in `apt` order,
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
-veteran's pink is that one; her schedule's win chances count them, combining repeated races over the shared grade history as above; the evaluator reuses these probabilities for hypothetical veterans and continuation scores; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
+veteran's pink is that one; with a veteran before her result is known among the six, `outcomes` ([{p, start, fire}],
+one per combination of the pinks such veterans may carry) in place of `start` and `fire`; her schedule's win chances
+count them, combining repeated races over the shared grade history as above; a hypothetical veteran
+(`CareerSetup::veteran`) carries `pink_gen` split by the 20/70/10 star draw as her possible pinks, which her children's
+`pink_career` expands into those outcomes; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
 `bounded`, `complete`, `proven_top`, `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
 when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's
 cap (`EXACT_CAPS`, an assumption) has its deck search rerun cap-free (*Cap-free rerun* above); a proven rerun does
@@ -511,13 +527,17 @@ not itself make the search incomplete. The output lists the classes in `cap_exce
 and the reruns in `cap_rerun`. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
 - `schedule`: every G1 she could enter, in turn order, as the loop planner's chart rows for one member (`race` the
-  chart name, `when`, `year`, `cells` = [{p, goal, apt, row, pen}] or [null], `shared` = a parent won it)
+  chart name, `when`, `year`, `cells` = [{p, goal, apt, row, pen}] or [null] (`apt` = 110 − her expected career basis:
+  grade costs with her pinks and the low-basis cost), `shared` = a parent won it; `goal`: a goal race there, a choice
+  goal's options until she runs one)
   plus `name` (full race name), `parents` (which won it), `run`/`skipped`, `instead` (the race she runs that turn, or
   "rest") and `p` (her win chance, null when skipped). The schedule maximizes expected distinct G1 wins, each race weighted
-  by the chance each parent won it (`Data::best_response`; a G1 she shares with a parent adds 3 affinity to each of them
+  by the chance each parent won it (`CareerSetup::plan_schedule`, per distinct grades among her outfit option's outfits, the best kept; a G1 she shares with a parent adds 3 affinity to each of them
   when she is a parent herself, and her parents' wins guide what later partners will have won), under goal races,
   same-turn clashes and streak win penalties. Every G1 also weighs `FILL_EPS` (1e-7, the loop planner's tie-break), so a
-  G1 neither parent won is run only where it costs the parents' races nothing. `g1_wins`: expected wins.
+  G1 neither parent won is run where it costs the parents' races almost nothing: a bounded scalar tie-break (at most
+  `FILL_EPS` x the G1s added, about 3.4e-6 expected weighted wins; exactly lexicographic on base tables with certain
+  parent wins, whose values lie on a 1e-4 lattice). `g1_wins`: expected wins.
 - `outcome_sets` (up to 12 targets, else null): the exact chance of each set of targets landing, indexed by bitmask
   (bit i = job target i), guaranteed golds' spark generation included.
 

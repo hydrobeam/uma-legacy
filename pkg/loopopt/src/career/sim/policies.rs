@@ -343,8 +343,12 @@ impl Sim<'_, '_> {
         let outcome_sets: Vec<f64> =
             pick["outcome_sets"].as_array().unwrap().iter().map(|chance| chance.as_f64().unwrap()).collect();
         let lineage = Lineage { trainee, first_parent: parent_a, second_parent: parent_b };
-        let win_probs = self.evaluator.wins(&self.env.setup, pool, lineage);
-        Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), outcome_sets, win_chances: win_probs, rotation: false }
+        // (the outfit the pick's schedule ran: the report's `schedule_outfit`)
+        let outfit = crate::career::schedule::ScheduleOutfits::Card(
+            pick["trainee"]["schedule_outfit"].as_u64().unwrap_or(0) as u32,
+        );
+        let record = self.evaluator.wins(&self.env.setup, pool, lineage, outfit);
+        Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), outcome_sets, record, rotation: false }
     }
     /// the in-process career search's pick (greedy_exact: the best career by P(all); under goal `looped` the best
     /// among the full veterans' careers when they make one)
