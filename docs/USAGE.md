@@ -71,8 +71,12 @@ odds and *Saves per run*, how much it lowers that estimate of the careers to a f
 result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
 those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two full veteran parents
 (*n/n parents*, with n the number of targets), where a full veteran of hers is a fully looped parent; the second can save more with lower odds. A line under
-the table says when the search for a shown uma could not prove its answer (it ran out of its work budget, or a deck passed its cap and the cap-free retry could not settle the answer):
-her row is the best it found, and a better career may exist. The (i) by the title
+the table says when the search for a shown uma could not prove its answer, with the causes the plan's searches
+reported (a deck band too large to check in full, or a deck past its cap that the cap-free retry could not settle;
+otherwise the work budget, which no field reports, so it is named beside the others): her row is the best it found,
+and a better career may exist. The status line carries the same caveat, with its causes, for the search of the best
+odds, and one when a scored deck beat its class's assumed cap (the caps are assumptions the check rests on) even
+where that search finished. The (i) by the title
 (*What these numbers mean*) explains them on the page. **Use this** sets the career's places; the table stays (the last plan's,
 while the veterans and settings are unchanged), with your career marked (*your choice* when the plan didn't list it),
 and **Back to the planner's pick** returns to the places the plan ran with. The last few answers are kept, so going
@@ -80,11 +84,22 @@ back to one draws it again without a run.
 
 **Veteran analysis** shows the career's result as the game's *Umamusume Details* card (Skills, Inspiration, Career
 Info). It starts as a random result of the career:
-- **Reroll** draws another result (targets, stars, G1 wins, her pink spark) and gets its saving from the plan at once
-  (worked out by the solver for that roll); the best career with her as a parent follows from one quick search.
-- Set it to what she actually landed and press **Compare** for the exact plan with her added: careers to a fully
-  looped parent now and with her, and the best career with her as a parent.
-- **Add to veterans** saves her (with her parents) and hands every place back to the planner for the next career.
+- **Reroll** draws another result (targets, stars, G1 wins, her pink spark) and gets its saving from the plan at once:
+  the solver's evaluation of that roll's sparks (her stars per target; her G1 wins at their expected chances, not the
+  ones drawn), pricing her as a parent of the route's careers, not as the grandparent of its last one, so a zero reads
+  *No direct saving*. The best career with her as a parent follows from one quick search. A roll the plan says saves
+  careers, or whose zero its bound can't rule out, then runs Compare by itself (measured: every roll on two pools whose
+  estimate is near 3,000 careers, about 1 in 4 on one near 700). The plan takes at most 12 targets, 10 of them not
+  guaranteed by the scenario; beyond that there is no plan, so no saving and no careers to loop, only the best career
+  with her. Over 12 targets the solver also gives no joint odds of the targets, so Reroll draws each target on its own
+  odds, independently, which ignores how they land together (shared hints and chains).
+- Set it to what she actually landed and press **Compare** for the plan with her added as she stands (her sparks,
+  stars and G1 wins as entered), priced under today's plan's fit: careers to a fully looped parent now and with her, and the best career with her as a parent. Add to veterans
+  fits the plan again to your veterans with her, so its figures can differ (a line under the comparison says so). The
+  estimate can rise with her, a limit of the planner's route (it follows each uma's best career, which she can
+  change); the panel shows the rise and says so. In the game she never costs careers: you can leave her out.
+- **Add to veterans** saves her (with her parents) and hands every place back to the planner for the next career,
+  which plans the pool with her afresh.
 
 The card's header holds the career's odds (click for the chance of each count); the card shows her aptitudes at the end
 of that result (the legacies' pink sparks included). **Deck** and **Race schedule** sit under the trainee in the pedigree. Below the card, **Target

@@ -560,7 +560,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   then the plan as two phases of one run, naming the phase at work, and draws one answer when both end: the pick (the
   best odds when you chose the trainee, so nothing is left to pick, or when the plan fails).</li>
   <li>Reroll, Compare and Add reuse the plan: a roll's saving is the plan's own scoring of its pick at that one outcome, worked out from what the solver kept of the plan, and Compare is
-  the plan run again with her in your pool (steps C9–C10).</li>
+  the plan run again with her in your pool, under today's fit (steps C9–C10).</li>
   </ol>
   <p>Symbols: <math><mi>T</mi></math> the trainee, <math><mi>a</mi></math>, <math><mi>b</mi></math> her parents (legacies), <math><mi>k</mi></math> a target, <math><mi>n</mi></math> the number of targets,
   <math><mi>V</mi></math> the plan's expected careers to a fully looped parent, <math><mi>p</mi></math> a career's chance of landing every target.</p>
@@ -729,13 +729,15 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   (every uma searched) is a job option.</p>
 
   <p><strong>Using the plan. C9. Reroll.</strong> A roll draws one outcome of the career on show from its exact
-  chances (C8), with stars from the rank's mix and G1 wins at the schedule's chances. For the veteran it would add, it
+  chances (C8; over 12 targets the report has no joint table, so each target is drawn on its own odds, independently,
+  and how often each kind of roll comes up ignores how the targets land together; the plan takes at most 12 targets,
+  10 of them uncertain, so beyond that a roll has no saving), with stars from the rank's mix and G1 wins at the schedule's chances. For the veteran it would add, it
   also draws the skills bought (a landed target is bought, as a gold with the report's chance; one that didn't land is
   bought anyway with its remaining buying chance), her pink spark (C2b), one blue spark (one of the five stats, 20% each, stars at
   the rank's mix) and her outfit's unique (green) spark at the rank's mix; these don't enter the plan's numbers. When the career on show is the
   pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> worked out for that one outcome from what the solver kept of the plan (the same sums in the same order, so the same number a full table would hold), and a second solver call searches the best career with
-  her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
-  found (its continuations are the plan's, C10). So each outcome with <math><mi>y</mi><mo>&lt;</mo><mn>0.5</mn></math> (the only ones where a bound can decide anything, below) also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
+  her as a parent. A replan with her in the pool (its continuations the plan's, C10) can find more than <math><mi>y</mi></math>: a partner beyond the
+  two, a deck not yet found; and, through her as the route's last career's grandparent (below), more or less. So each outcome with <math><mi>y</mi><mo>&lt;</mo><mn>0.5</mn></math> (the only ones where a bound can decide anything, below) also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
   effect could save. For candidate <math><mi>u</mi></math> with odds <math><msub><mi>p</mi><mi>u</mi></msub></math> now, every partner <math><mi>y</mi></math> (all of them, not two), and her
   outcome <math><mi>ω</mi></math> (chances <math><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo></math> and scale <math><msup><mi>C</mi><mo>′</mo></msup></math> of the lineage with her):</p>
   <math display="block"><msubsup><mi>p</mi><mi>u</mi><mtext>hi</mtext></msubsup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>=</mo><munder><mo>max</mo><mi>y</mi></munder><mspace width="0.2em"/><msup><mi>C</mi><mo>′</mo></msup><mi>min</mi><mrow><mo>(</mo><msub><mtext>ceil</mtext><mi>y</mi></msub><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><munder><mo>min</mo><mi>z</mi></munder><mfrac><msub><mi>p</mi><mi>u</mi></msub><msub><mi>C</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub></mfrac><mtext>rise</mtext><mo>(</mo><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><msub><mi>q</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub><mo>)</mo><mo>)</mo></mrow></math>
@@ -746,17 +748,23 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   target at 2 stars and at 3 (built in but off: at 10 searches it cost the plan 6–11%). <math><msub><mtext>ceil</mtext><mi>y</mi></msub></math> is C4's ceiling for that lineage. Her step then costs at least
   <math><msub><mtext>cost</mtext><mtext>lo</mtext></msub><mo>(</mo><msubsup><mi>p</mi><mi>u</mi><mtext>hi</mtext></msubsup><mo>)</mo></math>, the minimum of C7's sum over every number of builds (C7's choice stops at the first minimum), which
   falls as the odds rise; <math><msub><mi>V</mi><mtext>lo</mtext></msub><mo>(</mo><mi>ω</mi><mo>)</mo></math> is C5's minimum with those costs (and her own n/n credit), and
-  <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msub><mi>V</mi><mtext>lo</mtext></msub><mo>)</mo><mo>≥</mo><mi>y</mi></math>. It bounds the replan's direct effect only; what a replan's refits do (Cont fitted again,
-  other careers re-searched with her) is outside it. "No
-  careers saved" is shown as proven when <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>&lt;</mo><mn>0.5</mn></math>; otherwise it is provisional and the exact comparison (C10)
-  runs once the roll has stood for 0.8 s. A roll with <math><mi>y</mi><mo>≥</mo><mn>0.5</mn></math> shows "Checking…" with the plan's figures held, then the exact
+  <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msub><mi>V</mi><mtext>lo</mtext></msub><mo>)</mo><mo>≥</mo><mi>y</mi></math>. It bounds her direct effect only: <math><mi>y</mi></math> and <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> both hold the route's
+  last career at its grandparents now, so her as its grandparent (when a parent's best career takes her) is outside
+  them, and so are other careers re-searched with her. Where <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>&lt;</mo><mn>0.5</mn></math> the verdict is "No direct
+  saving", unchecked; otherwise that zero is provisional and the exact comparison (C10) runs once the roll has stood
+  for 0.8 s. A roll with <math><mi>y</mi><mo>≥</mo><mn>0.5</mn></math> shows "Checking…" with the plan's figures held, then the exact
   count; the plan's saving never gives a verdict of its own, so the verdict can't change once shown.</p>
 
-  <p><strong>C10. Compare and Add.</strong> Compare runs the plan exactly as a run will once she is added (her in your pool,
-  everything fitted to it), and one search for the best career with her as a parent. Its saving is <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>, clamped at 0:
-  each plan is fitted to its own pool (Cont to the pool's builders at today's odds), so the refit alone can move V, and a
-  rise is the fit's error, not hers (one case: +20 careers on a V of 1,083 for a veteran who, under the old fit, saved
-  8.7). The plan is kept: Add to veterans takes it as it is, with no second plan. Each uma's best career in a pool is kept; with one veteran added, a career is either the kept one or
+  <p><strong>C10. Compare and Add.</strong> Compare plans the pool with her in it under today's plan's fit (the plan's
+  stage candidates and their continuations, passed back as given), and runs one search for the best career with her as
+  a parent. Its saving is <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>, not clamped. Under the same fit V can still rise with her:
+  each fresh side of the route is the veteran an uma's best career now would leave (C5), her arrival can switch that
+  career to one whose veteran is a worse grandparent for the route's last career, and V never offers the old lineage.
+  A rise is shown as it is and said to be the planner's; in the game a veteran costs nothing, since she can be left out.
+  Add to veterans then plans the pool with her afresh, Cont fitted to it, so its V can differ from Compare's either way
+  (measured 2026-10-24, one roll on a 2,736-career pool: V −35 under today's fit, +288 refitted); a line under the figures
+  says so. When today's plan has no route (no <math><mi>V</mi></math> to compare with) or no fit, Compare runs that
+  refit itself and keeps it, and Add takes it as it is. Each uma's best career in a pool is kept; with one veteran added, a career is either the kept one or
   uses her, so only careers with her as a parent are searched, with the kept value as the bar.</p>
   <p><strong>The Comparison panel.</strong> The veteran entered starts as one roll (C9) and can be edited; Compare and
   Reroll fill the panel. Its header's <strong>1/N to improve</strong> is <math><mn>1</mn><mo>/</mo><mtext>lift</mtext></math>, where lift is the chance
@@ -772,9 +780,12 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <li><strong>Parent of the next career:</strong> with her in the pool, the planner's pick uses her as a parent.</li>
   <li><strong>Better odds, no careers saved:</strong> the best career with her as a parent has higher odds than today's
   best career.</li>
-  <li><strong>No careers saved</strong> (with "Checking…" while a provisional zero is checked, C9).</li>
+  <li><strong>No careers saved</strong>; for a roll's figures from the plan, <strong>No direct saving</strong> (with
+  "Checking…" while a provisional zero is checked, C9).</li>
   </ol>
-  <p>Under the verdict, "now → with her", green when better: <strong>Careers to loop</strong>, <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>→</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>
+  <p>When <math><msub><mi>V</mi><mtext>with</mtext></msub></math> is half a career or more above <math><msub><mi>V</mi><mtext>without</mtext></msub></math>, a sentence under the verdict gives the rise and
+  says it is the planner's (C10). Under the verdict, "now → with her", green when better, red when worse, and a rise in
+  careers left uncoloured: <strong>Careers to loop</strong>, <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>→</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>
   (for a roll, <math><msub><mi>V</mi><mtext>with</mtext></msub><mo>=</mo><mi>V</mi><mo>−</mo><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan until the exact count replaces it). Then <strong>All n odds</strong>: today's best career over every
   trainee and pair (no places fixed) → the best career with her fixed as a parent, whose portraits and deck are folded
   under <strong>Best career with her</strong>. A Reroll that lands while an exact count runs cancels it; a

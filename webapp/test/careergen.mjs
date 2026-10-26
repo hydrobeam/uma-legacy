@@ -59,7 +59,7 @@ export default async function careergen(b) {
   // Save one generation, then another: a veteran's parents become the next one's grandparents.
   const beforeSimulation = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
   await simStars(3);
-  // Compare first: it plans exactly as the run after Add will, so Add takes that plan instead of planning again
+  // Compare first: it prices her under today's plan's fit, so Add plans the pool with her afresh (one plan job, refitted)
   await pg.click('#sim-compare');
   await pg.waitForFunction(
     () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'),
@@ -74,8 +74,8 @@ export default async function careergen(b) {
   await pg.click('#sim-add');
   await done();
   check(
-    'career: Add to veterans after Compare shows the plan Compare made, with no second plan',
-    (await planJobs()) === pj0 && /Planned in|Weighed/.test(await pg.textContent('#run-note')),
+    'career: Add to veterans after Compare plans the pool with her afresh (Compare priced her under the fit before her)',
+    (await planJobs()) === pj0 + 1 && /Planned in|Weighed/.test(await pg.textContent('#run-note')),
     `plan jobs ${pj0} -> ${await planJobs()}, compare's pick ${cmpPick}`,
   );
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)

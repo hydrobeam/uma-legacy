@@ -49,6 +49,7 @@ import {
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks, deckCardAt } from './details.js';
 import { drawPink } from './pink.mjs';
+import { unprovenWhy, whyText, searchCaveat } from './proofs.mjs';
 
 const tName = (g) => {
   const s = SK.get(g) || { w: `Skill ${g}`, gd: null };
@@ -125,7 +126,8 @@ const progText = ({ ph, k, n }) =>
  *   rollout planner that `baseOf`, `planKey` and the plan job still clear
  * @property {undefined} [p_now]  likewise
  * @property {'later'|'never'} [borrowed_parent]  left out at 'allow'
- * @property {{roll?: number[]}} [next]  a plan job: its settings (`roll`: a roll's spark stars, per target)
+ * @property {{roll?: number[], fit?: PlanFit}} [next]  a plan job: its settings (`roll`: a roll's spark stars, per
+ *   target; `fit`: another plan's continuations, taken as given instead of fitted to this pool)
  * @property {boolean} [no_reports]  a plan job: no career reports, `next` only
  * @property {boolean} [compare]  a comparison's job
  *
@@ -248,6 +250,13 @@ const progText = ({ ph, k, n }) =>
  * @property {{trainee: number, parents: [number, number], uncv: number[], fixed: number[]}|null} outcomes  the career a
  *   roll is of (`next.roll`)
  * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound (`rollReq`)
+ * @property {PlanFit} [fit]  the stage candidates and their continuations the plan was fitted to: a comparison passes
+ *   it on unchanged (`next.fit`), so the pool with her is priced the same way
+ * @property {string[]} [unproven_why]  set by the page: why some of its career searches proved nothing (`unprovenWhy`)
+ *
+ * A plan's continuation fit, one entry per stage candidate (`[chara, lam, phi, pinf, ...]`, as the solver writes it;
+ * the page never reads inside it).
+ * @typedef {number[][]} PlanFit
  *
  * The career search's report (career/run.rs `search_output`), or its refusal (`error`).
  * @typedef {object} CareerSearch
@@ -255,6 +264,11 @@ const progText = ({ ph, k, n }) =>
  * @property {CareerReport[]} results  the best careers, best first
  * @property {number} candidates  careers it weighed
  * @property {boolean} proven_top  the best odds' order is certified
+ * @property {boolean} [complete]  false: a search of the job was cut short, or certified at a lower deck cap only
+ * @property {number} [band_overflows]  deck bands too large to check in full (each then certified at a lower cap)
+ * @property {[number, number, number][]} [cap_exceeded]  per deck class past its assumed cap: [class, ratio, cap]
+ * @property {{searches: number, unproven: number, unanswered: number}} [cap_rerun]  the deck searches rerun without the
+ *   cap after a breach: those that proved nothing, and breaches left unanswered
  * @property {PlanReport} [next]  a plan job's plan
  * @property {boolean} [pending]  set by the page: a quick comparison's stand-in while the search for her career runs
  *
@@ -484,8 +498,11 @@ const refFor = () =>
 // the last few answers, by job and places: going back to one draws it again without a run
 const answers = new Map(),
   ANSWERS = 4;
-// the plan Compare ran for the pool with her: the same job a run sends once she is added (keys sorted, the comparison's
-// flag aside), so Add to veterans takes it as it is instead of planning again (the solver is deterministic for its job)
+// the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
+// (`runComparison`):
+// the same job a run sends once she is added (keys sorted, the comparison's flag aside), so Add to veterans takes it as
+// it is instead of planning again (the solver is deterministic for its job). A plan under today's fit is never kept
+// here: its job carries `next.fit`, which a run's does not
 let planKept = null;
 const canon = (x) =>
   Array.isArray(x)
@@ -516,6 +533,9 @@ const runJob = async (job, progress) => {
   const m = await run(job, undefined, progress),
     r = m.r || {};
   for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
+  // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
+  // taken again from `planKept` or `answers` says the same)
+  if (r.next?.options) r.next.unproven_why = unprovenWhy(r);
   return m;
 };
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
@@ -540,6 +560,8 @@ try {
  * @property {boolean} [full]  she lands every target
  * @property {{now: number|null, withHer: number|null}} [v0]  expected careers to a fully looped parent with your
  *   veterans now, and with her too
+ * @property {boolean} [fixedFit]  with her is priced under today's plan's fit (Add to veterans then fits the plan to
+ *   the pool with her, so its figures can differ); false: the refit itself (today's plan had no V or no fit)
  * @property {PlanOption|null} [pickA]  the planner's next career once she is added
  * @property {boolean} [samePick]  it is the same as without her
  * @property {boolean} [herParent]  she is one of its parents
@@ -675,13 +697,14 @@ function searchedText(m) {
     seconds = (m.ms / 1000).toFixed(1);
   return n > 1 ? `Weighed ${n.toLocaleString()} careers in ${seconds} s.` : `Scored in ${seconds} s.`;
 }
-// the search's status: done, with a caveat when the search could not prove the best odds' order (`proven_top`: its
-// work budget ran out); or, when no career can land every
-// target, which targets nothing can give (no veteran or parent carries their spark; no deck, outfit or event gives them
-// either, or some career would have them)
+// the search's status: done, with a caveat (proofs.mjs `searchCaveat`) when the search could not prove the best odds'
+// order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report establishes
+// of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the proofs rest on);
+// or, when no career can land every target, which targets nothing can give (no veteran or parent carries their spark;
+// no deck, outfit or event gives them either, or some career would have them)
 /** @returns {Status} */
 function searchStatus(m, found) {
-  const cert = m.r.proven_top ? '' : ' The exact check of the best odds ran out of time: their order may not be final.';
+  const cert = searchCaveat(m.r);
   if (m.r.results.length) return { kind: 'done', text: found + cert };
   const carried = new Set(
     vets.flatMap((v) => [v, ...v.parents]).flatMap((x) => Object.keys(x.sparks || {}).map(Number)),
@@ -1566,8 +1589,10 @@ function rollDraft() {
 // A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target; the
 // solver evaluates the plan's pick at that one outcome from what it kept of the plan, career/plan/roll.rs `roll_kept`, so no
 // plan runs again unless the worker kept none): y, exact for her sparks, her G1 wins at their chances, and, where y < 0.5, y_hi, the most her veteran's
-// direct lifts could save there (ceilings over every partner): a zero is proven when y_hi < 0.5, else the exact
-// comparison checks it. null when the plan isn't for this career (then Reroll compares exactly).
+// direct lifts could save there (ceilings over every partner). y_hi < 0.5 rules out a direct saving only: both hold the
+// route's last career at the grandparents it has now, so her as its grandparent (through a parent's career that takes
+// her) is outside them, and the verdict says "no direct saving"; else the exact comparison checks the zero. null when
+// the plan isn't for this career (then Reroll compares exactly).
 function rollReq(d, r) {
   if (planState.state !== 'done') return null;
   const o = planState.r?.outcomes;
@@ -1613,6 +1638,7 @@ async function quickCompare(request) {
     simulation.r = /** @type {CareerSearch} */ ({ results: [], pending: true });
     simulation.full = isFull(simulation.draft);
     simulation.v0 = { now: v0, withHer: v0 != null ? Math.max(0, v0 - y) : null }; // r: a stand-in, no search figures
+    simulation.fixedFit = true; // (y is the plan's own scoring, under its fit)
     simulation.pickA = null;
     simulation.samePick = false;
     simulation.herParent = false;
@@ -1628,8 +1654,11 @@ async function quickCompare(request) {
   renderSimulation();
   if (simulation.state !== 'done' || gone()) return;
   // a roll that saves careers goes straight to the exact comparison (which finds the best career with her too): the
-  // plan's saving can undercount how many (it tries her with a few partners at cached decks), so the exact count
-  // replaces it (about 1 roll in 20; the others stay instant)
+  // plan's saving can be off either way (it tries her with a few partners at cached decks, and holds the route's last
+  // career at its grandparents now), so the exact count replaces it. How many rolls end in an exact comparison (this
+  // one, or the provisional check below) depends on the pool: of 150 rolls of the pick per pool (2026-10-24), every
+  // one on p10 (39% with y >= 0.5, the rest provisional) and on boot_mob (all y >= 0.5), 1 in 4 on p16 (8% and 17%);
+  // the others stay instant
   if (y >= 0.5) {
     runComparison(true);
     return;
@@ -1771,27 +1800,33 @@ async function runComparison(refine = false) {
       if (gone()) return;
       planNow = mb.r.next || null;
     }
-    // with her: the plan a run makes once she is added (her pool, fitted to it, as Add to veterans will show it; kept, so
-    // Add takes it without planning again)
-    const jobWithHer = planOf(legaciesWithHer),
+    // with her: her pool priced under today's plan's fit (`next.fit`, passed on as the plan wrote it), so the two Vs
+    // differ only by what she changes, not by Cont fitted again to the pool with her (a refit moves V by hundreds of
+    // careers on a weak pool, in either direction). The plan Add to veterans shows is that refit, run on Add. Only when
+    // today's plan has no V to compare with (no route: `v0` null, though its `fit` may still list candidates) or no fit
+    // is the refit run here, and kept so that Add takes it as it is
+    const fit = Number.isFinite(planNow?.v0) && planNow.fit?.length ? planNow.fit : null,
+      jobWithHer = fit ? { ...planOf(legaciesWithHer), next: { fit } } : planOf(legaciesWithHer),
       ma = await runJob(jobWithHer);
     if (gone()) return;
     const planWithHer = ma.r.next || null;
-    if (planWithHer && !planWithHer.error) planKept = { key: planKey(jobWithHer), r: planWithHer, ms: ma.ms };
+    if (!fit && planWithHer && !planWithHer.error) planKept = { key: planKey(jobWithHer), r: planWithHer, ms: ma.ms };
     engineSaveState();
     const careersToLoop = (next) => (next && next.v0 != null ? next.v0 : null); // careers to a fully looped parent with the pool as it is
     const careersNow = careersToLoop(planNow),
       pickA = planWithHer?.options?.find((o) => o.chosen) || null,
       pickB = planNow?.options?.find((o) => o.chosen) || null;
-    // a veteran never costs careers (every plan without her is still there): the two plans are fitted to their own pools,
-    // so a rise is the fit's error, read as no change
-    let careersWithHer = careersToLoop(planWithHer);
-    if (careersWithHer != null && careersNow != null && careersWithHer > careersNow) careersWithHer = careersNow;
+    // not clamped: in the game a veteran never costs careers (you can leave her out), but V can rise with her even
+    // under the same fit, since each fresh side of V's route is the veteran an uma's best career now would leave, and
+    // her arrival can switch that career to one whose veteran is a worse grandparent for the route's last career (V
+    // never offers the old lineage). The panel shows such a rise as it is, with that said (`comparisonResult`)
+    const careersWithHer = careersToLoop(planWithHer);
     // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
     const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
     simulation.r = m.r;
     simulation.full = full;
     simulation.v0 = { now: careersNow, withHer: careersWithHer };
+    simulation.fixedFit = !!fit;
     simulation.pickA = pickA;
     simulation.samePick = samePick;
     simulation.herParent = !!pickA?.parents.includes(herIndex);
@@ -1918,10 +1953,12 @@ function comparisonPanel(d, r) {
   else if (simulation.r) comparisonResult(result, d);
   return result;
 }
-// what she does for the loop if you enter her: one short line (`saves`: the careers she saves, null: not known)
+// what she does for the loop if you enter her: one short line (`saves`: the careers she saves, null: not known). A
+// roll's quick zero is the plan's own scoring, which prices her as a parent only (`rollReq`): "no direct saving"
 function verdictText(d, next, saves) {
   const n = state.targets.length,
-    fullyLooped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
+    fullyLooped = simulation.full && d.parents.length === 2 && d.parents.every(isFull),
+    none = simulation.quick ? 'direct saving' : 'careers saved';
   return fullyLooped
     ? 'Fully looped parent'
     : simulation.full
@@ -1933,8 +1970,8 @@ function verdictText(d, next, saves) {
           : simulation.herParent
             ? 'Parent of the next career'
             : next && next.p_all > simulation.baseline.p_all * (1 + 1e-9)
-              ? 'Better odds, no careers saved'
-              : 'No careers saved';
+              ? `Better odds, no ${none}`
+              : `No ${none}`;
 }
 // One figure per row: its label, then now → with her, green when she makes it better, red when worse (`direction`).
 function figureEl({ label, now, withHer, direction, title }) {
@@ -1963,9 +2000,15 @@ function comparisonResult(result, d) {
   const saves = careersNow != null && careersWithHer != null ? careersNow - careersWithHer : null;
   const verdict = el('p', 'simverdict');
   verdict.id = 'sim-verdict';
-  const head = verdictText(d, next, saves);
+  const head = verdictText(d, next, saves),
+    rose = saves != null && saves <= -0.5;
   verdict.append(el('strong', '', head));
   if (/^Saves /.test(head) && simulation.where) verdict.append(simulation.where);
+  // a rise (never from a roll's quick figures, which can't rise): shown as it is, and said to be the planner's
+  if (rose)
+    verdict.append(
+      `The planner's estimate rises by ${fmtN(-saves)} with her, a limit of its route (it follows each uma's best career, which she can change); leaving her out costs nothing.`,
+    );
   result.appendChild(verdict);
   if (simulation.refining || simulation.provisional) {
     const p = el('p', 'runnote simrefine');
@@ -1979,20 +2022,31 @@ function comparisonResult(result, d) {
     ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map((i) => `#${i + 1}`).join(' + ')}).`
     : '.';
   const fromTable = simulation.quick
-    ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances); Compare checks this exact roll."
+    ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances; her as a parent, not as a later career's grandparent); Compare checks this exact roll."
     : '';
   figs.appendChild(
     figureEl({
       label: 'Careers to loop',
       now: careersNow != null ? fmtN(careersNow) : '?',
       withHer: careersWithHer != null ? fmtN(careersWithHer) : '?',
-      direction: direction(careersNow, careersWithHer, true),
+      direction: rose ? 'same' : direction(careersNow, careersWithHer, true),
       title: `Expected careers to a fully looped parent: with your veterans now → with her too${nextWithHer}${fromTable}`,
     }),
   );
+  // with her priced under today's fit (`fixedFit`): the plan after Add is fitted to the pool with her, so it can show
+  // other figures (more careers or fewer), which this one line says
+  const fitNote =
+    simulation.fixedFit && careersNow != null
+      ? el(
+          'p',
+          'simfit',
+          "Counted with today's plan; after Add the planner refits it to your veterans with her, so its figures can differ.",
+        )
+      : null;
   // the best career with her as a parent: its odds against today's best, then folded its portraits and deck
   if (!next) {
     result.appendChild(figs);
+    if (fitNote) result.appendChild(fitNote);
     const p = el('p', 'runnote simbest');
     p.innerHTML = `${runnerHTML()}<span>Finding the best career with her…</span>`;
     result.appendChild(p);
@@ -2019,6 +2073,7 @@ function comparisonResult(result, d) {
     }),
   );
   result.appendChild(figs);
+  if (fitNote) result.appendChild(fitNote);
   dd.append(nx, deckEl(next, 'Deck'));
   result.appendChild(dd);
 }
@@ -2114,13 +2169,14 @@ function optionsEl() {
   wrap.appendChild(tb);
   box.appendChild(wrap);
   // a row whose career search was not complete (`proven: false`: its work cap, a band overflow, or a deck past its
-  // class's cap that the cap-free rerun did not settle): the best it found, maybe not her best
+  // class's cap that the cap-free rerun did not settle): the best it found, maybe not her best. The rows don't say which
+  // cause was theirs; the plan job's report names the causes it saw in any of its searches (`unprovenWhy`)
   if (planReport && list.some((o) => o.proven === false))
     box.appendChild(
       el(
         'p',
         'hint optnote',
-        'The search could not prove the best career for some of these umas: a better one may exist for them.',
+        `The search could not prove the best career for some of these umas (${whyText(planReport.unproven_why || [])}): a better one may exist for them.`,
       ),
     );
   if (ref && JSON.stringify(ref.places) !== JSON.stringify(plan)) {

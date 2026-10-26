@@ -1263,6 +1263,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .simhdr { font-weight: 900; font-size: 0.92rem; color: #fff; text-shadow: var(--gm-outline); padding: 3px 26px 3px 10px; margin: -10px -10px 0; border-radius: 12px 12px 0 0;
   background-color: var(--gm-green); background-image: linear-gradient(90deg, transparent 0, var(--gm-green) 32%), repeating-linear-gradient(45deg, rgba(255, 255, 255, .16) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2)); }
 .simidle { margin: 0; color: var(--gm-ink2); font-size: 0.85rem; line-height: 1.4; }
+.simfit { margin: 0; color: var(--gm-ink2); font-size: 0.78rem; line-height: 1.35; }
 .simresult { padding-top: 10px; }
 .oddtab thead th:first-child { text-align: left; }
 

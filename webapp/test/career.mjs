@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { drawPink } from '../src/pink.mjs';
+import { searchCaveat } from '../src/proofs.mjs';
 import { QUICK, check, ART, dialog, AUDIT, still, careerPage, repoUrl } from './helpers.mjs';
 
 // The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
@@ -70,6 +71,32 @@ export default async function career(b) {
       pin.detail,
     );
   }
+  // the status line's caveat on constructed reports: a cap breach is named whether or not the cap-free rerun finished,
+  // and no cause is asserted that no field establishes
+  const breachRerunDone = searchCaveat({
+      proven_top: false,
+      complete: false,
+      cap_exceeded: [[1, 4.0, 1.05]],
+      cap_rerun: { searches: 1, unproven: 0, unanswered: 0 },
+    }),
+    noCause = searchCaveat({ proven_top: false, complete: false }),
+    rerunOpen = searchCaveat({
+      proven_top: false,
+      complete: false,
+      cap_exceeded: [[0, 1.2, 1.05]],
+      cap_rerun: { searches: 1, unproven: 1, unanswered: 0 },
+    }),
+    provenBreach = searchCaveat({ proven_top: true, complete: true, cap_exceeded: [[0, 1.2, 1.05]] });
+  check(
+    "career: the unproven caveat names a cap breach even when its cap-free rerun finished, says when that rerun didn't, never claims the work budget without a field for it, and flags a breach on a proven search",
+    /could not finish \(reported: a deck beat its class's assumed cap\)/.test(breachRerunDone) &&
+      !/work budget|did not finish|band/.test(breachRerunDone) &&
+      /no cause reported/.test(noCause) &&
+      /assumed cap; the check without the cap did not finish/.test(rerunOpen) &&
+      /beat its class's assumed cap, which the exact check relies on/.test(provenBreach) &&
+      searchCaveat({ proven_top: true, complete: true }) === '',
+    [breachRerunDone, noCause, rerunOpen, provenBreach].join(' | '),
+  );
   check(
     'career: with no veterans it asks for parents or an import, and offers sample veterans',
     /Choose both parents, or import/.test(await note()) && /Try sample veterans/.test(await pg.textContent('#run-act')),
@@ -245,8 +272,8 @@ export default async function career(b) {
   await done();
   await planned(); // the pasted export's plan (the same pool)
   check(
-    'career: the planner weighs every career, checked on exact odds (only a check that ran out of time is mentioned)',
-    /Weighed 3,618 careers/.test(await note()) && !/ran out of time|checked exact/.test(await note()),
+    'career: the planner weighs every career, checked on exact odds (only a check that could not finish is mentioned)',
+    /Weighed 3,618 careers/.test(await note()) && !/could not finish|checked exact/.test(await note()),
     await note(),
   );
   check(
@@ -615,6 +642,14 @@ export default async function career(b) {
       );
     }),
   );
+  check(
+    "career: … and prices the pool with her under today's plan's fit (the plan's `fit`, passed on unchanged), with a line saying Add refits",
+    (await pg.evaluate(() => {
+      const j = window.__careerJobs.filter((j) => j.compare && j.next).at(-1),
+        r = window.__careerResults.filter((r) => r.next?.fit && !r.compare).at(-1);
+      return !!j && !!r && JSON.stringify(j.next) === JSON.stringify({ fit: r.next.fit });
+    })) && (await pg.locator('#sim-result > .simfit').count()) === 1,
+  );
   if (chromium) {
     // one engine is enough for colours
     for (const theme of ['light', 'dark']) {
@@ -691,7 +726,7 @@ export default async function career(b) {
       lr.stars.every((s) => s === 3) &&
       typeof lr.roll?.y === 'number' &&
       !lr.roll.planned &&
-      (lr.roll.y >= 0.5 || /^No careers saved/.test(lr.verdict)),
+      (lr.roll.y >= 0.5 || /^No (careers saved|direct saving)/.test(lr.verdict)),
     JSON.stringify(lr),
   );
   // a zero the bound can't rule out (the solver's answer replaced: y 0, y_hi 0.9) shows no saving while it is checked,
@@ -717,7 +752,7 @@ export default async function career(b) {
   });
   await roll(0); // (nothing lands: not n/n, so the verdict is the saving's)
   const provAt = await (await pg.waitForFunction(() => window.__provSeen, null, { timeout: 30000 })).jsonValue();
-  const prov = { shown: /^No careers saved/.test(provAt.verdict), early: provAt.n === rf0 };
+  const prov = { shown: /^No direct saving/.test(provAt.verdict), early: provAt.n === rf0 };
   prov.started = await pg
     .waitForFunction((n) => window.__careerJobs.filter((j) => j.compare && j.next).length > n, rf0, { timeout: 30000 })
     .then(
@@ -729,7 +764,7 @@ export default async function career(b) {
     delete window.__rollPatch;
   });
   check(
-    'career: … a provisional zero (y < 0.5 <= y_hi) shows "No careers saved", checking, and runs the exact comparison after a moment',
+    'career: … a provisional zero (y < 0.5 <= y_hi) shows "No direct saving", checking, and runs the exact comparison after a moment',
     prov.shown && prov.early && prov.started,
     JSON.stringify(prov),
   );

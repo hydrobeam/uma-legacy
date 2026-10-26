@@ -536,7 +536,7 @@ evidence: `docs/MODEL.md`, *Next career*. The planner is in `src/career/plan/` (
 | `exact_all` | every uma's best career searched exactly (no proxies) | `false` |
 | `proxy_check` | disable proxies for the main plan and report each builder's proxy beside her exact career (`proxy_check` in the output); also evaluate looped rows' lift statistics | `false` |
 | `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
-| `fit` | `[[chara, lam, phi, pinf], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool. Unused by the page, since Compare plans exactly as Add will | none |
+| `fit` | `[[chara, lam, phi, pinf], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool. The page's Compare prices the pool with her under the plan's own `fit`, passed on unchanged (Add to veterans then refits) | none |
 | `loop_members` | loop members to add as stage candidates; absent: none (the plan runs no loop search) | absent |
 | `search_work` | work budget (career-search units) of each candidate search beyond the job's own; 0 = the job's budget | 5,000,000 |
 | `margin` | the surrogate's refresh margin (section *Policy simulator*) | 1e9 |
