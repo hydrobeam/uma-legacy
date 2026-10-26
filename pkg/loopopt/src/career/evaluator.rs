@@ -125,6 +125,9 @@ pub(crate) struct Evaluator {
     /// searched without a bar (so she has one from then on), instead of a search at the bar that caches nothing when it
     /// ends Bounded
     fill_missing_decks: bool,
+    /// No refresh: every value from the cached decks, none searched (the plan's robustness check, `plan::robust`, so
+    /// that it adds no deck, proof or flag the plan's own output reads)
+    pub(super) frozen: bool,
     /// per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`fast_ub`)
     pub(super) ceiling_factors: UmaTable<Vec<Vec<(f64, f64)>>>,
     /// The model's fixed gold factor (`Model::fixed_factor`).
@@ -204,6 +207,7 @@ impl Evaluator {
             cache: Cache::new(setup.data.umas.len()),
             margin,
             fill_missing_decks,
+            frozen: false,
             ceiling_factors: ceiling_factors(setup),
             fixed: setup.model.fixed_factor(),
             win_chances: WinChances::default(),
@@ -308,7 +312,10 @@ impl Evaluator {
     ) -> Option<(f64, usize)> {
         let Env { setup, state, .. } = env;
         let mut reference_bound = request.ceiling;
-        for reference in &self.cache.refs[request.trainee] {
+        // (a breached class's fully checked decks and product proofs bound nothing, `ClassFlags::proves`: they neither
+        // rule a lineage out nor spare a refresh; its cached decks still seed the search)
+        let proves = state.class_flags[setup.deck_class[request.trainee]].proves();
+        for reference in self.cache.refs[request.trainee].iter().filter(|_| proves) {
             reference_bound = reference_bound.min(setup.ref_bound(
                 request.trainee,
                 request.inheritance_chances,
@@ -320,6 +327,7 @@ impl Evaluator {
             }
         }
         if request.threshold > 0.0
+            && proves
             && setup.ruled_out(
                 request.trainee,
                 request.inheritance_chances,
@@ -333,7 +341,7 @@ impl Evaluator {
         self.counters.tables += 1;
         let (mut table_value, mut deck_index) =
             self.tval(setup, request.trainee, request.inheritance_chances, request.spark_scale, scratch);
-        if deck_index == usize::MAX || reference_bound > table_value * (1.0 + self.margin) {
+        if !self.frozen && (deck_index == usize::MAX || reference_bound > table_value * (1.0 + self.margin)) {
             setup.set_trainee(state, request.trainee, request.inheritance_chances);
             let start_decks: Vec<&SelectedDeck> =
                 self.cache.decks[request.trainee].iter().map(|cached| &cached.deck).collect();
@@ -441,7 +449,7 @@ impl Evaluator {
                 best = value;
             }
         }
-        setup.space.rho_top() * lineage_scale * self.fixed * best
+        setup.ceiling_rho[trainee] * lineage_scale * self.fixed * best
     }
     /// value a candidate lineage on `pool` against `bar`: her best cached deck after the refresh rule (`deck_for`), as
     /// a pick, when her ceiling clears the bar and a deck can reach it

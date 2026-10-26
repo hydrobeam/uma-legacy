@@ -107,6 +107,16 @@ fn outcome_hint_level(rewards: &[TargetReward], target: usize) -> u8 {
         .unwrap_or(0)
 }
 
+/// The orthant checks (`group_assoc`, `group_nuod`, `group_nuod_lvl`) accept joint <= product of marginals up to a
+/// relative 1e-12 only, the rounding of the product's few multiplications: no absolute slack, so a joint chance that
+/// is positive, however small, needs a product at least that large. (An absolute term would certify a rare outcome
+/// hinting two targets together, joint 1e-14 against a product of 1e-28, and a bound resting on it would be off by an
+/// absolute amount no relative pruning slack covers.) Relative errors compose: over a deck's g certified groups a bound
+/// resting on them holds within a factor (1 + 1e-12)^g, about 1 + g 1e-12 (g at most a few dozen), inside the 1e-9
+/// slack of the tests that prune (`Bar::Below`); a test without slack (`Bar::AtMost`, the proxy certificate's tie test,
+/// `plan::certified`) certifies only up to that allowance.
+const ORTHANT_RELATIVE: f64 = 1e-12;
+
 /// Whether a group's per-target hint levels are negatively associated, as the state-conditioned bound needs: every
 /// outcome hints at most one target (one draw: a one-trial multinomial is negatively associated, and so are increasing
 /// functions of disjoint sets of its outcomes), or it touches two targets and their levels are negatively quadrant
@@ -143,7 +153,7 @@ pub(super) fn group_assoc(group: &Group) -> bool {
                 })
                 .map(|outcome| outcome.probability)
                 .sum();
-            if joint_chance > first_chance * second_chance * (1.0 + 1e-12) + 1e-15 {
+            if joint_chance > first_chance * second_chance * (1.0 + ORTHANT_RELATIVE) {
                 return false;
             }
         }
@@ -214,8 +224,7 @@ pub(super) fn group_nuod(group: &Group) -> bool {
             outcomes.iter().filter(|outcome| outcome.targets & s == s).map(|outcome| outcome.probability).sum();
         joint
             <= (0..targets.len()).filter(|i| s >> i & 1 == 1).map(|i| marginal_chance[i]).product::<f64>()
-                * (1.0 + 1e-12)
-                + 1e-15
+                * (1.0 + ORTHANT_RELATIVE)
     });
     GN.with(|cache| cache.borrow_mut().insert(key, certified));
     certified
@@ -281,7 +290,7 @@ pub(super) fn group_nuod_lvl(group: &Group) -> bool {
             .sum();
         let product_chance: f64 =
             (0..target_count).filter(|&i| assignment[i] > 0).map(|i| marginal_chance(i, assignment[i])).product();
-        if joint > product_chance * (1.0 + 1e-12) + 1e-15 {
+        if joint > product_chance * (1.0 + ORTHANT_RELATIVE) {
             return false;
         }
     }

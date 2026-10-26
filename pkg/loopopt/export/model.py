@@ -108,8 +108,8 @@ def pwin(base_chance, k):
 
 def goals(character_id, exclude_det2=True):
     """her race goals (condition_type 1; fan-count and placement goals, condition_type 3 and 2, are not exported), one
-    list of permitted programs per goal. A goal over several turns is a choice goal (determine_race 3, asserted): she
-    picks one of its races, so the solver gives the goal shift only to the first she runs"""
+    list of permitted programs per goal. A goal over several turns is determine_race 3 (asserted); the solver flags
+    every one of its races a goal race (docs/MODEL.md: the run records do not fit one reading of these groups)"""
     rows = q(
         "select sort_id,turn,condition_id,determine_race from single_mode_route_race where race_set_id=? and scenario_group_id=100 and condition_type=1 and turn<=72 order by sort_id,id",
         character_id,

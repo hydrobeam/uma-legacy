@@ -175,6 +175,20 @@ pub(super) struct SimJob {
     /// first (default) | looped: what a run ends at (module notes)
     #[serde(default)]
     goal: Goal,
+    /// greedy, greedy_exact, index: every run's first career, the trainee (chara id) on the two parents (legacy
+    /// indices) with her best deck, the policy taking over from the second (paired truncated rollouts,
+    /// val/sim/rollouts.py)
+    #[serde(default)]
+    force: Option<ForcedCareer>,
+    /// per run also the pool at the stop (`final_legacies`) and the survival there (`survival`)
+    #[serde(default)]
+    keep_pool: bool,
+}
+/// A run's first career, fixed by the job (`SimJob::force`).
+#[derive(Deserialize, Clone, Copy)]
+pub(super) struct ForcedCareer {
+    pub(super) trainee: u32,
+    pub(super) parents: [usize; 2],
 }
 fn d_next() -> Value {
     json!({})

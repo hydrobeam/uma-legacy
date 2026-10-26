@@ -7,7 +7,7 @@ use crate::career::plan::ScoringContext;
 use crate::career::pool::Pool;
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::play::PathState;
-use crate::career::sim::{Goal, PAGE_TOP, Sim, leg_json};
+use crate::career::sim::{ForcedCareer, Goal, PAGE_TOP, Sim, leg_json};
 use crate::career::{Career, Lineage, run_career_in};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -168,13 +168,15 @@ impl Sim<'_, '_> {
         let base = plan::cont::ScoreBase {
             candidates: &finishers,
             step_costs: &[1.0],
-            later_stage_costs: &[0.0],
             current_value: 0.0,
             current_odds: &current_odds,
+            certified: &[],
             continuations: &[],
             trios: &[],
             trio_sides: &[],
             finisher_umas: &[],
+            knobs: plan::cont::ScoringKnobs::default(),
+            odds_scale: 1.0,
         };
         let scoring = ScoringContext { score_base: &base, legacies: &state.legacies, pool: &state.pool };
         let mut best_builder: Option<BuilderCareer> = None;
@@ -388,6 +390,28 @@ impl Sim<'_, '_> {
             *parent = json!(legacies[parent.as_u64()? as usize]);
         }
         Some(self.cur_from_solver_pick(&state.pool, &pick))
+    }
+    /// `force`: the forced first career, the trainee on the two parents with her best deck (the career search with
+    /// both parents fixed, in process)
+    pub(super) fn forced_cur(&mut self, state: &PathState, forced: ForcedCareer) -> Cur {
+        let mut job = self.job.clone();
+        let job_fields = job.as_object_mut().unwrap();
+        job_fields.remove("simulate");
+        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
+        job_fields.insert("trainees".into(), json!([forced.trainee]));
+        job_fields.insert("fix".into(), json!(forced.parents));
+        job_fields.insert("top".into(), json!(1));
+        job_fields.insert("per_trainee".into(), json!(false));
+        let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
+        let pick = report["results"][0].clone();
+        assert!(
+            pick.is_object() && pick["trainee"]["id"] == forced.trainee,
+            "force: no career of {} on {:?}: {}",
+            forced.trainee,
+            forced.parents,
+            report.to_string().chars().take(300).collect::<String>()
+        );
+        self.cur_from_solver_pick(&state.pool, &pick)
     }
     /// `index`: the page's plan for this pool (the career job with the pool as legacies, no places, the page's `top`,
     /// `next`, `no_reports`: the plan job the page sends, docs/SOLVER.md "Next career"), in process; its `choice` runs.

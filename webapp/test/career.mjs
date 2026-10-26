@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { drawPink } from '../src/pink.mjs';
-import { searchCaveat } from '../src/proofs.mjs';
+import { searchCaveat, planCaveat } from '../src/proofs.mjs';
 import { QUICK, check, ART, dialog, AUDIT, still, careerPage, repoUrl } from './helpers.mjs';
 
 // The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
@@ -96,6 +96,56 @@ export default async function career(b) {
       /beat its class's assumed cap, which the exact check relies on/.test(provenBreach) &&
       searchCaveat({ proven_top: true, complete: true }) === '',
     [breachRerunDone, noCause, rerunOpen, provenBreach].join(' | '),
+  );
+  // the solver's reason lists: a breach kept from an earlier search of the same deck class, a work budget run out; and
+  // the named assumptions a proof rests on, shown apart from any unproven cause
+  const breachBefore = searchCaveat({
+      proven_top: false,
+      complete: false,
+      unproven: ['cap_breach'],
+      job_unproven: ['cap_breach'],
+      cap_breached: [1001],
+    }),
+    workCap = searchCaveat({ proven_top: false, complete: false, unproven: ['work_cap'] }),
+    assumed = searchCaveat({ proven_top: true, complete: true, assumes: ['two_feeder_cap', 'multi_feeder_cap'] }),
+    jobAssumed = searchCaveat({ proven_top: true, complete: true, job_assumes: ['multi_feeder_cap'] }),
+    given = searchCaveat({ proven_top: false, complete: false, given: true }),
+    unprovenAssumed = searchCaveat({
+      proven_top: false,
+      complete: false,
+      unproven: ['band_overflow'],
+      assumes: ['two_feeder_cap'],
+    });
+  check(
+    "career: the caveat names a breach kept from an earlier search and a work budget run out from the solver's reasons, and states a proof's named assumptions as a proof, apart from unproven causes",
+    /could not finish \(reported: a deck beat its class's assumed cap in an earlier search for these umas\)/.test(
+      breachBefore,
+    ) &&
+      /reported: a search ran out of its work budget/.test(workCap) &&
+      /^ Their order is proven under the assumed class cap for two-feeder decks and the assumed bound for nested-chain decks beside other feeders\.$/.test(
+        assumed,
+      ) &&
+      /too large to check in full/.test(unprovenAssumed) &&
+      !/proven under/.test(unprovenAssumed) &&
+      /^ The job's answer rests on the assumed bound for nested-chain decks beside other feeders\.$/.test(jobAssumed) &&
+      /scored as it is: no search compared it/.test(given) &&
+      !/could not finish/.test(given),
+    [breachBefore, workCap, assumed, unprovenAssumed, jobAssumed, given].join(' | '),
+  );
+  // the plan's assumptions go on the status line too (the plan table has no note for them), each said once: only those
+  // the search's caveat does not state already, all of them when that search proved nothing
+  const both = { proven_top: true, complete: true, assumes: ['two_feeder_cap'], job_assumes: ['multi_feeder_cap'] },
+    planSame = planCaveat(['two_feeder_cap', 'multi_feeder_cap'], both),
+    planMore = planCaveat(['two_feeder_cap', 'multi_feeder_cap'], { proven_top: true, complete: true }),
+    planUnproven = planCaveat(['two_feeder_cap'], { proven_top: false, complete: false, assumes: ['two_feeder_cap'] });
+  check(
+    "career: the plan's named assumptions are stated on the status line, only those the search's caveat does not state",
+    planSame === '' &&
+      planMore ===
+        ' The plan rests on the assumed class cap for two-feeder decks and the assumed bound for nested-chain decks beside other feeders.' &&
+      planUnproven === ' The plan rests on the assumed class cap for two-feeder decks.' &&
+      planCaveat(undefined, both) === '',
+    [planSame, planMore, planUnproven].join(' | '),
   );
   check(
     'career: with no veterans it asks for parents or an import, and offers sample veterans',
@@ -726,10 +776,10 @@ export default async function career(b) {
       lr.stars.every((s) => s === 3) &&
       typeof lr.roll?.y === 'number' &&
       !lr.roll.planned &&
-      (lr.roll.y >= 0.5 || /^No (careers saved|direct saving)/.test(lr.verdict)),
+      (lr.roll.y >= 0.5 || /^No (careers saved|saving found yet)/.test(lr.verdict)),
     JSON.stringify(lr),
   );
-  // a zero the bound can't rule out (the solver's answer replaced: y 0, y_hi 0.9) shows no saving while it is checked,
+  // a zero (the solver's answer replaced: y 0, y_hi 0.9; every zero is checked, whatever its bound) shows no saving while it is checked,
   // and the exact comparison starts once the roll has stood 0.8 s
   await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 }); // (the last roll's check done)
   const refines = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.compare && j.next).length),
@@ -752,7 +802,7 @@ export default async function career(b) {
   });
   await roll(0); // (nothing lands: not n/n, so the verdict is the saving's)
   const provAt = await (await pg.waitForFunction(() => window.__provSeen, null, { timeout: 30000 })).jsonValue();
-  const prov = { shown: /^No direct saving/.test(provAt.verdict), early: provAt.n === rf0 };
+  const prov = { shown: /^No saving found yet/.test(provAt.verdict), early: provAt.n === rf0 };
   prov.started = await pg
     .waitForFunction((n) => window.__careerJobs.filter((j) => j.compare && j.next).length > n, rf0, { timeout: 30000 })
     .then(
@@ -764,7 +814,7 @@ export default async function career(b) {
     delete window.__rollPatch;
   });
   check(
-    'career: … a provisional zero (y < 0.5 <= y_hi) shows "No direct saving", checking, and runs the exact comparison after a moment',
+    'career: … a provisional zero (y < 0.5) shows "No saving found yet", checking, and runs the exact comparison after a moment',
     prov.shown && prov.early && prov.started,
     JSON.stringify(prov),
   );
@@ -882,12 +932,14 @@ export default async function career(b) {
   );
   await pg.waitForTimeout(1500); // time for a stray comparison to answer, were one still running
   const [rj, rr, rm] = [(await policyJobs()) - rj0, (await policyResults()) - rr0, (await mainJobs()) - rm0];
-  // an exact comparison in flight is killed (one runs); a quick one (the roll's search, its saving from the plan's kept state) runs out with its
-  // answer ignored, so the worker keeps its caches (one per roll): either way only the last roll's shows
+  // an exact comparison in flight is killed (one runs per roll: 3); a quick one (the roll's saving from the plan's kept
+  // state) runs out with its answer ignored, so the worker keeps its caches, and only the last roll goes on: its best
+  // career with her, then, since every quick zero is provisional, the exact comparison once the roll has stood 0.8 s,
+  // which searches the best career with her again (2). Either way only the last roll's shows
   check(
     "career: rolling again while a comparison runs supersedes it: only the last roll's comparison shows",
     usable &&
-      (rm === 1 || rm === 3) &&
+      (rm === 2 || rm === 3) &&
       rr === rj &&
       (await pg.locator('#simulation .simskills .vsk:not(.pink)').count()) === 0 &&
       (await pg.evaluate(

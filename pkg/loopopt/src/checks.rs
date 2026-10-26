@@ -21,6 +21,8 @@ pub(crate) struct Checks {
     pub(crate) deck_debug_pairs: bool,
     /// `CAREER_WORK` set: a career job prints its main search's work, budget, solved and proven counts on stderr.
     pub(crate) career_work: bool,
+    /// `JOB_RSS` set: the CLI prints the process's resident memory after each job on stderr (`VmRSS`, Linux only).
+    pub(crate) job_rss: bool,
     /// `JOINT_CHECK` set: every exact scoring through `joint_b` is compared with the full enumeration
     /// (`joint_trainee_ref`); a mismatch panics.
     pub(crate) joint_check: bool,
@@ -115,6 +117,7 @@ impl Checks {
             deck_debug: set("DECK_DEBUG"),
             deck_debug_pairs: set("DECK_DEBUG_PAIRS"),
             career_work: set("CAREER_WORK"),
+            job_rss: set("JOB_RSS"),
             joint_check: set("JOINT_CHECK"),
             sb_check: set("SB_CHECK"),
             sbound: number("SBOUND").unwrap_or(3),

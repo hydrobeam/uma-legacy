@@ -78,3 +78,58 @@ fn two_jobs_and_a_reload_plan_as_one_job() {
     assert!(strip(&re[0]) == strip(&two[0]), "the search job's answer differs after the reload");
     assert!(strip(&re[1]["next"]) == strip(&one["next"]), "the plan differs after the reload");
 }
+
+/// A job after a job on another pool of the same setup (val/plan p16_88, then p16, in one process) answers as p16 alone:
+/// what the first job proved is kept under its pool (`KeptState::seen`), so the second takes none of it (a proof from
+/// another pool could let `certified` name another career of equal value). Timings and work counts may differ.
+#[test]
+fn a_job_after_another_pool_answers_as_alone() {
+    let read = |name: &str| -> Value {
+        let path = format!("{}/../../val/plan/{name}.json", env!("CARGO_MANIFEST_DIR"));
+        serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+    };
+    let (other, job) = (read("p16_88"), read("p16"));
+    assert_ne!(other["legacies"], job["legacies"], "the two jobs must differ in their pools");
+    let dir = std::env::temp_dir();
+    let tag = std::process::id();
+    let [po, pj] = ["other", "job"].map(|n| dir.join(format!("uma-cross-pool-{tag}-{n}.json")));
+    fs::write(&po, other.to_string()).unwrap();
+    fs::write(&pj, job.to_string()).unwrap();
+    let (after, _) = run(&[&po, &pj], None, None);
+    let (alone, _) = run(&[&pj], None, None);
+    for p in [&po, &pj] {
+        fs::remove_file(p).unwrap();
+    }
+    assert!(strip(&after[1]) == strip(&alone[0]), "p16 after p16_88 differs from p16 alone");
+}
+
+/// A kept plan is reused only on its own deck space (`bests_key`'s space key; that the keys differ in this case is
+/// `career::tests::a_trainee_filter_that_changes_a_class_changes_the_plan_key`): the nested_nopal pool with cards
+/// 30067 and 30080 as plain pals, a [1004] plan after a [1003, 1004] one searches as many careers and answers as it
+/// does alone. The same plan twice does reuse (the count this reads sees reuse).
+#[test]
+fn a_plan_on_another_trainee_filter_reuses_none_of_its_careers() {
+    let mut job: Value = serde_json::from_str(
+        &fs::read_to_string(format!("{}/tests/fixtures/nested_nopal.json", env!("CARGO_MANIFEST_DIR"))).unwrap(),
+    )
+    .unwrap();
+    job["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
+    job["next"] = json!({});
+    let dir = std::env::temp_dir();
+    let tag = std::process::id();
+    let [wide, narrow] = ["wide", "narrow"].map(|n| dir.join(format!("uma-plan-filter-{tag}-{n}.json")));
+    job["trainees"] = json!([1003, 1004]);
+    fs::write(&wide, job.to_string()).unwrap();
+    job["trainees"] = json!([1004]);
+    fs::write(&narrow, job.to_string()).unwrap();
+    let (after, _) = run(&[&wide, &narrow], None, None);
+    let (alone, _) = run(&[&narrow], None, None);
+    let (twice, _) = run(&[&narrow, &narrow], None, None);
+    for p in [&wide, &narrow] {
+        fs::remove_file(p).unwrap();
+    }
+    let solves = |out: &Value| out["next"]["work"]["prof"]["solves"].as_f64().unwrap();
+    assert!(solves(&twice[1]) < solves(&twice[0]), "the same plan twice reused nothing: the check reads no reuse");
+    assert_eq!(solves(&after[1]), solves(&alone[0]), "the [1004] plan reused careers of the [1003, 1004] plan");
+    assert!(strip(&after[1]) == strip(&alone[0]), "the [1004] plan after the [1003, 1004] plan differs from it alone");
+}

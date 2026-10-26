@@ -20,6 +20,8 @@ import { stateLoad, stateSave, stateDrop } from './statestore.js';
  * @property {(answer: SolverAnswer) => void} done called with the solver's answer
  * @property {(message: {r: any}) => void} [interim] a deck search's fast first pass
  * @property {(message: PlanProgress) => void} [progress] a career plan's phase reports
+ * @property {boolean} [background] a job an edit lets finish (the career plan's check, one short variant a job; the
+ *   state store, `engineSaveState`): `engineBusy` leaves it out, so the worker and what it keeps stay
  */
 let worker = null,
   ready = null,
@@ -92,14 +94,30 @@ function compiled() {
   }); // a failed load is retried on the next search
   return wasmModule;
 }
-// whether a job has been posted and not answered yet (a kill would cut it short; with none, the worker is idle)
-export const engineBusy = () => pending.size > 0;
+// whether a job other than a background one has been posted and not answered yet (a kill would cut it short; with
+// none, the worker is idle or finishing a background job, which a new job waits behind)
+export const engineBusy = () => [...pending.values()].some((job) => !job.background);
+// the next kill (`killEngine`): a job in flight then never answers, so a background job's caller waits on this too
+let nextKillAt = null;
+export function nextKill() {
+  if (!nextKillAt) {
+    /** @type {(value?: unknown) => void} */
+    let resolve = () => {};
+    const promise = new Promise((r) => {
+      resolve = r;
+    });
+    nextKillAt = { promise, resolve };
+  }
+  return nextKillAt.promise;
+}
 export function killEngine() {
   engineGen++;
   if (worker) worker.terminate();
   worker = null;
   ready = null;
   pending.clear();
+  nextKillAt?.resolve();
+  nextKillAt = null;
 }
 // the worker compiled and loaded without a job (a reload that shows a saved result still wants the next search quick)
 export const warmEngine = () => startEngine().catch(() => {});
@@ -183,10 +201,10 @@ export function enginePersist() {
 }
 // posts a job to the running worker as it is (no gate) and resolves with its answer
 /** @param {SolverJob} job @param {PendingJob['interim']} [interim] @param {PendingJob['progress']} [progress] @returns {Promise<SolverAnswer>} */
-function post(job, interim, progress) {
+function post(job, interim, progress, background = false) {
   return new Promise((done) => {
     const id = ++lastJobId;
-    pending.set(id, { done, interim, progress });
+    pending.set(id, { done, interim, progress, background });
     worker.postMessage({ type: 'run', id, job });
   });
 }
@@ -198,20 +216,22 @@ async function restore() {
   const answer = await post({ cmd: 'state_in', state: stored });
   if (!answer.r || answer.r.error) stateDrop(key);
 }
-// after a plan: store what the worker holds as soon as it is idle (a job in flight comes first; a killed worker saves
-// nothing). Promptly: a Reroll during an exact comparison kills the worker, and the next one restores this (a few ms)
+// after a plan: store what the worker holds as soon as it is idle (a job in flight comes first, a background one
+// excepted: the store waits behind it in the worker; a killed worker saves nothing). The store is a background job
+// itself: waiting behind the plan's check, it would otherwise count as a job in flight, and an edit then would kill
+// the worker and the plan it keeps (`engineBusy`). Promptly: a Reroll during an exact comparison kills the worker, and the next one restores this (a few ms)
 // where it would otherwise plan again (most of a second); state_out takes about 10 ms
 export function engineSaveState() {
   if (!persistOn) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    if (!worker || !ready || pending.size) {
+    if (!worker || !ready || engineBusy()) {
       engineSaveState();
       return;
     }
     try {
       await ready;
-      const answer = await post({ cmd: 'state_out' });
+      const answer = await post({ cmd: 'state_out' }, undefined, undefined, true);
       if (answer.r?.state) stateSave(stateKey(), answer.r.state);
     } catch {
       /* the worker went: nothing to save */
@@ -235,8 +255,9 @@ const gate = (job) =>
  * @param {SolverJob} job
  * @param {PendingJob['interim']} [interim]
  * @param {PendingJob['progress']} [progress]
+ * @param {boolean} [background]  `PendingJob['background']`
  * @returns {Promise<SolverAnswer>}
  */
-export function run(job, interim, progress) {
-  return startEngine().then(() => post(gate(job), interim, progress));
+export function run(job, interim, progress, background = false) {
+  return startEngine().then(() => post(gate(job), interim, progress, background));
 }

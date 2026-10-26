@@ -131,6 +131,8 @@ pub(crate) struct DeckSpace<'data> {
     pub(super) borrowed: Vec<bool>,
     // per entry, `cv_mask` of its source (the class caps)
     pub(super) class_masks: Vec<u64>,
+    /// per entry, its chain's targets, kind, character and misses by links done, and the pair caps (`deck::nested`)
+    pub(crate) nested_chains: crate::deck::nested::NestedChains,
     // pal characters with no relevant card: (id, name, card)
     pub(super) plain_pals: Vec<PlainPal<'data>>,
     pub(super) locked: Vec<usize>,
@@ -208,15 +210,7 @@ impl<'data> DeckSpace<'data> {
         }
         let target_count = self.target_groups.len();
         let entry_count = self.card_indices.len();
-        let mut kinds: Vec<ChainKind> = vec![];
-        let mut remaining_code = code;
-        for &kind in &self.kinds_all {
-            for _ in 0..(remaining_code % 7) {
-                kinds.push(kind);
-            }
-            remaining_code /= 7;
-        }
-        let marginals = chain_marginals(events, &kinds);
+        let marginals = chain_marginals(events, &self.kinds_of_code(code));
         let empty: Vec<f64> = vec![];
         let mut white_misses = vec![1.0f64; entry_count * target_count];
         let mut gold_misses = vec![1.0f64; entry_count * target_count];
@@ -241,6 +235,27 @@ impl<'data> DeckSpace<'data> {
         self.key_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&key_misses));
         key_misses
     }
+    /// The chain kinds of key `code` (counts in base 7 over `kinds_all`), each as often as the key holds it.
+    pub(crate) fn kinds_of_code(&self, code: u64) -> Vec<ChainKind> {
+        let mut kinds: Vec<ChainKind> = vec![];
+        let mut remaining_code = code;
+        for &kind in &self.kinds_all {
+            for _ in 0..(remaining_code % 7) {
+                kinds.push(kind);
+            }
+            remaining_code /= 7;
+        }
+        kinds
+    }
+    /// `deck`'s chain key: its entries' chain kinds and its filler cards, counted in base 7 over `kinds_all`.
+    pub(crate) fn deck_code(&self, deck: &SelectedDeck) -> u64 {
+        let place = |kind: ChainKind| {
+            7u64.pow(self.kinds_all.iter().position(|&listed| listed == kind).expect("a kind of the space") as u32)
+        };
+        let named_code: u64 =
+            deck.entries.iter().filter(|&&j| self.kind[j] != ChainKind::NONE).map(|&j| place(self.kind[j])).sum();
+        named_code + deck.filler_cards as u64 * place(ChainKind::FILLER)
+    }
     /// The chain events every deck of key `code` is bounded at: the most favourable over the pal counts its free slots
     /// (deck_size less its chain slots, the fillers' included) allow, so every chance computed at them is at least that
     /// of any deck of the key. The key's own events when the rate does not depend on pals.
@@ -253,9 +268,14 @@ impl<'data> DeckSpace<'data> {
     pub(crate) fn raises_rate(&self, j: usize) -> bool {
         self.cards[self.card_indices[j]].raises_chain_rate()
     }
+    /// The plain pals' card ids in their deck order (a deck of p plain pals takes the first p legal for its trainee):
+    /// the one part of the deck space the job's trainees set (`deck_entries` sorts them by how many they block).
+    pub(crate) fn plain_pal_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.plain_pals.iter().map(|plain_pal| plain_pal.id)
+    }
     /// Per count p of plain pals, how many of the first p legal for `trainee_ids` (the ones a deck takes) raise the
-    /// chain rate.
-    pub(super) fn plain_rate_pals(&self, trainee_ids: &[u32]) -> Vec<usize> {
+    /// chain rate (the plain pals in their deck order, `plain_pal_ids`)
+    pub(crate) fn plain_rate_pals(&self, trainee_ids: &[u32]) -> Vec<usize> {
         let mut prefix = vec![0usize];
         for plain_pal in self.legal_plain(trainee_ids) {
             prefix.push(prefix[prefix.len() - 1] + usize::from(plain_pal.card.raises_chain_rate()));
@@ -277,12 +297,7 @@ impl<'data> DeckSpace<'data> {
     /// its entries' misses under its chain-kind key (its entries' kinds and its filler cards, `key_miss`), the
     /// entries in index order.
     pub(crate) fn hint_chances_at(&self, deck: &SelectedDeck, events: ChainEvents) -> HintChances {
-        let place = |kind: ChainKind| {
-            7u64.pow(self.kinds_all.iter().position(|&listed| listed == kind).expect("a kind of the space") as u32)
-        };
-        let named_code: u64 =
-            deck.entries.iter().filter(|&&j| self.kind[j] != ChainKind::NONE).map(|&j| place(self.kind[j])).sum();
-        let misses = self.key_miss(named_code + deck.filler_cards as u64 * place(ChainKind::FILLER), events);
+        let misses = self.key_miss(self.deck_code(deck), events);
         let target_count = self.target_groups.len();
         let (mut white, mut gold) = (vec![1.0f64; target_count], vec![1.0f64; target_count]);
         for &j in &deck.entries {
@@ -500,6 +515,7 @@ impl<'data> DeckSpace<'data> {
         self.group_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&table));
         table
     }
+
     /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use
     pub(super) fn legal_tabs(&self, legal: &[usize], set_id: usize, trainee_ids: &[u32]) -> std::rc::Rc<LegalTables> {
         let plain_pal_count = self.legal_plain(trainee_ids).len();
@@ -610,13 +626,40 @@ impl<'data> DeckSpace<'data> {
     pub(crate) fn rho_top(&self) -> f64 {
         self.caps()[3]
     }
+    /// whether every outcome group of entry j passes `group_nuod_lvl` (`TargetSources::certified_cap_free`): the
+    /// state-conditioned bounds then hold for it without any cap
+    pub(crate) fn entry_cap_free(&self, j: usize) -> bool {
+        self.sources[j].certified_cap_free
+    }
+    /// a deck's entries' `cv_mask`s ORed
+    pub(crate) fn sel_mask(&self, deck: &SelectedDeck) -> u64 {
+        deck.entries.iter().fold(0u64, |mask, &j| mask | self.class_masks[j])
+    }
     /// a deck's structure class (`cap_class`)
     pub(crate) fn sel_class(&self, deck: &SelectedDeck) -> usize {
-        cap_class(deck.entries.iter().fold(0u64, |mask, &j| mask | self.class_masks[j]))
+        cap_class(self.sel_mask(deck))
     }
     /// a deck's cap under the ceiling rho: its class's cap, at most rho
     pub(crate) fn sel_cap(&self, deck: &SelectedDeck, rho: f64) -> f64 {
         self.caps()[self.sel_class(deck)].min(rho)
+    }
+    /// Entry j's identity in any job on the same cards (a career id's, `plan::kept::career_id`): its card's id, choice
+    /// variant and early-end link
+    pub(crate) fn entry_key(&self, j: usize) -> String {
+        format!("{}-{}-{}", self.cards[self.card_indices[j]].id, self.variants[j], self.end_links[j])
+    }
+    /// The entry `entry_key` names here, if any
+    pub(crate) fn entry_of_key(&self, key: &str) -> Option<usize> {
+        (0..self.card_indices.len()).find(|&j| self.entry_key(j) == key)
+    }
+    /// The card ids of the plain pals a deck holding `count` of them takes for `trainee_ids` (the first legal ones)
+    pub(crate) fn plain_ids(&self, trainee_ids: &[u32], count: usize) -> Vec<u32> {
+        self.legal_plain(trainee_ids).iter().take(count).map(|plain_pal| plain_pal.id).collect()
+    }
+    /// Whether named entries `entries` hold every locked card and at most the borrowed cards the job allows
+    pub(crate) fn locks_and_borrowing_hold(&self, entries: &[usize]) -> bool {
+        self.locked.iter().all(|&locked_card| entries.iter().any(|&j| self.card_indices[j] == locked_card))
+            && entries.iter().filter(|&&j| self.borrowed[j]).count() <= self.allowed_borrow
     }
     pub(crate) fn legal_plain(&self, trainee_ids: &[u32]) -> Vec<&PlainPal<'data>> {
         self.plain_pals
@@ -735,6 +778,7 @@ pub(crate) fn deck_space<'data>(
         sources: entries.sources.clone(),
         borrowed: entries.card_indices.iter().map(|&card_index| !is_owned(entries.cards[card_index].id)).collect(),
         class_masks: entries.sources.iter().map(TargetSources::cv_mask).collect(),
+        nested_chains: crate::deck::nested::NestedChains::new(&entries.sources, &entries.kind, target_groups.len()),
         plain_pals: entries
             .plain_ids
             .iter()

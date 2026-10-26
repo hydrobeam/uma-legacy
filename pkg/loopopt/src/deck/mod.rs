@@ -35,6 +35,7 @@
 //! - `chains`: chain events: count per run, per-link marginals, final-state distributions.
 //! - `hints`: training-hint draw counts per scenario and miss chances.
 //! - `caps`: the assumed caps on exact over product odds and the exact search's budgets.
+//! - `nested`: proven bounds for decks with a card whose chain feeds two targets, which the class caps miss.
 //! - `pdeck`: the decks a search returns (`PDeck`), their shared names and identity key.
 //! - `tests`: the deck model's tests.
 use serde::Deserialize;
@@ -248,6 +249,7 @@ pub(crate) mod chains;
 pub(crate) mod enumerate;
 mod hints;
 pub(crate) mod joint;
+pub(crate) mod nested;
 pub(crate) mod pdeck;
 pub(crate) mod sources;
 pub(crate) mod space;

@@ -2,15 +2,28 @@
 strictly (the whole JSON, equal values; keys in SKIP and keys ending in _ms are ignored). For solver work that must
 not move the planner's results; `val/runval.py` does not cover these jobs.
 
-Then the proxy gate: each job again with `next.proxy_check`, which prices every builder row through its deck-class
-proxy beside its exact career. The plan admits a builder for an exact search by its proxy efficiency (within
-PROXY_EFF 6% of a candidate's second best) and promotes a proxy row by its proxy saving + 1 (within PROXY_SAVE 6%), so a
-proxy that reads low can keep a better row out. The gate fails a job when a proxy reads more than PROXY_GATE (3%, half
-the band) low: an efficiency (each candidate's, where the exact one is at least 1% of the row's best) or a saving + 1
-(where the exact one is positive). Base rows only: a looped row (her career on two full veterans) is priced against
-her unconstrained proxy, which is her base row's career; rows marked `looped` are dropped, or, from a solver that
-does not mark them, every row but each trainee's best by exact odds. A high-side error (a proxy that reads high only
-costs a search) is reported, not failed on.
+Then the proxy gate: each job again with `next.proxy_check`, which searches every builder exactly and prices each
+builder row through its deck-class proxy beside its exact career. The plan admits a builder for an exact search by its
+proxy efficiency (within PROXY_EFF 6% of a candidate's second best) and promotes a proxy row by its proxy saving + 1
+(within PROXY_SAVE 6%), so a proxy that reads low can keep a better row out. The gate fails a job on any of:
+
+- the plan moves: the plan as it runs (proxies on) and the all-exact plan differ in the pick (its career id), in V
+  (`v0`, to the bit) or in the set of the top OPT_SHOW = 8 rows by score;
+- an efficiency more than PROXY_GATE (3%, half the band) low: each candidate's, where the exact one is at least 1% of
+  the row's best (well conditioned: the band compares efficiencies near the best);
+- a saving more than SAVING_GATE (0.25 careers) low, in careers: proxy score against exact score. (A relative error on
+  saving + 1 is ill-conditioned once honest savings sit near 0; it is reported, not failed on.) The two scores must
+  be priced on the same deck cache for this to measure the proxy: `proxy_check` (rows.rs `check_plan_proxies`) scores
+  proxies on the cache from before the builders' searches, so until that is changed a proxy that is the exact career
+  itself can read low here, and the gate fails on the cache, not the proxy.
+
+Also reported per pool (not failed on yet): the row that runs V's route first (`route_first_step`) and its score,
+flagged when |score| > max(1, 1% of V); by policy improvement the route's own next step saves about nothing over V.
+
+Base rows only: a looped row (her career on two full veterans) is priced against her unconstrained proxy, which is her
+base row's career; rows marked `looped` are dropped, or, from a solver that does not mark them, every row but each
+trainee's best by exact odds. A high-side error (a proxy that reads high only costs a search) is reported, not failed
+on.
 
 usage: planval.py BIN TAG [REF] [-j N]
   writes val/plan/TAG__NAME.out, val/plan/TAG_proxy__NAME.out and val/plan/TAG_times.txt; compares with
@@ -27,6 +40,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 PROXY_GATE = 0.03
+SAVING_GATE = 0.25  # careers
+OPT_SHOW = 8  # rows the page shows (src/career/plan: OPT_SHOW)
 
 
 class CapWarning(NamedTuple):
@@ -179,14 +194,15 @@ def compare_job(name):
 
 
 class ProxyErrors(NamedTuple):
-    """A job's proxy errors over its base builder rows, relative (proxy / exact - 1)."""
+    """A job's proxy errors over its base builder rows: relative (proxy / exact - 1), and the saving's in careers."""
 
     rows: int
     other_deck: int
     efficiency_low: float
     efficiency_high: float
-    saving_low: float
+    saving_low: float  # saving + 1, relative (reported only)
     saving_high: float
+    careers_low: float  # proxy saving - exact saving, careers
 
 
 def base_rows(rows):
@@ -202,7 +218,7 @@ def base_rows(rows):
 
 def proxy_errors(output):
     rows = [row for row in base_rows(output["next"]["proxy_check"]["rows"]) if not row["cand"]]
-    efficiency, saving = [0.0], [0.0]
+    efficiency, saving, careers = [0.0], [0.0], [0.0]
     for row in rows:
         row_best = max(row["eff"], default=0.0)
         efficiency += [
@@ -210,8 +226,10 @@ def proxy_errors(output):
             for exact, proxy in zip(row["eff"], row["proxy_eff"])
             if row_best > 0 and exact >= 0.01 * row_best
         ]
-        if row["score"] is not None and row["proxy_score"] is not None and row["score"] + 1 > 0:
-            saving.append((row["proxy_score"] + 1) / (row["score"] + 1) - 1)
+        if row["score"] is not None and row["proxy_score"] is not None:
+            careers.append(row["proxy_score"] - row["score"])
+            if row["score"] + 1 > 0:
+                saving.append((row["proxy_score"] + 1) / (row["score"] + 1) - 1)
     return ProxyErrors(
         rows=len(rows),
         other_deck=sum(not row["same_deck"] for row in rows),
@@ -219,6 +237,7 @@ def proxy_errors(output):
         efficiency_high=max(efficiency),
         saving_low=min(saving),
         saving_high=max(saving),
+        careers_low=min(careers),
     )
 
 
@@ -238,24 +257,98 @@ def proxy_gate(job_entry, job_dir):
         raise RuntimeError(f"{name} (proxy_check): solver exited {result.returncode}\n{result.stderr}")
     open(os.path.join(PLAN_DIR, f"{tag}_proxy__{name}.out"), "w").write(result.stdout)
     output = json.loads([line for line in result.stdout.splitlines() if line.strip()][-1])
-    return proxy_errors(output) if "proxy_check" in (output.get("next") or {}) else None
+    if "proxy_check" not in (output.get("next") or {}):
+        return None
+    return proxy_errors(output), plan_view(output["next"])
+
+
+def plan_view(plan):
+    """what a player sees of a plan: the pick's career, V, and the top OPT_SHOW rows by score"""
+    career = lambda o: o.get("career") or [o["trainee"]["name"], o.get("parents")]
+    chosen = next((o for o in plan["options"] if o.get("chosen")), None)
+    scored = sorted((o for o in plan["options"] if o.get("score") is not None), key=lambda o: -o["score"])
+    return (
+        json.dumps(career(chosen)) if chosen else None,
+        plan.get("v0"),
+        sorted(json.dumps(career(o)) for o in scored[:OPT_SHOW]),
+    )
+
+
+def route_first_step(plan):
+    """(what V's route runs first, its row or None): the first trio side without a real full veteran of hers (A, then
+    B), her Cont's builder career where her step builds (`members[].builder`, the row Cont takes lam from, where the plan
+    reports it) or else her own base row; with both sides real, the finish (C on them)"""
+    options = plan.get("options") or []
+    for member in plan.get("members") or []:
+        if member.get("real"):
+            continue
+        if member.get("building_careers", 0) > 0:
+            builder = member.get("builder")
+            if builder is None:
+                return f"{member['trainee']}'s first builder (not reported: `members[].builder`)", None
+            row = next((o for o in options if o.get("career") == builder), None)
+            return f"{member['trainee']}'s first builder {builder}", row
+        row = next(
+            (
+                o
+                for o in options
+                if o["trainee"]["name"] == member["trainee"] and o.get("role") == "plan" and not o.get("looped")
+            ),
+            None,
+        )
+        return f"{member['trainee']}'s own career", row
+    row = next((o for o in options if o.get("role") == "finish"), None)
+    return "the finish on two real full veterans", row
+
+
+def first_step_tripwire(name):
+    """V's own next step should score about 0 (policy improvement: the route's own step saves nothing over V): its
+    row's score against max(1, 1% of V). Reported, not failed on (yet)."""
+    path = os.path.join(PLAN_DIR, f"{tag}__{name}.out")
+    if not os.path.exists(path):
+        return
+    plan = json.loads([line for line in open(path).read().splitlines() if line.strip()][-1]).get("next") or {}
+    v = plan.get("v0")
+    if not isinstance(v, (int, float)):
+        print(f"{name}: route's first step: no V")
+        return
+    what, row = route_first_step(plan)
+    if row is None or row.get("score") is None:
+        print(f"{name}: route's first step: {what}, no scored row")
+        return
+    bound = max(1.0, 0.01 * v)
+    flag = " FLAG" if abs(row["score"]) > bound else ""
+    print(f"{name}: route's first step: {what}, score {row['score']:+,.3f} (|score| bound {bound:,.2f}){flag}")
 
 
 failures = sum(compare_job(name) for _era, name in jobs)
 print(f"{len(jobs)} plan jobs, {failures} differ")
+for _era, name in jobs:
+    first_step_tripwire(name)
 with tempfile.TemporaryDirectory() as job_dir, ThreadPoolExecutor(parallelism) as ex:
     gates = list(ex.map(lambda job_entry: proxy_gate(job_entry, job_dir), jobs))
 proxy_failures = 0
-for (_era, name), errors in zip(jobs, gates):
-    if errors is None:
+for (_era, name), gate in zip(jobs, gates):
+    if gate is None:
         print(f"{name}: no proxy_check in the output")
         proxy_failures += 1
         continue
-    low = errors.efficiency_low < -PROXY_GATE or errors.saving_low < -PROXY_GATE
-    proxy_failures += low
-    print(
-        f"{name}: proxies {'LOW ' if low else ''}{errors.rows} rows ({errors.other_deck} on another deck): efficiency "
-        f"{errors.efficiency_low:+.2%} .. {errors.efficiency_high:+.2%}, saving + 1 {errors.saving_low:+.2%} .. {errors.saving_high:+.2%}"
+    errors, exact_view = gate
+    run_output = os.path.join(PLAN_DIR, f"{tag}__{name}.out")
+    lines = (
+        [line for line in open(run_output).read().splitlines() if line.strip()] if os.path.exists(run_output) else []
     )
-print(f"{len(jobs)} proxy checks, {proxy_failures} read over {PROXY_GATE:.0%} low")
+    moved = not lines or plan_view(json.loads(lines[-1])["next"]) != exact_view
+    efficiency_low, saving_low = errors.efficiency_low < -PROXY_GATE, errors.careers_low < -SAVING_GATE
+    proxy_failures += moved or efficiency_low or saving_low
+    print(
+        f"{name}: {'PROXIES MOVE THE PLAN; ' if moved else 'plan as all-exact; '}{errors.rows} rows "
+        f"({errors.other_deck} on another deck): efficiency {errors.efficiency_low:+.2%} .. {errors.efficiency_high:+.2%}"
+        f"{' LOW' if efficiency_low else ''}, saving {errors.careers_low:+.2f} careers at worst{' LOW' if saving_low else ''}"
+        f" (saving + 1 {errors.saving_low:+.2%} .. {errors.saving_high:+.2%}, reported only)"
+    )
+print(
+    f"{len(jobs)} proxy checks, {proxy_failures} fail (the plan moves, an efficiency over {PROXY_GATE:.0%} low, or a "
+    f"saving over {SAVING_GATE} careers low)"
+)
 sys.exit(1 if failures or proxy_failures or not jobs else 0)

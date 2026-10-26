@@ -32,7 +32,7 @@ one veteran share her stars. Future loop affinity uses expected shared wins insi
 
 | Assumption | Value in the model | Source | Status |
 |---|---|---|---|
-| Win chance in IT | 110 − cost(distance) − cost(surface) − streak penalty, clamped; cost S/A 0, B 10, C 20, D 30, E 40, F 60, G 90; penalty by position in a streak of consecutive race turns (any race counts, a rest resets) 0,0,5,20,30,50; a goal race (one the career's goals require) takes the previous position's penalty, so goal races pay 0,0,0,5,20,30, and still counts toward the position of the races after it; a goal over several turns (Fuji Kiseki, Fine Motion, Sakura Chiyono O, Matikanefukukitaru) is a choice goal (master.mdb `determine_race` 3: she picks one of its races), so only the first of its races she runs takes the shift; in the career planner, a race whose aptitude basis (110 − both costs, on her grades with pinks) is 70 or less costs 3 more (the loop planner keeps the table there); repeated attempts share the pink aptitude history: P(at least one win) = E[p_C] + E[p_S] − E[p_C p_S], with independent race outcomes conditional on that history; certain aptitudes use 1 − (1−p_C)(1−p_S) | community table, with the goal shift fitted to the runs: `docs/RESEARCH.md` §4 tests it on every G1 attempt in the runs (the shift predicts held-out runs better than the community table, and counting goal races better than not counting them) | fitted: on aptitudes raised by pink sparks (as the career planner raises them) every streak position to the 6th is inside its interval or within 1% in wins, an allowance chosen after seeing the data; known misses (§4): goal races 4th in a row and chosen races 1st and 2nd lose more often than predicted, the lowest aptitude basis wins less (the career planner's extra cost is the one §4 fits there, held out against the table; on base grades, the loop planner's, the table errs the other way there), Trackblazer's goal races 4th to 6th win less; that a choice goal's second race takes no shift is read from the game data, not tested; the loop model keeps base aptitudes, which under-predict wins (a simplification); goal races 7th or later in a row win less than predicted even at the full penalty of 50, and the streak count stopping at 6 adds to it (exposure in optimised schedules unmeasured) |
+| Win chance in IT | 110 − cost(distance) − cost(surface) − streak penalty, clamped; cost S/A 0, B 10, C 20, D 30, E 40, F 60, G 90; penalty by position in a streak of consecutive race turns (any race counts, a rest resets) 0,0,5,20,30,50; a goal race (one the career's goals require) takes the previous position's penalty, so goal races pay 0,0,0,5,20,30, and still counts toward the position of the races after it; every race of a goal over several turns (Fuji Kiseki, Fine Motion, Sakura Chiyono O, Matikanefukukitaru; master.mdb `determine_race` 3) is a goal race; in the career planner, a race whose aptitude basis (110 − both costs, on her grades with pinks) is 70 or less costs 3 more (the loop planner keeps the table there); repeated attempts share the pink aptitude history: P(at least one win) = E[p_C] + E[p_S] − E[p_C p_S], with independent race outcomes conditional on that history; certain aptitudes use 1 − (1−p_C)(1−p_S) | community table, with the goal shift fitted to the runs: `docs/RESEARCH.md` §4 tests it on every G1 attempt in the runs (the shift predicts held-out runs better than the community table, and counting goal races better than not counting them) | fitted: on aptitudes raised by pink sparks (as the career planner raises them) every streak position to the 6th is inside its interval or within 1% in wins, an allowance chosen after seeing the data; known misses (§4): goal races 4th in a row and chosen races 1st and 2nd lose more often than predicted, the lowest aptitude basis wins less (the career planner's extra cost is the one §4 fits there, held out against the table; on base grades, the loop planner's, the table errs the other way there), Trackblazer's goal races 4th to 6th win less; multi-turn goal groups are modelled with every option a goal, but the run records (each race's "Career-required" label, pooled) mark both of Fuji Kiseki's options required in 129-132 of 136 runs, Fine Motion's Mile Championship in 0 of 10 and Sakura Chiyono O's Takarazuka Kinen in 2 of 11 runs, so the grouping is not fully understood; the loop model keeps base aptitudes, which under-predict wins (a simplification); goal races 7th or later in a row win less than predicted even at the full penalty of 50, and the streak count stopping at 6 adds to it (exposure in optimised schedules unmeasured) |
 | Goals besides races | not modelled: the export reads race goals only (master.mdb `single_mode_route_race` `condition_type` 1); fan-count goals (`condition_type` 3: 27 in Global, over 22 characters) and graded-placement goals (`condition_type` 2: 5) are left out | master.mdb | a missed goal does not end the career, so the schedule need not meet them; the non-G1 races a player runs for fans take turns and streak positions the schedule does not see (untested) |
 | Turns a career forbids racing | `single_mode_race_restrict_turn` (chara, turn, gain_id = the story event that sets it, e.g. 107811811 = story 501078118): that turn keeps only her goal races. Global: Yamanin Zephyr turn 44 (no Tenno Sho (Autumn), Shuka Sho or Kikuka Sho in Classic), Sweep Tosho turn 36 (no Classic Takarazuka Kinen), both fixed story events with +20 energy; Matikanetannhauser turn 70 = her event-assigned Japan Cup goal | master.mdb; event titles from `text_data` 181 | exact (game data); that the Zephyr and Sweep events always fire is read from their being fixed story events, not tested |
 | Loop schedules | chosen to maximise the total expected shared G1 wins (every pair alike), not the landing odds | `docs/RESEARCH.md` §6: on the validation results, with each loop's reported decks fixed and outfits reselected, any other schedule could raise a winner by at most the solver's pair-ceiling bound | derived for fixed decks; the pair ceiling bounds overlap without requiring a jointly attainable pair of schedules |
@@ -69,7 +69,7 @@ outcomes are assumed independent across targets. These assumptions are separate 
 | Veterans | the loop model with what real veterans carry: each legacy's stars per target (no spark: no chance), recorded single-race G1 wins for race affinity, the recorded parents as grandparents (unknown parent: no relation points, sparks still count); spark generation ×1.1 per legacy actually carrying the spark | umadump exports (trained_chara_data.json; rental_chara_data.json for the borrow list): factor_id = factor group × 100 + stars, saddles via `single_mode_wins_saddle.group_id`; borrowed when owner_viewer_id ≠ 0 | exact decoding (master.mdb); borrowed flag checked on one export of each kind (owner_viewer_id 0 on 242 own veterans, the lender's viewer_id on 69 borrowable; use_type 0 on all) |
 | Career schedule | the trainee's schedule maximizes her expected wins of the G1s her parents won, each weighted by the chance each parent won it (affinity later: her parents' wins are the guide to what her later partners will have won); a G1 neither parent won is run where it costs those races almost nothing (a 1e-7 scalar tie-break, as in the loop planner: it can trade at most about 3.4e-6 expected weighted wins of them, none on base tables with certain parent wins); no training cost | the owner's rule (2026-10-22) | assumed |
 | Next career (the planner's pick, `next`) | the career that brings a fully looped parent (a full veteran whose parents are full veterans) closest per run, with each candidate's continuation (`Cont`: how her own odds rise as builder careers improve her lineage) priced in; mechanics in `docs/SOLVER.md`, *Next career* | continuation form assumed, fitted per pool; shape fitted to simulated builder traces | section *Next career* below |
-| Compare and Reroll (*Veteran analysis*) | Compare: the planner's expected careers to a fully looped parent (V) for the pool now against a plan of the pool with her added under today's plan's fit (`next.fit`: its stage candidates and continuations, so the two Vs differ by what she changes, not by a refit); Add to veterans then plans the pool with her afresh, refitted, so its V can differ from Compare's either way. Her own full veteran with full veteran parents is a fully looped parent. Reroll asks the plan for that one outcome's saving (`next.roll`, from the pick's kept scoring: her stars per target, her G1 wins at their expected chances), which holds the route's last career at its grandparents now: "no direct saving" where its bound `y_hi` (her direct lifts only) is under half a career, else checked by a Compare. The plan, and so a roll's saving, takes at most 12 targets (10 not guaranteed by the scenario); over 12 the career has no joint outcome table, so Reroll draws each target on its own odds, independently | exact parts as the planner's | V can rise with her under the same fit: each fresh side of V's route is the veteran an uma's best career now would leave, her arrival can switch that career to one whose veteran is a worse grandparent for the route's last career, and V never offers the old lineage (2026-10-24: 11 of 50 rolled veterans of the val pools' picks, +51 to +189 careers, on p10, p10_pink and p11). The page shows a rise as it is and says it is the planner's, never clamps it. `val/mono.py` checks the fixed-fit path by removing each pool's last veteran, not by adding a rolled one |
+| Compare and Reroll (*Veteran analysis*) | Compare: the planner's expected careers to a fully looped parent (V) for the pool now against a plan of the pool with her added under today's plan's fit (`next.fit`: its stage candidates and continuations, so the two Vs differ by what she changes, not by a refit); Add to veterans then plans the pool with her afresh, refitted, so its V can differ from Compare's either way. Her own full veteran with full veteran parents is a fully looped parent. Reroll asks the plan for that one outcome's saving (`next.roll`, from the pick's kept scoring: her stars per target, her G1 wins at their expected chances), which prices her in the plan's routes (a candidate's parent beside a kept partner, so the route's last career's grandparent; her own full veteran as a side): shown at once as provisional and confirmed by a Compare once the roll has stood 0.8 s (the plan's routes are not every route a replan can take: another lineage of a candidate's whose last career she improves as a grandparent, without lifting the candidate's odds, can save careers). The plan, and so a roll's saving, takes at most 12 targets (10 not guaranteed by the scenario); over 12 the career has no joint outcome table, so Reroll draws each target on its own odds, independently | exact parts as the planner's | V can still rise with her under the same fit, less often: a fresh side may take any of a candidate's top lineages (`fresh_lineages`, 3: her best career now and her next two by her cached decks, each searched with both parents fixed), so the lineage her arrival displaces from a candidate's best career stays on offer while it stays among them; it can still drop out (a veteran can open three better pairs, and a pair search that runs out of budget can stop below the pair's best) (2026-10-24, before: 11 of 50 rolled veterans of the val pools' picks, +51 to +189 careers, on p10, p10_pink and p11; 2026-10-27, after, `val/mono.py -n 3` on the 13 val/plan pools: 1 of 39 rose under today's fit, p16_t10 by 35.48 of V 9,747.66, and that rise is gone with 8 fresh lineages, so it is the truncation; Compare, at 3, still shows it; refitted, as Add plans, 9 of the 39 rose, by 2 to 371 careers, up to 14% of V, on p10_pink; final tree 2026-10-27). The page shows a rise as it is and says it is the planner's, never clamps it |
 | Aptitude (pink), blue and unique sparks | section *Sparks the odds don't use* | | |
 
 ### Next career
@@ -77,19 +77,67 @@ outcomes are assumed independent across targets. These assumptions are separate 
 The mechanics (objective V, `Cont`, a career's score, builders through their deck class) are in `docs/SOLVER.md`,
 *Next career*. The evidence behind them:
 
-- **Cont's shape.** `CEIL_SHARE` 0.6 and `LAM_DECAY` 1.5 are fitted to builder traces measured with the policy
-  simulator's `trace` policy (`val/sim/README.md`; Agnes Digital on four player pools of 2, 5, 11 and 19 veterans): Cont tracks achievable building within 0-5% on
-  2, 11 and 19 veterans and is 70% too pessimistic on 5, where lam rises after the first lift (builders improve) while
-  Cont only lets it decay (taking lam as the larger of now and one lift later fixes most of it: 995 -> 734
-  careers on 5 veterans, the others unchanged; not built); leave-one-pool-out fits of the shape ranged 0.6-1.0 and 1-3, so it is a calibration on
-  these pools, not a law. Not yet measured against other policies: the simulator's `index` policy runs the page's
+- **Cont's shape.** `CEIL_SHARE` 0.6 and `LAM_DECAY` 1.5 are a calibration to builder traces measured with the
+  policy simulator's `trace` policy (`val/sim/README.md`), first fitted on 2026-10-08 on four player pools that are not
+  in the repository. Refitted on 2026-10-26, after the lift chance came to follow her odds, lam and phi to come from the
+  builder whose continuation costs her least, and p_inf's grandparents to carry the rank's star mix and expected wins
+  (`val/sim/fit_cont.py`: the 9 pools of `val/sim/trace_pools.json`, each pool's two stage candidates, 6 runs of 400
+  careers each). Fitted to the traces' odds the shape runs to the grid's edge (1.2 / 3.0) and misses the step's cost
+  held out by 18% on average. Fitted to that cost, which is what the plan reads, it is 0.55 / 1.0 (leaving one pool out:
+  0.5-0.65 / 0.6-1.3), with a held-out mean cost error of 10.8% against the current shape's 10.5%, so the current shape
+  is kept. Per trace the current shape's cost is off the achievable cost (split in half) by -13% to +34%: too
+  pessimistic on most pools where building pays (p10's Agnes Digital +34.5%, pool14's two +22% and +29.5%), too
+  optimistic on p11 (-13.3%, -9.2%), exact on p16 and gm16, where building does not pay. Taking lam as the larger of now and one
+  lift later changes no trace's cost (not built). These are the model's own simulated careers, not real ones. Not yet
+  measured against other policies: the simulator's `index` policy runs the page's
   planner on the same draws as `greedy` and the plan's own trio, under goal `looped` (careers to a fully looped
   parent, the plan's goal; the default goal counts careers to the first full veteran, which the plan does not pursue:
   `docs/SOLVER.md`, *Policy simulator*), but no comparison of useful size has been run.
-- **Builders through their deck class**: the proxy, checked 2026-10-26 with `proxy_check` on the ten val/plan pools
-  of that day (base rows), is exact on nine; on p11 it reads at most 1.8% low on efficiency (5.6% high) and 2.1% low on
-  saving + 1, so the 6% band (`PROXY_EFF`, `PROXY_SAVE`) is over twice the worst low error. With every builder
-  searched exactly, V and the pick are unchanged on p11 and boot_mob. `val/planval.py` repeats the check on every val/plan pool and fails a proxy more than 3% low.
+- **Cont above p0 and a lifted route's C** (design choices, 2026-10-27; neither validated against runs or traces).
+  Priced on the rate at her odds, a candidate's step rose and fell with lifted odds above p0 (37 of the 94 reference
+  fits, by up to 9 careers, about 3%), so a typical lift could raise her step. Above p0 the step is now interpolated
+  between the costs to go from p0's own path's points (`docs/SOLVER.md`, *Continuation and V*), which never rise with
+  the odds; at p0 it is unchanged, and so is the calibration above, which prices the step at p0. A route through a
+  lifted side priced C on the lineage the lift made even where that side's step still builds, though its later
+  builders replace those parents, which V's own route never pays for: on a pool of veterans carrying 7 of 8 targets
+  with blank grandparents every row scored about -1, and on boot_mob roughly 500 of the pick's 547 was inferred to be
+  this channel. Now such a route's C is V's (the trio's own C), and C is priced on the new lineage only where the
+  side reruns at once.
+- **The pick under the shape's and the calibration's uncertainty** (the robustness check, `docs/SOLVER.md`, *Next
+  career*; the 13 val/plan pools, 2026-10-26): among the checked rows (the 8 shown on each pool), the planner's rule
+  selects the same career under all six tested variants on 12. On p11 it selects different careers under the tested
+  variants: Yamanin Zephyr [Fluttertail Spirit], the pick (taken within `NEAR` by her odds; Gold City scores 0.08
+  higher), under the plan's model, `CEIL_SHARE` 0.65 with either decay and P(all) x 0.961; Agnes Digital [Full-Color
+  Fangirling] (2.3x the odds, 0.33 below the top, just outside `NEAR`) at `CEIL_SHARE` 0.5 with either decay and P(all)
+  x 0.766. Across the variants V moves by -14% to +31% and the pick's score by up to 1.8x (p10_pink: 3.85 to 7.04); a
+  finishing row (p16_88's pick, both parents full veterans) stays at 0 under the P(all) variants, her own all-target
+  chance scaled with every other. The check covers those rows and variants, with the plan's searches held fixed; it says
+  nothing of errors outside them. Not validated against runs.
+- **Shared builders** (the joint-lift oracle, a diagnostic; the same pools): pricing a builder whose veteran lifts both
+  trio sides once, on a joint lattice of the sides' own continuations, lowers V by 0 to 8.3% (most on p16_t10, then
+  p10_pink, p11_noagnes, p10, p16_ss: 3.1-4.3%; 0 on boot_mob, and on p16_88 and p16_borrow, whose cheapest trios
+  have a real full veteran side) and changes
+  the cheapest trio on 7 of 13. The lattice with each builder lifting only her own side reproduces today's V to 1e-15.
+  No row is scored under it, so whether the pick would move is not measured.
+- **Builders through their deck class**: the proxy does not hold its band everywhere. At integration (2026-10-27,
+  `proxy_check` on the 13 val/plan pools) a builder's proxy efficiency read 46% low on p16_t10 (10 targets) and 6.4%
+  low on p16_borrow, against the 6% band (`PROXY_EFF`), so there a better builder can stay unsearched; on those pools
+  the plan with proxies still equalled the all-exact plan in pick, V and top 8 rows. Searching every builder exactly
+  (`exact_all`, the same binary, the same picks and V everywhere) costs p16_t10 13.8 s against 19.3 s with proxies and
+  p16_borrow 1.3 against 1.2 s, and more elsewhere (p10 3.37 against 2.21 s, p16 1.38 against 0.83, gm16_nu8 5.59
+  against 3.75, p11 2.92 against 2.14, boot_mob 0.65 against 0.64, p11_noagnes 3.47 against 3.04, p10_pink 3.33 against
+  2.23). So builders are searched exactly in a job with 10 targets or more or a borrowed veteran in the pool, and keep
+  their proxies elsewhere (`docs/SOLVER.md`, *Pass 1*); the measured case is 10 targets of which 8 uncertain, while
+  gm16_nu8 (8 uncertain of 8) keeps its proxies within the band. The saving errors measured then
+  (up to 3.7 careers on p10's 7th shown row) come from `proxy_check` pricing the proxy on an earlier deck cache than
+  the exact row, not from the proxy (on p10 and p11 the proxy is the same career). `val/planval.py` fails a pool when
+  proxies move the pick, V or the top 8 rows, when a proxy efficiency reads more than 3% low, or when a proxy saving
+  reads more than 0.25 careers low.
+- **A lift's lineage**: a career's veteran lifts a candidate by being her parent, which makes her C's grandparent on
+  that side; each such route is priced on its own lineage at each outcome (`docs/SOLVER.md`, *Pass 2*), with the
+  route's C held fixed (a lifted side's route keeps its trio's C) and the lifted side's G1 wins from her best career's
+  deck. On val/plan p10 (2026-10-26) the pick (Agnes Digital [Full-Color Fangirling]) is unchanged and its score is 5.32, against
+  0.62 when C's odds were read on the trio's lineage as it was, without her in it. Not validated against runs.
 - **Forms rejected**: crediting each improvement as the last (a frozen tail) overrated builders 10-40x; a single-step
   trainee score gave a strong uma's career no credit as a parent for her partners; pricing C from hypothetical parents
   bred from each other asked for a full loop one generation deeper than the goal and ignored real full veterans.
@@ -102,8 +150,10 @@ inspiration (Classic and Senior, 0-based turns 30 and 54; races from that turn o
 1/3/5% by stars × (1 + that legacy's affinity / 100), +1 grade per firing, at most S. Her schedule's win chances are
 the expectation over those grades (the schedule is fixed: not re-planned after a firing). Her veteran's pink: one,
 uniform over the aptitudes she ends at A or S, stars 20/70/10 (exact over the firings; the page's roll draws it). The plan's veteran before her result is known carries it as a mixture, each pink at its
-chance, which her children's grades and schedules average over exactly while such veterans are distinct characters
-(one veteran in two slots would need one shared pink; the solver refuses that lineage, which no caller schedules).
+chance (the plan's routes schedule her children). Her children's grades and schedules average over it exactly given
+her pink is independent of her G1 wins, which she carries as separate chances; both follow one aptitude history (a
+firing that raises her mile makes both a mile pink and her mile wins likelier), so this is an assumption, unmeasured
+and second order. A slot of her character with the same possible pinks is taken as her again, sharing her pink.
 Pinks don't move skill odds. Sources: generation from hakuraku (107,159 characters: uniform over A/S, p = 0.39; stars
 20/70/10, p = 0.73) and umamusustation (22,411 team-trial horses: A or better required, S not favoured, stars 20/70/10
 at A and S alike), measured; the start thresholds, the A cap, +1 per firing and S being reachable from umamusu.wiki and
@@ -124,4 +174,5 @@ is guaranteed at 3★ or more). The blue stars' stat band is an assumption.
 The pieces that decide rankings, and have the least evidence, are the deck-side ones: training-hint counts, chain
 completion, and event-choice behaviour; the uma-it runs measure the first two, and four outcome shares,
 part by part. `docs/RESEARCH.md` §13 checks acquisition using products of card marginals and checks spark-weighted
-acquisition against exact landing odds. It does not observe produced sparks or validate candidate rankings. On the planner side, the continuation (`Cont`) is a calibration on four player pools.
+acquisition against exact landing odds. It does not observe produced sparks or validate candidate rankings. On the planner side, the continuation (`Cont`) is a calibration on the model's simulated building on nine pools,
+whose cost it misses by -13% to +34% per trace.

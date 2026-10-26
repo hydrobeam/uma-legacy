@@ -37,7 +37,7 @@ kind of test can show.
 | 10 | Random card events are left out | not modelled | the targets they can hint read 1.24 of the model; the same targets on decks without such a card read 0.96 |
 | 11 | Conditional character events are left out | not modelled | sparse pooled comparison inconclusive; Vodka's own Nimble Navigator and Mejiro Ardan's own Ramp Up are known misses |
 | 12 | The parts compose into an exact $P(\text{all})$ under stated independence assumptions, with a lineage's expected shared wins standing in for their chance outcome | derived | an independent implementation reproduces the solver's odds on the 42 reference loop results (2e-15 at worst); the career report's real-lineage path has no independent check |
-| 13 | On targets of unknown priority the model is optimistic where it rates targets likely, and its pooled hint chance reaches 1 only through sources it leaves out; on prioritised targets it is slightly low | tested | unknown priority, predicted 0.6 or more: 0.983 [0.976, 0.990]; from modelled sources alone the bands depart jointly, $p$ = 5.9e-14; pooled 0.997 [0.989, 1.005] on 34,730 rows; prioritised 1.014 [1.005, 1.024] on 10,404 rows, by band $p$ = 0.08 |
+| 13 | On targets of unknown priority the model is optimistic where it rates targets likely, and its pooled hint chance reaches 1 only through sources it leaves out; on prioritised targets it is slightly low | tested | unknown priority, predicted 0.6 or more: 0.983 [0.976, 0.990]; from modelled sources alone the bands depart jointly, $p$ = 5.8e-14; pooled 0.997 [0.989, 1.005] on 34,730 rows; prioritised 1.014 [1.005, 1.024] on 10,404 rows, by band $p$ = 0.08 |
 | 13 | Over all targets the model is slightly optimistic, from targets the player left off the list | tested | all rows 0.990 [0.985, 0.995]; targets shown not prioritised 0.953 [0.943, 0.963], 115% of the shortfall; the cause is not established |
 | 13 | The model overstates the chance of landing every target in one career, $P(\text{all})$ | tested | spark-weighted all-target acquisition 0.86 [0.77, 0.96] of the model, worth 386 equally weighted runs, 0.89 without the 50 runs of highest predicted chance; runs showing no priority list 0.78, runs showing one 0.89, a difference of −0.11 [−0.32, +0.12] that is not detectable; scaling each target's chance to its own measured miss brings the acquisition part back to about 1 (in-sample, so consistent with the per-target misses compounding, not a test of it); counting every open target equally, no miss is detected; only 357 runs acquired every open target |
 
@@ -52,7 +52,7 @@ section. *How to read* says why a listed miss can be partly chance.
 | Inheritance | parents pass sparks less often, most of their trials at affinity 200 or more; a flat parent shortfall and a weaker affinity effect fit alike | parents 0.970 [0.954, 0.985]; at affinity 200+ 0.964 [0.948, 0.981] | 3 |
 | Affinity | the loop model's expected shared wins use base aptitudes and fall short of real careers', mostly in races the base table gives under 0.95 | 1.118 [1.114, 1.122] | 4, 5 |
 | Inheritance | non-target skills, the shortfall spread over many skills | 0.979 [0.969, 0.990] | 13 |
-| Races | aptitude basis <=70 on raised grades, before streak penalties; an extra cost of 3 points there predicts unseen runs better; the career planner does not apply it | 0.94 [0.93, 0.96] | 4 |
+| Races | aptitude basis <=70 on raised grades, before streak penalties; an extra cost of 3 points there predicts unseen runs better; the career planner applies it | 0.94 [0.93, 0.96] | 4 |
 | Races | goal races 4th in a row, chosen races 1st and 2nd in a row: each under 1% off in wins; goal races 4th in a row lose more often than predicted (exact $p$ = 0.0034) | wins 0.995, 0.995, 0.996; losses 2.35, 1.053, 1.057 | 4 |
 | Races | goal races 7th or later in a row, short of the prediction as the planner charges them (as the 6th) and also at the full penalty of 50 | 0.60 [0.46, 0.74] | 4 |
 | Races | Trackblazer's goal races 4th to 6th in a row, on few attempts | 0.84 [0.72, 0.96] over 46 | 4 |
@@ -68,8 +68,8 @@ section. *How to read* says why a listed miss can be partly chance.
 | Calibration | landing every target at once reads below the model | 0.86 [0.77, 0.96] | 13 |
 | Calibration | prioritised targets are acquired slightly more often than predicted | 1.014 [1.005, 1.024] | 13 |
 | Calibration | Ramp Up / It's On! and Risky Business / Nothing Ventured are acquired less often than predicted | 0.930 [0.91, 0.95]; 0.926 [0.89, 0.96] | 13 |
-| Calibration | on targets of unknown priority, those predicted 0.6 or more are acquired less often than predicted | 0.983 [0.976, 0.990]; from modelled sources, bands jointly $p$ = 5.9e-14 | 13 |
-| Calibration | golds a deck can give, where the target is not shown prioritised, are hinted less often than predicted | golds not predicted certain 0.925 [0.898, 0.951]; unknown priority 0.836, not prioritised 0.903, prioritised 0.992 | 13 |
+| Calibration | on targets of unknown priority, those predicted 0.6 or more are acquired less often than predicted | 0.983 [0.976, 0.990]; from modelled sources, bands jointly $p$ = 5.8e-14 | 13 |
+| Calibration | golds a deck can give, where the target is not shown prioritised, are hinted less often than predicted | golds not predicted certain 0.958 [0.944, 0.973]; unknown priority 0.932, not prioritised 0.951, prioritised 0.994 | 13 |
 | Event choices | outcome shares the model leaves at the equal rule read off it on most choices the records can read, and on most of those read without hint levels | 15 of 20 choices; without hint levels 5 of 9 | 9 |
 | Event choices | Sasami Anshinzawa [This Might Sting!]'s adopted Nothing Ventured 0.75 is above her per-run share on the planner's premise, both skills prioritised | 0.59 [0.48, 0.69] | 9 |
 | Event choices | Riko Kashimoto [Planned Perfection]'s adopted Ramp Up 0.75 is just above her per-run share when only credits at a level her event gives count | 0.72 [0.69, 0.74] | 9 |
@@ -128,7 +128,7 @@ given to a skill already at Lv 5 is not credited (section 9); that pal and group
 Tokai Teio's Head-On is always acquired (section 11); the loss scaling section 6 uses to price base grades; a score
 straight-line between its floor and ceiling (section 2); the one-nat allowance for fitting a parameter (section 3); and
 dependence between a run's targets beyond what section 12 models, apart from the inspirations of different targets,
-where section 13 tests it and detects none.
+where sections 3 (within one inspiration) and 13 (over a career) test it and detect none.
 
 ## How to read this document
 
@@ -321,6 +321,15 @@ a *slope* $s$ scales affinity, $r = \min\{1,\ b(s)(1 + sA/100)\}$. The model has
 ### Findings
 
 - **Grandparents pass sparks at the model's full base rate.**
+- **Within one inspiration, no per-ancestor trigger is detected.** A trigger would make an ancestor active in an
+  inspiration with some chance $g$, her sparks then firing with chance $r/g$: each spark's own chance stays $r$, but a
+  pair she carries shows together $1/g$ times as often as the product predicts, while pairs on two ancestors stay at
+  the product (derived). Pairs of single-carrier skill whites in the same career year, each chance scaled by her
+  generation's observed / predicted, show together 0.995 [0.969, 1.020]
+  times the product on one ancestor and 0.996 [0.980, 1.012] on two
+  (8,562 runs, run-clustered bootstrap). So a trigger with $g$ below
+  0.981 is excluded. This tests one kind of dependence, through
+  pairs; it does not show the firings independent in general.
 - **Known miss: parents pass sparks less often than the model predicts, and the trials cannot say why.** In sample,
   two one-parameter changes are each detectable (rule 2): a parent weight below 1 and an affinity slope below 1. Over
   all trials the parent weight fits slightly better, since a slope also lowers the grandparents; on parents alone, the
@@ -446,9 +455,10 @@ A race's position $j$ counts consecutive race turns: any race counts, and a turn
 is one the career requires; a *chosen race* is one IT chose. The community table charges every race its own position,
 $s = j$. The adopted model (**fitted**, below) charges a goal race the position before it, $s = \max(j - 1, 1)$, so goal
 races pay 0, 0, 0, 5, 20, 30. The planner counts $j$ up to 6. The tests take IT's choice of each chosen race as
-given, and stats are not modelled. Grades are each outfit's own, from the game data. The planner's data hold one set
-per character, which is wrong for two outfits, Vodka [Fiery Aqua Vitae] and Daiwa Scarlet [Nuit Étoilée de Scarlet]:
-4,976 attempts here.
+given, and stats are not modelled. Grades are each outfit's own, from the game data. The planner's data hold the first
+outfit's per character, which differ from her own for three Global outfits, Vodka [Fiery Aqua Vitae], Daiwa Scarlet
+[Nuit Étoilée de Scarlet] and Haru Urara [New Year ♪ New Urara!]: 4,976 attempts
+here. The data also list each such outfit's own, which the career planner uses; the loop planner keeps the first's.
 
 ### Findings
 
@@ -463,8 +473,9 @@ per character, which is wrong for two outfits, Vodka [Fiery Aqua Vitae] and Daiw
 - **The streak penalty is kept.** The previous race's result shows no detectable further effect.
 - **The table is kept, with a shortfall at the lowest aptitudes.** A free win rate for every cell has no clear held-out
   advantage. One extra aptitude cost on the lowest basis does, even allowing for that basis having been picked after
-  its miss was seen. On raised grades, which the career planner uses, the miss stands uncorrected. On base grades,
-  which a planned loop uses, the table errs the other way there, predicting too few wins.
+  its miss was seen. On raised grades, which the career planner uses, the planner charges that cost. On base grades,
+  which a planned loop uses, the table errs the other way there, predicting too few wins, and the loop planner keeps
+  the table.
 - **Calibrated at every streak position to the 6th: inside the interval, or within 1%.** One rule is applied to every
   position, goal races 1st to 6th in a row and chosen races at every position, and every position meets it. Three meet
   it only through the 1% allowance, missing their interval by under 1% in wins: goal races 4th in a row, and chosen
@@ -505,7 +516,7 @@ two parameters in each, the in-sample comparisons follow rule 1 of *How to read*
 | Goal races pay one position less | community table, goal races 4th on: 1.135 [1.123, 1.147] | held out, forms table below | shift adopted |
 | No free rate per cell does better | | a free rate per chance, streak position and race kind, 111 cells, each pulled toward 1/2 by one attempt, held out: 44 ± 30 nats, $z$ = 1.46; pulled toward the table's chance instead, and kept off 0% and 100%: $z$ = 1.51 | table kept |
 | Aptitude basis <=70 wins less (grouped before streak penalties) | 0.942 [0.928, 0.957] over 15,946 attempts | interval below 1 | known miss |
-| That shortfall is real | an extra cost of 3 points on that basis, the same in every fold; fitted on all runs it brings the bucket to 0.999 [0.984, 1.014], in sample and so close to 1 by construction | held out against the table: 29 ± 8 nats, $z$ = 3.62. The bucket was picked after its miss was seen, so the bar is raised for the five buckets it could have been (Bonferroni): $z$ > 2.58 | known miss, not corrected |
+| That shortfall is real | an extra cost of 3 points on that basis, the same in every fold; fitted on all runs it brings the bucket to 0.999 [0.984, 1.014], in sample and so close to 1 by construction | held out against the table: 29 ± 8 nats, $z$ = 3.62. The bucket was picked after its miss was seen, so the bar is raised for the five buckets it could have been (Bonferroni): $z$ > 2.58 | known miss of the table; the career planner applies the cost |
 | Where base grades fall short | wins observed / predicted on base grades by basis: 110 1.000, 100 1.006, 90 1.067, 80 1.160, 70 or less 1.77; losses 1.08, 0.75, 0.46, 0.47, 0.51 | | used by section 6 |
 
 By scenario, every interval covers the prediction once chosen races 1st and 2nd in a row are left out.
@@ -1829,7 +1840,10 @@ The composition is **derived** from sections 1-11 under the independence assumpt
 fitted and no research script computes it. An independent implementation, `val/joint_check.py`, reproduces the solver's exact
 odds on the 42 loop-planner reference results and their listed runner-ups, from the
 reported shared wins and relation points (section 6). That covers the loop planner. The career report's path for real
-legacies, described at the end of this section, is what section 13 scores; nothing independent recomputes it.
+legacies, described at the end of this section, is what section 13 scores; `val/career_check.py` recomputes its
+reports independently from each career job and the data (slot affinities, $q_k$, carriers, spark scales, landing
+factors and the joint $P(\text{all})$, the deck model restated by `val/joint_check.py`), a validation check outside
+these scripts.
 
 A target lands if the deck hints the gold and it sparks, or else if any source hints the white and that sparks. For a
 target $k$ not guaranteed:
@@ -1917,9 +1931,11 @@ Rows on her outfit and scenario golds are *certain*, so tests 1 and 3 leave them
 Unity Cup's guaranteed golds show in 1,695 of its 1,695 runs. The runs end before skills are bought, so
 "acquired" means hinted, the model's own meaning.
 
-Tests 1 and 3 score the career report's `buy` product approximation, which multiplies chances across cards, not the
-exact joint engine of section 12; shared chain progress makes the two differ. The landing and all-targets checks use
-the exact engine's $p_k$ and $P(\text{all})$.
+Test 1 scores the career report's deck hint chances (`buy.deck_gold`, `buy.deck_white`), a product approximation that
+multiplies chances across cards, not the exact joint engine of section 12; shared chain progress makes the two differ.
+Test 3 scores its buying chances (`buy.gold`, `buy.white`), which are exact per target: the gold chance over the
+deck's chain states, the white part the rest of the exact landing chance. The landing and all-targets checks use the
+exact engine's $p_k$ and $P(\text{all})$.
 
 1. **Deck hint**: does a deck card hint the skill, by training or by its events, as often as sections 7-9 predict? The
    prediction is $d^g + (1 - d^g)d^w$, with $d^g$ the gold chance and $d^w$ the white chance given no gold. Only rows
@@ -1946,10 +1962,10 @@ the exact engine's $p_k$ and $P(\text{all})$.
 | prioritised | 10,404 | 0.665 | 1.014 [1.005, 1.024] | slightly above 1: known miss |
 | not prioritised | 15,131 | 0.526 | 0.953 [0.943, 0.963] | optimistic |
 | unknown priority | 34,730 | 0.488 | 0.997 [0.989, 1.005] | covers 1 pooled, through unmodelled sources; optimistic at 0.6 and above: known miss |
-| 4. Gold acquired, golds not predicted certain | 3,963 | 0.519 | 0.925 [0.898, 0.951] | optimistic: known miss |
-| prioritised | 1,674 | 0.571 | 0.992 [0.956, 1.029] | covers 1 |
-| unknown priority | 1,353 | 0.446 | 0.836 [0.785, 0.887] | optimistic |
-| not prioritised | 936 | 0.534 | 0.903 [0.847, 0.958] | optimistic |
+| 4. Gold acquired, golds not predicted certain | 17,175 | 0.217 | 0.958 [0.944, 0.973] | optimistic: known miss |
+| prioritised | 3,570 | 0.358 | 0.994 [0.967, 1.021] | covers 1 |
+| unknown priority | 10,826 | 0.134 | 0.932 [0.910, 0.953] | optimistic |
+| not prioritised | 2,779 | 0.359 | 0.951 [0.923, 0.979] | optimistic |
 
 ### Evidence
 
@@ -1966,8 +1982,8 @@ open targets, not the exact engine.
 | 0.20-0.40 | 6,167, 0.307 (0.30) |
 | 0.40-0.60 | 6,645, 0.507 (0.50) |
 | 0.60-0.80 | 11,667, 0.699 (0.72) |
-| 0.80-0.95 | 9,135, 0.842 (0.86) |
-| 0.95-1 | 10,031, 0.981 (1.00) |
+| 0.80-0.95 | 9,136, 0.842 (0.86) |
+| 0.95-1 | 10,030, 0.981 (1.00) |
 
 Pooled over every row the bands look close, but that mixes three kinds of target. Split by priority, a joint test
 asks whether every band with a positive prediction matches at once: a run-clustered Wald $\chi^2$, one degree of
@@ -1986,7 +2002,7 @@ by band.
 | 0.60-0.80 | 0.691 | 0.697 (0.710) | 0.748 (0.727) | 0.659 (0.727) |
 | 0.80-0.95 | 0.832 | 0.835 (0.855) | 0.880 (0.868) | 0.820 (0.856) |
 | 0.95-1 | 0.987 | 0.987 (0.998) | 0.992 (0.994) | 0.962 (0.998) |
-| joint $p$ | 5.9e-14 | 2.0e-12 | 0.08 | 1.9e-34 |
+| joint $p$ | 5.8e-14 | 2.0e-12 | 0.08 | 1.9e-34 |
 
 Where the model rates targets 0.6 or more likely, prioritised rows read 1.012 of it and
 not-prioritised rows 0.945; the unknown-priority rows' 0.983 is what a mix of
@@ -2015,21 +2031,21 @@ does not validate candidate rankings.
 *Gold acquisition.* On open targets whose gold a deck card can give, is the gold hinted as often as predicted? Every
 such gold in the runs is listed. The joint test asks whether every gold
 with an uncertain prediction matches at once (run-clustered Wald $\chi^2$, nothing fitted): $\chi^2$ =
-33.2 on 4
-golds, $p$ = 1.1e-06. See Ya Later! is predicted certain on every row
+1021.0 on 8
+golds, $p$ = 4.3e-215. See Ya Later! is predicted certain on every row
 and always shows, so the joint test leaves it out, and so does the pooled test of the other golds:
-0.925 [0.898, 0.951]. Split by the target's priority, prioritised golds
-read 0.992 [0.956, 1.029], no detected miss, while unknown-priority golds read
-0.836 and not-prioritised ones 0.903, the same pattern as the event-only hints of test 1.
+0.958 [0.944, 0.973]. Split by the target's priority, prioritised golds
+read 0.994 [0.967, 1.021], no detected miss, while unknown-priority golds read
+0.932 and not-prioritised ones 0.951, the same pattern as the event-only hints of test 1.
 
 | Gold | Rows | Observed / predicted [95%] |
 |---|---|---|
-| No Stopping Me! | 200 | 0.985 [0.84, 1.14] |
-| See Ya Later! | 7,494 | 1.000 [0.999, 1.000] |
-| It's On!, outside Unity Cup | 632 | 0.921 [0.84, 1.01] |
-| Perfect Spot! | 1,168 | 0.920 [0.87, 0.97] |
-| Nothing Ventured | 1,963 | 0.923 [0.88, 0.97] |
-| every gold | 11,457 | 0.984 [0.978, 0.989] |
+| No Stopping Me! | 1,659 | 0.985 [0.80, 1.20] |
+| See Ya Later! | 7,964 | 1.000 [0.994, 1.005] |
+| It's On!, outside Unity Cup | 2,577 | 0.921 [0.82, 1.03] |
+| Perfect Spot! | 2,277 | 0.920 [0.86, 0.98] |
+| Nothing Ventured | 2,301 | 0.923 [0.88, 0.97] |
+| every gold | 23,005 | 0.984 [0.978, 0.989] |
 
 *Training-pool hints by scenario* test $\beta$ and $d$ (section 7). Most of these rows come from cards at their top
 limit break, the rows section 7 fitted on, so they check the fit in-sample. Only Trackblazer's interval excludes 1:
@@ -2048,7 +2064,7 @@ the sourcing cards, the rows outside section 7's fit read LB0 0.977
 | Observed / predicted [95%] | 1.011 [0.98, 1.04] | 0.931 [0.85, 1.01] | 1.014 [0.92, 1.10] | 0.746 [0.60, 0.89] |
 
 *Every open target in one run.* Does the share of runs acquiring all their open targets match the mean product of
-their per-target predictions? Over every run it reads 0.925 of it, and the interval reaches
+their per-target predictions? Over every run it reads 0.926 of it, and the interval reaches
 the prediction, so no miss is detected; the same holds over the runs whose open targets are each prioritised or of
 unknown priority. With 357 such runs this check is weak:
 
@@ -2078,7 +2094,8 @@ Both run sets read below 1; the list runs' upper bound sits just under 1, at 0.9
 not settled. Do they differ? Resampling each set on its own, the no-list ratio minus the list ratio is
 −0.109 [−0.323, +0.120], so no difference is detectable.
 
-Where does the shortfall come from? The same comparison under the career report's approximation, counted once by tier
+Where does the shortfall come from? The same comparison under the career report's approximation (the product over
+targets of its per-target buying chances, each exact, multiplied as if the targets were independent), counted once by tier
 and once *tier-blind* (every acquisition scored as a white, on both sides), separates the gold tier from acquisition
 itself. Does counting tier-blind change the ratio? Both are scored on the same resamples of runs, and the difference
 is the test:

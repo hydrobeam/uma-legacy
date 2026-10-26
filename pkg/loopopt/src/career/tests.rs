@@ -167,7 +167,8 @@ fn inheritance_copies_match_lineage() {
 }
 /// The worker's kept work leaves (`state_out`) and comes back (`state_in`) bit for bit after a plan, and a roll after
 /// the round trip answers as before it. A malformed store (a count past `STATE_MAX_N`, an index past its list, a NaN,
-/// a chance outside [0, 1], a deck past six cards, a truncated vector, a roll state that does not fit together) is
+/// a chance outside [0, 1], a deck past six cards, a truncated vector, a roll state that does not fit together: its
+/// slots one per setup, partner then lift then finisher, every candidate and route index in range) is
 /// refused whole with an error, nothing installed; one whose decks or careers do not fit the setup it meets
 /// (`CareerSetup::seen_fits`, `solved_fits`) is not used there.
 #[test]
@@ -191,7 +192,7 @@ fn state_round_trips_and_refuses_malformed() {
         assert_eq!(state::state_out(&worker), out, "simulation must restore every serialized collection");
         assert_eq!(worker.decks.len(), deck_setups);
     });
-    for k in ["bests", "seen", "solve", "rolls"] {
+    for k in ["bests", "seen", "solve", "flags", "rolls"] {
         assert!(st[k].as_array().is_some_and(|a| !a.is_empty()), "{k}: nothing kept");
     }
     let mut rolled = v.clone();
@@ -205,7 +206,7 @@ fn state_round_trips_and_refuses_malformed() {
         r
     };
     let roll0 = roll();
-    let empty = json!({"v": STATE_VERSION, "bests": [], "seen": [], "solve": [], "rolls": []});
+    let empty = json!({"v": STATE_VERSION, "bests": [], "seen": [], "solve": [], "flags": [], "rolls": []});
     assert_eq!(state_in(&empty)["ok"], true);
     assert_eq!(state_in(&st)["ok"], true);
     assert_eq!(state_out(), out, "the state did not round-trip");
@@ -240,6 +241,28 @@ fn state_round_trips_and_refuses_malformed() {
     refused("bests: a uma count past STATE_MAX_N", &|s| s["bests"][0]["n"] = big.clone());
     refused("solve: a list count past STATE_MAX_N", &|s| s["solve"][0][1]["refs"][0] = big.clone());
     refused("solve: a NaN bound", &|s| s["solve"][0][1]["next_bound"] = hex(f64::NAN));
+    refused("seen: a fully checked value above 1", &|s| s["seen"][0][2][0][1][0][1] = hex(1.5));
+    assert!(st["solve"][0][2][1].as_array().is_some_and(|classes| !classes.is_empty()), "no product proof kept");
+    refused("solve: a negative product bound", &|s| s["solve"][0][2][1][0][1][0][1] = hex(-0.5));
+    refused("solve: an unknown unproven reason", &|s| s["solve"][0][1]["unproven"] = json!(["late"]));
+    refused("solve: complete with a reason it is not", &|s| {
+        let complete = s["solve"][0][1]["complete"].as_bool().unwrap();
+        s["solve"][0][1]["unproven"] = if complete { json!(["work_cap"]) } else { json!([]) };
+    });
+    refused("solve: a breached class past its count", &|s| s["solve"][0][3][1] = json!([1_000_000]));
+    refused("solve: a trainee's class past the count", &|s| s["solve"][0][4] = json!([1_000_000]));
+    assert!(st["solve"][0][4].as_array().is_some_and(|classes| !classes.is_empty()), "no trainee class kept");
+    refused("solve: proven but not complete", &|s| {
+        let search = &mut s["solve"][0][1];
+        (search["proven"], search["complete"], search["unproven"]) = (json!(true), json!(false), json!(["work_cap"]));
+    });
+    refused("solve: proven with a class of its trainees breached", &|s| {
+        let entry = &mut s["solve"][0];
+        (entry[1]["proven"], entry[1]["complete"], entry[1]["unproven"]) = (json!(true), json!(true), json!([]));
+        entry[3][1] = entry[4].clone();
+    });
+    refused("solve: an unknown assumption", &|s| s["solve"][0][1]["assumes"] = json!(["late_cap"]));
+    refused("flags: an unknown flag bit", &|s| s["flags"][0][1] = json!(8));
     refused("rolls: 64 targets", &|s| s["rolls"][0]["sd"]["n"][2] = json!(64));
     refused("rolls: 11 uncertain targets", &|s| s["rolls"][0]["sd"]["n"][0] = json!(11));
     refused("rolls: a guaranteed count that wraps the sum", &|s| s["rolls"][0]["sd"]["n"][1] = json!(u64::MAX));
@@ -260,19 +283,37 @@ fn state_round_trips_and_refuses_malformed() {
     refused("rolls: a candidate's step costs not one per candidate", &|s| {
         s["rolls"][0]["base"]["c1"].as_array_mut().unwrap().push(hex(1.0));
     });
-    refused("rolls: her trio side past the candidates", &|s| {
-        s["rolls"][0]["her"].as_array_mut().unwrap().push(json!([1_000_000, false, hex(1.0)]));
+    refused("rolls: certification not one per candidate", &|s| {
+        s["rolls"][0]["base"]["cert"].as_array_mut().unwrap().push(json!(true));
     });
-    refused("rolls: a lifted candidate past the candidates", &|s| {
-        let act = s["rolls"][0]["sd"]["act"].as_array_mut().unwrap();
-        act.push(json!([1_000_000, null, hex(0.5), hex(0.5)]));
+    refused("rolls: a partner slot's candidate past the candidates", &|s| {
+        let slots = s["rolls"][0]["sd"]["sc"].as_array_mut().unwrap();
+        *slots.first_mut().expect("a partner slot") = json!(1_000_000);
     });
-    refused("rolls: a slot out of order", &|s| {
-        let act = s["rolls"][0]["sd"]["act"].as_array_mut().unwrap();
-        act.push(json!([0, 1_000_000, hex(0.5), hex(0.5)]));
+    refused("rolls: a lift slot's candidate past the candidates", &|s| {
+        let slots = s["rolls"][0]["sd"]["lc"].as_array_mut().unwrap();
+        *slots.first_mut().expect("a lift slot") = json!(1_000_000);
     });
-    refused("rolls: a trio past the candidates", &|s| {
-        s["rolls"][0]["base"]["combos"].as_array_mut().unwrap().push(json!([1_000_000, 0, hex(1.0), false, false]));
+    refused("rolls: a slot count other than the setups'", &|s| {
+        let slots = s["rolls"][0]["sd"]["n"][3].as_u64().unwrap();
+        s["rolls"][0]["sd"]["n"][3] = json!(slots + 1);
+    });
+    refused("rolls: two setups in one slot", &|s| {
+        let slots = s["rolls"][0]["sd"]["sslot"].as_array_mut().unwrap();
+        assert!(slots.len() >= 2, "two setups");
+        slots[1] = slots[0].clone();
+    });
+    refused("rolls: setups not the partner, lift and finisher slots", &|s| {
+        s["rolls"][0]["sd"]["sc"].as_array_mut().unwrap().push(json!(0));
+    });
+    refused("rolls: a route's finisher past the finisher slots", &|s| {
+        let routes = s["rolls"][0]["sd"]["rt"].as_array_mut().unwrap();
+        routes.first_mut().expect("a route")[4] = json!(1_000_000);
+    });
+    refused("rolls: a route's lift past the lift slots", &|s| {
+        let lift_slots = s["rolls"][0]["sd"]["lc"].as_array().unwrap().len();
+        let routes = s["rolls"][0]["sd"]["rt"].as_array_mut().unwrap();
+        routes.first_mut().expect("a route")[0] = json!(lift_slots);
     });
     refused("rolls: an anchor's chances truncated", &|s| {
         let anc = s["rolls"][0]["anc"].as_array_mut().unwrap();
@@ -312,4 +353,94 @@ fn state_round_trips_and_refuses_malformed() {
     let again = run(&v);
     assert!(again.get("error").is_none(), "{}", again["error"]);
     assert_eq!((&again["next"]["choice"], &again["results"]), (&plan["next"]["choice"], &plan["results"]));
+
+    // ---- class flags: a store unions its flags into the worker's and never clears one; a kept main search reused
+    // after its class was flagged is unproven ----
+    let mut flagged = st.clone();
+    for entry in flagged["flags"].as_array_mut().unwrap() {
+        entry[1] = json!(entry[1].as_u64().unwrap() | 1);
+    }
+    assert_eq!(state_in(&flagged)["ok"], true);
+    assert_eq!(state_in(&st)["ok"], true);
+    let flags = state_out()["state"]["flags"].clone();
+    assert!(
+        flags.as_array().unwrap().iter().all(|entry| entry[1].as_u64().unwrap() & 1 == 1),
+        "a store cleared a flag: {flags}"
+    );
+    let mut search_job = v.clone();
+    search_job.as_object_mut().unwrap().remove("next");
+    let reused = run(&search_job);
+    assert_eq!((&reused["complete"], &reused["proven_top"]), (&json!(false), &json!(false)), "{reused}");
+    assert!(reused["unproven"].as_array().is_some_and(|reasons| reasons.contains(&json!("cap_breach"))), "{reused}");
+}
+
+/// A kept plan carries the class flags it rested on (`Bests::flags`): stored with a breach in its snapshot and none in
+/// the worker's flags, and the worker's flag table churned past any eviction limit (100 other classes), the same plan
+/// job reusing the kept plan and main search reports the breach (the main search not proven, rows not proven).
+#[test]
+fn a_kept_plan_keeps_its_flags_through_flag_churn() {
+    let (data, skills, cards, v) = p16();
+    let run = |job: &Value| run_career(&data, &skills, &cards, job);
+    let plan = run(&v);
+    assert!(plan.get("error").is_none(), "{}", plan["error"]);
+    assert_eq!(plan["proven_top"], json!(true), "the first plan is not proven: {}", plan["unproven"]);
+    let mut st = run(&json!({"cmd": "state_out"}))["state"].clone();
+    let snapshot = st["bests"][0]["f"].as_array().cloned().unwrap_or_default();
+    assert!(!snapshot.is_empty(), "the kept plan carries no flags");
+    for entry in st["bests"].as_array_mut().unwrap() {
+        for flag in entry["f"].as_array_mut().unwrap() {
+            flag[1] = json!(flag[1].as_u64().unwrap() | 1);
+        }
+    }
+    st["flags"] = Value::Array((0..100u64).map(|i| json!([format!("{:016x}", 0xdead_0000 + i), 2])).collect());
+    KEPT.with(|worker| {
+        state::kept_swap(&mut worker.borrow_mut(), KeptState::default());
+    });
+    assert_eq!(run(&json!({"cmd": "state_in", "state": st}))["ok"], true);
+    let again = run(&v);
+    assert_eq!((&again["complete"], &again["proven_top"]), (&json!(false), &json!(false)), "{}", again["unproven"]);
+    assert!(again["unproven"].as_array().is_some_and(|reasons| reasons.contains(&json!("cap_breach"))));
+    let rows = again["next"]["options"].as_array().unwrap();
+    assert!(rows.iter().any(|row| row["proven"] == json!(false)), "no row unproven");
+    assert!(again["next"]["umas_unproven"].as_u64().is_some_and(|count| count > 0));
+}
+
+/// The reviewers' case for kept plans across trainee filters: on the nested_nopal pool with cards 30067 and 30080 as
+/// plain pals (no relevant card of theirs), trainee 1004's plain-pal rate prefix under [1003, 1004] differs from the one
+/// under [1004], so her class content key differs, and so does the plan key's deck space (`plan_space_key`): a
+/// [1003, 1004] plan is never reused by a [1004] one. The same filter twice gives the same keys.
+#[test]
+fn a_trainee_filter_that_changes_a_class_changes_the_plan_key() {
+    let r = concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/");
+    let rd = |f: &str| std::fs::read_to_string(format!("{r}{f}")).unwrap();
+    let data = crate::data::load_str(&rd("data.json"));
+    let skills: SkillsRaw = serde_json::from_str(&rd("web_skills.json")).unwrap();
+    let cards: CardsRaw = serde_json::from_str(&rd("web_cards.json")).unwrap();
+    let mut job: Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nested_nopal.json")).unwrap(),
+    )
+    .unwrap();
+    job["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
+    let db: Value = serde_json::from_str(&rd("card_events.json")).unwrap();
+    crate::deck::sources::apply_events_db(&mut job, &skills, &db);
+    let her = UmaIndex(data.umas.iter().position(|uma| uma.id == 1004).unwrap());
+    let keys = |trainees: Value| {
+        let mut filtered = job.clone();
+        filtered["trainees"] = trainees;
+        let seen = std::rc::Rc::new(std::cell::Cell::new((0u64, 0u64, 0usize)));
+        let sink = std::rc::Rc::clone(&seen);
+        ENV_HOOK.with(|cell| {
+            *cell.borrow_mut() = Some(Box::new(move |env: &mut Env, _: &Pool| {
+                let plain_pals = env.setup.space.plain_pal_ids().filter(|&id| id == 30067 || id == 30080).count();
+                sink.set((env.setup.class_key[her], env.setup.plan_space_key, plain_pals));
+            }));
+        });
+        run_career(&data, &skills, &cards, &filtered);
+        seen.get()
+    };
+    let (wide, narrow) = (keys(json!([1003, 1004])), keys(json!([1004])));
+    assert_eq!((wide.2, narrow.2), (2, 2), "30067 and 30080 are not both plain pals");
+    assert_ne!(wide.0, narrow.0, "her class content is the same under both filters");
+    assert_ne!(wide.1, narrow.1, "the plan key's deck space is the same under both filters");
+    assert_eq!(keys(json!([1004])), narrow, "the same filter gave other keys");
 }

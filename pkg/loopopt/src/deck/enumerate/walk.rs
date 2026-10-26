@@ -1,6 +1,6 @@
 //! The depth-first walk of decks in one configuration.
 use crate::checks::{CFCHK, RBCHK, SBCHK, SBN};
-use crate::deck::caps::cap_class;
+use crate::deck::caps::{NESTED_CHAIN, cap_class};
 use crate::deck::enumerate::bounds::DOM_GAP;
 use crate::deck::enumerate::config::SearchConfig;
 use crate::deck::enumerate::order::DeckPath;
@@ -9,6 +9,7 @@ use crate::deck::enumerate::traverse::{
     BorrowTables, DeckSearchContext, ParentRatioBounds, PreparedTables, SearchControl, SearchResults,
 };
 use crate::deck::joint::{JointQuery, joint_fast};
+use crate::deck::nested::NestedDeck;
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::{Dominator, SelectedDeck, TraversalEntryGroup, gm_g, gm_w};
 use crate::deck::state_bound::StateBound;
@@ -57,6 +58,9 @@ pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
     pub(crate) total_slots: usize,
     /// State-conditioned bound retained for diagnostics.
     pub(crate) root_bound: f64,
+    /// The dominance skip in this configuration (`SearchControl::use_dominance`, off where the covered product search
+    /// may rank a deck by its pair bound).
+    pub(crate) use_dominance: bool,
 }
 
 /// Reused node buffers, state-bound caches and diagnostics for the current walk.
@@ -247,8 +251,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         parent_gold: &[f64],
         selection: &[usize],
     ) -> Option<u128> {
-        let SearchControl { use_dominance, target_count, .. } = self.search.controls;
-        if !use_dominance {
+        let target_count = self.search.controls.target_count;
+        if !self.use_dominance {
             return Some(constraints.required_characters);
         }
         let (groups, dominance_offsets, dominators, dominance_suffix) =
@@ -351,19 +355,31 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         let search = self.search;
         let target_count = search.controls.target_count;
         let nodes = &mut *scratch.nodes;
-        // The child and every entry still eligible contribute to the highest class any completion can reach.
-        let rho = if search.controls.best {
-            search.controls.rho
-        } else {
+        // The child and every entry still eligible contribute to the highest class any completion can reach, and to
+        // whether a completion can have two chain-varying targets: then the band's cap is at least the configuration's
+        // pair cap and the covered product search scales its bound (`deck::nested`; the class suffixes are filled for
+        // both)
+        let reachable_mask = || {
             let (class_suffix, group_offsets) = (self.class_suffix, self.group_offsets);
-            search.controls.class_caps[cap_class(
-                constraints.class_mask
-                    | if cursor.remaining > 0 {
-                        class_suffix[group_offsets[cursor.group] + position + 1]
-                    } else {
-                        class_suffix[group_offsets[cursor.group + 1]]
-                    },
-            )]
+            constraints.class_mask
+                | if cursor.remaining > 0 {
+                    class_suffix[group_offsets[cursor.group] + position + 1]
+                } else {
+                    class_suffix[group_offsets[cursor.group + 1]]
+                }
+        };
+        let pair_cap = self.configuration.pair_cap;
+        let (rho, covered_scale) = if search.controls.best {
+            let scale = if pair_cap > 0.0 && reachable_mask() & NESTED_CHAIN != 0 {
+                search.covered_scale(pair_cap)
+            } else {
+                1.0
+            };
+            (search.controls.rho, scale)
+        } else {
+            let reachable = reachable_mask();
+            let class_cap = search.controls.class_caps[cap_class(reachable)];
+            (if reachable & NESTED_CHAIN != 0 { class_cap.max(pair_cap) } else { class_cap }, 1.0)
         };
         // borrowed cards still allowed (only with the one-borrowed tables)
         let can_borrow = constraints.borrowed_count < 1;
@@ -526,7 +542,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             (search.controls.best, results.best_value, search.clauses, search.controls.bound_check_scale);
         let pass = |clause_values: &[f64]| {
             if best {
-                clause_values[0] * bound_check_scale * (1.0 + 1e-9) >= best_value
+                clause_values[0] * covered_scale * bound_check_scale * (1.0 + 1e-9) >= best_value
             } else {
                 (0..clauses.len()).any(|clause_index| {
                     rho * clause_values[clause_index] * bound_check_scale * (1.0 + 1e-9)
@@ -881,7 +897,10 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
     }
 
     /// A complete deck `selection` (its `white_misses`, `gold_misses`, `class_mask`): kept when it beats the bar (product
-    /// search) or passes a clause at its class cap (band). True: the output is full, the search stops
+    /// search; the covered one by max(P, B / rho)) or passes a clause at its class cap (band), or, a deck with a nested
+    /// chain where the configuration's nested cap passes that cap, when its own bound B reaches it (`deck::nested`).
+    /// True: the output is
+    /// full, the search stops
     pub(crate) fn leaf(
         &self,
         scratch: &mut WalkScratch<'_>,
@@ -952,8 +971,31 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 },
             }
         };
+        // a deck with a nested chain whose configuration's nested cap passes `cap`: its own bound B (`deck::nested`;
+        // NEG_INFINITY for a shape it does not cover), None otherwise
+        let nested_bound = |cap: f64| -> Option<f64> {
+            let nested = self.search.nested.as_ref()?;
+            (class_mask & NESTED_CHAIN != 0 && self.configuration.pair_cap > cap).then(|| {
+                let deck = NestedDeck { entries: selection, white: white_chances, gold: gold_chances };
+                let configuration = self.configuration;
+                nested.deck_bound(space, deck, configuration.code, configuration.events)
+            })
+        };
+        // a nested deck's bound where B covers it, else (NEG_INFINITY: another chain card feeds one of the nested card's
+        // targets) its configuration's nested cap times its product value, the cap its nodes were tested at
+        let uncovered = |bound: f64, product_value: f64| {
+            if bound == f64::NEG_INFINITY { self.configuration.pair_cap * product_value } else { bound }
+        };
         if best {
-            let value = clause_value(&clauses[0], white_chances, gold_chances);
+            let product_value = clause_value(&clauses[0], white_chances, gold_chances);
+            // (the covered search's value: B / rho where it is the larger, else the product value itself, to the bit)
+            let cover_rho = self.search.controls.cover_rho;
+            // (a nested deck no bound covers, a nested card with another feeder of its targets: at its configuration's
+            // nested cap, as its nodes were, `uncovered`)
+            let value = match nested_bound(cover_rho) {
+                Some(bound) => product_value.max(uncovered(bound, product_value) / cover_rho),
+                None => product_value,
+            };
             if value > results.best_value {
                 results.best_value = value;
                 results.decks.clear();
@@ -968,6 +1010,10 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 let value = clause_value(clause, white_chances, gold_chances);
                 best_clause_value = best_clause_value.max(value);
                 pass = pass || cap_free || rho * value * (1.0 + 1e-9) >= clause.threshold;
+            }
+            if !pass && let Some(bound) = nested_bound(rho) {
+                let value = clause_value(&clauses[0], white_chances, gold_chances);
+                pass = uncovered(bound, value) * (1.0 + 1e-9) >= clauses[0].threshold;
             }
             if pass {
                 results.decks.push(scored_deck(best_clause_value));

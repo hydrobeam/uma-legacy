@@ -522,6 +522,9 @@ export async function careerPage(b) {
     const W = window.Worker;
     window.__careerJobs = [];
     window.__careerResults = [];
+    // (the plan's robustness check, `next.robust` follow-up jobs, kept apart: the tests' plan jobs and results are the rest)
+    window.__checkJobs = [];
+    window.__checkResults = [];
     // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
     window.Worker = function (...args) {
       const w = new W(...args),
@@ -530,11 +533,12 @@ export async function careerPage(b) {
       w.addEventListener('message', (e) => {
         if (e.data?.type === 'result') {
           if (window.__rollPatch && e.data.r?.next?.roll) Object.assign(e.data.r.next.roll, window.__rollPatch);
-          window.__careerResults.push(e.data.r);
+          if (e.data.r?.next?.robust && !e.data.r.next.options) window.__checkResults.push(e.data.r);
+          else window.__careerResults.push(e.data.r);
         }
       });
       w.postMessage = (m, ...rest) => {
-        if (m?.type === 'run') window.__careerJobs.push(m.job);
+        if (m?.type === 'run') (m.job?.next?.robust ? window.__checkJobs : window.__careerJobs).push(m.job);
         return post(m, ...rest);
       };
       return w;

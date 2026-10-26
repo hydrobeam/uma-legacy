@@ -316,18 +316,20 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
     /// uma's other attempts (goal races included) loses win chance from the longer streak.
     fn enter_costless_g1s(&self, schedules: &mut [Sched; N], value: f64) -> f64 {
         let mut current = value;
-        // per turn: the win chance of her attempt there (-1 where she makes none; of a choice goal, the goal shift for
-        // the first she runs only: `Uma::attempts`)
+        // per turn: the win chance of her attempt there (-1 where she makes none)
         let attempt_chances = |uma: &Uma, schedule: &Sched| -> Vec<f64> {
-            let attempts = uma.attempts(schedule);
+            let mut k = 0usize;
             (0..NT)
-                .map(|turn| match attempts[turn] {
-                    Some(attempt) => {
-                        let option = &uma.race_options[turn][attempt.option as usize];
-                        let position = crate::data::scored_position(attempt.goal, attempt.streak);
-                        if option.race >= 0 { self.data.attempt_chance(option.win_rate_basis, position) } else { -1.0 }
+                .map(|turn| match schedule[turn] {
+                    Choice::Rest => {
+                        k = 0;
+                        -1.0
                     }
-                    None => -1.0,
+                    Choice::Opt(option_index) => {
+                        k = (k + 1).min(6);
+                        let option = &uma.race_options[turn][option_index as usize];
+                        if option.race >= 0 { self.data.option_chance(option, k) } else { -1.0 }
+                    }
                 })
                 .collect()
         };

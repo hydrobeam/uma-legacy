@@ -5,33 +5,67 @@ use crate::deck::sources::TargetSources;
 /// cards share one run's chain events, so the targets their links feed ("chain-varying") land or miss together through
 /// the event count, and chain cards compete for those events, which can correlate even one target's feeders: every cap
 /// is assumed, from measurement. The last class also includes any uncertified outcome group (`cv_mask`).
-/// Measured maxima belong to the validation outputs' `exact.class_max_ratio`, not to these assumed ceilings.
+/// One card whose chain feeds two or more targets breaks the class caps however rare its decks are (exact / product up
+/// to 1 / P(its lower links fire)): where the career searches meet one, a per-deck bound takes over (`deck::nested`). Measured maxima belong to the validation outputs' `exact.class_max_ratio`, not to these assumed
+/// ceilings.
 pub(crate) const EXACT_CAPS: [f64; 4] = [1.05, 1.05, 1.25, 1.25];
 /// The highest cap (class 4+), the one every ceiling that does not know its deck takes.
 pub(crate) const EXACT_RHO: f64 = EXACT_CAPS[3];
 /// Every class cap under the job field `cap_audit` (`val/capaudit.py`: a deck the normal caps would miss shows up)
 pub(super) const AUDIT_CAP: f64 = 2.0;
+/// `cv_mask`'s bit for an entry whose own chain feeds two or more targets (a nested chain, `deck::nested`): not a
+/// target, so `cap_class` leaves it out.
+pub(crate) const NESTED_CHAIN: u64 = 1 << 62;
+/// `cv_mask`'s bit for an entry with an uncertified outcome group.
+const UNCERTIFIED_GROUP: u64 = 1 << 63;
+/// The most targets a nested chain's configuration cap enumerates the corners of (3^k of them, `deck::nested`): 6561.
+pub(crate) const NESTED_TARGET_LIMIT: u32 = 8;
+/// `cv_mask`'s bit for an entry whose chain feeds more than `NESTED_TARGET_LIMIT` targets: no configuration cap is
+/// computed for it (a partial maximum would certify nothing), so its decks are class 3 and their caps are assumed
+/// (`multi_feeder`).
+const WIDE_NESTED: u64 = 1 << 61;
 impl TargetSources {
-    /// An entry's chain-varying targets (bit t: uncertain target t is fed by one of its chain links) and bit 63 when one
-    /// of its groups is not negatively associated (`TargetSources::uncertified_association`).
+    /// An entry's chain-varying targets (bit t: uncertain target t is fed by one of its chain links), `NESTED_CHAIN`
+    /// when its chain feeds two or more of them (`WIDE_NESTED` too past `NESTED_TARGET_LIMIT`), and bit 63 when one of
+    /// its groups is not negatively associated (`TargetSources::uncertified_association`).
     pub(super) fn cv_mask(&self) -> u64 {
         let chain_targets = self.chain_misses.iter().fold(0u64, |mask, target| mask | (1u64 << target.target));
-        chain_targets | if self.uncertified_association { 1u64 << 63 } else { 0 }
+        let nested = match chain_targets.count_ones() {
+            0 | 1 => 0,
+            2..=NESTED_TARGET_LIMIT => NESTED_CHAIN,
+            _ => NESTED_CHAIN | WIDE_NESTED,
+        };
+        chain_targets | nested | if self.uncertified_association { UNCERTIFIED_GROUP } else { 0 }
     }
+}
+/// How many chain-varying targets a `cv_mask` (or an OR of them) names.
+pub(crate) const fn chain_varying_count(mask: u64) -> u32 {
+    (mask & (u32::MAX as u64)).count_ones()
 }
 /// The structure class of a deck from its entries' `cv_mask`s ORed (or of every deck a search node can still reach,
 /// from the masks of its cards and of every candidate left): 0 at most one chain-varying target, 1 two, 2 three, 3 four
-/// or more or an uncertified outcome group.
+/// or more, an uncertified outcome group, or a nested chain past `NESTED_TARGET_LIMIT` targets.
 pub(crate) const fn cap_class(mask: u64) -> usize {
-    if mask >> 63 != 0 {
+    if mask & (UNCERTIFIED_GROUP | WIDE_NESTED) != 0 {
         return 3;
     }
-    match mask.count_ones() {
+    match (mask & !NESTED_CHAIN).count_ones() {
         0 | 1 => 0,
         2 => 1,
         3 => 2,
         _ => 3,
     }
+}
+/// Whether a deck (or every deck a key or configuration can reach) of an OR of `cv_mask`s, with `feeding_slots` slots of
+/// chain cards that feed targets, may hold a nested chain of class 2 or more that the nested-chain bound covers only
+/// under an assumption (`deck::nested`): a nested card beside other chain cards (their shared chain events correlate
+/// its targets with the others'), beside an uncertified group, or feeding more targets than its configuration cap
+/// enumerates (`WIDE_NESTED`). A nested card whose chain alone feeds every chain-varying target, every group
+/// certified, is proven whatever its class; one in class 1 beside another feeder is `two_feeder_cap`'s.
+pub(crate) const fn multi_feeder(mask: u64, feeding_slots: usize) -> bool {
+    mask & NESTED_CHAIN != 0
+        && cap_class(mask) >= 2
+        && (feeding_slots >= 2 || mask & (UNCERTIFIED_GROUP | WIDE_NESTED) != 0)
 }
 /// The class of a deck given by its sources.
 pub(crate) fn src_class<'src>(sources: impl Iterator<Item = &'src TargetSources>) -> usize {

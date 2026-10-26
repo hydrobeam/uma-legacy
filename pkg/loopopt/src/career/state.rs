@@ -1,11 +1,11 @@
 //! The worker's saved searches and their validation.
 
-use crate::career::CareerSetup;
 use crate::career::decks::DeckSearchCache;
 use crate::career::plan::kept::Bests;
 use crate::career::plan::roll::RollKeep;
 use crate::career::pool::Pool;
-use crate::career::search::{CareerSearchResult, Found, Ref};
+use crate::career::search::{Assumes, CareerSearchResult, Found, Ref, Unproven};
+use crate::career::{CareerSetup, ClassFlags};
 use crate::deck::space::{MAX_DECK, SelectedDeck};
 use serde_json::{Value, json};
 
@@ -14,14 +14,24 @@ use serde_json::{Value, json};
 pub(crate) struct KeptState {
     /// Best careers and proofs per plan, oldest first.
     pub(crate) bests: Vec<Bests>,
-    /// Fully checked decks per setup and deck class, oldest setup first. Each Ref's chances and exact value
-    /// depend on the setup only; the job's trainee filter changes plain-pal order, not deck values.
-    pub(crate) seen: Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>,
+    /// Fully checked decks per (setup, trainees, pool) key (`CareerBuild::seen_fingerprint`) and deck class, oldest key
+    /// first. Each Ref's chances and exact value depend on the setup and the trainees (their order sets the deck space's
+    /// plain-pal order); they are kept per pool too, as `certified` could otherwise name another career of equal value
+    /// after a job on another pool.
+    pub(crate) seen: Vec<KeptSeen>,
     /// Main searches and their product proofs, oldest first, keyed by the job without `next` and `no_reports`.
     /// Reuse restores the product proofs a combined search/plan job would have left for its plan.
     pub(crate) searches: Vec<KeptSolve>,
+    /// Class flags (`ClassFlags`, those with a flag set) by class content (`CareerSetup::class_key`: the setup and the
+    /// class's deck problem, whatever the trainees, pool or class index): every job unions them in and keeps its own
+    /// (`keep_flags`), so a breach or an assumption in any job holds for every later one with a class of that content,
+    /// whichever search or plan it reuses. Never evicted (a few bytes a class), so no kept certificate outlives its
+    /// flags; a kept plan also carries its own (`Bests::flags`).
+    pub(crate) flags: std::collections::BTreeMap<u64, ClassFlags>,
     /// Roll scorings for recent plans, oldest first.
     pub(crate) rolls: Vec<RollKeep>,
+    /// Recent plans' check states (`next.robust`), oldest first; not serialized.
+    pub(crate) checks: Vec<crate::career::plan::CheckKeep>,
     /// Deck outcomes and corner tables per setup and trainee order; not serialized.
     pub(crate) decks: Vec<(u64, DeckSearchCache)>,
 }
@@ -100,6 +110,14 @@ pub(crate) fn hash_text(text: &str) -> u64 {
     hasher.finish()
 }
 
+/// One key's kept fully checked decks (`KeptState::seen`).
+pub(crate) struct KeptSeen {
+    /// `CareerBuild::seen_fingerprint` of the jobs that made them.
+    pub(crate) key: u64,
+    /// Per deck class, its fully checked decks.
+    pub(crate) refs: crate::uma::UmaTable<Vec<Ref>>,
+}
+
 /// One kept main search (`KeptState::searches`).
 pub(crate) struct KeptSolve {
     /// The job's key (`CareerRun::search_key`).
@@ -107,6 +125,12 @@ pub(crate) struct KeptSolve {
     pub(crate) solved: CareerSearchResult,
     /// What its product searches proved (`SearchState::ruled` as the search left it).
     pub(crate) ruled: Ruled,
+    /// Per deck class, its flags as the search left them (`SearchState::class_flags`): unioned into a job that reuses
+    /// the search.
+    pub(crate) class_flags: crate::uma::UmaTable<ClassFlags>,
+    /// The deck classes of its trainees, ascending: the classes its answer rests on (a stored search that says it is
+    /// `proven` with one of them breached is refused, `state_in`).
+    pub(crate) classes: Vec<crate::uma::UmaIndex>,
 }
 
 /// per deck class, the product searches' proofs (`SearchState::ruled`)
@@ -135,12 +159,18 @@ pub(crate) const SEEN_KEEP: usize = 256;
 // its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
 // keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
 // `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
-pub(crate) const STATE_VERSION: u64 = 4;
+// (5: a roll state's Conts carry their anchor odds, its scoring the lifted costs, its base no trios; 6: a kept search
+// holds its `unproven` reasons, `assumes` (names), its class flags and its trainees' classes; the class flags by class
+// content, and each kept plan's own; 7: a roll state's routes carry their C while a lifted side builds, and its Conts
+// price odds above p0 off their lattice)
+pub(crate) const STATE_VERSION: u64 = 7;
 
 /// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
 /// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated
 /// from a count past it; every index within the list it indexes; no float NaN (the bounds compare them); chances,
-/// odds and deck hint chances within [0, 1]; a deck at most `MAX_DECK` cards. What a store says of a setup (deck
+/// odds, deck hint chances and a fully checked deck's value within [0, 1], a product proof's bound finite and not
+/// negative (it may be a seed above 1: the bar over a small spark scale), as anything else is corrupt and the bounds
+/// would prune with it; a deck at most `MAX_DECK` cards. What a store says of a setup (deck
 /// entries, chances per target) is checked where it meets that setup (`CareerSetup::seen_fits`, `solve_kept`).
 pub(crate) const STATE_MAX_N: usize = 1 << 10;
 
@@ -221,7 +251,8 @@ fn ref_in(value: &Value) -> Option<Ref> {
     let fields = value.as_array()?;
     Some(Ref {
         inheritance_chances: pvec_r(fields.first()?)?,
-        value: fx(fields.get(1)?)?,
+        // (a P(all) before the spark scale: a chance)
+        value: px(fields.get(1)?)?,
         deck: sel_in(fields.get(2)?)?,
     })
 }
@@ -249,14 +280,14 @@ pub(crate) fn found_in(value: &Value) -> Option<Found> {
     })
 }
 
-/// Kept proofs as [fingerprint, classes, [[class, [refs]], ...]] per setup (only the classes holding proofs)
+/// Kept proofs as [fingerprint, classes, [[class, [refs]], ...]] per key (only the classes holding proofs)
 fn seen_out(kept: &KeptState) -> Value {
     Value::Array(
         kept.seen
             .iter()
-            .map(|(fingerprint, classes)| {
+            .map(|KeptSeen { key, refs: classes }| {
                 json!([
-                    ux(*fingerprint),
+                    ux(*key),
                     classes.len(),
                     classes
                         .iter()
@@ -270,7 +301,49 @@ fn seen_out(kept: &KeptState) -> Value {
     )
 }
 
-fn seen_in(value: &Value) -> Option<Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>> {
+/// Class flags as [class count, [breached classes], [classes assuming two_feeder_cap], [classes assuming
+/// multi_feeder_cap]]
+fn flags_out(flags: &crate::uma::UmaTable<ClassFlags>) -> Value {
+    let with = |set: fn(ClassFlags) -> bool| {
+        flags.indices().filter(|&class| set(flags[class])).map(|class| class.0).collect::<Vec<_>>()
+    };
+    json!([flags.len(), with(|f| f.breached), with(|f| f.assumes.two_feeder), with(|f| f.assumes.multi_feeder)])
+}
+
+/// Class flags from [class count, [breached], [two_feeder_cap], [multi_feeder_cap]] (`flags_out`): every class within
+/// the count
+fn flags_in(value: &Value) -> Option<crate::uma::UmaTable<ClassFlags>> {
+    let fields = value.as_array()?;
+    let class_count = len_in(fields.first()?)?;
+    let mut flags = crate::uma::UmaTable(vec![ClassFlags::default(); class_count]);
+    let setters: [fn(&mut ClassFlags); 3] =
+        [|f| f.breached = true, |f| f.assumes.two_feeder = true, |f| f.assumes.multi_feeder = true];
+    for (field, set) in fields.get(1..4)?.iter().zip(setters) {
+        for class in field.as_array()? {
+            set(flags.0.get_mut(usz(class)?)?);
+        }
+    }
+    Some(flags)
+}
+
+/// Class flags by content key as [[key, bits], ...] (`ClassFlags::bits`), keys ascending
+pub(crate) fn keyed_flags_out<'flags>(flags: impl Iterator<Item = (&'flags u64, &'flags ClassFlags)>) -> Value {
+    Value::Array(flags.map(|(&key, flags)| json!([ux(key), flags.bits()])).collect())
+}
+
+/// Class flags by content key from `keyed_flags_out`'s form (a repeated key unioned); None for an unknown bit
+pub(crate) fn keyed_flags_in(value: &Value) -> Option<std::collections::BTreeMap<u64, ClassFlags>> {
+    let mut flags = std::collections::BTreeMap::new();
+    for entry in value.as_array()? {
+        let fields = entry.as_array()?;
+        let kept = ClassFlags::from_bits(u8::try_from(fields.get(1)?.as_u64()?).ok()?)?;
+        let slot: &mut ClassFlags = flags.entry(uxr(fields.first()?)?).or_default();
+        *slot = slot.union(kept);
+    }
+    Some(flags)
+}
+
+fn seen_in(value: &Value) -> Option<Vec<KeptSeen>> {
     value
         .as_array()?
         .iter()
@@ -287,7 +360,7 @@ fn seen_in(value: &Value) -> Option<Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>> 
                 classes[crate::uma::UmaIndex(i)] =
                     class_fields.get(1)?.as_array()?.iter().map(ref_in).collect::<Option<_>>()?;
             }
-            Some((fingerprint, classes))
+            Some(KeptSeen { key: fingerprint, refs: classes })
         })
         .collect()
 }
@@ -321,12 +394,14 @@ fn lists_in<T: Clone>(value: &Value, read_item: impl Fn(&Value) -> Option<T>) ->
     Some(lists)
 }
 
-/// Kept searches as [key, search, proofs] per kept search: every field of `CareerSearchResult`, floats as bit patterns
+/// Kept searches as [key, search, proofs, class flags, classes] per kept search: every field of `CareerSearchResult`
+/// (`unproven` as its reasons' names), floats as bit patterns
 fn solve_out(kept: &KeptState) -> Value {
-    Value::Array(kept.searches.iter().map(|KeptSolve { key, solved, ruled }| json!([ux(*key), {
+    Value::Array(kept.searches.iter().map(|KeptSolve { key, solved, ruled, class_flags, classes }| json!([ux(*key), {
         "found": solved.found.iter().map(found_out).collect::<Vec<_>>(), "refs": lists_out(&solved.refs, ref_out),
-        "n": [solved.work, solved.candidates, solved.solved, solved.bounded, solved.scored, solved.skipped], "next_bound": hx(solved.next_bound), "complete": solved.complete, "proven": solved.proven, "cert": hx(solved.certified_cap)
-    }, lists_out(ruled, |proof| json!([fvec(&proof.inheritance_chances), hx(proof.product_bound)]))])).collect())
+        "n": [solved.work, solved.candidates, solved.solved, solved.bounded, solved.scored, solved.skipped], "next_bound": hx(solved.next_bound), "complete": solved.complete, "unproven": solved.unproven.names(), "assumes": solved.assumes.names(), "proven": solved.proven, "cert": hx(solved.certified_cap)
+    }, lists_out(ruled, |proof| json!([fvec(&proof.inheritance_chances), hx(proof.product_bound)])),
+    flags_out(class_flags), classes.iter().map(|class| class.0).collect::<Vec<_>>()])).collect())
 }
 
 fn solve_in(value: &Value) -> Option<Vec<KeptSolve>> {
@@ -351,27 +426,45 @@ fn solve_in(value: &Value) -> Option<Vec<KeptSolve>> {
                 skipped: counts[5],
                 next_bound: fx(&stored["next_bound"])?,
                 complete: stored["complete"].as_bool()?,
+                unproven: Unproven::from_names(&stored["unproven"])?,
+                assumes: Assumes::from_names(Some(&stored["assumes"]))?,
                 proven: stored["proven"].as_bool()?,
                 certified_cap: fx(&stored["cert"])?,
             };
+            // (complete exactly when no reason is listed; proven only when complete)
+            if solved.complete == solved.unproven.any() || (solved.proven && !solved.complete) {
+                return None;
+            }
             let ruled = lists_in(fields.get(2)?, |proof| {
                 let proof_fields = proof.as_array()?;
                 Some(ProductProof {
                     inheritance_chances: pvec_r(proof_fields.first()?)?,
-                    product_bound: fx(proof_fields.get(1)?)?,
+                    // (a product value, or the seed a search found nothing above: finite and not negative)
+                    product_bound: fx(proof_fields.get(1)?).filter(|bound| bound.is_finite() && *bound >= 0.0)?,
                 })
             })?;
-            Some(KeptSolve { key: uxr(fields.first()?)?, solved, ruled })
+            let class_flags = flags_in(fields.get(3)?)?;
+            let classes: Vec<crate::uma::UmaIndex> = fields
+                .get(4)?
+                .as_array()?
+                .iter()
+                .map(|class| usz(class).filter(|&class| class < class_flags.len()).map(crate::uma::UmaIndex))
+                .collect::<Option<_>>()?;
+            // (proven with a class of its trainees breached: inconsistent, `CareerSearchResult::qualify`)
+            if solved.proven && classes.iter().any(|&class| !class_flags[class].proves()) {
+                return None;
+            }
+            Some(KeptSolve { key: uxr(fields.first()?)?, solved, ruled, class_flags, classes })
         })
         .collect()
 }
 
 pub(crate) fn state_out(kept: &KeptState) -> Value {
-    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls)}})
+    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "flags": keyed_flags_out(kept.flags.iter()), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls)}})
 }
 
-/// replaces the kept plans, proofs, main searches and plans' roll states with the page's stored ones (all or nothing: a
-/// store that does not parse is refused)
+/// replaces the kept plans, proofs, main searches and plans' roll states with the page's stored ones and unions its
+/// class flags into the worker's (all or nothing: a store that does not parse is refused)
 pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
     if value["v"].as_u64() != Some(STATE_VERSION) {
         return json!({"error": "state: another version"});
@@ -381,17 +474,32 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
     if !value["bests"].as_array().is_none_or(|bests_list| bests_list.iter().all(|best| len_in(&best["n"]).is_some())) {
         return json!({"error": "state: does not parse"});
     }
-    let (Some(bests), Some(seen), Some(searches), Some(rolls)) = (
+    let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls)) = (
         crate::career::plan::kept::bests_in(&value["bests"]),
         seen_in(&value["seen"]),
         solve_in(&value["solve"]),
+        keyed_flags_in(&value["flags"]),
         crate::career::plan::roll::rolls_in(&value["rolls"]),
     ) else {
         return json!({"error": "state: does not parse"});
     };
     let (best_count, seen_count, search_count, roll_count) = (bests.len(), seen.len(), searches.len(), rolls.len());
+    // (the stored flags unioned into the worker's: a store never clears a flag)
+    let mut flags = flags;
+    for (key, live) in std::mem::take(&mut kept.flags) {
+        let slot = flags.entry(key).or_default();
+        *slot = slot.union(live);
+    }
     // Deck memos are process-local and were never part of the stored format; retain them on import.
-    *kept = KeptState { bests, seen, searches, rolls, decks: std::mem::take(&mut kept.decks) };
+    *kept = KeptState {
+        bests,
+        seen,
+        searches,
+        rolls,
+        flags,
+        checks: std::mem::take(&mut kept.checks),
+        decks: std::mem::take(&mut kept.decks),
+    };
     json!({"ok": true, "bests": best_count, "seen": seen_count, "solve": search_count, "rolls": roll_count})
 }
 
@@ -411,11 +519,18 @@ impl CareerSetup<'_> {
     pub(crate) fn seen_fits(&self, seen: &crate::uma::UmaTable<Vec<Ref>>) -> bool {
         seen.len() == self.data.umas.len() && seen.iter().flatten().all(|reference| self.ref_fits(reference))
     }
-    /// a stored main search (`KeptState::searches`) of `pool`: per uma its refs and product proofs, careers of its
-    /// trainees and veterans
-    pub(crate) fn solved_fits(&self, solved: &CareerSearchResult, ruled: &Ruled, pool: &Pool) -> bool {
+    /// a stored main search (`KeptState::searches`) of `pool`: per uma its refs, product proofs and class flags,
+    /// careers of its trainees and veterans
+    pub(crate) fn solved_fits(
+        &self,
+        solved: &CareerSearchResult,
+        ruled: &Ruled,
+        class_flags: &crate::uma::UmaTable<ClassFlags>,
+        pool: &Pool,
+    ) -> bool {
         let uma_count = self.data.umas.len();
         ruled.len() == uma_count
+            && class_flags.len() == uma_count
             && ruled.iter().flatten().all(|proof| proof.inheritance_chances.len() == self.target_count)
             && solved.refs.len() == uma_count
             && solved.refs.iter().flatten().all(|reference| self.ref_fits(reference))

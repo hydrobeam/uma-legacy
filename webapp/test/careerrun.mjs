@@ -56,6 +56,45 @@ export default async function careerrun(b) {
       edit.presets > 1,
     JSON.stringify({ edit, after }),
   );
+  // the plan's robustness check, once the pick is shown: background jobs, one variant each. An edit and its undoing
+  // within the pause (the answer on show taken again, `resumeCheck`) leaves the worker as it was, and the check goes on
+  // to its end, its report on the plan: every career it names in the table, marked, or none where the pick is stable
+  await pg.waitForFunction(() => window.__checkJobs.length > 0, null, { timeout: 180000 });
+  const beforeEdit = await pg.evaluate(() => ({ workers: window.__workers, jobs: window.__checkJobs.length }));
+  await pg.evaluate(() => {
+    document.querySelector('#rank button[data-v="0.20,0.70,0.10"]').click();
+    document.querySelector('#rank button[data-v="0.50,0.45,0.05"]').click();
+  });
+  // (or until a variant finds no kept plan: a new worker took the old one's place, which this check fails)
+  await pg.waitForFunction(
+    () => window.__checkResults.some((r) => r.next.robust.pending === 0 || r.next.robust.unavailable),
+    null,
+    { timeout: 180000 },
+  );
+  await pg.waitForTimeout(700); // (past the pause: the edit's undoing ran its search, the answer on show)
+  const checked = await pg.evaluate(() => {
+    const robust = window.__checkResults.findLast((r) => r.next.robust.pending === 0)?.next.robust || {
+      variants: [],
+      gone: window.__checkResults.find((r) => r.next.robust.unavailable)?.next.robust.error,
+    };
+    const alts = document.querySelector('section.alts');
+    return {
+      robust,
+      workers: window.__workers,
+      jobs: window.__checkJobs.length,
+      varies: alts ? [...alts.querySelectorAll('.otag')].filter((t) => t.textContent === 'pick varies').length : -1,
+      unavailable: /did not finish/.test(alts?.textContent || ''),
+    };
+  });
+  check(
+    "career: the pick's check runs in the background after the plan, goes on through an edit and its undoing (no new worker), and ends with its report on the table",
+    checked.robust.variants.length === 7 &&
+      checked.workers === beforeEdit.workers &&
+      checked.jobs >= 6 &&
+      !checked.unavailable &&
+      checked.varies === (checked.robust.stable ? 0 : checked.robust.contenders.length),
+    JSON.stringify({ beforeEdit, checked: { ...checked, robust: { ...checked.robust, variants: undefined } } }),
+  );
   const prog = await pg.evaluate(() =>
     window.__notes.filter((t) => /Planning your next career… \(.+\)/.test(t)).map((t) => t.match(/\((.+?)\)/)[1]),
   );
@@ -78,7 +117,10 @@ export default async function careerrun(b) {
           rq.onsuccess = () => {
             try {
               const g = rq.result.transaction('state').objectStore('state').getAll();
-              g.onsuccess = () => res(g.result.some((s) => s.v === 4 && s.solve?.length > 0 && s.rolls?.length > 0));
+              // (any format version: the solver's STATE_VERSION, career/state.rs, moves with its fields; the reload below
+              // shows the solver took this one in)
+              g.onsuccess = () =>
+                res(g.result.some((s) => Number.isInteger(s.v) && s.solve?.length > 0 && s.rolls?.length > 0));
               g.onerror = () => res(false);
             } catch {
               res(false);

@@ -31,17 +31,17 @@ impl<'veteran> VeteranTraits<'veteran> {
             star_mix: legacy.mix,
         }
     }
-    /// A recorded parent: fixed stars and certain wins (and, the parent of a veteran before her result is known, her
-    /// possible pinks: `Ancestor::of_legacy`).
+    /// A legacy's parent: a recorded one's fixed stars and certain wins; a hypothetical one's star mix and win chances,
+    /// and (the parent of a veteran before her result is known) her possible pinks (`Ancestor::of_legacy`).
     fn of_ancestor(ancestor: &'veteran Ancestor) -> Self {
         Self {
             character_id: ancestor.character_id,
             sparks: &ancestor.sparks,
             wins: &ancestor.wins,
-            win_chances: &[],
+            win_chances: &ancestor.win_chances,
             pinks: &ancestor.pinks,
             pink_chances: &ancestor.pink_chances,
-            star_mix: None,
+            star_mix: ancestor.mix,
         }
     }
 }

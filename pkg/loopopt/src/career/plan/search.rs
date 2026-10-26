@@ -25,6 +25,23 @@ pub(crate) fn sim_for<'env, 'data>(
     if env.setup.target_count > 12 || env.setup.uncertain_count > 10 {
         return Err(json!({"error": "The plan takes at most 12 targets, 10 of them not guaranteed by the scenario."}));
     }
+    if !(1..=crate::career::plan::cont::MAX_PARTNERS).contains(&settings.partners)
+        || !(1..=8).contains(&settings.builder_careers)
+        || !(1..=64).contains(&settings.fresh_lineages)
+    {
+        return Err(
+            json!({"error": "next.partners takes 1 to 8, next.builder_careers 1 to 8, next.fresh_lineages 1 to 64."}),
+        );
+    }
+    // (the partner and lift slots' leaf rows within the scoring's memory, `OUTCOME_BUDGET`; with their corner tables
+    // past it, the setups ranked last are left out, `score::build::fit_partner_setups`)
+    if (2 * settings.partners * IDX_CANDS) << (2 * env.setup.uncertain_count)
+        > crate::career::plan::score::build::OUTCOME_BUDGET
+    {
+        return Err(
+            json!({"error": "next.partners: too many partners for the scoring's memory at this many uncertain targets."}),
+        );
+    }
     let sim_job: SimJob = serde_json::from_value(json!({"margin": settings.margin}))
         .map_err(|error| json!({"error": format!("The plan's margin does not make a simulator setting: {error}")}))?;
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
@@ -82,10 +99,8 @@ pub(crate) fn rotation(setup: &CareerSetup, ids: &[u32]) -> LoopRotation {
     LoopRotation { members: members.into_iter().map(|member| member.unwrap()).collect(), member_info, note: None }
 }
 
-/// Candidates the index rule weighs at most, and partners kept per trainee where a candidate's veteran is a parent
+/// Candidates the index rule weighs at most
 pub(crate) const IDX_CANDS: usize = 8;
-
-pub(crate) const IDX_PARTNERS: usize = 2;
 
 /// legal parents a, b for trainee u (`Pool::pair_ok`)
 pub(crate) fn legal_pair(data: &Data, pool: &Pool, lineage: Lineage) -> bool {
@@ -107,6 +122,10 @@ pub(crate) fn certified(
 ) -> bool {
     let ParentPool { pool, fixed_parents } = parents;
     let deck_class = setup.deck_class[builder];
+    // (a breached class certifies nothing: `ClassFlags::proves`)
+    if !state.class_flags[deck_class].proves() {
+        return false;
+    }
     // (each test computed alone, so the order the pairs are taken in changes no number; a NaN bound proves nothing)
     let pairs = setup.gen_cands(
         state,
@@ -209,6 +228,116 @@ pub(crate) fn best_sur(
     })
 }
 
+/// Trainee u's next `count` best careers through her cached decks (as `best_sur` at margin 1e9: no refresh), on pairs
+/// other than `exclude` (unordered), best first, ties in pair order: every legal pair by ceiling, valued until the next
+/// ceiling is at most the `count`-th best so far. Each is a career she can run (a real deck on a legal pair) at the odds
+/// stated, at most her best career's on that pair
+pub(crate) fn alternative_careers(
+    simulator: &mut Sim,
+    parents: ParentPool,
+    trainee: crate::uma::UmaIndex,
+    exclude: (usize, usize),
+    count: usize,
+    score_buffer: &mut Vec<f64>,
+) -> Vec<Found> {
+    let ParentPool { pool, fixed_parents } = parents;
+    if count == 0 {
+        return vec![];
+    }
+    let margin_before = simulator.evaluator.margin;
+    simulator.evaluator.margin = 1e9;
+    let mut kept: Vec<SurrogateBest> = vec![];
+    for RankedPair { ceiling, first_parent, second_parent } in
+        simulator.env.setup.ranked_pairs(&mut simulator.env.state, pool, fixed_parents, trainee, |_, _| true)
+    {
+        if (first_parent.min(second_parent), first_parent.max(second_parent)) == exclude {
+            continue;
+        }
+        let bar = if kept.len() == count { kept[count - 1].value } else { 0.0 };
+        if ceiling <= bar {
+            break;
+        }
+        let lineage = Lineage { trainee, first_parent, second_parent };
+        let mut inheritance_chances = std::mem::take(&mut simulator.evaluator.inheritance_buffer);
+        let spark_scale = simulator.env.setup.lineage_into(pool, lineage, &mut inheritance_chances);
+        let deck = simulator.evaluator.deck_for(
+            simulator.env,
+            DeckRequest { trainee, inheritance_chances: &inheritance_chances, spark_scale, ceiling, threshold: bar },
+            score_buffer,
+        );
+        simulator.evaluator.inheritance_buffer = inheritance_chances;
+        if let Some((value, deck_index)) = deck
+            && value > bar
+        {
+            let place = kept.iter().position(|career| value > career.value).unwrap_or(kept.len());
+            kept.insert(place, SurrogateBest { lineage, value, ceiling, deck_index });
+            kept.truncate(count);
+        }
+    }
+    simulator.evaluator.margin = margin_before;
+    kept.into_iter()
+        .map(|career| Found {
+            trainee,
+            first_parent: career.lineage.first_parent,
+            second_parent: career.lineage.second_parent,
+            value: career.value,
+            ceiling: career.ceiling,
+            deck: simulator.evaluator.cache.decks[trainee][career.deck_index].deck.clone(),
+        })
+        .collect()
+}
+
+/// Trainee u's next `count` best careers as distinct (parent pair, cached deck) careers other than `base` (her best:
+/// its pair and deck), best first, ties in pair then deck order: every legal pair by ceiling, each of her cached decks
+/// valued there (its corner tables at the pair's chances, as `Evaluator::tval` values them: no deck search, no
+/// refresh), until the next ceiling is at most the `count`-th best so far. So a lower-odds deck on her best career's own
+/// parents counts as well as another pair (`PlanJob::builder_careers`)
+pub(crate) fn alternative_deck_careers(
+    simulator: &mut Sim,
+    parents: ParentPool,
+    base: &Found,
+    count: usize,
+) -> Vec<Found> {
+    let ParentPool { pool, fixed_parents } = parents;
+    let trainee = base.trainee;
+    let mut kept: Vec<Found> = vec![];
+    let (mut chances, mut scratch) = (vec![], vec![]);
+    let base_pair = base.unordered_parents();
+    for RankedPair { ceiling, first_parent, second_parent } in
+        simulator.env.setup.ranked_pairs(&mut simulator.env.state, pool, fixed_parents, trainee, |_, _| true)
+    {
+        let bar = if kept.len() == count { kept[count - 1].value } else { 0.0 };
+        if count == 0 || ceiling <= bar {
+            break;
+        }
+        let lineage = Lineage { trainee, first_parent, second_parent };
+        let spark_scale = simulator.env.setup.lineage_into(pool, lineage, &mut chances);
+        let on_base_pair = (first_parent.min(second_parent), first_parent.max(second_parent)) == base_pair;
+        let misses: Vec<f64> = simulator.env.setup.uncertain_targets.iter().map(|&i| 1.0 - chances[i]).collect();
+        for cached in &simulator.evaluator.cache.decks[trainee] {
+            if on_base_pair && crate::career::plan::kept::same_deck(&cached.deck, &base.deck) {
+                continue;
+            }
+            let value = spark_scale
+                * cached
+                    .tables
+                    .iter()
+                    .map(|table| crate::career::outcomes::interp_in(table, &misses, &mut scratch))
+                    .fold(0.0f64, f64::max);
+            let bar = if kept.len() == count { kept[count - 1].value } else { 0.0 };
+            if value > bar {
+                let place = kept.iter().position(|career| value > career.value).unwrap_or(kept.len());
+                kept.insert(
+                    place,
+                    Found { trainee, first_parent, second_parent, value, ceiling, deck: cached.deck.clone() },
+                );
+                kept.truncate(count);
+            }
+        }
+    }
+    kept
+}
+
 /// `best_sur`'s best career so far.
 #[derive(Clone, Copy)]
 struct SurrogateBest {
@@ -264,39 +393,66 @@ pub(crate) struct FullLoop {
     pub(crate) second_builder: crate::uma::UmaIndex,
 }
 
-/// The trainee's odds with a full loop lineage: parents hypothetical veterans of the two builders (every target, stars
-/// at the rank's mix, G1 wins `wins` of each), each bred from the other and from her (grandparents every target at 2
-/// stars)
+/// A hypothetical full veteran of a character: every job target at the rank's star mix, G1 wins at `win_chances` (as
+/// `CareerSetup::veteran` makes the fresh ones), no pinks; as a legacy with `parents`, or as an ancestor
+struct HypotheticalVeteran<'veteran> {
+    character_id: u32,
+    full: &'veteran [(u32, u8)],
+    star_mix: [f64; 3],
+    win_chances: Vec<f64>,
+}
+
+impl HypotheticalVeteran<'_> {
+    fn ancestor(&self) -> Ancestor {
+        Ancestor {
+            character_id: self.character_id,
+            sparks: self.full.to_vec(),
+            wins: vec![],
+            pinks: vec![],
+            win_chances: self.win_chances.clone(),
+            mix: Some(self.star_mix),
+            pink_chances: vec![],
+        }
+    }
+    fn legacy(&self, parents: [Ancestor; 2]) -> Legacy {
+        Legacy {
+            character_id: self.character_id,
+            borrowed: false,
+            sparks: self.full.to_vec(),
+            wins: vec![],
+            pinks: vec![],
+            parents: parents.to_vec(),
+            win_chances: self.win_chances.clone(),
+            mix: Some(self.star_mix),
+            pink_chances: vec![],
+        }
+    }
+}
+
+/// The trainee's odds with a full loop lineage: parents hypothetical full veterans of the two builders, each bred from
+/// the other and from her, every one of them (parents and grandparents) as a fresh veteran is (`HypotheticalVeteran`:
+/// the rank's star mix, the G1 wins of the uma's row's career at their chances, `wins`)
 pub(crate) fn loop_ceiling(
     simulator: &mut Sim,
     pool: &Pool,
     full_loop: FullLoop,
-    wins: &dyn Fn(crate::uma::UmaIndex) -> Vec<usize>,
+    wins: &dyn Fn(crate::uma::UmaIndex) -> Vec<f64>,
     buf: &mut Vec<f64>,
 ) -> f64 {
     let FullLoop { trainee, first_builder, second_builder } = full_loop;
     let data = simulator.data;
     let skill_job = simulator.env.setup.skill_job;
-    let star = simulator.env.setup.skill_job.star_dist;
+    let star_mix = simulator.env.setup.skill_job.star_dist;
     let full: Vec<(u32, u8)> = skill_job.targets.iter().map(|target| (target.group, 2)).collect();
-    let ancestor = |uma: crate::uma::UmaIndex| Ancestor {
+    let hypothetical = |uma: crate::uma::UmaIndex| HypotheticalVeteran {
         character_id: data.umas[uma].id,
-        sparks: full.clone(),
-        wins: wins(uma),
-        pinks: vec![],
-        pink_chances: vec![],
+        full: &full,
+        star_mix,
+        win_chances: wins(uma),
     };
     let veteran =
-        |uma: crate::uma::UmaIndex, first_parent: crate::uma::UmaIndex, second_parent: crate::uma::UmaIndex| Legacy {
-            character_id: data.umas[uma].id,
-            borrowed: false,
-            sparks: full.clone(),
-            wins: wins(uma),
-            pinks: vec![],
-            parents: vec![ancestor(first_parent), ancestor(second_parent)],
-            win_chances: vec![],
-            mix: Some(star),
-            pink_chances: vec![],
+        |uma: crate::uma::UmaIndex, first_parent: crate::uma::UmaIndex, second_parent: crate::uma::UmaIndex| {
+            hypothetical(uma).legacy([hypothetical(first_parent).ancestor(), hypothetical(second_parent).ancestor()])
         };
     // (`CareerSetup::pool` of the legacies and the two: the working copy of `pool` with them pushed, then popped)
     let mut working_pool = simulator.evaluator.take_pool(pool);
@@ -324,10 +480,10 @@ pub(crate) struct HintUma {
 }
 
 /// The owned umas (a legal deck, not among `candidates`) with the highest odds under a full loop lineage, at most
-/// `count`, best first: her parents hypothetical veterans of the first two candidates' umas (every target, stars at the
-/// rank's mix), each bred from the other and from her, as `loop_ceiling` builds p_inf's lineage (a missing candidate: an
-/// ancestor of no uma, so no relation points); no G1 wins on the hypothetical ancestors (the race part of their
-/// affinity is the same for every uma ranked, and the wins come from schedules the pool doesn't have yet). Valued by
+/// `count`, best first: her parents hypothetical veterans of the first two candidates' umas, each bred from the other
+/// and from her, every one of them at the rank's star mix, as `loop_ceiling` builds p_inf's lineage (a missing
+/// candidate: an ancestor of no uma, so no relation points); no G1 wins on them (no schedule of theirs is known before
+/// the candidates are searched: the race part of the affinity is left out for every uma ranked). Valued by
 /// `CareerSetup::ceiling` (the per-target best deck odds: no deck search), which ranks the umas the way a full loop
 /// would before any building.
 pub(crate) fn hint_umas(
@@ -356,23 +512,11 @@ pub(crate) fn hint_umas(
         sides.push(0);
     }
     let (first_side, second_side) = (sides[0], sides[1]);
-    let ancestor = |character_id: u32| Ancestor {
-        character_id,
-        sparks: full.clone(),
-        wins: vec![],
-        pinks: vec![],
-        pink_chances: vec![],
-    };
-    let veteran = |character_id: u32, first_parent: u32, second_parent: u32| Legacy {
-        character_id,
-        borrowed: false,
-        sparks: full.clone(),
-        wins: vec![],
-        pinks: vec![],
-        parents: vec![ancestor(first_parent), ancestor(second_parent)],
-        win_chances: vec![],
-        mix: Some(star),
-        pink_chances: vec![],
+    let hypothetical =
+        |character_id: u32| HypotheticalVeteran { character_id, full: &full, star_mix: star, win_chances: vec![] };
+    let veteran = |character_id: u32, first_parent: u32, second_parent: u32| {
+        hypothetical(character_id)
+            .legacy([hypothetical(first_parent).ancestor(), hypothetical(second_parent).ancestor()])
     };
     let mut out: Vec<HintUma> = vec![];
     // (`CareerSetup::pool` of the legacies and the two: one copy of `pool`, `CareerSetup::pool(legacies)`, the two pushed
@@ -393,7 +537,7 @@ pub(crate) fn hint_umas(
         let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
         if legal_pair(data, &working_pool, lineage) {
             let (q, spark_scale) = setup.lineage_q(&working_pool, lineage);
-            if let Some(ceiling) = setup.ceiling(state, trainee, &q, spark_scale)
+            if let Some(ceiling) = setup.ceiling_uniform(state, trainee, &q, spark_scale)
                 && ceiling > 0.0
             {
                 out.push(HintUma { trainee, ceiling });

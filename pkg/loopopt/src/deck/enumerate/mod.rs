@@ -28,6 +28,12 @@ pub(crate) enum SearchMode {
     All { max_decks: usize },
     /// Keep the first highest-value deck strictly above the initial floor.
     Best { seed: f64 },
+    /// `Best` for the career's capped deck search (one trainee at one chance): a deck's value is max(P, B / rho), P
+    /// its product value and B the nested-chain bound of a deck with a nested chain, any class, where its
+    /// configuration's cap passes rho (`deck::nested`: proven for a nested card alone feeding every chain-varying
+    /// target, assumed beside other feeders, `multi_feeder_cap`), else P; so rho times the best bounds every deck's
+    /// exact value under the class caps and those assumptions (`ruled`, the seed, `Bounded`).
+    BestCovered { seed: f64, rho: f64 },
     /// Collect decks that can reach a clause's threshold under its structure-class cap, pruned also by `bound`.
     Band { ratio_cap: f64, max_decks: usize, bound: BandBound },
 }
@@ -39,7 +45,8 @@ pub(crate) enum BandBound {
     /// The class caps alone.
     Capped,
     /// The state-conditioned bound beside the caps, in `mode` (`Checks::sbound`, `SBOUND`: 3 at each
-    /// configuration's root, 1 also at depth 1, 2 at every node without the caps, 0 off).
+    /// configuration's root, 1 also at depth 1, 2 at every node without the caps, 0 off); the career's band, so where
+    /// a deck with a nested chain may be reached its proven bound joins the caps (`deck::nested`).
     StateBound { mode: u8 },
     /// The cap-free band (`CareerSetup::best_deck_cf`): two proven bounds at every node and leaf are its only prunes,
     /// no cap; it stops (`CapFreeNodeLimit`) once the space's node count (`DeckSpace::nodes`) passes `node_limit`.
@@ -81,6 +88,12 @@ pub(crate) struct SearchOutcome {
     /// The band was built without the class caps (state-bound mode 2, or cap-free): every deck in it may reach the
     /// threshold, none was cut by a cap. False on a search that stopped before its setup.
     pub(crate) uncapped: bool,
+    /// It pruned decks with a nested chain beside other chain feeders or an uncertified group
+    /// (`ConfigurationQueue::multi`): its proof rests on the nested bound taken for them (`multi_feeder_cap`).
+    pub(crate) multi: bool,
+    /// It pruned decks of a shape left under the assumed class cap (`ConfigurationQueue::assumed`): its proof rests on
+    /// that cap.
+    pub(crate) assumed: bool,
 }
 
 /// Search-wide legal entries and proof configuration. Own the cached tables so the traversal
@@ -89,6 +102,10 @@ pub(crate) struct SearchSetup {
     best: bool,
     seed: f64,
     rho: f64,
+    /// the nested-chain bounds (`deck::nested`) are on: the career's band (`BandBound::StateBound`) or product search
+    /// (`BestCovered`, its rho in `cover_rho`, else 0), one trainee at one chance, not cap-free
+    nested_bounds: bool,
+    cover_rho: f64,
     cap: usize,
     target_count: usize,
     size: usize,

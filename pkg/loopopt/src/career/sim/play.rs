@@ -7,7 +7,7 @@ use crate::career::pool::Pool;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
-use crate::career::sim::{Goal, Sim, SimJob, SimulationOptions, SimulationRoster, family};
+use crate::career::sim::{Goal, Sim, SimJob, SimulationOptions, SimulationRoster, family, leg_json};
 use crate::career::state::{KeptState, kept_swap};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use serde_json::{Value, json};
@@ -294,7 +294,10 @@ impl Sim<'_, '_> {
             trace.checks.push(self.check(state, true));
         }
         loop {
-            let career = self.policy_career(state, base, exact, &mut kept_decision);
+            let career = match self.settings.force {
+                Some(forced) if career_index == 0 => Rc::new(self.forced_cur(state, forced)),
+                _ => self.policy_career(state, base, exact, &mut kept_decision),
+            };
             let pick_key = self.key(&career);
             if pick_key != last_key {
                 trace.pick_changes.push(json!({"t": career_index, "pick": pick_key, "trainee": self.data.umas[career.lineage.trainee].name, "p": career.p_all, "pool": state.legacies.len(), "s": survival}));
@@ -330,6 +333,7 @@ impl Sim<'_, '_> {
                     tail,
                     final_p_all: career.p_all,
                     pruned,
+                    survival,
                     looped: LoopedRun { finishing_careers, censored: tail_p_all.is_none() },
                 };
             }
@@ -405,6 +409,8 @@ struct PathResult {
     final_p_all: f64,
     /// New veterans dropped as dominated.
     pruned: usize,
+    /// The survival S at the stop (before the tail).
+    survival: f64,
     /// What goal `looped` reports beside.
     looped: LoopedRun,
 }
@@ -441,6 +447,9 @@ pub(in crate::career) fn simulate<'data>(
         "index" => Base::Index,
         policy => return json!({"error": format!("simulate: unknown policy {policy}")}),
     };
+    if config.force.is_some() && matches!(base, Base::Loop | Base::Trace) {
+        return json!({"error": "simulate: force is for greedy, greedy_exact and index (a loop or trace runs its own careers)"});
+    }
     if config.goal == Goal::Looped && base == Base::Trace {
         return json!({"error": "simulate: trace has no goal (goal looped is for the path policies)"});
     }
@@ -496,7 +505,7 @@ pub(in crate::career) fn simulate<'data>(
         let mut state = initial_state.clone();
         let mut trace = PathTrace::default();
         let keys = Keys::Main { seed: config.seed, run: run as u32 };
-        let PathResult { expected_careers, careers, tail, final_p_all, pruned, looped } =
+        let PathResult { expected_careers, careers, tail, final_p_all, pruned, survival, looped } =
             simulator.play(&mut state, PlayOptions { base, keys, survival_cutoff, run: run as u32 }, &mut trace);
         let counts_after = simulator.evaluator.counters;
         run_expectations.push(expected_careers);
@@ -527,6 +536,11 @@ pub(in crate::career) fn simulate<'data>(
             run_record["finishing"] = json!(looped.finishing_careers);
             run_record["full_veterans"] = json!(state.full_count());
             run_record["censored"] = json!(looped.censored);
+        }
+        if config.keep_pool {
+            let run_record = runs.last_mut().unwrap();
+            run_record["survival"] = json!(survival);
+            run_record["final_legacies"] = json!(state.legacies.iter().map(leg_json).collect::<Vec<_>>());
         }
     }
     if let Some(kept) = kept_before_simulation {

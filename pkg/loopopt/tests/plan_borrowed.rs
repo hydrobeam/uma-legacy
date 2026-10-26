@@ -78,6 +78,18 @@ fn renumber(v: &Value, gone: usize) -> Value {
                                 a.iter().map(|y| if y.is_object() { renumber(y, gone) } else { ix(y) }).collect(),
                             ),
                             ("legacy", _) => ix(x),
+                            // a career id, "uma:a,b:deck" (a report's, a member's builder): its parents are legacy indices too
+                            ("career" | "builder", Value::String(id)) => {
+                                let mut parts: Vec<String> = id.splitn(3, ':').map(str::to_owned).collect();
+                                if let Some(pair) = parts.get_mut(1) {
+                                    *pair = pair
+                                        .split(',')
+                                        .map(|p| p.parse::<u64>().map_or(p.to_owned(), |i| ix(&json!(i)).to_string()))
+                                        .collect::<Vec<_>>()
+                                        .join(",");
+                                }
+                                Value::String(parts.join(":"))
+                            }
                             _ => renumber(x, gone),
                         },
                     )

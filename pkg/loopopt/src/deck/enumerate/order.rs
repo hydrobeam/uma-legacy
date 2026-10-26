@@ -78,7 +78,7 @@ pub(crate) struct ConfigOrder {
 impl ConfigOrder {
     pub(crate) fn new(queue: ConfigurationQueue, controls: SearchControl) -> Self {
         let SearchControl { lazy, check_ratio_bounds, target_count, column_count, .. } = controls;
-        let ConfigurationQueue { configurations, pending, key_ratios } = queue;
+        let ConfigurationQueue { configurations, pending, key_ratios, .. } = queue;
         let mut pending_order: Vec<usize> = (0..pending.len()).collect();
         pending_order.sort_by(|&a, &b| pending[b].upper_bound.partial_cmp(&pending[a].upper_bound).unwrap());
         let heap: std::collections::BinaryHeap<QueuedConfig> = std::collections::BinaryHeap::default();
@@ -155,11 +155,13 @@ impl ConfigOrder {
                     &mut self.prune_bounds,
                     &mut self.order_bounds,
                 );
+                // (the covered product search's factor where a nested chain may be reached: 1 elsewhere)
+                let root_scale = pending_config.root_scale;
                 self.heap.push(QueuedConfig {
-                    root: self.order_bounds[0],
+                    root: self.order_bounds[0] * root_scale,
                     insertion_index: self.pending_order[self.pending_position - 1],
                     configuration: SearchConfig {
-                        root: self.order_bounds[0],
+                        root: self.order_bounds[0] * root_scale,
                         code: pending_config.code,
                         events: pending_config.events,
                         real_filler_count: pending_config.real_filler_count,
@@ -170,8 +172,9 @@ impl ConfigOrder {
                         groups: pending_config.groups.clone(),
                         group_misses: std::rc::Rc::clone(&pending_config.group_misses),
                         ratio_prefixes: std::rc::Rc::clone(ratio_prefixes),
-                        prune_bound: self.prune_bounds[0],
+                        prune_bound: self.prune_bounds[0] * root_scale,
                         clause_bounds: if self.check_ratio_bounds { self.prune_bounds.clone() } else { vec![] },
+                        pair_cap: pending_config.pair_cap,
                     },
                 });
             }

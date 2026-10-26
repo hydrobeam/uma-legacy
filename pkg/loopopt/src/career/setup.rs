@@ -1,9 +1,10 @@
 //! A career job read three ways (`CareerJobs`) and its `Env` built (`career_setup`): the model, the deck space, each
-//! owned uma's deck-odds ceilings, the deck classes and what earlier jobs of the setup proved (`restore_seen`).
+//! owned uma's deck-odds ceilings, the deck classes and what earlier jobs of the setup and pool proved (`restore_seen`).
 use crate::career::decks::{CfStats, DECK_KEEP_CAP, JOB_NO};
 use crate::career::state::{KeptState, setup_fp};
 use crate::career::{
-    BorrowedParent, CAREER_BUDGET, CareerJob, CareerSetup, DeckSearchAudit, DeckSearchMemo, Env, JobInputs, SearchState,
+    BorrowedParent, CAREER_BUDGET, CareerJob, CareerSetup, ClassFlags, DeckSearchAudit, DeckSearchMemo, Env, JobInputs,
+    SearchState,
 };
 use crate::data::Data;
 use crate::deck::sources::deck_entries;
@@ -39,8 +40,8 @@ pub(super) struct CareerBuild<'data> {
     pub(super) env: Env<'data>,
     /// The job's trainees (uma indices), owned umas in roster order.
     pub(super) trainees: Vec<UmaIndex>,
-    /// `setup_fp` of the job: what earlier jobs of this setup proved is kept under it (`KeptState::seen`).
-    pub(super) setup_fingerprint: u64,
+    /// The key what this job proves is kept under (`KeptState::seen`): its setup (`setup_fp`), trainees and pool.
+    pub(super) seen_fingerprint: u64,
 }
 
 /// The job's Env: the model, the deck space, each owned uma's deck-odds ceiling, the deck classes, the kept deck memo
@@ -109,6 +110,18 @@ pub(super) fn career_setup<'data>(
         pool_ids.hash(&mut hasher);
         hasher.finish()
     };
+    // the key the job's fully checked decks are kept under (`KeptState::seen`): the deck memo's (the setup, and the
+    // trainees, whose order sets the plain pals' order in the deck space) and the pool (veterans, borrowing rule). A
+    // proof is sound in any pool of the setup, but `certified` takes a proxy career a proof certifies in place of a
+    // search, which may name another pair or deck of equal value, so a proof from another pool could change an output
+    let seen_fingerprint = {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        memo_fingerprint.hash(&mut hasher);
+        job_json["legacies"].to_string().hash(&mut hasher);
+        job_json["borrowed_parent"].to_string().hash(&mut hasher);
+        hasher.finish()
+    };
     let job_number = JOB_NO.with(|counter| {
         counter.set(counter.get() + 1);
         counter.get()
@@ -126,7 +139,16 @@ pub(super) fn career_setup<'data>(
         job_number,
         state_bounds: crate::deck::state_bound::StateBoundMemo::default(),
     };
-    let deck_class = deck_classes(data, model, &space, &outfit_coverage, &deck_odds_ceilings);
+    let (deck_class, class_key) =
+        deck_classes(data, model, &space, &outfit_coverage, &deck_odds_ceilings, setup_fingerprint);
+    let ceiling_rho = ceiling_rhos(data, &space);
+    let plan_space_key = {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        class_key.0.hash(&mut hasher);
+        space.plain_pal_ids().for_each(|id| id.hash(&mut hasher));
+        hasher.finish()
+    };
     let setup = CareerSetup {
         data,
         skill_job,
@@ -138,9 +160,12 @@ pub(super) fn career_setup<'data>(
         uncertain_groups,
         space,
         deck_odds_ceilings,
+        ceiling_rho,
         outfit_coverage,
         owned,
         deck_class,
+        plan_space_key,
+        class_key,
         max_borrowed: u8::from(career_job.borrowed_parent != BorrowedParent::Never),
     };
     let mut state = SearchState {
@@ -151,20 +176,29 @@ pub(super) fn career_setup<'data>(
         seen: UmaTable(vec![vec![]; uma_count]),
         use_seen: true,
         ruled: UmaTable(vec![vec![]; uma_count]),
+        class_flags: UmaTable(vec![ClassFlags::default(); uma_count]),
         last_product_bound: None,
         floor: f64::NEG_INFINITY,
         hard_work_cap: 0,
     };
-    restore_seen(worker, &setup, &mut state, setup_fingerprint);
+    // (the class flags first, by class content: a class flagged in any earlier job on the setup stays so, whatever
+    // its trainees, and its kept proofs then prove as little, `restore_seen`)
+    setup.union_keyed(&mut state, worker.flags.iter().map(|(&key, &flags)| (key, flags)));
+    restore_seen(worker, &setup, &mut state, seen_fingerprint);
     let audit = DeckSearchAudit {
         max_ratio: [0.0; 4],
         cap_breach: 0,
+        capped_breaches: 0,
+        assumed_searches: 0,
+        multi_searches: 0,
         cap_free_stats: CfStats::default(),
         max_deck: Default::default(),
+        nested_max_ratio: f64::NEG_INFINITY,
+        nested_past_cap: 0,
         certified_cap: f64::INFINITY,
         overflows: 0,
     };
-    Ok(CareerBuild { env: Env { setup, state, audit, memo }, trainees, setup_fingerprint })
+    Ok(CareerBuild { env: Env { setup, state, audit, memo }, trainees, seen_fingerprint })
 }
 
 /// Per uma (None when she does not train), the best possible deck odds per uncertain target, a ceiling for every
@@ -214,18 +248,43 @@ fn deck_odds_ceilings(
         .collect()
 }
 
+/// Per uma, her ceiling's factor (`CareerSetup::ceiling_rho`): 1 where every entry legal for her is
+/// `certified_cap_free`, else EXACT_RHO. Derived for the first case: her ceiling's odds are per target at least any
+/// legal deck's given any chain state x (each entry's misses given x are at least its misses with every link fired, and
+/// a deck's are a product of deck_size of them, at least the deck_size lowest); given x the deck's sources are
+/// independent and each group's levels negatively upper-orthant dependent (`group_nuod_lvl`), so P(all | x) is at most
+/// the product over targets of P(k | x) (a target's landing factor rises with its hint level), each at most its factor
+/// at the ceiling's odds (affine and rising in the gold and hint chances), whatever x: the expectation over x, the deck's
+/// exact value, is at most the product value there, for every outfit.
+fn ceiling_rhos(data: &Data, space: &DeckSpace) -> UmaTable<f64> {
+    data.umas
+        .indices()
+        .map(|uma| {
+            let uma_id = data.umas[uma].id;
+            let every_legal_cap_free = (0..space.card_indices.len())
+                .filter(|&j| !space.cards[space.card_indices[j]].blocks(uma_id, crate::checks::get()))
+                .all(|j| space.entry_cap_free(j));
+            if every_legal_cap_free { 1.0 } else { space.rho_top() }
+        })
+        .collect()
+}
+
 /// Deck classes (`CareerSetup::deck_class`): the key holds everything of a trainee the deck search reads (outfit
-/// coverage, own-skill chances to the bit, `deck_odds_ceilings`, the relevant cards she may not take, how many plain
-/// pals she may); each trainee's class is the first trainee with her key.
+/// coverage, own-skill chances to the bit, `deck_odds_ceilings`, the relevant cards she may not take, and of the plain
+/// pals she may take, how many of the first p raise the chain rate for every p, `DeckSpace::plain_rate_pals`: a deck
+/// of p plain pals takes the first p, and its chain events read that count); each trainee's class is the first trainee
+/// with her key. With each uma's content key (`CareerSetup::class_key`): her key hashed with `setup_fingerprint`.
 fn deck_classes(
     data: &Data,
     model: &Model,
     space: &DeckSpace,
     outfit_coverage: &UmaTable<Vec<Vec<u8>>>,
     deck_odds_ceilings: &UmaTable<Option<(Vec<f64>, Vec<f64>)>>,
-) -> UmaTable<UmaIndex> {
+    setup_fingerprint: u64,
+) -> (UmaTable<UmaIndex>, UmaTable<u64>) {
     let mut first: crate::FxMap<Vec<u64>, UmaIndex> = crate::FxMap::default();
     let mut deck_class: UmaTable<UmaIndex> = data.umas.indices().collect();
+    let mut class_key: UmaTable<u64> = UmaTable(vec![0; data.umas.len()]);
     for uma in data.umas.indices() {
         let uma_id = data.umas[uma].id;
         let mut key: Vec<u64> = vec![];
@@ -253,18 +312,31 @@ fn deck_classes(
                 .map(|j| j as u64),
         );
         key.push(u64::MAX);
-        key.push(space.legal_plain(&[uma_id]).len() as u64);
+        key.extend(space.plain_rate_pals(&[uma_id]).iter().map(|&raising| raising as u64));
+        class_key[uma] = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            (setup_fingerprint, &key).hash(&mut hasher);
+            hasher.finish()
+        };
         deck_class[uma] = *first.entry(key).or_insert(uma);
     }
-    deck_class
+    (deck_class, class_key)
 }
 
-/// What earlier jobs on this setup proved (the page's worker keeps it between jobs, `KeptState::seen`), when it fits this setup.
-fn restore_seen(kept: &KeptState, setup: &CareerSetup, state: &mut SearchState, setup_fingerprint: u64) {
-    if let Some((_, seen)) = kept.seen.iter().find(|entry| entry.0 == setup_fingerprint)
-        && setup.seen_fits(seen)
+/// What earlier jobs on this setup, trainees and pool proved (the page's worker keeps it between jobs,
+/// `KeptState::seen`, under `seen_fingerprint`), when it fits this setup; none of a breached class
+/// (`ClassFlags::breached`, the deck space's flags already in `state`).
+fn restore_seen(kept: &KeptState, setup: &CareerSetup, state: &mut SearchState, seen_fingerprint: u64) {
+    if let Some(entry) = kept.seen.iter().find(|entry| entry.key == seen_fingerprint)
+        && setup.seen_fits(&entry.refs)
     {
         // The worker retains its proofs while this job extends its own copy.
-        state.seen = seen.clone();
+        state.seen = entry.refs.clone();
+        for class in state.class_flags.indices() {
+            if state.class_flags[class].breached {
+                state.seen[class].clear();
+            }
+        }
     }
 }

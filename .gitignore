@@ -84,6 +84,8 @@
 !/val/sim/make_jobs.py
 !/val/sim/report.py
 !/val/sim/fit_cont.py
+!/val/sim/rollouts.py
+!/val/sim/lam_regress.py
 !/val/sim/trace_pools.json
 !/val/sim/pools/
 !/val/sim/jobs.json

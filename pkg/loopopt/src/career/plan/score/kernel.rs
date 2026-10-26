@@ -2,12 +2,10 @@
 //! (`Scored::evaluate`, `evaluate_outcomes`, `sc_loop`), with the scratch they reuse between scorings. Building a scoring (her setups,
 //! tables and collapsed targets) is `build.rs`'s; the step costs V after her reads are `step.rs`'s.
 use crate::career::clock::{now_ms, prof};
-use crate::career::plan::cont::{OwnTrio, ScoreBase, Want};
+use crate::career::plan::TargetMask;
+use crate::career::plan::cont::{ScoreBase, Want};
 use crate::career::plan::fold::{FoldContext, FoldCursor, FoldWorkspace, LeafLayout, Leaves, SlotTables, leaf_set};
-use crate::career::plan::step::{
-    CandidateLift, EstimateBuffers, OwnFullLanding, SingleCandidateValue, StepEstimate, StepScratch,
-};
-use crate::career::plan::{CandidateIndex, TargetMask};
+use crate::career::plan::step::{AfterHer, CandidateLift, EstimateBuffers, Route, StepEstimate};
 /// Cached leaf probabilities depend only on the star mix and uncertain-target order.
 #[derive(Default)]
 struct LeafCache {
@@ -39,19 +37,11 @@ struct LiftRecord {
     probability: f64,
 }
 
-/// A candidate whose odds stay fixed because no setup was assigned to it.
-struct UnslottedCandidate {
-    candidate: usize,
-    threshold: f64,
-    current_probability: f64,
-}
-
 pub(super) struct EvaluationCounters {
     pub(super) outcomes: usize,
     pub(super) changed_outcomes: usize,
     pub(super) cost_evaluations: usize,
     pub(super) cache_hits: usize,
-    pub(super) single_candidate_shortcuts: usize,
 }
 
 pub(super) struct ScoringEvaluation {
@@ -59,7 +49,8 @@ pub(super) struct ScoringEvaluation {
     pub(super) improvement_chance: f64,
     pub(super) outcome_savings: Vec<f64>,
     pub(super) lift_stats: Vec<LiftStats>,
-    pub(super) full_landing_below_threshold: bool,
+    /// With `Want::Joint`: per set of candidates her veteran lifts at once (bit c: candidate c), its chance, by set.
+    pub(super) joint_lifts: Vec<(u64, f64)>,
     pub(super) counters: EvaluationCounters,
 }
 
@@ -73,24 +64,12 @@ pub(super) struct FoldScratch {
 
 thread_local! { pub(super) static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> = std::cell::RefCell::new(FoldScratch::default()); }
 
-/// Candidate whose step may change at an outcome.
-#[derive(Clone, Copy)]
-pub(crate) struct ActiveCandidate {
-    /// Position in the fixed planner candidate table.
-    pub(crate) candidate: CandidateIndex,
-    /// Slot in the prepared outcome table, if this candidate has one.
-    pub(crate) slot: Option<usize>,
-    /// Odds above which this candidate's step can improve.
-    pub(crate) threshold: f64,
-    /// Candidate's odds in the original pool.
-    pub(crate) current_chance: f64,
-}
-
 /// One scoring's outcome evaluation as `Scored::evaluate` reads it (built by `evaluate_career`; a plan keeps its pick's for a
 /// roll, `RollKeep`): per setup her miss factor's parts and her spark scales, with what the fold and the outcome loop
-/// read of them (`derive`); the tables kept (`prepare_scoring`) and each one's setup; the collapsed targets; per setup its
-/// candidate slot and per slot the odds now; her landed sets' chances; the candidates the loop can lift; her own full
-/// veteran's trio sides; her candidate index, the goal, the star mix. A setup is one place her veteran may be a parent (`Setup`).
+/// read of them (`derive`); the tables kept (`prepare_scoring`) and each one's setup; the collapsed targets; one slot
+/// per setup and per slot the odds now; her landed sets' chances; the routes; the goal, the star mix. A setup is one
+/// place her veteran may be: a parent of a stage candidate beside one partner (a partner slot, the candidate's odds
+/// there), or in a route's C's lineage (a finisher slot, C's odds there: `score::routes`).
 pub(crate) struct Scored {
     /// nu: the job's uncertain targets.
     pub(crate) uncertain_target_count: usize,
@@ -98,10 +77,13 @@ pub(crate) struct Scored {
     pub(crate) fixed_target_count: usize,
     /// All job targets (nu + nf).
     pub(crate) target_count: usize,
-    /// The setup slots: the candidates with a setup, one slot each.
+    /// The slots, one per setup: the partner slots first, then the lift slots, then the finisher slots.
     pub(crate) slot_count: usize,
-    /// Her own place among the stage candidates (`her_ends`); None: her uma is not one.
-    pub(crate) own_candidate: Option<usize>,
+    /// The partner slots (each candidate's odds with her veteran as a parent beside one kept partner, the best of her
+    /// cached decks: the lift statistics): per slot its candidate (candidate order, each candidate's consecutive).
+    pub(crate) slot_candidates: Vec<usize>,
+    /// The lift slots (one career each, a route's lifted step: `score::routes`): per slot its candidate.
+    pub(crate) lift_candidates: Vec<usize>,
     /// Her parents are both full veterans: her full veteran is a fully looped parent (V after her 0).
     pub(crate) completes_goal: bool,
     /// The rank's star mix (1, 2, 3 stars).
@@ -122,16 +104,14 @@ pub(crate) struct Scored {
     pub(crate) initial_tables: Vec<f64>,
     /// Per uncertain target, whether it is collapsed: folded at 0 and 1 star only (`prepare_scoring`).
     pub(crate) collapsed_targets: Vec<bool>,
-    /// Per setup, its candidate's slot.
+    /// Per setup, its slot.
     pub(crate) slot_by_setup: Vec<usize>,
-    /// Per slot, its candidate's odds now.
+    /// Per slot, the odds below the setup's: a partner slot's candidate's odds now, a finisher slot's 0.
     pub(crate) current_probabilities: Vec<f64>,
     /// Per landed set over the job targets (bit i: target i), her chance of landing exactly it.
     pub(crate) landed_set_chances: Vec<f64>,
-    /// The candidates the outcome loop can lift, in candidate order.
-    pub(crate) active_candidates: Vec<ActiveCandidate>,
-    /// Her own full veteran's trio sides when her uma is not a stage candidate (`her_trios`).
-    pub(crate) own_trios: Vec<OwnTrio>,
+    /// The routes through her veteran (`score::routes`); none for a scoring of the stats alone.
+    pub(crate) routes: Vec<Route>,
     /// Derived (`derive`): per setup, uncertain target and star level, x = x0 xm.
     pub(crate) present_factors: Vec<Vec<[f64; 4]>>,
     /// Derived (`derive`): 1 - x of `present_factors`.
@@ -166,6 +146,33 @@ impl Scored {
                 (0..target_count).map(|k| pw[k][usize::from(TargetMask::from_bits(m).contains(k))]).product::<f64>()
             }));
         }
+    }
+    /// A setup's odds at one outcome (her stars `leaf`, her landed set `landed_mask`) before the slot's floor: its
+    /// tables interpolated there directly (`interp_in`, the fold's order and arithmetic: its f64s at that leaf, up to
+    /// the collapse's rounding) times its spark scale
+    pub(crate) fn setup_odds_at(&self, setup: usize, leaf: usize, landed_mask: usize) -> f64 {
+        let table_size = 1usize << self.uncertain_target_count;
+        let mut buffer = vec![];
+        let point: Vec<f64> =
+            (0..self.uncertain_target_count).map(|k| self.present_factors[setup][k][(leaf >> (2 * k)) & 3]).collect();
+        let most = (0..self.setup_by_table.len())
+            .filter(|&table| self.setup_by_table[table] == setup)
+            .map(|table| {
+                crate::career::outcomes::interp_in(
+                    &self.initial_tables[table * table_size..(table + 1) * table_size],
+                    &point,
+                    &mut buffer,
+                )
+            })
+            .fold(0.0f64, f64::max);
+        most * self.spark_scales[landed_mask * self.setup_count() + setup]
+    }
+    /// The finisher slots' odds at one outcome (`setup_odds_at`), raised by 1e-12 of themselves so no rounding can put
+    /// one below the fold's: what `outcome_hi`'s bound takes for the routes' C
+    pub(crate) fn finisher_odds_at(&self, leaf: usize, landed_mask: usize) -> Vec<f64> {
+        (self.slot_candidates.len() + self.lift_candidates.len()..self.setup_count())
+            .map(|setup| self.setup_odds_at(setup, leaf, landed_mask) * (1.0 + 1e-12))
+            .collect()
     }
     pub(crate) const fn setup_count(&self) -> usize {
         self.misses_without_her.len()
@@ -234,12 +241,12 @@ impl Scored {
         }
     }
 
-    fn own_full_landing(&self) -> OwnFullLanding<'_> {
-        OwnFullLanding {
-            candidate_index: self.own_candidate,
+    pub(crate) fn after_her(&self) -> AfterHer<'_> {
+        AfterHer {
             completes_goal: self.completes_goal,
-            trios: &self.own_trios,
             full_mask: self.full_mask().bits(),
+            routes: &self.routes,
+            lift_slot_count: self.lift_candidates.len(),
         }
     }
 }
@@ -322,9 +329,8 @@ impl Scored {
 /// representative's values are the leaf's own.
 ///
 /// What is fixed per call is decided here, once: the loop (`sc_loop`) is specialised by whether it takes the products
-/// itself (`emits_setup_products`), whether any target is collapsed and what is wanted (y or the stats), and the
-/// candidates it can lift are split into those with a slot (slot j is the j-th of them: slots are given in candidate
-/// order) and those without one (odds fixed at their odds now)
+/// itself (`emits_setup_products`), whether any target is collapsed and what is wanted (y or the stats); the partner
+/// slots' candidates and thresholds (her odds now (1 + 1e-9)) are read off the slots
 #[inline(never)]
 fn evaluate_outcomes<L: Leaves>(
     score_base: &ScoreBase,
@@ -335,62 +341,35 @@ fn evaluate_outcomes<L: Leaves>(
     scratch: &mut OutcomeScratch,
 ) -> ScoringEvaluation {
     let leaves = fold_context.leaves;
-    let candidate_count = score_base.candidates.len();
     let (uncertain_target_count, slot_count) = (scored.uncertain_target_count, scored.slot_count);
-    // V after her when one candidate's step alone moved (`SingleCandidateValue::new`, `SingleCandidateValue::value`: trio_v's minimum,
-    // split by the trios that read her step)
-    let single_candidate_costs: Vec<SingleCandidateValue> = if score_base.trios.is_empty() || want == Want::Stats {
-        vec![]
-    } else {
-        (0..candidate_count).map(|i| SingleCandidateValue::new(score_base.trios, score_base.step_costs, i)).collect()
-    };
     scored.prepare_leaf_cache(leaves, &mut scratch.leaf_cache);
     // A leaf's representative has each nonzero collapsed-target digit at 1.
     let collapse_mask: usize =
         (0..uncertain_target_count).filter(|&k| scored.collapsed_targets[k]).map(|k| 3usize << (2 * k)).sum();
     let low_digit_bits = collapse_mask & (usize::MAX / 3);
-    // the candidates it can lift: with a slot (in slot order) and without
-    let (mut candidate_indices, mut thresholds, mut unslotted_candidates) = (vec![], vec![], vec![]);
-    for &ActiveCandidate {
-        candidate: CandidateIndex(candidate),
-        slot,
-        threshold,
-        current_chance: current_probability,
-    } in &scored.active_candidates
-    {
-        match slot {
-            Some(slot) => {
-                assert_eq!(slot, candidate_indices.len(), "slotted candidates come in slot order");
-                candidate_indices.push(candidate);
-                thresholds.push(threshold);
-            }
-            None => unslotted_candidates.push(UnslottedCandidate { candidate, threshold, current_probability }),
-        }
-    }
-    assert_eq!(candidate_indices.len(), slot_count, "one slotted candidate per slot");
+    // the partner slots' candidates (consecutive per candidate) and the odds above which each lifts hers
+    let candidate_indices = &scored.slot_candidates;
+    assert!(candidate_indices.windows(2).all(|pair| pair[0] <= pair[1]), "partner slots come in candidate order");
+    let thresholds: Vec<f64> = (0..candidate_indices.len() + scored.lift_candidates.len())
+        .map(|slot| scored.current_probabilities[slot] * (1.0 + 1e-9))
+        .collect();
     // Setups are in slot order; slot j owns setup_offsets[j]..setup_offsets[j + 1].
     let mut setup_offsets = vec![0usize; slot_count + 1];
     for (setup, &slot) in scored.slot_by_setup.iter().enumerate() {
         assert!(setup == 0 || scored.slot_by_setup[setup - 1] <= slot, "setups come in slot order");
         setup_offsets[slot + 1] = setup + 1;
     }
-    // V after her found lazily (`sc_loop`): no step, stage 2-3 cost or C's step NaN, -0.0 or below 0, so no sum of them is
-    // NaN or -0.0 and equal minima are the same bits
-    let is_nonnegative_cost = |cost: f64| cost >= 0.0 && cost.to_bits() != (-0.0f64).to_bits();
-    let lazy_costs = score_base.step_costs.iter().all(|&cost| is_nonnegative_cost(cost))
-        && score_base.later_stage_costs.iter().all(|&cost| is_nonnegative_cost(cost))
-        && score_base.trios.iter().all(|trio| is_nonnegative_cost(trio.finisher_cost));
     let context = OutcomeContext {
         score_base,
         fold: fold_context,
         candidates: CandidateSlots {
             values: outcome_values,
             setup_offsets: &setup_offsets,
-            candidate_indices: &candidate_indices,
+            candidate_indices,
+            lift_candidates: &scored.lift_candidates,
             thresholds: &thresholds,
-            unslotted_candidates: &unslotted_candidates,
         },
-        own_full_landing: scored.own_full_landing(),
+        after_her: scored.after_her(),
         probabilities: OutcomeProbabilities {
             outcome_probabilities: &scored.landed_set_chances,
             star_probabilities: &scratch.leaf_cache.star_probabilities,
@@ -399,10 +378,9 @@ fn evaluate_outcomes<L: Leaves>(
             low_digit_bits,
         },
         retain_outcome_savings: want == Want::Ys,
-        single_candidate_costs: &single_candidate_costs,
-        lazy_costs,
+        joint_lifts: want == Want::Joint,
     };
-    context.evaluate(scored.emits_setup_products(), want == Want::Stats, &mut scratch.workspace)
+    context.evaluate(scored.emits_setup_products(), matches!(want, Want::Stats | Want::Joint), &mut scratch.workspace)
 }
 
 impl Scored {
@@ -454,9 +432,10 @@ struct CandidateSlots<'slots> {
     values: &'slots [f64],
     /// Slot j owns setups offsets[j]..offsets[j + 1].
     setup_offsets: &'slots [usize],
+    /// Per partner slot, its candidate; per lift slot, its; per partner then lift slot, her threshold.
     candidate_indices: &'slots [usize],
+    lift_candidates: &'slots [usize],
     thresholds: &'slots [f64],
-    unslotted_candidates: &'slots [UnslottedCandidate],
 }
 
 struct OutcomeProbabilities<'out> {
@@ -475,10 +454,10 @@ struct OutcomeContext<'out, 'base, L: Leaves> {
     fold: &'out FoldContext<'out, L>,
     candidates: CandidateSlots<'out>,
     probabilities: OutcomeProbabilities<'out>,
-    own_full_landing: OwnFullLanding<'out>,
+    after_her: AfterHer<'out>,
     retain_outcome_savings: bool,
-    lazy_costs: bool,
-    single_candidate_costs: &'out [SingleCandidateValue],
+    /// The stats also gather the joint lift sets (`ScoringEvaluation::joint_lifts`).
+    joint_lifts: bool,
 }
 
 impl<L: Leaves> OutcomeContext<'_, '_, L> {
@@ -542,15 +521,14 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     // Keep immutable hot slices independent of writes to the reusable outcome buffers.
     let candidate_indices = context.candidates.candidate_indices;
     let thresholds = context.candidates.thresholds;
-    let unslotted_candidates = context.candidates.unslotted_candidates;
     let outcome_probabilities = context.probabilities.outcome_probabilities;
     let fixed_landed_masks = context.fold.leaf_layout.fixed_landed_masks;
     let candidate_count = score_base.candidates.len();
-    let (fixed_target_count, slot_count, full_mask) = (
-        context.fold.leaf_layout.fixed_target_count,
-        context.fold.slot_tables.slot_count,
-        context.own_full_landing.full_mask,
-    );
+    let (fixed_target_count, slot_count) =
+        (context.fold.leaf_layout.fixed_target_count, context.fold.slot_tables.slot_count);
+    let partner_slot_count = candidate_indices.len();
+    let lift_candidates = context.candidates.lift_candidates;
+    let lifting_slots = partner_slot_count + lift_candidates.len();
     let (leaf_count, leaves) =
         ((1usize << (2 * context.fold.leaf_layout.uncertain_targets.len())), context.fold.leaves);
     let leaf_rows = leaves.nrows(leaf_count);
@@ -559,25 +537,18 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     // y per outcome (careers saved), at (row << nf) | fm (0 where the outcome can't happen); only when the caller reads it
     let mut outcome_savings: Vec<f64> =
         if context.retain_outcome_savings { vec![0.0; leaf_rows << fixed_target_count] } else { vec![] };
-    // an outcome that can happen, lands every target and reads y < 0.5 (`pick_her`)
-    let mut full_landing_below_threshold = false;
-    let mut step_costs = score_base.step_costs.to_vec();
     // per stage-1 candidate: the chance her veteran raises that candidate's odds, and the odds raised to (summed, weighted)
     let mut lift_stats = if S { vec![LiftStats::default(); candidate_count] } else { vec![] };
-    let mut changed_candidates: Vec<usize> = vec![];
-    let mut step_scratch = StepScratch { costs: &mut step_costs, changed_candidates: &mut changed_candidates };
+    // (per set of candidates lifted at once, its chance: `Want::Joint` only)
+    let mut joint_lifts: crate::FxMap<u64, f64> = crate::FxMap::default();
+    assert!(!context.joint_lifts || candidate_count <= 64, "a joint lift set is one bit per candidate");
+    let mut lift_steps = vec![];
     let mut outcome_count = 0usize;
     let mut probability_buffer = vec![0.0f64; slot_count];
     // V after her (`v_after` at the estimate's step costs, `StepEstimate`), from the candidates each outcome lifts (row, candidate,
     // odds: `lifted`)
     let mut estimate = if Y {
-        StepEstimate::new(
-            score_base,
-            slot_count + unslotted_candidates.len(),
-            context.lazy_costs,
-            context.single_candidate_costs,
-            std::mem::take(estimate_buffers),
-        )
+        StepEstimate::new(lift_candidates.len(), std::mem::take(estimate_buffers))
     } else {
         StepEstimate::default()
     };
@@ -627,23 +598,22 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                 let representative_outcome = (representative_row << fixed_target_count) | fixed_mask;
                 if S {
                     let record_start = lift_offsets[representative_outcome];
+                    let mut lifted_set = 0u64;
                     if record_start == u32::MAX {
                         let probabilities =
                             context.row::<PL>(representative_row, landed_mask, fixed_mask, &mut probability_buffer);
-                        for ((&lifted_probability, &threshold), &candidate) in
-                            probabilities.iter().zip(thresholds).zip(candidate_indices)
-                        {
-                            if lifted_probability > threshold {
+                        candidate_maxima(
+                            probabilities,
+                            candidate_indices,
+                            thresholds,
+                            |candidate, lifted_probability| {
                                 lift_stats[candidate].lift_chance += outcome_probability;
                                 lift_stats[candidate].lifted_odds_sum += outcome_probability * lifted_probability;
-                            }
-                        }
-                        for &UnslottedCandidate { candidate, threshold, current_probability } in unslotted_candidates {
-                            if current_probability > threshold {
-                                lift_stats[candidate].lift_chance += outcome_probability;
-                                lift_stats[candidate].lifted_odds_sum += outcome_probability * current_probability;
-                            }
-                        }
+                                if context.joint_lifts {
+                                    lifted_set |= 1 << candidate;
+                                }
+                            },
+                        );
                     } else {
                         for &LiftRecord { candidate, probability: lifted_probability } in lift_records
                             [record_start as usize..]
@@ -652,7 +622,13 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                         {
                             lift_stats[candidate].lift_chance += outcome_probability;
                             lift_stats[candidate].lifted_odds_sum += outcome_probability * lifted_probability;
+                            if context.joint_lifts {
+                                lifted_set |= 1 << candidate;
+                            }
                         }
+                    }
+                    if context.joint_lifts && lifted_set != 0 {
+                        *joint_lifts.entry(lifted_set).or_default() += outcome_probability;
                     }
                 }
                 if Y {
@@ -661,55 +637,54 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                     if saving > 1e-9 {
                         improvement_chance += outcome_probability;
                     }
-                    if landed_mask == full_mask && saving < 0.5 {
-                        full_landing_below_threshold = true;
-                    }
                     if context.retain_outcome_savings {
                         outcome_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
                     }
                 }
                 continue;
             }
-            // each candidate's odds after her: the best of her setups' and her odds now (`FoldContext::emit`; with pl, here)
+            // each slot's odds after her: a partner slot's the best of its setup's and her odds now, a finisher slot's C's
+            // (`FoldContext::emit`; with pl, here)
             let probabilities = context.row::<PL>(leaf_row, landed_mask, fixed_mask, &mut probability_buffer);
             let possible = outcome_probability > 0.0;
             if possible {
                 outcome_count += 1;
             }
             // (a representative records what it lifts, within the cap)
-            let record_lifts = S
-                && is_representative
-                && lift_records.len() + slot_count + unslotted_candidates.len() < record_capacity;
+            let record_lifts = S && is_representative && lift_records.len() + partner_slot_count < record_capacity;
             let record_start = lift_records.len();
-            // the candidates it lifts: their stats and records here, V after her from the list (in this order)
-            lifted.clear();
-            macro_rules! lifted {
-                ($ci:expr, $candidate:expr, $lifted_probability:expr) => {{
-                    let (candidate, lifted_probability): (usize, f64) = ($candidate, $lifted_probability);
-                    if S && possible {
+            // the candidates it lifts (each at the best of her partner slots): their stats and records here
+            if S {
+                let mut lifted_set = 0u64;
+                candidate_maxima(probabilities, candidate_indices, thresholds, |candidate, lifted_probability| {
+                    if possible {
                         lift_stats[candidate].lift_chance += outcome_probability;
                         lift_stats[candidate].lifted_odds_sum += outcome_probability * lifted_probability;
                     }
                     if record_lifts {
                         lift_records.push(LiftRecord { candidate, probability: lifted_probability });
                     }
-                    if Y {
-                        lifted.push(CandidateLift { slot: $ci, candidate, probability: lifted_probability });
+                    if context.joint_lifts {
+                        lifted_set |= 1 << candidate;
                     }
-                }};
-            }
-            for (j, ((&lifted_probability, &threshold), &candidate)) in
-                probabilities.iter().zip(thresholds).zip(candidate_indices).enumerate()
-            {
-                if lifted_probability > threshold {
-                    lifted!(j, candidate, lifted_probability);
+                });
+                if context.joint_lifts && possible && lifted_set != 0 {
+                    *joint_lifts.entry(lifted_set).or_default() += outcome_probability;
                 }
             }
-            for (j, &UnslottedCandidate { candidate, threshold, current_probability }) in
-                unslotted_candidates.iter().enumerate()
-            {
-                if current_probability > threshold {
-                    lifted!(slot_count + j, candidate, current_probability);
+            // the lift slots it lifts, for V after her (in slot order)
+            lifted.clear();
+            if Y {
+                for (slot, ((&lifted_probability, &threshold), &candidate)) in probabilities
+                    [partner_slot_count..lifting_slots]
+                    .iter()
+                    .zip(&thresholds[partner_slot_count..])
+                    .zip(lift_candidates)
+                    .enumerate()
+                {
+                    if lifted_probability > threshold {
+                        lifted.push(CandidateLift { slot, candidate, probability: lifted_probability });
+                    }
                 }
             }
             if S && is_representative {
@@ -726,8 +701,15 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
             if !Y {
                 continue;
             }
-            let saving =
-                score_base.v_after(&mut estimate, &mut step_scratch, &lifted, landed_mask, &context.own_full_landing);
+            let finisher_odds = &probabilities[lifting_slots..];
+            let saving = score_base.v_after(
+                &mut estimate,
+                &mut lift_steps,
+                &lifted,
+                finisher_odds,
+                landed_mask,
+                &context.after_her,
+            );
             if is_representative {
                 representative_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
             }
@@ -738,33 +720,56 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
             if saving > 1e-9 {
                 improvement_chance += outcome_probability;
             }
-            if landed_mask == full_mask && saving < 0.5 {
-                full_landing_below_threshold = true;
-            }
             if context.retain_outcome_savings {
                 outcome_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
             }
         }
     }
     if Y {
-        *estimate_buffers = EstimateBuffers {
-            probability_costs: std::mem::take(&mut estimate.workspace.probability_costs),
-            cell_costs: std::mem::take(&mut estimate.workspace.cell_costs),
-        };
+        *estimate_buffers =
+            EstimateBuffers { probability_costs: std::mem::take(&mut estimate.workspace.probability_costs) };
     }
+    let mut joint_lifts: Vec<(u64, f64)> = joint_lifts.into_iter().collect();
+    joint_lifts.sort_by_key(|&(lifted_set, _)| lifted_set);
     ScoringEvaluation {
         expected_saving,
         improvement_chance,
         outcome_savings,
         lift_stats,
-        full_landing_below_threshold,
+        joint_lifts,
         counters: EvaluationCounters {
             outcomes: outcome_count,
             changed_outcomes: estimate.workspace.changed_outcomes,
             cost_evaluations: estimate.workspace.cost_evaluations,
             cache_hits: estimate.workspace.cache_hits,
-            single_candidate_shortcuts: estimate.workspace.single_candidate_shortcuts,
         },
+    }
+}
+
+/// Per candidate with partner slots (`candidate_indices`, consecutive per candidate), the best of her slots' odds in
+/// `probabilities` where it is above her threshold: `lifted(candidate, odds)`, in candidate order (the candidate's odds as
+/// one slot over all her setups took them: the strict maximum, order-free)
+#[inline(always)]
+fn candidate_maxima(
+    probabilities: &[f64],
+    candidate_indices: &[usize],
+    thresholds: &[f64],
+    mut lifted: impl FnMut(usize, f64),
+) {
+    let mut slot = 0;
+    while slot < candidate_indices.len() {
+        let (candidate, threshold) = (candidate_indices[slot], thresholds[slot]);
+        let mut best = probabilities[slot];
+        slot += 1;
+        while slot < candidate_indices.len() && candidate_indices[slot] == candidate {
+            if probabilities[slot] > best {
+                best = probabilities[slot];
+            }
+            slot += 1;
+        }
+        if best > threshold {
+            lifted(candidate, best);
+        }
     }
 }
 

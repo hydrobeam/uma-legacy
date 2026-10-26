@@ -54,7 +54,12 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         env.state.hard_work_cap = settings.search_work;
     }
     env.state.use_seen = true;
-    let mut searches = input.new_searches(kept, &main_career, env_budget);
+    let mut searches = input.new_searches(kept, &main_career, env_budget, env.setup.plan_space_key);
+    // (the kept plans' class flags, by class content: what their careers and completeness rest on, `Bests::flags`; so
+    // every reuse, `best_of` and the looped rows, and the output read them with this job's)
+    for plan in [&searches.kept_same_pool, &searches.kept_previous_pool].into_iter().flatten() {
+        env.setup.union_keyed(&mut env.state, plan.flags.iter().copied());
+    }
     if settings.surrogate_mode != 1 {
         for &trainee in &candidate_trainees {
             if searches.best_careers[trainee].is_unsearched() {
@@ -101,6 +106,21 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let candidate_count = candidate_trainees.len();
     let current_odds: Vec<f64> =
         careers.iter().map(|career| career.as_ref().map_or(0.0, |career| career.value)).collect();
+    // per candidate whether her odds now are her proven best career's: searched (not the surrogate's) and complete (the
+    // main search's, for the main career's trainee)
+    let certified: Vec<bool> = candidate_trainees
+        .iter()
+        .zip(&careers)
+        .map(|(&trainee, career)| {
+            career.is_some()
+                && settings.surrogate_mode != 1
+                && if trainee == main_career.trainee {
+                    input.solved.complete
+                } else {
+                    !searches.base_incomplete[trainee]
+                }
+        })
+        .collect();
     let skill_job = sim.env.setup.skill_job;
     // per candidate whether a full veteran of hers exists (a free side of the trios)
     let has_full_veteran: Vec<bool> = candidate_trainees
@@ -113,7 +133,6 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
             })
         })
         .collect();
-    let later_stage_costs = vec![0.0f64; candidate_count];
     let index_started_ms = now_ms();
     // Builders through their deck class: a builder's career is first taken from her class's winning decks (the main
     // search's and the candidates' best careers of her class: legal for her, the same deck problem, valued at her own
@@ -122,8 +141,12 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // searched careers), or a saving within PROXY_SAVE of the shown rows (the page's top OPT_SHOW) or the pick's near-tie
     // band. A proxy's odds cannot exceed the exact best (it is a career she can run); its efficiency can read high
     // or low. Calibration: docs/MODEL.md, "Next career"; `proxy_check` measures the current errors.
-    // `exact_all` restores a search for every uma.
-    let proxies_enabled = settings.surrogate_mode == 0 && !settings.exact_all && !settings.proxy_check;
+    // `exact_all` restores a search for every uma, and so does a job where proxies were measured too low for the band
+    // (`exact_builders`).
+    let proxies_enabled = settings.surrogate_mode == 0
+        && !settings.exact_all
+        && !settings.proxy_check
+        && !exact_builders(sim.env.setup.target_count, legacies, input.pool.max_borrowed);
     let candidates = PlanCandidates {
         main_career,
         pick_career,
@@ -135,10 +158,11 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         allowed_trainees,
         careers,
         current_odds,
+        certified,
         has_full_veteran,
-        later_stage_costs,
         placeholder_step_costs: vec![1.0f64; candidate_count],
         proxies_enabled,
+        knobs: settings.knobs(),
     };
     let profile = PlanProfile {
         started_ms,
@@ -163,6 +187,21 @@ struct StageCandidates {
 /// Stage-1 candidates (who A can be; whose odds a builder may lift): the best career's trainee, the named loop members,
 /// the umas of the best career's lineage, the umas you have veterans of, the search's other trainees; at most
 /// IDX_CANDS. A given fit (`PlanJob::fit`) names them instead.
+/// Jobs whose builders are all searched exactly, as `exact_all` searches them: at `EXACT_BUILDERS_TARGETS` targets or
+/// more, or with a borrowed veteran in the pool that the job lets a career use (`borrowed_parent` not "never": a pool
+/// whose borrowed veterans can't be used plans as the pool without them). There proxies read further below the exact careers than the band
+/// allows (measured 2026-10-27, `proxy_check`: efficiency 46% low on val/plan p16_t10, 10 targets of which 8 uncertain;
+/// 6.4% low on p16_borrow, against the 6% band), and the exact searches cost little or save time (p16_t10 13.8 s exact
+/// against 19.3 s with proxies, p16_borrow 1.3 against 1.2 s); elsewhere proxies stay (exact costs p10 3.37 against
+/// 2.21 s, p16 1.38 against 0.83, gm16_nu8, 8 uncertain targets, 5.59 against 3.75)
+fn exact_builders(target_count: usize, legacies: &[crate::career::Legacy], max_borrowed: u8) -> bool {
+    target_count >= EXACT_BUILDERS_TARGETS || (max_borrowed > 0 && legacies.iter().any(|legacy| legacy.borrowed))
+}
+
+/// The fewest targets at which builders are searched exactly (`exact_builders`): the measured case is p16_t10's 10
+/// targets (8 uncertain); gm16_nu8's 8 uncertain of 8 keeps its proxies within the band
+const EXACT_BUILDERS_TARGETS: usize = 10;
+
 fn stage_candidates(
     env: &mut Env,
     input: &PlanInputs,
@@ -201,11 +240,14 @@ fn stage_candidates(
     }
     trainees.truncate(IDX_CANDS);
     if let Some(fit) = &settings.fit {
-        trainees = fit
-            .iter()
-            .filter_map(|&(character_id, ..)| env.setup.uma_index(character_id))
-            .filter(|uma| input.trainees.contains(uma))
-            .collect();
+        // (each uma once, in the fit's order, at most IDX_CANDS: the planner's candidate limit, which the scoring's
+        // memory budget assumes)
+        trainees = vec![];
+        for uma in fit.iter().filter_map(|entry| env.setup.uma_index(entry.character_id())) {
+            if input.trainees.contains(&uma) && !trainees.contains(&uma) && trainees.len() < IDX_CANDS {
+                trainees.push(uma);
+            }
+        }
     }
     // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
     // parents) is filled from the planner's own model: the owned umas ranked by their odds with a full loop lineage
@@ -231,14 +273,16 @@ impl PlanInputs<'_, '_> {
         kept: &mut crate::career::state::KeptState,
         main_career: &Found,
         env_budget: usize,
+        space_key: u64,
     ) -> PlanSearches {
         let uma_count = self.resources.data.umas.len();
         let legacy_count = self.legacies.len();
         let mut best_careers = crate::uma::UmaTable(vec![CachedSearch::Unsearched; uma_count]);
         best_careers[main_career.trainee] = CachedSearch::Known(Some(main_career.clone()));
-        let kept_same_pool = take_kept_plan(kept, bests_key(self.resources.job, self.fixed_parents, legacy_count));
+        let kept_same_pool =
+            take_kept_plan(kept, bests_key(self.resources.job, self.fixed_parents, legacy_count, space_key));
         let kept_previous_pool = if legacy_count > 1 {
-            take_kept_plan(kept, bests_key(self.resources.job, self.fixed_parents, legacy_count - 1))
+            take_kept_plan(kept, bests_key(self.resources.job, self.fixed_parents, legacy_count - 1, space_key))
         } else {
             None
         };
@@ -252,6 +296,7 @@ impl PlanInputs<'_, '_> {
             kept_same_pool,
             kept_previous_pool,
             env_budget,
+            pair_careers: crate::FxMap::default(),
         }
     }
 }
@@ -564,11 +609,11 @@ fn exact_plan_career(
     Some(ExactPlanCareer { career, lift_stats })
 }
 
-/// Record the G1 races trainee's career wins with a chance above 0.5 (`PlanRows::wins_by_trainee`)
+/// Record the G1 win chances of trainee's career (`PlanRows::wins_by_trainee`)
 pub(crate) fn set_plan_wins(
     simulator: &mut Sim,
     pool: &Pool,
-    wins_by_trainee: &mut crate::uma::UmaTable<Vec<usize>>,
+    wins_by_trainee: &mut crate::uma::UmaTable<Vec<f64>>,
     trainee: crate::uma::UmaIndex,
     career: &Found,
 ) {
@@ -578,8 +623,7 @@ pub(crate) fn set_plan_wins(
         pool,
         crate::career::plan::found_career(trainee, career),
     );
-    wins_by_trainee[trainee] =
-        record.win_chances.iter().enumerate().filter(|(_, chance)| **chance > 0.5).map(|(race, _)| race).collect();
+    wins_by_trainee[trainee] = record.win_chances.to_vec();
 }
 
 /// The trainee's best career without a borrowed parent, on the pick's pool: the surrogate's under `sur` 1, else

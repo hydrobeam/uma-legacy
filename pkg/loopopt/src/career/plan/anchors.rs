@@ -1,12 +1,13 @@
 //! Anchor bounds and the best partners after an outcome.
 use crate::career::clock::{now_ms, prof};
 use crate::career::inherit::rise_factor;
-use crate::career::plan::cont::{OwnTrio, ScoreBase};
+use crate::career::plan::cont::ScoreBase;
 use crate::career::plan::fold::{RiseInputs, leaf_products, leaf_set};
 use crate::career::plan::roll::{RollKeep, RollPool};
-use crate::career::plan::score::{HerEnds, fm_masks, her_ends, her_trios};
+use crate::career::plan::score::fm_masks;
+use crate::career::plan::score::kernel::Scored;
 use crate::career::plan::search::legal_pair;
-use crate::career::plan::step::{CandidateLift, Lo, OwnFullLanding, StepScratch};
+use crate::career::plan::step::{CandidateLift, Lo};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
 use crate::career::pool::{Pool, holds_fix};
 use crate::career::search::{CareerSearchResult, DeckRes};
@@ -437,12 +438,10 @@ fn rise_factors(inputs: &RiseInputs, anchor_chances: &[f64], factors: &mut Vec<f
 fn hi_at(
     score_base: &ScoreBase,
     bounds: &[ExactPartnerBound],
-    leaf: usize,
-    landed_mask: usize,
-    own: &OwnFullLanding,
-    step_costs: &mut [f64],
+    outcome: LoOutcome,
     candidate_probabilities: &mut [f64],
 ) -> f64 {
+    let LoOutcome { leaf, landed_mask, .. } = outcome;
     candidate_probabilities.copy_from_slice(score_base.current_odds);
     for bound in bounds {
         let value = bound.spark_scales[landed_mask] * bound.leaf_bounds[leaf];
@@ -450,27 +449,41 @@ fn hi_at(
             candidate_probabilities[bound.candidate] = value;
         }
     }
-    saving_lo(score_base, candidate_probabilities, landed_mask, own, step_costs)
+    saving_lo(score_base, candidate_probabilities, outcome)
 }
 
-/// V - V_lo at candidate odds `candidate_probabilities`: each step that rose at `Cont::cost_lo`, her own full veteran
-/// (`Scored::own_candidate`, `her_trios`) on the full set, the goal's V; `step_costs` scratch
-fn saving_lo(
-    score_base: &ScoreBase,
-    candidate_probabilities: &[f64],
+/// One outcome as `saving_lo` reads it: the kept scoring (its partner slots and routes), her stars' leaf, her landed
+/// set and the routes' C odds there (`Scored::finisher_odds_at`)
+#[derive(Clone, Copy)]
+struct LoOutcome<'outcome> {
+    scored: &'outcome Scored,
+    leaf: usize,
     landed_mask: usize,
-    own: &OwnFullLanding,
-    step_costs: &mut [f64],
-) -> f64 {
-    // (the candidates above their threshold, `score_career`'s pnow (1 + 1e-9), in candidate order)
-    let lifted: Vec<CandidateLift> = (0..score_base.candidates.len())
-        .filter(|&candidate| candidate_probabilities[candidate] > score_base.current_odds[candidate] * (1.0 + 1e-9))
-        .map(|candidate| CandidateLift { slot: candidate, candidate, probability: candidate_probabilities[candidate] })
+    finisher_odds: &'outcome [f64],
+}
+
+/// V - V_lo at candidate odds `candidate_probabilities`: every lift slot of a candidate whose bound passes her
+/// threshold (`score_career`'s pnow (1 + 1e-9)) lifted at that bound, each step at `ScoreBase::step_floor` there, the routes (their C at its odds at this outcome, which no partner choice changes: a route's C is the
+/// scoring's), the goal's V
+fn saving_lo(score_base: &ScoreBase, candidate_probabilities: &[f64], outcome: LoOutcome) -> f64 {
+    let lifted: Vec<CandidateLift> = outcome
+        .scored
+        .lift_candidates
+        .iter()
+        .enumerate()
+        .filter(|&(_, &candidate)| {
+            candidate_probabilities[candidate] > score_base.current_odds[candidate] * (1.0 + 1e-9)
+        })
+        .map(|(slot, &candidate)| CandidateLift { slot, candidate, probability: candidate_probabilities[candidate] })
         .collect();
-    step_costs.copy_from_slice(score_base.step_costs);
-    let mut changed_candidates = vec![];
-    let mut scratch = StepScratch { costs: step_costs, changed_candidates: &mut changed_candidates };
-    score_base.v_after(&mut Lo, &mut scratch, &lifted, landed_mask, own)
+    score_base.v_after(
+        &mut Lo,
+        &mut vec![],
+        &lifted,
+        outcome.finisher_odds,
+        outcome.landed_mask,
+        &outcome.scored.after_her(),
+    )
 }
 
 /// Optional exact anchors for `outcome_hi`: search with her at each of these star levels on every uncertain target.
@@ -753,7 +766,11 @@ fn hi_partner(
             add(&mut scratch.anchor_bound, *anchor_value, anchor_chances, &mut batch);
         }
     } else {
-        if context.scoring.score_base.current_odds[candidate.candidate_index] > 0.0 {
+        // (her odds now bound every career of hers in today's pool only where her search proved them her best)
+        let score_base = context.scoring.score_base;
+        if score_base.current_odds[candidate.candidate_index] > 0.0
+            && score_base.certified.get(candidate.candidate_index).copied().unwrap_or(false)
+        {
             let mut legal_anchors = 0usize;
             for lineage in (0..context.scoring.legacies.len())
                 .map(|second_parent| Lineage { second_parent, ..partner.lineage })
@@ -891,12 +908,13 @@ fn hi_partner(
 
 impl RollKeep {
     /// The pick's upper bound at one outcome (a roll's `y_hi`, `roll_answer`): the most V can fall through her
-    /// veteran's DIRECT lifts. The outcomes, base and credit for her own full veteran (`her_trios`) are `score_career`'s; each stage
-    /// candidate's odds with her as a parent, with EVERY legal partner y (not the table value of her IDX_PARTNERS best), are
-    /// bounded from the candidate's exact best now (pnow): every pair (y, z) of today's pool that keeps the plan's places is
-    /// a career of hers worth at most pnow, so (`CareerSetup::rise`: E(q') <= E(q) x rise(q', q) for every deck)
+    /// veteran's DIRECT lifts. The outcomes, base and routes are `score_career`'s; each stage candidate's odds with her as
+    /// a parent, with EVERY legal partner y (not the table value of her best `ScoringKnobs::partners`), are bounded from
+    /// the candidate's odds now (pnow) where her search proved them her best (`ScoreBase::certified`): every pair (y, z)
+    /// of today's pool that keeps the plan's places is then a career of hers worth at most pnow, so (`CareerSetup::rise`:
+    /// E(q') <= E(q) x rise(q', q) for every deck)
     ///     value(y, her) = c' E_best(q') <= c' (pnow / c_yz) rise(q', q_yz),
-    /// the least over z (the veteran most like her: rise 1 when one already carries what she does), and over the main
+    /// the least over z (the veteran most like her: rise 1 when one already carries what she does); and over the main
     /// search's found careers f of her deck class that it fully checked (a `Ref` at q_f: every deck of every classmate is
     /// worth at most val_f there, `SearchState::seen`, under the caps every search assumes; the found careers are the
     /// search's answer, so the anchors depend on the job alone)
@@ -905,24 +923,32 @@ impl RollKeep {
     /// over her best deck searched at her s = 2, 3 stars on every uncertain target (q^s, `best_deck` fully checked: E_best
     /// there, under the caps every search assumes)
     ///     value(y, her) <= c' E_best(q^s) rise(q', q^s),
-    /// rise 1 where her stars are at most s (this outcome is bounded again after); also at most the ceiling
-    /// (`CareerSetup::ceiling` through `Evaluator::ceiling_factors`, under the top cap: per outfit and target
-    /// A - B (1 - q'), `outfit_fast`'s factor at q'). A candidate's step costs the lowest cost at those odds
-    /// (`Cont::cost_lo`). Derived, per outcome:
+    /// rise 1 where her stars are at most s (this outcome is bounded again after); always at most the ceiling
+    /// (`CareerSetup::ceiling` through `Evaluator::ceiling_factors`, under the top cap: per outcome and target
+    /// A - B (1 - q'), `outfit_fast`'s factor at q'), the one bound left for a candidate whose search did not finish. Every
+    /// partner slot of a candidate is lifted at that bound, its step the lowest cost at any odds from her odds now to it
+    /// (`ScoreBase::step_floor`); each route's C at its odds at this outcome (`Scored::finisher_odds_at`). Derived, per
+    /// outcome:
     /// (1) For each partner, the bound >= the best career's exact value >= the table value `score_career` reads. A cached
     ///     deck's corner table is multilinear in the targets' miss chances, as P(all) of a fixed deck is (each chance enters
     ///     one target's factor linearly), so its interpolation is that deck's exact value; a real deck is at most the best.
-    ///     Her best partners are among every partner. So up_hi >= up for every candidate.
-    /// (2) cost_lo(up_hi) <= cost(up) (`Cont::cost_lo`), a step cost never rises from the base, and V over the trios (and
-    ///     `with_her`) does not fall when a step cost rises; so V_lo <= V_table and y_hi >= y.
-    /// (3) Each anchor A (a pair (y, z), a found career, a search at q^s) has a value E_A with E_best(q_A) <= E_A (a career
-    ///     of today's pool is worth at most pnow; a fully checked deck search is the best under the caps). Every deck D legal
-    ///     for the candidate has E_D(q') <= E_D(q_A) rise(q', q_A) (`CareerSetup::rise`) <= E_A rise(q', q_A), so her
-    /// best career
-    ///     with partner y is at most c' E_A rise(q', q_A) for every A, and at most its ceiling. In the exact replan with her
-    ///     in the pool, with today's Cont and trios, her step then costs at least cost_lo(up_hi): y_hi bounds the direct-lift
-    ///     saving. Not bounded (channel 2, out of scope by design): what the replan's refits do (Cont fitted
-    ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own full veteran).
+    ///     Her best partners are among every partner. So the bound >= every partner slot's odds.
+    /// (2) step_floor(up_hi) <= cost(up) for every up <= up_hi (`ScoreBase::step_floor`: IEEE arithmetic and the stored
+    ///     table only; no monotony of cost in p is assumed, it is not monotone), every lift slot the table lifts is
+    ///     lifted here too (the same threshold), the routes' C odds are at least the fold's (raised 1e-12), and V after
+    ///     her (`v_after`: V0 and the routes) is a minimum of sums each rising with each lifted step and with 1 / C's
+    ///     odds; so V_lo <= V_table and y_hi >= y.
+    /// (3) Each anchor A (a pair (y, z) of a certified candidate, a found career, a search at q^s) has a value E_A with
+    ///     E_best(q_A) <= E_A (a career of today's pool is worth at most a proven best; a fully checked deck search is the
+    ///     best under the caps). Every deck D legal for the candidate has E_D(q') <= E_D(q_A) rise(q', q_A)
+    ///     (`CareerSetup::rise`) <= E_A rise(q', q_A), so her best career with partner y is at most c' E_A rise(q', q_A)
+    ///     for every A, and at most its ceiling. In the exact replan with her in the pool, with today's Cont and trios,
+    ///     her step through the scoring's routes then costs at least step_floor(up_hi): y_hi bounds the
+    ///     saving over those routes (a route's C is the scoring's, on her kept partners' lineages). It is no bound on a
+    ///     replan: a lift through another partner or deck has no route, nor has a candidate's other lineage whose C her
+    ///     veteran improves as a grandparent without lifting the candidate's odds (relation points, shared wins), and
+    ///     the refits (Cont fitted again, other careers' best careers with her as a parent, the stage candidates chosen
+    ///     again) are outside it. So no roll's figure is a verdict: the page confirms each with a Compare.
     pub(super) fn outcome_hi(
         &mut self,
         simulator: &mut Sim,
@@ -942,8 +968,6 @@ impl RollKeep {
         let target_count = simulator.env.setup.target_count;
         let uncertain_target_count = simulator.env.setup.uncertain_targets.len();
         let star_mix = simulator.env.setup.skill_job.star_dist;
-        let HerEnds { own_candidate, completes_goal } =
-            her_ends(simulator, context.score_base, context.legacies, career.lineage);
         let current =
             simulator.evaluator.make_cur(&simulator.env.setup, &mut simulator.env.state, context.pool, career, false);
         let extended_pool =
@@ -1068,22 +1092,21 @@ impl RollKeep {
         }
         simulator.evaluator.pop_her(context.pool, extended_pool);
         let UpperBoundScratch { leaf_products: mut leaf_products_buffer, mut next_leaf_products, .. } = scratch;
-        let own = OwnFullLanding {
-            candidate_index: own_candidate,
-            completes_goal,
-            trios: &self.own_trios,
-            full_mask: outcome_count - 1,
+        let finisher_odds = self.scored.finisher_odds_at(outcome.0 >> fixed_target_count, requested_chance.landed_mask);
+        let lo_outcome = LoOutcome {
+            scored: &self.scored,
+            leaf: outcome.0 >> fixed_target_count,
+            landed_mask: requested_chance.landed_mask,
+            finisher_odds: &finisher_odds,
         };
         // Read the requested cell's bound from its place in the ascending marked cells.
         let cell_position = marked_cells.binary_search(&outcome.0).expect("the requested cell is marked");
-        let mut step_costs = context.score_base.step_costs.to_vec();
         let mut candidate_probabilities = vec![0.0f64; candidate_count];
         let savings_started = now_ms();
         for candidate in 0..candidate_count {
             candidate_probabilities[candidate] = candidate_bounds[candidate * marked_cell_count + cell_position];
         }
-        let mut saving_bound =
-            saving_lo(context.score_base, &candidate_probabilities, landed_masks[cell_position], &own, &mut step_costs);
+        let mut saving_bound = saving_lo(context.score_base, &candidate_probabilities, lo_outcome);
         drop(candidate_bounds);
         prof("hi_ys_ms", now_ms() - savings_started);
         // Exact anchors for the partners keeping this outcome in the band (y < 0.5 <= y_hi).
@@ -1092,8 +1115,7 @@ impl RollKeep {
         let mut chosen: Vec<usize> = vec![];
         if saving_bound.max(saving) >= 0.5 && search_limit > 0 {
             let (leaf, m) = (outcome.0 >> fixed_target_count, requested_chance.landed_mask);
-            let saving_hi =
-                hi_at(context.score_base, &exact_bounds, leaf, m, &own, &mut step_costs, &mut candidate_probabilities);
+            let saving_hi = hi_at(context.score_base, &exact_bounds, lo_outcome, &mut candidate_probabilities);
             let (mut need, mut far): (Vec<usize>, bool) = (vec![], false);
             for candidate in 0..candidate_count {
                 if candidate_probabilities[candidate] <= context.score_base.current_odds[candidate] * (1.0 + 1e-9) {
@@ -1101,7 +1123,7 @@ impl RollKeep {
                 }
                 let keep = candidate_probabilities[candidate];
                 candidate_probabilities[candidate] = context.score_base.current_odds[candidate];
-                let saving_without = saving_lo(context.score_base, &candidate_probabilities, m, &own, &mut step_costs);
+                let saving_without = saving_lo(context.score_base, &candidate_probabilities, lo_outcome);
                 candidate_probabilities[candidate] = keep;
                 if saving_without >= saving_hi - 1e-9 {
                     continue;
@@ -1153,45 +1175,10 @@ impl RollKeep {
             }
         }
         if !chosen.is_empty() {
-            saving_bound = hi_at(
-                context.score_base,
-                &exact_bounds,
-                outcome.0 >> fixed_target_count,
-                requested_chance.landed_mask,
-                &own,
-                &mut step_costs,
-                &mut candidate_probabilities,
-            );
+            saving_bound = hi_at(context.score_base, &exact_bounds, lo_outcome, &mut candidate_probabilities);
         }
         saving_bound
     }
-}
-
-/// The pick's own full veteran as a trio side (`her_trios`) for `outcome_hi`, taken as the plan ends (the deck cache then:
-/// `her_trios` reads C's cached decks), where an outcome that lands every target reads y < 0.5 (`full_lo`: only there
-/// does `saving_lo` read it; else none)
-pub(crate) fn pick_her(
-    simulator: &mut Sim,
-    context: &ScoringContext,
-    career: Career,
-    full_lo: bool,
-    buf: &mut Vec<f64>,
-) -> Vec<OwnTrio> {
-    let ends = her_ends(simulator, context.score_base, context.legacies, career.lineage);
-    if !full_lo || ends.own_candidate.is_some() || ends.completes_goal || context.score_base.trio_sides.is_empty() {
-        return vec![];
-    }
-    let current =
-        simulator.evaluator.make_cur(&simulator.env.setup, &mut simulator.env.state, context.pool, career, false);
-    let full_mask = (1usize << simulator.env.setup.target_count) - 1;
-    if current.outcome_sets[full_mask] <= 0.0 {
-        return vec![];
-    }
-    let mut pushed = simulator.evaluator.push_her(&simulator.env.setup, context.legacies, context.pool, true, &current);
-    let her = pushed.pool.veterans.len() - 1;
-    let trios = her_trios(simulator, context.score_base, &mut pushed.pool, her, career.lineage.trainee, buf);
-    simulator.evaluator.pop_her(context.pool, pushed);
-    trios
 }
 
 /// `outcome_hi`'s found-career anchors: per found career of `main_search` (its order), (her deck class, q_f,

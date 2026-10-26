@@ -299,8 +299,47 @@ def loss(traces, shape, careers):
     return total
 
 
-def best_shape(traces, careers):
-    return min((Shape(share, decay) for share in SHARES for decay in DECAYS), key=lambda s: loss(traces, s, careers))
+def cost_loss(traces, shape):
+    """squared log error of Cont's cost against the split achievable cost, over the traces that have one: the quantity
+    the plan reads (a step's cost), where `loss` fits the odds path"""
+    return sum(math.log(cont_cost(t, shape) / achievable_split(t)) ** 2 for t in traces if achievable_split(t))
+
+
+def best_shape(traces, careers, criterion="odds"):
+    objective = (lambda s: loss(traces, s, careers)) if criterion == "odds" else (lambda s: cost_loss(traces, s))
+    return min((Shape(share, decay) for share in SHARES for decay in DECAYS), key=objective)
+
+
+def cost_errors(traces, shape):
+    return [cont_cost(t, shape) / achievable_split(t) - 1 for t in traces if achievable_split(t)]
+
+
+def cost_report(traces, current):
+    """the shape fitted on cost, and each pool's cost error under the cost shape fitted without it, beside the current
+    shape's (not fitted on these traces)"""
+    fitted = best_shape(traces, 0, "cost")
+    edge = fitted.share in (SHARES[0], SHARES[-1]) or fitted.decay in (DECAYS[0], DECAYS[-1])
+    mean = lambda errors: sum(abs(e) for e in errors) / len(errors) if errors else float("nan")
+    print(
+        f"\ncost-fitted shape: CEIL_SHARE {fitted.share}, LAM_DECAY {fitted.decay}; cost loss "
+        f"{cost_loss(traces, fitted):.3f} (current {cost_loss(traces, current):.3f})"
+        + ("  (at the grid's edge)" if edge else "")
+    )
+    pools = sorted({trace.pool for trace in traces})
+    print("| pool | cost shape without it | its cost errors there | under the current shape |")
+    print("|---|---|---|---|")
+    held, now = [], []
+    for pool in pools:
+        own = [t for t in traces if t.pool == pool]
+        shape = best_shape([t for t in traces if t.pool != pool], 0, "cost")
+        pool_held, pool_now = cost_errors(own, shape), cost_errors(own, current)
+        held += pool_held
+        now += pool_now
+        print(
+            f"| {pool} | {shape.share}, {shape.decay} | {', '.join(f'{e:+.1%}' for e in pool_held)} | "
+            f"{', '.join(f'{e:+.1%}' for e in pool_now)} |"
+        )
+    print(f"mean |cost error|: held out {mean(held):.1%}; current shape {mean(now):.1%}")
 
 
 def report(traces, careers):
@@ -338,6 +377,7 @@ def report(traces, careers):
             )
         mean_error = sum(abs(error) for error in errors) / len(errors) if errors else float("nan")
         print(f"held-out loss {total_loss:.3f} over {len(pools)} pools; mean |cost error| {mean_error:.1%}")
+        cost_report(traces, current)
     print(
         "\n| pool | A | p0 | C | odds at "
         + " / ".join(str(n) for n in CHECKPOINTS if n <= careers)

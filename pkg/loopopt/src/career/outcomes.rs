@@ -39,7 +39,8 @@ pub(crate) fn interp_in(corners: &[f64], point: &[f64], buffer: &mut Vec<f64>) -
 }
 
 /// The outfits a career's report names (`trainee.outfits`) when it runs outfit option `option` with her schedule at
-/// grades `schedule_grades` (`trainee.schedule_outfit`'s): the option's outfits at those grades, the schedule's first.
+/// any of `schedule_grades` (the grades tied for her best schedule, `PlannedSchedule::tied`, `trainee.schedule_outfit`'s
+/// first): the option's outfits at those grades, in that order of grades.
 /// None ("any outfit") only where the option covers no target beyond `default_coverage` and every outfit of her
 /// character has the same grades (`Uma::outfit_aptitudes` empty): an outfit with grades of its own is always named,
 /// even as the only one left after exclusions.
@@ -47,12 +48,15 @@ fn named_outfits<'option>(
     uma: &crate::data::Uma,
     option: &'option OutfitOption,
     default_coverage: &[u8],
-    schedule_grades: &[u8],
+    schedule_grades: &[&[u8]],
 ) -> Vec<&'option (u32, String)> {
     if option.coverage == default_coverage && uma.outfit_aptitudes.is_empty() {
         return vec![];
     }
-    option.outfits.iter().filter(|card| uma.aptitudes_of(card.0) == schedule_grades).collect()
+    schedule_grades
+        .iter()
+        .flat_map(|&grades| option.outfits.iter().filter(move |card| uma.aptitudes_of(card.0) == grades))
+        .collect()
 }
 
 impl CareerSetup<'_> {
@@ -93,6 +97,11 @@ impl CareerSetup<'_> {
         let planned = (with_schedule || option_grades.len() > 1)
             .then(|| self.plan_schedule(pool, lineage, ScheduleOutfits::DeckOption(outfit)));
         let schedule_outfit = planned.as_ref().map_or(option_grades[0], |planned| planned.outfit);
+        // the grades tied for her best schedule, the schedule outfit's first
+        let tied_grades: Vec<&[u8]> = planned.as_ref().map_or_else(
+            || vec![schedule_outfit.aptitudes],
+            |planned| planned.tied.iter().map(|grades| grades.aptitudes).collect(),
+        );
         let skill_job = self.skill_job;
         let OutfitOption { coverage, .. } = &self.model.outfit_options[trainee][outfit];
         let covers: Vec<Value> = coverage
@@ -107,7 +116,7 @@ impl CareerSetup<'_> {
             &data.umas[trainee],
             &self.model.outfit_options[trainee][outfit],
             &default_coverage,
-            schedule_outfit.aptitudes,
+            &tied_grades,
         )
         .iter()
         .map(|card| json!({"id": card.0, "label": card.1}))
@@ -206,6 +215,7 @@ impl CareerSetup<'_> {
             _ => (Value::Null, [].as_slice()),
         };
         json!({"trainee": {"id": trainee_id, "name": data.umas[trainee].name, "outfits": outfits, "covers": covers, "schedule_outfit": schedule_outfit.card},
+               "career": crate::career::plan::kept::career_id(&self.space, trainee_id, found),
                "parents": [first_parent, second_parent], "slots": slots, "targets": targets, "p_all": exact.p_all, "p_minus1": exact.p_all_but_one, "expected": target_chances.iter().sum::<f64>(),
                "bound": found.ceiling, "deck": display_deck.out(&self.uncertain_groups), "pinks": pinks, "aptitudes": aptitudes, "schedule": schedule, "outcome_sets": outcomes, "g1_wins": if with_schedule { json!(win_chances.iter().sum::<f64>()) } else { Value::Null }})
     }
@@ -383,12 +393,12 @@ mod tests {
         let new_year = OutfitOption { coverage: vec![0], outfits: vec![(105_202, "[New Year ♪ New Urara!]".into())] };
         let grades = haru_urara.aptitudes_of(105_202);
         assert_ne!(grades, haru_urara.aptitudes.as_slice());
-        let named: Vec<u32> = named_outfits(haru_urara, &new_year, &[0], grades).iter().map(|card| card.0).collect();
+        let named: Vec<u32> = named_outfits(haru_urara, &new_year, &[0], &[grades]).iter().map(|card| card.0).collect();
         assert_eq!(named, [105_202]);
         // an uma whose outfits share grades, covering nothing: any outfit
         let oguri_cap = uma_of(1006);
         assert!(oguri_cap.outfit_aptitudes.is_empty());
         let any = OutfitOption { coverage: vec![0], outfits: vec![(100_601, "[Starlight Beat]".into())] };
-        assert!(named_outfits(oguri_cap, &any, &[0], &oguri_cap.aptitudes).is_empty());
+        assert!(named_outfits(oguri_cap, &any, &[0], &[&oguri_cap.aptitudes]).is_empty());
     }
 }

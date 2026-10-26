@@ -122,19 +122,42 @@ HINT_BASE_KEYS = {
 }
 
 
+def research_value(key):
+    """research/results.json's `values."{key}"` rounded to 3 decimals, as pkg/loopopt/build.rs (the solver's source)
+    takes it. A missing or non-numeric key stops the build, naming it."""
+    value = json.load(open(os.path.join(HERE, "..", "research", "results.json")))["values"].get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SystemExit(
+            f'research/results.json: `values."{key}"` is missing or not a number; `./build.sh research` computes it'
+        )
+    return round(value, 3)
+
+
 def hint_bases():
-    """the scenarios' training-hint bases by scenario key, as pkg/loopopt/build.rs (the rule's source) takes them:
-    research/results.json's values rounded to 3 decimals. A missing or non-numeric key stops the build, naming it."""
+    """the scenarios' training-hint bases by scenario key (`research_value`)"""
+    return {scenario: research_value(key) for scenario, key in HINT_BASE_KEYS.items()}
+
+
+# /about's statement of the career planner's robustness check: the all-target obs/pred ratio's 95% interval ends
+# (pkg/loopopt/build.rs `plan_constants`, the same keys and rounding)
+P_ALL_RATIO_ENDS = {
+    "__PALLLOW__": "13.p_all_eight_ratio_all_95_pct_low",
+    "__PALLHIGH__": "13.p_all_eight_ratio_all_95_pct_high",
+}
+
+
+def low_basis():
+    """the career planner's low-basis cost, as pkg/loopopt/build.rs (the solver's source) reads it from
+    research/results.json: (extra cost in points, the bucket's bound) from `4.low_basis_cost_fitted_on_every_run` (whole
+    points) and `4.low_aptitude_basis_bucket` ("<=B"). Anything else stops the build, naming the key."""
     values = json.load(open(os.path.join(HERE, "..", "research", "results.json")))["values"]
-    bases = {}
-    for scenario, key in HINT_BASE_KEYS.items():
-        value = values.get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise SystemExit(
-                f'research/results.json: `values."{key}"` is missing or not a number; `./build.sh research` computes it'
-            )
-        bases[scenario] = round(value, 3)
-    return bases
+    cost_key, bucket_key = "4.low_basis_cost_fitted_on_every_run", "4.low_aptitude_basis_bucket"
+    cost, bucket = values.get(cost_key), values.get(bucket_key)
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost != int(cost) or cost < 0:
+        raise SystemExit(f'research/results.json: `values."{cost_key}"` is {cost!r}, not whole points')
+    if not isinstance(bucket, str) or not re.fullmatch(r"<=-?\d+", bucket):
+        raise SystemExit(f'research/results.json: `values."{bucket_key}"` is {bucket!r}, not "<=" and a whole basis')
+    return int(cost), int(bucket[2:])
 
 
 # GameTora's page names for the links (support cards: url_name, e.g. 30067-the-thrones-assemblage; characters: the slug
@@ -624,7 +647,10 @@ open(os.path.join(DIST, "index.html"), "w").write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): shared styles and fonts.
 # Its disclosure script opens the "Show …" box a link lands on.
 about = open(os.path.join(HERE, "about.template.html")).read()
+LOW_BASIS_COST, LOW_BASIS_MAX = low_basis()
 for k, v in [
+    ("__LOWBASISCOST__", str(LOW_BASIS_COST)),
+    ("__LOWBASISMAX__", str(LOW_BASIS_MAX)),
     ("__THEMEJS__", THEMEJS),
     ("__NAV__", NAV("about")),
     ("__VERSION__", VERSION),
@@ -633,6 +659,7 @@ for k, v in [
     ("__CSS__", CSS_LINK + "\n<style>\n" + MATHFACE + "\n</style>"),
     ("__FONTPRELOAD__", "\n".join(preloads)),
     ("__LOGO__", LOGO),
+    *((placeholder, f"{research_value(key):.3f}") for placeholder, key in P_ALL_RATIO_ENDS.items()),
 ]:
     about = about.replace(k, v, 1)
 assert not re.search(r"__[A-Z]+__", about), re.findall(r"__[A-Z]+__", about)

@@ -7,7 +7,7 @@ import { $, $dialog, $input, $textarea, el, esc, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
-import { run, restartEngine, engineBusy, enginePersist, engineSaveState } from './engine.js';
+import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from './engine.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
@@ -49,7 +49,7 @@ import {
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks, deckCardAt } from './details.js';
 import { drawPink } from './pink.mjs';
-import { unprovenWhy, whyText, searchCaveat } from './proofs.mjs';
+import { unprovenWhy, whyText, searchCaveat, planCaveat } from './proofs.mjs';
 
 const tName = (g) => {
   const s = SK.get(g) || { w: `Skill ${g}`, gd: null };
@@ -126,15 +126,19 @@ const progText = ({ ph, k, n }) =>
  *   rollout planner that `baseOf`, `planKey` and the plan job still clear
  * @property {undefined} [p_now]  likewise
  * @property {'later'|'never'} [borrowed_parent]  left out at 'allow'
- * @property {{roll?: number[], fit?: PlanFit}} [next]  a plan job: its settings (`roll`: a roll's spark stars, per
- *   target; `fit`: another plan's continuations, taken as given instead of fitted to this pool)
+ * @property {{roll?: number[], fit?: PlanFit, robust?: 'next'}} [next]  a plan job: its settings (`roll`: a roll's spark
+ *   stars, per target; `fit`: another plan's continuations, taken as given instead of fitted to this pool; `robust`: the
+ *   next variant of the kept plan's robustness check, `checkPhase`)
  * @property {boolean} [no_reports]  a plan job: no career reports, `next` only
  * @property {boolean} [compare]  a comparison's job
+ * @property {string} [career]  one career reported as it is, no deck search (career/given.rs: its `career` id, on the
+ *   trainee and both parents fixed): Use this on a builder's other career (`chosenCareer`)
  *
  * One career in a report (career/outcomes.rs `report`): the trainee and her parents, by legacy index.
  * @typedef {object} CareerReport
  * @property {CareerTrainee} trainee
  * @property {[number, number]} parents
+ * @property {string} [career]  the career's identity (`kept::career_id`: her uma, parents in order and deck)
  * @property {CareerSlot[]} slots  her six legacies
  * @property {CareerTarget[]} targets  per target, in the job's order
  * @property {number} p_all  the chance she lands every target
@@ -213,7 +217,9 @@ const progText = ({ ph, k, n }) =>
  * @property {boolean} chosen  the plan's pick
  * @property {boolean} looped  both parents are full veterans
  * @property {boolean} exact  scored from her own career search
- * @property {boolean} [proven]  false: her career search was cut short
+ * @property {boolean} [proven]  false: her career search was cut short, or her deck class breached its assumed cap
+ * @property {string[]} [assumes]  the named assumptions her proven career rests on (the status line states the plan
+ *   job's, `planCaveat`; the table adds none)
  * @property {number|null} stage_cost
  * @property {number|null} index  the careers she saves toward a fully looped parent, net
  * @property {number|null} saving
@@ -227,7 +233,11 @@ const progText = ({ ph, k, n }) =>
  * A parent on the plan's route (`trio_report` in plan/output.rs): her step to an all-targets veteran.
  * @typedef {object} RouteMember
  * @property {string|null} trainee  her name
- * @property {number} p  her best career's chance of landing every target today
+ * @property {number} p  the chance of landing every target today of the career her fresh side is from
+ * @property {[number, number]|null} parents  that career's parents, by legacy index (null for a real full veteran)
+ * @property {boolean} alternative  that career is another of her top careers, not her best today (`fresh_lineages`)
+ * @property {boolean} proven  a search with both its parents fixed proved that career's odds
+ * @property {number} p0  the odds her continuation is anchored at
  * @property {boolean} has_full_veteran  she already has a full veteran (a poorer parent than a fresh one)
  * @property {boolean} real  the route uses her existing full veteran: her step costs no careers
  * @property {number|null} p_inf  her effective ceiling, the odds her lifts approach (null when lam is 0: no building)
@@ -247,12 +257,19 @@ const progText = ({ ph, k, n }) =>
  * @property {{a: string|null, b: string|null, c: string|null, careers: number[]}|null} v0_plan  today's cheapest route:
  *   its steps' trainees by name and their careers
  * @property {RouteMember[]} [members]  the route's A and B, in its order (empty without a route)
- * @property {{trainee: number, parents: [number, number], uncv: number[], fixed: number[]}|null} outcomes  the career a
+ * @property {{trainee: number, parents: [number, number], career?: string, uncv: number[], fixed: number[]}|null} outcomes  the career a
  *   roll is of (`next.roll`)
- * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound (`rollReq`)
+ * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound over the plan's routes (`rollReq`)
+ * @property {boolean} [check_unavailable]  set by the page: the robustness check could not finish (`checkPhase`)
+ * @property {{plan: string, pending: number, stable: boolean, contenders: string[]}} [robust]  the robustness check on
+ *   the pick (plan/robust.rs), set by the page from its follow-up jobs (`checkPhase`): the pick it is of, the variants
+ *   left, whether the planner's rule selects the same career among the checked rows under every tested variant, and the
+ *   careers (`keyOf`) it selects under some variant, the pick first
  * @property {PlanFit} [fit]  the stage candidates and their continuations the plan was fitted to: a comparison passes
  *   it on unchanged (`next.fit`), so the pool with her is priced the same way
  * @property {string[]} [unproven_why]  set by the page: why some of its career searches proved nothing (`unprovenWhy`)
+ * @property {string[]} [job_assumes]  set by the page: the named assumptions any search of the plan job rests on (the
+ *   job's `job_assumes`, kept with the plan; `planCaveat`)
  *
  * A plan's continuation fit, one entry per stage candidate (`[chara, lam, phi, pinf, ...]`, as the solver writes it;
  * the page never reads inside it).
@@ -269,6 +286,13 @@ const progText = ({ ph, k, n }) =>
  * @property {[number, number, number][]} [cap_exceeded]  per deck class past its assumed cap: [class, ratio, cap]
  * @property {{searches: number, unproven: number, unanswered: number}} [cap_rerun]  the deck searches rerun without the
  *   cap after a breach: those that proved nothing, and breaches left unanswered
+ * @property {string[]} [unproven]  why the main search is not complete (`work_cap`, `band_overflow`, `cap_breach`)
+ * @property {string[]} [job_unproven]  why any search of the job is not complete
+ * @property {string[]} [assumes]  the named assumptions the main search's proof rests on (`two_feeder_cap`,
+ *   `multi_feeder_cap`): still a proof (proofs.mjs `assumedText`)
+ * @property {string[]} [job_assumes]  the named assumptions any search of the job rests on
+ * @property {number} [cap_breaches]  capped deck searches of the job that scored a deck past its class's cap
+ * @property {number[]} [cap_breached]  trainees (chara ids) whose deck class breached its cap, here or before
  * @property {PlanReport} [next]  a plan job's plan
  * @property {boolean} [pending]  set by the page: a quick comparison's stand-in while the search for her career runs
  *
@@ -347,11 +371,17 @@ function waitEl() {
   w.append(box);
   return w;
 }
-// the plan's line: its time, or why it failed
+// the plan's line: its time and the named assumptions its searches rest on (the job's, and its proven rows' own) that
+// the search's line does not state (`planCaveat`), or why it failed
 function planNote() {
   if (planState.state === 'error') return ` Plan not made: ${planState.text}`;
   if (planState.state !== 'done') return '';
-  return ` Planned in ${(planState.ms / 1000).toFixed(1)} s.`;
+  const plan = planState.r,
+    assumes = [
+      ...(plan.job_assumes || []),
+      ...plan.options.filter((o) => o.exact && o.proven !== false).flatMap((o) => o.assumes || []),
+    ];
+  return ` Planned in ${(planState.ms / 1000).toFixed(1)} s.${planCaveat(assumes, last?.r || {})}`;
 }
 // every change: redraw now, search again after a short pause (a change during a search stops it)
 function schedule() {
@@ -381,7 +411,7 @@ function schedule() {
   // (an answer that stands keeps her)
   simulationId++;
   if (simulation.state === 'busy') Object.assign(simulation, { state: 'ready', r: null, kind: null });
-  Object.assign(simulation, { refining: false, provisional: false });
+  Object.assign(simulation, { refining: false, provisional: false, standing: false });
   searching = true;
   started = false;
   phase = 'search';
@@ -462,8 +492,14 @@ function buildJob() {
     top: allPlaced ? 1 : ROLL_K,
   };
   if (borrowChoice() !== 'allow') job.borrowed_parent = borrowChoice();
+  if (allPlaced && chosenCareer?.places === JSON.stringify(plan)) job.career = chosenCareer.id;
   return job;
 }
+// the career Use this chose when it is a builder's other career (an option with `alternative`: a search on its places
+// would give her best deck there instead; listed only with the plan's `builder_careers` above 1, which the page leaves
+// at 1), while the places are still the ones it set; not kept over a reload
+/** @type {{places: string, id: string}|null} */
+let chosenCareer = null;
 // a full veteran: a spark of every target (with full veteran parents: a fully looped parent)
 const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every((t) => nd.sparks?.[t.group] > 0);
 // a career on two full veteran parents: her own full veteran there is a fully looped parent (the plan says so; a search's row is read off the veterans)
@@ -472,6 +508,7 @@ const ROLL_K = 6; // careers a search returns with a place open (the plan's cand
 // the job of today's best career over everything (no place set, one result): the comparison's baseline
 const baseOf = (job) => ({
   ...job,
+  career: undefined,
   exclude: UMAS.filter((u) => !owned(u)).map((u) => u.id),
   trainees: [],
   fix: [],
@@ -485,14 +522,23 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // with its comparison (on demand)
 /** @type {PlanState} */
 let planState = { state: 'none', r: null };
-const keyOf = (r) => `${r.trainee.id}:${r.parents.join(',')}`;
+// a career's identity: the solver's `career` (her uma, her parents in order and her deck: two decks on the same parents
+// are two careers), else (an answer from before it) her uma and parents
+const keyOf = (r) => r.career ?? `${r.trainee.id}:${r.parents.join(',')}`;
 // the last plan made: while the career on show is one you chose on the same setup and veterans (its job without the
 // places), its table stays, so you can weigh the plan's other careers or go back to its pick
 /** @type {{base: string, places: LineagePlan, result: PlanReport}|null} base: `refBase` of its job; places: as it ran with
  *  (LineagePlan: vets.js); result: its `next` report */
 let refPlan = null;
 const refBase = (job) =>
-  planKey({ ...job, exclude: UMAS.filter((u) => !owned(u)).map((u) => u.id), trainees: [], fix: [], top: 0 });
+  planKey({
+    ...job,
+    exclude: UMAS.filter((u) => !owned(u)).map((u) => u.id),
+    trainees: [],
+    fix: [],
+    top: 0,
+    career: undefined,
+  });
 const refFor = () =>
   refPlan && last && planState.state !== 'done' && refPlan.base === refBase(last.job) ? refPlan : null;
 // the last few answers, by job and places: going back to one draws it again without a run
@@ -528,14 +574,18 @@ function oneOutfit(t) {
   t.anyOutfit = f.any;
   t.outfitNote = outfitNote(f);
 }
-/** @type {(job: CareerJob, progress?: (p: import('./engine.js').PlanProgress) => void) => Promise<{r: CareerSearch, ms: number}>} */
-const runJob = async (job, progress) => {
-  const m = await run(job, undefined, progress),
+/** @type {(job: CareerJob, progress?: (p: import('./engine.js').PlanProgress) => void, background?: boolean) => Promise<{r: CareerSearch, ms: number}>} */
+const runJob = async (job, progress, background = false) => {
+  const m = await run(job, undefined, progress, background),
     r = m.r || {};
   for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
   // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
   // taken again from `planKept` or `answers` says the same)
-  if (r.next?.options) r.next.unproven_why = unprovenWhy(r);
+  if (r.next?.options) {
+    r.next.unproven_why = unprovenWhy(r);
+    // (and the named assumptions any search of the job rests on: the status line's plan caveat, `planNote`)
+    r.next.job_assumes = r.job_assumes || [];
+  }
   return m;
 };
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
@@ -556,6 +606,8 @@ try {
  * @property {boolean} [stale]  edited since the figures on show
  * @property {boolean} [refining]  an exact comparison runs behind a roll's quick figures
  * @property {boolean} [provisional]  the quick figures say no saving, but their bound allows one: checking
+ * @property {boolean} [standing]  a roll's quick figures say it saves careers: the exact comparison starts once the
+ *   roll has stood 0.8 s (shown as checking meanwhile)
  * @property {boolean} [quick]  the figures on show are the quick ones
  * @property {boolean} [full]  she lands every target
  * @property {{now: number|null, withHer: number|null}} [v0]  expected careers to a fully looped parent with your
@@ -607,6 +659,7 @@ async function search() {
     clearInterval(secondsTick);
     renderAll();
     paint();
+    resumeCheck(id);
     return;
   }
   const hit = answers.get(answerKey);
@@ -620,6 +673,7 @@ async function search() {
     clearInterval(secondsTick);
     renderAll();
     paint();
+    resumeCheck(id);
     return;
   }
   searching = true;
@@ -638,6 +692,8 @@ async function search() {
     planState = { state: 'none' };
     simulation = { state: 'none' };
   };
+  /** @type {PlanDone|null} the plan to check once it is shown (`checkPhase`) */
+  let checkFor = null;
   try {
     const m = await runJob(job);
     if (id !== runId) return;
@@ -653,7 +709,10 @@ async function search() {
       status = searched;
       last = { r: m.r, job, key, plan: places };
       planState = planned;
-      if (planned.state === 'done') refPlan = { base: refBase(job), places: JSON.parse(places), result: planned.r };
+      if (planned.state === 'done') {
+        refPlan = { base: refBase(job), places: JSON.parse(places), result: planned.r };
+        if (!planned.r.robust) checkFor = planned;
+      }
       if (searched.kind === 'done' && planned.state !== 'error') {
         answers.set(answerKey, { status, last, planState });
         if (answers.size > ANSWERS) answers.delete(answers.keys().next().value);
@@ -671,6 +730,51 @@ async function search() {
   clearInterval(secondsTick);
   renderAll();
   paint();
+  if (checkFor) checkPhase(id, checkFor);
+}
+// The robustness check on the pick, once it is shown: the plan job again with `next.robust: "next"`, one variant per
+// job from the plan the worker keeps, as background jobs (an edit lets the variant under way finish and its job waits
+// behind it, so the worker and what it keeps stay), until none is left. Its report attaches only to the plan it was
+// asked for: the same run and plan state, and the pick it names (`robust.plan`). Where the worker no longer keeps the
+// plan (it was stopped or restarted: a stopped comparison, a solver error, a reload) the check is unavailable, and the
+// table says so (`check_unavailable`).
+/** @param {number} id  the run it belongs to @param {PlanDone} planned  its plan */
+async function checkPhase(id, planned) {
+  const current = () => id === runId && planState === planned;
+  // its report shows in the plan's table only: the tree and the veterans stay as they are (a redraw of the open
+  // veterans dialog under a click in progress would lose the click, or land it on the dialog, which closes it)
+  const redraw = () => {
+    keepFocus(renderResults);
+    paint();
+  };
+  const unavailable = () => {
+    planned.r.check_unavailable = true;
+    redraw();
+  };
+  for (;;) {
+    let m = null;
+    try {
+      const job = { ...planned.job, next: { ...planned.job.next, robust: /** @type {'next'} */ ('next') } };
+      m = await Promise.race([runJob(job, undefined, true), nextKill().then(() => null)]);
+    } catch {
+      m = null;
+    }
+    if (!current()) return;
+    const check = m?.r.next?.robust;
+    if (!check || check.unavailable || check.error) return unavailable();
+    if (check.plan !== planned.r.outcomes?.career) return;
+    planned.r.robust = check;
+    if (check.pending === 0) {
+      redraw();
+      return;
+    }
+  }
+}
+// an unfinished check of the plan on show, resumed where its answer is shown again (`checkPhase`; a check cut short by
+// an edit and its undoing, or by a newer answer): nothing where it is done or unavailable
+function resumeCheck(id) {
+  if (planState.state !== 'done' || planState.r.check_unavailable || planState.r.robust?.pending === 0) return;
+  checkPhase(id, planState);
 }
 // a run that ends without searching (the job can't be built): its message, no answer
 function endRun(answer) {
@@ -1589,14 +1693,14 @@ function rollDraft() {
 // A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target; the
 // solver evaluates the plan's pick at that one outcome from what it kept of the plan, career/plan/roll.rs `roll_kept`, so no
 // plan runs again unless the worker kept none): y, exact for her sparks, her G1 wins at their chances, and, where y < 0.5, y_hi, the most her veteran's
-// direct lifts could save there (ceilings over every partner). y_hi < 0.5 rules out a direct saving only: both hold the
-// route's last career at the grandparents it has now, so her as its grandparent (through a parent's career that takes
-// her) is outside them, and the verdict says "no direct saving"; else the exact comparison checks the zero. null when
-// the plan isn't for this career (then Reroll compares exactly).
+// routes in the plan could save there. Neither is a verdict: a route the plan has not (another lineage of a candidate's
+// whose last career she improves as a grandparent, without lifting the candidate's odds) can save careers too, so
+// every roll is confirmed by the exact comparison, its quick figure shown meanwhile as provisional. null when the plan
+// isn't for this career (then Reroll compares exactly).
 function rollReq(d, r) {
   if (planState.state !== 'done') return null;
   const o = planState.r?.outcomes;
-  if (!o || !planState.job || o.trainee !== r.trainee.id || o.parents.join(',') !== r.parents.join(',')) return null;
+  if (!o || !planState.job || (o.career ?? `${o.trainee}:${o.parents.join(',')}`) !== keyOf(r)) return null;
   const sp = d.sparks || {};
   return { job: planState.job, stars: state.targets.map((t) => sp[t.group] || 0) };
 }
@@ -1613,9 +1717,9 @@ async function quickCompare(request) {
   simulation.error = null;
   simulation.stale = false;
   simulation.provisional = false;
+  simulation.standing = false;
   renderSimulation();
-  let y = null,
-    hi = null; // the roll's saving (careers) and its bound (`rollReq`)
+  let y = null; // the roll's saving (careers), from the plan's routes (`rollReq`)
   // her legacy index is after every veteran's
   const base = comparisonJob(),
     legaciesWithHer = [...base.legacies, draftJob(simulation.draft)],
@@ -1633,7 +1737,6 @@ async function quickCompare(request) {
       return;
     }
     y = roll.y;
-    hi = typeof roll.y_hi === 'number' ? roll.y_hi : null;
     const v0 = /** @type {PlanDone} */ (planState).r.v0; // done: `request` came from its `rollReq`
     simulation.r = /** @type {CareerSearch} */ ({ results: [], pending: true });
     simulation.full = isFull(simulation.draft);
@@ -1653,14 +1756,20 @@ async function quickCompare(request) {
   simulation.kind = null;
   renderSimulation();
   if (simulation.state !== 'done' || gone()) return;
-  // a roll that saves careers goes straight to the exact comparison (which finds the best career with her too): the
-  // plan's saving can be off either way (it tries her with a few partners at cached decks, and holds the route's last
-  // career at its grandparents now), so the exact count replaces it. How many rolls end in an exact comparison (this
-  // one, or the provisional check below) depends on the pool: of 150 rolls of the pick per pool (2026-10-24), every
-  // one on p10 (39% with y >= 0.5, the rest provisional) and on boot_mob (all y >= 0.5), 1 in 4 on p16 (8% and 17%);
-  // the others stay instant
+  // a roll that saves careers goes to the exact comparison (which finds the best career with her too) once it has stood
+  // 0.8 s, as a zero does (rolling on starts none, so no running check is stopped, the worker with it): the plan's
+  // saving can be off either way (it prices her in its own routes only: a few partners, one deck per lifted side, one C
+  // per route), so the exact count replaces it, shown as checking meanwhile; a zero is checked too, after the best
+  // career with her
   if (y >= 0.5) {
-    runComparison(true);
+    simulation.standing = true;
+    renderSimulation();
+    setTimeout(() => {
+      if (id === simulationId && source === runId && simulation.standing && !simulation.refining) {
+        simulation.standing = false;
+        runComparison(true);
+      }
+    }, 800);
     return;
   }
   try {
@@ -1674,18 +1783,16 @@ async function quickCompare(request) {
     simulation.state = 'error';
   }
   renderSimulation();
-  // a zero whose bound allows a saving (`hi`) is checked by the exact comparison too, shown meanwhile as no saving,
-  // checking
+  // a zero is checked by the exact comparison too (the plan's routes are not every route a replan can take), shown
+  // meanwhile as provisional
+  // (after the roll has stood a moment: rolling on starts none; a running check would be stopped, the worker with it)
   if (simulation.state === 'done' && !gone()) {
-    // after the roll has stood a moment: rolling on starts none (a running check would be stopped, the worker with it)
-    if (hi != null && hi >= 0.5) {
-      simulation.provisional = true;
-      renderSimulation();
-      setTimeout(() => {
-        if (id === simulationId && source === runId && simulation.provisional && !simulation.refining)
-          runComparison(true);
-      }, 800);
-    }
+    simulation.provisional = true;
+    renderSimulation();
+    setTimeout(() => {
+      if (id === simulationId && source === runId && simulation.provisional && !simulation.refining)
+        runComparison(true);
+    }, 800);
   }
 }
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
@@ -1695,6 +1802,7 @@ function cancelCompare() {
     simulationId++;
     simulation.refining = false;
     simulation.provisional = false;
+    simulation.standing = false;
     restartEngine();
     return;
   }
@@ -1768,6 +1876,7 @@ async function runComparison(refine = false) {
     simulation.state = 'busy';
     simulation.refining = false;
     simulation.provisional = false;
+    simulation.standing = false;
   }
   simulation.error = null;
   simulation.stale = false;
@@ -1817,9 +1926,10 @@ async function runComparison(refine = false) {
       pickA = planWithHer?.options?.find((o) => o.chosen) || null,
       pickB = planNow?.options?.find((o) => o.chosen) || null;
     // not clamped: in the game a veteran never costs careers (you can leave her out), but V can rise with her even
-    // under the same fit, since each fresh side of V's route is the veteran an uma's best career now would leave, and
-    // her arrival can switch that career to one whose veteran is a worse grandparent for the route's last career (V
-    // never offers the old lineage). The panel shows such a rise as it is, with that said (`comparisonResult`)
+    // under the same fit: each fresh side of V's route comes from one of a candidate's `fresh_lineages` best careers
+    // now (her best and her next two by cached decks, each searched on its pair), so her arrival can push the lineage
+    // the route used out of them, and a pair's search that runs out of budget can stop below the pair's best. The panel
+    // shows such a rise as it is, with that said (`comparisonResult`)
     const careersWithHer = careersToLoop(planWithHer);
     // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
     const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
@@ -1834,12 +1944,14 @@ async function runComparison(refine = false) {
     simulation.quick = false;
     simulation.refining = false;
     simulation.provisional = false;
+    simulation.standing = false;
     simulation.state = 'done';
   } catch (e) {
     if (gone()) return;
     if (simulation.refining) {
       simulation.refining = false;
       simulation.provisional = false;
+      simulation.standing = false;
     } else {
       simulation.error = e.message;
       simulation.state = 'error';
@@ -1954,16 +2066,17 @@ function comparisonPanel(d, r) {
   return result;
 }
 // what she does for the loop if you enter her: one short line (`saves`: the careers she saves, null: not known). A
-// roll's quick zero is the plan's own scoring, which prices her as a parent only (`rollReq`): "no direct saving"
+// roll's quick zero is the plan's routes' only (`rollReq`), always provisional until the exact comparison answers: it
+// reads "no saving found yet"
 function verdictText(d, next, saves) {
   const n = state.targets.length,
     fullyLooped = simulation.full && d.parents.length === 2 && d.parents.every(isFull),
-    none = simulation.quick ? 'direct saving' : 'careers saved';
+    none = simulation.quick ? 'saving found yet' : 'careers saved';
   return fullyLooped
     ? 'Fully looped parent'
     : simulation.full
       ? `${n}/${n}: step 1 done`
-      : simulation.refining && !simulation.provisional
+      : (simulation.refining || simulation.standing) && !simulation.provisional
         ? 'Checking…'
         : saves != null && saves >= 0.5
           ? `Saves ${fmtN(saves)} careers`
@@ -2007,22 +2120,22 @@ function comparisonResult(result, d) {
   // a rise (never from a roll's quick figures, which can't rise): shown as it is, and said to be the planner's
   if (rose)
     verdict.append(
-      `The planner's estimate rises by ${fmtN(-saves)} with her, a limit of its route (it follows each uma's best career, which she can change); leaving her out costs nothing.`,
+      `The planner's estimate rises by ${fmtN(-saves)} with her, a limit of its route (it offers each uma's few best careers as sides, and she can push the one it used out of them); leaving her out costs nothing.`,
     );
   result.appendChild(verdict);
-  if (simulation.refining || simulation.provisional) {
+  if (simulation.refining || simulation.standing || simulation.provisional) {
     const p = el('p', 'runnote simrefine');
     p.innerHTML =
       runnerHTML() +
       (simulation.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>');
     result.appendChild(p);
   }
-  const figs = el('div', `simodds${simulation.refining ? ' held' : ''}`);
+  const figs = el('div', `simodds${simulation.refining || simulation.standing ? ' held' : ''}`);
   const nextWithHer = simulation.pickA
     ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map((i) => `#${i + 1}`).join(' + ')}).`
     : '.';
   const fromTable = simulation.quick
-    ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances; her as a parent, not as a later career's grandparent); Compare checks this exact roll."
+    ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances; only the routes the plan kept); Compare checks this exact roll."
     : '';
   figs.appendChild(
     figureEl({
@@ -2113,6 +2226,8 @@ function useBtn(r, places = plan) {
     const unplaced = r.parents.filter((i) => !parents.includes(vets[i].id));
     for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets[unplaced.shift()].id;
     plan.parents = parents;
+    // a builder's other career keeps its deck: the job then reports that career (`career`) instead of searching
+    chosenCareer = r.alternative && r.career ? { places: JSON.stringify(plan), id: r.career } : null;
     changed();
   });
   b.disabled = searching; // (an old answer's option, while a run works on the next)
@@ -2132,7 +2247,14 @@ function optionsEl() {
     places = planState.state !== 'done' && mineOnly && ref ? ref.places : plan;
   /** @type {OptionRow[]} the plan's rows, or the search's careers (no plan fields) */
   const list = planReport
-    ? planReport.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen || (on && keyOf(o) === keyOf(on)))
+    ? planReport.options.filter(
+        (o, i) =>
+          i < OPT_SHOW ||
+          o.best_odds ||
+          o.chosen ||
+          unsettled(planReport).has(keyOf(o)) ||
+          (on && keyOf(o) === keyOf(on)),
+      )
     : last.r.results.slice();
   const mine = planReport && on && !list.some((o) => keyOf(o) === keyOf(on)) ? on : null;
   if (mine) list.unshift(mine);
@@ -2168,8 +2290,31 @@ function optionsEl() {
   const wrap = el('div', 'optwrap');
   wrap.appendChild(tb);
   box.appendChild(wrap);
-  // a row whose career search was not complete (`proven: false`: its work cap, a band overflow, or a deck past its
-  // class's cap that the cap-free rerun did not settle): the best it found, maybe not her best. The rows don't say which
+  // the robustness check found the rule's pick changes with the tested variants (`robust`): every career it selects is in
+  // the table; the pick stays the planner's rule's
+  if (planReport && unsettled(planReport).size) {
+    const names = list
+      .filter((o) => unsettled(planReport).has(keyOf(o)))
+      .map((o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`);
+    box.appendChild(
+      el(
+        'p',
+        'hint optnote',
+        `The planner’s rule selects different careers under the tested variants of its model (its building curve at the ends of its fitted range, every all-target chance at the ends of its calibration interval), among the careers shown: ${names.join(', ')}. The pick is the rule’s under the model as fitted.`,
+      ),
+    );
+  }
+  if (planReport?.check_unavailable)
+    box.appendChild(
+      el(
+        'p',
+        'hint optnote',
+        'The check of this pick under tested variants of the model did not finish (the solver was stopped or restarted before it was done, or a variant needed more memory than it may take).',
+      ),
+    );
+  // a row whose career search was not complete (`proven: false`: its work cap, a band overflow, or her deck class
+  // breached its cap, in this job or an earlier one, whatever the cap-free rerun found): the best it found, maybe not
+  // her best. The rows don't say which
   // cause was theirs; the plan job's report names the causes it saw in any of its searches (`unprovenWhy`)
   if (planReport && list.some((o) => o.proven === false))
     box.appendChild(
@@ -2179,6 +2324,8 @@ function optionsEl() {
         `The search could not prove the best career for some of these umas (${whyText(planReport.unproven_why || [])}): a better one may exist for them.`,
       ),
     );
+  // (a row proven under a named assumption is proven: the run note names the job's assumptions, the plan's searches
+  // included, `searchCaveat`, so the table adds no note for them)
   if (ref && JSON.stringify(ref.places) !== JSON.stringify(plan)) {
     const back = btn("Back to the planner's pick", '', () => {
       plan.trainee = ref.places.trainee;
@@ -2193,6 +2340,13 @@ function optionsEl() {
   }
   return box;
 }
+// the careers the planner's rule selects under some tested variant (`robust.contenders`): none until every variant is
+// in, where one career is selected under all, or where the check is of another pick
+const unsettled = (planReport) => {
+  const check = planReport.robust;
+  const done = check && check.pending === 0 && !check.stable && check.plan === planReport.outcomes?.career;
+  return new Set(done ? check.contenders : []);
+};
 // One career of the table: who it places, its tags, its odds now, its Saves per run, and Use this. on: the career on
 // show; mine: your career when the plan didn't list it; planReport: the plan's report (null: no Saves per run); places:
 // the places the table's careers fill
@@ -2213,6 +2367,12 @@ function optionRow(r, { on, mine, planReport, places }) {
     tags.appendChild(a);
   }
   if (planReport && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
+  if (planReport && unsettled(planReport).has(keyOf(r))) {
+    const a = el('span', 'otag', 'pick varies');
+    a.title =
+      'The planner’s rule selects this career under at least one tested variant of its model (its building curve, or the all-target chances’ calibration)';
+    tags.appendChild(a);
+  }
   if (looped(r)) {
     const a = el('span', 'otag', `${n}/${n} parents`);
     a.title = `Both parents are ${n}/${n}s: if she lands all ${n}, her veteran is a fully looped parent`;
@@ -2259,9 +2419,15 @@ function openSaveWhy(planReport) {
     const c = careers != null ? ` (about ${fmtN(careers)} careers)` : '';
     if (m.real) return `your ${n}/${n} of ${m.trainee} (no careers)`;
     const who = m.has_full_veteran ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
+    // the career her fresh side is from: her best today, or (`alternative`) another of her top careers, which the
+    // cheapest route takes for its parents
+    const on = m.parents ? ` on parents ${m.parents.map((j) => `#${j + 1}`).join(' + ')}` : '',
+      career = m.alternative
+        ? `another of ${m.trainee}'s careers${on} (not her best today: the cheapest route takes it)`
+        : `${m.trainee}'s best career${on}`;
     return m.building_careers > 0
-      ? `${who}lift ${m.trainee}'s odds with about ${fmtN(m.building_careers)} building careers (${fmtIn(m.p)} now, to about ${fmtIn(m.p_switch)}), then rerun her until she lands ${n}/${n}${c}`
-      : `${who}rerun ${m.trainee}'s best career (${fmtIn(m.p)}) until she lands ${n}/${n}${c}`;
+      ? `${who}lift ${m.trainee}'s odds from ${career} (${fmtIn(m.p)} now) with about ${fmtN(m.building_careers)} building careers, to about ${fmtIn(m.p_switch)}, then rerun her until she lands ${n}/${n}${c}`
+      : `${who}rerun ${career} (${fmtIn(m.p)}) until she lands ${n}/${n}${c}`;
   };
   const route =
     routePlan && routeMembers.length >= 2 && careersToday
@@ -2449,11 +2615,18 @@ function drawPool() {
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
+  keepFocus(() => {
+    renderTree();
+    renderResults();
+    renderPool();
+  });
+}
+// a redraw that keeps the focus on the element of the same key (`data-k`) where it is drawn again
+/** @param {() => void} draw */
+function keepFocus(draw) {
   const ae = /** @type {HTMLElement} */ (document.activeElement),
     k = ae?.dataset ? ae.dataset.k : null;
-  renderTree();
-  renderResults();
-  renderPool();
+  draw();
   if (k) {
     const e = document.querySelector(`[data-k="${CSS.escape(k)}"]`);
     if (e) e.focus();

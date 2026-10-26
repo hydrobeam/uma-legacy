@@ -1179,3 +1179,197 @@ fn deck_limits_refuse_with_an_error() {
     }
     assert!(passed > 0 && refused > 0, "{passed} passed, {refused} refused");
 }
+
+/// Decks with a nested chain (`deck::nested`): one card's chain feeding two targets, the second at a later link, with
+/// nothing else giving the later one (the shape of a Seiun Sky [Paint the Sky Red] deck without pals, 4.00 in the
+/// career search), the same with a training source, and one card's chain feeding three targets at links 1, 2 and 3
+/// (exact / product 1 / (ab) for links reached with chances a, b, c): each one's exact value is at most its bound B,
+/// B / P at most the configuration's nested cap (`caps_with`), and the nested decks and the three-target one pass the
+/// class-1 cap (1.05; the three-target ratio is printed). A nested pair beside a chain card feeding a third target
+/// gets B too, an assumption (`multi_feeder_cap`; exact / B and exact / max(1.25 P, B) are printed). The shapes no bound covers get none:
+/// a second chain feeder of a nested target, two cards each feeding one target, three feeders, one chain-varying
+/// target.
+#[test]
+fn pair_bound_covers_exact() {
+    use crate::deck::nested::{ChainLaw, NestedChains, NestedDeck, NestedTrainee};
+    let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
+    let skills = fixture_skills();
+    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let m = Model::new(&d, &skills, &skill_job);
+    let target_count = m.uncertain.len();
+    let g1 = |k: usize, level: u8| -> Group {
+        vec![EventOutcome { probability: 1.0, rewards: vec![TargetReward { target: k, level }] }]
+    };
+    let chain = |links: &[(u8, usize, u8)]| -> TargetSources {
+        TargetSources {
+            chain_outcomes: links
+                .iter()
+                .map(|&(link, k, level)| ChainOutcome { link, outcomes: g1(k, level) })
+                .collect(),
+            ..Default::default()
+        }
+        .finish()
+    };
+    let nested = chain(&[(2, 0, 2), (3, 2, 1)]);
+    let blank = TargetSources::default().finish();
+    let trainer =
+        TargetSources { training_hints: vec![TrainingHint { target: 2, probability: 0.3 }], ..Default::default() }
+            .finish();
+    let first_late = chain(&[(3, 0, 1)]);
+    let first_early = chain(&[(2, 0, 2)]);
+    let second_late = chain(&[(3, 2, 1)]);
+    let three = chain(&[(1, 0, 1), (2, 2, 1), (3, 3, 1)]);
+    let third_feeder = chain(&[(2, 3, 1)]);
+    // (what the bound is for a shape: proven, an assumption, or none)
+    #[derive(PartialEq, Eq)]
+    enum Bound {
+        Proven,
+        Assumed,
+        None,
+    }
+    let decks: Vec<(&str, Vec<TargetSources>, Bound)> = vec![
+        (
+            "nested alone",
+            vec![nested.clone(), blank.clone(), blank.clone(), blank.clone(), blank.clone()],
+            Bound::Proven,
+        ),
+        ("nested, a training source", vec![nested.clone(), trainer, blank.clone(), blank.clone()], Bound::Proven),
+        ("three targets on one chain", vec![three, blank.clone(), blank.clone(), blank.clone()], Bound::Proven),
+        ("nested, a third target's feeder", vec![nested.clone(), third_feeder, blank.clone()], Bound::Assumed),
+        (
+            "nested, a second chain feeder",
+            vec![nested.clone(), first_late.clone(), blank.clone(), blank.clone()],
+            Bound::None,
+        ),
+        (
+            "two cards, one target each",
+            vec![first_early.clone(), second_late.clone(), blank.clone(), blank.clone()],
+            Bound::None,
+        ),
+        ("three feeders", vec![nested, first_late, second_late, blank.clone()], Bound::None),
+        ("one chain-varying target", vec![first_early, blank.clone(), blank], Bound::None),
+    ];
+    let (mut nested_ratio, mut three_ratio) = (0.0f64, 0.0f64);
+    for (name, sources, shape) in &decks {
+        let kinds = vec![THREE_LINKS; sources.len()];
+        let marginals = chain_marginals(EVENTS_35_CARD, &kinds);
+        let entry_misses: Vec<(Vec<f64>, Vec<f64>)> = sources
+            .iter()
+            .map(|entry| {
+                let (mut white, mut gold) = (vec![1.0; target_count], vec![1.0; target_count]);
+                entry.src_miss(&marginals[&THREE_LINKS], &mut white, &mut gold);
+                (white, gold)
+            })
+            .collect();
+        // the deck's odds per target: one minus the product of its entries' misses (white given no gold, gold)
+        let (white, gold): (Vec<f64>, Vec<f64>) = (0..target_count)
+            .map(|t| {
+                let white_miss: f64 = entry_misses.iter().map(|(entry_white, _)| entry_white[t]).product();
+                let gold_miss: f64 = entry_misses.iter().map(|(_, entry_gold)| entry_gold[t]).product();
+                (1.0 - white_miss, 1.0 - gold_miss)
+            })
+            .unzip();
+        let chains = NestedChains::new(sources, &kinds, target_count);
+        let law = ChainLaw::new(EVENTS_35_CARD, kinds.clone());
+        let marginal = |j: usize, t: usize| (entry_misses[j].1[t], entry_misses[j].1[t] * entry_misses[j].0[t]);
+        let entries: Vec<usize> = (0..sources.len()).collect();
+        let owned: Vec<SourceEntry<TargetSources>> =
+            sources.iter().map(|entry| SourceEntry { sources: entry.clone(), kind: THREE_LINKS }).collect();
+        let deck_chances = crate::skills::DeckChances { model: &m, event_chances: &m.event_chances };
+        for u in [0, 5, 20].map(crate::uma::UmaIndex) {
+            for q in [0.0, 0.3] {
+                let trainee = NestedTrainee::new(&deck_chances, u, q);
+                let caps = chains.caps_with(&law, &marginal, &trainee);
+                let product = m.fixed_factor() * m.trainee_fast(u, q, &white, &gold);
+                let exact = joint(
+                    &m,
+                    JointQuery::unfolded(&m, EVENTS_35_CARD, u, &[q]),
+                    &owned,
+                    0,
+                    skill_job.targets.len(),
+                    false,
+                )[0]
+                .all;
+                let deck = NestedDeck { entries: &entries, white: &white, gold: &gold };
+                let bound = trainee.bound_with(&chains, &law, deck, &marginal);
+                if *shape == Bound::None {
+                    assert_eq!(bound, f64::NEG_INFINITY, "{name}: a bound for a shape it does not cover");
+                    continue;
+                }
+                assert!(bound.is_finite(), "{name}: no bound for a shape it covers");
+                if *shape == Bound::Assumed {
+                    // (the assumption: exact <= max(class cap x P, B), the class-2 cap 1.25 here)
+                    println!(
+                        "{name} uma {u} q {q}: exact / B {}, / max(1.25 P, B) {}",
+                        exact / bound,
+                        exact / bound.max(1.25 * product)
+                    );
+                    continue;
+                }
+                assert!(exact <= bound * (1.0 + 1e-12), "{name} uma {u} q {q}: exact {exact} above its bound {bound}");
+                assert!(
+                    bound <= caps.nested * product * (1.0 + 1e-12),
+                    "{name} uma {u} q {q}: B / P {} above the nested cap {}",
+                    bound / product,
+                    caps.nested
+                );
+                if name.starts_with("nested") {
+                    nested_ratio = nested_ratio.max(exact / product);
+                } else if name.starts_with("three") {
+                    three_ratio = three_ratio.max(exact / product);
+                }
+            }
+        }
+    }
+    assert!(nested_ratio > 1.05, "the nested decks' exact / product {nested_ratio} stays within the class-1 cap");
+    println!("three targets on one chain: exact / product at most {three_ratio}");
+    assert!(three_ratio > 1.05, "the three-target deck's exact / product {three_ratio} stays within the class-1 cap");
+}
+
+/// The nested shapes the nested-chain bound covers only under an assumption are named (`caps::multi_feeder`,
+/// `multi_feeder_cap`): a nested pair beside a chain card feeding a third target, beside a chainless entry with an
+/// uncertified group (class 3), a three-target chain beside another feeder. Not named: a nested chain whose card
+/// alone feeds every chain-varying target (proven in any class, a card feeding three targets included), decks without
+/// a nested chain, and a class-1 nested pair with another feeder (`two_feeder_cap`'s).
+#[test]
+fn multi_feeder_names_the_nested_shapes_left_assumed() {
+    use crate::deck::caps::{cap_class, multi_feeder};
+    let reward = |target: usize| TargetReward { target, level: 1 };
+    let chain = |links: &[(u8, usize)]| -> TargetSources {
+        TargetSources {
+            chain_outcomes: links
+                .iter()
+                .map(|&(link, k)| ChainOutcome {
+                    link,
+                    outcomes: vec![EventOutcome { probability: 1.0, rewards: vec![reward(k)] }],
+                })
+                .collect(),
+            ..Default::default()
+        }
+        .finish()
+    };
+    let uncertified = TargetSources {
+        fixed_outcomes: vec![vec![EventOutcome { probability: 0.5, rewards: vec![reward(1), reward(3), reward(4)] }]],
+        ..Default::default()
+    }
+    .finish();
+    assert!(uncertified.uncertified_association);
+    let pair = chain(&[(2, 0), (3, 2)]);
+    let three = chain(&[(1, 0), (2, 2), (3, 3)]);
+    let (first, second, third) = (chain(&[(2, 0)]), chain(&[(3, 2)]), chain(&[(2, 3)]));
+    let cases: [(&str, Vec<&TargetSources>, bool); 8] = [
+        ("a nested pair alone", vec![&pair], false),
+        ("three targets on one chain", vec![&three], false),
+        ("a nested pair and a third chain-varying target", vec![&pair, &third], true),
+        ("a nested pair and a chainless uncertified group", vec![&pair, &uncertified], true),
+        ("three targets on one chain and another feeder", vec![&three, &first], true),
+        ("a nested pair and a feeder of one of its targets", vec![&pair, &first], false),
+        ("two cards, one target each", vec![&first, &second], false),
+        ("three chain-varying targets, no nested chain", vec![&first, &second, &third], false),
+    ];
+    for (name, deck, named) in cases {
+        let mask = deck.iter().fold(0u64, |mask, entry| mask | entry.cv_mask());
+        let feeding_slots = deck.iter().filter(|entry| entry.cv_mask() & u64::from(u32::MAX) != 0).count();
+        assert_eq!(multi_feeder(mask, feeding_slots), named, "{name}: class {}", cap_class(mask));
+    }
+}

@@ -51,6 +51,9 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
 - With no veterans, **Try sample veterans** adds six random mob umas carrying only the targets that inheritance alone
   gives, the minimum to start a loop.
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Borrowed* marks a friend's.
+- Enter a veteran's pink (aptitude) sparks too: imports carry them, a veteran added by hand starts without. The
+  trainee's race chances use her grades raised by her legacies' pinks, with an extra cost at the lowest aptitudes that
+  was fitted on raised grades; without the pinks her grades read low, and her chances at those races low with them.
 
 **Borrowed parent** (in Career setup, saved with the other settings): you can borrow only a few veterans a day.
 *Allowed* (the default) lets a career use one borrowed parent, and the plan counts on borrowing in the careers after it
@@ -69,15 +72,22 @@ of 83 umas*).
 **Career choices** lists what the planner weighed, under its estimate of the careers you still need: per career its
 odds and *Saves per run*, how much it lowers that estimate of the careers to a fully looped parent, averaged over every
 result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
-those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two full veteran parents
+those the planner takes the better odds. Once the pick is shown, a check scores the shown careers again under six tested variants of
+the model (its building curve at the corners of its fitted range, every all-target chance scaled to either end of its
+calibration interval); where the planner's rule selects different careers among them under those variants, *pick varies*
+marks each one (all are in the table) and a line under the table names them. The pick is still the rule's under the
+model as fitted, and the check covers only those rows and variants. It runs behind the answer; where it cannot finish (the
+solver was stopped or restarted before it was done) a line under the table says so. An uma can have two rows: her best odds, and her best career on two full veteran parents
 (*n/n parents*, with n the number of targets), where a full veteran of hers is a fully looped parent; the second can save more with lower odds. A line under
 the table says when the search for a shown uma could not prove its answer, with the causes the plan's searches
-reported (a deck band too large to check in full, or a deck past its cap that the cap-free retry could not settle;
-otherwise the work budget, which no field reports, so it is named beside the others): her row is the best it found,
-and a better career may exist. The status line carries the same caveat, with its causes, for the search of the best
-odds, and one when a scored deck beat its class's assumed cap (the caps are assumptions the check rests on) even
-where that search finished. The (i) by the title
-(*What these numbers mean*) explains them on the page. **Use this** sets the career's places; the table stays (the last plan's,
+reported (a search ran out of its work budget, a deck band was too large to check in full, or a deck beat its class's
+assumed cap, in this run or an earlier search for these umas): her row is the best it found, and a better career may
+exist. The status line carries the same caveats for the search of the best odds, and one when a scored deck beat its
+class's assumed cap (the caps are assumptions the check rests on) even where that search finished. It also names the
+assumptions a proof rests on (the assumed class cap for two-feeder decks, the assumed bound for nested-chain decks
+beside other feeders), the plan's searches included: a proof under them is still a proof, and the table adds no line
+for them. The (i) by the title
+(*What these numbers mean*) explains them on the page. **Use this** sets the career's places (a builder's other career, listed only when the plan's `builder_careers` is above 1, which the page leaves at 1, also keeps its deck until the places change); the table stays (the last plan's,
 while the veterans and settings are unchanged), with your career marked (*your choice* when the plan didn't list it),
 and **Back to the planner's pick** returns to the places the plan ran with. The last few answers are kept, so going
 back to one draws it again without a run.
@@ -86,18 +96,20 @@ back to one draws it again without a run.
 Info). It starts as a random result of the career:
 - **Reroll** draws another result (targets, stars, G1 wins, her pink spark) and gets its saving from the plan at once:
   the solver's evaluation of that roll's sparks (her stars per target; her G1 wins at their expected chances, not the
-  ones drawn), pricing her as a parent of the route's careers, not as the grandparent of its last one, so a zero reads
-  *No direct saving*. The best career with her as a parent follows from one quick search. A roll the plan says saves
-  careers, or whose zero its bound can't rule out, then runs Compare by itself (measured: every roll on two pools whose
-  estimate is near 3,000 careers, about 1 in 4 on one near 700). The plan takes at most 12 targets, 10 of them not
+  ones drawn), pricing her in the plan's routes: as a parent of a candidate's career (beside the partners the plan
+  keeps) and so the grandparent of the route's last career, and as a side herself when she lands every target. That
+  figure is provisional (the plan's routes are not every route a replan can take) and shows as *No saving found yet*
+  when it is zero (*Checking…* when it saves careers); the best career with her as a parent follows from one quick
+  search, and every roll that stands for a moment (0.8 s) then runs Compare by itself, so rerolling quickly stops no
+  running check. The plan takes at most 12 targets, 10 of them not
   guaranteed by the scenario; beyond that there is no plan, so no saving and no careers to loop, only the best career
   with her. Over 12 targets the solver also gives no joint odds of the targets, so Reroll draws each target on its own
   odds, independently, which ignores how they land together (shared hints and chains).
 - Set it to what she actually landed and press **Compare** for the plan with her added as she stands (her sparks,
   stars and G1 wins as entered), priced under today's plan's fit: careers to a fully looped parent now and with her, and the best career with her as a parent. Add to veterans
   fits the plan again to your veterans with her, so its figures can differ (a line under the comparison says so). The
-  estimate can rise with her, a limit of the planner's route (it follows each uma's best career, which she can
-  change); the panel shows the rise and says so. In the game she never costs careers: you can leave her out.
+  estimate can rise with her, a limit of the planner's route (it offers each uma's few best careers as sides, and she
+  can push the one it used out of them); the panel shows the rise and says so. In the game she never costs careers: you can leave her out.
 - **Add to veterans** saves her (with her parents) and hands every place back to the planner for the next career,
   which plans the pool with her afresh.
 

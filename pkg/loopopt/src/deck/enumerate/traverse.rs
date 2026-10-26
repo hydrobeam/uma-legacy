@@ -34,6 +34,8 @@ pub(crate) struct SearchControl {
     pub(crate) bound_trainee: crate::uma::UmaIndex,
     pub(crate) bound_inheritance: f64,
     pub(crate) class_caps: [f64; 4],
+    /// `SearchMode::BestCovered`'s rho (0 in any other search): a deck's value is max(P, B / rho) (`deck::nested`)
+    pub(crate) cover_rho: f64,
     pub(crate) use_dominance: bool,
     pub(crate) lazy: bool,
     pub(crate) cap_free_outfit_count: usize,
@@ -128,6 +130,8 @@ pub(crate) struct DeckSearchContext<'run, 'space, V> {
     pub(crate) controls: SearchControl,
     pub(crate) tables: PreparedTables<'run>,
     pub(crate) clause_value: V,
+    /// the nested-chain bounds (`deck::nested`): the career's capped searches where a legal entry has a nested chain
+    pub(crate) nested: Option<crate::deck::nested::NestedTrainee>,
     pub(crate) outfit_row_count: usize,
     // the per-parent rows need every outfit row to read the target_count targets
     pub(crate) cache_parent_rows: bool,
@@ -164,6 +168,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         controls: SearchControl,
         tables: PreparedTables<'run>,
         clause_value: V,
+        nested: Option<crate::deck::nested::NestedTrainee>,
     ) -> Self {
         let outfit_row_count = tables.outfit_rows.len();
         let cache_parent_rows = tables.outfits.iter().all(|outfit| outfit.len() == controls.target_count);
@@ -175,10 +180,29 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             controls,
             tables,
             clause_value,
+            nested,
             outfit_row_count,
             cache_parent_rows,
             inheritance_chances,
         }
+    }
+
+    /// The pair caps of chain key `code` at `events` for the search's trainee (`NestedTrainee::pair_caps`): none without
+    /// the pair bounds
+    pub(crate) fn pair_caps(
+        &self,
+        code: u64,
+        events: crate::deck::chains::ChainEvents,
+    ) -> crate::deck::nested::PairCaps {
+        self.nested.as_ref().map_or_else(Default::default, |nested| nested.pair_caps(self.space, code, events))
+    }
+
+    /// The covered product search's factor (`SearchMode::BestCovered`) on a product bound where a deck with a nested
+    /// chain may be reached: max(P, B / rho) <= P max(1, cap / rho) for every deck of a configuration whose nested-chain
+    /// cap is `pair_cap` (B <= cap P); 1 elsewhere and in every other search
+    pub(crate) fn covered_scale(&self, pair_cap: f64) -> f64 {
+        let cover_rho = self.controls.cover_rho;
+        if cover_rho > 0.0 && pair_cap > cover_rho { pair_cap / cover_rho } else { 1.0 }
     }
 
     /// Traverse the prepared configurations in their visiting order (`ConfigOrder`): each one's root tests, then its
@@ -199,6 +223,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         let traversal_start = Instant::now();
         let (mut scratch, mut results) = Self::workspace(scratch);
         let uncapped = self.controls.state_bound_mode == 2;
+        let (multi, assumed) = (queue.multi, queue.assumed);
         let mut order = ConfigOrder::new(queue, self.controls);
         while let Some(configuration) = order.next(self.space, results.best_value, bounds) {
             if self.past_bar(&configuration, &results) {
@@ -207,7 +232,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             if let Some(stop) =
                 self.visit(state_bounds, &mut scratch, &mut results, &configuration, &ratio_at, cap_free_ratios)
             {
-                return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped };
+                return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped, multi, assumed };
             }
         }
         SPT.with(|cell| {
@@ -215,7 +240,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             stats.tree_seconds += traversal_start.elapsed().as_secs_f64();
             cell.set(stats);
         });
-        SearchOutcome { decks: results.decks, incomplete: None, uncapped }
+        SearchOutcome { decks: results.decks, incomplete: None, uncapped, multi, assumed }
     }
 
     /// The traversal's buffers (preparation's odds buffers reused) and its results so far (no deck, preparation's bar).
@@ -311,7 +336,10 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             configuration.groups.iter().map(|group| configuration.ratio_prefixes.grp(group.group)).collect();
         configuration_scratch.fill_suffixes(configuration, &controls, &group_misses, &group_ratios);
         let misses = EntryMisses { white: white_misses, gold: gold_misses, target_count: controls.target_count };
-        let dominance = search.dominance(configuration, &groups, misses);
+        // (the dominance skip compares product values only: off where the covered product search may rank a deck of the
+        // configuration by its nested-chain bound, which a dominating entry need not keep)
+        let use_dominance = controls.use_dominance && search.covered_scale(configuration.pair_cap) == 1.0;
+        let dominance = search.dominance(configuration, &groups, misses, use_dominance);
         let borrow_bounds = search.borrow_tables(borrow_cache, configuration, &groups, misses, ratio_at);
         nodes.clause_values.clear();
         nodes.clause_values.resize(search.clauses.len(), 0.0);
@@ -320,9 +348,10 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         nodes.partial_gold.clear();
         nodes.partial_gold.resize(controls.target_count, 0.0);
         let group_count = groups.len();
-        if !controls.best {
+        if !controls.best || search.nested.is_some() {
             configuration_scratch.fill_class_suffixes(&groups, &space.class_masks);
         }
+
         // A root bound below the bar rules out every deck in the configuration.
         let state_configuration = search.state_configuration(state_bounds, configuration, &groups);
         let mut state_bound = StateBound::new(
@@ -429,6 +458,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             group_count,
             total_slots: groups.iter().map(|group| group.slots).sum(),
             root_bound: sb_root,
+            use_dominance,
         };
         let mut walk_scratch = WalkScratch {
             nodes,
@@ -494,8 +524,9 @@ impl<V> DeckSearchContext<'_, '_, V> {
         configuration: &SearchConfig,
         groups: &[TraversalEntryGroup<'_>],
         misses: EntryMisses<'_>,
+        use_dominance: bool,
     ) -> ConfigurationDominance {
-        let SearchControl { use_dominance, set_id, .. } = self.controls;
+        let set_id = self.controls.set_id;
         let PreparedTables { character_bits, groups_all, lock_bits, .. } = self.tables;
         let dominators: Vec<std::rc::Rc<Vec<Vec<Dominator>>>> = if use_dominance {
             configuration

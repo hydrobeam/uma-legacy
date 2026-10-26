@@ -17,8 +17,9 @@
 //! target, which is the same for every deck and multiplies the result (`JointExt` applies it per target where the
 //! number is not a plain product: P(all but one), the per-target chances).
 //!
-//! Search: every legal candidate gets a ceiling, EXACT_RHO x C x the product value at each target's best possible
-//! deck odds (the deck_size lowest miss chances of any legal entries, links firing for sure); candidates are solved
+//! Search: every legal candidate gets a ceiling, rho x C x the product value at each target's best possible deck odds
+//! (the deck_size lowest miss chances of any legal entries, links firing for sure; rho 1 where every legal entry is
+//! certified cap-free, which makes it a proven bound, else EXACT_RHO, `CareerSetup::ceiling_rho`); candidates are solved
 //! best ceiling first (best product deck, then every deck whose product value times EXACT_RHO reaches the best exact
 //! value, scored exactly, as in the per-uma search) until the next ceiling is below the top-k exact value.
 //!
@@ -50,7 +51,8 @@ use crate::career::decks::{CfStats, DeckMemo, DeckSearchKey};
 use crate::career::outcomes::CornerKey;
 use crate::career::pool::Pool;
 use crate::career::run::{
-    CareerRun, answer_kept_roll, keep_seen, note_job_certificates, plan_next, run_carried_roll, search_output,
+    CareerRun, answer_kept_check, answer_kept_roll, keep_flags, keep_seen, note_job_certificates, plan_next,
+    run_carried_roll, search_output,
 };
 use crate::career::search::{Ref, solve_kept};
 use crate::career::setup::{CareerBuild, CareerJobs, career_setup};
@@ -73,6 +75,7 @@ pub(crate) mod state;
 
 mod cache;
 mod evaluator;
+mod given;
 
 mod plan;
 mod run;
@@ -140,6 +143,13 @@ pub(crate) struct Ancestor {
     /// (`Legacy::pink_chances`)
     #[serde(skip)]
     pub(crate) pink_chances: Vec<crate::career::schedule::PinkChance>,
+    /// internal (a hypothetical ancestor: the planner's synthetic lineages, or a fresh veteran's parent that is itself
+    /// fresh): win chance per race index in place of `wins`, and the star mix her sparks are drawn from in place of
+    /// fixed stars, as `Legacy`'s. A recorded parent has neither.
+    #[serde(skip)]
+    win_chances: Vec<f64>,
+    #[serde(skip)]
+    mix: Option<[f64; 3]>,
 }
 
 impl Ancestor {
@@ -152,6 +162,8 @@ impl Ancestor {
             wins: legacy.wins.clone(),
             pinks: legacy.pinks.clone(),
             pink_chances: legacy.pink_chances.clone(),
+            win_chances: legacy.win_chances.clone(),
+            mix: legacy.mix,
         }
     }
 }
@@ -240,6 +252,10 @@ struct CareerJob {
     /// picked: the search's results and the plan's rows; the plan's look-ahead still borrows), "never" (none anywhere)
     #[serde(default)]
     borrowed_parent: BorrowedParent,
+    /// one career to report as it is (`given`: its id, `plan::kept::career_id`), on the job's one trainee and both fixed
+    /// parents, with no deck search: the page's Use this on a builder's other career
+    #[serde(default)]
+    career: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -281,6 +297,10 @@ struct CareerSetup<'data> {
     space: DeckSpace<'data>,
     /// Per uma (None when she does not train), the deck odds ceiling per uncertain target (`deck_odds_ceilings`).
     deck_odds_ceilings: UmaTable<Option<(Vec<f64>, Vec<f64>)>>,
+    /// Per uma, the factor her ceiling (`CareerSetup::ceiling`) takes over the product value at those odds: 1 where
+    /// every entry legal for her is `certified_cap_free` (`ceiling_rhos`: no deck of hers then beats that product,
+    /// proven), else EXACT_RHO (the assumed cap). A function of her deck class.
+    ceiling_rho: UmaTable<f64>,
     /// Per uma, per outfit option, its coverage of each uncertain target (2: the gold skill, 1: the white one, 0:
     /// neither; `Model::outfit_options` without the labels).
     outfit_coverage: UmaTable<Vec<Vec<u8>>>,
@@ -291,9 +311,60 @@ struct CareerSetup<'data> {
     /// `deck_odds_ceilings` agree), so a proof one of them makes (`Ref`, `ruled`) holds for all of them. Within a class
     /// only the slots' affinity (so q) differs.
     deck_class: UmaTable<UmaIndex>,
+    /// each uma's deck class by content: the setup's fingerprint hashed with her class key (`deck_classes`), the same
+    /// deck problem in any job on the setup whatever its trainees or class indices; the key class flags are kept and
+    /// carried under (`KeptState::flags`, `Bests::flags`)
+    class_key: UmaTable<u64>,
+    /// the deck space a kept plan's careers are of: every uma's class content (`class_key`) and the plain pals' order
+    /// (`DeckSpace::plain_pal_ids`, which a deck's plain-pal count reads), so a plan is reused only by a job whose
+    /// trainee filter leaves every deck problem and deck the same (`plan::kept::bests_key`)
+    plan_space_key: u64,
     /// borrowed veterans a pair of parents may hold in every pool this setup builds (`Pool::max_borrowed`): 1, 0 under
     /// `borrowed_parent` "never"
     max_borrowed: u8,
+}
+
+/// What a deck class's certificates (its fully checked decks `seen` and a search's `refs`, its product proofs `ruled`,
+/// a kept plan's proofs) rest on beyond the derived bounds, from every capped deck search of the class in the job and in
+/// any kept earlier one on the same class content (`CareerSetup::class_key`, `KeptState::flags`, never evicted). Each
+/// flag is only ever set: a job unions the kept flags in and keeps its own, a restored search, kept plan or state
+/// unions its own in, and nothing clears one.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub(crate) struct ClassFlags {
+    /// A capped deck search of the class scored a deck past its class's cap (`DeckSearchAudit::capped_breaches`): the
+    /// cap is refuted for that deck space, so the class's certificates are dropped and none is used as a bound
+    /// (`solve`, `plan::certified`, the evaluator's bounds; a later deck search of it still runs capped first, rerun
+    /// cap-free where it breaches itself); every answer of the class is unproven (`Unproven::cap_breach`).
+    pub(crate) breached: bool,
+    /// The named assumptions a capped deck search of the class pruned under (`DeckSearchAudit::assumed_searches`,
+    /// `multi_searches`): the class's certificates are kept and used, and every answer of the class that is proven is
+    /// proven under them (`Assumes`).
+    pub(crate) assumes: crate::career::search::Assumes,
+}
+
+impl ClassFlags {
+    /// Whether the class's certificates may prove anything (not breached).
+    pub(crate) const fn proves(self) -> bool {
+        !self.breached
+    }
+    /// Both sets of flags, each set where either has it.
+    pub(crate) const fn union(self, other: Self) -> Self {
+        Self { breached: self.breached || other.breached, assumes: self.assumes.union(other.assumes) }
+    }
+    /// As stored: bit 0 breached, bit 1 `two_feeder`, bit 2 `multi_feeder`.
+    pub(crate) const fn bits(self) -> u8 {
+        self.breached as u8 | (self.assumes.two_feeder as u8) << 1 | (self.assumes.multi_feeder as u8) << 2
+    }
+    /// From `bits`; None with any other bit set.
+    pub(crate) const fn from_bits(bits: u8) -> Option<Self> {
+        if bits >> 3 != 0 {
+            return None;
+        }
+        Some(Self {
+            breached: bits & 1 != 0,
+            assumes: crate::career::search::Assumes { two_feeder: bits & 2 != 0, multi_feeder: bits & 4 != 0 },
+        })
+    }
 }
 
 /// What a search changes as it runs: the folded chances it searches at, its work and budget, and what it proved for
@@ -316,6 +387,9 @@ struct SearchState {
     /// per deck class (`deck_class`), what its product searches proved (`best_deck` pass 1). Bounds her other
     /// candidates (`solve`).
     ruled: UmaTable<Vec<ProductProof>>,
+    /// per deck class, what its certificates rest on (`ClassFlags`; set by `Env::best_deck`, never cleared): a breached
+    /// class's `seen` and `ruled` are dropped and no more are kept
+    class_flags: UmaTable<ClassFlags>,
     /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
     last_product_bound: Option<f64>,
     /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
@@ -323,6 +397,18 @@ struct SearchState {
     pub(crate) floor: f64,
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard_work_cap: usize,
+}
+
+impl SearchState {
+    /// Kept class flags `flags` (a kept search's, the deck space's) unioned into the job's, never replacing them; a
+    /// table of another class count (another setup) adds nothing.
+    fn union_flags(&mut self, flags: &UmaTable<ClassFlags>) {
+        if flags.len() == self.class_flags.len() {
+            for class in flags.indices() {
+                self.class_flags[class] = self.class_flags[class].union(flags[class]);
+            }
+        }
+    }
 }
 
 /// What the job's deck searches certified and the cap audit's diagnostics, reported with the job's answer
@@ -336,11 +422,30 @@ struct DeckSearchAudit {
     /// a search that saw one may have pruned a deck that beats its answer; its deck search is rerun cap-free
     /// (`best_deck_run`), and the output lists the classes (`cap_exceeded`)
     pub(crate) cap_breach: usize,
+    /// capped deck searches (`best_deck_capped`, a memo hit of one as if it ran) that scored such a deck: each makes
+    /// its career search not complete (`Unproven::cap_breach`) and flags its class (`ClassFlags::breached`)
+    pub(crate) capped_breaches: usize,
+    /// capped deck searches (a memo hit as if it ran) that pruned decks of a shape left under the assumed class cap
+    /// (`SearchOutcome::assumed`): each flags its class (`Assumes::two_feeder`)
+    pub(crate) assumed_searches: usize,
+    /// capped deck searches (a memo hit as if it ran) that pruned decks with a nested chain beside other chain feeders
+    /// or an uncertified group (`SearchOutcome::multi`, `caps::multi_feeder`): each flags its class
+    /// (`Assumes::multi_feeder`)
+    pub(crate) multi_searches: usize,
     /// the cap-free searches (`best_deck_cf`): reruns after a breach, those that proved nothing, breaches left without
     /// a rerun (`CAP_RERUN=0`), their work (counted apart from `work`)
     pub(crate) cap_free_stats: CfStats,
     /// per class, the trainee and deck that set `max_ratio`
     pub(crate) max_deck: [Option<(UmaIndex, SelectedDeck)>; 4],
+    /// the largest exact / product ratio of a scored deck past its class's cap but within its nested-chain bound
+    /// (`deck::nested`: no breach, proven where the bound is, else under `multi_feeder_cap`; such decks stay out of
+    /// `max_ratio`), NEG_INFINITY when none
+    pub(crate) nested_max_ratio: f64,
+    /// scored decks past their class's cap but within their nested-chain bound (`nested_max_ratio`'s): no breach, but
+    /// a sign the capped search may have pruned a deck beside them that no bound covers at the cap it used (a nested
+    /// card with another feeder of its targets, held at the class cap): the call is answered by the cap-free search, as
+    /// after a breach, without flagging the class (`Env::best_deck_run`)
+    pub(crate) nested_past_cap: usize,
     /// the lowest cap any deck search was certified under (`best_deck_run`: a band over EXACT_CAP decks is retried
     /// down the cap ladder), and how many bands overflowed; a search below the top cap is not `full`
     pub(crate) certified_cap: f64,
@@ -394,7 +499,7 @@ pub(crate) fn run_career_in(
     let t_all = Instant::now();
     let input = JobInputs { data, skills, cards, job };
     let model = Model::new(data, skills, &jobs.skills);
-    let CareerBuild { mut env, trainees, setup_fingerprint } = match career_setup(&input, &jobs, &model, kept) {
+    let CareerBuild { mut env, trainees, seen_fingerprint } = match career_setup(&input, &jobs, &model, kept) {
         Ok(setup) => setup,
         Err(error) => return error,
     };
@@ -416,11 +521,19 @@ pub(crate) fn run_career_in(
         if let Some(roll) = answer_kept_roll(&mut env, kept, &run) {
             return json!({"next": {"roll": roll}});
         }
+        if let Some(check) = answer_kept_check(&mut env, kept, &run) {
+            return json!({"next": {"robust": check}});
+        }
         // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
         // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
         let own_pool =
             (career_job.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_borrowed: 0, ..pool.clone() });
         run.pick_pool = own_pool.as_ref();
+        if let Some(id) = &career_job.career {
+            let mut out = given::given_career_output(&mut env, &run, id);
+            out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
+            return out;
+        }
         env.state.use_seen = true;
         // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
         // search was kept from the job before
@@ -435,7 +548,7 @@ pub(crate) fn run_career_in(
             );
         }
         if search.candidates == 0 {
-            keep_seen(kept, &env.state, setup_fingerprint);
+            keep_seen(kept, &env.state, seen_fingerprint);
             return json!({"error": if career_job.borrowed_parent == BorrowedParent::Allow { "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed." }
         else { "No legal career: a trainee needs two of your own veterans of other characters (not her own, not the same as each other): borrowed parents are off." } });
         }
@@ -445,12 +558,13 @@ pub(crate) fn run_career_in(
         {
             out["next"] = plan_next(&mut env, kept, &run, &search, next_job);
         }
-        keep_seen(kept, &env.state, setup_fingerprint);
-        note_job_certificates(&env.setup, &env.audit, &mut out, rho_top);
+        keep_seen(kept, &env.state, seen_fingerprint);
+        note_job_certificates(&env.setup, &env.state, &env.audit, &mut out, rho_top, &trainees);
         out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
         out
     })();
     // Publish reusable tables after every completed path, including early answers and simulator jobs.
+    keep_flags(kept, &env.setup, &env.state);
     env.memo.keep(kept);
     out
 }

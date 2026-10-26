@@ -5,12 +5,14 @@ use crate::career::plan::candidates::{
     MadeExact, class_winners, exact_no_borrow_career, make_row_exact, proxy_career, set_plan_wins,
 };
 use crate::career::plan::combine::{
-    PlanCombination, PlanFit, PlanScores, plan_combinations, plan_continuations, plan_sides,
+    ContEvidence, PlanCombination, PlanFit, PlanScores, continuation_evidence, plan_combinations, plan_continuations,
+    plan_sides,
 };
 use crate::career::plan::cont::{Cont, Trio, Want, count_refit, trio_v};
 use crate::career::plan::kept::{Bests, CacheStamp, CachedSearch, same_career, stamp_ok, stamped};
 use crate::career::plan::score::kernel::LiftStats;
 use crate::career::plan::score::{CareerScore, KeptScoring, score_career};
+use crate::career::plan::search::alternative_deck_careers;
 use crate::career::plan::search::{OPT_SHOW, PROXY_SAVE, best_sur, capped, certified, is_full};
 use crate::career::plan::{
     ParentPool, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, found_career, found_lineage,
@@ -35,8 +37,23 @@ pub(crate) enum RowOrigin {
     Base,
     Looped,
     NoBorrow,
+    /// A builder's next best careers through her cached decks (`PlanJob::builder_careers`), after the nb rows.
+    Alternative,
     /// Main-search options used when no planner row can be picked. Not a planner search.
     Fallback,
+}
+
+impl RowOrigin {
+    /// The origin as `proxy_check` and the options name it.
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Base => "base",
+            Self::Looped => "looped",
+            Self::NoBorrow => "nb",
+            Self::Alternative => "alternative",
+            Self::Fallback => "fallback",
+        }
+    }
 }
 
 /// A career and its planner state. Replacing the career preserves the previous scoring
@@ -108,9 +125,12 @@ impl PlanRow {
         found_career(self.trainee, &self.career)
     }
 
-    /// The same trainee on the same parents (in either order): a row repeating another.
+    /// The same career as another row's: the same trainee on the same parents (in either order) with the same deck (a
+    /// builder's other deck on her best career's parents is a row of its own, `RowOrigin::Alternative`)
     pub(crate) fn repeats(&self, other: &Self) -> bool {
-        self.trainee == other.trainee && self.career.unordered_parents() == other.career.unordered_parents()
+        self.trainee == other.trainee
+            && self.career.unordered_parents() == other.career.unordered_parents()
+            && crate::career::plan::kept::same_deck(&self.career.deck, &other.career.deck)
     }
 }
 
@@ -133,24 +153,44 @@ pub(crate) struct PlanPick {
 /// the best odds (a row that can be the pick), moved to the earlier row it repeats (`undup`). The one rule for the
 /// plan's pick and the roll state kept for it
 pub(crate) fn pick_of(runs: &[PlanRow], can_be_pick: impl Fn(&Found) -> bool, undup: &[usize]) -> PlanPick {
-    let total = |i: usize| runs[i].total();
-    let mut pick = (0..runs.len()).find(|&i| can_be_pick(&runs[i].career)).unwrap_or(0);
-    for i in 0..runs.len() {
-        if total(i) > total(pick) + 1e-9 {
-            pick = i;
+    let rows = PickRows {
+        count: runs.len(),
+        score: |i: usize| runs[i].total(),
+        odds: |i: usize| runs[i].career.value,
+        can_be_pick: |i: usize| can_be_pick(&runs[i].career),
+    };
+    let PlanPick { row, top } = rows.pick();
+    PlanPick { row: undup.get(row).copied().unwrap_or(row), top }
+}
+
+/// Rows as the pick rule reads them: per row (0..count) its score, its own odds (P(all)) and whether it can be the pick.
+pub(crate) struct PickRows<Score, Odds, CanBePick> {
+    pub(crate) count: usize,
+    pub(crate) score: Score,
+    pub(crate) odds: Odds,
+    pub(crate) can_be_pick: CanBePick,
+}
+
+impl<Score: Fn(usize) -> f64, Odds: Fn(usize) -> f64, CanBePick: Fn(usize) -> bool> PickRows<Score, Odds, CanBePick> {
+    /// The pick rule (`pick_of`) before the move to a repeated row: the highest score (the first row that can be the
+    /// pick before any is higher by more than 1e-9), then within `near_floor` of that top the best odds among the rows
+    /// that can be the pick
+    pub(crate) fn pick(&self) -> PlanPick {
+        let Self { count, score, odds, can_be_pick } = self;
+        let mut pick = (0..*count).find(|&i| can_be_pick(i)).unwrap_or(0);
+        for i in 0..*count {
+            if score(i) > score(pick) + 1e-9 {
+                pick = i;
+            }
         }
-    }
-    let top = if runs.is_empty() { 0.0 } else { total(pick) };
-    for i in 0..runs.len() {
-        if can_be_pick(&runs[i].career) && total(i) >= near_floor(top) && runs[i].career.value > runs[pick].career.value
-        {
-            pick = i;
+        let top = if *count == 0 { 0.0 } else { score(pick) };
+        for i in 0..*count {
+            if can_be_pick(i) && score(i) >= near_floor(top) && odds(i) > odds(pick) {
+                pick = i;
+            }
         }
+        PlanPick { row: pick, top }
     }
-    if let Some(&u) = undup.get(pick) {
-        pick = u;
-    }
-    PlanPick { row: pick, top }
 }
 
 /// The looped rows (below) of `runs`' base rows, in their order.
@@ -346,6 +386,27 @@ pub(crate) fn add_no_borrow_rows(
     added
 }
 
+/// The alternative rows (`PlanJob::builder_careers` > 1) of `runs`' base rows that can be picked, in their order: each
+/// builder's next best distinct (parent pair, deck) careers through her cached decks, her best career's own parents
+/// with another deck among them (`alternative_deck_careers`), rows of their own (exact: a real deck on a legal pair at
+/// its stated odds, though not proven her best on that pair). Like the looped rows neither Cont's builders nor added to
+/// the cache; no lifts
+pub(crate) fn add_alternative_rows(simulator: &mut Sim, context: &PlanContext, runs: &[PlanRow]) -> Vec<PlanRow> {
+    let PlanContext { input, candidates } = *context;
+    let extra = input.settings.builder_careers.saturating_sub(1);
+    if extra == 0 {
+        return vec![];
+    }
+    let mut added = vec![];
+    for row in runs.iter().filter(|row| row.origin == RowOrigin::Base && input.is_runnable(&row.career)) {
+        for career in alternative_deck_careers(simulator, context.pick_parents(), &row.career, extra) {
+            let no_lifts = vec![LiftStats::default(); candidates.trainees.len()];
+            added.push(PlanRow::exact(row.trainee, career, no_lifts, RowOrigin::Alternative));
+        }
+    }
+    added
+}
+
 /// The fit's trios with their finishers, and the time spent on them.
 struct FittedTrios {
     fit: PlanFit,
@@ -354,29 +415,40 @@ struct FittedTrios {
 }
 
 /// The trios under `continuations`: A and B two candidates (unordered), C the best allowed uma with a full veteran of A
-/// and one of B as parents. Each side: a real full veteran of hers (free), or a fresh full veteran from her best career
-/// now, costing her step (`CareerSetup::veteran`: its parents, every target at the rank's star mix, her G1 wins at
-/// their chances), whichever trio is cheaper; C's full veteran is then a fully looped parent
+/// and one of B as parents. Each side: a real full veteran of hers (free), a fresh full veteran from her best career
+/// now, costing her step, or one from another of her top careers (`FRESH_LINEAGES`), costing her step at its odds
+/// (`CareerSetup::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances); V the
+/// cheapest trio; C's full veteran is then a fully looped parent
 fn fit_trios(
     simulator: &mut Sim,
     context: &PlanContext,
     continuations: Vec<Cont>,
+    evidence: Vec<Option<ContEvidence>>,
     full_veterans: &[Vec<usize>],
+    searches: &mut PlanSearches,
     buf: &mut Vec<f64>,
 ) -> FittedTrios {
     let candidates = context.candidates;
-    // a fresh full veteran of hers (her step); a real full veteran of hers costs nothing (the trios' side choice)
+    // a fresh full veteran of hers from her best career now (her step); a real full veteran of hers costs nothing
     let step_costs: Vec<f64> = (0..candidates.trainees.len())
         .map(|candidate| continuations[candidate].cost(candidates.current_odds[candidate]))
         .collect();
     let started_ms = now_ms();
-    let combinations = plan_combinations(simulator, context, full_veterans, &step_costs, buf);
-    let sides = plan_sides(simulator, context, full_veterans, &step_costs);
+    let sides = plan_sides(simulator, context, full_veterans, &continuations, &step_costs, searches, buf);
+    let combinations = plan_combinations(simulator, context, &sides, buf);
     let combination_ms = now_ms() - started_ms;
-    let trios: Vec<Trio> = combinations.iter().map(PlanCombination::as_trio).collect();
-    let current_value = trio_v(&step_costs, &trios);
+    let trios: Vec<Trio> = combinations.iter().map(|combination| combination.trio).collect();
+    let current_value = trio_v(&step_costs, &sides, &trios);
     FittedTrios {
-        fit: PlanFit { continuations, step_costs, trios, sides, current_value },
+        fit: PlanFit {
+            continuations,
+            evidence,
+            step_costs,
+            trios,
+            sides,
+            current_value,
+            knobs: context.settings().knobs(),
+        },
         combinations,
         combination_ms,
     }
@@ -398,7 +470,8 @@ pub(crate) fn score_and_promote_rows(
     let skill_job = simulator.env.setup.skill_job;
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
-    let continuations = plan_continuations(simulator, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
+    let evidence = continuation_evidence(simulator, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
+    let continuations = plan_continuations(context, &evidence);
     // per candidate, her real full veterans this pool may use (legacy indices)
     let full_veterans: Vec<Vec<usize>> = candidates
         .trainees
@@ -414,7 +487,7 @@ pub(crate) fn score_and_promote_rows(
         })
         .collect();
     let FittedTrios { mut fit, mut combinations, combination_ms: mut combo_ms } =
-        fit_trios(simulator, context, continuations, &full_veterans, buf);
+        fit_trios(simulator, context, continuations, evidence, &full_veterans, searches, buf);
     // pass 2: every career scored against V (exact over her outcomes): E[V - V with her veteran] - 1
     // (a row that is never the pick, a builder with a borrowed parent under "later", is not scored: no score, no kept scoring)
     progress(4, 0, plan_rows.rows.len());
@@ -461,13 +534,19 @@ pub(crate) fn score_and_promote_rows(
                     }
                 }
                 profile.search_ms += now_ms() - started_ms;
-                let next_continuations =
-                    plan_continuations(simulator, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
+                let next_evidence =
+                    continuation_evidence(simulator, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
+                let next_continuations = plan_continuations(context, &next_evidence);
                 let same_fit = next_continuations.iter().zip(&fit.continuations).all(|(next, current)| {
-                    next.lam == current.lam && next.phi == current.phi && next.pinf == current.pinf
+                    next.lam == current.lam
+                        && next.phi == current.phi
+                        && next.pinf == current.pinf
+                        && next.anchor_odds == current.anchor_odds
                 });
                 let runs = &mut plan_rows.rows;
                 if same_fit {
+                    // (the same continuations from the rows as they are now: what a variant refits, `robust`)
+                    fit.evidence = next_evidence;
                     for (&i, old_career) in promoted.iter().zip(&old_careers) {
                         // the same career against the same base (Cont, so step_costs, V, the trios and sides, as when it was scored),
                         // nothing it reads changed: its score, lift and kept scoring stand (a dropped one stays dropped: its score
@@ -490,7 +569,8 @@ pub(crate) fn score_and_promote_rows(
                     input.prune_plan_scorings(runs);
                 } else {
                     count_refit();
-                    let refit = fit_trios(simulator, context, next_continuations, &full_veterans, buf);
+                    let refit =
+                        fit_trios(simulator, context, next_continuations, next_evidence, &full_veterans, searches, buf);
                     fit = refit.fit;
                     combinations = refit.combinations;
                     combo_ms += refit.combination_ms;
@@ -514,9 +594,7 @@ pub(crate) fn score_and_promote_rows(
     let runs = &plan_rows.rows;
     let best_combo = combinations
         .iter()
-        .min_by(|first, second| {
-            first.total_cost(&fit.step_costs).partial_cmp(&second.total_cost(&fit.step_costs)).unwrap()
-        })
+        .min_by(|first, second| fit.trio_value(&first.trio).partial_cmp(&fit.trio_value(&second.trio)).unwrap())
         .copied();
     let index_ms = now_ms() - profile.index_started_ms;
     let env = &simulator.env;
@@ -580,9 +658,11 @@ fn make_no_borrow_row_exact(
 
 /// The proxy check (`proxy_check`, a measurement): each builder's career from her deck class's winning decks (the main
 /// search's and the candidates' best careers of her class, legal for her and valued at her own chances) through the
-/// surrogate, no career search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the exact
-/// ones. Runs after everything else, on `cache_before_builders` (the cache as it was before the builders' searches,
-/// swapped in and back), so the plan's own numbers are unchanged
+/// surrogate, no career search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the row's
+/// own career's, both scored on the plan's final cache (so a row that is its own proxy reads no error). The proxy is
+/// chosen on `cache_before_builders` (the cache as it was before the builders' searches, swapped in around
+/// `proxy_career` and back: which proxy the plan would have used is a fact of that cache). Runs after everything else,
+/// so the plan's own numbers are unchanged
 pub(crate) fn check_plan_proxies(
     simulator: &mut Sim,
     context: &PlanContext,
@@ -595,7 +675,6 @@ pub(crate) fn check_plan_proxies(
     let PlanContext { input, candidates } = *context;
     let data = context.data();
     let candidate_count = candidates.trainees.len();
-    std::mem::swap(&mut simulator.evaluator.cache, &mut cache_before_builders);
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let score_base = scores.fit.score_base(candidates);
@@ -615,44 +694,40 @@ pub(crate) fn check_plan_proxies(
             })
             .collect()
     };
+    // a career's lifts per candidate and its score, on the cache as it is (the final one: proxy and exact alike)
+    let measure = |simulator: &mut Sim, trainee: crate::uma::UmaIndex, career: &Found, buf: &mut Vec<f64>| {
+        let CareerScore { lift_stats, .. } =
+            score_career(simulator, &context.scoring(&stats_base), found_career(trainee, career), Want::Stats, buf);
+        #[expect(
+            clippy::if_then_some_else_none,
+            reason = "Keep the multiline scoring call in an explicit conditional (Code clarity: Calls)."
+        )]
+        let score = if scores.any_scored {
+            let scored =
+                score_career(simulator, &context.scoring(&score_base), found_career(trainee, career), Want::Score, buf);
+            Some(scored.expected_saving - 1.0)
+        } else {
+            None
+        };
+        (efficiencies(trainee, &lift_stats), score)
+    };
     let mut rows = vec![];
     for run in runs {
         let trainee = run.trainee;
         let is_candidate = candidates.trainees.contains(&trainee);
-        let exact_efficiencies = efficiencies(trainee, &run.lift_stats);
-        let (proxy, proxy_efficiencies, proxy_score) = if is_candidate {
-            (Some(run.career.clone()), exact_efficiencies.clone(), run.net_saving())
+        // which proxy the plan would have used: a fact about the cache before the builders' searches
+        let proxy = if is_candidate {
+            Some(run.career.clone())
         } else {
-            match proxy_career(simulator, &winners, context.parents(), trainee, buf) {
-                None => (None, vec![0.0; candidate_count], None),
-                Some(career) => {
-                    let CareerScore { lift_stats, .. } = score_career(
-                        simulator,
-                        &context.scoring(&stats_base),
-                        found_career(trainee, &career),
-                        Want::Stats,
-                        buf,
-                    );
-                    let proxy_efficiencies = efficiencies(trainee, &lift_stats);
-                    #[expect(
-                        clippy::if_then_some_else_none,
-                        reason = "Keep the multiline scoring call in an explicit conditional (Code clarity: Calls)."
-                    )]
-                    let proxy_score = if scores.any_scored {
-                        let score = score_career(
-                            simulator,
-                            &context.scoring(&score_base),
-                            found_career(trainee, &career),
-                            Want::Score,
-                            buf,
-                        );
-                        Some(score.expected_saving - 1.0)
-                    } else {
-                        None
-                    };
-                    (Some(career), proxy_efficiencies, proxy_score)
-                }
-            }
+            std::mem::swap(&mut simulator.evaluator.cache, &mut cache_before_builders);
+            let career = proxy_career(simulator, &winners, context.parents(), trainee, buf);
+            std::mem::swap(&mut simulator.evaluator.cache, &mut cache_before_builders);
+            career
+        };
+        let (exact_efficiencies, exact_score) = measure(simulator, trainee, &run.career, buf);
+        let (proxy_efficiencies, proxy_score) = match &proxy {
+            None => (vec![0.0; candidate_count], None),
+            Some(career) => measure(simulator, trainee, career, buf),
         };
         let same_pair =
             proxy.as_ref().is_some_and(|career| career.unordered_parents() == run.career.unordered_parents());
@@ -661,10 +736,12 @@ pub(crate) fn check_plan_proxies(
                 && career.deck.plain_pals == run.career.deck.plain_pals
                 && career.deck.filler_cards == run.career.deck.filler_cards
         });
-        rows.push(json!({"trainee": data.umas[trainee].name, "cand": is_candidate, "class": simulator.env.setup.deck_class[trainee], "exact_val": run.career.value, "proxy_val": proxy.as_ref().map(|career| career.value),
-        "same_pair": same_pair, "same_deck": same_deck, "score": run.net_saving(), "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
+        // (`origin` and `looped`: a looped row's career is on two full veterans, so its proxy, her unconstrained best
+        // career's, is not the same problem; compare base rows only)
+        let looped = has_looped_parents(simulator.env.setup.skill_job, input.legacies, &run.career);
+        rows.push(json!({"trainee": data.umas[trainee].name, "origin": run.origin.name(), "looped": looped, "cand": is_candidate, "class": simulator.env.setup.deck_class[trainee], "exact_val": run.career.value, "proxy_val": proxy.as_ref().map(|career| career.value),
+        "same_pair": same_pair, "same_deck": same_deck, "score": exact_score, "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
     }
-    std::mem::swap(&mut simulator.evaluator.cache, &mut cache_before_builders);
     json!({"cands": candidates.trainees.iter().map(|&uma| data.umas[uma].name.clone()).collect::<Vec<_>>(), "rows": rows})
 }
 

@@ -405,6 +405,64 @@ impl CareerSetup<'_> {
             chances_without_her,
         })
     }
+    /// `her_slot` with her in several of the trainee's six slots at once (`positions`: (legacy, None) a parent slot,
+    /// (legacy, Some(g)) that parent's grandparent slot g): the inheritance with those slots left out, and what her one
+    /// veteran adds there at her stars (the same stars in each slot: per star count the product of each slot's squared
+    /// miss at its own affinity; her spark counted once per slot). None when a position is not one of the six slots.
+    /// What the planner's routes take for C with her as a parent or a grandparent (`score::routes`)
+    pub(crate) fn her_slots(
+        &self,
+        pool: &Pool,
+        lineage: Lineage,
+        positions: &[(usize, Option<usize>)],
+    ) -> Option<HerSlot> {
+        struct Skipping<'skip> {
+            inherit: Inherit,
+            positions: &'skip [(usize, Option<usize>)],
+            affinity_factors: Vec<f64>,
+        }
+        impl SlotSink<'_> for Skipping<'_> {
+            fn slot(
+                &mut self,
+                legacy: usize,
+                grandparent_slot: Option<usize>,
+                who: &Who,
+                relation_points: f64,
+                race: f64,
+            ) {
+                let affinity_factor = aff_factor(relation_points, race);
+                if self.positions.contains(&(legacy, grandparent_slot)) {
+                    self.affinity_factors.push(affinity_factor);
+                } else {
+                    self.inherit.add(&who.stars, who.star_mix, affinity_factor);
+                }
+            }
+        }
+        let Lineage { trainee, first_parent, second_parent } = lineage;
+        let mut sink = Skipping { inherit: Inherit::new(self.target_count, None), positions, affinity_factors: vec![] };
+        self.walk_slots(pool, first_parent, second_parent, &RelOf { setup: self, pool, trainee }, &mut sink);
+        if sink.affinity_factors.len() != positions.len() {
+            return None;
+        }
+        let Skipping { inherit, affinity_factors, .. } = sink;
+        let Inheritance { chances: chances_without_her, carriers: carriers_without_her } = inherit.finish();
+        let miss_at = |stars: u8| {
+            affinity_factors
+                .iter()
+                .map(|&affinity_factor| insp_miss2(f64::from(stars), affinity_factor))
+                .product::<f64>()
+        };
+        let slots = positions.len() as i32;
+        Some(HerSlot {
+            misses_without_her: self.uncertain_targets.iter().map(|&i| 1.0 - chances_without_her[i]).collect(),
+            miss_by_stars: [1.0, miss_at(1), miss_at(2), miss_at(3)],
+            target_spark_scales: carriers_without_her
+                .iter()
+                .map(|&n| [spark_scale(n), spark_scale(n + slots)])
+                .collect(),
+            chances_without_her,
+        })
+    }
     pub(crate) fn scale(&self, carriers: &[i32]) -> crate::deck::joint::SparkScales {
         crate::deck::joint::SparkScales {
             uncertain: self.uncertain_targets.iter().map(|&i| spark_scale(carriers[i])).collect(),

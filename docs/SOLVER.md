@@ -120,9 +120,6 @@ Global data's penalties; it does not check the exported aptitude costs.
 
 - **Streak position k:** counts consecutive turns with *any* race, goal races included. A rest resets it. A goal race
   (an option of one of the career's goals) takes the penalty of position k − 1; it still counts toward the races after it.
-  A goal over several turns is a choice goal: only the first of its options she runs is a goal race, the others are
-  chosen races (`RaceChoice::met_win_chances`, read through the DP's goal mask: each such goal lies within one year,
-  asserted at load, so the mask at Classic turn t paired with Senior turn t + 24 holds the goals met before each).
 - **Low-basis cost (career mode):** the career planner's table (`career_uma`) charges `LOW_BASIS_COST` more where the
   aptitude basis (110 − both costs) is at most `LOW_BASIS_MAX`, both read from `research/results.json` when the solver
   is built (`build.rs`; `docs/RESEARCH.md` §4); the loop planner's base table is unchanged.
@@ -312,11 +309,91 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   group passes `group_assoc`, otherwise 1.25 (`EXACT_RHO`). `TargetSources::uncertified_association` marks a group that fails that check; merely
   touching two targets does not fail it. These caps are assumptions, not proven bounds. A search node takes the
   class of its cards plus every candidate still to add, so its cap is at least any completion's; bounds that know no
-  deck (`CareerSetup::ceiling`, the loop tables' product fallback, the reroll's `y_hi`) use 1.25. Within the work
+  deck (the loop tables' product fallback, the reroll's `y_hi`, `CareerSetup::ceiling` where an entry legal for the
+  trainee is not `certified_cap_free`) use 1.25; the career ceiling of a trainee whose every legal entry is takes 1,
+  a proven bound (`ceiling_rhos`: given the chain state no deck's odds pass the ideal point's, and the groups'
+  dependence gives P(all) at most the product there). The dependence checks (`group_assoc`, `group_nuod`,
+  `group_nuod_lvl`) certify joint ≤ product of marginals up to a relative 1e-12 only (`ORTHANT_RELATIVE`), no
+  absolute slack (an absolute term would certify a rare outcome hinting two targets together, joint 1e-14 against a
+  product 1e-28). The relative allowance composes over a deck's g certified groups to a factor (1 + 1e-12)^g, about
+  1 + g·1e-12: inside the 1e-9 slack of the tests that prune (`Bar::Below`), while a test without slack (`Bar::AtMost`,
+  the proxy certificate's tie test) certifies only up to it, so a career above the certified one by less than that
+  allowance (and the float rounding, about 1e-15 per operation) is not excluded. Within the work
   budget, decks and loops whose capped product ceilings could beat the incumbent are refined or scored unless another
   bound excludes them. Guards: the output's `class_caps` and per class `class_max_ratio` / `class_max_deck`;
   `val/cmp2.py` and `val/planval.py` fail when a scored deck's ratio passes 1 + 0.75 (cap − 1); job field `cap_audit:
   true` (every cap at 2.0, ten times the band limit) with `val/capaudit.py` checks the decks the caps pruned.
+- **Nested chains** (career searches, `deck::nested`). A card whose own chain feeds two or more targets (`NESTED_CHAIN`
+  in its `cv_mask`) breaks the class caps however few its decks are: exact / product reaches about 1 / P(its lower
+  link fires) for two targets when nothing else gives the later one (4.00 on a Seiun Sky [Paint the Sky Red] deck
+  without pals), 1 / (ab) for three targets at links reached with chances a, b, c. For a deck whose nested card j is
+  the only chain feeder of its targets K, a bound (`NestedTrainee::deck_bound`): given the chain state the targets'
+  factors multiply out and those of K depend only on j's links done d, so V ≤ B = max_o V̂_o R_o,
+  R_o = E_d[∏_K F_k] / ∏_K p_k over j's final progress (`chain_states`, at most four states). It is proven, exact in
+  the chain law, when K is every chain-varying target of the deck and every group is certified, in any class (a card
+  feeding three targets included). Per configuration and trainee a cap η ≥ R_o for every such deck
+  (`NestedTrainee::pair_caps`): R_o is linear-fractional in each target's other-source factors, so its largest value
+  is at a corner of their range (3^k corner combinations); η is near 1 where the card's links nearly always fire. The
+  capped band tests a node, configuration or key that can reach a nested chain at max(class cap, η) (a key at the
+  largest η over its configurations' chain events), and such a leaf deck passes when its own bound reaches the bar;
+  the capped product search (`SearchMode::BestCovered`) ranks decks by max(V̂, B / 1.25) where η passes 1.25 (node and
+  configuration bounds scaled by η / 1.25 there, the dominance skip off), so 1.25 times its best bounds every deck's
+  exact value, which the seed, its `Bounded` test and the `ruled` proof read; the deck search's band loop takes each
+  deck's bound beside its class cap. A deck within its bound is no breach: its ratio goes to the output's
+  `nested_max_ratio`, not `class_max_ratio`; one past it is a breach. Beside other chain cards feeding targets outside
+  K, or an uncertified group (chainless entries included), B is the same expression with every other entry at its
+  marginal misses: it leaves out the cross-card dependence (the shared chain events), so it holds by assumption, named
+  `multi_feeder_cap` (`caps::multi_feeder`). Not bounded, measured too costly (the same corner caps over two-card sets
+  cost 1.9x (p10), 2.9x (p16) and 15x (boot_mob) plan time): two cards each feeding one target, held at their class
+  cap; a nested card with another feeder of one of its targets, or two nested cards, held at the larger of the class
+  cap and their configuration's nested cap η (the leaf as its nodes, and valued max(V̂, η V̂ / 1.25) in the product
+  search: no cost on p10, p16 or boot_mob), by assumption. A scored deck past its class's cap but within its nested
+  bound (B, or η V̂ where B does not apply) is no breach, but the capped search's prunes around it rested on caps that
+  shape strains: the call is answered by the cap-free rerun, the class not flagged
+  (`DeckSearchAudit::nested_past_cap`; no val pool has such a deck, `nested_max_ratio`). With Mejiro Palmer [Go Ahead
+  and Laugh] allowed in the nested_nopal fixture, beside Seiun Sky [Paint the Sky Red], the two-card deck's exact /
+  product is 2.71: before both changes the capped search answered Seiun Sky alone (P(all) 0.005472) and reported it
+  proven, against the cap-free 0.005884 (`tests/cap_shapes.rs`).
+- **What "proven" rests on** (career searches: `complete`, `proven_top`, a plan row's `proven`). Derived and exact,
+  given the dependence checks (relative 1e-12): the per-career odds, the rise bound, the ceilings of trainees whose
+  every legal entry is certified (ρ = 1), the nested-chain bound for a nested card alone feeding every chain-varying
+  target (in any class, up to `NESTED_TARGET_LIMIT` = 8 targets for its configuration cap: a card feeding more gets no
+  cap, its decks are class 3 and their caps assumed under `multi_feeder_cap`), the state-conditioned and cap-free
+  bounds, `upper_na`. The `Ref`, `ruled`, Twin and dominance proofs transfer exactly what a deck search proved, so
+  they hold as far as the capped search behind them did: under the class caps and named assumptions below wherever it
+  pruned by them. Assumed, each with the worst ratio known:
+  - the class caps, from measurement: class 0 and 1 at 1.05, classes 2 and 3 at 1.25 (largest scored ratios 1.127 and
+    1.18 on validation decks), and the ceilings of trainees with an uncertified legal entry at 1.25;
+  - `two_feeder_cap` (`assumes`): class-1 decks of two chain-varying targets fed by two or more chain cards (two cards
+    each feeding one target: about 1.17 at worst in constructed decks, five SSRs and one pal, each target given only by
+    one card's last link, held at 1.05; a nested pair with another feeder: 2.71 constructed (Mejiro Palmer [Go Ahead
+    and Laugh] beside Seiun Sky [Paint the Sky Red] without pals), held at the larger of 1.05 and η, and up to the
+    nested card's own 4.00 as the second feeder weakens), listed wherever a search pruned a configuration or key that
+    can hold one;
+  - `multi_feeder_cap` (`assumes`): class 2 and 3 decks with a nested card beside other chain feeders or an
+    uncertified group, held to the larger of the class cap and the nested card's bound B with the cross-card
+    dependence left out: in the unit test's constructed nested pair beside a third target's feeder exact / B reaches
+    1.025 while exact / max(1.25 V̂, B) stays at most 0.91, and no deck scored on p10, p16 or boot_mob passes it (no
+    `cap_exceeded`).
+  Every deck a search scores exactly is checked against its cap or bound: band decks, the product deck, and start
+  decks, which are scored before any answer the caps give where they may clear the bar (`upper_na`; one that clears
+  it there does so only past its cap); a breach is caught, answered by a cap-free rerun, reported (`cap_exceeded`,
+  `cap_breaches`, `cap_breached`) and leaves the search and its class unproven; a deck a cap pruned before scoring is
+  not seen, which is what the assumptions cover.
+- **Class flags** (`ClassFlags`, per deck class; career jobs). What a class's certificates (its fully checked decks,
+  product proofs, a kept plan's proofs) rest on: `breached` (a capped deck search of it breached its cap) and the
+  named assumptions its searches pruned under (`Assumes`: `two_feeder_cap`, `multi_feeder_cap`). A flag is only ever
+  set: it is kept by class content (`CareerSetup::class_key`: the setup and the class's deck problem, whatever the
+  trainees, pool or class index; `KeptState::flags`, never evicted, across jobs and in the stored state), every job
+  starts from the kept flags and keeps its own, and a restored main search, a kept plan (which carries the flags it
+  rested on, `Bests::flags`, stored with it) or a stored state unions its flags in, never replacing them. A breached class's certificates are dropped and bound nothing (`solve`,
+  the proxy certificate, the evaluator); an assuming class's are kept and used, proxy certificates included. Every
+  answer reports the flags of the classes it rests on, as they stand when it is given: a career search its trainees'
+  (`unproven: ["cap_breach"]`, then not `complete` nor `proven_top`; `assumes`), a kept main search reused after a
+  later search flagged one of them included; a plan row its trainee's (`proven: false`, or `assumes`), at the end of
+  the plan, so a flag a later plan search set reaches the rows and the main search before it; the job's
+  `job_unproven` / `job_assumes` every class it answers for. A stored search that says it is proven with a class of
+  its trainees breached is refused (`state_in`).
 - **Cap-free rerun** (career searches, `best_deck_run`). A deck search that scores a deck whose ratio passes its
   class's cap (a breach: the cap is wrong for that deck space, so a deck it pruned may beat its answer) is answered by
   a cap-free search instead (`best_deck_cf`), started from the capped search's best product deck and its start decks;
@@ -339,9 +416,12 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   th / c is `Bounded`, else the deck is a fully checked
   one (`Ref`, `full`); unproven, the better of its best and the capped answer, not full (the search is not
   `complete`). The output's `cap_rerun` counts the reruns (`searches`), those that proved nothing (`unproven`) and
-  their `work`; `cap_exceeded` still lists the classes past their caps. Not covered: the career search's own ceilings
-  and `ruled` proofs still use EXACT_RHO, and a search that never scores a breaching deck has nothing to trigger it,
-  so "proven" stays relative to the caps where no breach was seen. Checks: `CF_CHECK=s` runs the cap-free search
+  their `work`; `cap_exceeded` still lists the classes past their caps. A breach refutes the cap for that deck space,
+  so its class's product proofs (`ruled`, which bound through 1.25) and fully checked decks are dropped and no more are
+  kept (`ClassFlags::breached`, kept by class content), and every career search of the class is not `complete`
+  (`unproven: ["cap_breach"]`): the rerun proves its own deck search only, while the search's other prunes of that
+  class rested on the cap. A search that never scores a breaching deck has nothing to trigger it, so "proven" stays
+  relative to the caps where no breach was seen. Checks: `CF_CHECK=s` runs the cap-free search
   beside every capped one (state put back) and compares answers, passes its nodes at s times their bound and scores
   every leaf reached exactly against every bound above it, and checks the state value against each exact scoring
   (`CFCHK` on stderr); `CAPS_TEST=a,b,c,d` replaces the caps for breach tests; `CAP_RERUN=0` leaves a breach
@@ -431,15 +511,19 @@ Same files as deck mode, plus `legacies` (each with at most two recorded `parent
 choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of a veteran before her result is known: the plan's fresh full veterans, the simulator's draws; other loop fields are unused).
 `uv run val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
 Several career jobs run in one process with `target/release/loopopt data.json a.json b.json ...` (one output line each),
-sharing the first job's skill and card files. A job's fully checked decks are kept per setup and bound later jobs'
-searches; `setup_fp` excludes the pool, trainee and parent filters, result counts and page request flags. The
-simulator's seed search disables these kept proofs. Timings and work counts depend on reuse.
+sharing the first job's skill and card files. A job's fully checked decks are kept per setup, trainees and pool
+(`CareerBuild::seen_fingerprint`: `setup_fp`, which excludes the pool, trainee and parent filters, result counts and
+page request flags, with the trainees, whose order sets the deck space's plain pals, and the veterans and borrowing
+rule) and bound later jobs' searches of the same pool. The simulator's seed search disables these kept proofs. Timings
+and work counts depend on reuse.
 The page runs a career as two jobs: the search, then the same job with `next`, which reuses the
 search the worker keeps (`KeptState::searches`, the last three, keyed by the whole job without `next` and `no_reports`) together with what its
 product searches proved (`SearchState::ruled` as the search left it). `tests/plan_state.rs` compares separate
-search/plan jobs with a combined job. The product-search proofs go no further than their own search: `certified` takes a
+search/plan jobs with a combined job, and a job after a job on another pool with the job alone. The product-search
+proofs go no further than their own search, and the fully checked decks no further than their pool: `certified` takes a
 proxy career a proof certifies in place of an exact search, which may name another pair or deck of equal value, so
-proofs from other pools could change an output.
+proofs from other pools could change an output. (A fully checked deck holds in any pool of the setup; the key keeps
+the career named at a tie from depending on what the worker ran before on another pool.)
 
 | Field | Meaning | Default |
 |---|---|---|
@@ -454,6 +538,7 @@ proofs from other pools could change an output.
 | `compare` | marks the page's veteran-analysis jobs (the best career with her fixed as a parent, and the plan of the pool with her added); echoed as `compare: true` in the output, changes nothing else | `false` |
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
 | `roll` | `{job, stars}`: a roll of a plan, answered beside this job's own answer as `roll` (the plan job `job` run after this one with `next.roll` = `stars`, its `next.roll`; below). (The page's Reroll now sends the plan job with `next.roll` alone first, so the saving shows at once, then its search) | none |
+| `career` | a career id (`career` in a report: `kept::career_id`, the uma, her parents in order (legacy indices) and her deck by card identity: each named entry's card id, choice variant and early-end link, the plain pals' card ids, the filler count, so an id names the same deck in every job on the same cards and veterans) to report as it is, with no deck search (`career/given.rs`): needs one trainee and both parents fixed, the id's; its hint chances are worked out from its cards (`DeckSpace::hint_chances_at`), so its odds can differ from the report that named it in the last bits; the deck must be one of this job's for her (every entry in this job's deck space, none of her own card, one per character, every locked card held, at most the borrowed cards allowed, the plain pals the first she may take, the deck size); the answer has one result, `given: true`, and neither `complete` nor `proven_top` (no search compared it with another career). The page's Use this sends it for a builder's other career (`builder_careers`), which a search on its parents would replace with her best deck | none |
 | `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`KeptState::searches` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`KeptState::rolls`, *Next career*: a reload's first roll plans nothing again), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`; so is one with a stored count above 1024 (`STATE_MAX_N`; a count is at most the umas in the data), an index past its list, a NaN, a chance outside [0, 1], a deck of more than six cards or a roll state whose vectors do not fit together or exceed the plan's 12 targets, 10 uncertain. Stored decks and careers are checked again where they meet a setup (`CareerSetup::seen_fits`, `solved_fits`): one naming a deck entry, trainee or veteran the setup does not have is not used there). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
 
 #### Model per career
@@ -486,7 +571,11 @@ unfolded table. The career deck memo keys the folded buffer; class and rise calc
 #### Search and output
 
 Search: each candidate gets a ceiling ρ·C·max_outfit Π_k f_k at each target's best possible deck odds (the deck_size
-lowest miss chances of the trainee's legal entries, every link firing); candidates are taken best ceiling first. A
+lowest miss chances of the trainee's legal entries, every link firing), ρ = 1 where every entry legal for the trainee
+is `certified_cap_free` (a proven bound, `CareerSetup::ceiling_rho`) and 1.25 elsewhere; candidates are taken best
+ceiling first. Rankings across trainees that keep only a few (the plan's hint candidates) take 1.25 for every trainee
+(`ceiling_uniform`), so the certificate does not reorder them; within one trainee the factor is one number, so her
+pairs' order (`ranked_pairs`: `best_sur`, the looped pairs) is as before and only their stop comes sooner. A
 candidate is solved like a per-uma trainee (best product deck, then every deck whose product value times ρ reaches
 the best exact value, through `upper_na`, scored exactly). Between candidates of one trainee a proven bound skips
 most of them: from chances q0 to q a target's factor grows at most by (1 − (1 − e)(1 − q_k)) / (1 − (1 − e)(1 − q0_k))
@@ -495,16 +584,19 @@ those ratios. The same bound holds between trainees of one deck class (equal out
 the targets, the same relevant cards barred, as many plain pals: the best deck is then one function of the chances), so
 the fully checked decks and product-search proofs kept between searches and jobs (`seen`, `ruled`) are kept per class:
 a classmate's proof bounds her candidates too. `rise(t, q', q)` and every proof (`Ref`, `ruled`) depend on the trainee only
-through her class, so the sharing is exact. The planner's deck cache holds exact winners only: pruning, the proofs kept
+through her class, so the sharing is exact; within one search a classmate's fully checked decks bound a candidate as
+her own do (her deck searches still start from her own, each distinct deck once). The planner's deck cache holds exact winners only: pruning, the proofs kept
 between jobs and class sharing change which decks a search happens to check fully, and a cache of those would make the
 plan depend on search history. Identical
 deck problems are searched once: a candidate whose trainee, chances and spark scale are bit-identical to an earlier one's
 in the same search takes its outcome (`Twin`: interchangeable veterans, as a sample pool of mob veterans gives, make
-every parent pair one problem), and a deck search without start decks is memoised per job by what it reads (deck class,
-folded chances, spark scale, bar, work spent; `DeckSearchMemo::decks`), so classmates at the same chances search once.
+every parent pair one problem; a repeat adds no second Ref or proof), and a deck search without start decks is
+memoised per job by what it reads (deck class, folded chances, spark scale, bar, work spent; `DeckSearchMemo::decks`):
+a call repeats only with the same work spent before it (between jobs, and where a plan's search starts afresh).
 The search stops when the next ceiling is below the k-th best (one per trainee when `per_trainee` is true). Output per
-career: `trainee` (`outfits`: those of her deck's outfit option at the grades her schedule runs, the schedule's own
-first, empty for "any outfit" when none covers a target and they share grades; `covers`; `schedule_outfit`: the card
+career: `trainee` (`outfits`: those of her deck's outfit option at the grades her schedule runs or at grades whose
+schedule scores as well (within 1e-12, relative), the schedule's own first, empty for "any outfit" only when none
+covers a target and every outfit of her character has the same grades; `covers`; `schedule_outfit`: the card
 id whose grades her schedule and aptitudes use, the option's best for the schedule, 0 for her character's), `parents`
 (legacy indices), `slots` (six legacies: affinity parts, stars),
 `targets` (per target `q`, `carriers`, landing chance `p`, and `buy`: the chances she buys it as gold / white and lands
@@ -519,17 +611,26 @@ veteran's pink is that one; with a veteran before her result is known among the 
 one per combination of the pinks such veterans may carry) in place of `start` and `fire`; her schedule's win chances
 count them, combining repeated races over the shared grade history as above; a hypothetical veteran
 (`CareerSetup::veteran`) carries `pink_gen` split by the 20/70/10 star draw as her possible pinks, which her children's
-`pink_career` expands into those outcomes; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
-`bounded`, `complete`, `proven_top`, `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
+`pink_career` expands into those outcomes (exact given her pink is independent of her win chances, which share her
+aptitude history: unmeasured, second order; a later slot of her character with the same possible pinks is taken as
+her, sharing the outcome); absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
+`bounded`, `complete`, `proven_top`, `unproven` (why the main search is not complete, when it is not: `work_cap`, the
+work budget or a hard cap ran out; `band_overflow`, a band was certified at a lower cap only; `cap_breach`, a class of
+its trainees is breached, *Class flags* above, as the flags stand at the end of the job), `assumes` (the named
+assumptions what it proves rests on: `two_feeder_cap`, `multi_feeder_cap`, *What "proven" rests on* above),
+`work` (the main search's deck-search nodes and exact scorings, deterministic; 0
 when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's
-cap (`EXACT_CAPS`, an assumption) has its deck search rerun cap-free (*Cap-free rerun* above); a proven rerun does
-not itself make the search incomplete. The output lists the classes in `cap_exceeded` ([class, highest ratio, cap])
-and the reruns in `cap_rerun`. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
+cap (`EXACT_CAPS`, an assumption) has its deck search rerun cap-free (*Cap-free rerun* above), and the search it was in
+is not complete. The output lists the classes in `cap_exceeded` ([class, highest ratio, cap]), the capped deck
+searches that breached in `cap_breaches`, the reruns in `cap_rerun`, the trainees whose class is breached in
+`cap_breached` (chara ids), the reasons any search of the job (the plan's included) or the flags of a class it answers
+for leave an answer incomplete in `job_unproven` (band overflows, breaches), `job_assumes` likewise for the named
+assumptions, and the largest ratio of a deck past its
+class's cap that the nested-chain bound covered in `nested_max_ratio`. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
 - `schedule`: every G1 she could enter, in turn order, as the loop planner's chart rows for one member (`race` the
-  chart name, `when`, `year`, `cells` = [{p, goal, apt, row, pen}] or [null] (`apt` = 110 − her expected career basis:
-  grade costs with her pinks and the low-basis cost), `shared` = a parent won it; `goal`: a goal race there, a choice
-  goal's options until she runs one)
+  chart name, `when`, `year`, `cells` = [{p, goal, apt, low, row, pen}] or [null] (`apt`: her expected grade costs
+  with her pinks; `low`: her expected low-basis cost; rounded so `apt` + `low` = 110 − her expected career basis), `shared` = a parent won it)
   plus `name` (full race name), `parents` (which won it), `run`/`skipped`, `instead` (the race she runs that turn, or
   "rest") and `p` (her win chance, null when skipped). The schedule maximizes expected distinct G1 wins, each race weighted
   by the chance each parent won it (`CareerSetup::plan_schedule`, per distinct grades among her outfit option's outfits, the best kept; a G1 she shares with a parent adds 3 affinity to each of them
@@ -554,9 +655,13 @@ evidence: `docs/MODEL.md`, *Next career*. The planner is in `src/career/plan/` (
 |---|---|---|
 | `sur`, `sur_margin` | 1: each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`) in place of the career search; 2: both, the differences listed in `sur_diff` | 0, 0 |
 | `exact_all` | every uma's best career searched exactly (no proxies) | `false` |
-| `proxy_check` | disable proxies for the main plan and report each builder's proxy beside her exact career (`proxy_check` in the output); also evaluate looped rows' lift statistics | `false` |
+| `proxy_check` | disable proxies for the main plan and report each builder's proxy beside her exact career (`proxy_check` in the output, each row with its `origin`, base / looped / nb / alternative, and `looped`: a looped row's proxy is her unconstrained career, so only base rows compare like for like); also evaluate looped rows' lift statistics | `false` |
 | `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
-| `fit` | `[[chara, lam, phi, pinf], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool. The page's Compare prices the pool with her under the plan's own `fit`, passed on unchanged (Add to veterans then refits) | none |
+| `fit` | `[[chara, lam, phi, pinf, p0], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool, each anchored at the odds p0 it was fitted at (a 4-element entry, written before p0 was, is anchored at the candidate's odds now, so it re-anchors). The page's Compare prices the pool with her under the plan's own `fit`, passed on unchanged, where today's plan has a V and a fit (else it refits; Add to veterans always refits) | none |
+| `partners` | partners kept per candidate where a scored career's veteran is a parent (1 to 8) | 2 |
+| `fresh_lineages` | fresh lineages a trio side may take per candidate: her best career now and her next `fresh_lineages` - 1 by her cached decks (1 to 64) | 3 |
+| `builder_careers` | careers per builder scored as rows: her best and her next `builder_careers` - 1 distinct (parent pair, deck) careers through her cached decks, other decks on her best career's own parents among them (rows with `alternative: true`; not Cont's builders, not added to the cache) (1 to 8) | 1 |
+| `audit_lifts` | measurement: for the pick and the top 3 builder rows, at each one's 5 likeliest outcomes that land a target, each liftable candidate's odds as the row's own kept scoring read them (`table`: her cached decks, the kept partners; null where the plan kept none), as the row scored again reads them (`table_rescored`), with every partner (`all_partners`) and her best career with that veteran as a parent searched exactly (`exact`, `complete`), in `lift_audit`; every row from the plan's cache and proofs as its numbers were taken, put back before each row and after | `false` |
 | `loop_members` | loop members to add as stage candidates; absent: none (the plan runs no loop search) | absent |
 | `search_work` | work budget (career-search units) of each candidate search beyond the job's own; 0 = the job's budget | 5,000,000 |
 | `margin` | the surrogate's refresh margin (section *Policy simulator*) | 1e9 |
@@ -574,7 +679,13 @@ raises that candidate's odds and the mean odds raised to.
   best careers), valued at her own chances by the surrogate, no career search. She is searched exactly when her lift
   efficiency is within `PROXY_EFF` (6%) of a candidate's second best, or her saving within `PROXY_SAVE` (6%) of the
   lowest that the shown rows (`OPT_SHOW` = 8) or the pick's near-tie band take. A row left on its proxy carries `exact: false`.
-  A row whose career search is not `complete` (it ran out of its work cap, `search_work`; a band overflowed; or a cap breach was not resolved by a proven cap-free rerun: the best career it found, not a proven best) carries `proven: false`, and the page
+  Every builder is searched exactly (no proxies, as `exact_all` searches them) in a job with 10 targets or more
+  (`EXACT_BUILDERS_TARGETS`) or with a borrowed veteran in the pool (`exact_builders`): there `proxy_check` measured
+  proxies further below the exact careers than the band (efficiency 46% low on p16_t10, 10 targets of which 8 uncertain;
+  6.4% low on p16_borrow), and the exact searches cost little or save time (p16_t10 13.8 s exact against 19.3 s with
+  proxies; p16_borrow 1.3 against 1.2 s; 2026-10-27). Elsewhere exact costs more (p10 3.37 against 2.21 s, p16 1.38
+  against 0.83, gm16_nu8 5.59 against 3.75) and proxies stay.
+  A row whose career search is not `complete` (it ran out of its work cap, `search_work`; a band overflowed; or a capped deck search breached its cap, the rerun proving that deck search alone: the best career it found, not a proven best; the reasons are the search's `CareerSearchResult::unproven`), or whose trainee's class is flagged breached when the plan ends, carries `proven: false`; a row of an assuming class carries `assumes` (the names) instead. A fallback row (no trio: the pick's main search's careers, reported `exact`) takes its completeness and assumptions from that search as well as her class's flags, and counts in `umas_unproven` when not proven; and the page
   notes it under the table.
 - Before a near-top builder is searched, her proxy is certified where her deck class's proofs allow (`certified`: over
   every legal pair one of the bounds `solve` prunes with (the ceiling, the class's fully checked decks through `rise`,
@@ -603,60 +714,187 @@ raises that candidate's odds and the mean odds raised to.
   the rows that can be picked only, so which proxies are searched exactly can differ from the "allow" plan's, and V with
   it.
 
-**Continuation and V.** Per candidate a continuation (`Cont`, assumed form): builder careers lift her odds with chance
-lam_j = lam ((1 - phi)^j)^`LAM_DECAY` (1.5) at the j-th success, each closing phi of the gap in log probability to
-p_inf, the greater of the best builder's mean lifted odds and `CEIL_SHARE` (0.6) x her odds with a full loop lineage
-(parents hypothetical full veterans of her two most efficient builders, bred from each other and from her). With only one
-builder, p_inf is her mean lifted odds. Her step (a fresh full veteran) costs
-sum_{j<n} 1/lam_j + 1/p_n: `Cont::plan` starts at n = 0 and stops at the first non-improving n, with at most
-`CONT_N` = 500 successes. `Cont::cost_lo`, used for bounds, takes the minimum over that range, stopping early
-only when building alone reaches the best cost. `Cont::plan` and `Cont::cost_lo` are memoised per Cont by the bits of p
+**Continuation and V.** Per candidate a continuation (`Cont`, assumed form), anchored at the odds p0 it is fitted at
+(her odds now; a given `fit` carries its own): at odds x a builder career lifts her with chance lam(x) = lam
+min(1, g(x))^`LAM_DECAY` (1.5), g(x) = ln(p_inf / x) / ln(p_inf / p0) the gap left as a share of p0's, each success
+closing phi of the gap in log probability to p_inf. From p0 the j-th success's chance is lam ((1 - phi)^j)^1.5; from a
+lifted candidate's odds the path goes on where the lift left her, so her step after a lift is not priced with the
+decay started again. p_inf is the greater of the builder's mean lifted odds and `CEIL_SHARE` (0.6) x her odds with a
+full loop lineage (parents hypothetical full veterans of her two most efficient builders, bred from each other and from
+her; parents and grandparents alike every target at the rank's star mix with the G1 wins of their uma's row's career at
+their chances, as `CareerSetup::veteran` makes a fresh one); with only one builder's uma, the builder's mean lifted
+odds. lam (at most 1: a lift chance summed from outcome chances can pass 1 by rounding) and phi come from the exactly
+searched base builder whose continuation costs her the least at her odds now (`anchored_cost`; ties: the more
+efficient), so a builder added beside the others, the pair behind p_inf unchanged, can only lower her step. Her step (a
+fresh full veteran) at p0 and below costs min_n sum_{j<n} 1/lam(p_j) + 1/p_n: at p0 the table's own f64s (V at the
+fit's odds is unchanged by the anchor), below p0 each success's rate capped at lam; `Cont::plan` starts at n = 0 and
+stops at the first non-improving n (each success's waiting time rises with n and the grind's saving falls), with at
+most `CONT_N` = 500 successes. Above p0 (a design choice, not derived: priced on the state-local rate the step was
+sawtoothed in the odds, up to 9 careers on the reference fits) it is read off p0's lattice, p_j = p_inf (p0 /
+p_inf)^((1 - phi)^j): K_j, the cost to go from p_j, the least of grinding there and success j + 1 (1/lam_j) plus
+K_{j+1}, falls with j (K_0 the table's own value); at odds x between p_j and p_{j+1}, with ln(p_inf / x) = (1 - phi)^t
+ln(p_inf / p0), the step is the least of 1/x (rerunning at once: no building, her odds x) and K_j + (t - j)(K_{j+1} -
+K_j), held between the two; both fall as the odds rise, so the step does, and it is never above rerunning at once
+(with phi = 1 every odds below p_inf is at index 0, so there min(K_0, 1/x); past a small phi's last lattice point,
+1/x). The careers built are interpolated alike (`members`'
+`building_careers`), and a step builds where they are above 0. Rust leaves the precision of ln, exp and powf
+unspecified, so no bound in the plan relies on it: `ScoreBase::step_floor`, at most her step at every odds up to p,
+takes IEEE arithmetic and the stored tables alone (the least of 1/p, 1/lam, the table's first sum and the lattice's
+last cost: loose, and read only by y_hi and by the routes' prune). `Cont::plan` is memoised per Cont by the bits of p
 (`PLAN_MEMO=1` prints lookups and hits, `PLAN_MEMO_CHECK` recomputes every hit and panics unless bit-identical,
-`PLAN_MEMO_OFF`, `PLAN_MEMO_CAP` replaces the 16k cap); `score_career` costs a lifted candidate's step only where it
-could still set V's minimum against a lower bound per cell of her odds (`Cont::cost_lb`), the same V to the bit. V = min over trios of side(A) + side(B) + 1/p_C: A and B
-candidates, each side either a real full veteran of hers (cost 0) or a fresh full veteran (her step; the veteran her best career
-now would leave, `CareerSetup::veteran`: its parents, every target at the rank's star mix, her G1 wins at their
-chances), C every allowed uma at her odds with those two as parents (C's own step is not lifted by builders). The cheapest choice of sides wins: a real full veteran with poor parents
-can lose to a fresh one.
+`PLAN_MEMO_OFF`, `PLAN_MEMO_CAP` replaces the 16k cap); `score_career` costs every lifted step (through a per-slot
+cache of the odds costed). V = min over trios of side(A) + side(B) +
+1/p_C: A and B candidates, each side a real full veteran of hers (cost 0), the fresh full veteran her best career now
+would leave (her step), or one of her next `fresh_lineages` - 1 (default 2) careers would leave (other parent pairs
+ranked by her cached decks, `alternative_careers`, each then searched with both parents fixed under the job's own
+budget, not `search_work`, `exact_pair_career`, memoised per plan, `proven` in `members` where the search completed;
+where it finds nothing above the cached decks' career, that career, not proven; her step at that career's odds) (`CareerSetup::veteran`: the career's parents,
+every target at the rank's star mix, her G1 wins and pinks from its schedule), C every allowed uma at her odds with
+those two as parents (C's own step is not lifted by builders). A fresh side's stars are random, so C's odds are their
+expectation and the trio prices C at 1/E[p] where her expected careers are E[1/p]: a fresh side is priced up to about
+2.2% cheap (derived: eight inheritance-only targets, both sides fresh, the 50/45/5 band; under 1% with one fresh side). The cheapest choice of sides wins: a real full veteran
+with poor parents can lose to a fresh one, and a lineage that a new veteran displaces from a candidate's best career
+(one worse for C) is still offered while it stays among her `fresh_lineages` best by her cached decks, at the value
+the earlier plan found where both searches of the pair completed (a complete search's best is the pair's, whatever
+proofs the worker kept). Neither condition is guaranteed (a veteran can open that many better pairs; a search that
+runs out of budget gives its incumbent), so V can still rise when a veteran is added under a fixed fit; measured 2026-10-26 on val/plan p10 with one
+rolled veteran of the pick added under p10's fit, V is the same f64 with her as without (2737.32; before a side could
+take a candidate's other lineages it rose by 131.6), and `val/mono.py -n 3` on p10 and p11 found no rise under the fixed fit.
 
 **Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
-raises any candidate's odds, her own full veteran makes her fresh side free, and with two full veteran parents her own full veteran is the goal
-(V after 0). A target whose stars can't move any table value (per scoring and for every setup, either her miss factor
+raises any candidate's odds (with her best `partners` partners), her own full veteran makes her fresh side free, and with two full veteran parents her own full veteran is the goal
+(V after 0). V after her is the least of V (every trio as it was) and the routes through her veteran (`v_after`,
+`score::routes`), each a trio taken with her in it and priced on its own lineage at each outcome: a trio side on a
+candidate's best career now, lifted through one of her lift slots (one per kept partner: her best career's deck on
+the lifted lineage, her veteran and that partner the side's parents, in the one outfit option the side's record runs
+where her outfits' grades differ, so the step's odds, the record's G1 wins and pinks and the route's C describe one
+career; the candidate's step at that slot's odds), the trio's other side at the base; both sides lifted (each pair of
+their lift slots); and, where she lands every target, her own full veteran (this career's own lineage) beside every side
+of every other uma's candidate at the base and beside each lifted side. A route's C is held fixed: a trio's routes take
+the trio's own C (left out where she is no legal C on the new parents), her own full veteran's the allowed uma best on
+its two parents with her carrying every target at 3 stars (the most any outcome gives, so its ceiling bounds every
+outcome's); her slots in C's lineage (C's parent, or the lifted side's parent and
+so C's grandparent; `CareerSetup::her_slots`) are a finisher setup of the scoring's fold, so C's odds are valued at
+each outcome's stars and landed set exactly as a candidate's lifted odds are. That lineage holds only where the lifted
+side grinds at once at its lift's odds: where her step there still builds (`building_careers` > 0), its later builders
+replace the parents that put her in C's lineage, so the route's C is priced as V prices it (`Route::while_building`,
+V's own convention: a trio's route the trio's own C, her own full veteran's route with a lifted side the route with
+that side as it is today, where that route is kept, else none); the bound (y_hi), not knowing, takes the cheaper of
+the two. A route is left out where even its steps' floors (`ScoreBase::step_floor` at the slot's most odds), its fixed
+sides and the cheaper of its C's at their most odds cannot go below V. Held fixed: each route keeps one C, and a lifted side one deck (her best career's; another of her decks with
+her as a parent has no route). The lift statistics (Cont's fit, `proxy_check`) still read the partner slots: the best
+of every cached deck. Memory: the fold's per-leaf rows and levels take at most `OUTCOME_BUDGET` (2^25 f64, 256 MiB,
+natively and in wasm alike, so the page answers as the native validation does; a page's linear memory never shrinks:
+10 uncertain targets with the default 2 partners' leaf rows take all of it, leaving no route); a job whose partner and
+lift slots' leaf rows alone would pass it is refused before it runs (fewer `partners`); where with their corner tables
+they pass it, the partner setups ranked last are left out (the last candidate's first, then rank by rank:
+`fit_partner_setups`, counted in `sc_partner_setups_dropped`), so an admitted plan never fails for memory (fewer
+partners only lower what a scoring credits); and the routes past it are left out, the highest lower bounds first (`routes_dropped` in `next`, `sc_routes_dropped` in
+`work.prof`; the saving is then at most the model's). A target whose stars can't move any table value (per scoring and for every setup, either her miss factor
 for it is the same f64 at 1, 2 and 3 stars, or every kept table reads the same with the target landed or not) is folded
 at 0 and 1 star only: an outcome with 2 or 3 stars there reads the 1-star outcome's y and lifted odds, and every
 outcome is still summed at its own chance, in order. The fold is exact in real arithmetic; floating-point rounding can differ between star levels. A roll
 (`next.roll`) reads the same representative. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
 next fully looped parent, any uma: a fully looped veteran you have is a real full veteran (free side) with full veteran parents.
 
+**Robustness check** (`robust.rs`, `next.robust`): a plan whose pick can be checked (no given `fit`, a finite V)
+keeps what the check reads (`CheckKeep`, the last 2, `CHECK_KEEP`, by the plan job without its roll, check and oracle
+requests, `check_key`; not in `state_out`): the rows the page shows, in the plan's row order (the first `OPT_SHOW` by
+score and every other within `NEAR` of the top, less repeats), their careers and scores, the plan's candidates, its fit
+(each continuation's evidence, the sides, the trios) and its deck cache, moved out of the plan's simulator (the output
+does not read it). The plan job again with `next.robust: "next"` (the page, once the pick is shown) runs the next
+variant on that state, no search and no plan (an error, `unavailable`, where the worker keeps none); `"all"` runs every
+variant left, the plan run first where none is kept (the CLI). With `next.oracle` too, `"next"` is refused and `"all"`
+runs the plan (the kept state has no oracle). After the last variant the state keeps its report alone (the rows, fit,
+candidates and cache go). So the pick's wait does not grow. The page sends these as background jobs (`engine.js`): an
+edit lets the variant under way finish, its job waiting behind it, so the worker and what it keeps stay; a check cut
+short is resumed when its answer is shown again, and one whose state is gone (a stopped comparison, a solver error, a
+reload) is shown as not finished. Each variant scores the kept rows again, exactly, and applies the pick rule (`PickRows`, in the plan's
+row order with its strict comparisons) to their scores. Four are Cont's shape at the corners of the range the
+leave-one-pool-out refits on cost span (`CEIL_SHARE` 0.5 and 0.65, `LAM_DECAY` 0.6 and 1.3; `val/sim/fit_cont.py`,
+2026-10-26), each candidate's continuation refitted from the plan's own evidence (her builders' lifts and her
+full-loop ceiling, `ContEvidence`) as the plan fits it. Two scale every career's P(all) by each end of research §13's
+all-target obs/pred ratio's 95% interval (`13.p_all_eight_ratio_all_95_pct_low` / `_high`, read from
+`research/results.json` when the solver and the page are built, to 3 decimals): the candidates' odds now, their lifted
+odds, C's (`ScoreBase::odds_scale`) and the scored career's own landed sets (`build::scaled_landed_sets`: her full set's
+chance f times the scale, the mass it loses spread over her other sets in proportion to their chances, each times
+(1 - scale f) / (1 - f)), the continuations refitted on the scaled odds. Lam, a chance, is the builders' as the plan
+measured it: their own landed sets are not re-weighted, so the lifts the moved mass would remove are kept (a known
+approximation). A variant keeps the plan's trios, sides and C's and prices them under its continuations; its scorings
+read the kept cache only (`Evaluator::frozen`). Output `robust` (the report so far): `plan` (the pick checked, a
+`kept::career_id`), `rows` (the careers rescored), per variant done (the plan's model first) `ceil_share`, `lam_decay`,
+`odds_scale`, `v0`, the `pick`, its `score` and `margin` (its score less the best other checked row's; negative where
+the rule took her by odds within `NEAR`), `pending` (variants left), `stable` (the rule selects one career among the
+checked rows under every variant done), `contenders` (each career it selects under some variant, the plan's pick
+first), `check_ms`. It covers the checked rows and the tested variants only, with every search choice of the plan held
+fixed, and reports: the pick stays the rule's.
+
+**Joint-lift oracle** (`oracle.rs`, `next.oracle: "joint"`, a diagnostic, off by default): V adds A's and B's steps as
+if every lift were a career of its own, so a builder whose veteran lifts both sides is charged twice. The oracle prices
+the 8 cheapest trios on a joint two-side lattice instead: a state is the lifts each side has taken along her
+continuation's own path (`Cont::building_path`, to `CONT_N`) and which sides are done; an action is a builder career
+(A's and B's builders, the rows their continuations took lam and phi from, one action where they are the same career),
+charged once, whose joint lift sets over every outcome are gathered by a `Want::Joint` scoring (against the placeholder
+base the lift statistics read, the cached decks only), or a side's grind (1 / her odds, a commitment), and then C's
+step, the trio's. Solved exactly from the caps down by the self-loop formula J = (1 + sum P J') / P(move). Assumed
+beyond Cont: a lift moves its side one step whichever builder made it; after n lifts a side's lift chances from any
+builder are their chances at the start times min(1, rate_n / her own builder's chance at the start), the two sides'
+factors independent: her own builder then lifts her at min(own chance, rate_n), Cont's rate where the rescored chance
+at the start is at least it, else slower (that side then costs more than Cont's step; on the 13 val/plan pools every
+lattice trio's `v_separate` reproduces today's V to 1e-15, so no side was clipped there). Output `oracle`: `v0`, `v0_joint` (the
+least of the priced trios' joint values), `best_trio_changes`, and per trio its umas, today's `v`, `v_joint`,
+`v_separate` (each builder lifting only her own side: today's V up to the rescoring's lift chances), `same_builder`,
+the builders' `lifts` ([both, A alone, B alone]) and the sides' `lam`; a trio with a real full veteran side has no
+lattice. A side's path is her continuation's state-local one (`Cont::building_path`), which the plan's step follows at
+and below her anchor only (above it the plan reads her lattice): a trio with a side above its anchor is marked
+`above_anchor`, and there the joint lifts' effect is `v_joint` against `v_separate` (the same paths), not against `v`;
+`v0_separate` (the least of the priced trios' `v_separate`) stands beside `v0_joint`, and `above_anchor` at the top says
+whether any trio had such a side. It prices V0 only: no row is scored under it.
+
 **Output `next`:**
 - `options`: per career `role` (plan / finish / loop / candidate / builder; finish is C's career on A's and B's real
   full veterans, the trios' last step, only when both sides are real and her parents are both full veterans), `looped` (both parents
   full veterans), `best_odds` (the main search's best career, one row), `index`, `score`, `lift` (the chance her roll
   lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
-- `members` (A and B): `{trainee, p, has_full_veteran, real (the trio uses a real full veteran of hers), p_inf, lam, phi,
-  building_careers (the expected careers spent building before she grinds), p_switch, careers}`; `v0` (V); `v0_plan`
-  (`{a, b, c, careers}`); `fit` (the stage candidates in order with their continuations, `[chara, lam, phi, pinf]`).
-- `outcomes`: the career a roll is of, `{trainee, parents, uncv, fixed}`: the pick, her uncertain targets and the
+- `members` (A and B): `{trainee, p, parents, alternative (the side is from one of her next best careers, at its odds
+  `p` and `parents`), proven (`p` is the career's proven best), has_full_veteran, real (the trio uses a real full veteran of hers), p_inf, lam, phi, p0,
+  building_careers (the expected careers spent building before she grinds), p_switch, builder (the career id of the base
+  row her lam and phi are from, `fit_continuation`; null where she grinds at `p` or her Cont was given by `fit`),
+  careers}`; `v0` (V); `v0_plan` (`{a, b, c, careers}`); `fit` (the stage candidates in order with their continuations,
+  `[chara, lam, phi, pinf, p0]`; the solver parses floats with serde_json's `float_roundtrip`, so a `fit` sent back
+  re-parses to the same bits); `pinf_builders` (`{chara: [first, second]}`: per candidate fitted from this pool, the two
+  builders, uma ids, behind her full-loop ceiling); `routes_dropped` (routes the scorings' memory budget left out).
+  An option from `builder_careers` carries `alternative: true`.
+- `outcomes`: the career a roll is of, `{trainee, parents, career, uncv, fixed}` (`career`, as every career report
+  carries it: her uma, her parents in order and her deck by card identity, `kept::career_id`; two decks on the same parents are two
+  careers, and the page matches careers by it): the pick, her uncertain targets and the
   scenario's guaranteed ones (job-target indices). The page checks a roll's career against it.
 - `roll` (a job with `next.roll`; a carried `roll` returns it as the job's `roll`): `{y, y_hi}` at her outcome (her
   stars per uncertain target, at most 3, and the guaranteed targets landed or not), with `ms` and `prof`, and
   `planned: true` when the plan had to run for it. The plan keeps its pick's roll state (`RollKeep`, the last 4 plans,
   `ROLL_KEEP`, keyed by the plan job without `next.roll`, top-level `roll`, `no_reports` and `compare`; in `state_out`): the pick's last
   scoring as its fold and outcome loop read it (`Scored`: the kept tables, her miss factors and spark scales per
-  setup, the collapsed targets, her landed sets' chances, her own full veteran's trio sides), the base it was scored against,
-  her own full veteran's trio sides as the bound reads them at the plan's end (`pick_her`) and the main search's found-career
-  anchors (`found_anchors`). `y`, the pick's careers saved, V - V with her veteran (to 0.01): the plan's own fold and
+  setup (partner and finisher slots), the collapsed targets, her landed sets' chances, the routes), the base it was
+  scored against (steps, V, odds now, which candidates' odds are proven, the anchored Conts; `STATE_VERSION` 7) and the
+  main search's found-career anchors (`found_anchors`). `y`, the pick's careers saved, V - V with her veteran (to 0.01): the plan's own fold and
   outcome loop (`Scored::evaluate`, generic over the leaves it produces: `All` in the plan, `OneLeaf` in a roll, which folds
   only the prefixes of the outcome's representative and runs the outcome loop at it and the outcome), so the f64 the
-  plan's full table held, checked bit for bit against frozen fixtures by `tests/plan_roll.rs`. `y_hi` (rounded up to 0.01) where y < 0.5 (null elsewhere: the page
-  reads it only below 0.5, and computes nothing else from it): at
-  least `y`, the most her veteran's direct lifts could save for that outcome (each candidate's odds with her as a
+  plan's full table held (checked bit for bit against the plan's full table in one process,
+  `score::build::tests::a_roll_is_the_full_tables_value_at_its_outcome`, and pinned against frozen fixtures by
+  `tests/plan_roll.rs`). `y_hi` (rounded up to 0.01) where y < 0.5 (null elsewhere): a diagnostic, which the page
+  never reads (it is loose by construction, `ScoreBase::step_floor`); at least `y`, the most her veteran's routes in the scoring could save for that outcome. Neither is a verdict: a replan
+  can take routes the scoring has not (a partner or deck it did not keep, another C, or a candidate's other lineage
+  whose C her veteran improves as a grandparent through relation points or shared wins without lifting the candidate's
+  odds), so the page shows a roll's figure as provisional and confirms every roll with a Compare (each candidate's odds with her as a
   parent bounded over every partner y by the least over anchors A of c' E_A rise(q', q_A) (`CareerSetup::rise`: no
-  assumed cap), E_A at least the best odds at q_A: today's pairs (y, z) at p_now / c_yz, the main search's found careers
+  assumed cap), E_A at least the best odds at q_A: today's pairs (y, z) at p_now / c_yz where the candidate's search proved
+  p_now her best (complete; else no pair anchor), the main search's found careers
   of the candidate's deck class at their `Ref`s, and, for the partners behind the band's likeliest outcomes, her best
   deck searched at her 2 and 3 stars on every uncertain target (`HI_STARS`; at most `HI_SEARCHES` searches, currently 0, so these extra searches are off; outcomes whose
   partners' bounds pass `HI_RISE` = 1.5 x p_now are left as they are), the latter two under the caps; and by the ceiling
-  (`outfit_fast` at q'); the step at `Cont::cost_lo`). The least over anchors is found per (candidate, partner)
+  (`outfit_fast` at q'); every lift slot of hers lifted at the bound, each step at `ScoreBase::step_floor` there; the
+  routes' C at their odds at the outcome. A lift through a partner or deck the scoring did not keep has no route, so
+  its C is not bounded). The least over anchors is found per (candidate, partner)
   by an exact branch and bound over the leaves' star-digit prefixes (an anchor's factors are positive, so its prefix's
   product times each remaining digit's least factor bounds its leaves from below; a subtree it can't lower is
   skipped; the leaves of no wanted outcome count as nothing to lower, so their subtrees are skipped too: a roll wants
@@ -664,7 +902,7 @@ next fully looped parent, any uma: a fully looped veteran you have is a real ful
   roll's first bound keeps, per (candidate, partner), the anchors whose root test passes against the most the ceiling
   holds at any leaf (`RollKeep::partner_anchors`, not stored by `state_out`): every other anchor fails the test at every outcome,
   so later rolls fold in the same anchors without computing their chances again. The
-  page checks a roll with y < 0.5 <= y_hi exactly. The replan's other careers with her as a parent are not bounded (its
+  page checks every roll exactly. The replan's other careers with her as a parent are not bounded (its
   candidates and Cont are the plan's).
 - `umas_scored`, `umas_searched` (careers searched exactly), `umas_certified`, `umas_unproven` (umas whose best, looped or
   no-borrow career search is not `complete`, as for `proven` above), `hint`, `sur`, `sur_diff`, `work` (this
@@ -678,7 +916,11 @@ next fully looped parent, any uma: a fully looped veteran you have is a real ful
 **Kept plans.** Each trainee's best careers are kept per plan (the last few, in the worker). A plan of the same setup,
 places and pool takes them as they are (no search: a reload, an edit undone); a plan of the same setup and places whose
 pool is a kept one plus one veteran at the end (Compare, then Add) takes the better of the kept best and a search with
-her fixed, whose bar starts at the kept value (`SearchState::floor`). `best_deck`'s results (with their certificates, band overflows, work counts
+her fixed, whose bar starts at the kept value (`SearchState::floor`). Both need the same deck space too
+(`bests_key`'s `CareerSetup::plan_space_key`: every uma's deck class content and the plain pals' order, which a
+trainee filter can change through the plain pals' blocking order): a plan under another trainee filter that changes
+a class's plain-pal rate prefix reuses none of the kept careers, and a reused plan's class flags come with it
+(`Bests::flags`). `best_deck`'s results (with their certificates, band overflows, work counts
 and per-class ratios) and the corner tables are also kept between jobs of one setup and trainee order (`KeptState::decks`), subject to memo keys and capacity limits. The kept plans, proofs, main searches and roll states survive a page reload through `cmd: "state_out"` /
 `"state_in"` (fields table above).
 
@@ -745,7 +987,10 @@ cached. Derived: the career picked has an exact P(all), with the deck it runs, o
 career's, subject to the assumed search caps and complete deck searches; m = 0 gives the exact greedy pick up to ties. Under
 goal "looped" the same holds among the looped careers, B the best looped one: a looped candidate is valued against that
 bar. A candidate is valued once, when her later parent arrives; a trainee whose static ceiling (q = 1, every spark on
-six legacies) is below B is skipped.
+six legacies) is below B is skipped. Its candidate filter (`Evaluator::fast_ub`) counts a slot of random stars (a veteran
+before her result is known) at 2 stars where the ceiling averages over her mix: an upper bound only while the mix's mean
+is at most 2 stars, as both page bands are (`star_dist` [0, 0, 1] passes the job check); the simulator's pools hold
+recorded and drawn veterans only, so no such slot reaches it.
 
 | Field of `simulate` | Meaning | Default |
 |---|---|---|
@@ -760,6 +1005,8 @@ six legacies) is below B is skipped.
 | `loop_members` | `loop`: rotation members (chara ids) in order; `trace`: the trainee built for, then her builders | none |
 | `progress` | log every N careers | 0 |
 | `next` | `index`: the plan job's `next` (fields in *Next career*) | `{}` (the page's) |
+| `force` | `{"trainee": chara id, "parents": [a, b]}`: every run's first career is that trainee on those two legacies with her best deck (the career search with both fixed), the policy taking over from the second; `greedy`, `greedy_exact` and `index` only (`val/sim/rollouts.py`) | none |
+| `keep_pool` | per run also `survival` (S at the stop, before the tail) and `final_legacies` (the pool there, as a job's `legacies`) | false |
 
 `loop`: member i mod n trains; her parents are the rotation veterans of the previous two members. A member keeps the
 better of her rotation veteran and the new one, by the summed surrogate P(all) of the two loop careers she is a parent
@@ -820,23 +1067,27 @@ engine to itself; an independent recomputation can catch a wrong result.
 
 | Check | Kind | Detects |
 |---|---|---|
-| `val/planval.py` (val/plan pools), `val/simval.py` (val/sim/jobs.json), the `plan_roll` fixture (re-taken from the solver's own rolls) | pin | a moved output |
-| `val/planval.py`'s proxy gate (`next.proxy_check` on every val/plan pool, base rows) | measurement against the exact rows | a deck-class proxy more than 3% low on efficiency or saving + 1 (half the 6% band) |
+| `val/planval.py` (val/plan pools), `val/simval.py` (val/sim/jobs.json), test `plan_roll` (a self-pin: its fixture is re-taken from the solver's own rolls) | pin | a moved output |
+| `val/planval.py`'s proxy gate (`next.proxy_check`: every builder searched exactly, base rows) | the plan against the all-exact plan; each proxy against its exact row | the pick, V or the set of the top 8 rows moving when proxies are on; a proxy efficiency more than 3% low (half the 6% band, where the exact one is at least 1% of the row's best); a proxy saving more than 0.25 careers low. `proxy_check` prices proxies on the deck cache from before the builders' searches (rows.rs `check_plan_proxies`) while the exact rows were scored on later caches, so until the two share a cache the saving criterion can fail on a proxy that is the exact career |
 | tests `plan_state`, `plan_memo`, `plan_value`, `plan_borrowed`, `career_fold_and_scale` | invariance | a broken equality (kept state, memo, reload, borrowing rule, fold) |
 | test `plan_looped` | one semantic property | two real full veterans make the finish the pick, saving at least one career |
 | test `sim_determinism` | invariance | an `index` run that depends on the runs before it |
+| test `sim_looped` | constructed pool, goal "looped" | a broken full-veteran draw, switch to finishing careers, last-finisher tail or greedy's looped restriction |
 | unit test `sim_pink_draw_matches_pink_gen` (`src/career/sim/draw.rs`) | the simulator's pink draw against the model's exact pink chances | a draw that disagrees with `pink_gen` |
-| `val/mono.py` | necessary condition (fixed fit) | V rising, or lost, when the pool's last veteran or a rolled veteran of the pick (drawn as the page's Reroll draws her) is added under today's fit (what Compare shows); the refit column (what Add then shows) is reported, not failed on; a plan or roll that fails also fails it |
+| `val/mono.py` | necessary condition (fixed fit) | V rising, or lost, when the pool's last veteran or a rolled veteran of the pick (drawn as the page's Reroll draws her) is added under today's fit (what Compare shows); a plan or roll that fails also fails it. Exempt: a fixed-fit rise that is gone when both plans are re-run with 8 fresh lineages (`fresh_lineages`) is reported as the documented lineage truncation, not failed; the page's Compare runs at 3, so it can still show such a rise. The refit column (what Add then shows) is reported, not failed on |
 | `val/career_check.py` | independent recomputation (Python, from the job and data.json) | a wrong slot affinity, q, carrier count, spark scale, per-target buying or landing factor, landed-set total or marginal, or joint P(all) (deck model restated by `val/joint_check.py`) in a career report or plan row |
 | `val/joint_check.py` | independent recomputation, same constants | a wrong P(all) of a deck job's loops |
 | simulator `index` under goal "looped" against `greedy` and the plan's trio as `loop` (`val/sim/README.md`) | measurement | the plan's policy losing to a baseline on its own goal (not run at a size that resolves 10% of V) |
+| `val/sim/rollouts.py` (paired truncated rollouts) | measurement on common draws | a top row's score disagreeing with what forcing it first and continuing with greedy (goal "looped") for 50 careers gains, valued by the plan's V of the final pool |
+| `val/sim/fit_cont.py` (`val/sim/trace_pools.json`) | measurement against the simulator's `trace` building, each pool held out of the fit | Cont's shape (`CEIL_SHARE`, `LAM_DECAY`) pricing a step's cost worse than a refit on pools it was not fitted on (2026-10-26: held-out mean cost error 10.8% for the cost refit, 10.5% for the current shape) |
 
 What none of them checks: the pick between near options (on val/plan the score gaps between them were 0.06-0.2% of V
-on 2026-10-26, below any simulation's resolution), Cont's shape out of sample (refit with `val/sim/fit_cont.py`), and anything on real outcomes beyond
-docs/RESEARCH.md section 13's all-target ratio.
+before the 2026-10-26 plan changes, below any simulation's resolution), Cont's shape against real building (`fit_cont.py`
+fits it to the model's own simulated careers), and anything on real outcomes beyond docs/RESEARCH.md section 13's
+all-target ratio.
 
 ## 5. Limits
 
 - **Schedules are heuristic.** `optimize` is an iterated local search with a provably exact best response per uma; nothing proves a structure's schedules optimal.
 - **Model assumptions (§1) are assumed or community-derived:** the win formula and the affinity objective. The code doesn't validate them.
-- **Base-outfit aptitudes by default.** `build_base.py global CHARA:CARD` writes the alternate outfit's aptitudes to `base.json`; rerun `export_rs.py global` to put them in `data.json`.
+- **First-outfit aptitudes in the loop planner.** data.json's `apt` is each uma's first outfit's; the career planner grades a career by the outfit it runs (`outfit_apt`), the loop planner does not. `build_base.py global CHARA:CARD` writes another outfit's aptitudes as `apt` to `base.json`; rerun `export_rs.py global` to put them in `data.json`.

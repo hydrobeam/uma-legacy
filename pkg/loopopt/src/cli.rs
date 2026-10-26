@@ -122,4 +122,11 @@ pub(crate) fn print_cli_job(
     };
     out["timing_s"] = serde_json::json!(started.elapsed().as_secs_f64());
     println!("{out}");
+    // (what the worker keeps between jobs, measured from outside the search: `JOB_RSS`)
+    if crate::checks::get().job_rss
+        && let Ok(status) = std::fs::read_to_string("/proc/self/status")
+        && let Some(line) = status.lines().find(|line| line.starts_with("VmRSS:"))
+    {
+        eprintln!("JOB_RSS {}", line.trim_start_matches("VmRSS:").trim());
+    }
 }

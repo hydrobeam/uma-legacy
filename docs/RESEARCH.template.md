@@ -1833,7 +1833,10 @@ The composition is **derived** from sections 1-11 under the independence assumpt
 fitted and no research script computes it. An independent implementation, `val/joint_check.py`, reproduces the solver's exact
 odds on the {{6.schedules_result_files|.0f}} loop-planner reference results and their listed runner-ups, from the
 reported shared wins and relation points (section 6). That covers the loop planner. The career report's path for real
-legacies, described at the end of this section, is what section 13 scores; nothing independent recomputes it.
+legacies, described at the end of this section, is what section 13 scores; `val/career_check.py` recomputes its
+reports independently from each career job and the data (slot affinities, $q_k$, carriers, spark scales, landing
+factors and the joint $P(\text{all})$, the deck model restated by `val/joint_check.py`), a validation check outside
+these scripts.
 
 A target lands if the deck hints the gold and it sparks, or else if any source hints the white and that sparks. For a
 target $k$ not guaranteed:
@@ -1921,9 +1924,11 @@ Rows on her outfit and scenario golds are *certain*, so tests 1 and 3 leave them
 Unity Cup's guaranteed golds show in {{13.unity_cup_s_guaranteed_golds_runs_with_both|,.0f}} of its {{13.unity_cup_runs|,.0f}} runs. The runs end before skills are bought, so
 "acquired" means hinted, the model's own meaning.
 
-Tests 1 and 3 score the career report's `buy` product approximation, which multiplies chances across cards, not the
-exact joint engine of section 12; shared chain progress makes the two differ. The landing and all-targets checks use
-the exact engine's $p_k$ and $P(\text{all})$.
+Test 1 scores the career report's deck hint chances (`buy.deck_gold`, `buy.deck_white`), a product approximation that
+multiplies chances across cards, not the exact joint engine of section 12; shared chain progress makes the two differ.
+Test 3 scores its buying chances (`buy.gold`, `buy.white`), which are exact per target: the gold chance over the
+deck's chain states, the white part the rest of the exact landing chance. The landing and all-targets checks use the
+exact engine's $p_k$ and $P(\text{all})$.
 
 1. **Deck hint**: does a deck card hint the skill, by training or by its events, as often as sections 7-9 predict? The
    prediction is $d^g + (1 - d^g)d^w$, with $d^g$ the gold chance and $d^w$ the white chance given no gold. Only rows
@@ -2082,7 +2087,8 @@ Both run sets read below 1; the list runs' upper bound sits just under 1, at {{1
 not settled. Do they differ? Resampling each set on its own, the no-list ratio minus the list ratio is
 {{13.p_all_eight_ratio_no_list_minus_list|u+.3f}} [{{13.p_all_eight_ratio_no_list_minus_list_95_pct_low|u+.3f}}, {{13.p_all_eight_ratio_no_list_minus_list_95_pct_high|+.3f}}], so no difference is detectable.
 
-Where does the shortfall come from? The same comparison under the career report's approximation, counted once by tier
+Where does the shortfall come from? The same comparison under the career report's approximation (the product over
+targets of its per-target buying chances, each exact, multiplied as if the targets were independent), counted once by tier
 and once *tier-blind* (every acquisition scored as a white, on both sides), separates the gold tier from acquisition
 itself. Does counting tier-blind change the ratio? Both are scored on the same resamples of runs, and the difference
 is the test:

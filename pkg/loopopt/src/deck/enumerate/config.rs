@@ -1,5 +1,5 @@
 //! Legal card-count configurations and their bounds.
-use crate::deck::caps::cap_class;
+use crate::deck::caps::{NESTED_CHAIN, cap_class, chain_varying_count, multi_feeder};
 use crate::deck::chains::{ChainEvents, EventsKey};
 use crate::deck::enumerate::SearchClause;
 use crate::deck::enumerate::traverse::{DeckSearchContext, SearchControl};
@@ -61,6 +61,11 @@ pub(crate) struct SearchConfig {
     pub(crate) prune_bound: f64,
     // Root clause values retained only for RB_CHECK.
     pub(crate) clause_bounds: Vec<f64>,
+    /// The nested cap of its chain key and events for the search's trainee (`NestedTrainee::pair_caps`), 0 where its
+    /// groups hold no nested chain or the bounds are off: its band's caps are at least this where a nested chain may be
+    /// reached, and the covered product search scales its bounds by `covered_scale` of it (`root` and `prune_bound`
+    /// included).
+    pub(crate) pair_cap: f64,
 }
 
 // A configuration passing the per-target bound, its root not yet computed: `upper_bound` bounds its root
@@ -69,6 +74,9 @@ pub(crate) struct SearchConfig {
 // `ratio_key_index`: its key's slot in `key_ratios` (the key's ratio tables, built on first need)
 pub(crate) struct PendingConfig {
     pub(crate) upper_bound: f64,
+    /// `SearchConfig::pair_cap`, and the root's factor `covered_scale` of it (`upper_bound` holds it already)
+    pub(crate) pair_cap: f64,
+    pub(crate) root_scale: f64,
     pub(crate) ratio_key_index: usize,
     pub(crate) code: u64,
     pub(crate) events: ChainEvents,
@@ -88,6 +96,14 @@ pub(crate) struct ConfigurationQueue {
     pub(crate) configurations: Vec<SearchConfig>,
     pub(crate) pending: Vec<PendingConfig>,
     pub(crate) key_ratios: Vec<Option<std::rc::Rc<GroupTable>>>,
+    /// A key or configuration that can hold a nested chain in a deck of class 2 or more beside other chain feeders or
+    /// an uncertified group (`caps::multi_feeder`) was built or skipped under the caps: the search's proof rests on the
+    /// nested bound with their dependence left out (`multi_feeder_cap`, `deck::nested`).
+    pub(crate) multi: bool,
+    /// A key or configuration that can hold a deck with two chain-varying targets fed by two or more chain cards (two
+    /// cards each feeding one, or a nested pair with another feeder: shapes the nested bound does not cover) was built
+    /// or skipped under the caps: the search's proof rests on the assumed class cap for them (`two_feeder_cap`).
+    pub(crate) assumed: bool,
 }
 
 /// The same bound operations serve eager configuration construction and lazy queue expansion.
@@ -162,6 +178,12 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
         let mut configurations: Vec<SearchConfig> = vec![];
         let mut pending: Vec<PendingConfig> = vec![];
         let mut key_ratios: Vec<Option<std::rc::Rc<GroupTable>>> = vec![];
+        // (a nested chain in a deck of class 2 or more beside other feeders: `ConfigurationQueue::multi`)
+        let mut multi = false;
+        let mut assumed = false;
+        // (two or more chain cards whose chains feed targets, and two chain-varying targets among them: a deck of a
+        // shape under the assumed class cap may be among the configuration's or key's, `ConfigurationQueue::assumed`)
+        let two_feeders = |mask: u64, feeding_slots: usize| feeding_slots >= 2 && chain_varying_count(mask) >= 2;
         for kind_counts in counts {
             let chain_slots: usize = kind_counts.iter().sum();
             if (0..kind_count).any(|i| i != filler_kind_index && kind_counts[i] > by_kind[i].len()) {
@@ -243,16 +265,51 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
                     key_white[t] = 1.0 - white_product;
                     key_gold[t] = 1.0 - gold_product;
                 }
-                // (a band's class caps are at most rho)
-                let none = if best {
-                    (clause_value(&clauses[0], key_white, key_gold) + key_slack(&clauses[0])) * (1.0 + 1e-9)
-                        < best_value
-                } else {
-                    clauses.iter().all(|clause| {
-                        rho * (clause_value(clause, key_white, key_gold) + key_slack(clause)) * (1.0 + 1e-9)
-                            < clause.threshold
-                    })
+                // (a band's class caps are at most rho, and where the key can give a deck two chain-varying targets their
+                // pair caps at most the largest over the chain events its configurations can have, `deck::nested`)
+                let none_at = |cap: f64, scale: f64| {
+                    if best {
+                        (clause_value(&clauses[0], key_white, key_gold) + key_slack(&clauses[0])) * scale * (1.0 + 1e-9)
+                            < best_value
+                    } else {
+                        clauses.iter().all(|clause| {
+                            cap * (clause_value(clause, key_white, key_gold) + key_slack(clause)) * (1.0 + 1e-9)
+                                < clause.threshold
+                        })
+                    }
                 };
+                // (its kinds' masks, and the chainless groups' where slots are left: an uncertified group among them
+                // puts a nested chain in class 3)
+                let chainless_mask = if chain_slots < size {
+                    [(kind_count, pal_entries), (kind_count + 1, other_entries)]
+                        .iter()
+                        .filter(|(_, entries)| !entries.is_empty())
+                        .fold(0u64, |mask, &(group, _)| mask | group_class_masks[group])
+                } else {
+                    0
+                };
+                let key_mask = (0..kind_count)
+                    .filter(|&i| kind_counts[i] > 0)
+                    .fold(chainless_mask, |mask, i| mask | group_class_masks[i]);
+                let mut none = none_at(rho, 1.0);
+                if none && self.nested.is_some() && key_mask & NESTED_CHAIN != 0 {
+                    // (a configuration's events: its rate-raising pals, at most the key's free slots)
+                    let caps: Vec<crate::deck::nested::PairCaps> = (0..=size - chain_slots.min(size))
+                        .map(|pals| self.pair_caps(code, chain_model.events(pals)))
+                        .collect();
+                    let key_cap = caps.iter().map(|caps| caps.nested).fold(0.0f64, f64::max);
+                    none = none_at(rho.max(key_cap), self.covered_scale(key_cap));
+                }
+                let feeding_slots: usize = (0..kind_count)
+                    .filter(|&i| chain_varying_count(group_class_masks[i]) > 0)
+                    .map(|i| kind_counts[i])
+                    .sum();
+                if none && self.nested.is_some() && multi_feeder(key_mask, feeding_slots) {
+                    multi = true;
+                }
+                if none && self.nested.is_some() && two_feeders(key_mask, feeding_slots) {
+                    assumed = true;
+                }
                 if none {
                     continue;
                 }
@@ -317,20 +374,37 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
                         let tables_at = &mut key_at_events[at];
                         // the per-target bound first, the ratio products only for configurations it lets through
                         (bounds.odds)(groups, &tables_at.group_misses, white_chances, gold_chances);
-                        // the configuration's class cap (every deck of it is in a class at most this one's)
-                        let class_cap = if best {
-                            rho
+                        // the configuration's class cap (every deck of it is in a class at most this one's), at least its
+                        // nested-chain cap where its groups hold a nested chain (`deck::nested`; then rho too, for its
+                        // root), and the covered product search's factor on its bounds
+                        let configuration_mask =
+                            groups.iter().fold(0u64, |mask, group| mask | group_class_masks[group.group]);
+                        let pair_caps = if configuration_mask & NESTED_CHAIN != 0 {
+                            self.pair_caps(code, events)
                         } else {
-                            class_caps[cap_class(
-                                groups.iter().fold(0u64, |mask, group| mask | group_class_masks[group.group]),
-                            )]
+                            crate::deck::nested::PairCaps::default()
                         };
+                        let feeding_slots: usize = groups
+                            .iter()
+                            .filter(|group| chain_varying_count(group_class_masks[group.group]) > 0)
+                            .map(|group| group.slots)
+                            .sum();
+                        if self.nested.is_some() && !cap_free && two_feeders(configuration_mask, feeding_slots) {
+                            assumed = true;
+                        }
+                        if self.nested.is_some() && !cap_free && multi_feeder(configuration_mask, feeding_slots) {
+                            multi = true;
+                        }
+                        let pair_cap = pair_caps.nested;
+                        let (rho, root_scale) = (rho.max(pair_cap), self.covered_scale(pair_cap));
+                        let class_cap =
+                            if best { rho } else { class_caps[cap_class(configuration_mask)].max(pair_cap) };
                         let ideal_value =
                             if best { clause_value(&clauses[0], white_chances, gold_chances) } else { 0.0 };
                         let ideal = if cap_free {
                             true
                         } else if best {
-                            ideal_value * (1.0 + 1e-9) >= best_value
+                            ideal_value * root_scale * (1.0 + 1e-9) >= best_value
                         } else {
                             clauses.iter().any(|clause| {
                                 class_cap * clause_value(clause, white_chances, gold_chances) * (1.0 + 1e-9)
@@ -346,7 +420,9 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
                                 key_ratios.len() - 1
                             });
                             pending.push(PendingConfig {
-                                upper_bound: ideal_value * (1.0 + 1e-12),
+                                upper_bound: ideal_value * root_scale * (1.0 + 1e-12),
+                                pair_cap,
+                                root_scale,
                                 ratio_key_index,
                                 code,
                                 events,
@@ -382,7 +458,7 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
                         );
                         let root_of = |clause_values: &[f64]| {
                             if best {
-                                clause_values[0]
+                                clause_values[0] * root_scale
                             } else {
                                 (0..clauses.len())
                                     .map(|clause_index| {
@@ -421,6 +497,7 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
                             ratio_prefixes: std::rc::Rc::clone(ratio_prefixes),
                             prune_bound,
                             clause_bounds: if check_ratio_bounds { clause_values.to_vec() } else { vec![] },
+                            pair_cap,
                         });
                     }
                 }
@@ -428,6 +505,6 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
         }
         // stable: equal bounds keep enumeration order
         configurations.sort_by(|a, b| b.root.partial_cmp(&a.root).unwrap());
-        ConfigurationQueue { configurations, pending, key_ratios }
+        ConfigurationQueue { configurations, pending, key_ratios, multi, assumed }
     }
 }

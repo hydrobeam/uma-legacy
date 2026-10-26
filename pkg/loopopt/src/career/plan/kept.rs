@@ -62,6 +62,9 @@ pub(crate) struct Bests {
     /// out of work, a band overflowed, or a scored deck passed its class's cap)
     pub(crate) base_incomplete: UmaTable<bool>,
     pub(crate) looped_incomplete: UmaTable<bool>,
+    /// The class flags its searches rested on, by class content (`CareerSetup::keyed_flags`, as the plan ended):
+    /// unioned into a job that reuses it, whatever its trainees (`KeptState::flags` holds them too).
+    pub(crate) flags: Vec<(u64, crate::career::ClassFlags)>,
 }
 
 /// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
@@ -71,7 +74,8 @@ pub(crate) fn bests_out(bests: &[Bests]) -> Value {
         "b": cached_searches_out(&plan.best_careers),
         "l": cached_searches_out(&plan.looped_careers),
         "u": plan.base_incomplete.indices().filter(|&uma| plan.base_incomplete[uma]).collect::<Vec<_>>(),
-        "lu": plan.looped_incomplete.indices().filter(|&uma| plan.looped_incomplete[uma]).collect::<Vec<_>>()})).collect())
+        "lu": plan.looped_incomplete.indices().filter(|&uma| plan.looped_incomplete[uma]).collect::<Vec<_>>(),
+        "f": crate::career::state::keyed_flags_out(plan.flags.iter().map(|(key, flags)| (key, flags)))})).collect())
 }
 
 pub(crate) fn bests_in(value: &Value) -> Option<Vec<Bests>> {
@@ -118,6 +122,12 @@ pub(crate) fn bests_in(value: &Value) -> Option<Vec<Bests>> {
                 looped_careers: per_uma("l")?,
                 base_incomplete: flags("u"),
                 looped_incomplete: flags("lu"),
+                // (its class flags; a store without them carries none, the worker's `flags` still holding them)
+                flags: if stored["f"].is_null() {
+                    vec![]
+                } else {
+                    crate::career::state::keyed_flags_in(&stored["f"])?.into_iter().collect()
+                },
             })
         })
         .collect()
@@ -129,10 +139,12 @@ pub(crate) fn take_kept_plan(kept: &mut crate::career::state::KeptState, key: (u
     Some(kept.bests.remove(index))
 }
 
-/// A kept plan's key: (setup and places, the first `legacy_count` legacies). The borrowed-parent rule is in the first
-/// unless "allow": `setup_fp` leaves it out, and a plan under "later" or "never" keeps other looped careers, under
-/// "never" other best careers too
-pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usize) -> (u64, u64) {
+/// A kept plan's key: (setup, places and deck space, the first `legacy_count` legacies). The borrowed-parent rule is in
+/// the first unless "allow": `setup_fp` leaves it out, and a plan under "later" or "never" keeps other looped careers,
+/// under "never" other best careers too. The deck space (`space_key`, `CareerSetup::plan_space_key`: every uma's deck
+/// class content and the plain pals' order) is in it too: a trainee filter that changes a class's plain-pal rate prefix
+/// changes that class's deck problem and its careers' values, so its kept careers are not reused there
+pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usize, space_key: u64) -> (u64, u64) {
     // (the slice's text as the array's: the same serializer, no copy)
     let legacies_text = job
         .get("legacies")
@@ -145,7 +157,10 @@ pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usiz
         .filter(|&rule| rule != "allow")
         .map_or(0, |rule| hash_text(rule).rotate_left(2));
     (
-        crate::career::state::setup_fp(job) ^ hash_text(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
+        crate::career::state::setup_fp(job)
+            ^ hash_text(&format!("{fixed_parents:?}")).rotate_left(1)
+            ^ borrowing_rule
+            ^ space_key.rotate_left(3),
         hash_text(&legacies_text),
     )
 }
@@ -171,8 +186,18 @@ pub(crate) struct BestCareer {
     pub(crate) complete: bool,
 }
 
-/// `trainee`'s best career in the pool, reusing a kept plan of this pool or of the pool less its last veteran
+/// `trainee`'s best career in the pool (`best_of_kept`), qualified by her deck class's flags as they stand
+/// (`ClassFlags`): not complete where the class is breached (a kept plan's completeness included, recorded
+/// before a later search flagged the class), and no fully checked decks of a breached class
 pub(super) fn best_of(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kept: KeptPlans) -> BestCareer {
+    let mut best = best_of_kept(env, parents, trainee, kept);
+    best.complete &= env.state.class_flags[env.setup.deck_class[trainee]].proves();
+    env.setup.drop_breached(&env.state, &mut best.proof_refs);
+    best
+}
+
+/// `trainee`'s best career in the pool, reusing a kept plan of this pool or of the pool less its last veteran
+fn best_of_kept(env: &mut Env, parents: ParentPool, trainee: UmaIndex, kept: KeptPlans) -> BestCareer {
     let ParentPool { pool, fixed_parents } = parents;
     // a kept plan of this very pool (the same job planned again: a reload, a setting changed and back): her best, as kept
     if let Some(same) = kept.same_pool
@@ -307,15 +332,39 @@ pub(crate) fn stamp_ok(simulator: &Sim, trainees: Option<&[UmaIndex]>, stamp: Op
 /// its value (`Found::value`, nor `ceiling`): `score_career` never reads them, and a proxy's value (the surrogate's
 /// corner-table interpolation) and the search's exact one differ in their last bits
 pub(crate) fn same_career(first: &Found, second: &Found) -> bool {
-    let bits = |a: &[f64], b: &[f64]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits());
     first.trainee == second.trainee
         && first.first_parent == second.first_parent
         && first.second_parent == second.second_parent
-        && first.deck.entries == second.deck.entries
-        && first.deck.plain_pals == second.deck.plain_pals
-        && first.deck.filler_cards == second.deck.filler_cards
-        && bits(&first.deck.white_hint_chances, &second.deck.white_hint_chances)
-        && bits(&first.deck.gold_hint_chances, &second.deck.gold_hint_chances)
+        && same_deck(&first.deck, &second.deck)
+}
+
+/// A career's identity as the page matches careers and sends one back (`career` in every career report and in a plan's
+/// `outcomes`; `career/given.rs` reads it): her uma's id, her parents in order (legacy indices) and her deck by card
+/// identity, so an id names the same deck in every job on the same cards and veterans: each named entry's card id,
+/// choice variant and early-end link (`DeckSpace::entry_key`), the plain pals' card ids (`DeckSpace::plain_ids`) and the
+/// filler count; the outfit she runs follows from them (her exact odds' pick)
+pub(crate) fn career_id(space: &crate::deck::space::DeckSpace, trainee_id: u32, found: &Found) -> String {
+    let entries: Vec<String> = found.deck.entries.iter().map(|&entry| space.entry_key(entry)).collect();
+    let plain: Vec<String> =
+        space.plain_ids(&[trainee_id], found.deck.plain_pals).iter().map(ToString::to_string).collect();
+    format!(
+        "{trainee_id}:{},{}:{}/{}/{}",
+        found.first_parent,
+        found.second_parent,
+        entries.join("."),
+        plain.join("."),
+        found.deck.filler_cards
+    )
+}
+
+/// the same deck, every field (floats by bits)
+pub(crate) fn same_deck(first: &crate::deck::space::SelectedDeck, second: &crate::deck::space::SelectedDeck) -> bool {
+    let bits = |a: &[f64], b: &[f64]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits());
+    first.entries == second.entries
+        && first.plain_pals == second.plain_pals
+        && first.filler_cards == second.filler_cards
+        && bits(&first.white_hint_chances, &second.white_hint_chances)
+        && bits(&first.gold_hint_chances, &second.gold_hint_chances)
 }
 
 #[cfg(test)]

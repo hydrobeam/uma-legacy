@@ -1,11 +1,12 @@
 //! The roll of the plan's pick and its kept state.
 use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::anchors::{FoundAnchor, PartnerAnchors};
-use crate::career::plan::cont::{Cont, OwnTrio, ScoreBase, Trio};
+use crate::career::plan::cont::{Cont, MAX_PARTNERS, ScoreBase, ScoringKnobs};
 use crate::career::plan::score::fm_masks;
-use crate::career::plan::score::kernel::{ActiveCandidate, Scored};
-use crate::career::plan::search::{IDX_PARTNERS, sim_for};
-use crate::career::plan::{CandidateIndex, OutcomeIndex, PlanJob, ScoringContext, TargetMask};
+use crate::career::plan::score::kernel::Scored;
+use crate::career::plan::search::sim_for;
+use crate::career::plan::step::{NO_SLOT, Route, WhileBuilding};
+use crate::career::plan::{OutcomeIndex, PlanJob, ScoringContext, TargetMask};
 use crate::career::pool::Pool;
 use crate::career::search::Found;
 use crate::career::sim::Sim;
@@ -14,8 +15,9 @@ use crate::career::{Env, JobInputs, Legacy, Lineage};
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
-/// The base a kept scoring was scored against (`ScoreBase` without the sides and C's umas, which only `her_trios` reads).
-/// Per-candidate vectors follow `candidates`' order.
+/// The base a kept scoring was scored against (`ScoreBase` without the trios, their sides and C's umas, which only the
+/// scoring's routes read as it is built: V after her reads V0 and the scoring's routes). Per-candidate vectors follow
+/// `candidates`' order.
 pub(crate) struct KeptBase {
     /// The stage candidates (`ScoreBase::candidates`).
     candidates: Vec<crate::uma::UmaIndex>,
@@ -25,10 +27,9 @@ pub(crate) struct KeptBase {
     current_value: f64,
     /// Each candidate's odds now (`ScoreBase::current_odds`).
     current_odds: Vec<f64>,
+    /// Whether each is her proven best career's (`ScoreBase::certified`).
+    certified: Vec<bool>,
     continuations: Vec<Cont>,
-    trios: Vec<Trio>,
-    /// Stages 2-3 per candidate (`ScoreBase::later_stage_costs`).
-    later_stage_costs: Vec<f64>,
 }
 
 impl KeptBase {
@@ -38,29 +39,30 @@ impl KeptBase {
             step_costs: score_base.step_costs.to_vec(),
             current_value: score_base.current_value,
             current_odds: score_base.current_odds.to_vec(),
+            certified: score_base.certified.to_vec(),
             continuations: score_base.continuations.to_vec(),
-            trios: score_base.trios.to_vec(),
-            later_stage_costs: score_base.later_stage_costs.to_vec(),
         }
     }
     pub(super) fn base(&self) -> ScoreBase<'_> {
         ScoreBase {
             candidates: &self.candidates,
             step_costs: &self.step_costs,
-            later_stage_costs: &self.later_stage_costs,
             current_value: self.current_value,
             current_odds: &self.current_odds,
+            certified: &self.certified,
             continuations: &self.continuations,
-            trios: &self.trios,
+            trios: &[],
             trio_sides: &[],
             finisher_umas: &[],
+            knobs: ScoringKnobs::default(),
+            odds_scale: 1.0,
         }
     }
 }
 
 /// A plan's roll state (`next.roll`), kept per plan job (`roll_key`): the pick's last scoring (`Scored`) and the base it
-/// was scored against, the pick's career, and what its bound reads beyond them (`outcome_hi`): her own full veteran's trio
-/// sides at the plan's end (`pick_her`) and the main search's found-career anchors (`found_anchors`)
+/// was scored against, the pick's career, and what its bound reads beyond them (`outcome_hi`): the main search's
+/// found-career anchors (`found_anchors`)
 pub(crate) struct RollKeep {
     /// The plan job's roll key (`roll_key`).
     pub(crate) key: u64,
@@ -69,8 +71,6 @@ pub(crate) struct RollKeep {
     /// The pick's trainee and parents, and her deck.
     pub(crate) lineage: Lineage,
     pub(crate) deck: SelectedDeck,
-    /// Her own full veteran's trio sides at the plan's end (`pick_her`).
-    pub(crate) own_trios: Vec<OwnTrio>,
     /// The main search's found-career anchors (`found_anchors`).
     pub(crate) found_anchors: Vec<Option<FoundAnchor>>,
     /// The bound's anchors per (candidate, partner), retained for later rolls; not stored by `state_out`.
@@ -78,21 +78,26 @@ pub(crate) struct RollKeep {
 }
 
 impl RollKeep {
-    /// The state is of this trainee's career on these parents, in this order.
+    /// The state is of this trainee's career on these parents, in this order, with this deck.
     pub(crate) fn is_of(&self, trainee: crate::uma::UmaIndex, career: &Found) -> bool {
         self.lineage.trainee == trainee
             && self.lineage.first_parent == career.first_parent
             && self.lineage.second_parent == career.second_parent
+            && crate::career::plan::kept::same_deck(&self.deck, &career.deck)
     }
 }
 
 /// plans' roll states kept (the most recent last): the run's plan and the plan Compare makes with her added
 const ROLL_KEEP: usize = 4;
 
-/// a plan job's roll key: the whole job but its roll (`next.roll`) and the page's flags that change no plan
-/// (`no_reports`, `compare`)
+/// a plan job's roll key: the whole job but its roll (`next.roll`), its check and oracle requests (`next.robust`,
+/// `next.oracle`) and the page's flags that change no plan (`no_reports`, `compare`)
 pub(crate) fn roll_key(job: &Value) -> u64 {
-    hash_text(&crate::career::state::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
+    hash_text(&crate::career::state::json_without(
+        job,
+        &["no_reports", "compare", "roll"],
+        &["roll", "robust", "oracle"],
+    ))
 }
 
 pub(crate) fn keep_roll(kept: &mut KeptState, roll: RollKeep) {
@@ -172,30 +177,47 @@ fn roll_answer(simulator: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, s
     // (y_hi >= y is derived, `outcome_hi` (1)-(3): checked here, within rounding, where the max below would hide a bound
     // that drifted under the estimate; the max stays for the page)
     debug_assert!(hi.is_none_or(|bound| bound >= y - 1e-9 * y.abs().max(1.0)), "roll: y_hi {hi:?} below y {y}");
+    // (y_hi bounds the scoring's routes only: a route the scoring has not, another lineage of a candidate's whose C her
+    // veteran improves without lifting her odds, can save careers below it, so the page confirms every roll)
     json!({"y": (y * 100.0).round() / 100.0, "y_hi": hi.map(|bound| (bound.max(y) * 100.0).ceil() / 100.0)})
+}
+
+/// a route's C while a lifted side builds, stored: {"f": its step's bits}, {"s": a finisher slot} or null
+fn building_out(while_building: WhileBuilding) -> Value {
+    match while_building {
+        WhileBuilding::Fixed(cost) => json!({"f": crate::career::state::hx(cost)}),
+        WhileBuilding::Slot(slot) => json!({"s": slot}),
+        WhileBuilding::Skip => Value::Null,
+    }
+}
+
+fn building_in(stored: &Value) -> Option<WhileBuilding> {
+    use crate::career::state::{fx, usz};
+    if stored.is_null() {
+        return Some(WhileBuilding::Skip);
+    }
+    match (stored.get("f"), stored.get("s")) {
+        (Some(cost), None) => fx(cost).filter(|cost| *cost >= 0.0).map(WhileBuilding::Fixed),
+        (None, Some(slot)) => usz(slot).map(WhileBuilding::Slot),
+        _ => None,
+    }
 }
 
 /// the kept roll states for the page to store (`state_out`), every float as its bits
 pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
     use crate::career::state::{fvec, hx, sel_out, ux};
-    let trios_out = |trios: &[OwnTrio]| {
-        trios
-            .iter()
-            .map(|trio| json!([trio.candidate.0, trio.uses_existing, hx(trio.finisher_cost)]))
-            .collect::<Vec<_>>()
-    };
+    let slot_out = |slot: usize| if slot == NO_SLOT { Value::Null } else { json!(slot) };
     let base_out = |base: &KeptBase| {
-        json!({"cands": base.candidates, "c1": fvec(&base.step_costs), "v0": hx(base.current_value), "pnow": fvec(&base.current_odds), "m23": fvec(&base.later_stage_costs),
-            "cont": base.continuations.iter().map(|continuation| json!([hx(continuation.lam), hx(continuation.phi), hx(continuation.pinf), !continuation.tables.is_empty()])).collect::<Vec<_>>(),
-            "combos": base.trios.iter().map(|trio| json!([trio.candidate_a.0, trio.candidate_b.0, hx(trio.finisher_cost), trio.a_uses_existing, trio.b_uses_existing])).collect::<Vec<_>>()})
+        json!({"cands": base.candidates, "c1": fvec(&base.step_costs), "v0": hx(base.current_value), "pnow": fvec(&base.current_odds), "cert": base.certified,
+            "cont": base.continuations.iter().map(|continuation| json!([hx(continuation.lam), hx(continuation.phi), hx(continuation.pinf), !continuation.tables.is_empty(), hx(continuation.anchor_odds)])).collect::<Vec<_>>()})
     };
     let scored_out = |scored: &Scored| {
-        json!({"n": [scored.uncertain_target_count, scored.fixed_target_count, scored.target_count, scored.slot_count], "xi": scored.own_candidate, "goal": scored.completes_goal, "w": fvec(&scored.star_mix), "uncv": scored.uncertain_targets, "fmm": scored.fixed_landed_masks,
+        json!({"n": [scored.uncertain_target_count, scored.fixed_target_count, scored.target_count, scored.slot_count], "goal": scored.completes_goal, "w": fvec(&scored.star_mix), "uncv": scored.uncertain_targets, "fmm": scored.fixed_landed_masks,
             "x0": scored.misses_without_her.iter().map(|value| fvec(value)).collect::<Vec<_>>(), "xm": scored.miss_by_stars.iter().map(|value| fvec(value)).collect::<Vec<_>>(),
             "pw": scored.target_spark_scales.iter().map(|value| fvec(&value.iter().flatten().copied().collect::<Vec<f64>>())).collect::<Vec<_>>(),
             "tsi": scored.setup_by_table, "t0": fvec(&scored.initial_tables), "col": scored.collapsed_targets, "sslot": scored.slot_by_setup, "p0": fvec(&scored.current_probabilities), "os": fvec(&scored.landed_set_chances),
-            "act": scored.active_candidates.iter().map(|active| json!([active.candidate.0, active.slot, hx(active.threshold), hx(active.current_chance)])).collect::<Vec<_>>(),
-            "her": trios_out(&scored.own_trios)})
+            "sc": scored.slot_candidates, "lc": scored.lift_candidates,
+            "rt": scored.routes.iter().map(|route| json!([slot_out(route.lifts[0]), slot_out(route.lifts[1]), route.full_only, hx(route.fixed_cost), route.finisher_slot, building_out(route.while_building)])).collect::<Vec<_>>()})
     };
     Value::Array(
         rolls.iter()
@@ -203,7 +225,7 @@ pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
                 let lineage = roll.lineage;
                 json!({
                     "k": ux(roll.key), "x": [lineage.trainee, lineage.first_parent, lineage.second_parent],
-                    "sel": sel_out(&roll.deck), "her": trios_out(&roll.own_trios),
+                    "sel": sel_out(&roll.deck),
                     "anc": roll.found_anchors.iter().map(|found_anchor| found_anchor.as_ref().map(|anchor| json!([anchor.deck_class, fvec(&anchor.inheritance_chances), hx(anchor.value)]))).collect::<Vec<_>>(),
                     "base": base_out(&roll.base),
                     "sd": scored_out(&roll.scored)})
@@ -245,13 +267,11 @@ pub(crate) fn rolls_in(value: &Value) -> Option<Vec<RollKeep>> {
                     }
                 })
                 .collect::<Option<Vec<_>>>()?;
-            // (the anchors' chances: one per job target; her trio sides at the plan's end: candidate indices)
-            let own_trios = own_trios_in(&entry["her"])?;
+            // (the anchors' chances: one per job target)
             if found_anchors
                 .iter()
                 .flatten()
                 .any(|stored_anchor| stored_anchor.inheritance_chances.len() != scored.target_count)
-                || own_trios.iter().any(|trio| trio.candidate.0 >= base.candidates.len())
             {
                 return None;
             }
@@ -261,7 +281,6 @@ pub(crate) fn rolls_in(value: &Value) -> Option<Vec<RollKeep>> {
                 base,
                 lineage: Lineage { trainee: crate::uma::UmaIndex(trainee), first_parent, second_parent },
                 deck: sel_in(&entry["sel"])?,
-                own_trios,
                 found_anchors,
                 partner_anchors: vec![],
             })
@@ -273,59 +292,31 @@ fn usize_vec(value: &Value) -> Option<Vec<usize>> {
     value.as_array()?.iter().map(crate::career::state::usz).collect()
 }
 
-fn own_trios_in(value: &Value) -> Option<Vec<OwnTrio>> {
-    use crate::career::state::{fx, usz};
-    value
-        .as_array()?
-        .iter()
-        .map(|stored| {
-            Some(OwnTrio {
-                candidate: CandidateIndex(usz(&stored[0])?),
-                uses_existing: stored[1].as_bool()?,
-                finisher_cost: fx(&stored[2])?,
-            })
-        })
-        .collect()
-}
-
 fn kept_base_in(stored: &Value) -> Option<KeptBase> {
-    use crate::career::state::{fvec_r, fx, usz};
+    use crate::career::state::{fvec_r, fx};
     let continuations = stored["cont"]
         .as_array()?
         .iter()
         .map(|continuation| {
             let (lam, phi, pinf) = (fx(&continuation[0])?, fx(&continuation[1])?, fx(&continuation[2])?);
+            let anchor_odds = fx(&continuation[4])?;
             // (a Cont without its table has no building: `Cont::default`'s lam 0; one that reads as building is refused)
             Some(if continuation[3].as_bool()? {
-                Cont::new(lam, phi, pinf)
+                Cont::new(lam, phi, pinf, anchor_odds)
             } else if lam > 0.0 && phi > 0.0 {
                 return None;
             } else {
-                Cont { lam, phi, pinf, ..Cont::default() }
+                Cont { lam, phi, pinf, anchor_odds, ..Cont::default() }
             })
         })
         .collect::<Option<Vec<Cont>>>()?;
-    let trios = stored["combos"]
-        .as_array()?
-        .iter()
-        .map(|trio| {
-            Some(Trio {
-                candidate_a: CandidateIndex(usz(&trio[0])?),
-                candidate_b: CandidateIndex(usz(&trio[1])?),
-                finisher_cost: fx(&trio[2])?,
-                a_uses_existing: trio[3].as_bool()?,
-                b_uses_existing: trio[4].as_bool()?,
-            })
-        })
-        .collect::<Option<Vec<Trio>>>()?;
     Some(KeptBase {
         candidates: usize_vec(&stored["cands"])?.into_iter().map(crate::uma::UmaIndex).collect(),
         step_costs: fvec_r(&stored["c1"])?,
         current_value: fx(&stored["v0"])?,
         current_odds: fvec_r(&stored["pnow"])?,
+        certified: stored["cert"].as_array()?.iter().map(Value::as_bool).collect::<Option<_>>()?,
         continuations,
-        trios,
-        later_stage_costs: fvec_r(&stored["m23"])?,
     })
 }
 
@@ -356,15 +347,17 @@ fn scored_in(stored: &Value) -> Option<Scored> {
             (scales.len() == 2 * target_count).then(|| scales.chunks(2).map(|pair| [pair[0], pair[1]]).collect())
         })
         .collect::<Option<Vec<Vec<[f64; 2]>>>>()?;
-    let active_candidates = stored["act"]
+    let slot_in = |value: &Value| if value.is_null() { Some(NO_SLOT) } else { usz(value) };
+    let routes = stored["rt"]
         .as_array()?
         .iter()
-        .map(|active| {
-            Some(ActiveCandidate {
-                candidate: CandidateIndex(usz(&active[0])?),
-                slot: if active[1].is_null() { None } else { Some(usz(&active[1])?) },
-                threshold: fx(&active[2])?,
-                current_chance: fx(&active[3])?,
+        .map(|route| {
+            Some(Route {
+                lifts: [slot_in(&route[0])?, slot_in(&route[1])?],
+                full_only: route[2].as_bool()?,
+                fixed_cost: fx(&route[3])?,
+                finisher_slot: usz(&route[4])?,
+                while_building: building_in(route.get(5)?)?,
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -373,7 +366,8 @@ fn scored_in(stored: &Value) -> Option<Scored> {
         fixed_target_count,
         target_count,
         slot_count,
-        own_candidate: if stored["xi"].is_null() { None } else { Some(usz(&stored["xi"])?) },
+        slot_candidates: usize_vec(&stored["sc"])?,
+        lift_candidates: usize_vec(&stored["lc"])?,
         completes_goal: stored["goal"].as_bool()?,
         star_mix,
         uncertain_targets: usize_vec(&stored["uncv"])?,
@@ -387,8 +381,7 @@ fn scored_in(stored: &Value) -> Option<Scored> {
         slot_by_setup: usize_vec(&stored["sslot"])?,
         current_probabilities: fvec_r(&stored["p0"])?,
         landed_set_chances: pvec_r(&stored["os"])?,
-        active_candidates,
-        own_trios: own_trios_in(&stored["her"])?,
+        routes,
         present_factors: vec![],
         absent_factors: vec![],
         spark_scales: vec![],
@@ -403,20 +396,37 @@ impl Scored {
         let fits_base = candidate_count <= crate::career::state::STATE_MAX_N
             && base.step_costs.len() == candidate_count
             && base.current_odds.len() == candidate_count
-            && base.later_stage_costs.len() == candidate_count
-            && base.continuations.len() <= candidate_count
-            && base
-                .trios
-                .iter()
-                .all(|trio| trio.candidate_a.0 < candidate_count && trio.candidate_b.0 < candidate_count);
-        // her setups (at most IDX_PARTNERS per candidate), the candidates the loop lifts (those with a slot in slot
-        // order, one per slot), her own candidate index and trio sides: candidate indices
-        let fits_cands = setup_count <= IDX_PARTNERS * candidate_count
-            && self.active_candidates.iter().filter_map(|active| active.slot).eq(0..self.slot_count)
-            && self.active_candidates.iter().all(|active| active.candidate.0 < candidate_count)
-            && self.own_candidate.is_none_or(|own| own < candidate_count)
-            && self.own_trios.iter().all(|trio| trio.candidate.0 < candidate_count);
+            && base.certified.len() == candidate_count
+            && base.continuations.len() <= candidate_count;
+        // her setups, one slot each (`slot_count` and `slot_by_setup` the identity): the partner slots and the lift
+        // slots (each at most MAX_PARTNERS per candidate, candidate indices; the partner slots in candidate order), then
+        // one finisher slot per route (at most MAX_ROUTES routes); each route's lifts lift slots, its finisher and its C
+        // while building (`Slot`) finisher slots
+        let (partner_slot_count, lift_slot_count) = (self.slot_candidates.len(), self.lift_candidates.len());
+        let fits_cands = partner_slot_count <= MAX_PARTNERS * candidate_count
+            && lift_slot_count <= MAX_PARTNERS * candidate_count
+            && self.slot_candidates.iter().chain(&self.lift_candidates).all(|&candidate| candidate < candidate_count)
+            && self.slot_candidates.windows(2).all(|pair| pair[0] <= pair[1])
+            && self.routes.len() <= crate::career::plan::step::MAX_ROUTES
+            && setup_count == partner_slot_count + lift_slot_count + self.routes.len()
+            && self.slot_count == setup_count
+            && self.slot_by_setup.iter().enumerate().all(|(setup, &slot)| slot == setup)
+            && self.routes.iter().all(|route| {
+                route.lifts.iter().all(|&slot| slot == NO_SLOT || slot < lift_slot_count)
+                    && route.finisher_slot < self.routes.len()
+                    && match route.while_building {
+                        WhileBuilding::Slot(slot) => slot < self.routes.len(),
+                        _ => true,
+                    }
+            });
+        // (what `derive` allocates, checked: per landed set and setup a spark scale, per setup and uncertain target two
+        // star rows; at most what a plan's scoring holds, `OUTCOME_BUDGET`)
+        let derived = (1usize << self.target_count.min(12))
+            .checked_mul(setup_count)
+            .and_then(|scales| scales.checked_add(setup_count.checked_mul(8 * self.uncertain_target_count)?));
+        let fits_size = derived.is_some_and(|entries| entries <= crate::career::plan::score::build::OUTCOME_BUDGET);
         fits_base
+            && fits_size
             && fits_cands
             && self.uncertain_targets.windows(2).all(|window| window[0] < window[1])
             && !self.uncertain_targets.last().is_some_and(|&i| i >= self.target_count)

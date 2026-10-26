@@ -25,7 +25,7 @@ class ValidationExitTests(unittest.TestCase):
             "results": [
                 {"p_all": 0.5, "p_minus1": 0.75, "trainee": {"id": 1}, "parents": [0, 1], "deck": {"card_ids": [1]}}
             ],
-            "next": {"proxy_check": {"rows": []}},
+            "next": {"proxy_check": {"rows": []}, "options": [], "v0": 10.0},
         }
         self.write(self.plan / "jobs.json", [["global", "tiny"]])
         self.write(self.plan / "tiny.json", {})
@@ -99,15 +99,24 @@ class ValidationExitTests(unittest.TestCase):
 
     def test_plan_fails_a_low_proxy(self):
         row = {"trainee": "A", "cand": False, "exact_val": 0.1, "same_deck": False, "score": 1.0, "proxy_score": 1.0}
-        for eff, proxy_eff, proxy_score in (([1.0], [0.96], 1.0), ([1.0], [1.0], 0.9)):
+        # (an efficiency 4% low; a saving 0.5 careers low)
+        for eff, proxy_eff, proxy_score in (([1.0], [0.96], 1.0), ([1.0], [1.0], 0.5)):
             with self.subTest(proxy_eff=proxy_eff, proxy_score=proxy_score):
                 rows = [{**row, "eff": eff, "proxy_eff": proxy_eff, "proxy_score": proxy_score}]
-                output = {**self.output, "next": {"proxy_check": {"rows": rows}}}
+                output = {**self.output, "next": {**self.output["next"], "proxy_check": {"rows": rows}}}
                 self.write(self.plan / "ref__tiny.out", output)
                 self.fake_solver(output)
                 result = self.plan_run()
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("LOW", result.stdout)
+
+    def test_plan_passes_a_small_saving_error(self):
+        row = {"trainee": "A", "cand": False, "exact_val": 0.1, "same_deck": True, "score": 0.1, "proxy_score": 0.0}
+        rows = [{**row, "eff": [1.0], "proxy_eff": [0.99]}]
+        output = {**self.output, "next": {**self.output["next"], "proxy_check": {"rows": rows}}}
+        self.write(self.plan / "ref__tiny.out", output)
+        self.fake_solver(output)
+        self.assertEqual(self.plan_run().returncode, 0)
 
     def test_plan_fails_mismatch_and_missing_reference(self):
         self.write(self.plan / "ref__tiny.out", {"different": True})

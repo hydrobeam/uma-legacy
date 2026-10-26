@@ -24,9 +24,10 @@ impl DeckSpace<'_> {
     ) -> Result<SearchSetup, SearchOutcome> {
         let (best, seed, rho, cap, band_bound) = match mode {
             SearchMode::All { max_decks } => (false, f64::NEG_INFINITY, 1.0, max_decks, BandBound::Capped),
-            SearchMode::Best { seed } => (true, seed, 1.0, 1, BandBound::Capped),
+            SearchMode::Best { seed } | SearchMode::BestCovered { seed, .. } => (true, seed, 1.0, 1, BandBound::Capped),
             SearchMode::Band { ratio_cap, max_decks, bound } => (false, f64::NEG_INFINITY, ratio_cap, max_decks, bound),
         };
+        let cover_rho = if let SearchMode::BestCovered { rho, .. } = mode { rho } else { 0.0 };
         let target_count = self.target_groups.len();
         let size = self.deck_job.deck_size;
         if self
@@ -34,7 +35,13 @@ impl DeckSpace<'_> {
             .iter()
             .any(|&locked| trainee_ids.iter().any(|&id| self.cards[locked].blocks(id, crate::checks::get())))
         {
-            return Err(SearchOutcome { decks: vec![], incomplete: None, uncapped: false });
+            return Err(SearchOutcome {
+                decks: vec![],
+                incomplete: None,
+                uncapped: false,
+                multi: false,
+                assumed: false,
+            });
         }
         let crate::deck::space::ReducedEntries { entries: legal_entries, set_id } =
             if matches!(mode, SearchMode::All { .. }) {
@@ -48,7 +55,13 @@ impl DeckSpace<'_> {
             };
         let legal_tables = self.legal_tabs(&legal_entries, set_id, trainee_ids);
         if legal_tables.too_many_characters {
-            return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit), uncapped: false });
+            return Err(SearchOutcome {
+                decks: vec![],
+                incomplete: Some(SearchStop::CharacterLimit),
+                uncapped: false,
+                multi: false,
+                assumed: false,
+            });
         }
         let plain_pal_count = legal_tables.plain_pal_count;
         let plain_rate_pals = self.plain_rate_pals(trainee_ids);
@@ -74,9 +87,16 @@ impl DeckSpace<'_> {
                 decks: vec![],
                 incomplete: Some(SearchStop::UnsupportedCapFreeProof),
                 uncapped: false,
+                multi: false,
+                assumed: false,
             });
         }
         let cap_free_node_limit = cap_free_node_limit.unwrap_or(usize::MAX);
+        // the career's capped searches (its band, its covered product search), one trainee at one chance
+        let nested_bounds = !cap_free
+            && clauses.len() == 1
+            && clauses[0].lineages.len() == 1
+            && (matches!(band_bound, BandBound::StateBound { .. }) || cover_rho > 0.0);
         let cap_free_check_scale = if cap_free { crate::checks::get().cf_check } else { 0.0 };
         let state_bound_mode = if cap_free {
             2
@@ -144,6 +164,8 @@ impl DeckSpace<'_> {
             best,
             seed,
             rho,
+            nested_bounds,
+            cover_rho,
             cap,
             target_count,
             size,
@@ -183,6 +205,8 @@ impl DeckSpace<'_> {
             best,
             seed,
             rho,
+            nested_bounds,
+            cover_rho,
             cap,
             target_count,
             size,
@@ -206,6 +230,7 @@ impl DeckSpace<'_> {
             class_caps,
             legal_entries: _legal_entries,
         } = setup;
+
         let character_bits: &[u128] = &legal_tables.character_bits;
         let (by_kind, pal_entries, other_entries) =
             (&legal_tables.by_kind, &legal_tables.pal_entries, &legal_tables.other_entries);
@@ -238,6 +263,11 @@ impl DeckSpace<'_> {
         let best_value = if best { seed } else { f64::NEG_INFINITY };
         let counts = self.counts_all();
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain([pal_entries, other_entries]).collect();
+        // the nested-chain bounds of this search (`deck::nested`), when on and a legal entry has a nested chain
+        let nested = nested_bounds.then(|| {
+            let LineageChance { trainee: position, inheritance } = clauses[0].lineages[0];
+            crate::deck::nested::NestedTrainee::new(chances, trainees[position], inheritance)
+        });
         // the cap-free band's ratio tables (`CapFreeRatios`), built on first use
         let cap_free_outfit_count = if cap_free { chances.model.outfit_options[bound_trainee].len() } else { 0 };
         let cap_free_ratios = CapFreeRatios::new(
@@ -482,6 +512,7 @@ impl DeckSpace<'_> {
             bound_trainee,
             bound_inheritance,
             class_caps,
+            cover_rho,
             use_dominance,
             lazy,
             cap_free_outfit_count,
@@ -514,6 +545,7 @@ impl DeckSpace<'_> {
                 alternative_columns: &alternative_columns,
             },
             clause_value,
+            nested,
         );
         let configurations = search.build_configurations(
             ConfigurationTables {

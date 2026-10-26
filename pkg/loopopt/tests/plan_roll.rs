@@ -1,14 +1,11 @@
 //! A roll of the plan's pick (`next.roll`, docs/SOLVER.md *Next career*): the careers her veteran saves at one outcome
-//! and its bound, worked out from the plan's kept roll state, equal to the values the plan's full outcome table held at
-//! that outcome before the table was dropped from the output (`fixtures/plan_roll.json`: `outcomes.y` and `y_hi` of the
-//! val/plan jobs' outputs at 5834a65 with the goal races' streak shift (lib.rs `scored_position`), the lineage
-//! schedule's race weights from `FILL_EPS` (career/schedule.rs `schedule`) and the training-hint bases and specialty
-//! weights of research/results.json (deck/hints.rs, via build.rs, to 3 decimals) patched in, at the all-zero and
-//! all-max outcomes and samples of y >= 0.5, of y < 0.5 <= y_hi and of y_hi < 0.5, as her stars per job target; with
-//! the pal-count chain rate, the card rule and the stop share each (y, y_hi) re-taken from the rolls themselves, the
-//! full table being gone, at the same stars, so the samples' y bands are those of the old values). Also:
-//! a roll carried by another job (`roll`, as the page's Reroll sends it), a roll with no plan kept (the plan runs
-//! first), and a roll in a new process after `state_out` / `state_in` (the stored roll state, no plan).
+//! and its bound, worked out from the plan's kept roll state. This is a self-pin, not a check of the values: the full
+//! outcome table it was first compared with is gone from the output, and `fixtures/plan_roll.json` (the val/plan jobs'
+//! rolls at the all-zero and all-max outcomes and at samples of y >= 0.5, of y < 0.5 <= y_hi and of y_hi < 0.5, as her
+//! stars per job target) is re-taken from the solver's own rolls whenever results move on purpose (last at integration,
+//! 2026-10-27: 92 rolls, 70 changed). It detects a roll that moves, and keeps the samples in their y bands. Also: a
+//! roll carried by another job (`roll`, as the page's Reroll sends it), a roll with no plan kept (the plan runs first),
+//! and a roll in a new process after `state_out` / `state_in` (the stored roll state, no plan).
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -76,7 +73,7 @@ fn same(r: &Value, want: &[Value], what: &str) {
 }
 
 #[test]
-fn rolls_equal_the_full_tables() {
+fn rolls_equal_their_pinned_values() {
     let fx: Value = serde_json::from_str(
         &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/plan_roll.json")).unwrap(),
     )
