@@ -1,0 +1,11 @@
+[
+  {"name": "pool2", "era": "global", "pool": "val/sim/pools/pool4.json", "legacies": 2},
+  {"name": "pool4", "era": "global", "pool": "val/sim/pools/pool4.json"},
+  {"name": "boot_mob", "era": "global", "pool": "val/plan/boot_mob.json"},
+  {"name": "p10", "era": "global", "pool": "val/plan/p10.json"},
+  {"name": "p11", "era": "global", "pool": "val/plan/p11.json"},
+  {"name": "p11_noagnes", "era": "global", "pool": "val/plan/p11_noagnes.json"},
+  {"name": "pool14", "era": "global", "pool": "val/sim/pools/pool14.json"},
+  {"name": "p16", "era": "global", "pool": "val/plan/p16.json"},
+  {"name": "gm16", "era": "jp", "pool": "val/plan/gm16.json"}
+]

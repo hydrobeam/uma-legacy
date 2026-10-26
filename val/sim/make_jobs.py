@@ -5,17 +5,25 @@
     uv run val/sim/report.py runs OUT_DIR/*.out ; uv run val/sim/report.py audit OUT_DIR/*.out ; ... e1 OUT_DIR/e1_*.out
 
 The greedy and loop policies on three pools (career_U5, pool4, pool14), with the surrogate's checks and audits, and
-whole trajectories under the exact model; the trace job that refits Cont's shape is in val/sim/README.md.
+whole trajectories under the exact model; the trace jobs that refit Cont's shape are val/sim/fit_cont.py's.
+
+    uv run val/sim/make_jobs.py OUT_DIR --looped [--runs N] POOL ...    # queue_looped.txt
+
+The page's plan against its baselines on its own goal (`goal` "looped"), per val/plan pool: `index`, `greedy` and the
+plan's trio (its reference's `v0_plan` a, b, c) as `loop`, `max_careers` 3 x the reference's V (the tail rule's
+floor: docs/SOLVER.md, *Policy simulator*), the same seed and runs, so differences are paired by run.
 
 Each job is a pool file (career mode) plus a `simulate` block (docs/SOLVER.md "Policy simulator"). Paths inside the
 pool files are relative to the era's data folder (pkg/loopopt/data/global), so run the solver from there. Jobs split into run ranges run in parallel.
 """
 
 import json
+import math
 import os
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PLAN_DIR = f"{REPO}/val/plan"
 CAREER_POOL = f"{REPO}/val/jobs/career_U5.json"
 FOUR_VETERAN_POOL = f"{REPO}/val/sim/pools/pool4.json"
 FOURTEEN_VETERAN_POOL = f"{REPO}/val/sim/pools/pool14.json"
@@ -84,5 +92,45 @@ def main(out):
     print(f"{len(jobs)} jobs in {out} (queue.txt)")
 
 
+def looped(out, pools, runs):
+    """The looped-goal comparison jobs for val/plan pools (module notes)"""
+    os.makedirs(out, exist_ok=True)
+    jobs = []
+    for pool in pools:
+        reference_path = f"{PLAN_DIR}/ref__{pool}.out"
+        if not os.path.exists(reference_path):
+            print(f"{pool}: no reference plan ({reference_path}), skipped")
+            continue
+        lines = [line for line in open(reference_path).read().splitlines() if line.strip()]
+        plan = json.loads(lines[-1])["next"]
+        ids = {row["trainee"]["name"]: row["trainee"]["id"] for row in [plan["choice"], *plan["options"]]}
+        trio = [plan["v0_plan"][role] for role in "abc"]
+        if any(name not in ids for name in trio):
+            print(f"{pool}: the trio {trio} is not all among the plan's rows, skipped")
+            continue
+        common = {"goal": "looped", "seed": 1, "runs": runs, "max_careers": math.ceil(3 * plan["v0"])}
+        policies = {
+            "index": {"policy": "index"},
+            "greedy": {"policy": "greedy", "margin": 0},
+            "trio": {"policy": "loop", "loop_members": [ids[name] for name in trio], "margin": 0.02},
+        }
+        for label, simulate in policies.items():
+            job = json.load(open(f"{PLAN_DIR}/{pool}.json"))
+            job["simulate"] = {**common, **simulate}
+            json.dump(job, open(f"{out}/lp_{pool}_{label}.json", "w"))
+            jobs.append(f"lp_{pool}_{label}")
+    open(f"{out}/queue_looped.txt", "w").write("\n".join(jobs) + "\n")
+    print(f"{len(jobs)} jobs in {out} (queue_looped.txt)")
+
+
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if "--looped" in sys.argv:
+        args = [arg for arg in sys.argv[1:] if arg != "--looped"]
+        runs = 4
+        if "--runs" in args:
+            i = args.index("--runs")
+            runs = int(args[i + 1])
+            del args[i : i + 2]
+        looped(args[0], args[1:], runs)
+    else:
+        main(sys.argv[1])

@@ -1,21 +1,42 @@
 # The policy simulator's experiments
 
 The simulator (`simulate` on a career job: `docs/SOLVER.md`, *Policy simulator*) measures, under the solver's model,
-the expected number of careers until the first veteran that lands every target, for a decision policy on a fixed
-starting pool. It reproduces the exact model's trajectories bit for bit (14 whole trajectories of the greedy and loop
-policies on three pools), at 20-150 times the speed. Policies: `greedy`, `greedy_exact`, `loop` (the baselines a new
-policy are compared against), `trace` and `index` (the page's planner, `sim::plan::index_rule`, run each step as the
-page's plan job); adding one: `docs/SOLVER.md`, *Policy simulator*.
+the expected number of careers E to a goal, for a decision policy on a fixed starting pool. What E counts depends on
+`goal`:
 
-Its one result in use: the shape of the career planner's continuation (`Cont`: `CEIL_SHARE` 0.6, `LAM_DECAY` 1.5 in
-`src/career/plan/cont.rs`) was fitted to its `trace` policy, building for Agnes Digital with her most efficient
-builders on 2-, 5-, 11- and 19-veteran pools (6 runs x 400 careers each). Results and the fit's error:
-`docs/MODEL.md`, *Next career*. Reproduce one trace with a career job carrying
-`"simulate": {"policy": "trace", "runs": 6, "max_careers": 400, "margin": 1e9, "loop_members": [1019, <five builders>]}`
-(about 5 s a run natively).
+- `first` (the default): careers until the first veteran that lands every target. This is greedy's goal, and the one
+  every reference in this folder before goal `looped` measured.
+- `looped`: careers until the first fully looped parent (a veteran that lands every target on two full-veteran
+  parents), the goal of the page's plan (`index`). Careers on two full veterans keep their success analytic; the
+  others' all-target veterans are drawn and join the pool. A run stopped by the cap is priced by repeating the last
+  career on two full veterans it ran (`censored` when it ran none), so set `max_careers` to at least 3x the pool's V.
 
-The policy comparisons (greedy, the three-uma loop) run from the repository root (pools: `val/jobs/career_U5.json`
-and `val/sim/pools/`):
+Policies: `greedy`, `greedy_exact`, `loop` (the baselines a new policy is compared against), `trace` and `index` (the
+page's planner, `career::plan::index_rule`, run each step as the page's plan job); adding one: `docs/SOLVER.md`, *Policy
+simulator*. How closely the surrogate (`greedy` at a margin) follows the exact model (`greedy_exact`, `loop` at margin
+-1) was measured on 2026-10-07 under an older model; it is to be re-measured at integration (a pool14 `greedy` against
+`greedy_exact` over 200 careers, about 5 minutes), and no figure for it is stated until then.
+
+## The continuation's shape (`Cont`)
+
+`CEIL_SHARE` 0.6 and `LAM_DECAY` 1.5 (`src/career/plan/cont.rs`) were fitted on 2026-10-08 to the `trace` policy's
+building for Agnes Digital on four player pools of 2, 5, 11 and 19 veterans, under the model of that day. Those pools
+are not in the repository. `fit_cont.py` refits the shape on the pools in `trace_pools.json` (val/plan and val/sim
+pools, a 2-veteran one cut from pool4), building for each pool's two stage candidates rather than one uma. It scores
+each pool under the shape fitted without it (log-odds loss and cost error against the pool's achievable cost, split in
+half since the in-sample minimum over noisy means reads low), reports the plan's own fitted continuation apart from
+the one fitted to the traces, and prices the unbuilt variant that takes lam as the larger of now and one lift later.
+A builder's veteran in a trace is drawn from every landed set (her full veteran does not end the building), so traces
+taken before 2026-10-26 drew differently. It runs at integration, after
+every change that moves Cont or V:
+
+    cargo build --release --manifest-path pkg/loopopt/Cargo.toml
+    uv run val/sim/fit_cont.py pkg/loopopt/target/release/loopopt /tmp/fit        # about 10 minutes on two cores
+    uv run val/sim/fit_cont.py pkg/loopopt/target/release/loopopt /tmp/fit0 --margin 0 p10 p11   # the cached decks' share
+
+## Policy comparisons
+
+The greedy and loop policies (pools: `val/jobs/career_U5.json` and `val/sim/pools/`), run from the repository root:
 
     cargo build --release --manifest-path pkg/loopopt/Cargo.toml
     uv run val/sim/make_jobs.py /tmp/sim                         # job files and queue.txt
@@ -25,15 +46,22 @@ and `val/sim/pools/`):
 
 The exact-model trajectories (`*_gex`, `*_lx`: a career search per decision) take the longest.
 
-The page's planner against greedy, on the same draws (common random numbers: run r faces the same uniforms under both
-policies, so differences are paired): a val/plan pool with a `simulate` block per policy, everything else equal, run
-from the pool's data folder (val/plan/jobs.json names it):
+## The page's planner on its own goal
 
-    mkdir -p /tmp/sim; uv run python -c "import json; j=json.load(open('val/plan/p16.json')); [json.dump({**j, 'simulate': dict(policy=p, runs=2, max_careers=4)}, open(f'/tmp/sim/p16_{p}.json','w')) for p in ('greedy','index')]"
-    (cd pkg/loopopt/data/global && for p in greedy index; do ../../target/release/loopopt data.json /tmp/sim/p16_$p.json > /tmp/sim/p16_$p.out; done)
+`index` against `greedy` (restricted to looped careers once two full veterans make one) and the plan's own trio run as
+`loop`, all under goal `looped`, on the same draws (run r faces the same uniforms under each policy, so differences are
+paired by run; the coupling is not monotone, so the pairing lowers the variance by an unknown amount):
 
-Compare per run the survival at the cap, `tail` x `final_p` (E's tail repeats the last pick forever, which penalises
-a plan that ends on a builder's career), and `E` once the runs reach S < `eps`. `index` adds per run the plans' count,
-their seconds, the picks' roles and how many were the best-odds career. A plan costs about 0.2-1.8 s on pools of 10-20
-veterans and more as the pool grows (*Policy simulator* in docs/SOLVER.md): size `runs` and `max_careers` from a
-short run's `plan_s` first.
+    uv run val/sim/make_jobs.py /tmp/lp --looped --runs 4 p16 p11   # queue_looped.txt; max_careers 3x the reference V
+    (cd pkg/loopopt/data/global && for n in $(cat /tmp/lp/queue_looped.txt); do ../../target/release/loopopt data.json /tmp/lp/$n.json > /tmp/lp/$n.out; done)
+
+The statistic is the paired D = E_index - E_baseline per run, as D / V with a t interval. A difference matters at
+about 10% of V, since Cont's shape alone moves V by up to about 30% on the building pools (p10, p11, boot_mob). How many runs that takes is unknown:
+review estimates of sd(D) without keeping the finishing careers' success analytic were 1-1.4 V, about 1,500 runs per
+pool; keeping it analytic lowers that by an unmeasured amount. Run the 4-run pilot first and size the full run from its
+sd(D). A plan costs about 0.6-5 s natively on the val/plan pools (about 5 s at 10 targets), and its cost at the hundreds of veterans a long run builds has
+not been measured: time one plan on a pool grown by a pilot before sizing. The pick between near options cannot be
+tested this way at any affordable size (score gaps of 0.06-0.2% of V on val/plan); only whole policies can.
+
+`index` adds per run the plans' count, their seconds, the picks' roles and how many were the best-odds career; under
+goal `looped` every run adds `finishing` (careers run on two full veterans), `full_veterans` and `censored`.

@@ -5,28 +5,35 @@ use crate::career::cache::Cache;
 use crate::career::evaluator::{Cur, SurrogatePick};
 use crate::career::pool::Pool;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
-use crate::career::sim::draw::Keys;
+use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
-use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster, family};
+use crate::career::sim::{Goal, Sim, SimJob, SimulationOptions, SimulationRoster, family};
 use crate::career::state::{KeptState, kept_swap};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use serde_json::{Value, json};
 use std::rc::Rc;
 
-/// A veteran's stars per job target and her distinct G1 wins, sorted: what dominance pruning compares.
+/// A veteran's stars per job target, her distinct G1 wins and her pink sparks, sorted: what dominance pruning
+/// compares.
 #[derive(Clone)]
 struct VeteranResult {
     stars: Vec<u8>,
     wins: Vec<usize>,
+    pinks: Vec<(u32, u8)>,
 }
 /// One path's state: veterans, the solver's pool, owned veterans per family (dominance), the surrogate's best
 #[derive(Clone)]
 pub(super) struct PathState {
     pub(super) legacies: Vec<Legacy>,
     pub(super) pool: Pool,
+    /// Per legacy, whether she is a full veteran (a spark of every target): a career on two of them finishes under
+    /// goal `looped`.
+    full: Vec<bool>,
     /// Per family (`family`), the results of the owned veterans in it.
     families: crate::FxMap<String, Vec<VeteranResult>>,
     pub(super) best: Option<SurrogatePick>,
+    /// Goal `looped`: the surrogate's best looped career (both parents full veterans), the one greedy runs.
+    pub(super) best_looped: Option<SurrogatePick>,
     /// The career the policy runs next, kept until the state changes.
     pub(super) current: Option<Rc<Cur>>,
     pub(super) rotation: Rotation,
@@ -66,9 +73,12 @@ fn stats(values: &[f64]) -> Value {
 }
 
 impl VeteranResult {
+    /// At least her stars on every target and every G1 she won, with the same pinks: a veteran whose pinks differ is
+    /// kept, since her pinks change her children's aptitudes and so their schedules and wins.
     fn dominates(&self, candidate: &Self) -> bool {
         self.stars.iter().zip(&candidate.stars).all(|(owned, new)| owned >= new)
             && candidate.wins.iter().all(|race| self.wins.binary_search(race).is_ok())
+            && self.pinks == candidate.pinks
     }
 }
 
@@ -78,11 +88,33 @@ impl PathState {
         self.families.get(&family(legacy)).is_some_and(|owned| owned.iter().any(|veteran| veteran.dominates(candidate)))
     }
 
-    /// Lowest incumbent value across the overall pick and the trace members.
-    fn candidate_floor(&self) -> f64 {
-        self.member_best.iter().fold(self.best.map_or(0.0, |pick| pick.value), |minimum, pick| {
+    /// Lowest incumbent value across the overall pick and the trace members, and under goal `looped` the best looped
+    /// career once two full veterans can make one.
+    fn candidate_floor(&self, goal: Goal) -> f64 {
+        let floor = self.member_best.iter().fold(self.best.map_or(0.0, |pick| pick.value), |minimum, pick| {
             minimum.min(pick.map_or(0.0, |pick| pick.value))
-        })
+        });
+        if goal == Goal::Looped && self.full_count() >= 2 { floor.min(self.looped_bar()) } else { floor }
+    }
+
+    /// Whether both parents of `lineage` are full veterans: her success is a fully looped parent.
+    pub(super) fn is_looped(&self, lineage: Lineage) -> bool {
+        self.full[lineage.first_parent] && self.full[lineage.second_parent]
+    }
+
+    /// The best looped career's value so far (0 when there is none).
+    pub(super) fn looped_bar(&self) -> f64 {
+        self.best_looped.map_or(0.0, |pick| pick.value)
+    }
+
+    /// How many full veterans the pool holds.
+    fn full_count(&self) -> usize {
+        self.full.iter().filter(|&&full| full).count()
+    }
+
+    /// The legacy indices of the full veterans.
+    pub(super) fn full_veterans(&self) -> Vec<usize> {
+        (0..self.full.len()).filter(|&legacy| self.full[legacy]).collect()
     }
 }
 
@@ -101,7 +133,9 @@ impl Sim<'_, '_> {
         let mut wins = legacy.wins.clone();
         wins.sort_unstable();
         wins.dedup();
-        VeteranResult { stars, wins }
+        let mut pinks = legacy.pinks.clone();
+        pinks.sort_unstable();
+        VeteranResult { stars, wins, pinks }
     }
     /// a veteran joins the pool; `evaluate_candidates`: the surrogate values every new candidate (she is one of its parents)
     pub(super) fn add_veteran(
@@ -113,18 +147,25 @@ impl Sim<'_, '_> {
     ) {
         // (her entry as `CareerSetup::pool` builds it, win chances and star mix kept)
         self.env.setup.pool_push(&mut state.pool, &legacy);
+        let result = self.veteran_result(&legacy);
+        let full = result.stars.iter().all(|&stars| stars > 0);
         if !legacy.borrowed {
-            let result = self.veteran_result(&legacy);
             state.families.entry(family(&legacy)).or_default().push(result);
         }
         state.legacies.push(legacy);
+        state.full.push(full);
         if !evaluate_candidates {
             return;
         }
         let veteran_index = state.legacies.len() - 1;
+        // (goal `looped`: a full veteran's careers with another full veteran are looped, valued against the best looped
+        // career's bar)
+        let looped_bar =
+            (self.settings.goal == Goal::Looped && full && state.full_count() >= 2).then(|| state.looped_bar());
         let trainees = self.trainees.clone();
         for &trainee in &trainees {
-            if self.static_ceilings[trainee] * (1.0 + 1e-9) < self.bar(state, trainee) {
+            let trainee_bar = looped_bar.map_or(self.bar(state, trainee), |bar| bar.min(self.bar(state, trainee)));
+            if self.static_ceilings[trainee] * (1.0 + 1e-9) < trainee_bar {
                 continue;
             }
             for other_parent in 0..veteran_index {
@@ -134,7 +175,7 @@ impl Sim<'_, '_> {
                 }
                 // the allocation-free ceiling first (`fast_ub`, the same bound to rounding)
                 if self.evaluator.fast_ub(&self.env.setup, &state.pool, lineage) * (1.0 + 1e-6)
-                    < self.bar(state, trainee)
+                    < self.lineage_bar(state, lineage)
                 {
                     self.evaluator.counters.candidates += 1;
                     continue;
@@ -148,8 +189,10 @@ impl Sim<'_, '_> {
         let mut state = PathState {
             legacies: vec![],
             pool: self.env.setup.pool(&[]),
+            full: vec![],
             families: std::collections::HashMap::default(),
             best: None,
+            best_looped: None,
             current: None,
             rotation: Rotation { position: 0, latest: vec![None; self.members.len()] },
             member_best: vec![None; self.members.len()],
@@ -183,11 +226,11 @@ impl Sim<'_, '_> {
             self.env.setup.gen_cands(&mut self.env.state, &state.pool, &[], &trainees, |_, _| true, RankedCareer::new);
         candidates.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
         for candidate in candidates {
-            let floor = state.candidate_floor();
+            let floor = state.candidate_floor(self.settings.goal);
             if candidate.ceiling * (1.0 + 1e-9) < floor {
                 break;
             }
-            if candidate.ceiling * (1.0 + 1e-9) < self.bar(state, candidate.lineage.trainee) {
+            if candidate.ceiling * (1.0 + 1e-9) < self.lineage_bar(state, candidate.lineage) {
                 continue;
             }
             self.consider(state, candidate.lineage, interpolation_scratch);
@@ -225,6 +268,13 @@ impl Sim<'_, '_> {
             }
         }
     }
+    /// Whether `career`'s success ends the run: every career under goal `first`, a looped one under `looped`.
+    fn finishes(&self, state: &PathState, career: &Cur) -> bool {
+        match self.settings.goal {
+            Goal::First => true,
+            Goal::Looped => state.is_looped(career.lineage),
+        }
+    }
     /// Follow `options.base` from the initial state (survival 1, career 0) until the survival S < `survival_cutoff` or
     /// `max_careers`, recording pick changes, checks and audits into `trace`.
     fn play(&mut self, state: &mut PathState, options: PlayOptions, trace: &mut PathTrace) -> PathResult {
@@ -232,6 +282,8 @@ impl Sim<'_, '_> {
         let (mut survival, mut career_index) = (1.0f64, 0usize);
         let mut expected_careers = 0.0f64;
         let mut pruned = 0usize;
+        // (goal `looped`: the finishing careers run so far, and the last one's P(all), for the tail)
+        let (mut finishing_careers, mut last_finishing_p_all) = (0usize, None::<f64>);
         let mut interpolation_scratch = vec![];
         let mut last_key = String::new();
         let exact = self.settings.policy == "greedy_exact";
@@ -267,19 +319,30 @@ impl Sim<'_, '_> {
                     career.p_all
                 );
             }
+            let finishes = self.finishes(state, &career);
             if survival < survival_cutoff || career_index >= self.settings.max_careers {
-                let tail = survival / career.p_all;
+                // (the tail repeats this career forever, or under goal `looped` the last finishing one: module notes)
+                let tail_p_all = if finishes { Some(career.p_all) } else { last_finishing_p_all };
+                let tail = tail_p_all.map_or(0.0, |p_all| survival / p_all);
                 return PathResult {
                     expected_careers: expected_careers + tail,
                     careers: career_index,
                     tail,
                     final_p_all: career.p_all,
                     pruned,
+                    looped: LoopedRun { finishing_careers, censored: tail_p_all.is_none() },
                 };
             }
             expected_careers += survival;
-            survival *= 1.0 - career.p_all;
-            let veteran = self.draw(&career, &state.legacies, keys, career_index);
+            let outcomes = if finishes {
+                survival *= 1.0 - career.p_all;
+                finishing_careers += 1;
+                last_finishing_p_all = Some(career.p_all);
+                Outcomes::Failed
+            } else {
+                Outcomes::Any
+            };
+            let veteran = self.draw(&career, state, VeteranDraw { keys, career_index, outcomes });
             career_index += 1;
             match base {
                 Base::Loop => {
@@ -342,6 +405,17 @@ struct PathResult {
     final_p_all: f64,
     /// New veterans dropped as dominated.
     pruned: usize,
+    /// What goal `looped` reports beside.
+    looped: LoopedRun,
+}
+
+/// One run's goal-`looped` record (`Sim::play`).
+#[derive(Clone, Copy)]
+struct LoopedRun {
+    /// Careers run on two full-veteran parents (each one's success would have ended the run).
+    finishing_careers: usize,
+    /// The run ran no finishing career, so it has no tail: its E is a lower bound.
+    censored: bool,
 }
 
 pub(in crate::career) fn simulate<'data>(
@@ -367,6 +441,12 @@ pub(in crate::career) fn simulate<'data>(
         "index" => Base::Index,
         policy => return json!({"error": format!("simulate: unknown policy {policy}")}),
     };
+    if config.goal == Goal::Looped && base == Base::Trace {
+        return json!({"error": "simulate: trace has no goal (goal looped is for the path policies)"});
+    }
+    if config.goal == Goal::Looped && (config.audit || config.check > 0) && base == Base::Greedy {
+        return json!({"error": "simulate: audit and check measure greedy's unrestricted pick: run them with goal first"});
+    }
     let members: Vec<crate::uma::UmaIndex> =
         config.loop_members.iter().filter_map(|&id| env.setup.uma_index(id)).collect();
     if matches!(base, Base::Loop | Base::Trace)
@@ -399,6 +479,7 @@ pub(in crate::career) fn simulate<'data>(
     let initialization_seconds = initialization_started.elapsed().as_secs_f64();
     let mut runs = vec![];
     let mut run_expectations = vec![];
+    let mut censored_runs = 0usize;
     let survival_cutoff = config.survival_cutoff;
     // index: the kept state before the simulation, put back after it (module notes)
     let kept_before_simulation = (base == Base::Index).then(|| kept_swap(simulator.kept, KeptState::default()));
@@ -415,7 +496,7 @@ pub(in crate::career) fn simulate<'data>(
         let mut state = initial_state.clone();
         let mut trace = PathTrace::default();
         let keys = Keys::Main { seed: config.seed, run: run as u32 };
-        let PathResult { expected_careers, careers, tail, final_p_all, pruned } =
+        let PathResult { expected_careers, careers, tail, final_p_all, pruned, looped } =
             simulator.play(&mut state, PlayOptions { base, keys, survival_cutoff, run: run as u32 }, &mut trace);
         let counts_after = simulator.evaluator.counters;
         run_expectations.push(expected_careers);
@@ -440,10 +521,41 @@ pub(in crate::career) fn simulate<'data>(
             let index_counts = INDEX_RUN_COUNTS.with(|index_counts| std::mem::take(&mut *index_counts.borrow_mut()));
             runs.last_mut().unwrap()["index"] = json!({"plans": index_counts.plans, "plan_s": index_counts.plan_seconds, "roles": index_counts.roles, "best_odds": index_counts.best_odds_picks});
         }
+        if config.goal == Goal::Looped {
+            censored_runs += usize::from(looped.censored);
+            let run_record = runs.last_mut().unwrap();
+            run_record["finishing"] = json!(looped.finishing_careers);
+            run_record["full_veterans"] = json!(state.full_count());
+            run_record["censored"] = json!(looped.censored);
+        }
     }
     if let Some(kept) = kept_before_simulation {
         kept_swap(simulator.kept, kept);
     }
-    json!({"simulate": configuration, "policy": config.policy, "runs": runs, "E": stats(&run_expectations), "init_s": initialization_seconds, "decks": simulator.evaluator.cache.deck_count(), "deck_tables": simulator.evaluator.cache.tables,
-           "refreshes": simulator.evaluator.counters.searches, "schedules": simulator.evaluator.win_chances.schedules()})
+    let mut output = json!({"simulate": configuration, "policy": config.policy, "runs": runs, "E": stats(&run_expectations), "init_s": initialization_seconds, "decks": simulator.evaluator.cache.deck_count(), "deck_tables": simulator.evaluator.cache.tables,
+           "refreshes": simulator.evaluator.counters.searches, "schedules": simulator.evaluator.win_chances.schedules()});
+    if config.goal == Goal::Looped {
+        // (E over the censored runs is a lower bound: their tails are 0)
+        output["goal"] = json!("looped");
+        output["censored"] = json!(censored_runs);
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VeteranResult;
+
+    #[test]
+    /// Dominance pruning keeps a veteran whose pinks differ from an owned one with the same stars and wins (the pinks
+    /// change her children's aptitudes), and drops one whose pinks are the same.
+    fn sim_pruning_keeps_different_pinks() {
+        let veteran = |pinks: Vec<(u32, u8)>| VeteranResult { stars: vec![2, 1, 3], wins: vec![4, 9], pinks };
+        let owned = veteran(vec![(32, 2)]);
+        assert!(owned.dominates(&veteran(vec![(32, 2)])));
+        assert!(!owned.dominates(&veteran(vec![(11, 2)])));
+        assert!(!owned.dominates(&veteran(vec![(32, 3)])));
+        assert!(!owned.dominates(&veteran(vec![])));
+        assert!(!veteran(vec![]).dominates(&veteran(vec![(32, 1)])));
+    }
 }

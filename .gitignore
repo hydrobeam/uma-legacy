@@ -64,6 +64,7 @@
 !/val/planval.py
 !/val/mono.py
 !/val/capaudit.py
+!/val/career_check.py
 !/val/plan/
 /val/plan/*
 !/val/plan/*.json
@@ -82,6 +83,8 @@
 !/val/sim/README.md
 !/val/sim/make_jobs.py
 !/val/sim/report.py
+!/val/sim/fit_cont.py
+!/val/sim/trace_pools.json
 !/val/sim/pools/
 !/val/sim/jobs.json
 !/val/sim/ref__*.out

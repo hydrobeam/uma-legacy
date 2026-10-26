@@ -82,11 +82,13 @@ The mechanics (objective V, `Cont`, a career's score, builders through their dec
   Cont only lets it decay (taking lam as the larger of now and one lift later fixes most of it: 995 -> 734
   careers on 5 veterans, the others unchanged; not built); leave-one-pool-out fits of the shape ranged 0.6-1.0 and 1-3, so it is a calibration on
   these pools, not a law. Not yet measured against other policies: the simulator's `index` policy runs the page's
-  planner on the same draws as `greedy` (`docs/SOLVER.md`, *Policy simulator*), but no comparison of useful size has
-  been run.
-- **Builders through their deck class**: the proxy, checked 2026-10-09 with `proxy_check` on val/plan,
-  reads at most 2.79% low (efficiency) and 2.67% (saving), so the 6% band (`PROXY_EFF`, `PROXY_SAVE`) is over twice
-  the worst error; picks, the top-8 rows, V and the shown scores are unchanged on val/plan.
+  planner on the same draws as `greedy` and the plan's own trio, under goal `looped` (careers to a fully looped
+  parent, the plan's goal; the default goal counts careers to the first full veteran, which the plan does not pursue:
+  `docs/SOLVER.md`, *Policy simulator*), but no comparison of useful size has been run.
+- **Builders through their deck class**: the proxy, checked 2026-10-26 with `proxy_check` on the ten val/plan pools
+  of that day (base rows), is exact on nine; on p11 it reads at most 1.8% low on efficiency (5.6% high) and 2.1% low on
+  saving + 1, so the 6% band (`PROXY_EFF`, `PROXY_SAVE`) is over twice the worst low error. With every builder
+  searched exactly, V and the pick are unchanged on p11 and boot_mob. `val/planval.py` repeats the check on every val/plan pool and fails a proxy more than 3% low.
 - **Forms rejected**: crediting each improvement as the last (a frozen tail) overrated builders 10-40x; a single-step
   trainee score gave a strong uma's career no credit as a parent for her partners; pricing C from hypothetical parents
   bred from each other asked for a full loop one generation deeper than the goal and ignored real full veterans.

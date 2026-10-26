@@ -679,31 +679,60 @@ as (ceiling, trainee, parents) and their chances recomputed when solved, which k
 ### Policy simulator (`simulate` on a career job)
 
 Measures a decision policy (which career to run next) inside one solver process. With `simulate` present the career
-job runs the simulator instead of the search; jobs without it are unchanged. Per run, careers t = 0, 1, ... with p_t the
-exact P(all) of career t (derived):
+job runs the simulator instead of the search; jobs without it are unchanged. `E` is the expected number of careers to
+the run's goal, under the model, from the job's pool:
 
-    E = sum over t of S_t,  S_0 = 1,  S_{t+1} = S_t (1 - p_t);  stop when S_t < eps or at max_careers, plus the tail S_t / p_t
+- `goal` "first" (the default): to the first veteran that lands every target. Every career *finishes*: its success
+  ends the run.
+- `goal` "looped": to the first fully looped parent, the page's plan's goal (*Next career*): a veteran that lands
+  every target on two full-veteran parents (a spark of every target, yours or borrowed). A career finishes only on two
+  full veterans; any other career's all-target veteran is a full veteran who joins the pool, and the run goes on.
 
-Each failed career leaves a veteran drawn from the model: landed set from `outcome_sets` without the all-landed set
-(inverse CDF over sets ordered fewest-landed first), stars from `star_dist`, per race a win with the schedule's chance
-of at least one win, her parents the career's. The uniforms (`u01`) are keyed by seed, run, career, stream and item, so
-a run index faces the same uniforms under every policy (common random numbers: differences between policies are
-paired). A new veteran is pruned when an owned veteran of the same character with the same two parents has at least
-her stars on every target and every G1 she won (exact for P(all)).
+Per run, careers t = 0, 1, ... with p_t the exact P(all) of career t (derived):
+
+    E = sum over t of S_t,  S_0 = 1,  S_{t+1} = S_t (1 - p_t) if career t finishes, else S_t
+
+A finishing career's success stays analytic in S: the path goes on through its failure, her veteran drawn from
+`outcome_sets` without the all-landed set. A career that does not finish has her veteran drawn from every set, the
+all-landed one last. Both are inverse CDFs over the sets ordered fewest-landed first. This is unbiased: the path is drawn
+from the process with the finishing careers forced to fail, and S_t is the chance the real process is still running at
+t given the rest of the path. The stars come from `star_dist`, each race is won with the schedule's chance of at least
+one win, and her pink is drawn as the page's roll draws it (`webapp/src/pink.mjs`; the April inspirations fire from
+her start grades, then one aptitude among those at A or S, stars 20/70/10). Her parents are the career's.
+
+A run stops when S_t < eps or at `max_careers`, and a tail is added there. The tail is S_t / p_t when career t
+finishes (that career repeated forever). Under goal "looped", when career t does not finish, it is S_t / p of the last
+finishing career the run ran: repeating that one stays possible, since her parents stay in the pool. A run that ran
+none (S_t = 1) is `censored`: tail 0, its E a lower bound. That tail is a stated rule, not the policy's own continuation,
+so under goal "looped" `max_careers` should be at least 3 times the pool's V (the plan's `v0`); otherwise E is mostly
+tail.
+
+The uniforms (`u01`) are keyed by seed, run, career, stream and item, so a run index faces the same uniforms under every
+policy. These common random numbers are unbiased, and differences between policies are paired. The coupling is not
+monotone: a landed set is matched by its quantile along the (landed count, mask) order, not by set inclusion, and once
+two policies' careers differ the same uniforms drive different careers. A new veteran is pruned when an owned veteran
+of the same character with the same two parents has at least her stars on every target, every G1 she won, and the
+same pinks (pinks set her children's aptitudes, so a veteran whose pinks differ is kept). The dominator gives at least
+the P(all) of every career the pruned one could parent, and is a full veteran when she is (a family fixes both
+parents). It is not the same veteran for the rest of the run, since her wins steer her children's schedules: pruning
+is exact for P(all), not for a whole run.
 
 The surrogate (policy `greedy`): each candidate (trainee, parents) is valued through its trainee's cached decks' corner
 tables (`Cache`, exact P(all) of that deck at any inheritance chances), bounded first by the search's ceiling, by
 `rise` from her fully checked decks and by her product-search proofs (`ruled`). Where the bound rb clears the best so far
 B and exceeds tv × (1 + m), her deck is searched there (`best_deck` at bar B) and
 cached. Derived: the career picked has an exact P(all), with the deck it runs, of at least E*/(1 + m), E* the exact best
-career's, subject to the assumed search caps and complete deck searches; m = 0 gives the exact greedy pick up to ties. A candidate is valued once,
-when her later parent arrives; a trainee whose static ceiling (q = 1, every spark on six legacies) is below B is skipped.
+career's, subject to the assumed search caps and complete deck searches; m = 0 gives the exact greedy pick up to ties. Under
+goal "looped" the same holds among the looped careers, B the best looped one: a looped candidate is valued against that
+bar. A candidate is valued once, when her later parent arrives; a trainee whose static ceiling (q = 1, every spark on
+six legacies) is below B is skipped.
 
 | Field of `simulate` | Meaning | Default |
 |---|---|---|
-| `policy` | `greedy` (surrogate), `greedy_exact` (the career search in process per decision: the best career by P(all)), `loop` (a fixed rotation of `loop_members`), `trace` (building for `loop_members[0]` with the others as builders: each career the builder whose best career lifts her odds most efficiently runs; records her odds before and after, the builder, lam and the odds raised to), `index` (the page's plan, *Next career*, above) | `greedy` |
+| `goal` | `first` or `looped` (above). `looped` is refused for `trace` and for greedy's `check` and `audit`, which measure the unrestricted pick | `first` |
+| `policy` | `greedy` (surrogate; under goal `looped` the best looped career, both parents full veterans, once one exists), `greedy_exact` (the career search in process per decision: the best career by P(all); under goal `looped` the best among the full veterans' careers when they make one), `loop` (a fixed rotation of `loop_members`), `trace` (building for `loop_members[0]` with the others as builders: each career the builder whose best career lifts her odds most efficiently runs, her veteran drawn from every landed set, since a builder's full veteran does not end the building; records her odds before and after, the builder, lam and the odds raised to), `index` (the page's plan, *Next career*, above) | `greedy` |
 | `runs`, `first`, `seed` | run indices `first` .. `first + runs - 1`; the seed | 16, 0, 1 |
-| `eps`, `max_careers` | stop at S < eps or this many careers (tail S/p added) | 1e-3, 100000 |
+| `eps`, `max_careers` | stop at S < eps or this many careers (the tail above added) | 1e-3, 100000 |
 | `margin` | refresh margin m; -1: every valuation a bound does not rule out gets a fresh exact deck search (exact-backed: the same proofs as the career search, no trust in cached decks) | 0 |
 | `prune`, `share_cache` | prune dominated veterans; keep the deck cache across runs | true, true |
 | `check`, `check_lineages`, `check_frac` | every `check` new veterans compare with exact searches: the exact greedy pick (career search), and up to `check_lineages` of the newest veteran's candidates with ceiling at least `check_frac` x B (exact best deck, table value, landed-set distance) | 0, 0, 0.3 |
@@ -730,12 +759,16 @@ for an empty one and restores the state from before the simulation afterward, so
 and the run index alone
 (the same run alone or among others, in any order, gives the same decisions and sampled outcomes). No checks or audits. Per run it adds
 `index`: `plans` (plan jobs run), `plan_s` (each one's seconds), `roles` (the picks' `role` counts) and `best_odds` (picks
-that were the main search's best career, the `greedy_exact` pick up to ties). The tail assumes the final pick repeats forever; a plan can finish at a builder
-with low odds, so a capped comparison should also report survival at the cap (`tail` × `final_p`, paired by run).
+that were the main search's best career, the `greedy_exact` pick up to ties). Under goal "first" the plan is measured
+against a goal it does not pursue: it can pick a career with lower odds to build towards a fully looped parent, and E
+counts careers to the first full veteran. Goal "looped" measures it on its own goal. The baselines there are `greedy`
+(restricted to looped careers once two full veterans of different characters make one) and the plan's own trio
+(`v0_plan` a, b, c) run as `loop`, with `loop_members` [a, b, c].
 
 Output: per run `E`, `careers`, `tail`, `final_p`, `pool`, `pruned`, `wall_s`, `refreshes`, `segs` (each pick change:
-career, p, pool size, S), `checks`, `audits`; and `E` (mean, sd, 95% CI) over the runs. `trace` returns its rows per run
-instead.
+career, p, pool size, S), `checks`, `audits`; under goal "looped" also `finishing` (careers run on two full veterans),
+`full_veterans` (in the pool at the end) and `censored`; and `E` (mean, sd, 95% CI) over the runs, with `goal` and the
+count of `censored` runs under goal "looped". `trace` returns its rows per run instead.
 
 Adding a policy: `simulate` (src/career/sim/play.rs) matches the policy name to a base (`Base`); `play` asks the base
 for the next career each step (`greedy_cur`, `loop_cur`: a `Cur`, the career with its exact P(all), landed-set chances
@@ -761,6 +794,26 @@ Results and commands: `val/sim/README.md`.
 
 The loader asserts the structural fact the exact DP relies on: every race offered twice is a Classic/Senior pair
 exactly 24 turns apart.
+
+The career planner's checks, by what each can detect. A pin detects change, not error; an invariance holds the same
+engine to itself; an independent recomputation can catch a wrong result.
+
+| Check | Kind | Detects |
+|---|---|---|
+| `val/planval.py` (val/plan pools), `val/simval.py` (val/sim/jobs.json), the `plan_roll` fixture (re-taken from the solver's own rolls) | pin | a moved output |
+| `val/planval.py`'s proxy gate (`next.proxy_check` on every val/plan pool, base rows) | measurement against the exact rows | a deck-class proxy more than 3% low on efficiency or saving + 1 (half the 6% band) |
+| tests `plan_state`, `plan_memo`, `plan_value`, `plan_borrowed`, `career_fold_and_scale` | invariance | a broken equality (kept state, memo, reload, borrowing rule, fold) |
+| test `plan_looped` | one semantic property | two real full veterans make the finish the pick, saving at least one career |
+| test `sim_determinism` | invariance | an `index` run that depends on the runs before it |
+| unit test `sim_pink_draw_matches_pink_gen` (`src/career/sim/draw.rs`) | the simulator's pink draw against the model's exact pink chances | a draw that disagrees with `pink_gen` |
+| `val/mono.py` | necessary condition (fixed fit) | V rising, or lost, when the pool's last veteran or a rolled veteran of the pick (drawn as the page's Reroll draws her) is added under today's fit (what Compare shows); the refit column (what Add then shows) is reported, not failed on; a plan or roll that fails also fails it |
+| `val/career_check.py` | independent recomputation (Python, from the job and data.json) | a wrong slot affinity, q, carrier count, spark scale, per-target buying or landing factor, landed-set total or marginal, or joint P(all) (deck model restated by `val/joint_check.py`) in a career report or plan row |
+| `val/joint_check.py` | independent recomputation, same constants | a wrong P(all) of a deck job's loops |
+| simulator `index` under goal "looped" against `greedy` and the plan's trio as `loop` (`val/sim/README.md`) | measurement | the plan's policy losing to a baseline on its own goal (not run at a size that resolves 10% of V) |
+
+What none of them checks: the pick between near options (on val/plan the score gaps between them were 0.06-0.2% of V
+on 2026-10-26, below any simulation's resolution), Cont's shape out of sample (refit with `val/sim/fit_cont.py`), and anything on real outcomes beyond
+docs/RESEARCH.md section 13's all-target ratio.
 
 ## 5. Limits
 

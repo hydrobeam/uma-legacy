@@ -21,6 +21,7 @@ import math
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -183,9 +184,19 @@ def chain_distribution(kinds, event_probability, slots=False):
     return res
 
 
-def check(out, job, d, alt_q=None):
-    """max |recomputed / reported p_all - 1| over the result's loops; with `alt_q` (top -> list of per-lineage q
-    vectors) also, per loop, the mean P(all) at each of those q vectors: returns worst alone, or (worst, [[P per vector] per loop]) with alt_q"""
+class DeckModel(NamedTuple):
+    """A job's deck model, restated (`deck_model`)."""
+
+    deck_miss_probability: Callable  # a reported deck -> (req -> P(no outcome breaks req)), req per uncertain target
+    lineage: Callable  # (miss probability, outfit levels, q, own-event chances) -> P(all) at the loop's spark scale
+    skills_db: dict
+    uncertain_targets: list  # the uncertain targets' skill groups, in job order
+    fixed_target_count: int
+
+
+def deck_model(job, d):
+    """The solver's deck model for `job` (data folder `d`): per reported deck, P(no outcome of the deck's sources breaks a
+    requirement), jointly over the chain process; and a loop lineage's P(all) from it (`lineage`)"""
     read_data = lambda f: json.load(open(os.path.join(d, f)))
     skill_targets = {}
     for g, w, gd in read_data(job["skills_file"])["skills"]:
@@ -376,6 +387,19 @@ def check(out, job, d, alt_q=None):
                 tot += c * miss_probability(req)
         return tot * GG**fixed_target_count
 
+    return DeckModel(
+        deck_miss_probability=deck_miss_probability,
+        lineage=lineage,
+        skills_db=skills_db,
+        uncertain_targets=uncertain_targets,
+        fixed_target_count=fixed_target_count,
+    )
+
+
+def check(out, job, d, alt_q=None):
+    """max |recomputed / reported p_all - 1| over the result's loops; with `alt_q` (top -> list of per-lineage q
+    vectors) also, per loop, the mean P(all) at each of those q vectors: returns worst alone, or (worst, [[P per vector] per loop]) with alt_q"""
+    deck_miss_probability, lineage, skills_db, uncertain_targets, _ = deck_model(job, d)
     worst = 0.0
     alt = []
     for top in out.get("top", []):

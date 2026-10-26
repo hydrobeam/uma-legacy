@@ -5,9 +5,9 @@ use crate::career::evaluator::{Cur, DeckRequest, SurrogatePick};
 use crate::career::plan;
 use crate::career::plan::ScoringContext;
 use crate::career::pool::Pool;
-use crate::career::sim::draw::Keys;
+use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::play::PathState;
-use crate::career::sim::{PAGE_TOP, Sim, leg_json};
+use crate::career::sim::{Goal, PAGE_TOP, Sim, leg_json};
 use crate::career::{Career, Lineage, run_career_in};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -102,14 +102,18 @@ impl Sim<'_, '_> {
         if let Some(career) = &state.current {
             return Rc::clone(career);
         }
-        let pick = state.best.expect("no legal career");
+        let restricted = match self.settings.goal {
+            Goal::First => None,
+            Goal::Looped => state.best_looped,
+        };
+        let pick = restricted.or(state.best).expect("no legal career");
         let career = Rc::new(self.evaluator.cached_cur(&self.env.setup, &mut self.env.state, &state.pool, pick, false));
         state.current = Some(Rc::clone(&career));
         career
     }
     /// `trace`: building for loop_members[0] (A) with the others as builders. Each career: per builder her best career's
     /// exact chance of raising A's best odds (lam) and mean odds raised to (p1); the most efficient (lam (1/p - 1/p1)) runs,
-    /// her veteran joins; recorded per career: A's odds before, the builder, lam, p1, and A's odds after
+    /// her veteran (drawn from every landed set) joins; recorded per career: A's odds before, the builder, lam, p1, and A's odds after
     pub(super) fn trace(&mut self, initial_state: &PathState) -> Value {
         let finisher = self.members[0];
         let mut runs = vec![];
@@ -127,7 +131,8 @@ impl Sim<'_, '_> {
                 };
                 let career =
                     self.evaluator.cached_cur(&self.env.setup, &mut self.env.state, &state.pool, builder.pick, false);
-                let veteran = self.draw(&career, &state.legacies, keys, career_index);
+                // (every landed set: a builder's full veteran does not end building for A)
+                let veteran = self.draw(&career, &state, VeteranDraw { keys, career_index, outcomes: Outcomes::Any });
                 self.add_veteran(&mut state, veteran, true, &mut interpolation_scratch);
                 let after = state.member_best[0].map_or(finisher_odds, |pick| pick.value);
                 rows.push(json!([
@@ -341,18 +346,44 @@ impl Sim<'_, '_> {
         let win_probs = self.evaluator.wins(&self.env.setup, pool, lineage);
         Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), outcome_sets, win_chances: win_probs, rotation: false }
     }
-    /// the in-process career search's pick (greedy_exact: the best career by P(all))
+    /// the in-process career search's pick (greedy_exact: the best career by P(all); under goal `looped` the best
+    /// among the full veterans' careers when they make one)
     pub(super) fn exact_cur(&mut self, state: &PathState) -> Cur {
+        if self.settings.goal == Goal::Looped
+            && let Some(career) = self.exact_cur_among(state, &state.full_veterans())
+        {
+            return career;
+        }
+        let every_legacy: Vec<usize> = (0..state.legacies.len()).collect();
+        self.exact_cur_among(state, &every_legacy).expect("solver gave no pick")
+    }
+    /// The career search's best career with both parents among `legacies` (indices into the path's legacies), in
+    /// process; None when they make no legal career.
+    fn exact_cur_among(&mut self, state: &PathState, legacies: &[usize]) -> Option<Cur> {
+        if legacies.len() < 2 {
+            return None;
+        }
         let mut job = self.job.clone();
-        let job_fields = job.as_object_mut().unwrap();
+        let job_fields = job.as_object_mut()?;
         job_fields.remove("simulate");
-        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
+        job_fields.insert(
+            "legacies".into(),
+            Value::Array(legacies.iter().map(|&legacy| leg_json(&state.legacies[legacy])).collect()),
+        );
+        // (the job's `fix` indexes its own legacies, not these: the simulator ignores it)
+        job_fields.insert("fix".into(), json!([]));
         job_fields.insert("top".into(), json!(1));
         job_fields.insert("per_trainee".into(), json!(false));
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
-        let pick = report["results"][0].clone();
-        assert!(pick.is_object(), "solver gave no pick: {}", report.to_string().chars().take(300).collect::<String>());
-        self.cur_from_solver_pick(&state.pool, &pick)
+        let mut pick = report["results"][0].clone();
+        if !pick.is_object() {
+            return None;
+        }
+        // (the search's parents index `legacies`; the path's pool indexes every legacy)
+        for parent in pick["parents"].as_array_mut()? {
+            *parent = json!(legacies[parent.as_u64()? as usize]);
+        }
+        Some(self.cur_from_solver_pick(&state.pool, &pick))
     }
     /// `index`: the page's plan for this pool (the career job with the pool as legacies, no places, the page's `top`,
     /// `next`, `no_reports`: the plan job the page sends, docs/SOLVER.md "Next career"), in process; its `choice` runs.

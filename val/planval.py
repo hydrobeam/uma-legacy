@@ -2,17 +2,31 @@
 strictly (the whole JSON, equal values; keys in SKIP and keys ending in _ms are ignored). For solver work that must
 not move the planner's results; `val/runval.py` does not cover these jobs.
 
+Then the proxy gate: each job again with `next.proxy_check`, which prices every builder row through its deck-class
+proxy beside its exact career. The plan admits a builder for an exact search by its proxy efficiency (within
+PROXY_EFF 6% of a candidate's second best) and promotes a proxy row by its proxy saving + 1 (within PROXY_SAVE 6%), so a
+proxy that reads low can keep a better row out. The gate fails a job when a proxy reads more than PROXY_GATE (3%, half
+the band) low: an efficiency (each candidate's, where the exact one is at least 1% of the row's best) or a saving + 1
+(where the exact one is positive). Base rows only: a looped row (her career on two full veterans) is priced against
+her unconstrained proxy, which is her base row's career; rows marked `looped` are dropped, or, from a solver that
+does not mark them, every row but each trainee's best by exact odds. A high-side error (a proxy that reads high only
+costs a search) is reported, not failed on.
+
 usage: planval.py BIN TAG [REF] [-j N]
-  writes val/plan/TAG__NAME.out and val/plan/TAG_times.txt; compares with val/plan/REF__NAME.out (default REF: ref)
+  writes val/plan/TAG__NAME.out, val/plan/TAG_proxy__NAME.out and val/plan/TAG_times.txt; compares with
+  val/plan/REF__NAME.out (default REF: ref)
   -j N  jobs at a time (default 2; timings are only comparable at the same load)"""
 
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
+
+PROXY_GATE = 0.03
 
 
 class CapWarning(NamedTuple):
@@ -164,6 +178,84 @@ def compare_job(name):
     return bool(differences) or bool(near)
 
 
+class ProxyErrors(NamedTuple):
+    """A job's proxy errors over its base builder rows, relative (proxy / exact - 1)."""
+
+    rows: int
+    other_deck: int
+    efficiency_low: float
+    efficiency_high: float
+    saving_low: float
+    saving_high: float
+
+
+def base_rows(rows):
+    """The proxy rows of base careers: unmarked rows' best by exact odds per trainee (module notes)"""
+    if any("looped" in row for row in rows):
+        return [row for row in rows if not row["looped"]]
+    best = {}
+    for row in rows:
+        if row["trainee"] not in best or row["exact_val"] > best[row["trainee"]]["exact_val"]:
+            best[row["trainee"]] = row
+    return list(best.values())
+
+
+def proxy_errors(output):
+    rows = [row for row in base_rows(output["next"]["proxy_check"]["rows"]) if not row["cand"]]
+    efficiency, saving = [0.0], [0.0]
+    for row in rows:
+        row_best = max(row["eff"], default=0.0)
+        efficiency += [
+            proxy / exact - 1
+            for exact, proxy in zip(row["eff"], row["proxy_eff"])
+            if row_best > 0 and exact >= 0.01 * row_best
+        ]
+        if row["score"] is not None and row["proxy_score"] is not None and row["score"] + 1 > 0:
+            saving.append((row["proxy_score"] + 1) / (row["score"] + 1) - 1)
+    return ProxyErrors(
+        rows=len(rows),
+        other_deck=sum(not row["same_deck"] for row in rows),
+        efficiency_low=min(efficiency),
+        efficiency_high=max(efficiency),
+        saving_low=min(saving),
+        saving_high=max(saving),
+    )
+
+
+def proxy_gate(job_entry, job_dir):
+    era, name = job_entry
+    job = json.load(open(os.path.join(PLAN_DIR, name + ".json")))
+    job["next"] = {**job.get("next", {}), "proxy_check": True}
+    path = os.path.join(job_dir, name + ".json")
+    json.dump(job, open(path, "w"))
+    result = subprocess.run(
+        [binary, "data.json", path],
+        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise RuntimeError(f"{name} (proxy_check): solver exited {result.returncode}\n{result.stderr}")
+    open(os.path.join(PLAN_DIR, f"{tag}_proxy__{name}.out"), "w").write(result.stdout)
+    output = json.loads([line for line in result.stdout.splitlines() if line.strip()][-1])
+    return proxy_errors(output) if "proxy_check" in (output.get("next") or {}) else None
+
+
 failures = sum(compare_job(name) for _era, name in jobs)
 print(f"{len(jobs)} plan jobs, {failures} differ")
-sys.exit(1 if failures or not jobs else 0)
+with tempfile.TemporaryDirectory() as job_dir, ThreadPoolExecutor(parallelism) as ex:
+    gates = list(ex.map(lambda job_entry: proxy_gate(job_entry, job_dir), jobs))
+proxy_failures = 0
+for (_era, name), errors in zip(jobs, gates):
+    if errors is None:
+        print(f"{name}: no proxy_check in the output")
+        proxy_failures += 1
+        continue
+    low = errors.efficiency_low < -PROXY_GATE or errors.saving_low < -PROXY_GATE
+    proxy_failures += low
+    print(
+        f"{name}: proxies {'LOW ' if low else ''}{errors.rows} rows ({errors.other_deck} on another deck): efficiency "
+        f"{errors.efficiency_low:+.2%} .. {errors.efficiency_high:+.2%}, saving + 1 {errors.saving_low:+.2%} .. {errors.saving_high:+.2%}"
+    )
+print(f"{len(jobs)} proxy checks, {proxy_failures} read over {PROXY_GATE:.0%} low")
+sys.exit(1 if failures or proxy_failures or not jobs else 0)

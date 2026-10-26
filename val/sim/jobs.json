@@ -10,5 +10,18 @@
    "simulate": {"policy": "trace", "seed": 1, "runs": 1, "max_careers": 3, "margin": 1e9,
                 "loop_members": [1019, 1014, 1078]}},
   {"name": "index", "era": "global", "pool": "val/sim/pools/pool4.json",
-   "simulate": {"policy": "index", "seed": 1, "runs": 1, "max_careers": 2}}
+   "simulate": {"policy": "index", "seed": 1, "runs": 1, "max_careers": 2}},
+  {"name": "index_p16", "era": "global", "pool": "val/plan/p16.json",
+   "simulate": {"policy": "index", "seed": 1, "runs": 1, "max_careers": 2}},
+  {"name": "index_p16_88", "era": "global", "pool": "val/plan/p16_88.json",
+   "simulate": {"policy": "index", "seed": 1, "runs": 1, "max_careers": 2}},
+  {"name": "index_looped", "era": "global", "pool": "val/plan/p16_88.json",
+   "simulate": {"policy": "index", "goal": "looped", "seed": 1, "runs": 1, "max_careers": 2}},
+  {"name": "greedy_looped", "era": "global", "pool": "val/plan/p16_88.json",
+   "simulate": {"policy": "greedy", "goal": "looped", "seed": 1, "runs": 2, "max_careers": 4, "margin": 0}},
+  {"name": "greedy_exact_looped", "era": "global", "pool": "val/plan/p16_88.json",
+   "simulate": {"policy": "greedy_exact", "goal": "looped", "seed": 1, "runs": 1, "max_careers": 2}},
+  {"name": "loop_looped", "era": "global", "pool": "val/sim/pools/pool4.json",
+   "simulate": {"policy": "loop", "goal": "looped", "seed": 1, "runs": 1, "max_careers": 10,
+                "loop_members": [1014, 1019, 1078], "margin": 0.02}}
 ]
