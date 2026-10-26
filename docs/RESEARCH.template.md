@@ -128,7 +128,7 @@ given to a skill already at Lv 5 is not credited (section 9); that pal and group
 Tokai Teio's Head-On is always acquired (section 11); the loss scaling section 6 uses to price base grades; a score
 straight-line between its floor and ceiling (section 2); the one-nat allowance for fitting a parameter (section 3); and
 dependence between a run's targets beyond what section 12 models, apart from the inspirations of different targets,
-where section 13 tests it and detects none.
+where sections 3 (within one inspiration) and 13 (over a career) test it and detect none.
 
 ## How to read this document
 
@@ -321,6 +321,15 @@ a *slope* $s$ scales affinity, $r = \min\{1,\ b(s)(1 + sA/100)\}$. The model has
 ### Findings
 
 - **Grandparents pass sparks at the model's full base rate.**
+- **Within one inspiration, no per-ancestor trigger is detected.** A trigger would make an ancestor active in an
+  inspiration with some chance $g$, her sparks then firing with chance $r/g$: each spark's own chance stays $r$, but a
+  pair she carries shows together $1/g$ times as often as the product predicts, while pairs on two ancestors stay at
+  the product (derived). Pairs of single-carrier skill whites in the same career year, each chance scaled by her
+  generation's observed / predicted, show together {{3.spark_pairs_on_one_ancestor_obs_per_pred|.3f}} [{{3.spark_pairs_on_one_ancestor_95_pct_low|.3f}}, {{3.spark_pairs_on_one_ancestor_95_pct_high|.3f}}]
+  times the product on one ancestor and {{3.spark_pairs_on_two_ancestors_obs_per_pred|.3f}} [{{3.spark_pairs_on_two_ancestors_95_pct_low|.3f}}, {{3.spark_pairs_on_two_ancestors_95_pct_high|.3f}}] on two
+  ({{3.spark_pairs_runs|,.0f}} runs, run-clustered bootstrap). So a trigger with $g$ below
+  {{3.spark_pairs_per_ancestor_trigger_excluded_below|.3f}} is excluded. This tests one kind of dependence, through
+  pairs; it does not show the firings independent in general.
 - **Known miss: parents pass sparks less often than the model predicts, and the trials cannot say why.** In sample,
   two one-parameter changes are each detectable (rule 2): a parent weight below 1 and an affinity slope below 1. Over
   all trials the parent weight fits slightly better, since a slope also lowers the grandparents; on parents alone, the

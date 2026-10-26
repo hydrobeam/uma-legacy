@@ -24,6 +24,8 @@ model, a known miss stated with its size. A sum's interval is observed / predict
 (common.cluster_ci: a run's trials share its lineage); fitted parameters carry run-clustered (sandwich) 95% intervals.
 """
 
+import collections
+import itertools
 from collections.abc import Callable
 from typing import NamedTuple
 import numpy as np
@@ -236,6 +238,7 @@ def claims() -> list[Value | Finding]:
         + affinity_part_claims(ts)
         + star_claims(ts)
         + band_claims(ts, forms)
+        + pair_claims(R)
     )
 
 
@@ -616,6 +619,116 @@ def band_claims(ts: Trials, forms: Forms) -> list[Value | Finding]:
             "are named from the computed list)",
             all(m.split(" ")[0] == f"{MISS_FROM}+" for m in miss),
             "; ".join(miss) or "none",
+        )
+    )
+    return out
+
+
+PAIR_BOOTSTRAP: int = 2000  # run-clustered bootstrap draws for the pair ratios
+PAIR_KINDS: tuple[str, ...] = ("one ancestor", "two ancestors")
+GENERATIONS: tuple[str, ...] = ("P", "G")
+# one run's sums, as one row: per kind and generation pair (GG, GP, PP) both shown and the model's chance of both,
+# then per generation each single-carrier spark-year's shown count and chance (the marginals, counted once each)
+PAIR_CLASSES: tuple[tuple[str, str], ...] = (("G", "G"), ("G", "P"), ("P", "P"))  # each sorted
+PAIR_COLUMNS: int = 2 * len(PAIR_KINDS) * len(PAIR_CLASSES) + 2 * len(GENERATIONS)
+
+
+def pair_column(kind: str, generations: tuple[str, str]) -> int:
+    """the column of a kind and generation pair's 'both shown'; its model chance is the next column"""
+    return 2 * (PAIR_KINDS.index(kind) * len(PAIR_CLASSES) + PAIR_CLASSES.index(tuple(sorted(generations))))
+
+
+def marginal_column(generation: str) -> int:
+    """the column of a generation's shown count; its model chance is the next column"""
+    return 2 * len(PAIR_KINDS) * len(PAIR_CLASSES) + 2 * GENERATIONS.index(generation)
+
+
+def pair_sums(R: list[common.Run]) -> np.ndarray:
+    """per run, the pair sums (PAIR_COLUMNS): pairs of white skill sparks, each carried by exactly one of the six
+    ordinary ancestors (the trials' rule), in the same run and career year, so one inspiration rolls both"""
+    S, ftype = common.relations()
+    rows = []
+    for r in R:
+        anc = common.lineage(r)
+        if anc is None:
+            continue
+        T = r["chara"]
+        A = [a["chara"] for a in anc]
+        aff = r.get("affinity") or {}
+        yrs = r.get("years") or {}
+        if len({T, A[0], A[3]}) < 3 or not common.has_affinity_rows(aff) or "2" not in yrs or "3" not in yrs:
+            continue
+        affinity = common.six_affinities(T, A, aff, S, h=0)
+        sparks = [{f // 100: f for f, _ in (a.get("factors") or [])} for a in anc]
+        carriers = collections.Counter(n for s in sparks for n in s)
+        single = [
+            (slot, common.category(slot, A, T), f, min(1.0, common.BASE[f % 10 - 1] * (1 + affinity[slot] / 100)))
+            for slot in range(6)
+            if common.category(slot, A, T) in GENERATIONS
+            for n, f in sparks[slot].items()
+            if ftype.get(f) == 4 and carriers[n] == 1
+        ]
+        row = np.zeros(PAIR_COLUMNS)
+        for y in ("2", "3"):
+            shown = {f for f, _ in yrs[y]}
+            for _, generation, f, chance in single:
+                row[marginal_column(generation)] += f in shown
+                row[marginal_column(generation) + 1] += chance
+            for (slot_a, gen_a, fa, ra), (slot_b, gen_b, fb, rb) in itertools.combinations(single, 2):
+                column = pair_column("one ancestor" if slot_a == slot_b else "two ancestors", (gen_a, gen_b))
+                row[column] += fa in shown and fb in shown
+                row[column + 1] += ra * rb
+        if row[: 2 * len(PAIR_KINDS) * len(PAIR_CLASSES)].any():
+            rows.append(row)
+    return np.array(rows)
+
+
+def pair_ratios(rows: np.ndarray) -> dict[str, float]:
+    """per kind, both shown over the model's chance of both with each spark's chance scaled by her generation's
+    observed / predicted (so the parents' known shortfall, or any calibration gap between generations, does not read
+    as dependence)"""
+    t = rows.sum(axis=0)
+    scale = {g: t[marginal_column(g)] / t[marginal_column(g) + 1] for g in GENERATIONS}
+    out = {}
+    for kind in PAIR_KINDS:
+        both = sum(t[pair_column(kind, c)] for c in PAIR_CLASSES)
+        chance = sum(t[pair_column(kind, c) + 1] * scale[c[0]] * scale[c[1]] for c in PAIR_CLASSES)
+        out[kind] = float(both / chance)
+    return out
+
+
+def pair_claims(R: list[common.Run]) -> list[Value | Finding]:
+    """whether a per-ancestor trigger shows: an ancestor active in an inspiration with chance g, her sparks then firing
+    with chance r / g, leaves each marginal at r and raises a pair on her to r_i r_j / g, so the one-ancestor ratio
+    reads 1 / g while the two-ancestor pairs, a built-in control, stay at 1 (derived)"""
+    rows = pair_sums(R)
+    rng = np.random.default_rng(3)
+    draws = [pair_ratios(rows[rng.integers(0, len(rows), len(rows))]) for _ in range(PAIR_BOOTSTRAP)]
+    estimate = pair_ratios(rows)
+    out: list[Value | Finding] = [Value(SEC, "spark pairs runs", len(rows))]
+    texts, covers, bounds = [], True, {}
+    for kind in PAIR_KINDS:
+        low, high = (float(np.quantile([d[kind] for d in draws], q)) for q in (0.025, 0.975))
+        both = sum(rows[:, pair_column(kind, c)].sum() for c in PAIR_CLASSES)
+        out += [
+            Value(SEC, f"spark pairs on {kind} both shown", float(both)),
+            Value(SEC, f"spark pairs on {kind} obs / pred", estimate[kind]),
+            Value(SEC, f"spark pairs on {kind} 95% low", low),
+            Value(SEC, f"spark pairs on {kind} 95% high", high),
+        ]
+        texts.append(f"{kind} {estimate[kind]:.3f} [{low:.3f}, {high:.3f}] ({both:,.0f} both shown)")
+        covers &= low <= 1 <= high
+        bounds[kind] = high
+    gate = 1 / bounds["one ancestor"]  # the weakest trigger the one-ancestor interval excludes, under its model
+    out.append(Value(SEC, "spark pairs per-ancestor trigger excluded below", gate))
+    out.append(
+        common.finding(
+            SEC,
+            "No per-ancestor trigger is detected within one inspiration: pairs of single-carrier white sparks show "
+            "together as often as the product of their generation-calibrated chances predicts, on one ancestor and on "
+            "two (each interval covers 1)",
+            covers,
+            "; ".join(texts) + f"; a trigger with g below {gate:.3f} is excluded",
         )
     )
     return out
