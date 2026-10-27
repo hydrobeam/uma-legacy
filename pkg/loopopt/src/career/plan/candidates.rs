@@ -61,10 +61,9 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // where pass 1 searches every allowed uma's best career exactly anyway (no proxies: `exact_all`, `exact_builders`),
     // the searches run here, before the candidates, so the free slots rank by the odds found (`stage_candidates`):
     // a ranking with no deck search cut Gold Ship, a trio side on today's veterans, on both exported rosters with
-    // borrows (V +2.2%, +0.6%). `proxy_check` keeps its order: it measures the cache as it is before the builders'
-    // searches
+    // borrows (V +2.2%, +0.6%). `proxy_check` presearches alike, so its plan picks the same candidates as the plan it
+    // checks (planval compares their V); its cache snapshot is taken before the builders' decks are added
     let presearch = settings.surrogate_mode == 0
-        && !settings.proxy_check
         && settings.fit.is_none()
         && (settings.exact_all || exact_builders(env.setup.target_count, legacies, input.pool.max_borrowed));
     if presearch {
@@ -116,6 +115,9 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
             sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, trainee, &found.deck);
         }
     }
+    // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end; taken before the
+    // presearched builders' decks below, as pass 1 would add them later)
+    let cache_before_builders = settings.proxy_check.then(|| sim.evaluator.cache.clone());
     // (the searched builders' decks too, which pass 1 adds as it searches them: `search_best_career`)
     if presearch {
         for &trainee in &allowed_trainees {
@@ -126,8 +128,6 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
             }
         }
     }
-    // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
-    let cache_before_builders = settings.proxy_check.then(|| sim.evaluator.cache.clone());
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut surrogate_differences: Vec<Value> = vec![];
     if settings.surrogate_mode > 0 {

@@ -38,6 +38,13 @@ fn p10() -> Value {
         .unwrap()
 }
 
+/// p16_borrow: borrowed veterans usable, so every uma's best career is searched before the stage candidates are chosen
+/// and the free slots rank by the careers found (candidates.rs `presearch`), a path p10 (proxies) does not take
+fn p16_borrow() -> Value {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16_borrow.json");
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+}
+
 /// The stage candidates (`fit`'s umas, in order) and the ceiling ranking's picks (`hint`).
 fn candidates(next: &Value) -> (Vec<Value>, Vec<Value>) {
     let fit = next["fit"].as_array().unwrap().iter().map(|entry| entry[0].clone()).collect();
@@ -51,6 +58,21 @@ fn the_veterans_order_changes_no_candidate() {
     let mut reversed = in_order.clone();
     reversed["legacies"].as_array_mut().unwrap().reverse();
     let next = [&plans("in-order", &[&in_order])[0], &plans("reversed", &[&reversed])[0]];
+    assert_eq!(candidates(next[0]), candidates(next[1]));
+    assert_eq!(next[0]["v0"].as_f64().unwrap().to_bits(), next[1]["v0"].as_f64().unwrap().to_bits());
+}
+
+#[test]
+fn the_veterans_order_changes_no_presearched_candidate() {
+    let in_order = p16_borrow();
+    let mut reversed = in_order.clone();
+    reversed["legacies"].as_array_mut().unwrap().reverse();
+    let next = [&plans("borrow-in-order", &[&in_order])[0], &plans("borrow-reversed", &[&reversed])[0]];
+    assert!(
+        next[0]["hint"].as_array().unwrap().iter().all(|entry| entry["basis"] == "searched"),
+        "{}",
+        next[0]["hint"]
+    );
     assert_eq!(candidates(next[0]), candidates(next[1]));
     assert_eq!(next[0]["v0"].as_f64().unwrap().to_bits(), next[1]["v0"].as_f64().unwrap().to_bits());
 }
