@@ -24,6 +24,7 @@ import { initTargets, renderTargets } from './targets.js';
 import {
   vets,
   plan,
+  chosen,
   onVetsChange,
   changed,
   persist,
@@ -126,13 +127,14 @@ const progText = ({ ph, k, n }) =>
  *   rollout planner that `baseOf`, `planKey` and the plan job still clear
  * @property {undefined} [p_now]  likewise
  * @property {'later'|'never'} [borrowed_parent]  left out at 'allow'
- * @property {{roll?: number[], fit?: PlanFit, robust?: 'next'}} [next]  a plan job: its settings (`roll`: a roll's spark
- *   stars, per target; `fit`: another plan's continuations, taken as given instead of fitted to this pool; `robust`: the
- *   next variant of the kept plan's robustness check, `checkPhase`)
+ * @property {{roll?: number[], fit?: PlanFit, robust?: 'next', pair_search?: boolean}} [next]  a plan job: its settings
+ *   (`roll`: a roll's spark stars, per target; `fit`: another plan's continuations, taken as given instead of fitted to
+ *   this pool; `robust`: the next step of the kept plan's robustness check, `checkPhase`; `pair_search`: that check
+ *   ends with the within-trainee pair search, sent on the check's jobs only)
  * @property {boolean} [no_reports]  a plan job: no career reports, `next` only
  * @property {boolean} [compare]  a comparison's job
  * @property {string} [career]  one career reported as it is, no deck search (career/given.rs: its `career` id, on the
- *   trainee and both parents fixed): Use this on a builder's other career (`chosenCareer`)
+ *   trainee and both parents fixed): Use this on a builder's other career or the pair search's (`chosen`)
  *
  * One career in a report (career/outcomes.rs `report`): the trainee and her parents, by legacy index.
  * @typedef {object} CareerReport
@@ -226,6 +228,8 @@ const progText = ({ ph, k, n }) =>
  * @property {number|null} lift  the chance her result lowers the careers to a fully looped parent
  * @property {boolean} near  close to the pick
  * @property {number|null} score  the table's order
+ * @property {boolean} [pair_search]  the pair search's recommendation (`pairSearchRow`): run as it is, its deck kept
+ * @property {number|null} [pair_search_score]  its Saves per run in the pair search
  *
  * A row of the Career choices table: a plan option, or a career of the search (without the plan's fields).
  * @typedef {CareerReport & Partial<PlanOptionFields>} OptionRow
@@ -254,22 +258,47 @@ const progText = ({ ph, k, n }) =>
  * @property {CareerReport|null} choice  the plan's pick
  * @property {PlanOption[]} options  by score, best first
  * @property {number|null} v0  expected careers to a fully looped parent with the veterans now
- * @property {{a: string|null, b: string|null, c: string|null, careers: number[]}|null} v0_plan  today's cheapest route:
- *   its steps' trainees by name and their careers
+ * @property {{a: string|null, b: string|null, c: string|null, careers: number[], sides?: string[]}|null} v0_plan  today's
+ *   cheapest route: its steps' trainees by name, their careers, and A's and B's sides (`side_key` in
+ *   career/plan/output.rs: "real:i" her veteran i, "current:i,j" her best career now, on veterans i and j, "alt:i,j"
+ *   another career of hers, on veterans i and j)
+ * @property {{a: string|null, b: string|null, c: string|null, careers: number[], sides?: string[], value: number, near: boolean}[]} [trios]
+ *   the cheapest routes, cheapest first; `near`: within 2% of V's (assumed), so about as cheap
  * @property {RouteMember[]} [members]  the route's A and B, in its order (empty without a route)
  * @property {{trainee: number, parents: [number, number], career?: string, uncv: number[], fixed: number[]}|null} outcomes  the career a
  *   roll is of (`next.roll`)
  * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound over the plan's routes (`rollReq`)
  * @property {boolean} [check_unavailable]  set by the page: the robustness check could not finish (`checkPhase`)
- * @property {{plan: string, pending: number, stable: boolean, contenders: string[]}} [robust]  the robustness check on
- *   the pick (plan/robust.rs), set by the page from its follow-up jobs (`checkPhase`): the pick it is of, the variants
- *   left, whether the planner's rule selects the same career among the checked rows under every tested variant, and the
- *   careers (`keyOf`) it selects under some variant, the pick first
+ * @property {{plan: string, pending: number, stable: boolean, contenders: string[], pick_varies?: boolean, near_override?: boolean, score_winner?: string|null, pairs?: PairSearch|null}} [robust]
+ *   the robustness check on the pick (plan/robust.rs), set by the page from its follow-up jobs (`checkPhase`): the pick
+ *   it is of, the variants left, whether every tested variant scores the pick highest (`stable`), the careers (`keyOf`)
+ *   the variants score highest (`contenders`), whether they disagree (`pick_varies`), and where they agree on another
+ *   career than the pick (`near_override`), that career (`score_winner`): the planner took the pick for its better odds
+ *   within the "about the same" band; the within-trainee pair search once it has run (`pairs`: null before, absent
+ *   from a solver without it)
  * @property {PlanFit} [fit]  the stage candidates and their continuations the plan was fitted to: a comparison passes
  *   it on unchanged (`next.fit`), so the pool with her is priced the same way
  * @property {string[]} [unproven_why]  set by the page: why some of its career searches proved nothing (`unprovenWhy`)
  * @property {string[]} [job_assumes]  set by the page: the named assumptions any search of the plan job rests on (the
  *   job's `job_assumes`, kept with the plan; `planCaveat`)
+ *
+ * The within-trainee pair search (plan/robust.rs `pair_search`), one entry per trainee it ran for: the pick's, then each
+ * one a per-uma scenario scores highest. `shown`: her best-scoring shown career (`keyOf`); `best_parents`: the legacy
+ * indices of her best pair by its best deck found so far; `score`: that pair's Saves per run after its deck was searched
+ * exactly; `margin_over_shown`: that less her shown career's; `margin_over_other_pairs`: that less the best other pair
+ * evaluated (null where there is none; neither margin certifies the best pair); `corner_margins`: the margin over her
+ * shown career under each building-curve corner; `scale_margins`: at her own odds x0.76 and x1.32 (both careers alike);
+ * `pairs_scored`: the pairs she was scored on, the best among them; `pairs_runnable`: the pairs she can run;
+ * `pairs_truncated`: the bound (`pair_bound` per uma) left some of them unscored, the rest by their all-target ceiling.
+ * `reason`: why she was searched ("pick", "tied": a per-uma scenario's pick, "top": among the 4 best by score);
+ * `better_parents`: her best beats her shown career on another pair. `shared_coverage`: the umas without their own search
+ * the best pairs were tried for, and the careers so scored. `best`: the best (trainee, pair) by score over both, with its
+ * margin over the pick's trainee's shown career and, where it is another trainee's, `versus_pick_side`: its margins over
+ * the pick's side (`career`; `source` "pick_trainee_pair", her better parents, or "plan_pick") as fitted and in the two
+ * per-uma scenarios, and whether all three are positive (`holds`). `recommendation`: the career to run (`source`
+ * "cross_trainee", "pick_trainee_pair" or "plan_pick"), with its pair-search `score` and `report` (a career report, its
+ * deck with it: the table's row for it, `pairSearchRow`).
+ * @typedef {{trainees: {trainee: string, reason?: string, shown: string, best_parents: [number, number], score: number, margin_over_shown: number, better_parents: boolean, margin_over_other_pairs: number|null, corner_margins?: number[], scale_margins?: number[], pairs_scored: number, pairs_runnable?: number, pairs_truncated?: boolean}[], shared_coverage?: {trainees: number, careers: number, trainees_truncated?: number}, pair_bound?: number, best?: {trainee: string, career: string, best_parents: [number, number], score: number, margin_over_pick_trainee_shown: number|null, versus_pick_side?: {career: string, source: string, margins: {nominal: number, pick_down: number, pick_up: number}, holds: boolean}}|null, recommendation?: {career: string, source: string, score?: number|null, report?: CareerReport}}} PairSearch
  *
  * A plan's continuation fit, one entry per stage candidate (`[chara, lam, phi, pinf, ...]`, as the solver writes it;
  * the page never reads inside it).
@@ -492,14 +521,48 @@ function buildJob() {
     top: allPlaced ? 1 : ROLL_K,
   };
   if (borrowChoice() !== 'allow') job.borrowed_parent = borrowChoice();
-  if (allPlaced && chosenCareer?.places === JSON.stringify(plan)) job.career = chosenCareer.id;
+  if (allPlaced && chosenApplies(job)) job.career = chosen.career.id;
   return job;
 }
-// the career Use this chose when it is a builder's other career (an option with `alternative`: a search on its places
-// would give her best deck there instead; listed only with the plan's `builder_careers` above 1, which the page leaves
-// at 1), while the places are still the ones it set; not kept over a reload
-/** @type {{places: string, id: string}|null} */
-let chosenCareer = null;
+// the career Use this chose with its deck (vets.js `chosen`, saved with the plan): a builder's other career (an option
+// with `alternative`: a search on its places would give her best deck there instead, but for the pick, searched on its
+// pair before it is shown; listed with the plan's `builder_careers` above 1, its default 1, which the page keeps: none by
+// default) or the pair search's recommendation (`pair_search`). It is sent only while it applies (`chosenApplies`): its
+// places, the setup it was chosen on (`chosenSetup`: the job's settings, its targets and cards among them, and its two
+// parents' records) and its parents' places in the veteran list (the id names them by index) all as they were. One
+// saved before a reload that no longer applies is dropped, and the search's status says so (`chosenDropped`)
+/** @type {(job: CareerJob) => string} */
+const chosenSetup = (job) =>
+  JSON.stringify({
+    ...job,
+    legacies: job.fix.map((i) => job.legacies[i]),
+    career: undefined,
+    top: undefined,
+  });
+/** @type {(job: CareerJob) => boolean} */
+const chosenApplies = (job) => {
+  const c = chosen.career;
+  if (!c || c.places !== JSON.stringify(plan) || c.setup !== chosenSetup(job)) return false;
+  const named = (c.id.split(':')[1] || '').split(',').map(Number),
+    fixed = job.fix;
+  return named.length === 2 && fixed.length === 2 && named.every((i) => fixed.includes(i));
+};
+/** @type {{places: string, text: string}|null} a saved choice dropped on load, while its places stand */
+let chosenDropped = null;
+function dropStaleChosen() {
+  if (!chosen.career) return;
+  let applies = false;
+  try {
+    applies = buildJob().career === chosen.career.id;
+  } catch {}
+  if (applies) return;
+  chosenDropped = {
+    places: chosen.career.places,
+    text: 'The deck you chose with Use this before the reload no longer fits (its trainee, parents, their records, the targets or the card settings changed), so this is the deck the search finds.',
+  };
+  chosen.career = null;
+  persist();
+}
 // a full veteran: a spark of every target (with full veteran parents: a fully looped parent)
 const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every((t) => nd.sparks?.[t.group] > 0);
 // a career on two full veteran parents: her own full veteran there is a fully looped parent (the plan says so; a search's row is read off the veterans)
@@ -561,6 +624,10 @@ const canon = (x) =>
             .map((k) => [k, canon(x[k])]),
         )
       : x;
+// a plan job's `next`: nothing of its own; Compare's plan job of the same pool sends the same, so a run can take its
+// answer (`planKept`). The check's follow-up jobs add `robust` and `pair_search` (`checkPhase`), which the solver leaves
+// out of the key it finds the kept check by (`check_key`)
+const PLAN_NEXT = Object.freeze({});
 const planKey = (job) => {
   const { compare: _c, rollout: _r, p_now: _p, ...j } = job;
   return JSON.stringify(canon(j));
@@ -734,7 +801,8 @@ async function search() {
 }
 // The robustness check on the pick, once it is shown: the plan job again with `next.robust: "next"`, one variant per
 // job from the plan the worker keeps, as background jobs (an edit lets the variant under way finish and its job waits
-// behind it, so the worker and what it keeps stay), until none is left. Its report attaches only to the plan it was
+// behind it, so the worker and what it keeps stay), until none is left, then one more for the within-trainee pair
+// search (`next.pair_search`, sent on every check job: the report's `pairs`). Its report attaches only to the plan it was
 // asked for: the same run and plan state, and the pick it names (`robust.plan`). Where the worker no longer keeps the
 // plan (it was stopped or restarted: a stopped comparison, a solver error, a reload) the check is unavailable, and the
 // table says so (`check_unavailable`).
@@ -754,7 +822,10 @@ async function checkPhase(id, planned) {
   for (;;) {
     let m = null;
     try {
-      const job = { ...planned.job, next: { ...planned.job.next, robust: /** @type {'next'} */ ('next') } };
+      const job = {
+        ...planned.job,
+        next: { ...planned.job.next, robust: /** @type {'next'} */ ('next'), pair_search: true },
+      };
       m = await Promise.race([runJob(job, undefined, true), nextKill().then(() => null)]);
     } catch {
       m = null;
@@ -763,17 +834,22 @@ async function checkPhase(id, planned) {
     const check = m?.r.next?.robust;
     if (!check || check.unavailable || check.error) return unavailable();
     if (check.plan !== planned.r.outcomes?.career) return;
+    const variantsWereDone = planned.r.robust?.pending === 0;
     planned.r.robust = check;
-    if (check.pending === 0) {
-      redraw();
-      return;
-    }
+    if (check.pending > 0) continue;
+    redraw();
+    // (done once the pair search is in; a step after the last variant that brought none has nothing more to bring)
+    if (checkComplete(check) || variantsWereDone) return;
   }
 }
+// a check that has nothing left to run: every variant done and the pair search in (`pairs`; absent where the solver has
+// none)
+/** @type {(check: PlanReport['robust']) => boolean} */
+const checkComplete = (check) => check?.pending === 0 && check.pairs !== null;
 // an unfinished check of the plan on show, resumed where its answer is shown again (`checkPhase`; a check cut short by
 // an edit and its undoing, or by a newer answer): nothing where it is done or unavailable
 function resumeCheck(id) {
-  if (planState.state !== 'done' || planState.r.check_unavailable || planState.r.robust?.pending === 0) return;
+  if (planState.state !== 'done' || planState.r.check_unavailable || checkComplete(planState.r.robust)) return;
   checkPhase(id, planState);
 }
 // a run that ends without searching (the job can't be built): its message, no answer
@@ -808,8 +884,9 @@ function searchedText(m) {
 // no deck, outfit or event gives them either, or some career would have them)
 /** @returns {Status} */
 function searchStatus(m, found) {
-  const cert = searchCaveat(m.r);
-  if (m.r.results.length) return { kind: 'done', text: found + cert };
+  const cert = searchCaveat(m.r),
+    dropped = chosenDropped?.places === JSON.stringify(plan) ? ` ${chosenDropped.text}` : '';
+  if (m.r.results.length) return { kind: 'done', text: found + cert + dropped };
   const carried = new Set(
     vets.flatMap((v) => [v, ...v.parents]).flatMap((x) => Object.keys(x.sparks || {}).map(Number)),
   );
@@ -817,7 +894,7 @@ function searchStatus(m, found) {
   const why = none.length
     ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.`
     : ' with these veterans.';
-  return { kind: 'error', text: `No career can land all ${state.targets.length} targets${why}` };
+  return { kind: 'error', text: `No career can land all ${state.targets.length} targets${why}${dropped}` };
 }
 // The plan (solver: career/plan/mod.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned uma's
 // best career scored by the careers it saves toward a fully looped parent (the cheapest trio). The page reads `next`
@@ -833,7 +910,7 @@ async function planPhase(id, job, found) {
   let planned;
   try {
     // Compare may have run this very plan job already (`planKept`): take its answer instead of planning again
-    const jp = { ...plain, next: {}, no_reports: true },
+    const jp = { ...plain, next: { ...PLAN_NEXT }, no_reports: true },
       kept = planKept && planKept.key === planKey(jp) ? planKept : null;
     /** @type {{r: {next?: PlanReport, error?: string}, ms: number}} */
     const m2 = kept
@@ -1812,26 +1889,47 @@ function cancelCompare() {
   if (simulation.kind === 'quick') return; // one quick search: it finishes, its answer ignored (the worker and its caches stay)
   restartEngine();
 }
-// where a comparison's saving lands: the next career when she is one of its parents, else the route step (V's A, B, C)
-// whose careers fell most; unnamed when the route itself changed. planNow / planWithHer: the plans' `next` reports;
+// where a comparison's saving lands: the next career when she is one of its parents; else a later career, named (the
+// step of V's route, A, B or C, whose careers fell most) only where both plans' cheapest routes are the same trio, on
+// the same sides (`sides`: her real veteran, or her best career now or another career of hers, each on its parents: a
+// side whose parents changed is another route). The
+// cheapest trios are often near-tied (`trios`, `near`), so between two different ones a per-uma step comparison names
+// an arbitrary uma; what falls then is V, which the panel shows. planNow / planWithHer: the plans' `next` reports;
 // pickA: the planner's next career with her; samePick: it is the one without her
 function savedWhere({ planNow, planWithHer, pickA, samePick, herIndex }) {
   if (!pickA) return '';
   if (pickA.parents.includes(herIndex)) return `Improves the next career (${pickA.trainee.name}).`;
+  const trioNow = planNow?.v0_plan,
+    trioWithHer = planWithHer?.v0_plan;
+  // (A and B are ordered by their careers, so the same trio may list them swapped; each side by its uma and its veteran,
+  // `sides`: the same names on other veterans, or on other parents, are another route, whose per-step careers are not
+  // comparable)
+  /** @type {(v: NonNullable<PlanReport['v0_plan']>) => string} */
+  const sidesOf = (v) =>
+    [v.a, v.b]
+      .map((trainee, i) => `${trainee}|${v.sides?.[i] ?? '?'}`)
+      .sort()
+      .join();
+  const sameTrio =
+    !!trioNow &&
+    !!trioWithHer &&
+    !!trioNow.sides &&
+    !!trioWithHer.sides &&
+    trioNow.c === trioWithHer.c &&
+    sidesOf(trioNow) === sidesOf(trioWithHer);
   // the route's steps: [the uma of the step, its careers]
-  /** @type {(next: PlanReport|null) => [string|null, number][]} */
-  const steps = (next) => {
-    const v = next?.v0_plan;
-    return v ? [v.a, v.b, v.c].map((trainee, i) => [trainee, v.careers[i]]) : [];
-  };
-  const careersNow = new Map(steps(planNow));
+  /** @type {(v: NonNullable<PlanReport['v0_plan']>) => [string|null, number][]} */
+  const steps = (v) => [v.a, v.b, v.c].map((trainee, i) => [trainee, v.careers[i]]);
   let best = null,
     gain = 0;
-  for (const [trainee, careers] of steps(planWithHer)) {
-    const fell = (careersNow.get(trainee) ?? careers) - careers;
-    if (trainee && fell > gain) {
-      gain = fell;
-      best = trainee;
+  if (sameTrio) {
+    const careersNow = new Map(steps(trioNow));
+    for (const [trainee, careers] of steps(trioWithHer)) {
+      const fell = (careersNow.get(trainee) ?? careers) - careers;
+      if (trainee && fell > gain) {
+        gain = fell;
+        best = trainee;
+      }
     }
   }
   return `Improves a later ${best ? `${best} ` : ''}career; the next career ${samePick ? 'stays' : 'is'} ${pickA.trainee.name}.`;
@@ -1902,7 +2000,14 @@ async function runComparison(refine = false) {
     if (gone()) return;
     if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
     const full = isFull(simulation.draft);
-    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true }); // as a run's plan job, once she is added
+    const planOf = (legacies) => ({
+      ...base,
+      top: ROLL_K,
+      legacies,
+      next: { ...PLAN_NEXT },
+      compare: true,
+      no_reports: true,
+    }); // as a run's plan job, once she is added
     let planNow = planState.state === 'done' && !last.job.fix.length ? planState.r : null;
     if (!planNow) {
       const mb = await runJob(planOf(base.legacies));
@@ -2226,8 +2331,15 @@ function useBtn(r, places = plan) {
     const unplaced = r.parents.filter((i) => !parents.includes(vets[i].id));
     for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets[unplaced.shift()].id;
     plan.parents = parents;
-    // a builder's other career keeps its deck: the job then reports that career (`career`) instead of searching
-    chosenCareer = r.alternative && r.career ? { places: JSON.stringify(plan), id: r.career } : null;
+    // a builder's other career, or the pair search's recommendation, keeps its deck: the job then reports that career
+    // (`career`) instead of searching, while the setup it was chosen on stands (`chosenApplies`)
+    chosen.career = null;
+    chosenDropped = null;
+    if ((r.alternative || r.pair_search) && r.career) {
+      try {
+        chosen.career = { places: JSON.stringify(plan), id: r.career, setup: chosenSetup(buildJob()) };
+      } catch {}
+    }
     changed();
   });
   b.disabled = searching; // (an old answer's option, while a run works on the next)
@@ -2256,6 +2368,20 @@ function optionsEl() {
           (on && keyOf(o) === keyOf(on)),
       )
     : last.r.results.slice();
+  // the pair search's recommendation where the plan's rows don't hold it: a row run as it is, its deck kept (`useBtn`)
+  // (a row the table already has gets its flag, pair-search score and id merged in, as a copy: the plan's own rows stay)
+  const recommended = pairSearchRow(planReport);
+  if (recommended) {
+    const at = list.findIndex((o) => keyOf(o) === keyOf(recommended));
+    if (at < 0) list.push(recommended);
+    else
+      list[at] = {
+        ...list[at],
+        pair_search: true,
+        pair_search_score: recommended.pair_search_score,
+        career: recommended.career,
+      };
+  }
   const mine = planReport && on && !list.some((o) => keyOf(o) === keyOf(on)) ? on : null;
   if (mine) list.unshift(mine);
   const tb = el('table', 'cartab optab');
@@ -2292,18 +2418,32 @@ function optionsEl() {
   box.appendChild(wrap);
   // the robustness check found the rule's pick changes with the tested variants (`robust`): every career it selects is in
   // the table; the pick stays the planner's rule's
+  const nameOf = (o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
   if (planReport && unsettled(planReport).size) {
-    const names = list
-      .filter((o) => unsettled(planReport).has(keyOf(o)))
-      .map((o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`);
+    const names = list.filter((o) => unsettled(planReport).has(keyOf(o))).map(nameOf);
     box.appendChild(
       el(
         'p',
         'hint optnote',
-        `The planner’s rule selects different careers under the tested variants of its model (its building curve at the ends of its fitted range, every all-target chance at the ends of its calibration interval), among the careers shown: ${names.join(', ')}. The pick is the rule’s under the model as fitted.`,
+        `The tested variants of the planner’s model (its building curve at the ends of its fitted range, every all-target chance at the ends of its calibration interval, and per-uma scenarios: the top-scoring uma’s all-target chance lower and a rival uma’s higher, by a split inferred from the spread measured between umas) score different careers highest, among the careers shown: ${names.join(', ')}. The pick is the rule’s under the model as fitted.`,
       ),
     );
   }
+  // every tested variant scores one career highest, and the planner's rule took another for its better odds within the
+  // "about the same" band: the variants agree, the rule's band made the pick
+  const winner = planReport && scoreWinner(planReport),
+    winnerRow = winner && list.find((o) => keyOf(o) === winner),
+    pickRow = list.find((o) => o.chosen);
+  if (winnerRow && pickRow)
+    box.appendChild(
+      el(
+        'p',
+        'hint optnote',
+        `Every tested variant of the planner’s model scores ${nameOf(winnerRow)} highest; the pick takes ${nameOf(pickRow)} for its better odds, its Saves per run being within the “about the same” band of the best (5%, at least a quarter of a career).`,
+      ),
+    );
+  for (const text of pairSearchNotes(planReport, nameOf)) box.appendChild(el('p', 'hint optnote', text));
+  if (recommended) box.appendChild(deckEl(recommended, `Deck of the pair search's career: ${nameOf(recommended)}`));
   if (planReport?.check_unavailable)
     box.appendChild(
       el(
@@ -2340,12 +2480,106 @@ function optionsEl() {
   }
   return box;
 }
-// the careers the planner's rule selects under some tested variant (`robust.contenders`): none until every variant is
-// in, where one career is selected under all, or where the check is of another pick
-const unsettled = (planReport) => {
+// the pair search's recommendation as a row of the table (`pairs.recommendation.report`, with its pair-search score and
+// `pair_search`, so Use this keeps its deck): where it is not the plan's pick, once the check of this pick is complete
+/** @type {(planReport: PlanReport|null) => OptionRow|null} */
+const pairSearchRow = (planReport) => {
+  const recommendation = planReport && checkDone(planReport)?.pairs?.recommendation;
+  if (!recommendation?.report || recommendation.source === 'plan_pick') return null;
+  const score = recommendation.score ?? null;
+  return { ...recommendation.report, score, pair_search: true, pair_search_score: score };
+};
+// the careers the tested variants score highest where they disagree (`robust.contenders`, `pick_varies`): none until
+// every variant is in, where they agree, or where the check is of another pick
+const checkDone = (planReport) => {
   const check = planReport.robust;
-  const done = check && check.pending === 0 && !check.stable && check.plan === planReport.outcomes?.career;
-  return new Set(done ? check.contenders : []);
+  return check && check.pending === 0 && check.plan === planReport.outcomes?.career ? check : null;
+};
+const unsettled = (planReport) => {
+  const check = checkDone(planReport);
+  return new Set(check?.pick_varies ? check.contenders : []);
+};
+// the pair search's findings (`robust.pairs`): one line per trainee it ran for as the pick's or a per-uma scenario's
+// (`reason` "pick" or "tied"): her better parents (`better_parents`), by how much they beat her shown career, or that none
+// did; then, where the best (trainee, pair) it found by score (`pairs.best`) is another trainee's, a line naming it
+// against the pick's side (`versus_pick_side`: the pick's trainee's better parents, else the pick): better where it
+// beats it under the model and both per-uma scenarios (`holds`, the solver's `recommendation` then), else tied with it.
+// Nothing until the check is complete, or where it is of another pick. nameOf: an option's trainee as the table names her
+/** @type {(planReport: PlanReport|null, nameOf: (o: PlanOption) => string) => string[]} */
+function pairSearchNotes(planReport, nameOf) {
+  const check = planReport && checkDone(planReport);
+  if (!check?.pairs) return [];
+  const vetName = (i) => (vets[i] ? `#${i + 1} ${umaName(vets[i].chara)}` : `#${i + 1}`);
+  const shownOf = (found) => planReport.options.find((o) => keyOf(o) === found.shown);
+  // (a bound on the pairs scored per uma, `pair_bound`: past it, her pairs with the highest all-target ceilings)
+  const bound = check.pairs.pair_bound;
+  const truncatedText = (found) =>
+    found.pairs_truncated
+      ? `; of her ${found.pairs_runnable} pairs only the ${found.pairs_scored} with the highest all-target ceilings were checked`
+      : '';
+  const lines = check.pairs.trainees
+    .filter((found) => (found.reason ?? 'pick') !== 'top')
+    .map((found) => {
+      const shown = shownOf(found),
+        who = shown ? nameOf(shown) : found.trainee,
+        others = Math.max(0, found.pairs_scored - 1);
+      // (a gain on her shown parents themselves is a better deck, not better parents: the solver's `better_parents`)
+      if (!found.better_parents)
+        return `No better parents found for ${who} among the ${found.pairs_scored} pairs checked (each with the best deck found so far for it${truncatedText(found)}).`;
+      const varies = (found.corner_margins || []).some((margin) => !(margin > 0))
+        ? '; not better under every tested building curve'
+        : '';
+      // (her own odds read high or low by the measured per-uma spread: both careers scaled alike, `scale_margins`)
+      const scaleVaries = (found.scale_margins || []).some((margin) => !(margin > 0))
+        ? '; not better if her odds are off by the measured spread'
+        : '';
+      const overOthers =
+        found.margin_over_other_pairs == null
+          ? ''
+          : ` and ${netText(found.margin_over_other_pairs)} vs the best of the ${others} other pairs checked`;
+      return `Better parents found for ${who}: ${found.best_parents.map(vetName).join(' + ')} (Saves ${netText(found.margin_over_shown)} per run vs the shown parents${overOthers}; not certified best${varies}${scaleVaries}${truncatedText(found)}).`;
+    });
+  const best = check.pairs.best,
+    pickFound = check.pairs.trainees[0],
+    versus = best?.versus_pick_side;
+  if (best && pickFound && versus && best.trainee !== pickFound.trainee) {
+    const bestFound = check.pairs.trainees.find((found) => found.trainee === best.trainee),
+      bestShown = bestFound && shownOf(bestFound),
+      pickShown = shownOf(pickFound),
+      who = bestShown ? nameOf(bestShown) : best.trainee,
+      pickWho = pickShown ? nameOf(pickShown) : pickFound.trainee,
+      // (what she is weighed against: the pick's trainee's better parents where the line above names them, else the pick)
+      side =
+        versus.source === 'pick_trainee_pair'
+          ? `${pickWho} on ${pickFound.best_parents.map(vetName).join(' + ')}`
+          : `the pick (${pickWho})`,
+      shared = check.pairs.shared_coverage,
+      truncated = check.pairs.trainees.filter((found) => found.pairs_truncated).length,
+      searched = truncated
+        ? `${check.pairs.trainees.length} umas on their pairs (${truncated} on only their ${bound} with the highest all-target ceilings)`
+        : `${check.pairs.trainees.length} umas on all their pairs`,
+      coverage = shared ? `${searched}, ${shared.trainees} more on the best pairs found` : searched,
+      where = `${who} on ${best.best_parents.map(vetName).join(' + ')}`,
+      { nominal, pick_down: pickDown, pick_up: pickUp } = versus.margins;
+    if (versus.holds)
+      lines.push(
+        `Better career found by the pair search (${coverage}): ${where} (Saves ${netText(best.score)} per run, ${netText(nominal)} vs ${side}, and still more with ${pickWho}'s all-target chance ×0.76 and hers ×1.32 (${netText(pickDown)}) or the reverse (${netText(pickUp)}); not certified best).`,
+      );
+    else if (nominal > 0)
+      lines.push(
+        `Tied with ${side} under the per-uma scenarios: ${where}, found by the pair search (${coverage}) (Saves ${netText(best.score)} per run, ${netText(nominal)} vs it as fitted, ${netText(pickDown)} with ${pickWho}'s all-target chance ×0.76 and hers ×1.32, ${netText(pickUp)} the reverse).`,
+      );
+    else
+      lines.push(
+        `No other uma's career found by the pair search (${coverage}) beats ${side}: the best, ${where}, saves ${netText(best.score)} per run, ${netText(nominal)} vs it.`,
+      );
+  }
+  return lines;
+}
+// the career every tested variant scores highest where that is not the pick (`robust.near_override`): null otherwise
+const scoreWinner = (planReport) => {
+  const check = checkDone(planReport);
+  return check?.near_override ? (check.score_winner ?? null) : null;
 };
 // One career of the table: who it places, its tags, its odds now, its Saves per run, and Use this. on: the career on
 // show; mine: your career when the plan didn't list it; planReport: the plan's report (null: no Saves per run); places:
@@ -2367,10 +2601,23 @@ function optionRow(r, { on, mine, planReport, places }) {
     tags.appendChild(a);
   }
   if (planReport && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
+  if (planReport && r.pair_search) {
+    const a = el('span', 'otag', 'pair search');
+    const saves =
+      r.pair_search_score == null ? '' : ` (Saves ${netText(r.pair_search_score)} per run in the pair search)`;
+    a.title = `The pair search’s recommendation${saves}, see below: Use this runs it with this deck`;
+    tags.appendChild(a);
+  }
   if (planReport && unsettled(planReport).has(keyOf(r))) {
     const a = el('span', 'otag', 'pick varies');
     a.title =
-      'The planner’s rule selects this career under at least one tested variant of its model (its building curve, or the all-target chances’ calibration)';
+      'At least one tested variant of the planner’s model scores this career highest (its building curve, the all-target chances’ calibration, or one uma’s calibration against another’s), and the variants disagree';
+    tags.appendChild(a);
+  }
+  if (planReport && scoreWinner(planReport) === keyOf(r)) {
+    const a = el('span', 'otag', 'top score');
+    a.title =
+      'Every tested variant of the planner’s model scores this career highest; the pick has better odds within the “about the same” band';
     tags.appendChild(a);
   }
   if (looped(r)) {
@@ -2433,6 +2680,18 @@ function openSaveWhy(planReport) {
     routePlan && routeMembers.length >= 2 && careersToday
       ? `First ${routeStep(routeMembers[0], 0)}; then ${routeStep(routeMembers[1], 1)}; then ${routePlan.c} with those two ${n}/${n}s as parents${routePlan.careers?.[2] != null ? ` (about ${fmtN(routePlan.careers[2])} careers)` : ''}. About ${careersToday} careers in all.`
       : 'No estimate: no route from the veterans you have now.';
+  // the cheapest routes (`trios`, at most three, today's first) and how many are within the assumed 2% band of it
+  // (`near`): too close for the estimate to say which is cheapest
+  const trios = planReport.trios || [],
+    nearCount = trios.filter((t) => t.near).length;
+  const trioText =
+    trios.length > 1
+      ? `The ${trios.length} cheapest routes: ${trios.map((t) => `${t.a} and ${t.b}, then ${t.c} (about ${fmtN(t.value)} careers)`).join('; ')}. ${
+          nearCount > 1
+            ? `The first ${nearCount} are within 2% of each other (a band assumed for the estimate's error between routes): too close for it to say which is cheapest.`
+            : `The others are more than 2% dearer (a band assumed for the estimate's error between routes).`
+        }`
+      : '';
   // the example: the route's first step of an uma without a full veteran yet, her rerun odds (after its building careers, if any) lifted by
   // 6% (one helpful parent)
   const example = routeMembers.find((m) => !m.real && (m.building_careers > 0 ? m.p_switch : m.p) > 0),
@@ -2470,6 +2729,7 @@ function openSaveWhy(planReport) {
     drop(
       "Today's estimate, step by step",
       el('p', 'oloop', route),
+      ...(trioText ? [el('p', 'oloop', trioText)] : []),
       para(
         `A <i>yardstick</i>, not advice: it assumes the simplest road (${n}/${n}s of two umas, then a career of a third with them as parents), and only its total is used.`,
       ),
@@ -2846,6 +3106,7 @@ loadData().then(
   () => {
     initSettings();
     initPopover();
+    dropStaleChosen();
     // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
     // places, so the answer on screen goes; an edit to a veteran keeps it on screen, dimmed, until the new one is ready.
     const vetsSig = () => vets.map((v) => v.id).join(',');

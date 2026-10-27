@@ -67,6 +67,13 @@ export const vets = (MINE.vets || []).filter(isVeteran).map((v) => ({
 }));
 /** @type {LineagePlan} */
 export const plan = MINE.plan || { trainee: null, parents: [null, null] };
+/** @typedef {{places: string, id: string, setup: string}} ChosenCareer */
+/** @type {(c: any) => boolean} */
+const isChosen = (c) => !!c && typeof c.places === 'string' && typeof c.id === 'string' && typeof c.setup === 'string';
+// the career Use this chose with its deck (career.js `chosenSetup`, `chosenApplies`), saved with the plan: the page checks
+// it against the setup it meets before it sends it (a damaged one is left out)
+/** @type {{career: ChosenCareer|null}} */
+export const chosen = { career: isChosen(MINE.chosen) ? MINE.chosen : null };
 // Saving: `persist` writes now; an edit's `persistSoon` writes once after the next frame (edits in between share it), and
 // a write still due goes out when the page is hidden or left (a reload or close loses nothing). `rev` counts the edits
 // (each `persistSoon`, and a change of uma before its skills prompt answers): `legaciesJob` is rebuilt only after one.
@@ -74,7 +81,7 @@ let persistDue = false,
   rev = 0;
 export function persist() {
   persistDue = false;
-  ALL[ERA] = { vets, plan };
+  ALL[ERA] = { vets, plan, chosen: chosen.career };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ALL));
   } catch {}
