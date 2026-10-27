@@ -97,6 +97,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `val TAG` / `valq TAG` | validation (see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
+| `fullcheck` | before a commit that stages anything in `.githooks/fullcheck-paths` (solver, data, validation, page code): `native` (every `cargo test`, the `plan_roll` fixture included), `lint`, `wasm`, `page`, the full browser suite, `val` and `val/planval.py` against their references, and `val/mono.py` where the career planner changed; then it stamps the staged tree (`.git/fullcheck`), which the pre-commit hook requires. It refuses unstaged changes or untracked files under those paths, since the stamp is of the staged tree. References and `research` are re-run before it, as AGENTS.md's *Results are pinned* says; it checks them, it does not make them |
 
 The solver's training-hint constants (each scenario's base and specialty weight, `pkg/loopopt/src/deck/hints.rs`) are
 the research fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every
@@ -230,6 +231,8 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
   clippy with warnings denied (about 5 s after a change; a minute the first time in a new worktree); Python, ruff check
   and format on the staged files; the page's JS, Biome (lint and formatting) on the staged files and `tsc` (each under a second). It checks
   the working tree's files, not only the staged parts. The wasm clippy and the whole-repo checks are left to `lint`.
+  A commit staging anything listed in `.githooks/fullcheck-paths` also needs the stamp `./build.sh fullcheck` leaves
+  on exactly the staged tree, so no commit moves results without every check having passed on it.
 - **Blame:** commits that only reformat are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 

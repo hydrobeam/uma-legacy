@@ -1,0 +1,9 @@
+pkg/loopopt/src
+pkg/loopopt/tests
+pkg/loopopt/data
+pkg/loopopt/build.rs
+pkg/loopopt/Cargo.toml
+research/results.json
+val
+webapp/src
+webapp/test

@@ -29,7 +29,8 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   - `./build.sh research` runs again, since §6 recomputes the references and §13 runs the solver.
 
   Speed work keeps outputs byte-identical (`val/same.py`, `docs/PERF.md`). After data or solver changes, rerun
-  `./build.sh pb`.
+  `./build.sh pb`. Then `./build.sh fullcheck` on the staged tree: the pre-commit hook refuses a commit staging
+  solver, data, validation or page code without its stamp (`docs/BUILD.md`, *Steps*).
 - **`/about` states the model's exact constants** (`webapp/about.template.html`), each in one place. A change to a
   modelling constant updates it in the same change, along with `docs/MODEL.md` and `docs/RESEARCH.md`.
 - **`docs/RESEARCH.md` is rendered** from `docs/RESEARCH.template.md` and `research/results.json` (`./build.sh research`):
