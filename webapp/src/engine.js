@@ -195,7 +195,9 @@ function startEngine() {
 // era data's fingerprints, so a release starts afresh. A stored state the solver refuses is dropped.
 let persistOn = false,
   saveTimer = 0;
-const stateKey = () => `${ASSETS.wasm}|${ASSETS.engine[eraKey()]}`;
+// (also the key a saved Use this choice carries, career.js `chosenSetup`: a career id another solver or data release
+// searched is dropped)
+export const stateKey = () => `${ASSETS.wasm}|${ASSETS.engine[eraKey()]}`;
 export function enginePersist() {
   persistOn = true;
 }

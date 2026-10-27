@@ -7,7 +7,7 @@ import { $, $dialog, $input, $textarea, el, esc, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
-import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from './engine.js';
+import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from './engine.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
@@ -528,12 +528,13 @@ function buildJob() {
 // with `alternative`: a search on its places would give her best deck there instead, but for the pick, searched on its
 // pair before it is shown; listed with the plan's `builder_careers` above 1, its default 1, which the page keeps: none by
 // default) or the pair search's recommendation (`pair_search`). It is sent only while it applies (`chosenApplies`): its
-// places, the setup it was chosen on (`chosenSetup`: the job's settings, its targets and cards among them, and its two
-// parents' records) and its parents' places in the veteran list (the id names them by index) all as they were. One
+// places, the setup it was chosen on (`chosenSetup`: the job's settings, its targets and cards among them, its two
+// parents' records and the solver's and data's fingerprints, engine.js `stateKey`) and its parents' places in the veteran list (the id names them by index) all as they were. One
 // saved before a reload that no longer applies is dropped, and the search's status says so (`chosenDropped`)
 /** @type {(job: CareerJob) => string} */
 const chosenSetup = (job) =>
   JSON.stringify({
+    engine: stateKey(),
     ...job,
     legacies: job.fix.map((i) => job.legacies[i]),
     career: undefined,
