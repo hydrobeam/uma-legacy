@@ -2,7 +2,7 @@
 use crate::career::cache::Cache;
 use crate::career::clock::{now_ms, prof, progress};
 use crate::career::plan::candidates::{
-    MadeExact, class_winners, exact_no_borrow_career, make_row_exact, proxy_career, set_plan_wins,
+    MadeExact, builders_use_proxies, class_winners, exact_no_borrow_career, make_row_exact, proxy_career, set_plan_wins,
 };
 use crate::career::plan::combine::{
     CHEAPEST_TRIOS, ContEvidence, PairCareer, PlanCombination, PlanFit, PlanScores, continuation_evidence,
@@ -22,12 +22,14 @@ use crate::career::sim::Sim;
 use crate::career::{Career, Legacy, Lineage};
 use crate::skills::SkillJob;
 use serde_json::{Value, json};
-/// Scores within this many careers per run of the best (or 5% of it) count as tied
-const NEAR: f64 = 0.25;
+/// How far below the top score (careers per run, or 5% of the top) a row still gets the exact work the rows at the top
+/// get (`search_floor`): proxy promotion, kept scorings, the check's rows. Search breadth only: the pick is the strict
+/// argmax (`PickRows::pick`), never a row picked within this margin
+const SEARCH_MARGIN: f64 = 0.25;
 
-/// the lowest score tied with `top` (`NEAR`)
-pub(crate) fn near_floor(top: f64) -> f64 {
-    top - NEAR.max(0.05 * top.abs())
+/// the lowest score a row can have and still get the exact work the top's rows get (`SEARCH_MARGIN`)
+pub(crate) fn search_floor(top: f64) -> f64 {
+    top - SEARCH_MARGIN.max(0.05 * top.abs())
 }
 
 /// Why a career was added to the planner's options. Rows retain their insertion order:
@@ -144,7 +146,7 @@ pub(crate) fn has_looped_parents(skill_job: &SkillJob, legacies: &[Legacy], care
         && is_full(skill_job, &legacies[career.second_parent].sparks)
 }
 
-/// The plan's pick among its rows, and the top score it was taken within `near_floor` of.
+/// The plan's pick among its rows, and its score (the top the search breadth is taken from, `search_floor`).
 #[derive(Clone, Copy)]
 pub(crate) struct PlanPick {
     pub(crate) row: usize,
@@ -152,29 +154,27 @@ pub(crate) struct PlanPick {
 }
 
 /// The pick among the rows `runs` (a row without scoring has score -infinity): the highest score among the rows that can
-/// be the pick (`can_be_pick`; a later row only when higher by more than 1e-9), then within `near_floor` of that top the
-/// best odds (a row that can be the pick), moved to the earlier row it repeats (`undup`). The one rule for the plan's
-/// pick and the roll state kept for it
+/// be the pick (`can_be_pick`; a later row only when higher by more than 1e-9), moved to the earlier row it repeats
+/// (`undup`). No own-odds tiebreak: one would count again the all-landed outcome the score already values. The one rule
+/// for the plan's pick and the roll state kept for it
 pub(crate) fn pick_of(runs: &[PlanRow], can_be_pick: impl Fn(&Found) -> bool, undup: &[usize]) -> PlanPick {
     let rows = PickRows {
         count: runs.len(),
         score: |i: usize| runs[i].total(),
-        odds: |i: usize| runs[i].career.value,
         can_be_pick: |i: usize| can_be_pick(&runs[i].career),
     };
     let PlanPick { row, top } = rows.pick();
     PlanPick { row: undup.get(row).copied().unwrap_or(row), top }
 }
 
-/// Rows as the pick rule reads them: per row (0..count) its score, its own odds (P(all)) and whether it can be the pick.
-pub(crate) struct PickRows<Score, Odds, CanBePick> {
+/// Rows as the pick rule reads them: per row (0..count) its score and whether it can be the pick.
+pub(crate) struct PickRows<Score, CanBePick> {
     pub(crate) count: usize,
     pub(crate) score: Score,
-    pub(crate) odds: Odds,
     pub(crate) can_be_pick: CanBePick,
 }
 
-impl<Score: Fn(usize) -> f64, Odds: Fn(usize) -> f64, CanBePick: Fn(usize) -> bool> PickRows<Score, Odds, CanBePick> {
+impl<Score: Fn(usize) -> f64, CanBePick: Fn(usize) -> bool> PickRows<Score, CanBePick> {
     /// The strict argmax over the rows that can be the pick (a later one replaces it only when higher by more than 1e-9,
     /// so equal scores keep the earlier row); row 0 where none can be
     pub(crate) fn argmax(&self) -> usize {
@@ -187,17 +187,10 @@ impl<Score: Fn(usize) -> f64, Odds: Fn(usize) -> f64, CanBePick: Fn(usize) -> bo
         }
         best.unwrap_or(0)
     }
-    /// The pick rule (`pick_of`) before the move to a repeated row: the strict argmax (`argmax`), then within
-    /// `near_floor` of that top the best odds among the rows that can be the pick
+    /// The pick rule (`pick_of`) before the move to a repeated row: the strict argmax (`argmax`) and its score
     pub(crate) fn pick(&self) -> PlanPick {
-        let Self { count, score, odds, can_be_pick } = self;
-        let mut pick = self.argmax();
-        let top = if *count == 0 { 0.0 } else { score(pick) };
-        for i in 0..*count {
-            if can_be_pick(i) && score(i) >= near_floor(top) && odds(i) > odds(pick) {
-                pick = i;
-            }
-        }
+        let pick = self.argmax();
+        let top = if self.count == 0 { 0.0 } else { (self.score)(pick) };
         PlanPick { row: pick, top }
     }
 }
@@ -319,7 +312,7 @@ fn looped_career(
         },
     );
     let mut best = start;
-    for RankedPair { ceiling, first_parent, second_parent } in pairs {
+    for RankedPair { ceiling, first_parent, second_parent, .. } in pairs {
         if ceiling <= best.as_ref().map_or(0.0, |career| career.value) {
             break;
         }
@@ -457,7 +450,7 @@ fn fit_trios(
     let step_costs: Vec<f64> = (0..candidates.trainees.len())
         .map(|candidate| {
             let plan = continuations[candidate].plan(candidates.current_odds[candidate]);
-            crate::career::plan::caps::capped(plan, candidates.step_caps[candidate]).expected_careers
+            crate::career::plan::caps::capped(plan, candidates.step_caps[candidate].now).expected_careers
         })
         .collect();
     let started_ms = now_ms();
@@ -748,8 +741,9 @@ impl PlanInputs<'_, '_> {
         let PlanPick { row: pick, .. } = pick_of(runs, |career| self.is_runnable(career), &undup);
         (runs.get(pick)?.origin == RowOrigin::Alternative && !pair_searched.contains(&pick)).then_some(pick)
     }
-    /// The proxy rows a shown row or the pick's near-tie band can turn on (over the rows that can be shown or picked,
-    /// `is_runnable`): their saving within PROXY_SAVE of the lowest saving those take, in row order
+    /// The proxy rows a shown row or the rows within the search margin of the top can turn on (`search_floor`; over the
+    /// rows that can be shown or picked, `is_runnable`): their saving within PROXY_SAVE of the lowest saving those take,
+    /// in row order
     fn promotable_proxies(&self, runs: &[PlanRow]) -> Vec<usize> {
         let mut savings: Vec<f64> =
             runs.iter().filter(|row| self.is_runnable(&row.career)).filter_map(PlanRow::net_saving).collect();
@@ -758,7 +752,7 @@ impl PlanInputs<'_, '_> {
             return vec![];
         }
         let (top, last_shown) = (savings[0], savings[(OPT_SHOW - 1).min(savings.len() - 1)]);
-        let lowest_saving = last_shown.min(near_floor(top)) + 1.0;
+        let lowest_saving = last_shown.min(search_floor(top)) + 1.0;
         (0..runs.len())
             .filter(|&i| {
                 !runs[i].exact
@@ -872,7 +866,16 @@ pub(crate) fn check_plan_proxies(
         rows.push(json!({"trainee": data.umas[trainee].name, "origin": run.origin.name(), "looped": looped, "cand": is_candidate, "class": simulator.env.setup.deck_class[trainee], "exact_val": run.career.value, "proxy_val": proxy.as_ref().map(|career| career.value),
         "same_pair": same_pair, "same_deck": same_deck, "score": exact_score, "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
     }
-    json!({"cands": candidates.trainees.iter().map(|&uma| data.umas[uma].name.clone()).collect::<Vec<_>>(), "rows": rows})
+    // (whether the plan this checks prices builders through proxies at all, `builders_use_proxies`: the proxy_check run
+    // is the plan job with proxy_check on, so it asks the plan's own settings; not through the surrogate, nor where every
+    // builder is searched exactly, so there a proxy's error moves nothing and planval reports it without failing)
+    let plan_uses_proxies =
+        builders_use_proxies(input.settings, simulator.env.setup.target_count, input.legacies, input.pool.max_borrowed);
+    json!({
+        "cands": candidates.trainees.iter().map(|&uma| data.umas[uma].name.clone()).collect::<Vec<_>>(),
+        "rows": rows,
+        "plan_uses_proxies": plan_uses_proxies,
+    })
 }
 
 /// A row scored against the fit, with the stamp of the cache it read (`stamped`)
@@ -906,12 +909,13 @@ fn score_plan_row(
 
 impl PlanInputs<'_, '_> {
     // Each row's kept scoring (`Scored`: what a roll of the pick reads, its tables and outcome chances) is kept only
-    // while the row can still be the pick. The pick (below) is a row within NEAR.max(0.05 |top|) of top, top at least the
-    // highest score less 1e-9 (the argmax's tolerance), or the base row a looped pick repeats (`undup`). A row's score
+    // while the row can still be the pick, kept over the search margin (`search_floor`), wider than the pick needs. The
+    // pick (below) is the argmax, its score at least the highest score less 1e-9 (the argmax's tolerance), or the base
+    // row a looped pick repeats (`undup`). A row's score
     // changes only when it is scored again, which keeps a fresh one, and an exactly searched row is scored again only
     // when every row is (a refit). The highest exact saving among the rows scored since every row last
-    // was scored is at most the final top; near_floor(t) = t - NEAR.max(0.05 |t|) rises with t; a row below
-    // near_floor(best_exact_saving) (less a slack far above its rounding) is not near the final top unless it is scored again. Kept also: every row a later row repeats
+    // was scored is at most the final top; search_floor(t) = t - SEARCH_MARGIN.max(0.05 |t|) rises with t; a row below
+    // search_floor(best_exact_saving) (less a slack far above its rounding) is not near the final top unless it is scored again. Kept also: every row a later row repeats
     // (same uma and pair: a looped or nb row the pick moves from; a row whose career changes is scored again). Only the
     // pick's is read (`RollKeep`); the highest exact saving is over runnable rows (`is_runnable`).
     fn prune_plan_scorings(&self, runs: &mut [PlanRow]) {
@@ -923,7 +927,7 @@ impl PlanInputs<'_, '_> {
         if !best_exact_saving.is_finite() {
             return;
         }
-        let retention_floor = near_floor(best_exact_saving) - 1e-6 * (1.0 + best_exact_saving.abs());
+        let retention_floor = search_floor(best_exact_saving) - 1e-6 * (1.0 + best_exact_saving.abs());
         for i in 0..runs.len() {
             let Some(scoring) = &runs[i].scoring else { continue };
             if scoring.kept.is_none() || !(scoring.net_saving < retention_floor) {
@@ -942,28 +946,22 @@ mod pick_tests {
     use super::PickRows;
 
     /// A top row that cannot be the pick (a borrowed parent under "later") is passed over for the best row that can,
-    /// wherever it stands; the NEAR band is then taken around that row's score
+    /// wherever it stands; a row just below it is not taken, whatever its odds (no own-odds tiebreak); equal scores keep
+    /// the earlier row
     #[test]
     fn the_pick_is_the_best_row_that_can_be_it() {
-        let (scores, odds) = ([5.0, 3.0, 4.0, 1.0], [0.9, 0.01, 0.02, 0.03]);
+        let scores = [5.0, 3.0, 4.0, 1.0];
         let pickable = [false, true, true, true];
-        let rows = PickRows {
-            count: 4,
-            score: |k: usize| scores[k],
-            odds: |k: usize| odds[k],
-            can_be_pick: |k: usize| pickable[k],
-        };
+        let rows = PickRows { count: 4, score: |k: usize| scores[k], can_be_pick: |k: usize| pickable[k] };
         assert_eq!(rows.argmax(), 2);
         assert_eq!(rows.pick().row, 2);
         assert_eq!(rows.pick().top, 4.0);
-        // (within NEAR of the pickable top, 3.9 with better odds)
-        let (near, near_odds) = ([9.0, 4.0, 3.9], [0.9, 0.01, 0.02]);
-        let rows = PickRows {
-            count: 3,
-            score: |k: usize| near[k],
-            odds: |k: usize| near_odds[k],
-            can_be_pick: |k: usize| pickable[k],
-        };
-        assert_eq!((rows.argmax(), rows.pick().row), (1, 2));
+        // (3.9 just below the pickable top 4.0: the pick stays the top)
+        let close = [9.0, 4.0, 3.9];
+        let rows = PickRows { count: 3, score: |k: usize| close[k], can_be_pick: |k: usize| pickable[k] };
+        assert_eq!((rows.argmax(), rows.pick().row), (1, 1));
+        let equal = [9.0, 4.0, 4.0];
+        let rows = PickRows { count: 3, score: |k: usize| equal[k], can_be_pick: |k: usize| pickable[k] };
+        assert_eq!(rows.pick().row, 1);
     }
 }

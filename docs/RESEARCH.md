@@ -1962,10 +1962,10 @@ exact engine's $p_k$ and $P(\text{all})$.
 | prioritised | 10,404 | 0.665 | 1.014 [1.005, 1.024] | slightly above 1: known miss |
 | not prioritised | 15,131 | 0.526 | 0.953 [0.943, 0.963] | optimistic |
 | unknown priority | 34,730 | 0.488 | 0.997 [0.989, 1.005] | covers 1 pooled, through unmodelled sources; optimistic at 0.6 and above: known miss |
-| 4. Gold acquired, golds not predicted certain | 17,175 | 0.217 | 0.958 [0.944, 0.973] | optimistic: known miss |
-| prioritised | 3,570 | 0.358 | 0.994 [0.967, 1.021] | covers 1 |
+| 4. Gold acquired, golds not predicted certain | 17,178 | 0.217 | 0.958 [0.944, 0.973] | optimistic: known miss |
+| prioritised | 3,568 | 0.358 | 0.994 [0.967, 1.021] | covers 1 |
 | unknown priority | 10,826 | 0.134 | 0.932 [0.910, 0.953] | optimistic |
-| not prioritised | 2,779 | 0.359 | 0.951 [0.923, 0.979] | optimistic |
+| not prioritised | 2,784 | 0.357 | 0.951 [0.923, 0.979] | optimistic |
 
 ### Evidence
 
@@ -2031,8 +2031,8 @@ does not validate candidate rankings.
 *Gold acquisition.* On open targets whose gold a deck card can give, is the gold hinted as often as predicted? Every
 such gold in the runs is listed. The joint test asks whether every gold
 with an uncertain prediction matches at once (run-clustered Wald $\chi^2$, nothing fitted): $\chi^2$ =
-1021.0 on 8
-golds, $p$ = 4.3e-215. See Ya Later! is predicted certain on every row
+1020.5 on 8
+golds, $p$ = 5.7e-215. See Ya Later! is predicted certain on every row
 and always shows, so the joint test leaves it out, and so does the pooled test of the other golds:
 0.958 [0.944, 0.973]. Split by the target's priority, prioritised golds
 read 0.994 [0.967, 1.021], no detected miss, while unknown-priority golds read
@@ -2040,12 +2040,12 @@ read 0.994 [0.967, 1.021], no detected miss, while unknown-priority golds read
 
 | Gold | Rows | Observed / predicted [95%] |
 |---|---|---|
-| No Stopping Me! | 1,659 | 0.985 [0.80, 1.20] |
+| No Stopping Me! | 1,661 | 0.985 [0.80, 1.20] |
 | See Ya Later! | 7,964 | 1.000 [0.994, 1.005] |
 | It's On!, outside Unity Cup | 2,577 | 0.921 [0.82, 1.03] |
-| Perfect Spot! | 2,277 | 0.920 [0.86, 0.98] |
+| Perfect Spot! | 2,276 | 0.920 [0.86, 0.98] |
 | Nothing Ventured | 2,301 | 0.923 [0.88, 0.97] |
-| every gold | 23,005 | 0.984 [0.978, 0.989] |
+| every gold | 23,010 | 0.984 [0.978, 0.989] |
 
 *Training-pool hints by scenario* test $\beta$ and $d$ (section 7). Most of these rows come from cards at their top
 limit break, the rows section 7 fitted on, so they check the fit in-sample. Only Trackblazer's interval excludes 1:

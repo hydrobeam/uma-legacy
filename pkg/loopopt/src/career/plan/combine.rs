@@ -16,6 +16,10 @@ use serde_json::Value;
 /// it stays among her top ones (not guaranteed: a veteran can open as many better pairs)
 pub(crate) const FRESH_LINEAGES: usize = 3;
 
+/// The most fresh lineages a job may ask for (`PlanJob::fresh_lineages`, `sim_for`); a scoring then has at most two
+/// lift slots per Alternative side (her veteran beside each of its own parents, `score::routes`).
+pub(crate) const MAX_FRESH_LINEAGES: usize = 64;
+
 /// Trios the plan reports beside V's (`trios` in the output), cheapest first.
 pub(crate) const CHEAPEST_TRIOS: usize = 3;
 
@@ -55,7 +59,6 @@ impl PlanFit {
             step_costs: &self.step_costs,
             current_value: self.current_value,
             current_odds: &candidates.current_odds,
-            certified: &candidates.certified,
             continuations: &self.continuations,
             step_caps: &candidates.step_caps,
             trios: &self.trios,
@@ -393,8 +396,8 @@ fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, career: crate::care
 
 /// The trios' sides per candidate: her real full veterans (free), the fresh full veteran her best career now would leave
 /// (her step, where finite) and those of her next `fresh_lineages` - 1 careers (the pairs ranked by her cached decks,
-/// `alternative_careers`, each then searched exactly, `exact_pair_career`; each at her step at its odds, admitted only
-/// where she grinds at once there, `BuildPlan::building_careers` 0)
+/// `alternative_careers`, each then searched exactly, `exact_pair_career`; each at her step at its odds, admitted where
+/// that is finite, building or not: a scored career's veteran lifts it on its own lineage, `score::routes`)
 pub(crate) fn plan_sides(
     simulator: &mut Sim,
     context: &PlanContext,
@@ -448,11 +451,11 @@ pub(crate) fn plan_sides(
                 let PairCareer { found: alternative, proven, .. } =
                     exact_pair_career(simulator, &mut searches.pair_careers, context.input.pool, &ranked_career);
                 let (lineage, odds) = (found_lineage(trainee, &alternative), alternative.value);
-                let plan = continuations[candidate].plan(odds);
-                // (only where she grinds at once on it: no scored career's veteran lifts an Alternative side, so one that
-                // builds would be priced on a build no route advances, and her building would replace the lineage it
-                // wins by, C's pedigree)
-                if plan.expected_careers.is_finite() && plan.building_careers == 0.0 {
+                // (her step at its odds as a lift of it is priced, `ScoreBase::step_plan`: her continuation there, or
+                // her least held cap curve there where cheaper; building or not, since a scored career's veteran lifts it on its
+                // own lineage, `score::routes`, so a builder of it is credited with the build it is priced on)
+                let plan = candidates.step_caps[candidate].capped_at(continuations[candidate].plan(odds), odds);
+                if plan.expected_careers.is_finite() {
                     sides.push(TrioSideVeteran {
                         step: SideStep::Alternative(plan.expected_careers),
                         legacy: fresh_veteran(

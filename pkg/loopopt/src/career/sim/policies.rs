@@ -193,7 +193,6 @@ impl Sim<'_, '_> {
             step_costs: &[1.0],
             current_value: 0.0,
             current_odds: &current_odds,
-            certified: &[],
             continuations: &[],
             step_caps: &[],
             trios: &[],

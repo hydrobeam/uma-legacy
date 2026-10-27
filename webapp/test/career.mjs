@@ -225,9 +225,27 @@ export default async function career(b) {
       (await pg.locator('#set-vets #v-paste, #set-vets #v-export, #set-vets #v-clear, #set-vets #v-file').count()) ===
         4,
   );
+  // (the first plan's report says its scoring was incomplete: the page must say so; later plans are the solver's own)
+  await pg.evaluate(() => {
+    window.__planPatch = { scoring_complete: false };
+  });
   await done();
   const firstRun = await oneAnswer('Any uma/'),
     firstRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
+  const incomplete = await pg.evaluate(() => {
+    window.__planPatch = null;
+    const notes = [...document.querySelectorAll('.alts .optnote.incomplete')],
+      box = document.querySelector('.alts').getBoundingClientRect();
+    // (shown inside the choices box, styled as the box's other hints)
+    return {
+      count: notes.length,
+      shown: notes.every((n) => {
+        const r = n.getBoundingClientRect();
+        return r.height > 0 && r.left >= box.left && r.right <= box.right + 0.5 && n.scrollWidth <= n.clientWidth;
+      }),
+      text: notes[0]?.textContent,
+    };
+  });
   check(
     "career: one answer per run: while it searches, then plans, no career is drawn; the status names each phase; the answer is the plan's pick with the veteran drawn once",
     firstRun.ok &&
@@ -235,6 +253,14 @@ export default async function career(b) {
       firstRes &&
       (await pg.textContent('#tree .pn.trainee .nm')) === firstRes.next.choice.trainee.name,
     firstRun.detail,
+  );
+  check(
+    'career: a plan whose scoring the memory budget cut short (`scoring_complete` false) says so under the career choices',
+    firstRes?.next.scoring_complete === false &&
+      incomplete.count === 1 &&
+      incomplete.shown &&
+      /ran out of memory.+may be too low/.test(incomplete.text || ''),
+    JSON.stringify(incomplete),
   );
   if (QUICK) {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
@@ -779,7 +805,7 @@ export default async function career(b) {
       (lr.roll.y >= 0.5 || /^No (careers saved|saving found yet)/.test(lr.verdict)),
     JSON.stringify(lr),
   );
-  // a zero (the solver's answer replaced: y 0, y_hi 0.9; every zero is checked, whatever its bound) shows no saving while it is checked,
+  // a zero (the solver's answer replaced: y 0; every zero is checked) shows no saving while it is checked,
   // and the exact comparison starts once the roll has stood 0.8 s
   await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 }); // (the last roll's check done)
   const refines = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.compare && j.next).length),
@@ -787,7 +813,7 @@ export default async function career(b) {
   // (what shows, and whether the exact comparison has started, read the moment "Checking…" renders: a DOM observer runs
   // before the 0.8 s timer can, where reading it after `roll` returned raced that timer under load)
   await pg.evaluate(() => {
-    window.__rollPatch = { y: 0, y_hi: 0.9 };
+    window.__rollPatch = { y: 0 };
     window.__provSeen = null;
     const o = new MutationObserver(() => {
       const r = document.getElementById('sim-result');
@@ -845,7 +871,7 @@ export default async function career(b) {
       }
       return n;
     };
-    window.__rollPatch = { y: 0.9, y_hi: null };
+    window.__rollPatch = { y: 0.9 };
     roll();
   });
   const exStarted = await pg

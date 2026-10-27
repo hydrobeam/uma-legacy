@@ -32,14 +32,11 @@ pub(crate) struct ScoreBase<'base> {
     pub(crate) current_value: f64,
     /// Each candidate's stage-1 odds now.
     pub(crate) current_odds: &'base [f64],
-    /// Per candidate, whether her odds now are her proven best career's (a complete search): only then is any career of
-    /// hers in today's pool worth at most them (`outcome_hi`'s pair anchors). Empty: none certified
-    pub(crate) certified: &'base [bool],
     /// Each candidate's fitted continuation; a candidate past its end has none (`cost` grinds at p).
     pub(crate) continuations: &'base [Cont],
-    /// Per candidate, her step's cap from a kept fit (`caps`): her step at any odds is at most it. Empty or None: none
-    /// (the robustness check's variants refit without them)
-    pub(crate) step_caps: &'base [Option<crate::career::plan::caps::StepCap>],
+    /// Per candidate, her step caps from kept fits (`caps::StepCaps`): her step at any odds is at most the least held
+    /// curve's there. Empty, or none held: none (the robustness check's variants refit without them)
+    pub(crate) step_caps: &'base [crate::career::plan::caps::StepCaps],
     /// The trios: V = min over them of A's side + B's side + C's step (`trio_value`). Empty: no V (infinite), and no
     /// career is scored against it
     pub(crate) trios: &'base [Trio],
@@ -89,9 +86,9 @@ pub(crate) enum SideStep {
     /// The fresh full veteran her best career now would leave: her step (`ScoreBase::step_costs`), the side a scored
     /// career's veteran lifts.
     Current,
-    /// The fresh full veteran another of her top careers would leave (`FRESH_LINEAGES`): her step at that career's odds,
-    /// which no scored career's veteran moves (a lift is her best career with that veteran as a parent: `Current`'s), so
-    /// admitted only where she grinds at once there (1 / its odds: `plan_sides`).
+    /// The fresh full veteran another of her top careers would leave (`FRESH_LINEAGES`): her step at that career's odds
+    /// (`ScoreBase::step_plan` there, building or not: `plan_sides`), which a scored career's veteran lifts on that
+    /// career's own lineage (her veteran beside one of its two parents, its deck: `score::routes`).
     Alternative(f64),
 }
 
@@ -118,7 +115,7 @@ pub(crate) struct TrioSideVeteran {
     pub(crate) parents: Option<(usize, usize)>,
     /// The career's deck (a fresh side's: the schedule and outfit of a lifted side read it); a real full veteran's: none.
     pub(crate) deck: Option<crate::deck::space::SelectedDeck>,
-    /// Its odds are the career's proven best (a complete search: `ScoreBase::certified`, `PairCareer::proven`); a real
+    /// Its odds are the career's proven best (a complete search: `PlanCandidates::certified`, `PairCareer::proven`); a real
     /// full veteran's: true (no odds read).
     pub(crate) proven: bool,
 }
@@ -160,6 +157,11 @@ pub(crate) enum Want {
     /// Score plus its saving split by outcome class (`CareerScore::classes`: her full veteran or not, and the set of
     /// candidates her veteran lifts), a measurement; computed without collapsing targets (the same savings).
     Classes,
+    /// Score, with V after her (and so every lifted slot's step, `StepWorkspace::lift_reads`) evaluated at every outcome
+    /// whose landed set can happen, whatever her stars' own chance (a zero share of the rank's mix makes some leaves
+    /// impossible that a scoring's collapsed targets still read, as their representative): the lift reads
+    /// (`score::build::lift_reads`). E[y] and P(y > 1e-9) sum the possible outcomes only, as Score's.
+    LiftReads,
 }
 
 /// One side of a trio: a candidate and which of her sides (`ScoreBase::trio_sides[candidate]`).
@@ -187,6 +189,21 @@ impl ScoreBase<'_> {
     /// The side's step kind.
     pub(crate) fn side_step(&self, slot: TrioSlot) -> SideStep {
         self.trio_sides[slot.candidate.0][slot.side].step
+    }
+    /// Her Current side (the fresh full veteran of her best career now), where she has one.
+    pub(crate) fn current_side(&self, candidate: usize) -> Option<TrioSlot> {
+        let side = self.trio_sides.get(candidate)?.iter().position(|side| side.step == SideStep::Current)?;
+        Some(TrioSlot { candidate: CandidateIndex(candidate), side })
+    }
+    /// The odds a fresh side's step is priced at, which a lift of it must pass: her odds now for her Current side, an
+    /// Alternative side's own (its career's P(all)); a real full veteran's 0.
+    pub(crate) fn side_odds(&self, slot: TrioSlot) -> f64 {
+        let side = &self.trio_sides[slot.candidate.0][slot.side];
+        match side.step {
+            SideStep::Existing(_) => 0.0,
+            SideStep::Current => self.current_odds[slot.candidate.0],
+            SideStep::Alternative(_) => side.odds,
+        }
     }
 }
 
@@ -612,25 +629,6 @@ impl Cont {
     pub(crate) fn cost(&self, p: f64) -> f64 {
         self.plan(p).expected_careers
     }
-    /// At most `cost(q)` at every odds q up to p, from IEEE arithmetic and the stored table alone (no bound on the error
-    /// of ln, exp or powf, whose precision Rust leaves unspecified): 1 / p where she only grinds (no building: every cost
-    /// there is 1 / q >= 1 / p, division rounding monotonically), else the least of 1 / p (grinding at once), 1 / lam,
-    /// the table's first sum (at or below p0 any n >= 1 builds at least one success: `Building` takes the table's sums at
-    /// scale 1, or a running sum of terms each at least 1 / lam; later sums only add positive terms; the grind's term
-    /// added to it is not negative) and the lattice's last cost (above p0 the cost is held between two lattice costs,
-    /// each at least the last). Loose; what a bound (y_hi) and a prune (a route's floor) can take
-    pub(crate) fn floor_up_to(&self, p: f64) -> f64 {
-        if !(p > 0.0) {
-            return f64::INFINITY;
-        }
-        let grind = 1.0 / p;
-        if self.lam > 0.0 && self.phi > 0.0 && !self.tables.is_empty() {
-            let lattice_floor = self.lattice.last().map_or(f64::INFINITY, |point| point.cost);
-            grind.min(1.0 / self.lam).min(self.tables[0].careers_built).min(lattice_floor)
-        } else {
-            grind
-        }
-    }
     /// The path `plan_n` scans from odds p: per n successes (0 to CONT_N) the careers built through them and her odds
     /// then (the same expressions, so at or below p0 `cost(p)` is the least of built + 1 / odds over its first points;
     /// above p0 the path's building is the state-local rate's, which the lattice's cost does not follow); one point,
@@ -709,34 +707,19 @@ impl Building {
 }
 
 impl ScoreBase<'_> {
-    /// Her step's cap (`step_caps`), where she has one.
-    pub(crate) fn step_cap(&self, candidate: usize) -> Option<crate::career::plan::caps::StepCap> {
-        self.step_caps.get(candidate).copied().flatten()
-    }
-    /// Her step at odds p (as the base prices odds, `odds_scale`): her Cont's cost there, or her cap's curve's there
-    /// where cheaper (`caps::capped_at`), and whether she still builds at those odds (`BuildPlan::building_careers` > 0);
-    /// with no Cont (a default one's, lam = 0) she grinds at p
+    /// Her step at odds p (as the base prices odds, `odds_scale`): her Cont's cost there, or her least held cap curve's
+    /// there where cheaper (`caps::StepCaps::capped_at`), and whether she still builds at those odds
+    /// (`BuildPlan::building_careers` > 0); with no Cont (a default one's, lam = 0) she grinds at p
     pub(crate) fn step_plan(&self, candidate: usize, p: f64) -> (f64, bool) {
         let p = p * self.odds_scales.of(self.candidates[candidate]);
         match self.continuations.get(candidate) {
             Some(continuation) => {
-                let plan = crate::career::plan::caps::capped_at(continuation.plan(p), self.step_cap(candidate), p);
+                let own = continuation.plan(p);
+                let plan = self.step_caps.get(candidate).map_or(own, |caps| caps.capped_at(own, p));
                 (plan.expected_careers, plan.building_careers > 0.0)
             }
             None => (if p <= 0.0 { f64::INFINITY } else { 1.0 / p }, false),
         }
-    }
-    /// At most her step at every odds up to p (as the base prices odds): her continuation's floor (`Cont::floor_up_to`;
-    /// 1 / p with no continuation, where she grinds), and her cap's curve's where she has one (her step is the least of
-    /// the two). What a bound (y_hi) and a prune (a route's floor) can take without an assumption on a platform's libm
-    pub(crate) fn step_floor(&self, candidate: usize, p: f64) -> f64 {
-        let p = p * self.odds_scales.of(self.candidates[candidate]);
-        let floor = match self.continuations.get(candidate) {
-            Some(continuation) => continuation.floor_up_to(p),
-            None if p > 0.0 => 1.0 / p,
-            None => f64::INFINITY,
-        };
-        self.step_cap(candidate).map_or(floor, |cap| floor.min(cap.kept.curve.floor_up_to(p)))
     }
 }
 
@@ -918,33 +901,5 @@ mod tests {
         let lifted = PINF * ((P0 / PINF).ln() * (1.0 - phi)).exp();
         let restart_score = LAM * (cont.cost(P0) - restarted.cost(lifted)) - 1.0;
         assert!(restart_score > 0.5, "the restart's score {restart_score}");
-    }
-
-    #[test]
-    fn the_step_floor_holds_at_every_odds_up_to_its_own() {
-        for phi in [0.5, 0.09, 1.0] {
-            let cont = Cont::new(LAM, phi, PINF, P0);
-            let base = ScoreBase {
-                candidates: &[crate::uma::UmaIndex(0)],
-                step_costs: &[0.0],
-                current_value: 0.0,
-                current_odds: &[P0],
-                certified: &[],
-                continuations: std::slice::from_ref(&cont),
-                step_caps: &[],
-                trios: &[],
-                trio_sides: &[],
-                finisher_umas: &[],
-                knobs: ScoringKnobs::default(),
-                odds_scales: crate::career::plan::cont::OddsScales::ONE,
-            };
-            let grid: Vec<f64> = (0..400).map(|k| 1e-5 * 1.012f64.powi(k)).collect();
-            for (i, &high) in grid.iter().enumerate() {
-                let floor = base.step_floor(0, high);
-                for &q in &grid[..=i] {
-                    assert!(floor <= cont.cost(q), "phi {phi}: step_floor({high}) {floor} > cost({q})");
-                }
-            }
-        }
     }
 }

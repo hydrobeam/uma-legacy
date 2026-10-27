@@ -27,7 +27,7 @@ pub(crate) fn sim_for<'env, 'data>(
     }
     if !(1..=crate::career::plan::cont::MAX_PARTNERS).contains(&settings.partners)
         || !(1..=8).contains(&settings.builder_careers)
-        || !(1..=64).contains(&settings.fresh_lineages)
+        || !(1..=crate::career::plan::combine::MAX_FRESH_LINEAGES).contains(&settings.fresh_lineages)
     {
         return Err(
             json!({"error": "next.partners takes 1 to 8, next.builder_careers 1 to 8, next.fresh_lineages 1 to 64."}),
@@ -195,7 +195,7 @@ pub(crate) fn best_sur(
     simulator.evaluator.margin = margin;
     // (her cached decks only grow, so the best's deck index stays valid, and the deck is copied once, at the end)
     let mut best: Option<SurrogateBest> = None;
-    for RankedPair { ceiling, first_parent, second_parent } in
+    for RankedPair { ceiling, first_parent, second_parent, .. } in
         simulator.env.setup.ranked_pairs(&mut simulator.env.state, pool, fixed_parents, trainee, |_, _| true)
     {
         let bar = best.map_or(0.0, |found| found.value);
@@ -247,7 +247,7 @@ pub(crate) fn alternative_careers(
     let margin_before = simulator.evaluator.margin;
     simulator.evaluator.margin = 1e9;
     let mut kept: Vec<SurrogateBest> = vec![];
-    for RankedPair { ceiling, first_parent, second_parent } in
+    for RankedPair { ceiling, first_parent, second_parent, .. } in
         simulator.env.setup.ranked_pairs(&mut simulator.env.state, pool, fixed_parents, trainee, |_, _| true)
     {
         if (first_parent.min(second_parent), first_parent.max(second_parent)) == exclude {
@@ -303,7 +303,7 @@ pub(crate) fn alternative_deck_careers(
     let mut kept: Vec<Found> = vec![];
     let (mut chances, mut scratch) = (vec![], vec![]);
     let base_pair = base.unordered_parents();
-    for RankedPair { ceiling, first_parent, second_parent } in
+    for RankedPair { ceiling, first_parent, second_parent, .. } in
         simulator.env.setup.ranked_pairs(&mut simulator.env.state, pool, fixed_parents, trainee, |_, _| true)
     {
         let bar = if kept.len() == count { kept[count - 1].value } else { 0.0 };

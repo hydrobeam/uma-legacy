@@ -61,7 +61,7 @@ pub(crate) fn audit_lifts(
         let original = row.scoring.as_ref().and_then(|scoring| scoring.kept.as_ref()).map(|kept| &kept.scored);
         let CareerScore { kept, .. } =
             score_career(simulator, &context.scoring(&score_base), row.scored_career(), Want::Keep, buf);
-        let Some(KeptScoring { scored }) = kept else { continue };
+        let Some(KeptScoring { scored, .. }) = kept else { continue };
         let current = simulator.evaluator.make_cur(
             &simulator.env.setup,
             &mut simulator.env.state,

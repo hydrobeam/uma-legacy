@@ -55,10 +55,6 @@ impl CapCurve {
     pub(crate) fn plan(self, p: f64) -> BuildPlan {
         self.with_cont(|continuation| continuation.plan(p))
     }
-    /// At most the curve's cost at every odds up to p (`Cont::floor_up_to`).
-    pub(crate) fn floor_up_to(self, p: f64) -> f64 {
-        self.with_cont(|continuation| continuation.floor_up_to(p))
-    }
 }
 
 /// A candidate's kept cap: her kept fit's curve and her odds in the kept plan.
@@ -96,11 +92,37 @@ pub(crate) fn capped(plan: BuildPlan, cap: Option<StepCap>) -> BuildPlan {
     }
 }
 
-/// Her step's plan at odds p, `plan` (her continuation's there) or the cap's curve's there where that is cheaper.
-pub(crate) fn capped_at(plan: BuildPlan, cap: Option<StepCap>, p: f64) -> BuildPlan {
-    match cap.map(|cap| cap.kept.curve.plan(p)) {
-        Some(cap_plan) if cap_plan.expected_careers < plan.expected_careers => cap_plan,
-        _ => plan,
+/// A candidate's step caps (`held_caps`: the curve of every kept plan whose pool this one holds, in the order kept) and
+/// the one that binds at her odds now (`now`, `least_caps`' choice: the cap reported, and kept for later plans,
+/// `plan_caps`). Her step at any odds p is the least of her continuation's plan and every held curve's plan at p
+/// (`capped_at`): one envelope for the candidate, read at whatever odds a side of hers is priced at (her best career's,
+/// an Alternative's own, a lifted one's), so the plan's steps stay a function of candidate and odds. At her odds now it
+/// is `now`'s (the same first least curve), so her best career's step is what one cap gave.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct StepCaps {
+    pub(crate) curves: Vec<KeptCap>,
+    pub(crate) now: Option<StepCap>,
+}
+
+impl StepCaps {
+    /// Her held caps, the least at her odds now `odds_now` chosen as `least_caps` chooses it.
+    pub(crate) fn new(curves: Vec<KeptCap>, odds_now: f64) -> Self {
+        let now = least_caps(std::slice::from_ref(&curves), &[odds_now])[0];
+        Self { curves, now }
+    }
+    /// The least held curve's plan at odds p: the first of the least (None: none held).
+    pub(crate) fn least_at(&self, p: f64) -> Option<BuildPlan> {
+        self.curves
+            .iter()
+            .map(|cap| cap.curve.plan(p))
+            .reduce(|least, plan| if plan.expected_careers < least.expected_careers { plan } else { least })
+    }
+    /// Her step's plan at odds p: `plan` (her continuation's there), or the least held curve's there where cheaper.
+    pub(crate) fn capped_at(&self, plan: BuildPlan, p: f64) -> BuildPlan {
+        match self.least_at(p) {
+            Some(cap_plan) if cap_plan.expected_careers < plan.expected_careers => cap_plan,
+            _ => plan,
+        }
     }
 }
 
@@ -179,20 +201,20 @@ pub(crate) fn least_caps(held: &[Vec<KeptCap>], odds_now: &[f64]) -> Vec<Option<
 }
 
 /// A plan's caps to keep: per candidate (`trainees`, her odds now `current_odds`) with odds and a finite step, her
-/// continuation's curve, or her own cap's where that binds at her odds now (so a cap only falls along a chain of added
-/// veterans, at the odds each plan had), with her odds now
+/// continuation's curve, or her own cap's where that binds at her odds now (`StepCaps::now`; so a cap only falls along
+/// a chain of added veterans, at the odds each plan had), with her odds now
 pub(crate) fn plan_caps(
     trainees: &[UmaIndex],
     current_odds: &[f64],
     continuations: &[Cont],
-    caps: &[Option<StepCap>],
+    caps: &[StepCaps],
 ) -> Vec<(UmaIndex, KeptCap)> {
     (0..trainees.len())
         .filter_map(|candidate| {
             let odds = current_odds[candidate];
             let continuation = continuations.get(candidate)?;
             let own_plan = continuation.plan(odds);
-            let curve = match caps.get(candidate).copied().flatten() {
+            let curve = match caps.get(candidate).and_then(|caps| caps.now) {
                 Some(cap) if cap.binds(&own_plan) => cap.kept.curve,
                 _ => CapCurve::of(continuation),
             };
@@ -358,23 +380,40 @@ mod tests {
         assert_eq!(cap.now.expected_careers.to_bits(), continuation.cost(ODDS_NOW).to_bits());
         assert!(cap.now.expected_careers < continuation.cost(KEPT_ODDS), "the kept odds' cost would plateau");
         // a dearer refit is capped at the old curve, at every odds; a cheaper one stands
+        let held = StepCaps::new(vec![kept], ODDS_NOW);
         let dear = BuildPlan { expected_careers: 1e6, building_careers: 0.0, grind_odds: 1e-6 };
         assert_eq!(capped(dear, Some(cap)).expected_careers, cap.now.expected_careers);
-        let at_three = capped_at(dear, Some(cap), 0.003).expected_careers;
+        let at_three = held.capped_at(dear, 0.003).expected_careers;
         assert_eq!(at_three.to_bits(), continuation.cost(0.003).to_bits());
         let cheap = BuildPlan { expected_careers: 10.0, building_careers: 0.0, grind_odds: 0.1 };
         assert_eq!(capped(cheap, Some(cap)).expected_careers, 10.0);
-        assert_eq!(capped_at(cheap, Some(cap), 0.003).expected_careers, 10.0);
+        assert_eq!(held.capped_at(cheap, 0.003).expected_careers, 10.0);
         assert_eq!(capped(dear, None).expected_careers, 1e6);
-        // the floor is at most the curve's cost at every odds up to p
-        for q in [0.0005, 0.001, 0.0015, 0.002] {
-            assert!(kept.curve.floor_up_to(ODDS_NOW) <= continuation.cost(q));
-        }
         // a plan's own caps: her curve, or her cap's where it binds at her odds now
         let own = Cont::with_decay(0.01, 0.5, 0.01, ODDS_NOW, 1.5);
-        let kept_now = plan_caps(&[UmaIndex(4)], &[ODDS_NOW], std::slice::from_ref(&own), &[Some(cap)]);
+        let kept_now = plan_caps(&[UmaIndex(4)], &[ODDS_NOW], std::slice::from_ref(&own), std::slice::from_ref(&held));
         assert_eq!(kept_now[0].1, KeptCap { curve: kept.curve, odds: ODDS_NOW });
-        let uncapped = plan_caps(&[UmaIndex(4)], &[ODDS_NOW], std::slice::from_ref(&own), &[None]);
+        let uncapped = plan_caps(&[UmaIndex(4)], &[ODDS_NOW], std::slice::from_ref(&own), &[StepCaps::default()]);
         assert_eq!(uncapped[0].1.curve, CapCurve::of(&own));
+    }
+
+    /// Astra's counterexample (astra-iv.out, 3): an earlier kept cap A that only grinds and a later one B (lam 0.1,
+    /// phi 1, pinf 0.01, anchor 0.001). At her odds now, 0.02 (past pinf), both cost 50, so the one cap chosen there is
+    /// the earlier, A; an Alternative side of hers still at 0.001 costs 1000 on A and about 110 on B. Her held caps price
+    /// it at the least, B's, as they do every lift and floor; the one cap chosen at her odds now priced it at 1000
+    #[test]
+    fn every_held_cap_prices_a_side_at_its_own_odds() {
+        let grinding = KeptCap { curve: CapCurve::of(&Cont::with_decay(0.0, 0.0, 0.0, 0.001, 1.5)), odds: 0.001 };
+        let building = KeptCap { curve: CapCurve::of(&Cont::with_decay(0.1, 1.0, 0.01, 0.001, 1.5)), odds: 0.001 };
+        let (now_odds, alternative_odds) = (0.02, 0.001);
+        assert_eq!(grinding.curve.plan(now_odds).expected_careers, 50.0);
+        assert_eq!(building.curve.plan(now_odds).expected_careers, 50.0);
+        let held = StepCaps::new(vec![grinding, building], now_odds);
+        assert_eq!(held.now.unwrap().kept, grinding, "tied at her odds now: the earlier");
+        let grind_at_once = BuildPlan { expected_careers: 1000.0, building_careers: 0.0, grind_odds: alternative_odds };
+        let one_cap = least_caps(&[vec![grinding, building]], &[now_odds])[0].unwrap();
+        assert_eq!(one_cap.kept.curve.plan(alternative_odds).expected_careers, 1000.0, "the one cap's price");
+        let priced = held.capped_at(grind_at_once, alternative_odds).expected_careers;
+        assert!((priced - 110.0).abs() < 0.5, "the held caps' price {priced}");
     }
 }

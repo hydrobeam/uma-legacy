@@ -43,7 +43,6 @@ use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
 use serde::Deserialize;
 use serde_json::Value;
-mod anchors;
 mod ascent;
 mod audit;
 mod candidates;
@@ -404,7 +403,7 @@ struct PlanCandidates {
     careers: Vec<Option<Found>>,
     /// Each candidate's odds now: her initial career's P(all), 0 without one.
     current_odds: Vec<f64>,
-    /// Whether each candidate's odds now are her proven best career's (`ScoreBase::certified`).
+    /// Whether each candidate's odds now are her proven best career's (read as her side's `PairCareer::proven`).
     certified: Vec<bool>,
     /// Whether a full veteran of hers exists (a free side of the trios).
     has_full_veteran: Vec<bool>,
@@ -416,7 +415,7 @@ struct PlanCandidates {
     /// The job's scoring knobs.
     knobs: crate::career::plan::cont::ScoringKnobs,
     /// Each candidate's step cap from the worker's kept fits (`caps::step_caps`; none under a given fit).
-    step_caps: Vec<Option<caps::StepCap>>,
+    step_caps: Vec<caps::StepCaps>,
     /// Where this plan's own caps hold (`caps::CapPool`), kept with them after it.
     cap_pool: caps::CapPool,
 }
@@ -429,7 +428,6 @@ impl PlanCandidates {
             step_costs: &self.placeholder_step_costs,
             current_value: 0.0,
             current_odds: &self.current_odds,
-            certified: &self.certified,
             continuations: &[],
             step_caps: &[],
             trios: &[],
@@ -590,8 +588,8 @@ struct PlanRows {
 /// while it pays, then run her" (`Cont`, fitted to the pool now; free when a full veteran of hers exists), C the best allowed
 /// uma with A's and B's full veterans as parents (1 / her full-loop odds). A career is scored E[V - V with her veteran] - 1, exact
 /// over her outcomes: her veteran as a parent raising any candidate's odds lowers that step, her own full veteran ends her own
-/// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest
-/// (a strict argmax; the rows within NEAR are labelled near). The goal is always the next fully looped parent, any uma: one you have already is a
+/// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest (a strict argmax, no
+/// own-odds tiebreak). The goal is always the next fully looped parent, any uma: one you have already is a
 /// real full veteran (free) with full veteran parents, a strong side of the trios.
 pub(crate) fn index_rule<'data>(
     env: &mut Env<'data>,

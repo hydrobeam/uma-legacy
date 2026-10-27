@@ -1,9 +1,9 @@
-//! A roll of the plan's pick (`next.roll`, docs/SOLVER.md *Next career*): the careers her veteran saves at one outcome
-//! and its bound, worked out from the plan's kept roll state. This is a self-pin, not a check of the values: the full
-//! outcome table it was first compared with is gone from the output, and `fixtures/plan_roll.json` (the val/plan jobs'
-//! rolls at the all-zero and all-max outcomes and at samples of y >= 0.5, of y < 0.5 <= y_hi and of y_hi < 0.5, as her
-//! stars per job target) is re-taken from the solver's own rolls whenever results move on purpose (last at integration,
-//! 2026-10-27: 92 rolls, 70 changed). It detects a roll that moves, and keeps the samples in their y bands. Also: a
+//! A roll of the plan's pick (`next.roll`, docs/SOLVER.md *Next career*): the careers her veteran saves at one outcome,
+//! worked out from the plan's kept roll state. This is a self-pin, not a check of the values: the full outcome table it
+//! was first compared with is gone from the output, and `fixtures/plan_roll.json` (the val/plan jobs' rolls at the
+//! all-zero and all-max outcomes and at samples of y >= 0.5 and y < 0.5, as her stars per job target, each with its y)
+//! is re-taken from the solver's own rolls whenever results move on purpose (last at integration, 2026-10-27: 92 rolls,
+//! 6 changed, all on p10). It detects a roll that moves, and keeps the samples in their y bands. Also: a
 //! roll carried by another job (`roll`, as the page's Reroll sends it), a roll with no plan kept (the plan runs first),
 //! and a roll in a new process after `state_out` / `state_in` (the stored roll state, no plan).
 use serde_json::{Value, json};
@@ -60,14 +60,12 @@ fn clean(ps: &[PathBuf]) {
         fs::remove_file(p).unwrap();
     }
 }
-/// a roll's answer against the table's (y, y_hi) at that outcome, to the bit
+/// a roll's answer against the table's y at that outcome, to the bit
 fn same(r: &Value, want: &[Value], what: &str) {
-    let (y, hi) = (&want[1], &want[2]);
+    let y = &want[1];
     assert!(
-        r["y"].as_f64().map(f64::to_bits) == y.as_f64().map(f64::to_bits)
-            && r["y_hi"].as_f64().map(f64::to_bits) == hi.as_f64().map(f64::to_bits)
-            && r["y_hi"].is_null() == hi.is_null(),
-        "{what}: stars {}: roll {r} vs table y {y} y_hi {hi}",
+        r["y"].as_f64().map(f64::to_bits) == y.as_f64().map(f64::to_bits),
+        "{what}: stars {}: roll {r} vs table y {y}",
         want[0]
     );
 }

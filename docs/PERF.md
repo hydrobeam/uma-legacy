@@ -110,8 +110,10 @@ generation took 2.0 s on export 2 against 1.2 s optimised (Node 22). So such a l
 function, entered many times (`gen_cands`' per-trainee loop), and `wasm-opt` runs with `-ocimfs=0` to disable its
 [single-caller size allowance](https://github.com/WebAssembly/binaryen/blob/main/src/tools/optimization-options.h).
 This does not disable all inlining. The planner's long loops are split the same way:
-`outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s tables, fold and outcome loop (`prepare_scoring`,
-`Scored::evaluate`, `evaluate_outcomes`, whose loop is `sc_loop`, one copy per specialisation); on export 2 (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
+`score_career`'s tables, fold and outcome loop (`prepare_scoring`,
+`Scored::evaluate`, `evaluate_outcomes`, whose loop is `sc_loop`, one copy per specialisation), and then also the roll
+bound's per-(candidate, partner) body (`hi_partner`, removed with y_hi in 2026-10); on export 2
+(`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
 the plan 10.85 -> 10.1 s, native outputs byte-identical. The optimised code belongs to the compiled module: a
 restarted worker given the same `WebAssembly.Module` starts with what the last one tiered up. Liftoff alone
 (`--liftoff-only`) took export 2's plan 39 s against 22 s (at be6bb44, before the planner's loops were split), about
@@ -183,7 +185,8 @@ every card and uma (8 uncertain targets: the scenario guarantees none), with 24-
 and export 1 (e1_full), 315 veterans on Unity Cup (6 uncertain targets). Times are native on the i5-1340P unless
 marked, each from the commit named. These are historical measurements, not timings of the current build.
 The `hi_ms` timer and `sc_fold` function named by older measurements no longer exist; collapse detection is now in
-`prepare_scoring`, folding in `FoldContext::fold`, and `outcome_hi` is called for one rolled outcome. The old shared k-best second
+`prepare_scoring`, folding in `FoldContext::fold`, and the roll's bound (`outcome_hi`, y_hi) is gone: a roll
+computes y alone. The old shared k-best second
 skyline-enumeration pass is also gone: `run_deck_relaxed` builds one frontier, then `Multi::band_shared` searches the
 exact band. Its old 68-of-75-second profile is not a target for the current code. `.perf/` jobs and harnesses are
 untracked; reproducing their figures requires those inputs and the named revisions.
@@ -280,9 +283,6 @@ untracked; reproducing their figures requires those inputs and the named revisio
 
 ### Open
 
-- `outcome_hi`: a roll computes y_hi only where y < 0.5. Stopping the bound once it reaches 0.5 could preserve the
-  page's comparison threshold but would change the reported y_hi. Check reroll outputs explicitly: the standard
-  plan jobs do not request `next.roll`.
 - More than 8 uncertain targets: the planner's tables grow as 2^nu (corner tables), 4^nu (the outcomes each scoring sums) and 2^T
   (`outcome_sets`, up to 12 targets). A design for 10-20 targets, not built: a factored exact form of the corner tables
   per chain state, outcomes as count-indexed brackets refined only where the pick is undecided, decks by local search

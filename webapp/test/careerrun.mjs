@@ -60,6 +60,10 @@ export default async function careerrun(b) {
   // within the pause (the answer on show taken again, `resumeCheck`) leaves the worker as it was, and the check goes on
   // to its end, its report on the plan: every career it names in the table, marked, or none where the pick is stable
   await pg.waitForFunction(() => window.__checkJobs.length > 0, null, { timeout: 180000 });
+  // (each check report says a scoring of the check was incomplete: the table must say so once the check is in)
+  await pg.evaluate(() => {
+    window.__checkPatch = { scoring_complete: false };
+  });
   const beforeEdit = await pg.evaluate(() => ({ workers: window.__workers, jobs: window.__checkJobs.length }));
   await pg.evaluate(() => {
     document.querySelector('#rank button[data-v="0.20,0.70,0.10"]').click();
@@ -84,16 +88,49 @@ export default async function careerrun(b) {
       jobs: window.__checkJobs.length,
       varies: alts ? [...alts.querySelectorAll('.otag')].filter((t) => t.textContent === 'pick varies').length : -1,
       unavailable: /did not finish/.test(alts?.textContent || ''),
+      incomplete: alts ? alts.querySelectorAll('.optnote.incomplete').length : -1,
     };
   });
+  await pg.evaluate(() => {
+    window.__checkPatch = null;
+  });
+  check(
+    'career: a check whose scoring the memory budget cut short (`robust.scoring_complete` false) says so under the career choices',
+    checked.robust.scoring_complete === false && checked.incomplete === 1,
+    JSON.stringify({ complete: checked.robust.scoring_complete, notes: checked.incomplete }),
+  );
+  // the check's variants, in its order (plan/robust.rs): the plan's own entry, the 7 fixed variants (`fixed_variants`:
+  // the nominal control, 4 shape corners, 2 ratio ends), then one differential scenario per competitor, the
+  // DIFFERENTIAL_COMPETITORS (3) best-scoring other umas among the checked rows, so min(3, the other umas there); a row
+  // id starts with its uma's id, and the plan's entry picks the strict argmax whose uma the scenarios scale down
+  const variantKinds = checked.robust.variants.map((v) => v.kind);
+  const umaOf = (id) => String(id).split(':')[0];
+  const pickUma = umaOf(checked.robust.variants[0]?.pick);
+  const otherUmas = new Set(checked.robust.rows.map(umaOf).filter((uma) => uma !== pickUma)).size;
+  const expectedKinds = [
+    'plan',
+    'nominal',
+    'shape',
+    'shape',
+    'shape',
+    'shape',
+    'ratio',
+    'ratio',
+    ...Array(Math.min(3, otherUmas)).fill('differential'),
+  ];
   check(
     "career: the pick's check runs in the background after the plan, goes on through an edit and its undoing (no new worker), and ends with its report on the table",
-    checked.robust.variants.length === 7 &&
+    JSON.stringify(variantKinds) === JSON.stringify(expectedKinds) &&
       checked.workers === beforeEdit.workers &&
       checked.jobs >= 6 &&
       !checked.unavailable &&
       checked.varies === (checked.robust.stable ? 0 : checked.robust.contenders.length),
-    JSON.stringify({ beforeEdit, checked: { ...checked, robust: { ...checked.robust, variants: undefined } } }),
+    JSON.stringify({
+      variantKinds,
+      expectedKinds,
+      beforeEdit,
+      checked: { ...checked, robust: { ...checked.robust, variants: undefined } },
+    }),
   );
   const prog = await pg.evaluate(() =>
     window.__notes.filter((t) => /Planning your next career… \(.+\)/.test(t)).map((t) => t.match(/\((.+?)\)/)[1]),

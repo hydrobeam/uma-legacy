@@ -97,7 +97,7 @@ pub(crate) fn completes_goal(simulator: &Sim, legacies: &[Legacy], lineage: Line
 }
 
 /// Per mask fm of the scenario-guaranteed targets landed (bit j: `fixed_t[j]`), its landed set over the job targets: an
-/// outcome's cell is (leaf << nf) | fm, its landed set the leaf's (`leaf_set`) | this (`score_career`, `outcome_hi`)
+/// outcome's cell is (leaf << nf) | fm, its landed set the leaf's (`leaf_set`) | this (`score_career`)
 pub(crate) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
     (0..(1usize << fixed_t.len()))
         .map(|bits| {
@@ -114,6 +114,9 @@ pub(crate) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
 /// Prepared scoring retained for the chosen career's later rolls.
 pub(crate) struct KeptScoring {
     pub(crate) scored: Scored,
+    /// The later batches' scorings, where the budget left routes out that a check did not clear (`build::LaterBatches`):
+    /// a roll reads V after her as the least over the first batch and these (`RollKeep::roll`), the plan's value.
+    pub(crate) later: Vec<Scored>,
 }
 
 /// Named outputs of career scoring. `Want` determines which fields are computed; Stats leaves the two

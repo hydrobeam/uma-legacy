@@ -80,15 +80,7 @@ pub(super) fn answer_kept_roll<'data>(
         .as_ref()
         .filter(|next_job| next_job.get("roll").is_some_and(|roll_value| !roll_value.is_null()))
         .and_then(|next_job| serde_json::from_value::<crate::career::plan::PlanJob>(next_job.clone()).ok())?;
-    crate::career::plan::roll::roll_kept(
-        env,
-        kept,
-        run.input,
-        &career_job.legacies,
-        run.pool,
-        &career_job.fixed_parents,
-        &plan_job,
-    )
+    crate::career::plan::roll::roll_kept(env, kept, run.input, &plan_job)
 }
 
 /// The check of a plan this worker keeps (`next.robust`): answered from its check state, no search

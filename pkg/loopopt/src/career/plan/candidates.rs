@@ -1,7 +1,7 @@
 //! Candidate setup and exact and surrogate careers.
 use crate::career::Env;
 use crate::career::clock::{now_ms, prof, progress};
-use crate::career::plan::caps::{CapPool, held_caps, least_caps};
+use crate::career::plan::caps::{CapPool, StepCaps, held_caps};
 use crate::career::plan::cont::Want;
 use crate::career::plan::kept::{
     CachedSearch, KeptPlans, best_of, bests_key, plan_scope, same_career, stamp_ok, stamped, take_kept_plan,
@@ -158,9 +158,10 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let candidate_count = candidate_trainees.len();
     let current_odds: Vec<f64> =
         careers.iter().map(|career| career.as_ref().map_or(0.0, |career| career.value)).collect();
-    // each stage candidate's step cap: the least of her held caps at her odds now
-    let mut step_caps = least_caps(&held, &current_odds[..stage_count]);
-    step_caps.resize(candidate_count, None);
+    // each stage candidate's held caps, and the least of them at her odds now
+    let mut step_caps: Vec<StepCaps> =
+        held.into_iter().zip(&current_odds[..stage_count]).map(|(curves, &odds)| StepCaps::new(curves, odds)).collect();
+    step_caps.resize(candidate_count, StepCaps::default());
     // per candidate whether her odds now are her proven best career's: searched (not the surrogate's) and complete (the
     // main search's, for the main career's trainee)
     let certified: Vec<bool> = candidate_trainees
@@ -198,10 +199,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // or low. Calibration: docs/MODEL.md, "Next career"; `proxy_check` measures the current errors.
     // `exact_all` restores a search for every uma, and so does a job where proxies were measured too low for the band
     // (`exact_builders`).
-    let proxies_enabled = settings.surrogate_mode == 0
-        && !settings.exact_all
-        && !settings.proxy_check
-        && !exact_builders(sim.env.setup.target_count, legacies, input.pool.max_borrowed);
+    let proxies_enabled = proxies_enabled(settings, sim.env.setup.target_count, legacies, input.pool.max_borrowed);
     let candidates = PlanCandidates {
         main_career,
         pick_career,
@@ -266,8 +264,60 @@ struct StageCandidates {
 /// 6.4% low on p16_borrow, against the 6% band), and the exact searches cost little or save time (p16_t10 13.8 s exact
 /// against 19.3 s with proxies, p16_borrow 1.3 against 1.2 s); elsewhere proxies stay (exact costs p10 3.37 against
 /// 2.21 s, p16 1.38 against 0.83, gm16_nu8, 8 uncertain targets, 5.59 against 3.75)
-fn exact_builders(target_count: usize, legacies: &[crate::career::Legacy], max_borrowed: u8) -> bool {
+pub(crate) fn exact_builders(target_count: usize, legacies: &[crate::career::Legacy], max_borrowed: u8) -> bool {
     target_count >= EXACT_BUILDERS_TARGETS || (max_borrowed > 0 && legacies.iter().any(|legacy| legacy.borrowed))
+}
+
+/// Whether the plan prices builders through deck-class proxies: not through the surrogate, nor where every builder is
+/// searched exactly (`exact_all`, `exact_builders`); the one test behind `proxies_enabled` and `proxy_check`'s
+/// `plan_uses_proxies`.
+pub(crate) fn builders_use_proxies(
+    settings: &crate::career::plan::PlanJob,
+    target_count: usize,
+    legacies: &[crate::career::Legacy],
+    max_borrowed: u8,
+) -> bool {
+    settings.surrogate_mode == 0 && !settings.exact_all && !exact_builders(target_count, legacies, max_borrowed)
+}
+
+/// `PlanCandidates::proxies_enabled`: `builders_use_proxies`, and not in the `proxy_check` run (which prices proxies
+/// beside the exact careers itself).
+fn proxies_enabled(
+    settings: &crate::career::plan::PlanJob,
+    target_count: usize,
+    legacies: &[crate::career::Legacy],
+    max_borrowed: u8,
+) -> bool {
+    builders_use_proxies(settings, target_count, legacies, max_borrowed) && !settings.proxy_check
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::{EXACT_BUILDERS_TARGETS, builders_use_proxies, proxies_enabled};
+
+    /// The plan's proxy test and `proxy_check`'s `plan_uses_proxies` agree with `proxy_check` off, for every surrogate
+    /// mode (0, 1, 2), `exact_all` and `exact_builders` (here by the target count): proxies only at mode 0 with neither
+    #[test]
+    fn the_plan_and_its_proxy_check_agree_on_proxies() {
+        for surrogate_mode in 0..=2u8 {
+            for exact_all in [false, true] {
+                for exact_builders in [false, true] {
+                    let settings: crate::career::plan::PlanJob = serde_json::from_value(
+                        serde_json::json!({"sur": surrogate_mode, "exact_all": exact_all, "proxy_check": false}),
+                    )
+                    .unwrap();
+                    let target_count = if exact_builders { EXACT_BUILDERS_TARGETS } else { EXACT_BUILDERS_TARGETS - 2 };
+                    let plan = proxies_enabled(&settings, target_count, &[], 1);
+                    let check = builders_use_proxies(&settings, target_count, &[], 1);
+                    assert_eq!(
+                        plan, check,
+                        "mode {surrogate_mode}, exact_all {exact_all}, exact_builders {exact_builders}"
+                    );
+                    assert_eq!(plan, surrogate_mode == 0 && !exact_all && !exact_builders);
+                }
+            }
+        }
+    }
 }
 
 /// The fewest targets at which builders are searched exactly (`exact_builders`): the measured case is p16_t10's 10

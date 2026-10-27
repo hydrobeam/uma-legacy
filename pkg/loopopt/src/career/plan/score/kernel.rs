@@ -5,7 +5,7 @@ use crate::career::clock::{now_ms, prof};
 use crate::career::plan::TargetMask;
 use crate::career::plan::cont::{ScoreBase, Want};
 use crate::career::plan::fold::{FoldContext, FoldCursor, FoldWorkspace, LeafLayout, Leaves, SlotTables, leaf_set};
-use crate::career::plan::step::{AfterHer, CandidateLift, EstimateBuffers, Route, StepEstimate};
+use crate::career::plan::step::{AfterHer, CandidateLift, EstimateBuffers, LiftRead, Route, ShadowRoute, StepEstimate};
 /// Cached leaf probabilities depend only on the star mix and uncertain-target order.
 #[derive(Default)]
 struct LeafCache {
@@ -53,6 +53,13 @@ pub(super) struct ScoringEvaluation {
     pub(super) joint_lifts: Vec<(u64, f64)>,
     /// With `Want::Classes`: the saving split by outcome class, by class (`ClassSaving`).
     pub(super) classes: Vec<ClassSaving>,
+    /// Where y is computed: per lift slot what V after her read of it (`StepWorkspace::lift_reads`).
+    pub(super) lift_reads: Vec<LiftRead>,
+    /// Where y is computed: per route the budget left out (`Scored::shadows`), whether it undercut V after her at an
+    /// outcome evaluated, so its omission is not certified (none: it changed nothing at any outcome).
+    pub(super) undercuts: Vec<bool>,
+    /// With `Scored::retain_least`: V after her per outcome evaluated, at (row << nf) | fm (the next batch's prior).
+    pub(super) outcome_least: Vec<f64>,
     pub(super) counters: EvaluationCounters,
 }
 
@@ -103,10 +110,12 @@ pub(crate) struct Scored {
     /// The rank's star mix (1, 2, 3 stars).
     pub(crate) star_mix: [f64; 3],
     /// The uncertain targets as job-target indices, ascending (`CareerSetup::uncertain_targets`).
-    pub(crate) uncertain_targets: Vec<usize>,
+    pub(crate) uncertain_targets: std::rc::Rc<[usize]>,
     /// Per mask of the guaranteed targets landed, its landed set over the job targets (`fm_masks`).
-    pub(crate) fixed_landed_masks: Vec<TargetMask>,
-    /// x0: per setup and uncertain target, the miss product without her (`HerSlot::misses_without_her`).
+    pub(crate) fixed_landed_masks: std::rc::Rc<[TargetMask]>,
+    /// x0: per setup and uncertain target, the miss product without her (`HerSlot::misses_without_her`). This and the
+    /// next two are held only by a scoring kept for rolls (`derive`); a scoring evaluated once derives from its setups,
+    /// borrowed (`derive_from`), and holds none.
     pub(crate) misses_without_her: Vec<Vec<f64>>,
     /// xm: per setup, her miss factor per star count (`HerSlot::miss_by_stars`).
     pub(crate) miss_by_stars: Vec<[f64; 4]>,
@@ -123,7 +132,7 @@ pub(crate) struct Scored {
     /// Per slot, the odds below the setup's: a partner slot's candidate's odds now, a finisher slot's 0.
     pub(crate) current_probabilities: Vec<f64>,
     /// Per landed set over the job targets (bit i: target i), her chance of landing exactly it.
-    pub(crate) landed_set_chances: Vec<f64>,
+    pub(crate) landed_set_chances: std::rc::Rc<[f64]>,
     /// The routes through her veteran (`score::routes`); none for a scoring of the stats alone.
     pub(crate) routes: Vec<Route>,
     /// Per finisher slot (a route's `finisher_slot`), its C's uma: the scale her odds are priced at
@@ -135,34 +144,86 @@ pub(crate) struct Scored {
     pub(crate) absent_factors: Vec<Vec<[f64; 4]>>,
     /// Derived (`derive`): per landed set m and setup, the spark scale (m-major: m * setup count + setup).
     pub(crate) spark_scales: Vec<f64>,
+    /// The routes the memory budget left out (`score::routes`), each checked at every outcome where y is computed
+    /// (`ShadowRoute`); none in a stored roll state (a roll reads the kept routes only).
+    pub(crate) shadows: Vec<ShadowRoute>,
+    /// An earlier batch's V after her per outcome (`ScoringEvaluation::outcome_least`, at (row << nf) | fm): this
+    /// batch's routes are taken beside it (V after her the least of both). Empty: none (a single batch).
+    pub(crate) prior_least: Vec<f64>,
+    /// Keep V after her per outcome where y is computed (`ScoringEvaluation::outcome_least`), for a later batch.
+    pub(crate) retain_least: bool,
+}
+
+/// One setup's parts as a scoring derives its factors from them (`Scored::derive_from`): x0, xm and pw (`Scored`'s
+/// fields of those names), borrowed from the setup or from the parts a kept scoring holds.
+#[derive(Clone, Copy)]
+pub(crate) struct SetupParts<'setup> {
+    pub(crate) misses_without_her: &'setup [f64],
+    pub(crate) miss_by_stars: [f64; 4],
+    pub(crate) target_spark_scales: &'setup [[f64; 2]],
 }
 
 impl Scored {
-    /// what the fold and the outcome loop read of the setups: per setup, target and star level x = x0 xm and 1 - x; per
-    /// landed set m and setup the spark scale, the product over job targets of pw at her spark there (m-major:
-    /// scf[m * ns + si])
+    /// `derive_from` the parts it holds (a scoring kept for rolls, a stored roll read back).
     pub(crate) fn derive(&mut self) {
-        let uncertain_target_count = self.uncertain_target_count;
-        self.present_factors = self
-            .misses_without_her
+        let (present_factors, spark_scales) = {
+            let parts: Vec<SetupParts> = self
+                .misses_without_her
+                .iter()
+                .zip(&self.miss_by_stars)
+                .zip(&self.target_spark_scales)
+                .map(|((misses_without_her, &miss_by_stars), target_spark_scales)| SetupParts {
+                    misses_without_her,
+                    miss_by_stars,
+                    target_spark_scales,
+                })
+                .collect();
+            (self.present_factors_of(&parts), self.spark_scales_of(&parts))
+        };
+        self.set_factors(present_factors, spark_scales);
+    }
+    /// What the fold and the outcome loop read of the setups `parts` (one per setup, in order): per setup, target and
+    /// star level x = x0 xm and 1 - x; per landed set m and setup the spark scale, the product over job targets of pw
+    /// at her spark there (m-major: scf[m * ns + si])
+    pub(crate) fn derive_from(&mut self, parts: &[SetupParts]) {
+        let (present_factors, spark_scales) = (self.present_factors_of(parts), self.spark_scales_of(parts));
+        self.set_factors(present_factors, spark_scales);
+    }
+    fn present_factors_of(&self, parts: &[SetupParts]) -> Vec<Vec<[f64; 4]>> {
+        parts
             .iter()
-            .zip(&self.miss_by_stars)
-            .map(|(x0, xm)| {
-                (0..uncertain_target_count).map(|k| [0usize, 1, 2, 3].map(|her_stars| x0[k] * xm[her_stars])).collect()
+            .map(|part| {
+                (0..self.uncertain_target_count)
+                    .map(|k| {
+                        [0usize, 1, 2, 3].map(|her_stars| part.misses_without_her[k] * part.miss_by_stars[her_stars])
+                    })
+                    .collect()
             })
-            .collect();
-        self.absent_factors = self
-            .present_factors
+            .collect()
+    }
+    fn spark_scales_of(&self, parts: &[SetupParts]) -> Vec<f64> {
+        let (landed_set_count, target_count) = (1usize << self.target_count, self.target_count);
+        let mut spark_scales = Vec::with_capacity(landed_set_count * parts.len());
+        for m in 0..landed_set_count {
+            spark_scales.extend(parts.iter().map(|part| {
+                // (`conservative_odds`' domain: every spark factor in [0, 1], `Setup::odds_bound`)
+                debug_assert!(
+                    part.target_spark_scales.iter().flatten().all(|factor| (0.0..=1.0).contains(factor)),
+                    "a spark factor outside [0, 1]"
+                );
+                (0..target_count)
+                    .map(|k| part.target_spark_scales[k][usize::from(TargetMask::from_bits(m).contains(k))])
+                    .product::<f64>()
+            }));
+        }
+        spark_scales
+    }
+    fn set_factors(&mut self, present_factors: Vec<Vec<[f64; 4]>>, spark_scales: Vec<f64>) {
+        self.absent_factors = present_factors
             .iter()
             .map(|setup_factors| setup_factors.iter().map(|star_factors| star_factors.map(|x| 1.0 - x)).collect())
             .collect();
-        let (landed_set_count, target_count) = (1usize << self.target_count, self.target_count);
-        self.spark_scales = Vec::with_capacity(landed_set_count * self.setup_count());
-        for m in 0..landed_set_count {
-            self.spark_scales.extend(self.target_spark_scales.iter().map(|pw| {
-                (0..target_count).map(|k| pw[k][usize::from(TargetMask::from_bits(m).contains(k))]).product::<f64>()
-            }));
-        }
+        (self.present_factors, self.spark_scales) = (present_factors, spark_scales);
     }
     /// A setup's odds at one outcome (her stars `leaf`, her landed set `landed_mask`) before the slot's floor: its
     /// tables interpolated there directly (`interp_in`, the fold's order and arithmetic: its f64s at that leaf, up to
@@ -184,15 +245,8 @@ impl Scored {
             .fold(0.0f64, f64::max);
         most * self.spark_scales[landed_mask * self.setup_count() + setup]
     }
-    /// The finisher slots' odds at one outcome (`setup_odds_at`), raised by 1e-12 of themselves so no rounding can put
-    /// one below the fold's: what `outcome_hi`'s bound takes for the routes' C
-    pub(crate) fn finisher_odds_at(&self, leaf: usize, landed_mask: usize) -> Vec<f64> {
-        (self.slot_candidates.len() + self.lift_candidates.len()..self.setup_count())
-            .map(|setup| self.setup_odds_at(setup, leaf, landed_mask) * (1.0 + 1e-12))
-            .collect()
-    }
     pub(crate) const fn setup_count(&self) -> usize {
-        self.misses_without_her.len()
+        self.slot_by_setup.len()
     }
     /// the fold writes per leaf the setups' table values (fewer rows than per outcome and slot), else per outcome the
     /// slots' odds (`FoldContext::emit`)
@@ -398,6 +452,10 @@ fn evaluate_outcomes<L: Leaves>(
         retain_outcome_savings: want == Want::Ys,
         joint_lifts: want == Want::Joint,
         class_split: want == Want::Classes,
+        every_possible_set: want == Want::LiftReads,
+        shadows: &scored.shadows,
+        prior_least: &scored.prior_least,
+        retain_least: scored.retain_least,
     };
     context.evaluate(scored.emits_setup_products(), matches!(want, Want::Stats | Want::Joint), &mut scratch.workspace)
 }
@@ -412,7 +470,7 @@ impl Scored {
         if L::ALL {
             let same = cache.key.len() == 3 + uncertain_target_count
                 && cache.key[..3].iter().zip(&w).all(|(&k, weight)| k == weight.to_bits())
-                && cache.key[3..].iter().zip(&self.uncertain_targets).all(|(&k, &i)| k == i as u64);
+                && cache.key[3..].iter().zip(self.uncertain_targets.iter()).all(|(&k, &i)| k == i as u64);
             if !same {
                 cache.star_probabilities.clear();
                 cache.uncertain_landed_masks.clear();
@@ -479,6 +537,14 @@ struct OutcomeContext<'out, 'base, L: Leaves> {
     joint_lifts: bool,
     /// The savings also split by outcome class (`ScoringEvaluation::classes`).
     class_split: bool,
+    /// V after her at every outcome whose landed set can happen, whatever its own chance (`Want::LiftReads`).
+    every_possible_set: bool,
+    /// The routes the budget left out (`Scored::shadows`).
+    shadows: &'out [ShadowRoute],
+    /// An earlier batch's V after her per outcome (`Scored::prior_least`; empty: none).
+    prior_least: &'out [f64],
+    /// Keep V after her per outcome (`Scored::retain_least`).
+    retain_least: bool,
 }
 
 impl<L: Leaves> OutcomeContext<'_, '_, L> {
@@ -577,6 +643,14 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         StepEstimate::default()
     };
     let mut lifted: Vec<CandidateLift> = vec![];
+    // per route the budget left out (`Scored::shadows`), whether it undercut V after her at an outcome evaluated
+    let mut undercuts = vec![false; context.shadows.len()];
+    // V after her per outcome evaluated, for a later batch (`Scored::retain_least`)
+    let mut outcome_least: Vec<f64> = if context.retain_least {
+        vec![context.score_base.current_value; leaf_rows << fixed_target_count]
+    } else {
+        vec![]
+    };
     let (collapse_mask, low_digit_bits) = (context.probabilities.collapse_mask, context.probabilities.low_digit_bits);
     let rep_of = |leaf: usize| {
         let collapsed_digits = leaf & collapse_mask;
@@ -612,7 +686,8 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         for (fixed_mask, &fixed_landed_mask) in fixed_landed_masks.iter().enumerate() {
             let landed_mask = uncertain_mask | fixed_landed_mask.bits();
             let outcome_probability = outcome_probabilities[landed_mask] * star_probability;
-            if outcome_probability <= 0.0 && !(is_representative && outcome_probabilities[landed_mask] > 0.0) {
+            let read_anyway = is_representative || context.every_possible_set;
+            if outcome_probability <= 0.0 && !(read_anyway && outcome_probabilities[landed_mask] > 0.0) {
                 continue;
             }
             if COL && representative != leaf {
@@ -732,7 +807,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                 continue;
             }
             let finisher_odds = &probabilities[lifting_slots..];
-            let saving = score_base.v_after(
+            let least = score_base.least_after(
                 &mut estimate,
                 &mut lift_steps,
                 &lifted,
@@ -740,6 +815,26 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                 landed_mask,
                 &context.after_her,
             );
+            // (beside an earlier batch's routes: the least of both, exact in any order)
+            let outcome_index = (leaf_row << fixed_target_count) | fixed_mask;
+            let least = match context.prior_least.get(outcome_index) {
+                Some(&prior) => least.min(prior),
+                None => least,
+            };
+            if context.retain_least {
+                outcome_least[outcome_index] = least;
+            }
+            let saving = (score_base.current_value - least).max(0.0);
+            // (the routes the budget left out, where V after her costed the steps: each must not undercut it)
+            let full = landed_mask == context.after_her.full_mask;
+            if !context.shadows.is_empty()
+                && (!lifted.is_empty() || full)
+                && !(context.after_her.completes_goal && full)
+            {
+                for (shadow, undercut) in context.shadows.iter().zip(&mut undercuts) {
+                    *undercut |= shadow.undercuts(&lift_steps, full, least);
+                }
+            }
             if is_representative {
                 representative_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
                 if context.class_split {
@@ -771,6 +866,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         *estimate_buffers =
             EstimateBuffers { probability_costs: std::mem::take(&mut estimate.workspace.probability_costs) };
     }
+    let lift_reads = std::mem::take(&mut estimate.workspace.lift_reads);
     let mut joint_lifts: Vec<(u64, f64)> = joint_lifts.into_iter().collect();
     joint_lifts.sort_by_key(|&(lifted_set, _)| lifted_set);
     ScoringEvaluation {
@@ -780,6 +876,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         lift_stats,
         joint_lifts,
         classes,
+        lift_reads,
+        undercuts,
+        outcome_least,
         counters: EvaluationCounters {
             outcomes: outcome_count,
             changed_outcomes: estimate.workspace.changed_outcomes,

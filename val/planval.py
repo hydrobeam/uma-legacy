@@ -17,6 +17,10 @@ proxy efficiency (within PROXY_EFF 6% of a candidate's second best) and promotes
   proxies on the cache from before the builders' searches, so until that is changed a proxy that is the exact career
   itself can read low here, and the gate fails on the cache, not the proxy.
 
+The two error criteria apply only where the plan reads proxies: a job whose builders are all searched exactly
+(`exact_all`, or the solver's `exact_builders`: a usable borrowed veteran or 10+ targets; `plan_uses_proxies` false in
+the proxy_check output) has its errors reported, and fails only if the plan moves.
+
 Then the first-step tripwire: the row that runs V's route first (`route_first_step`) should score about 0, since by
 policy improvement the route's own next step saves nothing over V (a career costs 1 and V's route promises it saves 1:
 for a building side Cont's lam (K(p) - K(p1)) = 1). It fails a job when that score is below FIRST_STEP_FLOOR (-0.1
@@ -29,6 +33,15 @@ than V's route promises (by-product and cross-trio credit V's additive sides lac
 way V errs against the true cost. The 0.1 is assumed: the gap between mean-lifted and per-outcome odds (Jensen) is not
 measured. A plan with a finite V whose first step has no finite score (a missing row, a null or NaN score) fails; only
 a plan with no V is not applicable.
+
+Then the completeness gate: a job fails where its plan, or its proxy_check run, does not say its scoring is complete
+(`next.scoring_complete` false or missing): the memory budget left out a route no batch could hold or a partner setup,
+so its savings are lower bounds, not the model's, and the checks above read them. Where an output carries the plan's
+robustness check (`next.robust`, whose variants and pair search score in their own runs), it also fails on the check's
+`robust.scoring_complete` false or missing, or, where it ran a pair search, that search's `pairs.scoring_complete` not
+exactly true. The val/plan jobs do
+not ask for the check today, so that part reads nothing on them. It fails on any such output; none of the jobs has one
+today.
 
 Base rows only: a looped row (her career on two full veterans) is priced against her unconstrained proxy, which is her
 base row's career; rows marked `looped` are dropped, or, from a solver that does not mark them, every row but each
@@ -272,7 +285,8 @@ def proxy_gate(job_entry, job_dir):
     output = json.loads([line for line in result.stdout.splitlines() if line.strip()][-1])
     if "proxy_check" not in (output.get("next") or {}):
         return None
-    return proxy_errors(output), plan_view(output["next"])
+    uses_proxies = output["next"]["proxy_check"].get("plan_uses_proxies", True)
+    return proxy_errors(output), plan_view(output["next"]), uses_proxies
 
 
 def plan_view(plan):
@@ -486,6 +500,50 @@ def first_step_tripwire(name):
     return low
 
 
+def check_incomplete(plan):
+    """Why the plan's robustness check, where the output has one (`next.robust`), says a scoring of it was incomplete:
+    `robust.scoring_complete` not exactly true, or, where it has a pair search (`pairs` present and not null), that
+    search's `pairs.scoring_complete` not exactly true (only a check without a pair search is exempt). None where it
+    has no check or a complete one."""
+    robust = plan.get("robust") if isinstance(plan, dict) else None
+    if robust is None:
+        return None
+    if not isinstance(robust, dict) or robust.get("scoring_complete") is not True:
+        return f"robust.scoring_complete {robust.get('scoring_complete') if isinstance(robust, dict) else robust!r}"
+    pairs = robust.get("pairs")
+    if pairs is not None and (not isinstance(pairs, dict) or pairs.get("scoring_complete") is not True):
+        return f"robust.pairs.scoring_complete {pairs.get('scoring_complete') if isinstance(pairs, dict) else pairs!r}"
+    return None
+
+
+def scoring_incomplete(name):
+    """True (fails) where the plan output or its proxy_check run does not report `next.scoring_complete` true (module
+    notes): an unreadable output, a missing `next` or field, or false; or where its robustness check, if it has one,
+    says a scoring of it was incomplete (`check_incomplete`). Prints the job's line only where it fails."""
+    reasons = []
+    for kind in ("", "_proxy"):
+        path = os.path.join(PLAN_DIR, f"{tag}{kind}__{name}.out")
+        try:
+            plan = json.loads([line for line in open(path).read().splitlines() if line.strip()][-1]).get("next")
+        except (OSError, IndexError, ValueError) as error:
+            reasons.append(f"{kind[1:] or 'plan'} output unreadable ({error})")
+            continue
+        complete = plan.get("scoring_complete") if isinstance(plan, dict) else None
+        if complete is not True:
+            prof = ((plan or {}).get("work") or {}).get("prof") or {}
+            reasons.append(
+                f"{kind[1:] or 'plan'}: scoring_complete {complete!r} (routes_dropped_uncertified "
+                f"{prof.get('sc_routes_dropped_uncertified', 0):,.0f}, partner_setups_dropped "
+                f"{prof.get('sc_partner_setups_dropped', 0):,.0f})"
+            )
+        check = check_incomplete(plan)
+        if check:
+            reasons.append(f"{kind[1:] or 'plan'}: {check}")
+    if reasons:
+        print(f"{name}: SCORING INCOMPLETE (FAIL): {'; '.join(reasons)}")
+    return bool(reasons)
+
+
 failures = sum(compare_job(name) for _era, name in jobs)
 print(f"{len(jobs)} plan jobs, {failures} differ")
 first_step_failures = sum(first_step_tripwire(name) for _era, name in jobs)
@@ -498,22 +556,30 @@ for (_era, name), gate in zip(jobs, gates):
         print(f"{name}: no proxy_check in the output")
         proxy_failures += 1
         continue
-    errors, exact_view = gate
+    errors, exact_view, uses_proxies = gate
     run_output = os.path.join(PLAN_DIR, f"{tag}__{name}.out")
     lines = (
         [line for line in open(run_output).read().splitlines() if line.strip()] if os.path.exists(run_output) else []
     )
     moved = not lines or plan_view(json.loads(lines[-1])["next"]) != exact_view
     efficiency_low, saving_low = errors.efficiency_low < -PROXY_GATE, errors.careers_low < -SAVING_GATE
-    proxy_failures += moved or efficiency_low or saving_low
+    # (a plan that searches every builder exactly, `exact_all` or the solver's `exact_builders`, reads no proxy: their
+    # errors are reported there, and only a moved plan fails)
+    proxy_failures += moved or (uses_proxies and (efficiency_low or saving_low))
     print(
         f"{name}: {'PROXIES MOVE THE PLAN; ' if moved else 'plan as all-exact; '}{errors.rows} rows "
         f"({errors.other_deck} on another deck): efficiency {errors.efficiency_low:+.2%} .. {errors.efficiency_high:+.2%}"
         f"{' LOW' if efficiency_low else ''}, saving {errors.careers_low:+.2f} careers at worst{' LOW' if saving_low else ''}"
         f" (saving + 1 {errors.saving_low:+.2%} .. {errors.saving_high:+.2%}, reported only)"
+        f"{'' if uses_proxies else '; the plan reads no proxy (every builder searched exactly): reported, not failed'}"
     )
 print(
     f"{len(jobs)} proxy checks, {proxy_failures} fail (the plan moves, an efficiency over {PROXY_GATE:.0%} low, or a "
     f"saving over {SAVING_GATE} careers low)"
 )
-sys.exit(1 if failures or proxy_failures or first_step_failures or not jobs else 0)
+incomplete = sum(scoring_incomplete(name) for _era, name in jobs)
+print(
+    f"{len(jobs)} plans, {incomplete} with incomplete scoring (fails: `scoring_complete` false or missing in the plan or "
+    "its proxy_check run)"
+)
+sys.exit(1 if failures or proxy_failures or first_step_failures or incomplete or not jobs else 0)

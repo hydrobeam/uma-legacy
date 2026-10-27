@@ -9,7 +9,7 @@
 use crate::career::clock::now_ms;
 use crate::career::plan::combine::PlanScores;
 use crate::career::plan::cont::{ScoreBase, SideStep, Trio, TrioSlot, Want};
-use crate::career::plan::robust::aside;
+use crate::career::plan::robust::{aside, aside_complete};
 use crate::career::plan::rows::PlanRow;
 use crate::career::plan::score::score_career;
 use crate::career::plan::search::{capped, legal_pair, val};
@@ -224,7 +224,7 @@ fn rescore_top_rows(
         .collect();
     top.sort_by(|&first, &second| runs[second].total().total_cmp(&runs[first].total()));
     top.truncate(RESCORED_ROWS);
-    let rescored: Vec<f64> = aside(simulator, |simulator| {
+    let (rescored, scoring_complete): (Vec<f64>, bool) = aside_complete(simulator, |simulator| {
         top.iter()
             .map(|&i| {
                 let career = found_career(runs[i].trainee, &runs[i].career);
@@ -235,5 +235,6 @@ fn rescore_top_rows(
     let today: Vec<f64> = top.iter().map(|&i| runs[i].total()).collect();
     let gaps = |values: &[f64]| values.windows(2).map(|pair| pair[0] - pair[1]).collect::<Vec<f64>>();
     json!({"v0": current_value, "trainees": top.iter().map(|&i| context.data().umas[runs[i].trainee].name.clone()).collect::<Vec<_>>(),
-        "score": today, "score_sequenced": rescored, "gaps": gaps(&today), "gaps_sequenced": gaps(&rescored)})
+        "score": today, "score_sequenced": rescored, "gaps": gaps(&today), "gaps_sequenced": gaps(&rescored),
+        "scoring_complete": scoring_complete})
 }

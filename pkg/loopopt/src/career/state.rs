@@ -165,8 +165,9 @@ pub(crate) const SEEN_KEEP: usize = 256;
 // holds its `unproven` reasons, `assumes` (names), its class flags and its trainees' classes; the class flags by class
 // content, and each kept plan's own; 7: a roll state's routes carry their C while a lifted side builds, and its Conts
 // price odds above p0 off their lattice; 8: the plans' step caps, and a roll state's base its candidates' caps; 9: a
-// step cap is its kept fit's curve, lam, phi, pinf, p0 and decay, and her odds then)
-pub(crate) const STATE_VERSION: u64 = 9;
+// step cap is its kept fit's curve, lam, phi, pinf, p0 and decay, and her odds then; 10: a roll state keeps no bound's
+// inputs, the roll's y_hi gone: no found-career anchors, no flags of which candidates' odds are proven)
+pub(crate) const STATE_VERSION: u64 = 10;
 
 /// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
 /// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated

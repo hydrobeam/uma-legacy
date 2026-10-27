@@ -609,7 +609,9 @@ impl<'data> CareerSetup<'data> {
     /// Her schedule's race weights: per race `FILL_EPS` plus each parent's chance of having won it (`schedule_rows`)
     fn race_weights(&self, pool: &Pool, lineage: Lineage) -> Vec<f64> {
         let mut race_weights = vec![FILL_EPS; self.data.race_count];
-        for parent in [lineage.first_parent, lineage.second_parent] {
+        // (in the pool's product order, `Pool::product_order`: the sums do not depend on the veterans' places)
+        let (first_parent, second_parent) = pool.product_order(lineage.first_parent, lineage.second_parent);
+        for parent in [first_parent, second_parent] {
             for &RaceWin { race, chance: parent_chance } in &pool.veterans[parent].wins {
                 if race < self.data.race_count {
                     race_weights[race] += parent_chance;

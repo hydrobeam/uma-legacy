@@ -1,7 +1,7 @@
 //! The simulator's `index` under `act_on` "pair_search" runs the page's final recommendation (docs/SOLVER.md *Policy
-//! simulator*). On three val/plan pools, one per kind of recommendation (p16_borrow: the pick's trainee's better parents;
-//! p11_noagnes: another trainee's career whose margin holds under the per-uma scenarios; p11: another trainee's that is
-//! tied with the pick there, so the pick stays), a simulated run's first career is, by its id (trainee, parents and
+//! simulator*). On three val/plan pools, one per kind of recommendation (p16: the pick's trainee's better parents;
+//! p10_pink: another trainee's career that scores above the pick as fitted; p11: the pick), a simulated run's first
+//! career is, by its id (trainee, parents and
 //! deck), the career the page's own job sequence recommends: the plan job, then the check one variant per job and the
 //! pair search (webapp/src/career.js `checkPhase`), read as the page's lines read it (`pairSearchNotes`). What it runs is
 //! observed apart from what it was asked to run: the lineage its first segment ran (`segs`: trainee and both parents),
@@ -49,9 +49,10 @@ fn plan_job(pool: &str) -> Value {
     job
 }
 
-/// The career the page recommends after its check, from the fields its lines read: another trainee's best where it
-/// holds against the pick's side under the per-uma scenarios ("Better career found"), else the pick's trainee's better
-/// parents ("Better parents found"), else the pick. Also the solver's own `recommendation` and the pick's odds.
+/// The career the page recommends after its check, from the fields its lines read: the pair search's best where it
+/// scores above the plan's pick as fitted (`versus_pick`'s nominal margin; "Better career found", or for the pick's
+/// trainee "Better parents found"), else the pick; the per-uma scenarios decide nothing. Also the solver's own
+/// `recommendation` and the pick's odds.
 struct PageRecommendation {
     career: String,
     solver_says: String,
@@ -85,11 +86,9 @@ fn page_recommendation(pool: &str) -> PageRecommendation {
     assert_eq!(check["pending"], json!(0), "{pool}: the check is complete");
     assert_eq!(check["plan"], plan["outcomes"]["career"], "{pool}: the check is of the plan's pick");
     let pairs = &check["pairs"];
-    let (best, pick_trainee) = (&pairs["best"], &pairs["trainees"][0]);
-    let career = if best["trainee"] != pick_trainee["trainee"] && best["versus_pick_side"]["holds"] == true {
+    let best = &pairs["best"];
+    let career = if best["versus_pick"]["margins"]["nominal"].as_f64().is_some_and(|margin| margin > 0.0) {
         &best["career"]
-    } else if pick_trainee["better_parents"] == true {
-        &pick_trainee["career"]
     } else {
         &plan["outcomes"]["career"]
     };
@@ -153,8 +152,7 @@ fn named_career(pool: &str, id: &str) -> LandedSets {
 
 #[test]
 fn index_acting_on_the_pair_search_runs_the_pages_recommendation() {
-    for (pool, source) in [("p16_borrow", "pick_trainee_pair"), ("p11_noagnes", "cross_trainee"), ("p11", "plan_pick")]
-    {
+    for (pool, source) in [("p16", "pick_trainee_pair"), ("p10_pink", "cross_trainee"), ("p11", "plan_pick")] {
         let page = page_recommendation(pool);
         assert_eq!(page.source, source, "{pool}: the kind of recommendation this pool tests");
         assert_eq!(page.solver_says, page.career, "{pool}: the solver's recommendation is the page's");

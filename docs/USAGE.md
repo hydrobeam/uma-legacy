@@ -71,25 +71,27 @@ of 83 umas*).
 
 **Career choices** lists what the planner weighed, under its estimate of the careers you still need: per career its
 odds and *Saves per run*, how much it lowers that estimate of the careers to a fully looped parent, averaged over every
-result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
-those the planner takes the better odds. Once the pick is shown, a check scores the shown careers again under the model
+result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. The pick is the career with the most Saves per run;
+better odds don't break a near-tie, since the Saves per run already count the runs where she lands every target. Once
+the pick is shown, a check scores the shown careers again under the model
 without its kept step caps, six tested variants of it (its building curve at the corners of its fitted range, every
 all-target chance scaled to either end of its calibration interval) and up to three per-uma scenarios (the top-scoring
 uma's all-target chance scaled down and one rival uma's up, by a split inferred from the measured spread between umas;
 the numbers are on *How this works*); where they score different careers highest, *pick varies* marks each one (all are
-in the table) and a line under the table names them; where every one scores one career highest and the pick is
-another, taken for its better odds within *about the same*, *top score* marks that career and a line says so. The pick is
-still the rule's under the model as fitted, and the check covers only those rows, variants and scenarios. Then, for the
+in the table) and a line under the table names them: the pick varies under those variants, a sensitivity of the
+choice, not a tie. The pick is still the rule's under the model as fitted, and the check covers only those rows, variants and scenarios. Then, for the
 pick's uma, each uma a scenario scores highest and the four best-scoring umas, it scores her every pair of parents with
 the best deck found so far for each, and the four best pairs again with every deck found for her and after a deck
 search of each; the best pairs found are then tried for every uma not searched on all her pairs (those a fixed amount
-of work left out included). Where a pair beats the pick's (or a tied uma's)
-shown parents, a line under the table names it, its gain in *Saves per run* over her shown parents and over the best
+of work left out included). Where a pair beats the pick's (or a scenario's uma's)
+shown parents (the pick itself, for the pick's uma), a line under the table names it, its gain in *Saves per run* over her shown parents and over the best
 other pair checked, and how many other pairs it was checked against; where the best uma and pair found is another
-uma's, a line names it against the pick's side (the pick's uma's better parents, else the pick) with how many umas each
-step covered: a better career where it saves more as fitted and in both per-uma scenarios, else tied with it, the pick's
-side staying the recommendation (scored with the decks found so far, so not certified best). It runs behind the answer;
-where it cannot finish (the solver was stopped or restarted before it was done) a line under the table says so. An uma can have two rows: her best odds, and her best career on two full veteran parents
+uma's, a line names it against the pick with how many umas each step covered: a better career, and the recommendation,
+where it saves more as fitted, with the per-uma scenarios that would reverse that named as a sensitivity; else none
+beats the pick (scored with the decks found so far, so not certified best). It runs behind the answer;
+where it cannot finish (the solver was stopped or restarted before it was done) a line under the table says so, as one
+does where the planner's memory budget left out a route or partner it could not weigh (its Saves per run may then be
+too low). An uma can have two rows: her best odds, and her best career on two full veteran parents
 (*n/n parents*, with n the number of targets), where a full veteran of hers is a fully looped parent; the second can save more with lower odds. A line under
 the table says when the search for a shown uma could not prove its answer, with the causes the plan's searches
 reported (a search ran out of its work budget, a deck band was too large to check in full, or a deck beat its class's

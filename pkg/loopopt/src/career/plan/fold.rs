@@ -1,5 +1,4 @@
 //! Folding spark outcomes and their rises.
-use crate::career::inherit::{HerSlot, rise_factor};
 use crate::career::plan::TargetMask;
 /// Mutable fold levels and the last two levels' sixteen-leaf blocks.
 #[derive(Default)]
@@ -294,88 +293,6 @@ pub(crate) fn leaf_set(leaf: usize, uncertain_targets: &[usize], star_mix: [f64;
 pub(crate) struct LeafOutcome {
     pub(crate) landed_mask: usize,
     pub(crate) star_probability: f64,
-}
-
-/// Per leaf (base-4 digits, digit k at bits 2k..2k+1) the product of g[k][digit k] over k (g: `factors`), into `out`:
-/// level by level, each level's products the previous level's (at the leaf's lower digits) times g[k][digit k], from
-/// 1.0. The same operations in the same order as `let mut pr = 1.0; for k in 0..nu { pr *= factors[k][digit k]; }` per
-/// leaf, so the same f64s; each prefix is computed once instead of once per leaf (4/3 4^nu products for nu 4^nu)
-pub(crate) fn leaf_products(factors: &[[f64; 4]], out: &mut Vec<f64>, next: &mut Vec<f64>) {
-    out.clear();
-    out.push(1.0);
-    for (k, target_factors) in factors.iter().enumerate() {
-        let last_prefix = (1usize << (2 * k)) - 1;
-        next.clear();
-        for &digit_factor in target_factors {
-            next.extend(out[..=last_prefix].iter().map(|&prefix_product| prefix_product * digit_factor));
-        }
-        std::mem::swap(out, next);
-    }
-}
-
-/// Outfit and inheritance inputs to the rise bound. Outfit rows use uncertain-target order.
-pub(crate) struct RiseInputs<'rise> {
-    pub(crate) outfit_coverage: &'rise [Vec<u8>],
-    pub(crate) event_chances: &'rise [Vec<f64>],
-    pub(crate) uncertain_targets: &'rise [usize],
-    /// Narrow view of HerSlot's miss factors; no owned vectors are copied.
-    pub(crate) base_misses: &'rise [f64],
-    pub(crate) star_misses: &'rise [f64; 4],
-}
-
-impl<'rise> RiseInputs<'rise> {
-    pub(crate) fn for_slot(
-        outfit_coverage: &'rise [Vec<u8>],
-        event_chances: &'rise [Vec<f64>],
-        uncertain_targets: &'rise [usize],
-        slot: &'rise HerSlot,
-    ) -> Self {
-        Self {
-            outfit_coverage,
-            event_chances,
-            uncertain_targets,
-            base_misses: &slot.misses_without_her,
-            star_misses: &slot.miss_by_stars,
-        }
-    }
-}
-
-impl RiseInputs<'_> {
-    /// Per leaf (as `leaf_products`) the best outfit's `CareerSetup::rise` of trainee (`outfit_coverage`,
-    /// `event_chances`: her outfits' coverage and own chances) from chances qa (job-target order) to q'(leaf),
-    /// q'_k = 1 - x0[k] xms[her stars on uncertain target k]: per outfit and target the factor at each of her four star
-    /// levels (1 where it can't rise), their product per leaf
-    pub(crate) fn leaves(
-        &self,
-        anchor_chances: &[f64],
-        leaf_products_buffer: &mut Vec<f64>,
-        next_leaf_products: &mut Vec<f64>,
-    ) -> Vec<f64> {
-        let target_count = self.uncertain_targets.len();
-        let mut rises = vec![0.0f64; 1usize << (2 * target_count)];
-        for (coverage, events) in self.outfit_coverage.iter().zip(self.event_chances) {
-            let factors: Vec<[f64; 4]> = (0..target_count)
-                .map(|k| {
-                    let i = self.uncertain_targets[k];
-                    [0, 1, 2, 3].map(|her_stars| {
-                        rise_factor(
-                            coverage[k],
-                            events[k],
-                            1.0 - self.base_misses[k] * self.star_misses[her_stars],
-                            anchor_chances[i],
-                        )
-                    })
-                })
-                .collect();
-            leaf_products(&factors, leaf_products_buffer, next_leaf_products);
-            for (rise, &product) in rises.iter_mut().zip(leaf_products_buffer.iter()) {
-                if product > *rise {
-                    *rise = product;
-                }
-            }
-        }
-        rises
-    }
 }
 
 /// The leaves (her star patterns on the uncertain targets) a scoring's evaluation produces (`Scored::evaluate`): `All`, the

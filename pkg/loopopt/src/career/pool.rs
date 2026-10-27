@@ -106,6 +106,67 @@ pub(crate) struct Pool {
 }
 
 impl Pool {
+    /// A lineage's two parents in the order every inheritance product and sum over them takes them (`walk_slots`,
+    /// `gen_cands`, `race_weights`): the lower character id first, so the f64s a pair gives, and so every value and
+    /// threshold read from them, do not depend on the veterans' places in the pool (a legal pair is of two characters;
+    /// of one, as given). Indices are kept: only the order the arithmetic visits them changes
+    #[inline(always)]
+    pub(crate) fn product_order(&self, a: usize, b: usize) -> (usize, usize) {
+        if self.veterans[b].character_id < self.veterans[a].character_id { (b, a) } else { (a, b) }
+    }
+    /// A veteran's grandparent slots (her recorded parents, `parents`) in the order every product and sum over them takes
+    /// them: the lower character id first, and of two of one character the lower content first (`who_words`, as
+    /// `content_words` sorts them), the slot indices kept (a fresh veteran records her parents in the pool's order of
+    /// her lineage, so the order of her own record would carry the pool's order into her children's slots; two veterans
+    /// whose records differ only in that order are of one content rank, and take their grandparents in one order)
+    #[inline(always)]
+    pub(crate) fn grandparent_order(&self, parent: usize) -> impl Iterator<Item = usize> + Clone + use<> {
+        let grandparents = &self.parents[parent];
+        let swapped = grandparents.len() == 2
+            && match grandparents[1].character_id.cmp(&grandparents[0].character_id) {
+                std::cmp::Ordering::Less => true,
+                std::cmp::Ordering::Equal => who_words(&grandparents[1]) < who_words(&grandparents[0]),
+                std::cmp::Ordering::Greater => false,
+            };
+        let count = grandparents.len();
+        (0..count).map(move |slot| if swapped { count - 1 - slot } else { slot })
+    }
+    /// Per veteran, her rank among the pool's veterans by content (`content_words`, compared in full: equal ranks
+    /// only for veterans equal in everything an inheritance, a schedule or a borrowing rule reads of them, so
+    /// interchangeable; the rest of what they read is a function of these words: `Who::uma_index` of her character,
+    /// `grandparent_race_affinity` of her wins and her parents'): what ties between equal rankings break by, so the
+    /// pool's order chooses nothing among them (`pair_rank`). Sorted once per call, `content_words` per veteran
+    pub(crate) fn content_ranks(&self) -> Vec<u32> {
+        let words: Vec<Vec<u64>> = (0..self.veterans.len()).map(|veteran| self.content_words(veteran)).collect();
+        let mut order: Vec<usize> = (0..words.len()).collect();
+        order.sort_by(|&first, &second| words[first].cmp(&words[second]));
+        let mut ranks = vec![0u32; words.len()];
+        let mut rank = 0u32;
+        for (place, &veteran) in order.iter().enumerate() {
+            if place > 0 && words[veteran] != words[order[place - 1]] {
+                rank += 1;
+            }
+            ranks[veteran] = rank;
+        }
+        ranks
+    }
+    /// A veteran's content as words, compared in full (`content_ranks`): her own (`who_words`), whether she is
+    /// borrowed, then each recorded parent's, those sorted (a fresh veteran records hers in the pool's order of her
+    /// lineage), each length-prefixed
+    fn content_words(&self, veteran: usize) -> Vec<u64> {
+        let mut parents: Vec<Vec<u64>> = self.parents[veteran].iter().map(who_words).collect();
+        parents.sort();
+        let own = who_words(&self.veterans[veteran]);
+        let mut words = vec![own.len() as u64];
+        words.extend(own);
+        words.push(u64::from(self.borrowed[veteran]));
+        words.push(parents.len() as u64);
+        for parent in parents {
+            words.push(parent.len() as u64);
+            words.extend(parent);
+        }
+        words
+    }
     /// whether veterans a and b hold at most `max_borrowed` borrowed ones between them
     #[inline]
     pub(crate) fn within_borrow_limit(&self, a: usize, b: usize) -> bool {
@@ -137,8 +198,9 @@ impl Pool {
 
     /// Whether veteran `x` is at least as good a parent as veteran `y` in every career (`Env::solve`, dominated
     /// veterans): she is at least as good in her own right (`Who::at_least_as_good_as`: the same character, stars at
-    /// least y's on every job target, G1 wins a superset of y's), and she has the same number of parents, each (in
-    /// order) at least as good as y's the same way. Only fixed stars and certain wins (a veteran before her result is
+    /// least y's on every job target, G1 wins a superset of y's), and she has the same number of parents, each at least
+    /// as good as y's the same way, taken in the order the arithmetic takes them (`grandparent_order`, so two veterans
+    /// of one content rank, whose records differ only in their parents' order, get one answer). Only fixed stars and certain wins (a veteran before her result is
     /// known, with random stars and win chances, never compares).
     /// Derived: with partner z and trainee t, swapping y for x keeps every relation term (same characters,
     /// grandparents in the same slots) and raises or keeps every shared-win count (x with z, x with her parents;
@@ -150,7 +212,10 @@ impl Pool {
     pub(crate) fn dominates(&self, x: usize, y: usize) -> bool {
         self.veterans[x].at_least_as_good_as(&self.veterans[y])
             && self.parents[x].len() == self.parents[y].len()
-            && self.parents[x].iter().zip(&self.parents[y]).all(|(own, theirs)| own.at_least_as_good_as(theirs))
+            && self
+                .grandparent_order(x)
+                .zip(self.grandparent_order(y))
+                .all(|(own, theirs)| self.parents[x][own].at_least_as_good_as(&self.parents[y][theirs]))
     }
 
     /// Per veteran y, the veterans x at least as good in every career (`dominates`), ascending. Only veterans of one
@@ -186,6 +251,34 @@ impl Pool {
 #[inline]
 pub(crate) fn holds_fix(fix: &[usize], a: usize, b: usize) -> bool {
     fix.iter().all(|&fixed_legacy| fixed_legacy == a || fixed_legacy == b)
+}
+
+/// A pair's tie key from the pool's content ranks (`Pool::content_ranks`): its veterans' ranks, the lower first (the
+/// pair's, whichever veteran is named first)
+#[inline(always)]
+pub(crate) const fn pair_rank(ranks: &[u32], a: usize, b: usize) -> [u32; 2] {
+    let (first, second) = (ranks[a], ranks[b]);
+    if second < first { [second, first] } else { [first, second] }
+}
+
+/// What an inheritance or a schedule reads of one veteran, as words in a fixed field order (`Pool::content_words`):
+/// her character, her stars per target, her star mix, her wins with their chances, her pinks and possible pinks, each
+/// list length-prefixed and every float by its bits
+fn who_words(who: &Who) -> Vec<u64> {
+    let mut words: Vec<u64> = vec![u64::from(who.character_id), who.stars.len() as u64];
+    words.extend(who.stars.iter().map(|&stars| u64::from(stars)));
+    words.extend(who.star_mix.map_or([u64::MAX; 3], |mix| mix.map(f64::to_bits)));
+    words.push(who.wins.len() as u64);
+    words.extend(who.wins.iter().flat_map(|win| [win.race as u64, win.chance.to_bits()]));
+    words.push(who.pinks.len() as u64);
+    words.extend(who.pinks.iter().map(|&(group, stars)| (u64::from(group) << 8) | u64::from(stars)));
+    words.push(who.pink_chances.len() as u64);
+    words.extend(
+        who.pink_chances
+            .iter()
+            .flat_map(|pink| [(u64::from(pink.group) << 8) | u64::from(pink.stars), pink.chance.to_bits()]),
+    );
+    words
 }
 
 /// G1s two legacies both won (expected count when a win is a chance)
@@ -282,8 +375,64 @@ impl CareerSetup<'_> {
 
 #[cfg(test)]
 mod tests {
+    use super::{Pool, RaceWin, Who};
     use crate::career::Legacy;
     use serde_json::json;
+    use std::rc::Rc;
+
+    /// A veteran of character `character_id` with fixed `stars` and certain wins `wins`, no pinks
+    fn who(character_id: u32, stars: Vec<u8>, wins: &[usize]) -> Who {
+        Who {
+            uma_index: None,
+            character_id,
+            wins: wins.iter().map(|&race| RaceWin { race, chance: 1.0 }).collect(),
+            stars: Rc::new(stars),
+            pinks: Rc::new(vec![]),
+            pink_chances: Rc::new(vec![]),
+            star_mix: None,
+        }
+    }
+
+    /// Astra (astra-iv4.out 2): veterans X and X' alike but for their parents' record order, [P, Q] and [Q, P], take one
+    /// content rank, so they must get one dominance answer: D, as X with stronger stars, dominates both. Two parents of
+    /// one character are ordered by content too, so a record of [A, A'] and one of [A', A] take one order
+    #[test]
+    fn a_parents_record_order_moves_no_dominance() {
+        let (parent_p, parent_q) = (who(1002, vec![1, 0], &[3]), who(1005, vec![0, 2], &[]));
+        let x = who(1001, vec![2, 1], &[3]);
+        let d = who(1001, vec![3, 2], &[3]);
+        let pool = Pool {
+            veterans: vec![d, x.clone(), x],
+            parents: vec![
+                vec![parent_p.clone(), parent_q.clone()],
+                vec![parent_p.clone(), parent_q.clone()],
+                vec![parent_q, parent_p],
+            ],
+            borrowed: vec![false; 3],
+            grandparent_race_affinity: vec![vec![0.0, 0.0]; 3],
+            max_borrowed: 1,
+        };
+        let ranks = pool.content_ranks();
+        assert_eq!(ranks[1], ranks[2], "X and X' are of one content");
+        assert!(pool.dominates(0, 1), "D dominates X");
+        assert_eq!(pool.dominates(0, 1), pool.dominates(0, 2), "and X' alike");
+        assert_eq!(pool.dominates(1, 2), pool.dominates(2, 1));
+        assert!(pool.dominates(1, 2), "X and X' dominate each other");
+        // (two parents of one character: the weaker by content first, whatever the record's order)
+        let (weak, strong) = (who(1002, vec![1, 0], &[]), who(1002, vec![2, 0], &[]));
+        let same = Pool {
+            veterans: vec![who(1001, vec![0, 0], &[]), who(1001, vec![0, 0], &[])],
+            parents: vec![vec![weak.clone(), strong.clone()], vec![strong, weak]],
+            borrowed: vec![false; 2],
+            grandparent_race_affinity: vec![vec![0.0, 0.0]; 2],
+            max_borrowed: 1,
+        };
+        let first = |veteran: usize| {
+            let slot = same.grandparent_order(veteran).next().unwrap();
+            same.parents[veteran][slot].stars[0]
+        };
+        assert_eq!((first(0), first(1)), (1, 1), "the lower content first in both records");
+    }
 
     #[test]
     fn a_legacy_records_at_most_two_parents() {

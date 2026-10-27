@@ -48,6 +48,8 @@ pub(crate) struct RankedPair {
     pub(crate) first_parent: usize,
     /// The second parent (legacy index).
     pub(crate) second_parent: usize,
+    /// The pair's content rank (`pool::pair_rank`): ties in ceiling break by it before the legacy indices.
+    pub(crate) content_rank: [u32; 2],
 }
 
 impl Iterator for Ranked {
@@ -62,6 +64,7 @@ impl Iterator for Ranked {
                     .ceiling
                     .partial_cmp(&first.ceiling)
                     .unwrap()
+                    .then(first.content_rank.cmp(&second.content_rank))
                     .then(first.first_parent.cmp(&second.first_parent))
                     .then(first.second_parent.cmp(&second.second_parent))
             };
@@ -280,8 +283,8 @@ impl CareerSetup<'_> {
         })
     }
     /// `trainee`'s legal pairs of `pool` holding `fixed_parents` and kept by `keep`, with their ceilings (`gen_cands`:
-    /// `ceiling` at `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every
-    /// ranked scan took). The folded buffer after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over
+    /// `ceiling` at `lineage`'s chances, to the bit), best first, ties by the pair's content rank
+    /// (`pool::pair_rank`), then in pair order. The folded buffer after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over
     /// the pairs left it (every reader of the folded buffer sets it first)
     pub(crate) fn ranked_pairs(
         &self,
@@ -291,7 +294,13 @@ impl CareerSetup<'_> {
         trainee: UmaIndex,
         keep: impl Fn(usize, usize) -> bool,
     ) -> Ranked {
-        let pair = |ceiling, _, _, first_parent, second_parent| RankedPair { ceiling, first_parent, second_parent };
+        let ranks = pool.content_ranks();
+        let pair = |ceiling, _, _, first_parent, second_parent| RankedPair {
+            ceiling,
+            first_parent,
+            second_parent,
+            content_rank: crate::career::pool::pair_rank(&ranks, first_parent, second_parent),
+        };
         Ranked {
             candidates: self.gen_cands(state, pool, fixed_parents, &[trainee], keep, pair),
             sorted_until: 0,
@@ -420,8 +429,11 @@ impl CareerSetup<'_> {
                 continue;
             }
             let shared_race_affinity = 3.0 * shared(&pool.veterans[first_parent], &pool.veterans[second_parent]);
-            let race = [first_parent, second_parent]
-                .map(|legacy| part_sum(shared_race_affinity, pool.grandparent_race_affinity[legacy].iter().copied()));
+            let race = [first_parent, second_parent].map(|legacy| {
+                // (her grandparent slots in the pool's product order, `Pool::grandparent_order`, as `walk_slots`)
+                let races = pool.grandparent_order(legacy).map(|slot| pool.grandparent_race_affinity[legacy][slot]);
+                part_sum(shared_race_affinity, races)
+            });
             let parent_pair_relations = [
                 self.pair(pool.veterans[first_parent].uma_index, pool.veterans[second_parent].uma_index),
                 self.pair(pool.veterans[second_parent].uma_index, pool.veterans[first_parent].uma_index),
@@ -509,21 +521,25 @@ impl CareerSetup<'_> {
                     aff_factor(
                         part_sum(
                             context.parent_relations[parent] + pair.parent_pair_relations[side],
-                            context.grandparent_relations[grandparent_offsets[parent]..grandparent_offsets[parent + 1]]
-                                .iter()
-                                .copied(),
+                            pool.grandparent_order(parent)
+                                .map(|slot| context.grandparent_relations[grandparent_offsets[parent] + slot]),
                         ),
                         pair.race[side],
                     )
                 });
+                // (the parents in the pool's product order, `Pool::product_order`, as `walk_slots` takes them)
+                let sides =
+                    if pool.product_order(first_parent, second_parent).0 == first_parent { [0, 1] } else { [1, 0] };
                 for k in 0..target_count {
                     let (mut miss, mut random_star_misses) = (1.0f64, 1.0f64);
-                    for (side, parent) in [first_parent, second_parent].into_iter().enumerate() {
+                    for side in sides {
+                        let parent = if side == 0 { first_parent } else { second_parent };
                         let (slot_miss, slot_mix) =
                             fac(pool.veterans[parent].stars[k], pool.veterans[parent].star_mix, affinity_factors[side]);
                         miss *= slot_miss;
                         random_star_misses *= slot_mix;
-                        for j in grandparent_offsets[parent]..grandparent_offsets[parent + 1] {
+                        for slot in pool.grandparent_order(parent) {
+                            let j = grandparent_offsets[parent] + slot;
                             let (slot_miss, slot_mix) = context.grandparent_factors[j * target_count + k];
                             miss *= slot_miss;
                             random_star_misses *= slot_mix;
@@ -657,6 +673,8 @@ impl Env<'_> {
             trainee_position: u16,
             first_parent: u16,
             second_parent: u16,
+            /// The pair's content rank (`pool::pair_rank`): ties in ceiling break by it before the legacy indices.
+            content_rank: [u32; 2],
         }
         impl Candidate {
             const fn lineage(&self) -> Lineage {
@@ -675,6 +693,7 @@ impl Env<'_> {
                 && trainees.len() <= u16::MAX as usize,
             "legacies, umas and trainees are packed as u16"
         );
+        let ranks = pool.content_ranks();
         let mut candidates: Vec<Candidate> = self.setup.gen_cands(
             &mut self.state,
             pool,
@@ -687,10 +706,12 @@ impl Env<'_> {
                 trainee_position: trainee_position as u16,
                 first_parent: first_parent as u16,
                 second_parent: second_parent as u16,
+                content_rank: crate::career::pool::pair_rank(&ranks, first_parent, second_parent),
             },
         );
-        // Best ceiling first, ties in generation order: the order a stable sort by ceiling gives (partial_cmp, so 0 and
-        // -0 tie as there), as a total order on (ceiling descending, trainee_position, a, b), unique per candidate.
+        // Best ceiling first, ties by the trainee's place, then the pair's content rank (`pool::pair_rank`, so the pool's
+        // order chooses nothing among equal ceilings), then generation order (partial_cmp, so 0 and -0 tie as there):
+        // a total order on (ceiling descending, trainee_position, pair key, a, b), unique per candidate.
         // Sorted lazily (`sorted_until`): the loop below reads a short prefix, so each step selects the next chunk
         // (everything before it is ordered before everything after it) and sorts only the chunk; the prefix is the full
         // sort's, element for element.
@@ -700,6 +721,7 @@ impl Env<'_> {
                 .partial_cmp(&first.ceiling)
                 .unwrap()
                 .then(first.trainee_position.cmp(&second.trainee_position))
+                .then(first.content_rank.cmp(&second.content_rank))
                 .then(first.first_parent.cmp(&second.first_parent))
                 .then(first.second_parent.cmp(&second.second_parent))
         };

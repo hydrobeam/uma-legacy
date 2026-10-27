@@ -30,10 +30,39 @@ pub(crate) struct Route {
     pub(crate) full_only: bool,
     /// Its sides' careers fixed at the base: the other side's step (0 for her own full veteran, or none).
     pub(crate) fixed_cost: f64,
-    /// The finisher slot holding its C's odds.
+    /// The finisher slot holding its C's odds; NO_SLOT for none: a route one of whose lift slots no outcome leaves her
+    /// grinding at once after (`LiftRead::grinds`), so it takes its C while building wherever it is taken.
     pub(crate) finisher_slot: usize,
     /// C's step where a lifted side still builds at its lift's odds.
     pub(crate) while_building: WhileBuilding,
+}
+
+/// A route the memory budget left out (`score::routes`), checked at every outcome a scoring evaluates
+/// (`Scored::shadows`): its lifts and sides as the route has them, and the least its C can cost there
+/// (`finisher_floor`: 1 / the most its own C's odds can be, or its C while building, the least that route can take).
+/// Where it is taken, its value is at least ((its steps + 0) + `fixed_cost`) + `finisher_floor`, the route's own sum
+/// with its last term no larger (rounding is monotone), so where that is at least V after her its omission changed
+/// nothing there: the certificate (`ScoringEvaluation::uncertified`)
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ShadowRoute {
+    pub(crate) lifts: [usize; 2],
+    pub(crate) full_only: bool,
+    pub(crate) fixed_cost: f64,
+    pub(crate) finisher_floor: f64,
+}
+
+impl ShadowRoute {
+    /// Whether it can be below V after her (`least`) at an outcome whose lifted slots' steps are `steps` (V after her's,
+    /// `ScoreBase::least_after`) and where she landed every target or not (`full`)
+    pub(crate) fn undercuts(&self, steps: &[Option<LiftStep>], full: bool, least: f64) -> bool {
+        if self.full_only && !full {
+            return false;
+        }
+        let step = |slot: usize| if slot == NO_SLOT { Some(0.0) } else { steps[slot].map(|lift| lift.step) };
+        let [first, second] = self.lifts;
+        let (Some(first_step), Some(second_step)) = (step(first), step(second)) else { return false };
+        ((first_step + second_step) + self.fixed_cost) + self.finisher_floor < least
+    }
 }
 
 /// A route's C where a lifted side still builds (`Route::while_building`): V0's convention, C on that side's lineage as
@@ -70,32 +99,20 @@ pub(crate) struct CachedStepCost {
 }
 
 /// A lifted candidate's step at one outcome, as V after her takes it (a lift slot's), and whether she still builds at
-/// the lift's odds (None: not known, the bound's: V after her then takes the cheaper C of the two).
+/// the lift's odds.
 #[derive(Clone, Copy)]
 pub(crate) struct LiftStep {
     pub(crate) step: f64,
-    pub(crate) builds: Option<bool>,
+    pub(crate) builds: bool,
 }
 
 /// How V after her (`v_after`) costs the steps of the candidates her veteran lifts: the estimate's (`StepEstimate`,
-/// `Cont::cost`, for y) or the lower bound's (`Lo`, `ScoreBase::step_floor`, for y_hi). Monomorphised: each path keeps
-/// its own code
+/// `Cont::cost`), or a test's stand-in (`score::routes`' tests). Monomorphised
 pub(crate) trait StepCost {
-    /// Her step at the lift's odds (the estimate's), or at most every step she could have there (the bound's).
+    /// Her step at the lift's odds.
     fn step(&mut self, score_base: &ScoreBase, lift: CandidateLift) -> LiftStep;
     /// Count an outcome whose lifts V after her read.
     fn changed(&mut self) {}
-}
-
-/// The bound's steps: each lifted candidate's at `ScoreBase::step_floor` at the lift's odds, at most her step at any
-/// odds from hers now to them (`saving_lo`)
-pub(crate) struct Lo;
-
-impl StepCost for Lo {
-    #[inline]
-    fn step(&mut self, score_base: &ScoreBase, lift: CandidateLift) -> LiftStep {
-        LiftStep { step: score_base.step_floor(lift.candidate, lift.probability), builds: None }
-    }
 }
 
 /// The estimate's steps (`sc_loop`): a step's cost through a per-row cache of the odds costed (`probability_costs`, lift
@@ -106,16 +123,33 @@ pub(crate) struct StepEstimate {
     pub(crate) workspace: StepWorkspace,
 }
 
-/// Probability caches, reused for every outcome in one scoring.
+/// Probability caches, reused for every outcome in one scoring, and per lift slot what V after her read of it.
 #[derive(Default)]
 pub(crate) struct StepWorkspace {
     pub(crate) probability_costs: Vec<CachedStepCost>,
+    /// Per lift slot, what any outcome's V after her read of it (`LiftRead`).
+    pub(crate) lift_reads: Vec<LiftRead>,
     pub(crate) changed_outcomes: usize,
     pub(crate) cost_evaluations: usize,
     pub(crate) cache_hits: usize,
 }
 
 const COST_CACHE_CAPACITY: usize = 256;
+
+/// What V after her read of one lift slot over a scoring's outcomes (`StepWorkspace::lift_reads`): the least step it
+/// costed (infinite: no outcome lifted it), what a route through the slot costs at least, and whether any outcome left
+/// her grinding at once after it (where none did, a route lifting it takes its C while building at every outcome:
+/// `score::routes`' lower bounds and dominance).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct LiftRead {
+    pub(crate) least_step: f64,
+    pub(crate) grinds: bool,
+}
+
+impl LiftRead {
+    /// A slot no outcome has read.
+    pub(crate) const UNREAD: Self = Self { least_step: f64::INFINITY, grinds: false };
+}
 
 /// `StepEstimate`'s cache buffer between scorings (`FoldScratch`)
 #[derive(Default)]
@@ -133,7 +167,14 @@ impl StepEstimate {
             rows * COST_CACHE_CAPACITY,
             CachedStepCost { probability_bits: f64::NAN.to_bits(), cost: 0.0, builds: false },
         );
-        Self { workspace: StepWorkspace { probability_costs, changed_outcomes: 0, cost_evaluations: 0, cache_hits: 0 } }
+        let workspace = StepWorkspace {
+            probability_costs,
+            lift_reads: vec![LiftRead::UNREAD; rows],
+            changed_outcomes: 0,
+            cost_evaluations: 0,
+            cache_hits: 0,
+        };
+        Self { workspace }
     }
 }
 
@@ -144,15 +185,21 @@ impl StepCost for StepEstimate {
         let probability_bits = lift.probability.to_bits();
         let k = lift.slot * COST_CACHE_CAPACITY + (probability_bits.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 56) as usize;
         let cached = &mut workspace.probability_costs[k];
-        if cached.probability_bits == probability_bits {
+        let lift_step = if cached.probability_bits == probability_bits {
             workspace.cache_hits += 1;
-            LiftStep { step: cached.cost, builds: Some(cached.builds) }
+            LiftStep { step: cached.cost, builds: cached.builds }
         } else {
             workspace.cost_evaluations += 1;
             let (cost, builds) = score_base.step_plan(lift.candidate, lift.probability);
             *cached = CachedStepCost { probability_bits, cost, builds };
-            LiftStep { step: cost, builds: Some(builds) }
+            LiftStep { step: cost, builds }
+        };
+        let read = &mut workspace.lift_reads[lift.slot];
+        if lift_step.step < read.least_step {
+            read.least_step = lift_step.step;
         }
+        read.grinds |= !lift_step.builds;
+        lift_step
     }
     fn changed(&mut self) {
         self.workspace.changed_outcomes += 1;
@@ -164,11 +211,26 @@ impl ScoreBase<'_> {
     /// route (`Route`) whose lifts happened at this outcome (and, for one with her own full veteran as a side, where she
     /// landed every target): its lifted steps (each at its lift slot's odds) plus its fixed sides plus C's step,
     /// 1 / its finisher slot's odds here (as the base prices her uma's odds, `ScoreBase::odds_scales`) where every lifted side grinds
-    /// at once, else `Route::while_building`'s (the bound, not knowing, takes the cheaper of the two); the goal's V when
-    /// her parents are full veterans. `lifted`: one per lift slot whose odds rose; `finisher_odds` the finisher slots'
-    /// odds at this outcome; `steps` scratch. Both the estimate and the bound use this sequence, with their own StepCost
-    #[inline(always)]
+    /// at once, else `Route::while_building`'s; the goal's V when her parents are full veterans. `lifted`: one per lift
+    /// slot whose odds rose; `finisher_odds` the finisher slots' odds at this outcome; `steps` scratch
+    /// (tests: the plan's scorings read `least_after` in their outcome loop)
+    #[cfg(test)]
     pub(crate) fn v_after<C: StepCost>(
+        &self,
+        cost: &mut C,
+        steps: &mut Vec<Option<LiftStep>>,
+        lifted: &[CandidateLift],
+        finisher_odds: &[f64],
+        landed_mask: usize,
+        after: &AfterHer,
+    ) -> f64 {
+        (self.current_value - self.least_after(cost, steps, lifted, finisher_odds, landed_mask, after)).max(0.0)
+    }
+    /// V after her at one outcome (`v_after`'s saving is V0 less it): the least of V0 and the routes taken there, 0 where
+    /// her own full veteran is the goal. Where it costs any step (some slot lifted, or she landed every target), `steps`
+    /// holds each lifted slot's step afterwards (`Scored::shadows` read them)
+    #[inline(always)]
+    pub(crate) fn least_after<C: StepCost>(
         &self,
         cost: &mut C,
         steps: &mut Vec<Option<LiftStep>>,
@@ -179,10 +241,10 @@ impl ScoreBase<'_> {
     ) -> f64 {
         let full = landed_mask == after.full_mask;
         if after.completes_goal && full {
-            return self.current_value;
+            return 0.0;
         }
         if lifted.is_empty() && !full {
-            return 0.0;
+            return self.current_value;
         }
         steps.clear();
         steps.resize(after.lift_slot_count, None);
@@ -194,7 +256,7 @@ impl ScoreBase<'_> {
         }
         let mut best = self.current_value;
         let finisher_cost = |slot: usize| {
-            let odds = finisher_odds[slot];
+            let odds = *finisher_odds.get(slot)?;
             let scale = after.finisher_umas.get(slot).map_or(self.odds_scales.common, |&uma| self.odds_scales.of(uma));
             (odds > 0.0).then(|| 1.0 / (odds * scale))
         };
@@ -203,7 +265,7 @@ impl ScoreBase<'_> {
                 continue;
             }
             let step = |slot: usize| {
-                if slot == NO_SLOT { Some(LiftStep { step: 0.0, builds: Some(false) }) } else { steps[slot] }
+                if slot == NO_SLOT { Some(LiftStep { step: 0.0, builds: false }) } else { steps[slot] }
             };
             let [first, second] = route.lifts;
             let (Some(first_step), Some(second_step)) = (step(first), step(second)) else { continue };
@@ -212,14 +274,10 @@ impl ScoreBase<'_> {
                 WhileBuilding::Slot(slot) => finisher_cost(slot),
                 WhileBuilding::Skip => None,
             };
-            let finisher = match (first_step.builds, second_step.builds) {
-                (Some(false), Some(false)) => finisher_cost(route.finisher_slot),
-                (Some(true), _) | (_, Some(true)) => building_cost(),
-                // (the bound: either C, so the cheaper)
-                _ => match (finisher_cost(route.finisher_slot), building_cost()) {
-                    (Some(own), Some(building)) => Some(own.min(building)),
-                    (own, building) => own.or(building),
-                },
+            let finisher = if first_step.builds || second_step.builds {
+                building_cost()
+            } else {
+                finisher_cost(route.finisher_slot)
             };
             let Some(finisher) = finisher else { continue };
             let value = ((first_step.step + second_step.step) + route.fixed_cost) + finisher;
@@ -227,7 +285,7 @@ impl ScoreBase<'_> {
                 best = value;
             }
         }
-        (self.current_value - best).max(0.0)
+        best
     }
 }
 
@@ -238,8 +296,7 @@ mod tests {
 
     /// One candidate on a synthetic Cont, her step in one route whose other side costs `side` and whose C costs `finisher`
     /// (the same with her lifted side): a builder whose veteran lifts her, with the fitted chance, to the odds the fitted
-    /// step closes scores lam (V - V after her) - 1 = 0 where building pays, by the estimate, and at least that by the
-    /// bound
+    /// step closes scores lam (V - V after her) - 1 = 0 where building pays
     #[test]
     fn the_plans_own_next_builder_scores_zero() {
         let (lam, phi, pinf, p0, side, finisher) = (0.3, 0.1, 0.002, 3e-4, 400.0, 500.0);
@@ -251,7 +308,6 @@ mod tests {
             step_costs: &[step],
             current_value: (step + side) + finisher,
             current_odds: &[p0],
-            certified: &[true],
             continuations: std::slice::from_ref(&cont),
             step_caps: &[],
             trios: &[],
@@ -274,7 +330,5 @@ mod tests {
         let mut estimate = StepEstimate::new(1, EstimateBuffers::default());
         let saving = base.v_after(&mut estimate, &mut vec![], &lift, &finisher_odds, 0, &after);
         assert!((lam * saving - 1.0).abs() < 1e-9, "score {}", lam * saving - 1.0);
-        let bound = base.v_after(&mut Lo, &mut vec![], &lift, &finisher_odds, 0, &after);
-        assert!(bound >= saving, "y_hi {bound} below y {saving}");
     }
 }

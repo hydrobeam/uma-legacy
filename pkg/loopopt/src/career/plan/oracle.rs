@@ -5,7 +5,7 @@
 use crate::career::clock::now_ms;
 use crate::career::plan::combine::{FITTED_MODEL, PlanScores, fit_continuation};
 use crate::career::plan::cont::{Cont, PathPoint, SideStep, TrioSlot, Want};
-use crate::career::plan::robust::aside;
+use crate::career::plan::robust::aside_complete;
 use crate::career::plan::rows::PlanRow;
 use crate::career::plan::score::score_career;
 use crate::career::plan::{Oracle, PlanContext, found_career};
@@ -174,7 +174,7 @@ pub(crate) fn joint_oracle(
     let builder_row = |candidate: usize| Some(fit_continuation(fit.evidence[candidate].as_ref()?, FITTED_MODEL).1);
     let stats_base = candidates.stats_base();
     let mut joint_sets: crate::FxMap<usize, Vec<(u64, f64)>> = crate::FxMap::default();
-    let trios: Vec<Value> = aside(simulator, |simulator| {
+    let (trios, scoring_complete): (Vec<Value>, bool) = aside_complete(simulator, |simulator| {
         order
             .iter()
             .map(|&index| {
@@ -248,6 +248,7 @@ pub(crate) fn joint_oracle(
         "best_trio_changes": best_joint.is_some_and(|best| best != 0),
         "trios": trios,
         "oracle_ms": now_ms() - started_ms,
+        "scoring_complete": scoring_complete,
     })
 }
 

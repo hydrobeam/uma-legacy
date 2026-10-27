@@ -94,8 +94,8 @@ fn json_without_matches_clone() {
         }
     }
 }
-/// The copies of the inheritance chance agree to the bit with `lineage` (slots, `inherit`, `scale`): `lineage_qc`,
-/// `gen_cands`' ceilings (against `ceiling` at `lineage`'s chances, as `solve` takes them) and `her_slot` (against
+/// The copies of the inheritance chance agree to the bit with `lineage` (slots, `inherit`, `scale`): `gen_cands`'
+/// ceilings (against `ceiling` at `lineage`'s chances, as `solve` takes them) and `her_slot` (against
 /// `inherit` on the slots with hers emptied), on a pool with random-star slots (parents and grandparents) beside
 /// fixed ones
 #[test]
@@ -114,10 +114,9 @@ fn inheritance_copies_match_lineage() {
             }
         }
         let Env { ref setup, ref mut state, .. } = *env;
-        let ks: Vec<usize> = (0..setup.target_count).collect();
         let trainees = &setup.owned;
         let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<u64>>();
-        let (mut n, mut tg, mut tg_t) = (0usize, vec![], crate::uma::NONE);
+        let mut n = 0usize;
         for fix in [vec![], vec![2usize]] {
             let candidates = setup.gen_cands(state, &p, &fix, trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
             assert!(!candidates.is_empty());
@@ -129,13 +128,6 @@ fn inheritance_copies_match_lineage() {
                     setup.ceiling(state, t, &q, c).unwrap().to_bits(),
                     "gen_cands ceiling t {t} pair {a} {b}"
                 );
-                if t != tg_t {
-                    tg.clear();
-                    tg_t = t;
-                }
-                let mut qq = vec![0.0f64; setup.target_count];
-                let cq = setup.lineage_qc(&p, lineage, &ks, &mut qq, &mut tg);
-                assert_eq!((bits(&qq), cq.to_bits()), (bits(&q), c.to_bits()), "lineage_qc t {t} pair {a} {b}");
                 for (y, iv) in [(a, b), (b, a)] {
                     let her_lineage = Lineage { trainee: t, first_parent: y, second_parent: iv };
                     let sl = setup.slots(&p, her_lineage);
@@ -146,7 +138,8 @@ fn inheritance_copies_match_lineage() {
                     let inherit::Inheritance { chances: q0, carriers: nc0 } = inherit(&sl0, setup.target_count);
                     let hs = setup.her_slot(&p, her_lineage).unwrap();
                     let fa = aff_factor(sl[pos].relation_points, sl[pos].race);
-                    assert_eq!(bits(&hs.chances_without_her), bits(&q0));
+                    let misses: Vec<f64> = setup.uncertain_targets.iter().map(|&i| 1.0 - q0[i]).collect();
+                    assert_eq!(bits(&hs.misses_without_her), bits(&misses));
                     assert_eq!(
                         bits(&hs.miss_by_stars),
                         bits(&[1.0, insp_miss2(1.0, fa), insp_miss2(2.0, fa), insp_miss2(3.0, fa)])
@@ -283,9 +276,6 @@ fn state_round_trips_and_refuses_malformed() {
     refused("rolls: a candidate's step costs not one per candidate", &|s| {
         s["rolls"][0]["base"]["c1"].as_array_mut().unwrap().push(hex(1.0));
     });
-    refused("rolls: certification not one per candidate", &|s| {
-        s["rolls"][0]["base"]["cert"].as_array_mut().unwrap().push(json!(true));
-    });
     refused("rolls: a partner slot's candidate past the candidates", &|s| {
         let slots = s["rolls"][0]["sd"]["sc"].as_array_mut().unwrap();
         *slots.first_mut().expect("a partner slot") = json!(1_000_000);
@@ -314,11 +304,6 @@ fn state_round_trips_and_refuses_malformed() {
         let lift_slots = s["rolls"][0]["sd"]["lc"].as_array().unwrap().len();
         let routes = s["rolls"][0]["sd"]["rt"].as_array_mut().unwrap();
         routes.first_mut().expect("a route")[0] = json!(lift_slots);
-    });
-    refused("rolls: an anchor's chances truncated", &|s| {
-        let anc = s["rolls"][0]["anc"].as_array_mut().unwrap();
-        let a = anc.iter_mut().find(|a| !a.is_null()).expect("an anchor");
-        a[1].as_array_mut().unwrap().pop();
     });
 
     // ---- stores that parse but do not fit the setup they meet: not used there ----

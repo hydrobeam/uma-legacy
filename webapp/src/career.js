@@ -226,7 +226,6 @@ const progText = ({ ph, k, n }) =>
  * @property {number|null} index  the careers she saves toward a fully looped parent, net
  * @property {number|null} saving
  * @property {number|null} lift  the chance her result lowers the careers to a fully looped parent
- * @property {boolean} near  close to the pick
  * @property {number|null} score  the table's order
  * @property {boolean} [pair_search]  the pair search's recommendation (`pairSearchRow`): run as it is, its deck kept
  * @property {number|null} [pair_search_score]  its Saves per run in the pair search
@@ -267,14 +266,15 @@ const progText = ({ ph, k, n }) =>
  * @property {RouteMember[]} [members]  the route's A and B, in its order (empty without a route)
  * @property {{trainee: number, parents: [number, number], career?: string, uncv: number[], fixed: number[]}|null} outcomes  the career a
  *   roll is of (`next.roll`)
- * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound over the plan's routes (`rollReq`)
+ * @property {{y: number}} [roll]  a roll's saving over the plan's routes (`rollReq`)
  * @property {boolean} [check_unavailable]  set by the page: the robustness check could not finish (`checkPhase`)
- * @property {{plan: string, pending: number, stable: boolean, contenders: string[], pick_varies?: boolean, near_override?: boolean, score_winner?: string|null, pairs?: PairSearch|null}} [robust]
+ * @property {boolean} [scoring_complete]  false: the plan's memory budget left out a route no batch could hold or a
+ *   partner setup (career/plan/output.rs), so its savings are lower bounds and its pick may not be the model's
+ * @property {{plan: string, pending: number, stable: boolean, contenders: string[], pick_varies?: boolean, pairs?: PairSearch|null, scoring_complete?: boolean}} [robust]
  *   the robustness check on the pick (plan/robust.rs), set by the page from its follow-up jobs (`checkPhase`): the pick
  *   it is of, the variants left, whether every tested variant scores the pick highest (`stable`), the careers (`keyOf`)
- *   the variants score highest (`contenders`), whether they disagree (`pick_varies`), and where they agree on another
- *   career than the pick (`near_override`), that career (`score_winner`): the planner took the pick for its better odds
- *   within the "about the same" band; the within-trainee pair search once it has run (`pairs`: null before, absent
+ *   the variants score highest (`contenders`), whether they disagree (`pick_varies`: the pick varies under these
+ *   variants, a sensitivity, not a tie); the within-trainee pair search once it has run (`pairs`: null before, absent
  *   from a solver without it)
  * @property {PlanFit} [fit]  the stage candidates and their continuations the plan was fitted to: a comparison passes
  *   it on unchanged (`next.fit`), so the pool with her is priced the same way
@@ -283,22 +283,23 @@ const progText = ({ ph, k, n }) =>
  *   job's `job_assumes`, kept with the plan; `planCaveat`)
  *
  * The within-trainee pair search (plan/robust.rs `pair_search`), one entry per trainee it ran for: the pick's, then each
- * one a per-uma scenario scores highest. `shown`: her best-scoring shown career (`keyOf`); `best_parents`: the legacy
+ * one a per-uma scenario scores highest. `shown`: the career she is weighed against (`keyOf`): for the pick's trainee the
+ * pick, for another her best-scoring shown career; `best_parents`: the legacy
  * indices of her best pair by its best deck found so far; `score`: that pair's Saves per run after its deck was searched
  * exactly; `margin_over_shown`: that less her shown career's; `margin_over_other_pairs`: that less the best other pair
  * evaluated (null where there is none; neither margin certifies the best pair); `corner_margins`: the margin over her
  * shown career under each building-curve corner; `scale_margins`: at her own odds x0.76 and x1.32 (both careers alike);
  * `pairs_scored`: the pairs she was scored on, the best among them; `pairs_runnable`: the pairs she can run;
  * `pairs_truncated`: the bound (`pair_bound` per uma) left some of them unscored, the rest by their all-target ceiling.
- * `reason`: why she was searched ("pick", "tied": a per-uma scenario's pick, "top": among the 4 best by score);
+ * `reason`: why she was searched ("pick", "scenario": a per-uma scenario's pick, "top": among the 4 best by score);
  * `better_parents`: her best beats her shown career on another pair. `shared_coverage`: the umas without their own search
  * the best pairs were tried for, and the careers so scored. `best`: the best (trainee, pair) by score over both, with its
- * margin over the pick's trainee's shown career and, where it is another trainee's, `versus_pick_side`: its margins over
- * the pick's side (`career`; `source` "pick_trainee_pair", her better parents, or "plan_pick") as fitted and in the two
- * per-uma scenarios, and whether all three are positive (`holds`). `recommendation`: the career to run (`source`
- * "cross_trainee", "pick_trainee_pair" or "plan_pick"), with its pair-search `score` and `report` (a career report, its
- * deck with it: the table's row for it, `pairSearchRow`).
- * @typedef {{trainees: {trainee: string, reason?: string, shown: string, best_parents: [number, number], score: number, margin_over_shown: number, better_parents: boolean, margin_over_other_pairs: number|null, corner_margins?: number[], scale_margins?: number[], pairs_scored: number, pairs_runnable?: number, pairs_truncated?: boolean}[], shared_coverage?: {trainees: number, careers: number, trainees_truncated?: number}, pair_bound?: number, best?: {trainee: string, career: string, best_parents: [number, number], score: number, margin_over_pick_trainee_shown: number|null, versus_pick_side?: {career: string, source: string, margins: {nominal: number, pick_down: number, pick_up: number}, holds: boolean}}|null, recommendation?: {career: string, source: string, score?: number|null, report?: CareerReport}}} PairSearch
+ * margin over the pick's trainee's shown career and, where it is not the pick, `versus_pick`: its margins over the pick
+ * (`career`) as fitted and in the two per-uma scenarios, and the scenarios that reverse the fitted margin's sign
+ * (`varies_under`: a sensitivity, deciding nothing). `recommendation`: the career to run, the higher-scoring of the pick
+ * and `best` as fitted (`source` "cross_trainee", "pick_trainee_pair" or "plan_pick"), with its pair-search `score` and
+ * `report` (a career report, its deck with it: the table's row for it, `pairSearchRow`).
+ * @typedef {{trainees: {trainee: string, reason?: string, shown: string, best_parents: [number, number], score: number, margin_over_shown: number, better_parents: boolean, margin_over_other_pairs: number|null, corner_margins?: number[], scale_margins?: number[], pairs_scored: number, pairs_runnable?: number, pairs_truncated?: boolean}[], shared_coverage?: {trainees: number, careers: number, trainees_truncated?: number}, pair_bound?: number, best?: {trainee: string, career: string, best_parents: [number, number], score: number, margin_over_pick_trainee_shown: number|null, versus_pick?: {career: string, margins: {nominal: number, pick_down: number, pick_up: number}, varies_under: string[]}}|null, recommendation?: {career: string, source: string, score?: number|null, report?: CareerReport}}} PairSearch
  *
  * A plan's continuation fit, one entry per stage candidate (`[chara, lam, phi, pinf, ...]`, as the solver writes it;
  * the page never reads inside it).
@@ -1770,8 +1771,8 @@ function rollDraft() {
 }
 // A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target; the
 // solver evaluates the plan's pick at that one outcome from what it kept of the plan, career/plan/roll.rs `roll_kept`, so no
-// plan runs again unless the worker kept none): y, exact for her sparks, her G1 wins at their chances, and, where y < 0.5, y_hi, the most her veteran's
-// routes in the plan could save there. Neither is a verdict: a route the plan has not (another lineage of a candidate's
+// plan runs again unless the worker kept none): y, exact for her sparks, her G1 wins at their chances, over the plan's
+// routes. It is no verdict: a route the plan has not (another lineage of a candidate's
 // whose last career she improves as a grandparent, without lifting the candidate's odds) can save careers too, so
 // every roll is confirmed by the exact comparison, its quick figure shown meanwhile as provisional. null when the plan
 // isn't for this career (then Reroll compares exactly).
@@ -2430,19 +2431,6 @@ function optionsEl() {
       ),
     );
   }
-  // every tested variant scores one career highest, and the planner's rule took another for its better odds within the
-  // "about the same" band: the variants agree, the rule's band made the pick
-  const winner = planReport && scoreWinner(planReport),
-    winnerRow = winner && list.find((o) => keyOf(o) === winner),
-    pickRow = list.find((o) => o.chosen);
-  if (winnerRow && pickRow)
-    box.appendChild(
-      el(
-        'p',
-        'hint optnote',
-        `Every tested variant of the planner’s model scores ${nameOf(winnerRow)} highest; the pick takes ${nameOf(pickRow)} for its better odds, its Saves per run being within the “about the same” band of the best (5%, at least a quarter of a career).`,
-      ),
-    );
   for (const text of pairSearchNotes(planReport, nameOf)) box.appendChild(el('p', 'hint optnote', text));
   if (recommended) box.appendChild(deckEl(recommended, `Deck of the pair search's career: ${nameOf(recommended)}`));
   if (planReport?.check_unavailable)
@@ -2451,6 +2439,17 @@ function optionsEl() {
         'p',
         'hint optnote',
         'The check of this pick under tested variants of the model did not finish (the solver was stopped or restarted before it was done, or a variant needed more memory than it may take).',
+      ),
+    );
+  // the plan's scorings, or its check's (its variants and pair search: `robust.scoring_complete`), left something out for
+  // memory (false; absent from a solver without it): every saving shown, or the check's, may be low, so the pick or the
+  // recommendation may not be the model's
+  if (planReport?.scoring_complete === false || planReport?.robust?.scoring_complete === false)
+    box.appendChild(
+      el(
+        'p',
+        'hint optnote incomplete',
+        'The planner ran out of memory before it could weigh every route or partner for these careers: their Saves per run may be too low, and the pick may not be the best.',
       ),
     );
   // a row whose career search was not complete (`proven: false`: its work cap, a band overflow, or her deck class
@@ -2501,11 +2500,12 @@ const unsettled = (planReport) => {
   return new Set(check?.pick_varies ? check.contenders : []);
 };
 // the pair search's findings (`robust.pairs`): one line per trainee it ran for as the pick's or a per-uma scenario's
-// (`reason` "pick" or "tied"): her better parents (`better_parents`), by how much they beat her shown career, or that none
-// did; then, where the best (trainee, pair) it found by score (`pairs.best`) is another trainee's, a line naming it
-// against the pick's side (`versus_pick_side`: the pick's trainee's better parents, else the pick): better where it
-// beats it under the model and both per-uma scenarios (`holds`, the solver's `recommendation` then), else tied with it.
-// Nothing until the check is complete, or where it is of another pick. nameOf: an option's trainee as the table names her
+// (`reason` "pick" or "scenario"): her better parents (`better_parents`), by how much they beat her shown career (the pick,
+// for the pick's trainee), or that none did; then, where the best (trainee, pair) it found by score (`pairs.best`) is
+// another trainee's, a line naming it against the pick (`versus_pick`): better where it scores above the pick as fitted
+// (the solver's `recommendation` then), with the per-uma scenarios that reverse that (`varies_under`) named as a
+// sensitivity, else not better. Nothing until the check is complete, or where it is of another pick. nameOf: an
+// option's trainee as the table names her
 /** @type {(planReport: PlanReport|null, nameOf: (o: PlanOption) => string) => string[]} */
 function pairSearchNotes(planReport, nameOf) {
   const check = planReport && checkDone(planReport);
@@ -2542,18 +2542,14 @@ function pairSearchNotes(planReport, nameOf) {
     });
   const best = check.pairs.best,
     pickFound = check.pairs.trainees[0],
-    versus = best?.versus_pick_side;
+    versus = best?.versus_pick;
   if (best && pickFound && versus && best.trainee !== pickFound.trainee) {
     const bestFound = check.pairs.trainees.find((found) => found.trainee === best.trainee),
       bestShown = bestFound && shownOf(bestFound),
       pickShown = shownOf(pickFound),
       who = bestShown ? nameOf(bestShown) : best.trainee,
       pickWho = pickShown ? nameOf(pickShown) : pickFound.trainee,
-      // (what she is weighed against: the pick's trainee's better parents where the line above names them, else the pick)
-      side =
-        versus.source === 'pick_trainee_pair'
-          ? `${pickWho} on ${pickFound.best_parents.map(vetName).join(' + ')}`
-          : `the pick (${pickWho})`,
+      side = `the pick (${pickWho})`,
       shared = check.pairs.shared_coverage,
       truncated = check.pairs.trainees.filter((found) => found.pairs_truncated).length,
       searched = truncated
@@ -2562,13 +2558,13 @@ function pairSearchNotes(planReport, nameOf) {
       coverage = shared ? `${searched}, ${shared.trainees} more on the best pairs found` : searched,
       where = `${who} on ${best.best_parents.map(vetName).join(' + ')}`,
       { nominal, pick_down: pickDown, pick_up: pickUp } = versus.margins;
-    if (versus.holds)
+    // (the per-uma scenarios that reverse the margin: a sensitivity of the choice, named, deciding nothing)
+    const varies = versus.varies_under?.length
+      ? ` The choice varies under the per-uma scenarios: ${netText(pickDown)} vs the pick with ${pickWho}'s all-target chance ×0.76 and hers ×1.32, ${netText(pickUp)} the reverse.`
+      : '';
+    if (nominal > 0)
       lines.push(
-        `Better career found by the pair search (${coverage}): ${where} (Saves ${netText(best.score)} per run, ${netText(nominal)} vs ${side}, and still more with ${pickWho}'s all-target chance ×0.76 and hers ×1.32 (${netText(pickDown)}) or the reverse (${netText(pickUp)}); not certified best).`,
-      );
-    else if (nominal > 0)
-      lines.push(
-        `Tied with ${side} under the per-uma scenarios: ${where}, found by the pair search (${coverage}) (Saves ${netText(best.score)} per run, ${netText(nominal)} vs it as fitted, ${netText(pickDown)} with ${pickWho}'s all-target chance ×0.76 and hers ×1.32, ${netText(pickUp)} the reverse).`,
+        `Better career found by the pair search (${coverage}): ${where} (Saves ${netText(best.score)} per run, ${netText(nominal)} vs ${side}; not certified best).${varies}`,
       );
     else
       lines.push(
@@ -2577,11 +2573,6 @@ function pairSearchNotes(planReport, nameOf) {
   }
   return lines;
 }
-// the career every tested variant scores highest where that is not the pick (`robust.near_override`): null otherwise
-const scoreWinner = (planReport) => {
-  const check = checkDone(planReport);
-  return check?.near_override ? (check.score_winner ?? null) : null;
-};
 // One career of the table: who it places, its tags, its odds now, its Saves per run, and Use this. on: the career on
 // show; mine: your career when the plan didn't list it; planReport: the plan's report (null: no Saves per run); places:
 // the places the table's careers fill
@@ -2595,12 +2586,6 @@ function optionRow(r, { on, mine, planReport, places }) {
   const tags = el('span', 'otags');
   if (r === mine) tags.appendChild(el('span', 'otag', 'your choice'));
   if (planReport && r.chosen) tags.appendChild(el('span', 'otag pick', "planner's pick"));
-  if (planReport && r.near) {
-    const a = el('span', 'otag', 'about the same');
-    a.title =
-      'Within 5% of the best Saves per run (at least a quarter of a career): too close for the estimate to call, so the planner takes the better odds';
-    tags.appendChild(a);
-  }
   if (planReport && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
   if (planReport && r.pair_search) {
     const a = el('span', 'otag', 'pair search');
@@ -2615,12 +2600,6 @@ function optionRow(r, { on, mine, planReport, places }) {
       'At least one tested variant of the planner’s model scores this career highest (its building curve, the all-target chances’ calibration, or one uma’s calibration against another’s), and the variants disagree';
     tags.appendChild(a);
   }
-  if (planReport && scoreWinner(planReport) === keyOf(r)) {
-    const a = el('span', 'otag', 'top score');
-    a.title =
-      'Every tested variant of the planner’s model scores this career highest; the pick has better odds within the “about the same” band';
-    tags.appendChild(a);
-  }
   if (looped(r)) {
     const a = el('span', 'otag', `${n}/${n} parents`);
     a.title = `Both parents are ${n}/${n}s: if she lands all ${n}, her veteran is a fully looped parent`;
@@ -2633,7 +2612,7 @@ function optionRow(r, { on, mine, planReport, places }) {
   sv.append(num);
   if (planReport && r.index != null) {
     num.tabIndex = 0;
-    num.title = `${roleText(r)}${r.lift > 0 ? `. ${pct(r.lift)} of her possible results lower the estimate` : ''}${r.near ? '. About the same as the pick' : ''}`;
+    num.title = `${roleText(r)}${r.lift > 0 ? `. ${pct(r.lift)} of her possible results lower the estimate` : ''}`;
   }
   row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
   const act = el('td');
@@ -2721,7 +2700,7 @@ function openSaveWhy(planReport) {
       `The best odds aren't always the best choice: a career can be worth more for <b>the veteran she leaves behind</b>, who becomes a parent for your next runs.`,
     ),
     para(
-      `<b>About the same</b>: a career within <b>5%</b> of the best Saves per run (at least a quarter of a career either way). That is closer than the rough estimate can tell apart, so among those the planner <i>takes the better odds</i>.`,
+      `The pick is the career with the <b>most Saves per run</b>. Better odds don't break a near-tie: the Saves per run already count the runs where she lands every target.`,
     ),
     el('div', 'gmdsub', 'How it is worked out'),
     para(

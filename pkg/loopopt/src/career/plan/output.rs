@@ -1,12 +1,11 @@
 //! The assembled plan response.
 use crate::career::ClassFlags;
 use crate::career::clock::{PROF, now_ms};
-use crate::career::plan::anchors::found_anchors;
 use crate::career::plan::combine::{FITTED_MODEL, NEAR_TRIO_SHARE, PlanScores};
 use crate::career::plan::cont::{SideStep, TrioSideVeteran, TrioSlot};
 use crate::career::plan::kept::{Bests, CachedSearch, bests_key};
 use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept, roll_key};
-use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, near_floor, pick_of};
+use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, pick_of};
 use crate::career::plan::score::KeptScoring;
 use crate::career::plan::{PlanCandidates, PlanContext, PlanProfile, PlanSearches};
 use crate::career::search::Assumes;
@@ -16,7 +15,7 @@ use serde_json::{Value, json};
 /// The plan's response: its options, pick and trio, with the pick's roll state and the plan's searches kept for later
 /// jobs (`RollKeep`, `Bests`)
 pub(crate) fn assemble_plan_output<'data>(
-    mut sim: Sim<'_, 'data>,
+    sim: Sim<'_, 'data>,
     context: &PlanContext<'_, 'data>,
     searches: PlanSearches,
     mut runs: Vec<PlanRow>,
@@ -36,7 +35,7 @@ pub(crate) fn assemble_plan_output<'data>(
     let undup: Vec<usize> = repeated.iter().enumerate().map(|(i, earlier)| earlier.unwrap_or(i)).collect();
     let can_roll =
         runs.iter().any(|run| is_runnable(&run.career)) && scores.any_scored && scores.fit.current_value.is_finite();
-    let roll_state = can_roll.then(|| pick_roll_state(&mut sim, context, &mut runs, scores, &undup));
+    let roll_state = can_roll.then(|| pick_roll_state(context, &mut runs, scores, &undup));
     // Release the simulator's caches before publishing kept searches and reporting options.
     let (env, kept) = {
         let finished = sim;
@@ -51,10 +50,9 @@ pub(crate) fn assemble_plan_output<'data>(
             runs.push(PlanRow::proxy(found.trainee, found.clone(), vec![], RowOrigin::Fallback, None));
         }
     }
-    // pick: the highest score among the rows that can be it; `near` labels the rows within NEAR of it (the model's noise)
+    // pick: the highest score among the rows that can be it
     let total = |i: usize| runs[i].total();
-    let PlanPick { row: pick, top } = pick_of(&runs, is_runnable, &undup);
-    let near = |i: usize| is_runnable(&runs[i].career) && total(i) >= near_floor(top);
+    let PlanPick { row: pick, .. } = pick_of(&runs, is_runnable, &undup);
     // A row as the output reports it: exact (a career search behind it: hers, or for a fallback row the pick's main
     // search), and not proven where that search was not complete (a fallback row's: the pick's main search, its band
     // certificate included) or her deck class is flagged breached by any search so far, this plan's later ones
@@ -130,7 +128,6 @@ pub(crate) fn assemble_plan_output<'data>(
         option.insert("index".into(), json!(row.net_saving()));
         option.insert("saving".into(), json!(row.net_saving().map(|net_saving| net_saving + 1.0)));
         option.insert("lift".into(), json!(row.scoring.as_ref().map(|scoring| scoring.improvement_chance)));
-        option.insert("near".into(), json!(near(i) && i != pick));
         option.insert("score".into(), json!(scores.any_scored.then(|| total(i))));
         options.push(report);
     }
@@ -203,7 +200,7 @@ pub(crate) fn assemble_plan_output<'data>(
     // then; a cap that does not bind is left out, so a plan of the same pool again (a reload) answers as before
     let step_caps: serde_json::Map<String, Value> = (0..candidates.trainees.len())
         .filter_map(|candidate| {
-            let cap = candidates.step_caps[candidate]?;
+            let cap = candidates.step_caps[candidate].now?;
             let own_step = fit.continuations[candidate].cost(candidates.current_odds[candidate]);
             (cap.now.expected_careers < own_step).then(|| {
                 (
@@ -227,11 +224,19 @@ pub(crate) fn assemble_plan_output<'data>(
     let prof = PROF.with(|p| std::mem::take(&mut *p.borrow_mut()));
     // (routes the scorings' memory budget left out, `OUTCOME_BUDGET`: each lowers that row's saving, never raises it)
     out["routes_dropped"] = json!(prof.get("sc_routes_dropped").copied().unwrap_or(0.0));
+    // (of the routes left out, those no check cleared, `ShadowRoute`: each could have lowered a row's V after her)
+    let uncertified = prof.get("sc_routes_dropped_uncertified").copied().unwrap_or(0.0);
+    out["routes_dropped_uncertified"] = json!(uncertified);
+    // (false where the memory budget left out something that could move a score: a route no batch could hold, or a
+    // partner setup `fit_partner_setups` dropped; each only lowers a row's saving, so the savings are then lower bounds,
+    // not the model's. A route left out with its check cleared, `routes_dropped` less these, moves no score)
+    let partners_dropped = prof.get("sc_partner_setups_dropped").copied().unwrap_or(0.0);
+    out["scoring_complete"] = json!(uncertified == 0.0 && partners_dropped == 0.0);
     out["work"]["prof"] = json!(prof);
     // a roll sent with the plan job (`next.roll`) when the worker kept no roll state for it: answered from the state just
     // kept (none when nothing was scored)
     if input.settings.roll.is_some() {
-        out["roll"] = match roll_kept(env, kept, input.resources, legacies, pool, input.fixed_parents, input.settings) {
+        out["roll"] = match roll_kept(env, kept, input.resources, input.settings) {
             Some(mut roll) => {
                 roll["planned"] = json!(true);
                 roll
@@ -243,31 +248,23 @@ pub(crate) fn assemble_plan_output<'data>(
 }
 
 /// The pick's roll state (`RollKeep`; the pick as `assemble_plan_output` takes it, with the same scores): its kept
-/// scoring, taken out of its row, and base, and what its bound reads beyond them (`found_anchors`). Only where a row can
-/// be the pick and rows were scored against a finite V
-fn pick_roll_state(
-    simulator: &mut Sim,
-    context: &PlanContext,
-    runs: &mut [PlanRow],
-    scores: &PlanScores,
-    undup: &[usize],
-) -> RollKeep {
+/// scoring, taken out of its row, and base. Only where a row can be the pick and rows were scored against a finite V
+fn pick_roll_state(context: &PlanContext, runs: &mut [PlanRow], scores: &PlanScores, undup: &[usize]) -> RollKeep {
     let input = context.input;
     let is_runnable = |career: &Found| input.is_runnable(career);
     let PlanPick { row: pick, .. } = pick_of(runs, is_runnable, undup);
     let base = scores.fit.score_base(context.candidates);
-    let KeptScoring { scored } =
+    let KeptScoring { scored, later } =
         runs[pick].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
     let row = &runs[pick];
     RollKeep {
         key: roll_key(input.resources.job),
         scored,
+        later,
         base: KeptBase::of(&base),
         lineage: row.lineage(),
         // (the roll state outlives the plan's rows)
         deck: row.career.deck.clone(),
-        found_anchors: found_anchors(&simulator.env.setup, input.pool, input.solved),
-        partner_anchors: vec![],
     }
 }
 
@@ -429,11 +426,11 @@ impl PlanContext<'_, '_> {
             let continuation = &fit.continuations[candidate];
             let alternative = matches!(side.step, SideStep::Alternative(_));
             let odds = if alternative { side.odds } else { candidates.current_odds[candidate] };
-            // (her best career's side at her step's cap where it binds, `caps`: an Alternative side has none)
-            let cap = if alternative { None } else { candidates.step_caps[candidate] };
+            // (her side as the fit prices it, `caps`: at her least held cap curve at the side's odds where that is
+            // cheaper, for her best career's side the cap's plan now, `StepCaps::now`)
             let own_plan = continuation.plan(odds);
-            let capped = cap.is_some_and(|cap| cap.binds(&own_plan));
-            let build_plan = crate::career::plan::caps::capped(own_plan, cap);
+            let build_plan = candidates.step_caps[candidate].capped_at(own_plan, odds);
+            let capped = build_plan.expected_careers < own_plan.expected_careers;
             // the builder row her lam and phi are from (`fit_continuation`): its career id; null where she grinds at
             // these odds, her Cont was given (`next.fit`) or her cap's plan (a kept fit's) is hers
             let builder = (build_plan.building_careers > 0.0 && !self.has_given_fit(candidate) && !capped)

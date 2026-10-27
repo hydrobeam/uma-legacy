@@ -11,7 +11,7 @@ use crate::career::plan::cont::{
 };
 use crate::career::plan::kept::career_id;
 use crate::career::plan::pair_bound::{PAIR_SEARCH_PAIRS, trainee_bounded_pairs};
-use crate::career::plan::rows::{PickRows, PlanPick, PlanRow, near_floor, pick_of};
+use crate::career::plan::rows::{PickRows, PlanPick, PlanRow, pick_of, search_floor};
 use crate::career::plan::score::FinisherChoice;
 use crate::career::plan::score::score_career;
 use crate::career::plan::search::{OPT_SHOW, sim_for};
@@ -138,7 +138,6 @@ fn differential_variants(draft: &CheckDraft, argmax: usize) -> Vec<CheckVariant>
 struct CheckCandidates {
     trainees: Vec<crate::uma::UmaIndex>,
     current_odds: Vec<f64>,
-    certified: Vec<bool>,
     allowed_trainees: Vec<crate::uma::UmaIndex>,
 }
 
@@ -177,10 +176,8 @@ impl CheckDraft {
 /// the variants done and, while any is left, what the next one reads (`CheckWork`), released after the last.
 pub(crate) struct CheckKeep {
     key: u64,
-    /// The checked rows' careers (`kept::career_id`), in the plan's row order, their own odds (P(all)), and the plan's
-    /// pick among them.
+    /// The checked rows' careers (`kept::career_id`), in the plan's row order, and the plan's pick among them.
     row_ids: Vec<String>,
-    row_odds: Vec<f64>,
     plan_place: usize,
     /// Per variant done, its report (the plan's model first; its `pick` a place in the rows), and the rows the
     /// variants picked (the plan's first).
@@ -254,13 +251,10 @@ impl VariantFit {
                 sides
                     .iter()
                     .map(|side| match side.step {
-                        // (admitted only where she grinds at once, `plan_sides`: one that builds under the variant is
-                        // out of its trios, at no finite cost)
-                        SideStep::Alternative(_) => {
-                            let plan = continuation.plan(side.odds * odds_scale);
-                            let step = if plan.building_careers == 0.0 { plan.expected_careers } else { f64::INFINITY };
-                            side.at_step(SideStep::Alternative(step))
-                        }
+                        // (at the variant's continuation and her odds so scaled, building or not, as `plan_sides` admits
+                        // them: the variant's scorings lift it on its own lineage at the same scale, `ScoreBase::step_plan`)
+                        SideStep::Alternative(_) => side
+                            .at_step(SideStep::Alternative(continuation.plan(side.odds * odds_scale).expected_careers)),
                         step @ (SideStep::Existing(_) | SideStep::Current) => side.at_step(step),
                     })
                     .collect()
@@ -280,7 +274,6 @@ impl VariantFit {
             step_costs: &self.step_costs,
             current_value: self.current_value,
             current_odds: &candidates.current_odds,
-            certified: &candidates.certified,
             continuations: &self.continuations,
             // (no step caps: a kept fit's cap is a price under the plan's model, not the variant's)
             step_caps: &[],
@@ -295,7 +288,7 @@ impl VariantFit {
 
 /// The rows the check rescores, in the plan's row order (the order its pick rule reads): the scored rows that can be
 /// the pick, less those repeating an earlier row's career, that the page shows by score (the first OPT_SHOW, ties in row
-/// order) or that are within `near_floor` of the top
+/// order) or that are within the search margin of the top (`search_floor`)
 fn shown_rows(context: &PlanContext, runs: &[PlanRow]) -> Vec<usize> {
     let mut rows: Vec<usize> = (0..runs.len())
         .filter(|&i| {
@@ -307,7 +300,7 @@ fn shown_rows(context: &PlanContext, runs: &[PlanRow]) -> Vec<usize> {
     let mut by_score = rows.clone();
     by_score.sort_by(|&first, &second| runs[second].total().total_cmp(&runs[first].total()));
     let Some(&top_row) = by_score.first() else { return rows };
-    let floor = near_floor(runs[top_row].total());
+    let floor = search_floor(runs[top_row].total());
     let shown: Vec<usize> = by_score.iter().take(OPT_SHOW).copied().collect();
     rows.retain(|&i| shown.contains(&i) || runs[i].total() >= floor);
     rows
@@ -353,16 +346,14 @@ pub(crate) fn keep_check(
     source: CheckSource,
 ) {
     let CheckSource { candidates, fit, cache } = source;
-    let PlanCandidates { trainees, current_odds, certified, allowed_trainees, .. } = candidates;
+    let PlanCandidates { trainees, current_odds, allowed_trainees, .. } = candidates;
     let PlanFit { evidence, sides, trios, knobs, .. } = fit;
     let as_planned = draft.rows.iter().map(|row| row.score).collect::<Vec<_>>();
-    // (the plan's model's own strict argmax: the plan's pick where no row within NEAR has better odds, `PickRows::pick`)
+    // (the plan's model's own strict argmax over the shown rows: the plan's pick, `PickRows::pick`)
     let planned_pick = pick_among(&draft, &as_planned);
-    let row_odds = draft.rows.iter().map(|row| row.career.value).collect();
     let check = CheckKeep {
         key,
         row_ids,
-        row_odds,
         plan_place: draft.plan_place,
         entries: vec![variant_entry("plan", FITTED_SHAPE, OddsScales::ONE, draft.current_value, &planned_pick)],
         variants: fixed_variants().into_iter().chain(differential_variants(&draft, planned_pick.pick)).collect(),
@@ -371,7 +362,7 @@ pub(crate) fn keep_check(
         pairs: None,
         check_ms: 0.0,
         work: Some(CheckWork {
-            candidates: CheckCandidates { trainees, current_odds, certified, allowed_trainees },
+            candidates: CheckCandidates { trainees, current_odds, allowed_trainees },
             fit: CheckFit { evidence, sides, trios, knobs },
             cache,
             draft,
@@ -393,8 +384,8 @@ struct VariantPick {
     margin: f64,
     /// Every shown row's score, in the plan's row order.
     scores: Vec<f64>,
-    /// The scorings' truncations (`build::score_career`'s `sc_routes_dropped` and `sc_partner_setups_dropped`: routes
-    /// and partner setups the memory budget left out, each lowering a row's saving, never raising it), summed over the
+    /// The scorings' truncations (`build::score_career`'s `sc_routes_dropped` (and of those the uncertified ones),
+    /// and `sc_partner_setups_dropped`: routes and partner setups the memory budget left out, each lowering a row's saving, never raising it), summed over the
     /// rows; None for the plan's own scores, made during the plan. A variant's pick that moves with them can be the
     /// budget's, not the model's
     truncations: Option<Truncations>,
@@ -404,18 +395,15 @@ struct VariantPick {
 #[derive(Clone, Copy)]
 struct Truncations {
     routes_dropped: f64,
+    /// Of those, the ones no check cleared (`sc_routes_dropped_uncertified`, `ShadowRoute`).
+    routes_dropped_uncertified: f64,
     partner_setups_dropped: f64,
 }
 
-/// The strict argmax (`PickRows::argmax`, no NEAR band) over the shown rows at `scores`, in the plan's row order (every
-/// shown row can be the pick): each variant's own best row, so that variants that disagree show the pick varying
+/// The strict argmax (`PickRows::argmax`) over the shown rows at `scores`, in the plan's row order (every shown row can
+/// be the pick): each variant's own best row, so that variants that disagree show the pick varying
 fn pick_among(draft: &CheckDraft, scores: &[f64]) -> VariantPick {
-    let rows = PickRows {
-        count: draft.rows.len(),
-        score: |k: usize| scores[k],
-        odds: |k: usize| draft.rows[k].career.value,
-        can_be_pick: |_: usize| true,
-    };
+    let rows = PickRows { count: draft.rows.len(), score: |k: usize| scores[k], can_be_pick: |_: usize| true };
     let pick = rows.argmax();
     let runner_up = (0..scores.len()).filter(|&k| k != pick).map(|k| scores[k]).fold(f64::NEG_INFINITY, f64::max);
     VariantPick {
@@ -436,8 +424,11 @@ fn variant_entry(
     pick: &VariantPick,
 ) -> Value {
     let truncations = pick.truncations.map_or(
-        json!({"routes_dropped": null, "partner_setups_dropped": null}),
-        |t| json!({"routes_dropped": t.routes_dropped, "partner_setups_dropped": t.partner_setups_dropped}),
+        json!({"routes_dropped": null, "routes_dropped_uncertified": null, "partner_setups_dropped": null}),
+        |t| {
+            json!({"routes_dropped": t.routes_dropped, "routes_dropped_uncertified": t.routes_dropped_uncertified,
+            "partner_setups_dropped": t.partner_setups_dropped})
+        },
     );
     // (the scaled umas: uma indices, `Data::umas`, with their scales; none for a uniform scale)
     let scaled: Vec<Value> = scales
@@ -448,7 +439,8 @@ fn variant_entry(
         .collect();
     json!({"kind": kind, "ceil_share": variant_shape.ceil_share, "lam_decay": variant_shape.lam_decay, "odds_scale": scales.common, "scaled": scaled,
         "v0": current_value, "pick": pick.pick, "score": pick.score, "margin": pick.margin, "scores": pick.scores,
-        "routes_dropped": truncations["routes_dropped"], "partner_setups_dropped": truncations["partner_setups_dropped"]})
+        "routes_dropped": truncations["routes_dropped"], "routes_dropped_uncertified": truncations["routes_dropped_uncertified"],
+        "partner_setups_dropped": truncations["partner_setups_dropped"]})
 }
 
 /// `run` beside the plan: its scorings read the cached decks only (`Evaluator::frozen`: no deck search, so no deck,
@@ -468,8 +460,33 @@ fn aside_counted<T>(simulator: &mut Sim, run: impl FnOnce(&mut Sim) -> T) -> (T,
     (result, run_profile)
 }
 
+/// `aside`, and whether the scorings `run` made were complete (`scoring_complete_of` over the counters it added): what
+/// a diagnostic that scores beside the plan (the oracles, the pair sweep, the ascent) reports of its own scorings.
+pub(crate) fn aside_complete<T>(simulator: &mut Sim, run: impl FnOnce(&mut Sim) -> T) -> (T, bool) {
+    let (result, counters) = aside_counted(simulator, run);
+    (result, scoring_complete_of(&counters))
+}
+
+/// The two counters `scoring_complete_of` reads, summed, as this run's profile holds them so far: a scoring is complete
+/// where the sum does not move across it (`ascent::pair_decompose`, per row).
+pub(crate) fn incompleteness_so_far() -> f64 {
+    PROF.with(|counters| {
+        let counters = counters.borrow();
+        let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
+        counter("sc_routes_dropped_uncertified") + counter("sc_partner_setups_dropped")
+    })
+}
+
 /// A run's profile counters by name (`clock::PROF`'s map).
 type ProfileCounters = std::collections::BTreeMap<&'static str, f64>;
+
+/// Whether a run's scorings were complete (`ProfileCounters` of it): no route no batch could hold and no partner setup
+/// left out for memory (`sc_routes_dropped_uncertified`, `sc_partner_setups_dropped`; the plan's own: output.rs
+/// `scoring_complete`). Where false, its scores are lower bounds, not the model's
+fn scoring_complete_of(counters: &ProfileCounters) -> bool {
+    let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
+    counter("sc_routes_dropped_uncertified") == 0.0 && counter("sc_partner_setups_dropped") == 0.0
+}
 
 impl CheckWork {
     /// The plan's fit refitted under `check_variant` (`VariantFit::new`). A differential scenario prices one or two
@@ -508,6 +525,7 @@ impl CheckWork {
         let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
         let truncations = Truncations {
             routes_dropped: counter("sc_routes_dropped"),
+            routes_dropped_uncertified: counter("sc_routes_dropped_uncertified"),
             partner_setups_dropped: counter("sc_partner_setups_dropped"),
         };
         let pick = VariantPick { truncations: Some(truncations), ..pick_among(&self.draft, &scores) };
@@ -578,8 +596,8 @@ const PAIR_SEARCH_TOP: usize = 4;
 /// p16_t10's pick 19.6 million (a second trainee there would take the pair search past 15 s)
 const PAIR_SEARCH_OUTCOMES: f64 = 30e6;
 
-/// A trainee the pair search runs for, and why (`CheckKeep::pair_search_trainees`): "pick" (the plan's pick's), "tied"
-/// (a differential scenario's pick's) or "top" (among the `PAIR_SEARCH_TOP` best by score).
+/// A trainee the pair search runs for, and why (`CheckKeep::pair_search_trainees`): "pick" (the plan's pick's),
+/// "scenario" (a differential scenario's pick's) or "top" (among the `PAIR_SEARCH_TOP` best by score).
 #[derive(Clone, Copy)]
 struct PairSearchTrainee {
     trainee: crate::uma::UmaIndex,
@@ -695,9 +713,15 @@ struct ScenarioMargins {
 }
 
 impl ScenarioMargins {
-    /// Better under the nominal model and both scenarios.
-    fn hold(self) -> bool {
-        self.nominal > 0.0 && self.pick_down > 0.0 && self.pick_up > 0.0
+    /// The scenarios whose margin's sign differs from the nominal one ("pick varies under these scenarios"): a
+    /// sensitivity of the choice to the per-uma calibration, which decides nothing (`CheckWork::verdict`)
+    fn varies_under(self) -> Vec<&'static str> {
+        let side = |margin: f64| margin > 0.0;
+        [("pick_down", self.pick_down), ("pick_up", self.pick_up)]
+            .into_iter()
+            .filter(|&(_, margin)| side(margin) != side(self.nominal))
+            .map(|(name, _)| name)
+            .collect()
     }
     fn json(self) -> Value {
         json!({"nominal": self.nominal, "pick_down": self.pick_down, "pick_up": self.pick_up})
@@ -750,7 +774,7 @@ impl CheckWork {
         let fits = PairSearchFits { nominal: &nominal, corners: &corners, pool };
         let mut buf = vec![];
         let mut memo: crate::career::plan::combine::PairMemo = crate::FxMap::default();
-        let (reports, shared, skipped, verdict) = aside(simulator, |simulator| {
+        let ((reports, shared, skipped, verdict), counters) = aside_counted(simulator, |simulator| {
             // Phase 1: the trainees in order, a "top" one only where the estimated outcomes admitted stay within
             // PAIR_SEARCH_OUTCOMES (`admitted_trainees`: deterministic estimates, not time or the order work was done)
             let estimates: Vec<f64> = trainees
@@ -777,17 +801,19 @@ impl CheckWork {
             "pairs_runnable": shared.pairs_runnable, "trainees_truncated": shared.trainees_truncated});
         json!({"trainees": reports_json(reports), "shared": reports_json(shared.finalists),
             "shared_coverage": shared_coverage, "best": verdict.best, "recommendation": verdict.recommendation,
-            "skipped_for_work": skipped, "pair_bound": PAIR_SEARCH_PAIRS, "pairs_ms": now_ms() - started_ms})
+            "skipped_for_work": skipped, "pair_bound": PAIR_SEARCH_PAIRS, "pairs_ms": now_ms() - started_ms,
+            "scoring_complete": scoring_complete_of(&counters)})
     }
     /// The pair search's verdict (`pair_search`, the page's `pairSearchNotes`). `best`: the best (trainee, pair) by score
-    /// over both phases (ties: the earlier), with its margin over the pick's trainee's shown career. The pick's side: the
-    /// pick's trainee's best pair where the page names it as her better parents (`better_parents`), else the plan's pick.
-    /// Where `best` is another trainee's, its margin over the pick's side under the nominal model and the two per-uma
-    /// scenarios (`ScenarioMargins`, `versus_pick_side`); it is recommended only where all three are positive, and is
-    /// otherwise tied with the pick's side, which stays the recommendation (`recommendation`: its `career`, `trainee`,
-    /// `trainee_id`, `parents`, `source`: "cross_trainee", "pick_trainee_pair" or "plan_pick", `score`: the pair
-    /// search's, null for the plan's pick, and `report`: the career as a row reports one, its deck with it, for the page
-    /// to offer it as it is). Within `aside`
+    /// over both phases (ties: the earlier), with its margin over the pick's trainee's shown career (the plan's pick, for
+    /// her). The recommendation is the nominal argmax over the plan's pick and `best`: `best` where it scores above the
+    /// plan's pick under the nominal model, else the plan's pick; never by own odds, and with no further burden on a
+    /// challenger. Where `best` is not the plan's pick, its margins over the pick (`versus_pick`: nominal and the two
+    /// per-uma scenarios, `ScenarioMargins`) are reported with `varies_under`, the scenarios that reverse the nominal
+    /// margin's sign: a sensitivity label, deciding nothing (`recommendation`: its `career`, `trainee`, `trainee_id`,
+    /// `parents`, `source`: "cross_trainee", "pick_trainee_pair" or "plan_pick", `score`: the pair search's, null for the
+    /// plan's pick, and `report`: the career as a row reports one, its deck with it, for the page to offer it as it is).
+    /// Within `aside`
     fn verdict(
         &self,
         simulator: &mut Sim,
@@ -809,19 +835,14 @@ impl CheckWork {
         };
         let plan_pick = &self.draft.rows[self.draft.plan_place].career;
         let pick_report = found.reports.iter().find(|reported| reported.career.trainee == plan_pick.trainee);
-        let pick_side = match pick_report {
-            Some(reported) if reported.report["better_parents"] == true => {
-                Recommended { career: &reported.career, source: "pick_trainee_pair", score: Some(reported.score()) }
-            }
-            _ => Recommended { career: plan_pick, source: "plan_pick", score: None },
-        };
+        let pick = Recommended { career: plan_pick, source: "plan_pick", score: None };
         let Some(best) = found
             .reports
             .iter()
             .chain(found.shared)
             .reduce(|kept, reported| if reported.score() > kept.score() { reported } else { kept })
         else {
-            return PairSearchVerdict { best: Value::Null, recommendation: recommendation(simulator, pick_side) };
+            return PairSearchVerdict { best: Value::Null, recommendation: recommendation(simulator, pick) };
         };
         let mut best_json = json!({"trainee": best.report["trainee"], "career": best.report["career"],
             "best_parents": best.report["best_parents"], "score": best.report["score"], "reason": best.report["reason"],
@@ -829,14 +850,16 @@ impl CheckWork {
             "margin_over_pick_trainee_shown": pick_report
                 .and_then(|shown| shown.report["shown_score"].as_f64())
                 .map(|shown_score| best.score() - shown_score)});
-        let mut recommended = pick_side;
-        if best.career.trainee != plan_pick.trainee {
-            let against = CareerAgainst { career: &best.career, against: pick_side.career };
+        let mut recommended = pick;
+        if !crate::career::plan::kept::same_career(&best.career, plan_pick) {
+            let against = CareerAgainst { career: &best.career, against: plan_pick };
             let margins = self.scenario_margins(simulator, fits, against, buf);
-            best_json["versus_pick_side"] = json!({"career": id(simulator, pick_side.career),
-                "source": pick_side.source, "margins": margins.json(), "holds": margins.hold()});
-            if margins.hold() {
-                recommended = Recommended { career: &best.career, source: "cross_trainee", score: Some(best.score()) };
+            best_json["versus_pick"] = json!({"career": id(simulator, plan_pick), "margins": margins.json(),
+                "varies_under": margins.varies_under()});
+            if margins.nominal > 0.0 {
+                let source =
+                    if best.career.trainee == plan_pick.trainee { "pick_trainee_pair" } else { "cross_trainee" };
+                recommended = Recommended { career: &best.career, source, score: Some(best.score()) };
             }
         }
         PairSearchVerdict { best: best_json, recommendation: recommendation(simulator, recommended) }
@@ -1116,6 +1139,11 @@ impl CheckWork {
     }
     /// Her shown career: her best-scoring checked row's (the last of equal scores); None where she has none
     fn shown_career(&self, trainee: crate::uma::UmaIndex) -> Option<&Found> {
+        // (the pick's trainee: the plan's pick, which her best pair is weighed against, whichever of her rows scores best)
+        let pick = &self.draft.rows[self.draft.plan_place];
+        if pick.trainee == trainee {
+            return Some(&pick.career);
+        }
         let rows = self.draft.rows.iter().filter(|row| row.trainee == trainee);
         rows.max_by(|first, second| first.score.total_cmp(&second.score)).map(|row| &row.career)
     }
@@ -1205,7 +1233,7 @@ impl CheckKeep {
         let tied = self
             .differential_picks
             .iter()
-            .map(|&place| PairSearchTrainee { trainee: draft.rows[place].trainee, reason: "tied" });
+            .map(|&place| PairSearchTrainee { trainee: draft.rows[place].trainee, reason: "scenario" });
         let top = top.into_iter().map(|trainee| PairSearchTrainee { trainee, reason: "top" });
         let mut trainees: Vec<PairSearchTrainee> = vec![];
         for candidate in std::iter::once(pick).chain(tied).chain(top) {
@@ -1214,12 +1242,6 @@ impl CheckKeep {
             }
         }
         trainees
-    }
-    /// The contenders, best odds first (a stable sort: equal odds in contender order).
-    fn tied(&self) -> Vec<usize> {
-        let mut tied = self.contenders.clone();
-        tied.sort_by(|&first, &second| self.row_odds[second].total_cmp(&self.row_odds[first]));
-        tied
     }
     /// The variants left (none once every one is done).
     const fn pending(&self) -> usize {
@@ -1236,11 +1258,8 @@ impl CheckKeep {
         self.entries.push(variant_entry(variant.kind.name(), variant.shape, variant.scales, current_value, pick));
     }
     /// The check's report so far (`next.robust`): `pending` the variants left; `stable` and `contenders` (each variant's
-    /// strict argmax, in the order first picked) over those done; where they disagree, `pick_varies` and `tied`, the
-    /// contenders best odds first (equal odds in contender order), the row the check names over the plan's. Where they
-    /// agree on another row than the plan's pick, `near_override` and `score_winner`: every variant scores that row
-    /// highest and the plan's rule took its pick for better odds within NEAR of it (`PickRows::pick`); the variants do
-    /// not disagree there
+    /// strict argmax, in the order first picked) over those done; where they disagree, `pick_varies`, a sensitivity
+    /// label (the pick varies under these variants), never a tie broken by own odds
     fn report(&self) -> Value {
         let id_of = |place: usize| self.row_ids[place].clone();
         let entries: Vec<Value> = self
@@ -1257,20 +1276,27 @@ impl CheckKeep {
             "rows": self.row_ids,
             "variants": entries,
             "pending": self.pending(),
-            // (stable: every variant's strict argmax is the plan's pick, NEAR's)
+            // (stable: every variant's strict argmax is the plan's pick)
             "stable": self.contenders == [self.plan_place],
             "contenders": self.contenders.iter().map(|&place| id_of(place)).collect::<Vec<_>>(),
             "pick_varies": self.contenders.len() > 1,
-            "near_override": self.contenders.len() == 1 && self.contenders[0] != self.plan_place,
-            "score_winner": if self.contenders.len() == 1 { json!(id_of(self.contenders[0])) } else { Value::Null },
-            "tied": if self.contenders.len() > 1 {
-                json!(self.tied().into_iter().map(id_of).collect::<Vec<_>>())
-            } else {
-                Value::Null
-            },
             "check_ms": self.check_ms,
             "pairs": self.pairs,
+            "scoring_complete": self.scoring_complete(),
         })
+    }
+    /// Whether every scoring of the check so far was complete (`scoring_complete_of`): each variant's (its truncations;
+    /// the plan's own entry has none, `next.scoring_complete` reports it) and the pair search's where it ran. The
+    /// page and val/planval.py read it beside the plan's, since the check's recommendation and contenders rest on them
+    fn scoring_complete(&self) -> bool {
+        let none_left = |entry: &Value, field: &str| entry[field].as_f64().is_none_or(|count| count == 0.0);
+        let variants_complete = self
+            .entries
+            .iter()
+            .all(|entry| none_left(entry, "routes_dropped_uncertified") && none_left(entry, "partner_setups_dropped"));
+        let pairs_complete =
+            self.pairs.as_ref().is_none_or(|pairs| pairs["scoring_complete"].as_bool().unwrap_or(true));
+        variants_complete && pairs_complete
     }
 }
 
@@ -1376,27 +1402,24 @@ pub(crate) fn check_kept<'data>(
 mod tests {
     use super::*;
 
-    /// A variant's pick over its scores: the strict argmax (a row within NEAR with better odds is not taken); equal
-    /// scores keep the earlier row
+    /// A variant's pick over its scores: the strict argmax; equal scores keep the earlier row
     #[test]
     fn a_variant_picks_its_strict_argmax() {
-        let odds = [0.01, 0.02, 0.05];
         let pick = |scores: [f64; 3]| {
-            PickRows { count: 3, score: |k: usize| scores[k], odds: |k: usize| odds[k], can_be_pick: |_: usize| true }
-                .argmax()
+            PickRows { count: 3, score: |k: usize| scores[k], can_be_pick: |_: usize| true }.argmax()
         };
         assert_eq!(pick([3.0, 2.9, 1.0]), 0);
         assert_eq!(pick([2.9, 3.0, 1.0]), 1);
         assert_eq!(pick([1.0, 1.0, 1.0]), 0);
     }
 
-    /// Variants that disagree: the check reports the pick as varying and names the contenders best odds first.
+    /// Variants that disagree: the check reports the pick as varying, the contenders in the order first picked, and no
+    /// row ordered by its odds.
     #[test]
-    fn disagreeing_variants_name_the_best_odds_first() {
+    fn disagreeing_variants_report_the_pick_as_varying() {
         let check = |contenders: Vec<usize>| CheckKeep {
             key: 0,
             row_ids: vec!["a".into(), "b".into(), "c".into()],
-            row_odds: vec![0.01, 0.03, 0.02],
             plan_place: 0,
             entries: vec![],
             contenders,
@@ -1408,19 +1431,12 @@ mod tests {
         };
         let varying = check(vec![0, 2, 1]).report();
         assert_eq!(varying["pick_varies"], json!(true));
-        assert_eq!(varying["tied"], json!(["b", "c", "a"]));
-        assert_eq!(varying["near_override"], json!(false));
-        assert!(varying["score_winner"].is_null());
+        assert_eq!(varying["contenders"], json!(["a", "c", "b"]));
         let stable = check(vec![0]).report();
-        assert_eq!(stable["pick_varies"], json!(false));
-        assert!(stable["tied"].is_null());
-        assert_eq!((stable["stable"].clone(), stable["near_override"].clone()), (json!(true), json!(false)));
-        // (p11, 2026-10-26: every variant scores one career highest, NEAR took another for its odds: no variance)
-        let overridden = check(vec![2]).report();
-        assert_eq!(overridden["pick_varies"], json!(false));
-        assert_eq!(overridden["stable"], json!(false));
-        assert_eq!(overridden["near_override"], json!(true));
-        assert_eq!(overridden["score_winner"], json!("c"));
+        assert_eq!((stable["pick_varies"].clone(), stable["stable"].clone()), (json!(false), json!(true)));
+        for removed in ["tied", "near_override", "score_winner"] {
+            assert!(varying.get(removed).is_none() && stable.get(removed).is_none(), "{removed}");
+        }
     }
 
     /// A differential scenario scales the argmax's uma down and each of the best other umas up, one per scenario, the
@@ -1468,7 +1484,7 @@ mod tests {
         let trainee =
             |uma: usize, reason: &'static str| PairSearchTrainee { trainee: crate::uma::UmaIndex(uma), reason };
         let trainees =
-            [trainee(1, "pick"), trainee(2, "tied"), trainee(3, "top"), trainee(4, "top"), trainee(5, "top")];
+            [trainee(1, "pick"), trainee(2, "scenario"), trainee(3, "top"), trainee(4, "top"), trainee(5, "top")];
         let budget = PAIR_SEARCH_OUTCOMES;
         // the pick and the tied over the budget alone still run; no top one fits after them, not even at no estimate
         assert_eq!(

@@ -6,7 +6,7 @@ use crate::career::clock::now_ms;
 use crate::career::outcomes::interp_in;
 use crate::career::plan::combine::PlanScores;
 use crate::career::plan::cont::Want;
-use crate::career::plan::robust::aside;
+use crate::career::plan::robust::aside_complete;
 use crate::career::plan::rows::PlanRow;
 use crate::career::plan::score::score_career;
 use crate::career::plan::{PlanContext, found_career};
@@ -50,7 +50,7 @@ pub(crate) fn pair_sweep(
     ranked.sort_by(|first, second| second.1.total_cmp(&first.1));
     ranked.truncate(SWEEP_TRAINEES);
     let parents = context.parents();
-    let trainees: Vec<Value> = aside(simulator, |simulator| {
+    let (trainees, scoring_complete): (Vec<Value>, bool) = aside_complete(simulator, |simulator| {
         ranked
             .iter()
             .map(|&(trainee, row_score)| {
@@ -64,7 +64,7 @@ pub(crate) fn pair_sweep(
                 let mut best_pair: Option<(f64, Lineage)> = None;
                 let swept: Vec<Value> = pairs
                     .iter()
-                    .map(|&RankedPair { ceiling, first_parent, second_parent }| {
+                    .map(|&RankedPair { ceiling, first_parent, second_parent, .. }| {
                         let lineage = Lineage { trainee, first_parent, second_parent };
                         let deck_odds = deck_odds(simulator, parents.pool, lineage, &mut chances, &mut scratch);
                         let Some(best) = (0..deck_odds.len()).max_by(|&a, &b| deck_odds[a].total_cmp(&deck_odds[b]))
@@ -125,7 +125,7 @@ pub(crate) fn pair_sweep(
             })
             .collect()
     });
-    json!({"trainees": trainees, "sweep_ms": now_ms() - started_ms})
+    json!({"trainees": trainees, "sweep_ms": now_ms() - started_ms, "scoring_complete": scoring_complete})
 }
 
 /// Her P(all) with each of her cached decks on `lineage` (their corner tables at its chances, as

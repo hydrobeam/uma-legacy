@@ -8,7 +8,7 @@ use crate::career::Lineage;
 use crate::career::clock::now_ms;
 use crate::career::plan::combine::PlanScores;
 use crate::career::plan::cont::{ScoreBase, Want};
-use crate::career::plan::robust::aside;
+use crate::career::plan::robust::{aside, aside_complete};
 use crate::career::plan::rows::{PlanPick, PlanRow, pick_of};
 use crate::career::plan::score::score_career;
 use crate::career::plan::search::legal_pair;
@@ -188,7 +188,7 @@ pub(crate) fn pair_ascent(
         chances: vec![],
         scratch: vec![],
     };
-    let (ascents, legal) = aside(simulator, |simulator| {
+    let ((ascents, legal), scoring_complete) = aside_complete(simulator, |simulator| {
         let ascents: Vec<Value> = starts
             .iter()
             .map(|&start| {
@@ -219,6 +219,7 @@ pub(crate) fn pair_ascent(
         "ms_per_scoring": per(scorer.score_ms, scorer.scorings),
         "ms_per_odds": per(scorer.odds_ms, scorer.odds_evaluations),
         "ascent_ms": now_ms() - started_ms,
+        "scoring_complete": scoring_complete,
     })
 }
 
@@ -262,6 +263,7 @@ pub(crate) fn pair_decompose(
                     ceiling: odds[deck],
                     deck: simulator.evaluator.cache.decks[trainee][deck].deck.clone(),
                 };
+                let incomplete_before = crate::career::plan::robust::incompleteness_so_far();
                 let dropped_before = crate::career::clock::PROF
                     .with(|prof| prof.borrow().get("sc_routes_dropped").copied().unwrap_or(0.0));
                 let scored =
@@ -294,6 +296,7 @@ pub(crate) fn pair_decompose(
                 json!({"trainee": data.umas[trainee].name, "parents": [first_parent, second_parent], "p_all": odds[deck],
                     "saving": scored.expected_saving, "score": scored.expected_saving - 1.0, "routes_dropped": dropped,
                     "score_plain": plain.expected_saving - 1.0,
+                    "scoring_complete": crate::career::plan::robust::incompleteness_so_far() == incomplete_before,
                     "classes": classes})
             })
             .collect()

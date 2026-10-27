@@ -6,7 +6,7 @@ use crate::deck::joint::{JointExt, joint_fast};
 use crate::deck::sources::TargetSources;
 use crate::deck::space::SelectedDeck;
 /// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
-/// inheritance chance (`inherit`, `CareerSetup::lineage_qc`, `CareerSetup::gen_cands`, `Evaluator::fast_ub`, the
+/// inheritance chance (`inherit`, `CareerSetup::gen_cands`, `Evaluator::fast_ub`, the
 /// planner's her-slot setups).
 /// A slot's affinity factor 1 + A / 100, A its relation part plus its race part
 #[inline(always)]
@@ -49,8 +49,7 @@ pub(crate) fn spark_scale(n: i32) -> f64 {
 /// `CareerSetup::rise`'s factor for one outfit and uncertain target: how far the landing chance can grow from
 /// inheritance chance `base_chance` to q, with her own event hint chance `hint_chance` and her outfit's `coverage` of
 /// it (the hint level it guarantees, 0, 1 or 2; the factor is 1 where it is above 0 or q cannot grow). The one form
-/// behind `solve`'s Ref and ruled prunes and `outcome_hi`'s anchors (`rise_leaves`, `rise_factors`,
-/// `AnchorBound::root_min`)
+/// behind `solve`'s Ref and ruled prunes
 #[inline(always)]
 pub(crate) fn rise_factor(coverage: u8, hint_chance: f64, q: f64, base_chance: f64) -> f64 {
     if coverage > 0 || q <= base_chance {
@@ -200,8 +199,6 @@ impl SlotSink<'_> for Inherit {
 /// A legacy slot of the planner's veteran-to-be (`CareerSetup::her_slot`): the trainee's inheritance with her slot left
 /// out, and what her veteran in the slot adds.
 pub(crate) struct HerSlot {
-    /// q0: per job target, the trainee's inheritance chance with her slot left out.
-    pub(crate) chances_without_her: Vec<f64>,
     /// x0: per uncertain target (`CareerSetup::uncertain_targets` order), 1 - q0.
     pub(crate) misses_without_her: Vec<f64>,
     /// xms: her miss factor squared per star count (1 at 0 stars).
@@ -321,11 +318,11 @@ impl CareerSetup<'_> {
             _ => 0.0,
         }
     }
-    /// The six legacy slots with parents a = `first_parent` and b = `second_parent`, in order, into `sink`
+    /// The six legacy slots with parents a and b (`first_parent`, `second_parent` in `Pool::product_order`), in order, into `sink`
     /// (`SlotSink`), the trainee's relation points from `relations`: per parent x (partner y) her relation part,
     /// pt(x) + pair(x, y) then her grandparent slots' gt(x, gi) in order, and her race part, 3 x shared(a, b) then
     /// theirs (`Pool::grandparent_race_affinity`) in order (`part_sum`); a grandparent slot's parts are its own. The
-    /// one definition of the slots' affinity every copy reads (`slots`, `lineage`, `lineage_qc`, `her_slot`,
+    /// one definition of the slots' affinity every copy reads (`slots`, `lineage`, `her_slot`,
     /// `Evaluator::fast_ub`; `gen_cands` hoists the same sums)
     #[inline(always)]
     pub(crate) fn walk_slots<'pool, R: RelPts, S: SlotSink<'pool>>(
@@ -336,22 +333,31 @@ impl CareerSetup<'_> {
         relations: &R,
         sink: &mut S,
     ) {
-        // (the parents' shared wins once: shared(a, b) and shared(b, a) are the same products summed in the same order)
+        // (the parents in the pool's product order, `Pool::product_order`, so the slots' factors are multiplied alike
+        // wherever the veterans stand; the parents' shared wins once: shared(a, b) and shared(b, a) are the same products
+        // summed in the same order)
+        let (first_parent, second_parent) = pool.product_order(first_parent, second_parent);
         let shared_race_affinity = 3.0 * shared(&pool.veterans[first_parent], &pool.veterans[second_parent]);
         for (parent, partner) in [(first_parent, second_parent), (second_parent, first_parent)] {
             let veteran = &pool.veterans[parent];
-            let grandparent_count = pool.parents[parent].len();
+            // (her grandparent slots in the pool's product order too, `Pool::grandparent_order`, each by its own index)
+            let grandparent_slots = pool.grandparent_order(parent);
             let relation_points = part_sum(
                 relations.pt(parent) + self.pair(veteran.uma_index, pool.veterans[partner].uma_index),
-                (0..grandparent_count).map(|grandparent_slot| relations.gt(parent, grandparent_slot)),
+                grandparent_slots.clone().map(|grandparent_slot| relations.gt(parent, grandparent_slot)),
             );
-            let race = part_sum(shared_race_affinity, pool.grandparent_race_affinity[parent].iter().copied());
+            let race = part_sum(
+                shared_race_affinity,
+                grandparent_slots
+                    .clone()
+                    .map(|grandparent_slot| pool.grandparent_race_affinity[parent][grandparent_slot]),
+            );
             sink.slot(parent, None, veteran, relation_points, race);
-            for (grandparent_slot, grandparent) in pool.parents[parent].iter().enumerate() {
+            for grandparent_slot in grandparent_slots {
                 sink.slot(
                     parent,
                     Some(grandparent_slot),
-                    grandparent,
+                    &pool.parents[parent][grandparent_slot],
                     relations.gt(parent, grandparent_slot),
                     pool.grandparent_race_affinity[parent][grandparent_slot],
                 );
@@ -390,7 +396,7 @@ impl CareerSetup<'_> {
         sink.0
     }
     /// Legacy `her`'s slot as a parent of the trainee beside `partner` (`HerSlot`; None when she is not one of the
-    /// two); what `score_career`'s setups and `outcome_hi`'s partners take
+    /// two); what `score_career`'s setups take
     pub(crate) fn her_slot(&self, pool: &Pool, lineage: Lineage) -> Option<HerSlot> {
         let Lineage { trainee, first_parent: partner, second_parent: her } = lineage;
         let mut accumulator = Inherit::new(self.target_count, Some(her));
@@ -402,7 +408,6 @@ impl CareerSetup<'_> {
             misses_without_her: self.uncertain_targets.iter().map(|&i| 1.0 - chances_without_her[i]).collect(),
             miss_by_stars: [1.0, miss_at(1), miss_at(2), miss_at(3)],
             target_spark_scales: carriers_without_her.iter().map(|&n| [spark_scale(n), spark_scale(n + 1)]).collect(),
-            chances_without_her,
         })
     }
     /// `her_slot` with her in several of the trainee's six slots at once (`positions`: (legacy, None) a parent slot,
@@ -460,7 +465,6 @@ impl CareerSetup<'_> {
                 .iter()
                 .map(|&n| [spark_scale(n), spark_scale(n + slots)])
                 .collect(),
-            chances_without_her,
         })
     }
     pub(crate) fn scale(&self, carriers: &[i32]) -> crate::deck::joint::SparkScales {
@@ -609,109 +613,6 @@ impl CareerSetup<'_> {
     #[inline(always)]
     fn c_of(&self, carriers: &[i32]) -> f64 {
         self.uncertain_targets.iter().chain(&self.fixed_targets).map(|&i| spark_scale(carriers[i])).product::<f64>()
-    }
-    /// `lineage`'s spark scale C, and its inheritance chances for the targets `target_indices` only (into q[i] for each
-    /// i of them, the other entries of q left as they are), without allocating: the same slot walk (`walk_slots`) into
-    /// `inherit`'s accumulation for those targets (each slot's factors multiplied in slot order, a slot without the
-    /// spark skipped) and the carriers of every target, then `scale`'s product. More than four grandparent slots per
-    /// parent, or more than QN targets: through `lineage` itself. `relation_cache`: the trainee's relation points with
-    /// each legacy x of the pool (`pair`, at 5 x + 4) and with x's grandparent slots (`tri`, at 5 x + the slot), then
-    /// `scale`'s factor per carrier count; built here when empty: the caller empties it for another trainee or pool.
-    pub(crate) fn lineage_qc(
-        &self,
-        pool: &Pool,
-        lineage: Lineage,
-        target_indices: &[usize],
-        q: &mut [f64],
-        relation_cache: &mut Vec<f64>,
-    ) -> f64 {
-        let Lineage { trainee, first_parent, second_parent } = lineage;
-        const G: usize = 4;
-        const QN: usize = 16;
-        if pool.parents[first_parent].len() > G || pool.parents[second_parent].len() > G || self.target_count > QN {
-            let chances = self.lineage(pool, lineage);
-            for &i in target_indices {
-                q[i] = chances.chances[i];
-            }
-            return chances.spark_scale;
-        }
-        let trainee_index = Some(trainee);
-        let legacy_count = pool.veterans.len();
-        if relation_cache.is_empty() {
-            relation_cache.resize(legacy_count * (G + 1), 0.0);
-            for legacy in 0..legacy_count {
-                relation_cache[legacy * (G + 1) + G] = self.pair(trainee_index, pool.veterans[legacy].uma_index);
-                for (grandparent_slot, grandparent) in pool.parents[legacy].iter().enumerate().take(G) {
-                    relation_cache[legacy * (G + 1) + grandparent_slot] =
-                        self.tri(trainee_index, pool.veterans[legacy].uma_index, grandparent.uma_index);
-                }
-            }
-            // then `spark_scale` per carrier count n
-            relation_cache.extend((0..=2 * (G + 1)).map(|n| spark_scale(n as i32)));
-        }
-        struct Tg<'tg>(&'tg [f64]);
-        impl RelPts for Tg<'_> {
-            #[inline(always)]
-            fn pt(&self, legacy: usize) -> f64 {
-                self.0[legacy * (G + 1) + G]
-            }
-            #[inline(always)]
-            fn gt(&self, legacy: usize, grandparent_slot: usize) -> f64 {
-                self.0[legacy * (G + 1) + grandparent_slot]
-            }
-        }
-        // `Inherit` for the targets `target_indices` (and the carriers of every target), in fixed arrays
-        struct Qc<'target_indices> {
-            target_indices: &'target_indices [usize],
-            target_count: usize,
-            miss: [f64; QN],
-            random_star_misses: [f64; QN],
-            carriers: [usize; QN],
-        }
-        impl SlotSink<'_> for Qc<'_> {
-            #[inline(always)]
-            fn slot(&mut self, _: usize, _: Option<usize>, who: &Who, relation_points: f64, race: f64) {
-                let affinity_factor = aff_factor(relation_points, race);
-                for &k in self.target_indices {
-                    let target_stars = who.stars[k];
-                    if target_stars == 0 {
-                        continue;
-                    }
-                    match who.star_mix {
-                        None => self.miss[k] *= insp_miss(f64::from(target_stars), affinity_factor),
-                        Some(star_mix) => self.random_star_misses[k] *= mix_term(star_mix, affinity_factor),
-                    }
-                }
-                for k in 0..self.target_count {
-                    if who.stars[k] != 0 {
-                        self.carriers[k] += 1;
-                    }
-                }
-            }
-        }
-        let mut accumulator = Qc {
-            target_indices,
-            target_count: self.target_count,
-            miss: [1.0; QN],
-            random_star_misses: [1.0; QN],
-            carriers: [0; QN],
-        };
-        self.walk_slots(
-            pool,
-            first_parent,
-            second_parent,
-            &Tg(&relation_cache[..legacy_count * (G + 1)]),
-            &mut accumulator,
-        );
-        for &k in target_indices {
-            q[k] = inherit_q(accumulator.miss[k], accumulator.random_star_misses[k]);
-        }
-        let spark_scales = &relation_cache[legacy_count * (G + 1)..];
-        self.uncertain_targets
-            .iter()
-            .chain(&self.fixed_targets)
-            .map(|&i| spark_scales[accumulator.carriers[i]])
-            .product::<f64>()
     }
 }
 
