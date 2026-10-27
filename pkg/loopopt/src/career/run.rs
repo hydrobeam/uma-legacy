@@ -105,7 +105,12 @@ pub(super) fn answer_kept_check<'data>(
         .as_ref()
         .filter(|next_job| next_job.get("robust").is_some_and(|request| !request.is_null()))
         .and_then(|next_job| serde_json::from_value::<crate::career::plan::PlanJob>(next_job.clone()).ok())?;
-    let pool = crate::career::plan::ScoringPool { legacies: &career_job.legacies, pool: run.pool };
+    let pool = crate::career::plan::ScoringPool {
+        legacies: &career_job.legacies,
+        pool: run.pool,
+        pick_pool: run.pick_pool.unwrap_or(run.pool),
+        fixed_parents: &career_job.fixed_parents,
+    };
     crate::career::plan::check_before_plan(env, kept, run.input, pool, &plan_job)
 }
 

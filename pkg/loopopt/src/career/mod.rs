@@ -168,6 +168,28 @@ impl Ancestor {
     }
 }
 
+/// A legacy's identity as a record (`Legacy::identity`): her record's canonical text and its hash. Ordered by the hash,
+/// then the text, so two identities are equal only where the records are (a hash collision falls to the text).
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct RecordIdentity {
+    pub(crate) hash: u64,
+    pub(crate) text: String,
+}
+
+impl Legacy {
+    /// Her identity as a record, for orders that must not read the pool's order (`plan::pair_bound`): the canonical
+    /// text of her recorded fields and her recorded parents' (character, borrowed, sparks, wins, pinks), and its hash.
+    /// Two identical records have one identity. The internal fields are not in it: a job's legacies, as read, have none
+    pub(crate) fn identity(&self) -> RecordIdentity {
+        let parent = |parent: &Ancestor| json!({"chara": parent.character_id, "sparks": parent.sparks, "wins": parent.wins, "pinks": parent.pinks});
+        let parents: Vec<Value> = self.parents.iter().map(parent).collect();
+        let text = json!({"chara": self.character_id, "borrowed": self.borrowed, "sparks": self.sparks,
+            "wins": self.wins, "pinks": self.pinks, "parents": parents})
+        .to_string();
+        RecordIdentity { hash: crate::career::state::hash_text(&text), text }
+    }
+}
+
 /// A legacy's recorded parents (the trainee's grandparents under her): at most two. More would count a target's
 /// carriers n past six (a gold spark's chance, 0.4 x 1.1^n, passes 1 at n = 10).
 fn recorded_parents<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<Ancestor>, D::Error> {

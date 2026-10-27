@@ -30,6 +30,8 @@ pub(crate) struct KeptState {
     pub(crate) flags: std::collections::BTreeMap<u64, ClassFlags>,
     /// Roll scorings for recent plans, oldest first.
     pub(crate) rolls: Vec<RollKeep>,
+    /// Recent plans' step caps (`plan::caps`), oldest first: what a later plan of a pool holding theirs reads.
+    pub(crate) step_caps: Vec<crate::career::plan::caps::KeptCaps>,
     /// Recent plans' check states (`next.robust`), oldest first; not serialized.
     pub(crate) checks: Vec<crate::career::plan::CheckKeep>,
     /// Deck outcomes and corner tables per setup and trainee order; not serialized.
@@ -162,8 +164,9 @@ pub(crate) const SEEN_KEEP: usize = 256;
 // (5: a roll state's Conts carry their anchor odds, its scoring the lifted costs, its base no trios; 6: a kept search
 // holds its `unproven` reasons, `assumes` (names), its class flags and its trainees' classes; the class flags by class
 // content, and each kept plan's own; 7: a roll state's routes carry their C while a lifted side builds, and its Conts
-// price odds above p0 off their lattice)
-pub(crate) const STATE_VERSION: u64 = 7;
+// price odds above p0 off their lattice; 8: the plans' step caps, and a roll state's base its candidates' caps; 9: a
+// step cap is its kept fit's curve, lam, phi, pinf, p0 and decay, and her odds then)
+pub(crate) const STATE_VERSION: u64 = 9;
 
 /// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
 /// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated
@@ -460,10 +463,10 @@ fn solve_in(value: &Value) -> Option<Vec<KeptSolve>> {
 }
 
 pub(crate) fn state_out(kept: &KeptState) -> Value {
-    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "flags": keyed_flags_out(kept.flags.iter()), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls)}})
+    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "flags": keyed_flags_out(kept.flags.iter()), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls), "caps": crate::career::plan::caps::caps_out(&kept.step_caps)}})
 }
 
-/// replaces the kept plans, proofs, main searches and plans' roll states with the page's stored ones and unions its
+/// replaces the kept plans, proofs, main searches, plans' roll states and step caps with the page's stored ones and unions its
 /// class flags into the worker's (all or nothing: a store that does not parse is refused)
 pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
     if value["v"].as_u64() != Some(STATE_VERSION) {
@@ -474,16 +477,18 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
     if !value["bests"].as_array().is_none_or(|bests_list| bests_list.iter().all(|best| len_in(&best["n"]).is_some())) {
         return json!({"error": "state: does not parse"});
     }
-    let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls)) = (
+    let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls), Some(step_caps)) = (
         crate::career::plan::kept::bests_in(&value["bests"]),
         seen_in(&value["seen"]),
         solve_in(&value["solve"]),
         keyed_flags_in(&value["flags"]),
         crate::career::plan::roll::rolls_in(&value["rolls"]),
+        crate::career::plan::caps::caps_in(&value["caps"]),
     ) else {
         return json!({"error": "state: does not parse"});
     };
-    let (best_count, seen_count, search_count, roll_count) = (bests.len(), seen.len(), searches.len(), rolls.len());
+    let (best_count, seen_count, search_count, roll_count, cap_count) =
+        (bests.len(), seen.len(), searches.len(), rolls.len(), step_caps.len());
     // (the stored flags unioned into the worker's: a store never clears a flag)
     let mut flags = flags;
     for (key, live) in std::mem::take(&mut kept.flags) {
@@ -496,11 +501,12 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
         seen,
         searches,
         rolls,
+        step_caps,
         flags,
         checks: std::mem::take(&mut kept.checks),
         decks: std::mem::take(&mut kept.decks),
     };
-    json!({"ok": true, "bests": best_count, "seen": seen_count, "solve": search_count, "rolls": roll_count})
+    json!({"ok": true, "bests": best_count, "seen": seen_count, "solve": search_count, "rolls": roll_count, "caps": cap_count})
 }
 
 impl CareerSetup<'_> {

@@ -172,6 +172,9 @@ pub(super) struct SimJob {
     /// index: the plan job's `next` (docs/SOLVER.md "Next career"); the page sends `{}`
     #[serde(default = "d_next")]
     next: Value,
+    /// index: what each step runs (`IndexAction`)
+    #[serde(default)]
+    act_on: IndexAction,
     /// first (default) | looped: what a run ends at (module notes)
     #[serde(default)]
     goal: Goal,
@@ -192,6 +195,17 @@ pub(super) struct ForcedCareer {
 }
 fn d_next() -> Value {
     json!({})
+}
+/// What `index` runs each step (`SimJob::act_on`).
+#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum IndexAction {
+    /// The plan's pick, `next.choice` (the table's first row).
+    #[default]
+    Choice,
+    /// The page's final recommendation once its check is in: the plan job also asks `robust` "all" and `pair_search`,
+    /// and the career `next.robust.pairs.recommendation` names runs with its own deck (`Sim::recommended_cur`)
+    PairSearch,
 }
 /// What a run's path ends at (`SimJob::goal`; module notes).
 #[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq)]

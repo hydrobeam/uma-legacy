@@ -7,7 +7,7 @@ use crate::career::pool::Pool;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
-use crate::career::sim::{Goal, Sim, SimJob, SimulationOptions, SimulationRoster, family, leg_json};
+use crate::career::sim::{Goal, IndexAction, Sim, SimJob, SimulationOptions, SimulationRoster, family, leg_json};
 use crate::career::state::{KeptState, kept_swap};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use serde_json::{Value, json};
@@ -450,6 +450,9 @@ pub(in crate::career) fn simulate<'data>(
     if config.force.is_some() && matches!(base, Base::Loop | Base::Trace) {
         return json!({"error": "simulate: force is for greedy, greedy_exact and index (a loop or trace runs its own careers)"});
     }
+    if config.act_on != IndexAction::Choice && base != Base::Index {
+        return json!({"error": "simulate: act_on is for index (the page's plan)"});
+    }
     if config.goal == Goal::Looped && base == Base::Trace {
         return json!({"error": "simulate: trace has no goal (goal looped is for the path policies)"});
     }
@@ -528,7 +531,16 @@ pub(in crate::career) fn simulate<'data>(
             "refreshes": counts_after.searches - counts_before.searches, "partial_searches": counts_after.partial_searches - counts_before.partial_searches, "segs": pick_changes, "checks": checks, "audits": std::mem::take(&mut simulator.audits)}));
         if base == Base::Index {
             let index_counts = INDEX_RUN_COUNTS.with(|index_counts| std::mem::take(&mut *index_counts.borrow_mut()));
-            runs.last_mut().unwrap()["index"] = json!({"plans": index_counts.plans, "plan_s": index_counts.plan_seconds, "roles": index_counts.roles, "best_odds": index_counts.best_odds_picks});
+            let mut index_record = json!({"plans": index_counts.plans, "plan_s": index_counts.plan_seconds, "roles": index_counts.roles, "best_odds": index_counts.best_odds_picks});
+            // (the default's record unchanged: the actions only where `act_on` asks for the recommendation)
+            if config.act_on == IndexAction::PairSearch {
+                index_record["acted_on"] = json!(index_counts.acted_on);
+                index_record["careers"] = json!(index_counts.careers);
+                index_record["check_s"] = json!(index_counts.check_seconds);
+                index_record["career_job_s"] = json!(index_counts.career_job_seconds);
+                index_record["executed"] = json!(index_counts.executed);
+            }
+            runs.last_mut().unwrap()["index"] = index_record;
         }
         if config.goal == Goal::Looped {
             censored_runs += usize::from(looped.censored);

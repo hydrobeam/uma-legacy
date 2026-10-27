@@ -15,10 +15,16 @@
 //! - `anchors`: anchor bounds and the best partners after an outcome.
 //! - `audit`: the lifted-odds audit (`audit_lifts`).
 //! - `kept`: kept plans and cached career searches.
+//! - `caps`: step caps from kept fits (a pool holding a kept pool's veterans can still follow its plan).
 //! - `roll`: the roll of the plan's pick and its kept state (`roll_kept`).
 //! - `oracle`: the joint-lift oracle (`joint_oracle`), a diagnostic: the cheapest trios on a joint two-side lattice.
+//! - `ascent`: coordinate ascent over (trainee, pair) by score (`pair_ascent`), a measurement.
+//! - `sweep`: the pair sweep (`pair_sweep`), a measurement: the best-scoring trainees' careers on many pairs scored.
+//! - `sequenced`: the sequenced oracle (`sequenced_oracle`), a diagnostic: the cheapest trios with their sides made in
+//!   turn (the second priced with the first's fresh full veteran in the pool, C bred on the two).
 //! - `robust`: the robustness check on the pick, kept with the plan and run on it later (`check_kept`): the shown rows
 //!   under model variants.
+//! - `pair_bound`: the pair search's per-trainee bound (`PAIR_SEARCH_PAIRS`): which of her pairs it scores.
 //! - `output`: the assembled plan response.
 use crate::career::cache::Cache;
 use crate::career::clock::{now_ms, progress};
@@ -38,15 +44,20 @@ use crate::data::Data;
 use serde::Deserialize;
 use serde_json::Value;
 mod anchors;
+mod ascent;
 mod audit;
 mod candidates;
+pub(super) mod caps;
 mod combine;
 pub(super) mod cont;
 mod fold;
 pub(super) mod kept;
 mod oracle;
 mod output;
+mod pair_bound;
 mod robust;
+mod sequenced;
+mod sweep;
 pub(crate) use robust::{CheckKeep, ScoringPool, check_before_plan};
 pub(super) mod roll;
 mod rows;
@@ -210,10 +221,28 @@ pub(crate) struct PlanJob {
     /// plan keeps the state). It changes nothing else
     #[serde(default)]
     robust: Option<CheckRequest>,
+    /// with `robust`, after its variants: the within-trainee pair search (`robust::CheckWork::pair_search`, `pairs` in
+    /// the check's report): for the pick's trainee and each the differential scenarios pick, her every runnable pair
+    /// scored; it changes no pick
+    #[serde(default)]
+    pair_search: bool,
     /// `index_rule` measurement: "joint", the joint-lift oracle beside V (`oracle` in the output,
-    /// `oracle::joint_oracle`); changes nothing else
+    /// `oracle::joint_oracle`), or "sequenced", the sequenced oracle (`sequenced::sequenced_oracle`, whose searches can
+    /// keep proofs and set class flags); changes no pick or V
     #[serde(default)]
     oracle: Option<Oracle>,
+    /// `index_rule` measurement: the best-scoring trainees' careers on their best pairs by ceiling, each scored
+    /// (`pair_sweep` in the output, `sweep::pair_sweep`); changes nothing else
+    #[serde(default)]
+    pair_sweep: bool,
+    /// `index_rule` measurement: coordinate ascent over (trainee, parent pair) by score (`pair_ascent` in the output,
+    /// `ascent::pair_ascent`); changes nothing else
+    #[serde(default)]
+    pair_ascent: bool,
+    /// `index_rule` measurement: per (chara id, first parent, second parent), her best cached deck there scored with its
+    /// saving split by outcome class (`pair_decompose` in the output, `ascent::pair_decompose`); changes nothing else
+    #[serde(default)]
+    pair_decompose: Option<Vec<(u32, usize, usize)>>,
 }
 
 /// A diagnostic V beside the plan's (`PlanJob::oracle`).
@@ -222,6 +251,8 @@ pub(crate) struct PlanJob {
 pub(crate) enum Oracle {
     /// The cheapest trios on a joint two-side lattice of their continuations (`oracle::JointLattice`).
     Joint,
+    /// The cheapest trios with their sides made in turn (`sequenced::sequenced_oracle`).
+    Sequenced,
 }
 
 /// What a check job asks of the plan's kept check state (`PlanJob::robust`).
@@ -243,6 +274,10 @@ const fn default_fresh_lineages() -> usize {
     crate::career::plan::combine::FRESH_LINEAGES
 }
 
+/// Careers per builder scored as rows unless the job says (`PlanJob::builder_careers`): her best only. The next ones
+/// (3: her next two) changed the pick on p10, p10_pink and gm16_nu8 (V_score_second), but the pair search's final
+/// recommendation agrees at 1 and 3 on 11 of the 13 val/plan pools, while 3 doubles the plan's time and its extra
+/// careers enter Cont's builder evidence, lowering V by up to 7.3% (SOLVER.md, `builder_careers`)
 const fn default_builder_careers() -> usize {
     1
 }
@@ -353,10 +388,16 @@ struct PlanCandidates {
     loop_members: Vec<crate::uma::UmaIndex>,
     loop_member_info: Vec<Value>,
     loop_member_note: Option<String>,
-    /// The candidates `hint_umas` added, as the page shows them.
+    /// The candidates the full-loop ceiling ranking added (`hint_umas`), and the ranked umas it left out, as the page
+    /// shows them.
     hint: Vec<Value>,
-    /// The stage candidates, as uma indices (`Data::umas`).
+    cut: Vec<Value>,
+    /// The candidates, as uma indices (`Data::umas`): the stage candidates, then the side-only umas.
     trainees: Vec<crate::uma::UmaIndex>,
+    /// The first `stage_count` candidates are the stage candidates; the rest are side-only (a usable real full veteran
+    /// of hers, whatever the trainee filter): her real full veterans are her only sides, with no career, odds, step,
+    /// continuation or lift slots, outside IDX_CANDS.
+    stage_count: usize,
     /// The umas a trio's finisher may be: the allowed trainees with a legal deck.
     allowed_trainees: Vec<crate::uma::UmaIndex>,
     /// Initial candidate careers: later builder searches do not replace these.
@@ -374,6 +415,10 @@ struct PlanCandidates {
     proxies_enabled: bool,
     /// The job's scoring knobs.
     knobs: crate::career::plan::cont::ScoringKnobs,
+    /// Each candidate's step cap from the worker's kept fits (`caps::step_caps`; none under a given fit).
+    step_caps: Vec<Option<caps::StepCap>>,
+    /// Where this plan's own caps hold (`caps::CapPool`), kept with them after it.
+    cap_pool: caps::CapPool,
 }
 
 impl PlanCandidates {
@@ -386,11 +431,12 @@ impl PlanCandidates {
             current_odds: &self.current_odds,
             certified: &self.certified,
             continuations: &[],
+            step_caps: &[],
             trios: &[],
             trio_sides: &[],
             finisher_umas: &[],
             knobs: self.knobs,
-            odds_scale: 1.0,
+            odds_scales: crate::career::plan::cont::OddsScales::ONE,
         }
     }
 }
@@ -470,7 +516,7 @@ struct PlanSearches {
     /// The env's own career-search budget, put back after each capped search (`capped`).
     env_budget: usize,
     /// Per (trainee, parent pair, ascending), her best career there searched exactly (`exact_pair_career`).
-    pair_careers: crate::FxMap<(crate::uma::UmaIndex, usize, usize), crate::career::plan::combine::PairCareer>,
+    pair_careers: crate::career::plan::combine::PairMemo,
 }
 
 impl PlanSearches {
@@ -544,8 +590,8 @@ struct PlanRows {
 /// while it pays, then run her" (`Cont`, fitted to the pool now; free when a full veteran of hers exists), C the best allowed
 /// uma with A's and B's full veterans as parents (1 / her full-loop odds). A career is scored E[V - V with her veteran] - 1, exact
 /// over her outcomes: her veteran as a parent raising any candidate's odds lowers that step, her own full veteran ends her own
-/// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
-/// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
+/// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest
+/// (a strict argmax; the rows within NEAR are labelled near). The goal is always the next fully looped parent, any uma: one you have already is a
 /// real full veteran (free) with full veteran parents, a strong side of the trios.
 pub(crate) fn index_rule<'data>(
     env: &mut Env<'data>,
@@ -570,7 +616,7 @@ pub(crate) fn index_rule<'data>(
     rows.rows.extend(looped);
     let no_borrow = add_no_borrow_rows(&mut sim, &context, &rows.rows, &mut searches, &mut profile, &mut deck_values);
     rows.rows.extend(no_borrow);
-    let alternatives = add_alternative_rows(&mut sim, &context, &rows.rows);
+    let alternatives = add_alternative_rows(&mut sim, &context, &rows.rows, &mut deck_values);
     rows.rows.extend(alternatives);
     let scores = score_and_promote_rows(&mut sim, &context, &mut searches, &mut rows, &mut profile, &mut deck_values);
     let rows = rows.rows;
@@ -586,7 +632,13 @@ pub(crate) fn index_rule<'data>(
     } else {
         Value::Null
     };
-    let oracle = oracle::joint_oracle(&mut sim, &context, &rows, &scores, &mut deck_values);
+    let pair_sweep = sweep::pair_sweep(&mut sim, &context, &rows, &scores, &mut deck_values);
+    let pair_ascent = ascent::pair_ascent(&mut sim, &context, &rows, &scores, &mut deck_values);
+    let pair_decompose = ascent::pair_decompose(&mut sim, &context, &scores, &mut deck_values);
+    let oracle = match input.settings.oracle {
+        Some(Oracle::Sequenced) => sequenced::sequenced_oracle(&mut sim, &context, &rows, &scores, &mut deck_values),
+        _ => oracle::joint_oracle(&mut sim, &context, &rows, &scores, &mut deck_values),
+    };
     // (what the check reads, kept after the output: the shown rows, and the deck cache, which the output does not read)
     let check_draft = robust::check_draft(&context, &rows, &scores.fit, scores.any_scored);
     let check_cache = check_draft
@@ -594,14 +646,35 @@ pub(crate) fn index_rule<'data>(
         .then(|| std::mem::replace(&mut sim.evaluator.cache, Cache::new(context.data().umas.len())));
     let check_ids = check_draft.as_ref().map(|draft| draft.row_ids(context.data(), &sim.env.setup.space));
     let mut output = assemble_plan_output(sim, &context, searches, rows, &scores, &profile);
+    // (its steps kept as caps for later plans of a pool holding this one's veterans; none under a given fit)
+    if input.settings.fit.is_none() {
+        let fit = &scores.fit;
+        let plan_caps =
+            caps::plan_caps(&candidates.trainees, &candidates.current_odds, &fit.continuations, &candidates.step_caps);
+        caps::keep_caps(kept, candidates.cap_pool.clone(), plan_caps);
+    }
     if !oracle.is_null() {
         output["oracle"] = oracle;
+    }
+    if !pair_sweep.is_null() {
+        output["pair_sweep"] = pair_sweep;
+    }
+    if !pair_ascent.is_null() {
+        output["pair_ascent"] = pair_ascent;
+    }
+    if !pair_decompose.is_null() {
+        output["pair_decompose"] = pair_decompose;
     }
     if let (Some(draft), Some(cache), Some(row_ids)) = (check_draft, check_cache, check_ids) {
         let key = robust::check_key(input.resources.job);
         let source = robust::CheckSource { candidates, fit: scores.fit, cache };
         robust::keep_check(kept, row_ids, key, draft, source);
-        let pool = robust::ScoringPool { legacies: input.legacies, pool: input.pool };
+        let pool = robust::ScoringPool {
+            legacies: input.legacies,
+            pool: input.pool,
+            pick_pool: input.pick_pool(),
+            fixed_parents: input.fixed_parents,
+        };
         if let Some(check) = robust::check_kept(env, kept, input.resources, pool, input.settings) {
             output["robust"] = check;
         }

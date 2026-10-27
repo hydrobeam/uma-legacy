@@ -151,18 +151,19 @@ pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usiz
         .and_then(|legacy_value| legacy_value.as_array())
         .map(|legacies| serde_json::to_string(&legacies[..legacy_count.min(legacies.len())]).unwrap())
         .unwrap_or_default();
+    (plan_scope(job, space_key) ^ hash_text(&format!("{fixed_parents:?}")).rotate_left(1), hash_text(&legacies_text))
+}
+
+/// `bests_key`'s first half less its fixed parents: the setup, the borrowed-parent rule unless "allow", and the deck
+/// space. The fixed parents are positions in the job's legacies, which the kept plans' second half (the legacies' text in
+/// order) pins; a key that does not pin the order names them by their veterans instead (`caps::CapPool`)
+pub(crate) fn plan_scope(job: &Value, space_key: u64) -> u64 {
     let borrowing_rule = job
         .get("borrowed_parent")
         .and_then(|rule| rule.as_str())
         .filter(|&rule| rule != "allow")
         .map_or(0, |rule| hash_text(rule).rotate_left(2));
-    (
-        crate::career::state::setup_fp(job)
-            ^ hash_text(&format!("{fixed_parents:?}")).rotate_left(1)
-            ^ borrowing_rule
-            ^ space_key.rotate_left(3),
-        hash_text(&legacies_text),
-    )
+    crate::career::state::setup_fp(job) ^ borrowing_rule ^ space_key.rotate_left(3)
 }
 
 /// The kept plans a career search may reuse (`Bests`), taken out of `KeptState::bests` while the plan runs.

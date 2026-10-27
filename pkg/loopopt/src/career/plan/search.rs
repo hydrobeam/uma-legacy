@@ -468,10 +468,7 @@ pub(crate) fn loop_ceiling(
     value
 }
 
-/// Below this many stage candidates the plan adds umas by `hint_umas`.
-pub(crate) const HINT_FLOOR: usize = 4;
-
-/// An uma `hint_umas` adds to the stage candidates.
+/// An uma `hint_umas` ranks for the stage candidates' remaining slots.
 pub(crate) struct HintUma {
     /// Index in `Data::umas`.
     pub(crate) trainee: crate::uma::UmaIndex,

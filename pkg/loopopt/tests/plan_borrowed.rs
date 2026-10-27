@@ -90,6 +90,24 @@ fn renumber(v: &Value, gone: usize) -> Value {
                                 }
                                 Value::String(parts.join(":"))
                             }
+                            // a trio side's identity, "kind:i[,j]" (output.rs `side_key`): its legacy indices too
+                            ("sides", Value::Array(a)) => Value::Array(
+                                a.iter()
+                                    .map(|side| match side.as_str().and_then(|text| text.split_once(':')) {
+                                        Some((kind, places)) => json!(format!(
+                                            "{kind}:{}",
+                                            places
+                                                .split(',')
+                                                .map(|p| p
+                                                    .parse::<u64>()
+                                                    .map_or(p.to_owned(), |i| ix(&json!(i)).to_string()))
+                                                .collect::<Vec<_>>()
+                                                .join(",")
+                                        )),
+                                        None => side.clone(),
+                                    })
+                                    .collect(),
+                            ),
                             _ => renumber(x, gone),
                         },
                     )

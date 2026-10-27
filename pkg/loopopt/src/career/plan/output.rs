@@ -2,8 +2,8 @@
 use crate::career::ClassFlags;
 use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::anchors::found_anchors;
-use crate::career::plan::combine::{FITTED_MODEL, PlanScores};
-use crate::career::plan::cont::{SideStep, TrioSlot};
+use crate::career::plan::combine::{FITTED_MODEL, NEAR_TRIO_SHARE, PlanScores};
+use crate::career::plan::cont::{SideStep, TrioSideVeteran, TrioSlot};
 use crate::career::plan::kept::{Bests, CachedSearch, bests_key};
 use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept, roll_key};
 use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, near_floor, pick_of};
@@ -51,7 +51,7 @@ pub(crate) fn assemble_plan_output<'data>(
             runs.push(PlanRow::proxy(found.trainee, found.clone(), vec![], RowOrigin::Fallback, None));
         }
     }
-    // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own full veteran
+    // pick: the highest score among the rows that can be it; `near` labels the rows within NEAR of it (the model's noise)
     let total = |i: usize| runs[i].total();
     let PlanPick { row: pick, top } = pick_of(&runs, is_runnable, &undup);
     let near = |i: usize| is_runnable(&runs[i].career) && total(i) >= near_floor(top);
@@ -71,7 +71,7 @@ pub(crate) fn assemble_plan_output<'data>(
             let search = if row.origin == RowOrigin::Fallback {
                 pick_search
             } else {
-                RowSearch { complete: !incomplete.of(row.origin, row.trainee), assumes: Assumes::default() }
+                RowSearch { complete: !incomplete.of(row), assumes: Assumes::default() }
             };
             row_proof(row_exact(row), search, env.state.class_flags[env.setup.deck_class[row.trainee]])
         })
@@ -110,6 +110,10 @@ pub(crate) fn assemble_plan_output<'data>(
         let (proven, assumes) = row_proofs[i];
         if row_exact(row) && !proven {
             option.insert("proven".into(), json!(false));
+            // (an alternative row never searched on its pair: her cached deck there, no search behind it to run out)
+            if row.origin == RowOrigin::Alternative && row.pair_search.is_none() {
+                option.insert("searched".into(), json!(false));
+            }
         } else if row_exact(row) && assumes != Assumes::default() {
             option.insert("assumes".into(), json!(assumes.names()));
         }
@@ -155,7 +159,8 @@ pub(crate) fn assemble_plan_output<'data>(
         keep_roll(kept, roll);
     }
     let fit = &scores.fit;
-    let fit_json: Vec<Value> = (0..candidates.trainees.len())
+    // (the stage candidates': a side-only uma has no continuation, and a fit given back names stage candidates)
+    let fit_json: Vec<Value> = (0..candidates.stage_count)
         .map(|candidate| {
             let continuation = &fit.continuations[candidate];
             json!([
@@ -168,7 +173,13 @@ pub(crate) fn assemble_plan_output<'data>(
         })
         .collect();
     let flagged = |uma: crate::uma::UmaIndex| {
-        runs.iter().zip(&row_proofs).any(|(row, &(proven, _))| row.trainee == uma && row_exact(row) && !proven)
+        // (a search behind the row ran and is not proven: an alternative row never searched on its pair is not counted)
+        runs.iter().zip(&row_proofs).any(|(row, &(proven, _))| {
+            row.trainee == uma
+                && row_exact(row)
+                && !proven
+                && !(row.origin == RowOrigin::Alternative && row.pair_search.is_none())
+        })
     };
     let umas_unproven = data
         .umas
@@ -188,9 +199,28 @@ pub(crate) fn assemble_plan_output<'data>(
             ))
         })
         .collect();
+    // per candidate (uma id) whose step is her kept cap's (`caps`: below her Cont's step now), its careers and her odds
+    // then; a cap that does not bind is left out, so a plan of the same pool again (a reload) answers as before
+    let step_caps: serde_json::Map<String, Value> = (0..candidates.trainees.len())
+        .filter_map(|candidate| {
+            let cap = candidates.step_caps[candidate]?;
+            let own_step = fit.continuations[candidate].cost(candidates.current_odds[candidate]);
+            (cap.now.expected_careers < own_step).then(|| {
+                (
+                    data.umas[candidates.trainees[candidate]].id.to_string(),
+                    json!({"careers": cap.now.expected_careers, "p": cap.kept.odds}),
+                )
+            })
+        })
+        .collect();
+    // the side-only umas (`PlanCandidates::stage_count`): umas whose real full veterans are trio sides, not candidates
+    let side_only: Vec<Value> = candidates.trainees[candidates.stage_count..]
+        .iter()
+        .map(|&uma| json!({"id": data.umas[uma].id, "name": data.umas[uma].name}))
+        .collect();
     let mut out = json!({"choice": choice, "rule": "index", "mode": "trio", "v0": current_value, "outcomes": outcomes,
-           "members": members_json,
-           "v0_plan": plan_json, "fit": fit_json, "pinf_builders": pinf_builders, "loop_members": candidates.loop_member_info, "loop_note": candidates.loop_member_note, "hint": candidates.hint, "umas_scored": profile.scored_runnable_rows, "umas_searched": runs.iter().filter(|run| run.exact).count() - profile.certified_proxies, "umas_certified": profile.certified_proxies, "umas_unproven": umas_unproven, "work": scores.work,
+           "members": members_json, "trios": context.cheapest_trios_json(scores),
+           "v0_plan": plan_json, "fit": fit_json, "pinf_builders": pinf_builders, "step_caps": step_caps, "loop_members": candidates.loop_member_info, "loop_note": candidates.loop_member_note, "hint": candidates.hint, "cut": candidates.cut, "side_only": side_only, "umas_scored": profile.scored_runnable_rows, "umas_searched": runs.iter().filter(|run| run.exact).count() - profile.certified_proxies, "umas_certified": profile.certified_proxies, "umas_unproven": umas_unproven, "work": scores.work,
            "sur": input.settings.surrogate_mode, "sur_diff": profile.surrogate_differences, "loop_ms": profile.loop_ms, "search_ms": profile.search_ms, "combo_ms": scores.combo_ms, "index_ms": scores.index_ms, "total_ms": now_ms() - profile.started_ms});
     // (the option reports moved in, not copied by `json!`: the object's keys are ordered, so the same text)
     out["options"] = Value::Array(options);
@@ -241,7 +271,8 @@ fn pick_roll_state(
     }
 }
 
-/// Per uma (`Data::umas`), whether a search behind her rows was incomplete, by the row's origin
+/// Per uma (`Data::umas`), whether a search behind her rows was incomplete, by the row's origin; an alternative row's
+/// own (`PlanRow::pair_search`: not proven where none ran or it did not complete)
 struct IncompleteSearches {
     base: crate::uma::UmaTable<bool>,
     looped: crate::uma::UmaTable<bool>,
@@ -249,12 +280,15 @@ struct IncompleteSearches {
 }
 
 impl IncompleteSearches {
-    fn of(&self, origin: RowOrigin, trainee: crate::uma::UmaIndex) -> bool {
-        match origin {
+    fn of(&self, row: &PlanRow) -> bool {
+        let trainee = row.trainee;
+        match row.origin {
             RowOrigin::Base => self.base[trainee],
             RowOrigin::Looped => self.looped[trainee],
             RowOrigin::NoBorrow => self.no_borrow[trainee],
-            RowOrigin::Alternative | RowOrigin::Fallback => false,
+            // (its cached deck on its pair is not proven her best there unless that pair was searched to the end)
+            RowOrigin::Alternative => row.pair_search != Some(true),
+            RowOrigin::Fallback => false,
         }
     }
 }
@@ -340,6 +374,29 @@ fn row_role(
 }
 
 impl PlanContext<'_, '_> {
+    /// The cheapest trios (`PlanScores::cheapest_combos`), cheapest first, as the page names near-tied routes: A, B and
+    /// C (A the cheaper side), their careers and the trio's value, and `near` where it is within NEAR_TRIO_SHARE of V's
+    fn cheapest_trios_json(&self, scores: &PlanScores) -> Value {
+        let data = self.data();
+        let fit = &scores.fit;
+        let step = |slot: TrioSlot| fit.sides[slot.candidate.0][slot.side].step.cost(fit.step_costs[slot.candidate.0]);
+        let name = |uma: crate::uma::UmaIndex| json!(data.umas[uma].name);
+        let trios: Vec<Value> = scores
+            .cheapest_combos
+            .iter()
+            .map(|combination| {
+                let [side_a, side_b] = combination.trio.sides;
+                let (first, second) = if step(side_a) <= step(side_b) { (side_a, side_b) } else { (side_b, side_a) };
+                let value = fit.trio_value(&combination.trio);
+                let side_key = |slot: TrioSlot| side_key(&fit.sides[slot.candidate.0][slot.side]);
+                json!({"a": name(self.candidates[first.candidate]), "b": name(self.candidates[second.candidate]),
+                    "c": name(combination.finisher_trainee), "careers": [step(first), step(second), combination.trio.finisher_cost],
+                    "sides": [side_key(first), side_key(second)],
+                    "value": value, "near": value <= fit.current_value * (1.0 + NEAR_TRIO_SHARE)})
+            })
+            .collect();
+        Value::Array(trios)
+    }
     /// Whether the job's `next.fit` gave this candidate's Cont (`plan_continuations`)
     fn has_given_fit(&self, candidate: usize) -> bool {
         let character = self.data().umas[self.candidates.trainees[candidate]].id;
@@ -370,25 +427,27 @@ impl PlanContext<'_, '_> {
             let candidate = slot.candidate.0;
             let side = &fit.sides[candidate][slot.side];
             let continuation = &fit.continuations[candidate];
-            let odds = if matches!(side.step, SideStep::Alternative(_)) {
-                side.odds
-            } else {
-                candidates.current_odds[candidate]
-            };
-            let build_plan = continuation.plan(odds);
-            // the builder her lam and phi are from (`fit_continuation`): its base row's career id; null where she
-            // grinds at these odds or her Cont was given (`next.fit`)
-            let builder = (build_plan.building_careers > 0.0 && !self.has_given_fit(candidate))
+            let alternative = matches!(side.step, SideStep::Alternative(_));
+            let odds = if alternative { side.odds } else { candidates.current_odds[candidate] };
+            // (her best career's side at her step's cap where it binds, `caps`: an Alternative side has none)
+            let cap = if alternative { None } else { candidates.step_caps[candidate] };
+            let own_plan = continuation.plan(odds);
+            let capped = cap.is_some_and(|cap| cap.binds(&own_plan));
+            let build_plan = crate::career::plan::caps::capped(own_plan, cap);
+            // the builder row her lam and phi are from (`fit_continuation`): its career id; null where she grinds at
+            // these odds, her Cont was given (`next.fit`) or her cap's plan (a kept fit's) is hers
+            let builder = (build_plan.building_careers > 0.0 && !self.has_given_fit(candidate) && !capped)
                 .then(|| fit.evidence.get(candidate)?.as_ref())
                 .flatten()
                 .map(|evidence| crate::career::plan::combine::fit_continuation(evidence, FITTED_MODEL).1)
-                .and_then(|builder| runs.iter().find(|row| row.origin == RowOrigin::Base && row.trainee == builder))
+                .and_then(|builder| runs.get(builder))
                 .map(|row| crate::career::plan::kept::career_id(space, data.umas[row.trainee].id, &row.career));
             json!({
                 "trainee": uma_name(candidates.trainees[candidate]),
                 "p": odds,
                 "parents": side.parents.map(|(first, second)| [first, second]),
-                "alternative": matches!(side.step, SideStep::Alternative(_)),
+                "alternative": alternative,
+                "capped": capped,
                 "proven": side.proven,
                 "has_full_veteran": candidates.has_full_veteran[candidate],
                 "real": matches!(side.step, SideStep::Existing(_)),
@@ -406,9 +465,26 @@ impl PlanContext<'_, '_> {
         let [side_a, side_b] = combination.trio.sides;
         let (first, second) = if step(side_a) <= step(side_b) { (side_a, side_b) } else { (side_b, side_a) };
         (
-            json!({"a": uma_name(candidates[first.candidate]), "b": uma_name(candidates[second.candidate]), "c": uma_name(combination.finisher_trainee), "careers": [step(first), step(second), combination.trio.finisher_cost]}),
+            json!({"a": uma_name(candidates[first.candidate]), "b": uma_name(candidates[second.candidate]), "c": uma_name(combination.finisher_trainee), "careers": [step(first), step(second), combination.trio.finisher_cost],
+                "sides": [side_key(&fit.sides[first.candidate.0][first.side]), side_key(&fit.sides[second.candidate.0][second.side])]}),
             json!([member(first), member(second)]),
         )
+    }
+}
+
+/// A trio side's identity, for the page to tell whether two plans' routes are the same (`sameTrio`, with the sides'
+/// umas): "real:i" her real full veteran, legacy i (a veteran added to the pool goes last, so i names the same one in
+/// both plans); "current:i,j" the fresh full veteran of her best career now, on legacies i and j (a veteran that becomes
+/// one of her parents is another lineage, so another route: its step's careers are not compared); "alt:i,j" the fresh
+/// full veteran of another of her careers, on legacies i and j; i below j (a lineage's parents are a pair, unordered)
+fn side_key(side: &TrioSideVeteran) -> String {
+    let parents = side.parents.map(|(first, second)| (first.min(second), first.max(second)));
+    match (side.step, parents) {
+        (SideStep::Existing(legacy), _) => format!("real:{legacy}"),
+        (SideStep::Current, Some((low, high))) => format!("current:{low},{high}"),
+        (SideStep::Current, None) => "current".to_owned(),
+        (SideStep::Alternative(_), Some((low, high))) => format!("alt:{low},{high}"),
+        (SideStep::Alternative(_), None) => "alt".to_owned(),
     }
 }
 

@@ -2,7 +2,7 @@
 use super::*;
 use crate::career::inherit::{aff_factor, inherit, insp_miss2, spark_scale};
 use crate::career::state::{STATE_VERSION, json_without};
-type Hook = Box<dyn for<'env> FnOnce(&mut Env<'env>, &Pool)>;
+pub(super) type Hook = Box<dyn for<'env> FnOnce(&mut Env<'env>, &Pool)>;
 thread_local! { pub(super) static ENV_HOOK: std::cell::RefCell<Option<Hook>> = const { std::cell::RefCell::new(None) }; }
 /// val/plan's p16 plan job with its events, and the Global data it runs on
 fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
@@ -21,7 +21,7 @@ fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
 }
 /// `run_career` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `hook` given its Env and
 /// pool
-fn with_env(hook: Hook) {
+pub(super) fn with_env(hook: Hook) {
     let (data, skills, cards, mut job) = p16();
     job.as_object_mut().unwrap().remove("next");
     for (i, legacy) in job["legacies"].as_array_mut().unwrap().iter_mut().enumerate() {

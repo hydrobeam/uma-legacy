@@ -16,6 +16,14 @@ use serde_json::Value;
 /// it stays among her top ones (not guaranteed: a veteran can open as many better pairs)
 pub(crate) const FRESH_LINEAGES: usize = 3;
 
+/// Trios the plan reports beside V's (`trios` in the output), cheapest first.
+pub(crate) const CHEAPEST_TRIOS: usize = 3;
+
+/// A trio within this share of V's value counts as tied with it (`near` in the output's `trios`). Assumed: the joint-lift
+/// oracle reorders p16's trios by 1.6% (V_trios_second F4), an error that differs between trios; the structural errors
+/// common to every trio (Jensen, sides that reuse each other) do not set it.
+pub(crate) const NEAR_TRIO_SHARE: f64 = 0.02;
+
 /// A trio and its finisher's uma (`Data::umas`), as the plan reports its best trio.
 #[derive(Clone, Copy)]
 pub(crate) struct PlanCombination {
@@ -49,11 +57,12 @@ impl PlanFit {
             current_odds: &candidates.current_odds,
             certified: &candidates.certified,
             continuations: &self.continuations,
+            step_caps: &candidates.step_caps,
             trios: &self.trios,
             trio_sides: &self.sides,
             finisher_umas: &candidates.allowed_trainees,
             knobs: self.knobs,
-            odds_scale: 1.0,
+            odds_scales: crate::career::plan::cont::OddsScales::ONE,
         }
     }
     /// A trio's careers at the fit's steps.
@@ -66,6 +75,8 @@ impl PlanFit {
 pub(crate) struct PlanScores {
     pub(crate) fit: PlanFit,
     pub(crate) best_combo: Option<PlanCombination>,
+    /// The CHEAPEST_TRIOS cheapest trios, cheapest first (`best_combo` the first): the near-tied routes the page names.
+    pub(crate) cheapest_combos: Vec<PlanCombination>,
     pub(crate) any_scored: bool,
     pub(crate) combo_ms: f64,
     pub(crate) index_ms: f64,
@@ -79,6 +90,8 @@ struct BuilderLift {
     efficiency: f64,
     /// The builder's uma (`Data::umas`).
     builder: crate::uma::UmaIndex,
+    /// The builder's row (its place in the plan's rows).
+    row: usize,
     /// P(her veteran lifts the candidate): lam.
     lift_chance: f64,
     /// The mean odds lifted to.
@@ -86,7 +99,8 @@ struct BuilderLift {
 }
 
 /// What a candidate's continuation is fitted from (`fit_continuation`): her odds now, the lifts of her exactly searched
-/// base builders (other umas' careers whose veteran lifts her), most efficient first, and her full-loop ceiling with her
+/// builder rows (other umas' careers whose veteran lifts her: their best and, with `builder_careers` > 1, their next
+/// ones), most efficient first, and her full-loop ceiling with her
 /// two most efficient builders of different umas (None: one builder's uma, her mean lifted odds the ceiling)
 pub(crate) struct ContEvidence {
     odds: f64,
@@ -133,19 +147,22 @@ pub(crate) fn continuation_evidence(
             }
             let trainee = candidates.trainees[candidate];
             let p = candidates.current_odds[candidate];
+            // (a builder's best career and her next ones, `builder_careers`: each a career she can run)
             let mut lifts: Vec<BuilderLift> = runs
                 .iter()
-                .filter(|row| {
-                    row.origin == RowOrigin::Base
+                .enumerate()
+                .filter(|(_, row)| {
+                    matches!(row.origin, RowOrigin::Base | RowOrigin::Alternative)
                         && row.exact
                         && data.umas[row.trainee].id != data.umas[trainee].id
                         && row.lift_stats[candidate].lift_chance > 0.0
                 })
-                .map(|row| {
+                .map(|(place, row)| {
                     let lift = row.lift_stats[candidate];
                     BuilderLift {
                         efficiency: lift.efficiency(p),
                         builder: row.trainee,
+                        row: place,
                         lift_chance: lift.lift_chance,
                         lifted_odds: lift.lifted_odds_sum / lift.lift_chance,
                     }
@@ -168,13 +185,14 @@ pub(crate) fn continuation_evidence(
         .collect()
 }
 
-/// A candidate's continuation under `model`, anchored at her odds now, and the builder its lam and phi are from: pinf
+/// A candidate's continuation under `model`, anchored at her odds now, and the builder row its lam and phi are from: pinf
 /// from her full-loop ceiling (`ContShape::ceil_share` of it, or her builder's mean lifted odds where higher), and lam and
-/// the first step (phi, the share of the log-odds gap it closes) from the exactly searched base builder whose
+/// the first step (phi, the share of the log-odds gap it closes) from the exactly searched builder row (a base row or an
+/// alternative one, `builder_careers`) whose
 /// continuation costs her the least under that pinf (ties: the more efficient), so that a builder added beside the
 /// others, the pinf pair unchanged, can only lower her step. Every odds it reads is scaled by `model.odds_scale` (the
 /// lift chances are not odds)
-pub(crate) fn fit_continuation(evidence: &ContEvidence, model: ContModel) -> (Cont, crate::uma::UmaIndex) {
+pub(crate) fn fit_continuation(evidence: &ContEvidence, model: ContModel) -> (Cont, usize) {
     let ContModel { shape: ContShape { ceil_share, lam_decay }, odds_scale } = model;
     let p = evidence.odds * odds_scale;
     let loop_share = evidence.loop_ceiling.map(|ceiling| ceil_share * (odds_scale * ceiling));
@@ -187,13 +205,13 @@ pub(crate) fn fit_continuation(evidence: &ContEvidence, model: ContModel) -> (Co
         (lift.lift_chance.min(1.0), phi, pinf)
     };
     let most_efficient = &evidence.lifts[0];
-    let (mut best, mut builder) = (shape(most_efficient), most_efficient.builder);
+    let (mut best, mut builder) = (shape(most_efficient), most_efficient.row);
     let mut best_cost = anchored_cost(best.0, best.1, best.2, p, lam_decay);
     for lift in &evidence.lifts[1..] {
         let (lam, phi, pinf) = shape(lift);
         let cost = anchored_cost(lam, phi, pinf, p, lam_decay);
         if cost < best_cost {
-            (best, best_cost, builder) = ((lam, phi, pinf), cost, lift.builder);
+            (best, best_cost, builder) = ((lam, phi, pinf), cost, lift.row);
         }
     }
     (Cont::with_decay(best.0, best.1, best.2, p, lam_decay), builder)
@@ -303,6 +321,68 @@ pub(crate) fn plan_combinations(
     combos
 }
 
+/// The trios' sides as `rechoose_finishers` reads them: per candidate her sides (`ScoreBase::trio_sides`) and the
+/// candidates' umas (candidate order).
+#[derive(Clone, Copy)]
+pub(crate) struct TrioSides<'sides> {
+    pub(crate) trio_sides: &'sides [Vec<TrioSideVeteran>],
+    pub(crate) candidates: &'sides [crate::uma::UmaIndex],
+}
+
+/// The trios with each C chosen again at odds as `scales` prices them (`OddsScales::of`): per trio the allowed uma
+/// (`allowed`), not of A's or B's character, at her best priced odds (`val` x her scale) on the trio's two sides as
+/// `plan_combinations` takes them (a real full veteran in place, a fresh side pushed), the first such on a tie; her
+/// step 1 / (odds x scale). At every scale 1 the C `plan_combinations` chose. A trio with no legal C keeps its own
+pub(crate) fn rechoose_finishers(
+    simulator: &mut Sim,
+    pool: &crate::career::pool::Pool,
+    sides: TrioSides,
+    finishers: crate::career::plan::score::FinisherChoice,
+    trios: &[Trio],
+    buf: &mut Vec<f64>,
+) -> Vec<Trio> {
+    let data = simulator.data;
+    let TrioSides { trio_sides, candidates } = sides;
+    let crate::career::plan::score::FinisherChoice { umas: allowed, scales } = finishers;
+    trios
+        .iter()
+        .map(|trio| {
+            let mut working_pool = simulator.evaluator.take_pool(pool);
+            let mut place = |slot: TrioSlot| {
+                let side = &trio_sides[slot.candidate.0][slot.side];
+                match side.step {
+                    SideStep::Existing(legacy) => legacy,
+                    SideStep::Current | SideStep::Alternative(_) => {
+                        simulator.env.setup.pool_push(&mut working_pool, &side.legacy);
+                        working_pool.veterans.len() - 1
+                    }
+                }
+            };
+            let [first, second] = trio.sides;
+            let (first_parent, second_parent) = (place(first), place(second));
+            let excluded = [data.umas[candidates[first.candidate.0]].id, data.umas[candidates[second.candidate.0]].id];
+            let mut best: Option<(f64, crate::uma::UmaIndex)> = None;
+            for &finisher in allowed {
+                if excluded.contains(&data.umas[finisher].id) {
+                    continue;
+                }
+                let lineage = Lineage { trainee: finisher, first_parent, second_parent };
+                if legal_pair(data, &working_pool, lineage) {
+                    let priced = val(simulator, &working_pool, lineage, buf) * scales.of(finisher);
+                    if priced > best.map_or(0.0, |(best_priced, _)| best_priced) {
+                        best = Some((priced, finisher));
+                    }
+                }
+            }
+            while working_pool.veterans.len() > pool.veterans.len() {
+                working_pool.pop_veteran();
+            }
+            simulator.evaluator.put_pool(pool, working_pool);
+            best.map_or(*trio, |(priced, finisher)| Trio { finisher, finisher_cost: 1.0 / priced, ..*trio })
+        })
+        .collect()
+}
+
 /// The fresh full veteran a career of candidate `candidate` would leave (`CareerSetup::veteran`: her G1 wins and
 /// possible pinks from her schedule in the outfit her deck runs, `Evaluator::career_wins`)
 fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, career: crate::career::Career) -> Legacy {
@@ -313,7 +393,8 @@ fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, career: crate::care
 
 /// The trios' sides per candidate: her real full veterans (free), the fresh full veteran her best career now would leave
 /// (her step, where finite) and those of her next `fresh_lineages` - 1 careers (the pairs ranked by her cached decks,
-/// `alternative_careers`, each then searched exactly, `exact_pair_career`; each at her step at its odds, where finite)
+/// `alternative_careers`, each then searched exactly, `exact_pair_career`; each at her step at its odds, admitted only
+/// where she grinds at once there, `BuildPlan::building_careers` 0)
 pub(crate) fn plan_sides(
     simulator: &mut Sim,
     context: &PlanContext,
@@ -364,13 +445,16 @@ pub(crate) fn plan_sides(
             for ranked_career in ranked {
                 // (each chosen pair at its best found searching it, the value another plan's complete search of the same
                 // pair finds: the cached decks only rank the pairs)
-                let PairCareer { found: alternative, proven } =
-                    exact_pair_career(simulator, searches, context.input.pool, &ranked_career);
+                let PairCareer { found: alternative, proven, .. } =
+                    exact_pair_career(simulator, &mut searches.pair_careers, context.input.pool, &ranked_career);
                 let (lineage, odds) = (found_lineage(trainee, &alternative), alternative.value);
-                let step = continuations[candidate].cost(odds);
-                if step.is_finite() {
+                let plan = continuations[candidate].plan(odds);
+                // (only where she grinds at once on it: no scored career's veteran lifts an Alternative side, so one that
+                // builds would be priced on a build no route advances, and her building would replace the lineage it
+                // wins by, C's pedigree)
+                if plan.expected_careers.is_finite() && plan.building_careers == 0.0 {
                     sides.push(TrioSideVeteran {
-                        step: SideStep::Alternative(step),
+                        step: SideStep::Alternative(plan.expected_careers),
                         legacy: fresh_veteran(
                             simulator,
                             context,
@@ -388,7 +472,8 @@ pub(crate) fn plan_sides(
         .collect()
 }
 
-/// A pair's career for a trio side (`exact_pair_career`): the career, and whether it is the pair's proven best.
+/// A pair's career for a trio side (`exact_pair_career`): the career, whether it is the pair's proven best, and how the
+/// search ended.
 #[derive(Clone)]
 pub(crate) struct PairCareer {
     pub(crate) found: crate::career::search::Found,
@@ -396,22 +481,51 @@ pub(crate) struct PairCareer {
     /// pair finds the same value); false: the search's incumbent or, where it found none above them, the cached decks'
     /// career (a real career, its value no certificate).
     pub(crate) proven: bool,
+    pub(crate) status: PairSearchStatus,
+}
+
+/// How a pair's exact search ended (`PairCareer::status`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PairSearchStatus {
+    /// Complete: its best is the pair's best (P(all)), the career taken.
+    Proven,
+    /// Complete, and its best is below the cached decks' value for the pair: that value was the corner tables'
+    /// interpolation, above the exact best; the search's career is taken (on gm16 one ulp: the same deck).
+    ProvenBelowCached,
+    /// Not complete (its work ran out, or a breached class): the better of its incumbent and the cached career.
+    Incomplete,
+    /// Complete with no career on the pair: the cached career kept, unproven.
+    NoneFound,
+}
+
+impl PairSearchStatus {
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Proven => "proven",
+            Self::ProvenBelowCached => "proven_below_cached",
+            Self::Incomplete => "incomplete",
+            Self::NoneFound => "none_found",
+        }
+    }
 }
 
 /// Trainee `ranked.trainee`'s best career on `ranked`'s parent pair, searched with both parents fixed (`Env::solve`) under
 /// the job's own budget, not `search_work` (one pair: its search completes on every val/plan pool; a budget that one job
 /// sets the same for every plan, so whether it completes depends on the job and the proofs the worker kept, never on
-/// `search_work`), memoised per plan (`PlanSearches::pair_careers`): the search's best where it beats the cached
-/// decks' career (`ranked`), else that career
-fn exact_pair_career(
+/// `search_work`), memoised (`PairMemo`: per plan, `PlanSearches::pair_careers`, or per check). A complete search's
+/// best is taken, proven, even below the cached decks' career's value (`ranked`; that value is the corner tables'
+/// interpolation: `ProvenBelowCached`); an incomplete search's incumbent where it is at least that value, else the
+/// cached career (`Incomplete`, unproven); a complete search that finds none keeps the cached career, unproven
+/// (`NoneFound`). Proven certifies the pair's best deck for P(all), not its saving's rank among pairs
+pub(crate) fn exact_pair_career(
     simulator: &mut Sim,
-    searches: &mut PlanSearches,
+    memo: &mut PairMemo,
     pool: &crate::career::pool::Pool,
     ranked: &crate::career::search::Found,
 ) -> PairCareer {
     let (first_parent, second_parent) = ranked.unordered_parents();
     let key = (ranked.trainee, first_parent, second_parent);
-    if let Some(career) = searches.pair_careers.get(&key) {
+    if let Some(career) = memo.get(&key) {
         return career.clone();
     }
     let pair = [first_parent, second_parent];
@@ -423,9 +537,24 @@ fn exact_pair_career(
         top: 1,
     });
     let career = match searched.found.into_iter().next() {
-        Some(found) if found.value >= ranked.value => PairCareer { found, proven: searched.complete },
-        _ => PairCareer { found: ranked.clone(), proven: false },
+        // (a complete search's best is the pair's: taken even below the cached value, an interpolation)
+        Some(found) if searched.complete => {
+            let status =
+                if found.value < ranked.value { PairSearchStatus::ProvenBelowCached } else { PairSearchStatus::Proven };
+            PairCareer { found, proven: true, status }
+        }
+        Some(found) if found.value >= ranked.value => {
+            PairCareer { found, proven: false, status: PairSearchStatus::Incomplete }
+        }
+        _ => PairCareer {
+            found: ranked.clone(),
+            proven: false,
+            status: if searched.complete { PairSearchStatus::NoneFound } else { PairSearchStatus::Incomplete },
+        },
     };
-    searches.pair_careers.insert(key, career.clone());
+    memo.insert(key, career.clone());
     career
 }
+
+/// Pair searches by (trainee, parent pair ascending) (`exact_pair_career`).
+pub(crate) type PairMemo = crate::FxMap<(crate::uma::UmaIndex, usize, usize), PairCareer>;

@@ -1,6 +1,7 @@
 //! The roll of the plan's pick and its kept state.
 use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::anchors::{FoundAnchor, PartnerAnchors};
+use crate::career::plan::caps::{StepCap, cap_in, cap_out};
 use crate::career::plan::cont::{Cont, MAX_PARTNERS, ScoreBase, ScoringKnobs};
 use crate::career::plan::score::fm_masks;
 use crate::career::plan::score::kernel::Scored;
@@ -30,6 +31,8 @@ pub(crate) struct KeptBase {
     /// Whether each is her proven best career's (`ScoreBase::certified`).
     certified: Vec<bool>,
     continuations: Vec<Cont>,
+    /// Each candidate's step cap (`ScoreBase::step_caps`; empty: none).
+    step_caps: Vec<Option<StepCap>>,
 }
 
 impl KeptBase {
@@ -41,6 +44,7 @@ impl KeptBase {
             current_odds: score_base.current_odds.to_vec(),
             certified: score_base.certified.to_vec(),
             continuations: score_base.continuations.to_vec(),
+            step_caps: score_base.step_caps.to_vec(),
         }
     }
     pub(super) fn base(&self) -> ScoreBase<'_> {
@@ -51,11 +55,12 @@ impl KeptBase {
             current_odds: &self.current_odds,
             certified: &self.certified,
             continuations: &self.continuations,
+            step_caps: &self.step_caps,
             trios: &[],
             trio_sides: &[],
             finisher_umas: &[],
             knobs: ScoringKnobs::default(),
-            odds_scale: 1.0,
+            odds_scales: crate::career::plan::cont::OddsScales::ONE,
         }
     }
 }
@@ -96,7 +101,7 @@ pub(crate) fn roll_key(job: &Value) -> u64 {
     hash_text(&crate::career::state::json_without(
         job,
         &["no_reports", "compare", "roll"],
-        &["roll", "robust", "oracle"],
+        &["roll", "robust", "oracle", "pair_search"],
     ))
 }
 
@@ -209,7 +214,8 @@ pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
     let slot_out = |slot: usize| if slot == NO_SLOT { Value::Null } else { json!(slot) };
     let base_out = |base: &KeptBase| {
         json!({"cands": base.candidates, "c1": fvec(&base.step_costs), "v0": hx(base.current_value), "pnow": fvec(&base.current_odds), "cert": base.certified,
-            "cont": base.continuations.iter().map(|continuation| json!([hx(continuation.lam), hx(continuation.phi), hx(continuation.pinf), !continuation.tables.is_empty(), hx(continuation.anchor_odds)])).collect::<Vec<_>>()})
+            "cont": base.continuations.iter().map(|continuation| json!([hx(continuation.lam), hx(continuation.phi), hx(continuation.pinf), !continuation.tables.is_empty(), hx(continuation.anchor_odds)])).collect::<Vec<_>>(),
+            "caps": base.step_caps.iter().map(|cap| cap.as_ref().map(|cap| cap_out(&cap.kept))).collect::<Vec<_>>()})
     };
     let scored_out = |scored: &Scored| {
         json!({"n": [scored.uncertain_target_count, scored.fixed_target_count, scored.target_count, scored.slot_count], "goal": scored.completes_goal, "w": fvec(&scored.star_mix), "uncv": scored.uncertain_targets, "fmm": scored.fixed_landed_masks,
@@ -310,13 +316,30 @@ fn kept_base_in(stored: &Value) -> Option<KeptBase> {
             })
         })
         .collect::<Option<Vec<Cont>>>()?;
+    let current_odds = fvec_r(&stored["pnow"])?;
+    // (each candidate's cap or null, read at her odds now; absent: none)
+    let step_caps = match stored["caps"].as_array() {
+        Some(caps) => caps
+            .iter()
+            .enumerate()
+            .map(|(candidate, cap)| {
+                if cap.is_null() {
+                    Some(None)
+                } else {
+                    Some(Some(StepCap::at(cap_in(cap)?, *current_odds.get(candidate)?)))
+                }
+            })
+            .collect::<Option<Vec<_>>>()?,
+        None => vec![],
+    };
     Some(KeptBase {
         candidates: usize_vec(&stored["cands"])?.into_iter().map(crate::uma::UmaIndex).collect(),
         step_costs: fvec_r(&stored["c1"])?,
         current_value: fx(&stored["v0"])?,
-        current_odds: fvec_r(&stored["pnow"])?,
+        current_odds,
         certified: stored["cert"].as_array()?.iter().map(Value::as_bool).collect::<Option<_>>()?,
         continuations,
+        step_caps,
     })
 }
 
@@ -382,6 +405,8 @@ fn scored_in(stored: &Value) -> Option<Scored> {
         current_probabilities: fvec_r(&stored["p0"])?,
         landed_set_chances: pvec_r(&stored["os"])?,
         routes,
+        // (a roll state's base prices every C at its common scale, 1)
+        finisher_umas: vec![],
         present_factors: vec![],
         absent_factors: vec![],
         spark_scales: vec![],
@@ -397,7 +422,8 @@ impl Scored {
             && base.step_costs.len() == candidate_count
             && base.current_odds.len() == candidate_count
             && base.certified.len() == candidate_count
-            && base.continuations.len() <= candidate_count;
+            && base.continuations.len() <= candidate_count
+            && base.step_caps.len() <= candidate_count;
         // her setups, one slot each (`slot_count` and `slot_by_setup` the identity): the partner slots and the lift
         // slots (each at most MAX_PARTNERS per candidate, candidate indices; the partner slots in candidate order), then
         // one finisher slot per route (at most MAX_ROUTES routes); each route's lifts lift slots, its finisher and its C

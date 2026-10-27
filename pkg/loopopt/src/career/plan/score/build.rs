@@ -234,7 +234,7 @@ pub(super) fn evaluate_career(
     prof("sc_setup_ms", now_ms() - setups_started);
     let full_mask = (1usize << target_count) - 1;
     let (leaf_count, table_size) = (1usize << (2 * uncertain_target_count), 1usize << uncertain_target_count);
-    let builds_routes = matches!(want, Want::Score | Want::Keep | Want::Ys)
+    let builds_routes = matches!(want, Want::Score | Want::Keep | Want::Ys | Want::Classes)
         && !context.score_base.trios.is_empty()
         && context.score_base.current_value.is_finite();
     // the partner setups' entries, twice where lift setups follow (each reads at most what its partner setup does),
@@ -306,8 +306,13 @@ pub(super) fn evaluate_career(
         collapsed_targets: vec![true; uncertain_target_count],
         slot_by_setup: (0..slot_count).collect(),
         current_probabilities,
-        landed_set_chances: scaled_landed_sets(current.outcome_sets, full_mask, context.score_base.odds_scale),
+        landed_set_chances: scaled_landed_sets(
+            current.outcome_sets,
+            full_mask,
+            context.score_base.odds_scales.of(trainee),
+        ),
         routes: route_list,
+        finisher_umas: setups[lifting_slots..].iter().map(|setup| setup.trainee).collect(),
         present_factors: vec![],
         absent_factors: vec![],
         spark_scales: vec![],
@@ -327,6 +332,7 @@ pub(super) fn evaluate_career(
             kept: None,
             lift_stats: vec![LiftStats::default(); candidate_count],
             joint_lifts: vec![],
+            classes: vec![],
         };
     }
     let mut scratch = FOLD_SCRATCH.with(|current| std::mem::take(&mut *current.borrow_mut()));
@@ -343,10 +349,12 @@ pub(super) fn evaluate_career(
         kept: (want == Want::Keep).then_some(KeptScoring { scored }),
         lift_stats: evaluation.lift_stats,
         joint_lifts: evaluation.joint_lifts,
+        classes: evaluation.classes,
     }
 }
 
-/// Her landed sets' chances as a base pricing every P(all) at `odds_scale` x the model's takes them (`ScoreBase::odds_scale`,
+/// Her landed sets' chances as a base pricing her P(all) at `odds_scale` x the model's takes them (`ScoreBase::odds_scales`
+/// at her uma,
 /// the robustness check's all-target ratio variants): the full set's chance f times the scale, the mass it loses (or
 /// gains) spread over the other sets in proportion to their chances, each times (1 - scale f) / (1 - f), so the sets
 /// still sum to one and P(all) is scaled as every other career's. Unchanged at scale 1 (every plan scoring), or where

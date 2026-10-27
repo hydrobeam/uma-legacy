@@ -3,7 +3,11 @@
 //! worker keeps with what its product searches proved, so its plan does the work of one combined job and gives its
 //! output; after a reload the stored main search is taken as it is (no search nodes) and both jobs answer as before.
 use serde_json::{Value, json};
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// one process running `jobs` in turn (one output line each), the state in from / out to the given files
 fn run(jobs: &[&Path], state_in: Option<&Path>, state_out: Option<&Path>) -> (Vec<Value>, String) {
@@ -132,4 +136,43 @@ fn a_plan_on_another_trainee_filter_reuses_none_of_its_careers() {
     assert!(solves(&twice[1]) < solves(&twice[0]), "the same plan twice reused nothing: the check reads no reuse");
     assert_eq!(solves(&after[1]), solves(&alone[0]), "the [1004] plan reused careers of the [1003, 1004] plan");
     assert!(strip(&after[1]) == strip(&alone[0]), "the [1004] plan after the [1003, 1004] plan differs from it alone");
+}
+
+/// The pair search asked only after a check's variants finished without it (astra-review-V5 #5): the plan, its check
+/// with `robust: "all"` and no `pair_search`, then `robust: "next"` with it: the working state went with the last
+/// variant, so `next` says why it has no pairs (`pairs_error`); `"all"` with it then runs the plan and its check again
+/// and brings the pairs
+#[test]
+fn a_pair_search_asked_after_its_check_finished_says_why_or_runs_again() {
+    let job: Value = serde_json::from_str(
+        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
+    )
+    .unwrap();
+    let with_next = |next: Value| {
+        let mut follow_up = job.clone();
+        follow_up["next"] = next;
+        follow_up
+    };
+    let dir = std::env::temp_dir();
+    let tag = std::process::id();
+    let jobs = [
+        job.clone(),
+        with_next(json!({"robust": "all"})),
+        with_next(json!({"robust": "next", "pair_search": true})),
+        with_next(json!({"robust": "all", "pair_search": true})),
+    ];
+    let paths: Vec<_> = (0..jobs.len()).map(|k| dir.join(format!("uma-late-pairs-{tag}-{k}.json"))).collect();
+    for (path, job) in paths.iter().zip(&jobs) {
+        fs::write(path, job.to_string()).unwrap();
+    }
+    let (outputs, _) = run(&paths.iter().map(PathBuf::as_path).collect::<Vec<_>>(), None, None);
+    for path in &paths {
+        fs::remove_file(path).unwrap();
+    }
+    let check = |k: usize| &outputs[k]["next"]["robust"];
+    assert_eq!(check(1)["pending"], json!(0));
+    assert!(check(1)["pairs"].is_null() && check(1)["pairs_error"].is_null(), "no pair search asked yet");
+    assert!(check(2)["pairs"].is_null());
+    assert!(check(2)["pairs_error"].is_string(), "the late request says why it has no pairs: {}", check(2));
+    assert!(check(3)["pairs"]["trainees"].as_array().is_some_and(|trainees| !trainees.is_empty()), "{}", check(3));
 }

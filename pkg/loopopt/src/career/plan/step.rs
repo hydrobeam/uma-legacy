@@ -57,6 +57,8 @@ pub(crate) struct AfterHer<'after> {
     pub(crate) routes: &'after [Route],
     /// The lift slots (a route's lifts index them).
     pub(crate) lift_slot_count: usize,
+    /// Per finisher slot, its C's uma (`Scored::finisher_umas`; empty: every C at the common scale).
+    pub(crate) finisher_umas: &'after [crate::uma::UmaIndex],
 }
 
 /// Direct-mapped probability cache entry; NaN bits mark an empty entry.
@@ -161,7 +163,7 @@ impl ScoreBase<'_> {
     /// Expected careers saved at one outcome: V0 less V after her, the least of V0 (every trio as it was) and every
     /// route (`Route`) whose lifts happened at this outcome (and, for one with her own full veteran as a side, where she
     /// landed every target): its lifted steps (each at its lift slot's odds) plus its fixed sides plus C's step,
-    /// 1 / its finisher slot's odds here (as the base prices odds, `ScoreBase::odds_scale`) where every lifted side grinds
+    /// 1 / its finisher slot's odds here (as the base prices her uma's odds, `ScoreBase::odds_scales`) where every lifted side grinds
     /// at once, else `Route::while_building`'s (the bound, not knowing, takes the cheaper of the two); the goal's V when
     /// her parents are full veterans. `lifted`: one per lift slot whose odds rose; `finisher_odds` the finisher slots'
     /// odds at this outcome; `steps` scratch. Both the estimate and the bound use this sequence, with their own StepCost
@@ -193,7 +195,8 @@ impl ScoreBase<'_> {
         let mut best = self.current_value;
         let finisher_cost = |slot: usize| {
             let odds = finisher_odds[slot];
-            (odds > 0.0).then(|| 1.0 / (odds * self.odds_scale))
+            let scale = after.finisher_umas.get(slot).map_or(self.odds_scales.common, |&uma| self.odds_scales.of(uma));
+            (odds > 0.0).then(|| 1.0 / (odds * scale))
         };
         for route in after.routes {
             if route.full_only && !full {
@@ -250,11 +253,12 @@ mod tests {
             current_odds: &[p0],
             certified: &[true],
             continuations: std::slice::from_ref(&cont),
+            step_caps: &[],
             trios: &[],
             trio_sides: &[],
             finisher_umas: &[],
             knobs: crate::career::plan::cont::ScoringKnobs::default(),
-            odds_scale: 1.0,
+            odds_scales: crate::career::plan::cont::OddsScales::ONE,
         };
         let routes = [Route {
             lifts: [0, NO_SLOT],
@@ -263,7 +267,8 @@ mod tests {
             finisher_slot: 0,
             while_building: WhileBuilding::Fixed(finisher),
         }];
-        let after = AfterHer { completes_goal: false, full_mask: 1, routes: &routes, lift_slot_count: 1 };
+        let after =
+            AfterHer { completes_goal: false, full_mask: 1, routes: &routes, lift_slot_count: 1, finisher_umas: &[] };
         let lift = [CandidateLift { slot: 0, candidate: 0, probability: lifted_odds }];
         let finisher_odds = [1.0 / finisher];
         let mut estimate = StepEstimate::new(1, EstimateBuffers::default());

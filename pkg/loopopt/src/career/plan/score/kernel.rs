@@ -51,7 +51,21 @@ pub(super) struct ScoringEvaluation {
     pub(super) lift_stats: Vec<LiftStats>,
     /// With `Want::Joint`: per set of candidates her veteran lifts at once (bit c: candidate c), its chance, by set.
     pub(super) joint_lifts: Vec<(u64, f64)>,
+    /// With `Want::Classes`: the saving split by outcome class, by class (`ClassSaving`).
+    pub(super) classes: Vec<ClassSaving>,
     pub(super) counters: EvaluationCounters,
+}
+
+/// One outcome class of a scoring (`Want::Classes`): her full veteran or not, and the candidates her veteran lifts
+/// through the lift slots V after her reads (bit c: candidate c); its chance, its chance-weighted saving, and per
+/// lifted candidate the chance-weighted odds she is lifted to (the best of her lift slots at each outcome).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ClassSaving {
+    pub(crate) full: bool,
+    pub(crate) lifted: u64,
+    pub(crate) chance: f64,
+    pub(crate) saving_sum: f64,
+    pub(crate) lifted_odds_sums: Vec<(usize, f64)>,
 }
 
 /// Reusable scoring storage. Fold writes outcome_values before the outcome loop reads it.
@@ -112,6 +126,9 @@ pub(crate) struct Scored {
     pub(crate) landed_set_chances: Vec<f64>,
     /// The routes through her veteran (`score::routes`); none for a scoring of the stats alone.
     pub(crate) routes: Vec<Route>,
+    /// Per finisher slot (a route's `finisher_slot`), its C's uma: the scale her odds are priced at
+    /// (`OddsScales::of`). Empty (a stored roll state's): every C at the base's common scale.
+    pub(crate) finisher_umas: Vec<crate::uma::UmaIndex>,
     /// Derived (`derive`): per setup, uncertain target and star level, x = x0 xm.
     pub(crate) present_factors: Vec<Vec<[f64; 4]>>,
     /// Derived (`derive`): 1 - x of `present_factors`.
@@ -247,6 +264,7 @@ impl Scored {
             full_mask: self.full_mask().bits(),
             routes: &self.routes,
             lift_slot_count: self.lift_candidates.len(),
+            finisher_umas: &self.finisher_umas,
         }
     }
 }
@@ -379,6 +397,7 @@ fn evaluate_outcomes<L: Leaves>(
         },
         retain_outcome_savings: want == Want::Ys,
         joint_lifts: want == Want::Joint,
+        class_split: want == Want::Classes,
     };
     context.evaluate(scored.emits_setup_products(), matches!(want, Want::Stats | Want::Joint), &mut scratch.workspace)
 }
@@ -458,6 +477,8 @@ struct OutcomeContext<'out, 'base, L: Leaves> {
     retain_outcome_savings: bool,
     /// The stats also gather the joint lift sets (`ScoringEvaluation::joint_lifts`).
     joint_lifts: bool,
+    /// The savings also split by outcome class (`ScoringEvaluation::classes`).
+    class_split: bool,
 }
 
 impl<L: Leaves> OutcomeContext<'_, '_, L> {
@@ -543,6 +564,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     let mut joint_lifts: crate::FxMap<u64, f64> = crate::FxMap::default();
     assert!(!context.joint_lifts || candidate_count <= 64, "a joint lift set is one bit per candidate");
     let mut lift_steps = vec![];
+    let mut classes: Vec<ClassSaving> = vec![];
+    // (`Want::Classes`: per representative outcome the lifts it read, for the outcomes that reuse its saving)
+    let mut representative_lifts: crate::FxMap<usize, Vec<CandidateLift>> = crate::FxMap::default();
     let mut outcome_count = 0usize;
     let mut probability_buffer = vec![0.0f64; slot_count];
     // V after her (`v_after` at the estimate's step costs, `StepEstimate`), from the candidates each outcome lifts (row, candidate,
@@ -640,6 +664,12 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                     if context.retain_outcome_savings {
                         outcome_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
                     }
+                    if context.class_split {
+                        // (the same landed set as its representative, so the same full flag)
+                        let lifts = representative_lifts.get(&representative_outcome).map_or(&[][..], Vec::as_slice);
+                        let full = landed_mask == context.after_her.full_mask;
+                        add_to_class(&mut classes, full, lifts, outcome_probability, saving);
+                    }
                 }
                 continue;
             }
@@ -712,6 +742,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
             );
             if is_representative {
                 representative_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
+                if context.class_split {
+                    representative_lifts.insert((leaf_row << fixed_target_count) | fixed_mask, lifted.clone());
+                }
             }
             if !possible {
                 continue;
@@ -722,6 +755,15 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
             }
             if context.retain_outcome_savings {
                 outcome_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
+            }
+            if context.class_split {
+                add_to_class(
+                    &mut classes,
+                    landed_mask == context.after_her.full_mask,
+                    &lifted,
+                    outcome_probability,
+                    saving,
+                );
             }
         }
     }
@@ -737,12 +779,41 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         outcome_savings,
         lift_stats,
         joint_lifts,
+        classes,
         counters: EvaluationCounters {
             outcomes: outcome_count,
             changed_outcomes: estimate.workspace.changed_outcomes,
             cost_evaluations: estimate.workspace.cost_evaluations,
             cache_hits: estimate.workspace.cache_hits,
         },
+    }
+}
+
+/// One outcome added to its class (`ClassSaving`, `Want::Classes`)
+fn add_to_class(classes: &mut Vec<ClassSaving>, full: bool, lifted: &[CandidateLift], chance: f64, saving: f64) {
+    let lifted_set = lifted.iter().fold(0u64, |set, lift| set | (1 << lift.candidate));
+    let index =
+        classes.iter().position(|class| class.full == full && class.lifted == lifted_set).unwrap_or_else(|| {
+            classes.push(ClassSaving { full, lifted: lifted_set, ..ClassSaving::default() });
+            classes.len() - 1
+        });
+    let class = &mut classes[index];
+    class.chance += chance;
+    class.saving_sum += chance * saving;
+    // (a candidate with several lift slots, one per kept partner: her best of them at this outcome, counted once)
+    for (index, lift) in lifted.iter().enumerate() {
+        if lifted[..index].iter().any(|earlier| earlier.candidate == lift.candidate) {
+            continue;
+        }
+        let best = lifted
+            .iter()
+            .filter(|other| other.candidate == lift.candidate)
+            .map(|other| other.probability)
+            .fold(0.0f64, f64::max);
+        match class.lifted_odds_sums.iter_mut().find(|(candidate, _)| *candidate == lift.candidate) {
+            Some(entry) => entry.1 += chance * best,
+            None => class.lifted_odds_sums.push((lift.candidate, chance * best)),
+        }
     }
 }
 

@@ -1,7 +1,8 @@
 //! A per-uma career search that runs out of its work cap (`next.search_work`) gives the best career it found, not a
 //! proven best: the plan counts those umas (`umas_unproven`) and marks their rows (`proven: false`), which the page
 //! notes under its table. The val/plan p16 regression checks that a cap of 1 unit leaves unproven rows and searches,
-//! while the default cap leaves none.
+//! while the default cap leaves none. (An alternative row from her cached decks, never searched on its pair, is
+//! `proven: false` with `searched: false`: no search behind it ran out, so it is not counted here.)
 use serde_json::{Value, json};
 use std::{fs, process::Command};
 
@@ -27,7 +28,14 @@ fn capped_searches_are_reported_unproven() {
         &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
     )
     .unwrap();
-    let unproven = |n: &Value| n["options"].as_array().unwrap().iter().filter(|o| o["proven"] == json!(false)).count();
+    let unproven = |n: &Value| {
+        n["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|o| o["proven"] == json!(false) && o["searched"] != json!(false))
+            .count()
+    };
     let n = plan(&job);
     assert_eq!(n["umas_unproven"], 0);
     assert_eq!(unproven(&n), 0);

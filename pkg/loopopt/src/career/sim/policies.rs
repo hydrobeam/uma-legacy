@@ -7,7 +7,7 @@ use crate::career::plan::ScoringContext;
 use crate::career::pool::Pool;
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::play::PathState;
-use crate::career::sim::{ForcedCareer, Goal, PAGE_TOP, Sim, leg_json};
+use crate::career::sim::{ForcedCareer, Goal, IndexAction, PAGE_TOP, Sim, leg_json};
 use crate::career::{Career, Lineage, run_career_in};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -44,6 +44,17 @@ pub(super) struct IndexRunCounts {
     pub(super) roles: std::collections::BTreeMap<String, usize>,
     /// Picks that were the best-odds career (`best_odds`).
     pub(super) best_odds_picks: usize,
+    /// `act_on` "pair_search" (`IndexAction::PairSearch`), per plan: what it ran, by the recommendation's `source`
+    /// ("plan_pick", "pick_trainee_pair", "cross_trainee"; "no_check" where the plan kept no check, which the page
+    /// then does not show), the career run (`kept::career_id`), and the check's seconds (`robust.check_ms`, inside the
+    /// plan job's); the `career` jobs run for a recommendation other than the plan's pick, each one's seconds; and per
+    /// plan the career that ran, as the report it was built from names it (`career`: the plan's `choice`, or the
+    /// `career` job's result for a named career) with the landed-set chances it ran with (`outcome_sets`, `p_all`)
+    pub(super) acted_on: std::collections::BTreeMap<String, usize>,
+    pub(super) careers: Vec<String>,
+    pub(super) check_seconds: Vec<f64>,
+    pub(super) career_job_seconds: Vec<f64>,
+    pub(super) executed: Vec<Value>,
 }
 impl IndexRunCounts {
     fn record_plan(&mut self, report: &Value, started: std::time::Instant) {
@@ -58,6 +69,18 @@ impl IndexRunCounts {
                 self.best_odds_picks += 1;
             }
         }
+    }
+    /// `act_on` "pair_search": a plan's action (`IndexRunCounts::acted_on`).
+    fn record_action(&mut self, source: &str, career: &Value, check_ms: f64) {
+        *self.acted_on.entry(source.to_string()).or_default() += 1;
+        self.careers.push(career.as_str().unwrap_or("?").to_string());
+        self.check_seconds.push(check_ms.round() / 1e3);
+    }
+    /// `act_on` "pair_search": the career a plan's action ran (`IndexRunCounts::executed`), `ran_from` the report its
+    /// `Cur` was built from.
+    fn record_executed(&mut self, ran_from: &Value, career: &Cur) {
+        self.executed.push(json!({"career": ran_from["career"], "p_all": career.p_all,
+            "outcome_sets": career.outcome_sets}));
     }
 }
 thread_local! { pub(super) static INDEX_RUN_COUNTS: std::cell::RefCell<IndexRunCounts> = std::cell::RefCell::new(IndexRunCounts::default()); }
@@ -172,11 +195,12 @@ impl Sim<'_, '_> {
             current_odds: &current_odds,
             certified: &[],
             continuations: &[],
+            step_caps: &[],
             trios: &[],
             trio_sides: &[],
             finisher_umas: &[],
             knobs: plan::cont::ScoringKnobs::default(),
-            odds_scale: 1.0,
+            odds_scales: crate::career::plan::cont::OddsScales::ONE,
         };
         let scoring = ScoringContext { score_base: &base, legacies: &state.legacies, pool: &state.pool };
         let mut best_builder: Option<BuilderCareer> = None;
@@ -424,7 +448,14 @@ impl Sim<'_, '_> {
         job_fields.insert("fix".into(), json!([]));
         job_fields.insert("top".into(), json!(PAGE_TOP));
         job_fields.insert("per_trainee".into(), json!(false));
-        job_fields.insert("next".into(), self.settings.next.clone());
+        let mut next = self.settings.next.clone();
+        if self.settings.act_on == IndexAction::PairSearch {
+            // (the page's check, every variant then the pair search, answered in the plan's own job: `check_kept`
+            // runs it on the plan's kept state after the plan)
+            next["robust"] = json!("all");
+            next["pair_search"] = json!(true);
+        }
+        job_fields.insert("next".into(), next);
         job_fields.insert("no_reports".into(), json!(true));
         let started = std::time::Instant::now();
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
@@ -435,6 +466,66 @@ impl Sim<'_, '_> {
             report.to_string().chars().take(300).collect::<String>()
         );
         INDEX_RUN_COUNTS.with(|counts| counts.borrow_mut().record_plan(&report, started));
-        self.cur_from_solver_pick(&state.pool, &pick)
+        match self.settings.act_on {
+            IndexAction::Choice => self.cur_from_solver_pick(&state.pool, &pick),
+            IndexAction::PairSearch => self.recommended_cur(state, &report, &pick),
+        }
+    }
+    /// `act_on` "pair_search": the career the plan's check recommends (`next.robust.pairs.recommendation`, robust.rs
+    /// `CheckWork::verdict`, what the page's `pairSearchNotes` shows): the plan's pick (`pick`, its `next.choice`) where
+    /// it names that, or where the plan kept no check (no pair search: the page shows none); else the career it names,
+    /// run with its own deck (`named_cur`)
+    fn recommended_cur(&mut self, state: &PathState, report: &Value, pick: &Value) -> Cur {
+        let plan_pick = &report["next"]["outcomes"]["career"];
+        let check = &report["next"]["robust"];
+        let recommendation = &check["pairs"]["recommendation"];
+        let source = recommendation["source"].as_str().unwrap_or("no_check");
+        let career = if recommendation.is_object() { &recommendation["career"] } else { plan_pick };
+        let check_ms = check["check_ms"].as_f64().unwrap_or(0.0);
+        INDEX_RUN_COUNTS.with(|counts| counts.borrow_mut().record_action(source, career, check_ms));
+        match source {
+            "no_check" | "plan_pick" => {
+                assert!(
+                    career == plan_pick && plan_pick.is_string(),
+                    "index: the check's plan pick {career} is not the plan's {plan_pick}"
+                );
+                let cur = self.cur_from_solver_pick(&state.pool, pick);
+                INDEX_RUN_COUNTS.with(|counts| counts.borrow_mut().record_executed(pick, &cur));
+                cur
+            }
+            _ => self.named_cur(state, recommendation),
+        }
+    }
+    /// The career `recommendation` names (its `career` id, `trainee_id` and `parents`), run as the page runs a named
+    /// career: a `career` job (docs/SOLVER.md) with her the one trainee and both parents fixed, its deck as named, no
+    /// deck search; its report gives the career's exact P(all) and landed-set chances
+    fn named_cur(&mut self, state: &PathState, recommendation: &Value) -> Cur {
+        let mut job = self.job.clone();
+        let job_fields = job.as_object_mut().unwrap();
+        job_fields.remove("simulate");
+        job_fields.remove("next");
+        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
+        job_fields.insert("trainees".into(), json!([recommendation["trainee_id"]]));
+        job_fields.insert("fix".into(), recommendation["parents"].clone());
+        job_fields.insert("career".into(), recommendation["career"].clone());
+        job_fields.insert("top".into(), json!(1));
+        job_fields.insert("per_trainee".into(), json!(false));
+        let started = std::time::Instant::now();
+        let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
+        let named = report["results"][0].clone();
+        assert!(
+            named.is_object() && named["trainee"]["id"] == recommendation["trainee_id"],
+            "index: the recommended career {} did not run: {}",
+            recommendation["career"],
+            report.to_string().chars().take(300).collect::<String>()
+        );
+        let seconds = (started.elapsed().as_secs_f64() * 1e3).round() / 1e3;
+        let cur = self.cur_from_solver_pick(&state.pool, &named);
+        INDEX_RUN_COUNTS.with(|counts| {
+            let mut counts = counts.borrow_mut();
+            counts.career_job_seconds.push(seconds);
+            counts.record_executed(&named, &cur);
+        });
+        cur
     }
 }

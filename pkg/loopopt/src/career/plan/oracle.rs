@@ -6,7 +6,7 @@ use crate::career::clock::now_ms;
 use crate::career::plan::combine::{FITTED_MODEL, PlanScores, fit_continuation};
 use crate::career::plan::cont::{Cont, PathPoint, SideStep, TrioSlot, Want};
 use crate::career::plan::robust::aside;
-use crate::career::plan::rows::{PlanRow, RowOrigin};
+use crate::career::plan::rows::PlanRow;
 use crate::career::plan::score::score_career;
 use crate::career::plan::{Oracle, PlanContext, found_career};
 use crate::career::sim::Sim;
@@ -170,11 +170,8 @@ pub(crate) fn joint_oracle(
     let mut order: Vec<usize> = (0..fit.trios.len()).collect();
     order.sort_by(|&first, &second| fit.trio_value(&fit.trios[first]).total_cmp(&fit.trio_value(&fit.trios[second])));
     order.truncate(ORACLE_TRIOS);
-    // per candidate, the row her continuation's builder scored as (an exactly searched base row)
-    let builder_row = |candidate: usize| {
-        let (_, builder) = fit_continuation(fit.evidence[candidate].as_ref()?, FITTED_MODEL);
-        runs.iter().position(|row| row.origin == RowOrigin::Base && row.exact && row.trainee == builder)
-    };
+    // per candidate, the row her continuation's builder scored as (an exactly searched builder row)
+    let builder_row = |candidate: usize| Some(fit_continuation(fit.evidence[candidate].as_ref()?, FITTED_MODEL).1);
     let stats_base = candidates.stats_base();
     let mut joint_sets: crate::FxMap<usize, Vec<(u64, f64)>> = crate::FxMap::default();
     let trios: Vec<Value> = aside(simulator, |simulator| {

@@ -1,16 +1,16 @@
 //! Candidate setup and exact and surrogate careers.
 use crate::career::Env;
 use crate::career::clock::{now_ms, prof, progress};
+use crate::career::plan::caps::{CapPool, held_caps, least_caps};
 use crate::career::plan::cont::Want;
 use crate::career::plan::kept::{
-    CachedSearch, KeptPlans, best_of, bests_key, same_career, stamp_ok, stamped, take_kept_plan,
+    CachedSearch, KeptPlans, best_of, bests_key, plan_scope, same_career, stamp_ok, stamped, take_kept_plan,
 };
 use crate::career::plan::rows::{PlanRow, RowOrigin};
 use crate::career::plan::score::kernel::LiftStats;
 use crate::career::plan::score::{CareerScore, score_career};
 use crate::career::plan::search::{
-    HINT_FLOOR, HintUma, IDX_CANDS, LoopRotation, PROXY_EFF, best_sur, capped, certified, hint_umas, is_full, rotation,
-    sim_for,
+    HintUma, IDX_CANDS, LoopRotation, PROXY_EFF, best_sur, capped, certified, hint_umas, is_full, rotation, sim_for,
 };
 use crate::career::plan::{
     ParentPool, PlanCandidates, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, PlanSetup, found_career,
@@ -41,7 +41,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         None => LoopRotation { members: vec![], member_info: vec![], note: None },
     };
     let main_career = input.solved.found[0].clone();
-    let StageCandidates { trainees: candidate_trainees, hint } =
+    let StageCandidates { trainees: stage_trainees, hint, cut, side_only } =
         stage_candidates(env, input, &main_career, &loop_rotation.members);
     let loop_ms = now_ms() - started_ms;
     let allowed_trainees: Vec<crate::uma::UmaIndex> =
@@ -61,7 +61,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         env.setup.union_keyed(&mut env.state, plan.flags.iter().copied());
     }
     if settings.surrogate_mode != 1 {
-        for &trainee in &candidate_trainees {
+        for &trainee in &stage_trainees {
             if searches.best_careers[trainee].is_unsearched() {
                 let search = best_of(env, input.input_parents(), trainee, searches.kept_plans(legacies.len()));
                 searches.record_best_career(trainee, search);
@@ -71,6 +71,18 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     env.state.hard_work_cap = 0;
     env.state.budget = env_budget;
     let mut search_ms = now_ms() - searches_started_ms;
+    // the caps the kept fits of pools this one holds keep for each stage candidate (none under a given fit: the job's
+    // model; none for a side-only uma, who has no step)
+    let cap_pool = CapPool::of(
+        input.resources.job,
+        input.fixed_parents,
+        plan_scope(input.resources.job, env.setup.plan_space_key),
+    );
+    let held = if settings.fit.is_some() {
+        vec![vec![]; stage_trainees.len()]
+    } else {
+        held_caps(&kept.step_caps, &cap_pool, &stage_trainees)
+    };
     let mut sim = sim_for(env, kept, input.resources, settings)?;
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
     // winners only, the main search's best careers and each uma's best one, so what it holds (and every number read from
@@ -79,7 +91,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     for found in &input.solved.found {
         sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, found.trainee, &found.deck);
     }
-    for &trainee in &candidate_trainees {
+    for &trainee in &stage_trainees {
         if let Some(found) = searches.best_careers[trainee].found() {
             sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, trainee, &found.deck);
         }
@@ -91,7 +103,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     if settings.surrogate_mode > 0 {
         let surrogate_started_ms = now_ms();
         capped(&mut sim, settings.search_work, env_budget, |sim| {
-            for &trainee in &candidate_trainees {
+            for &trainee in &stage_trainees {
                 if (settings.surrogate_mode == 2 || searches.best_careers[trainee].is_unsearched())
                     && let Some(difference) = plan_surrogate(sim, input, &mut searches.best_careers, trainee, buf)
                 {
@@ -101,11 +113,24 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         });
         search_ms += now_ms() - surrogate_started_ms;
     }
-    let careers: Vec<Option<Found>> =
-        candidate_trainees.iter().map(|&trainee| searches.best_careers[trainee].found().cloned()).collect();
+    // the stage candidates, then the side-only umas (no career: no odds, no step)
+    let stage_count = stage_trainees.len();
+    let candidate_trainees: Vec<crate::uma::UmaIndex> = stage_trainees.into_iter().chain(side_only).collect();
+    let careers: Vec<Option<Found>> = candidate_trainees
+        .iter()
+        .enumerate()
+        .map(
+            |(candidate, &trainee)| {
+                if candidate < stage_count { searches.best_careers[trainee].found().cloned() } else { None }
+            },
+        )
+        .collect();
     let candidate_count = candidate_trainees.len();
     let current_odds: Vec<f64> =
         careers.iter().map(|career| career.as_ref().map_or(0.0, |career| career.value)).collect();
+    // each stage candidate's step cap: the least of her held caps at her odds now
+    let mut step_caps = least_caps(&held, &current_odds[..stage_count]);
+    step_caps.resize(candidate_count, None);
     // per candidate whether her odds now are her proven best career's: searched (not the surrogate's) and complete (the
     // main search's, for the main career's trainee)
     let certified: Vec<bool> = candidate_trainees
@@ -154,15 +179,22 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         loop_member_info: loop_rotation.member_info,
         loop_member_note: loop_rotation.note,
         hint,
+        cut,
         trainees: candidate_trainees,
+        stage_count,
         allowed_trainees,
         careers,
         current_odds,
         certified,
         has_full_veteran,
-        placeholder_step_costs: vec![1.0f64; candidate_count],
+        // (a side-only uma's infinite: no lift of hers is gathered)
+        placeholder_step_costs: (0..candidate_count)
+            .map(|candidate| if candidate < stage_count { 1.0 } else { f64::INFINITY })
+            .collect(),
         proxies_enabled,
         knobs: settings.knobs(),
+        step_caps,
+        cap_pool,
     };
     let profile = PlanProfile {
         started_ms,
@@ -178,15 +210,23 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     Ok(PlanSetup { sim, candidates, searches, profile, cache_before_builders })
 }
 
-/// The stage-1 candidates (uma indices) and the page's record of those `hint_umas` added.
+/// The stage-1 candidates (uma indices), the page's record of those the ceiling ranking added (`hint`) and of those it
+/// left out (`cut`), and the side-only umas.
 struct StageCandidates {
     trainees: Vec<crate::uma::UmaIndex>,
     hint: Vec<Value>,
+    cut: Vec<Value>,
+    /// Umas with a usable real full veteran that are not stage candidates (`side_only_umas`), ascending.
+    side_only: Vec<crate::uma::UmaIndex>,
 }
 
 /// Stage-1 candidates (who A can be; whose odds a builder may lift): the best career's trainee, the named loop members,
-/// the umas of the best career's lineage, the umas you have veterans of, the search's other trainees; at most
-/// IDX_CANDS. A given fit (`PlanJob::fit`) names them instead.
+/// the umas of the best career's lineage (its parents', then its grandparents', each generation by uma index), the
+/// trainees of the main search's careers (best first), then the allowed umas by their full-loop ceiling (`hint_umas`:
+/// no deck search; its lineage seeded with the first two of these; equal ceilings by uma index); at most IDX_CANDS.
+/// None of it reads the veterans' order, only which veterans the best career and the main search's careers take (an
+/// exact tie between two careers' odds aside, which the main search breaks by its own order). The ranked umas
+/// past the last slot are `cut`. A given fit (`PlanJob::fit`) names them instead. Then the side-only umas.
 /// Jobs whose builders are all searched exactly, as `exact_all` searches them: at `EXACT_BUILDERS_TARGETS` targets or
 /// more, or with a borrowed veteran in the pool that the job lets a career use (`borrowed_parent` not "never": a pool
 /// whose borrowed veterans can't be used plans as the pool without them). There proxies read further below the exact careers than the band
@@ -210,6 +250,7 @@ fn stage_candidates(
 ) -> StageCandidates {
     let legacies = input.legacies;
     let settings = input.settings;
+    let data = input.resources.data;
     let mut trainees: Vec<crate::uma::UmaIndex> = vec![main_career.trainee];
     let push = |uma: crate::uma::UmaIndex, candidates: &mut Vec<crate::uma::UmaIndex>| {
         if !candidates.contains(&uma) && input.trainees.contains(&uma) {
@@ -219,26 +260,30 @@ fn stage_candidates(
     for &member in loop_members {
         push(member, &mut trainees);
     }
-    for parent in [main_career.first_parent, main_career.second_parent] {
-        let lineage_charas = std::iter::once(legacies[parent].character_id)
-            .chain(legacies[parent].parents.iter().map(|grandparent| grandparent.character_id));
-        for character_id in lineage_charas {
-            if let Some(uma) = env.setup.uma_index(character_id) {
-                push(uma, &mut trainees);
-            }
-        }
+    // (the main career's parents' umas, then their own parents', each pair of generations by uma index: the parents'
+    // positions in the legacies change no candidate, and `hint_umas` seeds its ceiling lineage with the first two
+    // distinct candidates)
+    let parents = [&legacies[main_career.first_parent], &legacies[main_career.second_parent]];
+    let umas_by_index = |characters: &mut dyn Iterator<Item = u32>| {
+        let mut umas: Vec<crate::uma::UmaIndex> =
+            characters.filter_map(|character_id| env.setup.uma_index(character_id)).collect();
+        umas.sort_unstable();
+        umas
+    };
+    let parent_umas = umas_by_index(&mut parents.iter().map(|parent| parent.character_id));
+    let grandparent_umas = umas_by_index(
+        &mut parents.iter().flat_map(|parent| parent.parents.iter().map(|grandparent| grandparent.character_id)),
+    );
+    for uma in parent_umas.into_iter().chain(grandparent_umas) {
+        push(uma, &mut trainees);
     }
-    for legacy in legacies.iter().rev() {
-        if !legacy.borrowed
-            && let Some(uma) = env.setup.uma_index(legacy.character_id)
-        {
-            push(uma, &mut trainees);
-        }
-    }
+    // (the main search's careers, best first: their trainees' odds now are known with no search; on p11_noagnes the
+    // ceilings below sit within 2.5% of each other and alone cut V's B, Special Week, raising V 2.2%)
     for found in &input.solved.found {
         push(found.trainee, &mut trainees);
     }
     trainees.truncate(IDX_CANDS);
+    let (mut hint, mut cut): (Vec<Value>, Vec<Value>) = (vec![], vec![]);
     if let Some(fit) = &settings.fit {
         // (each uma once, in the fit's order, at most IDX_CANDS: the planner's candidate limit, which the scoring's
         // memory budget assumes)
@@ -248,21 +293,42 @@ fn stage_candidates(
                 trainees.push(uma);
             }
         }
-    }
-    // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
-    // parents) is filled from the planner's own model: the owned umas ranked by their odds with a full loop lineage
-    // (`hint_umas`), no deck search
-    let mut hint: Vec<Value> = vec![];
-    if settings.loop_members.is_none() && settings.fit.is_none() && trainees.len() < HINT_FLOOR {
-        let data = input.resources.data;
-        for HintUma { trainee, ceiling } in
-            hint_umas(&env.setup, &mut env.state, input.pool, &trainees, input.trainees, HINT_FLOOR - trainees.len())
-        {
-            trainees.push(trainee);
-            hint.push(json!({"id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": ceiling}));
+    } else {
+        // the remaining slots by the planner's own model: the allowed umas ranked by their odds with a full loop lineage
+        // (`hint_umas`, in uma order so that equal ceilings keep it), no deck search
+        let mut allowed = input.trainees.to_vec();
+        allowed.sort_unstable();
+        let free_slots = IDX_CANDS - trainees.len();
+        let ranked = hint_umas(&env.setup, &mut env.state, input.pool, &trainees, &allowed, usize::MAX);
+        for (rank, HintUma { trainee, ceiling }) in ranked.into_iter().enumerate() {
+            let record = json!({"id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": ceiling});
+            if rank < free_slots {
+                trainees.push(trainee);
+                hint.push(record);
+            } else {
+                cut.push(record);
+            }
         }
     }
-    StageCandidates { trainees, hint }
+    let side_only = side_only_umas(env, input, &trainees);
+    StageCandidates { trainees, hint, cut, side_only }
+}
+
+/// The umas, not among `stage`, with a real full veteran a career may take as a parent (borrowed ones where the
+/// borrowing rule lets one alone be a parent), whatever the trainee filter, ascending: candidates whose only sides are
+/// those veterans (free), with no career, no step, no continuation and no lift slots (`PlanCandidates::stage_count`)
+fn side_only_umas(env: &Env, input: &PlanInputs, stage: &[crate::uma::UmaIndex]) -> Vec<crate::uma::UmaIndex> {
+    let skill_job = env.setup.skill_job;
+    let mut umas: Vec<crate::uma::UmaIndex> = input
+        .legacies
+        .iter()
+        .filter(|legacy| is_full(skill_job, &legacy.sparks) && input.pool.alone_within_borrow_limit(legacy.borrowed))
+        .filter_map(|legacy| env.setup.uma_index(legacy.character_id))
+        .filter(|uma| !stage.contains(uma))
+        .collect();
+    umas.sort_unstable();
+    umas.dedup();
+    umas
 }
 
 impl PlanInputs<'_, '_> {

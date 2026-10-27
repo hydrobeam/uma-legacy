@@ -31,22 +31,33 @@ pub(crate) struct FinisherParents {
     pub(crate) excluded: [u32; 2],
 }
 
-/// The best allowed C (`finisher_umas`, not of `excluded`'s umas, a legal pair) on `parents` in `pool`, with her odds:
-/// every candidate ranked by ceiling, best first, valued (`val`) until no ceiling can beat the best so far or `floor`;
-/// None where no C's odds pass `floor` (every C's ceiling is then at most it, or her value is)
+/// The umas a C may be and the scales their odds are priced at (`ScoreBase::finisher_umas`, `ScoreBase::odds_scales`).
+#[derive(Clone, Copy)]
+pub(crate) struct FinisherChoice<'umas> {
+    pub(crate) umas: &'umas [crate::uma::UmaIndex],
+    pub(crate) scales: crate::career::plan::cont::OddsScales,
+}
+
+/// The best allowed C (`finishers.umas`, not of `excluded`'s umas, a legal pair) on `parents` in `pool` at her odds as
+/// the base prices them (her odds times her uma's scale, `OddsScales::of`), with her odds (unscaled): every candidate
+/// ranked by her ceiling times her scale, best first, valued (`val`) until no scaled ceiling can beat the best scaled
+/// odds so far or `scaled_floor`; None where no C's scaled odds pass `scaled_floor` (every C's scaled ceiling is then at
+/// most it, or her scaled value is). At scale 1 for every uma, the ranking and the comparisons are the unscaled ones
 pub(crate) fn best_finisher(
     simulator: &mut Sim,
-    finisher_umas: &[crate::uma::UmaIndex],
+    finishers: FinisherChoice,
     pool: &Pool,
     parents: FinisherParents,
-    floor: f64,
+    scaled_floor: f64,
     score_buffer: &mut Vec<f64>,
 ) -> Option<(f64, crate::uma::UmaIndex)> {
     let data = simulator.data;
+    let scale = |trainee: crate::uma::UmaIndex| finishers.scales.of(trainee);
     let mut inheritance_chances = Vec::with_capacity(simulator.env.setup.target_count);
     // (C ranges over the trainees on one pair: `lineage` and `ceiling` per trainee, not `gen_cands`, whose per-trainee
     // tables cover every legacy of the pool)
-    let mut finishers: Vec<FinisherCeiling> = finisher_umas
+    let mut finishers: Vec<FinisherCeiling> = finishers
+        .umas
         .iter()
         .copied()
         .map(|trainee| Lineage { trainee, first_parent: parents.first_parent, second_parent: parents.second_parent })
@@ -54,26 +65,28 @@ pub(crate) fn best_finisher(
             !parents.excluded.contains(&data.umas[lineage.trainee].id) && legal_pair(data, pool, *lineage)
         })
         .filter_map(|lineage| {
-            let scale = simulator.env.setup.lineage_into(pool, lineage, &mut inheritance_chances);
+            let spark_scale = simulator.env.setup.lineage_into(pool, lineage, &mut inheritance_chances);
             simulator
                 .env
                 .setup
-                .ceiling(&mut simulator.env.state, lineage.trainee, &inheritance_chances, scale)
-                .map(|upper_bound| FinisherCeiling { upper_bound, lineage })
+                .ceiling(&mut simulator.env.state, lineage.trainee, &inheritance_chances, spark_scale)
+                .map(|upper_bound| FinisherCeiling { upper_bound: upper_bound * scale(lineage.trainee), lineage })
         })
         .collect();
     finishers.sort_by(|first, second| second.upper_bound.partial_cmp(&first.upper_bound).unwrap());
-    let mut best: Option<(f64, crate::uma::UmaIndex)> = None;
+    // (the best so far: her scaled odds, her odds, her uma)
+    let mut best: Option<(f64, f64, crate::uma::UmaIndex)> = None;
     for &FinisherCeiling { upper_bound, lineage } in &finishers {
-        if upper_bound * (1.0 + 1e-9) <= best.map_or(floor, |(odds, _)| odds.max(floor)) {
+        if upper_bound * (1.0 + 1e-9) <= best.map_or(scaled_floor, |(scaled, _, _)| scaled.max(scaled_floor)) {
             break;
         }
         let value = val(simulator, pool, lineage, score_buffer);
-        if value > best.map_or(floor, |(odds, _)| odds) {
-            best = Some((value, lineage.trainee));
+        let scaled = value * scale(lineage.trainee);
+        if scaled > best.map_or(scaled_floor, |(best_scaled, _, _)| best_scaled) {
+            best = Some((scaled, value, lineage.trainee));
         }
     }
-    best
+    best.map(|(_, value, trainee)| (value, trainee))
 }
 
 /// Whether a career's parents are both full veterans: then her own full veteran is a fully looped parent, V after her
@@ -115,6 +128,8 @@ pub(crate) struct CareerScore {
     pub(crate) lift_stats: Vec<LiftStats>,
     /// With `Want::Joint`: per set of candidates her veteran lifts at once (bit c: candidate c), its chance.
     pub(crate) joint_lifts: Vec<(u64, f64)>,
+    /// With `Want::Classes`: the saving split by outcome class (`kernel::ClassSaving`).
+    pub(crate) classes: Vec<kernel::ClassSaving>,
 }
 
 /// Score of `career` against `context.score_base`: E[V0 - V0 with her veteran], the chance it exceeds 1e-9,
