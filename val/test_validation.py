@@ -25,7 +25,27 @@ class ValidationExitTests(unittest.TestCase):
             "results": [
                 {"p_all": 0.5, "p_minus1": 0.75, "trainee": {"id": 1}, "parents": [0, 1], "deck": {"card_ids": [1]}}
             ],
-            "next": {"proxy_check": {"rows": []}, "options": [], "v0": 10.0},
+            # a plan whose first step (A's own career, on her side's parents at its odds) is priced at score 0: the
+            # tripwire passes it
+            "next": {
+                "proxy_check": {"rows": []},
+                "members": [
+                    {"trainee": "A", "real": False, "building_careers": 0, "careers": 10.0, "parents": [0, 1], "p": 0.1}
+                ],
+                "options": [
+                    {
+                        "trainee": {"name": "A", "id": 1},
+                        "role": "plan",
+                        "looped": False,
+                        "career": "1:0,1:x/y/0",
+                        "parents": [0, 1],
+                        "p_all": 0.1,
+                        "score": 0.0,
+                    }
+                ],
+                "v0": 10.0,
+                "v0_plan": {"a": "A", "b": "B", "c": "C", "careers": [10.0, 0.0, 0.0]},
+            },
         }
         self.write(self.plan / "jobs.json", [["global", "tiny"]])
         self.write(self.plan / "tiny.json", {})
@@ -117,6 +137,67 @@ class ValidationExitTests(unittest.TestCase):
         self.write(self.plan / "ref__tiny.out", output)
         self.fake_solver(output)
         self.assertEqual(self.plan_run().returncode, 0)
+
+    def first_step_run(self, output=None, job=None, **plan):
+        """planval on the fixture with these `next` fields replaced (or a whole output), and this job"""
+        output = output or {**self.output, "next": {**self.output["next"], **plan}}
+        self.write(self.plan / "ref__tiny.out", output)
+        self.write(self.plan / "tiny.json", job or {})
+        self.fake_solver(output)
+        return self.plan_run()
+
+    def assert_first_step(self, result, fails, says):
+        self.assertEqual(result.returncode != 0, fails, result.stdout)
+        self.assertIn(says, result.stdout)
+
+    def test_plan_first_step_fails_below_the_floor_only(self):
+        row = self.output["next"]["options"][0]
+        # (V's own first step scoring -0.5 fails; +0.5 is reported as V not its own fixed point)
+        for score, fails, says in ((-0.5, True, "BELOW"), (0.5, False, "not its own fixed point")):
+            with self.subTest(score=score):
+                result = self.first_step_run(options=[{**row, "score": score}])
+                self.assert_first_step(result, fails, says)
+                self.assertIn("own full-veteran term 1.0000", result.stdout)
+
+    def test_plan_first_step_fails_an_unpriced_ambiguous_or_masked_step(self):
+        row = self.output["next"]["options"][0]
+        other = {**row, "career": "1:2,3:x/y/0", "parents": [2, 3], "score": 0.5}
+        for options, says in (
+            ([], "no row of hers"),
+            ([{**row, "score": float("nan")}], "score nan"),
+            ([row, {**row, "career": "1:0,1:z/y/0"}], "ambiguous"),
+            # (her other career scoring +0.5 does not stand in for the route's own at -0.5)
+            ([other, {**row, "score": -0.5}], "BELOW"),
+        ):
+            with self.subTest(options=options):
+                self.assert_first_step(self.first_step_run(options=options), True, says)
+
+    def test_plan_first_step_without_v_needs_no_route(self):
+        no_route = {"v0": None, "members": [], "v0_plan": None, "options": []}
+        self.assert_first_step(self.first_step_run(**no_route), False, "not applicable")
+        missing_v = {key: value for key, value in self.output["next"].items() if key != "v0"}
+        for output, says in (
+            ({**self.output, "next": {**self.output["next"], "v0": None}}, "null beside a route"),
+            ({**self.output, "next": {**no_route, "members": None}}, "null beside a route"),
+            ({**self.output, "next": missing_v}, "no `v0` field"),
+            ({**self.output, "error": "no plan"}, "an error"),
+        ):
+            with self.subTest(says=says):
+                self.assert_first_step(self.first_step_run(output=output), True, says)
+
+    def test_plan_first_step_skips_a_given_cont_and_a_borrowing_exclusion(self):
+        building = {**self.output["next"]["members"][0], "building_careers": 5.0, "builder": None}
+        # (her Cont given by the job's next.fit: the solver reports no builder; without it, a missing builder fails)
+        fit = {"next": {"fit": [[1, 0.1, 0.1, 0.01, 0.001]]}}
+        self.assert_first_step(self.first_step_run(job=fit, members=[building]), False, "Cont given")
+        self.assert_first_step(self.first_step_run(members=[building]), True, "not reported")
+        # (her builder on a borrowed parent under "later" is no option; under "allow" its missing row fails)
+        legacies = [{"chara": 5, "borrowed": False}, {"chara": 6, "borrowed": True}]
+        borrowing = {**building, "builder": "2:0,1:x/y/0"}
+        for rule, fails, says in (("later", False, "borrowing rule"), ("allow", True, "no row has its career id")):
+            with self.subTest(rule=rule):
+                job = {"borrowed_parent": rule, "legacies": legacies}
+                self.assert_first_step(self.first_step_run(job=job, members=[borrowing]), fails, says)
 
     def test_plan_fails_mismatch_and_missing_reference(self):
         self.write(self.plan / "ref__tiny.out", {"different": True})

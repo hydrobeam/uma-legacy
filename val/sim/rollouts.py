@@ -1,4 +1,4 @@
-"""Paired truncated rollouts of the career planner's top rows: a check that can fail on a pick.
+"""Paired truncated rollouts of the career planner's top rows: a Bellman-consistency check of V under greedy.
 
 Per pool: plan it (`next`), take its top ROWS rows by score; for each row, force that career first (`simulate.force`,
 the trainee on the row's parents with her best deck), then continue with one fixed cheap policy, greedy under goal
@@ -11,10 +11,13 @@ legacies):
 
 (S_t falls only on careers on two full veterans, whose success is a fully looped parent; S_K = 1 while none has run.)
 A row's score is its expected saving per run in the plan's units, so the paired difference T(row) - T(pick) estimates
-score(pick) - score(row) if the plan's scoring and its V agree with what playing on does. The continuation is greedy,
-not the plan, so this tests the first step's ranking under one continuation policy (Bellman consistency of the first
-step), not the plan's whole policy; and V at the end is the plan's own estimate, so a bias of V common to all rows
-cancels in the differences while one that depends on the final pool does not.
+score(pick) - score(row) if the plan's scoring agrees with its own V after CAREERS careers of the continuation. The
+continuation is greedy, not the plan, so this tests the first step's ranking under one continuation policy (Bellman
+consistency of the first step), not the plan's whole policy; and V at the end is the plan's own estimate, so a bias of V
+common to all rows cancels in the differences while one that depends on the final pool does not. Where no run finishes
+within CAREERS careers (S_K = 1: every run of the 2026-10-26 measurement on p10, p11, boot_mob and p16), T is exactly
+CAREERS + V(final pool): both terms are V's, so the check cannot give V's level or the true cost of finishing
+(val/sim/v_level.py measures V against complete greedy runs).
 
 usage: uv run val/sim/rollouts.py BIN OUT_DIR [--runs 50] [--careers 50] [--rows 3] [-j 2] [POOL ...]
   pools default p10 p11 boot_mob p16 (val/plan); writes OUT_DIR/POOL_plan.{json,out}, OUT_DIR/POOL_rowI.{json,out}

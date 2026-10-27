@@ -30,6 +30,17 @@ trace" takes lam and p1 from the trace's own first row (its most efficient build
 being fitted. Also priced: that form under the variant that takes lam as the larger of her lift chance now and one lift
 later (the mean over runs of the first row after her odds first rose), an unbuilt form docs/MODEL.md names.
 
+The value of a lift (reported, not fitted on): what a score differences is K(p0) - K(p'), so per trace the plan's Cont's
+dK at m = 1, 2, 4 lifts (p' at q = p0 (p1 / p0)^m, p1 the plan's first lift) is printed beside the segment estimator's:
+each run's first arrival at odds >= q, then the forward open-loop cost min over k of k + mean 1 / p(t_a + k) from the
+arrivals against the same from the start, at the same horizon (careers - the latest arrival, at least 50); with 3 or
+more arriving runs. Cont's dK is the mean over the arriving runs of K(p0) - K(p_a), K cont.rs's Cont (`PlanCont`).
+The test is their paired difference: 300 bootstrap draws of the runs (seed 1), each recomputing the segment and Cont's
+dK at that draw's own arrival odds; its 90% interval, and the count of draws that failed (under 3 arriving runs or a
+horizon under 50), on which the interval is conditional. Each cell gives how many runs arrive; a cell with no segment
+says why (how many arrive, the horizon). The estimator pools nothing by odds and has no
+bandwidth; it is open loop, so it reads a lift's value low where the traces' hazard falls with careers elapsed.
+
 usage: uv run val/sim/fit_cont.py BIN OUT_DIR [--runs 6] [--careers 400] [--margin 1e9] [-j 2] [--fit-only] [POOL ...]
   writes OUT_DIR/NAME_plan.{json,out} and OUT_DIR/NAME_A.{json,out} (A the trainee's id), then the fit; --fit-only
   reads the outputs already there. Cost: a trace run is about 5 s per 400 careers on these pools; 9 pools x 2
@@ -39,6 +50,7 @@ usage: uv run val/sim/fit_cont.py BIN OUT_DIR [--runs 6] [--careers 400] [--marg
 import json
 import math
 import os
+import random
 import re
 import subprocess
 import sys
@@ -268,6 +280,86 @@ def plan_cost(lam, phi, pinf, p, decay):
     return best
 
 
+def reciprocal(x):
+    """1 / x, infinity at 0 (Rust's f64 division, where a lift chance underflows or phi = 1 closes the gap)"""
+    return math.inf if x == 0 else 1 / x
+
+
+class PlanCont:
+    """cont.rs's `Cont` (`with_decay` at LAM_DECAY) restated, for the plan's fit entry (lam, phi, pinf, p0 = its anchor
+    odds): `cost(p)` is `Cont::cost`, the lattice of p0's path above p0 (`lattice_points`, `lattice_plan`) and `plan_n`
+    at or below it, with `building_scale` and `Building`'s rate capped at lam below p0. The same expressions in the
+    same order; not bit-exact (Python's ** for Rust's powi)."""
+
+    def __init__(self, lam, phi, pinf, p0):
+        self.lam, self.phi, self.pinf, self.p0 = lam, phi, pinf, p0
+        r = 1 - phi
+        self.gap_left = [r**n for n in range(CONT_N + 1)]
+        self.step = [reciprocal(lam * gap**LAM_DECAY) for gap in self.gap_left]
+        self.careers_built, built = [], 0.0
+        for step in self.step:
+            built += step
+            self.careers_built.append(built)
+        self.lattice = self.lattice_points() if lam > 0 and phi > 0 and 0 < p0 < pinf else None
+
+    def lattice_points(self):
+        odds = lambda j: self.pinf * math.exp(math.log(self.p0 / self.pinf) * self.gap_left[j])
+        points = [0.0] * CONT_N + [1 / odds(CONT_N)]
+        for j in range(CONT_N - 1, -1, -1):
+            points[j] = min(1 / odds(j), self.step[j] + points[j + 1])
+        points[0] = self.plan_n(self.p0)
+        for j in range(1, CONT_N + 1):
+            points[j] = min(points[j], points[j - 1])
+        return points
+
+    def building_scale(self, p):
+        if not 0 < self.p0 < self.pinf or p == self.p0:
+            return 1.0
+        return (math.log(p / self.pinf) / math.log(self.p0 / self.pinf)) ** -LAM_DECAY
+
+    def plan_n(self, p):
+        """the first n that does not improve ends the minimum of careers built + 1 / p_n; below p0 each success's
+        waiting time is the scaled table step, at least 1 / lam (`Building`)"""
+        log_ratio, scale = math.log(p / self.pinf), self.building_scale(p)
+        best, running = 1 / p, 0.0
+        for n in range(CONT_N):
+            if scale >= 1:
+                built = scale * self.careers_built[n]
+            else:
+                running += max(1 / self.lam, scale * self.step[n])
+                built = running
+            cost = built + 1 / (self.pinf * math.exp(log_ratio * self.gap_left[n + 1]))
+            if cost >= best:
+                break
+            best = cost
+        return best
+
+    def lattice_plan(self, p):
+        g = math.log(p / self.pinf) / math.log(self.p0 / self.pinf)
+        r = 1 - self.phi
+        t = max(0.0, math.log(g) / math.log(r)) if r > 0 else 0.0
+        j = math.floor(t)
+        if j >= CONT_N:
+            cost = self.lattice[CONT_N]
+        else:
+            low, high = self.lattice[j], self.lattice[j + 1]
+            cost = min(max(low + (t - j) * (high - low), min(low, high)), max(low, high))
+        return min(cost, 1 / p)
+
+    def lift_value(self, arrival_odds):
+        """the mean over these odds of K(p0) - K(p)"""
+        return sum(self.cost(self.p0) - self.cost(p) for p in arrival_odds) / len(arrival_odds)
+
+    def cost(self, p):
+        if p <= 0:
+            return math.inf
+        if self.lam <= 0 or self.phi <= 0 or self.pinf <= p:
+            return 1 / p
+        if p > self.p0 and self.lattice:
+            return self.lattice_plan(p)
+        return self.plan_n(p)
+
+
 # ---- the traces' own numbers ----
 def mean_log_odds(trace, careers):
     return sum(math.log(run[careers]) for run in trace.odds) / len(trace.odds)
@@ -288,6 +380,94 @@ def achievable_split(trace):
         return None
     price = lambda runs, k: k + sum(1 / run[k] for run in runs) / len(runs)
     return (price(odd, achievable(trace, even)[1]) + price(even, achievable(trace, odd)[1])) / 2
+
+
+LIFT_MULTIPLES = (1, 2, 4)
+SEGMENT_MIN_HORIZON = 50
+BOOTSTRAP_DRAWS = 300
+ROUNDING = 1e-9  # careers: a difference this small is 0 (a grinding trace's Cont and segment agree to ~1e-13)
+
+
+class Segment(NamedTuple):
+    """The segment estimator's value of reaching odds q: the open-loop cost from the start less that from the arrivals"""
+
+    saving: float
+    arrival_odds: list  # per arriving run, her odds on arrival
+
+
+def arrivals_at(paths, q):
+    """(career of first arrival at odds >= q, the path) for each run that arrives"""
+    arrivals = []
+    for path in paths:
+        t = next((i for i, p in enumerate(path) if p >= q * (1 - 1e-12)), None)
+        if t is not None:
+            arrivals.append((t, path))
+    return arrivals
+
+
+def segment(paths, q, careers):
+    """Segment at q over these runs' odds paths (module notes), None under 3 arriving runs or a horizon under 50"""
+    arrivals = arrivals_at(paths, q)
+    if len(arrivals) < 3:
+        return None
+    horizon = careers - max(t for t, _ in arrivals)
+    if horizon < SEGMENT_MIN_HORIZON:
+        return None
+    from_start = min(k + sum(1 / path[k] for path in paths) / len(paths) for k in range(horizon + 1))
+    from_arrival = min(k + sum(1 / path[t + k] for t, path in arrivals) / len(arrivals) for k in range(horizon + 1))
+    return Segment(saving=from_start - from_arrival, arrival_odds=[path[t] for t, path in arrivals])
+
+
+def lift_value_report(traces, careers):
+    """dK at m = 1, 2, 4 lifts: the plan's Cont beside the segment estimator's, and their paired difference with its
+    bootstrap 90% interval (module notes)"""
+    print(
+        "\nthe value of a lift, K(p0) - K(p') at p' = p0 (p1 / p0)^m (reported, not fitted on): the plan's Cont / the"
+        " traces' segment estimator, their difference [bootstrap 90%] (runs arriving of all; bootstrap draws that failed)"
+    )
+    print("| pool | A | " + " | ".join(f"m = {m}" for m in LIFT_MULTIPLES) + " |")
+    print("|---|---|" + "---|" * len(LIFT_MULTIPLES))
+    draws = random.Random(1)
+    sides = {m: {"below": 0, "contains 0": 0, "above": 0} for m in LIFT_MULTIPLES}  # the difference's interval
+    for trace in traces:
+        if not trace.plan_cont:
+            continue
+        cont = PlanCont(*trace.plan_cont)
+        _lam, phi, pinf, p0 = trace.plan_cont
+        p1 = p0 * (pinf / p0) ** phi
+        cells = []
+        for m in LIFT_MULTIPLES:
+            q = p0 * (p1 / p0) ** m
+            found = segment(trace.odds, q, careers) if p1 > p0 else None
+            if found is None:
+                arrivals = arrivals_at(trace.odds, q) if p1 > p0 else []
+                horizon = f", horizon {careers - max(t for t, _ in arrivals)}" if arrivals else ""
+                cells.append(f"- ({len(arrivals)} of {len(trace.odds)} arrive{horizon})" if p1 > p0 else "- (no lift)")
+                continue
+            # each resample's segment and Cont's dK at that resample's own arrival odds, paired
+            differences, failed = [], 0
+            for _ in range(BOOTSTRAP_DRAWS):
+                again = segment([draws.choice(trace.odds) for _ in trace.odds], q, careers)
+                if again is None:
+                    failed += 1
+                else:
+                    differences.append(cont.lift_value(again.arrival_odds) - again.saving)
+            difference = cont.lift_value(found.arrival_odds) - found.saving
+            cell = f"{cont.lift_value(found.arrival_odds):,.0f} / {found.saving:,.0f}, {difference:+,.0f}"
+            if len(differences) > 20:
+                differences.sort()
+                low, high = differences[int(0.05 * len(differences))], differences[int(0.95 * len(differences)) - 1]
+                sides[m]["below" if high < -ROUNDING else "above" if low > ROUNDING else "contains 0"] += 1
+                cell += f" [{low:+,.0f}, {high:+,.0f}]"
+            else:
+                cell += " [-]"
+            cells.append(cell + f" ({len(found.arrival_odds)} of {len(trace.odds)}; {failed}/{BOOTSTRAP_DRAWS} failed)")
+        print(f"| {trace.pool} | {trace.trainee} | " + " | ".join(cells) + " |")
+    print(
+        "Cont's dK - the segment's, its interval below 0 / containing 0 / above 0: "
+        + "; ".join(f"m = {m} {c['below']} / {c['contains 0']} / {c['above']}" for m, c in sides.items())
+        + " (each interval conditional on the resamples that had 3 arriving runs and a horizon of 50)"
+    )
 
 
 def loss(traces, shape, careers):
@@ -399,6 +579,7 @@ def report(traces, careers):
             f"{cont_cost(trace, current):,.0f} / {cont_cost(trace, fitted):,.0f} / {held} | "
             f"{cont_cost(trace, current, variant_lam):,.0f} |"
         )
+    lift_value_report(traces, careers)
 
 
 def main(args):
