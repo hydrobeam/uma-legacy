@@ -555,10 +555,10 @@ pub(crate) fn hint_umas(
 /// (`legal_pair`), no deck search; umas with none of them legal are left out. The full-loop ceiling (`hint_umas`) sits
 /// within ~1% across umas on the exported rosters (export 4: 0.004956 to 0.004903 over the five slots and the first
 /// cuts), so it cut Gold Ship, a trio side on today's veterans, and raised V 3.6-4.3% on both rosters without borrows;
-/// these pairs restore her there. With borrows the main search's pairs are Agnes Digital's (borrowed full veterans),
-/// not Gold Ship's best (a borrowed Agnes Digital as parent), and she stays cut (+2.2% and +0.6%); each uma's best
-/// ceiling over every pair ranks worse (it restores her on one roster of the four): a ranking with no deck search does
-/// not see her real odds (2026-10-27, .review/planner/harness/candfix)
+/// these pairs restore her there. Used where the builders are proxies (no borrows, under 10 targets); elsewhere every
+/// uma is searched exactly first and the slots rank by the careers found (`setup_plan_candidates`): there these pairs
+/// are the main trainee's (Agnes Digital's, on borrowed full veterans) and left Gold Ship cut, and each uma's best
+/// ceiling over every pair ranked worse still (2026-10-27, .review/planner/harness/candfix)
 pub(crate) fn today_umas(
     setup: &crate::career::CareerSetup,
     state: &mut crate::career::SearchState,

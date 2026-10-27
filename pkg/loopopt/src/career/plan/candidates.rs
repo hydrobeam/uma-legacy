@@ -42,9 +42,6 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         None => LoopRotation { members: vec![], member_info: vec![], note: None },
     };
     let main_career = input.solved.found[0].clone();
-    let StageCandidates { trainees: stage_trainees, hint, cut, side_only } =
-        stage_candidates(env, input, &main_career, &loop_rotation.members);
-    let loop_ms = now_ms() - started_ms;
     let allowed_trainees: Vec<crate::uma::UmaIndex> =
         input.trainees.iter().copied().filter(|&trainee| env.setup.deck_odds_ceilings[trainee].is_some()).collect();
     let searches_started_ms = now_ms();
@@ -61,6 +58,28 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     for plan in [&searches.kept_same_pool, &searches.kept_previous_pool].into_iter().flatten() {
         env.setup.union_keyed(&mut env.state, plan.flags.iter().copied());
     }
+    // where pass 1 searches every allowed uma's best career exactly anyway (no proxies: `exact_all`, `exact_builders`),
+    // the searches run here, before the candidates, so the free slots rank by the odds found (`stage_candidates`):
+    // a ranking with no deck search cut Gold Ship, a trio side on today's veterans, on both exported rosters with
+    // borrows (V +2.2%, +0.6%). `proxy_check` keeps its order: it measures the cache as it is before the builders'
+    // searches
+    let presearch = settings.surrogate_mode == 0
+        && !settings.proxy_check
+        && settings.fit.is_none()
+        && (settings.exact_all || exact_builders(env.setup.target_count, legacies, input.pool.max_borrowed));
+    if presearch {
+        let mut order = allowed_trainees.clone();
+        order.sort_unstable();
+        for trainee in order {
+            if searches.best_careers[trainee].is_unsearched() {
+                let search = best_of(env, input.input_parents(), trainee, searches.kept_plans(legacies.len()));
+                searches.record_best_career(trainee, search);
+            }
+        }
+    }
+    let StageCandidates { trainees: stage_trainees, hint, cut, side_only } =
+        stage_candidates(env, input, &main_career, &loop_rotation.members, presearch.then_some(&searches));
+    let loop_ms = now_ms() - started_ms;
     if settings.surrogate_mode != 1 {
         for &trainee in &stage_trainees {
             if searches.best_careers[trainee].is_unsearched() {
@@ -95,6 +114,16 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     for &trainee in &stage_trainees {
         if let Some(found) = searches.best_careers[trainee].found() {
             sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, trainee, &found.deck);
+        }
+    }
+    // (the searched builders' decks too, which pass 1 adds as it searches them: `search_best_career`)
+    if presearch {
+        for &trainee in &allowed_trainees {
+            if !stage_trainees.contains(&trainee)
+                && let Some(found) = searches.best_careers[trainee].found()
+            {
+                sim.evaluator.cache.add(&sim.env.setup, &mut sim.env.state, &mut sim.env.memo, trainee, &found.deck);
+            }
         }
     }
     // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
@@ -250,6 +279,7 @@ fn stage_candidates(
     input: &PlanInputs,
     main_career: &Found,
     loop_members: &[crate::uma::UmaIndex],
+    searched: Option<&PlanSearches>,
 ) -> StageCandidates {
     let legacies = input.legacies;
     let settings = input.settings;
@@ -294,6 +324,29 @@ fn stage_candidates(
         for uma in fit.iter().filter_map(|entry| env.setup.uma_index(entry.character_id())) {
             if input.trainees.contains(&uma) && !trainees.contains(&uma) && trainees.len() < IDX_CANDS {
                 trainees.push(uma);
+            }
+        }
+    } else if let Some(searches) = searched {
+        // the remaining slots by the allowed umas' best careers, searched exactly before (`setup_plan_candidates`):
+        // the odds a trio side is priced with; equal odds in uma order, umas with no legal career left out
+        let mut ranked: Vec<(crate::uma::UmaIndex, f64)> = input
+            .trainees
+            .iter()
+            .copied()
+            .filter(|uma| !trainees.contains(uma))
+            .filter_map(|uma| searches.best_careers[uma].found().map(|found| (uma, found.value)))
+            .collect();
+        ranked.sort_by(|first, second| second.1.total_cmp(&first.1).then(first.0.cmp(&second.0)));
+        let free_slots = IDX_CANDS - trainees.len();
+        for (rank, (trainee, value)) in ranked.into_iter().enumerate() {
+            let record = json!({
+                "id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": value, "basis": "searched"
+            });
+            if rank < free_slots {
+                trainees.push(trainee);
+                hint.push(record);
+            } else {
+                cut.push(record);
             }
         }
     } else {
