@@ -669,9 +669,15 @@ evidence: `docs/MODEL.md`, *Next career*. The planner is in `src/career/plan/` (
 
 **Stage candidates** (at most 8, `IDX_CANDS`, unless supplied by `fit`): the best career's trainee, the loop members when named, the umas of the best
 career's lineage (its two parents' umas, then its four grandparents', each generation in uma order), the main search's trainees (best first), then
-the allowed umas with the highest odds under a full loop lineage (parents hypothetical veterans of the first two candidates' umas, each bred from
-the other and from her, valued by `CareerSetup::ceiling`, no deck search; equal ceilings in uma order; reported in `hint`, the ranked umas left
-out in `cut`). The set and its order read which veterans the best career and the main search's careers take, never the veterans' positions:
+the allowed umas by their odds on today's veterans (reported in `hint` with each one's `basis`, the ranked umas left out in `cut`; equal odds in
+uma order). Where pass 1 searches every uma's best career exactly anyway (no proxies: `exact_all`, or `exact_builders`: a usable borrowed veteran
+or 10+ targets), those searches run first and the slots rank by the careers found (`basis` "searched"; `proxy_check` alike). Elsewhere, with no
+deck search: each uma's `ceiling_uniform` on the main search's careers' parent pairs (`today_umas`, "today"), then the umas none of those pairs
+suits by the ceiling under a full loop lineage (`hint_umas`, "full_loop": parents hypothetical veterans of the first two candidates' umas, each
+bred from the other and from her). The full-loop ceiling alone had ranked within ~1% across umas on two exported rosters (330 and 360 veterans)
+and cut Gold Ship, a trio side priced on today's veterans: V +2.2% and +0.6% with borrows, +3.6% and +4.1% without; the presearch (with
+borrows) and `today_umas` (without) restore c89918a's V on all four (2026-10-27; ranking by each uma's best ceiling over every pair restored one of the four). A side whose value is its
+offspring rather than its own odds can still be cut. The set and its order read which veterans the best career and the main search's careers take, never the veterans' positions:
 p10 with its legacies reversed gives the same candidates and V (2653.99; before the lineage was ordered, parent-position order seeded the
 ceiling lineage and the reversed pool took 1008 and 1011 for 1005 and 1040, V 2668.33). What is not covered: two of the main search's careers
 at exactly equal odds keep the search's own order, which can depend on the pool's. Each gets a career search (or a surrogate under `sur: 1`).
