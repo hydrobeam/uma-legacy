@@ -472,7 +472,8 @@ pub(crate) fn loop_ceiling(
 pub(crate) struct HintUma {
     /// Index in `Data::umas`.
     pub(crate) trainee: crate::uma::UmaIndex,
-    /// Her odds under the full loop lineage (`CareerSetup::ceiling`).
+    /// Her ranking odds (`CareerSetup::ceiling_uniform`): under the full loop lineage (`hint_umas`) or on today's
+    /// veterans (`today_umas`).
     pub(crate) ceiling: f64,
 }
 
@@ -546,5 +547,45 @@ pub(crate) fn hint_umas(
     // best first; equal odds in uma order (stable)
     out.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
     out.truncate(count);
+    out
+}
+
+/// The owned umas (a legal deck, not among `candidates`) by their odds on today's veterans, best first: each one's
+/// `CareerSetup::ceiling_uniform` on the best of `pairs` (the main search's careers' parents) she may take
+/// (`legal_pair`), no deck search; umas with none of them legal are left out. The full-loop ceiling (`hint_umas`) sits
+/// within ~1% across umas on the exported rosters (export 4: 0.004956 to 0.004903 over the five slots and the first
+/// cuts), so it cut Gold Ship, a trio side on today's veterans, and raised V 3.6-4.3% on both rosters without borrows;
+/// these pairs restore her there. With borrows the main search's pairs are Agnes Digital's (borrowed full veterans),
+/// not Gold Ship's best (a borrowed Agnes Digital as parent), and she stays cut (+2.2% and +0.6%); each uma's best
+/// ceiling over every pair ranks worse (it restores her on one roster of the four): a ranking with no deck search does
+/// not see her real odds (2026-10-27, .review/planner/harness/candfix)
+pub(crate) fn today_umas(
+    setup: &crate::career::CareerSetup,
+    state: &mut crate::career::SearchState,
+    pool: &Pool,
+    candidates: &[crate::uma::UmaIndex],
+    trainees: &[crate::uma::UmaIndex],
+    pairs: &[(usize, usize)],
+) -> Vec<HintUma> {
+    let mut out: Vec<HintUma> = vec![];
+    for &trainee in trainees {
+        if candidates.contains(&trainee) || setup.deck_odds_ceilings[trainee].is_none() {
+            continue;
+        }
+        let best = pairs
+            .iter()
+            .map(|&(first_parent, second_parent)| Lineage { trainee, first_parent, second_parent })
+            .filter(|&lineage| legal_pair(setup.data, pool, lineage))
+            .filter_map(|lineage| {
+                let (q, spark_scale) = setup.lineage_q(pool, lineage);
+                setup.ceiling_uniform(state, trainee, &q, spark_scale)
+            })
+            .fold(0.0_f64, f64::max);
+        if best > 0.0 {
+            out.push(HintUma { trainee, ceiling: best });
+        }
+    }
+    // best first; equal odds in uma order (stable)
+    out.sort_by(|first, second| second.ceiling.total_cmp(&first.ceiling));
     out
 }

@@ -11,6 +11,7 @@ use crate::career::plan::score::kernel::LiftStats;
 use crate::career::plan::score::{CareerScore, score_career};
 use crate::career::plan::search::{
     HintUma, IDX_CANDS, LoopRotation, PROXY_EFF, best_sur, capped, certified, hint_umas, is_full, rotation, sim_for,
+    today_umas,
 };
 use crate::career::plan::{
     ParentPool, PlanCandidates, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, PlanSetup, found_career,
@@ -222,8 +223,10 @@ struct StageCandidates {
 
 /// Stage-1 candidates (who A can be; whose odds a builder may lift): the best career's trainee, the named loop members,
 /// the umas of the best career's lineage (its parents', then its grandparents', each generation by uma index), the
-/// trainees of the main search's careers (best first), then the allowed umas by their full-loop ceiling (`hint_umas`:
-/// no deck search; its lineage seeded with the first two of these; equal ceilings by uma index); at most IDX_CANDS.
+/// trainees of the main search's careers (best first), then the allowed umas by their odds on today's veterans
+/// (`today_umas`: on the main search's careers' parent pairs), then the rest by their full-loop ceiling
+/// (`hint_umas`: its lineage seeded with the first two of these); no deck search, equal odds by uma index; at most
+/// IDX_CANDS.
 /// None of it reads the veterans' order, only which veterans the best career and the main search's careers take (an
 /// exact tie between two careers' odds aside, which the main search breaks by its own order). The ranked umas
 /// past the last slot are `cut`. A given fit (`PlanJob::fit`) names them instead. Then the side-only umas.
@@ -294,14 +297,25 @@ fn stage_candidates(
             }
         }
     } else {
-        // the remaining slots by the planner's own model: the allowed umas ranked by their odds with a full loop lineage
-        // (`hint_umas`, in uma order so that equal ceilings keep it), no deck search
+        // the remaining slots by the planner's own model, no deck search: the allowed umas ranked by their odds on
+        // today's veterans (`today_umas`: on the main search's careers' parents), then those with no legal one
+        // by their odds with a full loop lineage (`hint_umas`); each in uma order where the odds are equal
         let mut allowed = input.trainees.to_vec();
         allowed.sort_unstable();
         let free_slots = IDX_CANDS - trainees.len();
-        let ranked = hint_umas(&env.setup, &mut env.state, input.pool, &trainees, &allowed, usize::MAX);
-        for (rank, HintUma { trainee, ceiling }) in ranked.into_iter().enumerate() {
-            let record = json!({"id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": ceiling});
+        let pairs: Vec<(usize, usize)> =
+            input.solved.found.iter().map(|found| (found.first_parent, found.second_parent)).collect();
+        let today = today_umas(&env.setup, &mut env.state, input.pool, &trainees, &allowed, &pairs);
+        let today_ranked: Vec<crate::uma::UmaIndex> = today.iter().map(|uma| uma.trainee).collect();
+        let rest: Vec<crate::uma::UmaIndex> =
+            allowed.iter().copied().filter(|uma| !today_ranked.contains(uma)).collect();
+        let full_loop = hint_umas(&env.setup, &mut env.state, input.pool, &trainees, &rest, usize::MAX);
+        let ranked =
+            today.into_iter().map(|uma| (uma, "today")).chain(full_loop.into_iter().map(|uma| (uma, "full_loop")));
+        for (rank, (HintUma { trainee, ceiling }, basis)) in ranked.enumerate() {
+            let record = json!({
+                "id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": ceiling, "basis": basis
+            });
             if rank < free_slots {
                 trainees.push(trainee);
                 hint.push(record);
