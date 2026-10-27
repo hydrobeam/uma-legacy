@@ -49,6 +49,24 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   whitelist: a path outside the whitelisted directories (`docs/`, `research/`, `pkg/loopopt/src/`, …) needs its own
   line; `git check-ignore -v PATH` shows which rule applies.
 
+**The career planner's goal and its bar.** Every change to `/career` and `src/career/plan/` is judged against this:
+- **Goal:** the recommended next career (trainee, both parents, deck) minimises the expected careers to a fully looped
+  parent under the model. Everything else in the planner serves that.
+- **Tolerance:** total regret at most 1% of V under the model. A wrong pick tends to repeat, so the per-decision bar is
+  δ = 0.25 careers.
+- **Two guarantees, never conflated:**
+  - *Search:* the recommendation is provably the best career under the planner's score. A search over trainees, parent
+    pairs and decks stops only when nothing unscored can beat it; otherwise the output says what was left out and what
+    it could cost.
+  - *Valuation:* the score's error against the expected careers under the model, measured, never assumed.
+
+  The page states which of the two it gives.
+- **Evidence:** passing mono, planval, bit-equality or a review round is not evidence that a pick improved. Every claim
+  about a pick is sized in careers per decision, labelled measured, derived, model-internal or assumed. No "small"
+  without a number.
+- **Time:** the page may take up to a few minutes per career, and every second goes to work that can change or
+  certify the pick.
+
 Easy to get wrong (the rest is in `docs/MODEL.md`):
 - A trainee can't use a support card of her own character or of a group she belongs to.
 - Race affinity is +3 per shared single-race G1 win, counted per race; multi-race titles count nothing.
