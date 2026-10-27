@@ -104,15 +104,17 @@ The mechanics (objective V, `Cont`, a career's score, builders through their dec
   this channel. Now such a route's C is V's (the trio's own C), and C is priced on the new lineage only where the
   side reruns at once.
 - **The pick under the shape's and the calibration's uncertainty** (the robustness check, `docs/SOLVER.md`, *Next
-  career*; the 13 val/plan pools, 2026-10-26): among the checked rows (the 8 shown on each pool), the planner's rule
-  selects the same career under all six tested variants on 12. On p11 it selects different careers under the tested
-  variants: Yamanin Zephyr [Fluttertail Spirit], the pick (taken within `NEAR` by her odds; Gold City scores 0.08
-  higher), under the plan's model, `CEIL_SHARE` 0.65 with either decay and P(all) x 0.961; Agnes Digital [Full-Color
-  Fangirling] (2.3x the odds, 0.33 below the top, just outside `NEAR`) at `CEIL_SHARE` 0.5 with either decay and P(all)
-  x 0.766. Across the variants V moves by -14% to +31% and the pick's score by up to 1.8x (p10_pink: 3.85 to 7.04); a
-  finishing row (p16_88's pick, both parents full veterans) stays at 0 under the P(all) variants, her own all-target
-  chance scaled with every other. The check covers those rows and variants, with the plan's searches held fixed; it says
-  nothing of errors outside them. Not validated against runs.
+  career*; the 13 val/plan pools, 2026-10-26 evening, impl_V3): among the checked rows (8 per pool, 201 on boot_mob),
+  every tested variant and the uncapped nominal control score the plan's pick highest on 8 pools. On 2 they disagree
+  (p16_ss: Agnes Digital [Full-Color Fangirling] on two parent pairs and Oguri Cap, any outfit; gm16: Agnes Digital
+  [Full-Color Fangirling] and Oguri Cap, any outfit). On 3 they agree on another career than the pick, which the rule took
+  within `NEAR` for its odds: p11 (Gold City over the pick Sakura Chiyono O), p11_noagnes (Gold City over Yamanin Zephyr
+  [Fluttertail Spirit]), p16_borrow (Inari One [Edomurasaki] on parents 15 and 16 over her pick on 12 and 16). Across
+  the variants V moves by -15% to +31% and the pick's score by up to 2.0x (p11: 0.80 to 1.60); a finishing row (p16_88's
+  pick, both parents full veterans) stays at 0 under the P(all) variants, her own all-target chance scaled with every
+  other, which is why a uniform scale cannot test one career's calibration against another's. The check covers those rows
+  and variants, with the plan's searches held fixed; it says nothing of errors outside them. Not validated against
+  runs.
 - **Shared builders** (the joint-lift oracle, a diagnostic; the same pools): pricing a builder whose veteran lifts both
   trio sides once, on a joint lattice of the sides' own continuations, lowers V by 0 to 8.3% (most on p16_t10, then
   p10_pink, p11_noagnes, p10, p16_ss: 3.1-4.3%; 0 on boot_mob, and on p16_88 and p16_borrow, whose cheapest trios

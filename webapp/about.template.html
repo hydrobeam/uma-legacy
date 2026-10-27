@@ -668,23 +668,28 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   are both n/n. The route: an n/n of uma A, an n/n of uma B, then uma C trained with those two as parents until she lands
   every target. A and B are stage candidates (C6). Each side is either a real n/n of hers you already have (free), a
   fresh one from her best career now at her step cost (C7), or a fresh one from one of her next two best careers (other parent
-  pairs ranked by her cached decks, each then searched exactly) at her step cost at that career's odds; C is any allowed uma other than A's and B's characters, valued with the two n/n veterans as parents from her cached
+  pairs ranked by her cached decks, each then searched exactly) where she reruns it at once, at one over that career's odds; C is any allowed uma other than A's and B's characters, valued with the two n/n veterans as parents from her cached
   best decks (each fresh n/n a hypothetical veteran: every target at the rank's star mix, the parents of the career it
   comes from, its schedule's wins at their chances; a real n/n is any veteran of hers carrying every target spark, at its own
   stars and wins). For each choice of sides (A's and B's) the best C is found; the cheapest total
   wins, so a fresh n/n can beat a real one whose parents make a poorer lineage for C, and a lineage a new veteran
-  displaces from a candidate's best career stays on offer while it is still among her top three (not guaranteed: a
-  veteran can open three better pairs). Over every
+  displaces from a candidate's best career stays on offer while it is still among her top three and she reruns it at
+  once (not guaranteed: a veteran can open three better pairs, and a displaced lineage she would still build from is
+  dropped, which can raise V by up to about 4.5% on the test pools). Over every
   pair of candidates and every choice of sides:</p>
   <math display="block"><mi>V</mi><mo>=</mo><munder><mo>min</mo><mrow><mi>A</mi><mo>,</mo><mi>B</mi><mo>,</mo><mtext>sides</mtext></mrow></munder><mrow><mo>[</mo><mtext>side</mtext><mo>(</mo><mi>A</mi><mo>)</mo><mo>+</mo><mtext>side</mtext><mo>(</mo><mi>B</mi><mo>)</mo><mo>+</mo><munder><mo>min</mo><mi>C</mi></munder><mfrac><mn>1</mn><msub><mi>p</mi><mi>C</mi></msub></mfrac><mo>]</mo></mrow></math>
   <p>With a real n/n of A and of B and C's odds on them, the goal is one stage away. The goal is always the next fully
   looped parent: a fully looped veteran you already have is a real n/n side (free) whose parents are n/n, so
   <math><mi>V</mi></math> is never 0.</p>
 
-  <p><strong>C6. Stage candidates.</strong> At most 8 umas: the best career's trainee, the umas of its lineage, the umas
-  you hold veterans of (not borrowed), and the main search's other top trainees. If these give fewer than 4 (a loop being
-  started, or mob parents), the rest are filled with the owned umas whose ceiling is highest under a full loop lineage
-  (parents hypothetical n/n veterans of the first two candidates), with no deck search.</p>
+  <p><strong>C6. Stage candidates.</strong> At most 8 umas: the best career's trainee, the umas of its lineage and the main
+  search's other top trainees, then the allowed umas whose ceiling is highest under a full loop lineage (parents
+  hypothetical n/n veterans of the first two candidates; no deck search; equal ceilings in a fixed uma order). The
+  lineage's umas are taken parents first, then grandparents, each in a fixed uma order, so the set depends on which
+  veterans the best careers use, not on the order you list your veterans in (two of the main search's careers at
+  exactly equal odds aside). Every other uma with a real n/n a career may use as a parent
+  (a borrowed one where the borrowing rule allows it), trainable or not, is a side too: her real n/n is free, and she
+  has no career, step or fresh side of her own.</p>
 
   <p><strong>C7. A candidate's step: the continuation.</strong> Rerunning candidate <math><mi>u</mi></math>'s best career until she lands
   n/n takes <math><mn>1</mn><mo>/</mo><msub><mi>p</mi><mi>u</mi></msub></math> careers on average. Building first can be cheaper: careers whose veterans become better
@@ -752,13 +757,36 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p>The pick is the highest score; within 0.25 careers (or 5%) of it, the better own odds. With fewer
   than two stage candidates of different umas there is no route: nothing is scored and the pick is the best odds. What the pick's score sums is kept, so Reroll can work out its saving <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> at any one outcome (C9).</p>
   <p>Once the pick is shown it is checked, not changed: the shown careers (the eight best and every one within 0.25
-  careers or 5% of the top) are scored again under six variants of the model, the share and the exponent at the four
+  careers or 5% of the top) are scored again under the model without the step caps it kept from earlier plans (the
+  control: every variant drops them) and six variants of it, the share and the exponent at the four
   corners of the range the leave-one-pool-out refits span, and every career's chance of landing all its targets times
   __PALLLOW__ and times __PALLHIGH__, the ends of the 95% interval of the observed over predicted all-target chance
   (research section 13): the stage candidates' odds, the lifted odds, C's and the scored career's own, the mass taken
-  from her full set spread over her other results in proportion; each continuation refitted under its variant. Where
-  the planner's rule selects different careers among those under the tested variants, the table shows and marks every
-  one it selects. That says nothing of variants not tested.</p>
+  from her full set spread over her other results in proportion; each continuation refitted under its variant. Scaling
+  every chance alike leaves a career that finishes the goal scored the same (its odds and the careers left scale
+  inversely), so those two do not test one uma's calibration against another's. Per-uma scenarios do, one for each of
+  the 3 other umas that score highest: the top-scoring uma's all-target chance times 0.76 and that uma's times 1.32,
+  as a stage candidate (her odds and lifted odds), as C and in her own results, each one's continuation refitted; the
+  builders' lifts are taken as measured, not scaled. The spread of observed over predicted between umas was measured
+  from the run data (τ, the standard deviation of its logarithm, about 0.2, weakly identified: 13 umas measured); the
+  adversarial split for a pair is inferred from it: ×0.76 and ×1.32 cover the relative error of 95% of
+  random pairs of umas. Where the tested variants and scenarios score different careers highest, the table shows and
+  marks every one. Where every one scores the same career highest and the pick is another, taken for its better odds
+  within the 0.25-career or 5% band, the table marks the top-scoring one and says so. Agreement holds under the tested
+  variants and scenarios only.</p>
+  <p>Then, for the pick's uma, each uma a per-uma scenario scores highest and the four best-scoring umas (as far as a
+  fixed amount of work allows), every pair of your veterans she can run is scored with the best deck found so far for
+  it. The four best pairs so scored are finalists: every deck found so far for her is scored on the pair, the pair's
+  deck is searched exactly, and the better by Saves per run is kept; the best finalist is hers. The best pairs found
+  are then tried for every uma not searched on all her pairs (those the fixed amount of work left out included), and as
+many of the best of those made finalists likewise. Where a pick's or tied uma's best beats
+  her shown career, a line under the table names the parents, the gain in Saves per run over her shown parents and
+  over the best other pair checked, and the number of other pairs; where the best uma and pair found is another uma's,
+  a line names it against the pick's side (the pick's uma's better parents, else the pick), with how many umas each
+  step covered. It is the better career only where it saves more under the model as fitted and in both per-uma
+  scenarios against the pick's side (the pick's uma's all-target chance down and hers up, and the reverse); otherwise
+  the line calls them tied and the pick's side stays the recommendation. Every career here is scored against one V and one fit. The other pairs are scored with the decks
+  found so far, so nothing is certified best; it changes no pick.</p>
   <p>Each uma is scored on her best career by odds and, when its parents are not both n/n, also on her best career with
   two of your n/n veterans as parents (searched exactly), listed beside it: only there can her own n/n be the goal. The
   route's last step, C on two n/n veterans you have, is such a career, saving at least one career per run in
