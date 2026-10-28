@@ -78,6 +78,31 @@ pub(crate) enum WhileBuilding {
     Skip,
 }
 
+/// No candidate (`RouteWin::lifted`); every candidate index is below it (`evaluate_outcomes` asserts it).
+pub(crate) const NO_CANDIDATE: u16 = u16::MAX;
+
+/// What V after her took at one outcome (`ScoreBase::least_after`): the candidates whose lifted sides its least route
+/// takes (`NO_CANDIDATE` in a place it does not fill), and whether her own full veteran is a side of that route or is
+/// the goal itself (her parents both full veterans). `NONE` where V after her is V0, no route below it. (Kept per
+/// outcome beside V after her, `kernel::BatchLeast`: u16 candidates hold it in 6 bytes.)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RouteWin {
+    pub(crate) lifted: [u16; 2],
+    pub(crate) own_side: bool,
+}
+
+impl RouteWin {
+    /// No route taken.
+    pub(crate) const NONE: Self = Self { lifted: [NO_CANDIDATE; 2], own_side: false };
+}
+
+/// V after her at one outcome (`ScoreBase::least_after`) and the route it took there (`RouteWin`).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Least {
+    pub(crate) value: f64,
+    pub(crate) win: RouteWin,
+}
+
 /// What V after her reads beyond the lifts at one outcome.
 pub(crate) struct AfterHer<'after> {
     /// Her parents are both full veterans: her own full veteran is the goal (V after her 0).
@@ -224,11 +249,12 @@ impl ScoreBase<'_> {
         landed_mask: usize,
         after: &AfterHer,
     ) -> f64 {
-        (self.current_value - self.least_after(cost, steps, lifted, finisher_odds, landed_mask, after)).max(0.0)
+        (self.current_value - self.least_after(cost, steps, lifted, finisher_odds, landed_mask, after).value).max(0.0)
     }
     /// V after her at one outcome (`v_after`'s saving is V0 less it): the least of V0 and the routes taken there, 0 where
-    /// her own full veteran is the goal. Where it costs any step (some slot lifted, or she landed every target), `steps`
-    /// holds each lifted slot's step afterwards (`Scored::shadows` read them)
+    /// her own full veteran is the goal, with the route it took (`RouteWin`: the first of the least routes, in route
+    /// order; the value is the same whichever is named). Where it costs any step (some slot lifted, or she landed every
+    /// target), `steps` holds each lifted slot's step afterwards (`Scored::shadows` read them)
     #[inline(always)]
     pub(crate) fn least_after<C: StepCost>(
         &self,
@@ -238,13 +264,13 @@ impl ScoreBase<'_> {
         finisher_odds: &[f64],
         landed_mask: usize,
         after: &AfterHer,
-    ) -> f64 {
+    ) -> Least {
         let full = landed_mask == after.full_mask;
         if after.completes_goal && full {
-            return 0.0;
+            return Least { value: 0.0, win: RouteWin { own_side: true, ..RouteWin::NONE } };
         }
         if lifted.is_empty() && !full {
-            return self.current_value;
+            return Least { value: self.current_value, win: RouteWin::NONE };
         }
         steps.clear();
         steps.resize(after.lift_slot_count, None);
@@ -254,13 +280,13 @@ impl ScoreBase<'_> {
         if !lifted.is_empty() {
             cost.changed();
         }
-        let mut best = self.current_value;
+        let (mut best, mut best_route) = (self.current_value, None);
         let finisher_cost = |slot: usize| {
             let odds = *finisher_odds.get(slot)?;
             let scale = after.finisher_umas.get(slot).map_or(self.odds_scales.common, |&uma| self.odds_scales.of(uma));
             (odds > 0.0).then(|| 1.0 / (odds * scale))
         };
-        for route in after.routes {
+        for (route_index, route) in after.routes.iter().enumerate() {
             if route.full_only && !full {
                 continue;
             }
@@ -282,10 +308,21 @@ impl ScoreBase<'_> {
             let Some(finisher) = finisher else { continue };
             let value = ((first_step.step + second_step.step) + route.fixed_cost) + finisher;
             if value < best {
-                best = value;
+                (best, best_route) = (value, Some(route_index));
             }
         }
-        best
+        let win = best_route.map_or(RouteWin::NONE, |route_index| {
+            let route = &after.routes[route_index];
+            // (a lifted slot's candidate: the lift that set its step)
+            let candidate_of = |slot: usize| {
+                lifted.iter().find(|lift| lift.slot == slot).map_or(NO_CANDIDATE, |lift| lift.candidate as u16)
+            };
+            RouteWin {
+                lifted: route.lifts.map(|slot| if slot == NO_SLOT { NO_CANDIDATE } else { candidate_of(slot) }),
+                own_side: route.full_only,
+            }
+        });
+        Least { value: best, win }
     }
 }
 
@@ -330,5 +367,67 @@ mod tests {
         let mut estimate = StepEstimate::new(1, EstimateBuffers::default());
         let saving = base.v_after(&mut estimate, &mut vec![], &lift, &finisher_odds, 0, &after);
         assert!((lam * saving - 1.0).abs() < 1e-9, "score {}", lam * saving - 1.0);
+    }
+
+    /// Every lifted step at a fixed cost, never building.
+    struct FixedStep(f64);
+    impl StepCost for FixedStep {
+        fn step(&mut self, _: &ScoreBase, _: CandidateLift) -> LiftStep {
+            LiftStep { step: self.0, builds: false }
+        }
+    }
+
+    /// V after her names the route it takes (`RouteWin`): a lifted side's route names that slot's candidate, her own
+    /// full veteran's route her own side, the goal her own side, and no route taken none
+    #[test]
+    fn least_after_names_the_route_it_takes() {
+        let cont = Cont::new(0.3, 0.1, 0.002, 3e-4);
+        let base = ScoreBase {
+            candidates: &[crate::uma::UmaIndex(0)],
+            step_costs: &[10.0],
+            current_value: 100.0,
+            current_odds: &[3e-4],
+            continuations: std::slice::from_ref(&cont),
+            step_caps: &[],
+            trios: &[],
+            trio_sides: &[],
+            finisher_umas: &[],
+            knobs: crate::career::plan::cont::ScoringKnobs::default(),
+            odds_scales: crate::career::plan::cont::OddsScales::ONE,
+        };
+        // (a lifted side beside a fixed one, 20 + 30 + C 40; her own full veteran beside a fixed side, 0 + 20 + C 40)
+        let routes = [
+            Route {
+                lifts: [0, NO_SLOT],
+                full_only: false,
+                fixed_cost: 30.0,
+                finisher_slot: 0,
+                while_building: WhileBuilding::Skip,
+            },
+            Route {
+                lifts: [NO_SLOT, NO_SLOT],
+                full_only: true,
+                fixed_cost: 20.0,
+                finisher_slot: 1,
+                while_building: WhileBuilding::Skip,
+            },
+        ];
+        let after =
+            AfterHer { completes_goal: false, full_mask: 1, routes: &routes, lift_slot_count: 1, finisher_umas: &[] };
+        let lift = [CandidateLift { slot: 0, candidate: 3, probability: 0.01 }];
+        let finisher_odds = [1.0 / 40.0, 1.0 / 40.0];
+        let least = |lifted: &[CandidateLift], landed_mask: usize, after: &AfterHer| {
+            base.least_after(&mut FixedStep(20.0), &mut vec![], lifted, &finisher_odds, landed_mask, after)
+        };
+        let lifted_route = least(&lift, 0, &after);
+        assert!((lifted_route.value - 90.0).abs() < 1e-9, "the lifted route: {}", lifted_route.value);
+        assert_eq!(lifted_route.win, RouteWin { lifted: [3, NO_CANDIDATE], own_side: false }, "names candidate 3");
+        let own_route = least(&lift, 1, &after);
+        assert!((own_route.value - 60.0).abs() < 1e-9, "her own full veteran's route: {}", own_route.value);
+        assert_eq!(own_route.win, RouteWin { own_side: true, ..RouteWin::NONE }, "names her own side");
+        assert_eq!(least(&[], 0, &after).win, RouteWin::NONE, "no lift, not full: V0, no route");
+        let goal = AfterHer { completes_goal: true, ..after };
+        let at_goal = least(&lift, 1, &goal);
+        assert!(at_goal.value == 0.0 && at_goal.win.own_side, "her full veteran is the goal");
     }
 }

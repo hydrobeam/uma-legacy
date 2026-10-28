@@ -4,7 +4,7 @@
 use crate::career::clock::{now_ms, prof};
 use crate::career::plan::cont::{ScoreBase, Want};
 use crate::career::plan::fold::{All, Leaves, OneLeaf};
-use crate::career::plan::score::kernel::{FOLD_SCRATCH, LiftStats, Scored, SetupParts};
+use crate::career::plan::score::kernel::{BatchLeast, FOLD_SCRATCH, LiftStats, RouteWins, Scored, SetupParts};
 use crate::career::plan::score::routes::{LiftSide, LiftSlots, PairedAt, RouteInputs, RouteSet, lift_slots, routes};
 use crate::career::plan::score::{CareerScore, KeptScoring, completes_goal, fm_masks};
 use crate::career::plan::search::{legal_pair, val};
@@ -393,6 +393,7 @@ pub(super) fn evaluate_career(
         return CareerScore {
             expected_saving: 0.0,
             improvement_chance: 0.0,
+            route_wins: RouteWins::default(),
             kept: None,
             lift_stats: vec![LiftStats::default(); candidate_count],
             joint_lifts: vec![],
@@ -440,6 +441,7 @@ pub(super) fn evaluate_career(
     CareerScore {
         expected_saving: evaluation.expected_saving,
         improvement_chance: evaluation.improvement_chance,
+        route_wins: evaluation.route_wins,
         kept: (want == Want::Keep).then_some(KeptScoring { scored, later: later_batches }),
         lift_stats: evaluation.lift_stats,
         joint_lifts: evaluation.joint_lifts,
@@ -576,7 +578,7 @@ impl CareerFrame {
             absent_factors: vec![],
             spark_scales: vec![],
             shadows,
-            prior_least: vec![],
+            prior_least: BatchLeast::default(),
             retain_least: false,
         };
         let parts: Vec<SetupParts> = setups
@@ -759,7 +761,7 @@ impl<'batch> LaterBatches<'batch> {
             evaluation = scored.evaluate(score_base, &All, self.want, &mut scratch);
             FOLD_SCRATCH.with(|current| *current.borrow_mut() = scratch);
             if keep {
-                (scored.prior_least, scored.retain_least) = (vec![], false);
+                (scored.prior_least, scored.retain_least) = (BatchLeast::default(), false);
                 kept.push(scored);
             }
         }
@@ -1006,7 +1008,7 @@ fn collapse_at(k: usize, star_factors: [f64; 4], tables: &[&[f64]]) -> Collapse 
 
 #[cfg(test)]
 mod tests {
-    use super::{OUTCOME_BUDGET, scaled_landed_sets};
+    use super::{BatchLeast, OUTCOME_BUDGET, scaled_landed_sets};
 
     /// Astra (astra-iv2.out 2): the odds bound holds in f64. A flat table of 0.1 read at a miss chance of 0.2 computes
     /// 0.1 * 0.8 + 0.1 * 0.2 = 0.10000000000000002, above every entry, so 1 / 0.1 = 10 is no floor on that C's step
@@ -1040,7 +1042,7 @@ mod tests {
             absent_factors: vec![],
             spark_scales: vec![],
             shadows: vec![],
-            prior_least: vec![],
+            prior_least: BatchLeast::default(),
             retain_least: false,
         };
         scored.derive();
@@ -1088,7 +1090,7 @@ mod tests {
             absent_factors: vec![],
             spark_scales: vec![],
             shadows: vec![],
-            prior_least: vec![],
+            prior_least: BatchLeast::default(),
             retain_least: false,
         }
     }
@@ -1184,7 +1186,7 @@ mod tests {
             absent_factors: vec![],
             spark_scales: vec![],
             shadows: vec![],
-            prior_least: vec![],
+            prior_least: BatchLeast::default(),
             retain_least: false,
         };
         scored.derive();

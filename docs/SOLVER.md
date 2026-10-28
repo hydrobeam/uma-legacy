@@ -1090,7 +1090,13 @@ of the other 12 val/plan pools sequencing lowers V by 8.7-11.9% (boot_mob 40.9%,
 - `options`: per career `role` (plan / finish / loop / candidate / builder; finish is C's career on A's and B's real
   full veterans, the trios' last step, only when both sides are real and her parents are both full veterans), `looped` (both parents
   full veterans), `best_odds` (the main search's best career, one row), `index`, `score`, `lift` (the chance her roll
-  lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
+  lowers V), `lifts_side` (a scored row's, null otherwise: `{uma, chance, own}`; over the outcomes where her roll lowers
+  V, the outcomes `lift` sums, the stage candidate (uma id) whose side the route V after her takes there lifts most
+  often and that chance, null and 0 where no route taken lifts a side, and `own` the chance the route taken has her own
+  full veteran as a side or is the goal itself; a route that lifts two sides counts for both, so the chances can sum
+  past `lift`, each at most it; ties between routes go to the first in route order, between candidates to the first
+  candidate; `kernel::RouteWins`, display only), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode`
+  (trio).
 - `members` (A and B): `{trainee, p, parents, alternative (the side is from one of her next best careers, at its odds
   `p` and `parents`), proven (`p` is the career's proven best), has_full_veteran, real (the trio uses a real full veteran of hers), p_inf, lam, phi, p0,
   building_careers (the expected careers spent building before she grinds), p_switch, builder (the career id of the

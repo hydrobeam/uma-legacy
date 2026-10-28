@@ -84,6 +84,8 @@ pub(crate) struct RowScoring {
     /// E[V - V with her veteran] - 1, in careers; -infinity for a row that cannot be the pick.
     net_saving: f64,
     pub(crate) improvement_chance: f64,
+    /// The sides the routes V after her takes lift where she improves V (`kernel::RouteWins`; the output's `lifts_side`).
+    pub(crate) route_wins: crate::career::plan::score::kernel::RouteWins,
     /// Can be discarded for a row that cannot win, or taken for the pick's roll state.
     /// The row remains scored in either case.
     pub(crate) kept: Option<KeptScoring>,
@@ -899,12 +901,18 @@ fn score_plan_row(
     buf: &mut Vec<f64>,
 ) -> RowScoring {
     if !context.input.is_runnable(&row.career) {
-        return RowScoring { net_saving: f64::NEG_INFINITY, improvement_chance: 0.0, kept: None, stamp: None };
+        return RowScoring {
+            net_saving: f64::NEG_INFINITY,
+            improvement_chance: 0.0,
+            route_wins: crate::career::plan::score::kernel::RouteWins::default(),
+            kept: None,
+            stamp: None,
+        };
     }
     let score_base = fit.score_base(context.candidates);
-    let CareerScore { expected_saving, improvement_chance, kept, .. } =
+    let CareerScore { expected_saving, improvement_chance, route_wins, kept, .. } =
         score_career(simulator, &context.scoring(&score_base), row.scored_career(), Want::Keep, buf);
-    RowScoring { net_saving: expected_saving - 1.0, improvement_chance, kept, stamp: None }
+    RowScoring { net_saving: expected_saving - 1.0, improvement_chance, route_wins, kept, stamp: None }
 }
 
 impl PlanInputs<'_, '_> {

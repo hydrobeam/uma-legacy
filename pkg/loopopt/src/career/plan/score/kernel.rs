@@ -5,7 +5,9 @@ use crate::career::clock::{now_ms, prof};
 use crate::career::plan::TargetMask;
 use crate::career::plan::cont::{ScoreBase, Want};
 use crate::career::plan::fold::{FoldContext, FoldCursor, FoldWorkspace, LeafLayout, Leaves, SlotTables, leaf_set};
-use crate::career::plan::step::{AfterHer, CandidateLift, EstimateBuffers, LiftRead, Route, ShadowRoute, StepEstimate};
+use crate::career::plan::step::{
+    AfterHer, CandidateLift, EstimateBuffers, Least, LiftRead, NO_CANDIDATE, Route, RouteWin, ShadowRoute, StepEstimate,
+};
 /// Cached leaf probabilities depend only on the star mix and uncertain-target order.
 #[derive(Default)]
 struct LeafCache {
@@ -24,11 +26,65 @@ struct OutcomeScratch {
 
 #[derive(Default)]
 struct OutcomeWorkspace {
-    representative_savings: Vec<f64>,
+    representatives: RepresentativeOutcomes,
     /// Offset into lift_records, or u32::MAX when the representative was not recorded.
     lift_offsets: Vec<u32>,
     lift_records: Vec<LiftRecord>,
     estimate: EstimateBuffers,
+}
+
+/// What a collapsed target's representative outcome computed for the leaves that read it, at (row << nf) | fm: y and
+/// the route V after her took there (`RouteWin`).
+#[derive(Default)]
+struct RepresentativeOutcomes {
+    savings: Vec<f64>,
+    wins: Vec<RouteWin>,
+}
+
+/// V after her per outcome, at (row << nf) | fm, and the route it took there (`RouteWin`): a batch's, for the next
+/// batch (`Scored::prior_least`); empty where there is none.
+#[derive(Default)]
+pub(crate) struct BatchLeast {
+    pub(crate) values: Vec<f64>,
+    pub(crate) wins: Vec<RouteWin>,
+}
+
+/// Over a scoring's outcomes where her veteran lowers V (y > 1e-9, the outcomes `ScoringEvaluation::improvement_chance`
+/// sums), the chance the route V after her takes (`RouteWin`) lifts each candidate's side, and the chance it has her
+/// own full veteran as a side or is the goal itself. Each outcome's chance goes to every side its route takes, so the
+/// chances can sum past the improvement chance; each is at most it. Empty where y is not computed.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RouteWins {
+    /// Per candidate (candidate order).
+    pub(crate) lifted: Vec<f64>,
+    pub(crate) own_side: f64,
+}
+
+impl RouteWins {
+    fn add(&mut self, win: RouteWin, chance: f64) {
+        let [first, second] = win.lifted;
+        if first != NO_CANDIDATE {
+            self.lifted[usize::from(first)] += chance;
+        }
+        // (a route's two lifted sides are two candidates'; counted once should they be one)
+        if second != NO_CANDIDATE && second != first {
+            self.lifted[usize::from(second)] += chance;
+        }
+        if win.own_side {
+            self.own_side += chance;
+        }
+    }
+    /// The candidate whose side the routes taken lift most often, with that chance (the first in candidate order on a
+    /// tie); none where no route taken lifts a side.
+    pub(crate) fn most_lifted(&self) -> Option<(usize, f64)> {
+        let mut best: Option<(usize, f64)> = None;
+        for (candidate, &chance) in self.lifted.iter().enumerate() {
+            if chance > 0.0 && best.is_none_or(|(_, most)| chance > most) {
+                best = Some((candidate, chance));
+            }
+        }
+        best
+    }
 }
 
 /// A representative's candidate odds; usize::MAX ends a record.
@@ -47,6 +103,8 @@ pub(super) struct EvaluationCounters {
 pub(super) struct ScoringEvaluation {
     pub(super) expected_saving: f64,
     pub(super) improvement_chance: f64,
+    /// Where y is computed: the sides the routes V after her takes lift, over the outcomes she improves (`RouteWins`).
+    pub(super) route_wins: RouteWins,
     pub(super) outcome_savings: Vec<f64>,
     pub(super) lift_stats: Vec<LiftStats>,
     /// With `Want::Joint`: per set of candidates her veteran lifts at once (bit c: candidate c), its chance, by set.
@@ -58,8 +116,8 @@ pub(super) struct ScoringEvaluation {
     /// Where y is computed: per route the budget left out (`Scored::shadows`), whether it undercut V after her at an
     /// outcome evaluated, so its omission is not certified (none: it changed nothing at any outcome).
     pub(super) undercuts: Vec<bool>,
-    /// With `Scored::retain_least`: V after her per outcome evaluated, at (row << nf) | fm (the next batch's prior).
-    pub(super) outcome_least: Vec<f64>,
+    /// With `Scored::retain_least`: V after her per outcome evaluated and its route (the next batch's prior).
+    pub(super) outcome_least: BatchLeast,
     pub(super) counters: EvaluationCounters,
 }
 
@@ -147,9 +205,9 @@ pub(crate) struct Scored {
     /// The routes the memory budget left out (`score::routes`), each checked at every outcome where y is computed
     /// (`ShadowRoute`); none in a stored roll state (a roll reads the kept routes only).
     pub(crate) shadows: Vec<ShadowRoute>,
-    /// An earlier batch's V after her per outcome (`ScoringEvaluation::outcome_least`, at (row << nf) | fm): this
-    /// batch's routes are taken beside it (V after her the least of both). Empty: none (a single batch).
-    pub(crate) prior_least: Vec<f64>,
+    /// An earlier batch's V after her per outcome and its route (`ScoringEvaluation::outcome_least`): this batch's
+    /// routes are taken beside it (V after her the least of both). Empty: none (a single batch).
+    pub(crate) prior_least: BatchLeast,
     /// Keep V after her per outcome where y is computed (`ScoringEvaluation::outcome_least`), for a later batch.
     pub(crate) retain_least: bool,
 }
@@ -395,7 +453,7 @@ impl Scored {
 /// entered once per scoring, so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*). On a
 /// collapsed target (`collapsed_targets`, `prepare_scoring`: folded at 0 and 1 star only) a leaf with 2 or 3 stars there reads
 /// its representative's values (`representative_of`: those digits set to 1, so a smaller leaf, met first): y as
-/// computed there (`representative_savings`) and each candidate's odds for the stats; every sum (E[y], the lift,
+/// computed there (`RepresentativeOutcomes`) and each candidate's odds for the stats; every sum (E[y], the lift,
 /// the stats) still takes
 /// every outcome in the loop's order at its own chance, the same sums as without the collapse wherever the
 /// representative's values are the leaf's own.
@@ -414,6 +472,7 @@ fn evaluate_outcomes<L: Leaves>(
 ) -> ScoringEvaluation {
     let leaves = fold_context.leaves;
     let (uncertain_target_count, slot_count) = (scored.uncertain_target_count, scored.slot_count);
+    assert!(score_base.candidates.len() < usize::from(NO_CANDIDATE), "a route's candidates are u16 (`RouteWin`)");
     scored.prepare_leaf_cache(leaves, &mut scratch.leaf_cache);
     // A leaf's representative has each nonzero collapsed-target digit at 1.
     let collapse_mask: usize =
@@ -541,8 +600,8 @@ struct OutcomeContext<'out, 'base, L: Leaves> {
     every_possible_set: bool,
     /// The routes the budget left out (`Scored::shadows`).
     shadows: &'out [ShadowRoute],
-    /// An earlier batch's V after her per outcome (`Scored::prior_least`; empty: none).
-    prior_least: &'out [f64],
+    /// An earlier batch's V after her per outcome and its route (`Scored::prior_least`; empty: none).
+    prior_least: &'out BatchLeast,
     /// Keep V after her per outcome (`Scored::retain_least`).
     retain_least: bool,
 }
@@ -599,7 +658,7 @@ impl<L: Leaves> OutcomeContext<'_, '_, L> {
 #[inline(never)]
 fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Leaves>(
     context: &OutcomeContext<L>,
-    representative_savings: &mut Vec<f64>,
+    representatives: &mut RepresentativeOutcomes,
     lift_offsets: &mut Vec<u32>,
     lift_records: &mut Vec<LiftRecord>,
     estimate_buffers: &mut EstimateBuffers,
@@ -621,6 +680,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     let leaf_rows = leaves.nrows(leaf_count);
     // every outcome: uncertain targets' star pattern, guaranteed golds present or not
     let (mut expected_saving, mut improvement_chance) = (0.0f64, 0.0f64);
+    // (over the outcomes she improves, the sides the routes taken lift: `RouteWins`)
+    let mut route_wins =
+        if Y { RouteWins { lifted: vec![0.0; candidate_count], own_side: 0.0 } } else { RouteWins::default() };
     // y per outcome (careers saved), at (row << nf) | fm (0 where the outcome can't happen); only when the caller reads it
     let mut outcome_savings: Vec<f64> =
         if context.retain_outcome_savings { vec![0.0; leaf_rows << fixed_target_count] } else { vec![] };
@@ -646,10 +708,13 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     // per route the budget left out (`Scored::shadows`), whether it undercut V after her at an outcome evaluated
     let mut undercuts = vec![false; context.shadows.len()];
     // V after her per outcome evaluated, for a later batch (`Scored::retain_least`)
-    let mut outcome_least: Vec<f64> = if context.retain_least {
-        vec![context.score_base.current_value; leaf_rows << fixed_target_count]
+    let mut outcome_least = if context.retain_least {
+        BatchLeast {
+            values: vec![context.score_base.current_value; leaf_rows << fixed_target_count],
+            wins: vec![RouteWin::NONE; leaf_rows << fixed_target_count],
+        }
     } else {
-        vec![]
+        BatchLeast::default()
     };
     let (collapse_mask, low_digit_bits) = (context.probabilities.collapse_mask, context.probabilities.low_digit_bits);
     let rep_of = |leaf: usize| {
@@ -661,8 +726,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     // Buffers only grow. A reused representative precedes this leaf and has the same landed set,
     // so its positive outcome probability made this call write both its saving and record offset.
     if COL {
-        if Y && representative_savings.len() < leaf_rows << fixed_target_count {
-            representative_savings.resize(leaf_rows << fixed_target_count, 0.0);
+        if Y && representatives.savings.len() < leaf_rows << fixed_target_count {
+            representatives.savings.resize(leaf_rows << fixed_target_count, 0.0);
+            representatives.wins.resize(leaf_rows << fixed_target_count, RouteWin::NONE);
         }
         if S {
             if lift_offsets.len() < leaf_rows << fixed_target_count {
@@ -731,10 +797,11 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                     }
                 }
                 if Y {
-                    let saving = representative_savings[representative_outcome];
+                    let saving = representatives.savings[representative_outcome];
                     expected_saving += outcome_probability * saving;
                     if saving > 1e-9 {
                         improvement_chance += outcome_probability;
+                        route_wins.add(representatives.wins[representative_outcome], outcome_probability);
                     }
                     if context.retain_outcome_savings {
                         outcome_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
@@ -817,13 +884,19 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
             );
             // (beside an earlier batch's routes: the least of both, exact in any order)
             let outcome_index = (leaf_row << fixed_target_count) | fixed_mask;
-            let least = match context.prior_least.get(outcome_index) {
-                Some(&prior) => least.min(prior),
+            // (on a tie the earlier batch's route: the first in route order, as within a batch)
+            let least = match context.prior_least.values.get(outcome_index) {
+                Some(&prior) => Least {
+                    value: least.value.min(prior),
+                    win: if least.value < prior { least.win } else { context.prior_least.wins[outcome_index] },
+                },
                 None => least,
             };
             if context.retain_least {
-                outcome_least[outcome_index] = least;
+                outcome_least.values[outcome_index] = least.value;
+                outcome_least.wins[outcome_index] = least.win;
             }
+            let (least, win) = (least.value, least.win);
             let saving = (score_base.current_value - least).max(0.0);
             // (the routes the budget left out, where V after her costed the steps: each must not undercut it)
             let full = landed_mask == context.after_her.full_mask;
@@ -836,7 +909,8 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                 }
             }
             if is_representative {
-                representative_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
+                representatives.savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
+                representatives.wins[(leaf_row << fixed_target_count) | fixed_mask] = win;
                 if context.class_split {
                     representative_lifts.insert((leaf_row << fixed_target_count) | fixed_mask, lifted.clone());
                 }
@@ -847,6 +921,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
             expected_saving += outcome_probability * saving;
             if saving > 1e-9 {
                 improvement_chance += outcome_probability;
+                route_wins.add(win, outcome_probability);
             }
             if context.retain_outcome_savings {
                 outcome_savings[(leaf_row << fixed_target_count) | fixed_mask] = saving;
@@ -872,6 +947,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     ScoringEvaluation {
         expected_saving,
         improvement_chance,
+        route_wins,
         outcome_savings,
         lift_stats,
         joint_lifts,
@@ -951,65 +1027,33 @@ impl<L: Leaves> OutcomeContext<'_, '_, L> {
         stats_only: bool,
         scratch: &mut OutcomeWorkspace,
     ) -> ScoringEvaluation {
-        let OutcomeWorkspace { representative_savings, lift_offsets, lift_records, estimate } = scratch;
+        let OutcomeWorkspace { representatives, lift_offsets, lift_records, estimate } = scratch;
         // (Y: y and its sums, S: the stats)
         match (emit_setup_products, self.probabilities.collapse_mask != 0, stats_only) {
-            (false, false, false) => sc_loop::<false, false, true, false, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
-            (false, true, false) => sc_loop::<false, true, true, false, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
-            (true, false, false) => sc_loop::<true, false, true, false, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
-            (true, true, false) => sc_loop::<true, true, true, false, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
-            (false, false, true) => sc_loop::<false, false, false, true, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
-            (false, true, true) => sc_loop::<false, true, false, true, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
-            (true, false, true) => sc_loop::<true, false, false, true, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
-            (true, true, true) => sc_loop::<true, true, false, true, L>(
-                self,
-                representative_savings,
-                lift_offsets,
-                lift_records,
-                estimate,
-            ),
+            (false, false, false) => {
+                sc_loop::<false, false, true, false, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
+            (false, true, false) => {
+                sc_loop::<false, true, true, false, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
+            (true, false, false) => {
+                sc_loop::<true, false, true, false, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
+            (true, true, false) => {
+                sc_loop::<true, true, true, false, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
+            (false, false, true) => {
+                sc_loop::<false, false, false, true, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
+            (false, true, true) => {
+                sc_loop::<false, true, false, true, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
+            (true, false, true) => {
+                sc_loop::<true, false, false, true, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
+            (true, true, true) => {
+                sc_loop::<true, true, false, true, L>(self, representatives, lift_offsets, lift_records, estimate)
+            }
         }
     }
 }

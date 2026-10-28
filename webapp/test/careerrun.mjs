@@ -19,6 +19,21 @@ export default async function careerrun(b) {
       return new W(...a);
     };
   });
+  // the first plan's report edited once (`__planEdit`): every score moved so the top (the pick's) is -0.4, and another
+  // row put 0.1 below the pick on the pick's parents (the table's numbers only: no job reads them back)
+  await pg.evaluate(() => {
+    window.__planEdit = (next) => {
+      window.__planEdit = null;
+      const pick = next.options.find((o) => o.chosen),
+        other = next.options.find((o) => !o.chosen && o.score != null);
+      if (pick?.score == null || !other) return;
+      const shift = -0.4 - pick.score;
+      for (const o of next.options) if (o.score != null) o.score += shift;
+      other.score = pick.score - 0.1;
+      other.parents = pick.parents.slice();
+      window.__edited = { pick: pick.score, other: other.score, options: next.options.map((o) => o.score) };
+    };
+  });
   await importDump();
   await pg.waitForFunction(() => window.__careerJobs.some((j) => j.next)); // the plan job is in the worker
   // a preset saved (a settings save that leaves the job as it is), all at once while the plan runs
@@ -40,6 +55,49 @@ export default async function careerrun(b) {
     };
   });
   await planned();
+  const edited = await pg.evaluate(() => {
+    const alts = document.querySelector('section.alts'),
+      kids = alts ? [...alts.children] : [],
+      negative = alts?.querySelector(':scope > .negtop'),
+      wrap = alts?.querySelector(':scope > .optwrap');
+    return {
+      edited: window.__edited,
+      negative: negative?.textContent || '',
+      above: !!negative && !!wrap && kids.indexOf(negative) < kids.indexOf(wrap),
+      tags: [...(alts?.querySelectorAll('.otag.tie') || [])].map((t) => [t.textContent, t.title]),
+      note: alts?.querySelector('.tienote')?.textContent || '',
+    };
+  });
+  check(
+    "career: where no career you can run saves more than its own run (the top Saves per run below 0), a line above the table says so with the pick's net",
+    !!edited.edited &&
+      edited.above &&
+      /^No career you can run now saves more than the run itself on today's estimate: the pick is the one that costs least \(−0\.4 per run\)\.$/.test(
+        edited.negative,
+      ),
+    JSON.stringify(edited),
+  );
+  // (the rows within 0.25 of the pick that the table lists are tagged, at most all of them: the edited one among them,
+  // on the pick's parents)
+  const near = (edited.edited?.options || []).filter((s) => s != null && edited.edited.pick - s <= 0.25).length - 1;
+  check(
+    "career: a row within 0.25 careers per run of the pick is shown about equal to it, saying where it is on the pick's parents, and the note under the table names it",
+    edited.tags.length >= 1 &&
+      edited.tags.length <= near &&
+      edited.tags.some(
+        ([text, title]) =>
+          text === 'about equal, same parents' &&
+          title ===
+            "About equal to the pick (within 0.25 careers per run, the planner's tolerance), on the pick's parents",
+      ) &&
+      /^About equal to the pick \(within 0\.25 careers per run, the planner's tolerance\): (.* \(−0\.5\)(, .+)?|\d+ careers, \d+ of them in the table \(tagged\))\..* on the pick's parents \(#\d+ \+ #\d+\)\./.test(
+        edited.note,
+      ) &&
+      / has the top score; running one of these instead costs at most 0\.25 careers by the planner's estimate\.$/.test(
+        edited.note,
+      ),
+    JSON.stringify({ near, edited }),
+  );
   const after = await pg.evaluate(() => ({
     jobs: window.__careerJobs.filter((j) => j.cmd === 'career').length,
     posted: window.__careerJobs.filter((j) => j.cmd !== 'state_out').length,

@@ -128,6 +128,11 @@ pub(crate) fn assemble_plan_output<'data>(
         option.insert("index".into(), json!(row.net_saving()));
         option.insert("saving".into(), json!(row.net_saving().map(|net_saving| net_saving + 1.0)));
         option.insert("lift".into(), json!(row.scoring.as_ref().map(|scoring| scoring.improvement_chance)));
+        // the side her veteran's routes lift most often where she lowers V, and how often she is a side herself
+        option.insert(
+            "lifts_side".into(),
+            json!(row.scoring.as_ref().map(|scoring| lifts_side(candidates, &scoring.route_wins, data))),
+        );
         option.insert("score".into(), json!(scores.any_scored.then(|| total(i))));
         options.push(report);
     }
@@ -483,6 +488,22 @@ fn side_key(side: &TrioSideVeteran) -> String {
         (SideStep::Alternative(_), Some((low, high))) => format!("alt:{low},{high}"),
         (SideStep::Alternative(_), None) => "alt".to_owned(),
     }
+}
+
+/// A scored row's `lifts_side`: over the outcomes where her veteran lowers V, the candidate (uma id) whose side the
+/// route V after her takes lifts most often and that chance (null and 0 where no route taken lifts a side), and the
+/// chance the route taken has her own full veteran as a side or is the goal itself (`kernel::RouteWins`)
+fn lifts_side(
+    candidates: &PlanCandidates,
+    route_wins: &crate::career::plan::score::kernel::RouteWins,
+    data: &crate::data::Data,
+) -> Value {
+    let most = route_wins.most_lifted();
+    json!({
+        "uma": most.map(|(candidate, _)| data.umas[candidates.trainees[candidate]].id),
+        "chance": most.map_or(0.0, |(_, chance)| chance),
+        "own": route_wins.own_side,
+    })
 }
 
 /// The career search behind a plan row: whether it was complete, and the named assumptions it rests on.

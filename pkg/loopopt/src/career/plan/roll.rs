@@ -3,7 +3,7 @@ use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::caps::{StepCaps, cap_in, cap_out};
 use crate::career::plan::cont::{Cont, MAX_PARTNERS, ScoreBase, ScoringKnobs};
 use crate::career::plan::score::fm_masks;
-use crate::career::plan::score::kernel::Scored;
+use crate::career::plan::score::kernel::{BatchLeast, Scored};
 use crate::career::plan::search::sim_for;
 use crate::career::plan::step::{NO_SLOT, Route, WhileBuilding};
 use crate::career::plan::{OutcomeIndex, PlanJob, TargetMask};
@@ -379,7 +379,7 @@ fn scored_in(stored: &Value) -> Option<Scored> {
         absent_factors: vec![],
         spark_scales: vec![],
         shadows: vec![],
-        prior_least: vec![],
+        prior_least: BatchLeast::default(),
         retain_least: false,
     })
 }

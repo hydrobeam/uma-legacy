@@ -52,10 +52,37 @@ export default async function careerborrow(b) {
     (await pressed()) === 'allow' && !('borrowed_parent' in a.job) && withBor(a) > 0,
     `${await pressed()} ${a.job.borrowed_parent} ${withBor(a)}`,
   );
+  // the "later" plan's report edited once (`__planEdit`): every score moved so the top is -0.4, and the estimate's first
+  // step (its A side, her own career, no building) put on the borrowed veteran and another
+  const borrowedAt = a.job.legacies.findIndex((l) => l.borrowed);
+  await pg.evaluate((borrowedAt) => {
+    window.__planEdit = (next) => {
+      window.__planEdit = null;
+      const top = Math.max(...next.options.map((o) => o.score ?? Number.NEGATIVE_INFINITY));
+      for (const o of next.options) if (o.score != null) o.score += -0.4 - top;
+      const step = {
+        ...(next.members?.[0] || {}),
+        trainee: 'Stand-in',
+        real: false,
+        building_careers: 0,
+        parents: [borrowedAt, borrowedAt ? 0 : 1],
+      };
+      next.members = [step, next.members?.[1] || step];
+      next.v0 ??= 100;
+    };
+  }, borrowedAt);
   await pg.click('#bp button[data-v="later"]');
   await done();
   await planned();
   const l = await lastPlan();
+  const laterLine = await pg.evaluate(() => document.querySelector('section.alts > .negtop')?.textContent || '');
+  check(
+    "career: under None left today, where the estimate's next step needs a borrowed parent (its first side's parents in the output), the line above the table says so",
+    new RegExp(
+      `^No career you can run now saves more than the run itself on today's estimate: the pick is the one that costs least \\(−0\\.4 per run\\)\\. The estimate's next step, Stand-in's run on #${borrowedAt + 1} \\+ #${borrowedAt ? 1 : 2}, needs a borrowed parent \\(#${borrowedAt + 1} [^)]+\\), which None left today keeps out of this career\\.$`,
+    ).test(laterLine),
+    laterLine,
+  );
   check(
     'career: None left today sends borrowed_parent "later", is saved, and no career the planner offers has a borrowed parent',
     l.job.borrowed_parent === 'later' &&

@@ -126,6 +126,9 @@ pub(crate) struct CareerScore {
     /// Expected reduction in remaining careers, before subtracting the current career's cost.
     pub(crate) expected_saving: f64,
     pub(crate) improvement_chance: f64,
+    /// The sides the routes V after her takes lift, over the outcomes she improves (`kernel::RouteWins`; empty for
+    /// Stats and Touch).
+    pub(crate) route_wins: kernel::RouteWins,
     pub(crate) kept: Option<KeptScoring>,
     /// Per candidate (candidate order): her lift statistics.
     pub(crate) lift_stats: Vec<LiftStats>,

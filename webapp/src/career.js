@@ -226,6 +226,9 @@ const progText = ({ ph, k, n }) =>
  * @property {number|null} index  the careers she saves toward a fully looped parent, net
  * @property {number|null} saving
  * @property {number|null} lift  the chance her result lowers the careers to a fully looped parent
+ * @property {{uma: number|null, chance: number, own: number}|null} [lifts_side]  over her results that lower it, the
+ *   stage candidate (uma id) whose side the route taken lifts most often and that chance, and the chance the route
+ *   has her own full veteran as a side (`roleText`); null where the row was not scored
  * @property {number|null} score  the table's order
  * @property {boolean} [pair_search]  the pair search's recommendation (`pairSearchRow`): run as it is, its deck kept
  * @property {number|null} [pair_search_score]  its Saves per run in the pair search
@@ -249,6 +252,8 @@ const progText = ({ ph, k, n }) =>
  * @property {number} building_careers  the expected careers she spends building lifts (each building career lifts
  *   her odds only by chance) before rerunning her best career; 0 when she does not build
  * @property {number} p_switch  her odds once building stops
+ * @property {string|null} [builder]  the career id of the row her lifts are fitted from (null where she grinds, her
+ *   continuation was given, or her step is her cap's)
  * @property {number} careers  her step's expected careers (0 when `real`)
  *
  * The plan's report (the solver's `next`, career/plan/output.rs), or its refusal (`error`).
@@ -944,17 +949,43 @@ const shown = () =>
   last && last.plan === JSON.stringify(plan) && last.r.results[0]
     ? (planState.state === 'done' && planState.r.choice) || last.r.results[0]
     : null;
-// an option's role: her place in today's estimate (the route the (i) popup walks through), in plain words
-const roleText = (o) =>
-  o.role === 'plan'
-    ? "One of the two parents in today's estimate"
-    : o.role === 'finish'
-      ? "The last run in today's estimate (with the two full veteran parents)"
-      : o.role === 'loop'
-        ? 'In your loop'
-        : o.role === 'candidate'
-          ? "A possible parent, not on today's cheapest route"
-          : "Not on today's estimated route";
+// an option's role, in plain words: one of the two parents of today's estimate (the route the (i) popup walks through)
+// or its last run, else what her run does for it: the side her veteran's routes lift most often where she lowers it,
+// with that chance per run, or her own n/n as a side (`lifts_side`); a loop member says so first
+const roleText = (o) => {
+  const n = state.targets.length;
+  if (o.role === 'plan') return "One of the two parents in today's estimate";
+  if (o.role === 'finish') return "The last run in today's estimate (with the two full veteran parents)";
+  const loop = o.role === 'loop' ? 'In your loop. ' : '',
+    side = o.lifts_side;
+  if (!side) return `${loop}Not scored against today's estimate`;
+  if (side.uma != null && side.chance >= side.own)
+    return `${loop}Lifts ${umaName(side.uma)}'s side (${pct(side.chance)} per run)`;
+  if (side.own > 0) return `${loop}Her own ${n}/${n} as a side (${pct(side.own)} per run)`;
+  return `${loop}No result of hers lowers today's estimate`;
+};
+// δ, the per-decision tolerance (AGENTS.md, The career planner's goal and its bar): a row whose Saves per run is within
+// it of the pick's is shown as about equal to the pick. Display only: the pick stays the strict top score
+const TIE_CAREERS = 0.25;
+// a career's parents, by legacy index, from its id (`kept::career_id`: "trainee:first,second:deck")
+const careerParents = (id) => id.split(':')[1].split(',').map(Number);
+// the first step of today's estimate (`members`, A then B, as planval's `route_first_step` reads them): the first side
+// without a real full veteran of hers, her builder's career where she builds (`builder`) or else her own (`parents`);
+// with both sides real, C's run on those two. Its parents by legacy index, and what it is; null without a route, or
+// where it builds and names no builder (her Cont given)
+/** @type {(planReport: PlanReport) => {what: string, parents: number[]}|null} */
+function routeFirstStep(planReport) {
+  const members = planReport.members || [];
+  if (members.length < 2 || planReport.v0 == null) return null;
+  for (const m of members) {
+    if (m.real) continue;
+    if (m.building_careers > 0)
+      return m.builder ? { what: `a builder for ${m.trainee}`, parents: careerParents(m.builder) } : null;
+    return m.parents ? { what: `${m.trainee}'s run`, parents: m.parents } : null;
+  }
+  const real = (planReport.v0_plan?.sides || []).map((side) => /^real:(\d+)$/.exec(side)).filter(Boolean);
+  return real.length === 2 ? { what: `${planReport.v0_plan.c}'s run`, parents: real.map((m) => +m[1]) } : null;
+}
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
 const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
 // an option's Saves per run: the plan's `score` (her net saving; null when the plan scored nothing), else `index`
@@ -2186,7 +2217,7 @@ function verdictText(d, next, saves) {
       : (simulation.refining || simulation.standing) && !simulation.provisional
         ? 'Checking…'
         : saves != null && saves >= 0.5
-          ? `Saves ${fmtN(saves)} careers`
+          ? `Saves ${saves.toFixed(1)} careers`
           : simulation.herParent
             ? 'Parent of the next career'
             : next && next.p_all > simulation.baseline.p_all * (1 + 1e-9)
@@ -2227,7 +2258,7 @@ function comparisonResult(result, d) {
   // a rise (never from a roll's quick figures, which can't rise): shown as it is, and said to be the planner's
   if (rose)
     verdict.append(
-      `The planner's estimate rises by ${fmtN(-saves)} with her, a limit of its route (it offers each uma's few best careers as sides, and she can push the one it used out of them); leaving her out costs nothing.`,
+      `The planner's estimate rises by ${(-saves).toFixed(1)} careers with her, a limit of its route (it offers each uma's few best careers as sides, and she can push the one it used out of them); leaving her out costs nothing.`,
     );
   result.appendChild(verdict);
   if (simulation.refining || simulation.standing || simulation.provisional) {
@@ -2247,7 +2278,7 @@ function comparisonResult(result, d) {
   figs.appendChild(
     figureEl({
       label: 'Careers to loop',
-      now: careersNow != null ? fmtN(careersNow) : '?',
+      now: careersNow != null ? `about ${fmtN(careersNow)}` : '?',
       withHer: careersWithHer != null ? fmtN(careersWithHer) : '?',
       direction: rose ? 'same' : direction(careersNow, careersWithHer, true),
       title: `Expected careers to a fully looped parent: with your veterans now → with her too${nextWithHer}${fromTable}`,
@@ -2348,6 +2379,55 @@ function useBtn(r, places = plan) {
   return b;
 }
 const OPT_SHOW = 8;
+const pairText = (o) => o.parents.map((i) => `#${i + 1}`).join(' + ');
+const sameParents = (a, b) => a.parents.length === b.parents.length && a.parents.every((i) => b.parents.includes(i));
+// the plan's pick and the rows about equal to it (`keyOf`): their Saves per run within TIE_CAREERS of the pick's. Only
+// the plan's own rows and scores (a pair-search row not among them is weighed by its own note)
+/** @type {(planReport: PlanReport|null) => {pick: PlanOption|null, tied: Set<string>}} */
+function tiedRows(planReport) {
+  const pick = planReport?.options.find((o) => o.chosen) || null,
+    pickScore = pick ? scoreOf(pick) : null;
+  if (pickScore == null) return { pick, tied: new Set() };
+  const near = planReport.options.filter(
+    (o) => o !== pick && scoreOf(o) != null && Math.abs(pickScore - scoreOf(o)) <= TIE_CAREERS,
+  );
+  return { pick, tied: new Set(near.map(keyOf)) };
+}
+// the note under the table on the rows about equal to the pick: up to TIE_NAMED of them by name with their Saves per
+// run, else how many and how many the table lists (tagged); and those on the pick's parents
+const TIE_NAMED = 4;
+function tieText(planReport, pick, tied, nameOf, listed) {
+  const rows = planReport.options.filter((o) => tied.has(keyOf(o))),
+    same = rows.filter((o) => sameParents(o, pick)),
+    named = rows.length <= TIE_NAMED,
+    onPick = `on the pick's parents (${pairText(pick)})`;
+  const who = named
+    ? rows.map((o) => `${nameOf(o)} on ${pairText(o)} (${netText(scoreOf(o))})`).join(', ')
+    : `${rows.length} careers, ${rows.filter((o) => listed.has(keyOf(o))).length} of them in the table (tagged)`;
+  const shared = !same.length
+    ? ''
+    : same.length === rows.length
+      ? ` ${rows.length === 1 ? 'It is' : 'All are'} ${onPick}.`
+      : named
+        ? ` ${same.map(nameOf).join(', ')} ${same.length === 1 ? 'is' : 'are'} ${onPick}.`
+        : ` ${same.length} of them are ${onPick}.`;
+  return `About equal to the pick (within ${TIE_CAREERS} careers per run, the planner's tolerance): ${who}.${shared} The pick, ${nameOf(pick)} on ${pairText(pick)} (${netText(scoreOf(pick))}), has the top score; running one of these instead costs at most ${TIE_CAREERS} careers by the planner's estimate.`;
+}
+// where no row the plan lists (every one a career you can run now) saves more than its own run (top Saves per run
+// below 0): the line above the table, with the pick's net; under None left today, where the estimate's first step
+// (`routeFirstStep`) takes a borrowed parent, it says so. Null otherwise
+function negativeTopText(planReport, pick) {
+  if (!planReport || !pick) return null;
+  const top = Math.max(...planReport.options.map((o) => scoreOf(o) ?? Number.NEGATIVE_INFINITY));
+  if (!(Number.isFinite(top) && top < 0)) return null;
+  const text = `No career you can run now saves more than the run itself on today's estimate: the pick is the one that costs least (${netText(scoreOf(pick))} per run).`;
+  const job = planState.state === 'done' ? planState.job : last?.job,
+    step = job?.borrowed_parent === 'later' ? routeFirstStep(planReport) : null,
+    borrowed = step ? step.parents.filter((i) => vets[i]?.borrowed) : [];
+  if (!borrowed.length) return text;
+  const who = borrowed.map((i) => `#${i + 1} ${umaName(vets[i].chara)}`).join(' and ');
+  return `${text} The estimate's next step, ${step.what} on ${step.parents.map((i) => `#${i + 1}`).join(' + ')}, needs a borrowed parent (${who}), which ${BORROW_CHOICES.later} keeps out of this career.`;
+}
 function optionsEl() {
   const box = sectionEl('alts', 'Career choices');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
@@ -2359,6 +2439,7 @@ function optionsEl() {
     mineOnly = !!plan.trainee && plan.parents.every(Boolean);
   const planReport = planState.state === 'done' ? planState.r : mineOnly && ref ? ref.result : null,
     places = planState.state !== 'done' && mineOnly && ref ? ref.places : plan;
+  const { pick, tied } = tiedRows(planReport);
   /** @type {OptionRow[]} the plan's rows, or the search's careers (no plan fields) */
   const list = planReport
     ? planReport.options.filter(
@@ -2414,13 +2495,21 @@ function optionsEl() {
     q.onclick = () => openSaveWhy(planReport);
     box.querySelector(':scope > h3').append(q);
   }
-  for (const r of list) tb.tBodies[0].appendChild(optionRow(r, { on, mine, planReport, places }));
+  const tieOf = (r) => (pick && tied.has(keyOf(r)) ? { sameParents: sameParents(r, pick) } : null);
+  for (const r of list) tb.tBodies[0].appendChild(optionRow(r, { on, mine, planReport, places, tie: tieOf(r) }));
+  const nameOf = (o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
+  // no row saves more than its own run on today's estimate: said above the table, with the pick's net
+  const negative = negativeTopText(planReport, pick);
+  if (negative) box.appendChild(el('p', 'hint optnote negtop', negative));
   const wrap = el('div', 'optwrap');
   wrap.appendChild(tb);
   box.appendChild(wrap);
+  if (pick && tied.size) {
+    const listed = new Set(list.map(keyOf));
+    box.appendChild(el('p', 'hint optnote tienote', tieText(planReport, pick, tied, nameOf, listed)));
+  }
   // the robustness check found the rule's pick changes with the tested variants (`robust`): every career it selects is in
   // the table; the pick stays the planner's rule's
-  const nameOf = (o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
   if (planReport && unsettled(planReport).size) {
     const names = list.filter((o) => unsettled(planReport).has(keyOf(o))).map(nameOf);
     box.appendChild(
@@ -2575,8 +2664,8 @@ function pairSearchNotes(planReport, nameOf) {
 }
 // One career of the table: who it places, its tags, its odds now, its Saves per run, and Use this. on: the career on
 // show; mine: your career when the plan didn't list it; planReport: the plan's report (null: no Saves per run); places:
-// the places the table's careers fill
-function optionRow(r, { on, mine, planReport, places }) {
+// the places the table's careers fill; tie: about equal to the pick (`tiedRows`), with whether on the pick's parents
+function optionRow(r, { on, mine, planReport, places, tie }) {
   const n = state.targets.length;
   const cur = on && keyOf(r) === keyOf(on),
     row = el('tr', cur ? 'on' : ''),
@@ -2587,6 +2676,11 @@ function optionRow(r, { on, mine, planReport, places }) {
   if (r === mine) tags.appendChild(el('span', 'otag', 'your choice'));
   if (planReport && r.chosen) tags.appendChild(el('span', 'otag pick', "planner's pick"));
   if (planReport && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
+  if (tie) {
+    const a = el('span', 'otag tie', tie.sameParents ? 'about equal, same parents' : 'about equal');
+    a.title = `About equal to the pick (within ${TIE_CAREERS} careers per run, the planner's tolerance)${tie.sameParents ? ", on the pick's parents" : ''}`;
+    tags.appendChild(a);
+  }
   if (planReport && r.pair_search) {
     const a = el('span', 'otag', 'pair search');
     const saves =
@@ -2677,7 +2771,7 @@ function openSaveWhy(planReport) {
   const example = routeMembers.find((m) => !m.real && (m.building_careers > 0 ? m.p_switch : m.p) > 0),
     exampleOdds = example && (example.building_careers > 0 ? example.p_switch : example.p);
   const exampleText = example
-    ? `Say her veteran, as a parent, lifts ${esc(example.trainee)}'s odds for her reruns from ${fmtIn(exampleOdds)} to ${fmtIn(exampleOdds * 1.06)}. Those reruns then take <b>about ${fmtN(1 / exampleOdds - 1 / (exampleOdds * 1.06))} fewer careers</b>. Most of her possible results lift nothing, so the planner averages over all of them, weighted by how likely each is.`
+    ? `Say her veteran, as a parent, lifts ${esc(example.trainee)}'s odds for her reruns from ${fmtIn(exampleOdds)} to ${fmtIn(exampleOdds * 1.06)}. Those reruns then take <b>about ${(1 / exampleOdds - 1 / (exampleOdds * 1.06)).toFixed(1)} fewer careers</b>. Most of her possible results lift nothing, so the planner averages over all of them, weighted by how likely each is.`
     : '';
   // for anyone: the two columns in a sentence each, the key points in bold and italics, how the saving is worked out in
   // three plain sentences; today's estimate and a worked example behind dropdowns (no formula)

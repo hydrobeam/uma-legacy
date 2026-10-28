@@ -541,6 +541,56 @@ export default async function career(b) {
       !(await pg.locator('#ahead-sec').count()),
     opts.map((c) => c.join(' / ')).join(' | '),
   );
+  // what each row's run does (its Saves per run's tooltip): one of the route's two parents or its last run as before;
+  // else the side her routes lift most often with that chance per run (`lifts_side`), never "not on the route"
+  const tableRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next?.options).at(-1));
+  const roles = await pg.evaluate((next) => {
+    const titles = [...document.querySelectorAll('.alts .optab tbody .onum[title]')].map((t) => t.title),
+      byId = new Map(next.options.map((o) => [o.trainee.id, o.trainee.name])),
+      shown = next.options.slice(0, 8).filter((o) => o.role !== 'plan' && o.role !== 'finish' && o.index != null);
+    const lifted = shown
+      .filter((o) => o.lifts_side?.uma != null && o.lifts_side.chance >= o.lifts_side.own && byId.has(o.lifts_side.uma))
+      .map((o) => `Lifts ${byId.get(o.lifts_side.uma)}'s side (`);
+    return { titles, lifted, fields: next.options.every((o) => o.lifts_side === null || 'own' in o.lifts_side) };
+  }, tableRes.next);
+  const roleForm =
+    /^(One of the two parents in today's estimate|The last run in today's estimate \(with the two full veteran parents\)|(In your loop\. )?(Lifts .+'s side \([\d.<%]+ per run\)|Her own \d+\/\d+ as a side \([\d.<%]+ per run\)|No result of hers lowers today's estimate|Not scored against today's estimate))(\. .+ of her possible results lower the estimate)?$/;
+  check(
+    "career: each row's Saves per run says what her run does: the side her routes lift most often and its chance per run (`lifts_side`), or her place on the route",
+    roles.fields &&
+      roles.titles.length > 0 &&
+      roles.titles.every((t) => roleForm.test(t)) &&
+      roles.lifted.every((text) => roles.titles.some((t) => t.startsWith(text) || t.includes(`. ${text}`))),
+    JSON.stringify(roles),
+  );
+  // ties and a negative top, as the plan's own scores make them: every row within 0.25 of the pick tagged about equal,
+  // the note under the table where any is; the line above it only where the top score is below 0
+  const scored = tableRes.next.options.filter((o) => o.score != null),
+    pickScore = tableRes.next.options.find((o) => o.chosen)?.score,
+    tiedCount = scored.filter((o) => !o.chosen && Math.abs(pickScore - o.score) <= 0.25).length,
+    topScore = Math.max(...scored.map((o) => o.score));
+  // (each listed row's Saves per run as shown, one decimal: a tagged row within 0.25 of the pick's, an untagged one
+  // not, both up to the rounding)
+  const tables = await pg.evaluate(() => {
+    const num = (tr) => Number(tr.querySelector('.onum').textContent.replace('−', '-'));
+    const rows = [...document.querySelectorAll('.alts .optab tbody tr')].filter((tr) => tr.querySelector('.onum'));
+    const pick = rows.find((tr) => tr.querySelector('.otag.pick'));
+    return {
+      gaps: rows
+        .filter((tr) => tr !== pick)
+        .map((tr) => [!!tr.querySelector('.otag.tie'), pick ? Math.abs(num(pick) - num(tr)) : null]),
+      note: document.querySelectorAll('.alts .tienote').length,
+      negative: document.querySelectorAll('.alts > .negtop').length,
+    };
+  });
+  check(
+    'career: rows within 0.25 careers per run of the pick are tagged about equal (the pick stays the top score), the note under the table where any is, and a line above the table only where the top score is below 0',
+    pickScore === topScore &&
+      tables.gaps.every(([tagged, gap]) => gap != null && (tagged ? gap <= 0.25 + 0.1 : gap >= 0.25 - 0.1)) &&
+      tables.note === (tiedCount ? 1 : 0) &&
+      tables.negative === (topScore < 0 ? 1 : 0),
+    JSON.stringify({ tiedCount, topScore, pickScore, tables }),
+  );
   // the trio: each step's line (her odds now and the lifts building pays for, or your full veteran at no cost)
   await pg.click('#save-why');
   await dialog(pg, 'save-dlg');
@@ -688,11 +738,19 @@ export default async function career(b) {
   await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
   check(
     'career: Compare says, exactly, what she changes for the next career and shows that career with her',
-    /^(Saves [\d,]+ careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(
+    /^(Saves \d+\.\d careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(
       await pg.textContent('#sim-verdict'),
     ) &&
       /→/.test(await pg.textContent('#sim-result')) &&
       !/Careers until one lands|Your best career today →/.test(await pg.textContent('#sim-result')),
+  );
+  // (careers to a fully looped parent: an estimate, whole careers with "about"; a saving at one decimal)
+  const loopFigure = await pg.textContent('#sim-result .simodds .tc .tv').catch(() => '');
+  check(
+    'career: … its careers to loop read "about N → M" (whole careers), a saving one decimal',
+    /^(about [\d,]+|\?) → ([\d,]+|\?)$/.test(loopFigure) &&
+      !/Saves [\d,]+ careers|rises by [\d,]+ with/.test(await pg.textContent('#sim-verdict')),
+    loopFigure,
   );
   check(
     'career: … the best career with her folded under "Best career with her": portraits (trainee, then her two parents, her marked) and its deck; its odds outside',
@@ -1058,7 +1116,7 @@ export default async function career(b) {
     'career: with the trainee chosen no plan runs, and Compare pressed twice finishes',
     (await aheadJobs()) === la0 &&
       !/Planning|Planned in/.test(await note()) &&
-      /^(Saves [\d,]+ careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(
+      /^(Saves \d+\.\d careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(
         await pg.textContent('#sim-verdict'),
       ),
     await note(),

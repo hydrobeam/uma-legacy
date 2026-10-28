@@ -23,8 +23,9 @@
 //! best ceiling first (best product deck, then every deck whose product value times EXACT_RHO reaches the best exact
 //! value, scored exactly, as in the per-uma search) until the next ceiling is below the top-k exact value.
 //!
-//! Schedule: every G1 win counts one, plus one per parent who won that race (`best_response` weights), under the same
-//! goals, race clashes and streak penalties as the loop scheduler; the report lists every G1 she could enter.
+//! Schedule: each G1 weighs `FILL_EPS` (the loop planner's tie-break) plus each parent's chance of having won it
+//! (`CareerSetup::race_weights`), so it maximises her expected G1 wins shared with her parents (`best_response`), under
+//! the same goals, race clashes and streak penalties as the loop scheduler; the report lists every G1 she could enter.
 //!
 //! The next career the page picks (`next`) is `plan::index_rule`; the simulator (`simulate`) is `sim`.
 //!

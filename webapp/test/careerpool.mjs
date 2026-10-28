@@ -139,8 +139,9 @@ export default async function careerpool(b) {
       trioCells.every((c) => /^[+−]\d+\.\d$/.test(c)) &&
       (await pg.locator('.alts .otag.pick').count()) === 1 &&
       !(await pg.locator('#save-dlg[open]').count()) &&
-      // (no note under the table: every row is proven, and a named assumption a proof rests on is the run note's to say)
-      !(await pg.locator('.alts p.hint, .alts .oloop').count()),
+      // (no caveat under the table: every row is proven, and a named assumption a proof rests on is the run note's to
+      // say; the tie note and the negative-top line are statements about the scores, not caveats)
+      !(await pg.locator('.alts p.hint:not(.tienote):not(.negtop), .alts .oloop').count()),
     `${trioRes?.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`,
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));

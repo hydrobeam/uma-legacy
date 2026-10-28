@@ -508,9 +508,10 @@ export const SIDEWAYS = () => {
  */
 // The career planner in a fresh context, its first (empty) run done. window.__careerJobs and __careerResults list the
 // jobs sent and their results; window.__seq records what the page shows each time it changes; a test sets
-// window.__rollPatch to stand in for a roll's saving, window.__planPatch for fields of a plan's report,
-// window.__checkPatch for fields of its check's. Each career group (career, careerpool, careervets, careergen,
-// careerrun, careerborrow) runs from its own fresh page, so they run in parallel.
+// window.__rollPatch to stand in for a roll's saving, window.__planPatch for fields of a plan's report (or
+// window.__planEdit, a function given the report to change in place), window.__checkPatch for fields of its check's.
+// Each career group (career, careerpool, careervets, careergen, careerrun, careerborrow) runs from its own fresh page,
+// so they run in parallel.
 /** @returns {Promise<CareerPage>} */
 export async function careerPage(b) {
   const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -536,6 +537,7 @@ export async function careerPage(b) {
           if (window.__rollPatch && e.data.r?.next?.roll) Object.assign(e.data.r.next.roll, window.__rollPatch);
           // (`__planPatch`: a test's stand-in for fields of a plan's report, put over the solver's the same way)
           if (window.__planPatch && e.data.r?.next?.options) Object.assign(e.data.r.next, window.__planPatch);
+          if (window.__planEdit && e.data.r?.next?.options) window.__planEdit(e.data.r.next);
           if (window.__checkPatch && e.data.r?.next?.robust && !e.data.r.next.options)
             Object.assign(e.data.r.next.robust, window.__checkPatch);
           if (e.data.r?.next?.robust && !e.data.r.next.options) window.__checkResults.push(e.data.r);
