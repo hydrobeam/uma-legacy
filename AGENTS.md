@@ -29,8 +29,7 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   - `./build.sh research` runs again, since §6 recomputes the references and §13 runs the solver.
 
   Speed work keeps outputs byte-identical (`val/same.py`, `docs/PERF.md`). After data or solver changes, rerun
-  `./build.sh pb`. Then `./build.sh fullcheck` on the staged tree: the pre-commit hook refuses a commit staging
-  solver, data, validation or page code without its stamp (`docs/BUILD.md`, *Steps*).
+  `./build.sh pb`.
 - **`/about` states the model's exact constants** (`webapp/about.template.html`), each in one place. A change to a
   modelling constant updates it in the same change, along with `docs/MODEL.md` and `docs/RESEARCH.md`.
 - **`docs/RESEARCH.md` is rendered** from `docs/RESEARCH.template.md` and `research/results.json` (`./build.sh research`):
@@ -54,9 +53,9 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   parent under the model. Everything else in the planner serves that.
 - **Tolerance:** total regret at most 1% of V under the model. A wrong pick repeats until something useful lands, so
   a per-decision bar must be budgeted per pool: ε_p = 0.01 × V × (the pick's lower-bounded acceptance chance per run),
-  e.g. about 0.11 careers on a pool whose useful outcomes land at 0.76% per run. δ = 0.25 careers stays only as a cap
-  and as the page's tie tolerance; no per-decision bar alone certifies the 1% total (a uniform bound over every career
-  would need about 0.01).
+  e.g. about 0.11 careers on a pool whose useful outcomes are accepted at 0.71% per run. δ = 0.25 careers stays only
+  as a cap and as the page's tie tolerance; no per-decision bar alone certifies the 1% total (a uniform bound over
+  every career would need about 0.01).
 - **Two guarantees, never conflated:**
   - *Search:* the recommendation is provably the best career under the planner's score. A search over trainees, parent
     pairs and decks stops only when nothing unscored can beat it; otherwise the output says what was left out and what

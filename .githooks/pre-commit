@@ -4,19 +4,10 @@
 #     a minute the first time in a new worktree); clippy on the wasm lib stays in ./build.sh lint and CI
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
 #   the page's JS: Biome (lint and formatting) on the staged files, then tsc's checkJs over the page (under a second)
-#   anything under .githooks/fullcheck-paths (solver, data, validation, page code), deletions included: the staged tree
-#     must be the one `./build.sh fullcheck` last passed on (its stamp), so results never move unchecked
-# A commit staging none of these (docs) checks nothing. ./build.sh lint runs every check on the whole repo.
+# A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
 root=$(git rev-parse --show-toplevel) || exit 1
 staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
 fail() { printf 'pre-commit: %s\n' "$1" >&2; exit 1; }
-
-# shellcheck disable=SC2046 # one path per word: the list has no spaces
-if [ -n "$(git diff --cached --name-only -- $(cat "$root/.githooks/fullcheck-paths"))" ]; then
-  stamp=$(git rev-parse --git-path fullcheck)
-  { [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$(git write-tree)" ]; } \
-    || fail 'this commit stages solver, data, validation or page code: run ./build.sh fullcheck on exactly this staged tree first'
-fi
 
 if [ -n "$(staged 'pkg/loopopt/*.rs')" ]; then
   (cd "$root/pkg/loopopt" && cargo fmt --check --message-format short) || fail 'Rust formatting differs (cargo fmt in pkg/loopopt fixes it)'

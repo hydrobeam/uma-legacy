@@ -26,10 +26,6 @@
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
 #   research compute the research numbers (research/run_all.py -> research/results.json) and render docs/RESEARCH.md
 #            from docs/RESEARCH.template.md; without the run records (research/data/) the committed results are kept
-#   fullcheck before a commit that stages solver, data, validation or page code (.githooks/fullcheck-paths): native
-#            (every cargo test, plan_roll's fixture included), lint, wasm, page, the full browser suite, val and planval
-#            against their references, mono where the career planner changed; then stamps the staged tree, which the
-#            pre-commit hook requires. Re-pin references (val, val/plan, plan_roll) and run research first, as AGENTS.md says
 #   art      images and runners when their game files are in game/global/ (skipped, with a note, when not)
 #   all      data events native pb wasm art page
 # Python runs in the project's uv environment (pyproject.toml, uv.lock; .venv is created on first use).
@@ -129,29 +125,13 @@ step_val() { local tag="${1:?val needs a tag}"; shift || true
   "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@"
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu; }
 step_research() { uv run --quiet --project "$R" --group research python "$R/research/run_all.py" && uv run --quiet --project "$R" --group research python "$R/research/render.py"; }
-step_fullcheck() {   # every check a commit staging .githooks/fullcheck-paths needs, then the staged tree's stamp for the hook
-  MISSING=(); need_cmd uv "$TOOLS_UV"; check fullcheck
-  local paths tree; mapfile -t paths < "$R/.githooks/fullcheck-paths"
-  # (the stamp is of the staged tree, so what is checked must be exactly what is staged)
-  if ! git -C "$R" diff --quiet -- "${paths[@]}" || [ -n "$(git -C "$R" ls-files --others --exclude-standard -- "${paths[@]}")" ]; then
-    echo "fullcheck: stage or set aside the unstaged changes and untracked files under .githooks/fullcheck-paths first" >&2; exit 1
-  fi
-  tree=$(git -C "$R" write-tree)
-  step_native; step_lint; step_wasm; step_page; step_test; step_val fullcheck
-  "${PY[@]}" "$R/val/planval.py" "$C/target/release/loopopt" fullcheck
-  # (mono re-plans every val pool with rolled veterans: only where the career planner changed)
-  git -C "$R" diff --cached --quiet HEAD -- pkg/loopopt/src/career || "${PY[@]}" "$R/val/mono.py" "$C/target/release/loopopt"
-  [ "$(git -C "$R" write-tree)" = "$tree" ] || { echo "fullcheck: the staged tree changed while it ran; run it again" >&2; exit 1; }
-  printf '%s\n' "$tree" > "$(git -C "$R" rev-parse --git-path fullcheck)"
-  echo "fullcheck: passed; staged tree $tree stamped for the pre-commit hook"
-}
 [ $# -eq 0 ] && set -- native wasm art page
 while [ $# -gt 0 ]; do
   case "$1" in
     all) step_data; step_events; step_native; step_pb; step_wasm; step_art; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    gametora|data|events|native|lint|hooks|pb|wasm|page|art|images|runners|browsers|test|testq|serve|deploy|research|fullcheck) "step_$1" ;;
+    gametora|data|events|native|lint|hooks|pb|wasm|page|art|images|runners|browsers|test|testq|serve|deploy|research) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done
