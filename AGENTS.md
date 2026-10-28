@@ -52,8 +52,11 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
 **The career planner's goal and its bar.** Every change to `/career` and `src/career/plan/` is judged against this:
 - **Goal:** the recommended next career (trainee, both parents, deck) minimises the expected careers to a fully looped
   parent under the model. Everything else in the planner serves that.
-- **Tolerance:** total regret at most 1% of V under the model. A wrong pick tends to repeat, so the per-decision bar is
-  δ = 0.25 careers.
+- **Tolerance:** total regret at most 1% of V under the model. A wrong pick repeats until something useful lands, so
+  a per-decision bar must be budgeted per pool: ε_p = 0.01 × V × (the pick's lower-bounded acceptance chance per run),
+  e.g. about 0.11 careers on a pool whose useful outcomes land at 0.76% per run. δ = 0.25 careers stays only as a cap
+  and as the page's tie tolerance; no per-decision bar alone certifies the 1% total (a uniform bound over every career
+  would need about 0.01).
 - **Two guarantees, never conflated:**
   - *Search:* the recommendation is provably the best career under the planner's score. A search over trainees, parent
     pairs and decks stops only when nothing unscored can beat it; otherwise the output says what was left out and what
