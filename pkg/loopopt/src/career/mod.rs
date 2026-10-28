@@ -539,18 +539,24 @@ pub(crate) fn run_career_in(
             hook(&mut env, &pool);
             return json!({});
         }
-        let mut run = CareerRun { input: &input, job: career_job, trainees: &trainees, pool: &pool, pick_pool: None };
+        // `borrowed_parent` "later": the career picked (the search's results, the plan's rows, and a kept check's pair
+        // search and recommendation, answered below before any search) comes from the pool without borrowed parents;
+        // the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
+        let own_pool =
+            (career_job.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_borrowed: 0, ..pool.clone() });
+        let run = CareerRun {
+            input: &input,
+            job: career_job,
+            trainees: &trainees,
+            pool: &pool,
+            pick_pool: own_pool.as_ref(),
+        };
         if let Some(roll) = answer_kept_roll(&mut env, kept, &run) {
             return json!({"next": {"roll": roll}});
         }
         if let Some(check) = answer_kept_check(&mut env, kept, &run) {
             return json!({"next": {"robust": check}});
         }
-        // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
-        // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
-        let own_pool =
-            (career_job.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_borrowed: 0, ..pool.clone() });
-        run.pick_pool = own_pool.as_ref();
         if let Some(id) = &career_job.career {
             let mut out = given::given_career_output(&mut env, &run, id);
             out["timing_s"] = json!(t_all.elapsed().as_secs_f64());

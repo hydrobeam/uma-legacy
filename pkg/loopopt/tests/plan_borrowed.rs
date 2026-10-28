@@ -165,6 +165,44 @@ fn later_picks_without_a_borrowed_parent_and_plans_with_one() {
     );
 }
 
+/// "later" on the page's path: the plan job, then its check one job at a time from the worker's kept state
+/// (`next.robust: "next"` with the pair search), as `checkPhase` sends them. The check answers before the job builds
+/// its pools, so it must read the pick's pool there too. On p16 the pair search's best pairs all take veteran #15, so
+/// it is the one marked borrowed here: "allow" pairs with her (the premise), "later" never may.
+#[test]
+fn later_checks_from_the_kept_plan_without_a_borrowed_parent() {
+    const PAIRED: u64 = 15;
+    let checked = |bp: Option<&str>| {
+        let mut plan = job(bp);
+        plan["legacies"][BOR]["borrowed"] = json!(false);
+        plan["legacies"][PAIRED as usize]["borrowed"] = json!(true);
+        plan["no_reports"] = json!(true);
+        let mut check = plan.clone();
+        check["next"] = json!({"robust": "next", "pair_search": true});
+        let mut jobs = vec![&plan];
+        // (more than the check's variants: the last ones answer its finished report again)
+        jobs.extend(std::iter::repeat_n(&check, 14));
+        let outputs = run(&format!("kept-{}", bp.unwrap_or("allow")), &jobs);
+        let pairs = outputs
+            .iter()
+            .rev()
+            .find_map(|output| output["next"]["robust"]["pairs"].as_object().cloned())
+            .expect("no check answered with its pair search");
+        let paired = |parents: &[Value]| parents.iter().any(|p| p.as_u64() == Some(PAIRED));
+        let any_pair =
+            pairs["trainees"].as_array().unwrap().iter().any(|found| paired(found["best_parents"].as_array().unwrap()));
+        let recommended = pairs["recommendation"]["career"].as_str().unwrap().to_string();
+        let rec_parents: Vec<Value> =
+            recommended.split(':').nth(1).unwrap().split(',').map(|p| json!(p.parse::<u64>().unwrap())).collect();
+        (any_pair, paired(&rec_parents), recommended)
+    };
+    let (allow_pairs, _, _) = checked(None);
+    assert!(allow_pairs, "the premise: with borrowing the pair search pairs a trainee with the borrowed veteran");
+    let (later_pairs, later_recommends, recommended) = checked(Some("later"));
+    assert!(!later_pairs, "the pair search paired a trainee with the borrowed veteran under \"later\"");
+    assert!(!later_recommends, "the recommendation {recommended} takes the borrowed veteran under \"later\"");
+}
+
 #[test]
 fn never_is_the_pool_without_borrowed_veterans() {
     let never = job(Some("never"));
