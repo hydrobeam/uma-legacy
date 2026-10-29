@@ -846,7 +846,13 @@ superset) takes its C while building wherever it is taken: it gets no finisher s
 no outcome table is folded for a C it never reads. Of the routes lifting one side with the other as it is, on such a
 slot (each one's value the slot's step + a constant), one whose other side and C each cost at least another's, or whose
 sum passes another's by more than rounding can reverse below V, is left out (`drop_dominated`, grouped by slot,
-`sc_routes_dominated`). The budget: the lift reads run in chunks of lift slots within it (each slot's reads are its
+`sc_routes_dominated`). This comparison carries most of the scoring's pruning (85,689 of 117,889 routes on p16_t10, 66,960
+of 71,074 on boot_mob, in the val/plan references), and it holds only because routes whose lifted side still builds
+share one C (`Route::while_building`): the stale C is load-bearing for runtime, not only an approximation. Measured
+2026-10-29 on a research build that priced every route's C on its own lifted lineage (not merged): the pick moves on
+boot_mob, p10, p10_pink and p11_noagnes and on no other val/plan pool or export setup, and p16_t10 runs 3.6 times
+slower before any exact enumeration, since with a C per route almost no pair of routes is ordered. A fix that keeps
+the runtime has to apply where the decision can change (the finalists), not to every scoring. The budget: the lift reads run in chunks of lift slots within it (each slot's reads are its
 own); the first batch takes her Current side's lift slots (within the partner setups' share) and an Alternative
 side's that a priced route reads, in order, while they fit, then the routes through its lift slots by their lower
 bounds, each with the paired route its C while building reads; each route left out whose lift slots the first batch
