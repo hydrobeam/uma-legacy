@@ -3,34 +3,33 @@
 import { check, dialog, careerPage } from './helpers.mjs';
 
 export default async function careervets(b) {
-  const { ctx, pg, note, done, ask, vetsOpen, vetsSeen, node, inNode, closeNode, importDump, saved } =
+  const { ctx, pg, note, done, ask, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, importDump, saved } =
     await careerPage(b);
   await importDump();
   await done();
-  // a pool veteran: her card opens her popup, her sparks and her parents' as bars, editable in place; editing keeps the
+  // a pool veteran: her card shows her beside the list, her sparks and her parents' as bars, editable in place; editing keeps the
   // result on screen while the search runs again
   const toteBefore = await pg.locator('#odds-open').count();
   await vetsOpen();
-  await pg.click('#vet-0');
-  await dialog(pg, 'node-dlg');
-  const chip = pg.locator('#node-dlg .udrow.me .vsk:not(.pink) .vskb').first(),
+  await pg.click('#vet-0'); // (a wide dialog: she shows beside the list)
+  const chip = pg.locator('#v-pane .udrow.me .vsk:not(.pink) .vskb').first(),
     ckey = await chip.getAttribute('data-k');
   const stars = async () =>
-    +(await pg.locator(`#node-dlg [data-k="${ckey}"]`).getAttribute('aria-label')).match(/(\d) star/)[1];
+    +(await pg.locator(`#v-pane [data-k="${ckey}"]`).getAttribute('aria-label')).match(/(\d) star/)[1];
   const s0 = await stars();
   await chip.click();
   check(
-    "career: a veteran's card opens her sparks and her parents' as bars; editing one keeps the result on screen until the new one is ready",
-    (await pg.locator('#node-dlg .udrow.par').count()) === 2 &&
+    "career: a veteran's card shows her sparks and her parents' as bars beside the list; editing one keeps the result on screen until the new one is ready",
+    (await pg.locator('#v-pane .udrow.par').count()) === 2 &&
       toteBefore === 1 &&
       (await pg.locator('#odds-open').count()) === 1 &&
       (await pg.locator('#tree .pn.ghost').count()) === 3,
   );
   await done();
   const s1 = await stars();
-  await pg.locator(`#node-dlg [data-k="${ckey}"]`).click();
+  await pg.locator(`#v-pane [data-k="${ckey}"]`).click();
   const s2 = await stars();
-  await pg.locator(`#node-dlg [data-k="${ckey}"]`).click();
+  await pg.locator(`#v-pane [data-k="${ckey}"]`).click();
   const s3 = await stars();
   check(
     'career: clicking a spark cycles its stars back round (1 -> 2 -> 3 -> 1), in place',
@@ -42,17 +41,17 @@ export default async function careervets(b) {
     (await pg.evaluate((k) => document.activeElement?.dataset?.k === k, ckey)) &&
       (await pg.evaluate(() => /"sparks"/.test(localStorage.getItem('llp:career')))),
   );
-  const nsk = () => pg.locator('#node-dlg .udrow.me .vsk:not(.pink)').count(),
+  const nsk = () => pg.locator('#v-pane .udrow.me .vsk:not(.pink)').count(),
     n0 = await nsk();
-  const first = await pg.locator('#node-dlg .udrow.me .vsk:not(.pink) .vskb').first().getAttribute('aria-label');
-  await pg.locator('#node-dlg .udrow.me .vsk:not(.pink)').first().hover();
+  const first = await pg.locator('#v-pane .udrow.me .vsk:not(.pink) .vskb').first().getAttribute('aria-label');
+  await pg.locator('#v-pane .udrow.me .vsk:not(.pink)').first().hover();
   const vis = await pg
-    .locator('#node-dlg .udrow.me .vsk:not(.pink) .vskx')
+    .locator('#v-pane .udrow.me .vsk:not(.pink) .vskx')
     .first()
     .evaluate((e) => getComputedStyle(e).visibility);
-  await pg.locator('#node-dlg .udrow.me .vsk:not(.pink) .vskx').first().click();
+  await pg.locator('#v-pane .udrow.me .vsk:not(.pink) .vskx').first().click();
   check('career: the x shows on hover and removes the skill', vis === 'visible' && (await nsk()) === n0 - 1);
-  await pg.locator('#node-dlg .udrow.me .vskadd').click();
+  await pg.locator('#v-pane .udrow.me .vskadd').click();
   const offered = await pg.$$eval('#add-pop .addsk', (els) => els.map((e) => e.textContent));
   check(
     'career: "+" offers the missing target only, as a spark cell (her blue, pink and unique have their own bars)',
@@ -60,7 +59,7 @@ export default async function careervets(b) {
       first.startsWith(offered[0]) &&
       !(await pg.locator('#add-pop .addpk').count()) &&
       (await pg
-        .locator('#node-dlg .udrow.me .vsb.blue, #node-dlg .udrow.me .vsk.pink, #node-dlg .udrow.me .vsb.pink')
+        .locator('#v-pane .udrow.me .vsb.blue, #v-pane .udrow.me .vsk.pink, #v-pane .udrow.me .vsb.pink')
         .count()) >= 2,
     offered.join(', '),
   );
@@ -68,11 +67,11 @@ export default async function careervets(b) {
   check(
     'career: … which comes back at 2 stars',
     (await nsk()) === n0 &&
-      /2 stars/.test(await pg.locator('#node-dlg .udrow.me .vskb', { hasText: offered[0] }).getAttribute('aria-label')),
+      /2 stars/.test(await pg.locator('#v-pane .udrow.me .vskb', { hasText: offered[0] }).getAttribute('aria-label')),
   );
   await done();
   // a pool veteran's G1 wins: the same editor, from her popup; Arima Kinen (Classic and Senior) is one race, moved from one turn to the other
-  await pg.locator('#node-dlg .twho .vwins').first().click();
+  await pg.locator('#v-pane .twho .vwins').first().click();
   await dialog(pg, 'wins-dlg');
   const savedWins = async () => {
     await saved();
@@ -100,7 +99,7 @@ export default async function careervets(b) {
   if (!had) await arima.click();
   await pg.locator('#wins-dlg .dclose').click();
   await done();
-  await closeNode();
+  await vetsShut();
   // parent 1: a new veteran, with the skills prompt
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();

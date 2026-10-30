@@ -223,11 +223,11 @@ export default async function career(b) {
   await pg.click('#v-toggle');
   await dialog(pg, 'set-vets');
   check(
-    'career: the Veteran Umamusume button opens your veterans with their import and export',
+    'career: the Veteran Umamusume button opens your veterans with their import (Export is at the foot of the page)',
     vbtn &&
       (await pg.locator('#set-vets #vets .umcell').count()) === 12 &&
-      (await pg.locator('#set-vets #v-paste, #set-vets #v-export, #set-vets #v-clear, #set-vets #v-file').count()) ===
-        4,
+      (await pg.locator('#set-vets #v-paste, #set-vets #v-clear, #set-vets #v-file').count()) === 3 &&
+      (await pg.locator('footer #v-export').count()) === 1,
   );
   // (the first plan's report says its scoring was incomplete: the page must say so; later plans are the solver's own)
   await pg.evaluate(() => {
@@ -267,7 +267,7 @@ export default async function career(b) {
     return ctx.close();
   } // the fast tier: the one-run answer
   // Export: a dialog with the veterans and the solver job as text; Copy puts it on the clipboard, Download saves it, Paste takes it back
-  await vetsOpen();
+  await pg.evaluate(() => document.getElementById('set-vets').close()); // (Export is on the page, under the dialog)
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
   const exText = await pg.inputValue('#vx-text'),
@@ -310,10 +310,11 @@ export default async function career(b) {
   const part = await seen();
   check(
     'career: a borrow list goes to the Borrowed tab and the next one replaces it; your partial file merges and removes nothing',
-    lent1 === 'Replaced the borrow list with 3 borrowed veterans. | true | 3 | Yours · 12 | Borrowed · 3' &&
+    lent1 === 'Replaced the borrow list with 3 borrowed veterans. | true | 3 | Veteran Umamusume · 12 | Guests · 3' &&
       lent2 ===
-        'Replaced the borrow list with 2 borrowed veterans (it had 3). | true | 2 | Yours · 12 | Borrowed · 2' &&
-      part === 'Imported 5 veterans of yours: 5 already here, updated. | false | 12 | Yours · 12 | Borrowed · 2',
+        'Replaced the borrow list with 2 borrowed veterans (it had 3). | true | 2 | Veteran Umamusume · 12 | Guests · 2' &&
+      part ===
+        'Imported 5 veterans of yours: 5 already here, updated. | false | 12 | Veteran Umamusume · 12 | Guests · 2',
     `${lent1} / ${lent2} / ${part}`,
   );
   await pg.click('#v-tab-bor');
@@ -324,8 +325,8 @@ export default async function career(b) {
   await pg.click('#v-tab-own');
   check(
     'career: Remove all on the Borrowed tab removes only the borrowed, and the empty tab says how to fill it',
-    /^Removed 2 borrowed veterans\. \| true \| 0 \| Yours · 12 \| Borrowed · 0$/.test(cleared) &&
-      /None borrowed yet/.test(emptyHint) &&
+    /^Removed 2 borrowed veterans\. \| true \| 0 \| Veteran Umamusume · 12 \| Guests · 0$/.test(cleared) &&
+      /None yet/.test(emptyHint) &&
       (await pg.locator('#vets .umcell').count()) === 12,
     cleared,
   );
@@ -375,13 +376,13 @@ export default async function career(b) {
       (await pg.evaluate(() => document.activeElement?.id === 'odds-open')),
     JSON.stringify(oddRows.slice(0, 3)),
   );
-  // the targets, lowest first: the game's skill tile and the chance to land; under it the legacies' and the deck's
-  // chances, with the cards that give it; a tile opens Skill Details (her six legacies, the cards)
-  const tgRows = await pg.$$eval('#tree .rtgt .ctg:not(.ctgh)', (l) =>
+  // the targets, lowest first: the game's skill tile with the chance to land; under it her six legacies' faces and the
+  // cards that give it; a tile opens Skill Details (her six legacies, the cards)
+  const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
     l.map((x) => ({
-      land: Number.parseFloat(x.querySelector('.tgg b')?.textContent),
-      legs: x.querySelector('.tglegs')?.textContent,
-      tile: x.querySelector('button.udsk') !== null,
+      land: Number.parseFloat(x.querySelector('.udsk .tgp')?.textContent),
+      faces: x.querySelectorAll('.tglegs .av').length,
+      legs: x.querySelector('.tglegs')?.title,
     })),
   );
   await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
@@ -390,7 +391,7 @@ export default async function career(b) {
     skText = await pg.textContent('#sk-dlg');
   await pg.keyboard.press('Escape');
   check(
-    'career: the six-card deck in its own place, shown outright; the targets a table with headings, lowest first, each a tile with its legacies and deck chances and its chance to land; a tile opens Skill Details with her six legacies',
+    'career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land and her six legacies under it (their chance on hover); a tile opens Skill Details with her six legacies',
     (await (async () => {
       await pg.click('#deck-open');
       await dialog(pg, 'deck-dlg');
@@ -400,8 +401,7 @@ export default async function career(b) {
     })()) === 6 &&
       tgRows.length === 8 &&
       tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
-      tgRows.every((t) => t.tile && /^[<\d.]+%$/.test(t.legs)) &&
-      (await pg.locator('#tree .rtgt .ctgh').first().textContent()) === 'SkillLegaciesDeckLands' &&
+      tgRows.every((t) => t.faces === 6 && /pass it on: [<\d.]+%$/.test(t.legs)) &&
       skFaces === 6 &&
       /Lands as a spark: [<\d.]+%/.test(skText) &&
       /Legacies carrying it/.test(skText),

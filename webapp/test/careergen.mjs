@@ -45,16 +45,14 @@ export default async function careergen(b) {
       /uma\.moe tree/.test(await pg.textContent('#v-msg')) &&
       (await (async () => {
         await vetsOpen();
-        await pg.locator('#vets .umcell').last().click();
-        await dialog(pg, 'node-dlg');
-        const t = await pg.textContent('#node-dlg .srctag').catch(() => '');
-        await pg.keyboard.press('Escape');
+        await pg.locator('#vets .umcell').last().click(); // (beside the list)
+        const t = await pg.textContent('#v-pane .srctag').catch(() => '');
         return t === 'From uma.moe';
       })()),
     JSON.stringify(fromTree),
   );
   await pg.locator('#vets .umcell').last().click();
-  await pg.locator('#node-dlg .vdel').click();
+  await pg.locator('#v-pane .vdel').click();
   await done();
   await vetsShut();
   // Save one generation, then another: a veteran's parents become the next one's grandparents.
@@ -98,10 +96,8 @@ export default async function careergen(b) {
       !(await pg.locator('#vets .simtag').count()) &&
       (await (async () => {
         await vetsOpen();
-        await pg.locator('#vets .umcell').last().click();
-        await dialog(pg, 'node-dlg');
-        const t = await pg.textContent('#node-dlg .simtag').catch(() => '');
-        await pg.keyboard.press('Escape');
+        await pg.locator('#vets .umcell').last().click(); // (beside the list)
+        const t = await pg.textContent('#v-pane .simtag').catch(() => '');
         return t === 'Entered here';
       })()),
   );
@@ -154,7 +150,7 @@ export default async function careergen(b) {
   );
   await vetsOpen();
   await pg.locator(`#vet-${removalIndex}`).click();
-  await pg.locator('#node-dlg .vdel').click();
+  await pg.locator('#v-pane .vdel').click();
   await saved();
   check(
     'career: removing a selected veteran immediately redraws and clears the fixed parent',
@@ -180,8 +176,8 @@ export default async function careergen(b) {
     const card = [...document.querySelectorAll('#vets .umcell')].at(-1),
       stored = () => JSON.parse(localStorage.getItem('llp:career')).global.vets;
     const id = stored()[+card.id.slice(4)].id;
-    card.click(); // her popup, with Remove
-    document.querySelector('#node-dlg .vdel').click();
+    card.click(); // beside the list, with Remove
+    document.querySelector('#v-pane .vdel').click();
     const due = stored().some((v) => v.id === id);
     dispatchEvent(new PageTransitionEvent('pagehide'));
     return { id, due, flushed: !stored().some((v) => v.id === id) };
@@ -200,7 +196,7 @@ export default async function careergen(b) {
   await vetsOpen();
   while ((await pg.locator('#vets .umcell').count()) > 1) {
     await pg.locator('#vets .umcell').last().click();
-    await pg.locator('#node-dlg .vdel').click();
+    await pg.locator('#v-pane .vdel').click();
   }
   await done();
   check(

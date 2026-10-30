@@ -6,7 +6,7 @@ export default async function careerpool(b) {
   const { ctx, pg, done, vetsOpen, vetsShut, importDump } = await careerPage(b);
   await importDump();
   await done();
-  await vetsOpen();
+  await pg.evaluate(() => document.getElementById('set-vets').close()); // (Export is on the page, under the dialog)
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
   const exText = await pg.inputValue('#vx-text');

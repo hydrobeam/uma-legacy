@@ -483,8 +483,6 @@ SPRITES = [
     "spark_green",
     "spark_dot",
     "spark_dot_gold",
-    "gauge_track",
-    "gauge_fill",
     "label_target",
     "tag_blue",
     "tag_pink",

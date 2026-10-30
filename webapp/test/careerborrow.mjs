@@ -19,7 +19,7 @@ export default async function careerborrow(b) {
       r?.parents.some((i) => p.job.legacies[i].borrowed),
     ).length;
   const exported = async () => {
-    await vetsOpen();
+    await pg.evaluate(() => document.getElementById('set-vets').close()); // (Export is on the page, under the dialog)
     await pg.click('#v-export');
     await dialog(pg, 'vx-dlg');
     const x = JSON.parse(await pg.inputValue('#vx-text'));

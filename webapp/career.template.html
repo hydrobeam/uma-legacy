@@ -70,19 +70,24 @@ __PANEL_ENH__
 </div>
 
 <dialog id="set-vets" class="setdlg vetdlg" aria-labelledby="h-vets"><div class="dlg"><div class="row between dhead"><h3 id="h-vets">Veteran Umamusume</h3><button class="btn dclose">Done</button></div>
-  <p class="hint"><span id="v-count"></span> One borrowed per career. Tap one for her sparks.</p>
-  <div class="row">
+  <div class="vhead">
+    <div class="seg" role="tablist" aria-label="Whose veterans">
+      <button type="button" role="tab" id="v-tab-own" aria-selected="true" aria-controls="vets">Veteran Umamusume</button>
+      <button type="button" role="tab" id="v-tab-bor" aria-selected="false" aria-controls="vets" title="Veterans you can borrow (one per career): your borrow list and uma.moe's">Guests</button>
+    </div>
+    <div class="sortdd" id="vs-dd"><button class="btn sm" id="vs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Order veterans"></button>
+      <div class="sortmenu" id="vs-menu" role="menu" hidden></div></div>
+  </div>
+  <div class="vbody">
+    <div class="umgrid vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
+    <section class="vpane" id="v-pane" aria-label="The veteran chosen"></section>
+  </div>
+  <div class="row vtools">
     <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
     <button class="btn" type="button" id="v-paste">Paste</button>
-    <button class="btn" type="button" id="v-export" title="Your veterans and the planner's search as text to copy or download (bring it back with Paste or Import)">Export</button>
     <button class="btn" type="button" id="v-clear">Remove all</button>
     <span class="hint" id="v-msg" role="status"></span>
   </div>
-  <div class="seg" role="tablist" aria-label="Whose veterans">
-    <button type="button" role="tab" id="v-tab-own" aria-selected="true" aria-controls="vets">Yours</button>
-    <button type="button" role="tab" id="v-tab-bor" aria-selected="false" aria-controls="vets">Borrowed</button>
-  </div>
-  <div class="umgrid vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
 </div></dialog>
 <dialog id="um-dlg" class="umdlg" aria-labelledby="um-title"><div class="dlg">
   <div class="row between dhead"><h3 id="um-title">uma.moe</h3><button class="btn dclose" type="button">Close</button></div>
@@ -151,7 +156,7 @@ __PANEL_DLGUMAS____PANEL_DLGCARDS__
 <div class="cpop addpop" id="add-pop" role="dialog" aria-label="Add a spark" tabindex="-1" hidden></div>
 
 <footer class="foot">
-  <p class="row"><span class="hint" id="ver">Version __VERSION__</span></p>
+  <p class="row"><button class="btn" type="button" id="v-export" title="Your veterans, setup and the planner's search as text to copy or download (bring it back with Paste in Veteran Umamusume)">Export</button><span class="hint" id="ver">Version __VERSION__</span></p>
 </footer>
 
 <script type="application/json" id="data-assets">__ASSETS__</script>

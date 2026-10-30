@@ -48,10 +48,12 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
 (click its ribbon); until you fold or open it yourself, it opens folded once you have veterans.
 - *Import umadump file* reads umadump's `trained_chara_data.json` (sparks with stars, single-race G1 wins, both
   parents) or its `rental_chara_data.json`, the veterans the career start screen offers for borrowing (same fields,
-  marked borrowed). The dialog's *Yours* and *Borrowed* tabs hold each kind, drawn as the game's legacy list draws
-  veterans (portrait in its ring, rank, three main sparks, her number; a *Parent 1* / *Parent 2* tab on the next career's
-  parents); tapping one opens her popup (her sparks, how many targets she carries as *x/y*, *Yours* / *Borrowed*,
-  *Remove*). Your veterans merge by veteran (the
+  marked borrowed). The dialog's tabs are the game's: *Veteran Umamusume* (yours) and *Guests* (the ones you can
+  borrow: your borrow list, then uma.moe's listings, each under its heading), drawn as the game's legacy list draws
+  veterans (portrait in its ring, rank, three main sparks, her number or her trainer; a *Parent 1* / *Parent 2* tab on
+  the next career's parents), ordered by number, targets carried or rank (the sort menu). The chosen one shows beside
+  the list (on phones, tapping one opens her popup): her sparks, how many targets she carries as *x/y*, *Yours* /
+  *Guest*, *Remove*. Your veterans merge by veteran (the
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
   lends today; *Remove all* clears the open tab. *Paste* takes the same text, an Export from this page (which replaces
   every import), or an uma.moe lineage planner export.
@@ -70,7 +72,7 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   *Disconnect* forgets the key. Global data only.
 - With no veterans, **Try sample veterans** adds six random mob umas carrying only the targets that inheritance alone
   gives, the minimum to start a loop.
-- Each veteran's sparks, parents and G1 wins can be edited; *Yours / Borrowed* marks a friend's.
+- Each veteran's sparks, parents and G1 wins can be edited; *Yours / Guest* marks a friend's.
 - Enter a veteran's pink (aptitude) sparks too: imports carry them, a veteran added by hand starts without. The
   trainee's race chances use her grades raised by her legacies' pinks, with an extra cost at the lowest aptitudes that
   was fitted on raised grades; without the pinks her grades read low, and her chances at those races low with them.
@@ -142,14 +144,13 @@ trainer, and her popup has *Copy ID*, to follow them before the career starts), 
 their priority and chain notes) and **Race schedule** (the game's calendar of the G1s she runs, each race's win chance from the community table on her own
 grades, the planner's own figure, which counts the pink sparks she may get, on hover; *Win table* shows the table) under
 the trainee; the
-**Targets** take the right side: a table, lowest first, of each target's skill tile (its white version), *Legacies* (the
-chance her six legacies pass it on), *Deck* (the chance her deck gives it, on gold when it gives the gold skill, with the cards that
-do by a hint or an event, or her outfit's portrait / the scenario's logo when those hand it out) and *Lands* (her chance
-to land its spark, on the game's spark-research gauge); each heading says
-what it is on hover. On phones each target takes two lines: the skill and its gauge, then *Legacies* and *Deck* under it. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
+**Targets** take the right side, two to a row, lowest first: each the game's skill tile with her chance to land its spark
+(the gold skill's icon when her deck or outfit can give the gold), and under it where it comes from in pictures: her six
+legacies' faces (dim where one doesn't carry it; their chance on hover), then the cards that hint it or give it by an
+event, her outfit's portrait or the scenario's logo (the deck's chance on hover); on phones one to a row. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
 faces (lit where one carries it) and each card that gives it.
 The landing chances
-multiply to the odds of all of them; the **?** by *Targets* says what each figure is. The status line shows only while the planner works or when something needs saying. A reload with nothing changed draws
+multiply to the odds of all of them. The status line shows only while the planner works or when something needs saying. A reload with nothing changed draws
 the last answer at once, without planning again.
 
 **Try a run** opens a popup with the career's result as the game's *Umamusume Details* card (Skills, Inspiration,
@@ -176,5 +177,5 @@ Career Info). It starts as a random result of the career:
 The card shows her aptitudes at the end of that result (the legacies' pink sparks included). Add to veterans closes
 the popup.
 
-**Export** (in **Veteran Umamusume**) shows your veterans, the places you set and the solver job as text (*Copy*, *Download*), to move them to another
+**Export** (at the foot of the page) shows your veterans, the places you set and the solver job as text (*Copy*, *Download*), to move them to another
 browser or replay a search outside the page.

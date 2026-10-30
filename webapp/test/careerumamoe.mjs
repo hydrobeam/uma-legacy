@@ -135,14 +135,17 @@ export default async function careerumamoe(b) {
   await vetsOpen();
   await pg.click('#v-tab-bor');
   check(
-    'career uma.moe: the veteran dialog holds yours only (no uma.moe cards, not counted)',
-    (await pg.locator('#vets .umcell').count()) === 0 && (await pg.textContent('#v-tab-bor')) === 'Borrowed · 0',
+    "career uma.moe: Veteran Umamusume's Guests tab holds the listings under an uma.moe heading, counted",
+    (await pg.locator('#vets .umcell').count()) === 2 &&
+      (await pg.textContent('#vets .vsec')) === 'uma.moe' &&
+      (await pg.textContent('#v-tab-bor')) === 'Guests · 2',
   );
+  await pg.click('#v-tab-own');
+  await vetsShut();
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
   const ex = JSON.parse(await pg.inputValue('#vx-text'));
   await pg.locator('#vx-dlg .dclose').click();
-  await vetsShut();
   check(
     'career uma.moe: Export leaves the listings out',
     !ex.veterans.some((v) => v.src === 'umamoe') && !/Trainer [12]/.test(JSON.stringify(ex.veterans)),

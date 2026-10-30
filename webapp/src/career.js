@@ -52,6 +52,7 @@ import {
   openWins,
 } from './vets.js';
 import { vetCell } from './vetcell.js';
+import { wireMenu } from './sortmenu.js';
 import { parseExport, parseTree } from './umadump.js';
 import { initUmamoe, syncListings } from './umamoesetup.js';
 import { detailsEl, inspView, fitSparks, deckCardAt, openSkill } from './details.js';
@@ -1365,10 +1366,16 @@ const VET_SOURCE = {
 };
 // A veteran of yours (the pool, Career Info's legacies): her sparks and her parents', editable in place.
 function fillVeteranNode({ id }, _r, body) {
+  const title = veteranView(id, body);
+  if (title) $('node-title').textContent = title;
+  return !!title;
+}
+// her view (the popup's, and beside the list in Veteran Umamusume): her face, name, targets carried, wins, where she
+// came from; Yours / Guest and Remove; her sparks and her parents'. Returns the title, '' when she is gone
+function veteranView(id, body) {
   const i = idxOf(id),
     v = vets[i];
-  if (!v) return false;
-  $('node-title').textContent = `Veteran #${i + 1}${v.borrowed ? ' · borrowed' : ''}`;
+  if (!v) return '';
   const edit = !listed(v),
     w = el('div', 'twho');
   const src = VET_SOURCE[v.src];
@@ -1388,10 +1395,10 @@ function fillVeteranNode({ id }, _r, body) {
     const row = el('div', 'row vctl'),
       seg = el('div', 'seg sm');
     seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or borrowed`);
+    seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or a guest`);
     for (const [b, l] of /** @type {[boolean, string][]} */ ([
       [false, 'Yours'],
-      [true, 'Borrowed'],
+      [true, 'Guest'],
     ])) {
       const x = el('button', '', l);
       x.type = 'button';
@@ -1409,7 +1416,7 @@ function fillVeteranNode({ id }, _r, body) {
       btn('Remove', 'vdel', () => {
         const index = idxOf(v.id);
         if (index < 0) return;
-        nodeDlg.close();
+        if (nodeDlg?.open) nodeDlg.close();
         removeVet(index);
         $('v-msg').textContent = `Removed ${umaName(v.chara)} from your veterans.`;
       }),
@@ -1442,7 +1449,7 @@ function fillVeteranNode({ id }, _r, body) {
     pr.appendChild(x);
   });
   body.appendChild(pr);
-  return true;
+  return v.lender ? `uma.moe · ${v.lender.name || 'trainer'}` : `Veteran #${i + 1}${v.borrowed ? ' · guest' : ''}`;
 }
 // A grandparent (parent k's parent j): who she is, her sparks and G1 wins.
 function fillGrandparentNode({ k, j }, r, body) {
@@ -1759,83 +1766,45 @@ function legaciesCarrying(r, g) {
   }
   return out;
 }
-// the targets as a table, lowest first: the game's skill tile (tap: Skill Details, where it comes from), the chance her
-// legacies pass it on, the chance her deck gives it (with the cards that do, or her outfit / the scenario), and her
-// chance to land its spark
+// the targets, lowest first, two to a row: each the game's skill tile with her chance to land its spark (the gold
+// skill's icon when her deck or her outfit can give the gold; tap: Skill Details, where it comes from with each
+// chance), and under it where it comes from in pictures: her six legacies' faces (lit where one carries it), then the
+// cards that give it, her outfit or the scenario
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
-    tabs = el('div', 'tgtabs'),
-    sorted = [...r.targets].sort((a, b) => a.p - b.p);
-  // a table and its headings: each says what its column is on hover or keyboard focus (gmtip.js), as the other careers'
-  const table = () => {
-    const list = el('ul', 'ctgs'),
-      head = el('li', 'ctg ctgh');
-    for (const [label, tip] of [
-      ['Skill', 'Tap a skill for where it comes from'],
-      ['Legacies', 'The chance her six legacies (two parents, four grandparents) pass it on'],
-      [
-        'Deck',
-        'The chance her deck gives it (on gold: its gold skill), with the cards that do; her outfit or the scenario when they hand it to her',
-      ],
-      ['Lands', 'The chance her veteran gets its spark (lowest first)'],
-    ]) {
-      const x = el('span', 'thtip', label);
-      x.title = tip;
-      x.tabIndex = 0;
-      head.appendChild(x);
-    }
-    list.appendChild(head);
-    tabs.appendChild(list);
-    return list;
-  };
-  const list = table();
-  for (const t of sorted) {
+    list = el('ul', 'ctgs');
+  for (const t of [...r.targets].sort((a, b) => a.p - b.p)) {
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
+      goldOn = (b.deck_gold || 0) > 0.005 || b.outfit === 2,
       li = el('li', 'ctg'),
       tile = el('button', 'udsk'),
-      ic = () => skillIcon(t.group, false),
-      land = el('span', 'tgg'),
+      legacies = legaciesCarrying(r, t.group),
       cards = cardsGiving(r, t.group),
       deckP = Math.max(b.deck_gold || 0, b.deck_white || 0);
     tile.type = 'button';
     tile.setAttribute('aria-haspopup', 'dialog');
     tile.setAttribute('aria-label', `${tName(t.group)}: lands ${pct(t.p)}. Where it comes from`);
-    const icon = ic();
+    tile.title = goldOn ? 'Her deck can give its gold skill' : '';
+    const icon = skillIcon(t.group, goldOn);
     if (icon) tile.appendChild(icon);
-    tile.appendChild(el('span', 'udskn', tName(t.group)));
+    const lands = el('b', 'tgp', pct(t.p));
+    lands.title = `The chance her veteran gets its spark: ${pct(t.p)}`;
+    tile.append(el('span', 'udskn', tName(t.group)), lands);
     tile.onclick = () =>
-      openSkill(
-        {
-          b,
-          name: tName(t.group),
-          icon: () => skillIcon(t.group, gold),
-          gold,
-          legacies: legaciesCarrying(r, t.group),
-          cards,
-        },
-        tile,
-      );
-    // her chance to land it on the game's spark-research gauge, the figure beside it
-    const track = el('span', 'tggf'),
-      fill = el('i');
-    fill.style.width = `${Math.round(t.p * 1000) / 10}%`;
-    if (t.p < 0.005) fill.hidden = true;
-    track.appendChild(fill);
-    land.append(track, el('b', '', pct(t.p)));
-    land.title = `Her veteran gets its spark: ${pct(t.p)}`;
-    const legs = el('span', 'tglegs', pct(t.q)),
-      deck = el('span', 'tgdeck');
-    // her deck's chance, on gold (the gold skill's colours) when it gets her the gold skill
-    if (deckP > 0.005) {
-      const dg = (b.deck_gold || 0) >= (b.deck_white || 0),
-        d = el('span', dg ? 'tgdp gold' : 'tgdp', pct(deckP));
-      d.title = `Her deck gets her its ${dg ? 'gold skill' : 'white skill'}: ${pct(deckP)}`;
-      deck.appendChild(d);
+      openSkill({ b, name: tName(t.group), icon: () => skillIcon(t.group, gold), gold, legacies, cards }, tile);
+    const from = el('div', 'tgsrc'),
+      legs = el('span', 'tglegs');
+    for (const g of legacies) {
+      const f = umaAv(g.chara, g.outfit, 20);
+      if (!g.carries) f.classList.add('dim');
+      legs.appendChild(f);
     }
+    legs.title = `Her legacies pass it on: ${pct(t.q)}`;
+    const deck = el('span', 'tgdeck');
     for (const { card } of cards) deck.appendChild(cardAv(card, 22));
     if (b.outfit) {
-      const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 24);
+      const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 22);
       o.title = `Her outfit gives its ${b.outfit === 2 ? 'gold' : 'white'}`;
       deck.appendChild(o);
     }
@@ -1844,11 +1813,12 @@ function targetsEl(r) {
       sc.title = 'The scenario gives it';
       deck.appendChild(sc);
     }
-    if (!deck.childElementCount) deck.appendChild(el('span', 'tgnone', '—'));
-    li.append(tile, legs, deck, land);
+    if (deck.childElementCount) deck.title = `Her deck gives it: ${pct(deckP)}`;
+    from.append(legs, deck);
+    li.append(tile, from);
     list.appendChild(li);
   }
-  s.appendChild(tabs);
+  s.appendChild(list);
   return s;
 }
 // her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
@@ -3035,44 +3005,94 @@ function renderResults() {
 }
 
 // ---------- the veterans (pool) ----------
-// a veteran as the game's legacy list draws her, her number under her, a "Parent 1" tab when she is one of the next
-// career's parents; a click opens her popup (her sparks editable in place, Yours / Borrowed, Remove)
+// a veteran as the game's legacy list draws her, her number (an uma.moe one: her trainer) under her, a "Parent 1" tab
+// when she is one of the next career's parents; a click shows her beside the list (a wide dialog) or in her popup (her
+// sparks editable in place, Yours / Guest, Remove)
 function vetCardEl(v, i) {
   const k = plan.parents.indexOf(v.id),
     tg = state.targets.map((t) => t.group),
     have = tg.filter((g) => v.sparks?.[g]).length,
     c = vetCell(v, {
-      name: `#${i + 1}`,
+      name: v.lender ? v.lender.name || 'uma.moe' : `#${i + 1}`,
       label: `Veteran #${i + 1}: ${umaName(v.chara)}, ${have} of ${tg.length} target skills. Her sparks`,
-      onClick: () => openNode({ kind: 'v', id: v.id }),
+      onClick: () => {
+        if (!wideVets()) openNode({ kind: 'v', id: v.id });
+        else if (vSel !== v.id) {
+          vSel = v.id;
+          drawPool();
+          $(`vet-${idxOf(v.id)}`)?.focus();
+        }
+      },
       tab: k >= 0 ? `Parent ${k + 1}` : undefined,
     });
+  if (v.id === vSel) c.classList.add('sel');
+  c.setAttribute('aria-current', String(v.id === vSel && wideVets()));
   c.id = `vet-${i}`;
   c.dataset.k = `node:v${v.id}`;
   return c;
 }
 // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
 // (the cards are drawn only while the dialog is open, and when it opens: every edit and result redraws the page)
-// Two tabs over the one list, yours and borrowed; a veteran keeps her number (her place in the whole list) in either.
+// Two tabs, as the game's Legacy Select: Veteran Umamusume (yours) and Guests (the ones you can borrow: your borrow list,
+// then uma.moe's listings); a veteran keeps her number (her place in the whole list) in either. A wide dialog shows the
+// chosen one beside the list (`vSel`); a narrow one opens her popup.
 let poolStale = true,
-  vTab = 'own';
-// (uma.moe's listings are not shown: they are the pool's, from uma.moe, not yours)
-const inTab = (v) => v.src !== 'umamoe' && !!v.borrowed === (vTab === 'bor');
+  vTab = 'own',
+  /** @type {string|null} */ vSel = null;
+const wideVets = () => matchMedia('(min-width: 760px)').matches;
+const inTab = (v) => !!v.borrowed === (vTab === 'bor');
 function setVTab(t) {
   vTab = t;
   for (const x of ['own', 'bor']) $(`v-tab-${x}`).setAttribute('aria-selected', String(x === t));
   $('vets').setAttribute('aria-labelledby', `v-tab-${t}`);
   renderPool();
 }
+// the list's orders: her number (uma.moe's listings in uma.moe's order), how many targets she carries, her rank; each
+// starts as the menu says and picking the chosen one again reverses it (as the umas' and cards' sort menus)
+/** @type {Record<string, [string, string, (v: import('./vets.js').Veteran, i: number) => number]>} */
+const VSORTS = {
+  no: ['Number', 'In the list’s order', (_v, i) => -i],
+  tg: [
+    'Targets',
+    'The most targets she carries first',
+    (v) => state.targets.filter((t) => v.sparks?.[t.group] > 0).length,
+  ],
+  rank: ['Rank', 'The highest career rank first', (v) => v.rank || 0],
+};
+let vSort = 'no',
+  vRev = false;
+function paintVSort() {
+  const arrow = vRev ? '↑' : '↓',
+    b = $('vs');
+  b.textContent = `${VSORTS[vSort][0]} ${arrow}`;
+  b.title = VSORTS[vSort][1] + (vRev ? ', reversed' : '');
+  b.setAttribute('aria-label', `${b.textContent}, order veterans`);
+  for (const x of $('vs-menu').querySelectorAll('button')) {
+    const on = x.dataset.k === vSort;
+    x.setAttribute('aria-checked', String(on));
+    x.textContent = VSORTS[x.dataset.k][0] + (on ? ` ${arrow}` : '');
+    x.title = on ? 'Click to reverse' : VSORTS[x.dataset.k][1];
+  }
+}
+function initVSort() {
+  for (const k of Object.keys(VSORTS)) {
+    const x = el('button', '', VSORTS[k][0]);
+    x.type = 'button';
+    x.setAttribute('role', 'menuitemradio');
+    x.dataset.k = k;
+    $('vs-menu').appendChild(x);
+  }
+  wireMenu('vs', (k) => {
+    vRev = k === vSort && !vRev;
+    vSort = k;
+    drawPool();
+  });
+}
 function renderPool() {
   if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
-  const mine = vets.filter((v) => v.src !== 'umamoe'),
-    nb = mine.filter((v) => v.borrowed).length;
-  $('v-count').textContent = mine.length
-    ? `${mine.length} veteran${mine.length > 1 ? 's' : ''}${nb ? `, ${nb} borrowed` : ''}.`
-    : '';
-  $('v-tab-own').textContent = `Yours · ${mine.length - nb}`;
-  $('v-tab-bor').textContent = `Borrowed · ${nb}`;
+  const guests = vets.filter((v) => v.borrowed).length;
+  $('v-tab-own').textContent = `Veteran Umamusume · ${vets.length - guests}`;
+  $('v-tab-bor').textContent = `Guests · ${guests}`;
   if (!$dialog('set-vets').open) {
     poolStale = true;
     return;
@@ -3083,14 +3103,45 @@ function drawPool() {
   const box = $('vets');
   box.textContent = '';
   poolStale = false;
-  vets.forEach((v, i) => {
-    if (inTab(v)) box.appendChild(vetCardEl(v, i));
-  });
-  if (!box.children.length)
+  paintVSort();
+  const by = VSORTS[vSort][2],
+    sign = vRev ? -1 : 1,
+    shown = vets
+      .map((v, i) => /** @type {[import('./vets.js').Veteran, number]} */ ([v, i]))
+      .filter(([v]) => inTab(v))
+      .sort(([a, i], [b, j]) => sign * (by(b, j) - by(a, i)));
+  // Guests: your borrow list, then uma.moe's listings, each under its heading
+  /** @type {[string, [import('./vets.js').Veteran, number][]][]} */
+  const groups =
+    vTab === 'own'
+      ? [['', shown]]
+      : [
+          ['Borrow list', shown.filter(([v]) => v.src !== 'umamoe')],
+          ['uma.moe', shown.filter(([v]) => v.src === 'umamoe')],
+        ];
+  for (const [head, list] of groups) {
+    if (!list.length) continue;
+    if (head) box.appendChild(el('p', 'vsec', head));
+    for (const [v, i] of list) box.appendChild(vetCardEl(v, i));
+  }
+  if (!shown.length)
     box.innerHTML =
       vTab === 'own'
-        ? '<p class="hint">No veterans of yours yet. Import umadump\'s trained_chara_data.json, or make one with Choose parent.</p>'
-        : '<p class="hint">None borrowed yet. Import umadump\'s rental_chara_data.json, or mark a veteran Borrowed. uma.moe\'s veterans: Borrow from uma.moe, beside Next career.</p>';
+        ? '<p class="hint">None yet. Import umadump\'s trained_chara_data.json, or make one with Choose parent.</p>'
+        : '<p class="hint">None yet. Import umadump\'s rental_chara_data.json, mark a veteran Guest, or Borrow from uma.moe beside Next career.</p>';
+  // the one beside the list: the chosen one while she is in this tab, else the first shown
+  if (!shown.some(([v]) => v.id === vSel)) {
+    vSel = shown[0]?.[0].id ?? null;
+    for (const c of box.querySelectorAll('.umcell')) c.classList.remove('sel');
+    if (vSel) $(`vet-${idxOf(vSel)}`)?.classList.add('sel');
+  }
+  const pane = $('v-pane');
+  pane.textContent = '';
+  if (vSel && wideVets()) {
+    const h = el('h4', 'vptitle');
+    pane.appendChild(h);
+    h.textContent = veteranView(vSel, pane) || '';
+  }
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -3402,6 +3453,7 @@ loadData().then(
       }
     };
     for (const x of ['own', 'bor']) $(`v-tab-${x}`).onclick = () => setVTab(x);
+    initVSort();
     renderAll();
     await preloadAnswer(); // the last visit's answer, when nothing changed since: drawn at once
     search();
