@@ -849,7 +849,9 @@ export function clearVets(drop = () => true) {
   dropMissing();
   changed();
 }
-function dropMissing() {
+// a parent place naming a veteran no longer here (removed; an uma.moe listing not back from its answer) goes back to the
+// planner
+export function dropMissing() {
   plan.parents = plan.parents.map((id) => (id && vetById(id) ? id : null));
 }
 // legaciesJob returns the same array until the next edit (`rev`): callers don't change it

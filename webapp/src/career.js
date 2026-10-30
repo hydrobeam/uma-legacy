@@ -43,6 +43,7 @@ import {
   addVets,
   removeVet,
   clearVets,
+  dropMissing,
   legaciesJob,
   openUmaPicker,
   drawUmas,
@@ -994,7 +995,8 @@ const scoreOf = (o) => o.score ?? o.index;
 const fmtN = (x) => Math.round(x).toLocaleString();
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
-  if (plan.parents[k]) return { v: vetById(plan.parents[k]), pick: false };
+  const mine = plan.parents[k] && vetById(plan.parents[k]);
+  if (mine) return { v: mine, pick: false };
   if (!r) return null;
   // the other place's chosen veteran (-1: none): the result's parent that isn't her fills this one
   const other = plan.parents[1 - k] ? idxOf(plan.parents[1 - k]) : -1;
@@ -3218,6 +3220,7 @@ loadData().then(
       open: (v) => openNode({ kind: 'v', id: v.id }),
     });
     syncListings();
+    dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
     // Try a run's popup: Close and a backdrop click shut it
     const simDlg = $dialog('sim-dlg');
     for (const x of simDlg.querySelectorAll('.dclose')) /** @type {HTMLElement} */ (x).onclick = () => simDlg.close();

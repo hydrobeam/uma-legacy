@@ -245,5 +245,22 @@ export default async function careerumamoe(b) {
     fit.left >= 0 && fit.right <= 375 && fit.bottom <= 812 && fit.scrolls && fit.page <= 375,
     JSON.stringify(fit),
   );
+  // a parent place naming a veteran not here (an uma.moe one an earlier build never saved): she goes back to the
+  // planner and the page plans (it stopped before its first search)
+  await pg.setViewportSize({ width: 1440, height: 1000 });
+  await pg.evaluate(() => {
+    const o = JSON.parse(localStorage.getItem('llp:career'));
+    o.global.plan = { trainee: null, parents: ['u999999', null] };
+    localStorage.setItem('llp:career', JSON.stringify(o));
+  });
+  await pg.reload();
+  await done();
+  check(
+    'career uma.moe: a parent place naming a veteran not here goes back to the planner, and the page still plans',
+    (await pg.evaluate(() => document.getElementById('rhead').dataset.kind)) !== 'loading' &&
+      !!(await pg.textContent('#tree .pn.trainee .nm')) &&
+      !(pg.errors || []).some((e) => /TypeError|ReferenceError/.test(e)), // (the bad key's 401 is logged by the browser)
+    `${(await pg.textContent('#run-note')).slice(0, 40)} | ${await pg.evaluate(() => document.getElementById('rhead').dataset.kind)} | ${await pg.textContent('#tree .pn.trainee .nm')} | ${(pg.errors || []).join(' / ').slice(0, 200)}`,
+  );
   await ctx.close();
 }
