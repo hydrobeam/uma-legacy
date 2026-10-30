@@ -184,7 +184,9 @@ export default async function career(b) {
     bb = await pg.locator('.rbbar').boundingBox();
   await pg.locator('.rbbar').click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
   const stripStays = !(await pg.locator('.rbbar .setlist').isHidden());
-  await pg.mouse.click(hb.x + 6, hb.y + 4);
+  // (the ribbon measured again: clicking the bar may have scrolled it)
+  const hb2 = await pg.locator('#h-set').boundingBox();
+  await pg.mouse.click(hb2.x + 6, hb2.y + 4);
   const foldSum = await pg.getAttribute('#set-sum', 'aria-label'),
     foldHid = await pg.locator('.rbbar .setlist').isHidden();
   await pg.click('#set-sum');
@@ -320,12 +322,14 @@ export default async function career(b) {
   pg.once('dialog', (d) => d.accept());
   await pg.click('#v-clear');
   const cleared = await seen(),
-    emptyHint = await pg.textContent('#vets');
+    emptyHint = await pg.textContent('#vets'),
+    keyBar = await pg.locator('#um-key').isVisible();
   await pg.click('#v-tab-own');
   check(
-    'career: Remove all on the Borrowed tab removes only the borrowed, and the empty tab says how to fill it',
+    'career: Remove all on the Borrowed tab removes only the borrowed; the empty tab offers the uma.moe key above it',
     /^Removed 2 borrowed veterans\. \| true \| 0 \| Yours · 12 \| Borrowed · 0$/.test(cleared) &&
-      /None borrowed yet/.test(emptyHint) &&
+      /None yet/.test(emptyHint) &&
+      keyBar &&
       (await pg.locator('#vets .vet').count()) === 12,
     cleared,
   );

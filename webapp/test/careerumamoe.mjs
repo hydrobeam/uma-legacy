@@ -1,12 +1,13 @@
-// Find a borrow on uma.moe (Borrowed tab), with uma.moe stood in for by two listings made from the umadump test file's
-// first two veterans: the key is asked for, sent only as a header and kept apart from the settings and the veterans;
-// one press is one request (main parent at least n - 1 of n targets), ranked by the planner; Add puts her on the borrow
-// list with her lender, whom Export leaves out; the 24 h cache answers again after a reload; a rejected key says so
+// uma.moe on the Borrowed tab, with uma.moe stood in for by two listings made from the umadump test file's first two
+// veterans: a rejected key says so; a saved key sends one request (parent at least n - 1 of n targets, followable
+// trainers), as a header only, kept apart from the settings and the veterans; the listings join the planner's pool as
+// borrowed veterans (not saved unless kept), named by trainer on their cards (one size), the parent's tile and popup;
+// Keep saves one (Export without her trainer); a reload asks nothing (the answer is kept 24 h); Refresh asks again
 import { readFileSync } from 'node:fs';
 import { check, dialog, careerPage, repoUrl } from './helpers.mjs';
 
 // a umadump veteran as an uma.moe search result: herself at main_*, her parents (positions 10, 20) at left_* and right_*
-function listing(rec, k) {
+export function listing(rec, k) {
   const parent = (position) => rec.succession_chara_array.find((x) => x.position_id === position);
   const side = (r) => {
     const ids = r.factor_info_array.map((f) => f.factor_id),
@@ -45,7 +46,7 @@ function listing(rec, k) {
 }
 
 export default async function careerumamoe(b) {
-  const { ctx, pg, done, planned, vetsOpen, vetsShut, importDump } = await careerPage(b);
+  const { ctx, pg, done, planned, vetsOpen, vetsShut, node, inNode, importDump } = await careerPage(b);
   const recs = JSON.parse(readFileSync(repoUrl('val/umadump/U_trained_chara_data.json'), 'utf8'));
   const items = [listing(recs[0], 1), listing(recs[1], 2)];
   const requests = [];
@@ -68,29 +69,35 @@ export default async function careerumamoe(b) {
   });
   await importDump();
   await done();
-  await planned();
-  const openSearch = async () => {
+  const lastJob = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').at(-1));
+  const status = () => pg.textContent('#um-msg');
+  const borrowedTab = async () => {
     await vetsOpen();
     await pg.click('#v-tab-bor');
-    await pg.click('#um-open');
-    await dialog(pg, 'um-dlg');
   };
-  const ranked = () => pg.waitForFunction(() => /ranked/.test(document.getElementById('um-msg').textContent));
-  await openSearch();
-  await pg.click('#um-go');
+  check('career uma.moe: Career setup has no uma.moe row', (await pg.locator('.setlist #um-row').count()) === 0);
+  await borrowedTab();
   check(
-    'career uma.moe: Search without a key asks for one and sends nothing',
-    requests.length === 0 && /key first/.test(await pg.textContent('#um-msg')),
+    'career uma.moe: without a key the Borrowed tab offers the key field and sends nothing',
+    (await pg.locator('#um-key').isVisible()) && requests.length === 0,
   );
   await pg.fill('#um-key', 'bad-key');
-  await pg.click('#um-go');
-  await pg.waitForFunction(() => /rejected/.test(document.getElementById('um-msg').textContent));
-  check('career uma.moe: a key uma.moe refuses says so', requests.length === 1);
+  await pg.click('#um-save');
+  await pg.waitForFunction(() => /Key rejected/.test(document.getElementById('um-msg').textContent));
+  check(
+    'career uma.moe: a key uma.moe refuses says so; Forget key waits behind Key',
+    requests.length === 1 && !(await pg.locator('#um-forget').isVisible()),
+  );
+  await pg.click('.umkey summary');
+  await pg.click('#um-forget');
   await pg.fill('#um-key', 'test-key');
-  await pg.click('#um-go');
-  await ranked();
-  const url = new URL(requests[1].url),
-    n = await pg.evaluate(() => window.__careerJobs.at(-1).targets.length);
+  await pg.press('#um-key', 'Enter');
+  await pg.waitForFunction(() => /^2 to borrow · 1 h$/.test(document.getElementById('um-msg').textContent));
+  await vetsShut();
+  await done();
+  await planned();
+  const job = await lastJob(),
+    url = new URL(requests[1].url);
   const store = await pg.evaluate(() => ({
     key: localStorage.getItem('llp:umamoe-key'),
     settings: localStorage.getItem('llp:settings') || '',
@@ -103,49 +110,37 @@ export default async function careerumamoe(b) {
       !requests[1].cookie &&
       !url.search.includes('test-key') &&
       url.searchParams.get('max_follower_num') === '999' &&
-      url.searchParams.getAll('main_white_factors').length === n - 1,
+      url.searchParams.getAll('main_white_factors').length === job.targets.length - 1,
     url.search.slice(0, 120),
   );
   check(
     'career uma.moe: the key is kept under its own entry, never with the settings or the veterans',
     store.key === 'test-key' && !store.settings.includes('test-key') && !store.career.includes('test-key'),
   );
-  const rows = pg.locator('#um-res .umrow');
-  const texts = await rows.allInnerTexts();
   check(
-    "career uma.moe: every listing ranked by the planner: her best next career's odds, her targets, the trainer",
-    texts.length === 2 && texts.every((t) => /Best next career: .+%/.test(t) && /Trainer [12]/.test(t)),
-    texts.map((t) => t.split('\n').slice(0, 3).join(' | ')).join(' || '),
+    "career uma.moe: the listings join the planner's pool as borrowed veterans, after yours, and are not saved",
+    job.legacies.length === 14 &&
+      job.legacies.slice(12).every((l) => l.borrowed) &&
+      JSON.parse(store.career).global.vets.length === 12,
+    String(job.legacies.length),
   );
+  await borrowedTab();
+  const cards = pg.locator('#vets .vet');
+  const texts = await cards.allInnerTexts();
   check(
-    "career uma.moe: the top rows priced in today's plan (careers to a fully looped parent)",
-    texts.every((t) => /In the plan: /.test(t)),
-    texts.map((t) => t.match(/In the plan: [^\n]*/)?.[0]).join(' || '),
+    'career uma.moe: the Borrowed tab shows each with her trainer and Keep, no Remove (the next search replaces her)',
+    texts.length === 2 &&
+      texts.every((t) => /uma\.moe · Trainer [12] · 3 h/.test(t) && /Keep/.test(t)) &&
+      (await cards.locator('.vdel').count()) === 0,
+    texts.map((t) => t.replace(/\s+/g, ' ').slice(0, 90)).join(' || '),
   );
-  await pg.setViewportSize({ width: 375, height: 812 });
-  check(
-    'career uma.moe: at 375 px the dialog fits its width (no sideways scroll)',
-    await pg.evaluate(() => {
-      const d = document.querySelector('#um-dlg .dlg');
-      return (
-        d.scrollWidth <= d.clientWidth + 1 && document.getElementById('um-dlg').getBoundingClientRect().right <= 376
-      );
-    }),
-  );
-  await pg.setViewportSize({ width: 1440, height: 1000 });
-  const before = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
-  await rows.first().getByRole('button', { name: 'Add to borrow list' }).click();
-  await pg.locator('#um-dlg .dclose').click();
+  await cards.first().getByRole('button', { name: 'Keep' }).click();
   await vetsShut();
   await done();
-  const added = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
+  const kept = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets);
   check(
-    'career uma.moe: Add puts her on the borrow list, from uma.moe, with her lender',
-    added.src === 'umamoe' &&
-      added.borrowed === true &&
-      /^u9000/.test(added.id) &&
-      /^Trainer/.test(added.lender?.name) &&
-      (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === before + 1,
+    'career uma.moe: Keep saves her, with her trainer',
+    kept.length === 13 && kept[12].src === 'umamoe' && kept[12].kept && /^Trainer/.test(kept[12].lender?.name),
   );
   await vetsOpen();
   await pg.click('#v-export');
@@ -154,20 +149,48 @@ export default async function careerumamoe(b) {
   await pg.locator('#vx-dlg .dclose').click();
   await vetsShut();
   check(
-    "career uma.moe: Export leaves out her lender's name and ID",
-    ex.veterans.some((v) => v.src === 'umamoe') && !JSON.stringify(ex).includes('Trainer 1'),
+    'career uma.moe: Export takes the kept one without her trainer, and not the other listing',
+    ex.veterans.filter((v) => v.src === 'umamoe').length === 1 && !/Trainer [12]/.test(JSON.stringify(ex)),
   );
-  // a reload: the same search answers from the 24 h cache
+  // an uma.moe veteran as parent 1: the tree's tile names her trainer, with Copy ID
+  const bj = (await lastJob()).legacies.length - 1;
+  await node('node:p0');
+  await inNode(/^(Choose|Change) parent$/).click();
+  await dialog(pg, 'vpick-dlg');
+  await pg.locator('#vp-list .vpt').nth(bj).click();
+  await done();
+  const tileText = (await pg.locator('#tree [data-k="node:p0"]').innerText()).replace(/\s+/g, ' ');
+  check(
+    "career uma.moe: an uma.moe parent's tile names her trainer, with Copy ID beside it",
+    /uma\.moe · Trainer/.test(tileText) && (await pg.locator('#tree .pcopy').count()) === 1,
+    tileText.slice(0, 90),
+  );
+  // a reload: the listings come back from the kept answer (no request); the kept one is not doubled
   await pg.reload();
   await done();
-  await openSearch();
-  await pg.click('#um-go');
-  await ranked();
   check(
-    'career uma.moe: after a reload the same search answers from the cache (no request), the added one marked',
-    requests.length === 2 &&
-      /cache/.test(await pg.textContent('#um-msg')) &&
-      (await pg.locator('#um-res .umrow', { hasText: 'In your borrow list' }).count()) === 1,
+    'career uma.moe: after a reload the listings come back with no request, the kept one once',
+    requests.length === 2 && (await lastJob()).legacies.length === 14 && /to borrow/.test(await status()),
+  );
+  await borrowedTab();
+  await pg.click('#um-again');
+  await pg.waitForFunction(() => /^2 to borrow/.test(document.getElementById('um-msg').textContent));
+  check('career uma.moe: Refresh asks uma.moe once more', requests.length === 3);
+  const heights = () =>
+    pg.evaluate(() =>
+      [...document.querySelectorAll('#vets .vet')].map((c) => Math.round(c.getBoundingClientRect().height)),
+    );
+  const wide = await heights();
+  await pg.setViewportSize({ width: 375, height: 812 });
+  await pg.waitForTimeout(200);
+  const phone = await pg.evaluate(() => {
+    const d = document.querySelector('#set-vets .dlg');
+    return d.scrollWidth <= d.clientWidth + 1;
+  });
+  check(
+    'career uma.moe: the Borrowed tab fits a 375 px phone, and its cards are one size',
+    phone && wide.length === 2 && new Set(wide).size === 1,
+    JSON.stringify({ phone, wide }),
   );
   await ctx.close();
 }

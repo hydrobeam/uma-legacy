@@ -1,8 +1,8 @@
 // ---------- uma.moe's veteran search (uma.moe/api/v3/search), called from the player's browser with their own key ----------
 // The key is the player's (uma.moe: sign in, then Settings), kept in this browser under its own localStorage entry (never
 // in llp:settings or llp:career, so never in an Export) and sent only as the X-API-Key header, to uma.moe only. A
-// search is one request, made only when the player presses Search; its answer is kept for 24 h per data era, target set,
-// threshold and page, so a changed pool re-ranks without asking again.
+// search is one request; its answer is kept for 24 h per data era, target set, threshold and page, so the page asks
+// once per target set a day (maintainer, 2026-10-29: automatically, when the target set has no answer kept).
 //
 // Filters (measured 2026-10-23): a spark is the game's factor_id (factor group * 100 + stars). `main_white_factors`
 // takes a comma list (any of them) and, repeated k times, asks for at least k of the list on the listed parent herself;
@@ -86,34 +86,39 @@ function storeCache(cache) {
 // the reason a search failed, in words for the page
 export class SearchError extends Error {}
 
-// the cached answer when one is younger than 24 h, else one request; throws SearchError
-/** @param {string} key @param {string} era @param {Query} q @returns {Promise<Answer>} */
-export async function search(key, era, q) {
+// the kept answer, when one is younger than 24 h
+/** @param {string} era @param {Query} q @returns {(Answer & {at: number})|null} */
+export function keptAnswer(era, q) {
+  const hit = loadCache()[`${era}?${queryString(q)}`];
+  return hit && Date.now() - hit.at < CACHE_MS ? { ...hit.answer, cached: true, at: hit.at } : null;
+}
+// the kept answer when one is younger than 24 h (unless `fresh`), else one request; throws SearchError
+/** @param {string} key @param {string} era @param {Query} q @param {boolean} [fresh] @returns {Promise<Answer & {at: number}>} */
+export async function search(key, era, q, fresh = false) {
+  const kept = fresh ? null : keptAnswer(era, q);
+  if (kept) return kept;
   const qs = queryString(q),
     id = `${era}?${qs}`,
-    cache = loadCache(),
-    hit = cache[id];
-  if (hit && Date.now() - hit.at < CACHE_MS) return { ...hit.answer, cached: true };
+    cache = loadCache();
   let res;
   try {
     res = await fetch(`${ENDPOINT}?${qs}`, { headers: { 'X-API-Key': key }, credentials: 'omit' });
   } catch {
-    throw new SearchError(
-      "Couldn't reach uma.moe (offline, or it no longer answers this page). A lineage copied from uma.moe's lineage planner can still be added with Paste.",
-    );
+    throw new SearchError("Can't reach uma.moe");
   }
-  if (res.status === 401 || res.status === 403) throw new SearchError('uma.moe rejected this key.');
-  if (res.status === 429) throw new SearchError('uma.moe says too many requests: try again in a minute.');
-  if (!res.ok) throw new SearchError(`uma.moe answered with an error (${res.status}).`);
+  if (res.status === 401 || res.status === 403) throw new SearchError('Key rejected');
+  if (res.status === 429) throw new SearchError('Too many requests: try in a minute');
+  if (!res.ok) throw new SearchError(`uma.moe error ${res.status}`);
   let body;
   try {
     body = await res.json();
   } catch {
-    throw new SearchError("uma.moe's answer wasn't readable.");
+    throw new SearchError('Unreadable answer');
   }
   const items = Array.isArray(body?.items) ? body.items.filter((x) => x?.inheritance?.inheritance_id) : [];
-  const answer = { items, total: +body?.total || items.length, pages: +body?.total_pages || 1 };
-  cache[id] = { at: Date.now(), answer };
+  const answer = { items, total: +body?.total || items.length, pages: +body?.total_pages || 1 },
+    at = Date.now();
+  cache[id] = { at, answer };
   storeCache(cache);
-  return { ...answer, cached: false };
+  return { ...answer, cached: false, at };
 }

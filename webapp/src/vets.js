@@ -15,9 +15,10 @@
  * @property {Object<number, number>} [winAt]  race index -> the turn its win shows at (display only; the solver reads `wins`)
  *
  * A veteran of the pool: a lineage node with an identity, her source and her two parents.
- * @typedef {LineageNode & {id: string, src: string, borrowed: boolean, parents: LineageNode[], lender?: Lender}} Veteran
+ * @typedef {LineageNode & {id: string, src: string, borrowed: boolean, parents: LineageNode[], lender?: Lender, kept?: boolean}} Veteran
  *   src: where she came from: 'import' | 'tree' (uma.moe's lineage planner) | 'umamoe' (uma.moe's search) | 'hand' |
  *   'sample' | 'entered' (older saves: 'simulated')
+ *   kept: an uma.moe listing the player keeps (a trainer they follow): saved, and not replaced by the next search
  *
  * The trainer who lists a veteran found on uma.moe (umadump.js `parseListing`): kept on this device, left out of Export.
  * @typedef {{name: string, id: string, followers: number, updated: string}} Lender
@@ -85,7 +86,8 @@ let persistDue = false,
   rev = 0;
 export function persist() {
   persistDue = false;
-  ALL[ERA] = { vets, plan, chosen: chosen.career };
+  // (uma.moe's listings come back from its kept answer; only those kept are saved)
+  ALL[ERA] = { vets: vets.filter((v) => v.src !== 'umamoe' || v.kept), plan, chosen: chosen.career };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ALL));
   } catch {}
@@ -805,6 +807,25 @@ export function sampleVets() {
       parents: [node(pool[i + 1][0], {}), node(pool[i + 2][0], {})],
     });
   return out;
+}
+// uma.moe's listings for the targets (umadump.js `parseListing`): borrowed veterans the planner weighs like any other,
+// after every other veteran. They replace the earlier listings, except those kept (a kept one listed again takes the new
+// record and stays kept); a parent place holding one that went goes back to the planner. Not saved unless kept
+/** @param {Veteran[]} list */
+export function setListings(list) {
+  const fresh = new Map(list.map((v) => [v.id, v]));
+  for (let i = vets.length - 1; i >= 0; i--) {
+    const v = vets[i];
+    if (v.src !== 'umamoe') continue;
+    const again = fresh.get(v.id);
+    if (v.kept && again) {
+      Object.assign(v, again, { kept: true, borrowed: v.borrowed });
+      fresh.delete(v.id);
+    } else if (!v.kept) vets.splice(i, 1);
+  }
+  vets.push(...fresh.values());
+  dropMissing();
+  changed();
 }
 // veterans from an uma.moe tree, or the samples: added after the others (the numbers you have keep)
 /** @param {Veteran[]} list */
