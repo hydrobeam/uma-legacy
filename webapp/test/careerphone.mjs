@@ -12,7 +12,7 @@ export default async function careerphone(b) {
   pg.errors = [];
   pg.on('pageerror', (e) => pg.errors.push(String(e)));
   pg.on('console', (m) => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
-  await pg.goto(PAGE_URL.replace(/\/?$/, '/') + 'career');
+  await pg.goto(PAGE_URL);
   await pg.waitForFunction(
     () => /Try sample veterans/.test(document.getElementById('run-act')?.textContent || ''),
     null,
@@ -24,6 +24,8 @@ export default async function careerphone(b) {
     null,
     { timeout: 300000 },
   );
+  // (the first veterans fold the setup; its rows are checked open)
+  if (await pg.locator('.rbbar.folded').count()) await pg.click('#set-fold');
   const inside = await pg.evaluate(() => {
     const p = document.querySelector('.rbbar').getBoundingClientRect();
     return [
@@ -91,7 +93,6 @@ export default async function careerphone(b) {
     [() => pg.click('#o-umas'), 'umas'],
     [() => pg.click('#o-cards'), 'cards'],
     [() => pg.locator('#tree [data-k]').first().click(), 'node'],
-    [() => pg.locator('.udodds').first().click(), 'odds'],
   ]) {
     await open();
     await pg.waitForSelector('dialog[open]');
@@ -101,7 +102,7 @@ export default async function careerphone(b) {
     await shut();
   }
   check(
-    'career phone: nothing scrolls sideways in your veterans (their Yours / Borrowed pills flush), Umas, Support cards, the node popup or the odds',
+    'career phone: nothing scrolls sideways in your veterans (their tabs flush), Umas, Support cards or the node popup',
     !side.length,
     side.slice(0, 4).join(' | '),
   );
@@ -127,6 +128,7 @@ export default async function careerphone(b) {
       timeout: 300000,
     });
   };
+  await pg.evaluate(() => localStorage.removeItem('llp:setup-folded')); // (no fold chosen: the one opened above forgotten)
   await back();
   const ret = await pg.evaluate(() => ({
     folded: document.querySelector('.rbbar').classList.contains('folded'),

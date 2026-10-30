@@ -240,6 +240,8 @@ input[type="search"], input[type="text"] { width: 100%; }
 .tgt { border: 1px solid var(--hint-edge); border-radius: 8px; padding: 2px 2px 2px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; }
 .tgt .name { font-weight: 700; font-size: 0.85rem; min-width: 0; display: flex; align-items: center; gap: 6px; line-height: 1.15; }   /* a long name wraps to a second line beside its icon */
 .tgt .name .sic { margin-right: 0; }
+.tgt.long .name { font-size: 0.76rem; letter-spacing: -0.01em; }   /* a long name, smaller to fit its tile (the game's way) */
+.vskn.long { font-size: 0.9em; letter-spacing: -0.02em; }
 .tgt.gold { border-color: var(--gold); background: var(--gold-soft); }
 .tgt.gold .name { color: var(--gold); }
 .tg { color: var(--gold); }
@@ -582,6 +584,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   --turf: #17642f; --board: #0e141c; --board-ink: #f2f5f9; --board-lit: #ffcb52; }
 :root[data-theme="dark"] { --gate2: #000000; --turf: #2f8a4c; --board: #05080c; }
 .rb { max-width: 1320px; margin: 0 auto; display: grid; gap: 26px; }
+@media (max-width: 759px) { .rb > .rbmain { order: -1; } }   /* phones: the next career first, the setup under it */
 /* the settings: one ruled strip, the planner's editors behind its buttons */
 .rbbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; border-block: 3px solid var(--ink); padding: 12px 2px; }
 .rbbar .gamerow { flex-wrap: wrap; gap: 10px 16px; }
@@ -622,12 +625,12 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   /* who (the trainee over her legacies) on the left; her targets on the right */
   .lineup { grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.7fr); grid-template-areas: "trainee targets" "legacies targets"; grid-template-rows: auto 1fr; }
 }
-.lodds { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; font-family: "Zen Maru Gothic", var(--font-ui); }
+.lodds { display: contents; font-family: "Zen Maru Gothic", var(--font-ui); }   /* (its odds and Try a run wrap as the title row's own items) */
 .lodds:empty { display: none; }
 /* the odds: one line, no taller than the heading beside it */
-.lodds .udodds { display: flex; align-items: baseline; gap: 6px; padding: 3px 12px; }
-.lodds .udodds b { font-size: 1.05rem; }
-.lodds .udodds > span:not(.sub) { font-size: 0.8rem; }
+.lodds .udodds { display: flex; align-items: baseline; gap: 6px; padding: 0; cursor: default; background: none; border: 0; box-shadow: none; }   /* the page's headline, as the loop planner's (a figure: each count is under the targets) */
+.lodds .udodds b { font-size: 1.5rem; }
+.lodds .udodds > span:not(.sub) { font-size: 0.95rem; }
 .pk { display: grid; gap: 10px; min-width: 0; }
 .pf { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
 .pgs { display: flex; gap: 4px; }
@@ -1370,6 +1373,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .setlist .scenbtn .slogo { height: 36px; }
 .game .setenh { grid-area: enh; align-self: center; padding-top: 18px; display: grid; grid-template-columns: auto auto; gap: 8px 12px; justify-content: start; }
 .game .setenh .btn.enh.wide { grid-column: 1 / -1; }
+/* how many are owned, under the Umas and Support cards labels */
+.btn.enh[data-n] .enhl::after { content: attr(data-n); display: block; font-size: 0.72rem; font-weight: 700; opacity: .85; font-variant-numeric: tabular-nums; }
 /* the veterans dialog: its tools stay put and the list takes the room left and scrolls on its own (the dialog itself
    never scrolls, as the other editors) */
 .vetdlg > .dlg > * { flex: none; }
@@ -1527,6 +1532,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   border-image: var(--skill-white, linear-gradient(var(--gm-tile), var(--gm-tile2))) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch; }
 .game .tgt[data-g="2"]::before { border-image-source: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))); }
 .game .tgt .name, .game .tgt.gold .name { color: var(--gm-gold-ink); font-size: 0.95rem; }
+.game .tgt.long .name { font-size: 0.84rem; letter-spacing: -0.01em; }
 .game .tgt .sic { width: 30px; height: 30px; }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"])::before { border-image-source: var(--skill-white-dark, var(--skill-white)); }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"]) .name { color: var(--gm-ink); }
@@ -1586,6 +1592,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .lptgt .targets { gap: 4px 6px; }
 .game .lptgt .tgt { min-height: 40px; padding: 3px 3px 7px 6px; }
 .game .lptgt .tgt .name { font-size: 0.84rem; gap: 5px; }
+.game .lptgt .tgt.long .name { font-size: 0.74rem; }
 .game .lptgt .tgt .sic { width: 24px; height: 24px; }
 .game .lptgt .tgt .x { width: 24px; height: 24px; }
 .game .lptgt .adder { margin-bottom: 6px; }
@@ -1837,6 +1844,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* a narrow phone: the target tiles' names in smaller type (two lines at most, not three) */
 @media (max-width: 400px) {
   .game .lptgt .tgt .name { font-size: 0.78rem; gap: 4px; }
+  .game .lptgt .tgt.long .name { font-size: 0.7rem; }
   .game .lptgt .tgt .sic { width: 22px; height: 22px; }
 }
 /* the veteran card's aptitudes on a narrow phone: each row's label (Track, Distance, Style) over its four grades, so
@@ -1994,18 +2002,16 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
    not shown */
 .game .rbtitle .rhead[data-kind="done"] { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* targets two to a row, lowest first: the skill tile (a button: Skill Details) with her chance to land it */
-.ctgs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
-.ctg { display: grid; gap: 3px; min-width: 0; }
+/* targets lowest first, one aligned row each: the skill tile (a button: Skill Details) with her chance to land it; her
+   chance to get the skill on the game's bond gauge (its track and marks; gold for its gold skill, white for the white
+   alone), every bar the same length; the legacies' chance (the game's three uma figures); what else gives it */
+.ctgs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 17rem) minmax(6em, 1fr) 3.4em 8em; align-items: center; gap: 6px 12px; }
+.ctg { display: contents; }
 .ctg > .udsk { min-height: 38px; padding: 3px 12px 7px 7px; gap: 7px; }
 .ctg > .udsk .sic { width: 24px; height: 24px; }
 .ctg > .udsk .udskn { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.15; }
 .tgp { flex: none; font-size: 1.15rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
-/* under a tile: her chance to get the skill on the game's bond gauge (its track and marks; the fill gold for its gold
-   skill, white for the white alone), then the legacies' chance (the game's three uma figures) and the deck's
-   (the cards that give it) */
-.tgsrc { display: flex; align-items: center; gap: 4px 10px; padding: 0 4px 0 8px; min-height: 22px; }
-.tgbar { position: relative; flex: 1 1 6em; min-width: 4em; display: flex; height: 18px; box-sizing: border-box; padding: 1px 2px;
+.tgbar { position: relative; display: flex; height: 18px; box-sizing: border-box; padding: 1px 2px;
   border: 3px solid #4a494a; border-radius: 999px; background: #6e6c78; }
 .tgbar { border-color: transparent; border-image: var(--gauge-bond) 12 fill / 9px; background: none; }
 .tgfill { display: flex; min-width: 0; border-radius: 999px; overflow: hidden; }
@@ -2015,14 +2021,26 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .tgbar::after { content: ''; position: absolute; inset: 1px 2px; pointer-events: none;
   background: linear-gradient(#494949, #494949) 20% 0 / 2px 100% no-repeat, linear-gradient(#494949, #494949) 40% 0 / 2px 100% no-repeat,
     linear-gradient(#494949, #494949) 60% 0 / 2px 100% no-repeat, linear-gradient(#494949, #494949) 80% 0 / 2px 100% no-repeat; }
-.tgfig { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 0.82rem; font-weight: 900; color: var(--gm-ink2); font-variant-numeric: tabular-nums; }
+.tgfig { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; font-size: 0.82rem; font-weight: 900; color: var(--gm-ink2); font-variant-numeric: tabular-nums; }
 .tgfig b { margin-left: 2px; }
 .tgico { width: 23px; height: auto; }   /* (the icon is 150 x 116) */
 .tgfig .cav { border-radius: 3px; }
 .tgfig > .av { box-shadow: 0 0 0 1px var(--gm-edge); }
 .tgfig .slogo { width: 36px; height: 18px; }
+/* the chance of each count, as columns: the chance over a column as tall as its share (all n in gold), the count */
+.tgcounts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin-top: 14px; padding-top: 8px; border-top: 2px solid var(--gm-line); }
+.tgc { display: grid; justify-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.tgc > b { font-size: 0.78rem; font-weight: 900; color: var(--gm-ink); }
+.tgcb { display: flex; align-items: flex-end; width: 70%; max-width: 34px; height: 44px; border-radius: 4px 4px 0 0; background: var(--gm-off); }
+.tgcb > i { display: block; width: 100%; border-radius: 4px 4px 0 0; background: linear-gradient(var(--gm-bright), var(--gm-bright2)); box-shadow: inset 0 -2px 0 var(--gm-green2); }
+.tgc.all .tgcb > i { background: linear-gradient(#ffe684, #ffbc2e); box-shadow: inset 0 -2px 0 var(--gm-gold-edge); }
+.tgck { font-size: 0.74rem; font-weight: 900; color: var(--gm-ink2); }
+/* phones: two lines a target, the tile, then the bar and the figures */
 @media (max-width: 520px) {
-  .ctgs { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .ctgs { grid-template-columns: minmax(0, 1fr) 3.2em 6.5em; gap: 4px 8px; }
+  .ctg > .udsk { grid-column: 1 / -1; margin-top: 6px; }
+  .tgcounts { gap: 2px; }
+  .tgc > b { font-size: 0.66rem; }
 }
 /* Skill Details for a target: her legacies' faces (dim where one doesn't carry it), the cards that give it */
 .gmdfaces { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -2067,7 +2085,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 
 .linkbtn { all: unset; cursor: pointer; justify-self: end; font-size: 0.8rem; color: var(--gm-ink2); text-decoration: underline; }
 .linkbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-#um-open { margin-left: auto; }
 
 
 .cpop.inpopup { position: fixed; z-index: 30; }   /* a card's panel inside a popup (the deck's): against the screen */

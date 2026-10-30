@@ -1,7 +1,7 @@
 # Using the page
 
-The live page is https://uma-legacy.pages.dev. It has three pages: the **Loop planner**, the **Career planner** and
-**How this works** (`/about`, the model in plain words; its contents link each section, and a link to an "in detail"
+The live page is https://uma-legacy.pages.dev. It has three pages: the **Career planner** (the front page), the **Loop
+planner** (`/loop`) and **How this works** (`/about`, the model in plain words; its contents link each section, and a link to an "in detail"
 section opens it). Settings are saved in your browser; nothing is uploaded, except that the career planner's uma.moe
 search sends your target skills and your uma.moe key to uma.moe.
 
@@ -45,7 +45,8 @@ keeps what was found.
 Picks the next career from the veterans you have, aiming at a *fully looped parent* (a full veteran whose parents are both
 full veterans). It shares the loop planner's game data, scenario, rank, umas, cards and targets, plus *Borrowed parent* and
 **Veteran Umamusume**. *Career setup* folds to a one-line summary
-(click its ribbon); until you fold or open it yourself, it opens folded once you have veterans.
+(click its ribbon); until you fold or open it yourself, it folds once you have veterans. On phones the next career
+comes first and the setup under it.
 - *Import umadump file* reads umadump's `trained_chara_data.json` (sparks with stars, single-race G1 wins, both
   parents) or its `rental_chara_data.json`, the veterans the career start screen offers for borrowing (same fields,
   marked borrowed). The dialog's tabs are the game's: *Veteran Umamusume* (yours) and *Guests* (the ones you can
@@ -58,7 +59,7 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
   lends today; *Remove all* clears the open tab. *Paste* takes the same text, an Export from this page (which replaces
   every import), or an uma.moe lineage planner export.
-- **Borrow from uma.moe** (beside *Next career*; a popup listing what was found as the game's legacy list draws veterans:
+- **Borrow from uma.moe** (beside *Next career*, once you have a veteran of your own; a popup listing what was found as the game's legacy list draws veterans:
   her portrait in its ring, her rank, her three main sparks, her trainer; ordered (the sort menu, as the umas' and cards')
   as uma.moe orders them, or by rank, affinity, wins, white sparks' stars or the latest updated; picking the chosen order
   again reverses it; in her popup her target sparks come first, the rest in the game's grey; a card opens her veteran popup, with her trainer's followers
@@ -71,8 +72,9 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   her popup has *Copy ID*, to follow them in the game. uma.moe's veterans are not in *Veteran
   Umamusume* or an Export; the parent picker lists them under *uma.moe*, and one you choose stays while chosen.
   *Disconnect* forgets the key. Global data only.
-- With no veterans, **Try sample veterans** adds six random mob umas carrying only the targets that inheritance alone
-  gives, the minimum to start a loop.
+- With no veterans, **Import veterans** opens Veteran Umamusume and **Try sample veterans** adds six random mob umas
+  carrying only the targets that inheritance alone gives, the minimum to start a loop; importing your own veterans
+  retires the samples. The Umas and Support cards buttons show how many you own (all, until you say otherwise).
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Guest* marks a friend's.
 - Enter a veteran's pink (aptitude) sparks too: imports carry them, a veteran added by hand starts without. The
   trainee's race chances use her grades raised by her legacies' pinks, with an extra cost at the lowest aptitudes that

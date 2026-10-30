@@ -99,6 +99,10 @@ function take(a, q) {
   now.n = q.factors.length;
 }
 
+// the button shows once you have a veteran of your own (a career needs one of yours beside a borrow)
+export function umamoeButton() {
+  if (ERA !== 'gm') $('um-open').hidden = !vets.some((v) => !v.borrowed);
+}
 // the popup's contents and the button's label
 export function paintUmamoe() {
   if (ERA === 'gm') return;
@@ -181,7 +185,7 @@ export function initUmamoe(c) {
   ctx = c;
   if (ERA === 'gm') return; // (the button stays hidden: Global only)
   const d = $dialog('um-dlg');
-  $('um-open').hidden = false;
+  umamoeButton();
   $('um-open').onclick = () => {
     paintUmamoe();
     d.showModal();

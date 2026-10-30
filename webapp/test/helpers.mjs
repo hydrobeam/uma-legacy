@@ -9,6 +9,8 @@ import { serveDist } from '../serve.mjs';
 const local = process.env.LLP_URL ? null : await serveDist();
 /** The planner's address: LLP_URL, or webapp/dist served on a free local port. */
 export const PAGE_URL = process.env.LLP_URL || local.url;
+/** The loop planner's address (the career planner is the front page, PAGE_URL itself). */
+export const LOOP_URL = `${PAGE_URL.replace(/\/?$/, '/')}loop`;
 /** The fast tier (`quick`; ./build.sh testq): the career group stops at its one-run answer. */
 export const QUICK = process.argv.slice(2).includes('quick');
 const REPO_ROOT = new URL('../../', import.meta.url);
@@ -276,7 +278,7 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
   collectErrors(pg);
   await profile(ctx, pg);
   if (before) await before(pg);
-  await timed('goto', pg.goto(PAGE_URL));
+  await timed('goto', pg.goto(LOOP_URL));
   await timed('settle.load', settle(pg));
   return pg;
 }
@@ -483,7 +485,7 @@ export const SIDEWAYS = () => {
   return out;
 };
 
-// ---------- the career planner (/career)
+// ---------- the career planner (the front page)
 /**
  * The career page with its run hooks and the helpers the career groups share.
  * @typedef {object} CareerPage
@@ -706,7 +708,7 @@ export async function careerPage(b) {
     await pg.locator('#v-file').setInputFiles(repoUrl('val/umadump/U_trained_chara_data.json').pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);
   }; // the file is read asynchronously
-  await pg.goto(PAGE_URL.replace(/\/?$/, '/') + 'career');
+  await pg.goto(PAGE_URL);
   await done();
   return {
     ctx,

@@ -79,13 +79,16 @@ export default async function careerumamoe(b) {
       body: JSON.stringify({ items, total: '2', page: 0, limit: 100, total_pages: 1 }),
     });
   });
+  await done();
+  const shutBefore = await pg.locator('#um-open').isHidden(); // (no veteran of yours yet)
   await importDump();
   await done();
   const lastJob = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').at(-1));
   const label = () => pg.textContent('#um-open');
   check(
-    'career uma.moe: one button beside Next career, its panel shut, nothing in Career setup, nothing sent',
-    (await label()) === 'Borrow from uma.moe' &&
+    'career uma.moe: one button beside Next career once you have a veteran (none before), its panel shut, nothing in Career setup, nothing sent',
+    shutBefore &&
+      (await label()) === 'Borrow from uma.moe' &&
       (await pg.locator('.rbtitle #um-open').isVisible()) &&
       !(await pg.evaluate(() => document.getElementById('um-dlg').open)) &&
       (await pg.locator('.setlist #um-row').count()) === 0 &&

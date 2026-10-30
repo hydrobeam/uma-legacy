@@ -52,6 +52,10 @@ function rosterCount() {
   const outfitsOut = UMAS.reduce((sum, u) => sum + tileOutfits(u).filter((o) => tileState(u, o) === 'out').length, 0);
   $('r-count').textContent =
     `${UMAS.length - umasOut} of ${UMAS.length} umas · ${outfits - outfitsOut} of ${outfits} outfits`;
+  // the count on the Umas button too: everything counts as owned until you say otherwise
+  const b = $('o-umas');
+  b.dataset.n = `${outfits - outfitsOut}/${outfits}`;
+  b.title = `${outfits - outfitsOut} of ${outfits} outfits owned`;
 }
 // after an ownership change: every tile's look (or her tiles only) and the count; the list itself stays (its order
 // doesn't depend on ownership)

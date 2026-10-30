@@ -21,7 +21,7 @@ import { openSched, tableCost, tableChance } from './agenda.js';
 import { initSetup } from './setup.js';
 import './gmtip.js'; // the game-style tooltips (both planner pages)
 import { affEl, affTable as affTableOf } from './afftable.js';
-import { pct, openOdds as openOdds0 } from './odds.js';
+import { pct } from './odds.js';
 import { initTargets, renderTargets } from './targets.js';
 import {
   vets,
@@ -54,7 +54,7 @@ import {
 import { vetCell } from './vetcell.js';
 import { wireMenu } from './sortmenu.js';
 import { parseExport, parseTree } from './umadump.js';
-import { initUmamoe, syncListings } from './umamoesetup.js';
+import { initUmamoe, syncListings, umamoeButton } from './umamoesetup.js';
 import { detailsEl, inspView, fitSparks, deckCardAt, openSkill } from './details.js';
 import { drawPink } from './pink.mjs';
 import { unprovenWhy, whyText, searchCaveat, planCaveat } from './proofs.mjs';
@@ -371,11 +371,13 @@ function paint() {
   if (searching) paintBusy(note);
   else {
     note.textContent = status.text + (status.kind === 'done' ? planNote() : '');
-    if (status.act && !searching) {
-      const b = btn(status.act.label, 'primary', status.act.run);
-      b.id = 'run-act';
+    // its actions, e.g. Import veterans and Try sample veterans (the last is #run-act)
+    const acts = status.act ? [status.act].flat() : [];
+    acts.forEach((a, i) => {
+      const b = btn(a.label, i === acts.length - 1 ? 'primary' : '', a.run);
+      if (i === acts.length - 1) b.id = 'run-act';
       note.append(' ', b);
-    } // e.g. Try sample veterans
+    });
   }
 }
 // the status line during a run: the search's lead (in the plan phase), the phase at work, the plan's progress and the
@@ -465,12 +467,16 @@ const borrowChoice = () => (Object.hasOwn(BORROW_CHOICES, state.borrowPar) ? sta
 function buildJob() {
   if (!state.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
   const fixed = plan.parents.filter(Boolean).map(vetById);
-  if (vets.length < 2 || !vets.some((v) => !v.borrowed))
+  if (vets.length < 2 || !vets.some((v) => !v.borrowed)) {
+    const importVets = { label: 'Import veterans', run: () => $('v-toggle').click() };
     throw new Blocked(
       'empty',
       'Choose both parents, or import your veterans and let the planner pick.',
-      !vets.some((v) => !listed(v)) ? { label: 'Try sample veterans', run: () => addVets(sampleVets()) } : null,
+      !vets.some((v) => !listed(v))
+        ? [importVets, { label: 'Try sample veterans', run: () => addVets(sampleVets()) }]
+        : importVets,
     );
+  }
   // the parent places' rules (`pairBlock`): the pair's first, each parent in turn, then the trainee's
   const [first, second] = fixed;
   const checks = [
@@ -1494,7 +1500,7 @@ function renderTree() {
   }
   if (nodeDlg?.open) fillNode();
 }
-// the career's odds of landing every target (a click opens every count) and Try a run, beside the title
+// the career's odds of landing every target and Try a run, beside the title
 function verdictEl(r) {
   const v = el('div', 'lodds');
   // Try a run: a roll of the veteran this career leaves and her comparison, in a popup
@@ -1621,17 +1627,13 @@ const sectionEl = (cls, title) => {
   s.appendChild(el('h3', '', title));
   return s;
 };
-// the career's odds: all n; a click opens the odds popup (exactly each count)
+// the career's odds of landing all n (each count is under the targets: countsEl)
 function oddsBtn(r) {
   const n = state.targets.length,
-    b = el('button', 'udodds');
-  b.type = 'button';
+    b = el('span', 'udodds');
   b.id = 'odds-open';
-  b.dataset.k = 'odds-open';
-  b.setAttribute('aria-haspopup', 'dialog');
   b.append(el('b', '', fmtIn(r.p_all)), el('span', '', ` to land all ${n}`));
-  b.setAttribute('aria-label', `${fmtIn(r.p_all)} runs to land all ${n}. The odds of every count`);
-  b.onclick = () => openOdds(r);
+  b.title = `The chance this career lands all ${n} targets (each count under the targets)`;
   return b;
 }
 // the chance of landing exactly k of the n targets: exact over the landed sets (outcome_sets), else each target on its
@@ -1665,15 +1667,6 @@ function landedCounts(r) {
     exactly[c] = x;
   });
   return exactly;
-}
-function openOdds(r) {
-  openOdds0({
-    title: 'Odds of this career',
-    n: state.targets.length,
-    ex: landedCounts(r),
-    pAll: r.p_all,
-    expected: r.expected,
-  });
 }
 // the deck as the loop planner shows it: card art and name; a click opens the card's panel (owned or not, GameTora)
 function deckEl(r, title = '') {
@@ -1766,13 +1759,15 @@ function legaciesCarrying(r, g) {
   }
   return out;
 }
-// the targets, lowest first, two to a row: each the game's skill tile with her chance to land its spark (tap: Skill
-// Details, where it comes from with each chance); under it a bar of her chance to get the skill in the game's
-// skill-tile colours, gold for getting its gold skill and white for the white alone, then the chance her legacies
-// pass it on (the game's three uma figures) and her deck's (the cards that give it, her outfit or the scenario)
+// the targets, lowest first, one aligned row each: the game's skill tile with her chance to land its spark (tap: Skill
+// Details, where it comes from with each chance); her chance to get the skill on the game's bond gauge, gold for its
+// gold skill and white for the white alone (every bar the same length); the chance her legacies pass it on (the game's
+// three uma figures); what else gives it (the deck's cards with their chance, her outfit, her own events, the
+// scenario). Under them the chance of each count of targets, as columns.
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
-    list = el('ul', 'ctgs');
+    list = el('ul', 'ctgs'),
+    ico = srcFor('ui', 'ico_legacies');
   for (const t of [...r.targets].sort((a, b) => a.p - b.p)) {
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
@@ -1791,40 +1786,67 @@ function targetsEl(r) {
     tile.append(el('span', 'udskn', tName(t.group)), lands);
     tile.onclick = () =>
       openSkill({ b, name: tName(t.group), icon: () => skillIcon(t.group, gold), gold, legacies, cards }, tile);
-    const from = el('div', 'tgsrc'),
-      bar = el('span', 'tgbar'),
+    // the bar: one pill as long as her chance to get it, gold for its gold skill, the rest white
+    const bar = el('span', 'tgbar'),
       bg = b.gold || 0,
       bw = b.white || 0,
       fill = el('span', 'tgfill'),
       g = el('i', 'g');
-    // one pill as long as her chance to get it, gold for its gold skill, the rest white
     fill.style.width = `${Math.round((bg + bw) * 1000) / 10}%`;
     g.style.width = `${bg + bw > 0 ? Math.round((bg / (bg + bw)) * 1000) / 10 : 0}%`;
     fill.append(g, el('i', 'w'));
     bar.appendChild(fill);
     bar.title = `Acquired: ${pct(bg + bw)} (gold ${pct(bg)}, white only ${pct(bw)})`;
-    const legs = el('span', 'tgfig'),
-      ico = srcFor('ui', 'ico_legacies');
+    const legs = el('span', 'tgfig');
     if (ico) legs.appendChild(Object.assign(el('img', 'tgico'), { src: ico, alt: '' }));
     legs.appendChild(el('b', '', String(Math.round(t.q * 100))));
     legs.title = `Inherited: ${pct(t.q)}`;
-    const deck = el('span', 'tgfig');
-    for (const { card } of cards) deck.appendChild(cardAv(card, 20));
-    if (b.outfit) deck.appendChild(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 20));
-    if (b.scenario) deck.appendChild(scenLogo(scenarioOf(state.scen)));
-    // (her outfit or the scenario hands it to her outright)
-    const given = b.scenario || b.outfit ? 1 : deckP;
-    if (deck.childElementCount) {
-      deck.appendChild(el('b', '', String(Math.round(given * 100))));
-      deck.title = `${b.scenario ? 'Scenario' : b.outfit ? 'Outfit' : 'Deck'}: ${pct(given)}`;
+    // what else gives it: the deck's cards with their chance; her outfit, her own events and the scenario outright
+    const deck = el('span', 'tgfig tgdk');
+    if (cards.length) {
+      for (const { card } of cards) deck.appendChild(cardAv(card, 20));
+      deck.appendChild(el('b', '', String(Math.round(deckP * 100))));
+      deck.title = `Deck: ${pct(deckP)}`;
     }
-    from.append(bar, legs);
-    if (deck.childElementCount) from.appendChild(deck);
-    li.append(tile, from);
+    if (b.outfit) {
+      const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 20);
+      o.title = `Her outfit gives its ${b.outfit === 2 ? 'gold skill' : 'white'}`;
+      deck.appendChild(o);
+    }
+    if ((b.own_event || 0) > 0.005 && !b.outfit) {
+      const o = umaAv(r.trainee.id, null, 20);
+      o.title = `Her own events: ${pct(b.own_event)}`;
+      deck.appendChild(o);
+    }
+    if (b.scenario) {
+      const sc = scenLogo(scenarioOf(state.scen));
+      sc.title = 'The scenario gives it';
+      deck.appendChild(sc);
+    }
+    li.append(tile, bar, legs, deck);
     list.appendChild(li);
   }
-  s.appendChild(list);
+  s.append(list, countsEl(r));
   return s;
+}
+// the chance of each count of targets (all n first), as columns: the count, a column as tall as its chance among them,
+// the chance; the expected count on hover
+function countsEl(r) {
+  const n = state.targets.length,
+    ex = landedCounts(r),
+    top = Math.max(...ex),
+    row = el('div', 'tgcounts');
+  row.title = `Expected: ${r.expected?.toFixed(2) ?? '–'} of ${n}`;
+  for (let k = n; k >= 0; k--) {
+    const c = el('span', `tgc${k === n ? ' all' : ''}`),
+      col = el('i');
+    col.style.height = `${top > 0 ? Math.max(2, Math.round((ex[k] / top) * 100)) : 0}%`;
+    c.append(el('b', '', pct(ex[k])), el('span', 'tgcb', ''), el('span', 'tgck', `${k}/${n}`));
+    c.querySelector('.tgcb').appendChild(col);
+    c.title = `Exactly ${k} of ${n}: ${pct(ex[k])}`;
+    row.appendChild(c);
+  }
+  return row;
 }
 // her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
 // G1s she could enter but doesn't aren't shown)
@@ -3096,6 +3118,18 @@ function initVSort() {
 }
 function renderPool() {
   if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
+  // the first veterans arriving fold the setup (as a reload with veterans does), unless you folded or opened it
+  if (!folded && vets.length) {
+    let chosen = null;
+    try {
+      chosen = localStorage.getItem('llp:setup-folded');
+    } catch {}
+    if (chosen === null) {
+      folded = true;
+      paintFold();
+    }
+  }
+  umamoeButton();
   const guests = vets.filter((v) => v.borrowed).length;
   $('v-tab-own').textContent = `Veteran Umamusume · ${vets.length - guests}`;
   $('v-tab-bor').textContent = `Guests · ${guests}`;

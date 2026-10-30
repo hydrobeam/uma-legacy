@@ -2,17 +2,17 @@
 <html lang="en" class="game">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Career planner · uma-legacy</title>
+<title>uma-legacy</title>
 <meta name="description" content="Pick the next Independent Training career from the veterans you have: trainee, parents and deck">
 <meta name="theme-color" content="#e84898">
 <meta property="og:site_name" content="uma-legacy">
 <meta property="og:type" content="website">
-<meta property="og:url" content="__SITE__/career">
-<meta property="og:title" content="Career planner · uma-legacy">
+<meta property="og:url" content="__SITE__/">
+<meta property="og:title" content="uma-legacy">
 <meta property="og:description" content="Build a lineage from your veterans, or let the planner pick the parents, and get the odds and deck for every target skill.">
 <meta property="og:image" content="__SITE__/og.png">
 <meta name="twitter:card" content="summary">
-<link rel="canonical" href="https://uma-legacy.pages.dev/career">
+<link rel="canonical" href="https://uma-legacy.pages.dev/">
 <link rel="icon" href="favicon.ico" sizes="32x32">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -60,8 +60,8 @@ __PANEL_ENH__
     <div class="rbtitle">
       <h2 id="h-lin">Next career</h2>
       <div class="lodds" id="lodds"></div>
+      <button class="btn" type="button" id="um-open" aria-haspopup="dialog" title="Veterans other players list on uma.moe join your pool as borrows" hidden>Borrow from uma.moe</button>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
-      <button class="btn sm" type="button" id="um-open" aria-haspopup="dialog" hidden>Borrow from uma.moe</button>
     </div>
     <div class="lineup" id="tree"></div>
     <div id="results"></div>
@@ -83,16 +83,15 @@ __PANEL_ENH__
     <section class="vpane" id="v-pane" aria-label="The veteran chosen"></section>
   </div>
   <div class="row vtools">
-    <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
+    <label class="btn filebtn" title="umadump (github.com/Werseter/umadump) reads them from the game: trained_chara_data.json for yours, rental_chara_data.json for your borrow list">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
     <button class="btn" type="button" id="v-paste">Paste</button>
     <button class="btn" type="button" id="v-clear">Remove all</button>
     <span class="hint" id="v-msg" role="status"></span>
   </div>
 </div></dialog>
 <dialog id="um-dlg" class="umdlg" aria-labelledby="um-title"><div class="dlg">
-  <div class="row between dhead"><h3 id="um-title">uma.moe</h3><button class="btn dclose" type="button">Close</button></div>
+  <div class="row between dhead"><h3 id="um-title" title="Veterans other players list on uma.moe join your pool as borrows">uma.moe</h3><button class="btn dclose" type="button">Close</button></div>
   <div class="dlgscroll">
-    <p>Parents other players list on uma.moe join your pool as borrows.</p>
     <div id="um-keyrow">
       <div class="umline"><input type="password" id="um-key" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="uma.moe API key"><button class="btn" type="button" id="um-save">Save</button></div>
       <span class="hint umerr" id="um-err" role="status" aria-live="polite"></span>

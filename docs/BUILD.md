@@ -138,7 +138,8 @@ search works (a spinner when a build has none). How the pipeline works and what 
 ## The page
 
 `webapp/build.py` assembles `webapp/dist/`:
-- `index.html` (the loop planner), `career.html` (`/career`) and `about.html` (`/about`, "How this works", which holds
+- `index.html` (the career planner, the front page; an old `/career` link redirects there), `loop.html` (`/loop`, the
+  loop planner) and `about.html` (`/about`, "How this works", which holds
   the model text), from their templates. Shared markup lives in `panels.template.html`, blocks marked
   `<!--panel:name-->` … `<!--/panel:name-->` that fill each `__PANEL_NAME__`. Both planner pages carry `class="game"`
   on `<html>`, which scopes the game-style rules in `style.css` (career-only layout under `.rb`, the loop planner's

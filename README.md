@@ -1,15 +1,16 @@
 # uma-legacy: the Legacy Loop Planner
 
-Finds the best legacy loop (a three-uma rotation or a four-uma loop) and support decks (Uma Musume: Pretty Derby, Global) for landing a set of target
-skills in Independent Training, with each uma's race schedule.
+Plans your next Independent Training career (Uma Musume: Pretty Derby, Global) for landing a set of target skills as
+sparks. Use it at https://uma-legacy.pages.dev.
 
-Use it at https://uma-legacy.pages.dev.
-
-The career planner at `/career` picks the next career from your own veterans (imported from umadump or uma.moe): the
+The career planner, the front page, picks the next career from your own veterans (imported from umadump or uma.moe): the
 trainee, her parents and her deck, chosen by how much it lowers the planner's estimate of the careers you still need
 for a fully looped parent (an n/n whose parents are n/n, n the number of targets). For the veteran you actually got, it shows how many careers
 she saves by that estimate. With your own uma.moe API key, the veterans players list on uma.moe join its pool as
 borrowed parents.
+
+The loop planner at `/loop` finds the best legacy loop (a three-uma rotation or a four-uma loop) and support decks for
+landing the target skills, with each uma's race schedule.
 
 - Using the page: `docs/USAGE.md`; the page's own "How this works" explains the model in plain words
 - Building, testing, deploying, repository layout: `docs/BUILD.md`

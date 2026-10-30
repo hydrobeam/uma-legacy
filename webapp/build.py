@@ -1,9 +1,9 @@
-"""Assemble the web app in dist/: index.html (template, src/style.css, src/*.js bundled by esbuild, the page's data,
-skill catalog, precomputed example) and assets/: the solver (loopopt.wasm), its data per era, the GM era's page data,
+"""Assemble the web app in dist/: index.html (the career planner, the front page), loop.html (the loop planner: its
+template, src/style.css, src/*.js bundled by esbuild, the page's data, skill catalog, precomputed example), about.html and assets/: the solver (loopopt.wasm), its data per era, the GM era's page data,
 images (character icons, card art, skill icons, race banners, scenario logos, UI sprites from images.py) and fonts
 (the Fontsource packages' Latin subsets). Every file in assets/ carries a fingerprint of its content in its name (images: one fingerprint over the
 whole set, as a folder name), so it is served with a one-year immutable cache and an update simply gets new names;
-index.html keeps a 5-minute cache and always points at the current names. Favicons (icons.py) sit at the root.
+the pages keep a 5-minute cache and always point at the current names. Favicons (icons.py) sit at the root.
 Served over http(s): the page fetches the wasm, data and images, so it is not meant to be opened as a file."""
 
 import json, subprocess, os, sqlite3, shutil, hashlib, re
@@ -616,7 +616,7 @@ THEMEBTN = (
     '<path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg></button>'
 )
 # the header's page tabs, the same on every page in the same order, the page you are on selected (the game's tab bar)
-PAGES = [("loop", "./", "Loop planner"), ("career", "career", "Career planner"), ("about", "about", "How this works")]
+PAGES = [("career", "./", "Career planner"), ("loop", "loop", "Loop planner"), ("about", "about", "How this works")]
 
 
 def NAV(cur):
@@ -650,7 +650,7 @@ html = html.replace("__LOGO__", LOGO, 1)
 assert not re.search(r"__(?!PURE__)[A-Z]+__", html), re.findall(
     r"__(?!PURE__)[A-Z]+__", html
 )  # every placeholder filled (esbuild's @__PURE__ marks aside)
-open(os.path.join(DIST, "index.html"), "w").write(html)
+open(os.path.join(DIST, "loop.html"), "w").write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): shared styles and fonts.
 # Its disclosure script opens the "Show …" box a link lands on.
 about = open(os.path.join(HERE, "about.template.html")).read()
@@ -693,7 +693,7 @@ for k, v in [
     assert "</script" not in v.lower(), k
     career = career.replace(k, v, 1)
 assert not re.search(r"__(?!PURE__)[A-Z]+__", career), re.findall(r"__(?!PURE__)[A-Z]+__", career)
-open(os.path.join(DIST, "career.html"), "w").write(career)
+open(os.path.join(DIST, "index.html"), "w").write(career)
 for f in ("favicon.ico", "favicon.svg", "favicon-32.png", "apple-touch-icon.png", "og.png"):
     shutil.copyfile(os.path.join(HERE, "icons", f), os.path.join(DIST, f))
 # hosting (Cloudflare Pages reads _headers): indexable (the page names its canonical address); the page cached 5 minutes so a
@@ -703,8 +703,9 @@ open(os.path.join(DIST, "_headers"), "w").write(
     "/assets/*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable\n"
 )
 open(os.path.join(DIST, "robots.txt"), "w").write("User-agent: *\nAllow: /\n")
-# /loop is the loop planner too (the header calls it "Loop planner"; Cloudflare Pages reads _redirects)
-open(os.path.join(DIST, "_redirects"), "w").write("/loop / 301\n/loop/ / 301\n")
+# the career planner is the front page (index.html), the loop planner /loop (loop.html); an old /career link lands on
+# the front page (a temporary redirect: Cloudflare Pages reads _redirects)
+open(os.path.join(DIST, "_redirects"), "w").write("/career / 302\n/career/ / 302\n")
 print(
-    f"{VERSION}: dist/index.html {len(html.encode()) / 1e6:.2f} MB, solver data {len(global_era.engine.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(gm_era.engine.encode())) / 1e6:.2f} MB, {image_catalog.base} {len(image_catalog.keys)} files {image_catalog.size_bytes / 1e6:.2f} MB, {len(faces)} font files"
+    f"{VERSION}: dist/loop.html {len(html.encode()) / 1e6:.2f} MB, solver data {len(global_era.engine.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(gm_era.engine.encode())) / 1e6:.2f} MB, {image_catalog.base} {len(image_catalog.keys)} files {image_catalog.size_bytes / 1e6:.2f} MB, {len(faces)} font files"
 )

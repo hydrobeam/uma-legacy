@@ -44,7 +44,7 @@ function pinkPin() {
 }
 
 export default async function career(b) {
-  // the career planner (/career): the lineage tree, the parent picker, the skills prompt, the settings dialogs,
+  // the career planner (the front page): the lineage tree, the parent picker, the skills prompt, the settings dialogs,
   // umadump import, the veteran editor, the search and its results
   const {
     ctx,
@@ -207,14 +207,26 @@ export default async function career(b) {
       (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true',
     foldSum,
   );
+  // the sample veterans stand in until your own arrive: an import of yours retires them
+  await pg.click('#run-act');
+  await done();
+  const samples = await pg.evaluate(
+    () => JSON.parse(localStorage.getItem('llp:career')).global.vets.filter((v) => v.src === 'sample').length,
+  );
   await pg.evaluate(() => {
     window.__seq = [];
   });
   await importDump();
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
   check(
-    'career: the umadump file imports 12 veterans',
-    /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && (await pg.locator('#vets .umcell').count()) === 12,
+    'career: the umadump file imports 12 veterans, and the sample veterans tried before it go',
+    /Imported 12 veterans/.test(await pg.textContent('#v-msg')) &&
+      (await pg.locator('#vets .umcell').count()) === 12 &&
+      samples > 0 &&
+      (await pg.evaluate(
+        () => !JSON.parse(localStorage.getItem('llp:career')).global.vets.some((v) => v.src === 'sample'),
+      )),
+    `samples before: ${samples}`,
   );
   // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
   const vbtn =
@@ -357,23 +369,19 @@ export default async function career(b) {
     "career: the tree shows the planner's trainee and parents",
     (await pg.locator('#tree .pn.ghost').count()) === 3 && (await pg.locator('#tree .pn.gp').count()) === 4,
   );
-  // the odds lead the next career; a click opens every count (exactly k, k or better), all 8 and 7 or better as the solver's
+  // the odds lead the next career; under the targets, the chance of landing exactly each count, all 8 first
   const oddsTxt = await pg.textContent('.rbtitle .lodds #odds-open');
-  await pg.click('#odds-open');
-  await dialog(pg, 'odds-dlg');
-  const oddRows = await pg.$$eval('#odds-dlg .oddtab tbody tr', (l) =>
-    l.map((r) => [...r.children].map((c) => c.textContent)),
+  const oddRows = await pg.$$eval('#tree .rtgt .tgcounts .tgc', (l) =>
+    l.map((c) => [c.querySelector('.tgck').textContent, c.querySelector('b').textContent]),
   );
-  await pg.keyboard.press('Escape');
   check(
-    'career: the odds lead the next career; a click lists the chance of landing exactly each count, in percent',
+    'career: the odds lead the next career; under the targets, the chance of landing exactly each count, in percent',
     /^1 in [\d,.]+ to land all 8/.test(oddsTxt) &&
       oddRows.length === 9 &&
       oddRows[0][0] === '8/8' &&
       oddRows[1][0] === '7/8' &&
       oddRows[8][0] === '0/8' &&
-      oddRows.every((r) => r.length === 2 && /^[<\d.]+%$/.test(r[1])) &&
-      (await pg.evaluate(() => document.activeElement?.id === 'odds-open')),
+      oddRows.every((r) => /^[<\d.]+%$/.test(r[1])),
     JSON.stringify(oddRows.slice(0, 3)),
   );
   // the targets, lowest first: the game's skill tile with the chance to land; under it her six legacies' faces and the

@@ -185,8 +185,17 @@ function cardCount() {
   const listed = [...$('cards').querySelectorAll('.ct:not([hidden])')],
     owned = listed.filter((c) => c.getAttribute('aria-pressed') === 'true').length;
   $('c-count').textContent = `${owned} of ${listed.length} owned`;
+  ownedBadge();
+}
+// the count on the Support cards button: every card counts as owned until you say otherwise
+function ownedBadge() {
+  const owned = CARDS.filter((c) => state.cardsOff[c.id] !== false).length,
+    b = $('o-cards');
+  b.dataset.n = `${owned}/${CARDS.length}`;
+  b.title = `${owned} of ${CARDS.length} support cards owned`;
 }
 export function initCards() {
+  ownedBadge();
   sortMenu('cs', 'c', () => renderCards());
   $input('c-filter').oninput = filterCards;
   $('c-all').onclick = () => {

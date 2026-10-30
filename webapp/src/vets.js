@@ -393,7 +393,7 @@ function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = fal
   b.className = 'vskb';
   if (icon) b.appendChild(icon);
   const t = document.createElement('span');
-  t.className = 'vskn';
+  t.className = `vskn${label.length > 18 ? ' long' : ''}`; // (the game scales a long name down to fit)
   t.textContent = label;
   b.appendChild(t);
   b.appendChild(starsEl(stars));
@@ -757,7 +757,8 @@ export function newVet(chara, sparks) {
 // an import never loses one of your veterans: yours merge by id (a veteran already here takes the file's version in
 // her place, new ones go after your other imports), while borrowed ones replace the earlier borrow list (it is who
 // lends today), after all of yours so your numbers keep. `all` (an Export of this page, holding both kinds): every
-// earlier import goes. Hand-made ones stay (a plan slot holding a removed one goes back to the planner).
+// earlier import goes. Your own veterans arriving retire the sample ones (they stood in until you had some). Hand-made
+// ones stay (a plan slot holding a removed one goes back to the planner).
 // Returns { added, updated } for yours and { borrowed, dropped } for the borrow list.
 /** @param {Veteran[]} list @param {boolean} [all] @returns {{added: number, updated: number, borrowed: number, dropped: number}} */
 export function importVets(list, all = false) {
@@ -771,6 +772,7 @@ export function importVets(list, all = false) {
   const own = list.filter((v) => !v.borrowed),
     borrowed = list.filter((v) => v.borrowed),
     fresh = [];
+  if (own.length) for (let i = vets.length - 1; i >= 0; i--) if (vets[i].src === 'sample') vets.splice(i, 1);
   let updated = 0,
     dropped = 0;
   // a veteran already here takes the file's version in her place, on the tab the player keeps her on

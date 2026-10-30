@@ -15,8 +15,8 @@ export default async function about(b) {
   await pg.waitForLoadState();
   check(
     'header: the same page tabs everywhere, the current page marked',
-    t0 === 'Loop planner*,Career planner,How this works' &&
-      (await tabs()) === 'Loop planner,Career planner,How this works*',
+    t0 === 'Career planner,Loop planner*,How this works' &&
+      (await tabs()) === 'Career planner,Loop planner,How this works*',
     `${t0} | ${await tabs()}`,
   );
   check(
@@ -79,6 +79,6 @@ export default async function about(b) {
   );
   await pg.locator('header.top .tnav a', { hasText: 'Loop planner' }).click();
   await pg.waitForSelector('#targets');
-  check('/about links back to the planner', new URL(pg.url()).pathname === '/');
+  check('/about links back to the loop planner', new URL(pg.url()).pathname === '/loop');
   await pg.context().close();
 }
