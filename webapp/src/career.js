@@ -1794,15 +1794,14 @@ function targetsEl(r) {
     const from = el('div', 'tgsrc'),
       bar = el('span', 'tgbar'),
       bg = b.gold || 0,
-      bw = b.white || 0;
-    for (const [cls, p] of /** @type {[string, number][]} */ ([
-      ['g', bg],
-      ['w', bw],
-    ])) {
-      const part = el('i', cls);
-      part.style.width = `${Math.round(p * 1000) / 10}%`;
-      bar.appendChild(part);
-    }
+      bw = b.white || 0,
+      fill = el('span', 'tgfill'),
+      g = el('i', 'g');
+    // one pill as long as her chance to get it, gold for its gold skill, the rest white
+    fill.style.width = `${Math.round((bg + bw) * 1000) / 10}%`;
+    g.style.width = `${bg + bw > 0 ? Math.round((bg / (bg + bw)) * 1000) / 10 : 0}%`;
+    fill.append(g, el('i', 'w'));
+    bar.appendChild(fill);
     bar.title = `Acquired: ${pct(bg + bw)} (gold ${pct(bg)}, white only ${pct(bw)})`;
     const legs = el('span', 'tgfig'),
       ico = srcFor('ui', 'ico_legacies');

@@ -146,8 +146,7 @@ their priority and chain notes) and **Race schedule** (the game's calendar of th
 grades, the planner's own figure, which counts the pink sparks she may get, on hover; *Win table* shows the table) under
 the trainee; the
 **Targets** take the right side, two to a row, lowest first: each the game's skill tile with her chance to land its spark,
-and under it her chance to get the skill as a bar in the skill tiles' colours (gold: its gold skill; white: the white
-alone), the chance her legacies pass it on (three uma figures) and her deck's (the cards that hint it or give it by an
+and under it her chance to get the skill on the game's bond gauge (gold: its gold skill; white: the white alone), the chance her legacies pass it on (three uma figures) and her deck's (the cards that hint it or give it by an
 event, her outfit's portrait or the scenario's logo); on phones one to a row. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
 faces (lit where one carries it) and each card that gives it.
 The landing chances

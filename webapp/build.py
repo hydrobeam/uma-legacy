@@ -476,6 +476,7 @@ for pkg in ("zen-kaku-gothic-new", "ibm-plex-mono", "stix-two-math", "zen-maru-g
 # custom property resolves against the stylesheet that uses it (Chromium and Firefox, checked), so the paths are given
 # relative to where the stylesheet is served from
 SPRITES = [
+    "gauge_bond",
     "friend_frame",
     "spark_white",
     "spark_blue",

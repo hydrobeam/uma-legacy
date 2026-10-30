@@ -209,6 +209,8 @@ UI_SPRITES = {
         for i, k in enumerate(["white", "blue", "pink", "green"])
     },
     "spark_dot": ("atlas/singlecommon", "utx_ico_factor_01"),
+    # the career's support-card bond gauge track (a 9-slice: white rim, dark outline, grey well): the targets' bars
+    "gauge_bond": ("atlas/single", "utx_gau_evaluation_00_sl"),
     # three uma figures in the spark colours (the home menu's): a target's chance from her legacies (written at 64 px)
     "ico_legacies": ("atlas/home", "utx_ico_home_umamusume_10"),
     "spark_dot_gold": ("atlas/singlecommon", "utx_ico_factor_02"),
