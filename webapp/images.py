@@ -209,6 +209,8 @@ UI_SPRITES = {
         for i, k in enumerate(["white", "blue", "pink", "green"])
     },
     "spark_dot": ("atlas/singlecommon", "utx_ico_factor_01"),
+    # three uma figures in the spark colours (the home menu's): a target's chance from her legacies (written at 64 px)
+    "ico_legacies": ("atlas/home", "utx_ico_home_umamusume_10"),
     "spark_dot_gold": ("atlas/singlecommon", "utx_ico_factor_02"),
     # the legacy list's small spark tags under a portrait (Legacy Select): blue, pink, green (atlas/singlecommon
     # utx_frm_factor_s_02..04)
@@ -300,7 +302,7 @@ def res_sprites(force, manifest):
 
 # UI sprites written smaller than the atlas has them (key prefix -> largest side in px): the rank badges, 154 px in the
 # atlas, show at about 40 px
-UI_FIT = {"vrank_": 80}
+UI_FIT = {"vrank_": 80, "ico_legacies": 64}
 
 
 def ui_sprites(force, manifest):

@@ -1769,7 +1769,7 @@ function legaciesCarrying(r, g) {
 // the targets, lowest first, two to a row: each the game's skill tile with her chance to land its spark (tap: Skill
 // Details, where it comes from with each chance); under it a bar of her chance to get the skill in the game's
 // skill-tile colours, gold for getting its gold skill and white for the white alone, then the chance her legacies
-// pass it on (the spark icon) and her deck's (the cards that give it, her outfit or the scenario)
+// pass it on (the game's three uma figures) and her deck's (the cards that give it, her outfit or the scenario)
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
     list = el('ul', 'ctgs');
@@ -1805,8 +1805,8 @@ function targetsEl(r) {
     }
     bar.title = `Acquired: ${pct(bg + bw)} (gold ${pct(bg)}, white only ${pct(bw)})`;
     const legs = el('span', 'tgfig'),
-      orb = srcFor('ui', 'spark_dot');
-    if (orb) legs.appendChild(Object.assign(el('img', 'tgico'), { src: orb, alt: '' }));
+      ico = srcFor('ui', 'ico_legacies');
+    if (ico) legs.appendChild(Object.assign(el('img', 'tgico'), { src: ico, alt: '' }));
     legs.appendChild(el('b', '', String(Math.round(t.q * 100))));
     legs.title = `Inherited: ${pct(t.q)}`;
     const deck = el('span', 'tgfig');

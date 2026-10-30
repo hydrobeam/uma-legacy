@@ -2002,7 +2002,7 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .ctg > .udsk .udskn { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.15; }
 .tgp { flex: none; font-size: 1.15rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
 /* under a tile: her chance to get the skill as a bar in the game's skill-tile colours (gold: its gold skill; white:
-   the white alone; the darker track: not got), then the legacies' chance (the spark icon) and the deck's
+   the white alone; the darker track: not got), then the legacies' chance (the game's three uma figures) and the deck's
    (the cards that give it) */
 .tgsrc { display: flex; align-items: center; gap: 4px 10px; padding: 0 4px 0 8px; min-height: 22px; }
 .tgbar { flex: 1 1 6em; min-width: 4em; display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: #c4bfd3; box-shadow: inset 0 2px 2px rgba(98, 93, 126, .35); }
@@ -2010,7 +2010,7 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .tgbar .w { background: #f7f6fd; box-shadow: inset 0 0 0 1px #bdbade, inset 0 -2px 0 rgba(98, 93, 126, .25); }
 .tgfig { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 0.82rem; font-weight: 900; color: var(--gm-ink2); font-variant-numeric: tabular-nums; }
 .tgfig b { margin-left: 2px; }
-.tgico { width: 16px; height: 16px; }
+.tgico { width: 23px; height: auto; }   /* (the icon is 150 x 116) */
 .tgfig .cav { border-radius: 3px; }
 .tgfig > .av { box-shadow: 0 0 0 1px var(--gm-edge); }
 .tgfig .slogo { width: 36px; height: 18px; }
