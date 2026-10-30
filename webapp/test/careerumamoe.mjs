@@ -1,8 +1,9 @@
 // uma.moe beside Next career, with uma.moe stood in for by two listings made from the umadump test file's first two
-// veterans: one button opens the key panel; a rejected key says so; a saved key sends one request (parent at least
+// veterans: one button opens the key popup; a rejected key says so; a saved key sends one request (parent at least
 // n - 1 of n targets, followable trainers), as a header only, kept apart from the settings; the listings join the
 // planner's pool (not the veteran dialog, not saved, not exported); the parent picker heads them "uma.moe"; a chosen one
-// shows "Borrow · uma.moe", her trainer and Copy ID, and stays while chosen; a reload asks nothing; Refresh asks again
+// reads "uma.moe · her trainer", with Copy ID in her popup and stays while chosen; the popup's cards open the veteran
+// popup; Include max borrows asks again without the follower limit; a reload asks nothing; Refresh asks again
 import { readFileSync } from 'node:fs';
 import { check, dialog, careerPage, repoUrl } from './helpers.mjs';
 
@@ -46,7 +47,7 @@ export function listing(rec, k) {
 }
 
 export default async function careerumamoe(b) {
-  const { ctx, pg, done, planned, vetsOpen, vetsShut, node, inNode } = await careerPage(b);
+  const { ctx, pg, done, planned, vetsOpen, vetsShut, node, inNode, closeNode, importDump } = await careerPage(b);
   const recs = JSON.parse(readFileSync(repoUrl('val/umadump/U_trained_chara_data.json'), 'utf8'));
   const items = [listing(recs[0], 1), listing(recs[1], 2)];
   const requests = [];
@@ -67,14 +68,8 @@ export default async function careerumamoe(b) {
       body: JSON.stringify({ items, total: '2', page: 0, limit: 100, total_pages: 1 }),
     });
   });
-  // + Veterans beside Next career: umadump's file, the daily first step
-  await pg.locator('#v-file2').setInputFiles(repoUrl('val/umadump/U_trained_chara_data.json').pathname);
-  await pg.waitForFunction(() => document.getElementById('v-msg').textContent);
+  await importDump();
   await done();
-  check(
-    "+ Veterans beside Next career imports umadump's file",
-    (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === 12,
-  );
   const lastJob = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').at(-1));
   const label = () => pg.textContent('#um-open');
   check(
@@ -89,12 +84,14 @@ export default async function careerumamoe(b) {
   check('career uma.moe: the button opens the key field', await pg.locator('#um-key').isVisible());
   await pg.fill('#um-key', 'bad-key');
   await pg.click('#um-save');
-  await pg.waitForFunction(() => /Key rejected/.test(document.getElementById('um-msg').textContent));
+  await pg.waitForFunction(() => /Key rejected/.test(document.getElementById('um-err').textContent));
   check(
-    'career uma.moe: a key uma.moe refuses says so, on the button too',
-    requests.length === 1 && (await label()) === 'uma.moe · Key rejected',
+    'career uma.moe: a key uma.moe refuses says so, is forgotten, and the key field comes back for another',
+    requests.length === 1 &&
+      (await label()) === 'uma.moe · key rejected' &&
+      (await pg.locator('#um-key').isVisible()) &&
+      !(await pg.evaluate(() => localStorage.getItem('llp:umamoe-key'))),
   );
-  await pg.click('#um-forget');
   await pg.fill('#um-key', 'test-key');
   await pg.press('#um-key', 'Enter');
   await pg.waitForFunction(() => document.getElementById('um-open').textContent === 'uma.moe · 2 parents');
@@ -154,40 +151,50 @@ export default async function careerumamoe(b) {
   await pg.locator('#vp-list .vpt').nth(bj).click();
   await done();
   const tileText = (await pg.locator('#tree .pn.parent').first().innerText()).replace(/\s+/g, ' ');
+  const boxButtons = await pg.locator('#tree .pn.parent').first().locator('button:not(.ptile)').count();
+  await node('node:p0');
+  const copyInPopup = await pg.locator('#node-dlg button', { hasText: 'Copy ID' }).count();
+  await closeNode();
   check(
-    'career uma.moe: the picker heads them uma.moe; a chosen one reads borrow · her trainer, with Copy ID in her box',
-    heads.join() === 'uma.moe' &&
-      /borrow · Trainer 2/.test(tileText) &&
-      (await pg.locator('#tree .pn.parent').first().locator('.pcopy').count()) === 1 &&
-      (await pg.locator('#tree .pcopy').count()) === 1,
+    'career uma.moe: the picker heads them uma.moe; a chosen one reads uma.moe · her trainer (no button in her box), Copy ID in her popup',
+    heads.join() === 'uma.moe' && /uma\.moe · Trainer 2/.test(tileText) && boxButtons === 0 && copyInPopup === 1,
     tileText.slice(0, 80),
   );
-  // the popup: a card per listing (main sparks, trainer · followers), the next career's first and tagged; a card shows
-  // her ancestry (herself and two parents with sparks) with Copy ID
+  // the popup: the listings as the game's legacy list draws them (portrait, her three main sparks with stars, name,
+  // followers), the next career's first and tagged; one opens her veteran popup, with Copy ID
   await pg.click('#um-open');
-  const cards = await pg.$$eval('#um-list .umcard', (l) =>
+  const cards = await pg.$$eval('#um-list .umcell', (l) =>
     l.map((c) => ({
-      next: c.classList.contains('next'),
+      next: c.classList.contains('umnext'),
+      nm: c.querySelector('.nm')?.textContent,
       sub: c.querySelector('.sub')?.textContent,
-      sparks: c.querySelectorAll('.umsp').length,
+      tags: [...c.querySelectorAll('.umsp b')].map((b) => b.textContent),
+      stars: [...c.querySelectorAll('.umst')].every((st) => +st.style.getPropertyValue('--n') >= 1),
     })),
   );
-  await pg.locator('#um-list .umcard').first().click();
-  const anc = await pg.evaluate(() => ({
-    rows: document.querySelectorAll('#um-detail .umanc').length,
-    gridHidden: document.getElementById('um-list').hidden,
-  }));
+  await pg.locator('#um-list .umcell').first().click();
+  await dialog(pg, 'node-dlg');
+  const popupCopy = await pg.locator('#node-dlg button', { hasText: 'Copy ID' }).count(),
+    editable = await pg
+      .locator('#node-dlg .facebtn, #node-dlg button.vwins, #node-dlg .vskadd, #node-dlg button.vskb')
+      .count();
+  await closeNode();
   check(
-    "career uma.moe: the popup shows a card per listing (main sparks, trainer · followers), the next career's first and tagged; a card opens her ancestry with Copy ID",
+    "career uma.moe: the popup lists them as the game's legacy list does (portrait, three spark tags with stars, her trainer, followers), the next career's first and tagged; one opens her veteran popup, read-only, with Copy ID",
     cards.length === 2 &&
       cards[0].next &&
-      cards.every((c) => /^Trainer [12] · 1[34] followers$/.test(c.sub) && c.sparks >= 2) &&
-      anc.rows === 3 &&
-      anc.gridHidden &&
-      (await pg.locator('#um-detail button', { hasText: 'Copy ID' }).count()) === 1,
-    JSON.stringify({ cards, anc }),
+      cards.every(
+        (c) =>
+          /^Trainer [12]$/.test(c.nm) &&
+          /^1[34] followers$/.test(c.sub) &&
+          c.tags.length === 3 &&
+          c.tags[2] === 'UNIQ' &&
+          c.stars,
+      ) &&
+      popupCopy === 1 &&
+      editable === 0,
+    JSON.stringify(cards),
   );
-  await pg.locator('#um-detail .umback').click();
   // full trainers: off by default (followable only); on, the search asks again without that limit
   await pg.check('#um-full');
   await pg.waitForFunction(
@@ -196,37 +203,23 @@ export default async function careerumamoe(b) {
   );
   const fullUrl = new URL(requests.at(-1).url);
   check(
-    'career uma.moe: Include full trainers asks again without the follower limit',
+    'career uma.moe: Include max borrows asks again without the follower limit',
     requests.length === 3 && !fullUrl.searchParams.has('max_follower_num'),
     fullUrl.search.slice(0, 80),
   );
   await pg.uncheck('#um-full');
   await pg.keyboard.press('Escape');
+  await done();
+  await planned(); // (its answer is the one a reload draws)
   await pg.reload();
   await done();
   check(
-    'career uma.moe: after a reload the listings come back with no request, the chosen one saved and not doubled',
+    'career uma.moe: after a reload the listings come back with no request (the answer drawn at once, no solver job), the chosen one saved and not doubled',
     requests.length === 3 &&
-      (await lastJob()).legacies.length === 14 &&
+      (await label()) === 'uma.moe · 2 parents' &&
+      (await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length)) === 0 &&
       (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === 13,
   );
-  // Can't borrow on the borrowed parent: Borrowed parent goes to None left today, her place back to the planner, and the
-  // next career borrows none
-  await pg.click('#tree .pnob');
-  await done();
-  const nb = await pg.evaluate(() => ({
-    job: window.__careerJobs.filter((j) => j.cmd === 'career').at(-1),
-    plan: JSON.parse(localStorage.getItem('llp:career')).global.plan,
-  }));
-  check(
-    "career uma.moe: Can't borrow sets None left today and hands her place back to the planner",
-    nb.job.borrowed_parent === 'later' &&
-      nb.plan.parents.every((p) => !p) &&
-      (await pg.locator('#bp button[data-v="later"]').getAttribute('aria-pressed')) === 'true',
-    JSON.stringify({ bp: nb.job.borrowed_parent, plan: nb.plan }),
-  );
-  await pg.click('#bp button[data-v="allow"]');
-  await done();
   await pg.click('#um-open');
   await pg.click('#um-again');
   await pg.waitForFunction(() => /^2 parents/.test(document.getElementById('um-msg').textContent));

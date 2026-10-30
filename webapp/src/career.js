@@ -8,6 +8,7 @@ import { ERA, SAVED } from './settings.js';
 import { UMAS, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
 import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from './engine.js';
+import { answerLoad, answerSave } from './statestore.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
@@ -32,6 +33,7 @@ import {
   umaName,
   sparksEl,
   winsBtn,
+  winsText,
   changeUma,
   askSkills,
   sampleVets,
@@ -598,6 +600,19 @@ const refFor = () =>
 // the last few answers, by job and places: going back to one draws it again without a run
 const answers = new Map(),
   ANSWERS = 4;
+// the answer the last visit drew, when it was for this setup (the solver's and data's fingerprints, the job, the places):
+// put among the answers, so the first search draws it at once instead of planning (the solver is deterministic for its job)
+async function preloadAnswer() {
+  let job;
+  try {
+    job = buildJob();
+  } catch {
+    return;
+  }
+  const key = `${jobKey(job)}\n${JSON.stringify(plan)}`,
+    saved = await answerLoad();
+  if (saved?.key === `${stateKey()}\n${key}` && saved.value?.last) answers.set(key, saved.value);
+}
 // the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
 // (`runComparison`):
 // the same job a run sends once she is added (keys sorted, the comparison's flag aside), so Add to veterans takes it as
@@ -774,6 +789,8 @@ async function search() {
       if (searched.kind === 'done' && planned.state !== 'error') {
         answers.set(answerKey, { status, last, planState });
         if (answers.size > ANSWERS) answers.delete(answers.keys().next().value);
+        // kept across a reload too: the same setup draws it at once (`preloadAnswer`)
+        answerSave(`${stateKey()}\n${answerKey}`, { status, last, planState });
       }
       const r = shown();
       simulation = r ? readySimulation(r) : { state: 'none' };
@@ -1071,7 +1088,9 @@ function familyEl(k, r) {
       `node:p${k}`,
       umaAv(v.chara, v.outfit, 64),
       umaName(v.chara),
-      v.lender ? `borrow · ${v.lender.name || 'uma.moe'}` : v.borrowed ? 'borrow' : 'yours',
+      v.lender
+        ? `uma.moe · ${v.lender.name || 'trainer'}`
+        : `Veteran #${idxOf(v.id) + 1}${v.borrowed ? ' · borrowed' : v.src === 'hand' ? ', made here' : ''}`,
     );
     t.setAttribute('aria-label', `Parent ${k + 1}: ${umaName(v.chara)}. Details`);
   } else {
@@ -1080,22 +1099,6 @@ function familyEl(k, r) {
   }
   t.onclick = () => openNode({ kind: 'p', k });
   n.appendChild(t);
-  // a parent from uma.moe: her trainer, to follow in the game before the career starts
-  if (at?.v.lender) n.appendChild(copyIdBtn(at.v, 'sm pcopy'));
-  // a borrow that falls through (the trainer can't be followed, today's borrows are used up): plan this career on two of
-  // your own (Borrowed parent: None left today)
-  if (at?.v.borrowed && borrowChoice() === 'allow') {
-    const cb = btn("Can't borrow", 'sm pnob', () => {
-      if (plan.parents[k] === at.v.id) plan.parents[k] = null;
-      state.borrowPar = 'later';
-      paintBorrow();
-      save();
-      changed();
-    });
-    cb.id = `no-borrow-${k}`;
-    cb.title = `Out of borrows today: this career on two of your veterans (Borrowed parent: ${BORROW_CHOICES.later})`;
-    n.appendChild(cb);
-  }
   wholeBox(n, t);
   fam.appendChild(n);
   // her own parents: the trainee's grandparents
@@ -1247,9 +1250,17 @@ function fillParentNode({ k }, r, body, acts) {
     const nm = el('div', 'tnm');
     nm.append(
       el('div', 'nm', umaName(v.chara)),
-      el('div', 'sub', `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}${v.borrowed ? ', borrowed' : ''}`),
+      el(
+        'div',
+        'sub',
+        v.lender
+          ? `uma.moe · ${v.lender.name || 'trainer'}`
+          : `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}${v.borrowed ? ', borrowed' : ''}`,
+      ),
     );
-    w.append(pb, nm, winsBtn(v, umaName(v.chara), `p${k}`));
+    w.append(pb, nm, winsEl(v, umaName(v.chara), `p${k}`, !listed(v)));
+    // borrowed from uma.moe: her trainer to follow in the game before the career starts
+    if (v.lender) w.appendChild(copyIdBtn(v, 'sm'));
     body.append(w);
     // her Inspiration view, as the card's: her sparks, then her parents' (the trainee's grandparents), all editable
     const iv = el('div', 'ud udbare');
@@ -1261,6 +1272,7 @@ function fillParentNode({ k }, r, body, acts) {
         parentKey: (j) => `p${k}g${j}`,
         onEditParent: changed,
         header: false,
+        readOnly: listed(v),
       }),
     );
     body.appendChild(iv);
@@ -1282,8 +1294,21 @@ function fillParentNode({ k }, r, body, acts) {
     );
   return true;
 }
-// an uma.moe listing (in the pool, not yours)
+// an uma.moe listing (in the pool, not yours): shown in the popups, never edited
 const listed = (v) => v.src === 'umamoe';
+// her face: a button that changes who she is, or (a listed veteran) just her face
+const faceEl = (nd, size, label, change) => {
+  if (!change) return umaAv(nd.chara || 0, nd.outfit, size);
+  const b = el('button', 'facebtn');
+  b.type = 'button';
+  b.append(umaAv(nd.chara || 0, nd.outfit, size));
+  b.title = `${label}: ${umaName(nd.chara)}. Change who she is`;
+  b.setAttribute('aria-label', b.title);
+  b.onclick = fromNode(() => changeUma(nd, label));
+  return b;
+};
+// her G1 wins: the button that edits them, or (a listed veteran) their count
+const winsEl = (nd, who, key, edit) => (edit ? winsBtn(nd, who, key) : el('span', 'vwins', winsText(nd)));
 // the trainer to follow in the game for an uma.moe veteran: a Copy trainer ID button
 function copyIdBtn(v, cls = '') {
   const b = btn('Copy ID', cls, async () => {
@@ -1314,15 +1339,14 @@ function fillVeteranNode({ id }, _r, body) {
     v = vets[i];
   if (!v) return false;
   $('node-title').textContent = `Veteran #${i + 1}${v.borrowed ? ' · borrowed' : ''}`;
-  const w = el('div', 'twho'),
-    b = el('button', 'facebtn');
-  b.type = 'button';
-  b.append(umaAv(v.chara, v.outfit, 56));
-  b.title = 'Change who she is';
-  b.setAttribute('aria-label', `Veteran #${i + 1}: ${umaName(v.chara)}. Change who she is`);
-  b.onclick = fromNode(() => changeUma(v, `Veteran #${i + 1}`));
+  const edit = !listed(v),
+    w = el('div', 'twho');
   const src = VET_SOURCE[v.src];
-  w.append(b, el('div', 'nm', umaName(v.chara)), winsBtn(v, `Veteran #${i + 1}, ${umaName(v.chara)}`, `v${v.id}`));
+  w.append(
+    faceEl(v, 56, `Veteran #${i + 1}`, edit),
+    el('div', 'nm', umaName(v.chara)),
+    winsEl(v, `Veteran #${i + 1}, ${umaName(v.chara)}`, `v${v.id}`, edit),
+  );
   if (src)
     w.appendChild(
       el('span', v.src === 'tree' || v.src === 'umamoe' ? 'srctag' : 'simtag', v.lender ? lenderText(v.lender) : src),
@@ -1338,6 +1362,7 @@ function fillVeteranNode({ id }, _r, body) {
       parentKey: (j) => `v${v.id}g${j}`,
       onEditParent: changed,
       header: false,
+      readOnly: !edit,
     }),
   );
   body.appendChild(iv);
@@ -1345,17 +1370,11 @@ function fillVeteranNode({ id }, _r, body) {
   const pr = el('div', 'vpars');
   v.parents.forEach((g, j) => {
     const x = el('div', 'twho'),
-      gb = el('button', 'facebtn');
-    gb.type = 'button';
-    gb.append(umaAv(g.chara || 0, g.outfit, 36));
-    const lab = `Parent ${j + 1} of #${i + 1}`;
-    gb.title = `${lab}: ${umaName(g.chara)}. Change who she is`;
-    gb.setAttribute('aria-label', gb.title);
-    gb.onclick = fromNode(() => changeUma(g, lab));
+      lab = `Parent ${j + 1} of #${i + 1}`;
     x.append(
-      gb,
+      faceEl(g, 36, lab, edit),
       el('span', 'nm', g.chara ? umaName(g.chara) : 'Unknown parent'),
-      winsBtn(g, `${lab}, ${umaName(g.chara)}`, `v${v.id}g${j}`),
+      winsEl(g, `${lab}, ${umaName(g.chara)}`, `v${v.id}g${j}`, edit),
     );
     pr.appendChild(x);
   });
@@ -1368,22 +1387,19 @@ function fillGrandparentNode({ k, j }, r, body) {
     g = at?.v.parents[j];
   $('node-title').textContent = `Legacy ${k + 1} · grandparent`;
   if (!g) return false;
-  const w = el('div', 'twho'),
-    b = el('button', 'facebtn');
-  b.type = 'button';
-  b.append(umaAv(g.chara || 0, g.outfit, 56));
-  b.title = 'Change who she is';
-  b.setAttribute('aria-label', `Grandparent: ${umaName(g.chara)}. Change who she is`);
-  b.onclick = fromNode(() => changeUma(g, 'Grandparent'));
+  const edit = !listed(at.v),
+    w = el('div', 'twho');
   w.append(
-    b,
+    faceEl(g, 56, 'Grandparent', edit),
     el('div', 'nm', g.chara ? umaName(g.chara) : 'Unknown: pick her'),
-    winsBtn(g, umaName(g.chara), `p${k}g${j}`),
+    winsEl(g, umaName(g.chara), `p${k}g${j}`, edit),
   );
   const iv = el('div', 'ud udbare');
-  iv.appendChild(inspView({ d: { ...g, parents: [] }, key: `p${k}g${j}`, onEdit: changed, header: false }));
+  iv.appendChild(
+    inspView({ d: { ...g, parents: [] }, key: `p${k}g${j}`, onEdit: changed, header: false, readOnly: !edit }),
+  );
   // (a copy without parents for the view; her sparks object is hers: edits land on her)
-  iv.querySelector('.simskills').replaceChildren(sparksEl(g, `p${k}g${j}`, changed));
+  if (edit) iv.querySelector('.simskills').replaceChildren(sparksEl(g, `p${k}g${j}`, changed));
   body.append(w, iv);
   return true;
 }
@@ -1407,7 +1423,7 @@ function renderTree() {
       dk = deckEl(r);
     dk.id = 'tree-deck';
     d.appendChild(dk);
-    box.append(d, targetsEl(r), racesEl(r));
+    box.append(d, targetsEl(r));
   }
   if (nodeDlg?.open) fillNode();
 }
@@ -1421,7 +1437,8 @@ function verdictEl(r) {
   });
   tr.id = 'sim-try';
   tr.setAttribute('aria-haspopup', 'dialog');
-  v.append(oddsBtn(r), tr);
+  tr.title = 'Roll a random result of this career and see whether the veteran it leaves helps your loop';
+  v.append(oddsBtn(r), tr, schedBtn(r));
   return v;
 }
 
@@ -1640,9 +1657,16 @@ function sourcesText(t) {
   if (out.length === 1) out.push('no hint');
   return out.join(' · ');
 }
+const TARGETS_HELP =
+  'Lands: the chance her veteran gets this skill’s spark. Under it, where the skill comes from: Parents, the chance her six legacies pass it on (inheritance); deck gold / deck, the chance a card hints its gold or its white; scenario gold, outfit, her events: handed to her. A gold tile: she lands it through the gold skill.';
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
-    list = el('ul', 'ctgs');
+    list = el('ul', 'ctgs'),
+    q = el('button', 'oinfo savewhy', '?');
+  q.type = 'button';
+  q.title = TARGETS_HELP;
+  q.setAttribute('aria-label', `What these mean: ${TARGETS_HELP}`);
+  s.querySelector(':scope > h3').append(q);
   for (const t of r.targets) {
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
@@ -1654,6 +1678,7 @@ function targetsEl(r) {
     if (ic) tile.appendChild(ic);
     tile.appendChild(el('span', 'udskn', tName(t.group)));
     land.append(el('b', '', pct(t.p)), el('span', '', 'lands'));
+    land.title = 'The chance her veteran gets this skill’s spark';
     li.append(tile, land, el('span', 'tgsrc', src));
     li.setAttribute('aria-label', `${tName(t.group)}: lands ${pct(t.p)}; ${src}`);
     list.appendChild(li);
@@ -1668,42 +1693,10 @@ const schedOf = (r) => ({
   outfits: [{ outfits: r.trainee.outfits }],
   schedule: (r.schedule || []).filter((x) => x.run !== false),
 });
-// the races she runs, by year, each with its turn and her chance to win it (a goal race marked); Calendar opens the
-// schedule window
-const WHEN = { E: 'Early', L: 'Late' };
-function racesEl(r) {
-  const runs = schedOf(r)
-      .schedule.slice()
-      .sort((a, b) => a.turn - b.turn),
-    s = sectionEl('lraces', `Races (${runs.length})`),
-    cols = el('div', 'rcols');
-  s.appendChild(schedBtn(r));
-  ['Junior', 'Classic', 'Senior'].forEach((year, yi) => {
-    const col = el('div', 'rcol'),
-      list = el('ul', 'rlist'),
-      inYear = runs.filter((x) => x.year === yi);
-    col.appendChild(el('h4', '', year));
-    for (const x of inYear) {
-      const [, half, month] = /(E|L)-(\w+)$/.exec(x.when || '') || [];
-      const li = el('li', x.goal ? 'goal' : '');
-      li.append(
-        el('span', 'rwhen', half ? `${WHEN[half]} ${month}` : ''),
-        el('span', 'rname', x.race || x.name),
-        el('span', 'rp', x.p == null ? '' : pct(x.p)),
-      );
-      li.title = `${x.name}${x.goal ? ' (goal)' : ''}`;
-      list.appendChild(li);
-    }
-    if (!inYear.length) list.appendChild(el('li', 'rnone', 'None'));
-    col.appendChild(list);
-    cols.appendChild(col);
-  });
-  s.appendChild(cols);
-  return s;
-}
+// her race schedule: the schedule window (the game's calendar), from a button beside the odds
 function schedBtn(r) {
   const ran = schedOf(r).schedule.length;
-  const b = btn('Calendar', 'sm rcal', () => openSched(schedOf(r)));
+  const b = btn('Race schedule', '', () => openSched(schedOf(r)));
   b.id = 'sched-open';
   b.title = ran ? `She runs ${ran} G1s: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
   return b;
@@ -3213,7 +3206,7 @@ document.addEventListener('click', (e) => {
   if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close();
 }); // a backdrop click closes
 loadData().then(
-  () => {
+  async () => {
     initSettings();
     initPopover();
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
@@ -3222,7 +3215,7 @@ loadData().then(
         const r = shown();
         return [0, 1].map((k) => parentAt(k, r)?.v).find((v) => v?.lender) || null;
       },
-      copyBtn: (v) => copyIdBtn(v, 'sm'),
+      open: (v) => openNode({ kind: 'v', id: v.id }),
     });
     syncListings();
     // Try a run's popup: Close and a backdrop click shut it
@@ -3251,13 +3244,11 @@ loadData().then(
       $dialog('vpick-dlg').close();
       changed();
     };
-    // umadump's files, from Veteran Umamusume or + Veterans beside Next career (the daily first step: the veteran you got)
-    for (const id of ['v-file', 'v-file2'])
-      $(id).onchange = async (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
-        const f = e.target.files[0];
-        if (f) importText(await f.text());
-        e.target.value = '';
-      };
+    $('v-file').onchange = async (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
+      const f = e.target.files[0];
+      if (f) importText(await f.text());
+      e.target.value = '';
+    };
     $('v-paste').onclick = () => {
       $textarea('paste-text').value = '';
       $dialog('paste-dlg').showModal();
@@ -3289,6 +3280,7 @@ loadData().then(
     };
     for (const x of ['own', 'bor']) $(`v-tab-${x}`).onclick = () => setVTab(x);
     renderAll();
+    await preloadAnswer(); // the last visit's answer, when nothing changed since: drawn at once
     search();
   },
   (e) => {

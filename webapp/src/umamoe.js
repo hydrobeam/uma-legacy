@@ -94,8 +94,14 @@ function storeCache(cache) {
   } catch {}
 }
 
-// the reason a search failed, in words for the page
-export class SearchError extends Error {}
+// the reason a search failed, in words for the page; `badKey`: uma.moe refused the key itself
+export class SearchError extends Error {
+  /** @param {string} message @param {boolean} [badKey] */
+  constructor(message, badKey = false) {
+    super(message);
+    this.badKey = badKey;
+  }
+}
 
 // the kept answer, when one is younger than 24 h
 /** @param {string} era @param {Query} q @returns {(Answer & {at: number})|null} */
@@ -117,7 +123,7 @@ export async function search(key, era, q, fresh = false) {
   } catch {
     throw new SearchError("Can't reach uma.moe");
   }
-  if (res.status === 401 || res.status === 403) throw new SearchError('Key rejected');
+  if (res.status === 401 || res.status === 403) throw new SearchError('Key rejected: paste a valid one', true);
   if (res.status === 429) throw new SearchError('Too many requests: try in a minute');
   if (!res.ok) throw new SearchError(`uma.moe error ${res.status}`);
   let body;

@@ -352,6 +352,7 @@ function inspPane({ d, onEdit, parentLabel }) {
  * @property {((j: number) => string)|null} [parentKey]  parent j's sparks' control names (null: her parents' read-only)
  * @property {() => void} [onEditParent]  after an edit of a parent's sparks
  * @property {boolean} [header]  the "Sparks" heading
+ * @property {boolean} [readOnly]  nothing editable (a veteran listed on uma.moe: another player's)
  */
 /** @param {InspViewSpec} spec */
 export function inspView({
@@ -363,6 +364,7 @@ export function inspView({
   parentKey = null,
   onEditParent,
   header = true,
+  readOnly = false,
 }) {
   const p = el('div', 'udinsp');
   if (header) p.appendChild(el('div', 'udhdr', 'Sparks'));
@@ -374,7 +376,7 @@ export function inspView({
   const sp = el('div', 'simskills');
   sp.setAttribute('role', 'group');
   sp.setAttribute('aria-label', 'Her sparks');
-  sp.appendChild(sparksEl(d, key, onEdit));
+  sp.appendChild(sparksEl(d, key, onEdit, readOnly));
   mine.appendChild(sp);
   lin.appendChild(mine);
   if (d.parents?.length) {
@@ -389,7 +391,9 @@ export function inspView({
       f.setAttribute('aria-label', `${parentLabel ? `Parent ${parentLabel(j)}` : 'Her parent'}: ${umaName(g.chara)}`);
       row.appendChild(f);
       const s = el('div', 'udpsp');
-      s.appendChild(parentKey ? sparksEl(g, parentKey(j), onEditParent) : sparksEl(g, `simp${j}`, undefined, true));
+      s.appendChild(
+        parentKey && !readOnly ? sparksEl(g, parentKey(j), onEditParent) : sparksEl(g, `simp${j}`, undefined, true),
+      );
       row.appendChild(s);
       lin.appendChild(row);
     });

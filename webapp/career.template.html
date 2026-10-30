@@ -61,7 +61,6 @@ __PANEL_ENH__
       <h2 id="h-lin">Next career</h2>
       <div class="lodds" id="lodds"></div>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
-      <label class="btn sm filebtn" id="v-quick">+ Veterans<input type="file" id="v-file2" accept=".json,application/json" aria-label="Import veterans (umadump file)"></label>
       <button class="btn sm" type="button" id="um-open" aria-haspopup="dialog" hidden>Borrow from uma.moe</button>
     </div>
     <div class="lineup" id="tree"></div>
@@ -91,14 +90,14 @@ __PANEL_ENH__
     <p>Parents other players list on uma.moe join your pool as borrows.</p>
     <div id="um-keyrow">
       <div class="umline"><input type="password" id="um-key" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="uma.moe API key"><button class="btn" type="button" id="um-save">Save</button></div>
+      <span class="hint umerr" id="um-err" role="status" aria-live="polite"></span>
       <a href="https://uma.moe/settings" target="_blank" rel="noopener">Get a key at uma.moe/settings</a>
     </div>
     <div id="um-on" hidden>
       <div class="umline"><b id="um-msg" role="status" aria-live="polite"></b><button class="btn sm" type="button" id="um-again">Refresh</button></div>
       <p class="hint" id="um-what"></p>
-      <label class="umtog"><input type="checkbox" id="um-full"> Include full trainers</label>
+      <label class="umtog" title="Trainers at 1,000 followers: their veterans can't be borrowed by following them"><input type="checkbox" id="um-full"> Include max borrows</label>
       <div class="umgrid" id="um-list"></div>
-      <div class="umdetail" id="um-detail" hidden></div>
       <button class="linkbtn" type="button" id="um-forget">Disconnect</button>
     </div>
   </div>

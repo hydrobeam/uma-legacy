@@ -1,16 +1,19 @@
 // ---------- the solver's kept work across page loads (IndexedDB; the career planner) ----------
 // One record per key (the solver's and the era data's fingerprints: a release starts afresh). Every failure (no
 // IndexedDB, private mode, quota, a corrupt record) reads as "nothing stored": the page then plans cold.
+// A second store keeps the last answer the page drew (`answerSave`), so a reload with nothing changed shows it at once.
 const DB_NAME = 'llp-solver',
-  STORE = 'state';
+  STORE = 'state',
+  ANSWER = 'answer';
 let opening = null; // the open database (a promise); a failed open is forgotten, so the next use tries again
 function database() {
   if (!opening)
     opening = new Promise((resolve, reject) => {
       try {
-        const request = indexedDB.open(DB_NAME, 1);
+        const request = indexedDB.open(DB_NAME, 2);
         request.onupgradeneeded = () => {
-          request.result.createObjectStore(STORE);
+          const db = request.result;
+          for (const name of [STORE, ANSWER]) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
@@ -26,12 +29,12 @@ function database() {
 }
 // one transaction on the store: `use` makes its request; the promise resolves with that request's result once the
 // transaction completes
-function transact(mode, use) {
+function transact(mode, use, store = STORE) {
   return database().then(
     (db) =>
       new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE, mode),
-          request = use(transaction.objectStore(STORE));
+        const transaction = db.transaction(store, mode),
+          request = use(transaction.objectStore(store));
         transaction.oncomplete = () => resolve(request?.result);
         transaction.onerror = () => reject(transaction.error);
         transaction.onabort = () => reject(transaction.error);
@@ -63,5 +66,23 @@ export async function stateDrop(key) {
     await transact('readwrite', (store) => store.delete(key));
   } catch {
     /* nothing to drop */
+  }
+}
+// the last answer drawn, with the key it was drawn for (the solver's and data's fingerprints, the job and the places):
+// null when none is stored or anything fails
+/** @returns {Promise<{key: string, value: any}|null>} */
+export async function answerLoad() {
+  try {
+    return (await transact('readonly', (store) => store.get('last'), ANSWER)) || null;
+  } catch {
+    return null;
+  }
+}
+/** @param {string} key @param {unknown} value */
+export async function answerSave(key, value) {
+  try {
+    await transact('readwrite', (store) => store.put({ key, value }, 'last'), ANSWER);
+  } catch {
+    /* quota, private mode, an answer that can't be cloned: the next load plans */
   }
 }

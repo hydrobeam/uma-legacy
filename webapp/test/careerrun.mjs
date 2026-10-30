@@ -217,6 +217,22 @@ export default async function careerrun(b) {
     await pg.waitForTimeout(250);
   }
   const before = await note();
+  // (the last answer, kept to be drawn at once, forgotten: this reload plans, on the solver's stored work)
+  const forgetAnswer = () =>
+    pg.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const open = indexedDB.open('llp-solver', 2);
+          open.onsuccess = () => {
+            const t = open.result.transaction('answer', 'readwrite');
+            t.objectStore('answer').delete('last');
+            t.oncomplete = () => resolve(true);
+            t.onerror = () => resolve(false);
+          };
+          open.onerror = () => resolve(false);
+        }),
+    );
+  await forgetAnswer();
   await pg.reload();
   await done();
   await planned();
@@ -229,6 +245,17 @@ export default async function careerrun(b) {
     saved && re.restored?.solve > 0 && re.search?.work?.nodes === 0 && /Planned in/.test(await note()),
     `stored ${saved} | state_in ${JSON.stringify(re.restored)} | nodes ${re.search?.work?.nodes} | before: ${before} | after: ${await note()}`,
   );
+  // a reload with nothing changed: the last answer drawn at once, no search or plan job
+  const shownBefore = await pg.textContent('#tree .pn.trainee .nm');
+  await pg.reload();
+  await done();
+  check(
+    'career: a reload with nothing changed draws the last answer at once: no search or plan runs',
+    (await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length)) === 0 &&
+      (await pg.textContent('#tree .pn.trainee .nm')) === shownBefore &&
+      /Planned in/.test(await note()),
+    `${shownBefore} | ${await note()}`,
+  );
   // a roll in a new worker (the stored roll state taken in): answered from it, the plan not run again
   await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup, shut)
   await pg.evaluate(() => {
@@ -238,11 +265,12 @@ export default async function careerrun(b) {
     Math.random = r;
   });
   await pg.waitForFunction(() => window.__careerResults.some((r) => r.next?.roll), null, { timeout: 180000 });
-  const ro = await pg.evaluate(() => window.__careerResults.find((r) => r.next?.roll).next.roll);
+  const ro = await pg.evaluate(() => window.__careerResults.find((r) => r.next?.roll).next.roll),
+    restoredNow = await pg.evaluate(() => window.__careerResults.find((r) => r.solve !== undefined));
   check(
     'career: after a reload a roll is answered from the stored roll state (no plan runs again)',
-    re.restored?.rolls > 0 && typeof ro?.y === 'number' && !ro.planned,
-    JSON.stringify({ rolls: re.restored?.rolls, ro }),
+    restoredNow?.rolls > 0 && typeof ro?.y === 'number' && !ro.planned,
+    JSON.stringify({ rolls: restoredNow?.rolls, ro }),
   );
   // a new plan (another rank): a roll asks that plan; back on the first answer (no run), a roll asks the first plan
   // again, which the worker still keeps

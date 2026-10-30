@@ -1,7 +1,7 @@
 // ---------- uma.moe: the key, and the listings the planner borrows from ----------
 // One button beside Next career ("Borrow from uma.moe", then "uma.moe · 61 parents") opens a popup: the key until one is
-// saved, then the status, what was searched, the listing the next career borrows (Copy ID), every listing, Refresh and
-// Disconnect.
+// saved, then the status, what was searched, every listing as a card (the next career's first; a card opens her in the
+// veteran popup, with her trainer's Copy ID), Refresh and Disconnect.
 // With a key set, the veterans uma.moe lists for the target set (parent with at least n - 1 of the n targets herself,
 // followable trainers, best covered first: one request, kept 24 h) join the pool as borrowed veterans (vets.js
 // `setListings`), so every search and plan weighs them like any other borrow. A request goes out only when the target
@@ -10,7 +10,7 @@
 import { $, $dialog, $input, el } from './dom.js';
 import { ERA } from './settings.js';
 import { state } from './state.js';
-import { vets, setListings, umaName, sparksEl, blueName, pinkName, uniqueName } from './vets.js';
+import { vets, setListings, umaName, blueName, pinkName, uniqueName } from './vets.js';
 import { parseListing } from './umadump.js';
 import { umaAv } from './images.js';
 import {
@@ -28,7 +28,7 @@ import {
  * What the popup needs from the career page.
  * @typedef {object} UmamoeCtx
  * @property {() => import('./vets.js').Veteran|null} borrowed  the uma.moe veteran the next career borrows, if any
- * @property {(v: import('./vets.js').Veteran) => HTMLElement} copyBtn  her trainer's Copy ID button
+ * @property {(v: import('./vets.js').Veteran) => void} open  her veteran popup (sparks, parents, her trainer's Copy ID)
  */
 /** @type {UmamoeCtx} */
 let ctx;
@@ -36,7 +36,6 @@ let ctx;
  *  for ('' none), the popup's status and the button's, and what was searched */
 const now = { sig: '', text: '', short: '', min: 0, n: 0 };
 let asking = 0; // the request under way; a newer one (or a forgotten key) makes it stale
-let detail = ''; // the listing whose ancestry is on show ('' the grid)
 
 const sigOf = () => `${ERA}|${state.targets.map((t) => t.group).join(',')}|${fullTrainers() ? 'full' : ''}`;
 // the query for the target set: parents carrying at least n - 1 of the n targets herself, the first 100
@@ -62,79 +61,75 @@ export function paintUmamoe() {
   $('um-keyrow').hidden = has;
   $('um-on').hidden = !has;
   $('um-msg').textContent = now.text;
-  $('um-open').textContent = has ? `uma.moe · ${now.short || now.text}` : 'Borrow from uma.moe';
+  $('um-err').textContent = has ? '' : now.text;
+  $('um-open').textContent = has || now.short ? `uma.moe · ${now.short || now.text}` : 'Borrow from uma.moe';
   $('um-what').textContent = now.sig
     ? `Parents with ${now.min}+ of your ${now.n} targets${fullTrainers() ? '' : ', from trainers you can follow'}`
     : '';
   $input('um-full').checked = fullTrainers();
-  // the grid of listings (the next career's first, tagged), or one listing's ancestry
+  // the listings as cards, the next career's first (tagged)
   const b = ctx?.borrowed(),
-    list = $('um-list'),
-    box = $('um-detail'),
-    all = vets.filter((x) => x.src === 'umamoe').sort((x, y) => Number(y === b) - Number(x === b)),
-    open = all.find((v) => v.id === detail);
+    list = $('um-list');
   list.textContent = '';
-  box.textContent = '';
-  list.hidden = !!open;
-  box.hidden = !open;
-  if (open) box.append(...ancestry(open));
-  else for (const v of all) list.appendChild(card(v, v === b));
+  for (const v of vets.filter((x) => x.src === 'umamoe').sort((x, y) => Number(y === b) - Number(x === b)))
+    list.appendChild(card(v, v === b));
 }
-// a spark as a small chip of its colour: "Speed 3★"
-const chip = (kind, name, stars) => el('span', `umsp ${kind}`, `${name} ${stars}★`);
-// her main three sparks, as the game's legacy list shows them: blue, pink, green
+// her main sparks as the game's legacy list shows them under a portrait: blue (her stat), pink (her aptitude), green
+// (her unique skill), each a short tag of its colour with its stars under it
+const BLUE_TAG = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
+  PINK_TAG = {
+    11: 'TURF',
+    12: 'DIRT',
+    21: 'FRONT',
+    22: 'PACE',
+    23: 'LATE',
+    24: 'END',
+    31: 'SPRT',
+    32: 'MILE',
+    33: 'MED',
+    34: 'LONG',
+  };
 function mainSparks(v) {
   const row = el('span', 'umsps'),
     first = (o) => Object.entries(o || {}).find(([, st]) => st > 0);
+  // (the game's spark-bar art for the tag, its star art for the stars: filled ones, then empty to three)
+  const tag = (kind, label, full, stars) => {
+    const t = el('span', `umsp ${kind}`),
+      st = el('span', 'umst');
+    st.append(el('span', 'on'), el('span', 'off'));
+    st.style.setProperty('--n', String(stars));
+    t.append(el('b', '', label), st);
+    t.title = `${full} ${stars}★`;
+    return t;
+  };
   const bl = first(v.blues),
     pk = first(v.pinks),
     gr = first(v.greens);
-  if (bl) row.appendChild(chip('blue', blueName(+bl[0]), bl[1]));
-  if (pk) row.appendChild(chip('pink', pinkName(+pk[0]), pk[1]));
-  if (gr) row.appendChild(chip('green', uniqueName(+gr[0]) || 'Unique', gr[1]));
+  if (bl) row.appendChild(tag('blue', BLUE_TAG[bl[0]] || '?', blueName(+bl[0]), bl[1]));
+  if (pk) row.appendChild(tag('pink', PINK_TAG[pk[0]] || '?', pinkName(+pk[0]), pk[1]));
+  if (gr) row.appendChild(tag('green', 'UNIQ', uniqueName(+gr[0]) || 'Unique skill', gr[1]));
   return row;
 }
 /** @param {import('./vets.js').Lender|undefined} l */
-const trainerLine = (l) =>
-  l ? `${l.name} · ${l.followers >= 1000 ? 'full' : `${l.followers} follower${l.followers === 1 ? '' : 's'}`}` : '';
-// a listing as a card: her face, name, main sparks, trainer and followers; a click shows her ancestry
+const followersText = (l) =>
+  !l ? '' : l.followers >= 1000 ? 'max' : `${l.followers} follower${l.followers === 1 ? '' : 's'}`;
+// a listing as the game's legacy list draws a veteran: her portrait, her three main sparks under it, then her trainer's
+// name and followers; a click opens her veteran popup (her sparks, her parents, Copy ID)
 function card(v, next) {
-  const c = el('button', `umcard${next ? ' next' : ''}`),
-    txt = el('span', 'umct');
+  const c = el('button', `umcell${next ? ' umnext' : ''}`);
   c.type = 'button';
-  txt.append(el('span', 'nm', umaName(v.chara)), mainSparks(v), el('span', 'sub', trainerLine(v.lender)));
-  c.append(umaAv(v.chara, v.outfit, 48), txt);
-  if (next) c.appendChild(el('span', 'umtag', 'Next career'));
-  c.onclick = () => {
-    detail = v.id;
-    paintUmamoe();
-  };
+  c.setAttribute('aria-haspopup', 'dialog');
+  c.setAttribute('aria-label', `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`);
+  c.title = `${umaName(v.chara)} · ${v.lender?.name || ''}`;
+  c.append(
+    umaAv(v.chara, v.outfit, 64),
+    mainSparks(v),
+    el('span', 'nm', v.lender?.name || umaName(v.chara)),
+    el('span', 'sub', followersText(v.lender)),
+  );
+  if (next) c.appendChild(el('span', 'umtag', 'Next'));
+  c.onclick = () => ctx.open(v);
   return c;
-}
-// her full ancestry: herself and her two parents with their sparks; her trainer with Copy ID
-function ancestry(v) {
-  const back = el('button', 'btn sm umback', 'Back');
-  back.type = 'button';
-  back.onclick = () => {
-    detail = '';
-    paintUmamoe();
-  };
-  const head = el('div', 'umline'),
-    who = el('span', 'umct');
-  who.append(el('span', 'nm', umaName(v.chara)), el('span', 'sub', trainerLine(v.lender)));
-  head.append(umaAv(v.chara, v.outfit, 56), who, ctx.copyBtn(v));
-  const rows = [v, ...v.parents].map((nd, i) => {
-    const r = el('div', 'umanc'),
-      top = el('div', 'umline');
-    top.append(umaAv(nd.chara || 0, nd.outfit, 32), el('span', 'nm', nd.chara ? umaName(nd.chara) : 'Unknown'));
-    if (i) top.appendChild(el('span', 'sub', 'parent'));
-    r.append(
-      top,
-      sparksEl(nd, '', () => {}, true),
-    );
-    return r;
-  });
-  return [back, head, ...rows];
 }
 
 // the pool's listings for the target set as it is now: the kept answer at once, else one request (`fresh`: always one)
@@ -172,6 +167,11 @@ export async function syncListings(fresh = false) {
   } catch (e) {
     if (id !== asking) return;
     now.text = now.short = e instanceof SearchError ? e.message : 'Search failed';
+    // a refused key is forgotten: the key field comes back, with why, for another
+    if (e instanceof SearchError && e.badKey) {
+      saveKey('');
+      now.short = 'key rejected';
+    }
   } finally {
     if (id === asking) $('um-again').toggleAttribute('disabled', false);
     paintUmamoe();
@@ -185,7 +185,6 @@ export function initUmamoe(c) {
   const d = $dialog('um-dlg');
   $('um-open').hidden = false;
   $('um-open').onclick = () => {
-    detail = '';
     paintUmamoe();
     d.showModal();
     if (!savedKey()) $input('um-key').focus();
