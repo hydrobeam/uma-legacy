@@ -2032,7 +2032,7 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .tgchart { position: relative; margin-top: 14px; padding: 10px 6px 30px; border-radius: 14px; background: var(--gm-pane); box-shadow: inset 0 0 0 1px var(--gm-line); }
 .tgcounts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; }   /* (no gap: one baseline) */
 .tgc { display: grid; justify-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
-.tgc > b { font-size: 0.74rem; font-weight: 700; color: var(--gm-ink2); }
+.tgc > b { height: 1.1rem; line-height: 1.1rem; font-size: 0.74rem; font-weight: 700; color: var(--gm-ink2); }   /* (a fixed row: every column on the one baseline, the bold one too) */
 .tgc.top > b { font-weight: 900; color: var(--gm-ink); font-size: 0.82rem; }
 .tgcb { display: flex; align-items: flex-end; justify-content: center; width: 100%; height: 52px; border-bottom: 2px solid var(--gm-tile-edge, #a9a2c3); }
 .tgcb > i { display: block; width: min(70%, 30px); border-radius: 5px 5px 0 0; background: linear-gradient(#84f589, #5ddc6d); box-shadow: inset 0 0 0 1px rgba(40, 140, 60, .35), inset 0 2px 0 rgba(255, 255, 255, .5); }
