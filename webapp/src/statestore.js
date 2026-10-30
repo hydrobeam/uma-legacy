@@ -6,19 +6,39 @@ const DB_NAME = 'llp-solver',
   STORE = 'state',
   ANSWER = 'answer';
 let opening = null; // the open database (a promise); a failed open is forgotten, so the next use tries again
+// An open that can't finish (an upgrade waiting on another tab that holds an older version open) gives up after
+// OPEN_MS: the page then plans without stored work rather than wait. Our own connection closes when a newer page asks to
+// upgrade (`onversionchange`), so this page never holds another one up.
+const OPEN_MS = 2000;
 function database() {
   if (!opening)
     opening = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timed out')), OPEN_MS);
       try {
         const request = indexedDB.open(DB_NAME, 2);
         request.onupgradeneeded = () => {
           const db = request.result;
           for (const name of [STORE, ANSWER]) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
         };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-        request.onblocked = () => reject(new Error('blocked'));
+        request.onsuccess = () => {
+          clearTimeout(timer);
+          const db = request.result;
+          db.onversionchange = () => {
+            db.close();
+            opening = null;
+          };
+          resolve(db);
+        };
+        request.onerror = () => {
+          clearTimeout(timer);
+          reject(request.error);
+        };
+        request.onblocked = () => {
+          clearTimeout(timer);
+          reject(new Error('blocked'));
+        };
       } catch (e) {
+        clearTimeout(timer);
         reject(e);
       }
     });

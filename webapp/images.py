@@ -195,6 +195,12 @@ UI_SPRITES = {
     },
     "spark_dot": ("atlas/singlecommon", "utx_ico_factor_01"),
     "spark_dot_gold": ("atlas/singlecommon", "utx_ico_factor_02"),
+    # the legacy list's small spark tags under a portrait (Legacy Select): blue, pink, green (atlas/singlecommon
+    # utx_frm_factor_s_02..04)
+    **{
+        "tag_" + k: ("atlas/singlecommon", f"utx_frm_factor_s_0{i + 2}")
+        for i, k in enumerate(["blue", "pink", "green"])
+    },
     **{
         "skill_" + k: ("atlas/common", f"utx_btn_skill_base_0{i}_sl")
         for i, k in enumerate(["white", "gold", "unique", "pink"])

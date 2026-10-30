@@ -48,8 +48,8 @@ const ago = (at) => `${Math.max(1, Math.round((Date.now() - at) / 3600e3))} h`;
 function take(a, q) {
   setListings(a.items.map(parseListing));
   const n = a.items.length;
-  now.text = `${n} parents · ${ago(a.at)}`;
-  now.short = `${n} parents`;
+  now.text = `${n} veterans found, searched ${ago(a.at)} ago`;
+  now.short = `${n} veterans`;
   now.min = q.min;
   now.n = q.factors.length;
 }

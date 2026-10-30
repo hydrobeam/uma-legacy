@@ -2009,17 +2009,14 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .umcell .sub { font-size: 0.7rem; color: var(--gm-ink2); }
 .umtag { position: absolute; top: -6px; right: 4px; font-size: 0.64rem; font-weight: 900; padding: 0 6px; border-radius: 999px; background: var(--gm-gold2); color: var(--gm-ink); }
 .umsps { display: flex; justify-content: center; gap: 2px; }
-/* a spark tag: the game's spark-bar art (blue, pink, green) as its face, the game's stars under it */
+/* a spark tag: the legacy list's own pill (blue, pink, green), white letters outlined as the game draws them; the
+   game's stars under it */
 .umsp { display: grid; justify-items: center; gap: 1px; min-width: 0; }
-.umsp b { position: relative; isolation: isolate; font-size: 0.6rem; font-weight: 900; line-height: 1; padding: 3px 6px 3px 7px; color: #fff; letter-spacing: 0.02em; }
-.umsp b::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-color: transparent; border-width: 0 6px 0 5px;
-  border-image: var(--spark-white) 0 200 0 40 fill / 0 6px 0 5px stretch; }
-.umsp.blue b { text-shadow: 0 1px 1px rgba(10, 60, 110, .7); background: #1f9ee0; border-radius: 5px; }
-.umsp.pink b { text-shadow: 0 1px 1px rgba(150, 30, 80, .75); background: #e2558f; border-radius: 5px; }
-.umsp.green b { text-shadow: 0 1px 1px rgba(40, 80, 0, .75); background: #5aa300; border-radius: 5px; }
-.umsp.blue b::before { border-image-source: var(--spark-blue); }
-.umsp.pink b::before { border-image-source: var(--spark-pink); }
-.umsp.green b::before { border-image-source: var(--spark-green); }
+.umsp b { font-size: 0.6rem; font-weight: 900; line-height: 1; padding: 3px 6px; min-width: 2.6em; text-align: center; color: #fff; letter-spacing: 0.02em;
+  background: center / 100% 100% no-repeat; }
+.umsp.blue b { background-image: var(--tag-blue, linear-gradient(#6fd0ff, #22a5ea)); text-shadow: 0 1px 0 #0b5d94, 1px 0 0 #0b5d94, -1px 0 0 #0b5d94, 0 -1px 0 #0b5d94; }
+.umsp.pink b { background-image: var(--tag-pink, linear-gradient(#ffb1d4, #ff6fa8)); text-shadow: 0 1px 0 #a3245a, 1px 0 0 #a3245a, -1px 0 0 #a3245a, 0 -1px 0 #a3245a; }
+.umsp.green b { background-image: var(--tag-green, linear-gradient(#b8ea5a, #7cc40d)); text-shadow: 0 1px 0 #3c7a00, 1px 0 0 #3c7a00, -1px 0 0 #3c7a00, 0 -1px 0 #3c7a00; }
 .umst { display: flex; height: 9px; }
 .umst > span { display: block; height: 9px; background: var(--star-on, var(--gm-star)) 0 0 / 10px 9px repeat-x; }
 .umst > .on { width: calc(var(--n, 0) * 10px); }

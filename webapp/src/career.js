@@ -1424,7 +1424,7 @@ function renderTree() {
     const d = sectionEl('ldeck', 'Deck'),
       dk = deckEl(r);
     dk.id = 'tree-deck';
-    d.appendChild(dk);
+    d.append(dk, schedBtn(r)); // her race schedule (the game's calendar), under her deck
     box.append(d, targetsEl(r));
   }
   if (nodeDlg?.open) fillNode();
@@ -1440,7 +1440,7 @@ function verdictEl(r) {
   tr.id = 'sim-try';
   tr.setAttribute('aria-haspopup', 'dialog');
   tr.title = 'Roll a random result of this career and see whether the veteran it leaves helps your loop';
-  v.append(oddsBtn(r), tr, schedBtn(r));
+  v.append(oddsBtn(r), tr);
   return v;
 }
 
@@ -1695,7 +1695,7 @@ const schedOf = (r) => ({
   outfits: [{ outfits: r.trainee.outfits }],
   schedule: (r.schedule || []).filter((x) => x.run !== false),
 });
-// her race schedule: the schedule window (the game's calendar), from a button beside the odds
+// her race schedule: the schedule window (the game's calendar), from a button under the deck
 function schedBtn(r) {
   const ran = schedOf(r).schedule.length;
   const b = btn('Race schedule', '', () => openSched(schedOf(r)));

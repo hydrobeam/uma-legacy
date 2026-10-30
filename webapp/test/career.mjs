@@ -500,10 +500,10 @@ export default async function career(b) {
   await pg.click('#c-all');
   await pg.locator('#set-cards .dclose').click();
   await done();
-  // the schedule: the planner's window (the game's calendar), from a button beside the odds
+  // the schedule: the planner's window (the game's calendar), from a button under the deck
   check(
-    'career: the race schedule is a button beside the odds, not a section of the page',
-    (await pg.locator('.rbtitle .lodds #sched-open').count()) === 1 && !(await pg.locator('#tree .lraces').count()),
+    'career: the race schedule is a button under the deck, not a section of the page',
+    (await pg.locator('#tree .ldeck #sched-open').count()) === 1 && !(await pg.locator('#tree .lraces').count()),
   );
   await pg.click('#sched-open');
   await dialog(pg, 'sched-dlg');

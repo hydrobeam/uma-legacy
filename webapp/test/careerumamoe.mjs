@@ -94,7 +94,7 @@ export default async function careerumamoe(b) {
   );
   await pg.fill('#um-key', 'test-key');
   await pg.press('#um-key', 'Enter');
-  await pg.waitForFunction(() => document.getElementById('um-open').textContent === 'uma.moe · 2 parents');
+  await pg.waitForFunction(() => document.getElementById('um-open').textContent === 'uma.moe · 2 veterans');
   await pg.keyboard.press('Escape');
   check('career uma.moe: Escape shuts the popup', !(await pg.evaluate(() => document.getElementById('um-dlg').open)));
   await done();
@@ -199,7 +199,8 @@ export default async function careerumamoe(b) {
   await pg.check('#um-full');
   await pg.waitForFunction(
     () =>
-      /parents/.test(document.getElementById('um-msg').textContent) && !document.getElementById('um-again').disabled,
+      /veterans found/.test(document.getElementById('um-msg').textContent) &&
+      !document.getElementById('um-again').disabled,
   );
   const fullUrl = new URL(requests.at(-1).url);
   check(
@@ -216,13 +217,13 @@ export default async function careerumamoe(b) {
   check(
     'career uma.moe: after a reload the listings come back with no request (the answer drawn at once, no solver job), the chosen one saved and not doubled',
     requests.length === 3 &&
-      (await label()) === 'uma.moe · 2 parents' &&
+      (await label()) === 'uma.moe · 2 veterans' &&
       (await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length)) === 0 &&
       (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === 13,
   );
   await pg.click('#um-open');
   await pg.click('#um-again');
-  await pg.waitForFunction(() => /^2 parents/.test(document.getElementById('um-msg').textContent));
+  await pg.waitForFunction(() => /^2 veterans found/.test(document.getElementById('um-msg').textContent));
   check('career uma.moe: Refresh asks uma.moe once more', requests.length === 4);
   await pg.setViewportSize({ width: 375, height: 812 });
   await pg.waitForTimeout(200);
