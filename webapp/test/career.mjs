@@ -500,11 +500,24 @@ export default async function career(b) {
   await pg.click('#c-all');
   await pg.locator('#set-cards .dclose').click();
   await done();
-  // the schedule: the planner's window, one trainee, from a button beside the deck
+  // the races she runs on the page, a column per year, each with its turn and her win chance; Calendar opens the
+  // planner's schedule window
+  const races = await pg.evaluate(() => ({
+    rows: [...document.querySelectorAll('#tree .lraces .rlist li:not(.rnone)')].map((li) => [
+      li.querySelector('.rwhen').textContent,
+      li.querySelector('.rp').textContent,
+    ]),
+    years: [...document.querySelectorAll('#tree .lraces .rcol h4')].map((h) => h.textContent).join(),
+    head: document.querySelector('#tree .lraces > h3')?.textContent,
+  }));
   check(
-    "career: the race schedule is a button under the trainee, beside the deck's",
-    (await pg.locator('#tree .pn.trainee #sched-open').count()) === 1 &&
-      !(await pg.locator('#results h3', { hasText: 'Race schedule' }).count()),
+    'career: the races she runs are on the page by year (turn, race, win chance), their count in the heading, Calendar beside it',
+    races.years === 'Junior,Classic,Senior' &&
+      races.rows.length > 0 &&
+      races.head === `Races (${races.rows.length})` &&
+      races.rows.every(([w, p]) => /^(Early|Late) [A-Z][a-z]{2}$/.test(w) && /^[<\d.]+%$/.test(p)) &&
+      (await pg.locator('#tree .lraces #sched-open').count()) === 1,
+    JSON.stringify(races).slice(0, 160),
   );
   await pg.click('#sched-open');
   await dialog(pg, 'sched-dlg');
@@ -604,16 +617,16 @@ export default async function career(b) {
     memTxt || 'no trio',
   );
   check(
-    "career: the odds and Try a run beside Next career; the next career in the game's order (trainee, legacies, deck, targets), the other careers under it, her card in Try a run's popup",
+    "career: the odds and Try a run beside Next career; the next career in the game's order (trainee, legacies, deck, targets, races), the other careers under it, her card in Try a run's popup",
     await pg.evaluate(() => {
       const t = document.getElementById('tree'),
         order = [...t.children].map((k) =>
-          k.className.split(' ').find((c) => /^(ltrainee|llegacies|ldeck|rtgt)$/.test(c)),
+          k.className.split(' ').find((c) => /^(ltrainee|llegacies|ldeck|rtgt|lraces)$/.test(c)),
         );
       const r = document.getElementById('results'),
         dlg = document.getElementById('sim-dlg');
       return (
-        order.join() === 'ltrainee,llegacies,ldeck,rtgt' &&
+        order.join() === 'ltrainee,llegacies,ldeck,rtgt,lraces' &&
         !!document.querySelector('.rbtitle .lodds #odds-open') &&
         !!document.querySelector('.rbtitle .lodds #sim-try') &&
         t.nextElementSibling === r &&

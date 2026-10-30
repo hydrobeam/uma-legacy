@@ -126,13 +126,14 @@ and **Back to the planner's pick** returns to the places the plan ran with. The 
 back to one draws it again without a run.
 
 **The next career**: beside the title, its odds of landing every target (click for the chance of each count) and **Try
-a run**; then, in the order you set it up in the game, the **Trainee** (with **Race schedule**), the **Legacies** (each
+a run**; then, in the order you set it up in the game, the **Trainee**, the **Legacies** (each
 parent with her own two parents as faces; on phones only the parent, tap her for the rest; a parent borrowed from uma.moe
 shows her trainer with *Copy ID*, to follow before the career starts), the **Deck** (shown outright, with each card's
 priority or chain note) and the **Targets**: each as the game's skill tile (gold when she lands it through the gold
 skill), her chance to land its spark, and where it comes from: *Parents* (the chance the legacies pass it on), *deck gold*
 / *deck* (the chance the deck hints the gold or the white), *scenario gold*, *outfit*, *her events*. The landing chances
-multiply to the odds of all of them. The status line shows only while the planner works or when something needs saying.
+multiply to the odds of all of them. **Races** lists the G1s she runs by year (the turn, the race, her chance to win it;
+goal races marked), with **Calendar** for the schedule window. The status line shows only while the planner works or when something needs saying.
 
 **Try a run** opens a popup with the career's result as the game's *Umamusume Details* card (Skills, Inspiration,
 Career Info). It starts as a random result of the career:

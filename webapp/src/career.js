@@ -1033,12 +1033,6 @@ function traineeEl(r) {
   t.onclick = () => openNode({ kind: 't' });
   n.appendChild(t);
   wholeBox(n, t);
-  // her race schedule (its window)
-  if (r && r.trainee.id === id) {
-    const row = el('div', 'row tdeck');
-    row.append(schedBtn(r));
-    n.appendChild(row);
-  }
   return n;
 }
 // her affinity, in all and legacy by legacy (afftable.js), from the report's six slots (career/inherit.rs `slots`);
@@ -1399,7 +1393,7 @@ function renderTree() {
       dk = deckEl(r);
     dk.id = 'tree-deck';
     d.appendChild(dk);
-    box.append(d, targetsEl(r));
+    box.append(d, targetsEl(r), racesEl(r));
   }
   if (nodeDlg?.open) fillNode();
 }
@@ -1660,9 +1654,42 @@ const schedOf = (r) => ({
   outfits: [{ outfits: r.trainee.outfits }],
   schedule: (r.schedule || []).filter((x) => x.run !== false),
 });
+// the races she runs, by year, each with its turn and her chance to win it (a goal race marked); Calendar opens the
+// schedule window
+const WHEN = { E: 'Early', L: 'Late' };
+function racesEl(r) {
+  const runs = schedOf(r)
+      .schedule.slice()
+      .sort((a, b) => a.turn - b.turn),
+    s = sectionEl('lraces', `Races (${runs.length})`),
+    cols = el('div', 'rcols');
+  s.appendChild(schedBtn(r));
+  ['Junior', 'Classic', 'Senior'].forEach((year, yi) => {
+    const col = el('div', 'rcol'),
+      list = el('ul', 'rlist'),
+      inYear = runs.filter((x) => x.year === yi);
+    col.appendChild(el('h4', '', year));
+    for (const x of inYear) {
+      const [, half, month] = /(E|L)-(\w+)$/.exec(x.when || '') || [];
+      const li = el('li', x.goal ? 'goal' : '');
+      li.append(
+        el('span', 'rwhen', half ? `${WHEN[half]} ${month}` : ''),
+        el('span', 'rname', x.race || x.name),
+        el('span', 'rp', x.p == null ? '' : pct(x.p)),
+      );
+      li.title = `${x.name}${x.goal ? ' (goal)' : ''}`;
+      list.appendChild(li);
+    }
+    if (!inYear.length) list.appendChild(el('li', 'rnone', 'None'));
+    col.appendChild(list);
+    cols.appendChild(col);
+  });
+  s.appendChild(cols);
+  return s;
+}
 function schedBtn(r) {
   const ran = schedOf(r).schedule.length;
-  const b = btn('Race schedule', '', () => openSched(schedOf(r)));
+  const b = btn('Calendar', 'sm rcal', () => openSched(schedOf(r)));
   b.id = 'sched-open';
   b.title = ran ? `She runs ${ran} G1s: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
   return b;

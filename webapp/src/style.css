@@ -613,18 +613,19 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .rbtitle .rhead[data-kind="error"] { padding: 5px 14px; border-radius: 999px; background: var(--gm-cell); border: 2px solid var(--gm-pink2); color: var(--gm-ink); }
 /* the next career as the player sets it up in the game: the odds (and whom to follow), the trainee, her legacies, the
    deck, the targets; one column on phones, two from 760 px, four from 1180 px */
-.lineup { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "trainee" "legacies" "deck" "targets";
+.lineup { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "trainee" "legacies" "deck" "targets" "races";
   gap: 16px 18px; align-items: start; margin-top: 4px; min-width: 0; }
 .lineup > .ltrainee { grid-area: trainee; }
 .lineup > .llegacies { grid-area: legacies; } .lineup > .ldeck { grid-area: deck; } .lineup > .rtgt { grid-area: targets; }
+.lineup > .lraces { grid-area: races; }
 .lineup > .rbsec { margin-top: 0; }
 @media (min-width: 760px) {
-  .lineup { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "trainee legacies" "deck targets"; }
+  .lineup { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "trainee legacies" "deck targets" "races races"; }
 }
 @media (min-width: 1180px) {
   /* who (the trainee over her legacies), the deck, the targets */
   .lineup { grid-template-columns: minmax(320px, 1.1fr) minmax(300px, 1fr) minmax(320px, 1.1fr);
-    grid-template-areas: "trainee deck targets" "legacies deck targets"; grid-template-rows: auto 1fr; }
+    grid-template-areas: "trainee deck targets" "legacies deck targets" "races races races"; grid-template-rows: auto 1fr auto; }
 }
 .lodds { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; font-family: "Zen Maru Gothic", var(--font-ui); }
 .lodds:empty { display: none; }
@@ -2021,3 +2022,17 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .linkbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .pcopy { justify-self: start; }
 #um-open { margin-left: auto; }
+
+/* the races she runs: a column per year (one list on phones), each with its turn and her chance to win; goals marked */
+.lraces { position: relative; }
+.lraces > .rcal { position: absolute; top: 0; right: 0; }
+.rcols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 18px; }
+@media (min-width: 760px) { .rcols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.rcol h4 { margin: 4px 0 2px; font-size: 0.85rem; font-weight: 900; color: var(--gm-ink2); }
+.rlist { list-style: none; margin: 0; padding: 0; display: grid; }
+.rlist li { display: grid; grid-template-columns: 5.6em minmax(0, 1fr) 3em; align-items: baseline; gap: 6px; padding: 3px 2px; border-bottom: 1px solid var(--gm-line); }
+.rwhen { font-size: 0.78rem; color: var(--gm-ink2); }
+.rname { font-weight: 700; color: var(--gm-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlist li.goal .rname::after { content: ' · goal'; font-weight: 400; font-size: 0.75rem; color: var(--gm-ink2); }
+.rp { text-align: right; font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--gm-ink2); }
+.rnone { color: var(--gm-ink2); font-size: 0.8rem; }
