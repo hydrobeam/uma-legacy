@@ -1787,7 +1787,7 @@ function targetsEl(r) {
     const icon = skillIcon(t.group, false);
     if (icon) tile.appendChild(icon);
     const lands = el('b', 'tgp', pct(t.p));
-    lands.title = `The chance her veteran gets its spark: ${pct(t.p)}`;
+    lands.title = `Lands as a spark: ${pct(t.p)}`;
     tile.append(el('span', 'udskn', tName(t.group)), lands);
     tile.onclick = () =>
       openSkill({ b, name: tName(t.group), icon: () => skillIcon(t.group, gold), gold, legacies, cards }, tile);
@@ -1803,12 +1803,12 @@ function targetsEl(r) {
       part.style.width = `${Math.round(p * 1000) / 10}%`;
       bar.appendChild(part);
     }
-    bar.title = `She gets it: ${pct(bg + bw)} (the gold skill ${pct(bg)}, the white alone ${pct(bw)})`;
+    bar.title = `Acquired: ${pct(bg + bw)} (gold ${pct(bg)}, white only ${pct(bw)})`;
     const legs = el('span', 'tgfig'),
       orb = srcFor('ui', 'spark_dot');
     if (orb) legs.appendChild(Object.assign(el('img', 'tgico'), { src: orb, alt: '' }));
     legs.appendChild(el('b', '', String(Math.round(t.q * 100))));
-    legs.title = `Her legacies pass it on: ${pct(t.q)}`;
+    legs.title = `Inherited: ${pct(t.q)}`;
     const deck = el('span', 'tgfig');
     for (const { card } of cards) deck.appendChild(cardAv(card, 20));
     if (b.outfit) deck.appendChild(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 20));
@@ -1817,7 +1817,7 @@ function targetsEl(r) {
     const given = b.scenario || b.outfit ? 1 : deckP;
     if (deck.childElementCount) {
       deck.appendChild(el('b', '', String(Math.round(given * 100))));
-      deck.title = `${b.scenario ? 'The scenario' : b.outfit ? 'Her outfit' : 'Her deck'} gives it: ${pct(given)}`;
+      deck.title = `${b.scenario ? 'Scenario' : b.outfit ? 'Outfit' : 'Deck'}: ${pct(given)}`;
     }
     from.append(bar, legs);
     if (deck.childElementCount) from.appendChild(deck);

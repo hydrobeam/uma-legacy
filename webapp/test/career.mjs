@@ -401,7 +401,7 @@ export default async function career(b) {
     })()) === 6 &&
       tgRows.length === 8 &&
       tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
-      tgRows.every((t) => t.bar === 2 && /pass it on: [<\d.]+%$/.test(t.legs)) &&
+      tgRows.every((t) => t.bar === 2 && /^Inherited: [<\d.]+%$/.test(t.legs)) &&
       skFaces === 6 &&
       /Lands as a spark: [<\d.]+%/.test(skText) &&
       /Legacies carrying it/.test(skText),
