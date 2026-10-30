@@ -49,13 +49,15 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
   lends today; *Remove all* clears the open tab. *Paste* takes the same text, an Export from this page (which replaces
   every import), or an uma.moe lineage planner export.
-- **Borrow from uma.moe** (beside *Next career*): paste your uma.moe API key once (made at uma.moe/settings; kept in
+- **Borrow from uma.moe** (beside *Next career*; a popup listing what was found as cards: her main sparks, the trainer and
+  followers, the next career's first; a card shows her ancestry with *Copy ID*; *Include full trainers* asks again
+  without the follower limit): paste your uma.moe API key once (made at uma.moe/settings; kept in
   your browser under its own entry, sent only to uma.moe as a header, never in an Export) and the veterans players list
   on uma.moe join the pool as borrowed parents, which the planner weighs like any other borrow. The page asks once per
   target set (on saving the key, and after the targets change) for the best covered 100 lineages whose parent carries
   all but at most one target herself, from followable trainers (under 1,000 followers); the answer is kept 24 hours,
-  and *Refresh* asks again. Edits to veterans or settings never send a request. A parent from uma.moe reads *Borrow ·
-  uma.moe* with her trainer and *Copy ID*, to follow them in the game. uma.moe's veterans are not in *Veteran
+  and *Refresh* asks again. Edits to veterans or settings never send a request. A parent from uma.moe shows her trainer
+  and *Copy ID*, to follow them in the game. uma.moe's veterans are not in *Veteran
   Umamusume* or an Export; the parent picker lists them under *uma.moe*, and one you choose stays while chosen.
   *Disconnect* forgets the key. Global data only.
 - With no veterans, **Try sample veterans** adds six random mob umas carrying only the targets that inheritance alone
@@ -123,8 +125,17 @@ while the veterans and settings are unchanged), with your career marked (*your c
 and **Back to the planner's pick** returns to the places the plan ran with. The last few answers are kept, so going
 back to one draws it again without a run.
 
-**Veteran analysis** shows the career's result as the game's *Umamusume Details* card (Skills, Inspiration, Career
-Info). It starts as a random result of the career:
+**The next career**: beside the title, its odds of landing every target (click for the chance of each count) and **Try
+a run**; then, in the order you set it up in the game, the **Trainee** (with **Race schedule**), the **Legacies** (each
+parent with her own two parents as faces; on phones only the parent, tap her for the rest; a parent borrowed from uma.moe
+shows her trainer with *Copy ID*, to follow before the career starts), the **Deck** (shown outright, with each card's
+priority or chain note) and the **Targets**: each as the game's skill tile (gold when she lands it through the gold
+skill), her chance to land its spark, and where it comes from: *Parents* (the chance the legacies pass it on), *deck gold*
+/ *deck* (the chance the deck hints the gold or the white), *scenario gold*, *outfit*, *her events*. The landing chances
+multiply to the odds of all of them. The status line shows only while the planner works or when something needs saying.
+
+**Try a run** opens a popup with the career's result as the game's *Umamusume Details* card (Skills, Inspiration,
+Career Info). It starts as a random result of the career:
 - **Reroll** draws another result (targets, stars, G1 wins, her pink spark) and gets its saving from the plan at once:
   the solver's evaluation of that roll's sparks (her stars per target; her G1 wins at their expected chances, not the
   ones drawn), pricing her in the plan's routes: as a parent of a candidate's career (beside the partners the plan
@@ -144,10 +155,8 @@ Info). It starts as a random result of the career:
 - **Add to veterans** saves her (with her parents) and hands every place back to the planner for the next career,
   which plans the pool with her afresh.
 
-The card's header holds the career's odds (click for the chance of each count); the card shows her aptitudes at the end
-of that result (the legacies' pink sparks included). **Deck** and **Race schedule** sit under the trainee in the pedigree. Below the card, **Target
-skills** gives per target the chance her legacies pass it on, how many of the six carry it, and the chance her veteran
-gets its spark.
+The card shows her aptitudes at the end of that result (the legacies' pink sparks included). Add to veterans closes
+the popup.
 
 **Export** (in **Veteran Umamusume**) shows your veterans, the places you set and the solver job as text (*Copy*, *Download*), to move them to another
 browser or replay a search outside the page.

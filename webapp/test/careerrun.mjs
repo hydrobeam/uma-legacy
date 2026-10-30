@@ -244,7 +244,7 @@ export default async function careerrun(b) {
     `stored ${saved} | state_in ${JSON.stringify(re.restored)} | nodes ${re.search?.work?.nodes} | before: ${before} | after: ${await note()}`,
   );
   // a roll in a new worker (the stored roll state taken in): answered from it, the plan not run again
-  await pg.waitForSelector('#sim-roll:not([disabled])', { timeout: 180000 });
+  await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup, shut)
   await pg.evaluate(() => {
     const r = Math.random;
     Math.random = () => 0.999999999;
@@ -262,7 +262,7 @@ export default async function careerrun(b) {
   // again, which the worker still keeps
   const rollNow = async () => {
     const n = await pg.evaluate(() => window.__careerResults.filter((r) => r.next?.roll).length);
-    await pg.waitForSelector('#sim-roll:not([disabled])', { timeout: 180000 });
+    await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup, shut)
     await pg.evaluate(() => {
       const r = Math.random;
       Math.random = () => 0;

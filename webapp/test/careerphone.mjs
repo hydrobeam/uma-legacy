@@ -45,11 +45,18 @@ export default async function careerphone(b) {
       (await pg.locator('.rbbar .lptgt .adder input').boundingBox()).width > 200,
     JSON.stringify([await pg.evaluate(SIDEWAYS), inside]),
   );
+  await pg.click('#sim-try'); // her card: Try a run's popup
   await pg.locator('.udtab').nth(1).click();
   const pills = await pg.evaluate(PILLS);
+  const simFits = await pg.evaluate(() => {
+    const d = document.getElementById('sim-dlg').getBoundingClientRect(),
+      body = document.querySelector('#sim-dlg .dlgscroll');
+    return d.left >= 0 && d.right <= 375 && d.bottom <= 812 && body.scrollHeight > body.clientHeight;
+  });
+  await pg.locator('#sim-dlg .dclose').click();
   check(
-    "career phone: the pill tracks (Game data, rank, her card's tabs) are filled flush by their segments",
-    !pills.length && (await pg.locator('.udtabs').count()) === 1,
+    "career phone: the pill tracks (Game data, rank, her card's tabs) are filled flush by their segments; Try a run's popup fits the screen and scrolls",
+    !pills.length && (await pg.locator('.udtabs').count()) === 1 && simFits,
     pills.slice(0, 4).join(' | '),
   );
   const pick = await pg.evaluate(() => {
@@ -99,15 +106,17 @@ export default async function careerphone(b) {
     side.slice(0, 4).join(' | '),
   );
   const tree = await pg.evaluate(() => {
-    const f = [...document.querySelectorAll('#tree .pf')].map((e) => e.getBoundingClientRect());
+    const t = document.getElementById('tree'),
+      kids = [...t.children].map((k) => k.getBoundingClientRect()),
+      boxes = [...t.querySelectorAll('.pf')].map((e) => Math.round(e.getBoundingClientRect().height));
     return {
-      h: Math.round(document.getElementById('tree').getBoundingClientRect().height),
-      side: f.length === 2 && Math.abs(f[0].top - f[1].top) < 1 && f[1].left >= f[0].right - 1,
+      column: kids.every((r, i) => r.width >= 330 && (!i || r.top >= kids[i - 1].bottom - 1)),
+      boxes,
     };
   });
   check(
-    'career phone: the tree is compact, the two legacy boxes side by side',
-    tree.side && tree.h < 560,
+    'career phone: the next career in one column, top to bottom; each legacy box one compact row (her parents in her popup)',
+    tree.column && tree.boxes.length === 2 && tree.boxes.every((h) => h < 130),
     JSON.stringify(tree),
   );
   // a return visit with veterans and no fold chosen: the setup opens folded, the tree on the first screen; a fold chosen

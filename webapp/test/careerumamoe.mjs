@@ -75,7 +75,7 @@ export default async function careerumamoe(b) {
     'career uma.moe: one button beside Next career, its panel shut, nothing in Career setup, nothing sent',
     (await label()) === 'Borrow from uma.moe' &&
       (await pg.locator('.rbtitle #um-open').isVisible()) &&
-      (await pg.locator('#um-panel').isHidden()) &&
+      !(await pg.evaluate(() => document.getElementById('um-dlg').open)) &&
       (await pg.locator('.setlist #um-row').count()) === 0 &&
       requests.length === 0,
   );
@@ -93,7 +93,7 @@ export default async function careerumamoe(b) {
   await pg.press('#um-key', 'Enter');
   await pg.waitForFunction(() => document.getElementById('um-open').textContent === 'uma.moe · 2 parents');
   await pg.keyboard.press('Escape');
-  check('career uma.moe: Escape shuts the panel', await pg.locator('#um-panel').isHidden());
+  check('career uma.moe: Escape shuts the popup', !(await pg.evaluate(() => document.getElementById('um-dlg').open)));
   await done();
   await planned();
   const job = await lastJob(),
@@ -149,34 +149,84 @@ export default async function careerumamoe(b) {
   await done();
   const tileText = (await pg.locator('#tree .pn.parent').first().innerText()).replace(/\s+/g, ' ');
   check(
-    "career uma.moe: the picker heads them uma.moe; a chosen one's tile reads Borrow · uma.moe, her trainer, Copy ID",
+    'career uma.moe: the picker heads them uma.moe; a chosen one reads borrow · her trainer, with Copy ID in her box',
     heads.join() === 'uma.moe' &&
-      /Borrow · uma\.moe/i.test(tileText) &&
-      /Trainer 2/.test(tileText) &&
+      /borrow · Trainer 2/.test(tileText) &&
+      (await pg.locator('#tree .pn.parent').first().locator('.pcopy').count()) === 1 &&
       (await pg.locator('#tree .pcopy').count()) === 1,
-    tileText.slice(0, 120),
+    tileText.slice(0, 80),
   );
+  // the popup: a card per listing (main sparks, trainer · followers), the next career's first and tagged; a card shows
+  // her ancestry (herself and two parents with sparks) with Copy ID
+  await pg.click('#um-open');
+  const cards = await pg.$$eval('#um-list .umcard', (l) =>
+    l.map((c) => ({
+      next: c.classList.contains('next'),
+      sub: c.querySelector('.sub')?.textContent,
+      sparks: c.querySelectorAll('.umsp').length,
+    })),
+  );
+  await pg.locator('#um-list .umcard').first().click();
+  const anc = await pg.evaluate(() => ({
+    rows: document.querySelectorAll('#um-detail .umanc').length,
+    gridHidden: document.getElementById('um-list').hidden,
+  }));
+  check(
+    "career uma.moe: the popup shows a card per listing (main sparks, trainer · followers), the next career's first and tagged; a card opens her ancestry with Copy ID",
+    cards.length === 2 &&
+      cards[0].next &&
+      cards.every((c) => /^Trainer [12] · 1[34] followers$/.test(c.sub) && c.sparks >= 2) &&
+      anc.rows === 3 &&
+      anc.gridHidden &&
+      (await pg.locator('#um-detail button', { hasText: 'Copy ID' }).count()) === 1,
+    JSON.stringify({ cards, anc }),
+  );
+  await pg.locator('#um-detail .umback').click();
+  // full trainers: off by default (followable only); on, the search asks again without that limit
+  await pg.check('#um-full');
+  await pg.waitForFunction(
+    () =>
+      /parents/.test(document.getElementById('um-msg').textContent) && !document.getElementById('um-again').disabled,
+  );
+  const fullUrl = new URL(requests.at(-1).url);
+  check(
+    'career uma.moe: Include full trainers asks again without the follower limit',
+    requests.length === 3 && !fullUrl.searchParams.has('max_follower_num'),
+    fullUrl.search.slice(0, 80),
+  );
+  await pg.uncheck('#um-full');
+  await pg.keyboard.press('Escape');
   await pg.reload();
   await done();
   check(
     'career uma.moe: after a reload the listings come back with no request, the chosen one saved and not doubled',
-    requests.length === 2 &&
+    requests.length === 3 &&
       (await lastJob()).legacies.length === 14 &&
       (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === 13,
   );
   await pg.click('#um-open');
   await pg.click('#um-again');
   await pg.waitForFunction(() => /^2 parents/.test(document.getElementById('um-msg').textContent));
-  check('career uma.moe: Refresh asks uma.moe once more', requests.length === 3);
+  check('career uma.moe: Refresh asks uma.moe once more', requests.length === 4);
   await pg.setViewportSize({ width: 375, height: 812 });
   await pg.waitForTimeout(200);
+  // (its list made long: the popup's body scrolls inside the window, which stays on screen)
   const fit = await pg.evaluate(() => {
-    const r = document.getElementById('um-panel').getBoundingClientRect();
-    return { left: r.left, right: r.right, page: document.documentElement.scrollWidth };
+    const list = document.getElementById('um-list');
+    for (let i = 0; i < 60; i++) list.appendChild(list.firstElementChild.cloneNode(true));
+    const d = document.getElementById('um-dlg').getBoundingClientRect(),
+      body = document.querySelector('#um-dlg .dlgscroll');
+    return {
+      left: d.left,
+      right: d.right,
+      bottom: d.bottom,
+      scrolls: body.scrollHeight > body.clientHeight && getComputedStyle(body).overflowY === 'auto',
+      page: document.documentElement.scrollWidth,
+    };
   });
   check(
-    'career uma.moe: at 375 px the open panel stays on screen, no sideways scroll',
-    fit.left >= 0 && fit.right <= 375 && fit.page <= 375,
+    'career uma.moe: at 375 px the popup stays on screen and its long body scrolls inside it, no sideways scroll',
+    fit.left >= 0 && fit.right <= 375 && fit.bottom <= 812 && fit.scrolls && fit.page <= 375,
     JSON.stringify(fit),
   );
   await ctx.close();

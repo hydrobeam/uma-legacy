@@ -62,7 +62,8 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
     it could cost.
   - *Valuation:* the score's error against the expected careers under the model, measured, never assumed.
 
-  The page states which of the two it gives.
+  The page does not show which of the two it gives (maintainer, 2026-10-30: no proof badge); the status line's
+  screen-reader text and the export carry it.
 - **Evidence:** passing mono, planval, bit-equality or a review round is not evidence that a pick improved. Every claim
   about a pick is sized in careers per decision, labelled measured, derived, model-internal or assumed. No "small"
   without a number.

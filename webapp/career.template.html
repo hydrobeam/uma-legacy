@@ -59,23 +59,11 @@ __PANEL_ENH__
   <main class="rbmain" id="rcol" tabindex="-1" aria-labelledby="h-lin">
     <div class="rbtitle">
       <h2 id="h-lin">Next career</h2>
+      <div class="lodds" id="lodds"></div>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
-      <div class="umpop" id="um-row" hidden>
-        <button class="btn sm" type="button" id="um-open" aria-expanded="false" aria-controls="um-panel">Borrow from uma.moe</button>
-        <div class="umpanel" id="um-panel" role="group" aria-label="uma.moe" hidden>
-          <div id="um-keyrow">
-            <p class="umh">Borrow parents from uma.moe</p>
-            <div class="umline"><input type="password" id="um-key" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="uma.moe API key"><button class="btn" type="button" id="um-save">Save</button></div>
-            <a href="https://uma.moe/settings" target="_blank" rel="noopener">Get a key at uma.moe/settings</a>
-          </div>
-          <div id="um-on" hidden>
-            <div class="umline"><span id="um-msg" role="status" aria-live="polite"></span><button class="btn sm" type="button" id="um-again">Refresh</button></div>
-            <button class="linkbtn" type="button" id="um-forget">Disconnect</button>
-          </div>
-        </div>
-      </div>
+      <button class="btn sm" type="button" id="um-open" aria-haspopup="dialog" hidden>Borrow from uma.moe</button>
     </div>
-    <div class="ped" id="tree"></div>
+    <div class="lineup" id="tree"></div>
     <div id="results"></div>
   </main>
 
@@ -95,6 +83,28 @@ __PANEL_ENH__
     <button type="button" role="tab" id="v-tab-bor" aria-selected="false" aria-controls="vets">Borrowed</button>
   </div>
   <div class="vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
+</div></dialog>
+<dialog id="um-dlg" class="umdlg" aria-labelledby="um-title"><div class="dlg">
+  <div class="row between dhead"><h3 id="um-title">uma.moe</h3><button class="btn dclose" type="button">Close</button></div>
+  <div class="dlgscroll">
+    <p>Parents other players list on uma.moe join your pool as borrows.</p>
+    <div id="um-keyrow">
+      <div class="umline"><input type="password" id="um-key" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="uma.moe API key"><button class="btn" type="button" id="um-save">Save</button></div>
+      <a href="https://uma.moe/settings" target="_blank" rel="noopener">Get a key at uma.moe/settings</a>
+    </div>
+    <div id="um-on" hidden>
+      <div class="umline"><b id="um-msg" role="status" aria-live="polite"></b><button class="btn sm" type="button" id="um-again">Refresh</button></div>
+      <p class="hint" id="um-what"></p>
+      <label class="umtog"><input type="checkbox" id="um-full"> Include full trainers</label>
+      <div class="umgrid" id="um-list"></div>
+      <div class="umdetail" id="um-detail" hidden></div>
+      <button class="linkbtn" type="button" id="um-forget">Disconnect</button>
+    </div>
+  </div>
+</div></dialog>
+<dialog id="sim-dlg" class="simdlg" aria-labelledby="sim-title"><div class="dlg">
+  <div class="row between dhead"><h3 id="sim-title">Try a run</h3><button class="btn dclose" type="button">Close</button></div>
+  <div class="dlgscroll" id="sim-top"></div>
 </div></dialog>
 __PANEL_DLGUMAS____PANEL_DLGCARDS__
 

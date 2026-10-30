@@ -8,7 +8,8 @@
 // takes a comma list (any of them) and, repeated k times, asks for at least k of the list on the listed parent herself;
 // `optional_white_sparks` (factor group * 10) ranks the results by how many of them the lineage carries. A skill can
 // have two factor groups (Racing Spirit: Stamina, 21009 and 21015), so every factor group of a target is asked for.
-// `max_follower_num` 999: trainers at 1,000 followers can't be followed. Pages count from 0, 100 results each.
+// `max_follower_num` 999: trainers at 1,000 followers can't be followed (left out unless the player asks for full
+// trainers too). Pages count from 0, 100 results each.
 import { CAREER } from './data.js';
 
 const KEY_STORE = 'llp:umamoe-key',
@@ -26,6 +27,20 @@ export function savedKey() {
   } catch {
     return '';
   }
+}
+// full trainers (1,000 followers: they can't be followed) included in the search: the player's choice, kept here
+export const fullTrainers = () => {
+  try {
+    return localStorage.getItem('llp:umamoe-full') === '1';
+  } catch {
+    return false;
+  }
+};
+/** @param {boolean} on */
+export function setFullTrainers(on) {
+  try {
+    localStorage.setItem('llp:umamoe-full', on ? '1' : '0');
+  } catch {}
 }
 /** @param {string} key an empty key forgets it */
 export function saveKey(key) {
@@ -49,17 +64,13 @@ export function targetFactors(groups) {
 
 /**
  * One search: lineages whose listed parent carries at least `min` of the targets herself, best covered first.
- * @typedef {{factors: number[][], min: number, page: number}} Query
+ * @typedef {{factors: number[][], min: number, page: number, full?: boolean}} Query
  * @typedef {{items: any[], total: number, pages: number, cached: boolean}} Answer
  */
 /** @param {Query} q @returns {string} */
-function queryString({ factors, min, page }) {
-  const p = new URLSearchParams({
-    search_type: 'inheritance',
-    limit: String(PAGE_SIZE),
-    page: String(page),
-    max_follower_num: String(FOLLOWABLE),
-  });
+function queryString({ factors, min, page, full = false }) {
+  const p = new URLSearchParams({ search_type: 'inheritance', limit: String(PAGE_SIZE), page: String(page) });
+  if (!full) p.set('max_follower_num', String(FOLLOWABLE));
   const any = factors.flatMap((fs) => fs.flatMap((f) => [1, 2, 3].map((stars) => f * 100 + stars))).join(',');
   for (let i = 0; i < min; i++) p.append('main_white_factors', any);
   p.append('optional_white_sparks', factors.flatMap((fs) => fs.map((f) => f * 10)).join(','));

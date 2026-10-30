@@ -505,6 +505,8 @@ export const SIDEWAYS = () => {
  * @property {(stars: number) => Promise<void>} simStars  the veteran you got's Uma Stan at so many stars (added first)
  * @property {() => Promise<void>} importDump  imports the umadump test file's 12 veterans
  * @property {() => Promise<void>} saved  an edit's save has landed (vets.js persistSoon saves after the next frame)
+ * @property {() => Promise<void>} simOpen  opens Try a run's popup (the veteran card) if it is shut
+ * @property {() => Promise<void>} simShut  shuts it if it is open
  */
 // The career planner in a fresh context, its first (empty) run done. window.__careerJobs and __careerResults list the
 // jobs sent and their results; window.__seq records what the page shows each time it changes; a test sets
@@ -676,7 +678,17 @@ export async function careerPage(b) {
     if (await pg.locator('#node-dlg[open]').count()) await pg.keyboard.press('Escape');
   };
   // the veteran you got: Uma Stan at n stars (added first if she lacks it)
+  // Try a run's popup (the veteran card and her comparison)
+  const simIsOpen = () => pg.evaluate(() => !!document.getElementById('sim-dlg')?.open);
+  const simOpen = async () => {
+    if (!(await simIsOpen())) await pg.click('#sim-try');
+    await pg.waitForFunction(() => document.getElementById('sim-dlg').open);
+  };
+  const simShut = async () => {
+    if (await simIsOpen()) await pg.locator('#sim-dlg .dclose').click();
+  };
   const simStars = async (n) => {
+    await simOpen();
     const loc = pg.locator('[data-k="sim:s20159"]');
     if (!(await loc.count())) {
       await pg.locator('#simulation .vskadd').click();
@@ -714,6 +726,8 @@ export async function careerPage(b) {
     simStars,
     importDump,
     saved,
+    simOpen,
+    simShut,
   };
 }
 

@@ -3,7 +3,7 @@
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
-import { $, $dialog, $input, $textarea, el, esc, fmtIn } from './dom.js';
+import { $, $dialog, $input, $textarea, backdropCloses, el, esc, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
@@ -368,11 +368,6 @@ function paint() {
       note.append(' ', b);
     } // e.g. Try sample veterans
   }
-  // before the first answer: the analysis panel's frame, so the space beside the tree isn't blank while she is planned;
-  // renderResults replaces it with the answer, and a run that ends without one takes it away
-  const wait = $('results').querySelector(':scope > .simwait');
-  if (searching && !shown() && !$('results').firstElementChild) $('results').append(waitEl());
-  else if (!searching && wait) wait.remove();
 }
 // the status line during a run: the search's lead (in the plan phase), the phase at work, the plan's progress and the
 // phase's seconds so far
@@ -394,18 +389,6 @@ function paintBusy(note) {
     line.insertBefore(pg, line.lastChild);
   }
   note.appendChild(line);
-}
-function waitEl() {
-  const w = el('div', 'simwait'),
-    box = sectionEl('simulation', 'Veteran analysis'),
-    body = el('div', 'ud simwbody');
-  const p = el('p');
-  p.innerHTML = runnerHTML(true);
-  p.append('Warming up! The deck, sparks and comparison will be here as soon as the planner picks her career.');
-  body.append(p);
-  box.append(body);
-  w.append(box);
-  return w;
 }
 // the plan's line: its time and the named assumptions its searches rest on (the job's, and its proven rows' own) that
 // the search's line does not state (`planCaveat`), or why it failed
@@ -1001,12 +984,6 @@ function parentAt(k, r) {
   const i = other >= 0 ? r.parents.filter((x) => x !== other)[0] : r.parents[k];
   return i === undefined ? null : { v: vets[i], pick: true };
 }
-// a legacy's affinity in the career on show (slot of veteran i, or of her parent j)
-const affOf = (r, i, j = null) => {
-  if (!r) return null;
-  const slot = r.slots.find((x) => x.legacy === i && (j === null ? x.kind === 'parent' : x.gp === j));
-  return slot ? slot.aff : null;
-};
 // a node of the pedigree: what it is (its header), then who; ghost: the planner's pick, not yours
 function pnode(kind, label, ghost) {
   const n = el('div', `pn ${kind}${ghost ? ' ghost' : ''}`);
@@ -1040,7 +1017,7 @@ function tile(key, face, name, sub) {
 }
 function traineeEl(r) {
   const id = plan.trainee || r?.trainee.id;
-  const n = pnode('trainee', plan.trainee ? 'Trainee' : "Trainee · planner's pick", !plan.trainee);
+  const n = pnode('trainee', plan.trainee ? 'Your pick' : "Planner's pick", !plan.trainee);
   // the affinity she holds from her six legacies (its breakdown is in her popup)
   if (r && r.trainee.id === id) {
     const tot = legacyAff(r),
@@ -1056,25 +1033,11 @@ function traineeEl(r) {
   t.onclick = () => openNode({ kind: 't' });
   n.appendChild(t);
   wholeBox(n, t);
-  // her career's deck (opens here, under her) and race schedule (its window), behind buttons
+  // her race schedule (its window)
   if (r && r.trainee.id === id) {
     const row = el('div', 'row tdeck');
-    const db = btn(deckOpen ? 'Hide the deck' : 'Deck', '', () => {
-      deckOpen = !deckOpen;
-      renderTree();
-      $('deck-open')?.focus();
-    });
-    db.id = 'deck-open';
-    db.dataset.k = 'deck-open';
-    db.setAttribute('aria-expanded', String(deckOpen));
-    db.setAttribute('aria-controls', 'tree-deck');
-    row.append(db, schedBtn(r));
+    row.append(schedBtn(r));
     n.appendChild(row);
-    if (deckOpen) {
-      const dk = deckEl(r, 'Deck');
-      dk.id = 'tree-deck';
-      n.appendChild(dk);
-    }
   }
   return n;
 }
@@ -1105,25 +1068,16 @@ function familyEl(k, r) {
   // the game's legacy box: "Legacy 1" blue, "Legacy 2" pink, the parent with her own two parents
   fam.appendChild(el('span', 'pflab', `Legacy ${k + 1}`));
   const at = parentAt(k, r);
-  const n = pnode(
-    'parent',
-    at?.v.lender
-      ? 'Borrow · uma.moe'
-      : (at?.pick ? "Planner's pick" : at ? 'Your pick' : `Parent ${k + 1}`) + (at?.v.borrowed ? ' · guest' : ''),
-    at?.pick,
-  );
+  const n = el('div', `pn parent${at?.pick ? ' ghost' : ''}`);
   if (at?.v.borrowed) n.classList.add('bor');
   let t;
   if (at) {
-    const v = at.v,
-      i = idxOf(v.id),
-      a = affOf(r, i);
-    if (a !== null) n.querySelector('.pnh').appendChild(affEl(a));
+    const v = at.v;
     t = tile(
       `node:p${k}`,
-      umaAv(v.chara, v.outfit, 72),
+      umaAv(v.chara, v.outfit, 64),
       umaName(v.chara),
-      v.lender ? v.lender.name || 'uma.moe' : `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}`,
+      v.lender ? `borrow · ${v.lender.name || 'uma.moe'}` : v.borrowed ? 'borrow' : 'yours',
     );
     t.setAttribute('aria-label', `Parent ${k + 1}: ${umaName(v.chara)}. Details`);
   } else {
@@ -1132,20 +1086,18 @@ function familyEl(k, r) {
   }
   t.onclick = () => openNode({ kind: 'p', k });
   n.appendChild(t);
-  // a parent from uma.moe: the trainer to follow in the game, to borrow her
+  // a parent from uma.moe: her trainer, to follow in the game before the career starts
   if (at?.v.lender) n.appendChild(copyIdBtn(at.v, 'sm pcopy'));
   wholeBox(n, t);
   fam.appendChild(n);
   // her own parents: the trainee's grandparents
   if (at) {
-    const gk = el('div', 'pk');
+    const gk = el('div', 'pgs');
     at.v.parents.forEach((g, j) => {
-      const gn = pnode('gp', 'Grandparent', false);
-      const a = affOf(r, idxOf(at.v.id), j);
-      if (a !== null) gn.querySelector('.pnh').appendChild(affEl(a));
+      const gn = el('div', 'pn gp');
       const gt = tile(
         `node:p${k}g${j}`,
-        umaAv(g.chara || 0, g.outfit, 48),
+        umaAv(g.chara || 0, g.outfit, 36),
         g.chara ? umaName(g.chara) : 'Unknown: pick her',
         null,
       );
@@ -1159,7 +1111,6 @@ function familyEl(k, r) {
   }
   return fam;
 }
-let deckOpen = false; // the deck under the trainee: closed at first
 // the node popup (game style): one dialog, refilled on every redraw while open
 // nodeOpen, the node on show: {kind: 't'} the trainee, {kind: 'p', k} parent place k, {kind: 'g', k, j} parent k's
 // parent j, {kind: 'v', id} a veteran of the pool
@@ -1428,17 +1379,42 @@ function fillGrandparentNode({ k, j }, r, body) {
   body.append(w, iv);
   return true;
 }
+// The next career as the player sets it up in the game, in the game's order: the odds, then whom to follow (a borrow
+// from uma.moe), the trainee, her two legacies, the deck, and each target's chance to land
 function renderTree() {
   const r = shown(),
     box = $('tree');
   box.textContent = '';
-  const t = el('div', 'pt');
+  $('lodds').replaceChildren(...(r ? verdictEl(r).childNodes : []));
+  const t = sectionEl('ltrainee', 'Trainee');
   t.appendChild(traineeEl(r));
   box.appendChild(t);
-  const k = el('div', 'pk');
+  const lg = sectionEl('llegacies', 'Legacies'),
+    k = el('div', 'pk');
   k.append(familyEl(0, r), familyEl(1, r));
-  box.appendChild(k);
+  lg.appendChild(k);
+  box.appendChild(lg);
+  if (r && r.trainee.id === (plan.trainee || r.trainee.id)) {
+    const d = sectionEl('ldeck', 'Deck'),
+      dk = deckEl(r);
+    dk.id = 'tree-deck';
+    d.appendChild(dk);
+    box.append(d, targetsEl(r));
+  }
   if (nodeDlg?.open) fillNode();
+}
+// the career's odds of landing every target (a click opens every count) and Try a run, beside the title
+function verdictEl(r) {
+  const v = el('div', 'lodds');
+  // Try a run: a roll of the veteran this career leaves and her comparison, in a popup
+  const tr = btn('Try a run', '', () => {
+    renderSimulation();
+    $dialog('sim-dlg').showModal();
+  });
+  tr.id = 'sim-try';
+  tr.setAttribute('aria-haspopup', 'dialog');
+  v.append(oddsBtn(r), tr);
+  return v;
 }
 
 // ---------- the parent picker ----------
@@ -1552,7 +1528,7 @@ const sectionEl = (cls, title) => {
   s.appendChild(el('h3', '', title));
   return s;
 };
-// the career's odds in the veteran card's header: all n; a click opens the odds popup (exactly each count)
+// the career's odds: all n; a click opens the odds popup (exactly each count)
 function oddsBtn(r) {
   const n = state.targets.length,
     b = el('button', 'udodds');
@@ -1607,11 +1583,11 @@ function openOdds(r) {
   });
 }
 // the deck as the loop planner shows it: card art and name; a click opens the card's panel (owned or not, GameTora)
-function deckEl(r, title = 'Deck') {
+function deckEl(r, title = '') {
   const d = r.deck;
   const dk = el('div', 'deck');
-  dk.innerHTML = '<div class="dtitle"><b></b></div><div class="dcards"></div>';
-  dk.querySelector('.dtitle b').textContent = title;
+  dk.innerHTML = `${title ? '<div class="dtitle"><b></b></div>' : ''}<div class="dcards"></div>`;
+  if (title) dk.querySelector('.dtitle b').textContent = title;
   const box = dk.querySelector('.dcards');
   borLast(d.cards).forEach((i) => {
     const { base, borrowed: bor, card: c } = deckCardAt(d, i);
@@ -1641,26 +1617,40 @@ function deckEl(r, title = 'Deck') {
   });
   return dk;
 }
+// each target as the game's skill tile (gold when she lands it through its gold skill), her chance to land its spark,
+// and where it comes from: the parents (inheritance) and the deck (a gold or a white hint), or the scenario, her outfit,
+// her own events
+function sourcesText(t) {
+  const b = t.buy || {},
+    out = [`Parents ${pct(t.q)}`];
+  if (b.scenario) out.push('scenario gold');
+  if (b.outfit === 2) out.push('outfit gold');
+  else if (b.outfit === 1) out.push('outfit');
+  if ((b.deck_gold || 0) > 0.005) out.push(`deck gold ${pct(b.deck_gold)}`);
+  if ((b.deck_white || 0) > 0.005) out.push(`deck ${pct(b.deck_white)}`);
+  if ((b.own_event || 0) > 0.005) out.push(`her events ${pct(b.own_event)}`);
+  if (out.length === 1) out.push('no hint');
+  return out.join(' · ');
+}
 function targetsEl(r) {
-  const s = sectionEl('rtgt', 'Target skills');
-  const tb = el('table', 'cartab');
-  tb.innerHTML =
-    '<thead><tr><th scope="col">Skill</th><th scope="col" title="Chance the six legacies pass the skill on (two inheritance events)">Inherited</th><th scope="col" title="Legacies (of six) with a spark of it">Sparks in lineage</th><th scope="col" title="Chance the new veteran gets its spark">Lands as a spark</th></tr></thead><tbody></tbody>';
+  const s = sectionEl('rtgt', 'Targets'),
+    list = el('ul', 'ctgs');
   for (const t of r.targets) {
-    // the skill as the game's tile (the card's Skills tab), gold for a gold target
-    const row = el('tr'),
-      c0 = el('th');
-    c0.scope = 'row';
-    const tile = el('div', `udsk${t.gold ? ' gold' : ''}`),
-      ic = skillIcon(t.group, t.gold);
+    const b = t.buy || {},
+      gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
+      li = el('li', 'ctg'),
+      tile = el('div', `udsk${gold ? ' gold' : ''}`),
+      ic = skillIcon(t.group, gold),
+      land = el('span', 'tgland'),
+      src = sourcesText(t);
     if (ic) tile.appendChild(ic);
     tile.appendChild(el('span', 'udskn', tName(t.group)));
-    c0.appendChild(tile);
-    row.appendChild(c0);
-    for (const v of [t.gold ? 'scenario' : pct(t.q), `${t.carriers} of 6`, pct(t.p)]) row.appendChild(el('td', '', v));
-    tb.tBodies[0].appendChild(row);
+    land.append(el('b', '', pct(t.p)), el('span', '', 'lands'));
+    li.append(tile, land, el('span', 'tgsrc', src));
+    li.setAttribute('aria-label', `${tName(t.group)}: lands ${pct(t.p)}; ${src}`);
+    list.appendChild(li);
   }
-  s.appendChild(tb);
+  s.appendChild(list);
   return s;
 }
 // her race schedule: the loop planner's schedule window, from a button beside the deck
@@ -2136,6 +2126,7 @@ async function runComparison(refine = false) {
 }
 function addDraft() {
   if (searching || !simulation.draft) return;
+  $dialog('sim-dlg').close(); // she joins your veterans: back to the next career
   const d = structuredClone(simulation.draft);
   delete d.apt;
   delete d.bought;
@@ -2205,7 +2196,7 @@ function analysisCard(d, r) {
   add.disabled = searching;
   actions.append(go, roll, add);
   const mid = el('div', 'udmid');
-  mid.append(oddsBtn(r), actions);
+  mid.append(actions); // (the career's odds lead the main view)
   card.querySelector('.udtop')?.insertBefore(mid, card.querySelector('.udname'));
   return card;
 }
@@ -2868,9 +2859,6 @@ function renderResults() {
     renderSimulation();
     return;
   }
-  const top = el('div');
-  top.id = 'sim-top';
-  box.append(top, targetsEl(r));
   // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
   const open = !plan.trainee || plan.parents.some((p) => !p);
   if ((open && (planState.state === 'done' ? planState.r.options : last.r.results).length > 1) || refFor())
@@ -3223,8 +3211,18 @@ loadData().then(
     initSettings();
     initPopover();
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
-    initUmamoe();
+    initUmamoe({
+      borrowed: () => {
+        const r = shown();
+        return [0, 1].map((k) => parentAt(k, r)?.v).find((v) => v?.lender) || null;
+      },
+      copyBtn: (v) => copyIdBtn(v, 'sm'),
+    });
     syncListings();
+    // Try a run's popup: Close and a backdrop click shut it
+    const simDlg = $dialog('sim-dlg');
+    for (const x of simDlg.querySelectorAll('.dclose')) /** @type {HTMLElement} */ (x).onclick = () => simDlg.close();
+    backdropCloses(simDlg);
     dropStaleChosen();
     // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
     // places, so the answer on screen goes; an edit to a veteran keeps it on screen, dimmed, until the new one is ready.

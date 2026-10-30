@@ -3,7 +3,7 @@
 import { check, artless, dialog, AUDIT, still, careerPage } from './helpers.mjs';
 
 export default async function careergen(b) {
-  const { ctx, pg, note, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, importDump, saved } =
+  const { ctx, pg, note, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, simOpen, importDump, saved } =
     await careerPage(b);
   await importDump();
   await saved(); // (its run is cut short by the reload)
@@ -120,6 +120,7 @@ export default async function careergen(b) {
       simulated,
     ),
   );
+  await simOpen();
   await pg.click('#sim-add');
   await done();
   check(

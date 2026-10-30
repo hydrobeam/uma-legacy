@@ -61,6 +61,8 @@ export default async function career(b) {
     inNode,
     closeNode,
     simStars,
+    simOpen,
+    simShut,
     importDump,
   } = await careerPage(b);
   if (b.browserType().name() === 'chromium') {
@@ -358,11 +360,8 @@ export default async function career(b) {
     "career: the tree shows the planner's trainee and parents",
     (await pg.locator('#tree .pn.ghost').count()) === 3 && (await pg.locator('#tree .pn.gp').count()) === 4,
   );
-  const deckShut =
-    !(await pg.locator('#tree-deck').count()) && (await pg.getAttribute('#deck-open', 'aria-expanded')) === 'false';
-  await pg.click('#deck-open');
-  // the odds in her card's header; a click opens every count (exactly k, k or better), all 8 and 7 or better as the solver's
-  const oddsTxt = await pg.textContent('#odds-open');
+  // the odds lead the next career; a click opens every count (exactly k, k or better), all 8 and 7 or better as the solver's
+  const oddsTxt = await pg.textContent('.rbtitle .lodds #odds-open');
   await pg.click('#odds-open');
   await dialog(pg, 'odds-dlg');
   const oddRows = await pg.$$eval('#odds-dlg .oddtab tbody tr', (l) =>
@@ -370,7 +369,7 @@ export default async function career(b) {
   );
   await pg.keyboard.press('Escape');
   check(
-    "career: the odds sit in the veteran card's header; a click lists the chance of landing exactly each count, in percent",
+    'career: the odds lead the next career; a click lists the chance of landing exactly each count, in percent',
     /^1 in [\d,.]+ to land all 8/.test(oddsTxt) &&
       oddRows.length === 9 &&
       oddRows[0][0] === '8/8' &&
@@ -380,30 +379,29 @@ export default async function career(b) {
       (await pg.evaluate(() => document.activeElement?.id === 'odds-open')),
     JSON.stringify(oddRows.slice(0, 3)),
   );
-  check(
-    'career: the odds and eight target rows beside and under the tree; the six-card deck under the trainee, behind its button',
-    /to land all 8/.test(oddsTxt) &&
-      deckShut &&
-      (await pg.locator('#tree .pn.trainee #tree-deck .dc').count()) === 6 &&
-      (await pg.locator('.rtgt .cartab tbody tr').count()) === 8,
+  // the targets: the game's skill tile, the chance to land, and where it comes from (the parents, the deck)
+  const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
+    l.map((x) => [
+      x.querySelector('.tgland b')?.textContent,
+      x.querySelector('.tgsrc')?.textContent,
+      !!x.querySelector('.udsk'),
+    ]),
   );
   check(
-    'career: the six legacies carry their affinity as a heart and a number (no legacy numbers), grandparents labelled plainly',
+    'career: the six-card deck in its own place, shown outright; each target as its skill tile with its chance to land and where it comes from',
+    (await pg.locator('#tree .ldeck #tree-deck .dc').count()) === 6 &&
+      tgRows.length === 8 &&
+      tgRows.every(([land, src, tile]) => /^[<\d.]+%$/.test(land) && /^Parents [<\d.]+% · /.test(src) && tile),
+    JSON.stringify(tgRows.slice(0, 3)),
+  );
+  check(
+    'career: the legacies carry no affinity numbers or labels; the trainee shows her total',
     !(await pg.locator('#tree .gate').count()) &&
-      (await pg.locator('#tree .pn:not(.trainee) .aff').count()) === 6 &&
-      (await pg.locator('#tree .pn:not(.trainee) .aff .heart').count()) === 6 &&
-      (await pg.$$eval('#tree .pn .aff', (l) =>
-        l.every((x) => /^Affinity \d+$/.test(x.getAttribute('aria-label')) && /^\d+$/.test(x.textContent)),
-      )) &&
-      (await pg.$$eval('#tree .pn.gp .pnl', (l) => l.every((x) => x.textContent === 'Grandparent'))),
+      (await pg.locator('#tree .pn:not(.trainee) .aff').count()) === 0 &&
+      (await pg.locator('#tree .pn.trainee .aff').count()) === 1 &&
+      !(await pg.locator('#tree .pn.trainee .tsum').count()),
   );
-  const affs = await pg.$$eval('#tree .pn .aff', (l) => l.map((x) => +x.textContent.replace(/\D/g, '')));
-  check(
-    'career: the trainee shows the affinity her six legacies hold (their sum), without a parents/grandparents line',
-    !(await pg.locator('#tree .pn.trainee .tsum').count()) &&
-      Math.abs(affs.slice(1).reduce((a, x) => a + x, 0) - affs[0]) <= 6,
-    affs.join(','),
-  );
+  const affs = [+(await pg.textContent('#tree .pn.trainee .aff')).replace(/\D/g, '')];
   await node('node:t');
   const affRows = await pg.$$eval('#node-dlg .afftab tbody tr', (l) => l.length),
     affTot = +(await pg.textContent('#node-dlg .afftab tfoot .aff')).replace(/\D/g, '');
@@ -606,22 +604,23 @@ export default async function career(b) {
     memTxt || 'no trio',
   );
   check(
-    'career: beside the tree, the veteran analysis with the odds in its header, then the target skills (no goal-step note, no prose; the deck is under the trainee)',
+    "career: the odds and Try a run beside Next career; the next career in the game's order (trainee, legacies, deck, targets), the other careers under it, her card in Try a run's popup",
     await pg.evaluate(() => {
+      const t = document.getElementById('tree'),
+        order = [...t.children].map((k) =>
+          k.className.split(' ').find((c) => /^(ltrainee|llegacies|ldeck|rtgt)$/.test(c)),
+        );
       const r = document.getElementById('results'),
-        kids = [...r.children],
-        at = (sel) => kids.findIndex((k) => k.matches(sel)),
-        sim = at('#sim-top');
+        dlg = document.getElementById('sim-dlg');
       return (
-        document.getElementById('tree').nextElementSibling === r &&
-        at('#goal-note') === -1 &&
-        at('.deck') === -1 &&
-        at('.lhead') === -1 &&
-        sim === 0 &&
-        !!kids[sim].querySelector('.ud .udtop #odds-open') &&
-        at('.rtgt') === sim + 1 &&
-        kids[sim].querySelector('#simulation > h3')?.textContent === 'Veteran analysis' &&
-        !!kids[sim].querySelector('#simulation #sim-compare')
+        order.join() === 'ltrainee,llegacies,ldeck,rtgt' &&
+        !!document.querySelector('.rbtitle .lodds #odds-open') &&
+        !!document.querySelector('.rbtitle .lodds #sim-try') &&
+        t.nextElementSibling === r &&
+        !r.querySelector('#sim-top, #goal-note, .lhead') &&
+        !!dlg.querySelector('#sim-top #simulation #sim-compare') &&
+        dlg.querySelector('#simulation > h3')?.textContent === 'Veteran analysis' &&
+        !dlg.open
       );
     }),
   );
@@ -658,6 +657,7 @@ export default async function career(b) {
         document.documentElement.scrollWidth <= document.documentElement.clientWidth
       );
     });
+  await simOpen(); // her card: Try a run's popup (open through her checks)
   const wide = await simLayout();
   await pg.setViewportSize({ width: 375, height: 812 });
   await pg.waitForTimeout(200);
@@ -789,8 +789,9 @@ export default async function career(b) {
   if (chromium) {
     // one engine is enough for colours
     for (const theme of ['light', 'dark']) {
+      // (clicked from script: the popup, open, keeps the page behind it inert)
       if ((await pg.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== theme)
-        await pg.click('#theme-btn');
+        await pg.evaluate(() => document.getElementById('theme-btn').click());
       await still(pg); // the theme's colour transitions
       const fails = await pg.evaluate(AUDIT);
       check(
@@ -799,7 +800,7 @@ export default async function career(b) {
         fails.slice(0, 5).join(' | '),
       );
     }
-    await pg.click('#theme-btn');
+    await pg.evaluate(() => document.getElementById('theme-btn').click());
   }
   // a roll: a random result of this career, compared at once (stubbed random numbers: nothing lands, then everything at 3 stars)
   const roll = async (u) => {
@@ -1085,6 +1086,7 @@ export default async function career(b) {
         ).length,
     );
   const cachedRuns = await baselineRuns();
+  await simShut();
   await node('node:t');
   await inNode(/^(Choose|Change) trainee$/).click();
   await dialog(pg, 'pick-dlg');
@@ -1094,7 +1096,7 @@ export default async function career(b) {
   await pg.fill('#pick-filter', 'Agnes Digital');
   await pg.locator('#pick-list .upick:visible').first().click();
   await done();
-  await pg.waitForSelector('#sim-compare:not([disabled])', { timeout: 180000 });
+  await pg.waitForSelector('#sim-compare:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup)
   const fixedRun = await oneAnswer('Agnes Digital/');
   check(
     'career: with the trainee chosen the run is the search alone (no planning phase), its best career the one answer',
@@ -1135,6 +1137,7 @@ export default async function career(b) {
   };
   const pj0 = await policyJobs(),
     w0 = await winsN();
+  await simOpen();
   await pg.click('#udtab-info');
   const rec = await pg.$$eval('#udpane-info .udrace', (l) => l.map((r) => r.classList.contains('won')));
   const recLine = await pg.textContent('#udpane-info .udrec'),
