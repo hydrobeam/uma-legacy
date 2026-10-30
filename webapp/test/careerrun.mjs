@@ -64,38 +64,24 @@ export default async function careerrun(b) {
       edited: window.__edited,
       negative: negative?.textContent || '',
       above: !!negative && !!wrap && kids.indexOf(negative) < kids.indexOf(wrap),
-      tags: [...(alts?.querySelectorAll('.otag.tie') || [])].map((t) => [t.textContent, t.title]),
-      note: alts?.querySelector('.tienote')?.textContent || '',
+      extras: [...(alts?.querySelectorAll('tbody .onum') || [])].map((x) => x.textContent),
+      tieTags: alts?.querySelectorAll('.otag.tie, .tienote').length ?? -1,
     };
   });
   check(
-    "career: where no career you can run saves more than its own run (the top Saves per run below 0), a line above the table says so with the pick's net",
-    !!edited.edited &&
-      edited.above &&
-      /^No career you can run now saves more than the run itself on today's estimate: the pick is the one that costs least \(−0\.4 per run\)\.$/.test(
-        edited.negative,
-      ),
+    'career: where no career you can run saves more than its own run (the top score below 0), one short line above the table says so',
+    !!edited.edited && edited.above && edited.negative === 'No career saves its own run today: the pick costs least.',
     JSON.stringify(edited),
   );
   // (the rows within 0.25 of the pick that the table lists are tagged, at most all of them: the edited one among them,
   // on the pick's parents)
   const near = (edited.edited?.options || []).filter((s) => s != null && edited.edited.pick - s <= 0.25).length - 1;
   check(
-    "career: a row within 0.25 careers per run of the pick is shown about equal to it, saying where it is on the pick's parents, and the note under the table names it",
-    edited.tags.length >= 1 &&
-      edited.tags.length <= near &&
-      edited.tags.some(
-        ([text, title]) =>
-          text === 'about equal, same parents' &&
-          title ===
-            "About equal to the pick (within 0.25 careers per run, the planner's tolerance), on the pick's parents",
-      ) &&
-      /^About equal to the pick \(within 0\.25 careers per run, the planner's tolerance\): (.* \(−0\.5\)(, .+)?|\d+ careers, \d+ of them in the table \(tagged\))\..* on the pick's parents \(#\d+ \+ #\d+\)\./.test(
-        edited.note,
-      ) &&
-      / has the top score; running one of these instead costs at most 0\.25 careers by the planner's estimate\.$/.test(
-        edited.note,
-      ),
+    'career: a row within 0.25 careers of the pick shows ≈0 extra careers (no tag, no note); the pick shows –',
+    edited.extras[0] === '–' &&
+      edited.extras.filter((x) => x === '≈0').length >= 1 &&
+      edited.extras.filter((x) => x === '≈0').length <= near &&
+      edited.tieTags === 0,
     JSON.stringify({ near, edited }),
   );
   const after = await pg.evaluate(() => ({

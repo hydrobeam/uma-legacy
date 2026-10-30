@@ -545,9 +545,11 @@ export default async function career(b) {
     ls.map((l) => [...l.children].map((c) => c.textContent)),
   );
   check(
-    'career: Options lists each option with "1 in X" for this career and its net saving per run, the plan to a fully looped parent above, the pick marked and shown above',
+    'career: Other careers lists each with "1 in X" and its extra careers against the pick (≈0 within 0.25; – for the pick), the pick marked and shown above',
     opts.length >= 2 &&
-      opts.every((c) => /^1 in [\d,.]+$/.test(c[1]) && /^[+−]\d+\.\d$/.test(c[2])) &&
+      opts.every((c) => /^1 in [\d,.]+$/.test(c[1]) && /^(–|≈0|[+−]\d+\.\d)$/.test(c[2])) &&
+      opts.filter((c) => c[2] === '–').length >= 1 &&
+      (await pg.textContent('.alts > h3')).startsWith('Other careers') &&
       (await pg.locator('#save-why').count()) === 1 &&
       (await pg.locator('.alts tr.on', { hasText: 'shown above' }).count()) === 1 &&
       (await pg.locator('.alts .otag.pick').count()) === 1 &&
@@ -582,25 +584,25 @@ export default async function career(b) {
     pickScore = tableRes.next.options.find((o) => o.chosen)?.score,
     tiedCount = scored.filter((o) => !o.chosen && Math.abs(pickScore - o.score) <= 0.25).length,
     topScore = Math.max(...scored.map((o) => o.score));
-  // (each listed row's Saves per run as shown, one decimal: a tagged row within 0.25 of the pick's, an untagged one
-  // not, both up to the rounding)
+  // (each listed row's extra careers as shown: ≈0 for a row within 0.25 of the pick, else at least 0.25 up to the rounding)
   const tables = await pg.evaluate(() => {
-    const num = (tr) => Number(tr.querySelector('.onum').textContent.replace('−', '-'));
-    const rows = [...document.querySelectorAll('.alts .optab tbody tr')].filter((tr) => tr.querySelector('.onum'));
-    const pick = rows.find((tr) => tr.querySelector('.otag.pick'));
+    const rows = [...document.querySelectorAll('.alts .optab tbody tr')].filter(
+      (tr) => !tr.querySelector('.otag.pick'),
+    );
     return {
-      gaps: rows
-        .filter((tr) => tr !== pick)
-        .map((tr) => [!!tr.querySelector('.otag.tie'), pick ? Math.abs(num(pick) - num(tr)) : null]),
-      note: document.querySelectorAll('.alts .tienote').length,
+      extras: rows.map((tr) => tr.querySelector('.onum').textContent),
+      ties: document.querySelectorAll('.alts .tienote, .alts .otag.tie').length,
       negative: document.querySelectorAll('.alts > .negtop').length,
     };
   });
+  const near = tables.extras.filter((x) => x === '≈0').length;
   check(
-    'career: rows within 0.25 careers per run of the pick are tagged about equal (the pick stays the top score), the note under the table where any is, and a line above the table only where the top score is below 0',
+    'career: rows within 0.25 careers of the pick show ≈0 (the pick stays the top score; no tag or note), the others their extra careers, and a line above the table only where the top score is below 0',
     pickScore === topScore &&
-      tables.gaps.every(([tagged, gap]) => gap != null && (tagged ? gap <= 0.25 + 0.1 : gap >= 0.25 - 0.1)) &&
-      tables.note === (tiedCount ? 1 : 0) &&
+      near <= tiedCount &&
+      (tiedCount === 0 || near >= 1) &&
+      tables.extras.every((x) => x === '≈0' || x === '–' || Math.abs(Number(x.replace('−', '-'))) >= 0.2) &&
+      tables.ties === 0 &&
       tables.negative === (topScore < 0 ? 1 : 0),
     JSON.stringify({ tiedCount, topScore, pickScore, tables }),
   );

@@ -131,17 +131,17 @@ export default async function careerpool(b) {
         trioLoop,
       ) &&
       /1 in [\d,]+/.test(trioLoop) &&
-      /Saves per run: how much running this career next lowers the planner's estimate \(below\) of the careers you still need for a fully looped parent .+, counting the run itself\. .+ It is for comparing careers, not a forecast of careers you will save\./.test(
+      /Extra careers: how many more careers than the pick this one costs on the planner's estimate \(below\) of the careers you still need for a fully looped parent .+\. .+ It is for comparing careers, not a forecast\./.test(
         saveTxt,
       ) &&
       /The planner makes a rough estimate of how many careers you still need \(about [\d,]+ today\)/.test(saveTxt) &&
       trioCells.length >= 2 &&
-      trioCells.every((c) => /^[+−]\d+\.\d$/.test(c)) &&
+      trioCells.every((c) => /^(–|≈0|[+−]\d+\.\d)$/.test(c)) &&
       (await pg.locator('.alts .otag.pick').count()) === 1 &&
       !(await pg.locator('#save-dlg[open]').count()) &&
       // (no caveat under the table: every row is proven, and a named assumption a proof rests on is the run note's to
       // say; the tie note and the negative-top line are statements about the scores, not caveats)
-      !(await pg.locator('.alts p.hint:not(.tienote):not(.negtop), .alts .oloop').count()),
+      !(await pg.locator('.alts p.hint:not(.negtop), .alts .oloop').count()),
     `${trioRes?.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`,
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));

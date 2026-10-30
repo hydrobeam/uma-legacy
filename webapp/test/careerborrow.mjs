@@ -79,7 +79,7 @@ export default async function careerborrow(b) {
   check(
     "career: under None left today, where the estimate's next step needs a borrowed parent (its first side's parents in the output), the line above the table says so",
     new RegExp(
-      `^No career you can run now saves more than the run itself on today's estimate: the pick is the one that costs least \\(−0\\.4 per run\\)\\. The estimate's next step, Stand-in's run on #${borrowedAt + 1} \\+ #${borrowedAt ? 1 : 2}, needs a borrowed parent \\(#${borrowedAt + 1} [^)]+\\), which None left today keeps out of this career\\.$`,
+      `^No career saves its own run today: the pick costs least\\. Its next step needs a borrowed parent \\(#${borrowedAt + 1} [^)]+\\), kept out by None left today\\.$`,
     ).test(laterLine),
     laterLine,
   );

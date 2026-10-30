@@ -1082,6 +1082,20 @@ function familyEl(k, r) {
   n.appendChild(t);
   // a parent from uma.moe: her trainer, to follow in the game before the career starts
   if (at?.v.lender) n.appendChild(copyIdBtn(at.v, 'sm pcopy'));
+  // a borrow that falls through (the trainer can't be followed, today's borrows are used up): plan this career on two of
+  // your own (Borrowed parent: None left today)
+  if (at?.v.borrowed && borrowChoice() === 'allow') {
+    const cb = btn("Can't borrow", 'sm pnob', () => {
+      if (plan.parents[k] === at.v.id) plan.parents[k] = null;
+      state.borrowPar = 'later';
+      paintBorrow();
+      save();
+      changed();
+    });
+    cb.id = `no-borrow-${k}`;
+    cb.title = `Out of borrows today: this career on two of your veterans (Borrowed parent: ${BORROW_CHOICES.later})`;
+    n.appendChild(cb);
+  }
   wholeBox(n, t);
   fam.appendChild(n);
   // her own parents: the trainee's grandparents
@@ -2434,40 +2448,6 @@ function useBtn(r, places = plan) {
   return b;
 }
 const OPT_SHOW = 8;
-const pairText = (o) => o.parents.map((i) => `#${i + 1}`).join(' + ');
-const sameParents = (a, b) => a.parents.length === b.parents.length && a.parents.every((i) => b.parents.includes(i));
-// the plan's pick and the rows about equal to it (`keyOf`): their Saves per run within TIE_CAREERS of the pick's. Only
-// the plan's own rows and scores (a pair-search row not among them is weighed by its own note)
-/** @type {(planReport: PlanReport|null) => {pick: PlanOption|null, tied: Set<string>}} */
-function tiedRows(planReport) {
-  const pick = planReport?.options.find((o) => o.chosen) || null,
-    pickScore = pick ? scoreOf(pick) : null;
-  if (pickScore == null) return { pick, tied: new Set() };
-  const near = planReport.options.filter(
-    (o) => o !== pick && scoreOf(o) != null && Math.abs(pickScore - scoreOf(o)) <= TIE_CAREERS,
-  );
-  return { pick, tied: new Set(near.map(keyOf)) };
-}
-// the note under the table on the rows about equal to the pick: up to TIE_NAMED of them by name with their Saves per
-// run, else how many and how many the table lists (tagged); and those on the pick's parents
-const TIE_NAMED = 4;
-function tieText(planReport, pick, tied, nameOf, listed) {
-  const rows = planReport.options.filter((o) => tied.has(keyOf(o))),
-    same = rows.filter((o) => sameParents(o, pick)),
-    named = rows.length <= TIE_NAMED,
-    onPick = `on the pick's parents (${pairText(pick)})`;
-  const who = named
-    ? rows.map((o) => `${nameOf(o)} on ${pairText(o)} (${netText(scoreOf(o))})`).join(', ')
-    : `${rows.length} careers, ${rows.filter((o) => listed.has(keyOf(o))).length} of them in the table (tagged)`;
-  const shared = !same.length
-    ? ''
-    : same.length === rows.length
-      ? ` ${rows.length === 1 ? 'It is' : 'All are'} ${onPick}.`
-      : named
-        ? ` ${same.map(nameOf).join(', ')} ${same.length === 1 ? 'is' : 'are'} ${onPick}.`
-        : ` ${same.length} of them are ${onPick}.`;
-  return `About equal to the pick (within ${TIE_CAREERS} careers per run, the planner's tolerance): ${who}.${shared} The pick, ${nameOf(pick)} on ${pairText(pick)} (${netText(scoreOf(pick))}), has the top score; running one of these instead costs at most ${TIE_CAREERS} careers by the planner's estimate.`;
-}
 // where no row the plan lists (every one a career you can run now) saves more than its own run (top Saves per run
 // below 0): the line above the table, with the pick's net; under None left today, where the estimate's first step
 // (`routeFirstStep`) takes a borrowed parent, it says so. Null otherwise
@@ -2475,16 +2455,16 @@ function negativeTopText(planReport, pick) {
   if (!planReport || !pick) return null;
   const top = Math.max(...planReport.options.map((o) => scoreOf(o) ?? Number.NEGATIVE_INFINITY));
   if (!(Number.isFinite(top) && top < 0)) return null;
-  const text = `No career you can run now saves more than the run itself on today's estimate: the pick is the one that costs least (${netText(scoreOf(pick))} per run).`;
+  const text = 'No career saves its own run today: the pick costs least.';
   const job = planState.state === 'done' ? planState.job : last?.job,
     step = job?.borrowed_parent === 'later' ? routeFirstStep(planReport) : null,
     borrowed = step ? step.parents.filter((i) => vets[i]?.borrowed) : [];
   if (!borrowed.length) return text;
   const who = borrowed.map((i) => `#${i + 1} ${umaName(vets[i].chara)}`).join(' and ');
-  return `${text} The estimate's next step, ${step.what} on ${step.parents.map((i) => `#${i + 1}`).join(' + ')}, needs a borrowed parent (${who}), which ${BORROW_CHOICES.later} keeps out of this career.`;
+  return `${text} Its next step needs a borrowed parent (${who}), kept out by ${BORROW_CHOICES.later}.`;
 }
 function optionsEl() {
-  const box = sectionEl('alts', 'Career choices');
+  const box = sectionEl('alts', 'Other careers');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
   // with the plan: the 8 highest savings (every uma is scored), the best odds, the pick and the career on show; with
   // every place chosen, the last plan's table on the same setup and veterans, with your career in it (from the search
@@ -2494,7 +2474,7 @@ function optionsEl() {
     mineOnly = !!plan.trainee && plan.parents.every(Boolean);
   const planReport = planState.state === 'done' ? planState.r : mineOnly && ref ? ref.result : null,
     places = planState.state !== 'done' && mineOnly && ref ? ref.places : plan;
-  const { pick, tied } = tiedRows(planReport);
+  const pick = planReport?.options.find((o) => o.chosen) || null;
   /** @type {OptionRow[]} the plan's rows, or the search's careers (no plan fields) */
   const list = planReport
     ? planReport.options.filter(
@@ -2525,15 +2505,14 @@ function optionsEl() {
   const tb = el('table', 'cartab optab');
   tb.innerHTML =
     '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
-  // both columns explain themselves on hover or keyboard focus (gmtip.js); the (i) popup says more about Saves per run
+  // both columns explain themselves on hover or keyboard focus (gmtip.js); the (i) popup says more about extra careers
   const n = state.targets.length,
     ths = tb.tHead.rows[0].cells;
-  const t = el('span', 'thtip', 'This career');
+  const t = el('span', 'thtip', 'Odds');
   t.title = `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`;
   t.tabIndex = 0;
-  const sp = el('span', 'thtip', 'Saves per run');
-  sp.title =
-    "How much this career lowers the planner's estimate of the careers you still need, minus the run itself. For comparing careers, not a forecast.";
+  const sp = el('span', 'thtip', 'Extra careers');
+  sp.title = `How many more careers than the pick this one costs, on the planner's estimate (≈0: within ${TIE_CAREERS}, as good).`;
   sp.tabIndex = 0;
   ths[1].appendChild(t);
   ths[2].appendChild(sp);
@@ -2550,8 +2529,7 @@ function optionsEl() {
     q.onclick = () => openSaveWhy(planReport);
     box.querySelector(':scope > h3').append(q);
   }
-  const tieOf = (r) => (pick && tied.has(keyOf(r)) ? { sameParents: sameParents(r, pick) } : null);
-  for (const r of list) tb.tBodies[0].appendChild(optionRow(r, { on, mine, planReport, places, tie: tieOf(r) }));
+  for (const r of list) tb.tBodies[0].appendChild(optionRow(r, { on, mine, planReport, places, pick }));
   const nameOf = (o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
   // no row saves more than its own run on today's estimate: said above the table, with the pick's net
   const negative = negativeTopText(planReport, pick);
@@ -2559,10 +2537,6 @@ function optionsEl() {
   const wrap = el('div', 'optwrap');
   wrap.appendChild(tb);
   box.appendChild(wrap);
-  if (pick && tied.size) {
-    const listed = new Set(list.map(keyOf));
-    box.appendChild(el('p', 'hint optnote tienote', tieText(planReport, pick, tied, nameOf, listed)));
-  }
   // the robustness check found the rule's pick changes with the tested variants (`robust`): every career it selects is in
   // the table; the pick stays the planner's rule's
   if (planReport && unsettled(planReport).size) {
@@ -2717,10 +2691,20 @@ function pairSearchNotes(planReport, nameOf) {
   }
   return lines;
 }
+// a row's extra careers against the pick (the pick's Saves per run minus the row's): "≈0" within the tie tolerance, "–"
+// for the pick itself or where a score is missing
+function extraText(r, pick, planReport) {
+  if (!planReport || !pick || r === pick || keyOf(r) === keyOf(pick)) return '–';
+  const a = scoreOf(pick),
+    b = scoreOf(r);
+  if (a == null || b == null) return '–';
+  const extra = a - b;
+  return Math.abs(extra) < TIE_CAREERS ? '≈0' : netText(extra);
+}
 // One career of the table: who it places, its tags, its odds now, its Saves per run, and Use this. on: the career on
 // show; mine: your career when the plan didn't list it; planReport: the plan's report (null: no Saves per run); places:
-// the places the table's careers fill; tie: about equal to the pick (`tiedRows`), with whether on the pick's parents
-function optionRow(r, { on, mine, planReport, places, tie }) {
+// the places the table's careers fill; pick: the plan's pick (its extra careers are measured against it)
+function optionRow(r, { on, mine, planReport, places, pick }) {
   const n = state.targets.length;
   const cur = on && keyOf(r) === keyOf(on),
     row = el('tr', cur ? 'on' : ''),
@@ -2731,11 +2715,6 @@ function optionRow(r, { on, mine, planReport, places, tie }) {
   if (r === mine) tags.appendChild(el('span', 'otag', 'your choice'));
   if (planReport && r.chosen) tags.appendChild(el('span', 'otag pick', "planner's pick"));
   if (planReport && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
-  if (tie) {
-    const a = el('span', 'otag tie', tie.sameParents ? 'about equal, same parents' : 'about equal');
-    a.title = `About equal to the pick (within ${TIE_CAREERS} careers per run, the planner's tolerance)${tie.sameParents ? ", on the pick's parents" : ''}`;
-    tags.appendChild(a);
-  }
   if (planReport && r.pair_search) {
     const a = el('span', 'otag', 'pair search');
     const saves =
@@ -2757,7 +2736,7 @@ function optionRow(r, { on, mine, planReport, places, tie }) {
   if (tags.childElementCount) c0.appendChild(tags);
   // the number carries the tooltip (its balloon points at the number, not the middle of the cell)
   const sv = el('td', 'orole'),
-    num = el('span', 'onum', planReport ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : '–');
+    num = el('span', 'onum', extraText(r, pick, planReport));
   sv.append(num);
   if (planReport && r.index != null) {
     num.tabIndex = 0;
@@ -2843,7 +2822,7 @@ function openSaveWhy(planReport) {
   body.append(
     para(`<b>This career</b>: her chance of landing all ${n} targets in this one run.`),
     para(
-      `<b>Saves per run</b>: how much running this career next lowers the planner's estimate (below) of the careers you still need for a <i>fully looped parent</i> (an ${n}/${n} whose parents are both ${n}/${n}), <i>counting the run itself</i>. <b>+5</b> means about five careers fewer by that estimate. It is for <i>comparing careers</i>, not a forecast of careers you will save.`,
+      `<b>Extra careers</b>: how many more careers than the pick this one costs on the planner's estimate (below) of the careers you still need for a <i>fully looped parent</i> (an ${n}/${n} whose parents are both ${n}/${n}). <b>+0.5</b> means about half a career more; <b>≈0</b>, within ${TIE_CAREERS}: as good. It is for <i>comparing careers</i>, not a forecast.`,
     ),
     para(
       `The best odds aren't always the best choice: a career can be worth more for <b>the veteran she leaves behind</b>, who becomes a parent for your next runs.`,
@@ -3272,11 +3251,13 @@ loadData().then(
       $dialog('vpick-dlg').close();
       changed();
     };
-    $('v-file').onchange = async (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
-      const f = e.target.files[0];
-      if (f) importText(await f.text());
-      e.target.value = '';
-    };
+    // umadump's files, from Veteran Umamusume or + Veterans beside Next career (the daily first step: the veteran you got)
+    for (const id of ['v-file', 'v-file2'])
+      $(id).onchange = async (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
+        const f = e.target.files[0];
+        if (f) importText(await f.text());
+        e.target.value = '';
+      };
     $('v-paste').onclick = () => {
       $textarea('paste-text').value = '';
       $dialog('paste-dlg').showModal();

@@ -46,7 +46,7 @@ export function listing(rec, k) {
 }
 
 export default async function careerumamoe(b) {
-  const { ctx, pg, done, planned, vetsOpen, vetsShut, node, inNode, importDump } = await careerPage(b);
+  const { ctx, pg, done, planned, vetsOpen, vetsShut, node, inNode } = await careerPage(b);
   const recs = JSON.parse(readFileSync(repoUrl('val/umadump/U_trained_chara_data.json'), 'utf8'));
   const items = [listing(recs[0], 1), listing(recs[1], 2)];
   const requests = [];
@@ -67,8 +67,14 @@ export default async function careerumamoe(b) {
       body: JSON.stringify({ items, total: '2', page: 0, limit: 100, total_pages: 1 }),
     });
   });
-  await importDump();
+  // + Veterans beside Next career: umadump's file, the daily first step
+  await pg.locator('#v-file2').setInputFiles(repoUrl('val/umadump/U_trained_chara_data.json').pathname);
+  await pg.waitForFunction(() => document.getElementById('v-msg').textContent);
   await done();
+  check(
+    "+ Veterans beside Next career imports umadump's file",
+    (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === 12,
+  );
   const lastJob = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').at(-1));
   const label = () => pg.textContent('#um-open');
   check(
@@ -204,6 +210,23 @@ export default async function careerumamoe(b) {
       (await lastJob()).legacies.length === 14 &&
       (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === 13,
   );
+  // Can't borrow on the borrowed parent: Borrowed parent goes to None left today, her place back to the planner, and the
+  // next career borrows none
+  await pg.click('#tree .pnob');
+  await done();
+  const nb = await pg.evaluate(() => ({
+    job: window.__careerJobs.filter((j) => j.cmd === 'career').at(-1),
+    plan: JSON.parse(localStorage.getItem('llp:career')).global.plan,
+  }));
+  check(
+    "career uma.moe: Can't borrow sets None left today and hands her place back to the planner",
+    nb.job.borrowed_parent === 'later' &&
+      nb.plan.parents.every((p) => !p) &&
+      (await pg.locator('#bp button[data-v="later"]').getAttribute('aria-pressed')) === 'true',
+    JSON.stringify({ bp: nb.job.borrowed_parent, plan: nb.plan }),
+  );
+  await pg.click('#bp button[data-v="allow"]');
+  await done();
   await pg.click('#um-open');
   await pg.click('#um-again');
   await pg.waitForFunction(() => /^2 parents/.test(document.getElementById('um-msg').textContent));

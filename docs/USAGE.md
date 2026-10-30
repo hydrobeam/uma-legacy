@@ -81,16 +81,17 @@ changes the job starts one run (one that leaves it as it is, such as renaming a 
 the previous answer stays dimmed until the new one arrives, and the status line says what the plan is at (*scoring 12
 of 83 umas*).
 
-**Career choices** lists what the planner weighed, under its estimate of the careers you still need: per career its
-odds and *Saves per run*, how much it lowers that estimate of the careers to a fully looped parent, averaged over every
-result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. The pick is the career with the most Saves per run;
-better odds don't break a near-tie, since the Saves per run already count the runs where she lands every target. A
-career within 0.25 Saves per run of the pick (the planner's per-decision tolerance) is tagged *about equal*, and a line
-under the table names those careers (past four, counts them) and says which are on the pick's parents; the tag decides
-nothing. Where no career you can run
-saves more than its own run (every Saves per run below 0), a line above the table says so, and under *None left today*
-whether the estimate's next step needs a borrowed parent. Each Saves per run's tooltip says what her run does: one of
-the estimate's two parents or its last run, else the side her veteran's routes lift most often and the chance per run.
+**Other careers** lists what the planner weighed, under its estimate of the careers you still need: per career its
+odds and *Extra careers*, how many more careers than the pick it costs on that estimate (each career's saving, averaged
+over every result she could roll, minus the run itself, against the pick's): a yardstick for comparing careers, not a
+forecast. The pick is the career with the most saving; better odds don't break a near-tie, since the saving already
+counts the runs where she lands every target. A career within 0.25 careers of the pick (the planner's per-decision
+tolerance) shows *≈0*: as good, so your own preference decides. Where no career you can run saves more than its own run,
+a line above the table says so, and under *None left today* whether the estimate's next step needs a borrowed parent.
+Each number's tooltip says what her run does: one of the estimate's two parents or its last run, else the side her
+veteran's routes lift most often and the chance per run. **Can't borrow**, on a borrowed parent, sets *Borrowed parent*
+to *None left today* and hands her place back to the planner. **+ Veterans** beside *Next career* imports umadump's
+file, as *Import umadump file* does.
 Once
 the pick is shown, a check scores the shown careers again under the model
 without its kept step caps, six tested variants of it (its building curve at the corners of its fitted range, every

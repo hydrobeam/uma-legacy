@@ -2021,7 +2021,8 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .linkbtn { all: unset; cursor: pointer; justify-self: end; font-size: 0.8rem; color: var(--gm-ink2); text-decoration: underline; }
 .linkbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .pcopy { justify-self: start; }
-#um-open { margin-left: auto; }
+#v-quick { margin-left: auto; }
+.pnob { justify-self: start; }
 
 /* the races she runs: a column per year (one list on phones), each with its turn and her chance to win; goals marked */
 .lraces { position: relative; }
