@@ -381,20 +381,13 @@ function starsEl(stars) {
  * @property {string} key  names the controls (data-k), so the page can put the keyboard focus back on the same one after
  *   a redraw
  * @property {boolean} [readOnly]  shown, not editable: no x, no click
- * @property {boolean} [target]  one of the targets, labelled as one (in a list that shows other skills too)
+ * @property {boolean} [other]  not one of the targets, greyed (in a list that shows other skills too)
  */
 /** @param {ChipSpec} spec */
-function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = false, target = false }) {
+function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = false, other = false }) {
   const c = document.createElement('span');
-  c.className = `vsk${pink ? ' pink' : ''}`;
-  // a target among other skills: the game's green list label over it
-  if (target) {
-    const m = document.createElement('i');
-    m.className = 'vtgt';
-    m.textContent = 'Target';
-    m.setAttribute('aria-hidden', 'true');
-    c.appendChild(m);
-  }
+  // a skill that isn't a target, among the targets: the game's grey (unobtained) look
+  c.className = `vsk${pink ? ' pink' : ''}${other ? ' off' : ''}`;
   const b = document.createElement(readOnly ? 'span' : 'button');
   if (!readOnly) /** @type {HTMLButtonElement} */ (b).type = 'button';
   b.className = 'vskb';
@@ -405,7 +398,10 @@ function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = fal
   b.appendChild(t);
   b.appendChild(starsEl(stars));
   if (readOnly) {
-    b.setAttribute('aria-label', `${label}${pink ? ' (aptitude)' : ''}, ${stars} stars${target ? ', a target' : ''}`);
+    b.setAttribute(
+      'aria-label',
+      `${label}${pink ? ' (aptitude)' : ''}, ${stars} stars${other ? ', not a target' : ''}`,
+    );
     c.appendChild(b);
     return c;
   }
@@ -438,7 +434,7 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
     const b = colourBar(nd, kind, key, onEdit, readOnly);
     if (b) sp.appendChild(b);
   }
-  // her target sparks (all she shows when editable); read-only, all her white sparks, the targets first and labelled
+  // her target sparks (all she shows when editable); read-only, all her white sparks, the targets first, the rest grey
   const targets = new Set(targetGroups()),
     groups = readOnly
       ? Object.keys(nd.sparks)
@@ -456,7 +452,7 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
         pink: false,
         key: `${key}:s${g}`,
         readOnly,
-        target: readOnly && targets.has(g),
+        other: readOnly && !targets.has(g),
         onCycle: () => {
           nd.sparks[g] = (stars % 3) + 1;
           onEdit();

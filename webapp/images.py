@@ -216,8 +216,6 @@ UI_SPRITES = {
         "tag_" + k: ("atlas/singlecommon", f"utx_frm_factor_s_0{i + 2}")
         for i, k in enumerate(["blue", "pink", "green"])
     },
-    # the game's green list label (a 9-slice tab): "Target" on a target skill's spark
-    "label_target": ("atlas/common", "utx_frm_listlabel_target_00_sl"),
     # the legacy list's spark tags, lettering included, by spark group (atlas/common): blue utx_ico_factor_status_01..05
     # (stat 1..5), pink utx_ico_factor_aptitude_{group} (11-12 surface, 21-24 style, 31-34 distance), green
     # utx_ico_factor_unique_00

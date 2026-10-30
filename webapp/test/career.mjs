@@ -381,8 +381,8 @@ export default async function career(b) {
   const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
     l.map((x) => ({
       land: Number.parseFloat(x.querySelector('.udsk .tgp')?.textContent),
-      faces: x.querySelectorAll('.tglegs .av').length,
-      legs: x.querySelector('.tglegs')?.title,
+      bar: x.querySelectorAll('.tgbar i').length,
+      legs: x.querySelector('.tgfig')?.title,
     })),
   );
   await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
@@ -391,7 +391,7 @@ export default async function career(b) {
     skText = await pg.textContent('#sk-dlg');
   await pg.keyboard.press('Escape');
   check(
-    'career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land and her six legacies under it (their chance on hover); a tile opens Skill Details with her six legacies',
+    "career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land, its gold / white bar and the legacies' chance under it; a tile opens Skill Details with her six legacies",
     (await (async () => {
       await pg.click('#deck-open');
       await dialog(pg, 'deck-dlg');
@@ -401,7 +401,7 @@ export default async function career(b) {
     })()) === 6 &&
       tgRows.length === 8 &&
       tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
-      tgRows.every((t) => t.faces === 6 && /pass it on: [<\d.]+%$/.test(t.legs)) &&
+      tgRows.every((t) => t.bar === 2 && /pass it on: [<\d.]+%$/.test(t.legs)) &&
       skFaces === 6 &&
       /Lands as a spark: [<\d.]+%/.test(skText) &&
       /Legacies carrying it/.test(skText),

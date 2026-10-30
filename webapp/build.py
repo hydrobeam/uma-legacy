@@ -483,7 +483,6 @@ SPRITES = [
     "spark_green",
     "spark_dot",
     "spark_dot_gold",
-    "label_target",
     "tag_blue",
     "tag_pink",
     "tag_green",

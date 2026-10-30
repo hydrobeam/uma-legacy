@@ -11,7 +11,7 @@ import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKil
 import { answerLoad, answerSave } from './statestore.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
-import { umaAv, skillIcon, cardAv, runnerHTML, setRunner, scenLogo } from './images.js';
+import { umaAv, skillIcon, cardAv, runnerHTML, setRunner, scenLogo, srcFor } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
 import { initCards, cardTitle, borLast, chainEndNote } from './cards.js';
@@ -1766,17 +1766,16 @@ function legaciesCarrying(r, g) {
   }
   return out;
 }
-// the targets, lowest first, two to a row: each the game's skill tile with her chance to land its spark (the gold
-// skill's icon when her deck or her outfit can give the gold; tap: Skill Details, where it comes from with each
-// chance), and under it where it comes from in pictures: her six legacies' faces (lit where one carries it), then the
-// cards that give it, her outfit or the scenario
+// the targets, lowest first, two to a row: each the game's skill tile with her chance to land its spark (tap: Skill
+// Details, where it comes from with each chance); under it a bar of that chance in the game's skill-tile colours, gold
+// for the part through the gold skill and white for the part as the white, then the chance her legacies pass it on
+// (the spark icon) and her deck's (the cards that give it, her outfit or the scenario)
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
     list = el('ul', 'ctgs');
   for (const t of [...r.targets].sort((a, b) => a.p - b.p)) {
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
-      goldOn = (b.deck_gold || 0) > 0.005 || b.outfit === 2,
       li = el('li', 'ctg'),
       tile = el('button', 'udsk'),
       legacies = legaciesCarrying(r, t.group),
@@ -1785,8 +1784,7 @@ function targetsEl(r) {
     tile.type = 'button';
     tile.setAttribute('aria-haspopup', 'dialog');
     tile.setAttribute('aria-label', `${tName(t.group)}: lands ${pct(t.p)}. Where it comes from`);
-    tile.title = goldOn ? 'Her deck can give its gold skill' : '';
-    const icon = skillIcon(t.group, goldOn);
+    const icon = skillIcon(t.group, false);
     if (icon) tile.appendChild(icon);
     const lands = el('b', 'tgp', pct(t.p));
     lands.title = `The chance her veteran gets its spark: ${pct(t.p)}`;
@@ -1794,27 +1792,35 @@ function targetsEl(r) {
     tile.onclick = () =>
       openSkill({ b, name: tName(t.group), icon: () => skillIcon(t.group, gold), gold, legacies, cards }, tile);
     const from = el('div', 'tgsrc'),
-      legs = el('span', 'tglegs');
-    for (const g of legacies) {
-      const f = umaAv(g.chara, g.outfit, 20);
-      if (!g.carries) f.classList.add('dim');
-      legs.appendChild(f);
+      bar = el('span', 'tgbar'),
+      lg = b.land_gold || 0,
+      lw = b.land_white || 0;
+    for (const [cls, p] of /** @type {[string, number][]} */ ([
+      ['g', lg],
+      ['w', lw],
+    ])) {
+      const part = el('i', cls);
+      part.style.width = `${Math.round(p * 1000) / 10}%`;
+      bar.appendChild(part);
     }
+    bar.title = `Lands ${pct(t.p)}: ${pct(lg)} through the gold skill, ${pct(lw)} as the white`;
+    const legs = el('span', 'tgfig'),
+      orb = srcFor('ui', 'spark_dot');
+    if (orb) legs.appendChild(Object.assign(el('img', 'tgico'), { src: orb, alt: '' }));
+    legs.appendChild(el('b', '', String(Math.round(t.q * 100))));
     legs.title = `Her legacies pass it on: ${pct(t.q)}`;
-    const deck = el('span', 'tgdeck');
-    for (const { card } of cards) deck.appendChild(cardAv(card, 22));
-    if (b.outfit) {
-      const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 22);
-      o.title = `Her outfit gives its ${b.outfit === 2 ? 'gold' : 'white'}`;
-      deck.appendChild(o);
+    const deck = el('span', 'tgfig');
+    for (const { card } of cards) deck.appendChild(cardAv(card, 20));
+    if (b.outfit) deck.appendChild(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 20));
+    if (b.scenario) deck.appendChild(scenLogo(scenarioOf(state.scen)));
+    // (her outfit or the scenario hands it to her outright)
+    const given = b.scenario || b.outfit ? 1 : deckP;
+    if (deck.childElementCount) {
+      deck.appendChild(el('b', '', String(Math.round(given * 100))));
+      deck.title = `${b.scenario ? 'The scenario' : b.outfit ? 'Her outfit' : 'Her deck'} gives it: ${pct(given)}`;
     }
-    if (b.scenario) {
-      const sc = scenLogo(scenarioOf(state.scen));
-      sc.title = 'The scenario gives it';
-      deck.appendChild(sc);
-    }
-    if (deck.childElementCount) deck.title = `Her deck gives it: ${pct(deckP)}`;
-    from.append(legs, deck);
+    from.append(bar, legs);
+    if (deck.childElementCount) from.appendChild(deck);
     li.append(tile, from);
     list.appendChild(li);
   }
@@ -3051,7 +3057,7 @@ function setVTab(t) {
 // starts as the menu says and picking the chosen one again reverses it (as the umas' and cards' sort menus)
 /** @type {Record<string, [string, string, (v: import('./vets.js').Veteran, i: number) => number]>} */
 const VSORTS = {
-  no: ['Number', 'In the list’s order', (_v, i) => -i],
+  no: ['Added', 'In the order they were added to this page (uma.moe’s: in its own order)', (_v, i) => -i],
   tg: [
     'Targets',
     'The most targets she carries first',

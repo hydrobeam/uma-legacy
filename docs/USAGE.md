@@ -51,7 +51,7 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   marked borrowed). The dialog's tabs are the game's: *Veteran Umamusume* (yours) and *Guests* (the ones you can
   borrow: your borrow list, then uma.moe's listings, each under its heading), drawn as the game's legacy list draws
   veterans (portrait in its ring, rank, three main sparks, her number or her trainer; a *Parent 1* / *Parent 2* tab on
-  the next career's parents), ordered by number, targets carried or rank (the sort menu). The chosen one shows beside
+  the next career's parents), ordered as they were added to the page (uma.moe's in its own order), by targets carried or by rank (the sort menu). The chosen one shows beside
   the list (on phones, tapping one opens her popup): her sparks, how many targets she carries as *x/y*, *Yours* /
   *Guest*, *Remove*. Your veterans merge by veteran (the
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
@@ -60,7 +60,7 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
 - **Borrow from uma.moe** (beside *Next career*; a popup listing what was found as the game's legacy list draws veterans:
   her portrait in its ring, her rank, her three main sparks, her trainer; ordered (the sort menu, as the umas' and cards')
   as uma.moe orders them, or by rank, affinity, wins, white sparks' stars or the latest updated; picking the chosen order
-  again reverses it; in her popup her target sparks come first, each under a green *Target* label; a card opens her veteran popup, with her trainer's followers
+  again reverses it; in her popup her target sparks come first, the rest in the game's grey; a card opens her veteran popup, with her trainer's followers
   and *Copy ID*; *Include max borrows* asks again without the follower limit): paste your uma.moe API key once (made at uma.moe/settings; kept in
   your browser under its own entry, sent only to uma.moe as a header, never in an Export) and the veterans players list
   on uma.moe join the pool as borrowed parents, which the planner weighs like any other borrow. The page asks once per
@@ -144,10 +144,10 @@ trainer, and her popup has *Copy ID*, to follow them before the career starts), 
 their priority and chain notes) and **Race schedule** (the game's calendar of the G1s she runs, each race's win chance from the community table on her own
 grades, the planner's own figure, which counts the pink sparks she may get, on hover; *Win table* shows the table) under
 the trainee; the
-**Targets** take the right side, two to a row, lowest first: each the game's skill tile with her chance to land its spark
-(the gold skill's icon when her deck or outfit can give the gold), and under it where it comes from in pictures: her six
-legacies' faces (dim where one doesn't carry it; their chance on hover), then the cards that hint it or give it by an
-event, her outfit's portrait or the scenario's logo (the deck's chance on hover); on phones one to a row. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
+**Targets** take the right side, two to a row, lowest first: each the game's skill tile with her chance to land its spark,
+and under it that chance as a bar in the skill tiles' colours (gold: the part through the gold skill; white: as the
+white), the chance her legacies pass it on (the spark icon) and her deck's (the cards that hint it or give it by an
+event, her outfit's portrait or the scenario's logo); on phones one to a row. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
 faces (lit where one carries it) and each card that gives it.
 The landing chances
 multiply to the odds of all of them. The status line shows only while the planner works or when something needs saying. A reload with nothing changed draws

@@ -7,6 +7,8 @@
 import { readFileSync } from 'node:fs';
 import { check, dialog, careerPage, repoUrl } from './helpers.mjs';
 
+// a white spark of a skill none of the test file's veterans carry: not a target (the listing's first gets it)
+const FACTORS = JSON.parse(readFileSync(repoUrl('pkg/loopopt/data/global/career.json'), 'utf8')).factors;
 // a umadump veteran as an uma.moe search result: herself at main_*, her parents (positions 10, 20) at left_* and right_*
 export function listing(rec, k) {
   const parent = (position) => rec.succession_chara_array.find((x) => x.position_id === position);
@@ -33,6 +35,10 @@ export function listing(rec, k) {
     ['right', parent(20)],
   ]) {
     const x = side(r);
+    if (s === 'main' && k === 1) {
+      const carried = new Set(x.white.map((id) => FACTORS[Math.floor(id / 100)]));
+      x.white.push(+Object.keys(FACTORS).find((fg) => !carried.has(FACTORS[fg])) * 100 + 1);
+    }
     if (s !== 'main') inh[`parent_${s}_id`] = r.card_id;
     Object.assign(inh, {
       [`${s}_white_factors`]: x.white,
@@ -189,14 +195,15 @@ export default async function careerumamoe(b) {
   await pg.keyboard.press('Escape');
   await pg.locator('#um-list .umcell').first().click();
   await dialog(pg, 'node-dlg');
-  const tag = await pg.locator('#node-dlg .srctag').textContent();
+  const tag = await pg.locator('#node-dlg .srctag').textContent(),
+    sparks = await pg.$$eval('#node-dlg .udrow.me .vsk:not(.pink)', (l) => l.map((c) => c.classList.contains('off')));
   const popupCopy = await pg.locator('#node-dlg button', { hasText: 'Copy ID' }).count(),
     editable = await pg
       .locator('#node-dlg .facebtn, #node-dlg button.vwins, #node-dlg .vskadd, #node-dlg button.vskb')
       .count();
   await closeNode();
   check(
-    "career uma.moe: the popup lists them as the game's legacy list does (portrait, three spark tags with stars, her trainer), her spark tags the game's own images, in uma.moe's order or by wins; one opens her veteran popup, read-only, with her trainer's followers and Copy ID",
+    "career uma.moe: the popup lists them as the game's legacy list does (portrait, three spark tags with stars, her trainer), her spark tags the game's own images, in uma.moe's order or by wins; one opens her veteran popup, read-only, with her trainer's followers and Copy ID, her one non-target spark last and grey",
     cards.length === 2 &&
       cards.every(
         (c) =>
@@ -205,9 +212,12 @@ export default async function careerumamoe(b) {
       matchOrder === 'Trainer 1,Trainer 2' &&
       winsOrder === 'Trainer 2,Trainer 1' &&
       /· 13 followers$/.test(tag) &&
+      sparks.length > 1 &&
+      sparks.at(-1) &&
+      sparks.filter(Boolean).length === 1 &&
       popupCopy === 1 &&
       editable === 0,
-    JSON.stringify({ cards, matchOrder, winsOrder, tag }),
+    JSON.stringify({ cards, matchOrder, winsOrder, tag, sparks }),
   );
   // full trainers: off by default (followable only); on, the search asks again without that limit
   await pg.check('#um-full');

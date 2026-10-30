@@ -757,9 +757,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* a spark: click cycles its stars; the corner x (on hover or keyboard focus) removes it */
 .vsparks { display: flex; flex-wrap: wrap; gap: 4px; }
 .vsk { position: relative; display: inline-flex; }
-.vtgt { position: absolute; z-index: 1; left: 6px; top: -8px; padding: 1px 5px 0; font-style: normal; font-size: 0.56rem; font-weight: 900; line-height: 1.1;
-  color: #173a00; border-radius: 4px 4px 0 0; background: #66c000; pointer-events: none; }   /* (dark lettering: the 3:1 floor) */
-.vtgt { border: 0 solid transparent; border-image: var(--label-target) 24 fill / 4px; background: none; }
+.vsk.off .vskb { filter: grayscale(1); opacity: .55; }
 .vskb { display: inline-flex; align-items: center; gap: 4px; text-align: left; border: 1px solid var(--hint-edge); border-radius: 6px; background: var(--panel); color: var(--ink); padding: 2px 6px 2px 3px; font: inherit; font-size: 0.75rem; font-weight: 600; cursor: pointer; line-height: 1.2; }
 .vskb .sic { width: 16px; height: 16px; margin: 0; }
 .vskb .stars { color: var(--gold); letter-spacing: -1px; font-size: 0.72rem; }
@@ -2003,15 +2001,19 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .ctg > .udsk .sic { width: 24px; height: 24px; }
 .ctg > .udsk .udskn { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.15; }
 .tgp { flex: none; font-size: 1.15rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
-/* under a tile, where it comes from: her six legacies' faces (dim where one doesn't carry it), then the deck's cards,
-   her outfit or the scenario */
-.tgsrc { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding-left: 8px; min-height: 22px; }
-.tglegs, .tgdeck { display: inline-flex; align-items: center; gap: 2px; }
-.tglegs .av.dim { opacity: .3; filter: grayscale(1); }
-.tgdeck { gap: 3px; }
-.tgdeck .cav { border-radius: 4px; }
-.tgdeck > .av { box-shadow: 0 0 0 1px var(--gm-edge); }
-.tgdeck .slogo { width: 40px; height: 20px; }
+/* under a tile: her chance to land it as a bar in the game's skill-tile colours (gold: the part through the gold skill;
+   white: as the white; the unobtained tile's grey: the rest), then the legacies' chance (the spark icon) and the deck's
+   (the cards that give it) */
+.tgsrc { display: flex; align-items: center; gap: 4px 10px; padding: 0 4px 0 8px; min-height: 22px; }
+.tgbar { flex: 1 1 6em; min-width: 4em; display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: #c4bfd3; box-shadow: inset 0 2px 2px rgba(98, 93, 126, .35); }
+.tgbar .g { background: #ffdf7b; box-shadow: inset 0 0 0 1px #ffbe39, inset 0 -2px 0 rgba(98, 93, 126, .3); }
+.tgbar .w { background: #f7f6fd; box-shadow: inset 0 0 0 1px #bdbade, inset 0 -2px 0 rgba(98, 93, 126, .25); }
+.tgfig { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 0.82rem; font-weight: 900; color: var(--gm-ink2); font-variant-numeric: tabular-nums; }
+.tgfig b { margin-left: 2px; }
+.tgico { width: 16px; height: 16px; }
+.tgfig .cav { border-radius: 3px; }
+.tgfig > .av { box-shadow: 0 0 0 1px var(--gm-edge); }
+.tgfig .slogo { width: 36px; height: 18px; }
 @media (max-width: 520px) {
   .ctgs { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
