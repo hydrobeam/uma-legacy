@@ -1,4 +1,4 @@
-import { check, open, json } from './helpers.mjs';
+import { check, open, json, repoUrl } from './helpers.mjs';
 
 export default async function roster(b) {
   const pg = await open(b);
@@ -57,6 +57,49 @@ export default async function roster(b) {
     'tile toggle: back to owned',
     s2.split(',').every((x) => x === 'own'),
     s2,
+  );
+  // umadump's owned outfits and cards (made-up: val/umadump/U_card_data.json, U_support_card_data.json), both files
+  // through the Umas dialog's Import: what they list owned, everything else not owned, ids the data lacks skipped
+  const dump = (file) => repoUrl(`val/umadump/${file}`).pathname,
+    importOwned = async (files) => {
+      await pg.evaluate(() => {
+        document.getElementById('r-msg').textContent = '';
+      });
+      await pg.locator('#r-file').setInputFiles(files.map(dump));
+      await pg.waitForFunction(() => document.getElementById('r-msg').textContent);
+      return pg.locator('#r-msg').innerText();
+    },
+    saved = () => pg.evaluate(() => JSON.parse(localStorage.getItem('llp:settings')).global);
+  const msg = await importOwned(['U_card_data.json', 'U_support_card_data.json']),
+    after = await saved(),
+    cards = (await json(pg, 'data-cards')).filter((c) => c.rel <= Date.now() / 1000),
+    outfitIds = umas.flatMap((u) => u.outfits.map((o) => o.id)),
+    fileOutfits = [100101, 100102, 199901],
+    fileCards = [30001, 30002, 10001, 39999],
+    knownOutfits = fileOutfits.filter((id) => outfitIds.includes(id)).length,
+    knownCards = fileCards.filter((id) => cards.some((c) => c.id === id)).length;
+  check(
+    "umadump import: the file's outfits owned, every other not",
+    umas.every((u) => (after.roster[u.id] === 'out') === (!u.outfits.length && u.id !== 1001)) &&
+      outfitIds.every((id) => (after.outfits[id] === false) === !fileOutfits.includes(id)),
+    msg,
+  );
+  check(
+    "umadump import: the file's cards owned, every other not",
+    cards.every((c) => (after.cardsOff[c.id] === false) === !fileCards.includes(c.id)),
+    msg,
+  );
+  check(
+    'umadump import: says what it set and what it skipped',
+    msg ===
+      `${knownOutfits} outfits owned (${fileOutfits.length - knownOutfits} not in the data). ${knownCards} cards owned (${fileCards.length - knownCards} not in the data).`,
+    msg,
+  );
+  const wrong = await importOwned(['U_trained_chara_data.json']);
+  check(
+    'umadump import: a veterans file is refused, nothing changed',
+    /veterans file/.test(wrong) && JSON.stringify(await saved()) === JSON.stringify(after),
+    wrong,
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();

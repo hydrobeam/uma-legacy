@@ -23,6 +23,9 @@ skill as a spark, with each uma's race schedule. Results update by themselves 0.
 - *Results*: 1 or 3.
 - **Umas**: one tile per outfit; tap to mark it owned or not owned.
 - **Support cards**: tap the cards you don't own. Only cards that can give a target, and pals, are listed.
+- *Import umadump* (in either) reads umadump's `card_data.json` (your outfits) or `support_card_data.json` (your
+  cards), or both at once. A file replaces the marks for the chosen game data: what it lists is owned, the rest not
+  owned. Ids the data lacks are skipped; stars, levels and limit breaks are not read.
 - **Target skills**: type to add. **Presets** save, load, overwrite and rename sets of targets; *full veteran example* holds the
   eight default targets. Presets are shared by both pages and carried by *Export / import settings*.
 

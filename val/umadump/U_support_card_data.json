@@ -1,0 +1,62 @@
+[
+ {
+  "viewer_id": 0,
+  "support_card_id": 30001,
+  "exp": 1000,
+  "limit_break_count": 2,
+  "favorite_flag": 0,
+  "stock": 0,
+  "possess_time": "2025-07-01 12:00:00",
+  "create_time": "2025-07-01 12:00:00",
+  "extra_data": {
+   "level": 40,
+   "max_level": 45,
+   "best_training": 0
+  }
+ },
+ {
+  "viewer_id": 0,
+  "support_card_id": 30002,
+  "exp": 0,
+  "limit_break_count": 0,
+  "favorite_flag": 0,
+  "stock": 1,
+  "possess_time": "2025-07-01 12:00:00",
+  "create_time": "2025-07-01 12:00:00",
+  "extra_data": {
+   "level": 30,
+   "max_level": 30,
+   "best_training": 0
+  }
+ },
+ {
+  "viewer_id": 0,
+  "support_card_id": 10001,
+  "exp": 500,
+  "limit_break_count": 4,
+  "favorite_flag": 0,
+  "stock": 0,
+  "possess_time": "2025-07-01 12:00:00",
+  "create_time": "2025-07-01 12:00:00",
+  "extra_data": {
+   "level": 40,
+   "max_level": 40,
+   "best_training": 0
+  }
+ },
+ {
+  "viewer_id": 0,
+  "support_card_id": 39999,
+  "exp": 0,
+  "limit_break_count": 0,
+  "favorite_flag": 0,
+  "stock": 0,
+  "possess_time": "2025-07-01 12:00:00",
+  "create_time": "2025-07-01 12:00:00",
+  "extra_data": {
+   "level": 30,
+   "max_level": 30,
+   "best_training": 0
+  }
+ }
+]

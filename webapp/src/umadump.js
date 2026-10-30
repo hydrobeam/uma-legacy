@@ -169,3 +169,29 @@ export function parseListing(item) {
     parents: [side('left', h.parent_left_id), side('right', h.parent_right_id)],
   };
 }
+// ---------- owned umas and support cards: umadump's card_data.json and support_card_data.json ----------
+// card_data.json lists the outfits you own, one record each: card_id (the outfit id), rarity (her stars), talent_level
+// (her potential), create_time, skill_data_array. support_card_data.json lists the support cards you own:
+// support_card_id, limit_break_count, exp, stock (spare copies), extra_data {level, max_level, ...}. The page keeps
+// ownership only (no stars, levels or limit breaks), so only the ids are read.
+const PICK_OWNED = "Pick umadump's card_data.json or support_card_data.json.";
+/** @typedef {{kind: 'outfits' | 'cards', ids: number[]}} OwnedList what one file says you own: outfit or support card ids */
+// what umadump's owned-umas or owned-cards file lists; throws an Error with a message for the page when it is neither
+/** @param {string} text @returns {OwnedList} */
+export function parseOwned(text) {
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`That is not JSON. ${PICK_OWNED}`);
+  }
+  const list = Array.isArray(json) ? json : [];
+  const every = (test) => list.length > 0 && list.every((x) => x && typeof x === 'object' && test(x));
+  if (every((x) => Number.isInteger(x.support_card_id)))
+    return { kind: 'cards', ids: list.map((x) => x.support_card_id) };
+  // (a veteran has a card_id too, with her sparks)
+  if (every((x) => Number.isInteger(x.card_id) && !('factor_info_array' in x)))
+    return { kind: 'outfits', ids: list.map((x) => x.card_id) };
+  if (records(json).length) throw new Error('That is a veterans file: import it in Veteran Umamusume (career page).');
+  throw new Error(`No umas or cards found. ${PICK_OWNED}`);
+}

@@ -10,6 +10,7 @@ import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
 import { initScenario, eraScenario } from './scenario.js';
 import { initCards } from './cards.js';
+import { initOwnedImport } from './owned.js';
 import { renderDeck } from './results.js';
 import { initPopover } from './popover.js';
 import { initIO } from './io.js';
@@ -59,6 +60,7 @@ function start() {
 
   initRoster();
   initCards();
+  initOwnedImport();
   initTargets();
   initIO();
   initPopover();
