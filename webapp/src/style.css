@@ -2017,10 +2017,10 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .umsp.blue b { background-image: var(--tag-blue, linear-gradient(#6fd0ff, #22a5ea)); text-shadow: 0 1px 0 #0b5d94, 1px 0 0 #0b5d94, -1px 0 0 #0b5d94, 0 -1px 0 #0b5d94; }
 .umsp.pink b { background-image: var(--tag-pink, linear-gradient(#ffb1d4, #ff6fa8)); text-shadow: 0 1px 0 #a3245a, 1px 0 0 #a3245a, -1px 0 0 #a3245a, 0 -1px 0 #a3245a; }
 .umsp.green b { background-image: var(--tag-green, linear-gradient(#b8ea5a, #7cc40d)); text-shadow: 0 1px 0 #3c7a00, 1px 0 0 #3c7a00, -1px 0 0 #3c7a00, 0 -1px 0 #3c7a00; }
-.umst { display: flex; height: 9px; }
-.umst > span { display: block; height: 9px; background: var(--star-on, var(--gm-star)) 0 0 / 10px 9px repeat-x; }
-.umst > .on { width: calc(var(--n, 0) * 10px); }
-.umst > .off { width: calc((3 - var(--n, 0)) * 10px); background-image: var(--star-off, var(--gm-star0)); }
+.umst { display: block; width: 32px; height: auto; }
+.umsp i { font-style: normal; font-size: 0.55rem; color: #f0a800; }
+.umface { position: relative; display: block; }
+.umrank { position: absolute; top: -8px; right: -16px; width: 38px; height: 38px; pointer-events: none; }
 
 .linkbtn { all: unset; cursor: pointer; justify-self: end; font-size: 0.8rem; color: var(--gm-ink2); text-decoration: underline; }
 .linkbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }

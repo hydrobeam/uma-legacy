@@ -21,7 +21,7 @@ export function listing(rec, k) {
       wins: r.win_saddle_id_array || [],
     };
   };
-  const inh = { inheritance_id: 900000 + k, main_parent_id: rec.card_id };
+  const inh = { inheritance_id: 900000 + k, main_parent_id: rec.card_id, parent_rank: rec.rank_score };
   for (const [s, r] of [
     ['main', rec],
     ['left', parent(10)],
@@ -169,7 +169,8 @@ export default async function careerumamoe(b) {
       nm: c.querySelector('.nm')?.textContent,
       sub: c.querySelector('.sub')?.textContent,
       tags: [...c.querySelectorAll('.umsp b')].map((b) => b.textContent),
-      stars: [...c.querySelectorAll('.umst')].every((st) => +st.style.getPropertyValue('--n') >= 1),
+      stars: [...c.querySelectorAll('img.umst')].every((st) => /fstar_(blue|pink|green)_[123]\./.test(st.src)),
+      rank: /vrank_\d+\./.test(c.querySelector('img.umrank')?.src || ''),
     })),
   );
   await pg.locator('#um-list .umcell').first().click();
@@ -189,7 +190,8 @@ export default async function careerumamoe(b) {
           /^1[34] followers$/.test(c.sub) &&
           c.tags.length === 3 &&
           c.tags[2] === 'UNIQ' &&
-          c.stars,
+          c.stars &&
+          c.rank,
       ) &&
       popupCopy === 1 &&
       editable === 0,

@@ -346,6 +346,7 @@ def era(data_dir, events_file):
             "race_turns": race_turns,
             "mobs": [m for m in career_tables.get("mobs", []) if f"mob:{m[0]}" in image_catalog.keys],
             "sourced": sourced,
+            "ranks": career_tables.get("ranks", []),
         }
     )  # only mobs with a portrait (the samples draw from them)
     return EraBundle(cards=js(ui_cards), umas=js(umas), skills=js(skills["skills"]), engine=engine, career=career)

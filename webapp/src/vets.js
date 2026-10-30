@@ -15,9 +15,11 @@
  * @property {Object<number, number>} [winAt]  race index -> the turn its win shows at (display only; the solver reads `wins`)
  *
  * A veteran of the pool: a lineage node with an identity, her source and her two parents.
- * @typedef {LineageNode & {id: string, src: string, borrowed: boolean, parents: LineageNode[], lender?: Lender}} Veteran
+ * @typedef {LineageNode & {id: string, src: string, borrowed: boolean, parents: LineageNode[], lender?: Lender, rank?: number}} Veteran
  *   src: where she came from: 'import' | 'tree' (uma.moe's lineage planner) | 'umamoe' (uma.moe's search) | 'hand' |
  *   'sample' | 'entered' (older saves: 'simulated')
+ *
+ *   rank: an uma.moe veteran's rank score (her career-rank badge)
  *
  * The trainer who lists a veteran found on uma.moe (umadump.js `parseListing`): kept on this device, left out of Export.
  * @typedef {{name: string, id: string, followers: number, updated: string}} Lender

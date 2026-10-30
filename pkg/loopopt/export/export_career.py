@@ -12,6 +12,8 @@ data.json (run after export_rs.py) and writes career.json next to it:
            card id) -> its unique skill's name (type 3).
   mobs:    every named mob uma (mob_data, English names from the Global text_data category 59 by mob id): the career
            planner's sample veterans, drawn at random (no relation points with anyone; they only carry sparks).
+  ranks:   the lowest rank score of each career rank, in rank id order (single_mode_rank.min_value): a veteran's rank
+           (its badge, atlas/statusrank utx_ico_statusrank_{id - 1}) is the last whose minimum her score reaches.
 usage: export_career.py global|jp"""
 
 import sqlite3, json, os
@@ -69,8 +71,17 @@ for (mob_id,) in global_query("select mob_id from mob_data order by mob_id"):
     row = global_query('select text from text_data where category = 59 and "index" = ?', (mob_id,)).fetchone()
     if row and row[0]:
         mobs.append([mob_id, row[0]])
+ranks = [min_value for (min_value,) in q("select min_value from single_mode_rank order by id")]
 json.dump(
-    {"factors": factors, "saddles": saddles, "pinks": pinks, "blues": blues, "uniques": uniques, "mobs": mobs},
+    {
+        "factors": factors,
+        "saddles": saddles,
+        "pinks": pinks,
+        "blues": blues,
+        "uniques": uniques,
+        "mobs": mobs,
+        "ranks": ranks,
+    },
     open(out_path, "w"),
     separators=(",", ":"),
 )

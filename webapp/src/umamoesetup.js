@@ -12,7 +12,8 @@ import { ERA } from './settings.js';
 import { state } from './state.js';
 import { vets, setListings, umaName, blueName, pinkName, uniqueName } from './vets.js';
 import { parseListing } from './umadump.js';
-import { umaAv } from './images.js';
+import { umaAv, srcFor } from './images.js';
+import { CAREER } from './data.js';
 import {
   savedKey,
   saveKey,
@@ -92,13 +93,17 @@ const BLUE_TAG = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
 function mainSparks(v) {
   const row = el('span', 'umsps'),
     first = (o) => Object.entries(o || {}).find(([, st]) => st > 0);
-  // (the game's spark-bar art for the tag, its star art for the stars: filled ones, then empty to three)
+  // (the legacy list's own pill for the tag, its star row for the stars)
   const tag = (kind, label, full, stars) => {
     const t = el('span', `umsp ${kind}`),
-      st = el('span', 'umst');
-    st.append(el('span', 'on'), el('span', 'off'));
-    st.style.setProperty('--n', String(stars));
-    t.append(el('b', '', label), st);
+      src = srcFor('ui', `fstar_${kind}_${Math.min(3, Math.max(1, stars))}`);
+    t.appendChild(el('b', '', label));
+    if (src) {
+      const st = el('img', 'umst');
+      st.src = src;
+      st.alt = `${stars}★`;
+      t.appendChild(st);
+    } else t.appendChild(el('i', '', '★'.repeat(stars)));
     t.title = `${full} ${stars}★`;
     return t;
   };
@@ -121,8 +126,19 @@ function card(v, next) {
   c.setAttribute('aria-haspopup', 'dialog');
   c.setAttribute('aria-label', `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`);
   c.title = `${umaName(v.chara)} · ${v.lender?.name || ''}`;
+  const face = el('span', 'umface');
+  face.appendChild(umaAv(v.chara, v.outfit, 64));
+  // her career-rank badge, top right of her portrait, as in the game (the last rank whose minimum her score reaches)
+  const rankId = (CAREER.ranks || []).reduce((at, min, i) => (v.rank >= min ? i + 1 : at), 0),
+    badge = rankId && srcFor('ui', `vrank_${rankId}`);
+  if (badge) {
+    const b = el('img', 'umrank');
+    b.src = badge;
+    b.alt = 'Rank';
+    face.appendChild(b);
+  }
   c.append(
-    umaAv(v.chara, v.outfit, 64),
+    face,
     mainSparks(v),
     el('span', 'nm', v.lender?.name || umaName(v.chara)),
     el('span', 'sub', followersText(v.lender)),

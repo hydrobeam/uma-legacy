@@ -161,6 +161,7 @@ export function parseListing(item) {
       followers: +item.follower_num || 0,
       updated: String(item.last_updated ?? ''),
     },
+    rank: +h.parent_rank || 0, // her rank score (the badge, CAREER.ranks)
     parents: [side('left', h.parent_left_id), side('right', h.parent_right_id)],
   };
 }

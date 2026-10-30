@@ -201,6 +201,16 @@ UI_SPRITES = {
         "tag_" + k: ("atlas/singlecommon", f"utx_frm_factor_s_0{i + 2}")
         for i, k in enumerate(["blue", "pink", "green"])
     },
+    # the legacy list's star rows under those tags: 1, 2 or 3 gold stars in a blue, pink or green outline (atlas/common
+    # utx_ico_factor_rarity_00..08: blue 1-3, pink 1-3, green 1-3)
+    **{
+        f"fstar_{k}_{n}": ("atlas/common", f"utx_ico_factor_rarity_0{i * 3 + n - 1}")
+        for i, k in enumerate(["blue", "pink", "green"])
+        for n in (1, 2, 3)
+    },
+    # a veteran's career-rank badge (the letter in its bubble over the RANK ribbon, as the legacy list shows it), by
+    # single_mode_rank id (atlas/rank utx_txt_rank_{id - 1}; written at 80 px, `UI_FIT`)
+    **{f"vrank_{i + 1}": ("atlas/rank", f"utx_txt_rank_{i:02d}") for i in range(98)},
     **{
         "skill_" + k: ("atlas/common", f"utx_btn_skill_base_0{i}_sl")
         for i, k in enumerate(["white", "gold", "unique", "pink"])
@@ -264,6 +274,11 @@ def res_sprites(force, manifest):
     return n
 
 
+# UI sprites written smaller than the atlas has them (key prefix -> largest side in px): the rank badges, 154 px in the
+# atlas, show at about 40 px
+UI_FIT = {"vrank_": 80}
+
+
 def ui_sprites(force, manifest):
     os.makedirs(os.path.join(OUT, "ui"), exist_ok=True)
     n = 0
@@ -283,7 +298,11 @@ def ui_sprites(force, manifest):
                 continue
             for obj in UnityPy.load(path).objects:
                 if obj.type.name == "Sprite" and obj.read().m_Name == name:
-                    obj.read().image.convert("RGBA").save(dst, "WEBP", lossless=True)
+                    im = obj.read().image.convert("RGBA")
+                    fit = next((px for prefix, px in UI_FIT.items() if key.startswith(prefix)), None)
+                    if fit:
+                        im.thumbnail((fit, fit), Image.LANCZOS)
+                    im.save(dst, "WEBP", lossless=True)
                     manifest["images"]["ui:" + key] = f"{atlas} {name}"
                     n += 1
                     found = True
