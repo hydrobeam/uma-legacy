@@ -2,7 +2,8 @@
 
 The live page is https://uma-legacy.pages.dev. It has three pages: the **Loop planner**, the **Career planner** and
 **How this works** (`/about`, the model in plain words; its contents link each section, and a link to an "in detail"
-section opens it). Settings are saved in your browser; nothing is uploaded.
+section opens it). Settings are saved in your browser; nothing is uploaded, except that the career planner's uma.moe
+search sends your target skills and your uma.moe key to uma.moe.
 
 ## Loop planner
 
@@ -48,6 +49,18 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
   lends today; *Remove all* clears the open tab. *Paste* takes the same text, an Export from this page (which replaces
   every import), or an uma.moe lineage planner export.
+- **Find a borrow on uma.moe** (the *Borrowed* tab) searches the veterans players list on uma.moe, with your own uma.moe
+  API key (made at uma.moe/settings; kept in your browser under its own entry, sent only to uma.moe as a header, never
+  in an Export). One press is one request: lineages whose parent carries at least all but one of the targets herself,
+  from trainers who can still be followed (under 1,000 followers), best covered first. Answers are kept for 24 hours per
+  target set, so a changed pool ranks again without a request. The planner ranks every lineage by the best next career
+  with her as the borrowed parent (one search each, the other parent from your veterans) against today's best career,
+  and prices the top three in today's plan (careers to a fully looped parent, under the plan's fit, as Compare does).
+  Each row gives the trainer's name, followers and when the listing was updated, with *Copy trainer ID* (to follow
+  them in the game), *Add to borrow list* and *Use in the next career*. *Next 100* and *one target fewer on herself*
+  are one more request each. A lineage with fewer targets on her parent can still win through her grandparents; the
+  dialog says what was searched. Parents at affinity 200 or more are flagged: inheritance runs about 3% below the
+  model there. Global data only.
 - With no veterans, **Try sample veterans** adds six random mob umas carrying only the targets that inheritance alone
   gives, the minimum to start a loop.
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Borrowed* marks a friend's.

@@ -39,6 +39,7 @@ import careervets from './test/careervets.mjs';
 import careergen from './test/careergen.mjs';
 import careerpool from './test/careerpool.mjs';
 import careerborrow from './test/careerborrow.mjs';
+import careerumamoe from './test/careerumamoe.mjs';
 import careerrun from './test/careerrun.mjs';
 import contrast from './test/contrast.mjs';
 
@@ -71,6 +72,7 @@ const TESTS = {
   careergen,
   careerpool,
   careerborrow,
+  careerumamoe,
   careerrun,
   contrast,
 };

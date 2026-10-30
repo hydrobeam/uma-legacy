@@ -8,7 +8,8 @@ Use it at https://uma-legacy.pages.dev.
 The career planner at `/career` picks the next career from your own veterans (imported from umadump or uma.moe): the
 trainee, her parents and her deck, chosen by how much it lowers the planner's estimate of the careers you still need
 for a fully looped parent (an n/n whose parents are n/n, n the number of targets). For the veteran you actually got, it shows how many careers
-she saves by that estimate.
+she saves by that estimate. With your own uma.moe API key it searches the veterans players list on uma.moe and ranks
+them as borrowed parents.
 
 - Using the page: `docs/USAGE.md`; the page's own "How this works" explains the model in plain words
 - Building, testing, deploying, repository layout: `docs/BUILD.md`
@@ -42,7 +43,8 @@ The model builds on community research and tools:
 - [umamusu.wiki](https://umamusu.wiki/Game:Inheritance), [uma.guide](https://uma.guide/guides/sparks) and
   [umareference](https://www.umareference.com/guide/legacies/chance-of-inheriting-sparks): inheritance and pink-spark
   rules and base rates; JP community notes (herohero's 1,000+ trial inheritance rates among them).
-- [uma.moe](https://uma.moe): its lineage planner, which our affinity and odds match; its lineage exports import here.
+- [uma.moe](https://uma.moe): its lineage planner, which our affinity and odds match; its lineage exports import here,
+  and its veteran search (called from your browser with your key) supplies the borrow candidates.
 - [umadump](https://github.com/Werseter/umadump) (Werseter): the veteran export the career planner imports.
 
 The code is licensed under the GNU General Public License v3.0 or later (`LICENSE`). Uma Musume: Pretty Derby, its

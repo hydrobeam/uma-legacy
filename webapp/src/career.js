@@ -48,6 +48,7 @@ import {
   openWins,
 } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
+import { initBorrowSearch, openBorrowSearch } from './borrowsearch.js';
 import { detailsEl, inspView, fitSparks, deckCardAt } from './details.js';
 import { drawPink } from './pink.mjs';
 import { unprovenWhy, whyText, searchCaveat, planCaveat } from './proofs.mjs';
@@ -1323,6 +1324,7 @@ const VET_SOURCE = {
   entered: 'Entered here',
   simulated: 'Entered here',
   tree: 'From uma.moe',
+  umamoe: 'From uma.moe',
   import: 'Imported',
   hand: 'Made here',
   sample: 'Sample',
@@ -1342,7 +1344,14 @@ function fillVeteranNode({ id }, _r, body) {
   b.onclick = fromNode(() => changeUma(v, `Veteran #${i + 1}`));
   const src = VET_SOURCE[v.src];
   w.append(b, el('div', 'nm', umaName(v.chara)), winsBtn(v, `Veteran #${i + 1}, ${umaName(v.chara)}`, `v${v.id}`));
-  if (src) w.appendChild(el('span', v.src === 'tree' ? 'srctag' : 'simtag', src));
+  if (src)
+    w.appendChild(
+      el(
+        'span',
+        v.src === 'tree' || v.src === 'umamoe' ? 'srctag' : 'simtag',
+        v.lender ? `${src} · trainer ${v.lender.name} (ID ${v.lender.id})` : src,
+      ),
+    );
   body.appendChild(w);
   const iv = el('div', 'ud udbare');
   iv.appendChild(
@@ -2945,7 +2954,12 @@ function drawPool() {
     box.innerHTML =
       vTab === 'own'
         ? '<p class="hint">No veterans of yours yet. Import umadump\'s trained_chara_data.json, or make one with Choose parent.</p>'
-        : '<p class="hint">None borrowed yet. Import umadump\'s rental_chara_data.json (the borrow list on the career start screen), or mark a veteran Borrowed.</p>';
+        : '<p class="hint">None borrowed yet. Find one on uma.moe, import umadump\'s rental_chara_data.json (the borrow list on the career start screen), or mark a veteran Borrowed.</p>';
+  if (vTab === 'bor') {
+    const find = el('div', 'umfind');
+    find.appendChild(btn('Find a borrow on uma.moe', 'primary', openBorrowSearch)).id = 'um-open';
+    box.prepend(find);
+  }
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -3066,6 +3080,73 @@ function initFold() {
   paintFold();
 }
 
+// ---------- Find a borrow on uma.moe (borrowsearch.js) ----------
+// a job's answer, or null when an edit restarted the worker (the job then never answers)
+const runOrKilled = async (job) => {
+  const m = await Promise.race([runJob(job), nextKill().then(() => null)]);
+  return m ? m.r : null;
+};
+// today's plan, when one is on show with a fit to price another veteran under (as Compare does)
+const planToPrice = () =>
+  planState.state === 'done' &&
+  last &&
+  !last.job.fix.length &&
+  Number.isFinite(planState.r?.v0) &&
+  planState.r.fit?.length
+    ? planState.r
+    : null;
+function initBorrows() {
+  initBorrowSearch({
+    baseJob: () => baseOf(buildJob()),
+    run: runOrKilled,
+    // today's best career on the ranking's job (the search's, when it ran without places)
+    baseline: async () => {
+      const job = { ...baseOf(buildJob()), borrowed_parent: undefined },
+        key = JSON.stringify(job);
+      if (baselineCache?.key === key) return baselineCache.result;
+      const r = await runOrKilled(job),
+        best = r?.results?.[0] || null;
+      if (best) baselineCache = { key, result: best };
+      return best;
+    },
+    planNow: () => planToPrice()?.v0 ?? null,
+    planWith: async (legacy) => {
+      const now = planToPrice();
+      if (!now) return null;
+      const base = comparisonJob(),
+        r = await runOrKilled({
+          ...base,
+          top: ROLL_K,
+          legacies: [...base.legacies, legacy],
+          next: { fit: now.fit },
+          compare: true,
+          no_reports: true,
+        });
+      return Number.isFinite(r?.next?.v0) ? r.next.v0 : null;
+    },
+    poolIndex: idxOf,
+    vetLabel: (i) => `#${i + 1} ${umaName(vets[i]?.chara)}`,
+    add: (v, use) => {
+      if (idxOf(v.id) >= 0) return;
+      if (use) {
+        // a parent place: an open one, else the one holding a borrowed veteran (a career borrows one), else the first
+        const k = plan.parents.findIndex((id) => !id || vetById(id)?.borrowed);
+        plan.parents[Math.max(k, 0)] = v.id;
+        if (plan.trainee === v.chara) plan.trainee = null;
+        $dialog('set-vets').close();
+      }
+      addVets([v]);
+      setVTab('bor');
+      $('v-msg').textContent =
+        `Added ${umaName(v.chara)} from uma.moe to your borrowed veterans${use ? ', as a parent of the next career' : ''}.`;
+    },
+    borrowNote: () =>
+      borrowChoice() === 'allow'
+        ? ''
+        : `Borrowed parent is set to ${BORROW_CHOICES[borrowChoice()]} (Career setup): the planner uses none until it is Allowed. The ranking assumes it is.`,
+  });
+}
+
 // ---------- start ----------
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a
 // search outside the page); Import takes the file back
@@ -3075,7 +3156,9 @@ function exportVets() {
   try {
     job = buildJob();
   } catch {}
-  const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans: vets, plan, job };
+  // (an uma.moe veteran's lender stays on this device)
+  const veterans = vets.map(({ lender: _l, ...v }) => v);
+  const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans, plan, job };
   $textarea('vx-text').value = JSON.stringify(data);
   $('vx-msg').textContent = '';
   $dialog('vx-dlg').showModal();
@@ -3235,6 +3318,7 @@ loadData().then(
       }
     };
     for (const x of ['own', 'bor']) $(`v-tab-${x}`).onclick = () => setVTab(x);
+    initBorrows();
     renderAll();
     search();
   },

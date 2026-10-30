@@ -131,3 +131,36 @@ export function parseExport(text) {
     }),
   }));
 }
+// A lineage listed on uma.moe's search (api/v3/search, `inheritance`): the parent at main_*, her parents at left_* and
+// right_*, each with the game's factor ids (white as a list, blue, pink and unique one each) and win saddles. A borrowed
+// veteran keyed by the listing (`u` + inheritance_id), with its lender: the trainer to follow in the game
+/** @param {any} item a search result: {account_id, trainer_name, follower_num, last_updated, inheritance} @returns {import('./vets.js').Veteran} */
+export function parseListing(item) {
+  const h = item.inheritance;
+  const side = (s, card) =>
+    node({
+      card_id: card,
+      factor_info_array: [
+        ...(h[`${s}_white_factors`] || []),
+        h[`${s}_blue_factors`],
+        h[`${s}_pink_factors`],
+        h[`${s}_green_factors`],
+      ]
+        .filter(Boolean)
+        .map((factor_id) => ({ factor_id })),
+      win_saddle_id_array: h[`${s}_win_saddles`],
+    });
+  return {
+    ...side('main', h.main_parent_id),
+    id: `u${h.inheritance_id}`,
+    src: 'umamoe',
+    borrowed: true,
+    lender: {
+      name: String(item.trainer_name ?? ''),
+      id: String(item.account_id ?? ''),
+      followers: +item.follower_num || 0,
+      updated: String(item.last_updated ?? ''),
+    },
+    parents: [side('left', h.parent_left_id), side('right', h.parent_right_id)],
+  };
+}

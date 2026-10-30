@@ -82,6 +82,18 @@ __PANEL_ENH__
   </div>
   <div class="vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
 </div></dialog>
+<dialog id="um-dlg" class="setdlg umdlg" aria-labelledby="um-title"><div class="dlg"><div class="row between dhead"><h3 id="um-title">Find a borrow on uma.moe</h3><button class="btn dclose">Close</button></div>
+  <p class="hint">Searches the veterans listed on <a href="https://uma.moe" target="_blank" rel="noopener">uma.moe</a> for your target skills, then ranks them with the planner. Only your target skills and key are sent, to uma.moe alone.</p>
+  <div class="row umkey">
+    <label for="um-key">uma.moe API key</label>
+    <input type="password" id="um-key" autocomplete="off" spellcheck="false">
+    <button class="btn" type="button" id="um-show">Show</button>
+    <button class="btn" type="button" id="um-forget">Forget key</button>
+  </div>
+  <p class="hint">Get one at <a href="https://uma.moe/settings" target="_blank" rel="noopener">uma.moe/settings</a> once signed in. It stays in this browser, never in an Export.</p>
+  <div class="row"><button class="btn primary" type="button" id="um-go">Search uma.moe</button><span class="hint" id="um-msg" role="status" aria-live="polite"></span></div>
+  <div id="um-res"></div>
+</div></dialog>
 __PANEL_DLGUMAS____PANEL_DLGCARDS__
 
 <dialog id="vpick-dlg" aria-labelledby="vpick-title"><div class="dlg">

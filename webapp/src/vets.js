@@ -15,8 +15,12 @@
  * @property {Object<number, number>} [winAt]  race index -> the turn its win shows at (display only; the solver reads `wins`)
  *
  * A veteran of the pool: a lineage node with an identity, her source and her two parents.
- * @typedef {LineageNode & {id: string, src: string, borrowed: boolean, parents: LineageNode[]}} Veteran
- *   src: where she came from: 'import' | 'tree' (uma.moe) | 'hand' | 'sample' | 'entered' (older saves: 'simulated')
+ * @typedef {LineageNode & {id: string, src: string, borrowed: boolean, parents: LineageNode[], lender?: Lender}} Veteran
+ *   src: where she came from: 'import' | 'tree' (uma.moe's lineage planner) | 'umamoe' (uma.moe's search) | 'hand' |
+ *   'sample' | 'entered' (older saves: 'simulated')
+ *
+ * The trainer who lists a veteran found on uma.moe (umadump.js `parseListing`): kept on this device, left out of Export.
+ * @typedef {{name: string, id: string, followers: number, updated: string}} Lender
  *
  * The places of the next career: each is chosen here or left to the planner (null).
  * @typedef {object} LineagePlan
@@ -836,9 +840,14 @@ let legaciesCache = null,
  */
 export function legaciesJob() {
   if (legaciesCache && legaciesRev === rev) return legaciesCache;
-  const pairs = (sparks) => Object.entries(sparks || {}).map(([group, stars]) => [+group, stars]);
-  const jobNode = (n) => ({ chara: n.chara || 0, sparks: pairs(n.sparks), pinks: pairs(n.pinks), wins: n.wins });
   legaciesRev = rev;
-  legaciesCache = vets.map((v) => ({ ...jobNode(v), borrowed: !!v.borrowed, parents: v.parents.map(jobNode) }));
+  legaciesCache = vets.map(jobLegacy);
   return legaciesCache;
 }
+/** @type {(sparks: Sparks|undefined) => [number, number][]} */
+const pairs = (sparks) => Object.entries(sparks || {}).map(([group, stars]) => [+group, stars]);
+/** @type {(n: LineageNode) => JobNode} */
+const jobNode = (n) => ({ chara: n.chara || 0, sparks: pairs(n.sparks), pinks: pairs(n.pinks), wins: n.wins });
+// one veteran as the job takes her (also one not in the pool: an uma.moe listing being ranked)
+/** @param {Veteran} v @returns {JobLegacy} */
+export const jobLegacy = (v) => ({ ...jobNode(v), borrowed: !!v.borrowed, parents: v.parents.map(jobNode) });

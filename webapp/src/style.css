@@ -732,6 +732,17 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .vets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 10px; align-items: start; }
 .vet { border: 1px solid var(--line); border-radius: var(--r); padding: 10px; display: grid; gap: 8px; min-width: 0; }
 .vet.bor { box-shadow: inset 4px 0 0 var(--gold); }
+/* Find a borrow on uma.moe: the Borrowed tab's button, the key row and the ranked lineages */
+.umfind { grid-column: 1 / -1; }
+.umkey input { flex: 1 1 12rem; min-width: 0; }
+.umlist { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.umrow { border: 1px solid var(--line); border-radius: var(--r); padding: 10px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; box-shadow: inset 4px 0 0 var(--gold); }
+.umfaces { display: grid; justify-items: center; gap: 4px; align-content: start; }
+.umbody { display: grid; gap: 3px; min-width: 0; }
+.umbody .nm { font-weight: 900; color: var(--gm-ink); }
+.umbody .sub { font-size: 0.78rem; color: var(--gm-ink2); overflow-wrap: anywhere; }
+.umodds { font-weight: 700; }
+.umacts { margin-top: 4px; }
 .vtop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .vno { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
 .vin { font-size: 0.75rem; font-weight: 700; color: var(--accent); }
