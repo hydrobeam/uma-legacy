@@ -70,7 +70,7 @@ __PANEL_ENH__
 </div>
 
 <dialog id="set-vets" class="setdlg vetdlg" aria-labelledby="h-vets"><div class="dlg"><div class="row between dhead"><h3 id="h-vets">Veteran Umamusume</h3><button class="btn dclose">Done</button></div>
-  <p class="hint"><span id="v-count"></span> Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump or uma.moe, or make one when you choose a parent. Click one to see or change her sparks.</p>
+  <p class="hint"><span id="v-count"></span> One borrowed per career. Tap one for her sparks.</p>
   <div class="row">
     <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
     <button class="btn" type="button" id="v-paste">Paste</button>
@@ -82,7 +82,7 @@ __PANEL_ENH__
     <button type="button" role="tab" id="v-tab-own" aria-selected="true" aria-controls="vets">Yours</button>
     <button type="button" role="tab" id="v-tab-bor" aria-selected="false" aria-controls="vets">Borrowed</button>
   </div>
-  <div class="vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
+  <div class="umgrid vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
 </div></dialog>
 <dialog id="um-dlg" class="umdlg" aria-labelledby="um-title"><div class="dlg">
   <div class="row between dhead"><h3 id="um-title">uma.moe</h3><button class="btn dclose" type="button">Close</button></div>
@@ -96,8 +96,9 @@ __PANEL_ENH__
     <div id="um-on" hidden>
       <div class="umline"><b id="um-msg" role="status" aria-live="polite"></b><button class="btn sm" type="button" id="um-again">Refresh</button></div>
       <p class="hint" id="um-what"></p>
-      <label class="umtog" title="Trainers at 1,000 followers: their veterans can't be borrowed by following them"><input type="checkbox" id="um-full"> Include max borrows</label>
-      <div class="seg umsort" id="um-sort" role="group" aria-label="Order"></div>
+      <div class="row between"><label class="umtog" title="Trainers at 1,000 followers: their veterans can't be borrowed by following them"><input type="checkbox" id="um-full"> Include max borrows</label>
+        <div class="sortdd" id="um-sort-dd"><button class="btn sm" id="um-sort" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Order veterans"></button>
+          <div class="sortmenu" id="um-sort-menu" role="menu" hidden></div></div></div>
       <div class="umgrid" id="um-list"></div>
       <button class="linkbtn" type="button" id="um-forget">Disconnect</button>
     </div>

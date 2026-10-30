@@ -214,7 +214,7 @@ export default async function career(b) {
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
   check(
     'career: the umadump file imports 12 veterans',
-    /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && (await pg.locator('#vets .vet').count()) === 12,
+    /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && (await pg.locator('#vets .umcell').count()) === 12,
   );
   // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
   const vbtn =
@@ -225,7 +225,7 @@ export default async function career(b) {
   check(
     'career: the Veteran Umamusume button opens your veterans with their import and export',
     vbtn &&
-      (await pg.locator('#set-vets #vets .vet').count()) === 12 &&
+      (await pg.locator('#set-vets #vets .umcell').count()) === 12 &&
       (await pg.locator('#set-vets #v-paste, #set-vets #v-export, #set-vets #v-clear, #set-vets #v-file').count()) ===
         4,
   );
@@ -298,7 +298,7 @@ export default async function career(b) {
     [
       await pg.textContent('#v-msg'),
       await pg.getAttribute('#v-tab-bor', 'aria-selected'),
-      await pg.locator('#vets .vet').count(),
+      await pg.locator('#vets .umcell').count(),
       (await pg.textContent('#v-tab-own')).trim(),
       (await pg.textContent('#v-tab-bor')).trim(),
     ].join(' | ');
@@ -326,7 +326,7 @@ export default async function career(b) {
     'career: Remove all on the Borrowed tab removes only the borrowed, and the empty tab says how to fill it',
     /^Removed 2 borrowed veterans\. \| true \| 0 \| Yours · 12 \| Borrowed · 0$/.test(cleared) &&
       /None borrowed yet/.test(emptyHint) &&
-      (await pg.locator('#vets .vet').count()) === 12,
+      (await pg.locator('#vets .umcell').count()) === 12,
     cleared,
   );
   await vetsShut();
@@ -341,7 +341,7 @@ export default async function career(b) {
       copied &&
       dlSame &&
       /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) &&
-      (await pg.locator('#vets .vet').count()) === 12 &&
+      (await pg.locator('#vets .umcell').count()) === 12 &&
       !(await pg.locator('#paste-dlg[open]').count()),
     `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`,
   );

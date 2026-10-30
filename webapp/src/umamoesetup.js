@@ -10,10 +10,10 @@
 import { $, $dialog, $input, el } from './dom.js';
 import { ERA } from './settings.js';
 import { state } from './state.js';
-import { vets, setListings, umaName, blueName, pinkName, uniqueName } from './vets.js';
+import { vets, setListings, umaName } from './vets.js';
 import { parseListing } from './umadump.js';
-import { umaAv, srcFor } from './images.js';
-import { CAREER } from './data.js';
+import { vetCell } from './vetcell.js';
+import { wireMenu } from './sortmenu.js';
 import {
   savedKey,
   saveKey,
@@ -49,7 +49,8 @@ const ago = (at) => {
   return min < 1 ? 'just now' : min < 60 ? `${Math.round(min)} min ago` : `${Math.round(min / 60)} h ago`;
 };
 // the popup's orders, uma.moe's own: its search's order (best covered first), then by her rank, her affinity score, her
-// race wins, her white sparks' stars, the latest updated; the choice is kept in this browser
+// race wins, her white sparks' stars, the latest updated; each starts best (or latest) first, and picking the chosen one
+// again reverses it, as the umas' and cards' sort menus do; the choice is kept in this browser
 /** @type {Record<string, [string, string, (v: import('./vets.js').Veteran) => number]>} */
 const SORTS = {
   match: ['Best match', 'uma.moe’s order: the best covered first', (v) => -(order.get(v.id) ?? 1e9)],
@@ -60,14 +61,28 @@ const SORTS = {
   updated: ['Updated', 'The latest updated first', (v) => Date.parse(v.lender?.updated || '') || 0],
 };
 const SORT_KEY = 'llp:umamoe-sort';
-let sortBy = (() => {
+let [sortBy, reversed] = (() => {
   try {
-    const k = localStorage.getItem(SORT_KEY);
-    return k && k in SORTS ? k : 'match';
+    const [k, dir] = (localStorage.getItem(SORT_KEY) || '').split(':');
+    return k in SORTS ? [k, dir === 'rev'] : ['match', false];
   } catch {
-    return 'match';
+    return ['match', false];
   }
 })();
+function paintSortMenu() {
+  const arrow = reversed ? '↑' : '↓',
+    btn = $('um-sort');
+  btn.textContent = `${SORTS[sortBy][0]} ${arrow}`;
+  btn.title = `${SORTS[sortBy][1]}${reversed ? ', reversed' : ''}`;
+  btn.setAttribute('aria-label', `${btn.textContent}, order veterans`);
+  for (const b of $('um-sort-menu').querySelectorAll('button')) {
+    const k = b.dataset.k,
+      on = k === sortBy;
+    b.setAttribute('aria-checked', String(on));
+    b.textContent = SORTS[k][0] + (on ? ` ${arrow}` : '');
+    b.title = on ? 'Click to reverse' : SORTS[k][1];
+  }
+}
 /** @type {Map<string, number>} each listing's place in uma.moe's answer */
 const order = new Map();
 
@@ -97,93 +112,23 @@ export function paintUmamoe() {
     ? `Parents with ${now.min}+ of your ${now.n} targets${fullTrainers() ? '' : ', from trainers you can follow'}`
     : '';
   $input('um-full').checked = fullTrainers();
-  for (const btn of $('um-sort').querySelectorAll('button'))
-    btn.setAttribute('aria-pressed', String(btn.dataset.v === sortBy));
+  paintSortMenu();
   // the listings as cards in the chosen order
   const by = SORTS[sortBy][2],
+    sign = reversed ? -1 : 1,
     list = $('um-list');
   list.textContent = '';
-  for (const v of vets.filter((x) => x.src === 'umamoe').sort((x, y) => by(y) - by(x))) list.appendChild(card(v));
+  for (const v of vets.filter((x) => x.src === 'umamoe').sort((x, y) => sign * (by(y) - by(x))))
+    list.appendChild(card(v));
 }
-// her main sparks as the game's legacy list shows them under a portrait: blue (her stat), pink (her aptitude), green
-// (her unique skill), each a short tag of its colour with its stars under it
-const BLUE_TAG = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
-  PINK_TAG = {
-    11: 'TURF',
-    12: 'DIRT',
-    21: 'FRONT',
-    22: 'PACE',
-    23: 'LATE',
-    24: 'END',
-    31: 'SPRT',
-    32: 'MILE',
-    33: 'MED',
-    34: 'LONG',
-  };
-function mainSparks(v) {
-  const row = el('span', 'umsps'),
-    first = (o) => Object.entries(o || {}).find(([, st]) => st > 0);
-  // (the legacy list's own tag image, its lettering included, and its star row; the letters alone where the image
-  // isn't shipped)
-  const tag = (kind, label, full, stars, image) => {
-    const t = el('span', `umsp ${kind}`),
-      src = srcFor('ui', `fstar_${kind}_${Math.min(3, Math.max(1, stars))}`),
-      face = srcFor('ui', image);
-    if (face) {
-      const f = el('img', 'umtagimg');
-      f.src = face;
-      f.alt = label;
-      t.appendChild(f);
-    } else t.appendChild(el('b', '', label));
-    if (src) {
-      const st = el('img', 'umst');
-      st.src = src;
-      st.alt = `${stars}★`;
-      t.appendChild(st);
-    } else t.appendChild(el('i', '', '★'.repeat(stars)));
-    t.title = `${full} ${stars}★`;
-    return t;
-  };
-  const bl = first(v.blues),
-    pk = first(v.pinks),
-    gr = first(v.greens);
-  if (bl) row.appendChild(tag('blue', BLUE_TAG[bl[0]] || '?', blueName(+bl[0]), bl[1], `ftag_blue_${bl[0]}`));
-  if (pk) row.appendChild(tag('pink', PINK_TAG[pk[0]] || '?', pinkName(+pk[0]), pk[1], `ftag_pink_${pk[0]}`));
-  if (gr) row.appendChild(tag('green', 'UNIQ', uniqueName(+gr[0]) || 'Unique skill', gr[1], 'ftag_green'));
-  return row;
-}
-// a listing as the game's legacy list draws a veteran: her portrait, her three main sparks under it, then her trainer's
-// name; a click opens her veteran popup (her sparks, her parents, her trainer's followers, Copy ID)
-function card(v) {
-  const c = el('button', 'umcell');
-  c.type = 'button';
-  c.setAttribute('aria-haspopup', 'dialog');
-  c.setAttribute('aria-label', `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`);
-  c.title = `${umaName(v.chara)} · ${v.lender?.name || ''}`;
-  const face = el('span', 'umface'),
-    portrait = v.outfit && srcFor('vet', v.outfit);
-  // her outfit's portrait as the game's legacy list draws a veteran (in its ring, her head over the top), else her icon
-  if (portrait) {
-    const p = el('img', 'umvet');
-    p.src = portrait;
-    p.alt = '';
-    p.loading = 'lazy';
-    p.onerror = () => p.replaceWith(umaAv(v.chara, v.outfit, 88));
-    face.appendChild(p);
-  } else face.appendChild(umaAv(v.chara, v.outfit, 88));
-  // her career-rank badge, top right of her portrait, as in the game (the last rank whose minimum her score reaches)
-  const rankId = (CAREER.ranks || []).reduce((at, min, i) => (v.rank >= min ? i + 1 : at), 0),
-    badge = rankId && srcFor('ui', `vrank_${rankId}`);
-  if (badge) {
-    const b = el('img', 'umrank');
-    b.src = badge;
-    b.alt = 'Rank';
-    face.appendChild(b);
-  }
-  c.append(face, mainSparks(v), el('span', 'nm', v.lender?.name || umaName(v.chara)));
-  c.onclick = () => ctx.open(v);
-  return c;
-}
+// a listing as the game's legacy list draws a veteran, with her trainer's name; a click opens her veteran popup (her
+// sparks, her parents, her trainer's followers, Copy ID)
+const card = (v) =>
+  vetCell(v, {
+    name: v.lender?.name || umaName(v.chara),
+    label: `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`,
+    onClick: () => ctx.open(v),
+  });
 
 // the pool's listings for the target set as it is now: the kept answer at once, else one request (`fresh`: always one)
 /** @param {boolean} [fresh] */
@@ -257,20 +202,21 @@ export function initUmamoe(c) {
     if (e.key === 'Enter') $('um-save').click();
   };
   $('um-again').onclick = () => syncListings(true);
-  for (const [k, [label, tip]] of Object.entries(SORTS)) {
-    const btn = el('button', '', label);
-    btn.type = 'button';
-    btn.dataset.v = k;
-    btn.title = tip;
-    btn.onclick = () => {
-      sortBy = k;
-      try {
-        localStorage.setItem(SORT_KEY, k);
-      } catch {}
-      paintUmamoe();
-    };
-    $('um-sort').appendChild(btn);
+  for (const k of Object.keys(SORTS)) {
+    const b = el('button', '', SORTS[k][0]);
+    b.type = 'button';
+    b.setAttribute('role', 'menuitemradio');
+    b.dataset.k = k;
+    $('um-sort-menu').appendChild(b);
   }
+  wireMenu('um-sort', (k) => {
+    reversed = k === sortBy && !reversed;
+    sortBy = k;
+    try {
+      localStorage.setItem(SORT_KEY, `${k}${reversed ? ':rev' : ''}`);
+    } catch {}
+    paintUmamoe();
+  });
   $input('um-full').onchange = () => {
     setFullTrainers($input('um-full').checked);
     syncListings();

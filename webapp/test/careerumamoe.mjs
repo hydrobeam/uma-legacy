@@ -136,7 +136,7 @@ export default async function careerumamoe(b) {
   await pg.click('#v-tab-bor');
   check(
     'career uma.moe: the veteran dialog holds yours only (no uma.moe cards, not counted)',
-    (await pg.locator('#vets .vet').count()) === 0 && (await pg.textContent('#v-tab-bor')) === 'Borrowed · 0',
+    (await pg.locator('#vets .umcell').count()) === 0 && (await pg.textContent('#v-tab-bor')) === 'Borrowed · 0',
   );
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
@@ -179,9 +179,11 @@ export default async function careerumamoe(b) {
   );
   const names = () => pg.$$eval('#um-list .umcell .nm', (l) => l.map((x) => x.textContent).join());
   const matchOrder = await names();
-  await pg.click('#um-sort button[data-v="wins"]');
+  await pg.click('#um-sort');
+  await pg.click('#um-sort-menu button[data-k="wins"]');
   const winsOrder = await names();
-  await pg.click('#um-sort button[data-v="match"]');
+  await pg.click('#um-sort-menu button[data-k="match"]'); // (the menu stays open, as the umas' and cards' do)
+  await pg.keyboard.press('Escape');
   await pg.locator('#um-list .umcell').first().click();
   await dialog(pg, 'node-dlg');
   const tag = await pg.locator('#node-dlg .srctag').textContent();

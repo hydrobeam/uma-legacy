@@ -11,7 +11,7 @@ export default async function careervets(b) {
   // result on screen while the search runs again
   const toteBefore = await pg.locator('#odds-open').count();
   await vetsOpen();
-  await pg.click('#vet-0 .vtile');
+  await pg.click('#vet-0');
   await dialog(pg, 'node-dlg');
   const chip = pg.locator('#node-dlg .udrow.me .vsk:not(.pink) .vskb').first(),
     ckey = await chip.getAttribute('data-k');
@@ -140,8 +140,8 @@ export default async function careervets(b) {
     (await pg.locator('.pf').nth(0).locator('.pn.gp', { hasText: 'Unknown' }).count()) === 2 &&
       (await sparksIn('node:p0g0', 2)) &&
       (await sparksIn('node:p0g1', 2)) &&
-      (await pg.locator('#vets .vet').count()) === 13 &&
-      /Parent 1/.test(await pg.locator('#vet-12 .vtop').textContent()),
+      (await pg.locator('#vets .umcell').count()) === 13 &&
+      /Parent 1/.test(await pg.locator('#vet-12 .umtab').textContent()),
   );
   check('career: the planner fills the rest', /Weighed 804 careers/.test(await note()), await note());
   // a grandparent: pick her uma, then her skills
@@ -273,7 +273,7 @@ export default async function careervets(b) {
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
   check(
     'career: the veterans and the chosen places outlive a reload',
-    (await pg.locator('#vets .vet').count()) === 13 &&
+    (await pg.locator('#vets .umcell').count()) === 13 &&
       /Special Week/.test(await pg.locator('.pf').nth(0).textContent()) &&
       /Agnes Digital/.test(await pg.locator('#tree .pn.trainee').textContent()),
   );
@@ -284,7 +284,7 @@ export default async function careervets(b) {
   await pg.click('#paste-load');
   check(
     'career: a paste that is not an export says so and changes nothing',
-    /No veterans found/.test(await pg.textContent('#v-msg')) && (await pg.locator('#vets .vet').count()) === 13,
+    /No veterans found/.test(await pg.textContent('#v-msg')) && (await pg.locator('#vets .umcell').count()) === 13,
   );
   await pg.keyboard.press('Escape');
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));

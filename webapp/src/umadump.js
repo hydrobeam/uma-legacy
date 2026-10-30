@@ -121,6 +121,7 @@ export function parseExport(text) {
     ...node(r),
     src: 'import',
     borrowed: !!r.owner_viewer_id,
+    rank: +r.rank_score || undefined, // her rank score (the badge, CAREER.ranks)
     // trained_chara_id counts per player: a lender's id is kept apart from yours by her viewer id
     id:
       (r.owner_viewer_id ? `tr${r.owner_viewer_id}-` : 'tc') +

@@ -1,5 +1,6 @@
 // sort menus (umas, cards): pick Release or Name; picking the active one again reverses it (release starts newest
 // first, name A to Z). The menu stays open until a click outside it or Escape. key: state prefix ('r' or 'c').
+// (`wireMenu` is the button and menu alone; the uma.moe popup's orders use it too.)
 import { $ } from './dom.js';
 import { state, writeSaved } from './state.js';
 const HOW = { 'rel-desc': 'newest first', 'rel-asc': 'oldest first', 'name-asc': 'A to Z', 'name-desc': 'Z to A' };
@@ -23,16 +24,30 @@ export function paintSort(id, key) {
       b.title = on ? 'Click to reverse' : b.dataset.k === 'rel' ? 'Newest first' : 'A to Z';
     });
 }
-// Keyboard (menu pattern, as the scenario picker): opening focuses the checked item, the arrows (and Home/End) move
-// between items, Escape closes and returns to the button, focus leaving the menu closes it.
 /** @param {string} id the sort button's id @param {string} key the state's sort keys' prefix @param {() => void} render */
 export function sortMenu(id, key, render) {
+  const sortKey = `${key}sort`,
+    dirKey = `${key}dir`;
+  wireMenu(id, (k) => {
+    if (k === state[sortKey]) state[dirKey] = state[dirKey] === 'desc' ? 'asc' : 'desc';
+    else {
+      state[sortKey] = k;
+      state[dirKey] = k === 'rel' ? 'desc' : 'asc';
+    }
+    writeSaved();
+    render(); // ordering only: saved, no new search
+  });
+}
+// A sort button and its menu (`id`, `${id}-menu`, `${id}-dd`), wired: `pick` gets the chosen item's data-k (the items
+// are the menu's buttons when this runs). Keyboard (menu pattern, as the scenario picker): opening focuses the checked
+// item, the arrows (and Home/End) move between items, Escape closes and returns to the button, focus leaving the menu
+// closes it.
+/** @param {string} id @param {(k: string) => void} pick */
+export function wireMenu(id, pick) {
   const btn = $(id),
     menu = $(`${id}-menu`),
     dropdown = $(`${id}-dd`),
     items = () => [...menu.querySelectorAll('button')];
-  const sortKey = `${key}sort`,
-    dirKey = `${key}dir`;
   const open = (isOpen) => {
     menu.hidden = !isOpen;
     btn.setAttribute('aria-expanded', isOpen);
@@ -49,15 +64,7 @@ export function sortMenu(id, key, render) {
     }
   });
   items().forEach((b) => {
-    b.onclick = () => {
-      if (b.dataset.k === state[sortKey]) state[dirKey] = state[dirKey] === 'desc' ? 'asc' : 'desc';
-      else {
-        state[sortKey] = b.dataset.k;
-        state[dirKey] = b.dataset.k === 'rel' ? 'desc' : 'asc';
-      }
-      writeSaved();
-      render(); // ordering only: saved, no new search
-    };
+    b.onclick = () => pick(b.dataset.k);
   });
   menu.addEventListener('keydown', (e) => {
     const all = items(),

@@ -45,13 +45,17 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
 (click its ribbon); until you fold or open it yourself, it opens folded once you have veterans.
 - *Import umadump file* reads umadump's `trained_chara_data.json` (sparks with stars, single-race G1 wins, both
   parents) or its `rental_chara_data.json`, the veterans the career start screen offers for borrowing (same fields,
-  marked borrowed). The dialog's *Yours* and *Borrowed* tabs hold each kind. Your veterans merge by veteran (the
+  marked borrowed). The dialog's *Yours* and *Borrowed* tabs hold each kind, drawn as the game's legacy list draws
+  veterans (portrait in its ring, rank, three main sparks, her number; a *Parent 1* / *Parent 2* tab on the next career's
+  parents); tapping one opens her popup (her sparks, how many targets she carries as *x/y*, *Yours* / *Borrowed*,
+  *Remove*). Your veterans merge by veteran (the
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
   lends today; *Remove all* clears the open tab. *Paste* takes the same text, an Export from this page (which replaces
   every import), or an uma.moe lineage planner export.
 - **Borrow from uma.moe** (beside *Next career*; a popup listing what was found as the game's legacy list draws veterans:
-  her portrait in its ring, her rank, her three main sparks, her trainer; ordered as uma.moe orders them, or by rank,
-  affinity, wins, white sparks' stars or the latest updated; a card opens her veteran popup, with her trainer's followers
+  her portrait in its ring, her rank, her three main sparks, her trainer; ordered (the sort menu, as the umas' and cards')
+  as uma.moe orders them, or by rank, affinity, wins, white sparks' stars or the latest updated; picking the chosen order
+  again reverses it; in her popup her target sparks come first, each under a green *Target* label; a card opens her veteran popup, with her trainer's followers
   and *Copy ID*; *Include max borrows* asks again without the follower limit): paste your uma.moe API key once (made at uma.moe/settings; kept in
   your browser under its own entry, sent only to uma.moe as a header, never in an Export) and the veterans players list
   on uma.moe join the pool as borrowed parents, which the planner weighs like any other borrow. The page asks once per
@@ -132,11 +136,13 @@ back to one draws it again without a run.
 a run**. On wide screens the trainee sits over her two **Legacies** on the left (each parent with her veteran number and
 her own two parents as faces; on phones only the parent, tap her for the rest; a parent borrowed from uma.moe shows her
 trainer, and her popup has *Copy ID*, to follow them before the career starts), with **Deck** (a popup: the six cards with
-their priority and chain notes) and **Race schedule** (the game's calendar of the G1s she runs) under the trainee; the
+their priority and chain notes) and **Race schedule** (the game's calendar of the G1s she runs, each race's win chance from the community table on her own
+grades, the planner's own figure, which counts the pink sparks she may get, on hover; *Win table* shows the table) under
+the trainee; the
 **Targets** take the right side: a table, lowest first, of each target's skill tile (its white version), *Legacies* (the
-chance her six legacies pass it on), *Deck* (the chance her deck gives it, with the cards that do by a hint or an event,
-or her outfit's portrait / the scenario's logo when those hand it out) and *Lands* (her chance to land its spark, on the
-game's gauge, filled gold for the share through the gold skill and white for the share as the white); each heading says
+chance her six legacies pass it on), *Deck* (the chance her deck gives it, on gold when it gives the gold skill, with the cards that
+do by a hint or an event, or her outfit's portrait / the scenario's logo when those hand it out) and *Lands* (her chance
+to land its spark, on the game's spark-research gauge); each heading says
 what it is on hover. On phones each target takes two lines: the skill and its gauge, then *Legacies* and *Deck* under it. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
 faces (lit where one carries it) and each card that gives it.
 The landing chances

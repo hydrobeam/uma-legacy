@@ -343,6 +343,8 @@ def era(data_dir, events_file):
             "blues": career_tables.get("blues", {}),
             "uniques": career_tables.get("uniques", {}),
             "races": data["race_names"],
+            "race_cat": data["race_cat"],  # each race's distance (0-3 sprint to long) and ground (1 turf, 2 dirt)
+            "race_ground": data["race_ground"],
             "race_turns": race_turns,
             "mobs": [m for m in career_tables.get("mobs", []) if f"mob:{m[0]}" in image_catalog.keys],
             "sourced": sourced,
@@ -482,6 +484,8 @@ SPRITES = [
     "spark_dot",
     "spark_dot_gold",
     "gauge_track",
+    "gauge_fill",
+    "label_target",
     "tag_blue",
     "tag_pink",
     "tag_green",

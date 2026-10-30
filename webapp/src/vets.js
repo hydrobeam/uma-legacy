@@ -19,7 +19,7 @@
  *   src: where she came from: 'import' | 'tree' (uma.moe's lineage planner) | 'umamoe' (uma.moe's search) | 'hand' |
  *   'sample' | 'entered' (older saves: 'simulated')
  *
- *   rank: an uma.moe veteran's rank score (her career-rank badge)
+ *   rank: her rank score (her career-rank badge), when the import or uma.moe gives it
  *
  * The trainer who lists a veteran found on uma.moe (umadump.js `parseListing`): kept on this device, left out of Export.
  * @typedef {{name: string, id: string, followers: number, updated: string, affinity?: number, wins?: number,
@@ -381,11 +381,20 @@ function starsEl(stars) {
  * @property {string} key  names the controls (data-k), so the page can put the keyboard focus back on the same one after
  *   a redraw
  * @property {boolean} [readOnly]  shown, not editable: no x, no click
+ * @property {boolean} [target]  one of the targets, labelled as one (in a list that shows other skills too)
  */
 /** @param {ChipSpec} spec */
-function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = false }) {
+function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = false, target = false }) {
   const c = document.createElement('span');
   c.className = `vsk${pink ? ' pink' : ''}`;
+  // a target among other skills: the game's green list label over it
+  if (target) {
+    const m = document.createElement('i');
+    m.className = 'vtgt';
+    m.textContent = 'Target';
+    m.setAttribute('aria-hidden', 'true');
+    c.appendChild(m);
+  }
   const b = document.createElement(readOnly ? 'span' : 'button');
   if (!readOnly) /** @type {HTMLButtonElement} */ (b).type = 'button';
   b.className = 'vskb';
@@ -396,7 +405,7 @@ function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = fal
   b.appendChild(t);
   b.appendChild(starsEl(stars));
   if (readOnly) {
-    b.setAttribute('aria-label', `${label}${pink ? ' (aptitude)' : ''}, ${stars} stars`);
+    b.setAttribute('aria-label', `${label}${pink ? ' (aptitude)' : ''}, ${stars} stars${target ? ', a target' : ''}`);
     c.appendChild(b);
     return c;
   }
@@ -429,7 +438,14 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
     const b = colourBar(nd, kind, key, onEdit, readOnly);
     if (b) sp.appendChild(b);
   }
-  for (const g of readOnly ? Object.keys(nd.sparks).map(Number) : targetGroups()) {
+  // her target sparks (all she shows when editable); read-only, all her white sparks, the targets first and labelled
+  const targets = new Set(targetGroups()),
+    groups = readOnly
+      ? Object.keys(nd.sparks)
+          .map(Number)
+          .sort((a, b) => Number(targets.has(b)) - Number(targets.has(a)))
+      : targetGroups();
+  for (const g of groups) {
     const stars = nd.sparks[g];
     if (!stars) continue;
     sp.appendChild(
@@ -440,6 +456,7 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
         pink: false,
         key: `${key}:s${g}`,
         readOnly,
+        target: readOnly && targets.has(g),
         onCycle: () => {
           nd.sparks[g] = (stars % 3) + 1;
           onEdit();

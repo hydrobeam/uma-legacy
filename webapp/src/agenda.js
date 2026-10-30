@@ -17,6 +17,10 @@ import { pickOutfit } from './roster.js';
  *   previous position's)
  * @property {number} [row]  which race in a row this is (1 = the first)
  * @property {boolean} goal  a goal race of her scenario
+ * @property {number} [tbl]  the career page: her win chance on the community table, on her own grades (`shownP` shows it
+ *   in place of `p`, the planner's, which counts her pink sparks)
+ * @property {number} [tapt]  the table's aptitude cost on her own grades, in percentage points
+ * @property {string} [grades]  those grades, as "Mile C, Turf A"
  *
  * One scheduled G1, one cell per member (null: she doesn't run it).
  * @typedef {object} ScheduleRow
@@ -58,17 +62,64 @@ function whenBar(slot, /** @type {ScheduleCell|null} */ cell = null) {
   bar.appendChild(label);
   if (cell) {
     const p = document.createElement('b');
-    p.textContent = `${cell.p}% win`;
+    p.textContent = `${shownP(cell)}% win`;
     p.title = why(cell);
     bar.appendChild(p);
   }
   return bar;
 }
-// why a race isn't a sure win: 110 minus the aptitude cost (distance and surface grades), minus the career planner's
-// low-aptitude cost, minus the penalty for the k-th race in a row (a goal race pays the (k-1)-th's), capped at 100% (''
-// when the cell doesn't say)
+// the figure a cell shows: the community table's on the career page, else the planner's
+const shownP = (/** @type {ScheduleCell} */ cell) => cell.tbl ?? cell.p;
+// the community table (110, minus each aptitude's cost, minus the k-th race in a row's penalty, at most 100): what the
+// career page shows, and the Win table panel
+const GRADE = ['G', 'F', 'E', 'D', 'C', 'B', 'A', 'S'],
+  GRADE_COST = [90, 60, 40, 30, 20, 10, 0, 0],
+  ROW_PEN = [0, 0, 5, 20, 30, 50];
+/** her grades' cost for a race (`cat` 0-3 sprint to long, `ground` 1 turf, 2 dirt) on aptitude codes 1..8 in data.json's
+ *  `apt` order (sprint, mile, medium, long, turf, dirt, ...) @returns {{cost: number, grades: string}} */
+export function tableCost(apt, cat, ground) {
+  const d = apt[cat],
+    s = apt[ground === 1 ? 4 : 5];
+  return {
+    cost: GRADE_COST[d - 1] + GRADE_COST[s - 1],
+    grades: `${['Sprint', 'Mile', 'Medium', 'Long'][cat]} ${GRADE[d - 1]}, ${ground === 1 ? 'Turf' : 'Dirt'} ${GRADE[s - 1]}`,
+  };
+}
+export const tableChance = (cost, row) => Math.max(0, Math.min(100, 110 - cost - ROW_PEN[Math.min(row, 6) - 1]));
+// the community table, as the schedule window's Win table panel shows it: the sum, then each aptitude grade's cost and
+// each race in a row's penalty
+function winTable() {
+  const p = document.createElement('div');
+  p.className = 'wintable';
+  p.id = 'sched-wintable';
+  p.hidden = true;
+  const row = (head, cells) => `<tr><th scope="row">${head}</th>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+  p.innerHTML =
+    '<p>Win chance = 110 − distance grade − surface grade − races in a row, at most 100%</p>' +
+    `<table><tr><th scope="col">Grade</th>${['S', 'A', 'B', 'C', 'D', 'E', 'F', 'G'].map((g) => `<th scope="col">${g}</th>`).join('')}</tr>` +
+    `${row('Cost', [0, 0, 10, 20, 30, 40, 60, 90])}</table>` +
+    `<table><tr><th scope="col">Race in a row</th>${['1st', '2nd', '3rd', '4th', '5th', '6th+'].map((g) => `<th scope="col">${g}</th>`).join('')}</tr>` +
+    `${row('Cost', ROW_PEN)}</table>`;
+  return p;
+}
+// why a race isn't a sure win, a line each: the career page's community-table figure (110 minus her grades' cost, minus
+// the k-th race in a row's), then the planner's; elsewhere 110 minus the aptitude cost (distance and surface grades),
+// minus the career planner's low-aptitude cost, minus the penalty for the k-th race in a row (a goal race pays the
+// (k-1)-th's), capped at 100% ('' when the cell doesn't say)
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th or later'];
 const why = (/** @type {ScheduleCell} */ cell) => {
+  if (cell.tbl !== undefined) {
+    const pen = ROW_PEN[Math.min(cell.row, 6) - 1],
+      parts = [];
+    if (cell.tapt > 0) parts.push(`${cell.tapt} for her aptitudes (${cell.grades})`);
+    if (pen > 0) parts.push(`${pen} for the ${ORD[Math.min(cell.row, 6)]} race in a row`);
+    const capped = 110 - cell.tapt - pen > 100 ? ', at most 100' : '';
+    return [
+      `${cell.tbl}% to win (community table)`,
+      parts.length ? `110${parts.map((x) => ` − ${x}`).join('')}${capped}` : 'Nothing taken off: her aptitudes suit it',
+      ...(cell.p === cell.tbl ? [] : [`The planner, counting the pink sparks she may get: ${cell.p}%`]),
+    ].join('\n');
+  }
   if (cell.apt === undefined) return '';
   const parts = [];
   if (cell.apt > 0) parts.push(`aptitude −${cell.apt}`);
@@ -239,7 +290,7 @@ export function winsAgenda(opts) {
     b.dataset.k = `win:${ix}`;
     b.dataset.ix = ix;
     b.setAttribute('aria-label', `${name}, won: remove`);
-    const odds = inSchedule ? ` · ${why(scheduled.cell) || `${scheduled.cell.p}% win`}` : '';
+    const odds = inSchedule ? ` · ${why(scheduled.cell) || `${shownP(scheduled.cell)}% win`}` : '';
     b.title = `${name} · won${odds}${scheduled?.parent ? ' · a parent won it too' : ''} · click to remove`;
     b.onclick = () => {
       remove(ix);
@@ -339,7 +390,7 @@ export function winsAgenda(opts) {
       nm.textContent = raceName.get(ix);
       b.appendChild(nm);
       const sub = inSchedule(ix)
-        ? `her schedule · ${info(ix).cell.p}% win`
+        ? `her schedule · ${shownP(info(ix).cell)}% win`
         : shownAt.has(ix)
           ? `won, shown in ${turnName(shownAt.get(ix))}: moves here`
           : '';
@@ -401,6 +452,20 @@ export function openSched(loop) {
   close.className = 'btn';
   close.textContent = 'Close';
   close.onclick = () => $dialog('sched-dlg').close();
+  // the career page's figures are the community table's: its contents behind a button
+  const tableBtn = document.createElement('button'),
+    table = winTable();
+  tableBtn.className = 'btn sm';
+  tableBtn.type = 'button';
+  tableBtn.textContent = 'Win table';
+  tableBtn.title = 'How a race’s win chance is worked out';
+  tableBtn.setAttribute('aria-expanded', 'false');
+  tableBtn.setAttribute('aria-controls', 'sched-wintable');
+  tableBtn.onclick = () => {
+    table.hidden = !table.hidden;
+    tableBtn.setAttribute('aria-expanded', String(!table.hidden));
+  };
+  if (schedule.some((row) => row.cells.some((c) => c?.tbl !== undefined))) head.appendChild(tableBtn);
   head.appendChild(close);
   const tabs = document.createElement('div');
   tabs.className = 'stabs';
@@ -465,7 +530,7 @@ export function openSched(loop) {
       : others.length
         ? ` · with ${others.map((j) => members[j].name).join(', ')}`
         : ' · alone (no affinity, optional)';
-    el.title = `${names.join(' or ')} · ${why(c) || `win ${c.p}%`}${c.goal ? ' · goal' : ''}${company}`;
+    el.title = `${names.join(' or ')} · ${why(c) || `win ${shownP(c)}%`}${c.goal ? ' · goal' : ''}${company}`;
     return el;
   }
   function show(key) {
@@ -493,7 +558,7 @@ export function openSched(loop) {
     });
     view.appendChild(ag);
   }
-  body.append(head, tabs, view);
+  body.append(head, table, tabs, view);
   show(0);
   $dialog('sched-dlg').showModal();
 }
@@ -513,7 +578,7 @@ function schedTable(members, /** @type {ScheduleRow[]} */ schedule, outfitOf) {
   // a member's cell: her win %, * for a goal race, its reason on hover; · when she doesn't run it
   const memberCell = (c) =>
     c
-      ? `<td class="${c.goal ? 'goal' : ''}"${why(c) ? ` title="${esc(why(c))}"` : ''}>${c.goal ? '*' : ''}${c.p}</td>`
+      ? `<td class="${c.goal ? 'goal' : ''}"${why(c) ? ` title="${esc(why(c))}"` : ''}>${c.goal ? '*' : ''}${shownP(c)}</td>`
       : '<td class="dot">·</td>';
   // the rows, a year row before each year's first
   const body = (rows) => {

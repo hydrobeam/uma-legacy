@@ -30,7 +30,7 @@ export default async function careergen(b) {
   const fromTree = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
   check(
     'career: an uma.moe tree adds her with her parents after your veterans, marked yours (her popup says she came from uma.moe)',
-    (await pg.locator('#vets .vet').count()) === nVets + 1 &&
+    (await pg.locator('#vets .umcell').count()) === nVets + 1 &&
       fromTree.src === 'tree' &&
       fromTree.chara === 1019 &&
       !fromTree.borrowed &&
@@ -41,11 +41,11 @@ export default async function careergen(b) {
       fromTree.parents.map((p) => p.chara).join() === '1021,1029' &&
       fromTree.parents[0].sparks[20165] === 2 &&
       fromTree.parents[0].wins.length === 1 &&
-      !/From uma\.moe/.test(await pg.locator('#vets .vet').last().textContent()) &&
+      !/From uma\.moe/.test(await pg.locator('#vets .umcell').last().textContent()) &&
       /uma\.moe tree/.test(await pg.textContent('#v-msg')) &&
       (await (async () => {
         await vetsOpen();
-        await pg.locator('#vets .vtile').last().click();
+        await pg.locator('#vets .umcell').last().click();
         await dialog(pg, 'node-dlg');
         const t = await pg.textContent('#node-dlg .srctag').catch(() => '');
         await pg.keyboard.press('Escape');
@@ -53,7 +53,8 @@ export default async function careergen(b) {
       })()),
     JSON.stringify(fromTree),
   );
-  await pg.locator('#vets .vet').last().locator('.vdel').click();
+  await pg.locator('#vets .umcell').last().click();
+  await pg.locator('#node-dlg .vdel').click();
   await done();
   await vetsShut();
   // Save one generation, then another: a veteran's parents become the next one's grandparents.
@@ -97,7 +98,7 @@ export default async function careergen(b) {
       !(await pg.locator('#vets .simtag').count()) &&
       (await (async () => {
         await vetsOpen();
-        await pg.locator('#vets .vtile').last().click();
+        await pg.locator('#vets .umcell').last().click();
         await dialog(pg, 'node-dlg');
         const t = await pg.textContent('#node-dlg .simtag').catch(() => '');
         await pg.keyboard.press('Escape');
@@ -152,11 +153,12 @@ export default async function careergen(b) {
     removal.id,
   );
   await vetsOpen();
-  await pg.locator(`#vet-${removalIndex} .vdel`).click();
+  await pg.locator(`#vet-${removalIndex}`).click();
+  await pg.locator('#node-dlg .vdel').click();
   await saved();
   check(
     'career: removing a selected veteran immediately redraws and clears the fixed parent',
-    (await pg.locator('#vets .vet').count()) === removal.count - 1 &&
+    (await pg.locator('#vets .umcell').count()) === removal.count - 1 &&
       (await pg.evaluate(({ id, count }) => {
         const c = JSON.parse(localStorage.getItem('llp:career')).global;
         return c.vets.length === count - 1 && !c.vets.some((v) => v.id === id) && !c.plan.parents.includes(id);
@@ -175,10 +177,11 @@ export default async function careergen(b) {
   // an edit and a reload before its save is due (it lands after the next frame): the page saves it as it goes
   await vetsOpen();
   const quick = await pg.evaluate(() => {
-    const card = [...document.querySelectorAll('#vets .vet')].at(-1),
+    const card = [...document.querySelectorAll('#vets .umcell')].at(-1),
       stored = () => JSON.parse(localStorage.getItem('llp:career')).global.vets;
     const id = stored()[+card.id.slice(4)].id;
-    card.querySelector('.vdel').click();
+    card.click(); // her popup, with Remove
+    document.querySelector('#node-dlg .vdel').click();
     const due = stored().some((v) => v.id === id);
     dispatchEvent(new PageTransitionEvent('pagehide'));
     return { id, due, flushed: !stored().some((v) => v.id === id) };
@@ -195,11 +198,14 @@ export default async function careergen(b) {
     `written before the page went: ${!quick.due}`,
   );
   await vetsOpen();
-  while ((await pg.locator('#vets .vet').count()) > 1) await pg.locator('#vets .vdel').last().click();
+  while ((await pg.locator('#vets .umcell').count()) > 1) {
+    await pg.locator('#vets .umcell').last().click();
+    await pg.locator('#node-dlg .vdel').click();
+  }
   await done();
   check(
     'career: removing down to one veteran clears obsolete indexed results without a page error',
-    (await pg.locator('#vets .vet').count()) === 1 &&
+    (await pg.locator('#vets .umcell').count()) === 1 &&
       /Choose both parents, or import/.test(await note()) &&
       (await pg.locator('#simulation').count()) === 0,
   );
