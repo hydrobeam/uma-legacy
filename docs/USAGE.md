@@ -51,7 +51,8 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   marked borrowed). The dialog's tabs are the game's: *Veteran Umamusume* (yours) and *Guests* (the ones you can
   borrow: your borrow list, then uma.moe's listings, each under its heading), drawn as the game's legacy list draws
   veterans (portrait in its ring, rank, three main sparks, her number or her trainer; a *Parent 1* / *Parent 2* tab on
-  the next career's parents), ordered as they were added to the page (uma.moe's in its own order), by targets carried or by rank (the sort menu). The chosen one shows beside
+  the next career's parents), ordered by targets carried (the most first), as they were added to the page (uma.moe's in its own order) or by rank (the
+  sort menu). The chosen one shows beside
   the list (on phones, tapping one opens her popup): her sparks, how many targets she carries as *x/y*, *Yours* /
   *Guest*, *Remove*. Your veterans merge by veteran (the
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
@@ -145,8 +146,8 @@ their priority and chain notes) and **Race schedule** (the game's calendar of th
 grades, the planner's own figure, which counts the pink sparks she may get, on hover; *Win table* shows the table) under
 the trainee; the
 **Targets** take the right side, two to a row, lowest first: each the game's skill tile with her chance to land its spark,
-and under it that chance as a bar in the skill tiles' colours (gold: the part through the gold skill; white: as the
-white), the chance her legacies pass it on (the spark icon) and her deck's (the cards that hint it or give it by an
+and under it her chance to get the skill as a bar in the skill tiles' colours (gold: its gold skill; white: the white
+alone), the chance her legacies pass it on (the spark icon) and her deck's (the cards that hint it or give it by an
 event, her outfit's portrait or the scenario's logo); on phones one to a row. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
 faces (lit where one carries it) and each card that gives it.
 The landing chances

@@ -1767,9 +1767,9 @@ function legaciesCarrying(r, g) {
   return out;
 }
 // the targets, lowest first, two to a row: each the game's skill tile with her chance to land its spark (tap: Skill
-// Details, where it comes from with each chance); under it a bar of that chance in the game's skill-tile colours, gold
-// for the part through the gold skill and white for the part as the white, then the chance her legacies pass it on
-// (the spark icon) and her deck's (the cards that give it, her outfit or the scenario)
+// Details, where it comes from with each chance); under it a bar of her chance to get the skill in the game's
+// skill-tile colours, gold for getting its gold skill and white for the white alone, then the chance her legacies
+// pass it on (the spark icon) and her deck's (the cards that give it, her outfit or the scenario)
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
     list = el('ul', 'ctgs');
@@ -1793,17 +1793,17 @@ function targetsEl(r) {
       openSkill({ b, name: tName(t.group), icon: () => skillIcon(t.group, gold), gold, legacies, cards }, tile);
     const from = el('div', 'tgsrc'),
       bar = el('span', 'tgbar'),
-      lg = b.land_gold || 0,
-      lw = b.land_white || 0;
+      bg = b.gold || 0,
+      bw = b.white || 0;
     for (const [cls, p] of /** @type {[string, number][]} */ ([
-      ['g', lg],
-      ['w', lw],
+      ['g', bg],
+      ['w', bw],
     ])) {
       const part = el('i', cls);
       part.style.width = `${Math.round(p * 1000) / 10}%`;
       bar.appendChild(part);
     }
-    bar.title = `Lands ${pct(t.p)}: ${pct(lg)} through the gold skill, ${pct(lw)} as the white`;
+    bar.title = `She gets it: ${pct(bg + bw)} (the gold skill ${pct(bg)}, the white alone ${pct(bw)})`;
     const legs = el('span', 'tgfig'),
       orb = srcFor('ui', 'spark_dot');
     if (orb) legs.appendChild(Object.assign(el('img', 'tgico'), { src: orb, alt: '' }));
@@ -3053,8 +3053,9 @@ function setVTab(t) {
   $('vets').setAttribute('aria-labelledby', `v-tab-${t}`);
   renderPool();
 }
-// the list's orders: her number (uma.moe's listings in uma.moe's order), how many targets she carries, her rank; each
-// starts as the menu says and picking the chosen one again reverses it (as the umas' and cards' sort menus)
+// the list's orders: the order added (uma.moe's listings in uma.moe's order), how many targets she carries (the
+// default; ties in the order added), her rank; each starts as the menu says and picking the chosen one again reverses
+// it (as the umas' and cards' sort menus)
 /** @type {Record<string, [string, string, (v: import('./vets.js').Veteran, i: number) => number]>} */
 const VSORTS = {
   no: ['Added', 'In the order they were added to this page (uma.moe’s: in its own order)', (_v, i) => -i],
@@ -3065,7 +3066,7 @@ const VSORTS = {
   ],
   rank: ['Rank', 'The highest career rank first', (v) => v.rank || 0],
 };
-let vSort = 'no',
+let vSort = 'tg',
   vRev = false;
 function paintVSort() {
   const arrow = vRev ? '↑' : '↓',

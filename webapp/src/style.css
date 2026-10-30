@@ -2001,8 +2001,8 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .ctg > .udsk .sic { width: 24px; height: 24px; }
 .ctg > .udsk .udskn { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.15; }
 .tgp { flex: none; font-size: 1.15rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
-/* under a tile: her chance to land it as a bar in the game's skill-tile colours (gold: the part through the gold skill;
-   white: as the white; the unobtained tile's grey: the rest), then the legacies' chance (the spark icon) and the deck's
+/* under a tile: her chance to get the skill as a bar in the game's skill-tile colours (gold: its gold skill; white:
+   the white alone; the darker track: not got), then the legacies' chance (the spark icon) and the deck's
    (the cards that give it) */
 .tgsrc { display: flex; align-items: center; gap: 4px 10px; padding: 0 4px 0 8px; min-height: 22px; }
 .tgbar { flex: 1 1 6em; min-width: 4em; display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: #c4bfd3; box-shadow: inset 0 2px 2px rgba(98, 93, 126, .35); }
