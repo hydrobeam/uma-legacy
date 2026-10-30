@@ -22,12 +22,15 @@
  *   rank: an uma.moe veteran's rank score (her career-rank badge)
  *
  * The trainer who lists a veteran found on uma.moe (umadump.js `parseListing`): kept on this device, left out of Export.
- * @typedef {{name: string, id: string, followers: number, updated: string}} Lender
+ * @typedef {{name: string, id: string, followers: number, updated: string, affinity?: number, wins?: number,
+ *   sparkStars?: number}} Lender
  *
  * The places of the next career: each is chosen here or left to the planner (null).
  * @typedef {object} LineagePlan
  * @property {number|null} trainee  the trainee's character id
  * @property {(string|null)[]} parents  the two parent places, by veteran id
+ * @property {boolean} [fromTable]  the places came from the other careers' table (Use this): a change of setup hands them
+ *   back to the planner
  */
 // Saved per data era in localStorage['llp:career'] = {v: 2, global: {vets, plan}, gm: {vets, plan}}.
 import { $, $dialog, $input } from './dom.js';

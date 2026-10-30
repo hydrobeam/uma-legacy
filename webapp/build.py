@@ -57,7 +57,7 @@ def copy_images():
     size_bytes = 0
     files = []
     image_hash = hashlib.sha256()
-    for kind in ("uma", "mob", "outfit", "card", "skill", "race", "scen", "scenart", "ui", "run"):
+    for kind in ("uma", "mob", "outfit", "vet", "card", "skill", "race", "scen", "scenart", "ui", "run"):
         source_dir = os.path.join(HERE, "img", kind)
         for filename in sorted(os.listdir(source_dir)) if os.path.isdir(source_dir) else []:
             stem, extension = os.path.splitext(filename)
@@ -481,6 +481,7 @@ SPRITES = [
     "spark_green",
     "spark_dot",
     "spark_dot_gold",
+    "gauge_track",
     "tag_blue",
     "tag_pink",
     "tag_green",

@@ -288,5 +288,23 @@ export default async function careervets(b) {
   );
   await pg.keyboard.press('Escape');
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+  // a career taken from the table holds for its setup: a settings change hands the places back to the planner
+  await pg
+    .locator('.alts tbody tr')
+    .filter({ has: pg.getByRole('button', { name: 'Use this' }) })
+    .first()
+    .getByRole('button', { name: 'Use this' })
+    .click();
+  await done();
+  await pg.click('#bp button[data-v="never"]');
+  await done();
+  check(
+    'career: a career taken with "Use this" goes back to the planner when a setting changes',
+    (await pg.locator('#tree .pn.ghost').count()) === 3 &&
+      (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.plan.parents.every((p) => !p))),
+    String(await pg.locator('#tree .pn.ghost').count()),
+  );
+  await pg.click('#bp button[data-v="allow"]');
+  await done();
   await ctx.close();
 }

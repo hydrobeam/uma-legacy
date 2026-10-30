@@ -236,20 +236,17 @@ export default async function career(b) {
   await done();
   const firstRun = await oneAnswer('Any uma/'),
     firstRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
-  const incomplete = await pg.evaluate(() => {
+  await pg.evaluate(() => {
     window.__planPatch = null;
-    const notes = [...document.querySelectorAll('.alts .optnote.incomplete')],
-      box = document.querySelector('.alts').getBoundingClientRect();
-    // (shown inside the choices box, styled as the box's other hints)
-    return {
-      count: notes.length,
-      shown: notes.every((n) => {
-        const r = n.getBoundingClientRect();
-        return r.height > 0 && r.left >= box.left && r.right <= box.right + 0.5 && n.scrollWidth <= n.clientWidth;
-      }),
-      text: notes[0]?.textContent,
-    };
   });
+  // (the table's notes are in its (i) popup)
+  await pg.click('#save-why');
+  await dialog(pg, 'save-dlg');
+  const memNotes = await pg.$$eval('#save-dlg .optnote', (l) =>
+    l.map((x) => x.textContent).filter((t) => /ran out of memory/.test(t)),
+  );
+  await pg.keyboard.press('Escape');
+  const incomplete = { count: memNotes.length, text: memNotes[0] };
   check(
     "career: one answer per run: while it searches, then plans, no career is drawn; the status names each phase; the answer is the plan's pick with the veteran drawn once",
     firstRun.ok &&
@@ -259,10 +256,9 @@ export default async function career(b) {
     firstRun.detail,
   );
   check(
-    'career: a plan whose scoring the memory budget cut short (`scoring_complete` false) says so under the career choices',
+    "career: a plan whose scoring the memory budget cut short (`scoring_complete` false) says so in the careers table's (i) popup",
     firstRes?.next.scoring_complete === false &&
       incomplete.count === 1 &&
-      incomplete.shown &&
       /ran out of memory.+may be too low/.test(incomplete.text || ''),
     JSON.stringify(incomplete),
   );
@@ -383,7 +379,7 @@ export default async function career(b) {
   // chances, with the cards that give it; a tile opens Skill Details (her six legacies, the cards)
   const tgRows = await pg.$$eval('#tree .rtgt .ctg:not(.ctgh)', (l) =>
     l.map((x) => ({
-      land: Number.parseFloat(x.querySelector('.tgland b')?.textContent),
+      land: Number.parseFloat(x.querySelector('.tgg b')?.textContent),
       legs: x.querySelector('.tglegs')?.textContent,
       tile: x.querySelector('button.udsk') !== null,
     })),
@@ -395,7 +391,13 @@ export default async function career(b) {
   await pg.keyboard.press('Escape');
   check(
     'career: the six-card deck in its own place, shown outright; the targets a table with headings, lowest first, each a tile with its legacies and deck chances and its chance to land; a tile opens Skill Details with her six legacies',
-    (await pg.locator('#tree .ldeck #tree-deck .dc').count()) === 6 &&
+    (await (async () => {
+      await pg.click('#deck-open');
+      await dialog(pg, 'deck-dlg');
+      const n = await pg.locator('#deck-dlg #tree-deck .dc').count();
+      await pg.keyboard.press('Escape');
+      return n;
+    })()) === 6 &&
       tgRows.length === 8 &&
       tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
       tgRows.every((t) => t.tile && /^[<\d.]+%$/.test(t.legs)) &&
@@ -448,7 +450,9 @@ export default async function career(b) {
       (await pg.locator('.alts .otag.pick').count()) === 1,
     await pg.textContent('#tree .pn.trainee .nm'),
   );
-  // the deck: a card's panel, as in the planner; marking it not owned searches again without it
+  // the deck (its popup): a card's panel, as in the planner; marking it not owned searches again without it
+  await pg.click('#deck-open');
+  await dialog(pg, 'deck-dlg');
   const dc = pg.locator('#tree-deck .dc').first(),
     dcid = await dc.getAttribute('data-cid');
   await dc.click();
@@ -506,15 +510,19 @@ export default async function career(b) {
       `${rows.length} decks, ${nb} with a borrowed card, ${bad} out of order`,
     );
   }
+  if (await pg.evaluate(() => document.getElementById('deck-dlg')?.open))
+    await pg.locator('#deck-dlg .gmclose').click();
   await pg.click('#o-cards');
   await dialog(pg, 'set-cards');
   await pg.click('#c-all');
   await pg.locator('#set-cards .dclose').click();
   await done();
-  // the schedule: the planner's window (the game's calendar), from a button under the deck
+  // the schedule and the deck: buttons under the trainee, the schedule window (the game's calendar) and the deck's popup
   check(
-    'career: the race schedule is a button under the deck, not a section of the page',
-    (await pg.locator('#tree .ldeck #sched-open').count()) === 1 && !(await pg.locator('#tree .lraces').count()),
+    'career: the race schedule and the deck are buttons under the trainee, not sections of the page',
+    (await pg.locator('#tree .pn.trainee #sched-open').count()) === 1 &&
+      (await pg.locator('#tree .pn.trainee #deck-open').count()) === 1 &&
+      !(await pg.locator('#tree .lraces, #tree .ldeck').count()),
   );
   await pg.click('#sched-open');
   await dialog(pg, 'sched-dlg');
@@ -562,11 +570,11 @@ export default async function career(b) {
       shown = next.options.slice(0, 8).filter((o) => o.role !== 'plan' && o.role !== 'finish' && o.index != null);
     const lifted = shown
       .filter((o) => o.lifts_side?.uma != null && o.lifts_side.chance >= o.lifts_side.own && byId.has(o.lifts_side.uma))
-      .map((o) => `Lifts ${byId.get(o.lifts_side.uma)}'s side (`);
+      .map((o) => `Her veteran helps build ${byId.get(o.lifts_side.uma)}'s parent: `);
     return { titles, lifted, fields: next.options.every((o) => o.lifts_side === null || 'own' in o.lifts_side) };
   }, tableRes.next);
   const roleForm =
-    /^(One of the two parents in today's estimate|The last run in today's estimate \(with the two full veteran parents\)|(In your loop\. )?(Lifts .+'s side \([\d.<%]+ per run\)|Her own \d+\/\d+ as a side \([\d.<%]+ per run\)|No result of hers lowers today's estimate|Not scored against today's estimate))(\. .+ of her possible results lower the estimate)?$/;
+    /^(Makes one of the two parents your fully looped parent needs|The last run: both her parents are already full veterans|(Already in your loop\. )?(Her veteran helps build .+'s parent: [\d.<%]+ of her runs do|Her veteran can be one of the two parents \(an \d+\/\d+\): [\d.<%]+ of her runs|No run of hers helps the plan|Not compared against the plan))(\. In all, .+ of her runs leave a veteran that helps)?$/;
   check(
     "career: each row's Saves per run says what her run does: the side her routes lift most often and its chance per run (`lifts_side`), or her place on the route",
     roles.fields &&
@@ -589,18 +597,27 @@ export default async function career(b) {
     return {
       extras: rows.map((tr) => tr.querySelector('.onum').textContent),
       ties: document.querySelectorAll('.alts .tienote, .alts .otag.tie').length,
-      negative: document.querySelectorAll('.alts > .negtop').length,
+      negative: 0,
     };
   });
   const near = tables.extras.filter((x) => x === '≈0').length;
   check(
-    'career: rows within 0.25 careers of the pick show ≈0 (the pick stays the top score; no tag or note), the others their extra careers, and a line above the table only where the top score is below 0',
+    'career: rows within 0.25 careers of the pick show ≈0 (the pick stays the top score; no tag or note), the others their extra careers, and its (i) popup says no career saves its run only where the top score is below 0',
     pickScore === topScore &&
       near <= tiedCount &&
       (tiedCount === 0 || near >= 1) &&
       tables.extras.every((x) => x === '≈0' || x === '–' || Math.abs(Number(x.replace('−', '-'))) >= 0.2) &&
       tables.ties === 0 &&
-      tables.negative === (topScore < 0 ? 1 : 0),
+      (await (async () => {
+        await pg.click('#save-why');
+        await dialog(pg, 'save-dlg');
+        const n = await pg.$$eval(
+          '#save-dlg .optnote',
+          (l) => l.filter((x) => /saves its own run/.test(x.textContent)).length,
+        );
+        await pg.keyboard.press('Escape');
+        return n;
+      })()) === (topScore < 0 ? 1 : 0),
     JSON.stringify({ tiedCount, topScore, pickScore, tables }),
   );
   // the trio: each step's line (her odds now and the lifts building pays for, or your full veteran at no cost)
@@ -616,16 +633,14 @@ export default async function career(b) {
     memTxt || 'no trio',
   );
   check(
-    "career: the odds and Try a run beside Next career; the next career in the game's order (trainee, legacies, deck, targets), the other careers under it, her card in Try a run's popup",
+    "career: the odds and Try a run beside Next career; the next career (trainee and legacies, then her targets), the other careers under it, her card in Try a run's popup",
     await pg.evaluate(() => {
       const t = document.getElementById('tree'),
-        order = [...t.children].map((k) =>
-          k.className.split(' ').find((c) => /^(ltrainee|llegacies|ldeck|rtgt)$/.test(c)),
-        );
+        order = [...t.children].map((k) => k.className.split(' ').find((c) => /^(ltrainee|llegacies|rtgt)$/.test(c)));
       const r = document.getElementById('results'),
         dlg = document.getElementById('sim-dlg');
       return (
-        order.join() === 'ltrainee,llegacies,ldeck,rtgt' &&
+        order.join() === 'ltrainee,llegacies,rtgt' &&
         !!document.querySelector('.rbtitle .lodds #odds-open') &&
         !!document.querySelector('.rbtitle .lodds #sim-try') &&
         t.nextElementSibling === r &&

@@ -613,14 +613,14 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .rbtitle .rhead[data-kind="error"] { padding: 5px 14px; border-radius: 999px; background: var(--gm-cell); border: 2px solid var(--gm-pink2); color: var(--gm-ink); }
 /* the next career as the player sets it up in the game: the odds (and whom to follow), the trainee, her legacies, the
    deck, the targets; one column on phones, two from 760 px, four from 1180 px */
-.lineup { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "trainee" "legacies" "deck" "targets";
+.lineup { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "trainee" "legacies" "targets";
   gap: 16px 18px; align-items: start; margin-top: 4px; min-width: 0; }
 .lineup > .ltrainee { grid-area: trainee; }
-.lineup > .llegacies { grid-area: legacies; } .lineup > .ldeck { grid-area: deck; } .lineup > .rtgt { grid-area: targets; }
+.lineup > .llegacies { grid-area: legacies; } .lineup > .rtgt { grid-area: targets; }
 .lineup > .rbsec { margin-top: 0; }
 @media (min-width: 760px) {
-  /* who (the trainee over her legacies) on the left; what (the deck in one row, the targets under it) on the right */
-  .lineup { grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.7fr); grid-template-areas: "trainee deck" "legacies targets"; grid-template-rows: auto 1fr; }
+  /* who (the trainee over her legacies) on the left; her targets on the right */
+  .lineup { grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.7fr); grid-template-areas: "trainee targets" "legacies targets"; grid-template-rows: auto 1fr; }
 }
 .lodds { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; font-family: "Zen Maru Gothic", var(--font-ui); }
 .lodds:empty { display: none; }
@@ -1095,7 +1095,9 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .pn.trainee { justify-items: center; }
 .rb .tdeck { justify-content: center; gap: 8px; margin-top: 2px; }
 .ldeck .deck .dcards { grid-template-columns: repeat(3, minmax(0, 96px)); justify-content: center; }
-@media (min-width: 760px) { .ldeck .deck .dcards { grid-template-columns: repeat(6, minmax(0, 92px)); justify-content: start; } }
+/* the deck's popup: its six cards in two rows of three */
+.deckdlg { width: min(420px, calc(100vw - 24px)); }
+.deckdlg .deck .dcards { grid-template-columns: repeat(3, minmax(0, 104px)); justify-content: center; }
 /* a button at the right end of a section's bar (the deck's Race schedule) */
 .rbsec > h3 { display: flex; align-items: center; }
 .rbsec > h3 > .hdrbtn { margin: -2px 26px -2px auto; text-shadow: none; }
@@ -1982,25 +1984,45 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 /* targets as a table, lowest first: the skill tile (a button: Skill Details), the legacies' chance, the deck's (with the
    cards that give it, her outfit, the scenario) and her chance to land it; headings explain themselves */
 .tgtabs { display: grid; gap: 10px 28px; }
-@media (min-width: 1180px) { .tgtabs { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }   /* wide: two tables side by side */
-.ctgs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) 4.8em auto 3.6em; align-items: center; gap: 6px 12px; }
-@media (max-width: 1179px) { .tgtabs { row-gap: 6px; } .tgtabs > .ctgs + .ctgs > .ctgh { display: none; } }   /* stacked: one table, one heading */
+.ctgs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 14rem) 4.4em minmax(0, max-content) minmax(8em, 1fr); align-items: center; gap: 5px 14px; }
 .ctg { display: contents; }
 .ctgh > span { font-size: 0.74rem; font-weight: 900; color: var(--gm-ink2); padding-bottom: 2px; border-bottom: 2px solid var(--gm-line); align-self: end; }
 .ctgh > span:nth-child(2), .ctgh > span:last-child, .tglegs { text-align: right; }
-.ctg > .udsk { min-height: 40px; padding-block: 3px 7px; }
-.ctg > .udsk .sic { width: 26px; height: 26px; }
+.ctg > .udsk { min-height: 34px; padding: 2px 10px 6px 6px; gap: 6px; }
+.ctg > .udsk .sic { width: 22px; height: 22px; }
+.ctg > .udsk .udskn { font-size: 0.88rem; line-height: 1.15; }
 .tglegs, .tgdeck { font-size: 0.86rem; font-weight: 700; color: var(--gm-ink2); font-variant-numeric: tabular-nums; }
 .tgdeck { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 4px; min-width: 0; }
 .tgdeck .cav { border-radius: 4px; }
 .tgdeck > .av { box-shadow: 0 0 0 1px var(--gm-edge); }
 .tgdeck .slogo { width: 46px; height: 22px; }
 .tgnone { opacity: .6; }
-.tgland { display: grid; justify-items: end; line-height: 1.05; }
-.tgland b { font-size: 1.2rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
+.tgg { display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%; max-width: 16em; justify-self: end; }
+/* her chance as the game's spark-research gauge (white rim, dark well; the border is the well's inset, the 9-slice drawn
+   wider over it): filled gold for the share through the gold skill, white for the share as the white */
+.tggf { flex: 1; display: flex; height: 18px; min-width: 3em; box-sizing: border-box; overflow: hidden; border-radius: 999px;
+  border: 3px solid transparent; background: #3c3b3c; background-clip: padding-box; box-shadow: 0 0 0 1px var(--gm-edge); }
+.tggf { border-image: var(--gauge-track) 28 fill / 9px; box-shadow: none; }
+.tggf .g { background: linear-gradient(#fff3b8, #f5b300); }
+.tggf .w { background: linear-gradient(#fff, #d6dbe4); }
+.tggf i + i { box-shadow: inset 1px 0 0 rgba(0, 0, 0, .25); }
+.tgg b { width: 2.6em; text-align: right; font-size: 1.1rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
+/* phones: two lines a target, the skill and its gauge, then her legacies' and deck's chances under the skill (the
+   heading too: Skill and Lands, then Legacies and Deck) */
 @media (max-width: 520px) {
-  .ctgs { grid-template-columns: minmax(0, 1fr) 4.2em auto 3em; column-gap: 8px; }
-  .ctg > .udsk .udskn { font-size: 0.82rem; }
+  .ctgs { grid-template-columns: minmax(0, 1fr); row-gap: 9px; }
+  .ctg { display: grid; grid-template-columns: 3.2em minmax(0, 1fr) 7.2em; grid-template-areas: "a a d" "b c c"; align-items: center; gap: 2px 8px; }
+  .ctg > :nth-child(1) { grid-area: a; } .ctg > :nth-child(2) { grid-area: b; }
+  .ctg > :nth-child(3) { grid-area: c; } .ctg > :nth-child(4) { grid-area: d; }
+  .ctgh { border-bottom: 2px solid var(--gm-line); padding-bottom: 2px; }
+  .ctgh > span { border-bottom: 0; padding-bottom: 0; }
+  .ctgh > span:nth-child(2) { text-align: left; }
+  .tglegs { text-align: left; }
+  .tglegs, .tgdeck { font-size: 0.8rem; }
+  .tgdeck .slogo { width: 38px; height: 18px; }
+  .tggf { height: 16px; min-width: 2em; border-image-width: 8px; }
+  .tgg { gap: 5px; }
+  .tgg b { width: 2.5em; font-size: 1rem; }
 }
 /* Skill Details for a target: her legacies' faces (dim where one doesn't carry it), the cards that give it */
 .gmdfaces { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -2015,31 +2037,34 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .umline input { flex: 1 1 10rem; min-width: 0; }
 .umline > b { flex: 1 1 auto; }
 .umtog { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.umsort { display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%; border-radius: 16px; }
+.umsort button { padding: 5px 11px; font-size: 0.85rem; }
 /* the listings: cards of one size in a grid (face, name, main sparks, trainer · followers); a click shows the ancestry */
-/* the listings as the game's legacy list: a grid of portraits, each with her three main sparks under it (tag and stars),
-   then her name and her trainer's followers */
-.umgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 12px 6px; margin-top: 4px; padding: 12px 4px 8px; }   /* (the padding keeps a cell's badge inside the scroll) */
-.umcell { all: unset; box-sizing: border-box; position: relative; display: grid; justify-items: center; gap: 3px; padding: 6px 2px; border-radius: 12px; cursor: pointer; text-align: center; min-width: 0; }
+/* the listings as the game's legacy list, five to a row, at its measured proportions: a portrait (P), its rank badge on
+   the top right (0.36P), its three spark tags (each 0.34P wide) with their bottoms on the portrait's, each tag's star row
+   (0.72 of the tag) right under it, one piece;
+   then her trainer and followers */
+.umgrid { --p: 76px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 4px; margin-top: 4px; padding: 12px 2px 8px; }
+@media (max-width: 560px) { .umgrid { --p: 54px; } }
+.umcell { all: unset; box-sizing: border-box; position: relative; display: grid; justify-items: center; gap: 2px; padding: 4px 0; border-radius: 12px; cursor: pointer; text-align: center; min-width: 0; }
 .umcell:hover { background: color-mix(in srgb, var(--gm-bright) 16%, transparent); }
 .umcell:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.umcell .nm { font-size: 0.78rem; font-weight: 900; color: var(--gm-ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.umcell .sub { font-size: 0.7rem; color: var(--gm-ink2); }
-.umsps { position: relative; z-index: 1; display: flex; justify-content: center; gap: 1px; margin-top: -16px; }   /* over the portrait's lower edge, as in the game */
-/* a spark tag: the legacy list's own pill (blue, pink, green), white letters outlined as the game draws them; the
-   game's stars under it */
-.umsp { display: grid; justify-items: center; gap: 1px; min-width: 0; }
-.umsp b { font-size: 0.72rem; font-weight: 900; line-height: 1; padding: 4px 6px; min-width: 2.6em; text-align: center; color: #fff; letter-spacing: 0.02em;
-  background: center / 100% 100% no-repeat; }
-.umsp.blue b { background-image: var(--tag-blue, linear-gradient(#6fd0ff, #22a5ea)); text-shadow: 0 1px 0 #0b5d94, 1px 0 0 #0b5d94, -1px 0 0 #0b5d94, 0 -1px 0 #0b5d94; }
-.umsp.pink b { background-image: var(--tag-pink, linear-gradient(#ffb1d4, #ff6fa8)); text-shadow: 0 1px 0 #a3245a, 1px 0 0 #a3245a, -1px 0 0 #a3245a, 0 -1px 0 #a3245a; }
-.umsp.green b { background-image: var(--tag-green, linear-gradient(#b8ea5a, #7cc40d)); text-shadow: 0 1px 0 #3c7a00, 1px 0 0 #3c7a00, -1px 0 0 #3c7a00, 0 -1px 0 #3c7a00; }
-.umst { display: block; width: 40px; height: auto; margin-top: -1px; }
-.umtagimg { display: block; width: 46px; height: auto; }
+.umcell .nm { font-size: 0.74rem; font-weight: 900; color: var(--gm-ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.umface { position: relative; display: block; width: var(--p); height: var(--p); }
+.umface > .av { width: var(--p) !important; height: var(--p) !important; }
+/* the game's veteran portrait: its ring (245 of the 256 px icon, centred at x 127.5, y 144) on the face's circle */
+.umvet { position: absolute; max-width: none; width: calc(var(--p) * 1.045); height: calc(var(--p) * 1.045); left: calc(var(--p) * -0.0225); top: calc(var(--p) * -0.088); }
+.umrank { position: absolute; top: calc(var(--p) * -0.04); right: calc(var(--p) * -0.015); width: calc(var(--p) * 0.36); height: calc(var(--p) * 0.36); pointer-events: none; }
+.umsps { position: relative; z-index: 1; display: flex; justify-content: center; gap: 0; margin-top: calc(var(--p) * -0.18); }   /* the tags' bottoms on the portrait's */
+.umsp { display: flex; flex-direction: column; align-items: center; width: calc(var(--p) * 0.36); margin: 0 calc(var(--p) * -0.012); }   /* (the tags touch, as in the game) */
+.umtagimg { display: block; width: 100%; height: auto; }
+.umst { display: block; width: 85.7%; height: auto; margin-top: calc(var(--p) * -0.02); }   /* the game's sizes (72 px under an 84 px tag), one piece with it */
+.umsp b { font-size: 0.6rem; font-weight: 900; line-height: 1; padding: 2px 3px; color: #fff; }
 .umsp i { font-style: normal; font-size: 0.55rem; color: #f0a800; }
-.umface { position: relative; display: block; }
-.umrank { position: absolute; top: -12px; right: -22px; width: 52px; height: 52px; pointer-events: none; }
 
 .linkbtn { all: unset; cursor: pointer; justify-self: end; font-size: 0.8rem; color: var(--gm-ink2); text-decoration: underline; }
 .linkbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 #um-open { margin-left: auto; }
 
+
+.cpop.inpopup { position: fixed; z-index: 30; }   /* a card's panel inside a popup (the deck's): against the screen */

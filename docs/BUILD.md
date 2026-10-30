@@ -55,6 +55,7 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | `game/global/decrypted/` | the Global client's asset bundles, decrypted, laid out by asset path (`chara/chr1001/...`) | `images`, `runners` |
 | `game/global/meta.db` | the Global client's asset index, decrypted to plain SQLite | `runners` |
 | `game/jp/bundles/` | the JP client's bundles for JP-only art (the Grand Masters banner, 14 skill icons), by asset path | `images` |
+| `game/global/bundles/` | Global bundles the client downloads on demand (the legacy list's veteran portraits, `trained_chr_icon_*`), by asset path | `images` |
 
 The tool that decrypts the client's bundles and asset index is not published in this repository. Game files and
 game art are never committed.

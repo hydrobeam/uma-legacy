@@ -21,7 +21,12 @@ export function listing(rec, k) {
       wins: r.win_saddle_id_array || [],
     };
   };
-  const inh = { inheritance_id: 900000 + k, main_parent_id: rec.card_id, parent_rank: rec.rank_score };
+  const inh = {
+    inheritance_id: 900000 + k,
+    main_parent_id: rec.card_id,
+    parent_rank: rec.rank_score,
+    win_count: 10 * k,
+  };
   for (const [s, r] of [
     ['main', rec],
     ['left', parent(10)],
@@ -160,42 +165,44 @@ export default async function careerumamoe(b) {
     heads.join() === 'uma.moe' && /uma\.moe · Trainer 2/.test(tileText) && boxButtons === 0 && copyInPopup === 1,
     tileText.slice(0, 80),
   );
-  // the popup: the listings as the game's legacy list draws them (portrait, her three main sparks with stars, name,
-  // followers), the next career's first and tagged; one opens her veteran popup, with Copy ID
+  // the popup: the listings as the game's legacy list draws them (portrait, her three main sparks with stars, her
+  // trainer), in uma.moe's order until another is chosen; one opens her veteran popup, with followers and Copy ID
   await pg.click('#um-open');
   const cards = await pg.$$eval('#um-list .umcell', (l) =>
     l.map((c) => ({
       nm: c.querySelector('.nm')?.textContent,
-      sub: c.querySelector('.sub')?.textContent,
       tags: [...c.querySelectorAll('.umsp img.umtagimg')].map((t) => t.alt),
       tagArt: [...c.querySelectorAll('.umsp img.umtagimg')].every((t) => /ftag_(blue_\d|pink_\d+|green)\./.test(t.src)),
       stars: [...c.querySelectorAll('img.umst')].every((st) => /fstar_(blue|pink|green)_[123]\./.test(st.src)),
       rank: /vrank_\d+\./.test(c.querySelector('img.umrank')?.src || ''),
     })),
   );
+  const names = () => pg.$$eval('#um-list .umcell .nm', (l) => l.map((x) => x.textContent).join());
+  const matchOrder = await names();
+  await pg.click('#um-sort button[data-v="wins"]');
+  const winsOrder = await names();
+  await pg.click('#um-sort button[data-v="match"]');
   await pg.locator('#um-list .umcell').first().click();
   await dialog(pg, 'node-dlg');
+  const tag = await pg.locator('#node-dlg .srctag').textContent();
   const popupCopy = await pg.locator('#node-dlg button', { hasText: 'Copy ID' }).count(),
     editable = await pg
       .locator('#node-dlg .facebtn, #node-dlg button.vwins, #node-dlg .vskadd, #node-dlg button.vskb')
       .count();
   await closeNode();
   check(
-    "career uma.moe: the popup lists them as the game's legacy list does (portrait, three spark tags with stars, her trainer, followers), her spark tags the game's own images; one opens her veteran popup, read-only, with Copy ID",
+    "career uma.moe: the popup lists them as the game's legacy list does (portrait, three spark tags with stars, her trainer), her spark tags the game's own images, in uma.moe's order or by wins; one opens her veteran popup, read-only, with her trainer's followers and Copy ID",
     cards.length === 2 &&
       cards.every(
         (c) =>
-          /^Trainer [12]$/.test(c.nm) &&
-          /^1[34] followers$/.test(c.sub) &&
-          c.tags.length === 3 &&
-          c.tags[2] === 'UNIQ' &&
-          c.tagArt &&
-          c.stars &&
-          c.rank,
+          /^Trainer [12]$/.test(c.nm) && c.tags.length === 3 && c.tags[2] === 'UNIQ' && c.tagArt && c.stars && c.rank,
       ) &&
+      matchOrder === 'Trainer 1,Trainer 2' &&
+      winsOrder === 'Trainer 2,Trainer 1' &&
+      /· 13 followers$/.test(tag) &&
       popupCopy === 1 &&
       editable === 0,
-    JSON.stringify(cards),
+    JSON.stringify({ cards, matchOrder, winsOrder, tag }),
   );
   // full trainers: off by default (followable only); on, the search asks again without that limit
   await pg.check('#um-full');

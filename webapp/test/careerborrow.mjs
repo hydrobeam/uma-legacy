@@ -75,9 +75,15 @@ export default async function careerborrow(b) {
   await done();
   await planned();
   const l = await lastPlan();
-  const laterLine = await pg.evaluate(() => document.querySelector('section.alts > .negtop')?.textContent || '');
+  await pg.click('#save-why');
+  await dialog(pg, 'save-dlg');
+  const laterLine =
+    (await pg.$$eval('#save-dlg .optnote', (l) => l.map((x) => x.textContent))).find((t) =>
+      /saves its own run/.test(t),
+    ) || '';
+  await pg.keyboard.press('Escape');
   check(
-    "career: under None left today, where the estimate's next step needs a borrowed parent (its first side's parents in the output), the line above the table says so",
+    "career: under None left today, where the estimate's next step needs a borrowed parent (its first side's parents in the output), the careers table's (i) popup says so",
     new RegExp(
       `^No career saves its own run today: the pick costs least\\. Its next step needs a borrowed parent \\(#${borrowedAt + 1} [^)]+\\), kept out by None left today\\.$`,
     ).test(laterLine),

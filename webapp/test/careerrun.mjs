@@ -1,6 +1,6 @@
 // the career planner's run (the 12 test veterans): an edit that leaves the job as it is lets the plan under way go on,
 // the status line says how far the plan has got, and after a reload the stored main search is taken (no search again)
-import { check, until, careerPage } from './helpers.mjs';
+import { check, until, dialog, careerPage } from './helpers.mjs';
 
 export default async function careerrun(b) {
   const { ctx, pg, note, done, planned, importDump } = await careerPage(b);
@@ -55,22 +55,28 @@ export default async function careerrun(b) {
     };
   });
   await planned();
+  // the careers table's notes, from its (i) popup
+  const tableNotes = async () => {
+    await pg.click('#save-why');
+    await dialog(pg, 'save-dlg');
+    const t = await pg.$$eval('#save-dlg .optnote', (l) => l.map((x) => x.textContent));
+    await pg.keyboard.press('Escape');
+    return t;
+  };
   const edited = await pg.evaluate(() => {
     const alts = document.querySelector('section.alts'),
-      kids = alts ? [...alts.children] : [],
-      negative = alts?.querySelector(':scope > .negtop'),
-      wrap = alts?.querySelector(':scope > .optwrap');
+      noNotes = !alts?.querySelector('p.optnote');
     return {
       edited: window.__edited,
-      negative: negative?.textContent || '',
-      above: !!negative && !!wrap && kids.indexOf(negative) < kids.indexOf(wrap),
+      noNotes,
       extras: [...(alts?.querySelectorAll('tbody .onum') || [])].map((x) => x.textContent),
       tieTags: alts?.querySelectorAll('.otag.tie, .tienote').length ?? -1,
     };
   });
+  edited.negative = (await tableNotes()).find((t) => /saves its own run/.test(t)) || '';
   check(
-    'career: where no career you can run saves more than its own run (the top score below 0), one short line above the table says so',
-    !!edited.edited && edited.above && edited.negative === 'No career saves its own run today: the pick costs least.',
+    "career: where no career you can run saves more than its own run (the top score below 0), the careers table's (i) popup says so in one line (nothing under the table)",
+    !!edited.edited && edited.noNotes && edited.negative === 'No career saves its own run today: the pick costs least.',
     JSON.stringify(edited),
   );
   // (the rows within 0.25 of the pick that the table lists are tagged, at most all of them: the edited one among them,
@@ -131,15 +137,18 @@ export default async function careerrun(b) {
       workers: window.__workers,
       jobs: window.__checkJobs.length,
       varies: alts ? [...alts.querySelectorAll('.otag')].filter((t) => t.textContent === 'pick varies').length : -1,
-      unavailable: /did not finish/.test(alts?.textContent || ''),
-      incomplete: alts ? alts.querySelectorAll('.optnote.incomplete').length : -1,
     };
   });
+  {
+    const notes = await tableNotes();
+    checked.unavailable = notes.some((t) => /did not finish/.test(t));
+    checked.incomplete = notes.filter((t) => /ran out of memory/.test(t)).length;
+  }
   await pg.evaluate(() => {
     window.__checkPatch = null;
   });
   check(
-    'career: a check whose scoring the memory budget cut short (`robust.scoring_complete` false) says so under the career choices',
+    "career: a check whose scoring the memory budget cut short (`robust.scoring_complete` false) says so in the careers table's (i) popup",
     checked.robust.scoring_complete === false && checked.incomplete === 1,
     JSON.stringify({ complete: checked.robust.scoring_complete, notes: checked.incomplete }),
   );

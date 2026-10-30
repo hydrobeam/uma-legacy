@@ -9,6 +9,11 @@ kept unless --force; an older WebP of the same image is removed when its AVIF is
   uma      chara/chr{chara}/chr_icon_{chara}                 round default icon ("any outfit")
   outfit   chara/chr{chara}/chr_icon_{chara}_{dress}_01      dress = card_rarity_data.race_dress_id of the outfit
                                                              card at its highest rarity (100102 wears dress 100130)
+  vet      chara/chr{chara}/trained_chr_icon_{chara}_{dress}_02   a veteran's portrait in the game's legacy list: round,
+                                                             in its gold ring (_01 is the silver one), her head over
+                                                             its top; kept whole, transparent round it. The client
+                                                             downloads these on demand: read from
+                                                             game/global/bundles/<asset path> when present
   The round uma icon is cropped to a square inside its ring; the crop starts from the visible area (alpha bounding
   box) and keeps the top. Outfit icons are cut to a fixed square inside their frame (OUTFIT_BOX).
   card     supportcard/support{id}/support_card_s_{id}       card thumbnail with its rarity frame
@@ -52,6 +57,7 @@ SIZE = {
     "uma": 96,
     "mob": 96,
     "outfit": 192,
+    "vet": 160,
     "card": 192,
     "skill": 48,
     "race": (256, 128),
@@ -69,6 +75,14 @@ JP_BUNDLES = os.path.join(R, "game", "jp", "bundles")
 
 def jp_bundle(rel):
     dst = os.path.join(JP_BUNDLES, rel)
+    return dst if os.path.exists(dst) else None
+
+
+GLOBAL_BUNDLES = os.path.join(R, "game", "global", "bundles")  # Global bundles the client fetches on demand (`vet`)
+
+
+def global_bundle(rel):
+    dst = os.path.join(GLOBAL_BUNDLES, rel)
     return dst if os.path.exists(dst) else None
 
 
@@ -94,6 +108,7 @@ def wanted():
         w["groups"].update(g for g, *_ in skills["skills"])
         for r in data["races"]:
             w["race"][r] = None  # thumbnail id = race id for every G1 (checked against master.mdb)
+    w["vet"] = dict(w["outfit"])
     w["scen"] = scenario_images()
     w["scenart"] = scenario_images()  # the scenario select screen's character art, same image ids
     # mob umas' portraits (the career planner's sample veterans): each named mob's first icon variant the bundles have
@@ -201,6 +216,8 @@ UI_SPRITES = {
         "tag_" + k: ("atlas/singlecommon", f"utx_frm_factor_s_0{i + 2}")
         for i, k in enumerate(["blue", "pink", "green"])
     },
+    # the game's spark-research gauge track (a 9-slice, white rim round a dark well): the targets' landing gauges
+    "gauge_track": ("atlas/factorresearch", "utx_gau_factorresearch_base_00_sl"),
     # the legacy list's spark tags, lettering included, by spark group (atlas/common): blue utx_ico_factor_status_01..05
     # (stat 1..5), pink utx_ico_factor_aptitude_{group} (11-12 surface, 21-24 style, 31-34 distance), green
     # utx_ico_factor_unique_00
@@ -587,6 +604,11 @@ def main(force):
                     manifest["missing"][f"{kind}:{i}"] = "no dress id in either master.mdb"
                     continue
                 rel = f"chara/chr{chara}/chr_icon_{chara}_{dress[i]}_01"
+            elif kind == "vet":
+                if i not in dress:
+                    manifest["missing"][f"{kind}:{i}"] = "no dress id in either master.mdb"
+                    continue
+                rel = f"chara/chr{chara}/trained_chr_icon_{chara}_{dress[i]}_02"
             elif kind == "skill":
                 rel = f"outgame/skillicon/utx_ico_skill_{i}"
             elif kind == "race":
@@ -603,8 +625,8 @@ def main(force):
             src = os.path.join(ASSETS, rel)
             if not os.path.exists(src):
                 src = (
-                    jp_bundle(rel) or src
-                )  # not in the Global client: the JP one's (the Grand Masters scenario's art, JP-only skills)
+                    global_bundle(rel) or jp_bundle(rel) or src
+                )  # not on disk: fetched on demand (`vet`), or the JP client's (the Grand Masters scenario's art, JP-only skills)
             if not os.path.exists(src):
                 manifest["missing"][f"{kind}:{i}"] = rel
                 continue

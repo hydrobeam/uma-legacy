@@ -160,6 +160,10 @@ export function parseListing(item) {
       id: String(item.account_id ?? ''),
       followers: +item.follower_num || 0,
       updated: String(item.last_updated ?? ''),
+      // (uma.moe's own figures, for its sorts)
+      affinity: +h.affinity_score || 0,
+      wins: +h.win_count || 0,
+      sparkStars: +h.white_stars_sum || 0,
     },
     rank: +h.parent_rank || 0, // her rank score (the badge, CAREER.ranks)
     parents: [side('left', h.parent_left_id), side('right', h.parent_right_id)],

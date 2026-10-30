@@ -54,7 +54,21 @@ const GAP = 8; // px between the panel and the element it belongs to (beside it)
 // beside: a deck card's panel opens to its right (else its left) at its top, so it never covers the hint odds under the
 // deck; without room on either side (phones), below it like the others. Positions are in the host's scrolled box.
 function placePop(anchor, beside = false) {
+  // (inside a popup, the panel goes into it: the page behind a modal popup is out of reach)
+  const dlg = anchor.closest('dialog'),
+    home = dlg || document.getElementById('rcol');
+  if (pop.parentElement !== home) home.appendChild(pop);
   pop.hidden = false;
+  // (in a popup: placed against the screen, under the card, so the popup's edges don't clip it)
+  pop.classList.toggle('inpopup', !!dlg);
+  if (dlg) {
+    const rect = anchor.getBoundingClientRect(),
+      width = pop.offsetWidth;
+    pop.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
+    pop.style.top = `${Math.min(rect.bottom + 6, innerHeight - pop.offsetHeight - 8)}px`;
+    (focusables()[0] || pop).focus({ preventScroll: true });
+    return;
+  }
   const host = pop.offsetParent || document.body,
     hostRect = host.getBoundingClientRect(),
     rect = anchor.getBoundingClientRect(),

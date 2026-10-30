@@ -1,7 +1,7 @@
 // ---------- uma.moe: the key, and the listings the planner borrows from ----------
-// One button beside Next career ("Borrow from uma.moe", then "uma.moe · 61 parents") opens a popup: the key until one is
-// saved, then the status, what was searched, every listing as a card (the next career's first; a card opens her in the
-// veteran popup, with her trainer's Copy ID), Refresh and Disconnect.
+// One button beside Next career ("Borrow from uma.moe", then "uma.moe · 61 veterans") opens a popup: the key until one
+// is saved, then the status, what was searched, uma.moe's orders and every listing as a card (a card opens her in the
+// veteran popup, with her trainer's followers and Copy ID), Refresh and Disconnect.
 // With a key set, the veterans uma.moe lists for the target set (parent with at least n - 1 of the n targets herself,
 // followable trainers, best covered first: one request, kept 24 h) join the pool as borrowed veterans (vets.js
 // `setListings`), so every search and plan weighs them like any other borrow. A request goes out only when the target
@@ -28,7 +28,6 @@ import {
 /**
  * What the popup needs from the career page.
  * @typedef {object} UmamoeCtx
- * @property {() => import('./vets.js').Veteran|null} borrowed  the uma.moe veteran the next career borrows, if any
  * @property {(v: import('./vets.js').Veteran) => void} open  her veteran popup (sparks, parents, her trainer's Copy ID)
  */
 /** @type {UmamoeCtx} */
@@ -49,9 +48,35 @@ const ago = (at) => {
   const min = (Date.now() - at) / 60e3;
   return min < 1 ? 'just now' : min < 60 ? `${Math.round(min)} min ago` : `${Math.round(min / 60)} h ago`;
 };
+// the popup's orders, uma.moe's own: its search's order (best covered first), then by her rank, her affinity score, her
+// race wins, her white sparks' stars, the latest updated; the choice is kept in this browser
+/** @type {Record<string, [string, string, (v: import('./vets.js').Veteran) => number]>} */
+const SORTS = {
+  match: ['Best match', 'uma.moe’s order: the best covered first', (v) => -(order.get(v.id) ?? 1e9)],
+  rank: ['Rank', 'Her career rank', (v) => v.rank || 0],
+  affinity: ['Affinity', 'Her affinity with her parents, as uma.moe scores it', (v) => v.lender?.affinity || 0],
+  wins: ['Wins', 'Her race wins', (v) => v.lender?.wins || 0],
+  sparks: ['Sparks', 'Her white sparks’ stars, summed', (v) => v.lender?.sparkStars || 0],
+  updated: ['Updated', 'The latest updated first', (v) => Date.parse(v.lender?.updated || '') || 0],
+};
+const SORT_KEY = 'llp:umamoe-sort';
+let sortBy = (() => {
+  try {
+    const k = localStorage.getItem(SORT_KEY);
+    return k && k in SORTS ? k : 'match';
+  } catch {
+    return 'match';
+  }
+})();
+/** @type {Map<string, number>} each listing's place in uma.moe's answer */
+const order = new Map();
+
 /** @param {{items: any[], total: number, at: number}} a @param {{min: number, factors: number[][]}} q */
 function take(a, q) {
-  setListings(a.items.map(parseListing));
+  const listed = a.items.map(parseListing);
+  order.clear();
+  for (const [i, v] of listed.entries()) order.set(v.id, i);
+  setListings(listed);
   const n = a.items.length;
   now.text = `${n} veterans found, searched ${ago(a.at)}`;
   now.short = `${n} veterans`;
@@ -72,12 +97,13 @@ export function paintUmamoe() {
     ? `Parents with ${now.min}+ of your ${now.n} targets${fullTrainers() ? '' : ', from trainers you can follow'}`
     : '';
   $input('um-full').checked = fullTrainers();
-  // the listings as cards, the next career's first (tagged)
-  const b = ctx?.borrowed(),
+  for (const btn of $('um-sort').querySelectorAll('button'))
+    btn.setAttribute('aria-pressed', String(btn.dataset.v === sortBy));
+  // the listings as cards in the chosen order
+  const by = SORTS[sortBy][2],
     list = $('um-list');
   list.textContent = '';
-  for (const v of vets.filter((x) => x.src === 'umamoe').sort((x, y) => Number(y === b) - Number(x === b)))
-    list.appendChild(card(v));
+  for (const v of vets.filter((x) => x.src === 'umamoe').sort((x, y) => by(y) - by(x))) list.appendChild(card(v));
 }
 // her main sparks as the game's legacy list shows them under a portrait: blue (her stat), pink (her aptitude), green
 // (her unique skill), each a short tag of its colour with its stars under it
@@ -126,19 +152,25 @@ function mainSparks(v) {
   if (gr) row.appendChild(tag('green', 'UNIQ', uniqueName(+gr[0]) || 'Unique skill', gr[1], 'ftag_green'));
   return row;
 }
-/** @param {import('./vets.js').Lender|undefined} l */
-const followersText = (l) =>
-  !l ? '' : l.followers >= 1000 ? 'max' : `${l.followers} follower${l.followers === 1 ? '' : 's'}`;
 // a listing as the game's legacy list draws a veteran: her portrait, her three main sparks under it, then her trainer's
-// name and followers; a click opens her veteran popup (her sparks, her parents, Copy ID)
+// name; a click opens her veteran popup (her sparks, her parents, her trainer's followers, Copy ID)
 function card(v) {
   const c = el('button', 'umcell');
   c.type = 'button';
   c.setAttribute('aria-haspopup', 'dialog');
   c.setAttribute('aria-label', `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`);
   c.title = `${umaName(v.chara)} · ${v.lender?.name || ''}`;
-  const face = el('span', 'umface');
-  face.appendChild(umaAv(v.chara, v.outfit, 88));
+  const face = el('span', 'umface'),
+    portrait = v.outfit && srcFor('vet', v.outfit);
+  // her outfit's portrait as the game's legacy list draws a veteran (in its ring, her head over the top), else her icon
+  if (portrait) {
+    const p = el('img', 'umvet');
+    p.src = portrait;
+    p.alt = '';
+    p.loading = 'lazy';
+    p.onerror = () => p.replaceWith(umaAv(v.chara, v.outfit, 88));
+    face.appendChild(p);
+  } else face.appendChild(umaAv(v.chara, v.outfit, 88));
   // her career-rank badge, top right of her portrait, as in the game (the last rank whose minimum her score reaches)
   const rankId = (CAREER.ranks || []).reduce((at, min, i) => (v.rank >= min ? i + 1 : at), 0),
     badge = rankId && srcFor('ui', `vrank_${rankId}`);
@@ -148,12 +180,7 @@ function card(v) {
     b.alt = 'Rank';
     face.appendChild(b);
   }
-  c.append(
-    face,
-    mainSparks(v),
-    el('span', 'nm', v.lender?.name || umaName(v.chara)),
-    el('span', 'sub', followersText(v.lender)),
-  );
+  c.append(face, mainSparks(v), el('span', 'nm', v.lender?.name || umaName(v.chara)));
   c.onclick = () => ctx.open(v);
   return c;
 }
@@ -230,6 +257,20 @@ export function initUmamoe(c) {
     if (e.key === 'Enter') $('um-save').click();
   };
   $('um-again').onclick = () => syncListings(true);
+  for (const [k, [label, tip]] of Object.entries(SORTS)) {
+    const btn = el('button', '', label);
+    btn.type = 'button';
+    btn.dataset.v = k;
+    btn.title = tip;
+    btn.onclick = () => {
+      sortBy = k;
+      try {
+        localStorage.setItem(SORT_KEY, k);
+      } catch {}
+      paintUmamoe();
+    };
+    $('um-sort').appendChild(btn);
+  }
   $input('um-full').onchange = () => {
     setFullTrainers($input('um-full').checked);
     syncListings();
