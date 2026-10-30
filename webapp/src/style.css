@@ -1979,26 +1979,23 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
    not shown */
 .game .rbtitle .rhead[data-kind="done"] { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* targets, weakest first: the game's skill tile and her chance to land its spark; under it where it comes from in
-   pictures (six spark dots for her legacies carrying it, the deck cards that hint it, her outfit or the scenario); a
-   target under half shaded pink: it holds the odds back */
-.ctgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.ctg { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 3px; padding: 4px 6px 6px; border-radius: 10px; }
-.ctg.weak { background: color-mix(in srgb, var(--gm-pink) 22%, transparent); }
+/* targets, lowest first: the game's skill tile (a button: Skill Details) and her chance to land its spark; under it the
+   chance her legacies pass it on and her deck gives it, with the cards that do */
+.ctgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ctg { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 3px; }
 .ctg > .udsk { min-height: 40px; padding-block: 3px 7px; }
 .ctg > .udsk .sic { width: 26px; height: 26px; }
 .tgland { display: grid; justify-items: end; line-height: 1.05; min-width: 3.4em; }
 .tgland b { font-size: 1.2rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
-.tgsrc { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding-left: 6px; font-size: 0.78rem; color: var(--gm-ink2); }
-.tgdots { display: inline-flex; gap: 2px; }
-.tgdots i { display: block; width: 11px; height: 11px; border-radius: 50%; background: var(--spark-dot, radial-gradient(circle at 40% 35%, #fff, #b9c6ff 55%, #6d7fd6)) center / cover no-repeat; opacity: .22; filter: grayscale(1); }
-.tgdots i.on { opacity: 1; filter: none; }
-.tgq { font-variant-numeric: tabular-nums; }
-.tgcards { display: inline-flex; align-items: center; gap: 2px; }
-.tgcards .cav { border-radius: 4px; }
-.tggold { margin-left: 3px; font-size: 0.66rem; font-weight: 900; padding: 0 5px; border-radius: 999px; background: var(--gm-gold2); color: var(--gm-ink); }
-.tgsrc > .av { box-shadow: 0 0 0 1px var(--gm-edge); }
-.tgscen { font-size: 0.7rem; font-weight: 700; padding: 0 6px; border-radius: 999px; background: var(--gm-pane); color: var(--gm-ink2); }
+.tgsrc { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; padding-left: 10px; font-size: 0.8rem; font-weight: 700; color: var(--gm-ink2); }
+.tgdeck { display: inline-flex; align-items: center; gap: 3px; }
+.tgdeck .cav { border-radius: 4px; margin-left: 2px; }
+.tgcap { position: absolute; right: 44px; top: 50%; transform: translateY(-50%); font-size: 0.72rem; font-weight: 700; opacity: .9; }
+/* Skill Details for a target: her legacies' faces (dim where one doesn't carry it), the cards that give it */
+.gmdfaces { display: flex; flex-wrap: wrap; gap: 4px; }
+.gmdfaces .av.dim { opacity: .3; filter: grayscale(1); }
+.gmdcard { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.gmdcards li > b { font-size: 0.8rem; white-space: nowrap; }
 /* popups whose body can run long (uma.moe's list, Try a run's card): the body scrolls inside the window */
 .umdlg, .simdlg { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
 .simdlg { width: min(960px, calc(100vw - 24px)); }
@@ -2010,7 +2007,8 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 /* the listings: cards of one size in a grid (face, name, main sparks, trainer · followers); a click shows the ancestry */
 /* the listings as the game's legacy list: a grid of portraits, each with her three main sparks under it (tag and stars),
    then her name and her trainer's followers */
-.umgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px 6px; margin-top: 2px; }
+.umgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 12px 6px; margin-top: 4px; padding: 14px 8px 10px;
+  background: var(--gm-panel); border: 2px solid #7fcdf2; border-radius: 12px; }   /* the game's list box; its padding keeps a cell's outline and tag inside the scroll */
 .umcell { all: unset; box-sizing: border-box; position: relative; display: grid; justify-items: center; gap: 3px; padding: 6px 2px; border-radius: 12px; cursor: pointer; text-align: center; min-width: 0; }
 .umcell:hover { background: color-mix(in srgb, var(--gm-bright) 16%, transparent); }
 .umcell:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -2018,19 +2016,19 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .umcell .nm { font-size: 0.78rem; font-weight: 900; color: var(--gm-ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .umcell .sub { font-size: 0.7rem; color: var(--gm-ink2); }
 .umtag { position: absolute; top: -6px; right: 4px; font-size: 0.64rem; font-weight: 900; padding: 0 6px; border-radius: 999px; background: var(--gm-gold2); color: var(--gm-ink); }
-.umsps { display: flex; justify-content: center; gap: 2px; }
+.umsps { position: relative; z-index: 1; display: flex; justify-content: center; gap: 2px; margin-top: -8px; }   /* tucked under the portrait, as in the game */
 /* a spark tag: the legacy list's own pill (blue, pink, green), white letters outlined as the game draws them; the
    game's stars under it */
 .umsp { display: grid; justify-items: center; gap: 1px; min-width: 0; }
-.umsp b { font-size: 0.6rem; font-weight: 900; line-height: 1; padding: 3px 6px; min-width: 2.6em; text-align: center; color: #fff; letter-spacing: 0.02em;
+.umsp b { font-size: 0.72rem; font-weight: 900; line-height: 1; padding: 4px 6px; min-width: 2.6em; text-align: center; color: #fff; letter-spacing: 0.02em;
   background: center / 100% 100% no-repeat; }
 .umsp.blue b { background-image: var(--tag-blue, linear-gradient(#6fd0ff, #22a5ea)); text-shadow: 0 1px 0 #0b5d94, 1px 0 0 #0b5d94, -1px 0 0 #0b5d94, 0 -1px 0 #0b5d94; }
 .umsp.pink b { background-image: var(--tag-pink, linear-gradient(#ffb1d4, #ff6fa8)); text-shadow: 0 1px 0 #a3245a, 1px 0 0 #a3245a, -1px 0 0 #a3245a, 0 -1px 0 #a3245a; }
 .umsp.green b { background-image: var(--tag-green, linear-gradient(#b8ea5a, #7cc40d)); text-shadow: 0 1px 0 #3c7a00, 1px 0 0 #3c7a00, -1px 0 0 #3c7a00, 0 -1px 0 #3c7a00; }
-.umst { display: block; width: 32px; height: auto; }
+.umst { display: block; width: 38px; height: auto; }
 .umsp i { font-style: normal; font-size: 0.55rem; color: #f0a800; }
 .umface { position: relative; display: block; }
-.umrank { position: absolute; top: -8px; right: -16px; width: 38px; height: 38px; pointer-events: none; }
+.umrank { position: absolute; top: -10px; right: -18px; width: 44px; height: 44px; pointer-events: none; }
 
 .linkbtn { all: unset; cursor: pointer; justify-self: end; font-size: 0.8rem; color: var(--gm-ink2); text-decoration: underline; }
 .linkbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }

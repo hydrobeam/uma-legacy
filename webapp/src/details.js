@@ -268,9 +268,16 @@ function skillsPane({ d, targets }) {
 }
 // the game-style skill popup (one dialog, refilled)
 let skDlg = null;
-// b: the target's buying report; got: 'gold' | 'white' | null (not acquired); icon() makes her skill icon; from: the
-// tile that opened it (focused again on close)
-function openSkill({ b, name, got, icon }, from) {
+// b: the target's buying report; got: 'gold' | 'white' | null (not acquired), or undefined for a career not run yet (the
+// popup then gives her chance to land it); icon() makes her skill icon; from: the tile that opened it (focused again on
+// close). legacies: her six legacies, each {chara, outfit, carries}, shown as faces lit where one carries it; cards: the
+// deck cards that give it, each {card, how} ("hint", "gold hint", "event at link 3")
+/**
+ * @param {{b: any, name: string, got?: 'gold'|'white'|null, icon: () => Node|null, gold?: boolean,
+ *   legacies?: {chara: number, outfit?: number, carries: boolean}[], cards?: {card: any, how: string}[]}} spec
+ * @param {HTMLElement} from
+ */
+export function openSkill({ b, name, got, icon, gold = false, legacies = [], cards = [] }, from) {
   if (!skDlg) {
     skDlg = el('dialog', 'gmdlg');
     skDlg.id = 'sk-dlg';
@@ -284,7 +291,8 @@ function openSkill({ b, name, got, icon }, from) {
   h.id = 'sk-title';
   skDlg.appendChild(h);
   const body = el('div', 'gmdbody');
-  const tile = el('div', `udsk${got === 'gold' ? ' gold' : ''}${got ? '' : ' off'}`);
+  const ahead = got === undefined; // (a career not run yet: chances only)
+  const tile = el('div', `udsk${got === 'gold' || (ahead && gold) ? ' gold' : ''}${got || ahead ? '' : ' off'}`);
   const ic = icon();
   if (ic) tile.appendChild(ic);
   tile.appendChild(el('span', 'udskn', name));
@@ -292,8 +300,12 @@ function openSkill({ b, name, got, icon }, from) {
   body.appendChild(
     el(
       'p',
-      `gmdstat${got ? ' on' : ''}`,
-      got ? `Acquired${got === 'gold' ? ' (gold)' : ''} in this result` : 'Not acquired in this result',
+      `gmdstat${got || ahead ? ' on' : ''}`,
+      ahead
+        ? `Lands as a spark: ${pctS(b.land_gold + b.land_white)}${gold ? ' (through its gold)' : ''}`
+        : got
+          ? `Acquired${got === 'gold' ? ' (gold)' : ''} in this result`
+          : 'Not acquired in this result',
     ),
   );
   // where it comes from, each with its chance (a source under half a percent isn't listed)
@@ -301,10 +313,10 @@ function openSkill({ b, name, got, icon }, from) {
   if (b.scenario) sources.push({ label: 'The scenario', chance: 1 });
   if (b.outfit === 2) sources.push({ label: 'Her own skill (gold)', chance: 1 });
   else if (b.outfit === 1) sources.push({ label: 'Her own skill', chance: 1 });
-  if (b.deck_gold > 0.005) sources.push({ label: 'Deck: a gold hint', chance: b.deck_gold });
-  if (b.deck_white > 0.005) sources.push({ label: 'Deck: a hint', chance: b.deck_white });
+  if (b.deck_gold > 0.005) sources.push({ label: 'Deck (its gold)', chance: b.deck_gold });
+  if (b.deck_white > 0.005) sources.push({ label: 'Deck', chance: b.deck_white });
   if (b.own_event > 0.005) sources.push({ label: 'Her story events', chance: b.own_event });
-  if (b.inherit > 0.005) sources.push({ label: 'Inspiration (the legacies)', chance: b.inherit });
+  if (b.inherit > 0.005) sources.push({ label: 'Legacies (inheritance)', chance: b.inherit });
   body.appendChild(el('div', 'gmdsub', 'Where it comes from'));
   const ul = el('ul', 'gmdlist');
   for (const { label, chance } of sources) {
@@ -313,6 +325,28 @@ function openSkill({ b, name, got, icon }, from) {
     ul.appendChild(li);
   }
   body.appendChild(ul);
+  // which legacies carry it, which cards give it
+  if (legacies.length) {
+    const row = el('div', 'gmdfaces');
+    for (const l of legacies) {
+      const f = umaAv(l.chara || 0, l.outfit, 32);
+      f.classList.toggle('dim', !l.carries);
+      f.title = `${umaName(l.chara)}${l.carries ? ': carries it' : ': no spark of it'}`;
+      row.appendChild(f);
+    }
+    body.append(el('div', 'gmdsub', 'Legacies carrying it'), row);
+  }
+  if (cards.length) {
+    const list = el('ul', 'gmdlist gmdcards');
+    for (const { card, how } of cards) {
+      const li = el('li');
+      const who = el('span', 'gmdcard');
+      who.append(cardAv(card, 28), el('span', '', card.name.replace(/^\[[^\]]*\] /, '')));
+      li.append(who, el('b', '', how));
+      list.appendChild(li);
+    }
+    body.append(el('div', 'gmdsub', 'Cards that give it'), list);
+  }
   const sum = el('div', 'gmdlist two');
   for (const { label, chance } of [
     { label: 'Acquired', chance: b.gold + b.white },

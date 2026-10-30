@@ -127,7 +127,7 @@ function card(v, next) {
   c.setAttribute('aria-label', `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`);
   c.title = `${umaName(v.chara)} · ${v.lender?.name || ''}`;
   const face = el('span', 'umface');
-  face.appendChild(umaAv(v.chara, v.outfit, 64));
+  face.appendChild(umaAv(v.chara, v.outfit, 72));
   // her career-rank badge, top right of her portrait, as in the game (the last rank whose minimum her score reaches)
   const rankId = (CAREER.ranks || []).reduce((at, min, i) => (v.rank >= min ? i + 1 : at), 0),
     badge = rankId && srcFor('ui', `vrank_${rankId}`);

@@ -52,7 +52,7 @@ import {
 } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
 import { initUmamoe, syncListings } from './umamoesetup.js';
-import { detailsEl, inspView, fitSparks, deckCardAt } from './details.js';
+import { detailsEl, inspView, fitSparks, deckCardAt, openSkill } from './details.js';
 import { drawPink } from './pink.mjs';
 import { unprovenWhy, whyText, searchCaveat, planCaveat } from './proofs.mjs';
 
@@ -1645,58 +1645,71 @@ function deckEl(r, title = '') {
   return dk;
 }
 const TARGETS_HELP =
-  'Weakest first. The big number: the chance her veteran gets this skill’s spark. The six dots: her six legacies (two parents, four grandparents), lit where one carries the skill (the % beside them: the chance inheritance passes it on). The cards: deck cards that hint it (gold: a card hints its gold). Her outfit or the scenario: they hand it to her. Pink: under half, holding the odds back. A gold tile: she lands it through the gold skill.';
-// each target, weakest first: the game's skill tile and her chance to land its spark; under it where it comes from, in
-// pictures: six spark dots (her legacies carrying it) with the inheritance chance, the faces of the deck cards that hint
-// it (a gold mark: the deck hints its gold), her outfit's face or the scenario when they hand it out
+  'Lowest first. The number: the chance her veteran gets this skill’s spark. Legacies: the chance her six legacies pass it on (inheritance). Deck: the chance her deck gives it, with the cards that do. A gold tile: she lands it through the gold skill. Tap a skill for where it comes from.';
+// the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
+function cardsGiving(r, g) {
+  const out = [];
+  for (let i = 0; i < r.deck.cards.length; i++) {
+    const c = deckCardAt(r.deck, i).card;
+    if (!c) continue;
+    const ways = [];
+    if ((c.whites || []).includes(g)) ways.push('hint');
+    for (const [group, rarity, link] of c.ev || [])
+      if (group === g) ways.push(`${rarity > 1 ? 'gold ' : ''}event${link ? ` at link ${link}` : ''}`);
+    if (ways.length) out.push({ card: c, how: [...new Set(ways)].join(', ') });
+  }
+  return out;
+}
+// her six legacies (each parent, then her two parents), and whether each carries target group g
+function legaciesCarrying(r, g) {
+  const out = [];
+  for (const ix of r.parents) {
+    const v = vets[ix];
+    if (!v) continue;
+    out.push({ chara: v.chara, outfit: v.outfit, carries: v.sparks?.[g] > 0 });
+    for (const p of v.parents) out.push({ chara: p.chara || 0, outfit: p.outfit, carries: p.sparks?.[g] > 0 });
+  }
+  return out;
+}
+// each target, lowest first: the game's skill tile (tap: Skill Details, where it comes from) and her chance to land its
+// spark; under it the chance her legacies pass it on and her deck gives it, with the cards that do
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
     list = el('ul', 'ctgs'),
-    q = el('button', 'oinfo savewhy', '?');
+    q = el('button', 'oinfo savewhy', '?'),
+    h = s.querySelector(':scope > h3');
   q.type = 'button';
   q.title = TARGETS_HELP;
   q.setAttribute('aria-label', `What these mean: ${TARGETS_HELP}`);
-  s.querySelector(':scope > h3').append(q);
-  const deck = r.deck.cards.map((_, i) => deckCardAt(r.deck, i).card).filter(Boolean);
+  h.append(q, el('span', 'tgcap', 'lowest first'));
   for (const t of [...r.targets].sort((a, b) => a.p - b.p)) {
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
-      li = el('li', `ctg${t.p < 0.5 ? ' weak' : ''}`),
-      tile = el('div', `udsk${gold ? ' gold' : ''}`),
-      ic = skillIcon(t.group, gold),
-      land = el('span', 'tgland');
-    if (ic) tile.appendChild(ic);
+      li = el('li', 'ctg'),
+      tile = el('button', `udsk${gold ? ' gold' : ''}`),
+      ic = () => skillIcon(t.group, gold),
+      land = el('span', 'tgland'),
+      cards = cardsGiving(r, t.group),
+      deckP = Math.max(b.deck_gold || 0, b.deck_white || 0);
+    tile.type = 'button';
+    tile.setAttribute('aria-haspopup', 'dialog');
+    tile.setAttribute('aria-label', `${tName(t.group)}: lands ${pct(t.p)}. Where it comes from`);
+    const icon = ic();
+    if (icon) tile.appendChild(icon);
     tile.appendChild(el('span', 'udskn', tName(t.group)));
+    tile.onclick = () =>
+      openSkill({ b, name: tName(t.group), icon: ic, gold, legacies: legaciesCarrying(r, t.group), cards }, tile);
     land.append(el('b', '', pct(t.p)));
     land.title = 'The chance her veteran gets this skill’s spark';
-    // where it comes from
     const src = el('span', 'tgsrc'),
-      dots = el('span', 'tgdots');
-    for (let k = 0; k < 6; k++) dots.appendChild(el('i', k < t.carriers ? 'on' : ''));
-    dots.title = `${t.carriers} of her 6 legacies carry it; inheritance passes it on ${pct(t.q)}`;
-    src.append(dots, el('span', 'tgq', pct(t.q)));
-    const hinters = deck.filter((c) => (c.whites || []).includes(t.group)),
-      deckP = Math.max(b.deck_gold || 0, b.deck_white || 0);
-    if (hinters.length || deckP > 0.005) {
-      const cards = el('span', 'tgcards');
-      for (const c of hinters) cards.appendChild(cardAv(c, 22));
-      // (the deck's chance, also where an event of a card gives it rather than a card's hints)
-      cards.appendChild(el('span', 'tgq', `${hinters.length ? '' : 'deck '}${pct(deckP)}`));
-      if ((b.deck_gold || 0) > 0.005) cards.appendChild(el('span', 'tggold', 'gold'));
-      cards.title = `The deck hints it ${pct(deckP)}${(b.deck_gold || 0) > 0.005 ? ` (its gold ${pct(b.deck_gold)})` : ''}${hinters.length ? `: ${hinters.map((c) => cardTitle(c).nm).join(', ')}` : ''}`;
-      src.appendChild(cards);
-    }
-    if (b.outfit) {
-      const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 22);
-      o.title = `Her outfit has its ${b.outfit === 2 ? 'gold' : 'white'}`;
-      src.appendChild(o);
-    }
-    if (b.scenario) src.appendChild(el('span', 'tgscen', 'scenario'));
+      deck = el('span', 'tgdeck');
+    src.appendChild(el('span', '', `Legacies ${pct(t.q)}`));
+    deck.appendChild(el('span', '', `Deck ${deckP > 0.005 ? pct(deckP) : '—'}`));
+    for (const { card } of cards) deck.appendChild(cardAv(card, 22));
+    src.appendChild(deck);
+    if (b.outfit) src.appendChild(el('span', '', 'Her outfit'));
+    if (b.scenario) src.appendChild(el('span', '', 'Scenario'));
     li.append(tile, land, src);
-    li.setAttribute(
-      'aria-label',
-      `${tName(t.group)}: lands ${pct(t.p)}; ${t.carriers} of 6 legacies carry it, inherited ${pct(t.q)}${deckP > 0.005 ? `; deck ${pct(deckP)}` : ''}${b.outfit ? '; her outfit' : ''}${b.scenario ? '; the scenario' : ''}`,
-    );
     list.appendChild(li);
   }
   s.appendChild(list);

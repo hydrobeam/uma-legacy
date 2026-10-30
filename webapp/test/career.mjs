@@ -379,25 +379,30 @@ export default async function career(b) {
       (await pg.evaluate(() => document.activeElement?.id === 'odds-open')),
     JSON.stringify(oddRows.slice(0, 3)),
   );
-  // the targets, weakest first: the game's skill tile and the chance to land; under it six spark dots (legacies carrying
-  // it) with the inheritance chance; under half shaded as holding the odds back
+  // the targets, lowest first: the game's skill tile and the chance to land; under it the legacies' and the deck's
+  // chances, with the cards that give it; a tile opens Skill Details (her six legacies, the cards)
   const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
     l.map((x) => ({
       land: Number.parseFloat(x.querySelector('.tgland b')?.textContent),
-      dots: x.querySelectorAll('.tgdots i').length,
-      lit: x.querySelectorAll('.tgdots i.on').length,
-      q: x.querySelector('.tgq')?.textContent,
-      tile: !!x.querySelector('.udsk'),
-      weak: x.classList.contains('weak'),
+      src: x.querySelector('.tgsrc')?.textContent,
+      tile: x.querySelector('button.udsk') !== null,
     })),
   );
+  await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
+  await dialog(pg, 'sk-dlg');
+  const skFaces = await pg.locator('#sk-dlg .gmdfaces .av').count(),
+    skText = await pg.textContent('#sk-dlg');
+  await pg.keyboard.press('Escape');
   check(
-    'career: the six-card deck in its own place, shown outright; the targets weakest first, each with its tile, chance to land, six legacy dots and inheritance chance, those under half shaded',
+    'career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land, its legacies and deck chances; a tile opens Skill Details with her six legacies',
     (await pg.locator('#tree .ldeck #tree-deck .dc').count()) === 6 &&
       tgRows.length === 8 &&
       tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
-      tgRows.every((t) => t.tile && t.dots === 6 && t.lit <= 6 && /^[<\d.]+%$/.test(t.q) && t.weak === t.land < 50),
-    JSON.stringify(tgRows.slice(0, 3)),
+      tgRows.every((t) => t.tile && /^Legacies [<\d.]+%Deck ([<\d.]+%|—)/.test(t.src)) &&
+      skFaces === 6 &&
+      /Lands as a spark: [<\d.]+%/.test(skText) &&
+      /Legacies carrying it/.test(skText),
+    JSON.stringify(tgRows.slice(0, 2)),
   );
   check(
     'career: the legacies carry no affinity numbers or labels; the trainee shows her total',
