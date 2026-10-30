@@ -15,6 +15,7 @@ import { umaAv, skillIcon, cardAv, runnerHTML, setRunner, scenLogo } from './ima
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
 import { initCards, cardTitle, borLast, chainEndNote } from './cards.js';
+import { initOwnedImport } from './owned.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched, tableCost, tableChance } from './agenda.js';
 import { initSetup } from './setup.js';
@@ -3128,6 +3129,7 @@ function initSettings() {
   initScenario();
   initRoster();
   initCards();
+  initOwnedImport();
   initTargets();
   initBorrow();
   renderRoster();

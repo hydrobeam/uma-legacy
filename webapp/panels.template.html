@@ -53,17 +53,17 @@
     </section><!--/panel:skills-->
 <!--panel:roster--><section class="panel" aria-labelledby="h-roster">
       <div class="row between"><h2 id="h-roster">Umas</h2>
-        <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button><span class="hint cnt" id="r-count" role="status"></span></div></div>
+        <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button><label class="btn filebtn" title="Owned outfits (card_data.json) or support cards (support_card_data.json) from umadump: replaces the marks here">Import umadump<input type="file" id="r-file" accept=".json,application/json" multiple></label><span class="hint cnt" id="r-count" role="status"></span></div></div>
       <div class="row rtools"><input type="search" id="r-filter" aria-label="Filter umas" placeholder="Filter by name or outfit">
         <div class="sortdd" id="rs-dd"><button class="btn" id="rs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort umas"></button>
           <div class="sortmenu" id="rs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
-      <p class="hint">Tap a portrait to mark it owned or not owned.</p>
+      <p class="hint">Tap a portrait to mark it owned or not owned. <span id="r-msg" role="status"></span></p>
       <div class="roster" id="roster"></div>
     </section><!--/panel:roster-->
 <!--panel:deck--><section class="panel" aria-labelledby="h-deck">
       <div class="row between"><h2 id="h-deck">Support deck</h2>
-        <div class="row"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button><span class="hint cnt" id="c-count" role="status"></span></div></div>
-      <p class="hint">Only cards that provide relevant skills are shown.</p>
+        <div class="row"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button><label class="btn filebtn" title="Owned outfits (card_data.json) or support cards (support_card_data.json) from umadump: replaces the marks here">Import umadump<input type="file" id="c-file" accept=".json,application/json" multiple></label><span class="hint cnt" id="c-count" role="status"></span></div></div>
+      <p class="hint">Only cards that provide relevant skills are shown. <span id="c-msg" role="status"></span></p>
       <div class="cwrap">
         <div class="row rtools"><input type="search" id="c-filter" aria-label="Filter cards" placeholder="Filter cards">
         <div class="sortdd" id="cs-dd"><button class="btn" id="cs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort cards"></button>
