@@ -1979,16 +1979,26 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
    not shown */
 .game .rbtitle .rhead[data-kind="done"] { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* targets: the game's skill tile (gold: she lands it through the gold skill), her chance to land its spark, and where it
-   comes from */
-.ctgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ctg { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 1px; }
+/* targets, weakest first: the game's skill tile and her chance to land its spark; under it where it comes from in
+   pictures (six spark dots for her legacies carrying it, the deck cards that hint it, her outfit or the scenario); a
+   target under half shaded pink: it holds the odds back */
+.ctgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ctg { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 3px; padding: 4px 6px 6px; border-radius: 10px; }
+.ctg.weak { background: color-mix(in srgb, var(--gm-pink) 22%, transparent); }
 .ctg > .udsk { min-height: 40px; padding-block: 3px 7px; }
 .ctg > .udsk .sic { width: 26px; height: 26px; }
 .tgland { display: grid; justify-items: end; line-height: 1.05; min-width: 3.4em; }
-.tgland b { font-size: 1.15rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
-.tgland span { font-size: 0.68rem; color: var(--gm-ink2); }
-.tgsrc { grid-column: 1 / -1; padding-left: 10px; font-size: 0.78rem; color: var(--gm-ink2); }
+.tgland b { font-size: 1.2rem; font-weight: 900; color: var(--gm-ink); font-variant-numeric: tabular-nums; }
+.tgsrc { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding-left: 6px; font-size: 0.78rem; color: var(--gm-ink2); }
+.tgdots { display: inline-flex; gap: 2px; }
+.tgdots i { display: block; width: 11px; height: 11px; border-radius: 50%; background: var(--spark-dot, radial-gradient(circle at 40% 35%, #fff, #b9c6ff 55%, #6d7fd6)) center / cover no-repeat; opacity: .22; filter: grayscale(1); }
+.tgdots i.on { opacity: 1; filter: none; }
+.tgq { font-variant-numeric: tabular-nums; }
+.tgcards { display: inline-flex; align-items: center; gap: 2px; }
+.tgcards .cav { border-radius: 4px; }
+.tggold { margin-left: 3px; font-size: 0.66rem; font-weight: 900; padding: 0 5px; border-radius: 999px; background: var(--gm-gold2); color: var(--gm-ink); }
+.tgsrc > .av { box-shadow: 0 0 0 1px var(--gm-edge); }
+.tgscen { font-size: 0.7rem; font-weight: 700; padding: 0 6px; border-radius: 999px; background: var(--gm-pane); color: var(--gm-ink2); }
 /* popups whose body can run long (uma.moe's list, Try a run's card): the body scrolls inside the window */
 .umdlg, .simdlg { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
 .simdlg { width: min(960px, calc(100vw - 24px)); }

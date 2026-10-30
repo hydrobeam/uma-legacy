@@ -129,9 +129,11 @@ a run** and **Race schedule** (the game's calendar of the G1s she runs); then, i
 the **Trainee**, the **Legacies** (each parent with her veteran number and her own two parents as faces; on phones only
 the parent, tap her for the rest; a parent borrowed from uma.moe shows her trainer, and her popup has *Copy ID*, to follow
 them before the career starts), the **Deck** (shown outright, with each card's
-priority or chain note) and the **Targets**: each as the game's skill tile (gold when she lands it through the gold
-skill), her chance to land its spark, and where it comes from: *Parents* (the chance the legacies pass it on), *deck gold*
-/ *deck* (the chance the deck hints the gold or the white), *scenario gold*, *outfit*, *her events*. The landing chances
+priority or chain note) and the **Targets**, weakest first: each as the game's skill tile (gold when she lands it through the gold skill) with
+her chance to land its spark; under it, six spark dots for her six legacies (lit where one carries the skill) with the
+chance inheritance passes it on, the deck cards that hint it with the deck's chance (*gold* when a card hints its gold),
+and her outfit's face or *scenario* when those hand it out; a target under half is shaded pink, as it holds the odds
+back. The landing chances
 multiply to the odds of all of them; the **?** by *Targets* says what each figure is. The status line shows only while the planner works or when something needs saying. A reload with nothing changed draws
 the last answer at once, without planning again.
 

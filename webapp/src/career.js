@@ -1644,23 +1644,11 @@ function deckEl(r, title = '') {
   });
   return dk;
 }
-// each target as the game's skill tile (gold when she lands it through its gold skill), her chance to land its spark,
-// and where it comes from: the parents (inheritance) and the deck (a gold or a white hint), or the scenario, her outfit,
-// her own events
-function sourcesText(t) {
-  const b = t.buy || {},
-    out = [`Parents ${pct(t.q)}`];
-  if (b.scenario) out.push('scenario gold');
-  if (b.outfit === 2) out.push('outfit gold');
-  else if (b.outfit === 1) out.push('outfit');
-  if ((b.deck_gold || 0) > 0.005) out.push(`deck gold ${pct(b.deck_gold)}`);
-  if ((b.deck_white || 0) > 0.005) out.push(`deck ${pct(b.deck_white)}`);
-  if ((b.own_event || 0) > 0.005) out.push(`her events ${pct(b.own_event)}`);
-  if (out.length === 1) out.push('no hint');
-  return out.join(' · ');
-}
 const TARGETS_HELP =
-  'Lands: the chance her veteran gets this skill’s spark. Under it, where the skill comes from: Parents, the chance her six legacies pass it on (inheritance); deck gold / deck, the chance a card hints its gold or its white; scenario gold, outfit, her events: handed to her. A gold tile: she lands it through the gold skill.';
+  'Weakest first. The big number: the chance her veteran gets this skill’s spark. The six dots: her six legacies (two parents, four grandparents), lit where one carries the skill (the % beside them: the chance inheritance passes it on). The cards: deck cards that hint it (gold: a card hints its gold). Her outfit or the scenario: they hand it to her. Pink: under half, holding the odds back. A gold tile: she lands it through the gold skill.';
+// each target, weakest first: the game's skill tile and her chance to land its spark; under it where it comes from, in
+// pictures: six spark dots (her legacies carrying it) with the inheritance chance, the faces of the deck cards that hint
+// it (a gold mark: the deck hints its gold), her outfit's face or the scenario when they hand it out
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
     list = el('ul', 'ctgs'),
@@ -1669,33 +1657,58 @@ function targetsEl(r) {
   q.title = TARGETS_HELP;
   q.setAttribute('aria-label', `What these mean: ${TARGETS_HELP}`);
   s.querySelector(':scope > h3').append(q);
-  for (const t of r.targets) {
+  const deck = r.deck.cards.map((_, i) => deckCardAt(r.deck, i).card).filter(Boolean);
+  for (const t of [...r.targets].sort((a, b) => a.p - b.p)) {
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
-      li = el('li', 'ctg'),
+      li = el('li', `ctg${t.p < 0.5 ? ' weak' : ''}`),
       tile = el('div', `udsk${gold ? ' gold' : ''}`),
       ic = skillIcon(t.group, gold),
-      land = el('span', 'tgland'),
-      src = sourcesText(t);
+      land = el('span', 'tgland');
     if (ic) tile.appendChild(ic);
     tile.appendChild(el('span', 'udskn', tName(t.group)));
-    land.append(el('b', '', pct(t.p)), el('span', '', 'lands'));
+    land.append(el('b', '', pct(t.p)));
     land.title = 'The chance her veteran gets this skill’s spark';
-    li.append(tile, land, el('span', 'tgsrc', src));
-    li.setAttribute('aria-label', `${tName(t.group)}: lands ${pct(t.p)}; ${src}`);
+    // where it comes from
+    const src = el('span', 'tgsrc'),
+      dots = el('span', 'tgdots');
+    for (let k = 0; k < 6; k++) dots.appendChild(el('i', k < t.carriers ? 'on' : ''));
+    dots.title = `${t.carriers} of her 6 legacies carry it; inheritance passes it on ${pct(t.q)}`;
+    src.append(dots, el('span', 'tgq', pct(t.q)));
+    const hinters = deck.filter((c) => (c.whites || []).includes(t.group)),
+      deckP = Math.max(b.deck_gold || 0, b.deck_white || 0);
+    if (hinters.length || deckP > 0.005) {
+      const cards = el('span', 'tgcards');
+      for (const c of hinters) cards.appendChild(cardAv(c, 22));
+      // (the deck's chance, also where an event of a card gives it rather than a card's hints)
+      cards.appendChild(el('span', 'tgq', `${hinters.length ? '' : 'deck '}${pct(deckP)}`));
+      if ((b.deck_gold || 0) > 0.005) cards.appendChild(el('span', 'tggold', 'gold'));
+      cards.title = `The deck hints it ${pct(deckP)}${(b.deck_gold || 0) > 0.005 ? ` (its gold ${pct(b.deck_gold)})` : ''}${hinters.length ? `: ${hinters.map((c) => cardTitle(c).nm).join(', ')}` : ''}`;
+      src.appendChild(cards);
+    }
+    if (b.outfit) {
+      const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 22);
+      o.title = `Her outfit has its ${b.outfit === 2 ? 'gold' : 'white'}`;
+      src.appendChild(o);
+    }
+    if (b.scenario) src.appendChild(el('span', 'tgscen', 'scenario'));
+    li.append(tile, land, src);
+    li.setAttribute(
+      'aria-label',
+      `${tName(t.group)}: lands ${pct(t.p)}; ${t.carriers} of 6 legacies carry it, inherited ${pct(t.q)}${deckP > 0.005 ? `; deck ${pct(deckP)}` : ''}${b.outfit ? '; her outfit' : ''}${b.scenario ? '; the scenario' : ''}`,
+    );
     list.appendChild(li);
   }
   s.appendChild(list);
   return s;
 }
-// her race schedule: the loop planner's schedule window, from a button beside the deck
-// (the races she runs: the G1s she could enter but doesn't aren't shown)
+// her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
+// G1s she could enter but doesn't aren't shown)
 const schedOf = (r) => ({
   members: [{ id: r.trainee.id, name: r.trainee.name, short: r.trainee.name }],
   outfits: [{ outfits: r.trainee.outfits }],
   schedule: (r.schedule || []).filter((x) => x.run !== false),
 });
-// her race schedule: the schedule window (the game's calendar), from a button under the deck
 function schedBtn(r) {
   const ran = schedOf(r).schedule.length;
   const b = btn('Race schedule', '', () => openSched(schedOf(r)));

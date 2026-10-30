@@ -379,19 +379,24 @@ export default async function career(b) {
       (await pg.evaluate(() => document.activeElement?.id === 'odds-open')),
     JSON.stringify(oddRows.slice(0, 3)),
   );
-  // the targets: the game's skill tile, the chance to land, and where it comes from (the parents, the deck)
+  // the targets, weakest first: the game's skill tile and the chance to land; under it six spark dots (legacies carrying
+  // it) with the inheritance chance; under half shaded as holding the odds back
   const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
-    l.map((x) => [
-      x.querySelector('.tgland b')?.textContent,
-      x.querySelector('.tgsrc')?.textContent,
-      !!x.querySelector('.udsk'),
-    ]),
+    l.map((x) => ({
+      land: Number.parseFloat(x.querySelector('.tgland b')?.textContent),
+      dots: x.querySelectorAll('.tgdots i').length,
+      lit: x.querySelectorAll('.tgdots i.on').length,
+      q: x.querySelector('.tgq')?.textContent,
+      tile: !!x.querySelector('.udsk'),
+      weak: x.classList.contains('weak'),
+    })),
   );
   check(
-    'career: the six-card deck in its own place, shown outright; each target as its skill tile with its chance to land and where it comes from',
+    'career: the six-card deck in its own place, shown outright; the targets weakest first, each with its tile, chance to land, six legacy dots and inheritance chance, those under half shaded',
     (await pg.locator('#tree .ldeck #tree-deck .dc').count()) === 6 &&
       tgRows.length === 8 &&
-      tgRows.every(([land, src, tile]) => /^[<\d.]+%$/.test(land) && /^Parents [<\d.]+% · /.test(src) && tile),
+      tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
+      tgRows.every((t) => t.tile && t.dots === 6 && t.lit <= 6 && /^[<\d.]+%$/.test(t.q) && t.weak === t.land < 50),
     JSON.stringify(tgRows.slice(0, 3)),
   );
   check(
