@@ -44,12 +44,16 @@ function query() {
   const factors = targetFactors(state.targets.map((t) => t.group));
   return factors.length ? { factors, min: Math.max(1, factors.length - 1), page: 0, full: fullTrainers() } : null;
 }
-const ago = (at) => `${Math.max(1, Math.round((Date.now() - at) / 3600e3))} h`;
+// how long ago the answer was fetched: "just now", "12 min ago", "3 h ago" (a kept answer is reused for 24 h)
+const ago = (at) => {
+  const min = (Date.now() - at) / 60e3;
+  return min < 1 ? 'just now' : min < 60 ? `${Math.round(min)} min ago` : `${Math.round(min / 60)} h ago`;
+};
 /** @param {{items: any[], total: number, at: number}} a @param {{min: number, factors: number[][]}} q */
 function take(a, q) {
   setListings(a.items.map(parseListing));
   const n = a.items.length;
-  now.text = `${n} veterans found, searched ${ago(a.at)} ago`;
+  now.text = `${n} veterans found, searched ${ago(a.at)}`;
   now.short = `${n} veterans`;
   now.min = q.min;
   now.n = q.factors.length;
@@ -134,7 +138,7 @@ function card(v) {
   c.setAttribute('aria-label', `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`);
   c.title = `${umaName(v.chara)} · ${v.lender?.name || ''}`;
   const face = el('span', 'umface');
-  face.appendChild(umaAv(v.chara, v.outfit, 72));
+  face.appendChild(umaAv(v.chara, v.outfit, 88));
   // her career-rank badge, top right of her portrait, as in the game (the last rank whose minimum her score reaches)
   const rankId = (CAREER.ranks || []).reduce((at, min, i) => (v.rank >= min ? i + 1 : at), 0),
     badge = rankId && srcFor('ui', `vrank_${rankId}`);

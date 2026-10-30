@@ -1424,7 +1424,8 @@ function renderTree() {
     const d = sectionEl('ldeck', 'Deck'),
       dk = deckEl(r);
     dk.id = 'tree-deck';
-    d.append(dk, schedBtn(r)); // her race schedule (the game's calendar), under her deck
+    d.querySelector(':scope > h3').appendChild(schedBtn(r)); // her race schedule (the game's calendar), in the deck's bar
+    d.appendChild(dk);
     box.append(d, targetsEl(r));
   }
   if (nodeDlg?.open) fillNode();
@@ -1644,35 +1645,6 @@ function deckEl(r, title = '') {
   });
   return dk;
 }
-// what the targets show, in the popup behind their ?
-const TARGETS_HELP = [
-  'Lowest first: the targets least likely to land hold the odds back.',
-  'The number: the chance her veteran gets the skill’s spark.',
-  'Legacies: the chance her six legacies (two parents, four grandparents) pass it on.',
-  'Deck: the chance her deck gives it, with the cards that do. Her outfit’s portrait or the scenario’s logo: they hand it to her.',
-  'A gold tile: she lands it through the gold skill. Tap a skill for where it comes from.',
-];
-let tgHelp = null;
-function openTargetsHelp(from) {
-  if (!tgHelp) {
-    tgHelp = el('dialog', 'gmdlg');
-    tgHelp.id = 'tg-help';
-    tgHelp.setAttribute('aria-labelledby', 'tg-help-title');
-    const h = el('h3', 'gmdhdr', 'Targets');
-    h.id = 'tg-help-title';
-    const body = el('div', 'gmdbody savebody');
-    for (const line of TARGETS_HELP) body.appendChild(el('p', '', line));
-    const close = btn('Close', 'gmclose', () => tgHelp.close()),
-      f = el('div', 'gmdfoot');
-    f.appendChild(close);
-    tgHelp.append(h, body, f);
-    tgHelp.addEventListener('close', () => tgHelp._from?.focus());
-    backdropCloses(tgHelp);
-    document.body.appendChild(tgHelp);
-  }
-  tgHelp._from = from;
-  tgHelp.showModal();
-}
 // the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
 function cardsGiving(r, g) {
   const out = [];
@@ -1698,19 +1670,40 @@ function legaciesCarrying(r, g) {
   }
   return out;
 }
-// each target, lowest first: the game's skill tile (tap: Skill Details, where it comes from) and her chance to land its
-// spark; under it the chance her legacies pass it on and her deck gives it, with the cards that do
+// the targets as a table, lowest first: the game's skill tile (tap: Skill Details, where it comes from), the chance her
+// legacies pass it on, the chance her deck gives it (with the cards that do, or her outfit / the scenario), and her
+// chance to land its spark
 function targetsEl(r) {
   const s = sectionEl('rtgt', 'Targets'),
-    list = el('ul', 'ctgs'),
-    q = el('button', 'oinfo savewhy', '?'),
-    h = s.querySelector(':scope > h3');
-  q.type = 'button';
-  q.setAttribute('aria-haspopup', 'dialog');
-  q.setAttribute('aria-label', 'What these mean');
-  q.onclick = () => openTargetsHelp(q);
-  h.append(q);
-  for (const t of [...r.targets].sort((a, b) => a.p - b.p)) {
+    tabs = el('div', 'tgtabs'),
+    sorted = [...r.targets].sort((a, b) => a.p - b.p),
+    half = Math.ceil(sorted.length / 2);
+  // a table and its headings: each says what its column is on hover or keyboard focus (gmtip.js), as the other careers'
+  const table = () => {
+    const list = el('ul', 'ctgs'),
+      head = el('li', 'ctg ctgh');
+    for (const [label, tip] of [
+      ['Skill', 'Tap a skill for where it comes from. A gold tile: she lands it through the gold skill.'],
+      ['Legacies', 'The chance her six legacies (two parents, four grandparents) pass it on'],
+      [
+        'Deck',
+        'The chance her deck gives it, with the cards that do; her outfit or the scenario when they hand it to her',
+      ],
+      ['Lands', 'The chance her veteran gets its spark (lowest first)'],
+    ]) {
+      const x = el('span', 'thtip', label);
+      x.title = tip;
+      x.tabIndex = 0;
+      head.appendChild(x);
+    }
+    list.appendChild(head);
+    tabs.appendChild(list);
+    return list;
+  };
+  // (two tables, the lowest half then the rest: side by side on wide screens, one under the other on narrow ones)
+  const lists = [table(), sorted.length > 4 ? table() : null];
+  for (const [n, t] of sorted.entries()) {
+    const list = lists[lists[1] && n >= half ? 1 : 0];
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
       li = el('li', 'ctg'),
@@ -1729,26 +1722,25 @@ function targetsEl(r) {
       openSkill({ b, name: tName(t.group), icon: ic, gold, legacies: legaciesCarrying(r, t.group), cards }, tile);
     land.append(el('b', '', pct(t.p)));
     land.title = 'The chance her veteran gets this skill’s spark';
-    const src = el('span', 'tgsrc'),
+    const legs = el('span', 'tglegs', pct(t.q)),
       deck = el('span', 'tgdeck');
-    src.appendChild(el('span', '', `Legacies ${pct(t.q)}`));
-    deck.appendChild(el('span', '', `Deck ${deckP > 0.005 ? pct(deckP) : '—'}`));
+    if (deckP > 0.005) deck.appendChild(el('span', '', pct(deckP)));
     for (const { card } of cards) deck.appendChild(cardAv(card, 22));
-    src.appendChild(deck);
     if (b.outfit) {
       const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 24);
       o.title = `Her outfit gives its ${b.outfit === 2 ? 'gold' : 'white'}`;
-      src.appendChild(o);
+      deck.appendChild(o);
     }
     if (b.scenario) {
       const sc = scenLogo(scenarioOf(state.scen));
       sc.title = 'The scenario gives it';
-      src.appendChild(sc);
+      deck.appendChild(sc);
     }
-    li.append(tile, src, land);
+    if (!deck.childElementCount) deck.appendChild(el('span', 'tgnone', '—'));
+    li.append(tile, legs, deck, land);
     list.appendChild(li);
   }
-  s.appendChild(list);
+  s.appendChild(tabs);
   return s;
 }
 // her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
@@ -1760,7 +1752,7 @@ const schedOf = (r) => ({
 });
 function schedBtn(r) {
   const ran = schedOf(r).schedule.length;
-  const b = btn('Race schedule', '', () => openSched(schedOf(r)));
+  const b = btn('Race schedule', 'sm hdrbtn', () => openSched(schedOf(r)));
   b.id = 'sched-open';
   b.title = ran ? `She runs ${ran} G1s: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
   return b;

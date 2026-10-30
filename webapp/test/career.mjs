@@ -381,21 +381,12 @@ export default async function career(b) {
   );
   // the targets, lowest first: the game's skill tile and the chance to land; under it the legacies' and the deck's
   // chances, with the cards that give it; a tile opens Skill Details (her six legacies, the cards)
-  const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
+  const tgRows = await pg.$$eval('#tree .rtgt .ctg:not(.ctgh)', (l) =>
     l.map((x) => ({
       land: Number.parseFloat(x.querySelector('.tgland b')?.textContent),
-      src: x.querySelector('.tgsrc')?.textContent,
+      legs: x.querySelector('.tglegs')?.textContent,
       tile: x.querySelector('button.udsk') !== null,
     })),
-  );
-  await pg.click('#tree .rtgt .oinfo');
-  await dialog(pg, 'tg-help');
-  const helpText = await pg.textContent('#tg-help');
-  await pg.keyboard.press('Escape');
-  check(
-    'career: the targets ? opens a popup saying what each figure is',
-    /Legacies: .+Deck: /.test(helpText),
-    helpText.slice(0, 80),
   );
   await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
   await dialog(pg, 'sk-dlg');
@@ -403,11 +394,12 @@ export default async function career(b) {
     skText = await pg.textContent('#sk-dlg');
   await pg.keyboard.press('Escape');
   check(
-    'career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land, its legacies and deck chances; a tile opens Skill Details with her six legacies',
+    'career: the six-card deck in its own place, shown outright; the targets a table with headings, lowest first, each a tile with its legacies and deck chances and its chance to land; a tile opens Skill Details with her six legacies',
     (await pg.locator('#tree .ldeck #tree-deck .dc').count()) === 6 &&
       tgRows.length === 8 &&
       tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
-      tgRows.every((t) => t.tile && /^Legacies [<\d.]+%Deck ([<\d.]+%|—)/.test(t.src)) &&
+      tgRows.every((t) => t.tile && /^[<\d.]+%$/.test(t.legs)) &&
+      (await pg.locator('#tree .rtgt .ctgh').first().textContent()) === 'SkillLegaciesDeckLands' &&
       skFaces === 6 &&
       /Lands as a spark: [<\d.]+%/.test(skText) &&
       /Legacies carrying it/.test(skText),

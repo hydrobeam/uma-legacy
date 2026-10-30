@@ -124,16 +124,17 @@ while the veterans and settings are unchanged), with your career marked (*your c
 and **Back to the planner's pick** returns to the places the plan ran with. The last few answers are kept, so going
 back to one draws it again without a run.
 
-**The next career**: beside the title, its odds of landing every target (click for the chance of each count), **Try
-a run** and **Race schedule** (the game's calendar of the G1s she runs); then, in the order you set it up in the game,
-the **Trainee**, the **Legacies** (each parent with her veteran number and her own two parents as faces; on phones only
-the parent, tap her for the rest; a parent borrowed from uma.moe shows her trainer, and her popup has *Copy ID*, to follow
-them before the career starts), the **Deck** (shown outright, with each card's
-priority or chain note) and the **Targets**, lowest first: each as the game's skill tile (gold when she lands it through the gold skill) with
-her chance to land its spark; under it *Legacies* (the chance her six legacies pass it on) and *Deck* (the chance her deck
-gives it, with the cards that do, by a hint or an event), or her outfit's portrait / the scenario's logo when those hand it out (the **?** says what each figure is). Tapping a
-skill opens *Skill Details*: where it comes from with each chance, her six legacies' faces (lit where one carries it) and
-each card that gives it ("hint", "gold event at link 2"). The landing chances
+**The next career**: beside the title, its odds of landing every target (click for the chance of each count) and **Try
+a run**. On wide screens the trainee sits over her two **Legacies** on the left (each parent with her veteran number and
+her own two parents as faces; on phones only the parent, tap her for the rest; a parent borrowed from uma.moe shows her
+trainer, and her popup has *Copy ID*, to follow them before the career starts), and on the right the **Deck** in one row
+(each card's priority or chain note; **Race schedule** in its bar opens the game's calendar of the G1s she runs) over the
+**Targets**: a table, lowest first (two side by side on wide screens), of each target's skill tile (gold when she lands
+it through the gold skill), *Legacies* (the chance her six legacies pass it on), *Deck* (the chance her deck gives it,
+with the cards that do by a hint or an event, or her outfit's portrait / the scenario's logo when those hand it out) and
+*Lands* (her chance to land its spark); each heading says what it is on hover. Tapping a skill opens *Skill Details*:
+where it comes from with each chance, her six legacies' faces (lit where one carries it) and each card that gives it.
+The landing chances
 multiply to the odds of all of them; the **?** by *Targets* says what each figure is. The status line shows only while the planner works or when something needs saying. A reload with nothing changed draws
 the last answer at once, without planning again.
 
