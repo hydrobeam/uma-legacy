@@ -388,6 +388,15 @@ export default async function career(b) {
       tile: x.querySelector('button.udsk') !== null,
     })),
   );
+  await pg.click('#tree .rtgt .oinfo');
+  await dialog(pg, 'tg-help');
+  const helpText = await pg.textContent('#tg-help');
+  await pg.keyboard.press('Escape');
+  check(
+    'career: the targets ? opens a popup saying what each figure is',
+    /Legacies: .+Deck: /.test(helpText),
+    helpText.slice(0, 80),
+  );
   await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
   await dialog(pg, 'sk-dlg');
   const skFaces = await pg.locator('#sk-dlg .gmdfaces .av').count(),

@@ -165,10 +165,10 @@ export default async function careerumamoe(b) {
   await pg.click('#um-open');
   const cards = await pg.$$eval('#um-list .umcell', (l) =>
     l.map((c) => ({
-      next: c.classList.contains('umnext'),
       nm: c.querySelector('.nm')?.textContent,
       sub: c.querySelector('.sub')?.textContent,
-      tags: [...c.querySelectorAll('.umsp b')].map((b) => b.textContent),
+      tags: [...c.querySelectorAll('.umsp img.umtagimg')].map((t) => t.alt),
+      tagArt: [...c.querySelectorAll('.umsp img.umtagimg')].every((t) => /ftag_(blue_\d|pink_\d+|green)\./.test(t.src)),
       stars: [...c.querySelectorAll('img.umst')].every((st) => /fstar_(blue|pink|green)_[123]\./.test(st.src)),
       rank: /vrank_\d+\./.test(c.querySelector('img.umrank')?.src || ''),
     })),
@@ -181,15 +181,15 @@ export default async function careerumamoe(b) {
       .count();
   await closeNode();
   check(
-    "career uma.moe: the popup lists them as the game's legacy list does (portrait, three spark tags with stars, her trainer, followers), the next career's first and tagged; one opens her veteran popup, read-only, with Copy ID",
+    "career uma.moe: the popup lists them as the game's legacy list does (portrait, three spark tags with stars, her trainer, followers), her spark tags the game's own images; one opens her veteran popup, read-only, with Copy ID",
     cards.length === 2 &&
-      cards[0].next &&
       cards.every(
         (c) =>
           /^Trainer [12]$/.test(c.nm) &&
           /^1[34] followers$/.test(c.sub) &&
           c.tags.length === 3 &&
           c.tags[2] === 'UNIQ' &&
+          c.tagArt &&
           c.stars &&
           c.rank,
       ) &&

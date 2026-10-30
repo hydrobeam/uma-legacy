@@ -201,6 +201,15 @@ UI_SPRITES = {
         "tag_" + k: ("atlas/singlecommon", f"utx_frm_factor_s_0{i + 2}")
         for i, k in enumerate(["blue", "pink", "green"])
     },
+    # the legacy list's spark tags, lettering included, by spark group (atlas/common): blue utx_ico_factor_status_01..05
+    # (stat 1..5), pink utx_ico_factor_aptitude_{group} (11-12 surface, 21-24 style, 31-34 distance), green
+    # utx_ico_factor_unique_00
+    **{f"ftag_blue_{g}": ("atlas/common", f"utx_ico_factor_status_0{g}") for g in range(1, 6)},
+    **{
+        f"ftag_pink_{g}": ("atlas/common", f"utx_ico_factor_aptitude_{g}")
+        for g in (11, 12, 21, 22, 23, 24, 31, 32, 33, 34)
+    },
+    "ftag_green": ("atlas/common", "utx_ico_factor_unique_00"),
     # the legacy list's star rows under those tags: 1, 2 or 3 gold stars in a blue, pink or green outline (atlas/common
     # utx_ico_factor_rarity_00..08: blue 1-3, pink 1-3, green 1-3)
     **{

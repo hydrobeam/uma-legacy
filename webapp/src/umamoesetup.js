@@ -73,7 +73,7 @@ export function paintUmamoe() {
     list = $('um-list');
   list.textContent = '';
   for (const v of vets.filter((x) => x.src === 'umamoe').sort((x, y) => Number(y === b) - Number(x === b)))
-    list.appendChild(card(v, v === b));
+    list.appendChild(card(v));
 }
 // her main sparks as the game's legacy list shows them under a portrait: blue (her stat), pink (her aptitude), green
 // (her unique skill), each a short tag of its colour with its stars under it
@@ -93,11 +93,18 @@ const BLUE_TAG = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
 function mainSparks(v) {
   const row = el('span', 'umsps'),
     first = (o) => Object.entries(o || {}).find(([, st]) => st > 0);
-  // (the legacy list's own pill for the tag, its star row for the stars)
-  const tag = (kind, label, full, stars) => {
+  // (the legacy list's own tag image, its lettering included, and its star row; the letters alone where the image
+  // isn't shipped)
+  const tag = (kind, label, full, stars, image) => {
     const t = el('span', `umsp ${kind}`),
-      src = srcFor('ui', `fstar_${kind}_${Math.min(3, Math.max(1, stars))}`);
-    t.appendChild(el('b', '', label));
+      src = srcFor('ui', `fstar_${kind}_${Math.min(3, Math.max(1, stars))}`),
+      face = srcFor('ui', image);
+    if (face) {
+      const f = el('img', 'umtagimg');
+      f.src = face;
+      f.alt = label;
+      t.appendChild(f);
+    } else t.appendChild(el('b', '', label));
     if (src) {
       const st = el('img', 'umst');
       st.src = src;
@@ -110,9 +117,9 @@ function mainSparks(v) {
   const bl = first(v.blues),
     pk = first(v.pinks),
     gr = first(v.greens);
-  if (bl) row.appendChild(tag('blue', BLUE_TAG[bl[0]] || '?', blueName(+bl[0]), bl[1]));
-  if (pk) row.appendChild(tag('pink', PINK_TAG[pk[0]] || '?', pinkName(+pk[0]), pk[1]));
-  if (gr) row.appendChild(tag('green', 'UNIQ', uniqueName(+gr[0]) || 'Unique skill', gr[1]));
+  if (bl) row.appendChild(tag('blue', BLUE_TAG[bl[0]] || '?', blueName(+bl[0]), bl[1], `ftag_blue_${bl[0]}`));
+  if (pk) row.appendChild(tag('pink', PINK_TAG[pk[0]] || '?', pinkName(+pk[0]), pk[1], `ftag_pink_${pk[0]}`));
+  if (gr) row.appendChild(tag('green', 'UNIQ', uniqueName(+gr[0]) || 'Unique skill', gr[1], 'ftag_green'));
   return row;
 }
 /** @param {import('./vets.js').Lender|undefined} l */
@@ -120,8 +127,8 @@ const followersText = (l) =>
   !l ? '' : l.followers >= 1000 ? 'max' : `${l.followers} follower${l.followers === 1 ? '' : 's'}`;
 // a listing as the game's legacy list draws a veteran: her portrait, her three main sparks under it, then her trainer's
 // name and followers; a click opens her veteran popup (her sparks, her parents, Copy ID)
-function card(v, next) {
-  const c = el('button', `umcell${next ? ' umnext' : ''}`);
+function card(v) {
+  const c = el('button', 'umcell');
   c.type = 'button';
   c.setAttribute('aria-haspopup', 'dialog');
   c.setAttribute('aria-label', `${umaName(v.chara)}, ${v.lender?.name || 'uma.moe'}: her sparks and parents`);
@@ -143,7 +150,6 @@ function card(v, next) {
     el('span', 'nm', v.lender?.name || umaName(v.chara)),
     el('span', 'sub', followersText(v.lender)),
   );
-  if (next) c.appendChild(el('span', 'umtag', 'Next'));
   c.onclick = () => ctx.open(v);
   return c;
 }

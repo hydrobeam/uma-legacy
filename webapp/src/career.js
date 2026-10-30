@@ -11,7 +11,7 @@ import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKil
 import { answerLoad, answerSave } from './statestore.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
-import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
+import { umaAv, skillIcon, cardAv, runnerHTML, setRunner, scenLogo } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
 import { initCards, cardTitle, borLast, chainEndNote } from './cards.js';
@@ -1644,8 +1644,35 @@ function deckEl(r, title = '') {
   });
   return dk;
 }
-const TARGETS_HELP =
-  'Lowest first. The number: the chance her veteran gets this skill’s spark. Legacies: the chance her six legacies pass it on (inheritance). Deck: the chance her deck gives it, with the cards that do. A gold tile: she lands it through the gold skill. Tap a skill for where it comes from.';
+// what the targets show, in the popup behind their ?
+const TARGETS_HELP = [
+  'Lowest first: the targets least likely to land hold the odds back.',
+  'The number: the chance her veteran gets the skill’s spark.',
+  'Legacies: the chance her six legacies (two parents, four grandparents) pass it on.',
+  'Deck: the chance her deck gives it, with the cards that do. Her outfit’s portrait or the scenario’s logo: they hand it to her.',
+  'A gold tile: she lands it through the gold skill. Tap a skill for where it comes from.',
+];
+let tgHelp = null;
+function openTargetsHelp(from) {
+  if (!tgHelp) {
+    tgHelp = el('dialog', 'gmdlg');
+    tgHelp.id = 'tg-help';
+    tgHelp.setAttribute('aria-labelledby', 'tg-help-title');
+    const h = el('h3', 'gmdhdr', 'Targets');
+    h.id = 'tg-help-title';
+    const body = el('div', 'gmdbody savebody');
+    for (const line of TARGETS_HELP) body.appendChild(el('p', '', line));
+    const close = btn('Close', 'gmclose', () => tgHelp.close()),
+      f = el('div', 'gmdfoot');
+    f.appendChild(close);
+    tgHelp.append(h, body, f);
+    tgHelp.addEventListener('close', () => tgHelp._from?.focus());
+    backdropCloses(tgHelp);
+    document.body.appendChild(tgHelp);
+  }
+  tgHelp._from = from;
+  tgHelp.showModal();
+}
 // the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
 function cardsGiving(r, g) {
   const out = [];
@@ -1679,9 +1706,10 @@ function targetsEl(r) {
     q = el('button', 'oinfo savewhy', '?'),
     h = s.querySelector(':scope > h3');
   q.type = 'button';
-  q.title = TARGETS_HELP;
-  q.setAttribute('aria-label', `What these mean: ${TARGETS_HELP}`);
-  h.append(q, el('span', 'tgcap', 'lowest first'));
+  q.setAttribute('aria-haspopup', 'dialog');
+  q.setAttribute('aria-label', 'What these mean');
+  q.onclick = () => openTargetsHelp(q);
+  h.append(q);
   for (const t of [...r.targets].sort((a, b) => a.p - b.p)) {
     const b = t.buy || {},
       gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
@@ -1707,9 +1735,17 @@ function targetsEl(r) {
     deck.appendChild(el('span', '', `Deck ${deckP > 0.005 ? pct(deckP) : '—'}`));
     for (const { card } of cards) deck.appendChild(cardAv(card, 22));
     src.appendChild(deck);
-    if (b.outfit) src.appendChild(el('span', '', 'Her outfit'));
-    if (b.scenario) src.appendChild(el('span', '', 'Scenario'));
-    li.append(tile, land, src);
+    if (b.outfit) {
+      const o = umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 24);
+      o.title = `Her outfit gives its ${b.outfit === 2 ? 'gold' : 'white'}`;
+      src.appendChild(o);
+    }
+    if (b.scenario) {
+      const sc = scenLogo(scenarioOf(state.scen));
+      sc.title = 'The scenario gives it';
+      src.appendChild(sc);
+    }
+    li.append(tile, src, land);
     list.appendChild(li);
   }
   s.appendChild(list);
