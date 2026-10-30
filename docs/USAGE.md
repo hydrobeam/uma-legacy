@@ -49,14 +49,15 @@ full veterans). It shares the loop planner's game data, scenario, rank, umas, ca
   file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
   lends today; *Remove all* clears the open tab. *Paste* takes the same text, an Export from this page (which replaces
   every import), or an uma.moe lineage planner export.
-- **uma.moe** (the *Borrowed* tab): with your uma.moe API key (made at uma.moe/settings; kept in your browser under its
-  own entry, sent only to uma.moe as a header, never in an Export), the veterans players list on uma.moe join the pool
-  as borrowed veterans, which the planner weighs like any other borrow. The page asks once per target set (on saving
-  the key, and after the targets change) for the best covered 100 lineages whose parent carries all but at most one
-  target herself, from followable trainers (under 1,000 followers); the answer is kept 24 hours, and *Refresh* asks
-  again. Edits to veterans or settings never send a request. A parent from uma.moe shows her trainer, with *Copy ID* to
-  follow them in the game. The next search replaces the listings, except those you *Keep*, which are saved. *Forget
-  key* is under *Key*. Global data only.
+- **Borrow from uma.moe** (beside *Next career*): paste your uma.moe API key once (made at uma.moe/settings; kept in
+  your browser under its own entry, sent only to uma.moe as a header, never in an Export) and the veterans players list
+  on uma.moe join the pool as borrowed parents, which the planner weighs like any other borrow. The page asks once per
+  target set (on saving the key, and after the targets change) for the best covered 100 lineages whose parent carries
+  all but at most one target herself, from followable trainers (under 1,000 followers); the answer is kept 24 hours,
+  and *Refresh* asks again. Edits to veterans or settings never send a request. A parent from uma.moe reads *Borrow ·
+  uma.moe* with her trainer and *Copy ID*, to follow them in the game. uma.moe's veterans are not in *Veteran
+  Umamusume* or an Export; the parent picker lists them under *uma.moe*, and one you choose stays while chosen.
+  *Disconnect* forgets the key. Global data only.
 - With no veterans, **Try sample veterans** adds six random mob umas carrying only the targets that inheritance alone
   gives, the minimum to start a loop.
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Borrowed* marks a friend's.

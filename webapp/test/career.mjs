@@ -322,14 +322,12 @@ export default async function career(b) {
   pg.once('dialog', (d) => d.accept());
   await pg.click('#v-clear');
   const cleared = await seen(),
-    emptyHint = await pg.textContent('#vets'),
-    keyBar = await pg.locator('#um-key').isVisible();
+    emptyHint = await pg.textContent('#vets');
   await pg.click('#v-tab-own');
   check(
-    'career: Remove all on the Borrowed tab removes only the borrowed; the empty tab offers the uma.moe key above it',
+    'career: Remove all on the Borrowed tab removes only the borrowed, and the empty tab says how to fill it',
     /^Removed 2 borrowed veterans\. \| true \| 0 \| Yours · 12 \| Borrowed · 0$/.test(cleared) &&
-      /None yet/.test(emptyHint) &&
-      keyBar &&
+      /None borrowed yet/.test(emptyHint) &&
       (await pg.locator('#vets .vet').count()) === 12,
     cleared,
   );

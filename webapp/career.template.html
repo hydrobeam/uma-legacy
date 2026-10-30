@@ -60,6 +60,20 @@ __PANEL_ENH__
     <div class="rbtitle">
       <h2 id="h-lin">Next career</h2>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
+      <div class="umpop" id="um-row" hidden>
+        <button class="btn sm" type="button" id="um-open" aria-expanded="false" aria-controls="um-panel">Borrow from uma.moe</button>
+        <div class="umpanel" id="um-panel" role="group" aria-label="uma.moe" hidden>
+          <div id="um-keyrow">
+            <p class="umh">Borrow parents from uma.moe</p>
+            <div class="umline"><input type="password" id="um-key" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="uma.moe API key"><button class="btn" type="button" id="um-save">Save</button></div>
+            <a href="https://uma.moe/settings" target="_blank" rel="noopener">Get a key at uma.moe/settings</a>
+          </div>
+          <div id="um-on" hidden>
+            <div class="umline"><span id="um-msg" role="status" aria-live="polite"></span><button class="btn sm" type="button" id="um-again">Refresh</button></div>
+            <button class="linkbtn" type="button" id="um-forget">Disconnect</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="ped" id="tree"></div>
     <div id="results"></div>
@@ -79,10 +93,6 @@ __PANEL_ENH__
   <div class="seg" role="tablist" aria-label="Whose veterans">
     <button type="button" role="tab" id="v-tab-own" aria-selected="true" aria-controls="vets">Yours</button>
     <button type="button" role="tab" id="v-tab-bor" aria-selected="false" aria-controls="vets">Borrowed</button>
-  </div>
-  <div class="umbar" id="um-row" hidden>
-    <div class="umline" id="um-keyrow"><input type="password" id="um-key" autocomplete="off" spellcheck="false" placeholder="uma.moe API key" aria-label="uma.moe API key"><button class="btn" type="button" id="um-save">Save</button><a href="https://uma.moe/settings" target="_blank" rel="noopener">Get a key</a></div>
-    <div class="umline" id="um-on" hidden><span class="hint" id="um-msg" role="status" aria-live="polite"></span><button class="btn sm" type="button" id="um-again">Refresh</button><details class="umkey"><summary>Key</summary><button class="btn sm" type="button" id="um-forget">Forget key</button></details></div>
   </div>
   <div class="vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
 </div></dialog>

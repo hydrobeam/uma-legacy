@@ -1107,7 +1107,9 @@ function familyEl(k, r) {
   const at = parentAt(k, r);
   const n = pnode(
     'parent',
-    (at?.pick ? "Planner's pick" : at ? 'Your pick' : `Parent ${k + 1}`) + (at?.v.borrowed ? ' · guest' : ''),
+    at?.v.lender
+      ? 'Borrow · uma.moe'
+      : (at?.pick ? "Planner's pick" : at ? 'Your pick' : `Parent ${k + 1}`) + (at?.v.borrowed ? ' · guest' : ''),
     at?.pick,
   );
   if (at?.v.borrowed) n.classList.add('bor');
@@ -1121,7 +1123,7 @@ function familyEl(k, r) {
       `node:p${k}`,
       umaAv(v.chara, v.outfit, 72),
       umaName(v.chara),
-      v.lender ? lenderText(v.lender) : `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}`,
+      v.lender ? v.lender.name || 'uma.moe' : `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}`,
     );
     t.setAttribute('aria-label', `Parent ${k + 1}: ${umaName(v.chara)}. Details`);
   } else {
@@ -1321,8 +1323,8 @@ function fillParentNode({ k }, r, body, acts) {
     );
   return true;
 }
-// an uma.moe listing the next search replaces (not kept)
-const listed = (v) => v.src === 'umamoe' && !v.kept;
+// an uma.moe listing (in the pool, not yours)
+const listed = (v) => v.src === 'umamoe';
 // the trainer to follow in the game for an uma.moe veteran: a Copy trainer ID button
 function copyIdBtn(v, cls = '') {
   const b = btn('Copy ID', cls, async () => {
@@ -1336,12 +1338,7 @@ function copyIdBtn(v, cls = '') {
   b.title = `${v.lender.name}: ${v.lender.id}`;
   return b;
 }
-const lenderText = (l) => `uma.moe · ${l.name || 'trainer'}${l.updated ? ` · ${agoText(l.updated)}` : ''}`;
-const agoText = (iso) => {
-  const h = (Date.now() - Date.parse(iso)) / 3600e3;
-  if (!(h >= 0)) return '';
-  return h < 48 ? `${Math.max(1, Math.round(h))} h` : `${Math.round(h / 24)} d`;
-};
+const lenderText = (l) => `uma.moe · ${l.name || 'trainer'}`;
 // where a veteran came from (entered from a career here, an uma.moe tree, an import, made here)
 const VET_SOURCE = {
   entered: 'Entered here',
@@ -1497,7 +1494,12 @@ function openParentPicker(k) {
   $('vpick-title').textContent = `Choose parent ${k + 1}`;
   const box = $('vp-list');
   box.textContent = '';
+  let headed = false;
   vets.forEach((v, i) => {
+    if (v.src === 'umamoe' && !headed) {
+      box.appendChild(el('h4', 'vpgh', 'uma.moe'));
+      headed = true;
+    }
     const why = blockedFor(v, k),
       cur = plan.parents[k] === v.id;
     const b = el('button', `vpt${cur ? ' cur' : ''}${v.borrowed ? ' bor' : ''}`);
@@ -1508,7 +1510,13 @@ function openParentPicker(k) {
     const nm = el('div');
     nm.append(
       el('div', 'nm', umaName(v.chara)),
-      el('div', 'sub', `#${i + 1}${v.borrowed ? ', borrowed' : ''}${cur ? ', chosen' : ''}`),
+      el(
+        'div',
+        'sub',
+        v.lender
+          ? `${v.lender.name}${cur ? ', chosen' : ''}`
+          : `#${i + 1}${v.borrowed ? ', borrowed' : ''}${cur ? ', chosen' : ''}`,
+      ),
     );
     top.appendChild(nm);
     b.appendChild(top);
@@ -2872,25 +2880,12 @@ function renderResults() {
 }
 
 // ---------- the veterans (pool) ----------
-// an uma.moe listing's Keep: kept, she stays after the next search and is saved (a trainer you follow)
-function keepBtn(v) {
-  const b = btn(v.kept ? 'Kept' : 'Keep', 'sm', () => {
-    v.kept = !v.kept;
-    $('v-msg').textContent = `${v.kept ? 'Kept' : 'Unkept'} ${umaName(v.chara)}.`;
-    changed();
-  });
-  b.setAttribute('aria-pressed', String(!!v.kept));
-  b.title = 'Keep after the next search';
-  return b;
-}
 function vetCardEl(v, i) {
   const card = el('article', `vet${v.borrowed ? ' bor' : ''}`);
   card.id = `vet-${i}`;
   const top = el('div', 'vtop');
   top.appendChild(el('span', 'vno', `#${i + 1}`));
-  if (v.src === 'umamoe') top.appendChild(keepBtn(v));
   const seg = el('div', 'seg sm');
-  seg.hidden = v.src === 'umamoe'; // borrowed: she is another trainer's
   seg.setAttribute('role', 'group');
   seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or borrowed`);
   for (const [b, l] of /** @type {[boolean, string][]} */ ([
@@ -2912,17 +2907,16 @@ function vetCardEl(v, i) {
   top.appendChild(seg);
   const k = plan.parents.indexOf(v.id);
   if (k >= 0) top.appendChild(el('span', 'vin', `Parent ${k + 1}`));
-  if (!listed(v))
-    top
-      .appendChild(
-        btn('Remove', 'vdel', () => {
-          const index = idxOf(v.id);
-          if (index < 0) return;
-          removeVet(index);
-          $('v-msg').textContent = `Removed ${umaName(v.chara)} from your veterans.`;
-        }),
-      )
-      .setAttribute('aria-label', `Remove veteran #${i + 1}`);
+  top
+    .appendChild(
+      btn('Remove', 'vdel', () => {
+        const index = idxOf(v.id);
+        if (index < 0) return;
+        removeVet(index);
+        $('v-msg').textContent = `Removed ${umaName(v.chara)} from your veterans.`;
+      }),
+    )
+    .setAttribute('aria-label', `Remove veteran #${i + 1}`);
   card.appendChild(top);
   // her portrait, name, targets and G1 wins, her parents' faces; a click opens her popup (sparks editable in place)
   const tg = state.targets.map((t) => t.group),
@@ -2944,7 +2938,6 @@ function vetCardEl(v, i) {
       `${have}/${tg.length} targets · ${v.wins.length ? v.wins.length : 'no'} G1 win${v.wins.length === 1 ? '' : 's'}`,
     ),
   );
-  if (v.lender) nm.append(el('span', 'sub', lenderText(v.lender)));
   const ps = el('span', 'vtps');
   for (const g of v.parents) ps.appendChild(umaAv(g.chara || 0, g.outfit, 26));
   t.append(umaAv(v.chara, v.outfit, 48), nm, ps);
@@ -2957,21 +2950,22 @@ function vetCardEl(v, i) {
 // Two tabs over the one list, yours and borrowed; a veteran keeps her number (her place in the whole list) in either.
 let poolStale = true,
   vTab = 'own';
-const inTab = (v) => !!v.borrowed === (vTab === 'bor');
+// (uma.moe's listings are not shown: they are the pool's, from uma.moe, not yours)
+const inTab = (v) => v.src !== 'umamoe' && !!v.borrowed === (vTab === 'bor');
 function setVTab(t) {
   vTab = t;
   for (const x of ['own', 'bor']) $(`v-tab-${x}`).setAttribute('aria-selected', String(x === t));
   $('vets').setAttribute('aria-labelledby', `v-tab-${t}`);
-  $('um-row').hidden = t !== 'bor' || ERA === 'gm';
   renderPool();
 }
 function renderPool() {
   if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
-  const nb = vets.filter((v) => v.borrowed).length;
-  $('v-count').textContent = vets.length
-    ? `${vets.length} veteran${vets.length > 1 ? 's' : ''}${nb ? `, ${nb} borrowed` : ''}.`
+  const mine = vets.filter((v) => v.src !== 'umamoe'),
+    nb = mine.filter((v) => v.borrowed).length;
+  $('v-count').textContent = mine.length
+    ? `${mine.length} veteran${mine.length > 1 ? 's' : ''}${nb ? `, ${nb} borrowed` : ''}.`
     : '';
-  $('v-tab-own').textContent = `Yours · ${vets.length - nb}`;
+  $('v-tab-own').textContent = `Yours · ${mine.length - nb}`;
   $('v-tab-bor').textContent = `Borrowed · ${nb}`;
   if (!$dialog('set-vets').open) {
     poolStale = true;
@@ -2990,7 +2984,7 @@ function drawPool() {
     box.innerHTML =
       vTab === 'own'
         ? '<p class="hint">No veterans of yours yet. Import umadump\'s trained_chara_data.json, or make one with Choose parent.</p>'
-        : '<p class="hint">None yet.</p>';
+        : '<p class="hint">None borrowed yet. Import umadump\'s rental_chara_data.json, or mark a veteran Borrowed. uma.moe\'s veterans: Borrow from uma.moe, beside Next career.</p>';
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -3121,8 +3115,8 @@ function exportVets() {
   try {
     job = buildJob();
   } catch {}
-  // (uma.moe's listings come back from uma.moe: only kept ones go, without their lender, who stays on this device)
-  const veterans = vets.filter((v) => v.src !== 'umamoe' || v.kept).map(({ lender: _l, ...v }) => v);
+  // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
+  const veterans = vets.filter((v) => v.src !== 'umamoe');
   const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans, plan, job };
   $textarea('vx-text').value = JSON.stringify(data);
   $('vx-msg').textContent = '';
@@ -3279,7 +3273,7 @@ loadData().then(
     $('v-clear').onclick = () => {
       // the open tab's veterans
       // (uma.moe's listings stay unless kept: the next search would bring them back)
-      const gone = (v) => inTab(v) && !listed(v),
+      const gone = inTab,
         n = vets.filter(gone).length,
         what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
       if (n && confirm(`Remove all ${what}?`)) {

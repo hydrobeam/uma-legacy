@@ -1,4 +1,6 @@
-// ---------- uma.moe on the Borrowed tab: the key, and the listings the planner borrows from ----------
+// ---------- uma.moe beside Next career: the key, and the listings the planner borrows from ----------
+// One button ("Borrow from uma.moe", then "uma.moe · 61 parents") opens a small panel: the key until one is saved, then
+// the status, Refresh and Disconnect.
 // With a key set, the veterans uma.moe lists for the target set (parent with at least n - 1 of the n targets herself,
 // followable trainers, best covered first: one request, kept 24 h) join the pool as borrowed veterans (vets.js
 // `setListings`), so every search and plan weighs them like any other borrow and the answer names the trainer to follow.
@@ -11,8 +13,9 @@ import { setListings } from './vets.js';
 import { parseListing } from './umadump.js';
 import { savedKey, saveKey, targetFactors, keptAnswer, search, SearchError } from './umamoe.js';
 
-/** @type {{sig: string, text: string}} the target set the pool's listings are for ('' none), and the status line */
-const now = { sig: '', text: '' };
+/** @type {{sig: string, text: string, short: string}} the target set the pool's listings are for ('' none), the
+ *  panel's status line and the button's */
+const now = { sig: '', text: '', short: '' };
 let asking = 0; // the request under way; a newer one (or a forgotten key) makes it stale
 
 const sigOf = () => `${ERA}|${state.targets.map((t) => t.group).join(',')}`;
@@ -26,7 +29,8 @@ const ago = (at) => `${Math.max(1, Math.round((Date.now() - at) / 3600e3))} h`;
 function take(a) {
   setListings(a.items.map(parseListing));
   const n = a.items.length;
-  now.text = `${n} to borrow · ${ago(a.at)}`;
+  now.text = `${n} parents · ${ago(a.at)}`;
+  now.short = `${n} parents`;
 }
 
 function paint() {
@@ -34,7 +38,13 @@ function paint() {
   $('um-keyrow').hidden = has;
   $('um-on').hidden = !has;
   $('um-msg').textContent = now.text;
+  $('um-open').textContent = has ? `uma.moe · ${now.short || now.text}` : 'Borrow from uma.moe';
 }
+const panelOpen = (open) => {
+  $('um-panel').hidden = !open;
+  $('um-open').setAttribute('aria-expanded', String(open));
+  if (open && !savedKey()) $input('um-key').focus();
+};
 
 // the pool's listings for the target set as it is now: the kept answer at once, else one request (`fresh`: always one)
 /** @param {boolean} [fresh] */
@@ -47,7 +57,7 @@ export async function syncListings(fresh = false) {
       now.sig = '';
       setListings([]);
     }
-    now.text = !q ? 'No targets' : '';
+    now.text = now.short = !q ? 'No targets' : '';
     paint();
     return;
   }
@@ -60,7 +70,7 @@ export async function syncListings(fresh = false) {
     return;
   }
   const id = ++asking;
-  now.text = 'Searching…';
+  now.text = now.short = 'searching…';
   paint();
   $('um-again').toggleAttribute('disabled', true);
   try {
@@ -70,7 +80,7 @@ export async function syncListings(fresh = false) {
     take(a);
   } catch (e) {
     if (id !== asking) return;
-    now.text = e instanceof SearchError ? e.message : 'Search failed';
+    now.text = now.short = e instanceof SearchError ? e.message : 'Search failed';
   } finally {
     if (id === asking) $('um-again').toggleAttribute('disabled', false);
     paint();
@@ -78,7 +88,19 @@ export async function syncListings(fresh = false) {
 }
 
 export function initUmamoe() {
-  if (ERA === 'gm') return; // (the row stays hidden: Global only)
+  if (ERA === 'gm') return; // (the button stays hidden: Global only)
+  $('um-row').hidden = false;
+  $('um-open').onclick = () => panelOpen($('um-panel').hidden);
+  // Escape or a click elsewhere closes the panel
+  document.addEventListener('click', (e) => {
+    if (!$('um-panel').hidden && !$('um-row').contains(/** @type {Node} */ (e.target))) panelOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('um-panel').hidden) {
+      panelOpen(false);
+      $('um-open').focus();
+    }
+  });
   $('um-save').onclick = () => {
     const key = $input('um-key').value.trim();
     if (!key) return;
@@ -93,7 +115,7 @@ export function initUmamoe() {
   $('um-forget').onclick = () => {
     asking++;
     saveKey('');
-    now.text = '';
+    now.text = now.short = '';
     syncListings();
   };
   paint();

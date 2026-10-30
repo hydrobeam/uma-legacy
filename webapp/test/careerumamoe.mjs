@@ -1,8 +1,8 @@
-// uma.moe on the Borrowed tab, with uma.moe stood in for by two listings made from the umadump test file's first two
-// veterans: a rejected key says so; a saved key sends one request (parent at least n - 1 of n targets, followable
-// trainers), as a header only, kept apart from the settings and the veterans; the listings join the planner's pool as
-// borrowed veterans (not saved unless kept), named by trainer on their cards (one size), the parent's tile and popup;
-// Keep saves one (Export without her trainer); a reload asks nothing (the answer is kept 24 h); Refresh asks again
+// uma.moe beside Next career, with uma.moe stood in for by two listings made from the umadump test file's first two
+// veterans: one button opens the key panel; a rejected key says so; a saved key sends one request (parent at least
+// n - 1 of n targets, followable trainers), as a header only, kept apart from the settings; the listings join the
+// planner's pool (not the veteran dialog, not saved, not exported); the parent picker heads them "uma.moe"; a chosen one
+// shows "Borrow · uma.moe", her trainer and Copy ID, and stays while chosen; a reload asks nothing; Refresh asks again
 import { readFileSync } from 'node:fs';
 import { check, dialog, careerPage, repoUrl } from './helpers.mjs';
 
@@ -70,30 +70,30 @@ export default async function careerumamoe(b) {
   await importDump();
   await done();
   const lastJob = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').at(-1));
-  const status = () => pg.textContent('#um-msg');
-  const borrowedTab = async () => {
-    await vetsOpen();
-    await pg.click('#v-tab-bor');
-  };
-  check('career uma.moe: Career setup has no uma.moe row', (await pg.locator('.setlist #um-row').count()) === 0);
-  await borrowedTab();
+  const label = () => pg.textContent('#um-open');
   check(
-    'career uma.moe: without a key the Borrowed tab offers the key field and sends nothing',
-    (await pg.locator('#um-key').isVisible()) && requests.length === 0,
+    'career uma.moe: one button beside Next career, its panel shut, nothing in Career setup, nothing sent',
+    (await label()) === 'Borrow from uma.moe' &&
+      (await pg.locator('.rbtitle #um-open').isVisible()) &&
+      (await pg.locator('#um-panel').isHidden()) &&
+      (await pg.locator('.setlist #um-row').count()) === 0 &&
+      requests.length === 0,
   );
+  await pg.click('#um-open');
+  check('career uma.moe: the button opens the key field', await pg.locator('#um-key').isVisible());
   await pg.fill('#um-key', 'bad-key');
   await pg.click('#um-save');
   await pg.waitForFunction(() => /Key rejected/.test(document.getElementById('um-msg').textContent));
   check(
-    'career uma.moe: a key uma.moe refuses says so; Forget key waits behind Key',
-    requests.length === 1 && !(await pg.locator('#um-forget').isVisible()),
+    'career uma.moe: a key uma.moe refuses says so, on the button too',
+    requests.length === 1 && (await label()) === 'uma.moe · Key rejected',
   );
-  await pg.click('.umkey summary');
   await pg.click('#um-forget');
   await pg.fill('#um-key', 'test-key');
   await pg.press('#um-key', 'Enter');
-  await pg.waitForFunction(() => /^2 to borrow · 1 h$/.test(document.getElementById('um-msg').textContent));
-  await vetsShut();
+  await pg.waitForFunction(() => document.getElementById('um-open').textContent === 'uma.moe · 2 parents');
+  await pg.keyboard.press('Escape');
+  check('career uma.moe: Escape shuts the panel', await pg.locator('#um-panel').isHidden());
   await done();
   await planned();
   const job = await lastJob(),
@@ -124,73 +124,60 @@ export default async function careerumamoe(b) {
       JSON.parse(store.career).global.vets.length === 12,
     String(job.legacies.length),
   );
-  await borrowedTab();
-  const cards = pg.locator('#vets .vet');
-  const texts = await cards.allInnerTexts();
-  check(
-    'career uma.moe: the Borrowed tab shows each with her trainer and Keep, no Remove (the next search replaces her)',
-    texts.length === 2 &&
-      texts.every((t) => /uma\.moe · Trainer [12] · 3 h/.test(t) && /Keep/.test(t)) &&
-      (await cards.locator('.vdel').count()) === 0,
-    texts.map((t) => t.replace(/\s+/g, ' ').slice(0, 90)).join(' || '),
-  );
-  await cards.first().getByRole('button', { name: 'Keep' }).click();
-  await vetsShut();
-  await done();
-  const kept = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets);
-  check(
-    'career uma.moe: Keep saves her, with her trainer',
-    kept.length === 13 && kept[12].src === 'umamoe' && kept[12].kept && /^Trainer/.test(kept[12].lender?.name),
-  );
   await vetsOpen();
+  await pg.click('#v-tab-bor');
+  check(
+    'career uma.moe: the veteran dialog holds yours only (no uma.moe cards, not counted)',
+    (await pg.locator('#vets .vet').count()) === 0 && (await pg.textContent('#v-tab-bor')) === 'Borrowed · 0',
+  );
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
   const ex = JSON.parse(await pg.inputValue('#vx-text'));
   await pg.locator('#vx-dlg .dclose').click();
   await vetsShut();
   check(
-    'career uma.moe: Export takes the kept one without her trainer, and not the other listing',
-    ex.veterans.filter((v) => v.src === 'umamoe').length === 1 && !/Trainer [12]/.test(JSON.stringify(ex)),
+    'career uma.moe: Export leaves the listings out',
+    !ex.veterans.some((v) => v.src === 'umamoe') && !/Trainer [12]/.test(JSON.stringify(ex.veterans)),
   );
-  // an uma.moe veteran as parent 1: the tree's tile names her trainer, with Copy ID
+  // an uma.moe veteran as parent 1, from the picker's uma.moe heading
   const bj = (await lastJob()).legacies.length - 1;
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
+  const heads = await pg.locator('#vp-list .vpgh').allTextContents();
   await pg.locator('#vp-list .vpt').nth(bj).click();
   await done();
-  const tileText = (await pg.locator('#tree [data-k="node:p0"]').innerText()).replace(/\s+/g, ' ');
+  const tileText = (await pg.locator('#tree .pn.parent').first().innerText()).replace(/\s+/g, ' ');
   check(
-    "career uma.moe: an uma.moe parent's tile names her trainer, with Copy ID beside it",
-    /uma\.moe · Trainer/.test(tileText) && (await pg.locator('#tree .pcopy').count()) === 1,
-    tileText.slice(0, 90),
+    "career uma.moe: the picker heads them uma.moe; a chosen one's tile reads Borrow · uma.moe, her trainer, Copy ID",
+    heads.join() === 'uma.moe' &&
+      /Borrow · uma\.moe/i.test(tileText) &&
+      /Trainer 2/.test(tileText) &&
+      (await pg.locator('#tree .pcopy').count()) === 1,
+    tileText.slice(0, 120),
   );
-  // a reload: the listings come back from the kept answer (no request); the kept one is not doubled
   await pg.reload();
   await done();
   check(
-    'career uma.moe: after a reload the listings come back with no request, the kept one once',
-    requests.length === 2 && (await lastJob()).legacies.length === 14 && /to borrow/.test(await status()),
+    'career uma.moe: after a reload the listings come back with no request, the chosen one saved and not doubled',
+    requests.length === 2 &&
+      (await lastJob()).legacies.length === 14 &&
+      (await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length)) === 13,
   );
-  await borrowedTab();
+  await pg.click('#um-open');
   await pg.click('#um-again');
-  await pg.waitForFunction(() => /^2 to borrow/.test(document.getElementById('um-msg').textContent));
+  await pg.waitForFunction(() => /^2 parents/.test(document.getElementById('um-msg').textContent));
   check('career uma.moe: Refresh asks uma.moe once more', requests.length === 3);
-  const heights = () =>
-    pg.evaluate(() =>
-      [...document.querySelectorAll('#vets .vet')].map((c) => Math.round(c.getBoundingClientRect().height)),
-    );
-  const wide = await heights();
   await pg.setViewportSize({ width: 375, height: 812 });
   await pg.waitForTimeout(200);
-  const phone = await pg.evaluate(() => {
-    const d = document.querySelector('#set-vets .dlg');
-    return d.scrollWidth <= d.clientWidth + 1;
+  const fit = await pg.evaluate(() => {
+    const r = document.getElementById('um-panel').getBoundingClientRect();
+    return { left: r.left, right: r.right, page: document.documentElement.scrollWidth };
   });
   check(
-    'career uma.moe: the Borrowed tab fits a 375 px phone, and its cards are one size',
-    phone && wide.length === 2 && new Set(wide).size === 1,
-    JSON.stringify({ phone, wide }),
+    'career uma.moe: at 375 px the open panel stays on screen, no sideways scroll',
+    fit.left >= 0 && fit.right <= 375 && fit.page <= 375,
+    JSON.stringify(fit),
   );
   await ctx.close();
 }
