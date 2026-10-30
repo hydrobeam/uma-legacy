@@ -211,6 +211,8 @@ UI_SPRITES = {
     "spark_dot": ("atlas/singlecommon", "utx_ico_factor_01"),
     # the career's support-card bond gauge track (a 9-slice: white rim, dark outline, grey well): the targets' bars
     "gauge_bond": ("atlas/single", "utx_gau_evaluation_00_sl"),
+    # the career energy gauge's limit arrow (a pink double chevron): the average roll under the targets' count chart
+    "arrow_avg": ("atlas/single2", "utx_ico_single_hp_gauge_arrow_limit_00"),
     # three uma figures in the spark colours (the home menu's): a target's chance from her legacies (written at 64 px)
     "ico_legacies": ("atlas/home", "utx_ico_home_umamusume_10"),
     "spark_dot_gold": ("atlas/singlecommon", "utx_ico_factor_02"),

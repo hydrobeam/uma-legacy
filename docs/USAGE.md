@@ -140,16 +140,18 @@ while the veterans and settings are unchanged), with your career marked (*your c
 and **Back to the planner's pick** returns to the places the plan ran with. The last few answers are kept, so going
 back to one draws it again without a run.
 
-**The next career**: beside the title, its odds of landing every target (click for the chance of each count) and **Try
-a run**. On wide screens the trainee sits over her two **Legacies** on the left (each parent with her veteran number and
+**The next career**: beside the title, its odds of landing every target, **Try a run** and **Borrow from uma.moe**. On wide screens the trainee sits over her two **Legacies** on the left (each parent with her veteran number and
 her own two parents as faces; on phones only the parent, tap her for the rest; a parent borrowed from uma.moe shows her
 trainer, and her popup has *Copy ID*, to follow them before the career starts), with **Deck** (a popup: the six cards with
 their priority and chain notes) and **Race schedule** (the game's calendar of the G1s she runs, each race's win chance from the community table on her own
 grades, the planner's own figure, which counts the pink sparks she may get, on hover; *Win table* shows the table) under
 the trainee; the
-**Targets** take the right side, two to a row, lowest first: each the game's skill tile with her chance to land its spark,
-and under it her chance to get the skill on the game's bond gauge (gold: its gold skill; white: the white alone), the chance her legacies pass it on (three uma figures) and her deck's (the cards that hint it or give it by an
-event, her outfit's portrait or the scenario's logo); on phones one to a row. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
+**Targets** take the right side, one row each, lowest first: the game's skill tile with her chance to land its spark,
+her chance to get the skill on the game's bond gauge (gold: its gold skill; white: the white alone; every bar the same
+length), the chance her legacies pass it on (three uma figures) and what else gives it (the deck's cards with their
+chance, her outfit, her own events, the scenario's logo); on phones the bar and figures go under the tile. Under them
+a chart of the chance of landing exactly each count (all of them in gold), the game's pink arrow marking the average
+roll. Tapping a skill opens *Skill Details*: where it comes from with each chance, her six legacies'
 faces (lit where one carries it) and each card that gives it.
 The landing chances
 multiply to the odds of all of them. The status line shows only while the planner works or when something needs saying. A reload with nothing changed draws

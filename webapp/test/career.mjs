@@ -374,15 +374,17 @@ export default async function career(b) {
   const oddRows = await pg.$$eval('#tree .rtgt .tgcounts .tgc', (l) =>
     l.map((c) => [c.querySelector('.tgck').textContent, c.querySelector('b').textContent]),
   );
+  const avgTxt = await pg.textContent('#tree .rtgt .tgavg b');
   check(
-    'career: the odds lead the next career; under the targets, the chance of landing exactly each count, in percent',
+    'career: the odds lead the next career; under the targets, the chance of landing exactly each count, in percent, and the average roll',
     /^1 in [\d,.]+ to land all 8/.test(oddsTxt) &&
       oddRows.length === 9 &&
       oddRows[0][0] === '8/8' &&
       oddRows[1][0] === '7/8' &&
       oddRows[8][0] === '0/8' &&
-      oddRows.every((r) => /^[<\d.]+%$/.test(r[1])),
-    JSON.stringify(oddRows.slice(0, 3)),
+      oddRows.every((r) => /^[<\d.]+%$/.test(r[1])) &&
+      /^Avg \d\.\d$/.test(avgTxt),
+    JSON.stringify({ rows: oddRows.slice(0, 3), avgTxt }),
   );
   // the targets, lowest first: the game's skill tile with the chance to land; under it her six legacies' faces and the
   // cards that give it; a tile opens Skill Details (her six legacies, the cards)

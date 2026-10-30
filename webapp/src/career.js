@@ -1829,24 +1829,38 @@ function targetsEl(r) {
   s.append(list, countsEl(r));
   return s;
 }
-// the chance of each count of targets (all n first), as columns: the count, a column as tall as its chance among them,
-// the chance; the expected count on hover
+// the chance of each count of targets (all n first), as columns in the game's gauge colours: the chance over a column
+// as tall as its share (the likeliest's figure bold, all n in gold), the count under it; under the axis, the game's
+// limit arrow where the average roll lands (the expected count, between the columns it falls between)
 function countsEl(r) {
   const n = state.targets.length,
     ex = landedCounts(r),
     top = Math.max(...ex),
-    row = el('div', 'tgcounts');
-  row.title = `Expected: ${r.expected?.toFixed(2) ?? '–'} of ${n}`;
+    likeliest = ex.indexOf(top),
+    chart = el('div', 'tgchart'),
+    cols = el('div', 'tgcounts');
   for (let k = n; k >= 0; k--) {
-    const c = el('span', `tgc${k === n ? ' all' : ''}`),
+    const c = el('span', `tgc${k === n ? ' all' : ''}${k === likeliest ? ' top' : ''}`),
+      bar = el('span', 'tgcb'),
       col = el('i');
     col.style.height = `${top > 0 ? Math.max(2, Math.round((ex[k] / top) * 100)) : 0}%`;
-    c.append(el('b', '', pct(ex[k])), el('span', 'tgcb', ''), el('span', 'tgck', `${k}/${n}`));
-    c.querySelector('.tgcb').appendChild(col);
+    bar.appendChild(col);
+    c.append(el('b', '', pct(ex[k])), bar, el('span', 'tgck', `${k}/${n}`));
     c.title = `Exactly ${k} of ${n}: ${pct(ex[k])}`;
-    row.appendChild(c);
+    cols.appendChild(c);
   }
-  return row;
+  chart.appendChild(cols);
+  if (Number.isFinite(r.expected)) {
+    const avg = el('span', 'tgavg'),
+      arrow = srcFor('ui', 'arrow_avg');
+    // column n - e from the left (all n first), at its centre: (n - e + 0.5) / (n + 1) of the width
+    avg.style.left = `${((n - r.expected + 0.5) / (n + 1)) * 100}%`;
+    if (arrow) avg.appendChild(Object.assign(el('img', ''), { src: arrow, alt: '' }));
+    avg.appendChild(el('b', '', `Avg ${r.expected.toFixed(1)}`));
+    avg.title = `The average roll lands ${r.expected.toFixed(2)} of ${n}`;
+    chart.appendChild(avg);
+  }
+  return chart;
 }
 // her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
 // G1s she could enter but doesn't aren't shown)
