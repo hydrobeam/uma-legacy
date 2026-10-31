@@ -554,22 +554,33 @@ export default async function career(b) {
       })),
     `runs ${nRun}`,
   );
-  // Win table: the community table, a row per grade-pair cost (A·A to B·G) as the game's letters, a column per race in
-  // a row
+  // Win table: the community table as published, a column per aptitude pair (AA to GG, in the game's letters), a row
+  // per races in a row, uncapped as it prints them; on a phone it scrolls inside its panel
   await pg.locator('#sched-dlg button', { hasText: 'Win table' }).click();
   const wt = await pg.$$eval('#sched-wintable tbody tr', (rs) =>
-    rs.map((r) => [
-      r.querySelectorAll('th .wtp').length,
-      ...[...r.querySelectorAll('.wtc')].map((c) => +c.textContent),
-    ]),
+    rs.map((r) => [...r.children].map((c) => c.textContent)),
   );
+  const heads = await pg.$$eval('#sched-wintable thead th', (hs) =>
+    hs.slice(1).map((h) => h.querySelectorAll('.udg').length),
+  );
+  const vp = pg.viewportSize();
+  await pg.setViewportSize({ width: 375, height: 812 });
+  const wtPhone = await pg.evaluate(() => {
+    const w = document.querySelector('#sched-wintable .wtscroll');
+    return { page: document.documentElement.scrollWidth, scrolls: w.scrollWidth > w.clientWidth };
+  });
+  await pg.setViewportSize(vp);
   check(
-    "career: Win table is the community table: 11 grade-pair rows (A·A 100 100 100 90 80 60 to B·G and E·F 10 10 5 0 0 0) in the game's letters",
-    wt.length === 11 &&
-      wt[0].join() === '1,100,100,100,90,80,60' &&
-      wt[10].join() === '2,10,10,5,0,0,0' &&
-      (await pg.locator('#sched-wintable .udg').count()) === 44,
-    JSON.stringify(wt),
+    "career: Win table is the community table as published: aptitude pairs AA to GG in the game's letters by 1 to 6 or more races in a row, 1 Race 110% to 0%, scrolling inside its panel at 375 px",
+    wt.length === 6 &&
+      heads.length === 13 &&
+      heads.every((n) => n === 2) &&
+      wt[0].join() === '1 Race,110%,100%,90%,80%,70%,50%,20%,10%,0%,0%,0%,0%,0%' &&
+      wt[2].slice(0, 5).join() === '3 Races,105%,95%,85%,75%' &&
+      wt[5].slice(0, 7).join() === '6 or more Races,60%,50%,40%,30%,20%,0%' &&
+      wtPhone.page <= 375 &&
+      wtPhone.scrolls,
+    `${JSON.stringify(wt[0])} ${JSON.stringify(wtPhone)}`,
   );
   await pg.keyboard.press('Escape');
   // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section

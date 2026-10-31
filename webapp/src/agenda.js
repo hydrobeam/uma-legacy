@@ -86,63 +86,46 @@ export function tableCost(apt, cat, ground) {
   };
 }
 export const tableChance = (cost, row) => Math.max(0, Math.min(100, 110 - cost - ROW_PEN[Math.min(row, 6) - 1]));
-// the community table, as the schedule window's Win table panel shows it: a row per cost of her two grades (distance
-// and surface, S as A: A·A 0 to B·G 100; worse is 0 everywhere), each labelled with the grade pairs that cost it, a
-// column per race in a row, each cell the win chance (%)
+// the community table, as the schedule window's Win table panel shows it (its own layout): a column per aptitude pair
+// (A with each grade, then each grade with G; drawn in the game's grade letters), a row per races in a row, each cell
+// 110 minus the pair's cost and the row's penalty as the table prints it (not capped at 100)
+const TABLE_PAIRS = ['AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'BG', 'CG', 'DG', 'EG', 'FG', 'GG'];
 function winTable() {
   const p = document.createElement('div');
   p.className = 'wintable';
   p.id = 'sched-wintable';
   p.hidden = true;
   const t = document.createElement('table'),
-    cap = t.createCaption(),
-    head = t.createTHead().insertRow();
-  cap.textContent = 'Win chance (%)';
-  cap.title =
-    'The community table: 110 minus her distance and surface grades’ costs and the race in a row’s, at most 100';
-  const corner = document.createElement('th');
+    head = t.createTHead().insertRow(),
+    code = (l) => 'GFEDCBA'.indexOf(l) + 1, // 1 G .. 7 A
+    corner = document.createElement('th');
   corner.scope = 'col';
-  corner.textContent = 'Grades';
-  corner.title = 'Her distance and surface grades (S counts as A)';
+  corner.innerHTML = 'Aptitude Combination<br>/ Consecutive Races';
+  corner.title = 'Her distance and surface grades (S counts as A) and the races she has run in a row';
   head.appendChild(corner);
-  for (const label of ['1st', '2nd', '3rd', '4th', '5th', '6th+']) {
+  for (const pair of TABLE_PAIRS) {
     const th = document.createElement('th');
     th.scope = 'col';
-    th.textContent = label;
-    th.title = `The ${label === '6th+' ? '6th or later' : label} race in a row`;
+    th.title = `${pair[0]} and ${pair[1]}`;
+    th.append(gradeEl(code(pair[0])), gradeEl(code(pair[1])));
     head.appendChild(th);
   }
-  const body = t.createTBody(),
-    letters = 'ABCDEFG', // with their codes (7 A .. 1 G) and costs
-    code = (l) => 7 - letters.indexOf(l),
-    cost = (l) => GRADE_COST[code(l) - 1];
-  for (let c = 0; c <= 100; c += 10) {
-    const pairs = [];
-    for (const [i, x] of [...letters].entries())
-      for (const y of letters.slice(i)) if (cost(x) + cost(y) === c) pairs.push([x, y]);
+  const body = t.createTBody();
+  for (let k = 1; k <= 6; k++) {
     const tr = body.insertRow(),
       th = document.createElement('th');
     th.scope = 'row';
-    th.title = `${pairs.map(([x, y]) => `${x} and ${y}`).join(', ')}: ${c} off`;
-    const wrap = document.createElement('div');
-    wrap.className = 'wtps';
-    for (const [x, y] of pairs) {
-      const pair = document.createElement('span');
-      pair.className = 'wtp';
-      pair.append(gradeEl(code(x)), gradeEl(code(y)));
-      wrap.appendChild(pair);
-    }
-    th.appendChild(wrap);
+    th.textContent = k === 6 ? '6 or more Races' : `${k} Race${k > 1 ? 's' : ''}`;
     tr.appendChild(th);
-    for (let k = 1; k <= 6; k++) {
-      const v = tableChance(c, k),
-        cell = document.createElement('span');
-      cell.className = v === 0 ? 'wtc z' : 'wtc';
-      cell.textContent = String(v);
-      tr.insertCell().appendChild(cell);
+    for (const pair of TABLE_PAIRS) {
+      const cost = GRADE_COST[code(pair[0]) - 1] + GRADE_COST[code(pair[1]) - 1];
+      tr.insertCell().textContent = `${Math.max(0, 110 - cost - ROW_PEN[k - 1])}%`;
     }
   }
-  p.appendChild(t);
+  const wrap = document.createElement('div');
+  wrap.className = 'wtscroll'; // (13 columns: scrolls sideways inside the panel on a phone)
+  wrap.appendChild(t);
+  p.appendChild(wrap);
   return p;
 }
 // why a race isn't a sure win, a line each: the career page's community-table figure (110 minus her grades' cost, minus

@@ -832,7 +832,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    where shipped (--spark-*, --skill-*, --pill; grade letters as <img>) in light mode; dark mode (the game has none)
    draws the white bars, tiles and pill in CSS on dark panels and keeps the pink and gold art. */
 :root {
-  --gm-ink: #794016; --gm-ink2: #9c6a43; --gm-panel: #ffffff; --gm-pane: #f2f3f2; --gm-cell: #ffffff; --gm-line: #e1d8cf; --gm-edge: #d8d3dd;
+  --wt-head: #f2ebe6; --gm-ink: #794016; --gm-ink2: #9c6a43; --gm-panel: #ffffff; --gm-pane: #f2f3f2; --gm-cell: #ffffff; --gm-line: #e1d8cf; --gm-edge: #d8d3dd;
   --gm-shadow: rgba(80, 60, 40, .16); --gm-green: #7ecf08; --gm-green2: #66b800; --gm-bright: #a6e03c; --gm-bright2: #7cc40d; --gm-bright-ink: #ffffff;
   --gm-outline: 0 1px 0 #3c7a00, 1px 0 0 #3c7a00, -1px 0 0 #3c7a00, 0 -1px 0 #3c7a00, 0 2px 2px rgba(40, 80, 0, .45);
   --gm-bar: #e6e6e6; --gm-bar2: #d4d4d4; --gm-bar-ink: #794016; --gm-pink: #ff8fc0; --gm-pink2: #ff6fa9; --gm-pink-ink: #ffffff;
@@ -843,7 +843,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   --gm-star0: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%23ffffff' stroke='%23d3ccc1' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 :root[data-theme="dark"] {
-  --gm-ink: #f3e6da; --gm-ink2: #e8dccf; --gm-panel: #1f2328; --gm-pane: #16191d; --gm-cell: #2a2f36; --gm-line: #454b55; --gm-edge: #4d535d;
+  --wt-head: #2f343b; --gm-ink: #f3e6da; --gm-ink2: #e8dccf; --gm-panel: #1f2328; --gm-pane: #16191d; --gm-cell: #2a2f36; --gm-line: #454b55; --gm-edge: #4d535d;
   --gm-shadow: rgba(0, 0, 0, .55);   /* the game's spark bars and skill tiles keep their own (light) art and brown ink */
   /* the game's greens toned down for a dark page (bars, the selected tab, primary buttons), the same outlined white text */
   --gm-green: #64ad12; --gm-green2: #4f960b; --gm-bright: #63ad16; --gm-bright2: #4f960b;
@@ -2094,19 +2094,11 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 
 .cpop.inpopup { position: fixed; z-index: 30; }   /* a card's panel inside a popup (the deck's): against the screen */
 /* the schedule window's Win table: the community table's sum and its two cost rows */
-.wintable { width: fit-content; max-width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--gm-panel, var(--panel)); box-shadow: inset 0 0 0 1px var(--gm-edge, var(--line)); font-size: 0.82rem; }
-/* the community table in the game's aptitude cells (Umamusume Details): grade pairs as the game's letters, chances in
-   white cells */
-.wintable table { border-collapse: separate; border-spacing: 4px; font-variant-numeric: tabular-nums; color: var(--gm-ink); }
-.wintable caption { text-align: left; font-weight: 900; padding: 0 4px 2px; }
-.wintable thead th { font-weight: 700; font-size: 0.85rem; padding: 0 2px; text-align: center; }
-.wintable thead th:first-child { text-align: left; }
-.wintable tbody th { text-align: left; padding: 0; }
-.wtps { display: flex; flex-wrap: wrap; gap: 2px 5px; max-width: 9.5rem; }
-.wtp { display: inline-flex; gap: 1px; background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 6px; padding: 1px 3px;
-  box-shadow: inset 0 -2px 0 var(--gm-tab-low); }
-.wtp .udg { width: 15px; height: 17px; }
-.wintable td { padding: 0; vertical-align: middle; }
-.wtc { display: block; width: 2.3em; padding: 3px 0; text-align: center; font-weight: 700; background: var(--gm-cell); border: 1px solid var(--gm-line);
-  border-radius: 6px; box-shadow: inset 0 -2px 0 var(--gm-tab-low); }
-.wtc.z { color: var(--gm-ink2); font-weight: 400; }
+.wintable { width: fit-content; max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--gm-panel, var(--panel)); box-shadow: inset 0 0 0 1px var(--gm-edge, var(--line)); font-size: 0.82rem; }
+/* the community table as it is published: a bordered grid, beige heads, the aptitude pairs in the game's grade letters */
+.wtscroll { overflow-x: auto; }
+.wintable table { border-collapse: collapse; font-variant-numeric: tabular-nums; color: var(--gm-ink); background: var(--gm-cell); }
+.wintable th, .wintable td { border: 1px solid var(--gm-line); padding: 8px 10px; text-align: center; white-space: nowrap; }
+.wintable th { background: var(--wt-head); font-weight: 700; font-size: 0.8rem; }
+.wintable tbody th { font-weight: 400; }
+.wintable thead th .udg { width: 17px; height: 20px; }
