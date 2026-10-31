@@ -12,25 +12,28 @@ const { instance } = await WebAssembly.instantiate(fs.readFileSync(wasmPath), {
   env: { clock_ms: () => performance.now(), progress: () => {} },
 });
 const solver = instance.exports;
-// one solver call: the request's JSON copied into the solver's memory, its JSON answer read back (worker.template.js)
-function call(request) {
+// one solver call (`entry`: init or call): the request's JSON copied into the solver's memory, its JSON answer read back
+// (worker.template.js)
+function call(request, entry = solver.call) {
   const bytes = encoder.encode(JSON.stringify(request));
   const at = solver.alloc(bytes.length);
   new Uint8Array(solver.memory.buffer, at, bytes.length).set(bytes);
-  const answerAt = solver.call(at, bytes.length),
+  const answerAt = entry(at, bytes.length),
     answerLength = solver.result_len();
   const answer = decoder.decode(new Uint8Array(solver.memory.buffer, answerAt, answerLength).slice());
   solver.dealloc(at, bytes.length);
   return JSON.parse(answer);
 }
 const readJson = (file) => JSON.parse(fs.readFileSync(new URL(file, DATA)));
-call({
-  cmd: 'init',
-  data: readJson('data.json'),
-  skills: readJson('web_skills.json'),
-  cards: readJson('web_cards.json'),
-  events: readJson('card_events.json'),
-});
+call(
+  {
+    data: readJson('data.json'),
+    skills: readJson('web_skills.json'),
+    cards: readJson('web_cards.json'),
+    events: readJson('card_events.json'),
+  },
+  solver.init,
+);
 for (const name of jobs) {
   const job = JSON.parse(fs.readFileSync(new URL(`val/jobs/${name}.json`, REPO)));
   const t0 = Date.now();

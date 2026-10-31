@@ -184,8 +184,8 @@ uv run export/add_pb.py target/release/loopopt data/global/data.json
 ```
 
 The CLI runs `"mode":"deck"` and `"mode":"career"` job files (below), and `loopopt pbtable data.json`, which prints
-the pairwise-ceiling table `export/add_pb.py` merges in. The wasm interface (`src/web.rs`) accepts `cmd` requests:
-`init`, `deck`, `career`, `state_out`, `state_in`.
+the pairwise-ceiling table `export/add_pb.py` merges in. The wasm interface (`src/web.rs`) loads an era's data
+through its `init` export and runs `cmd` requests through `call`: `deck`, `career`, `state_out`, `state_in`.
 
 ### Schedule chart
 
