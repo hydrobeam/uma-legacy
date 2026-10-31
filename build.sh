@@ -5,7 +5,7 @@
 #   events   card event files from the GameTora files + manual entries (both eras); runs gametora first
 #   native   release binary, clippy (as in lint), tests
 #   lint     Rust: cargo fmt --check, clippy on every target and on the wasm lib, warnings denied; shellcheck on the scripts;
-#            Python: ruff check and ruff format --check (pyproject.toml); the page's JS: Biome lint and formatting, warnings denied (webapp/biome.json), tsc's checkJs (webapp/tsconfig.json) and webapp/test/static.mjs (dead CSS and exports, stale storage writes)
+#            Python: ruff check and ruff format --check (pyproject.toml), val/test_validation.py (planval and the comparisons on a fake solver, 3 s); the page's JS: Biome lint and formatting, warnings denied (webapp/biome.json), tsc's checkJs (webapp/tsconfig.json) and webapp/test/static.mjs (dead CSS and exports, stale storage writes)
 #   hooks    use the tracked git hooks (.githooks: the pre-commit formatting check); once per clone
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
@@ -69,7 +69,8 @@ step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C"
 clippy_all() { cargo clippy --quiet --all-targets -- -D warnings && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings; }
 step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check lint; step_npm
   (cd "$C" && cargo fmt --check && clippy_all) && uv run --quiet --project "$R" shellcheck "$R/build.sh" "$R/.githooks/pre-commit" \
-    && (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check) \
+    && (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check \
+      && { out=$(uv run --quiet python val/test_validation.py 2>&1) || { printf '%s\n' "$out"; false; }; }) \
     && (cd "$W" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn && npx --no-install tsc -p . && node test/static.mjs) \
     && echo "lint: clean"; }
 step_hooks() { git -C "$R" config core.hooksPath .githooks && echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"; }

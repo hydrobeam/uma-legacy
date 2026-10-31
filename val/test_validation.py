@@ -28,6 +28,7 @@ class ValidationExitTests(unittest.TestCase):
             # a plan whose first step (A's own career, on her side's parents at its odds) is priced at score 0: the
             # tripwire passes it
             "next": {
+                "scoring_complete": True,
                 "proxy_check": {"rows": []},
                 "members": [
                     {"trainee": "A", "real": False, "building_careers": 0, "careers": 10.0, "parents": [0, 1], "p": 0.1}
@@ -116,6 +117,11 @@ class ValidationExitTests(unittest.TestCase):
 
     def test_plan_passes_matching_output(self):
         self.assertEqual(self.plan_run().returncode, 0)
+
+    def test_plan_fails_incomplete_scoring(self):
+        result = self.first_step_run(scoring_complete=None)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("SCORING INCOMPLETE", result.stdout)
 
     def test_plan_fails_a_low_proxy(self):
         row = {"trainee": "A", "cand": False, "exact_val": 0.1, "same_deck": False, "score": 1.0, "proxy_score": 1.0}
