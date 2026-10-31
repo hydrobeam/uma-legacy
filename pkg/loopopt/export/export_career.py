@@ -4,9 +4,9 @@ data.json (run after export_rs.py) and writes career.json next to it:
            skill_data.group_id). A spark's factor_id is factor group * 100 + stars.
   saddles: win saddle id -> race index in data.json's races, for saddles of one G1 race (single_mode_wins_saddle with
            race_instance_id_2 = 0 and race grade 100). Saddles of one race at another venue (Kikuka Sho at Hanshin,
-           the JBC races per host track) share the saddle's group_id, so a saddle takes the race of its group (the
-           group's saddle whose race is in data.json, relocated venues mapped as in samerace). Multi-race title
-           saddles are left out: they count for nothing in affinity.
+           the JBC races per host track, a race run at a relocated venue) share the saddle's group_id, so a saddle takes the
+           race of its group (the group's saddle whose race is in data.json). Multi-race title saddles are left out:
+           they count for nothing in affinity.
   pinks:   aptitude (pink) spark factor group -> name (succession_factor type 2; factor_id = group * 100 + stars).
   blues:   stat (blue) spark factor group 1..5 -> name (type 1). uniques: unique (green) spark factor group (an outfit's
            card id) -> its unique skill's name (type 3).
@@ -28,7 +28,6 @@ parser.parse_args()  # parsed before era's import, which opens the era's databas
 from era import q, OUT, GLOBAL_MDB
 
 data_path, out_path = os.path.join(OUT, "data.json"), os.path.join(OUT, "career.json")
-RELOC = {1025: 1012, 1027: 1006, 1028: 1005}  # samerace.py
 races = json.load(open(data_path))["races"]
 race_indices = {race_id: index for index, race_id in enumerate(races)}
 factors = {}
@@ -41,7 +40,6 @@ rows = q("""select s.id, s.group_id, i.race_id from single_mode_wins_saddle s jo
         join race r on r.id = i.race_id where s.race_instance_id_2 = 0 and r.grade = 100""")
 saddle_groups = {}
 for saddle_id, group_id, race_id in rows:
-    race_id = RELOC.get(race_id, race_id)
     if race_id in race_indices:
         assert saddle_groups.setdefault(group_id, race_indices[race_id]) == race_indices[race_id], (saddle_id, group_id)
 saddles = {saddle_id: saddle_groups[group_id] for saddle_id, group_id, _ in rows if group_id in saddle_groups}
