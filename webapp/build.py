@@ -16,7 +16,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GLOBAL_DATA = os.path.join(HERE, "..", "pkg", "loopopt", "data", "global")
 JP_DATA = os.path.join(HERE, "..", "pkg", "loopopt", "data", "jp")
 wasm = open(os.path.join(HERE, "loopopt.opt.wasm"), "rb").read()
-worker = open(os.path.join(HERE, "worker.template.js")).read()
 example = json.load(open(os.path.join(HERE, "example.json")))
 DIST = os.path.join(HERE, "dist")
 shutil.rmtree(DIST, ignore_errors=True)  # dist/ holds build output only: start clean, so nothing stale is deployed
@@ -361,17 +360,18 @@ def era(data_dir, events_file):
 global_factors = json.load(open(os.path.join(GLOBAL_DATA, "career.json")))["factors"]
 global_era = era(GLOBAL_DATA, "card_events.json")
 gm_era = era(JP_DATA, "card_events.json")  # GM era: pal first-year date events left out, as in Global
-# the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
+# the page scripts: src/main.js, src/career.js and the modules they import, each bundled into one minified IIFE (esbuild
+# from node_modules: npm ci); also the solver's worker script, worker.template.js, minified and wrapped the same way
 ESBUILD = os.path.join(HERE, "node_modules", ".bin", "esbuild")
 if not os.path.exists(ESBUILD):
     raise SystemExit("esbuild missing: run npm ci in webapp/")
 
 
-def bundle(entry):
+def bundle(entry):  # entry: relative to webapp/
     return subprocess.run(
         [
             ESBUILD,
-            os.path.join(HERE, "src", entry),
+            os.path.join(HERE, entry),
             "--bundle",
             "--format=iife",
             "--charset=utf8",
@@ -395,7 +395,7 @@ def css_min(text):
     ).stdout
 
 
-app = bundle("main.js")
+app = bundle("src/main.js")
 css = open(os.path.join(HERE, "src", "style.css")).read()
 assert "</style" not in css.lower()
 html = open(os.path.join(HERE, "index.template.html")).read()
@@ -449,6 +449,8 @@ ASSETS = {
     },
     "dataGm": fingerprint("data-gm.json", gm_ui),
     "img": image_catalog.base,
+    # the solver's worker (engine.js `new Worker(ASSETS.worker)`)
+    "worker": fingerprint("worker.js", bundle("worker.template.js")),
 }
 # fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
 # it (its own @font-face rule; the woff2 only, fingerprinted); anything else (symbols, the JP era's untranslated names)
@@ -599,7 +601,7 @@ DATA_JS = data_script(
     },
 )
 CAREER_DATA_JS = data_script("career-data.js", {"data-career": global_era.career})
-MAIN_JS, CAREER_JS = fingerprint("main.js", app), fingerprint("career.js", bundle("career.js"))
+MAIN_JS, CAREER_JS = fingerprint("main.js", app), fingerprint("career.js", bundle("src/career.js"))
 
 
 def script_preloads(*srcs):
@@ -675,7 +677,6 @@ html = fill(
         "EXAMPLE": js(example),
         "ASSETS": js(ASSETS),
         "FONTPRELOAD": "\n".join(preloads) + "\n" + script_preloads(DATA_JS, MAIN_JS),
-        "WORKER": worker,
         "LOGO": LOGO,
     },
 )
@@ -715,7 +716,6 @@ career = fill(
         "CAREERDATAJS": CAREER_DATA_JS,
         "ASSETS": js(ASSETS),
         "FONTPRELOAD": "\n".join(preloads) + "\n" + script_preloads(DATA_JS, CAREER_DATA_JS, CAREER_JS),
-        "WORKER": worker,
         "LOGO": LOGO,
     },
 )
@@ -738,15 +738,15 @@ print(
 
 
 # What a first visit to each page fetches before it can work: the page, every local file it names (scripts, the
-# stylesheet, preloaded fonts, its inline style's fonts), and on the planner pages the solver and its Global data (the
-# page starts the solver at once). Raw and at brotli quality 4, which reproduces the host's transfer of the wasm to
+# stylesheet, preloaded fonts, its inline style's fonts), and on the planner pages the solver's worker, the solver and its
+# Global data (the page starts the solver at once). Raw and at brotli quality 4, which reproduces the host's transfer of the wasm to
 # within 0.1% (measured against v50's deploy, 2026-10-31). Checked against webapp/budgets.json: a page over its budget
 # fails the build; a budget is raised in the commit that needs it, saying why (art is left out: it loads as seen).
 def page_cost(name, solver):
     page = open(os.path.join(DIST, name)).read()
     files = set(re.findall(r'(?:src|href)="(assets/[^"]+)"', page)) | set(re.findall(r"url\((assets/[^)]+)\)", page))
     if solver:
-        files |= {ASSETS["wasm"], ASSETS["engine"]["global"]}
+        files |= {ASSETS["wasm"], ASSETS["engine"]["global"], ASSETS["worker"]}
     blobs = [page.encode()] + [open(os.path.join(DIST, f), "rb").read() for f in sorted(files)]
     return sum(map(len, blobs)), sum(len(brotli.compress(b, quality=4)) for b in blobs)
 

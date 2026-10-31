@@ -146,18 +146,19 @@ search works (a spinner when a build has none). How the pipeline works and what 
   on `<html>`, which scopes the game-style rules in `style.css` (career-only layout under `.rb`, the loop planner's
   under `.lp`).
 - `assets/`: every shared file named by a fingerprint of its content and cached for a year: the stylesheet (with the
-  font faces and UI sprites as CSS variables), the shared data script (`self.__LLP_DATA`), the page bundles, the wasm,
-  each era's solver data, the Grand Masters page data (loaded when that era is chosen), the fonts and `img.<hash>/`.
-  A revisit fetches only the HTML (about 33 KB).
+  font faces and UI sprites as CSS variables), the shared data script (`self.__LLP_DATA`), the page bundles, the
+  solver's worker script, the wasm, each era's solver data, the Grand Masters page data (loaded when that era is
+  chosen), the fonts and `img.<hash>/`. A revisit fetches only the HTML (about 25 KB for the career planner, 35 KB for
+  the loop planner).
 - each page's first-visit cost, printed at the end of the build: the page, the local files it names and, on the planner
-  pages, the wasm and the Global solver data, raw and at brotli quality 4 (the host's transfer of the wasm to within
+  pages, the worker script, the wasm and the Global solver data, raw and at brotli quality 4 (the host's transfer of the wasm to within
   0.1%). A page over its budget in `webapp/budgets.json` fails the build; a budget rises only in the commit that needs
   it, which says why.
 - favicons, `og.png`, font licences in `licenses/`, `_headers` (the host caches the pages 5 minutes, `assets/` a
   year), `_redirects` (`/loop` to `/`) and `robots.txt`. `serve.mjs` caches `assets/` a year as the host does and
   serves the pages uncached.
 
-The solver runs as WebAssembly in a Web Worker (`worker.template.js`). Saved settings are one versioned object,
+The solver runs as WebAssembly in a Web Worker (`worker.template.js`, minified to `assets/worker.<hash>.js`). Saved settings are one versioned object,
 `localStorage['llp:settings']`, migrated in `settings.js`. Shared page state is two exported objects (`state`: the
 settings, `ui`: what is on screen). No framework.
 

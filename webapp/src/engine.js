@@ -1,5 +1,4 @@
 // ---------- the engine: a Web Worker running the WebAssembly solver (shared by the planner and the career page) ----------
-import { $ } from './dom.js';
 import { ERA } from './settings.js';
 import { ASSETS, LATER, loadFail } from './data.js';
 import { stateLoad, stateSave, stateDrop } from './statestore.js';
@@ -100,13 +99,10 @@ export function restartEngine() {
   killEngine();
   warmEngine();
 }
-// A message from the worker. `start`: the start under way ({resolve, reject} of its promise, and the blob URL of the
-// worker's script, released once it has loaded).
+// A message from the worker. `start`: the start under way ({resolve, reject} of its promise).
 function onWorkerMessage(message, start) {
-  if (message.type === 'ready') {
-    URL.revokeObjectURL(start.url);
-    start.resolve();
-  } else if (message.type === 'error') {
+  if (message.type === 'ready') start.resolve();
+  else if (message.type === 'error') {
     if (message.id === undefined) {
       start.reject(new Error(message.message));
       return;
@@ -128,30 +124,25 @@ function onWorkerMessage(message, start) {
 function startEngine() {
   if (ready) return ready;
   const gen = engineGen;
-  ready = Promise.all([compiled(), eraEngineData()]).then(
-    ([module, data]) =>
-      new Promise((resolve, reject) => {
-        if (gen !== engineGen) {
-          reject(new Error('superseded'));
-          return;
-        }
-        // the worker's script as a blob URL, released once the worker has loaded it (one per worker start otherwise stays)
-        let url = null;
-        try {
-          const source = $('engine-worker').textContent;
-          url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-          worker = new Worker(url);
-        } catch {
-          if (url) URL.revokeObjectURL(url);
-          reject(new Error('This browser blocked the background worker the solver runs in.'));
-          return;
-        }
-        const start = { resolve, reject, url };
-        worker.onmessage = (e) => onWorkerMessage(e.data, start);
-        worker.onerror = (e) => reject(new Error(`The solver failed to start: ${e.message || 'unknown error'}`));
-        worker.postMessage({ type: 'init', module, data });
-      }),
-  );
+  // the worker starts at once, so its script loads while the wasm compiles and the era's data arrives; it is told to
+  // initialise once both are in
+  ready = new Promise((resolve, reject) => {
+    try {
+      worker = new Worker(ASSETS.worker); // its own fingerprinted file (build.py), cached like the other assets
+    } catch {
+      reject(new Error('This browser blocked the background worker the solver runs in.'));
+      return;
+    }
+    const starting = worker,
+      start = { resolve, reject };
+    starting.onmessage = (e) => onWorkerMessage(e.data, start);
+    starting.onerror = (e) => reject(new Error(`The solver failed to start: ${e.message || 'unknown error'}`));
+    Promise.all([compiled(), eraEngineData()]).then(([module, data]) => {
+      if (gen !== engineGen)
+        reject(new Error('superseded')); // killed meanwhile (and this worker with it)
+      else starting.postMessage({ type: 'init', module, data });
+    }, reject);
+  });
   ready = ready.then(() => restore().catch(() => {})); // the last session's kept work, before the first job
   ready.catch(() => {
     if (gen !== engineGen) return;

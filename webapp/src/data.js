@@ -6,7 +6,8 @@ import { ERA } from './settings.js';
 const BUNDLED = self.__LLP_DATA || {};
 const parse = (id) => (id in BUNDLED ? BUNDLED[id] : JSON.parse($(id).textContent));
 const has = (id) => id in BUNDLED || !!$(id);
-// Fingerprinted files next to the page (build.py): the wasm, each era's solver data, the GM era's page data, the image folder.
+// Fingerprinted files next to the page (build.py): the wasm, each era's solver data, the GM era's page data, the image folder,
+// the solver's worker script.
 export const ASSETS = parse('data-assets');
 /**
  * A support card (build.py `ui_cards`).

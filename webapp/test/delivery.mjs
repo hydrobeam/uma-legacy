@@ -1,8 +1,8 @@
 import { PAGE_URL, check, open } from './helpers.mjs';
 
 export default async function delivery(b) {
-  // self-hosted fonts (no third-party requests), a real favicon, the solver's files fingerprinted, the first roster
-  // portraits eager, and accessible names that start with the visible text (voice control)
+  // self-hosted fonts (no third-party requests), a real favicon, the solver's files and worker fingerprinted, the first
+  // roster portraits eager, and accessible names that start with the visible text (voice control)
   const hosts = new Set();
   const urls = [];
   const pg = await open(b, {
@@ -21,6 +21,14 @@ export default async function delivery(b) {
     urls.some((u) => /^\/assets\/engine-global\.[0-9a-f]{10}\.json$/.test(u)) &&
       urls.some((u) => /^\/assets\/loopopt\.[0-9a-f]{10}\.wasm$/.test(u)),
     urls.filter((u) => u.startsWith('/assets/') && !u.includes('/img.')).join(' '),
+  );
+  // (cached a year like them, not in the page, which is cached 5 minutes)
+  // (Firefox reports the worker's URL as the page wrote it, relative)
+  const workers = pg.workers().map((w) => new URL(w.url(), pg.url()).pathname);
+  check(
+    "the solver's worker script comes from a fingerprinted file",
+    workers.length === 1 && /^\/assets\/worker\.[0-9a-f]{10}\.js$/.test(workers[0]),
+    workers.join(' '),
   );
   check(
     'page fonts are the self-hosted subsets',
