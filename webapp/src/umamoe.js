@@ -54,8 +54,10 @@ export function saveKey(key) {
 // carries (none in the data) is left out of the filters
 /** @param {number[]} groups @returns {number[][]} */
 export function targetFactors(groups) {
-  const of = new Map();
+  const of = new Map(),
+    listed = CAREER.moe && new Set(CAREER.moe); // GM era: only the factors Global has
   for (const [factor, group] of Object.entries(CAREER.factors)) {
+    if (listed && !listed.has(+factor)) continue;
     if (!of.has(group)) of.set(group, []);
     of.get(group).push(+factor);
   }

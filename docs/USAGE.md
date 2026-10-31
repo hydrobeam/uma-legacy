@@ -71,7 +71,8 @@ comes first and the setup under it.
   and *Refresh* asks again. Edits to veterans or settings never send a request. A parent from uma.moe shows her trainer;
   her popup has *Copy ID*, to follow them in the game. uma.moe's veterans are not in *Veteran
   Umamusume* or an Export; the parent picker lists them under *uma.moe*, and one you choose stays while chosen.
-  *Disconnect* forgets the key. Global data only.
+  *Disconnect* forgets the key. On the Grand Masters-era data the search asks only for the targets Global has (uma.moe
+  lists Global veterans), and "all but one" counts those.
 - With no veterans, **Import veterans** opens Veteran Umamusume and **Try sample veterans** adds six random mob umas
   carrying only the targets that inheritance alone gives, the minimum to start a loop; importing your own veterans
   retires the samples. The Umas and Support cards buttons show how many you own (all, until you say otherwise).

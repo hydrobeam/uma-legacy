@@ -290,5 +290,20 @@ export default async function careerumamoe(b) {
       !(pg.errors || []).some((e) => /TypeError|ReferenceError/.test(e)), // (the bad key's 401 is logged by the browser)
     `${(await pg.textContent('#run-note')).slice(0, 40)} | ${await pg.evaluate(() => document.getElementById('rhead').dataset.kind)} | ${await pg.textContent('#tree .pn.trainee .nm')} | ${(pg.errors || []).join(' / ').slice(0, 200)}`,
   );
+  // the Grand Masters era borrows from uma.moe too, asking only for the targets' sparks Global has
+  const before = requests.length;
+  await Promise.all([pg.waitForEvent('load'), pg.click('#era-gm')]);
+  await done();
+  await importDump();
+  await done();
+  await pg.waitForFunction(() => /^uma\.moe · \d+ veterans$/.test(document.getElementById('um-open').textContent));
+  const asked = requests.slice(before).map((r) => new URL(r.url).searchParams.get('optional_white_sparks') || '');
+  check(
+    'career uma.moe: the Grand Masters era borrows from uma.moe too, asking only for sparks Global has',
+    (await pg.locator('.rbtitle #um-open').isVisible()) &&
+      asked.length > 0 &&
+      asked.every((q) => q.split(',').every((f) => FACTORS[Math.floor(+f / 10)] !== undefined)),
+    `${await label()} | ${asked.join(' / ').slice(0, 120)}`,
+  );
   await ctx.close();
 }

@@ -349,11 +349,14 @@ def era(data_dir, events_file):
             "mobs": [m for m in career_tables.get("mobs", []) if f"mob:{m[0]}" in image_catalog.keys],
             "sourced": sourced,
             "ranks": career_tables.get("ranks", []),
+            # GM era: the spark factors Global has, the only ones uma.moe (a Global site) can list
+            **({} if data_dir == GLOBAL_DATA else {"moe": sorted(map(int, global_factors))}),
         }
     )  # only mobs with a portrait (the samples draw from them)
     return EraBundle(cards=js(ui_cards), umas=js(umas), skills=js(skills["skills"]), engine=engine, career=career)
 
 
+global_factors = json.load(open(os.path.join(GLOBAL_DATA, "career.json")))["factors"]
 global_era = era(GLOBAL_DATA, "card_events.json")
 gm_era = era(JP_DATA, "card_events.json")  # GM era: pal first-year date events left out, as in Global
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)

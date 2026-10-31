@@ -101,11 +101,10 @@ function take(a, q) {
 
 // the button shows once you have a veteran of your own (a career needs one of yours beside a borrow)
 export function umamoeButton() {
-  if (ERA !== 'gm') $('um-open').hidden = !vets.some((v) => !v.borrowed);
+  $('um-open').hidden = !vets.some((v) => !v.borrowed);
 }
 // the popup's contents and the button's label
 export function paintUmamoe() {
-  if (ERA === 'gm') return;
   const has = !!savedKey();
   $('um-keyrow').hidden = has;
   $('um-on').hidden = !has;
@@ -140,7 +139,7 @@ export async function syncListings(fresh = false) {
   const key = savedKey(),
     sig = sigOf(),
     q = query();
-  if (ERA === 'gm' || !key || !q) {
+  if (!key || !q) {
     if (now.sig) {
       now.sig = '';
       setListings([]);
@@ -183,7 +182,6 @@ export async function syncListings(fresh = false) {
 /** @param {UmamoeCtx} c */
 export function initUmamoe(c) {
   ctx = c;
-  if (ERA === 'gm') return; // (the button stays hidden: Global only)
   const d = $dialog('um-dlg');
   umamoeButton();
   $('um-open').onclick = () => {
