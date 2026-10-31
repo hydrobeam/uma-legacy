@@ -37,9 +37,10 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
-| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome` | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
-| `pyproject.toml` (`.venv/`, created by uv) | `UnityPy`, `Pillow` | `images`, `runners` (the exporters use the standard library) |
-| `pyproject.toml`, group `dev` | `ruff` | `lint` |
+| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome`, `typescript` | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
+| `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset; the page budgets' transfer estimate); the exporters use the standard library |
+| `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
+| `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
 | `pyproject.toml`, group `research` | `numpy`, `scipy` | `research` |
 | `webapp/node_modules` (`./build.sh browsers`) | Playwright's Chromium and Firefox (`PLAYWRIGHT_BROWSERS_PATH=0`) | `test`, `testq`, `runners` |
 | `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/data/gametora.json`. GameTora does not keep old versions online (6 of the 13 pins answered 404 on 2026-10-21), so the pinned set exists only in a cache that already holds it; elsewhere `GAMETORA_LATEST=1` moves the pins, and the events may change | `events` |
@@ -85,7 +86,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing). Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs); `webapp/test/static.mjs`, what the browser suite can't see going stale: CSS classes no script, template or `build.py` names (a name built from parts is listed in its `BUILT` with where), exports no other file uses, and `localStorage` writes of a copy not read from storage after the function's last `await` (one tab's write then erases another's) |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs); `webapp/test/static.mjs`, what the browser suite can't see going stale: CSS classes no script, template or `build.py` names (a name built from parts is listed in its `BUILT` with where), exports no other file uses, and `localStorage` writes of a copy not read from storage after the function's last `await` (one tab's write then erases another's) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, the flags and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -128,7 +129,7 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
 `images` writes `webapp/img/{kind}/{id}.avif` (AVIF q55, loaded lazily) and `img/manifest.json` (sources and gaps):
 character icons, card art, skill icons, race banners, scenario logos and select art, mob portraits, and the UI
 sprites as lossless WebP with dark versions made here (the game has no dark mode). The full list of kinds and the
-bundles they come from is in `webapp/images.py`'s docstring. `uv run webapp/icons.py` renders the favicons and the
+bundles they come from is in `webapp/images.py`'s docstring. `uv run --group art webapp/icons.py` renders the favicons and the
 link-preview image from `webapp/icons/favicon.svg`.
 
 `runners` writes one sprite strip per uma to `webapp/img/run/{chara}.avif`, the uma being planned running while a
@@ -211,7 +212,7 @@ see *Steps*):
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo clippy --target wasm32-unknown-unknown --lib -- -D warnings
-uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the repo root)
+uv run shellcheck build.sh .githooks/pre-commit   # (from the repo root)
 ```
 
 - **Formatting:** `pkg/loopopt/rustfmt.toml` (stable options: 120 columns, `use_small_heuristics = "Max"`); `cargo fmt`

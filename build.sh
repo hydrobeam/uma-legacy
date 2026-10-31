@@ -32,6 +32,7 @@
 set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
 PY=(uv run --quiet --project "$R" python)
+PYART=(uv run --quiet --project "$R" --group art python)   # the art steps: UnityPy and Pillow (pyproject.toml, group art)
 export PLAYWRIGHT_BROWSERS_PATH=0   # Playwright's browsers live in webapp/node_modules, not in the home directory
 WFLAGS="--enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-mutable-globals"
 # Requirements: each step checks what it needs first and names everything missing before it stops.
@@ -66,7 +67,7 @@ step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C"
 # clippy as ./build.sh lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() { cargo clippy --quiet --all-targets -- -D warnings && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings; }
 step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check lint; step_npm
-  (cd "$C" && cargo fmt --check && clippy_all) && uvx --quiet --from shellcheck-py shellcheck "$R/build.sh" "$R/.githooks/pre-commit" \
+  (cd "$C" && cargo fmt --check && clippy_all) && uv run --quiet --project "$R" shellcheck "$R/build.sh" "$R/.githooks/pre-commit" \
     && (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check) \
     && (cd "$W" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn && npx --no-install tsc -p . && node test/static.mjs) \
     && echo "lint: clean"; }
@@ -108,8 +109,8 @@ step_npm() { MISSING=(); need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"
   [ -x "$W/node_modules/.bin/esbuild" ] && [ ! "$W/package-lock.json" -nt "$W/node_modules/.package-lock.json" ] || (cd "$W" && npm ci --silent); }
 step_page() { MISSING=(); need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; need "webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"; check page; step_npm; (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check pb; "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data/global/data.json" "$C/data/jp/data.json"; }
-step_runners() { MISSING=(); need_cmd uv "$TOOLS_UV"; [ -e "$R/cache/chibi/tools/xml/usr/lib/libxml2.so.2" ] || { need_cmd tar "to unpack libxml2 once"; need_cmd zstd "to unpack libxml2 once"; }; need "${RUNNER_FILES[@]}"; check runners; step_browsers; "${PY[@]}" "$W/chibi/chibi.py" all; }
-step_images() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "${IMAGE_FILES[0]}"; check images; art_notes; "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
+step_runners() { MISSING=(); need_cmd uv "$TOOLS_UV"; [ -e "$R/cache/chibi/tools/xml/usr/lib/libxml2.so.2" ] || { need_cmd tar "to unpack libxml2 once"; need_cmd zstd "to unpack libxml2 once"; }; need "${RUNNER_FILES[@]}"; check runners; step_browsers; "${PYART[@]}" "$W/chibi/chibi.py" all; }
+step_images() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "${IMAGE_FILES[0]}"; check images; art_notes; "${PYART[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
 IMAGE_FILES=("game/global/decrypted: the Global client's asset bundles, decrypted, by asset path")
 RUNNER_FILES=("game/global/decrypted: the Global client's asset bundles, decrypted, by asset path" "game/global/meta.db: the Global client's asset index as plain SQLite" "$GLOBAL_MDB")
 art_notes() {   # optional inputs of images: missing ones only lose their pictures

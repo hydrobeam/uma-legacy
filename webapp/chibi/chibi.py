@@ -17,7 +17,7 @@ usage: uv run webapp/chibi/chibi.py [all | ID ...] [--force]     (./build.sh run
 
 from typing import NamedTuple
 
-import glob, io, json, os, shutil, sqlite3, struct, subprocess, sys, tarfile, urllib.request, zipfile, zlib
+import glob, hashlib, io, json, os, shutil, sqlite3, struct, subprocess, sys, tarfile, urllib.request, zipfile, zlib
 
 H = os.path.dirname(os.path.abspath(__file__))
 W = os.path.dirname(H)
@@ -35,34 +35,58 @@ ASMOD = os.path.join(TOOLS, "asmod", "AssetStudioModCLI_net9_linux64", "AssetStu
 FBX2GLTF = os.path.join(TOOLS, "FBX2glTF-linux-x64")
 DOTNET = os.path.join(TOOLS, "dotnet")
 XML = os.path.join(TOOLS, "xml", "usr", "lib")
+# the programs runners fetches once into cache/chibi/tools, each checked against its publisher's digest before it is
+# unpacked or run: GitHub's release digest (AssetStudioModCLI), Microsoft's release metadata (.NET), Arch's package
+# database (libxml2); FBX2glTF's release predates GitHub's digests, so its hash is of the copy runners has used since
+# 2026-10 (its size, 12,856,400 B, is the release's)
 DOWNLOADS = {
-    "asmod": "https://github.com/aelurum/AssetStudio/releases/download/v0.19.0/AssetStudioModCLI_net9_linux64.zip",
-    "fbx2gltf": "https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64",
-    "dotnet": "https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.20/dotnet-runtime-9.0.20-linux-x64.tar.gz",
-    "libxml2": "https://geo.mirror.pkgbuild.com/extra/os/x86_64/libxml2-legacy-2.13.9-2-x86_64.pkg.tar.zst",
+    "asmod": (
+        "https://github.com/aelurum/AssetStudio/releases/download/v0.19.0/AssetStudioModCLI_net9_linux64.zip",
+        "sha256",
+        "f285522118a534bac63ad27313f60e622d2f11544fb0228d50ed711a36c9fa37",
+    ),
+    "fbx2gltf": (
+        "https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64",
+        "sha256",
+        "b38210352fdd29d50ba53a6514c3ff05ccbb5d1e0a6442db7a49834bf34a3145",
+    ),
+    "dotnet": (
+        "https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.20/dotnet-runtime-9.0.20-linux-x64.tar.gz",
+        "sha512",
+        "aaa63e9156fcc9d1c51e15fb38e3c5388a7721ef1b64065c8865b03133906e9de967ae33903c198c6acb9aa8bbae373e9001405074009c2ef2a0bb6e54b509a5",
+    ),
+    "libxml2": (
+        "https://geo.mirror.pkgbuild.com/extra/os/x86_64/libxml2-legacy-2.13.9-2-x86_64.pkg.tar.zst",
+        "sha256",
+        "aac28a52e81422935e3bfa44044030640c5d525ad8f65a9672a3ab7139974652",
+    ),
 }
 
 
-def get(url):
+def get(name):
+    url, algorithm, digest = DOWNLOADS[name]
     with urllib.request.urlopen(
         urllib.request.Request(url, headers={"User-Agent": "uma-legacy chibi.py"}), timeout=300
     ) as r:
-        return r.read()
+        data = r.read()
+    if hashlib.new(algorithm, data).hexdigest() != digest:
+        raise SystemExit(f"{name}: {url} does not match its {algorithm} in chibi.py's DOWNLOADS; nothing was unpacked")
+    return data
 
 
 def tools():
     os.makedirs(TOOLS, exist_ok=True)
     if not os.path.exists(ASMOD):
         print("fetching AssetStudioModCLI")
-        zipfile.ZipFile(io.BytesIO(get(DOWNLOADS["asmod"]))).extractall(os.path.join(TOOLS, "asmod"))
+        zipfile.ZipFile(io.BytesIO(get("asmod"))).extractall(os.path.join(TOOLS, "asmod"))
         os.chmod(ASMOD, 0o755)
     if not os.path.exists(FBX2GLTF):
         print("fetching FBX2glTF")
-        open(FBX2GLTF, "wb").write(get(DOWNLOADS["fbx2gltf"]))
+        open(FBX2GLTF, "wb").write(get("fbx2gltf"))
         os.chmod(FBX2GLTF, 0o755)
     if not os.path.exists(os.path.join(DOTNET, "dotnet")):
         print("fetching the .NET 9 runtime")
-        tarfile.open(fileobj=io.BytesIO(get(DOWNLOADS["dotnet"]))).extractall(DOTNET)
+        tarfile.open(fileobj=io.BytesIO(get("dotnet"))).extractall(DOTNET)
     if not os.path.exists(
         os.path.join(XML, "libxml2.so.2")
     ):  # always the copy in cache/chibi/tools, never the system's
@@ -70,7 +94,7 @@ def tools():
         d = os.path.join(TOOLS, "xml")
         os.makedirs(d, exist_ok=True)
         pkg = os.path.join(d, "libxml2-legacy.pkg.tar.zst")
-        open(pkg, "wb").write(get(DOWNLOADS["libxml2"]))
+        open(pkg, "wb").write(get("libxml2"))
         subprocess.run(["tar", "--zstd", "-xf", pkg, "-C", d], check=True)
     env = dict(
         os.environ,
