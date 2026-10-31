@@ -35,7 +35,6 @@ R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
 PY=(uv run --quiet --project "$R" python)
 PYART=(uv run --quiet --project "$R" --group art python)   # the art steps: UnityPy and Pillow (pyproject.toml, group art)
 export PLAYWRIGHT_BROWSERS_PATH=0   # Playwright's browsers live in webapp/node_modules, not in the home directory
-WFLAGS="--enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-mutable-globals"
 # Requirements: each step checks what it needs first and names everything missing before it stops.
 GLOBAL_MDB="game/global/master.mdb: the Global client's game database"
 JP_MDB="game/jp/master.mdb: the JP client's game database (Grand Masters era)"
@@ -80,15 +79,15 @@ step_wasm() {
   (cd "$C" && RUSTFLAGS="-C panic=abort" cargo build --release --lib --target wasm32-unknown-unknown 2>&1 | tail -1)
   # -ocimfs=0: wasm-opt inlines no function for having one caller (by default it inlines any such function, whatever its
   # size, undoing #[inline(never)]): a loop split into its own function stays one, so V8 tiers it up (docs/PERF.md)
-  # wasm-opt is nearly all of an unchanged rebuild (about a minute): skipped when the compiled wasm, the flags and
-  # wasm-opt's version are those of the last optimised build (webapp/.loopopt.wasm.key, untracked); the example (1.5 s,
+  # wasm-opt reads the wasm's features from the target_features section rustc writes, so none are named here
+  # wasm-opt is nearly all of an unchanged rebuild (about a minute): skipped when the compiled wasm and wasm-opt's
+  # version are those of the last optimised build (webapp/.loopopt.wasm.key, untracked); the example (1.5 s,
   # it reads the data and today's date) always runs
   local raw="$C/target/wasm32-unknown-unknown/release/loopopt.wasm" key
-  key=$({ cat "$raw"; printf '%s|%s' "$WFLAGS" "$(node -p "require('$W/node_modules/binaryen/package.json').version")"; } | sha256sum | cut -d' ' -f1)
+  key=$({ cat "$raw"; printf '%s' "$(node -p "require('$W/node_modules/binaryen/package.json').version")"; } | sha256sum | cut -d' ' -f1)
   if [ -f "$W/loopopt.opt.wasm" ] && [ "$(cat "$W/.loopopt.wasm.key" 2>/dev/null)" = "$key" ]; then echo "wasm-opt: the wasm is unchanged, skipped"
   else
-    # shellcheck disable=SC2086  # WFLAGS holds several flags: split on purpose
-    (cd "$W" && npx wasm-opt -ocimfs=0 -O3 $WFLAGS "$raw" -o loopopt.opt.wasm) && echo "$key" > "$W/.loopopt.wasm.key"
+    (cd "$W" && npx wasm-opt -ocimfs=0 -O3 "$raw" -o loopopt.opt.wasm) && echo "$key" > "$W/.loopopt.wasm.key"
   fi
   (cd "$W" && node example.mjs | tail -1)
 }
