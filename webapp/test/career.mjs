@@ -554,6 +554,23 @@ export default async function career(b) {
       })),
     `runs ${nRun}`,
   );
+  // Win table: the community table, a row per grade-pair cost (A·A to B·G) as the game's letters, a column per race in
+  // a row
+  await pg.locator('#sched-dlg button', { hasText: 'Win table' }).click();
+  const wt = await pg.$$eval('#sched-wintable tbody tr', (rs) =>
+    rs.map((r) => [
+      r.querySelectorAll('th .wtp').length,
+      ...[...r.querySelectorAll('.wtc')].map((c) => +c.textContent),
+    ]),
+  );
+  check(
+    "career: Win table is the community table: 11 grade-pair rows (A·A 100 100 100 90 80 60 to B·G and E·F 10 10 5 0 0 0) in the game's letters",
+    wt.length === 11 &&
+      wt[0].join() === '1,100,100,100,90,80,60' &&
+      wt[10].join() === '2,10,10,5,0,0,0' &&
+      (await pg.locator('#sched-wintable .udg').count()) === 44,
+    JSON.stringify(wt),
+  );
   await pg.keyboard.press('Escape');
   // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section
   const opts = await pg.$$eval('.alts .optab tbody tr', (ls) =>

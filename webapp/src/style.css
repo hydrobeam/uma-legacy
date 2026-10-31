@@ -2094,8 +2094,19 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 
 .cpop.inpopup { position: fixed; z-index: 30; }   /* a card's panel inside a popup (the deck's): against the screen */
 /* the schedule window's Win table: the community table's sum and its two cost rows */
-.wintable { margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--gm-panel, var(--panel)); box-shadow: inset 0 0 0 1px var(--gm-edge, var(--line)); font-size: 0.82rem; }
-.wintable p { margin: 0 0 6px; font-weight: 700; }
-.wintable table { border-collapse: collapse; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.wintable th, .wintable td { padding: 2px 7px; text-align: center; }
-.wintable th[scope="row"], .wintable tr:first-child th:first-child { text-align: left; }
+.wintable { width: fit-content; max-width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--gm-panel, var(--panel)); box-shadow: inset 0 0 0 1px var(--gm-edge, var(--line)); font-size: 0.82rem; }
+/* the community table in the game's aptitude cells (Umamusume Details): grade pairs as the game's letters, chances in
+   white cells */
+.wintable table { border-collapse: separate; border-spacing: 4px; font-variant-numeric: tabular-nums; color: var(--gm-ink); }
+.wintable caption { text-align: left; font-weight: 900; padding: 0 4px 2px; }
+.wintable thead th { font-weight: 700; font-size: 0.85rem; padding: 0 2px; text-align: center; }
+.wintable thead th:first-child { text-align: left; }
+.wintable tbody th { text-align: left; padding: 0; }
+.wtps { display: flex; flex-wrap: wrap; gap: 2px 5px; max-width: 9.5rem; }
+.wtp { display: inline-flex; gap: 1px; background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 6px; padding: 1px 3px;
+  box-shadow: inset 0 -2px 0 var(--gm-tab-low); }
+.wtp .udg { width: 15px; height: 17px; }
+.wintable td { padding: 0; vertical-align: middle; }
+.wtc { display: block; width: 2.3em; padding: 3px 0; text-align: center; font-weight: 700; background: var(--gm-cell); border: 1px solid var(--gm-line);
+  border-radius: 6px; box-shadow: inset 0 -2px 0 var(--gm-tab-low); }
+.wtc.z { color: var(--gm-ink2); font-weight: 400; }

@@ -7,7 +7,7 @@
 // same shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
 import { el } from './dom.js';
 import { SK, CARD_BY_ID, CARDS } from './data.js';
-import { srcFor, umaAv, skillIcon, cardAv } from './images.js';
+import { umaAv, skillIcon, cardAv, gradeEl } from './images.js';
 import { umaName, sparksEl } from './vets.js';
 /** @import { LineageNode } from './vets.js' */
 import { borLast } from './cards.js';
@@ -85,19 +85,6 @@ const APT_ROWS = [
     ],
   },
 ];
-// a grade letter (code 1..8 = G..S): the game's sprite, or the letter
-function gradeEl(g) {
-  const s = srcFor('ui', `grade_${g - 1}`),
-    letter = GRADES[g - 1] || '?';
-  if (s) {
-    const im = new Image();
-    im.className = 'udg';
-    im.src = s;
-    im.alt = letter;
-    return im;
-  }
-  return el('b', `udg txt g${letter}`, letter);
-}
 // a turn (0-71: 24 half-months a year) as "Classic Late Apr"
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const when = (turn) =>

@@ -3,7 +3,7 @@
 // she is a parent herself).
 import { $, $dialog, esc } from './dom.js';
 import { RACEIDS } from './data.js';
-import { umaAv, srcFor } from './images.js';
+import { umaAv, srcFor, gradeEl } from './images.js';
 import { pickOutfit } from './roster.js';
 
 /**
@@ -86,20 +86,63 @@ export function tableCost(apt, cat, ground) {
   };
 }
 export const tableChance = (cost, row) => Math.max(0, Math.min(100, 110 - cost - ROW_PEN[Math.min(row, 6) - 1]));
-// the community table, as the schedule window's Win table panel shows it: the sum, then each aptitude grade's cost and
-// each race in a row's penalty
+// the community table, as the schedule window's Win table panel shows it: a row per cost of her two grades (distance
+// and surface, S as A: A·A 0 to B·G 100; worse is 0 everywhere), each labelled with the grade pairs that cost it, a
+// column per race in a row, each cell the win chance (%)
 function winTable() {
   const p = document.createElement('div');
   p.className = 'wintable';
   p.id = 'sched-wintable';
   p.hidden = true;
-  const row = (head, cells) => `<tr><th scope="row">${head}</th>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
-  p.innerHTML =
-    '<p>Win chance = 110 − distance grade − surface grade − races in a row, at most 100%</p>' +
-    `<table><tr><th scope="col">Grade</th>${['S', 'A', 'B', 'C', 'D', 'E', 'F', 'G'].map((g) => `<th scope="col">${g}</th>`).join('')}</tr>` +
-    `${row('Cost', [0, 0, 10, 20, 30, 40, 60, 90])}</table>` +
-    `<table><tr><th scope="col">Race in a row</th>${['1st', '2nd', '3rd', '4th', '5th', '6th+'].map((g) => `<th scope="col">${g}</th>`).join('')}</tr>` +
-    `${row('Cost', ROW_PEN)}</table>`;
+  const t = document.createElement('table'),
+    cap = t.createCaption(),
+    head = t.createTHead().insertRow();
+  cap.textContent = 'Win chance (%)';
+  cap.title =
+    'The community table: 110 minus her distance and surface grades’ costs and the race in a row’s, at most 100';
+  const corner = document.createElement('th');
+  corner.scope = 'col';
+  corner.textContent = 'Grades';
+  corner.title = 'Her distance and surface grades (S counts as A)';
+  head.appendChild(corner);
+  for (const label of ['1st', '2nd', '3rd', '4th', '5th', '6th+']) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = label;
+    th.title = `The ${label === '6th+' ? '6th or later' : label} race in a row`;
+    head.appendChild(th);
+  }
+  const body = t.createTBody(),
+    letters = 'ABCDEFG', // with their codes (7 A .. 1 G) and costs
+    code = (l) => 7 - letters.indexOf(l),
+    cost = (l) => GRADE_COST[code(l) - 1];
+  for (let c = 0; c <= 100; c += 10) {
+    const pairs = [];
+    for (const [i, x] of [...letters].entries())
+      for (const y of letters.slice(i)) if (cost(x) + cost(y) === c) pairs.push([x, y]);
+    const tr = body.insertRow(),
+      th = document.createElement('th');
+    th.scope = 'row';
+    th.title = `${pairs.map(([x, y]) => `${x} and ${y}`).join(', ')}: ${c} off`;
+    const wrap = document.createElement('div');
+    wrap.className = 'wtps';
+    for (const [x, y] of pairs) {
+      const pair = document.createElement('span');
+      pair.className = 'wtp';
+      pair.append(gradeEl(code(x)), gradeEl(code(y)));
+      wrap.appendChild(pair);
+    }
+    th.appendChild(wrap);
+    tr.appendChild(th);
+    for (let k = 1; k <= 6; k++) {
+      const v = tableChance(c, k),
+        cell = document.createElement('span');
+      cell.className = v === 0 ? 'wtc z' : 'wtc';
+      cell.textContent = String(v);
+      tr.insertCell().appendChild(cell);
+    }
+  }
+  p.appendChild(t);
   return p;
 }
 // why a race isn't a sure win, a line each: the career page's community-table figure (110 minus her grades' cost, minus
