@@ -75,8 +75,9 @@ function initials(name) {
 export function umaAv(charaId, outfitId, size, eager = false) {
   const disc = document.createElement('span');
   disc.className = 'av';
-  disc.style.width = disc.style.height = `${size}px`;
-  disc.style.fontSize = `${Math.round(size * 0.38)}px`;
+  // its size and its initials' (style.css .av reads them; a context resizes it with an ordinary rule)
+  disc.style.setProperty('--s', `${size}px`);
+  disc.style.setProperty('--fs', `${Math.round(size * 0.38)}px`);
   disc.style.setProperty('--h', String((charaId * 47) % 360)); // her disc's hue, fixed per character
   disc.textContent = initials(NAME.get(charaId) || '?');
   const tries = [outfitId && srcFor('outfit', outfitId), srcFor('uma', charaId), srcFor('mob', charaId)].filter(
@@ -119,8 +120,8 @@ const RARITY_CLASS = { 3: 'ssr', 2: 'sr', 1: 'r' };
 export function cardAv(c, size, titled = true) {
   const tile = document.createElement('span');
   tile.className = 'cav';
-  tile.style.width = tile.style.height = `${size}px`;
-  tile.style.fontSize = `${Math.max(7, Math.round(size * 0.3))}px`;
+  tile.style.setProperty('--s', `${size}px`); // (style.css .cav, as umaAv's)
+  tile.style.setProperty('--fs', `${Math.max(7, Math.round(size * 0.3))}px`);
   const kind = c?.kind || 'other';
   tile.style.setProperty('--k', `var(--k-${kind})`);
   tile.style.setProperty('--rr', c ? `var(--r-${RARITY_CLASS[c.rar] || 'r'})` : 'transparent');
