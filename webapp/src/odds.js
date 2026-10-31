@@ -9,6 +9,10 @@ export const pct = (p) => {
   const digits = percent >= 10 ? 0 : percent >= 1 ? 1 : Math.min(6, 1 - Math.floor(Math.log10(percent)));
   return `${percent.toFixed(digits)}%`;
 };
+// a deck's chance of hinting a target (its gold, which counts for the white too, or else its white): the solver's
+// white chance is given no gold hint, so it is gold + (1 - gold) x white
+/** @type {(gold: number, white: number) => number} */
+export const deckHint = (gold, white) => 1 - (1 - gold) * (1 - white);
 // the dialog, made on first use; `opener`: the element focused before it opened, focused again when it closes
 let dialog = null,
   opener = null;

@@ -5,7 +5,7 @@
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
 import { $, $dialog, $input, $textarea, backdropCloses, el, esc, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
-import { UMAS, SK, CAREER, loadData } from './data.js';
+import { UMAS, SK, CAREER, RANKS, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
 import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from './engine.js';
 import { answerLoad, answerSave } from './statestore.js';
@@ -21,7 +21,7 @@ import { openSched, tableCost, tableChance } from './agenda.js';
 import { initSetup } from './setup.js';
 import './gmtip.js'; // the game-style tooltips (both planner pages)
 import { affEl, affTable as affTableOf } from './afftable.js';
-import { pct } from './odds.js';
+import { pct, deckHint } from './odds.js';
 import { initTargets, renderTargets } from './targets.js';
 import {
   vets,
@@ -41,6 +41,7 @@ import {
   newVet,
   importVets,
   isVeteran,
+  asVeteran,
   addVets,
   removeVet,
   clearVets,
@@ -215,7 +216,7 @@ const progText = ({ ph, k, n }) =>
  * @property {number} land_gold
  * @property {number} land_white
  * @property {number} [deck_gold]  the deck hints its gold
- * @property {number} [deck_white]  the deck hints its white
+ * @property {number} [deck_white]  the deck hints its white, given it hints no gold
  * @property {number} [own_event]  her own story events give it
  * @property {number} [inherit]  inspiration gives it
  * @property {0|1|2} [outfit]  her outfit's own skill: none, the white, the gold
@@ -623,7 +624,7 @@ async function preloadAnswer() {
     return;
   }
   const key = `${jobKey(job)}\n${placesKey()}`,
-    saved = await answerLoad();
+    saved = await answerLoad(ERA);
   if (saved?.key === `${stateKey()}\n${key}` && saved.value?.last) answers.set(key, saved.value);
 }
 // the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
@@ -754,7 +755,7 @@ async function search() {
     answers.set(answerKey, hit); // (the most recent last)
     ({ status, last, planState } = hit);
     const r = shown();
-    simulation = r ? readySimulation(r) : { state: 'none' };
+    simulation = simulationFor(r);
     searching = false;
     clearInterval(secondsTick);
     renderAll();
@@ -803,10 +804,10 @@ async function search() {
         answers.set(answerKey, { status, last, planState });
         if (answers.size > ANSWERS) answers.delete(answers.keys().next().value);
         // kept across a reload too: the same setup draws it at once (`preloadAnswer`)
-        answerSave(`${stateKey()}\n${answerKey}`, { status, last, planState });
+        answerSave(ERA, `${stateKey()}\n${answerKey}`, { status, last, planState });
       }
       const r = shown();
-      simulation = r ? readySimulation(r) : { state: 'none' };
+      simulation = simulationFor(r);
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
     }
   } catch (e) {
@@ -840,6 +841,7 @@ async function checkPhase(id, planned) {
     planned.r.check_unavailable = true;
     redraw();
   };
+  const killed = Symbol('killed');
   for (;;) {
     let m = null;
     try {
@@ -847,11 +849,14 @@ async function checkPhase(id, planned) {
         ...planned.job,
         next: { ...planned.job.next, robust: /** @type {'next'} */ ('next'), pair_search: true },
       };
-      m = await Promise.race([runJob(job, undefined, true), nextKill().then(() => null)]);
+      m = await Promise.race([runJob(job, undefined, true), nextKill().then(() => killed)]);
     } catch {
       m = null;
     }
     if (!current()) return;
+    // a kill that left this answer on show (a comparison's: Reroll, Compare) sends the check again to the next worker,
+    // which restores the plan it kept; one that lost it answers unavailable
+    if (m === killed) continue;
     const check = m?.r.next?.robust;
     if (!check || check.unavailable || check.error) return unavailable();
     if (check.plan !== planned.r.outcomes?.career) return;
@@ -892,6 +897,28 @@ const readySimulation = (r) => ({
   error: null,
   forKey: keyOf(r),
 });
+// the veteran analysis once an answer shows `r`: a fresh one, except that the same career keeps the veteran entered for
+// it (an edit elsewhere, or its undoing, leaves what the player typed); her comparison starts over on the new pool
+/** @type {(r: CareerReport|null) => Simulation} */
+const simulationFor = (r) => {
+  if (!r) return { state: 'none' };
+  const fresh = readySimulation(r);
+  return simulation.draft && simulation.forKey === fresh.forKey ? { ...fresh, draft: simulation.draft } : fresh;
+};
+// today's best career without her, which a roll's figures and a comparison's both set hers against: the run's when it
+// searched without places (a fixed trainee or parent makes it the best of those), else cached or searched now
+/** @param {CareerJob} base `comparisonJob()` @returns {Promise<CareerReport>} */
+async function baselineFor(base) {
+  const key = JSON.stringify(base),
+    open = !last.job.trainees.length && !last.job.fix.length,
+    cached = baselineCache?.key === key ? baselineCache.result : null;
+  /** @type {{results: CareerReport[], error?: string}} */
+  const before = cached ? { results: [cached] } : open ? last.r : (await runJob(base)).r;
+  if (before.error || !before.results?.length)
+    throw new Error(before.error || 'No career found in the current roster.');
+  baselineCache = { key, result: before.results[0] };
+  return before.results[0];
+}
 // the search's lead line: how many careers it weighed, in what time
 function searchedText(m) {
   const n = m.r.candidates,
@@ -1696,7 +1723,7 @@ function deckEl(r, title = '') {
     b.setAttribute('aria-label', full);
     b.setAttribute('aria-haspopup', 'dialog');
     b.setAttribute('aria-expanded', 'false');
-    b.append(cardAv(c || null, 96), el('span', 'dn', full));
+    b.append(cardAv(c || null, 96, false), el('span', 'dn', full));
     if (pick) b.appendChild(el('i', '', `prioritise ${pick}`));
     if (endAt) b.appendChild(el('i', '', chainEndNote(c, endAt)));
     box.appendChild(b);
@@ -1775,7 +1802,7 @@ function targetsEl(r) {
       tile = el('button', 'udsk'),
       legacies = legaciesCarrying(r, t.group),
       cards = cardsGiving(r, t.group),
-      deckP = Math.max(b.deck_gold || 0, b.deck_white || 0);
+      deckP = deckHint(b.deck_gold || 0, b.deck_white || 0);
     tile.type = 'button';
     tile.setAttribute('aria-haspopup', 'dialog');
     tile.setAttribute('aria-label', `${tName(t.group)}: lands ${pct(t.p)}. Where it comes from`);
@@ -1950,7 +1977,10 @@ function scheduledRaces(r) {
   for (const w of (r.schedule || []).filter((w) => w.run !== false)) {
     const ix = CAREER.races.indexOf(w.name || w.race);
     if (ix < 0) continue;
-    const prev = races.get(ix); // run at another turn too: p, the chance she wins it at least once
+    // run at another turn too: p, the chance she wins it at least once, taking the two runs as independent. The solver
+    // does too when her grades are certain; an April pink that may raise them links the runs (MODEL.md, E[p_C p_S]),
+    // which this leaves out: under 0.1 points, since a firing is 1-5% per legacy and moves a run's chance by about 10
+    const prev = races.get(ix);
     races.set(ix, {
       ix,
       name: w.name || w.race,
@@ -2081,8 +2111,11 @@ async function quickCompare(request) {
     legaciesWithHer = [...base.legacies, draftJob(simulation.draft)],
     herIndex = base.legacies.length;
   try {
-    if (!simulation.baseline) simulation.baseline = (last.r.results || [])[0] || null;
-    if (!simulation.baseline) throw new Error('No next career found.');
+    if (!simulation.baseline) {
+      const before = await baselineFor(base);
+      if (gone()) return;
+      simulation.baseline = before;
+    }
     const m = await runJob({ ...request.job, next: { ...request.job.next, roll: request.stars } });
     if (gone()) return;
     // (no saving from the plan: the exact comparison answers instead)
@@ -2246,8 +2279,7 @@ async function runComparison(refine = false) {
   const id = ++simulationId,
     source = runId,
     gone = () => id !== simulationId || source !== runId;
-  const base = comparisonJob(),
-    key = JSON.stringify(base);
+  const base = comparisonJob();
   if (refine) simulation.refining = true;
   else {
     simulation.state = 'busy';
@@ -2259,17 +2291,10 @@ async function runComparison(refine = false) {
   simulation.stale = false;
   renderSimulation();
   try {
-    // today's best career (without her): the run's, when it searched without places, else cached or searched now
     if (!simulation.baseline) {
-      const open = !last.job.trainees.length && !last.job.fix.length;
-      const cached = baselineCache?.key === key ? baselineCache.result : null;
-      /** @type {{results: CareerReport[], error?: string}} */
-      const before = cached ? { results: [cached] } : open ? last.r : (await runJob(base)).r;
+      const before = await baselineFor(base);
       if (gone()) return;
-      if (before.error || !before.results?.length)
-        throw new Error(before.error || 'No career found in the current roster.');
-      simulation.baseline = before.results[0];
-      baselineCache = { key, result: simulation.baseline };
+      simulation.baseline = before;
     }
     // the planner's question (exact odds, estimated careers): the best career with her as a parent, and the planner's
     // expected careers to a fully looped parent (each plan's `v0`, V) from the veterans now, without and with her
@@ -2353,6 +2378,7 @@ function addDraft() {
   Object.assign(v, d, { src: 'entered', borrowed: false });
   plan.trainee = null;
   plan.parents = [null, null];
+  simulation.draft = null; // she is in the pool now: the next answer starts a new one even for the same career
   $('v-msg').textContent =
     `Added ${umaName(v.chara)} to your veterans. The planner now picks the next career from all of them.`;
   changed();
@@ -3059,14 +3085,12 @@ function vetCardEl(v, i) {
         if (!wideVets()) openNode({ kind: 'v', id: v.id });
         else if (vSel !== v.id) {
           vSel = v.id;
-          drawPool();
-          $(`vet-${idxOf(v.id)}`)?.focus();
+          markSel();
+          drawPane();
         }
       },
       tab: k >= 0 ? `Parent ${k + 1}` : undefined,
     });
-  if (v.id === vSel) c.classList.add('sel');
-  c.setAttribute('aria-current', String(v.id === vSel && wideVets()));
   c.id = `vet-${i}`;
   c.dataset.k = `node:v${v.id}`;
   return c;
@@ -3130,7 +3154,6 @@ function initVSort() {
   });
 }
 function renderPool() {
-  if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
   // the first veterans arriving fold the setup (as a reload with veterans does), unless you folded or opened it
   if (!folded && vets.length) {
     let chosen = null;
@@ -3152,9 +3175,39 @@ function renderPool() {
   }
   drawPool();
 }
+// the cards drawn last, by veteran: one whose record, number, parent tab and the targets are as they were is kept, so an
+// edit or a tab switch builds only the cards that changed (300 veterans are about 1,900 elements)
+/** @type {Map<string, {sig: string, card: HTMLElement}>} */
+const poolCards = new Map();
+/** @param {import('./vets.js').Veteran} v @param {number} i */
+function poolCard(v, i) {
+  const sig = JSON.stringify([v, i, plan.parents.indexOf(v.id), state.targets]),
+    kept = poolCards.get(v.id);
+  if (kept?.sig === sig) return kept.card;
+  const card = vetCardEl(v, i);
+  poolCards.set(v.id, { sig, card });
+  return card;
+}
+// the chosen one's mark (beside the list on a wide dialog)
+function markSel() {
+  const selId = `vet-${idxOf(vSel)}`;
+  for (const c of $('vets').querySelectorAll('.umcell')) {
+    const on = c.id === selId;
+    c.classList.toggle('sel', on);
+    c.setAttribute('aria-current', String(on && wideVets()));
+  }
+}
+function drawPane() {
+  const pane = $('v-pane');
+  pane.textContent = '';
+  if (vSel && wideVets()) {
+    const h = el('h4', 'vptitle');
+    pane.appendChild(h);
+    h.textContent = veteranView(vSel, pane) || '';
+  }
+}
 function drawPool() {
   const box = $('vets');
-  box.textContent = '';
   poolStale = false;
   paintVSort();
   const by = VSORTS[vSort][2],
@@ -3172,29 +3225,24 @@ function drawPool() {
           ['Borrow list', shown.filter(([v]) => v.src !== 'umamoe')],
           ['uma.moe', shown.filter(([v]) => v.src === 'umamoe')],
         ];
+  const nodes = [];
   for (const [head, list] of groups) {
     if (!list.length) continue;
-    if (head) box.appendChild(el('p', 'vsec', head));
-    for (const [v, i] of list) box.appendChild(vetCardEl(v, i));
+    if (head) nodes.push(el('p', 'vsec', head));
+    for (const [v, i] of list) nodes.push(poolCard(v, i));
   }
+  box.replaceChildren(...nodes);
+  const ids = new Set(vets.map((v) => v.id));
+  for (const id of poolCards.keys()) if (!ids.has(id)) poolCards.delete(id);
   if (!shown.length)
     box.innerHTML =
       vTab === 'own'
         ? '<p class="hint">None yet. Import umadump\'s trained_chara_data.json, or make one with Choose parent.</p>'
         : '<p class="hint">None yet. Import umadump\'s rental_chara_data.json, mark a veteran Guest, or Borrow from uma.moe beside Next career.</p>';
   // the one beside the list: the chosen one while she is in this tab, else the first shown
-  if (!shown.some(([v]) => v.id === vSel)) {
-    vSel = shown[0]?.[0].id ?? null;
-    for (const c of box.querySelectorAll('.umcell')) c.classList.remove('sel');
-    if (vSel) $(`vet-${idxOf(vSel)}`)?.classList.add('sel');
-  }
-  const pane = $('v-pane');
-  pane.textContent = '';
-  if (vSel && wideVets()) {
-    const h = el('h4', 'vptitle');
-    pane.appendChild(h);
-    h.textContent = veteranView(vSel, pane) || '';
-  }
+  if (!shown.some(([v]) => v.id === vSel)) vSel = shown[0]?.[0].id ?? null;
+  markSel();
+  drawPane();
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -3290,7 +3338,7 @@ function paintFold() {
   b.setAttribute('aria-expanded', String(!folded));
   sum.hidden = !folded;
   b.title = folded ? 'Show the career setup' : 'Fold the career setup';
-  const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+',
+  const rank = state.rank === RANKS.ss ? 'SS' : 'B–S+',
     era = ERA === 'gm' ? 'JP, Grand Masters' : 'Global',
     sc = scenarioOf(state.scen).name;
   // each setting as its label, light, and its value, bold, as the panel's rows read (the whole line for the screen reader)
@@ -3387,6 +3435,10 @@ function ownExport(text) {
 function importText(text) {
   const own = ownExport(text);
   if (own) {
+    if (own.era && own.era !== ERA) {
+      $('v-msg').textContent = `Not imported: that export is of the ${$('era-' + own.era)?.textContent} data.`;
+      return true;
+    }
     const damaged = own.veterans.filter((v) => !isVeteran(v)).length;
     if (damaged) {
       $('v-msg').textContent =
@@ -3395,7 +3447,7 @@ function importText(text) {
     }
     // each keeps her source (one made by hand stays hand-made); an export from before sources were saved: imported
     importVets(
-      own.veterans.map((v) => ({ pinks: {}, wins: [], src: 'import', ...v })),
+      own.veterans.map((v) => ({ src: 'import', ...asVeteran(v) })),
       true,
     );
     setVTab('own');
@@ -3410,8 +3462,9 @@ function importText(text) {
       return false;
     }
     addVets(tree);
+    const first = vets.indexOf(tree[0]) + 1;
     $('v-msg').textContent =
-      `Added ${tree.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${vets.length - tree.length + 1}${tree.length > 1 ? `-#${vets.length}` : ''} (marked yours: switch to Borrowed if she is a friend's).`;
+      `Added ${tree.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${first}${tree.length > 1 ? `-#${first + tree.length - 1}` : ''} (marked yours: switch to Borrowed if she is a friend's).`;
     return true;
   }
   try {
@@ -3496,8 +3549,8 @@ loadData().then(
     }).observe($dialog('set-vets'), { attributes: true, attributeFilter: ['open'] });
     $('v-clear').onclick = () => {
       // the open tab's veterans
-      // (uma.moe's listings stay unless kept: the next search would bring them back)
-      const gone = inTab,
+      // (uma.moe's listings stay, unless one is a chosen parent: they are its answer for the targets, not yours)
+      const gone = (v) => inTab(v) && (v.src !== 'umamoe' || plan.parents.includes(v.id)),
         n = vets.filter(gone).length,
         what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
       if (n && confirm(`Remove all ${what}?`)) {

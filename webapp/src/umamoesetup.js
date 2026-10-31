@@ -6,7 +6,8 @@
 // followable trainers, best covered first: one request, kept 24 h) join the pool as borrowed veterans (vets.js
 // `setListings`), so every search and plan weighs them like any other borrow. A request goes out only when the target
 // set has no answer kept (on saving the key, after a target change) or on Refresh; edits to veterans or settings never
-// send one. Global data only (uma.moe lists Global veterans).
+// send one. uma.moe lists Global veterans: on the Grand Masters-era data it is asked only for the targets Global has
+// (`targetFactors`).
 import { $, $dialog, $input, el } from './dom.js';
 import { ERA } from './settings.js';
 import { state } from './state.js';
@@ -35,7 +36,10 @@ let ctx;
 /** @type {{sig: string, text: string, short: string, min: number, n: number}} the target set the pool's listings are
  *  for ('' none), the popup's status and the button's, and what was searched */
 const now = { sig: '', text: '', short: '', min: 0, n: 0 };
-let asking = 0; // the request under way; a newer one (or a forgotten key) makes it stale
+// the request under way (`asking`, for the target set `pending`): any later call that changes or keeps the listings,
+// or a forgotten key, makes it stale, so an older answer never lands over a newer one
+let asking = 0,
+  pending = '';
 
 const sigOf = () => `${ERA}|${state.targets.map((t) => t.group).join(',')}|${fullTrainers() ? 'full' : ''}`;
 // the query for the target set: parents carrying at least n - 1 of the n targets herself, the first 100
@@ -104,7 +108,7 @@ export function umamoeButton() {
   $('um-open').hidden = !vets.some((v) => !v.borrowed);
 }
 // the popup's contents and the button's label
-export function paintUmamoe() {
+function paintUmamoe() {
   const has = !!savedKey();
   $('um-keyrow').hidden = has;
   $('um-on').hidden = !has;
@@ -139,6 +143,10 @@ export async function syncListings(fresh = false) {
   const key = savedKey(),
     sig = sigOf(),
     q = query();
+  if (!fresh && sig === pending) return; // its request is out
+  const id = ++asking;
+  pending = '';
+  $('um-again').toggleAttribute('disabled', false);
   if (!key || !q) {
     if (now.sig) {
       now.sig = '';
@@ -156,7 +164,7 @@ export async function syncListings(fresh = false) {
     paintUmamoe();
     return;
   }
-  const id = ++asking;
+  pending = sig;
   now.text = now.short = 'searching…';
   paintUmamoe();
   $('um-again').toggleAttribute('disabled', true);
@@ -174,7 +182,10 @@ export async function syncListings(fresh = false) {
       now.short = 'key rejected';
     }
   } finally {
-    if (id === asking) $('um-again').toggleAttribute('disabled', false);
+    if (id === asking) {
+      pending = '';
+      $('um-again').toggleAttribute('disabled', false);
+    }
     paintUmamoe();
   }
 }
@@ -224,7 +235,7 @@ export function initUmamoe(c) {
     syncListings();
   };
   $('um-forget').onclick = () => {
-    asking++;
+    pending = ''; // so syncListings stales a request still out
     saveKey('');
     now.text = now.short = '';
     syncListings();

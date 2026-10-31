@@ -34,6 +34,29 @@ export default async function phone(b) {
     order.above && order.dom && order.odds < order.h,
     JSON.stringify(order),
   );
+  // a swap row of three cards out and three in (5 of the 29 swap rows in the pinned val reports) still fits: the
+  // example's 1/1 row with its chips cloned, then put back
+  const swap33 = await pg.evaluate(() => {
+    const row = document.querySelector('#results .deck.swap');
+    if (!row) return null;
+    const clones = [];
+    for (const side of row.querySelectorAll('.swc'))
+      for (let k = side.querySelectorAll('.dc').length; k < 3; k++) {
+        const c = side.querySelector('.dc').cloneNode(true);
+        side.append(c);
+        clones.push(c);
+      }
+    const fits = document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      card = row.getBoundingClientRect().right,
+      cards = Math.round(Math.max(...[...row.querySelectorAll('.dc')].map((d) => d.getBoundingClientRect().right)));
+    for (const c of clones) c.remove();
+    return { fits, inside: cards <= card, cards, card: Math.round(card) };
+  });
+  check(
+    'phone: a swap row of three cards out and three in fits the screen',
+    !!swap33?.fits && swap33.inside,
+    JSON.stringify(swap33),
+  );
   if (b.browserType().name() === 'chromium') {
     const cls = await pg.evaluate(
       () =>

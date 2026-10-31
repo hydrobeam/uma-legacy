@@ -300,8 +300,10 @@ export function openSkill({ b, name, got, icon, gold = false, legacies = [], car
   if (b.scenario) sources.push({ label: 'The scenario', chance: 1 });
   if (b.outfit === 2) sources.push({ label: 'Her own skill (gold)', chance: 1 });
   else if (b.outfit === 1) sources.push({ label: 'Her own skill', chance: 1 });
+  // the deck's gold, else its white (`deck_white` is given no gold): the two add up to its chance of a hint, `deckHint`
+  const deckWhite = (1 - (b.deck_gold || 0)) * (b.deck_white || 0);
   if (b.deck_gold > 0.005) sources.push({ label: 'Deck (its gold)', chance: b.deck_gold });
-  if (b.deck_white > 0.005) sources.push({ label: 'Deck', chance: b.deck_white });
+  if (deckWhite > 0.005) sources.push({ label: 'Deck', chance: deckWhite });
   if (b.own_event > 0.005) sources.push({ label: 'Her story events', chance: b.own_event });
   if (b.inherit > 0.005) sources.push({ label: 'Legacies (inheritance)', chance: b.inherit });
   body.appendChild(el('div', 'gmdsub', 'Where it comes from'));

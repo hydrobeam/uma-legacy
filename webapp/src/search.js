@@ -11,6 +11,7 @@ import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { state, ui, DEFAULTS } from './state.js';
 import { noOutfit } from './roster.js';
 import { renderDeck } from './results.js';
+import { markOwn } from './popover.js';
 import { loadExample } from './presets.js';
 // The search's state. searching: a search runs or is about to (the status line shows it); searchT0: when it started
 // (performance.now); searchTick: the timer redrawing the status line each second; pauseTimer: the pause before an
@@ -56,7 +57,7 @@ export function paintRunNote() {
   note.classList.toggle('busy', searching);
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
   results.setAttribute('aria-busy', String(searching));
-  results.classList.toggle('stale', !searching && ['error', 'empty', 'stopped', 'pending'].includes(status.kind));
+  results.classList.toggle('stale', resultsStale() && !searching);
   let pill;
   if (searching) {
     const sec = Math.floor((performance.now() - searchT0) / 1000),
@@ -152,7 +153,13 @@ function scheduleSearch() {
   paintRunNote();
 }
 // every setting change: save it and search again
-onSave(scheduleSearch);
+// the result on show is from other settings: a change not searched yet (or under way), a stopped or failed search
+export const resultsStale = () => searching || ['error', 'empty', 'stopped', 'pending'].includes(ui.status.kind);
+// a change greys what you no longer own in the result on show at once, before the search that replaces it
+onSave(() => {
+  markOwn();
+  scheduleSearch();
+});
 export { save };
 
 function stopEngine() {
@@ -248,7 +255,7 @@ export function firstResult() {
 // What the result is checked against (the solver's `exact`: rho = the cap it is certified under, rho_target the
 // cap aimed for; see the model notes on /about): nothing when fully checked, else a short caveat
 /** @param {{rho: number, rho_target: number}|null|undefined} exact */
-export function certText(exact) {
+function certText(exact) {
   if (!exact || exact.rho >= exact.rho_target) return '';
   if (exact.rho > 1)
     return ` · exact check: decks within ${Math.round((1 - 1 / exact.rho) * 100)}% of it (ran out of time)`;
@@ -257,7 +264,7 @@ export function certText(exact) {
 /** @type {(r: import('./results.js').LoopReport, ms: number) => import('./state.js').Status} */
 const doneText = (r, ms) => ({
   kind: 'done',
-  text: `Checked ${r.decks_built.toLocaleString()} decks / ${r.foursomes.toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s${certText(r.exact)}`,
+  text: `Checked ${r.decks_built.toLocaleString()} decks / ${r.foursomes.toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s${r.proven === false ? ' · cut short: not proven best' : ''}${certText(r.exact)}`,
 });
 // auto: the search the pause starts (not the Search buttons): edits that end where they started run nothing when the
 // result on show is the finished search of the same job (its key holds the solver's and data's fingerprints, the era and

@@ -234,7 +234,7 @@ export default async function careerrun(b) {
           const open = indexedDB.open('llp-solver', 2);
           open.onsuccess = () => {
             const t = open.result.transaction('answer', 'readwrite');
-            t.objectStore('answer').delete('last');
+            t.objectStore('answer').clear(); // every era's
             t.oncomplete = () => resolve(true);
             t.onerror = () => resolve(false);
           };

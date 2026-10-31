@@ -86,8 +86,10 @@ function loadCache() {
   } catch {}
   return {};
 }
-function storeCache(cache) {
-  const kept = Object.entries(cache)
+// one answer added to the kept ones as stored now (another search or tab may have added one meanwhile)
+/** @param {string} id @param {{at: number, answer: Omit<Answer, 'cached'>}} entry */
+function storeCache(id, entry) {
+  const kept = Object.entries({ ...loadCache(), [id]: entry })
     .filter(([, x]) => Date.now() - x.at < CACHE_MS)
     .sort((a, b) => b[1].at - a[1].at)
     .slice(0, CACHE_KEEP);
@@ -117,8 +119,7 @@ export async function search(key, era, q, fresh = false) {
   const kept = fresh ? null : keptAnswer(era, q);
   if (kept) return kept;
   const qs = queryString(q),
-    id = `${era}?${qs}`,
-    cache = loadCache();
+    id = `${era}?${qs}`;
   let res;
   try {
     res = await fetch(`${ENDPOINT}?${qs}`, { headers: { 'X-API-Key': key }, credentials: 'omit' });
@@ -137,7 +138,6 @@ export async function search(key, era, q, fresh = false) {
   const items = Array.isArray(body?.items) ? body.items.filter((x) => x?.inheritance?.inheritance_id) : [];
   const answer = { items, total: +body?.total || items.length, pages: +body?.total_pages || 1 },
     at = Date.now();
-  cache[id] = { at, answer };
-  storeCache(cache);
+  storeCache(id, { at, answer });
   return { ...answer, cached: false, at };
 }

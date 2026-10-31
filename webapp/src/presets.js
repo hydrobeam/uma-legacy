@@ -6,7 +6,7 @@
 // "Preset N+1", N the presets now). Starting from a preset is load, edit the targets, save under a new name.
 import { $, $dialog, $input, el, backdropCloses } from './dom.js';
 import { PRESET } from './data.js';
-import { state } from './state.js';
+import { state, writeSaved } from './state.js';
 import { save } from './save.js';
 import { tileEl } from './targets.js';
 
@@ -21,6 +21,7 @@ const TRASH =
   '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9.2 2.5h5.6l.9 1.9H20a1 1 0 0 1 1 1V7H3V5.4a1 1 0 0 1 1-1h4.3z"/>' +
   '<path fill="currentColor" d="M4.8 8.5h14.4l-1.1 12a2 2 0 0 1-2 1.8H7.9a2 2 0 0 1-2-1.8z"/><path class="slit" d="M9.6 11.5v7.4M14.4 11.5v7.4" stroke-width="1.8" stroke-linecap="round"/></svg>';
 let rerender = () => {};
+// an edit of the presets saves them (writeSaved) without searching again; loading one changes the targets (save)
 
 function apply(groups) {
   state.targets = groups.map((group) => ({ group }));
@@ -87,9 +88,12 @@ function renderList(msg = '') {
       apply(p.groups);
       $dialog('preset-dlg').close();
     };
-    button('Overwrite').onclick = () => {
+    const overwrite = button('Overwrite');
+    overwrite.disabled = !current.length; // as Save: a preset is never emptied
+    overwrite.title = current.length ? '' : 'Add target skills first';
+    overwrite.onclick = () => {
       p.groups = [...current];
-      save();
+      writeSaved();
       renderList(`Overwrote “${p.name}” with your ${skillCount(current.length)}.`);
     };
     const trash = button('');
@@ -99,7 +103,7 @@ function renderList(msg = '') {
     trash.title = 'Delete';
     trash.onclick = () => {
       state.presets = state.presets.filter((q) => q !== p);
-      save();
+      writeSaved();
       renderList(`Deleted “${p.name}”.`);
     };
     row.append(view, buttons);
@@ -145,7 +149,7 @@ function commitRename() {
   }
   const old = viewing.name;
   viewing.name = name;
-  save();
+  writeSaved();
   $('prv-title').textContent = name;
   $('prv-msg').textContent = `Renamed “${old}” to “${name}”.`;
   renameMode(false);
@@ -163,7 +167,7 @@ function saveNew() {
     return;
   }
   state.presets = [...state.presets, { name, groups: state.targets.map((t) => t.group) }];
-  save();
+  writeSaved();
   $dialog('pr-new').close();
   renderList(`Saved “${name}”.`);
 }

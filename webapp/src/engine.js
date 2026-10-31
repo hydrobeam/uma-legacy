@@ -96,7 +96,9 @@ function compiled() {
 }
 // whether a job other than a background one has been posted and not answered yet (a kill would cut it short; with
 // none, the worker is idle or finishing a background job, which a new job waits behind)
-export const engineBusy = () => [...pending.values()].some((job) => !job.background);
+export const engineBusy = () => waiting > 0 || [...pending.values()].some((job) => !job.background);
+// foreground jobs waiting for the worker to start and restore (`run`): busy too, and a kill drops them
+let waiting = 0;
 // the next kill (`killEngine`): a job in flight then never answers, so a background job's caller waits on this too
 let nextKillAt = null;
 export function nextKill() {
@@ -110,12 +112,14 @@ export function nextKill() {
   }
   return nextKillAt.promise;
 }
-export function killEngine() {
+function killEngine() {
   engineGen++;
   if (worker) worker.terminate();
   worker = null;
   ready = null;
   pending.clear();
+  waiting = 0;
+  clearTimeout(saveTimer); // a killed worker has nothing to save
   nextKillAt?.resolve();
   nextKillAt = null;
 }
@@ -185,8 +189,11 @@ function startEngine() {
   );
   ready = ready.then(() => restore().catch(() => {})); // the last session's kept work, before the first job
   ready.catch(() => {
-    if (gen === engineGen) ready = null;
-  }); // a failed start is retried by the next search
+    if (gen !== engineGen) return;
+    ready = null;
+    worker?.terminate();
+    worker = null;
+  }); // a failed start goes, and the next search retries
   return ready;
 }
 // The career planner's kept work (each uma's best career per pool, the proofs) survives a page reload: a new worker gets
@@ -213,7 +220,10 @@ function post(job, interim, progress, background = false) {
 async function restore() {
   if (!persistOn) return;
   const key = stateKey(),
-    stored = await stateLoad(key);
+    stored = await stateLoad(
+      key,
+      Object.values(ASSETS.engine).map((engine) => `${ASSETS.wasm}|${engine}`),
+    );
   if (!stored || !worker) return;
   const answer = await post({ cmd: 'state_in', state: stored });
   if (!answer.r || answer.r.error) stateDrop(key);
@@ -227,7 +237,8 @@ export function engineSaveState() {
   if (!persistOn) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    if (!worker || !ready || engineBusy()) {
+    if (!worker || !ready) return; // the worker went: nothing to save
+    if (engineBusy()) {
       engineSaveState();
       return;
     }
@@ -261,5 +272,20 @@ const gate = (job) =>
  * @returns {Promise<SolverAnswer>}
  */
 export function run(job, interim, progress, background = false) {
-  return startEngine().then(() => post(gate(job), interim, progress, background));
+  const gen = engineGen;
+  if (!background) waiting++;
+  const started = () => {
+    if (!background && gen === engineGen) waiting--;
+  };
+  return startEngine().then(
+    () => {
+      started();
+      // a kill while it waited: it never answers, as a job in flight then (`nextKill`)
+      return gen === engineGen ? post(gate(job), interim, progress, background) : new Promise(() => {});
+    },
+    (e) => {
+      started();
+      throw e;
+    },
+  );
 }

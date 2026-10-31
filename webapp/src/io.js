@@ -8,6 +8,8 @@ import { save } from './save.js';
 import { noOutfit, renderRoster, pickOutfit } from './roster.js';
 import { renderTargets } from './targets.js';
 import { mergePresets } from './presets.js';
+import { resultsStale } from './search.js';
+import { deckHint } from './odds.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
 // a skill group's name at a level (2: its gold's, when it has one)
 const skillName = (group, level) => {
@@ -49,7 +51,11 @@ const resultSummary = (top) => ({
     : {}),
   deck_odds: top.deck.odds
     .filter((o) => o.white > 0.005 || o.gold > 0.005)
-    .map((o) => ({ skill: skillName(o.group, 1), white: +o.white.toFixed(3), gold: +o.gold.toFixed(3) })),
+    .map((o) => ({
+      skill: skillName(o.group, 1),
+      white: +deckHint(o.gold, o.white).toFixed(3),
+      gold: +o.gold.toFixed(3),
+    })),
 });
 function exportText() {
   const settings = Object.fromEntries(SETTINGS.map((k) => [k, state[k]]));
@@ -62,6 +68,7 @@ function exportText() {
       decks: (r.top || []).map(resultSummary),
       decks_searched: r.decks_built,
       proven: r.proven,
+      ...(resultsStale() && { stale: true }), // from other settings than these
     };
   }
   return JSON.stringify(
@@ -116,7 +123,7 @@ function loadSettings() {
     if (era !== ERA) {
       for (const k of use) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = imported(k);
       SAVED.era = era;
-      persist();
+      persist([era]);
       location.reload();
       return;
     }

@@ -8,7 +8,7 @@ import { closePop, markOwn, popHasFocus } from './popover.js';
 import { pickOutfit, outfitNote } from './roster.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
-import { openOdds } from './odds.js';
+import { openOdds, deckHint } from './odds.js';
 /**
  * A deck in a result (the solver's `PDeck::out`, deck/pdeck.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
  * ` (end chain at link N)` appended where that applies; `card_ids[i]` is its id (plain pals have a name but no entry).
@@ -63,7 +63,7 @@ const loopKey = (loop) =>
 const deckKey = (deck) => deck.cards.join('|');
 const SHOWN = 0.005; // hint odds and their changes under half a percent are not shown
 // the chance of at least the white: a gold hint counts for the white too
-const atLeastWhite = (odds) => (odds ? 1 - (1 - odds.white) * (1 - odds.gold) : 0);
+const atLeastWhite = (odds) => (odds ? deckHint(odds.gold, odds.white) : 0);
 const namesOf = (group) => SK.get(group) || { w: group, gd: null };
 const iconHTML = (group, gold) => {
   const icon = skillIcon(group, gold);
@@ -190,12 +190,14 @@ function swapRow(loop, shared, deck, who) {
     `<div class="swcards"><span class="swc swout"><span class="vh">out:</span>${borrowedLast(shared, out)
       .map((i) => cardChip(shared, i))
       .join('')}</span>` +
-    `<span class="swa" aria-hidden="true">${ARROW}</span><span class="swc swin"><span class="vh">in:</span>${borrowedLast(
+    `<span class="swto"><span class="swa" aria-hidden="true">${ARROW}</span><span class="swc swin"><span class="vh">in:</span>${borrowedLast(
       deck,
       comingIn,
     )
       .map((i) => cardChip(deck, i))
-      .join('')}</span></div>${swapDeltasHTML(loop, shared, deck, who)}</div>${INFO_BUTTON}${hintOddsHTML(deck)}`;
+      .join(
+        '',
+      )}</span></span></div>${swapDeltasHTML(loop, shared, deck, who)}</div>${INFO_BUTTON}${hintOddsHTML(deck)}`;
   return row;
 }
 // the deck(s) of a result into its card: one deck for all, or the deck most members share and the swaps from it
@@ -249,7 +251,7 @@ function appendDecks(card, loop, shared, decks) {
   });
   card.querySelectorAll('.deck .dc').forEach((chip) => {
     const c = CARD_BY_ID.get(+chip.dataset.cid);
-    chip.prepend(cardAv(c || null, 96));
+    chip.prepend(cardAv(c || null, 96, false));
   });
 }
 // the loop's members: face and name (a button opening her panel), the outfit named, the targets on her own outfit's

@@ -61,12 +61,14 @@ function transact(mode, use, store = STORE) {
       }),
   );
 }
-// what was stored under key (null when nothing is, or anything fails); other keys are dropped (a past release's)
-/** @param {string} key */
-export async function stateLoad(key) {
+// what was stored under key (null when nothing is, or anything fails); keys not in `live` are dropped (a past
+// release's; the other era's stays for its next load)
+/** @param {string} key @param {string[]} live */
+export async function stateLoad(key, live) {
   try {
     const keys = await transact('readonly', (store) => store.getAllKeys());
-    for (const old of keys || []) if (old !== key) await transact('readwrite', (store) => store.delete(old));
+    for (const old of keys || [])
+      if (!live.includes(String(old))) await transact('readwrite', (store) => store.delete(old));
     return (await transact('readonly', (store) => store.get(key))) || null;
   } catch {
     return null;
@@ -88,20 +90,20 @@ export async function stateDrop(key) {
     /* nothing to drop */
   }
 }
-// the last answer drawn, with the key it was drawn for (the solver's and data's fingerprints, the job and the places):
-// null when none is stored or anything fails
-/** @returns {Promise<{key: string, value: any}|null>} */
-export async function answerLoad() {
+// the last answer drawn per era (`slot`), with the key it was drawn for (the solver's and data's fingerprints, the job
+// and the places): null when none is stored or anything fails
+/** @param {string} slot @returns {Promise<{key: string, value: any}|null>} */
+export async function answerLoad(slot) {
   try {
-    return (await transact('readonly', (store) => store.get('last'), ANSWER)) || null;
+    return (await transact('readonly', (store) => store.get(`last:${slot}`), ANSWER)) || null;
   } catch {
     return null;
   }
 }
-/** @param {string} key @param {unknown} value */
-export async function answerSave(key, value) {
+/** @param {string} slot @param {string} key @param {unknown} value */
+export async function answerSave(slot, key, value) {
   try {
-    await transact('readwrite', (store) => store.put({ key, value }, 'last'), ANSWER);
+    await transact('readwrite', (store) => store.put({ key, value }, `last:${slot}`), ANSWER);
   } catch {
     /* quota, private mode, an answer that can't be cloned: the next load plans */
   }

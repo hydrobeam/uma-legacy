@@ -423,7 +423,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .swrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 14px; }
 .swrow > :not(.swcards) { min-height: 64px; display: inline-flex; align-items: center; }
 .swrow > .swho { padding-right: 14px; border-right: 2px solid var(--line); }   /* whose deck | its cards */
-.swcards { display: flex; align-items: flex-start; gap: 10px; }
+.swcards, .swto { display: flex; align-items: flex-start; gap: 10px; }   /* .swto: the arrow and the cards that come in, kept together */
 .swc { display: inline-flex; align-items: flex-start; gap: 6px; }
 .swc .dc { width: 64px; }
 .swout .dc .cav { filter: grayscale(1); opacity: .5; }   /* the card that goes: its art greyed (its caption stays legible) */
@@ -526,7 +526,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .rankctl { position: relative; }   /* the ? popup hangs below the whole control, not over it */
 .gpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: max-content; max-width: 240px; padding: 8px 10px; font-size: 0.8rem; line-height: 1.4;
   color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
-@media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swa { height: 52px; } .swrow > :not(.swcards) { min-height: 52px; } .swrow > .swho { padding-right: 8px; } .swrow { gap: 6px 8px; } }   /* phone: a swap row fits on one line beside its (i) */
+@media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swa { height: 52px; } .swrow > :not(.swcards) { min-height: 52px; } .swrow > .swho { padding-right: 8px; } .swrow { gap: 6px 8px; } .swcards { flex-wrap: wrap; row-gap: 6px; } }   /* phone: a swap row fits on one line beside its (i); three cards out and in wrap the incoming ones under */
 /* affinity popup: the formula, and umas as portraits whose names show on hover, focus or tap */
 .afx { display: grid; gap: 4px; margin-bottom: 6px; }
 .afx p { margin: 0; }

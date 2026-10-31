@@ -32,8 +32,14 @@ function loadSaved() {
 export const SAVED = loadSaved();
 for (const part of ['common', 'global', 'gm']) SAVED[part] = SAVED[part] || {};
 export const ERA = SAVED.era === 'gm' ? 'gm' : 'global';
-export function persist() {
+// A write replaces only what this tab owns over what is stored now: the shared settings, its era's part (and `parts`,
+// an import's other era), and the era when this tab switches it. Another tab's era survives this tab's write.
+/** @param {string[]} [parts] */
+export function persist(parts = []) {
+  const stored = loadSaved();
+  for (const part of ['common', ERA, ...parts]) stored[part] = SAVED[part];
+  if (SAVED.era !== ERA) stored.era = SAVED.era;
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(SAVED));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(stored));
   } catch {}
 }

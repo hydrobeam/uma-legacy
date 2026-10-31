@@ -44,7 +44,7 @@ const STORAGE_KEY = 'llp:career',
   STORAGE_VERSION = 2;
 // stars of a skill added by hand: 2, the most common star count of a white spark at SS rank (70% at rank score 17,500+,
 // 45% below it; hakuraku.moe)
-export const NEW_STARS = 2;
+const NEW_STARS = 2;
 function loadAll() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -58,8 +58,7 @@ function loadAll() {
   } catch {}
   return { v: STORAGE_VERSION };
 }
-const ALL = loadAll(),
-  MINE = ALL[ERA] || {};
+const MINE = loadAll()[ERA] || {};
 /** a record the page can show and the solver can read: an id and two parent nodes (a damaged one is left out)
  * @param {any} v @returns {boolean} */
 export const isVeteran = (v) =>
@@ -68,12 +67,21 @@ export const isVeteran = (v) =>
   Array.isArray(v.parents) &&
   v.parents.length === 2 &&
   v.parents.every((p) => !!p && typeof p === 'object');
+const isMap = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+/** a stored or pasted lineage node with the fields the page draws, defaulted when missing or of the wrong kind (an
+ * older save, a hand-edited or cut export)
+ * @param {any} n @returns {LineageNode} */
+const asNode = (n) => ({
+  ...n,
+  chara: Number.isInteger(n.chara) ? n.chara : null,
+  sparks: isMap(n.sparks) ? n.sparks : {},
+  pinks: isMap(n.pinks) ? n.pinks : {},
+  wins: Array.isArray(n.wins) ? n.wins : [],
+});
+/** @param {any} v @returns {Veteran} */
+export const asVeteran = (v) => ({ ...v, ...asNode(v), parents: v.parents.map(asNode) });
 /** @type {Veteran[]} every veteran of this era; a veteran's number on the page is her index here plus one */
-export const vets = (MINE.vets || []).filter(isVeteran).map((v) => ({
-  pinks: {},
-  ...v,
-  parents: v.parents.map((p) => ({ pinks: {}, ...p })),
-}));
+export const vets = (MINE.vets || []).filter(isVeteran).map(asVeteran);
 /** @type {LineagePlan} */
 export const plan = MINE.plan || { trainee: null, parents: [null, null] };
 /** @typedef {{places: string, id: string, setup: string}} ChosenCareer */
@@ -90,14 +98,16 @@ let persistDue = false,
   rev = 0;
 export function persist() {
   persistDue = false;
-  // (uma.moe's listings come back from its kept answer; one chosen as a parent is saved, so the place keeps her)
-  ALL[ERA] = {
+  // (uma.moe's listings come back from its kept answer; one chosen as a parent is saved, so the place keeps her). Only
+  // this era is written over what is stored now: another tab's write to the other era survives this tab's.
+  const all = loadAll();
+  all[ERA] = {
     vets: vets.filter((v) => v.src !== 'umamoe' || plan.parents.includes(v.id)),
     plan,
     chosen: chosen.career,
   };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ALL));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
   } catch {}
 }
 export function persistSoon() {
@@ -751,8 +761,14 @@ export function newVet(chara, sparks) {
     wins: [],
     parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, blues: {}, greens: {}, wins: [] })),
   };
-  vets.push(v);
+  append(v);
   return v;
+}
+// a veteran joins the pool before uma.moe's listings, which a new answer replaces at the end, so her number keeps
+/** @param {...Veteran} list */
+function append(...list) {
+  const at = vets.findIndex((v) => v.src === 'umamoe');
+  vets.splice(at < 0 ? vets.length : at, 0, ...list);
 }
 // an import never loses one of your veterans: yours merge by id (a veteran already here takes the file's version in
 // her place, new ones go after your other imports), while borrowed ones replace the earlier borrow list (it is who
@@ -796,7 +812,7 @@ export function importVets(list, all = false) {
     for (const v of borrowed) {
       const old = vetById(v.id);
       if (old) update(old, v);
-      else vets.push(v);
+      else append(v);
     }
   }
   dropMissing();
@@ -853,7 +869,7 @@ export function setListings(list) {
 // veterans from an uma.moe tree, or the samples: added after the others (the numbers you have keep)
 /** @param {Veteran[]} list */
 export function addVets(list) {
-  vets.push(...list);
+  append(...list);
   changed();
 }
 /** @param {number} i her index in `vets` */
@@ -894,6 +910,6 @@ export function legaciesJob() {
 const pairs = (sparks) => Object.entries(sparks || {}).map(([group, stars]) => [+group, stars]);
 /** @type {(n: LineageNode) => JobNode} */
 const jobNode = (n) => ({ chara: n.chara || 0, sparks: pairs(n.sparks), pinks: pairs(n.pinks), wins: n.wins });
-// one veteran as the job takes her (also one not in the pool: an uma.moe listing being ranked)
+// one veteran as the job takes her
 /** @param {Veteran} v @returns {JobLegacy} */
-export const jobLegacy = (v) => ({ ...jobNode(v), borrowed: !!v.borrowed, parents: v.parents.map(jobNode) });
+const jobLegacy = (v) => ({ ...jobNode(v), borrowed: !!v.borrowed, parents: v.parents.map(jobNode) });

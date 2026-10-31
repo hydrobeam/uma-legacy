@@ -114,8 +114,9 @@ const KIND_ABBR = {
   other: '·',
 };
 const RARITY_CLASS = { 3: 'ssr', 2: 'sr', 1: 'r' };
-/** @param {import('./data.js').Card|null} c @param {number} size in px @returns {HTMLSpanElement} */
-export function cardAv(c, size) {
+// `titled`: its own hover names (the card's name, its type); off inside a chip whose title says more
+/** @param {import('./data.js').Card|null} c @param {number} size in px @param {boolean} [titled] @returns {HTMLSpanElement} */
+export function cardAv(c, size, titled = true) {
   const tile = document.createElement('span');
   tile.className = 'cav';
   tile.style.width = tile.style.height = `${size}px`;
@@ -124,7 +125,7 @@ export function cardAv(c, size) {
   tile.style.setProperty('--k', `var(--k-${kind})`);
   tile.style.setProperty('--rr', c ? `var(--r-${RARITY_CLASS[c.rar] || 'r'})` : 'transparent');
   tile.textContent = KIND_ABBR[kind] || '·';
-  tile.title = c ? c.name : '';
+  if (titled) tile.title = c ? c.name : '';
   const src = c && srcFor('card', c.id);
   if (src) {
     const image = new Image();
@@ -143,7 +144,7 @@ export function cardAv(c, size) {
     if (typeIcon) {
       const i = document.createElement('i');
       i.className = 'ctype';
-      i.title = kind;
+      if (titled) i.title = kind;
       i.style.backgroundImage = `url(${typeIcon})`;
       tile.appendChild(i);
     }

@@ -183,7 +183,7 @@ const turnName = (turn) => `${YEARS[(turn / 24) | 0]} Year, ${turn % 2 ? 'Late' 
 // On the planner pages (html.game) it is the game's Scheduled Races, all three years side by side: each year 4 x 6 slots, Junior's
 // first three rows the game's grey cells for April to June (labelled as the game labels them, each half-month twice).
 /** @param {(year: number, slot: number, cell: HTMLElement) => void} fill @returns {HTMLDivElement} */
-export function agendaGrid(fill) {
+function agendaGrid(fill) {
   const game = document.documentElement.classList.contains('game');
   const ag = document.createElement('div');
   ag.className = `agenda${game ? ' game' : ''}`;
