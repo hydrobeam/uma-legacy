@@ -1045,7 +1045,12 @@ chain would have taken when it ends early.
 - **No scenario effect and no Sasami Anshinzawa [This Might Sting!] effect is detectable on top of the budget.** Her
   decks get more chain events, but they also carry more pals, and the pal count accounts for the difference. Not
   detecting an effect does not show there is none; the tests' numbers are in the evidence below.
-- **Known misses.** Inari One's careers get fewer chain events than the budget predicts; early links run short at 3
+- **Group cards are not pals for the budget** (**tested**). Counted as pals, the budget predicts unseen careers
+  {{8.group_cards_counted_as_pals_held_out_over_left_out_nats|u+.1f}} nats worse; each group card's own term on top of the budget lies below a pal's $b$, and Heirs to the
+  Throne [Esteemed and Adored]'s below zero too (*Group cards* below). This is tested on the two group cards in the runs; for any other group card, such as
+  Progenitors and Guides [Chasing Eternal Glory] on the JP data, the model assumes the same.
+- **Known misses.** Inari One's careers get fewer chain events than the budget predicts, and so do decks with Heirs to the
+  Throne [Esteemed and Adored], which the model counts as having no effect; early links run short at 3
   pals and long at 1; with five chain cards, chains that never start are slightly over-predicted. The causes are
   unknown.
 
@@ -1308,6 +1313,20 @@ but $n$ and $p$ trade off along a ridge, so the budget keeps $n = 21$ and lets $
 Without the budget, Sasami's decks fit $p$ = {{8.sasami_anshinzawa_s_card_p_at_n_21|.3f}} against
 {{8.sasami_anshinzawa_s_card_p_at_n_21_the_other_runs|.3f}} for the other runs; with it, her own term is not
 distinguishable from zero.
+
+*Group cards.* Each group card's own term on the logit, on top of the budget (95% profile range: the budget re-fitted at
+each fixed term), against a pal card's $b$ = {{8.pal_count_budget_b|+.3f}}:
+
+| Card | Runs | Own term [95%] | Likelihood-ratio $p$ |
+|---|---|---|---|
+| Heirs to the Throne [Esteemed and Adored] | {{8.heirs_to_the_throne_esteemed_and_adored_runs|,.0f}} | {{8.heirs_to_the_throne_esteemed_and_adored_own_term_on_the_pal_count_budget|u+.3f}} [{{8.heirs_to_the_throne_esteemed_and_adored_own_term_95_pct_profile_low|u+.2f}}, {{8.heirs_to_the_throne_esteemed_and_adored_own_term_95_pct_profile_high|u+.2f}}] | {{8.heirs_to_the_throne_esteemed_and_adored_own_term_on_the_pal_count_budget_lr_p|.2g}} |
+| Team Sirius [Passing the Dream On] | {{8.team_sirius_passing_the_dream_on_runs|,.0f}} | {{8.team_sirius_passing_the_dream_on_own_term_on_the_pal_count_budget|u+.3f}} [{{8.team_sirius_passing_the_dream_on_own_term_95_pct_profile_low|u+.2f}}, {{8.team_sirius_passing_the_dream_on_own_term_95_pct_profile_high|u+.2f}}] | {{8.team_sirius_passing_the_dream_on_own_term_on_the_pal_count_budget_lr_p|.2g}} |
+
+Counting them as pals instead loses {{8.group_cards_counted_as_pals_in_sample_nats_over_left_out|u+.1f}} nats in-sample and
+{{8.group_cards_counted_as_pals_held_out_over_left_out_nats|u+.1f}} held out (SE {{8.group_cards_counted_as_pals_held_out_over_left_out_se|.1f}}, $z$ = {{8.group_cards_counted_as_pals_held_out_over_left_out_z|u+.1f}}) on the
+{{8.group_cards_runs_with_one|,.0f}} runs with one. Decks with Heirs to the Throne carry more pals besides it, so
+counting it as one flattens $b$ and fits every deck worse. Why pal cards raise $N$ is not known; the fit shows only that
+these two group cards do not.
 
 *Scenarios.* No scenario effect is detectable on top of the budget: an intercept per scenario gains
 {{8.per_scenario_on_the_pal_count_budget_log_likelihood_gain|.1f}} nats for

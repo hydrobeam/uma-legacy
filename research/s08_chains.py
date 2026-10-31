@@ -18,6 +18,7 @@ model, Binomial(21, 0.35) with the card picked by links left, is the baseline th
     ratio (the thresholds used are in fit_findings); the same fit per scenario (scenarios with 30+ runs) against one N;
   - the pal-count budget (logit p = a + b x pals at n = CHAIN_N, pals excluding group cards): its fit, a scenario
     intercept and the own terms of Sasami Anshinzawa [This Might Sting!]'s decks and Inari One's careers on top of it;
+    each group card's own term (with its profile range) and, held out, group cards counted as pals (group_card_claims);
   - held out (5-fold): the free distribution, the binomial by likelihood, the budget and the budget with the slot rule
     against today's model and against each other (held_out); the budget against today's model with every fitted
     nuisance measured on the training folds only (nested_held_out);
@@ -123,6 +124,11 @@ ALL: set[int] = {0, 1, 2, 3, 4, 5}  # pal counts of decks with a chain card
 CHI1: float = 1.920729  # chi2(1) 95% / 2
 ANSHINZAWA: int = 30080  # [This Might Sting!] Sasami Anshinzawa, a pal card: decks with her reach more chain events
 INARI: int = 1034  # Inari One: her careers reach fewer
+# the group cards in the runs: pals for a deck's make-up, left out of the budget's pal count
+GROUP_CARDS: dict[int, str] = {
+    30067: "Heirs to the Throne [Esteemed and Adored]",
+    30081: "Team Sirius [Passing the Dream On]",
+}
 MISC: dict[Any, Any] = {}  # numbers the findings and the detail use that the document does not state
 RULE: str = "cards"  # the model's allocation: each chain event goes to a running chain card, all equally likely
 STOP_SHARE: float = 1 / 3  # every default-choice stop risk ends the chain on this share of its firings (profile_claims)
@@ -470,16 +476,21 @@ def budget_rows(pal_counts: np.ndarray, a: float, b: float) -> np.ndarray:
 
 
 def budget_fit(
-    M: np.ndarray, pal_counts: np.ndarray, extra: np.ndarray | None = None, start: Sequence[float] | None = None
+    M: np.ndarray,
+    pal_counts: np.ndarray,
+    extra: np.ndarray | None = None,
+    start: Sequence[float] | None = None,
+    offset: np.ndarray | None = None,
 ) -> tuple[np.ndarray, float]:
     """the pal-count budget fitted by likelihood: (a, b, c...) and the log-likelihood; `extra` (one indicator, or one
     column per indicator) adds a coefficient c each to the logit (a group's own effect on top of the pal count); `start`
-    is the search's starting (a, b), by default one p = CP"""
+    is the search's starting (a, b), by default one p = CP; `offset` is a fixed per-run term on the logit (a profile)"""
     cols = [np.ones(len(M)), pal_counts] + ([extra] if extra is not None else [])
     X = np.column_stack(cols)
+    off = np.zeros(len(M)) if offset is None else offset
 
     def nll(beta: np.ndarray) -> float:
-        p = np.clip(1 / (1 + np.exp(-(X @ beta))), 1e-9, 1 - 1e-9)
+        p = np.clip(1 / (1 + np.exp(-(X @ beta + off))), 1e-9, 1 - 1e-9)
         body = binom.pmf(np.arange(KMAX)[None, :], CN, p[:, None])
         rows = np.hstack([body, np.maximum(0.0, 1 - body.sum(1, keepdims=True))])
         return -float(np.log(np.maximum(1e-300, (M * rows).sum(1))).sum())
@@ -634,6 +645,7 @@ def fit_claims() -> list[common.Value | common.Finding]:
         V("Conway-Maxwell-Poisson: LR p", float(chi2.sf(2 * (llp - l_cmp), KMAX - 2))),
         V("best binomial n free over Conway-Maxwell-Poisson: nats", lb - l_cmp, note="two parameters each"),
         *property_claims(xs, M),
+        *group_card_claims(xs, M),
     ]
     by: collections.defaultdict[int, list[int]] = collections.defaultdict(list)  # scenario -> row indices
     for i, x in enumerate(xs):
@@ -718,6 +730,52 @@ def property_claims(xs: list[Row], M: np.ndarray) -> list[common.Value | common.
             note=f"{KMAX} nominal df; {g.sum()} runs",
         )
     )
+    return out
+
+
+def profile_edge(M: np.ndarray, P: np.ndarray, g: np.ndarray, c: float, l_c: float, step: float) -> float:
+    """the last term on a 0.01 grid, walking from the fitted term c by `step`, whose profile (the budget re-fitted with
+    the term fixed) stays within CHI1 of the best l_c: one end of the 95% profile range"""
+    t = round(c, 2)
+    while l_c - budget_fit(M, P, offset=(t + step) * g)[1] <= CHI1:
+        t = round(t + step, 2)
+    return t
+
+
+def group_card_claims(xs: list[Row], M: np.ndarray) -> list[common.Value | common.Finding]:
+    """the group cards in the runs (GROUP_CARDS), each its own term on the pal-count budget: the term, its likelihood
+    ratio p and its 95% profile range (profile_edge); then held out (5-fold) the
+    budget with group cards counted as pals against the model's, which leaves them out"""
+    P = np.array([budget_pals(x.run) for x in xs], float)
+    _, l_0 = budget_fit(M, P)
+    with_group = np.zeros(len(xs))
+    out: list[common.Value | common.Finding] = []
+    for cid, nm in GROUP_CARDS.items():
+        g = np.array([any(c == cid for c, _, _ in x.run["deck"]) for x in xs], float)
+        with_group += g
+        (_, _, c), l_c = budget_fit(M, P, g)
+        inside = [profile_edge(M, P, g, c, l_c, step) for step in (-0.01, 0.01)]
+        out += [
+            V(f"{nm}: runs", int(g.sum())),
+            V(f"{nm}: own term on the pal-count budget", c),
+            V(f"{nm}: own term on the pal-count budget, LR p", float(chi2.sf(2 * max(0.0, l_c - l_0), 1))),
+            V(f"{nm}: own term, 95% profile low", min(inside)),
+            V(f"{nm}: own term, 95% profile high", max(inside)),
+        ]
+    counted = P + with_group
+    folds = np.array([common.fold(x.run["id"]) for x in xs])
+    per = {f: np.zeros(len(xs)) for f in ("counted", "left out")}
+    for k in range(common.K_FOLDS):
+        train, test = folds != k, folds == k
+        for f, pals_ in (("counted", counted), ("left out", P)):
+            (a, b), _ = budget_fit(M[train], pals_[train])
+            per[f][test] = np.log(np.maximum(1e-300, (M[test] * budget_rows(pals_[test], a, b)).sum(1)))
+    ho = common.compare_held_out(per["counted"], per["left out"])
+    out += [
+        V("group cards: runs with one", int((with_group > 0).sum())),
+        V("group cards counted as pals: in-sample nats over left out", budget_fit(M, counted)[1] - l_0),
+        *[V(f"group cards counted as pals, held out over left out: {w}", x) for w, x in zip(("nats", "SE", "z"), ho)],
+    ]
     return out
 
 
@@ -1908,6 +1966,32 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
             and g[f"{i_}: own term on the pal-count budget, LR p"] < 0.05,
             f"own term {g[f'{i_}: own term on the pal-count budget']:+.3f}, LR p "
             f"{g[f'{i_}: own term on the pal-count budget, LR p']:.2g} on {g[f'{i_}: runs']:.0f} runs",
+        )
+    )
+    terms = {nm: g[f"{nm}: own term on the pal-count budget"] for nm in GROUP_CARDS.values()}
+    fs.append(
+        F(
+            "Group cards do not raise N as pal cards do: counted as pals, the budget predicts unseen runs worse (held "
+            "out z < -2), and each group card's own term has its 95% profile range below the pal slope b",
+            g["group cards counted as pals, held out over left out: z"] < -2
+            and all(g[f"{nm}: own term, 95% profile high"] < g["pal-count budget: b"] for nm in terms),
+            f"counted as pals {g['group cards counted as pals, held out over left out: nats']:+.1f} nats held out (SE "
+            f"{g['group cards counted as pals, held out over left out: SE']:.1f}) on {g['group cards: runs with one']:.0f} "
+            f"runs with one; b {g['pal-count budget: b']:+.3f}; "
+            + "; ".join(
+                f"{nm} {t:+.3f} [{g[f'{nm}: own term, 95% profile low']:+.2f}, {g[f'{nm}: own term, 95% profile high']:+.2f}]"
+                for nm, t in terms.items()
+            ),
+        )
+    )
+    h_ = GROUP_CARDS[30067]
+    fs.append(
+        F(
+            f"Known miss: decks with {h_} reach fewer chain events than the pal-count budget predicts (its own term "
+            "below zero, LR p < 0.05)",
+            terms[h_] < 0 and g[f"{h_}: own term on the pal-count budget, LR p"] < 0.05,
+            f"own term {terms[h_]:+.3f}, LR p {g[f'{h_}: own term on the pal-count budget, LR p']:.2g} on "
+            f"{g[f'{h_}: runs']:.0f} runs",
         )
     )
     pg_ = g["Poisson(7.1): nats behind distribution-free"]
