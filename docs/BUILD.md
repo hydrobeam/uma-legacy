@@ -168,11 +168,16 @@ IndexedDB.
 ## Tests
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
-- **Browser suite:** `./build.sh test` runs `webapp/nodebrowser.mjs` against `webapp/dist` (or `LLP_URL`) in Chromium
-  and Firefox, test groups in parallel (`LLP_JOBS` per browser, default 4; `node webapp/nodebrowser.mjs chromium
-  roster` runs one group; each group is a module in `webapp/test/`, shared helpers in `webapp/test/helpers.mjs`).
-  `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier (Chromium,
-  each page's core path, about 10 s): run it after each page change, and the full suite before a release.
+- **Browser suite:** `./build.sh test` runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
+  `playwright` package) against `webapp/dist` (or `LLP_URL`) in Chromium and Firefox, test groups in parallel
+  (`LLP_JOBS` per browser, default 4). Each group is a module in `webapp/test/` and one test of
+  `webapp/test/groups.spec.mjs`; each check is a step of its test, a failed one a soft failure (the group goes on), a
+  throw ends the group. Shared helpers are in `webapp/test/helpers.mjs`. One group: `cd webapp && npx playwright test
+  --project chromium -g roster` (`-g` is a regular expression over the titles). A failed test keeps its trace
+  (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
+  `webapp/test-results/report.json`. `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier
+  (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its one-run answer; about 15 s): run it
+  after each page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` runs the 25 reference jobs in `val/jobs.json` (21 deck jobs, shared and per-uma
   decks, and 4 career jobs; every job leaves out the R cards that are not pals, as the page does) and compares them with `val/ref__*` / `val/refpu__*` (`val/cmp2.py`); `valq TAG` skips the
   three slow jobs in `val/slow.json`. When results move on purpose, check the diff and copy the new outputs over the
@@ -310,8 +315,8 @@ uma-legacy --production-branch main --force` (`--force` keeps it on classic Page
 to Workers-based Pages and failed).
 
 Check a deploy on its own address (`https://<hash>.uma-legacy.pages.dev`, printed by wrangler), e.g.
-`LLP_URL=https://<hash>.uma-legacy.pages.dev node webapp/nodebrowser.mjs quick`: the branch addresses cache HTML for 5
-minutes and can serve the previous page until then.
+`cd webapp && LLP_URL=https://<hash>.uma-legacy.pages.dev LLP_QUICK=1 npx playwright test --project chromium --grep
+@quick`: the branch addresses cache HTML for 5 minutes and can serve the previous page until then.
 
 ## Layout
 

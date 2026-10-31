@@ -16,7 +16,8 @@
 #   images   character icons and card art from the game's decrypted bundles (game/) into webapp/img
 #            (only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   browsers Playwright's Chromium and Firefox into webapp/node_modules (once; run by test, testq and runners)
-#   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox): releases
+#   test     browser regression suite on webapp/dist, served locally (Playwright Test, webapp/playwright.config.mjs;
+#            Chromium + Firefox): releases
 #   testq    its fast tier (Chromium, each page's core path, under a minute): after each page change
 #   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
 #   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
@@ -92,8 +93,8 @@ step_wasm() {
 }
 step_browsers() { step_npm; local B="$W/node_modules/playwright-core/.local-browsers"
   ls -d "$B"/chromium-* "$B"/firefox-* >/dev/null 2>&1 || (cd "$W" && npx playwright install chromium firefox); }
-step_test() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check test; step_browsers; node "$W/nodebrowser.mjs"; }
-step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check testq; step_browsers; node "$W/nodebrowser.mjs" quick; }
+step_test() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check test; step_browsers; (cd "$W" && npx playwright test); }
+step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check testq; step_browsers; (cd "$W" && LLP_QUICK=1 npx playwright test --project chromium --grep @quick); }
 step_serve() { MISSING=(); need_cmd node "$TOOLS_NODE"; need "webapp/dist/index.html: the built page (./build.sh)"; check serve; node "$W/serve.mjs" "${PORT:-8000}"; }
 # Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
 step_deploy() {

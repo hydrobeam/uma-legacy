@@ -39,7 +39,7 @@
 !/webapp/example.mjs
 !/webapp/example.json
 !/webapp/nodebench.mjs
-!/webapp/nodebrowser.mjs
+!/webapp/playwright.config.mjs
 !/webapp/serve.mjs
 !/webapp/images.py
 !/webapp/icons.py

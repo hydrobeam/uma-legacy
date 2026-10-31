@@ -1,6 +1,6 @@
 // Minimal static server for dist/ (the page fetches loopopt.wasm and img/, so it is served, not opened as a file).
-//   node webapp/serve.mjs [port]      serves webapp/dist on http://localhost:<port> (default 8000)
-// Also imported by the browser suite (serveDist), which serves on a free port.
+//   node webapp/serve.mjs [port] [host]   serves webapp/dist on http://<host>:<port> (default localhost:8000)
+// The browser suite (playwright.config.mjs) starts it on a free port at 127.0.0.1.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +22,7 @@ const TYPES = {
   '.png': 'image/png',
 };
 
-export function serveDist(port = 0, host = '127.0.0.1') {
+function serveDist(port, host) {
   const server = http.createServer((req, res) => {
     let urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (urlPath.endsWith('/')) urlPath += 'index.html';
@@ -53,6 +53,6 @@ export function serveDist(port = 0, host = '127.0.0.1') {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { url } = await serveDist(+(process.argv[2] || 8000), 'localhost');
+  const { url } = await serveDist(+(process.argv[2] || 8000), process.argv[3] || 'localhost');
   console.log(`serving ${DIST} on ${url}  (Ctrl+C to stop)`);
 }

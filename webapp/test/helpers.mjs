@@ -1,43 +1,39 @@
-// What the browser suite's groups share (webapp/nodebrowser.mjs runs them): the page under test, the check log and its
-// counts, the time profile, opening a page with the worker hooks, waits on the page's own state, the in-page audits
-// (contrast, pill tracks, sideways scroll), the career page's fixture, and the data the checks read from the repo.
-import { AsyncLocalStorage } from 'node:async_hooks';
+// What the browser suite's groups share (Playwright Test runs them: playwright.config.mjs, test/groups.spec.mjs): the page
+// under test, the checks, the time profile, opening a page with the worker hooks, waits on the page's own state, the
+// in-page audits (contrast, pill tracks, sideways scroll), the career page's fixture, and the data the checks read from
+// the repo.
 import fs from 'node:fs';
-import { serveDist } from '../serve.mjs';
+import { expect, test } from 'playwright/test';
 
 // ---------- the page under test and the run's mode
-const local = process.env.LLP_URL ? null : await serveDist();
-/** The planner's address: LLP_URL, or webapp/dist served on a free local port. */
-export const PAGE_URL = process.env.LLP_URL || local.url;
+/** The planner's address: LLP_URL, or webapp/dist served on a free local port (playwright.config.mjs sets both). */
+export const PAGE_URL = process.env.LLP_PAGE;
 /** The loop planner's address (the career planner is the front page, PAGE_URL itself). */
 export const LOOP_URL = `${PAGE_URL.replace(/\/?$/, '/')}loop`;
-/** The fast tier (`quick`; ./build.sh testq): the career group stops at its one-run answer. */
-export const QUICK = process.argv.slice(2).includes('quick');
+/** The fast tier (LLP_QUICK=1; ./build.sh testq): career stops at its one-run answer, contrast checks light only. */
+export const QUICK = !!process.env.LLP_QUICK;
 const REPO_ROOT = new URL('../../', import.meta.url);
 /** A file of the repository (data the page was built from, the solver's sources, validation outputs) as a file URL. */
 export const repoUrl = (relative) => new URL(relative, REPO_ROOT);
 
-// ---------- the check log
-/** The run's check counts, over every browser and group. */
-export const tally = { passed: 0, failed: 0, skipped: 0 };
-/**
- * @typedef {object} GroupLog  the running group's record (groups run in parallel; each prints when it ends)
- * @property {string[]} lines  its check lines, in order
- * @property {Record<string, number|string[]>|null} prof  where its time went (LLP_PROF), else null: milliseconds per
- *   key (`timed`'s keys, `solver:<job kind>`) and each key's count under `<key>#`; `solverLog` lists each job's time
- */
-/** @type {AsyncLocalStorage<GroupLog>} */
-export const groupLog = new AsyncLocalStorage();
-export const say = (line) => {
-  const log = groupLog.getStore();
-  if (log) log.lines.push(line);
-  else console.log(line);
-};
-export const check = (name, ok, detail = '') => {
-  if (ok) tally.passed++;
-  else tally.failed++;
-  say(`${ok ? '  ok  ' : '  FAIL'} ${name}${detail ? ' · ' + detail : ''}`);
-};
+// ---------- the checks: each a step of its group's test, so the report lists it; a failed one is a soft failure (the
+// group goes on, the test fails at its end)
+/** Where the check was called from: the first stack frame outside this file (the step's place in the report). */
+function caller() {
+  const here = new URL(import.meta.url).pathname;
+  for (const line of new Error().stack.split('\n').slice(1)) {
+    const m = line.match(/(?:file:\/\/)?(\/[^():]+):(\d+):(\d+)\)?$/);
+    if (m && m[1] !== here) return { file: m[1], line: +m[2], column: +m[3] };
+  }
+}
+export const check = (name, ok, detail = '') =>
+  test.step(
+    name,
+    () => {
+      expect.soft(ok, `${name}${detail ? ' · ' + detail : ''}`).toBeTruthy();
+    },
+    { location: caller() },
+  );
 // Whether the build carries the game art: a clone without game files builds with initials in place of pictures, so
 // checks of the art itself are skipped and the contrast audits leave out the initials that stand in for card art.
 const ASSETS = new URL('../dist/assets/', import.meta.url);
@@ -52,10 +48,17 @@ export const ART =
       return false;
     }
   })();
-/** A check that did not run, booked with why (so the tally shows it). */
+/** A check that did not run, with why: a skipped step, a `skipped check` annotation on its test, and a line on stdout. */
 export function skip(name, why) {
-  tally.skipped++;
-  say(`  skip ${name} · ${why}`);
+  test.info().annotations.push({ type: 'skipped check', description: `${name} · ${why}` });
+  console.log(`  skip ${name} · ${why}`);
+  return test.step(
+    name,
+    (step) => {
+      step.skip(true, why);
+    },
+    { location: caller() },
+  );
 }
 export function artCheck(name, ok, detail = '') {
   if (ART) check(name, ok, detail);
@@ -66,9 +69,34 @@ export const artless = (fails) => (ART ? fails : fails.filter((x) => !/^span\.ca
 // ---------- LLP_PROF=file: where each group's time goes (new contexts and page loads, waits for searches and plans, fixed
 // sleeps, contrast audits, and the solver's own time per job), one JSON line per group appended to the file
 export const PROF = process.env.LLP_PROF;
-const groupProfile = () => groupLog.getStore()?.prof;
+/** @type {Record<string, number|string[]>|null} the running group's profile (LLP_PROF), else null: milliseconds per key
+ * (`timed`'s keys, `solver:<job kind>`) and each key's count under `<key>#`; `solverLog` lists each job's time. A
+ * worker runs one group at a time. */
+let groupProf = null;
+/**
+ * Runs one group (groups.spec.mjs): its checks are steps of the running test; a throw ends the group and fails its
+ * test. With LLP_PROF, appends the group's profile line: browser, group, wall and start (ms from the run's start).
+ * @param {string} group @param {(browser: object) => Promise<void>} run @param {object} browser
+ */
+export async function runGroup(group, run, browser) {
+  groupProf = PROF ? {} : null;
+  const t0 = Date.now();
+  try {
+    await run(browser);
+  } finally {
+    if (PROF) {
+      const line = {
+        browser: browser.browserType().name(),
+        group,
+        wall: Date.now() - t0,
+        start: t0 - +process.env.LLP_T0,
+      };
+      fs.appendFileSync(PROF, JSON.stringify({ ...line, ...groupProf }) + '\n');
+    }
+  }
+}
 /** Adds the time until `promise` settles to the group's profile under `key` (and counts it); returns the promise. */
-const timed = (key, promise, prof = groupProfile()) => {
+const timed = (key, promise, prof = groupProf) => {
   if (!prof) return promise;
   const t0 = Date.now();
   return Promise.resolve(promise).finally(() => {
@@ -78,7 +106,7 @@ const timed = (key, promise, prof = groupProfile()) => {
 };
 async function profile(ctx, pg) {
   // the solver's time per job (the worker reports it with each result), fixed sleeps, audits
-  const prof = groupProfile();
+  const prof = groupProf;
   if (!prof) return;
   await ctx.exposeBinding('__llpSolved', (_, kind, ms) => {
     prof['solver:' + kind] = (prof['solver:' + kind] || 0) + ms;
