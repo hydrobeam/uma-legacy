@@ -7,7 +7,15 @@ import { $, $dialog, $input, $textarea, backdropCloses, el, esc, fmtIn } from '.
 import { ERA, SAVED } from './settings.js';
 import { UMAS, SK, CAREER, RANKS, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
-import { run, restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from './engine.js';
+import {
+  run as engineRun,
+  restartEngine,
+  engineBusy,
+  enginePersist,
+  engineSaveState,
+  nextKill,
+  stateKey,
+} from './engine.js';
 import { answerLoad, answerSave } from './statestore.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
@@ -76,17 +84,20 @@ const btn = (label, cls, fn) => {
 // One run per edit, one answer per run. A run has phases: the search (the best careers by odds), then, with the
 // trainee left to the planner, the plan (its pick among them and every other owned uma). The status line names the
 // phase at work; the answer (career, tree places, veteran analysis) is drawn once, when the run ends. Until then the
-// previous answer stays on screen, dimmed, its actions off.
-let searching = false,
-  phase = 'search',
-  phaseStart = 0,
-  secondsTick = null,
-  searchTimer = null,
-  runId = 0;
-let started = false; // a job of this run is under way (the pause before it dims nothing: an edit that ends where it started runs none)
-let phaseNote = ''; // the plan phase's lead: what the search found ("Weighed N careers in X s.")
-let planProgress = ''; // the plan's progress, as the solver reports it from inside the plan (`progText`)
-let inflight = null; // the run under way: its job and places (`runKey`); null when none is
+// previous answer stays on screen, dimmed, its actions off. The run machine's state is this one record, written only by
+// the functions that drive a run (`schedule`, `search`, `planPhase`, `endRun`); everything else reads it.
+const run = {
+  id: 0, // the run under way or last made; a newer edit's run makes an older one's work stale
+  searching: false, // a run is at work (from the edit, through its pause, to its answer)
+  started: false, // a job of this run is under way (the pause before it dims nothing: an edit that ends where it started runs none)
+  phase: 'search', // 'search' | 'plan': the phase at work
+  phaseStart: 0, // when the phase began (performance.now())
+  lead: '', // the plan phase's lead: what the search found ("Weighed N careers in X s.")
+  progress: '', // the plan's progress, as the solver reports it from inside the plan (`progText`)
+  inflight: null, // the run under way: its job and places (`runKey`); null when none is
+  tick: null, // the status line's one-second redraw while a job runs (setInterval)
+  timer: null, // the pause between an edit and its search (setTimeout)
+};
 // a job's key: its JSON with the legacies' apart, kept with the array `legaciesJob` returns (the same until an edit)
 let legaciesJson = { legacies: null, json: '' };
 const jobKey = (job) => {
@@ -364,12 +375,12 @@ let last = null;
 function paint() {
   const note = $('run-note');
   setRunner(plan.trainee || shown()?.trainee?.id); // the runner: the trainee you chose, else the career on show
-  $('rhead').dataset.kind = searching ? 'busy' : status.kind;
-  const dimmed = searching && started && !!shown(); // the previous answer, on screen until this run's
-  $('results').classList.toggle('stale', dimmed || (!searching && ['error', 'empty'].includes(status.kind)));
+  $('rhead').dataset.kind = run.searching ? 'busy' : status.kind;
+  const dimmed = run.searching && run.started && !!shown(); // the previous answer, on screen until this run's
+  $('results').classList.toggle('stale', dimmed || (!run.searching && ['error', 'empty'].includes(status.kind)));
   $('tree').classList.toggle('stale', dimmed);
-  $('results').setAttribute('aria-busy', String(searching));
-  if (searching) paintBusy(note);
+  $('results').setAttribute('aria-busy', String(run.searching));
+  if (run.searching) paintBusy(note);
   else {
     note.textContent = status.text + (status.kind === 'done' ? planNote() : '');
     // its actions, e.g. Import veterans and Try sample veterans (the last is #run-act)
@@ -384,19 +395,19 @@ function paint() {
 // the status line during a run: the search's lead (in the plan phase), the phase at work, the plan's progress and the
 // phase's seconds so far
 function paintBusy(note) {
-  const seconds = Math.floor((performance.now() - phaseStart) / 1000);
-  note.textContent = phase === 'plan' && phaseNote ? `${phaseNote} ` : '';
+  const seconds = Math.floor((performance.now() - run.phaseStart) / 1000);
+  note.textContent = run.phase === 'plan' && run.lead ? `${run.lead} ` : '';
   const line = el('span');
   line.innerHTML = runnerHTML();
   line.append(
-    phase === 'plan' ? 'Planning your next career…' : 'Searching careers…',
+    run.phase === 'plan' ? 'Planning your next career…' : 'Searching careers…',
     el('span', '', seconds >= 1 ? ` ${seconds} s` : ''),
   );
   /** @type {HTMLElement} */
   (line.lastChild).setAttribute('aria-hidden', 'true');
   // (the plan's progress, before the seconds; like them, not read out at every step)
-  if (phase === 'plan' && planProgress) {
-    const pg = el('span', 'runprog', ` (${planProgress})`);
+  if (run.phase === 'plan' && run.progress) {
+    const pg = el('span', 'runprog', ` (${run.progress})`);
     pg.setAttribute('aria-hidden', 'true');
     line.insertBefore(pg, line.lastChild);
   }
@@ -427,14 +438,14 @@ function schedule() {
   }
   if (
     key !== null &&
-    (inflight
-      ? inflight === key
-      : !searching && last && `${last.key}\n${last.plan}` === key && planState.state !== 'error')
+    (run.inflight
+      ? run.inflight === key
+      : !run.searching && last && `${last.key}\n${last.plan}` === key && planState.state !== 'error')
   )
     return;
-  clearTimeout(searchTimer);
-  runId++;
-  inflight = null;
+  clearTimeout(run.timer);
+  run.id++;
+  run.inflight = null;
   // only a job in flight is cut short: an idle worker keeps what it holds for the next jobs (the last search, every
   // uma's best career, the proofs); during the pause before a search nothing runs, so a second edit kills nothing
   if (engineBusy()) restartEngine();
@@ -443,13 +454,13 @@ function schedule() {
   simulationId++;
   if (simulation.state === 'busy') Object.assign(simulation, { state: 'ready', r: null, kind: null });
   Object.assign(simulation, { refining: false, provisional: false, standing: false });
-  searching = true;
-  started = false;
-  phase = 'search';
-  phaseNote = '';
-  phaseStart = performance.now();
+  run.searching = true;
+  run.started = false;
+  run.phase = 'search';
+  run.lead = '';
+  run.phaseStart = performance.now();
   paint();
-  searchTimer = setTimeout(search, 600);
+  run.timer = setTimeout(search, 600);
 }
 
 // ---------- the job ----------
@@ -663,7 +674,7 @@ function oneOutfit(t) {
 }
 /** @type {(job: CareerJob, progress?: (p: import('./engine.js').PlanProgress) => void, background?: boolean) => Promise<{r: CareerSearch, ms: number}>} */
 const runJob = async (job, progress, background = false) => {
-  const m = await run(job, undefined, progress, background),
+  const m = await engineRun(job, undefined, progress, background),
     r = m.r || {};
   for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
   // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
@@ -722,7 +733,7 @@ function comparisonJob() {
 // plan job does none of that work again; a second job costs a few ms), and the page knows which phase is at work
 // without the solver reporting it. A newer edit stops a run in either phase (`runId`); nothing of it is drawn.
 async function search() {
-  const id = ++runId;
+  const id = ++run.id;
   simulationId++;
   let job;
   try {
@@ -742,8 +753,8 @@ async function search() {
     places = placesKey(),
     answerKey = `${key}\n${places}`;
   if (last && last.key === key && last.plan === places && planState.state !== 'error') {
-    searching = false;
-    clearInterval(secondsTick);
+    run.searching = false;
+    clearInterval(run.tick);
     renderAll();
     paint();
     resumeCheck(id);
@@ -756,22 +767,22 @@ async function search() {
     ({ status, last, planState } = hit);
     const r = shown();
     simulation = simulationFor(r);
-    searching = false;
-    clearInterval(secondsTick);
+    run.searching = false;
+    clearInterval(run.tick);
     renderAll();
     paint();
     resumeCheck(id);
     return;
   }
-  searching = true;
-  started = true;
-  inflight = answerKey;
-  phase = 'search';
-  phaseNote = '';
-  planProgress = '';
-  phaseStart = performance.now();
-  clearInterval(secondsTick);
-  secondsTick = setInterval(paint, 1000);
+  run.searching = true;
+  run.started = true;
+  run.inflight = answerKey;
+  run.phase = 'search';
+  run.lead = '';
+  run.progress = '';
+  run.phaseStart = performance.now();
+  clearInterval(run.tick);
+  run.tick = setInterval(paint, 1000);
   paint();
   const fail = (text) => {
     status = { kind: 'error', text };
@@ -783,7 +794,7 @@ async function search() {
   let checkFor = null;
   try {
     const m = await runJob(job);
-    if (id !== runId) return;
+    if (id !== run.id) return;
     if (m.r.error) fail(`Not searched: ${m.r.error}`);
     else {
       const found = searchedText(m),
@@ -811,12 +822,12 @@ async function search() {
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
     }
   } catch (e) {
-    if (id !== runId) return;
+    if (id !== run.id) return;
     fail(e.message);
   }
-  searching = false;
-  inflight = null;
-  clearInterval(secondsTick);
+  run.searching = false;
+  run.inflight = null;
+  clearInterval(run.tick);
   renderAll();
   paint();
   if (checkFor) checkPhase(id, checkFor);
@@ -830,7 +841,7 @@ async function search() {
 // table says so (`check_unavailable`).
 /** @param {number} id  the run it belongs to @param {PlanDone} planned  its plan */
 async function checkPhase(id, planned) {
-  const current = () => id === runId && planState === planned;
+  const current = () => id === run.id && planState === planned;
   // its report shows in the plan's table only: the tree and the veterans stay as they are (a redraw of the open
   // veterans dialog under a click in progress would lose the click, or land it on the dialog, which closes it)
   const redraw = () => {
@@ -877,8 +888,8 @@ function resumeCheck(id) {
 }
 // a run that ends without searching (the job can't be built): its message, no answer
 function endRun(answer) {
-  searching = false;
-  clearInterval(secondsTick);
+  run.searching = false;
+  clearInterval(run.tick);
   ({ status, last, planState } = answer);
   simulation = { state: 'none' };
   renderAll();
@@ -946,10 +957,10 @@ function searchStatus(m, found) {
 // alone, so the solver skips the career reports. A trainee you chose leaves it nothing to pick (no plan phase).
 // Returns the plan's state, or null when a newer edit (run `id` no longer current) took over.
 async function planPhase(id, job, found) {
-  phase = 'plan';
-  phaseNote = found;
-  planProgress = '';
-  phaseStart = performance.now();
+  run.phase = 'plan';
+  run.lead = found;
+  run.progress = '';
+  run.phaseStart = performance.now();
   paint();
   const { rollout: _r, p_now: _p, ...plain } = job;
   let planned;
@@ -961,19 +972,19 @@ async function planPhase(id, job, found) {
     const m2 = kept
       ? { r: { next: kept.r }, ms: kept.ms }
       : await runJob(jp, (p) => {
-          if (id === runId) {
-            planProgress = progText(p);
+          if (id === run.id) {
+            run.progress = progText(p);
             paint();
           }
         });
-    if (id !== runId) return null;
+    if (id !== run.id) return null;
     const x = m2.r.next;
     planned =
       x && !x.error && x.options?.length
         ? { state: 'done', r: x, ms: m2.ms, job: jp }
         : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
   } catch (e) {
-    if (id !== runId) return null;
+    if (id !== run.id) return null;
     planned = { state: 'error', text: e.message };
   }
   if (planned.state === 'done') engineSaveState(); // the worker's kept work, for the next page load
@@ -1974,7 +1985,7 @@ const copyNode = (v) => ({
 const rollSetup = () => ({ career: CAREER, targets: state.targets, rank: state.rank });
 function rollDraft() {
   const r = shown();
-  if (!r || searching) return;
+  if (!r || run.searching) return;
   Object.assign(simulation.draft, rolledOutcome(r, rollSetup()), { winAt: {} });
   simulation.r = null;
   simulation.stale = false;
@@ -2006,8 +2017,8 @@ function rollReq(d, r) {
 // worker keeps it and its caches; its answer is ignored)
 async function quickCompare(request) {
   const id = ++simulationId,
-    source = runId,
-    gone = () => id !== simulationId || source !== runId;
+    source = run.id,
+    gone = () => id !== simulationId || source !== run.id;
   simulation.state = 'busy';
   simulation.kind = 'quick';
   simulation.error = null;
@@ -2064,7 +2075,7 @@ async function quickCompare(request) {
     simulation.standing = true;
     renderSimulation();
     setTimeout(() => {
-      if (id === simulationId && source === runId && simulation.standing && !simulation.refining) {
+      if (id === simulationId && source === run.id && simulation.standing && !simulation.refining) {
         simulation.standing = false;
         runComparison(true);
       }
@@ -2089,7 +2100,7 @@ async function quickCompare(request) {
     simulation.provisional = true;
     renderSimulation();
     setTimeout(() => {
-      if (id === simulationId && source === runId && simulation.provisional && !simulation.refining)
+      if (id === simulationId && source === run.id && simulation.provisional && !simulation.refining)
         runComparison(true);
     }, 800);
   }
@@ -2179,7 +2190,7 @@ function editDraft() {
 }
 // Compare (or a roll): a press while a comparison runs restarts it with the veteran as she is now
 function compare() {
-  if (searching || !shown()) return;
+  if (run.searching || !shown()) return;
   cancelCompare();
   runComparison();
 }
@@ -2187,8 +2198,8 @@ function compare() {
 // the exact count; otherwise the panel waits on it
 async function runComparison(refine = false) {
   const id = ++simulationId,
-    source = runId,
-    gone = () => id !== simulationId || source !== runId;
+    source = run.id,
+    gone = () => id !== simulationId || source !== run.id;
   const base = comparisonJob();
   if (refine) simulation.refining = true;
   else {
@@ -2279,7 +2290,7 @@ async function runComparison(refine = false) {
   renderSimulation();
 }
 function addDraft() {
-  if (searching || !simulation.draft) return;
+  if (run.searching || !simulation.draft) return;
   $dialog('sim-dlg').close(); // she joins your veterans: back to the next career
   const d = structuredClone(simulation.draft);
   delete d.apt;
@@ -2341,14 +2352,14 @@ function analysisCard(d, r) {
   const go = btn('Compare', 'primary', compare);
   go.id = 'sim-compare';
   go.dataset.k = 'sim:compare';
-  go.disabled = searching;
+  go.disabled = run.searching;
   const roll = btn('Reroll', '', rollDraft);
   roll.id = 'sim-roll';
   roll.dataset.k = 'sim:roll';
-  roll.disabled = searching;
+  roll.disabled = run.searching;
   const add = btn('Add to veterans', '', addDraft);
   add.id = 'sim-add';
-  add.disabled = searching;
+  add.disabled = run.searching;
   actions.append(go, roll, add);
   const mid = el('div', 'udmid');
   mid.append(actions); // (the career's odds lead the main view)
@@ -2559,7 +2570,7 @@ function useBtn(r, places = plan) {
     }
     changed();
   });
-  b.disabled = searching; // (an old answer's option, while a run works on the next)
+  b.disabled = run.searching; // (an old answer's option, while a run works on the next)
   return b;
 }
 const OPT_SHOW = 8;
@@ -2693,7 +2704,7 @@ function optionsEl() {
       changed();
     });
     back.id = 'opt-back';
-    back.disabled = searching;
+    back.disabled = run.searching;
     const f = el('div', 'optfoot');
     f.appendChild(back);
     box.appendChild(f);
