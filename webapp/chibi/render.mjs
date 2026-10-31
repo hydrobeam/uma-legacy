@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0'; // the browsers live in webapp/node_modules (./build.sh browsers)
+process.env.PLAYWRIGHT_BROWSERS_PATH ??= fileURLToPath(new URL('../../cache/ms-playwright', import.meta.url)); // the browsers (./build.sh browsers)
 let playwright;
 try {
   playwright = createRequire(import.meta.url)('playwright');

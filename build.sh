@@ -15,7 +15,7 @@
 #            files as for images; fetches its third-party tools into cache/chibi on first use)
 #   images   character icons and card art from the game's decrypted bundles (game/) into webapp/img
 #            (only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
-#   browsers Playwright's Chromium and Firefox into webapp/node_modules (once; run by test, testq and runners)
+#   browsers Playwright's Chromium and Firefox into cache/ms-playwright (once; run by test, testq and runners)
 #   test     browser regression suite on webapp/dist, served locally (Playwright Test, webapp/playwright.config.mjs;
 #            Chromium + Firefox): releases
 #   testq    its fast tier (Chromium, each page's core path, under a minute): after each page change
@@ -34,7 +34,7 @@ set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
 PY=(uv run --quiet --project "$R" python)
 PYART=(uv run --quiet --project "$R" --group art python)   # the art steps: UnityPy and Pillow (pyproject.toml, group art)
-export PLAYWRIGHT_BROWSERS_PATH=0   # Playwright's browsers live in webapp/node_modules, not in the home directory
+export PLAYWRIGHT_BROWSERS_PATH="$R/cache/ms-playwright"   # Playwright's browsers: in the repository, outside node_modules (npm ci empties it)
 # Requirements: each step checks what it needs first and names everything missing before it stops.
 GLOBAL_MDB="game/global/master.mdb: the Global client's game database"
 JP_MDB="game/jp/master.mdb: the JP client's game database (Grand Masters era)"
@@ -91,7 +91,7 @@ step_wasm() {
   fi
   (cd "$W" && node example.mjs | tail -1)
 }
-step_browsers() { step_npm; local B="$W/node_modules/playwright-core/.local-browsers"
+step_browsers() { step_npm; local B="$PLAYWRIGHT_BROWSERS_PATH"
   ls -d "$B"/chromium-* "$B"/firefox-* >/dev/null 2>&1 || (cd "$W" && npx playwright install chromium firefox); }
 step_test() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check test; step_browsers; (cd "$W" && npx playwright test); }
 step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check testq; step_browsers; (cd "$W" && LLP_QUICK=1 npx playwright test --project chromium --grep @quick); }

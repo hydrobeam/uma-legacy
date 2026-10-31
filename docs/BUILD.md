@@ -42,7 +42,7 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
 | `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
 | `pyproject.toml`, group `research` | `numpy`, `scipy` | `research` |
-| `webapp/node_modules` (`./build.sh browsers`) | Playwright's Chromium and Firefox (`PLAYWRIGHT_BROWSERS_PATH=0`) | `test`, `testq`, `runners` |
+| `cache/ms-playwright/` (`./build.sh browsers`) | Playwright's Chromium and Firefox (`PLAYWRIGHT_BROWSERS_PATH`; outside `node_modules`, so `npm ci` keeps them) | `test`, `testq`, `runners` |
 | `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/data/gametora.json`. GameTora does not keep old versions online (6 of the 13 pins answered 404 on 2026-10-21), so the pinned set exists only in a cache that already holds it; elsewhere `GAMETORA_LATEST=1` moves the pins, and the events may change | `events` |
 | `cache/chibi/tools/` (`runners`, first use) | AssetStudioModCLI 0.19.0, a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 (Arch's libxml2-legacy; always this copy) | `runners` |
 
@@ -93,7 +93,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `page` | `webapp/dist/` (see *The page*) |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
-| `browsers` | Playwright's browsers into `webapp/node_modules` (once) |
+| `browsers` | Playwright's browsers into `cache/ms-playwright` (once) |
 | `test` / `testq` | the browser suite, full or its fast tier (see *Tests*) |
 | `serve` | `webapp/dist` on http://localhost:8000 (`PORT=…`) |
 | `val TAG` / `valq TAG` | validation (see *Tests*) |
@@ -338,5 +338,5 @@ val/                 validation: jobs/ (the job files), jobs.json and slow.json 
 research/            scripts computing RESEARCH.md's numbers; RESEARCH.md is rendered from docs/RESEARCH.template.md (`./build.sh research`; research/README.md)
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)
-cache/               downloads: GameTora's files, the runner tools and exports (gitignored)
+cache/               downloads: GameTora's files, Playwright's browsers, the runner tools and exports (gitignored)
 ```

@@ -6,11 +6,13 @@
 // LLP_SHOTS=dir saves pictures of the scenario button and picker there. Exit code 1 if any check fails. A failed test
 // keeps its trace (npx playwright show-trace test-results/<test>/trace.zip); the run's report is test-results/report.json.
 import net from 'node:net';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'playwright/test';
 
 // This file loads in the runner and again in each worker; the workers inherit the runner's environment, so what is set
 // here once (the port, the run's start) holds in all of them.
-process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0'; // the browsers live in webapp/node_modules (./build.sh browsers)
+// the browsers live in cache/ms-playwright (./build.sh browsers), outside node_modules, which npm ci empties
+process.env.PLAYWRIGHT_BROWSERS_PATH ??= fileURLToPath(new URL('../cache/ms-playwright', import.meta.url));
 process.env.LLP_T0 ??= String(Date.now()); // the run's start, for LLP_PROF's `start`
 const freePort = () =>
   new Promise((resolve) => {

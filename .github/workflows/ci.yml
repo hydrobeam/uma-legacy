@@ -63,7 +63,7 @@ jobs:
       - name: Playwright browsers (cached by the lockfile)
         uses: actions/cache@v6
         with:
-          path: webapp/node_modules/playwright-core/.local-browsers
+          path: cache/ms-playwright
           key: playwright-${{ hashFiles('webapp/package-lock.json') }}
       - name: Build the solver's wasm and the page
         run: ./build.sh wasm page
