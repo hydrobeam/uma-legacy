@@ -12,7 +12,6 @@ use self::shared::SharedResult;
 use self::tables::{
     ByBound, ExactCacheEntry, ExactCeiling, Grid, NG, class_clusters, classes, full_clusters, pair_table,
 };
-use crate::Instant;
 use crate::data::{Choice, Data, NT, Sched, Uma};
 use crate::deck::pdeck::{Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
@@ -63,7 +62,7 @@ pub(super) fn run_multi(inputs: LoopJobInputs, stats: Value) -> Value {
     if pass.solved.is_empty() {
         return json!({"error": "No loop contains all the required umas."});
     }
-    search.debug_summary(&state.tally, &pass, certified_cap);
+    report::upper_check_summary();
     search.report(&state.tally, pass, certified_cap, stats)
 }
 
@@ -186,7 +185,6 @@ struct Multi<'data> {
     ranked_pool: Vec<UmaIndex>,
     ranked_ceilings: Vec<f64>,
     maximum_structure_sum: f64,
-    started: Instant,
 }
 
 /// Caches, reusable cluster buffers and work accounting for one loop job, retained across certification passes.
@@ -210,7 +208,7 @@ struct LoopSearchState {
     state_bounds: crate::deck::state_bound::StateBoundMemo,
 }
 
-/// The exact search's counters, timers and work budget; `max_ratio` is per structure class (`cap_class`).
+/// The exact search's counters and work budget; `max_ratio` is per structure class (`cap_class`).
 #[derive(Default)]
 struct Tally {
     scored_decks: usize,
@@ -219,10 +217,6 @@ struct Tally {
     cap_hit: bool,
     max_ratio: [f64; 4],
     max_deck: [Option<RatioExample>; 4],
-    band_seconds: f64,
-    score_seconds: f64,
-    seed_seconds: f64,
-    bound_seconds: f64,
     work: usize,
     budget: usize,
     /// set when a pass runs out of budget (or a deck search out of room): that pass certifies nothing
@@ -299,7 +293,6 @@ impl<'data> Multi<'data> {
             return Err(json!({"error": error}));
         }
         let (allow_three, allow_four) = (inputs.skill_job.sizes.contains(&3), inputs.skill_job.sizes.contains(&4));
-        let started = Instant::now();
         let fixed_schedules: Option<UmaTable<Option<Sched>>> = inputs.deck_job.schedule.as_deref().map(|mode| {
             inputs
                 .data
@@ -330,14 +323,6 @@ impl<'data> Multi<'data> {
         // rounding) is below the best value so far. The maximum of a set does not depend on visit order, so the
         // result is the same value bit for bit.
         let class_clusters = class_clusters(inputs.skyline, &class_decks, target_count);
-        if crate::checks::get().deck_debug {
-            eprintln!(
-                "classes {} sizes {:?} ({:.2}s)",
-                class_decks.len(),
-                class_decks.iter().map(std::vec::Vec::len).collect::<Vec<_>>(),
-                started.elapsed().as_secs_f64()
-            );
-        }
         // A deck's sources: the deck space's entry for (card, end link, variant) where it has one of that card (built
         // by the same `Sources::src` and `kind` on the same job and targets, so the same values), borrowed; else built
         let entry_by_card: crate::FxMap<CardEntryKey, usize> = (0..inputs.deck_space.card_indices.len())
@@ -382,7 +367,6 @@ impl<'data> Multi<'data> {
             ranked_pool: vec![],
             ranked_ceilings: vec![],
             maximum_structure_sum: 0.0,
-            started,
             inputs,
         };
         let mut state = LoopSearchState {

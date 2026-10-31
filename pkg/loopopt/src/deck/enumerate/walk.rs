@@ -767,8 +767,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         passes_bound
     }
 
-    /// The state-conditioned bound at depth <= 1 (mode 1) or at every depth, the leaf included (mode 2); with
-    /// SB_CHECK, every leaf's value against its root's and depth-1 node's bounds. False: the node is pruned
+    /// The cap-free band's bounds at every node and leaf; outside it (the bound prunes only at the configuration's
+    /// root) with SB_CHECK, every leaf's value against its root's and depth-1 node's bounds. False: the node is pruned
     fn passes_state_bound(&self, scratch: &mut WalkScratch<'_>, selection: &[usize]) -> bool {
         let search = self.search;
         if search.controls.cap_free {
@@ -853,20 +853,13 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             }
             return pass;
         }
-        let state_bound_mode = search.controls.state_bound_mode;
-        if state_bound_mode == 0 {
+        if !search.controls.state_bound || !crate::checks::get().sb_check {
             return true;
         }
-        let check_bounds = crate::checks::get().sb_check;
-        if state_bound_mode == 3 && !check_bounds {
-            return true;
-        }
+        // SB_CHECK: the bound at depth 1 and at each leaf, a leaf's against its root's and depth-1 node's
         let depth = selection.len();
         let is_leaf = depth == self.total_slots;
-        if (state_bound_mode == 1 || state_bound_mode == 3) && depth > 1 && !(check_bounds && is_leaf) {
-            return true;
-        }
-        if state_bound_mode == 3 && depth == 1 && !check_bounds {
+        if depth > 1 && !is_leaf {
             return true;
         }
         let upper_bound = scratch.state_bound.bound(selection);
@@ -874,7 +867,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         if depth == 1 {
             scratch.depth_one_bound = upper_bound;
         }
-        if check_bounds && is_leaf {
+        if is_leaf {
             let (root_bound, depth_one_bound) = (self.root_bound, scratch.depth_one_bound);
             SBCHK.with(|cell| {
                 let mut counters = cell.borrow_mut();
@@ -886,14 +879,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 }
             });
         }
-        if (state_bound_mode == 1 && depth > 1) || state_bound_mode == 3 {
-            return true;
-        }
-        let pass = upper_bound * (1.0 + 1e-9) >= search.controls.state_bound_threshold;
-        if !pass {
-            SBN.with(|cell| cell.borrow_mut().nodes_cut += 1);
-        }
-        pass
+        true
     }
 
     /// A complete deck `selection` (its `white_misses`, `gold_misses`, `class_mask`): kept when it beats the bar (product

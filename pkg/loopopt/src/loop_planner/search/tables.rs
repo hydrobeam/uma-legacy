@@ -2,7 +2,6 @@
 //! These tables bound deck and loop searches; they do not enumerate loop structures or report results.
 use super::{CardEntryKey, ChanceKey, DeckSources, ExactQueryKey, Multi, SelectionKey, lin_of};
 use super::{LoopSearchState, Tally};
-use crate::Instant;
 use crate::checks::UCHK;
 use crate::data::{Data, Sched, dot};
 use crate::deck::caps::src_class;
@@ -484,7 +483,6 @@ impl<'data> Multi<'data> {
         }
         let model = self.inputs.model;
         let uma_id = self.inputs.data.umas[uma].id;
-        let started = Instant::now();
         let DeckSources { entries, filler_count, chain_events } = self.ents_of(deck);
         let results = joint_b(
             model,
@@ -494,7 +492,6 @@ impl<'data> Multi<'data> {
             self.requested_target_count,
             false,
         );
-        tally.score_seconds += started.elapsed().as_secs_f64();
         if crate::checks::get().upper_check {
             let borrowed_entries: Vec<SourceEntry<&TargetSources>> =
                 entries.iter().map(|entry| SourceEntry { sources: &*entry.sources, kind: entry.kind }).collect();
@@ -554,7 +551,6 @@ impl<'data> Multi<'data> {
     ) {
         let (model, space) = (self.inputs.model, self.inputs.deck_space);
         let uma_id = self.inputs.data.umas[uma].id;
-        let started = Instant::now();
         // the first 3 of a stable sort by value, highest first: each deck goes after every kept one at least as high
         let mut seeds: Vec<(f64, &PDeck)> = Vec::with_capacity(4);
         // (the value first, the blocks lookups only for a deck that would enter: one that can't is passed over blocked
@@ -574,7 +570,6 @@ impl<'data> Multi<'data> {
                 seeds.truncate(3);
             }
         }
-        tally.seed_seconds += started.elapsed().as_secs_f64();
         for (_, deck) in seeds.iter().take(3) {
             self.score_exact(tally, uma, chances, deck, entry);
         }
@@ -617,7 +612,6 @@ impl<'data> Multi<'data> {
             return;
         };
         tally.band_decks += 1;
-        let started = Instant::now();
         let nodes_before = space.nodes.get();
         let SearchOutcome { decks: mut candidates, incomplete, .. } = space.search(
             state_bounds,
@@ -631,7 +625,6 @@ impl<'data> Multi<'data> {
             SearchMode::Band { ratio_cap: cap, max_decks: space.band_cap(), bound: BandBound::Capped },
         );
         tally.spend(2 * (space.nodes.get() - nodes_before) + 5 * candidates.len() + 10_000);
-        tally.band_seconds += started.elapsed().as_secs_f64();
         if incomplete.is_some() {
             tally.cap_hit = true;
             complete = false;
@@ -663,14 +656,12 @@ impl<'data> Multi<'data> {
                     .iter()
                     .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
                     .collect();
-                let bound_started = Instant::now();
                 let upper_bounds = upper_na(
                     model,
                     JointQuery::unfolded(model, space.deck_events(selected, &[uma_id]), uma, chances),
                     &entries,
                     selected.filler_cards,
                 );
-                tally.bound_seconds += bound_started.elapsed().as_secs_f64();
                 if let Some(bounds) = upper_bounds {
                     tally.spend(25);
                     if bounds.iter().sum::<f64>() * (1.0 + 1e-9) < entry.best.as_ref().unwrap().value {

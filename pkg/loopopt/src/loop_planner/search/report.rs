@@ -4,7 +4,7 @@ use super::Tally;
 use super::bands::{DeckBest, Pass, SolvedLoop};
 use super::{DeckSources, Multi, RatioExample, SharedDeckKey, lin_of};
 use crate::chart::{chart_rows, member_json};
-use crate::checks::{SPT, UCHK};
+use crate::checks::UCHK;
 use crate::data::dot;
 use crate::deck::joint::{JointChances, JointExt, JointQuery, joint_b, joint_fast};
 use crate::deck::pdeck::PDeck;
@@ -21,43 +21,19 @@ struct LoopPick<'pass> {
     value: f64,
 }
 
+/// `UPPER_CHECK`: the checks' counts on stderr.
+pub(super) fn upper_check_summary() {
+    if crate::checks::get().upper_check {
+        let counts = UCHK.with(Cell::get);
+        eprintln!(
+            "UPPER_CHECK: {} checked, max bound/exact {:.4}, {} decks not covered",
+            counts.checked, counts.max_ratio, counts.uncovered
+        );
+    }
+}
+
 impl Multi<'_> {
     // ---- the answer ----
-
-    pub(super) fn debug_summary(&self, tally: &Tally, pass: &Pass, certified_cap: f64) {
-        let checks = crate::checks::get();
-        if checks.upper_check {
-            let counts = UCHK.with(Cell::get);
-            eprintln!(
-                "UPPER_CHECK: {} checked, max bound/exact {:.4}, {} decks not covered",
-                counts.checked, counts.max_ratio, counts.uncovered
-            );
-        }
-        if checks.deck_debug {
-            let counts = SPT.with(Cell::get);
-            eprintln!(
-                "deck searches: setup {:.2}s tree {:.2}s configs {} count vectors {}",
-                counts.setup_seconds, counts.tree_seconds, counts.configurations, counts.count_vectors
-            );
-        }
-        if checks.deck_debug {
-            eprintln!(
-                "per-uma search {:.2}s cap {} scanned {} solved {} exact: {} deck searches, {} decks scored, {} bounded out, schedule rejects {} | band {:.2}s score {:.2}s seed-scan {:.2}s bound {:.2}s",
-                self.started.elapsed().as_secs_f64(),
-                certified_cap,
-                pass.scanned,
-                pass.solved.len(),
-                tally.band_decks,
-                tally.scored_decks,
-                tally.bound_rejections,
-                pass.schedule_rejects,
-                tally.band_seconds,
-                tally.score_seconds,
-                tally.seed_seconds,
-                tally.bound_seconds
-            );
-        }
-    }
 
     /// The output: the reported loops, the search's counts and what the answer rests on, over the deck search's stats
     pub(super) fn report(&self, tally: &Tally, pass: Pass, certified_cap: f64, stats: Value) -> Value {

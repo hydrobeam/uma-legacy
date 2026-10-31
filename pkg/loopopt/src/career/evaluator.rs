@@ -467,10 +467,6 @@ impl Evaluator {
         let c = env.setup.lineage_into(pool, lineage, &mut q);
         let pick = 'value: {
             let Some(ub) = env.setup.ceiling(&mut env.state, trainee, &q, c) else { break 'value None };
-            if crate::checks::get().sim_check_ub {
-                let fast_bound = self.fast_ub(&env.setup, pool, lineage);
-                assert!((fast_bound - ub).abs() <= 1e-12 * ub, "fast_ub {fast_bound} vs ceiling {ub}");
-            }
             if ub * (1.0 + 1e-9) < bar {
                 break 'value None;
             }

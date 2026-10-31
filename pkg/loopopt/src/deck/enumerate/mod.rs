@@ -44,10 +44,9 @@ pub(crate) enum SearchMode {
 pub(crate) enum BandBound {
     /// The class caps alone.
     Capped,
-    /// The state-conditioned bound beside the caps, in `mode` (`Checks::sbound`, `SBOUND`: 3 at each
-    /// configuration's root, 1 also at depth 1, 2 at every node without the caps, 0 off); the career's band, so where
-    /// a deck with a nested chain may be reached its proven bound joins the caps (`deck::nested`).
-    StateBound { mode: u8 },
+    /// The state-conditioned bound at each configuration's root, beside the caps (off with `SBOUND=0`); the career's
+    /// band, so where a deck with a nested chain may be reached its proven bound joins the caps (`deck::nested`).
+    StateBound,
     /// The cap-free band (`CareerSetup::best_deck_cf`): two proven bounds at every node and leaf are its only prunes,
     /// no cap; it stops (`CapFreeNodeLimit`) once the space's node count (`DeckSpace::nodes`) passes `node_limit`.
     CapFree { node_limit: usize },
@@ -85,9 +84,6 @@ pub(crate) struct SearchOutcome {
     pub(crate) decks: Vec<ScoredDeck<SelectedDeck>>,
     /// None means enumeration finished under the requested bounds; exact scoring may still be needed.
     pub(crate) incomplete: Option<SearchStop>,
-    /// The band was built without the class caps (state-bound mode 2, or cap-free): every deck in it may reach the
-    /// threshold, none was cut by a cap. False on a search that stopped before its setup.
-    pub(crate) uncapped: bool,
     /// It pruned decks with a nested chain beside other chain feeders or an uncertified group
     /// (`ConfigurationQueue::multi`): its proof rests on the nested bound taken for them (`multi_feeder_cap`).
     pub(crate) multi: bool,
@@ -123,7 +119,7 @@ pub(crate) struct SearchSetup {
     cap_free: bool,
     cap_free_node_limit: usize,
     cap_free_check_scale: f64,
-    state_bound_mode: u8,
+    state_bound: bool,
     state_rows: std::rc::Rc<StateRows>,
     state_bound_threshold: f64,
     bound_trainee: crate::uma::UmaIndex,

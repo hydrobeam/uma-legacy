@@ -1,6 +1,4 @@
 //! Search legality and the shared bounds used by enumeration.
-use crate::Instant;
-use crate::checks::SPT;
 use crate::deck::chains::ChainKind;
 use crate::deck::enumerate::bounds::{OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationScratch, ConfigurationTables};
@@ -35,13 +33,7 @@ impl DeckSpace<'_> {
             .iter()
             .any(|&locked| trainee_ids.iter().any(|&id| self.cards[locked].blocks(id, crate::checks::get())))
         {
-            return Err(SearchOutcome {
-                decks: vec![],
-                incomplete: None,
-                uncapped: false,
-                multi: false,
-                assumed: false,
-            });
+            return Err(SearchOutcome { decks: vec![], incomplete: None, multi: false, assumed: false });
         }
         let crate::deck::space::ReducedEntries { entries: legal_entries, set_id } =
             if matches!(mode, SearchMode::All { .. }) {
@@ -58,7 +50,6 @@ impl DeckSpace<'_> {
             return Err(SearchOutcome {
                 decks: vec![],
                 incomplete: Some(SearchStop::CharacterLimit),
-                uncapped: false,
                 multi: false,
                 assumed: false,
             });
@@ -73,8 +64,8 @@ impl DeckSpace<'_> {
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // Per chain level; the ordinary bound is off when an entry fails group_assoc certification (`state_value`).
         // The cap-free band (`BandBound::CapFree`, one trainee at one chance; `CareerSetup::best_deck_cf`): two proven
-        // bounds at every node and leaf (`StateBound::cheap`, then `StateBound::full`, on the state-conditioned tables
-        // of mode 2) are its only prunes, no cap in any test; it needs every legal entry `certified_cap_free` (else
+        // bounds at every node and leaf (`StateBound::cheap`, then `StateBound::full`, on the state-conditioned tables)
+        // are its only prunes, no cap in any test; it needs every legal entry `certified_cap_free` (else
         // UnsupportedCapFreeProof) and stops past its node limit (CapFreeNodeLimit).
         let one_lineage = !best && clauses.len() == 1 && clauses[0].lineages.len() == 1;
         let cap_free_node_limit = match band_bound {
@@ -86,7 +77,6 @@ impl DeckSpace<'_> {
             return Err(SearchOutcome {
                 decks: vec![],
                 incomplete: Some(SearchStop::UnsupportedCapFreeProof),
-                uncapped: false,
                 multi: false,
                 assumed: false,
             });
@@ -96,46 +86,39 @@ impl DeckSpace<'_> {
         let nested_bounds = !cap_free
             && clauses.len() == 1
             && clauses[0].lineages.len() == 1
-            && (matches!(band_bound, BandBound::StateBound { .. }) || cover_rho > 0.0);
+            && (matches!(band_bound, BandBound::StateBound) || cover_rho > 0.0);
         let cap_free_check_scale = if cap_free { crate::checks::get().cf_check } else { 0.0 };
-        let state_bound_mode = if cap_free {
-            2
-        } else if let BandBound::StateBound { mode } = band_bound
-            && one_lineage
-        {
-            mode
-        } else {
-            0
-        };
-        let state_rows: std::rc::Rc<StateRows> = if state_bound_mode > 0
-            && (cap_free || !legal_entries.iter().any(|&j| self.sources[j].uncertified_association))
-        {
-            let hit = self.state_row_cache.borrow().get(&set_id).cloned();
-            hit.unwrap_or_else(|| {
-                let rows = std::rc::Rc::new(
-                    (0..self.card_indices.len())
-                        .map(|j| {
-                            legal_entries
-                                .contains(&j)
-                                .then(|| self.sources[j].miss_levels(self.kind[j].stop, target_count))
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                self.state_row_cache.borrow_mut().insert(set_id, std::rc::Rc::clone(&rows));
-                rows
-            })
-        } else {
-            std::rc::Rc::new(vec![])
-        };
-        let state_bound_mode = if state_rows.is_empty() { 0 } else { state_bound_mode };
-        let state_bound_threshold = if state_bound_mode > 0 { clauses[0].threshold } else { 0.0 };
-        let (bound_trainee, bound_inheritance) = if state_bound_mode > 0 {
+        // the state-conditioned bound: the cap-free band's prunes, or the career band's root bound beside the caps
+        let state_bound = cap_free
+            || (matches!(band_bound, BandBound::StateBound) && one_lineage && !crate::checks::get().state_bound_off);
+        let state_rows: std::rc::Rc<StateRows> =
+            if state_bound && (cap_free || !legal_entries.iter().any(|&j| self.sources[j].uncertified_association)) {
+                let hit = self.state_row_cache.borrow().get(&set_id).cloned();
+                hit.unwrap_or_else(|| {
+                    let rows = std::rc::Rc::new(
+                        (0..self.card_indices.len())
+                            .map(|j| {
+                                legal_entries
+                                    .contains(&j)
+                                    .then(|| self.sources[j].miss_levels(self.kind[j].stop, target_count))
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    self.state_row_cache.borrow_mut().insert(set_id, std::rc::Rc::clone(&rows));
+                    rows
+                })
+            } else {
+                std::rc::Rc::new(vec![])
+            };
+        let state_bound = state_bound && !state_rows.is_empty();
+        let state_bound_threshold = if state_bound { clauses[0].threshold } else { 0.0 };
+        let (bound_trainee, bound_inheritance) = if state_bound {
             (trainees[clauses[0].lineages[0].trainee], clauses[0].lineages[0].inheritance)
         } else {
             (crate::uma::UmaIndex(0), 0.0)
         };
         // the trainee's `land_factor` per (outfit, target), row o * target_count + k (`LandPre`: the same values)
-        let landing_factors: Vec<LandPre> = if state_bound_mode > 0 {
+        let landing_factors: Vec<LandPre> = if state_bound {
             (0..chances.model.outfit_options[bound_trainee].len())
                 .flat_map(|outfit| {
                     (0..target_count).map(move |k| {
@@ -150,11 +133,13 @@ impl DeckSpace<'_> {
         } else {
             vec![]
         };
-        let rho = if state_bound_mode == 2 { 1e9 } else { rho };
-        // the cap per structure class (`cap_class`), at most rho (uncapped with SBOUND=2); a deck passes at its own
-        // class's cap, a node at the cap of the class of every deck it can still reach (its cards and every candidate
-        // left: a superset of any completion's, so a cap at least as high)
-        let class_caps: [f64; 4] = if state_bound_mode == 2 {
+        // the cap-free band has no class caps
+        let uncapped = cap_free && state_bound;
+        let rho = if uncapped { 1e9 } else { rho };
+        // the cap per structure class (`cap_class`), at most rho; a deck passes at its own class's cap, a node at the cap
+        // of the class of every deck it can still reach (its cards and every candidate left: a superset of any
+        // completion's, so a cap at least as high)
+        let class_caps: [f64; 4] = if uncapped {
             [rho; 4]
         } else {
             let caps = self.caps();
@@ -180,7 +165,7 @@ impl DeckSpace<'_> {
             cap_free,
             cap_free_node_limit,
             cap_free_check_scale,
-            state_bound_mode,
+            state_bound,
             state_rows,
             state_bound_threshold,
             bound_trainee,
@@ -221,7 +206,7 @@ impl DeckSpace<'_> {
             cap_free,
             cap_free_node_limit,
             cap_free_check_scale,
-            state_bound_mode,
+            state_bound,
             state_rows,
             state_bound_threshold,
             bound_trainee,
@@ -258,7 +243,6 @@ impl DeckSpace<'_> {
         // the product search builds its configurations lazily (`PendingConfig`): roots and ratio tables only for those it may
         // visit
         let lazy = best && valid;
-        let configuration_start = Instant::now();
         let out: Vec<ScoredDeck<SelectedDeck>> = vec![];
         let best_value = if best { seed } else { f64::NEG_INFINITY };
         let counts = self.counts_all();
@@ -507,7 +491,7 @@ impl DeckSpace<'_> {
             cap_free,
             cap_free_node_limit,
             cap_free_check_scale,
-            state_bound_mode,
+            state_bound,
             state_bound_threshold,
             bound_trainee,
             bound_inheritance,
@@ -576,13 +560,6 @@ impl DeckSpace<'_> {
             best_value,
             &bounds,
         );
-        SPT.with(|cell| {
-            let mut stats = cell.get();
-            stats.setup_seconds += configuration_start.elapsed().as_secs_f64();
-            stats.configurations += configurations.configurations.len();
-            stats.count_vectors += counts.len();
-            cell.set(stats);
-        });
         search.traverse_configurations(
             state_bounds,
             configurations,

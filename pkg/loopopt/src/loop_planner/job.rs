@@ -1,6 +1,5 @@
 //! Deck-job setup and enumeration of the nondominated deck frontier (`run_deck`).
 //! Loop structures, schedules and exact deck searches belong to `search` and `deck::enumerate`.
-use crate::Instant;
 use crate::data::Data;
 use crate::deck::chains::{ChainEvents, ChainKind, EventsKey, chain_marginals};
 use crate::deck::pdeck::{Name, PDeck};
@@ -54,43 +53,15 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
         Ok(x) => x,
         Err(e) => return e,
     };
-    let started = Instant::now();
     let mut counts = EnumerationCounts::default();
     // the decks no other deck beats on every dominance coordinate (the exact search scores every deck it needs from
     // `DeckSpace`, so one skyline serves any `top_decks`)
     let front: Vec<DeckEval> =
         enumerator.run_enum(FrontierOptions { maximum_dominators: 1, first_frontier: None }, &mut counts);
-    if crate::checks::get().deck_debug {
-        eprintln!(
-            "tests {} scans {} avg_lim {:.0} dom_in_scan {} ring {} swapped {} subtrees {} s1 {}",
-            counts.dominance_tests,
-            counts.full_scans,
-            0.0,
-            counts.dominated_decks,
-            counts.recent_rejections,
-            counts.decks_swapped,
-            counts.subtrees_pruned,
-            counts.first_frontier_rejections
-        );
-    }
-    if crate::checks::get().deck_debug {
-        eprintln!(
-            "rel {} decks {} enum {:.2}s",
-            enumerator.entry_count,
-            counts.decks_built,
-            started.elapsed().as_secs_f64()
-        );
-    }
-    if crate::checks::get().deck_debug {
-        eprintln!("front {} pareto {:.2}s", front.len(), started.elapsed().as_secs_f64());
-    }
     if front.is_empty() {
         return json!({"error": "No deck can be built from the allowed cards."});
     }
     let skyline_indices = skyline(&front);
-    if crate::checks::get().deck_debug {
-        eprintln!("skyline {} of {}", skyline_indices.len(), front.len());
-    }
     let frontier_count = front.len();
     let display_decks = detach(front, &skyline_indices, &entries, &source_builder, skills);
     if deck_job.deck_only {
@@ -232,16 +203,6 @@ impl Entries<'_> {
             }
             visited.push(candidate);
         }
-        if crate::checks::get().deck_debug {
-            for j in 0..original_count {
-                if !keep[j] {
-                    eprintln!("  drop {}", self.cards[self.card_indices[j]].name);
-                }
-            }
-        }
-        if crate::checks::get().deck_debug_pairs {
-            debug_robust(self, &keep, &bounds, &tie_ranks, swap_rule, target_count);
-        }
         // All entry columns use the same original-index mask and keep their relative order.
         retain_entries(&mut self.card_indices, &keep);
         retain_entries(&mut self.sources, &keep);
@@ -323,59 +284,6 @@ struct MissBounds {
     weakest: MissTab,
 }
 
-/// DECK_DEBUG_PAIRS: per kept card, its robust dominators among the kept ones (the same test as the drop, exact ties
-/// by `tie_rank`)
-fn debug_robust(
-    entries: &Entries,
-    keep: &[bool],
-    bounds: &MissBounds,
-    tie_ranks: &[usize],
-    swap_rule: SwapRule,
-    target_count: usize,
-) {
-    let entry_count = entries.card_indices.len();
-    // Per kept card, robust dominators reported by DECK_DEBUG_PAIRS (same test as above).
-    let kept_old: Vec<usize> = (0..entry_count).filter(|&j| keep[j]).collect();
-    let robust: Vec<Vec<usize>> = kept_old
-        .iter()
-        .map(|&b| {
-            let b_card = entries.cards[entries.card_indices[b]];
-            kept_old
-                .iter()
-                .enumerate()
-                .filter(|&(_, &a)| {
-                    if a == b {
-                        return false;
-                    }
-                    let a_card = entries.cards[entries.card_indices[a]];
-                    if entries.kind[a] != entries.kind[b] || swap_rule.blocks(a_card, b_card) {
-                        return false;
-                    }
-                    let beats = (0..target_count).all(|k| {
-                        bounds.weakest[a].no_gold[k] <= bounds.strongest[b].no_gold[k]
-                            && bounds.weakest[a].no_hint[k] <= bounds.strongest[b].no_hint[k]
-                    });
-                    let tied = (0..target_count).all(|k| {
-                        bounds.weakest[a].no_gold[k] == bounds.strongest[b].no_gold[k]
-                            && bounds.weakest[a].no_hint[k] == bounds.strongest[b].no_hint[k]
-                    });
-                    beats && (!tied || tie_ranks[a] < tie_ranks[b])
-                })
-                .map(|(position, _)| position)
-                .collect()
-        })
-        .collect();
-    for (kept_position, &b) in kept_old.iter().enumerate() {
-        let names: Vec<String> = robust[kept_position]
-            .iter()
-            .map(|&a| entries.cards[entries.card_indices[kept_old[a]]].name.clone())
-            .collect();
-        if !names.is_empty() {
-            eprintln!("ROBUST {} <= {:?}", entries.cards[entries.card_indices[b]].name, names);
-        }
-    }
-}
-
 /// ---- dominance coordinates ----
 /// For a target the trainee's outfit does not give, the metric's landing chance is
 ///   p = W + W*g - W*(1 - e)*(1 - q)*(1 - h)  (W = GEN_WHITE), e = P(own-event white hint),
@@ -432,17 +340,11 @@ struct ChainKeyData {
     borrowed_dominators: Vec<u128>,
 }
 
-/// Work counters of the enumeration (`decks_built`, `decks_swapped` and DECK_DEBUG's)
+/// Work counters of the enumeration
 #[derive(Default)]
 struct EnumerationCounts {
     decks_built: usize,
     decks_swapped: usize,
-    subtrees_pruned: usize,
-    first_frontier_rejections: usize,
-    dominance_tests: usize,
-    full_scans: usize,
-    dominated_decks: usize,
-    recent_rejections: usize,
 }
 
 /// Counts of relevant entries, plain pals and filler cards in each completed deck.
@@ -836,7 +738,6 @@ impl<'env> DeckEnumerator<'env> {
     ) {
         let (character_bits, borrowed_entries, is_locked) =
             (&self.character_bits, &self.borrowed_entries, &self.is_locked);
-        let mut pruned_count = 0usize;
         // (a card added later could be the deck's borrowed card, so before the deck is complete an owned
         // card only counts owned dominators)
         let mut prune = |selection: DeckSelection| -> bool {
@@ -848,14 +749,13 @@ impl<'env> DeckEnumerator<'env> {
                 let entry_dominators = key_data.owned_dominators[entry]
                     | if borrowed_entries[entry] { key_data.borrowed_dominators[entry] } else { 0 };
                 if (entry_dominators & !(selection.characters & !character_bits[entry])).count_ones() >= need {
-                    pruned_count += 1;
                     return true;
                 }
             }
             false
         };
         let mut out = |selection: DeckSelection| self.emit(key_data, selection, shape, options, workspace);
-        let mut scratch = PickScratch { selection: Vec::with_capacity(self.size), cut_subtrees: 0 };
+        let mut scratch = PickScratch { selection: Vec::with_capacity(self.size) };
         if entry_groups.is_empty() {
             out(DeckSelection { entries: &scratch.selection, characters: 0, borrowed_count: 0 });
         } else {
@@ -903,7 +803,6 @@ impl<'env> DeckEnumerator<'env> {
             };
             pick(&context, cursor, &mut scratch, &mut prune, &mut out);
         }
-        workspace.counts.subtrees_pruned += pruned_count + scratch.cut_subtrees;
     }
 
     /// A finished deck: kept on the frontier unless it breaks the job's pal count or locks, the swap rule skips it,
@@ -1032,14 +931,12 @@ impl<'env> DeckEnumerator<'env> {
                 )
             })
         {
-            workspace.counts.recent_rejections += 1;
             return;
         }
         if options.maximum_dominators > 1
             && frontier.recent_count >= options.maximum_dominators
             && frontier.count_recent(&workspace.coordinates) >= options.maximum_dominators
         {
-            workspace.counts.recent_rejections += 1;
             return;
         }
         let query_signature = sig_of(&workspace.coordinates, true);
@@ -1065,7 +962,6 @@ impl<'env> DeckEnumerator<'env> {
                         options.maximum_dominators + 1,
                     ) > options.maximum_dominators
                 {
-                    workspace.counts.first_frontier_rejections += 1;
                     return;
                 }
             }
@@ -1075,14 +971,11 @@ impl<'env> DeckEnumerator<'env> {
             query_signature,
             candidate.coordinate_sum,
             options.maximum_dominators,
-            &mut workspace.counts.dominance_tests,
         );
-        workspace.counts.full_scans += 1;
         if n > 0 && (options.maximum_dominators > 1 || n >= options.maximum_dominators) && coordinate_count > 0 {
             frontier.remember_found();
         }
         if n >= options.maximum_dominators {
-            workspace.counts.dominated_decks += 1;
             return;
         }
         // entry order, for display (distinct entries: the unstable sort is the sort), on the stack
@@ -1148,7 +1041,6 @@ struct PickCursor {
 
 struct PickScratch {
     selection: Vec<usize>,
-    cut_subtrees: usize,
 }
 
 fn pick(
@@ -1193,7 +1085,6 @@ fn pick(
             + (context.dominators[entry] & !characters & !context.later_characters[cursor.group][position])
                 .count_ones();
         if guaranteed_swaps >= context.maximum_dominators {
-            scratch.cut_subtrees += 1;
             continue;
         }
         scratch.selection.push(entry);

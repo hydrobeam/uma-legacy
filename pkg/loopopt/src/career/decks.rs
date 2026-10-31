@@ -795,32 +795,23 @@ impl Env<'_> {
         let mut rho = rho;
         while state.work <= state.budget {
             let nodes_before = setup.space.nodes.get();
-            // `uncapped`: the band was built without the cap (SBOUND=2): every deck in it may beat the bar
-            let SearchOutcome { decks: mut more, incomplete, uncapped, multi, assumed } = setup.space.search(
+            let SearchOutcome { decks: mut more, incomplete, multi, assumed } = setup.space.search(
                 state_bounds,
                 &setup.deck_chances(state),
                 &[trainee],
                 &[uma_id],
                 &[SearchClause { lineages: vec![LineageChance { trainee: 0, inheritance: 0.0 }], threshold: best.0 }],
-                SearchMode::Band {
-                    ratio_cap: rho,
-                    max_decks: setup.space.band_cap(),
-                    bound: BandBound::StateBound { mode: crate::checks::get().sbound },
-                },
+                SearchMode::Band { ratio_cap: rho, max_decks: setup.space.band_cap(), bound: BandBound::StateBound },
             );
             state.work += 2 * (setup.space.nodes.get() - nodes_before) + 5 * more.len() + 10_000;
             if incomplete.is_some() {
                 audit.overflows += 1;
-                match ladder.next() {
-                    Some(next_cap) if !uncapped => {
-                        rho = next_cap;
-                        continue;
-                    }
-                    _ => {
-                        audit.certified_cap = 0.0;
-                        break;
-                    }
+                if let Some(next_cap) = ladder.next() {
+                    rho = next_cap;
+                    continue;
                 }
+                audit.certified_cap = 0.0;
+                break;
             }
             // (a band that pruned a shape left under a named assumption: its proof rests on it, `Assumes`)
             audit.assumed_searches += usize::from(assumed);
@@ -837,10 +828,7 @@ impl Env<'_> {
                 nested_suffix[i] = nested_bounds[i].max(nested_suffix[i + 1]);
             }
             for (i, ScoredDeck { value: candidate_product_value, deck: candidate }) in more.into_iter().enumerate() {
-                if !uncapped
-                    && rho * candidate_product_value * (1.0 + 1e-9) < best.0
-                    && nested_suffix[i] * (1.0 + 1e-9) < best.0
-                {
+                if rho * candidate_product_value * (1.0 + 1e-9) < best.0 && nested_suffix[i] * (1.0 + 1e-9) < best.0 {
                     break;
                 }
                 if state.work > state.budget {
@@ -856,8 +844,7 @@ impl Env<'_> {
                 }
                 // below the bar at its own class's cap and its nested-chain bound (the bar rose since the band was built)
                 let class = setup.space.sel_class(&candidate);
-                if !uncapped
-                    && setup.space.caps()[class].min(rho) * candidate_product_value * (1.0 + 1e-9) < best.0
+                if setup.space.caps()[class].min(rho) * candidate_product_value * (1.0 + 1e-9) < best.0
                     && nested_bounds[i] * (1.0 + 1e-9) < best.0
                 {
                     continue;

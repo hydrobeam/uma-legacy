@@ -164,7 +164,7 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
   the per-state bound about 30% (mostly `land_factor` at each state's
   lowest misses), the per-n bound about 14%, `key_level` about 11%, the rest the configurations' setup and the walk.
   Measured and dropped: a one-entry cache per (outfit, target) in front of `land_factor` in both bounds (9% slower:
-  too few repeats); the state-conditioned bound alone at every node (`SBOUND=2`'s; 1M nodes, 3 s on j_t8_1 against 40k
+  too few repeats); the state-conditioned bound alone at every node (1M nodes, 3 s on j_t8_1 against 40k
   nodes, 0.2 s with the ratio bound beside it); the per-state bound only within 1-4 open slots of a leaf (time
   unchanged: the extra nodes cost what the skipped evaluations did); `upper_na` in place of the state value at leaves
   (no faster, bands larger).

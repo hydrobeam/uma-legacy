@@ -244,15 +244,8 @@ impl Multi<'_> {
     pub(super) fn certify(&self, state: &mut LoopSearchState) -> (Pass, f64) {
         let checks = crate::checks::get();
         let budget = checks.exact_budget.unwrap_or(EXACT_BUDGET);
-        let default_caps;
-        let caps: &[f64] = if !self.inputs.deck_job.exact {
-            &[]
-        } else if let Some(list) = &checks.exact_steps {
-            list
-        } else {
-            default_caps = EXACT_STEPS.map(|cap| if cap == EXACT_RHO { self.maximum_exact_ratio } else { cap });
-            &default_caps
-        };
+        let default_caps = EXACT_STEPS.map(|cap| if cap == EXACT_RHO { self.maximum_exact_ratio } else { cap });
+        let caps: &[f64] = if self.inputs.deck_job.exact { &default_caps } else { &[] };
         let mut finished: Option<Pass> = None;
         let mut certified_cap = 1.0f64;
         let mut allowance = budget;

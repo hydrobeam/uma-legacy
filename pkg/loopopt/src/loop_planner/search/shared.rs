@@ -2,7 +2,6 @@
 //! Loop enumeration and certification across structures belong to `bands`.
 use super::{ChanceKey, DeckSources, Multi, SharedQueryKey, lin_of};
 use super::{LoopSearchState, Tally};
-use crate::Instant;
 use crate::data::Data;
 use crate::deck::caps::src_class;
 use crate::deck::enumerate::{BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
@@ -153,7 +152,6 @@ impl Multi<'_> {
             return;
         }
         let (model, structure) = (self.inputs.model, scan.members);
-        let started = Instant::now();
         let DeckSources { entries, filler_count, chain_events } = self.ents_of(deck);
         let deck_class = src_class(entries.iter().map(|entry| &*entry.sources));
         let mut value_sum = 0.0;
@@ -180,7 +178,6 @@ impl Multi<'_> {
                 value_sum += results[i].all;
             }
         }
-        tally.score_seconds += started.elapsed().as_secs_f64();
         tally.scored_decks += 1;
         tally.spend(800);
         scan.decks.push(ScoredDeck { value: value_sum, deck: deck.clone() });
@@ -190,7 +187,6 @@ impl Multi<'_> {
     /// deck when none is on the skyline)
     fn seed_shared(&self, state: &mut LoopSearchState, scan: &mut SharedScan) {
         let (model, space, fixed, structure) = (self.inputs.model, self.inputs.deck_space, self.fixed, scan.members);
-        let started = Instant::now();
         let pairs = &scan.lineages;
         let value_of = |white_hint_chances: &[f64], gold_hint_chances: &[f64]| {
             fixed
@@ -205,7 +201,6 @@ impl Multi<'_> {
         let seeds = self.sky_top(&mut state.skyline_bound_scratch, self.loop_limit + 2, &value_of, &|deck| {
             ids.iter().all(|&id| !deck.blocks(id, &self.card_of, crate::checks::get()))
         });
-        state.tally.seed_seconds += started.elapsed().as_secs_f64();
         for &(_, j) in &seeds {
             self.score_shared(&mut state.tally, scan, &self.inputs.skyline[j]);
         }
@@ -237,7 +232,6 @@ impl Multi<'_> {
         let (model, space, structure) = (self.inputs.model, self.inputs.deck_space, scan.members);
         let mut complete = true;
         tally.band_decks += 1;
-        let started = Instant::now();
         let nodes_before = space.nodes.get();
         let SearchOutcome { decks: mut candidates, incomplete, .. } = space.search(
             state_bounds,
@@ -248,7 +242,6 @@ impl Multi<'_> {
             SearchMode::Band { ratio_cap: cap, max_decks: space.band_cap(), bound: BandBound::Capped },
         );
         tally.spend(2 * (space.nodes.get() - nodes_before) + 5 * candidates.len() + 10_000);
-        tally.band_seconds += started.elapsed().as_secs_f64();
         if incomplete.is_some() {
             tally.cap_hit = true;
             complete = false;
@@ -276,7 +269,6 @@ impl Multi<'_> {
                     .iter()
                     .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
                     .collect();
-                let bound_started = Instant::now();
                 let chain_events = space.deck_events(selected, &scan.member_ids);
                 let upper_bound: Option<f64> = (0..scan.member_count)
                     .map(|member| {
@@ -294,7 +286,6 @@ impl Multi<'_> {
                         .map(|bounds| bounds.iter().sum::<f64>())
                     })
                     .sum();
-                tally.bound_seconds += bound_started.elapsed().as_secs_f64();
                 if let Some(upper_bound) = upper_bound {
                     tally.spend(100);
                     if upper_bound * (1.0 + 1e-9) < threshold {

@@ -385,7 +385,7 @@ impl<'cfg> StateBound<'cfg> {
     }
 
     /// The configuration's root upper bound, used to prune against `sb_bar`; returns 0 when no bound is enabled.
-    pub(super) fn root(&mut self, cap_free_check_scale: f64, sb_bar: f64, state_bound_mode: u8) -> f64 {
+    pub(super) fn root(&mut self, cap_free_check_scale: f64, sb_bar: f64, state_bound: bool) -> f64 {
         if self.context.cap_free {
             let cheap_bound = self.cheap(&[]);
             if cap_free_check_scale == 0.0 && cheap_bound * (1.0 + 1e-9) < sb_bar {
@@ -393,7 +393,7 @@ impl<'cfg> StateBound<'cfg> {
             } else {
                 cheap_bound.min(self.full(&[], if cap_free_check_scale == 0.0 { sb_bar } else { 0.0 }))
             }
-        } else if state_bound_mode > 0 {
+        } else if state_bound {
             self.bound(&[])
         } else {
             0.0

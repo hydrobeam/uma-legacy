@@ -3,10 +3,7 @@
 //! is in `state_bound`.
 use crate::deck::chains::{ChainKind, event_pmf_job, key_level};
 use crate::deck::joint::{JointQuery, MissFactors, land_factor};
-use crate::deck::sources::{
-    LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint, group_gh,
-    group_orthant_certified,
-};
+use crate::deck::sources::{LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint};
 use crate::skills::Model;
 struct BoundTarget {
     target: usize,
@@ -48,15 +45,6 @@ pub(crate) fn upper_na(
     // (checked once per source, when it is built: `TargetSources::uncertified_orthant`)
     for SourceEntry { sources, .. } in entries {
         if sources.uncertified_orthant {
-            if query.checks.upper_why
-                && let Some(group) = sources
-                    .fixed_outcomes
-                    .iter()
-                    .chain(sources.chain_outcomes.iter().map(|outcome| &outcome.outcomes))
-                    .find(|candidate| group_gh(candidate).len() >= 2 && !group_orthant_certified(candidate))
-            {
-                eprintln!("why: group {group:?}");
-            }
             return None;
         }
     }

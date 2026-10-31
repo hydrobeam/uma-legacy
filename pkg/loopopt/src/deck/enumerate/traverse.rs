@@ -1,6 +1,5 @@
 //! Configuration traversal and its borrowed-card and state bounds.
-use crate::Instant;
-use crate::checks::{SBN, SPT};
+use crate::checks::SBN;
 use crate::deck::chains::{ChainKind, ChainState, chain_states};
 use crate::deck::enumerate::bounds::{OutfitRow, OutfitRun, SplitColumns};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationQueue, SearchConfig};
@@ -29,7 +28,7 @@ pub(crate) struct SearchControl {
     pub(crate) cap_free: bool,
     pub(crate) cap_free_node_limit: usize,
     pub(crate) cap_free_check_scale: f64,
-    pub(crate) state_bound_mode: u8,
+    pub(crate) state_bound: bool,
     pub(crate) state_bound_threshold: f64,
     pub(crate) bound_trainee: crate::uma::UmaIndex,
     pub(crate) bound_inheritance: f64,
@@ -220,9 +219,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         ratio_at: impl Fn(usize, &[f64], &[f64]) -> f64,
         cap_free_ratios: &CapFreeRatios<'_>,
     ) -> SearchOutcome {
-        let traversal_start = Instant::now();
         let (mut scratch, mut results) = Self::workspace(scratch);
-        let uncapped = self.controls.state_bound_mode == 2;
         let (multi, assumed) = (queue.multi, queue.assumed);
         let mut order = ConfigOrder::new(queue, self.controls);
         while let Some(configuration) = order.next(self.space, results.best_value, bounds) {
@@ -232,15 +229,10 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             if let Some(stop) =
                 self.visit(state_bounds, &mut scratch, &mut results, &configuration, &ratio_at, cap_free_ratios)
             {
-                return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped, multi, assumed };
+                return SearchOutcome { decks: results.decks, incomplete: Some(stop), multi, assumed };
             }
         }
-        SPT.with(|cell| {
-            let mut stats = cell.get();
-            stats.tree_seconds += traversal_start.elapsed().as_secs_f64();
-            cell.set(stats);
-        });
-        SearchOutcome { decks: results.decks, incomplete: None, uncapped, multi, assumed }
+        SearchOutcome { decks: results.decks, incomplete: None, multi, assumed }
     }
 
     /// The traversal's buffers (preparation's odds buffers reused) and its results so far (no deck, preparation's bar).
@@ -374,7 +366,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             },
         );
         let sb_root =
-            state_bound.root(controls.cap_free_check_scale, controls.state_bound_threshold, controls.state_bound_mode);
+            state_bound.root(controls.cap_free_check_scale, controls.state_bound_threshold, controls.state_bound);
         if controls.cap_free {
             // (the cap-free band: past its node limit it stops; CF_CHECK passes the root at controls.cap_free_check_scale times its bound)
             if space.nodes.get() > controls.cap_free_node_limit {
@@ -384,7 +376,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
                 SBN.with(|counters| counters.borrow_mut().configurations_cut += 1);
                 return None;
             }
-        } else if controls.state_bound_mode > 0 && sb_root * (1.0 + 1e-9) < controls.state_bound_threshold {
+        } else if controls.state_bound && sb_root * (1.0 + 1e-9) < controls.state_bound_threshold {
             SBN.with(|counters| counters.borrow_mut().configurations_cut += 1);
             return None;
         }
@@ -713,14 +705,14 @@ impl<V> DeckSearchContext<'_, '_, V> {
     /// The state-conditioned tables of `configuration` and `groups`, cached by `StateBoundKey`:
     /// chain positions (sorted kinds, the key's state distribution projected on the positions whose group has chain
     /// targets), per group its slots' positions and, per chain level, each target's lowest misses over the group's
-    /// entries (a slot may take any of them, the same one twice: a relaxation). None without the bound (`state_bound_mode` 0)
+    /// entries (a slot may take any of them, the same one twice: a relaxation). None without the bound (`state_bound` false)
     fn state_configuration(
         &self,
         state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         configuration: &SearchConfig,
         groups: &[TraversalEntryGroup<'_>],
     ) -> Option<std::rc::Rc<StateBoundConfig>> {
-        let SearchControl { target_count, kind_count, set_id, state_bound_mode, .. } = self.controls;
+        let SearchControl { target_count, kind_count, set_id, state_bound, .. } = self.controls;
         let (space, state_rows, filler, group_count) =
             (self.space, self.tables.state_rows, configuration.filler_count, groups.len());
         let state_key = crate::deck::state_bound::StateBoundKey {
@@ -731,7 +723,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
             other_entry_count: configuration.other_entry_count,
             events: configuration.events.key(),
         };
-        if state_bound_mode == 0 {
+        if !state_bound {
             None
         } else if let Some(cached) = state_bounds.configurations.get(&state_key).cloned() {
             Some(cached)

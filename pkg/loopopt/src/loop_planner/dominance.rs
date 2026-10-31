@@ -204,7 +204,6 @@ impl DominanceIndex {
         query_signature: Sig,
         coordinate_sum: f64,
         need: usize,
-        tests: &mut usize,
     ) -> usize {
         let coordinate_count = self.coordinate_count;
         let first_bucket = self.bucket_of(coordinate_sum - SUM_EPS);
@@ -219,7 +218,6 @@ impl DominanceIndex {
                 while candidate_mask != 0 {
                     let i = word * 64 + candidate_mask.trailing_zeros() as usize;
                     candidate_mask &= candidate_mask - 1;
-                    *tests += 1;
                     let row = &bucket.flat[i * coordinate_count..(i + 1) * coordinate_count];
                     if dominates(row, coordinates) {
                         n += 1;
@@ -410,10 +408,9 @@ pub(super) fn kfilter_order(mut decks: Vec<DeckEval>, coordinate_count: usize) -
 pub(super) fn k_filter(mut decks: Vec<DeckEval>, kmax: usize, coordinate_count: usize) -> DominanceIndex {
     decks.sort_by(|a, b| b.coordinate_sum.partial_cmp(&a.coordinate_sum).unwrap());
     let mut kept = DominanceIndex::new(coordinate_count);
-    let mut tests = 0usize;
     for deck in decks {
         let query_signature = sig_of(&deck.dominance_values, true);
-        if kept.count(&deck.dominance_values, query_signature, deck.coordinate_sum, kmax, &mut tests) < kmax {
+        if kept.count(&deck.dominance_values, query_signature, deck.coordinate_sum, kmax) < kmax {
             kept.insert(deck);
         }
     }

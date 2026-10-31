@@ -575,12 +575,6 @@ pub(crate) fn run_career_in(
         let search = solve_kept(&mut env, kept, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
         let search_work = json!({"nodes": env.setup.space.nodes.get() - nodes_before, "exact": env.state.exact_scorings - exact_scorings_before});
         env.state.use_seen = true;
-        if crate::checks::get().career_work {
-            eprintln!(
-                "career search: work {} of {}, solved {}, proven {}",
-                search.work, env.state.budget, search.solved, search.proven
-            );
-        }
         if search.candidates == 0 {
             keep_seen(kept, &env.state, seen_fingerprint);
             return json!({"error": if career_job.borrowed_parent == BorrowedParent::Allow { "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed." }
