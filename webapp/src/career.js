@@ -57,7 +57,7 @@ import { wireMenu } from './sortmenu.js';
 import { parseExport, parseTree } from './umadump.js';
 import { initUmamoe, syncListings, umamoeButton } from './umamoesetup.js';
 import { detailsEl, inspView, fitSparks, deckCardAt, openSkill } from './details.js';
-import { drawPink } from './pink.mjs';
+import { scheduledRaces, rolledOutcome } from './career/roll.mjs';
 import { unprovenWhy, whyText, searchCaveat, planCaveat } from './proofs.mjs';
 
 const tName = (g) => {
@@ -1969,100 +1969,13 @@ const copyNode = (v) => ({
   greens: { ...(v.greens || {}) },
   wins: [...v.wins],
 });
-function scheduledRaces(r) {
-  const races = new Map();
-  for (const w of (r.schedule || []).filter((w) => w.run !== false)) {
-    const ix = CAREER.races.indexOf(w.name || w.race);
-    if (ix < 0) continue;
-    // run at another turn too: p, the chance she wins it at least once, taking the two runs as independent. The solver
-    // does too when her grades are certain; an April pink that may raise them links the runs (MODEL.md, E[p_C p_S]),
-    // which this leaves out: under 0.1 points, since a firing is 1-5% per legacy and moves a run's chance by about 10
-    const prev = races.get(ix);
-    races.set(ix, {
-      ix,
-      name: w.name || w.race,
-      p: 1 - (1 - (prev?.p || 0)) * (1 - w.p),
-      turns: [...(prev?.turns || []), w.turn],
-    });
-  }
-  return [...races.values()];
-}
-// the skills she bought in a roll, given the sparks it landed (the report's per-target buying and landing chances):
-// a landed one is bought, gold with chance land_gold / land; one that didn't land was bought anyway with chance
-// (buy - land) / (1 - land), gold with chance (gold - land_gold) / (buy - land)
-function rolledBought(r, sparks) {
-  const bought = {};
-  for (const t of r.targets) {
-    const b = t.buy;
-    if (!b) continue;
-    const land = b.land_gold + b.land_white,
-      buy = b.gold + b.white; // P(lands as a spark), P(bought)
-    if (sparks[t.group]) bought[t.group] = Math.random() < (land > 0 ? b.land_gold / land : 0) ? 'gold' : 'white';
-    else if (land < 1 && Math.random() < Math.max(0, buy - land) / (1 - land)) {
-      const goldGivenUnlanded = buy - land > 0 ? Math.max(0, b.gold - b.land_gold) / (buy - land) : 0;
-      bought[t.group] = Math.random() < goldGivenUnlanded ? 'gold' : 'white';
-    }
-  }
-  return bought;
-}
-// her pink spark drawn (`drawPink`)
-const rolledPink = (r) => drawPink(r.aptitudes);
-// a spark's stars, drawn from the rank band's star mix (state.rank: the chances of 1, 2 and 3 stars)
-function starDraw() {
-  const mix = state.rank.split(',').map(Number);
-  return () => {
-    const u = Math.random();
-    return u < mix[0] ? 1 : u < mix[0] + mix[1] ? 2 : 3;
-  };
-}
-// a random result of this career: the set of landed targets drawn from its exact odds, each spark's stars from the rank,
-// each G1 she runs won with its chance (it differs every time; the career's first showing is one of these too)
-function rolledOutcome(r) {
-  const star = starDraw();
-  const sparks = {};
-  if (Array.isArray(r.outcome_sets)) {
-    // the landed set (a mask over the targets) drawn by its chance; the last if rounding leaves u past them all
-    const u = Math.random();
-    let cumulative = 0,
-      mask = r.outcome_sets.length - 1;
-    for (let i = 0; i < r.outcome_sets.length; i++) {
-      cumulative += r.outcome_sets[i];
-      if (u < cumulative) {
-        mask = i;
-        break;
-      }
-    }
-    state.targets.forEach((t, i) => {
-      if (mask & (1 << i)) sparks[t.group] = star();
-    });
-  } else
-    r.targets.forEach((t) => {
-      if (Math.random() < t.p) sparks[t.group] = star();
-    }); // over 12 targets: each on its own odds
-  const wins = scheduledRaces(r)
-    .filter((x) => Math.random() < x.p)
-    .map((x) => x.ix)
-    .sort((a, b) => a - b);
-  const bought = rolledBought(r, sparks),
-    pink = rolledPink(r);
-  return { sparks, bought, wins, pinks: pink.pinks, apt: pink.apt, ...rolledBlueGreen(r) };
-}
-// her blue (stat) spark: one of the five stats, near-equally likely (hakuraku: 20% each, a slight lean to her stronger
-// stats); its stars follow that stat's value, which the model doesn't have: the rank band's star mix stands in. Her unique
-// (green) spark: always (GameTora: guaranteed for an outfit at 3 stars or more; the page assumes yours are), stars by the
-// rank band (hakuraku: as white sparks, not by the skill's level)
-function rolledBlueGreen(r) {
-  const star = starDraw();
-  const blues = { [1 + Math.min(4, Math.floor(Math.random() * 5))]: star() };
-  const out = r.trainee.outfits[0]?.id,
-    greens = {};
-  if (out && CAREER.uniques?.[out]) greens[out] = star();
-  return { blues, greens };
-}
+// what a roll reads of the settings and data (career/roll.mjs)
+/** @type {() => import('./career/roll.mjs').RollSetup} */
+const rollSetup = () => ({ career: CAREER, targets: state.targets, rank: state.rank });
 function rollDraft() {
   const r = shown();
   if (!r || searching) return;
-  Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} });
+  Object.assign(simulation.draft, rolledOutcome(r, rollSetup()), { winAt: {} });
   simulation.r = null;
   simulation.stale = false;
   const request = rollReq(simulation.draft, r);
@@ -2249,7 +2162,7 @@ function draftOf(r) {
     outfit: r.trainee.outfits[0]?.id,
     borrowed: false,
     pinks: {},
-    ...rolledOutcome(r),
+    ...rolledOutcome(r, rollSetup()),
     winAt: {},
     parents: r.parents.map((i) => copyNode(vets[i])),
   };
@@ -2409,7 +2322,7 @@ function analysisCard(d, r) {
     d,
     outfit: r.trainee.outfits[0]?.label || null,
     apt: d.apt || r.aptitudes?.start || null,
-    races: scheduledRaces(r),
+    races: scheduledRaces(r, CAREER.races),
     raceName: (ix) => CAREER.races[ix] || `G1 ${ix}`,
     onEdit: editDraft,
     winsBtn: wb,

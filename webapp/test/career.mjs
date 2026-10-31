@@ -1,46 +1,155 @@
 import fs from 'node:fs';
 import { drawPink } from '../src/pink.mjs';
+import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.mjs';
 import { searchCaveat, planCaveat } from '../src/proofs.mjs';
 import { QUICK, check, ART, dialog, audit, contrastCheck, still, careerPage, repoUrl } from './helpers.mjs';
 
 // The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
 // career with legacy pinks (val/ref__global__career_*.out, the solver's outputs that validation pins), 40,000 seeded draws
 // per career, each aptitude drawn as often as its `pink_gen` chance, to 5 sigma (at least 1e-3).
-function pinkPin() {
-  const dir = repoUrl('val/');
-  let s = 0x9e3779b9; // (mulberry32)
-  const rnd = () => {
+// a seeded random source (mulberry32)
+function seeded(seed = 0x9e3779b9) {
+  let s = seed;
+  return () => {
     s = (s + 0x6d2b79f5) | 0;
     let t = Math.imul(s ^ (s >>> 15), 1 | s);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+// the reference careers' reports (val/ref__global__career_*.out): [file, report]
+const referenceCareers = () => {
+  const dir = repoUrl('val/');
+  return fs
+    .readdirSync(dir)
+    .filter((f) => /^ref__global__career_.*\.out$/.test(f))
+    .sort()
+    .flatMap((f) => (JSON.parse(fs.readFileSync(new URL(f, dir), 'utf8')).results || []).map((r) => [f, r]));
+};
+function pinkPin() {
+  const rnd = seeded();
   const N = 40000;
   let aptitudes = 0,
     worst = 0,
     bad = '';
-  for (const f of fs
-    .readdirSync(dir)
-    .filter((f) => /^ref__global__career_.*\.out$/.test(f))
-    .sort()) {
-    for (const r of JSON.parse(fs.readFileSync(new URL(f, dir), 'utf8')).results || []) {
-      const ap = r.aptitudes;
-      if (!ap?.fire.length) continue;
-      const drawn = new Map(); // pink group -> draws that gave it
-      for (let i = 0; i < N; i++) {
-        const g = Object.keys(drawPink(ap, rnd).pinks)[0];
-        if (g !== undefined) drawn.set(+g, (drawn.get(+g) || 0) + 1);
-      }
-      for (const { group, p } of ap.pink_gen) {
-        const fr = (drawn.get(group) || 0) / N,
-          sd = Math.sqrt((p * (1 - p)) / N);
-        aptitudes++;
-        if (Math.abs(fr - p) > Math.max(5 * sd, 1e-3)) bad ||= `${f} group ${group}: drawn ${fr} vs ${p}`;
-        if (sd > 0) worst = Math.max(worst, Math.abs(fr - p) / sd);
-      }
+  for (const [f, r] of referenceCareers()) {
+    const ap = r.aptitudes;
+    if (!ap?.fire.length) continue;
+    const drawn = new Map(); // pink group -> draws that gave it
+    for (let i = 0; i < N; i++) {
+      const g = Object.keys(drawPink(ap, rnd).pinks)[0];
+      if (g !== undefined) drawn.set(+g, (drawn.get(+g) || 0) + 1);
+    }
+    for (const { group, p } of ap.pink_gen) {
+      const fr = (drawn.get(group) || 0) / N,
+        sd = Math.sqrt((p * (1 - p)) / N);
+      aptitudes++;
+      if (Math.abs(fr - p) > Math.max(5 * sd, 1e-3)) bad ||= `${f} group ${group}: drawn ${fr} vs ${p}`;
+      if (sd > 0) worst = Math.max(worst, Math.abs(fr - p) / sd);
     }
   }
   return { ok: aptitudes > 0 && !bad, detail: bad || `${aptitudes} aptitudes, worst ${worst.toFixed(2)} sigma` };
+}
+// A roll (career/roll.mjs) against the report it is drawn from, on every reference career: over 20,000 seeded rolls each,
+// every target lands as often as the report's odds give (its outcome sets' marginal, or its own `p` without them), is
+// bought as often as `buy.gold + buy.white` and gold as often as `buy.gold` (the bought draw, conditional on the landing,
+// keeps the report's marginals), each G1 is won as often as `scheduledRaces` says, and the stars of the sparks, the
+// blue stat and the unique follow the rank band's mix, uniform stats, and the outfit's unique. Each to 5 sigma (at
+// least 1e-3). `scheduledRaces` alone: a race run twice is won at least once with 1 - (1 - p1)(1 - p2).
+function rollPin() {
+  const rnd = seeded(),
+    N = 20000,
+    rank = '0.20,0.70,0.10',
+    mix = rank.split(',').map(Number);
+  let figures = 0,
+    worst = 0,
+    bad = '';
+  const near = (what, count, p, n = N) => {
+    const fr = count / n,
+      sd = Math.sqrt((p * (1 - p)) / n);
+    figures++;
+    if (Math.abs(fr - p) > Math.max(5 * sd, 1e-3)) bad ||= `${what}: drawn ${fr.toFixed(4)} vs ${p.toFixed(4)}`;
+    if (sd > 0) worst = Math.max(worst, Math.abs(fr - p) / sd);
+  };
+  for (const [f, r] of referenceCareers()) {
+    const races = [...new Set((r.schedule || []).map((w) => w.name || w.race))],
+      outfit = r.trainee.outfits[0]?.id,
+      setup = { career: { races, uniques: { [outfit]: true } }, targets: r.targets, rank };
+    const landed = new Map(), // target group -> rolls it landed in
+      bought = new Map(),
+      gold = new Map(),
+      won = new Map(), // race index -> rolls she won it in
+      stars = [0, 0, 0],
+      blues = [0, 0, 0, 0, 0],
+      add = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+    let greens = 0;
+    for (let i = 0; i < N; i++) {
+      const roll = rolledOutcome(r, setup, rnd);
+      for (const [g, s] of Object.entries(roll.sparks)) {
+        add(landed, +g);
+        stars[s - 1]++;
+      }
+      for (const [g, kind] of Object.entries(roll.bought)) {
+        add(bought, +g);
+        if (kind === 'gold') add(gold, +g);
+      }
+      for (const ix of roll.wins) add(won, ix);
+      blues[+Object.keys(roll.blues)[0] - 1]++;
+      greens += roll.greens[outfit] ? 1 : 0;
+    }
+    const sets = Array.isArray(r.outcome_sets) ? r.outcome_sets : null;
+    r.targets.forEach((t, i) => {
+      const p = sets ? sets.reduce((sum, q, mask) => sum + (mask & (1 << i) ? q : 0), 0) : t.p;
+      near(`${f} ${r.career} target ${t.group} lands`, landed.get(t.group) || 0, p);
+      if (!t.buy) return;
+      near(`${f} ${r.career} target ${t.group} bought`, bought.get(t.group) || 0, t.buy.gold + t.buy.white);
+      near(`${f} ${r.career} target ${t.group} gold`, gold.get(t.group) || 0, t.buy.gold);
+    });
+    for (const race of scheduledRaces(r, races))
+      near(`${f} ${r.career} ${race.name} won`, won.get(race.ix) || 0, race.p);
+    const sparks = stars.reduce((a, b) => a + b, 0);
+    mix.forEach((p, k) => {
+      near(`${f} ${r.career} ${k + 1}-star sparks`, stars[k], p, sparks);
+    });
+    blues.forEach((count, k) => {
+      near(`${f} ${r.career} blue stat ${k + 1}`, count, 0.2);
+    });
+    // (a report without an outfit, as before outfits were reported: no unique)
+    if (greens !== (outfit ? N : 0)) bad ||= `${f} ${r.career}: her unique in ${greens} of ${N} rolls`;
+  }
+  // the pieces on their own: a race run at two turns, an unrun one, one not among the races; the star mix; the bought
+  // draw of a skill that never lands; no unique for an outfit without one
+  const twice = scheduledRaces(
+      {
+        schedule: [
+          { name: 'A', p: 0.5, turn: 1 },
+          { name: 'A', p: 0.4, turn: 30 },
+          { name: 'B', p: 0.9, turn: 2, run: false },
+          { name: 'C', p: 0.9, turn: 3 },
+        ],
+      },
+      ['B', 'A'],
+    ),
+    star = starDraw('0,1,0', rnd),
+    unlanded = rolledBought(
+      { targets: [{ group: 7, buy: { land_gold: 0, land_white: 0, gold: 0, white: 0 } }] },
+      {},
+      rnd,
+    ),
+    noUnique = rolledBlueGreen({ trainee: { outfits: [{ id: 5 }] } }, { career: { races: [] }, rank }, rnd);
+  if (
+    !(
+      twice.length === 1 &&
+      twice[0].ix === 1 &&
+      Math.abs(twice[0].p - 0.7) < 1e-12 &&
+      twice[0].turns.join() === '1,30' &&
+      star() === 2 &&
+      Object.keys(unlanded).length === 0 &&
+      Object.keys(noUnique.greens).length === 0
+    )
+  )
+    bad ||= `pieces: ${JSON.stringify({ twice, unlanded, noUnique })}`;
+  return { ok: figures > 0 && !bad, detail: bad || `${figures} figures, worst ${worst.toFixed(2)} sigma` };
 }
 
 export default async function career(b) {
@@ -72,6 +181,12 @@ export default async function career(b) {
       "career: a roll's pink spark (`drawPink`) is drawn from the solver's pink model: each aptitude as often as its `pink_gen` chance on the reference careers",
       pin.ok,
       pin.detail,
+    );
+    const rolls = rollPin();
+    check(
+      "career: a roll (career/roll.mjs) keeps its career's report: targets land, are bought and gold, and G1s are won as often as the report says; stars, blue stat and unique as the model draws them",
+      rolls.ok,
+      rolls.detail,
     );
   }
   // the status line's caveat on constructed reports: a cap breach is named whether or not the cap-free rerun finished,

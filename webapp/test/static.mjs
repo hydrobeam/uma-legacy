@@ -12,9 +12,10 @@ import path from 'node:path';
 
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 const read = (f) => fs.readFileSync(path.join(W, f), 'utf8');
-const ls = (dir, re) =>
+// the files in `dir` whose names match `re`; `recursive`: in its subfolders too (src/career/)
+const ls = (dir, re, recursive = false) =>
   fs
-    .readdirSync(path.join(W, dir))
+    .readdirSync(path.join(W, dir), { recursive })
     .filter((f) => re.test(f))
     .map((f) => path.join(dir, f));
 const words = (text) => new Set(text.replace(/&#?\w+;/g, ' ').match(/[A-Za-z_][\w-]*/g));
@@ -28,7 +29,7 @@ const BUILT = {
   leg1: 'afftable.js, the legacy columns: leg + the legacy index',
 };
 
-const sources = [...ls('src', /\.(js|mjs)$/), ...ls('.', /\.template\.(html|js)$/), 'build.py'].map((f) => [
+const sources = [...ls('src', /\.(js|mjs)$/, true), ...ls('.', /\.template\.(html|js)$/), 'build.py'].map((f) => [
   f,
   read(f),
 ]);
