@@ -6,7 +6,7 @@ whole set, as a folder name), so it is served with a one-year immutable cache an
 the pages keep a 5-minute cache and always point at the current names. Favicons (icons.py) sit at the root.
 Served over http(s): the page fetches the wasm, data and images, so it is not meant to be opened as a file."""
 
-import json, subprocess, os, sqlite3, shutil, hashlib, re, io
+import json, subprocess, os, sqlite3, shutil, hashlib, re, io, string
 from html import unescape
 import brotli
 from dataclasses import dataclass
@@ -143,8 +143,8 @@ def hint_bases():
 # /about's statement of the career planner's robustness check: the all-target obs/pred ratio's 95% interval ends
 # (pkg/loopopt/build.rs `plan_constants`, the same keys and rounding)
 P_ALL_RATIO_ENDS = {
-    "__PALLLOW__": "13.p_all_eight_ratio_all_95_pct_low",
-    "__PALLHIGH__": "13.p_all_eight_ratio_all_95_pct_high",
+    "PALLLOW": "13.p_all_eight_ratio_all_95_pct_low",
+    "PALLHIGH": "13.p_all_eight_ratio_all_95_pct_high",
 }
 
 
@@ -634,80 +634,91 @@ THEMEBTN = (
 PAGES = [("career", "./", "Career planner"), ("loop", "loop", "Loop planner"), ("about", "about", "How this works")]
 
 
+class Page(string.Template):
+    """A page template's markers, `__NAME__` (capitals and digits; `__PANEL_X__` are filled before, by `panels`): one
+    pass, so inserted text is never searched again; `$`, which the pages' scripts use, stays literal."""
+
+    delimiter = "__"
+    pattern = r"__(?:(?P<named>[A-Z][A-Z0-9]*)__|(?P<escaped>(?!))|(?P<braced>(?!))|(?P<invalid>(?!)))"
+
+
+def fill(page, values):
+    """`page` with every marker filled from `values`: a marker without a value, or a value without its marker, stops the
+    build; no value may close the page's inline script early."""
+    named = {m.group("named") for m in Page.pattern.finditer(page) if m.group("named")}
+    assert named == set(values), (sorted(named - set(values)), sorted(set(values) - named))
+    for name, value in values.items():
+        assert "</script" not in value.lower(), name
+    return Page(page).substitute(values)
+
+
 def NAV(cur):
     tabs = "".join(f'<a href="{h}"' + (' aria-current="page"' if k == cur else "") + f">{t}</a>" for k, h, t in PAGES)
     return f'<nav class="tnav" aria-label="Pages"><div class="ptabs">{tabs}</div> {THEMEBTN}</nav>'
 
 
-for k, v in [
-    ("__THEMEJS__", THEMEJS),
-    ("__NAV__", NAV("loop")),
-    ("__VERSION__", VERSION),
-    ("__SITE__", SITE),
-    ("__SITE__", SITE),
-    ("__CSS__", CSS_LINK),
-    ("__APP__", MAIN_JS),
-    ("__DATAJS__", DATA_JS),
-    ("__EXAMPLE__", js(example)),
-    ("__ASSETS__", js(ASSETS)),
-    ("__ASSETS__", js(ASSETS)),
-    ("__FONTPRELOAD__", "\n".join(preloads) + "\n" + script_preloads(DATA_JS, MAIN_JS)),
-    ("__WORKER__", worker),
-]:
-    assert "</script" not in v.lower(), k
-    html = html.replace(k, v, 1)
 # the logo: the favicon's three sparkles inline in the title (gradient ids prefixed so they can't clash)
 LOGO = re.sub(r'\bid="g(\d)"', r'id="lg\1"', open(os.path.join(HERE, "icons", "favicon.svg")).read()).replace(
     "url(#g", "url(#lg"
 )
 LOGO = LOGO.replace("<svg ", '<svg class="logo" aria-hidden="true" focusable="false" ', 1).strip()
-html = html.replace("__LOGO__", LOGO, 1)
-assert not re.search(r"__(?!PURE__)[A-Z]+__", html), re.findall(
-    r"__(?!PURE__)[A-Z]+__", html
-)  # every placeholder filled (esbuild's @__PURE__ marks aside)
+html = fill(
+    html,
+    {
+        "THEMEJS": THEMEJS,
+        "NAV": NAV("loop"),
+        "VERSION": VERSION,
+        "SITE": SITE,
+        "CSS": CSS_LINK,
+        "APP": MAIN_JS,
+        "DATAJS": DATA_JS,
+        "EXAMPLE": js(example),
+        "ASSETS": js(ASSETS),
+        "FONTPRELOAD": "\n".join(preloads) + "\n" + script_preloads(DATA_JS, MAIN_JS),
+        "WORKER": worker,
+        "LOGO": LOGO,
+    },
+)
 open(os.path.join(DIST, "loop.html"), "w").write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): shared styles and fonts.
 # Its disclosure script opens the "Show …" box a link lands on.
 about = open(os.path.join(HERE, "about.template.html")).read()
 LOW_BASIS_COST, LOW_BASIS_MAX = low_basis()
-for k, v in [
-    ("__LOWBASISCOST__", str(LOW_BASIS_COST)),
-    ("__LOWBASISMAX__", str(LOW_BASIS_MAX)),
-    ("__THEMEJS__", THEMEJS),
-    ("__NAV__", NAV("about")),
-    ("__VERSION__", VERSION),
-    ("__SITE__", SITE),
-    ("__SITE__", SITE),
-    ("__FONTPRELOAD__", "\n".join(preloads)),
-    ("__LOGO__", LOGO),
-    *((placeholder, f"{research_value(key):.3f}") for placeholder, key in P_ALL_RATIO_ENDS.items()),
-]:
-    about = about.replace(k, v, 1)
-about = about.replace("__CSS__", CSS_LINK + "\n<style>\n" + math_face(about) + "\n</style>", 1)
-assert not re.search(r"__[A-Z]+__", about), re.findall(r"__[A-Z]+__", about)
+about_values = {
+    "LOWBASISCOST": str(LOW_BASIS_COST),
+    "LOWBASISMAX": str(LOW_BASIS_MAX),
+    "THEMEJS": THEMEJS,
+    "NAV": NAV("about"),
+    "VERSION": VERSION,
+    "SITE": SITE,
+    "FONTPRELOAD": "\n".join(preloads),
+    "LOGO": LOGO,
+    **{name: f"{research_value(key):.3f}" for name, key in P_ALL_RATIO_ENDS.items()},
+}
+# (the math face is subset to the filled page's formulas, so the page is filled once without it to read them)
+math_css = math_face(fill(about, {**about_values, "CSS": ""}))
+about = fill(about, {**about_values, "CSS": CSS_LINK + "\n<style>\n" + math_css + "\n</style>"})
 open(os.path.join(DIST, "about.html"), "w").write(about)
 # the career planner (/career): the planner's settings, styles, data and engine, its own script and veteran data
 career = open(os.path.join(HERE, "career.template.html")).read()
 career = panels(career)  # the shared setup rows, Enhance buttons and settings editors
-for k, v in [
-    ("__THEMEJS__", THEMEJS),
-    ("__NAV__", NAV("career")),
-    ("__VERSION__", VERSION),
-    ("__SITE__", SITE),
-    ("__SITE__", SITE),
-    ("__CSS__", CSS_LINK),
-    ("__APP__", CAREER_JS),
-    ("__DATAJS__", DATA_JS),
-    ("__CAREERDATAJS__", CAREER_DATA_JS),
-    ("__ASSETS__", js(ASSETS)),
-    ("__ASSETS__", js(ASSETS)),
-    ("__FONTPRELOAD__", "\n".join(preloads) + "\n" + script_preloads(DATA_JS, CAREER_DATA_JS, CAREER_JS)),
-    ("__WORKER__", worker),
-    ("__LOGO__", LOGO),
-]:
-    assert "</script" not in v.lower(), k
-    career = career.replace(k, v, 1)
-assert not re.search(r"__(?!PURE__)[A-Z]+__", career), re.findall(r"__(?!PURE__)[A-Z]+__", career)
+career = fill(
+    career,
+    {
+        "THEMEJS": THEMEJS,
+        "NAV": NAV("career"),
+        "VERSION": VERSION,
+        "SITE": SITE,
+        "CSS": CSS_LINK,
+        "APP": CAREER_JS,
+        "DATAJS": DATA_JS,
+        "CAREERDATAJS": CAREER_DATA_JS,
+        "ASSETS": js(ASSETS),
+        "FONTPRELOAD": "\n".join(preloads) + "\n" + script_preloads(DATA_JS, CAREER_DATA_JS, CAREER_JS),
+        "WORKER": worker,
+        "LOGO": LOGO,
+    },
+)
 open(os.path.join(DIST, "index.html"), "w").write(career)
 for f in ("favicon.ico", "favicon.svg", "favicon-32.png", "apple-touch-icon.png", "og.png"):
     shutil.copyfile(os.path.join(HERE, "icons", f), os.path.join(DIST, f))
