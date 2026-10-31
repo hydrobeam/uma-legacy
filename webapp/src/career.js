@@ -841,7 +841,6 @@ async function checkPhase(id, planned) {
     planned.r.check_unavailable = true;
     redraw();
   };
-  const killed = Symbol('killed');
   for (;;) {
     let m = null;
     try {
@@ -849,14 +848,12 @@ async function checkPhase(id, planned) {
         ...planned.job,
         next: { ...planned.job.next, robust: /** @type {'next'} */ ('next'), pair_search: true },
       };
-      m = await Promise.race([runJob(job, undefined, true), nextKill().then(() => killed)]);
+      m = await Promise.race([runJob(job, undefined, true), nextKill().then(() => null)]);
     } catch {
       m = null;
     }
     if (!current()) return;
-    // a kill that left this answer on show (a comparison's: Reroll, Compare) sends the check again to the next worker,
-    // which restores the plan it kept; one that lost it answers unavailable
-    if (m === killed) continue;
+    // (a kill loses the check: the stored state keeps no check, so the next worker could not run it; REPORT N7)
     const check = m?.r.next?.robust;
     if (!check || check.unavailable || check.error) return unavailable();
     if (check.plan !== planned.r.outcomes?.career) return;

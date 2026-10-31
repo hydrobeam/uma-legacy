@@ -33,9 +33,10 @@ import {
  */
 /** @type {UmamoeCtx} */
 let ctx;
-/** @type {{sig: string, text: string, short: string, min: number, n: number}} the target set the pool's listings are
- *  for ('' none), the popup's status and the button's, and what was searched */
-const now = { sig: '', text: '', short: '', min: 0, n: 0 };
+/** @type {{sig: string, text: string, short: string, shownText: string, shownShort: string, min: number, n: number}}
+ *  the target set the pool's listings are for ('' none), the popup's status and the button's (`shown*`: the answer on
+ *  show's, put back when a request for another set is dropped), and what was searched */
+const now = { sig: '', text: '', short: '', shownText: '', shownShort: '', min: 0, n: 0 };
 // the request under way (`asking`, for the target set `pending`): any later call that changes or keeps the listings,
 // or a forgotten key, makes it stale, so an older answer never lands over a newer one
 let asking = 0,
@@ -97,8 +98,8 @@ function take(a, q) {
   for (const [i, v] of listed.entries()) order.set(v.id, i);
   setListings(listed);
   const n = a.items.length;
-  now.text = `${n} veterans found, searched ${ago(a.at)}`;
-  now.short = `${n} veterans`;
+  now.text = now.shownText = `${n} veterans found, searched ${ago(a.at)}`;
+  now.short = now.shownShort = `${n} veterans`;
   now.min = q.min;
   now.n = q.factors.length;
 }
@@ -144,7 +145,8 @@ export async function syncListings(fresh = false) {
     sig = sigOf(),
     q = query();
   if (!fresh && sig === pending) return; // its request is out
-  const id = ++asking;
+  const id = ++asking,
+    wasOut = pending !== '';
   pending = '';
   $('um-again').toggleAttribute('disabled', false);
   if (!key || !q) {
@@ -156,7 +158,15 @@ export async function syncListings(fresh = false) {
     paintUmamoe();
     return;
   }
-  if (sig === now.sig && !fresh) return;
+  if (sig === now.sig && !fresh) {
+    // back to the set on show while another's request was out: that one is stale, so its "searching…" goes
+    if (wasOut) {
+      now.text = now.shownText;
+      now.short = now.shownShort;
+      paintUmamoe();
+    }
+    return;
+  }
   const kept = fresh ? null : keptAnswer(ERA, q);
   if (kept) {
     now.sig = sig;

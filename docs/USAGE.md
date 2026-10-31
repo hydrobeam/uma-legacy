@@ -167,7 +167,8 @@ Career Info). It starts as a random result of the career:
   figure is provisional (the plan's routes are not every route a replan can take) and shows as *No saving found yet*
   when it is zero (*Checking…* when it saves careers); the best career with her as a parent follows from one quick
   search, and every roll that stands for a moment (0.8 s) then runs Compare by itself, so rerolling quickly stops no
-  running check. The plan takes at most 12 targets, 10 of them not
+  running check; a roll after that, or a second Compare, stops the running comparison and the pick's check with it (the
+  table's note then says the check did not finish). The plan takes at most 12 targets, 10 of them not
   guaranteed by the scenario; beyond that there is no plan, so no saving and no careers to loop, only the best career
   with her. Over 12 targets the solver also gives no joint odds of the targets, so Reroll draws each target on its own
   odds, independently, which ignores how they land together (shared hints and chains).
