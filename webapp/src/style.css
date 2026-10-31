@@ -114,7 +114,6 @@ h1.brand .ba { color: #f5fde0; -webkit-text-stroke-color: #68a808; filter: drop-
 .about ul, .about ol { padding-left: 20px; }
 h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
-.rail { display: flex; flex-direction: column; gap: 14px; align-self: stretch; min-width: 0; }
 /* results column: a status line (search progress, errors, Stop, how many results), then the result cards. On a wide
    screen it stays in view while the settings beside it scroll (sticky, scrolling on its own when taller than the window) */
 .rcol { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; outline: none; }
@@ -155,7 +154,6 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
   html.rin .runpill:not([hidden]) { display: none; }
   body { padding-bottom: 124px; }
   .rcol { order: -1; }   /* results first (the inline script in the page also moves them first in the document) */
-  .rail .roster, .rail .cards { max-height: 55vh; }   /* shorter boxes: always some page outside them to scroll the page with */
 }
 h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0; font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -192,9 +190,7 @@ input[type="search"], input[type="text"] { width: 100%; }
 .sortmenu button[aria-checked="true"] { font-weight: 700; color: var(--accent); }
 /* scenario picker: the button is the chosen scenario's logo; the grid below it spans the panel, tiles of equal size.
    Logos are drawn whole inside fixed boxes (object-fit: contain), never stretched. */
-.gamerow { position: relative; display: grid; grid-template-columns: auto auto; justify-content: start; align-items: start; gap: 10px 20px; margin-bottom: 4px; }   /* the scenario picker hangs below this row, across the panel */
 .gctl { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 0.88rem; }   /* label above its control */
-.extras .rankctl { gap: 4px; font-size: 0.88rem; align-items: flex-start; }
 /* lineage rank: the game's rank badges (B, S+, SS) in a two-option toggle */
 .rankseg button { display: inline-flex; align-items: center; gap: 3px; padding: 4px 10px; }
 .rankseg button[aria-checked="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
@@ -254,9 +250,6 @@ input[type="search"], input[type="text"] { width: 100%; }
 .sugg button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; font-size: 0.88rem; }
 .sugg button:hover, .sugg button:focus { background: var(--accent-soft); }
 .sugg .snote { margin: 0; padding: 7px 10px; font-size: 0.85rem; color: var(--muted); }
-.extras label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.88rem; min-height: 26px; }
-/* checkboxes: 18 px boxes in rows at least 26 px apart, so each tap target clears 24 px (WCAG 2.5.8) */
-.extras input[type=checkbox] { width: 18px; height: 18px; margin: 1px 0 0; flex: none; }
 /* results */
 .results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .loop { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
@@ -377,8 +370,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .tbl th:first-child, .tbl td:first-child { text-align: left; }
 .tbl tbody tr.sel { background: var(--accent-soft); }
 .tbl tbody tr.pick { cursor: pointer; }
-.rowbtn { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
-.rowbtn[aria-pressed="true"] { font-weight: 700; text-decoration: none; }
 .tbl tbody tr.pick:hover { background: var(--accent-soft); }
 .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (min-width: 900px) { .split { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); } .split > .view { position: sticky; top: 0; } }
@@ -507,11 +498,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   .sched th.mh .av { margin: 0 auto; } }
 /* phone: buttons, selects and search boxes at least 44 px high (touch); the portraits and cards are larger already */
 @media (max-width: 620px) {
-  .btn, .seg button, .stab, .scenbtn, select, input[type="search"], input[type="text"], .sugg button, .sortmenu button, .x, .rowbtn { min-height: 44px; }
+  .btn, .seg button, .stab, .scenbtn, select, input[type="search"], input[type="text"], .sugg button, .sortmenu button, .x { min-height: 44px; }
   .tgt .x { width: 44px; height: 44px; }
   .mem .memb { min-height: 44px; }
-  .extras label { min-height: 44px; align-items: center; }
-  .extras input[type=checkbox] { margin: 0; }
 }
 
 .rtools input[type=search] { flex: 1; }
@@ -527,26 +516,10 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .gpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: max-content; max-width: 240px; padding: 8px 10px; font-size: 0.8rem; line-height: 1.4;
   color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
 @media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swa { height: 52px; } .swrow > :not(.swcards) { min-height: 52px; } .swrow > .swho { padding-right: 8px; } .swrow { gap: 6px 8px; } .swcards { flex-wrap: wrap; row-gap: 6px; } }   /* phone: a swap row fits on one line beside its (i); three cards out and in wrap the incoming ones under */
-/* affinity popup: the formula, and umas as portraits whose names show on hover, focus or tap */
-.afx { display: grid; gap: 4px; margin-bottom: 6px; }
-.afx p { margin: 0; }
-.afx .fx { font-family: var(--font-data); font-size: 0.8rem; background: var(--bg); border: 1px solid var(--line); padding: 4px 8px; overflow-x: auto; white-space: nowrap; max-width: none; width: fit-content; }
-.afaces { white-space: nowrap; }
-.aface { position: relative; display: inline-flex; vertical-align: middle; border-radius: 999px; cursor: default; }
-.rowbtn { position: relative; }
-/* the name floats above the portrait (no reflow: the table doesn't move) */
-.aface .an, .rowbtn .an { display: none; position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 3; white-space: nowrap;
-  font-size: 0.78rem; font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; pointer-events: none; }
-.aface:hover .an, .aface:focus .an, .aface.open .an, .rowbtn:hover .an, .rowbtn:focus-visible .an { display: block; }
-.agp { display: inline-flex; gap: 2px; }
-.aface:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.amp { margin: 0 6px; color: var(--muted); }
-.rowbtn { display: inline-flex; align-items: center; gap: 6px; }
 .rtab { width: 100%; border-collapse: collapse; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 .rtab th, .rtab td { padding: 2px 8px; text-align: right; white-space: nowrap; }
 .rtab th:first-child { text-align: left; font-weight: 600; padding-left: 0; }
 .rtab thead th { font-weight: 700; border-bottom: 1px solid var(--line); }
-.rtab .rsum th, .rtab .rsum td { border-top: 1px solid var(--line); font-weight: 700; }
 .rfoot { display: block; margin-top: 4px; font-size: 0.72rem; color: var(--muted); }
 /* a swap row's hint changes against the shared deck, in the row's free space */
 .swrow > .swd { display: grid; min-height: 0; gap: 4px; margin-left: auto; align-self: center; font-size: 0.8rem; color: var(--ink); width: min(17rem, 100%); box-sizing: border-box; }   /* a fixed column: every swap row's list starts at the same place */
@@ -587,7 +560,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 @media (max-width: 759px) { .rb > .rbmain { order: -1; } }   /* phones: the next career first, the setup under it */
 /* the settings: one ruled strip, the planner's editors behind its buttons */
 .rbbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; border-block: 3px solid var(--ink); padding: 12px 2px; }
-.rbbar .gamerow { flex-wrap: wrap; gap: 10px 16px; }
 .rbbar .tbtn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px 6px 10px; border: 2px solid var(--ink); border-radius: 8px;
   color: var(--ink); font-weight: 700; font-size: 0.88rem; box-shadow: 0 2px 0 var(--ink); }   /* each opens an editor: icon, name, chevron */
 .rbbar .tbtn:hover { border-color: var(--accent); box-shadow: 0 2px 0 var(--accent); }
@@ -595,15 +567,13 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rbbar .tbtn::after { content: ''; width: 6px; height: 6px; margin-left: 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
 .tico { width: 18px; height: 18px; flex: none; color: var(--accent); }
 .tbtn b { font-weight: 700; margin-left: -2px; font-variant-numeric: tabular-nums; }
-.tchk { font-size: 0.88rem; }
-.tshare { flex-basis: 100%; }
 .setdlg .panel { border: 0; padding: 0; }
 .setdlg .panel > .row.between > h2 { display: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 700; }
 .btn.primary:hover { filter: brightness(1.12); }
 .btn.big { padding: 9px 18px; font-size: 0.95rem; }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.rbmain, .rbpool { display: grid; gap: 10px; min-width: 0; outline: none; }
+.rbmain { display: grid; gap: 10px; min-width: 0; outline: none; }
 .rbtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .rbtitle h2 { font-size: 1.55rem; font-weight: 900; letter-spacing: -0.01em; text-transform: none; color: var(--ink); }
 .rbtitle .rhead { flex: 1 1 24em; }
@@ -666,31 +636,19 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .tv { font-size: 1.2rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .simulation { display: grid; gap: 14px; min-width: 0; }
 .simwho { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; }   /* her portrait beside her sparks */
-.simside { display: grid; gap: 8px; min-width: 0; }
-.simside .simskills { min-width: 0; margin: 0; }
 .simtag, .srctag { font-family: var(--font-data); font-size: 0.72rem; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; }
-.simskills, .simraces { border: 1px solid var(--line); border-radius: 5px; padding: 10px; }
+.simskills { border: 1px solid var(--line); border-radius: 5px; padding: 10px; }
 
-.simparents, .simodds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.simparent summary { cursor: pointer; min-height: 44px; }
-.simparent summary .twho { margin-top: 8px; }
-.simparent summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.simparent-details { display: grid; gap: 8px; margin-top: 10px; }
-.simparent-details p, .simparent-details ul { margin: 0; }
-.simparent-details .vskb { cursor: default; }
-.simparents .hint { width: 100%; }
+.simodds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .simresult { display: grid; gap: 12px; }
 .simresult.stale > :not(.note) { opacity: 0.5; }
-.simwins summary { cursor: pointer; }
-@media (max-width: 620px) { .simparents, .simodds { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 620px) { .simodds { grid-template-columns: minmax(0, 1fr); } }
 .note { margin: 0; border-left: 5px solid var(--gold); background: var(--gold-soft); color: var(--ink); padding: 8px 12px; }
-.goalnote { margin: 0 0 12px; border-left: 5px solid var(--accent); background: var(--accent-soft); color: var(--ink); padding: 8px 12px; }
 .verdict { display: inline-block; font-family: var(--font-data); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 3px; color: var(--ink); border-left: 4px solid; }
 .verdict.mo { background: var(--req-soft); border-color: var(--req); }
 .verdict.rr { background: var(--out-soft); border-color: var(--out); }
 .verdict.mix { background: var(--gold-soft); border-color: var(--gold); }
 .verdict.done { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-.ahtab th[scope="row"] { font-weight: 600; }
 .optab td, .optab th { vertical-align: middle; padding-top: 6px; padding-bottom: 6px; }
 .optab td { white-space: nowrap; }
 .optab tbody tr.on .altw { color: var(--accent); }
@@ -700,9 +658,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .otag.pick { border-color: var(--accent); font-weight: 700; }
 .optfoot { margin-top: 8px; }
 .optnote { margin-top: 6px; }
-.lhead .expc { flex-basis: 100%; }
-.optab .obase, .optab .onext { color: var(--muted); font-size: 0.8rem; }
-.optab td.onext { white-space: normal; text-align: left; min-width: 12em; }
 .oloop { margin: 6px 0 4px; }
 /* a phone: each option is a block (career, then its two numbers and the button on one line) */
 @media (max-width: 620px) {
@@ -740,23 +695,10 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .vet.bor { box-shadow: inset 4px 0 0 var(--gold); }
 .btn.sm { padding: 2px 10px; font-size: 0.8rem; }
 .vpgh { grid-column: 1 / -1; margin: 8px 0 0; font-size: 0.9rem; color: var(--gm-ink); }
-.vtile .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vtop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.vno { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
-.vin { font-size: 0.75rem; font-weight: 700; color: var(--accent); }
 .vdel { margin-left: auto; }
 .seg.sm button { padding: 2px 10px; font-size: 0.8rem; }
-.vnode { display: grid; gap: 6px; min-width: 0; }
 .vhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.vwho { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 2px 6px 2px 2px; border-radius: 999px; cursor: pointer; font: inherit; color: inherit; text-align: left; }
-.vwho:hover { background: var(--accent-soft); }
-.vwho:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.vnode.self .vnm { font-weight: 700; }
-.vnode.par .vnm { font-weight: 600; font-size: 0.88rem; }
 .vwins { font-size: 0.75rem; padding: 2px 8px; }
-.vkids { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-left: 14px; padding-left: 10px; border-left: 2px solid var(--line); }
-.vkids .vnode { border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: var(--bg); }
-@media (max-width: 520px) { .vkids { grid-template-columns: minmax(0, 1fr); } }
 /* a spark: click cycles its stars; the corner x (on hover or keyboard focus) removes it */
 .vsparks { display: flex; flex-wrap: wrap; gap: 4px; }
 .vsk { position: relative; display: inline-flex; }
@@ -776,11 +718,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .umapick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
 .upick { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 4px 8px 4px 4px; font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer; }
 .upick:hover { border-color: var(--accent); }
-.winlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px 12px; }
-.wrace { font-size: 0.88rem; }
 .vsk.pink .vskb { background: var(--pink-soft); border-color: var(--pink-edge); }
-.pinkrow { display: flex; flex-wrap: wrap; gap: 4px; }
-.addpk { background: var(--pink-soft); border-color: var(--pink-edge); }
 .cartab { border-collapse: collapse; font-size: 0.85rem; width: 100%; font-variant-numeric: tabular-nums; }
 .cartab th, .cartab td { padding: 3px 8px; text-align: right; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
 .cartab th:first-child { text-align: left; font-weight: 600; }
@@ -807,12 +745,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .wpick { display: grid; justify-items: start; text-align: left; gap: 0; width: 100%; }
 .wpick small { color: var(--muted); font-weight: 500; font-size: 0.74rem; }
 #wins-dlg .dhead .num { margin-left: auto; margin-right: 12px; white-space: nowrap; }
-/* label / value rows (after this career, the planner's numbers) */
-.kv { display: grid; grid-template-columns: minmax(0, max-content) auto; gap: 4px 18px; margin: 0; align-items: baseline; }
-.kv dt { color: var(--muted); font-size: 0.9rem; }
-.kv dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
-.kv dd.big { font-size: 1.35rem; }
-@media (max-width: 620px) { .kv { grid-template-columns: minmax(0, 1fr); gap: 0 0; } .kv dd { margin-bottom: 6px; } }
 /* a career as portraits: trainee, then her two parents */
 .cfaces { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .cface { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 0.88rem; }
@@ -820,7 +752,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .cface .her { font-family: var(--font-data); font-size: 0.68rem; border: 1px solid var(--accent); color: var(--ink); border-radius: 3px; padding: 0 4px; }
 .cfaces .cwith { color: var(--muted); font-size: 0.82rem; }
 .rbmain .dtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
-.tsum { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 #sim-top { min-width: 0; }
 #sim-wins { justify-self: start; }
 
@@ -861,13 +792,13 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   font-size: 1.05rem; line-height: 1.3; letter-spacing: .01em; text-shadow: var(--gm-outline); background-color: var(--gm-green);
   background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .12) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
   background-size: 28% 100%, 100% 100%; background-repeat: no-repeat; }
-#simulation > h3, .simwait .simulation > h3 { text-align: center; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; font-size: 1.2rem; }
-.rb #simulation > h3, .rb .simwait .simulation > h3 { clip-path: none; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; }
-.rb #simulation > h3::after, .rb .simwait .simulation > h3::after { content: none; }
+#simulation > h3 { text-align: center; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; font-size: 1.2rem; }
+.rb #simulation > h3 { clip-path: none; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; }
+.rb #simulation > h3::after { content: none; }
 .udhdr, .game .rbsec > h3, .lp .swhead { padding: 3px 40px 3px 12px; clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%); border-radius: 4px 0 0 4px; }
 .udhdr::after, .game .rbsec > h3::after, .lp .swhead::after { content: ''; position: absolute; top: 0; bottom: 0; right: 13px; width: 6px; background: var(--gm-green2); transform: skewX(-14deg); box-shadow: -9px 0 0 var(--gm-green2); opacity: .8; }
-#simulation, .simwait .simulation { gap: 12px; }
-#simulation > h3, #simulation > .ud, .simwait .simulation > * { width: 100%; max-width: 640px; box-sizing: border-box; }
+#simulation { gap: 12px; }
+#simulation > h3, #simulation > .ud { width: 100%; max-width: 640px; box-sizing: border-box; }
 /* the card */
 .ud { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 1px solid var(--gm-edge); border-top: 0;
   border-radius: 0 0 14px 14px; margin-top: -12px; padding: 0 0 12px; display: grid; gap: 10px; min-width: 0; box-shadow: 0 2px 8px var(--gm-shadow); }
@@ -905,9 +836,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .udsk.off::before { content: none; }
 .udsk.off .sic { filter: grayscale(1); opacity: .6; }
 .udsk .sic { width: 30px; height: 30px; margin: 0; flex: none; }
-.udskt { display: grid; gap: 1px; min-width: 0; }
 .udskn { font-size: 0.98rem; line-height: 1.2; overflow-wrap: anywhere; }
-.udsks { font-size: 0.72rem; font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
 /* Inspiration: her row and her parents' under "Legacy Origin", a line joining them; the game's spark bars, stars on
    their bottom edge */
 .udlin { position: relative; display: grid; gap: 8px; }
@@ -941,9 +870,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .ud .vskadd { height: 34px; border: 2px dashed var(--gm-edge); border-radius: 7px; color: var(--gm-ink); background: var(--gm-cell); font: inherit; font-weight: 900; font-size: 1.1rem; align-self: start; }
 .ud .udpsp .vskb { cursor: default; }
 /* Career Info */
-.udsum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .udstat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 8px; padding: 6px 10px; }
-.udsl { font-weight: 700; font-size: 0.9rem; } .udsv { font-size: 1.25rem; font-weight: 900; font-variant-numeric: tabular-nums; }
 .udraces { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .udrace { display: grid; grid-template-columns: 112px auto minmax(0, 1fr) 40px; gap: 8px; align-items: center; background: var(--gm-cell); border: 1px solid var(--gm-line);
   border-radius: 8px; padding: 5px 10px; font-weight: 700; font-size: 0.92rem; }
@@ -989,7 +916,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .pn.ghost { border: 2px dashed var(--gm-green); background: var(--gm-panel); }
 .rb .pn .pnh { color: var(--gm-ink); }
 .rb .pn.trainee .tnm .nm, .rb .pn .nm { color: var(--gm-ink); }
-.game .goalnote { border-left: 0; border-radius: 12px; background: var(--gm-panel); border: 1px solid var(--gm-edge); box-shadow: inset 6px 0 0 var(--gm-bright2), 0 2px 6px var(--gm-shadow); color: var(--gm-ink); }
 .game .deck, .rb .rbsec .tc, .rb .vet { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); }
 .game .rbsec > h3 { justify-self: stretch; }
 .rb .cartab { border-collapse: separate; border-spacing: 0 4px; }
@@ -1005,8 +931,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .savemore { border-top: 1px solid var(--gm-line, var(--line)); padding-top: 6px; }
 .savemore > summary { cursor: pointer; font-weight: 700; color: var(--gm-ink); }
 .savebody .savemore > p { margin: 8px 0 0; }   /* (over .savebody p's 0) */
-.rb .vet .vtop .vno { color: var(--gm-ink); font-weight: 900; }
-.rb .vet .vnm { color: var(--gm-ink); }
 /* your veterans' spark chips: small spark bars */
 .rb .vet .vskb, .rb .pn .vskb { color: var(--gm-bar-ink); background-color: var(--gm-bar); background-image: linear-gradient(#f7f7f7, var(--gm-bar2));
   border: 0; border-radius: 6px; box-shadow: inset 0 -2px 0 #bdbdbd; padding: 3px 8px 3px 4px; }
@@ -1052,9 +976,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .udfr { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); line-height: 1.2; font-size: 0.68rem; font-weight: 900; color: #fff; background: var(--gm-pink2); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
 .udlegs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .udleg { position: relative; border: 3px solid #3ab0f5; border-radius: 10px; background: var(--gm-cell); padding: 22px 8px 8px; min-width: 0; }
-.udleg.l2 { border-color: #ff7ab3; }
 .udlegh { position: absolute; top: 0; left: 0; color: #fff; font-weight: 900; font-size: 0.85rem; padding: 1px 12px 2px 8px; background: #3ab0f5; border-radius: 6px 0 10px 0; }
-.udleg.l2 .udlegh { background: #ff7ab3; }
 .udlegt { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 18px; }
 .udlegp { display: grid; justify-items: center; gap: 2px; text-align: center; position: relative; }
 .udlegn { font-weight: 700; font-size: 0.78rem; line-height: 1.15; max-width: 92px; overflow-wrap: anywhere; }
@@ -1099,13 +1021,11 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 
 .rb .pn.trainee { justify-items: center; }
 .rb .tdeck { justify-content: center; gap: 8px; margin-top: 2px; }
-.ldeck .deck .dcards { grid-template-columns: repeat(3, minmax(0, 96px)); justify-content: center; }
 /* the deck's popup: its six cards in two rows of three */
 .deckdlg { width: min(420px, calc(100vw - 24px)); }
 .deckdlg .deck .dcards { grid-template-columns: repeat(3, minmax(0, 104px)); justify-content: center; }
 /* a button at the right end of a section's bar (the deck's Race schedule) */
 .rbsec > h3 { display: flex; align-items: center; }
-.rbsec > h3 > .hdrbtn { margin: -2px 26px -2px auto; text-shadow: none; }
 /* the career page's dialogs, as the game's: a green title bar, a pale body, pill buttons */
 :root.game dialog:not(.gmdlg) { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-pane); border: 0; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
 :root.game dialog:not(.gmdlg) > .dlg > .dhead { top: -18px; background-color: var(--gm-green); border: 0;
@@ -1132,11 +1052,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .udsk.gold::before { border-image-source: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))); }
 
 /* your veterans: compact cards, her sparks in her popup */
-.vtile { all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; cursor: pointer; padding: 4px 6px; border-radius: 10px; }
-.vtile:hover { background: color-mix(in srgb, var(--gm-bright) 16%, transparent); }
-.vtile:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.vtile .tnm { display: grid; } .vtile .nm { font-weight: 900; color: var(--gm-ink); } .vtile .sub { font-size: 0.78rem; color: var(--gm-ink2); }
-.vtps { display: flex; gap: 2px; }
 .rb .vets { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .vpars { display: grid; gap: 6px; }
 .vpars .twho { display: flex; align-items: center; gap: 8px; }
@@ -1161,7 +1076,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .ptile .av.empty { width: 72px; height: 72px; background: var(--gm-pane); border: 2px dashed var(--gm-edge); box-shadow: none; }
 .ptile .tnm { display: grid; justify-items: center; gap: 0; }
 .ptile .nm { font-weight: 900; font-size: 0.92rem; color: var(--gm-ink); line-height: 1.2; }
-.ptile .sub, .ptile .tsum { font-size: 0.72rem; color: var(--gm-ink2); line-height: 1.2; }
+.ptile .sub { font-size: 0.72rem; color: var(--gm-ink2); line-height: 1.2; }
 .rb .pn.trainee .ptile .nm { font-size: 1.15rem; }
 .rb .pn.gp .ptile .nm { font-size: 0.8rem; }
 .rb .pf { padding: 26px 10px 8px; }
@@ -1200,9 +1115,9 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .oddtab tbody tr > :first-child { text-align: left; border-left: 1px solid var(--gm-line); border-radius: 8px 0 0 8px; }
 .oddtab tbody tr > :last-child { border-right: 1px solid var(--gm-line); border-radius: 0 8px 8px 0; }
 .oddtab tbody tr.all > * { background: var(--gm-gold); color: var(--gm-gold-ink); }
-@media (min-width: 1180px) { .rb #results > #sim-top, .rb #results > .simwait { grid-row: 3; } .rb .rbmain > #tree { grid-row: 3; } }
-@media (min-width: 1180px) { .rb #results > #sim-top, .rb #results > .simwait, .rb .rbmain > #tree { grid-row: 2; } }
-@media (min-width: 1180px) { .rb #sim-top > #simulation, .rb .simwait > .simulation { margin-top: 0; } }
+@media (min-width: 1180px) { .rb #results > #sim-top { grid-row: 3; } .rb .rbmain > #tree { grid-row: 3; } }
+@media (min-width: 1180px) { .rb #results > #sim-top, .rb .rbmain > #tree { grid-row: 2; } }
+@media (min-width: 1180px) { .rb #sim-top > #simulation { margin-top: 0; } }
 /* the comparison, compact, beside the card: a game panel with the verdict, the odds as one-line rows, the next career */
 @container (min-width: 820px) {
   #simulation { grid-template-columns: minmax(0, 600px) minmax(220px, 1fr); column-gap: 16px; }
@@ -1307,7 +1222,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .spstar.on { background-image: var(--star-on, var(--gm-star)); }
 .spstar:disabled { cursor: default; opacity: .5; }
 .spstar:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 50%; }
-.gmrm { color: var(--out); }
 .pnclick { cursor: pointer; }
 .rb .pn.pnclick:hover, .udleg.pnclick:hover { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gm-bright) 45%, transparent), 0 2px 8px var(--gm-shadow); }
 
@@ -1613,7 +1527,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .lp .rbbar .seg button { min-height: 34px; padding-block: 2px; }
 .lp .setlist .scenbtn { min-height: 38px; }
 .lp .setlist .scenbtn .slogo { height: 30px; }
-.lp .rbbar .tchk, .lp .rbbar label { font-size: 0.84rem; }
+.lp .rbbar label { font-size: 0.84rem; }
 .game .lptgt .tgt { min-height: 36px; padding-block: 2px 6px; }
 .game .lptgt .adder input { min-height: 36px; }
 /* Umas and Support cards at the game's size; the status row under them in small type, its switches and the Results pill
@@ -1962,9 +1876,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 @media (max-width: 620px) { .pbtns { padding-left: 10px; } }
 /* the career page before its first answer: the Veteran analysis frame with a spinner beside the tree (career.js waitEl),
    at full strength (the results' busy dimming is for an old answer on screen) */
-#results:has(> .simwait) { opacity: 1; }
-.simwait .simwbody { min-height: 360px; display: grid; place-items: center; text-align: center; padding: 24px; }
-.simwait .simwbody p { margin: 0; max-width: 34ch; color: var(--gm-ink2, var(--muted)); display: grid; justify-items: center; gap: 12px; }
 /* a column header with a tooltip (the career's Career choices: This career): dotted, as a hint that it explains */
 .thtip { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .thtip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
@@ -1976,7 +1887,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
   .rb .pn.trainee .ptile { grid-template-columns: auto minmax(0, 1fr); align-items: center; justify-items: start; column-gap: 12px; text-align: left; }
   .rb .pn.trainee .ptile .tnm { justify-items: start; }
   .rb .pn.trainee .ptile .av { width: 72px !important; height: 72px !important; }
-  .rb .ped > .pk { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .rb .pf { flex-direction: column; align-items: stretch; padding: 28px 5px 6px; }
   .rb .pf > .pk { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 6px 0 0; padding: 0; border: 0; }
   .rb .pf > .pk > .pn.gp { padding: 4px 2px 5px; }
@@ -2060,7 +1970,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .umline input { flex: 1 1 10rem; min-width: 0; }
 .umline > b { flex: 1 1 auto; }
 .umtog { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; }
-/* the listings: cards of one size in a grid (face, name, main sparks, trainer · followers); a click shows the ancestry */
 /* the listings as the game's legacy list, five to a row, at its measured proportions: a portrait (P), its rank badge on
    the top right (0.36P), its three spark tags (each 0.34P wide) with their bottoms on the portrait's, each tag's star row
    (0.72 of the tag) right under it, one piece;
