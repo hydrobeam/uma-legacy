@@ -12,6 +12,7 @@ a builder's parent), so this tests the anchored decay as the plan applies it, no
 
 usage: uv run val/sim/lam_regress.py MONO_DIR    (the folder val/mono.py prints at its end)"""
 
+import argparse
 import glob
 import json
 import math
@@ -89,4 +90,8 @@ def main(mono_dir):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1]))
+    parser = argparse.ArgumentParser(
+        description="Test LAM_DECAY on val/mono.py's plans, with no plan of its own.", allow_abbrev=False
+    )
+    parser.add_argument("mono_dir", metavar="MONO_DIR", help="the folder val/mono.py prints at its end")
+    sys.exit(main(parser.parse_args().mono_dir))

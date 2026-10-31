@@ -9,6 +9,7 @@ them; otherwise a parent is matched to exactly one input veteran with the same c
 veteran's parents are used. Skill-observations whose six ancestors are not all known are reported but not fitted.
 """
 
+import argparse
 import json
 import math
 import sqlite3
@@ -52,11 +53,23 @@ class FittedCurve:
     bases: dict[str, float]
 
 
-args = [a for a in sys.argv[1:] if not a.startswith("--")]
-scenario = int(sys.argv[sys.argv.index("--scenario") + 1]) if "--scenario" in sys.argv else None
-veterans = json.load(open(args[0]))
+parser = argparse.ArgumentParser(
+    description="Measure spark generation from a real umadump trained_chara_data.json.", allow_abbrev=False
+)
+parser.add_argument("veterans", metavar="TRAINED_CHARA_DATA_JSON")
+parser.add_argument(
+    "master_mdb", nargs="?", metavar="MASTER_MDB", help="default game/global/master.mdb, only without --scenario"
+)
+parser.add_argument("--scenario", type=int, metavar="N")
+arguments = parser.parse_intermixed_args()
+if arguments.scenario is not None and arguments.master_mdb is None:
+    parser.error("--scenario needs MASTER_MDB")
+scenario = arguments.scenario
+veterans = json.load(open(arguments.veterans))
 db = sqlite3.connect(
-    args[1] if len(args) > 1 else os.path.dirname(os.path.abspath(__file__)) + "/../game/global/master.mdb"
+    arguments.master_mdb
+    if arguments.master_mdb is not None
+    else os.path.dirname(os.path.abspath(__file__)) + "/../game/global/master.mdb"
 )
 query = lambda s, *a: db.execute(s, a).fetchall()
 

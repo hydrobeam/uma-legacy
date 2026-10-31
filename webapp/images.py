@@ -40,7 +40,7 @@ game/jp/bundles/ (JP-only art). They must already be decrypted; this script only
 outfits. usage: uv run webapp/images.py [--force]
 """
 
-import json, os, sqlite3, sys
+import argparse, json, os, sqlite3, sys
 from dataclasses import dataclass
 import UnityPy
 from PIL import Image
@@ -676,4 +676,8 @@ def main(force):
 
 
 if __name__ == "__main__":
-    main("--force" in sys.argv)
+    parser = argparse.ArgumentParser(
+        description="Card art, character icons and the page's other game images into webapp/img.", allow_abbrev=False
+    )
+    parser.add_argument("--force", action="store_true", help="extract every id again, not only new ones")
+    main(parser.parse_args().force)

@@ -53,6 +53,7 @@ usage: planval.py BIN TAG [REF] [-j N]
   val/plan/REF__NAME.out (default REF: ref)
   -j N  jobs at a time (default 2; timings are only comparable at the same load)"""
 
+import argparse
 import json
 import math
 import os
@@ -79,14 +80,22 @@ class CapWarning(NamedTuple):
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(VALIDATION_DIR)
 PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
-args = sys.argv[1:]
-parallelism = 2
-if "-j" in args:
-    i = args.index("-j")
-    parallelism = int(args[i + 1])
-    del args[i : i + 2]
-binary, tag = os.path.abspath(args[0]), args[1]
-ref = args[2] if len(args) > 2 else "ref"
+parser = argparse.ArgumentParser(description="Run the career planner's validation jobs.", allow_abbrev=False)
+parser.add_argument("binary", metavar="BIN")
+parser.add_argument("tag", help="writes val/plan/TAG__NAME.out")
+parser.add_argument("ref", nargs="?", default="ref", help="compares with val/plan/REF__NAME.out (default ref)")
+parser.add_argument(
+    "-j",
+    type=int,
+    default=2,
+    dest="parallelism",
+    metavar="N",
+    help="jobs at a time (default 2; timings are only comparable at the same load)",
+)
+arguments = parser.parse_intermixed_args()
+parallelism = arguments.parallelism
+binary, tag = os.path.abspath(arguments.binary), arguments.tag
+ref = arguments.ref
 jobs = json.load(open(os.path.join(PLAN_DIR, "jobs.json")))
 times = {}
 

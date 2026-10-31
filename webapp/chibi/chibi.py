@@ -17,6 +17,7 @@ usage: uv run webapp/chibi/chibi.py [all | ID ...] [--force]     (./build.sh run
 
 from typing import NamedTuple
 
+import argparse
 import glob, hashlib, io, json, os, shutil, sqlite3, struct, subprocess, sys, tarfile, urllib.request, zipfile, zlib
 
 H = os.path.dirname(os.path.abspath(__file__))
@@ -272,10 +273,8 @@ class CharacterAppearance(NamedTuple):
     tail_model: int | None
 
 
-def main(argv):
-    force = "--force" in argv
-    args = [a for a in argv if not a.startswith("--")]
-    ids = roster() if not args or args == ["all"] else [int(a) for a in args]
+def main(umas, force):
+    ids = roster() if not umas or umas == ["all"] else [int(a) for a in umas]
     if not ids:
         sys.exit("no umas: build the data first (./build.sh data)")
     for f, what in (
@@ -331,4 +330,10 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description="Each uma's mini model running, as one sprite strip per uma.", allow_abbrev=False
+    )
+    parser.add_argument("umas", nargs="*", metavar="all | ID", help="character ids (default all: the roster)")
+    parser.add_argument("--force", action="store_true", help="remake strips that already exist")
+    arguments = parser.parse_intermixed_args()
+    main(arguments.umas, arguments.force)

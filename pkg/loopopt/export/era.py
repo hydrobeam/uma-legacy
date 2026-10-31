@@ -6,6 +6,7 @@ Global keeps everything the database dates up to AHEAD past the build (the page 
 
 import os, sqlite3, sys, time
 
+# each export script parses its command line (the era first) with argparse before importing this module
 ERA = next((a for a in sys.argv[1:] if a in ("global", "jp")), None)
 if ERA is None:
     sys.exit(f"usage: {os.path.basename(sys.argv[0])} global|jp ...")

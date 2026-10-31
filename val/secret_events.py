@@ -2,6 +2,7 @@
 conditions decoded, and a feasibility check of the race conditions against the solver's Global data.json.
 Writes cache/secret_events.md (per uma, then an index by skill). usage: uv run val/secret_events.py [OUT.md]"""
 
+import argparse
 import json
 import sqlite3
 import sys
@@ -32,6 +33,12 @@ class EventVariant:
 
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+parser = argparse.ArgumentParser(
+    description="Every conditional character event that gives a skill hint, with its conditions decoded.",
+    allow_abbrev=False,
+)
+parser.add_argument("output_path", nargs="?", default=REPO + "/cache/secret_events.md", metavar="OUT.md")
+output_path = parser.parse_args().output_path
 sys.path.insert(0, REPO + "/pkg/loopopt/export")
 import gametora
 
@@ -226,7 +233,6 @@ for r in gametora.load("training_events_char"):
                 impossible=bad,
             )
         )
-output_path = sys.argv[1] if len(sys.argv) > 1 else REPO + "/cache/secret_events.md"
 print(
     len(rows),
     "event variants with hints;",

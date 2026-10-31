@@ -5,8 +5,15 @@ hint levels per training-hint draw at max limit break (hinc: 1 + effect 17, plus
 and the skill groups (white level) in its training-hint pool. Event skill rewards are NOT in master.mdb tables;
 they are supplied per job (`events`)."""
 
-import json, os
+import argparse, json, os
 from typing import NamedTuple
+
+parser = argparse.ArgumentParser(
+    description="Support cards for deck search -> the era's web_cards.json.", allow_abbrev=False
+)
+parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
+parser.parse_args()  # parsed before era's import, which opens the era's database
+
 from era import q, names, OUT, released
 
 card_names = names(75)

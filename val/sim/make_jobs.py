@@ -17,10 +17,10 @@ Each job is a pool file (career mode) plus a `simulate` block (docs/SOLVER.md "P
 pool files are relative to the era's data folder (pkg/loopopt/data/global), so run the solver from there. Jobs split into run ranges run in parallel.
 """
 
+import argparse
 import json
 import math
 import os
-import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PLAN_DIR = f"{REPO}/val/plan"
@@ -124,13 +124,19 @@ def looped(out, pools, runs):
 
 
 if __name__ == "__main__":
-    if "--looped" in sys.argv:
-        args = [arg for arg in sys.argv[1:] if arg != "--looped"]
-        runs = 4
-        if "--runs" in args:
-            i = args.index("--runs")
-            runs = int(args[i + 1])
-            del args[i : i + 2]
-        looped(args[0], args[1:], runs)
+    parser = argparse.ArgumentParser(
+        description="Write the simulator jobs behind val/sim/README.md into a directory.", allow_abbrev=False
+    )
+    parser.add_argument("out_dir", metavar="OUT_DIR")
+    parser.add_argument("pools", nargs="*", metavar="POOL", help="val/plan pools (with --looped)")
+    parser.add_argument(
+        "--looped", action="store_true", help="the page's plan against its baselines on its own goal, per POOL"
+    )
+    parser.add_argument("--runs", type=int, metavar="N", help="runs per job (with --looped; default 4)")
+    arguments = parser.parse_intermixed_args()
+    if arguments.looped:
+        looped(arguments.out_dir, arguments.pools, 4 if arguments.runs is None else arguments.runs)
+    elif arguments.pools or arguments.runs is not None:
+        parser.error("POOL and --runs go with --looped")
     else:
-        main(sys.argv[1])
+        main(arguments.out_dir)

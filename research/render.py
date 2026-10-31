@@ -6,7 +6,7 @@ A placeholder {{KEY|SPEC}} is replaced by the value at KEY formatted with SPEC: 
   uv run --group research research/render.py           write docs/RESEARCH.md
   uv run --group research research/render.py --check   exit 1 if docs/RESEARCH.md differs from the rendering"""
 
-import json, os, re, sys
+import argparse, json, os, re, sys
 
 HERE: str = os.path.dirname(os.path.abspath(__file__))
 ROOT: str = os.path.dirname(HERE)
@@ -32,9 +32,17 @@ def render(template: str, values: dict[str, float | str]) -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Render docs/RESEARCH.md from docs/RESEARCH.template.md and research/results.json.",
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="write nothing; exit 1 if docs/RESEARCH.md differs from the rendering"
+    )
+    check = parser.parse_args().check
     values = json.load(open(RESULTS))["values"]
     text = render(open(TEMPLATE, encoding="utf-8").read(), values)
-    if "--check" in sys.argv:
+    if check:
         same = os.path.exists(OUT) and open(OUT, encoding="utf-8").read() == text
         print("docs/RESEARCH.md matches the rendering" if same else "docs/RESEARCH.md differs from the rendering")
         sys.exit(0 if same else 1)

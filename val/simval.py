@@ -10,6 +10,7 @@ usage: simval.py BIN TAG [REF] [-j N]
 Each job is a pool file (a career job) with the job's `simulate` block put in, run from the era's data folder (the
 pool's file paths are relative to it)."""
 
+import argparse
 import json
 import os
 import subprocess
@@ -50,14 +51,16 @@ def run_job(binary, tag, job_dir, job):
     return round(time.time() - started, 2)
 
 
-def main(args):
-    parallelism = 2
-    if "-j" in args:
-        i = args.index("-j")
-        parallelism = int(args[i + 1])
-        del args[i : i + 2]
-    binary, tag = os.path.abspath(args[0]), args[1]
-    ref = args[2] if len(args) > 2 else "ref"
+def main():
+    parser = argparse.ArgumentParser(description="Run the policy simulator's check jobs.", allow_abbrev=False)
+    parser.add_argument("binary", metavar="BIN")
+    parser.add_argument("tag", help="writes val/sim/TAG__NAME.out")
+    parser.add_argument("ref", nargs="?", default="ref", help="compares with val/sim/REF__NAME.out (default ref)")
+    parser.add_argument("-j", type=int, default=2, dest="parallelism", metavar="N", help="jobs at a time")
+    arguments = parser.parse_intermixed_args()
+    parallelism = arguments.parallelism
+    binary, tag = os.path.abspath(arguments.binary), arguments.tag
+    ref = arguments.ref
     jobs = [SimulatorJob(**entry) for entry in json.load(open(os.path.join(SIM_DIR, "jobs.json")))]
     with tempfile.TemporaryDirectory() as job_dir, ThreadPoolExecutor(parallelism) as executor:
         seconds = list(executor.map(lambda job: run_job(binary, tag, job_dir, job), jobs))
@@ -67,4 +70,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

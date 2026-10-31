@@ -5,10 +5,10 @@ usage: runval.py BIN TAG [--quick] [-j N]
   --quick  leave out the jobs in val/slow.json. For iterating on a change; releases and merges run the full set.
   -j N     jobs at a time (default: nonzero $VAL_J, else max(1, CPU count - 2), or 2 if CPU count is unavailable; ./build.sh passes VAL_J through)."""
 
+import argparse
 import json
 import os
 import subprocess
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -26,15 +26,21 @@ class ValidationTask:
 
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(VALIDATION_DIR)
-args = sys.argv[1:]
-quick = "--quick" in args
-args = [a for a in args if a != "--quick"]
-parallelism = int(os.environ.get("VAL_J", 0)) or max(1, (os.cpu_count() or 4) - 2)
-if "-j" in args:
-    i = args.index("-j")
-    parallelism = int(args[i + 1])
-    del args[i : i + 2]
-binary, tag = os.path.abspath(args[0]), args[1]
+parser = argparse.ArgumentParser(description="Run the validation jobs in parallel.", allow_abbrev=False)
+parser.add_argument("binary", metavar="BIN")
+parser.add_argument("tag", help="writes val/TAG__*.out and val/TAGpu__*.out")
+parser.add_argument("--quick", action="store_true", help="leave out the jobs in val/slow.json")
+parser.add_argument(
+    "-j",
+    type=int,
+    default=int(os.environ.get("VAL_J", 0)) or max(1, (os.cpu_count() or 4) - 2),
+    dest="parallelism",
+    metavar="N",
+    help="jobs at a time (default: nonzero $VAL_J, else the CPU count less two, at least one)",
+)
+arguments = parser.parse_intermixed_args()
+quick, parallelism = arguments.quick, arguments.parallelism
+binary, tag = os.path.abspath(arguments.binary), arguments.tag
 slow = {tuple(x) for x in json.load(open(os.path.join(VALIDATION_DIR, "slow.json")))} if quick else set()
 
 

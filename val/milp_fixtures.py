@@ -16,7 +16,7 @@ p1 p2 [both run at k1, k2] is a variable z >= y1 + y2 - 1, which the negative co
 Each value is the solved schedule's objective, evaluated directly.
 """
 
-import json, sys
+import argparse, json
 from pathlib import Path
 from typing import Any, NamedTuple
 import numpy as np
@@ -152,7 +152,11 @@ def option_of(uma: dict[str, Any], turn: int, program: int) -> int:
 
 
 def main() -> None:
-    check = "--check" in sys.argv[1:]
+    parser = argparse.ArgumentParser(
+        description="Recompute the solver's exact reference fixtures with an independent MILP.", allow_abbrev=False
+    )
+    parser.add_argument("--check", action="store_true", help="write nothing; report the largest difference")
+    check = parser.parse_args().check
     data = json.loads((FIXTURES / "data_v1.json").read_text())
     pen, umas = data["pen"], {u["id"]: u for u in data["umas"]}
     worst = 0.0

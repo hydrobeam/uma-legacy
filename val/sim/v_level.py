@@ -29,6 +29,7 @@ usage: uv run val/sim/v_level.py BIN OUT_DIR [--runs 1000] [--index 0] [-j 2] [P
   for Cont: val/sim/README.md); pools default p16_borrow; writes OUT_DIR/POOL_plan.{json,out}, OUT_DIR/POOL_greedy_FIRST.{json,out} and
   OUT_DIR/POOL_index_R.{json,out}. Cost: about 0.04 s per greedy run on p16_borrow (1,000 runs: 37 s of CPU, 2026-10-26)."""
 
+import argparse
 import json
 import math
 import os
@@ -143,18 +144,32 @@ def report(pool, v, greedy, index):
     )
 
 
-def main(args):
-    def option(flag, default):
-        if flag not in args:
-            return default
-        i = args.index(flag)
-        value = int(args[i + 1])
-        del args[i : i + 2]
-        return value
-
-    settings = {"runs": option("--runs", 1000), "index": option("--index", 0), "parallelism": option("-j", 2)}
-    binary, out_dir = os.path.abspath(args[0]), args[1]
-    pools = args[2:] or DEFAULT_POOLS
+def main():
+    parser = argparse.ArgumentParser(description="V's level against a feasible policy.", allow_abbrev=False)
+    parser.add_argument("binary", metavar="BIN")
+    parser.add_argument("out_dir", metavar="OUT_DIR")
+    parser.add_argument(
+        "pools",
+        nargs="*",
+        metavar="POOL",
+        help="a val/plan job's name or a career job's path (default: " + " ".join(DEFAULT_POOLS) + ")",
+    )
+    parser.add_argument("--runs", type=int, default=1000, help="greedy runs")
+    parser.add_argument(
+        "--index", type=int, default=0, metavar="N", help="also run the plan's own policy on runs 0 .. N-1"
+    )
+    parser.add_argument(
+        "-j",
+        type=int,
+        default=2,
+        dest="parallelism",
+        metavar="N",
+        help="greedy runs split into N ranges, run at the same time",
+    )
+    arguments = parser.parse_intermixed_args()
+    settings = {"runs": arguments.runs, "index": arguments.index, "parallelism": arguments.parallelism}
+    binary, out_dir = os.path.abspath(arguments.binary), arguments.out_dir
+    pools = arguments.pools or DEFAULT_POOLS
     os.makedirs(out_dir, exist_ok=True)
     with ThreadPoolExecutor(settings["parallelism"]) as executor:
         for pool in pools:
@@ -163,4 +178,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

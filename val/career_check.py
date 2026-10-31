@@ -29,6 +29,7 @@ GP_RATE 1), not read from its outputs; the own-event chances and outfit levels c
 usage: uv run val/career_check.py [TAG]   (default TAG ref: val/TAG__ERA__NAME.out for val/jobs.json's career jobs,
   val/plan/TAG__NAME.out for val/plan/jobs.json); exits 1 on a disagreement"""
 
+import argparse
 import itertools
 import json
 import math
@@ -354,4 +355,13 @@ def main(tag):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "ref"))
+    parser = argparse.ArgumentParser(
+        description="Independent check of the career planner's reported odds.", allow_abbrev=False
+    )
+    parser.add_argument(
+        "tag",
+        nargs="?",
+        default="ref",
+        help="the outputs val/TAG__ERA__NAME.out and val/plan/TAG__NAME.out (default ref)",
+    )
+    sys.exit(main(parser.parse_args().tag))

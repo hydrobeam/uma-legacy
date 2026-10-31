@@ -3,11 +3,17 @@ deck, each lineage's value read from the shared solver (deck locked, structure r
 rule off), then per uma the best legal deck over her lineages (three in a loop, one in a rotation), and a structure's
 value the mean over its lineages (12 or 3). usage: permcheck.py BIN [K]"""
 
-import json, itertools, subprocess, sys, os, concurrent.futures as cf
+import argparse, json, itertools, subprocess, os, concurrent.futures as cf
 
 S = os.path.dirname(os.path.abspath(__file__)) + "/../pkg/loopopt/data/global/"
 SC = os.path.dirname(os.path.abspath(__file__)) + "/../"
-BIN, K = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 3
+parser = argparse.ArgumentParser(
+    description="Brute-force check of per-uma decks on a small instance.", allow_abbrev=False
+)
+parser.add_argument("binary", metavar="BIN")
+parser.add_argument("k", nargs="?", type=int, default=3, metavar="K")
+arguments = parser.parse_args()
+BIN, K = arguments.binary, arguments.k
 data = json.load(open(S + "data.json"))
 cards = {c["id"]: c for c in json.load(open(S + "web_cards.json"))["cards"]}
 ends = {k for k, v in json.load(open(S + "card_events.json"))["cards"].items() if "end" in v}

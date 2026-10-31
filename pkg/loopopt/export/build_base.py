@@ -6,7 +6,26 @@ another, e.g. 1008:100802 for [Fiery Aqua Vitae] Vodka. `outfit_apt`: per uma, [
 outfit whose own aptitudes differ from `apt` (the career planner grades a career by the outfit it runs; the loop
 planner keeps `apt`)."""
 
-import json, sys
+import argparse, json
+
+
+def outfit_choice(text):
+    """CHARA:CARD -> (character id, outfit card id)"""
+    character, card = text.split(":")
+    return int(character), int(card)
+
+
+parser = argparse.ArgumentParser(description="The era's roster and aptitudes -> base.json.", allow_abbrev=False)
+parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
+parser.add_argument(
+    "outfits",
+    nargs="*",
+    type=outfit_choice,
+    metavar="CHARA:CARD",
+    help="take an uma's aptitudes from this outfit, e.g. 1008:100802 for [Fiery Aqua Vitae] Vodka",
+)
+arguments = parser.parse_args()  # parsed before era's import, which opens the era's database
+
 from era import q, names, CUT, BASE, outfit_released
 
 character_names = names(6)
@@ -16,7 +35,7 @@ outfits = lambda character_id: [
     if outfit_released(x)
 ]
 roster = [r[0] for r in q("select id from chara_data where start_date<?", CUT) if outfits(r[0])]
-outfit_overrides = {int(a): int(b) for a, b in (x.split(":") for x in sys.argv[2:] if ":" in x)}
+outfit_overrides = dict(arguments.outfits)
 
 
 def outfit_aptitudes(card_id):

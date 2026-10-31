@@ -2,9 +2,16 @@
 (need_rank <= 5, i.e. fully awakened), plus the catalog of white skills (and their gold upgrade) users can pick.
 Writes the era's web_skills.json. usage: export_web.py global|jp"""
 
-import json, os, re
+import argparse, json, os, re
 from dataclasses import dataclass
 from typing import NamedTuple
+
+parser = argparse.ArgumentParser(
+    description="Skill tables for the web app -> the era's web_skills.json.", allow_abbrev=False
+)
+parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
+parser.parse_args()  # parsed before era's import, which opens the era's database
+
 from era import c, names, BASE, OUT, outfit_released
 
 

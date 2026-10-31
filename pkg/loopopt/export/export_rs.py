@@ -1,10 +1,17 @@
 """Export everything the Rust core needs to the era's data.json. Relocated venues = same race (samerace patch).
 usage: export_rs.py global|jp [--out FILE]"""
 
+import argparse
 import json
 import os
-import sys
 from typing import NamedTuple
+
+parser = argparse.ArgumentParser(
+    description="Export everything the Rust core needs to the era's data.json.", allow_abbrev=False
+)
+parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
+parser.add_argument("--out", metavar="FILE", help="write here instead of the era's data.json")
+arguments = parser.parse_args()  # parsed before era's import, which opens the era's database
 
 # Importing samerace applies the venue aliases before any program is exported.
 from samerace import PROG
@@ -94,7 +101,7 @@ for program in PROG.values():
     race_attributes.setdefault(
         program.race, RaceAttributes(distance_class=cat(program.distance), ground=program.ground)
     )
-output_path = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(OUT, "data.json")
+output_path = os.path.join(OUT, "data.json") if arguments.out is None else arguments.out
 json.dump(
     {
         "races": races,

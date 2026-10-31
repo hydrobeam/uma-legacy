@@ -8,9 +8,17 @@ Per card: `chain` [link, best continuing-choice chance per skill]; `end` [link, 
 early at that link] (always a link before the last: reaching the last link is the chain's normal end, not an `end`
 entry); `stop_risk` [link, k, n] when IT's default choice there ends the chain on k of n outcomes; `alts` [link, continuing choices' outcomes] when they contain at least two distinct skills."""
 
-import json, os
+import argparse, json, os
 import gametora
 from event_choices import decode, fmt, manual_entry, apply_shares
+
+parser = argparse.ArgumentParser(
+    description="The era's card_events.json from the cached GameTora training-event files and master.mdb.",
+    allow_abbrev=False,
+)
+parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
+parser.parse_args()  # parsed before era's import, which opens the era's database
+
 from era import q, names, OUT, released
 
 skill_names = names(47)

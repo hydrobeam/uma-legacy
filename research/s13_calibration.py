@@ -26,7 +26,7 @@ common.fingerprint()):
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
 same parent twice or the trainee as a parent, shared-G1 counts that do not fit the race list."""
 
-import collections, math, os, sys
+import argparse, collections, math, os
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
@@ -2555,7 +2555,7 @@ def roll_form_findings(pf: RollFormTests) -> list[Finding]:
     ]
 
 
-def claims(wide: bool | None = None) -> list[Value | Finding]:
+def claims(wide: bool = False) -> list[Value | Finding]:
     R = common.runs()
     why = "needs data" if R is None else "needs master.mdb" if common.mdb() is None else None
     M = Model()
@@ -2570,8 +2570,6 @@ def claims(wide: bool | None = None) -> list[Value | Finding]:
         return fs + wide_findings(None, None, why=why)
     out: list[Value | Finding] = [*values, *fs]
     open(os.path.join(OUTD, "report8.txt"), "w").write("\n".join(cal.report.lines) + "\n")
-    if wide is None:
-        wide = "--wide" in sys.argv
     out += wide_claims(R, M, forms) if wide else wide_findings(None, None, why="not run (--wide)")
     return out
 
@@ -2697,4 +2695,11 @@ def wide_findings(
 
 
 if __name__ == "__main__":
-    common.main(claims)
+    parser = argparse.ArgumentParser(
+        description="Section 13: the career model against real careers.", allow_abbrev=False
+    )
+    parser.add_argument(
+        "--wide", action="store_true", help="also every other skill a deck card or an ancestor's spark could give"
+    )
+    wide = parser.parse_args().wide
+    common.main(lambda: claims(wide))

@@ -47,6 +47,7 @@ usage: uv run val/sim/fit_cont.py BIN OUT_DIR [--runs 6] [--careers 400] [--marg
   trainees x 6 runs is about 10 minutes on two cores. A `--margin 0` run sizes how much of the plateau comes from the
   traces' cached decks (margin 1e9 searches a trainee's deck only when she has none)."""
 
+import argparse
 import json
 import math
 import os
@@ -582,26 +583,29 @@ def report(traces, careers):
     lift_value_report(traces, careers)
 
 
-def main(args):
-    def option(flag, default, kind):
-        if flag not in args:
-            return default
-        i = args.index(flag)
-        value = kind(args[i + 1])
-        del args[i : i + 2]
-        return value
-
-    fit_only = "--fit-only" in args
-    if fit_only:
-        args.remove("--fit-only")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Refit the shape of the career planner's continuation to builder traces.", allow_abbrev=False
+    )
+    parser.add_argument("binary", metavar="BIN")
+    parser.add_argument("out_dir", metavar="OUT_DIR")
+    parser.add_argument(
+        "pools", nargs="*", metavar="POOL", help="trace pools (default: all of val/sim/trace_pools.json)"
+    )
+    parser.add_argument("--runs", type=int, default=6)
+    parser.add_argument("--careers", type=int, default=400)
+    parser.add_argument("--margin", type=float, default=1e9)
+    parser.add_argument("-j", type=int, default=2, dest="parallelism", metavar="N", help="pools at a time")
+    parser.add_argument("--fit-only", action="store_true", help="read the outputs already in OUT_DIR")
+    arguments = parser.parse_intermixed_args()
     settings = {
-        "runs": option("--runs", 6, int),
-        "careers": option("--careers", 400, int),
-        "margin": option("--margin", 1e9, float),
-        "fit_only": fit_only,
+        "runs": arguments.runs,
+        "careers": arguments.careers,
+        "margin": arguments.margin,
+        "fit_only": arguments.fit_only,
     }
-    parallelism = option("-j", 2, int)
-    binary, out_dir, wanted = os.path.abspath(args[0]), args[1], set(args[2:])
+    parallelism = arguments.parallelism
+    binary, out_dir, wanted = os.path.abspath(arguments.binary), arguments.out_dir, set(arguments.pools)
     os.makedirs(out_dir, exist_ok=True)
     entries = [
         e for e in json.load(open(os.path.join(SIM_DIR, "trace_pools.json"))) if not wanted or e["name"] in wanted
@@ -616,4 +620,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

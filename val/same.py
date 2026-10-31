@@ -5,6 +5,7 @@ val/sim/REF__*.out, simval's outputs), every field but the timings (`timing_s`, 
 simulator's `wall_s`, `init_s`, `plan_s`); prints each differing output with the paths that differ. Exit 1 on any
 difference or when nothing was compared. Stricter than cmp2.py, which checks rounded P(all)."""
 
+import argparse
 import glob
 import json
 import os
@@ -13,12 +14,22 @@ import sys
 # the mode flags and the subdirectory each one compares in
 MODE_DIRECTORIES = {"--plan": "plan", "--sim": "sim"}
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
-args = [argument for argument in sys.argv[1:] if argument not in MODE_DIRECTORIES]
-mode = next((flag for flag in MODE_DIRECTORIES if flag in sys.argv), None)
+parser = argparse.ArgumentParser(
+    description="Whole-output identity: every field of each output but the timings, against its reference.",
+    allow_abbrev=False,
+)
+parser.add_argument("tag")
+parser.add_argument("ref", nargs="?", default="ref")
+mode_flags = parser.add_mutually_exclusive_group()
+mode_flags.add_argument(
+    "--plan", action="store_const", const="--plan", dest="mode", help="planval's outputs, in val/plan"
+)
+mode_flags.add_argument("--sim", action="store_const", const="--sim", dest="mode", help="simval's outputs, in val/sim")
+arguments = parser.parse_intermixed_args()
+mode = arguments.mode
 if mode:
     VALIDATION_DIR = os.path.join(VALIDATION_DIR, MODE_DIRECTORIES[mode])
-tag = args[0]
-ref = args[1] if len(args) > 1 else "ref"
+tag, ref = arguments.tag, arguments.ref
 # wall clocks in seconds; the simulator's: per run, its setup, each plan of the index policy
 TIMING_KEYS = {"timing_s"} | ({"wall_s", "init_s", "plan_s"} if mode == "--sim" else set())
 

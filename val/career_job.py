@@ -8,13 +8,30 @@ usage: career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB [TABLES]
   BASE_JOB  a deck job (targets, cards, events files...); its mode becomes "career"
   TABLES    career.json (default pkg/loopopt/data/global/career.json)"""
 
+import argparse
 import json
-import sys
 import os
 
 REPO = os.path.dirname(os.path.abspath(__file__)) + "/../"
-veterans, base_path, out_path = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3]
-tables = json.load(open(sys.argv[4] if len(sys.argv) > 4 else REPO + "pkg/loopopt/data/global/career.json"))
+parser = argparse.ArgumentParser(
+    description="Build a career-planner job from a veteran export (umadump's trained_chara_data.json).",
+    allow_abbrev=False,
+)
+parser.add_argument("veterans", metavar="TRAINED_CHARA_JSON")
+parser.add_argument(
+    "base_job", metavar="BASE_JOB", help='a deck job (targets, cards, events files...); its mode becomes "career"'
+)
+parser.add_argument("out_job", metavar="OUT_JOB")
+parser.add_argument(
+    "tables",
+    nargs="?",
+    default=REPO + "pkg/loopopt/data/global/career.json",
+    metavar="TABLES",
+    help="career.json (default pkg/loopopt/data/global/career.json)",
+)
+arguments = parser.parse_args()
+veterans, base_path, out_path = json.load(open(arguments.veterans)), arguments.base_job, arguments.out_job
+tables = json.load(open(arguments.tables))
 factor_groups, saddle_races = (
     {int(k): veteran for k, veteran in tables["factors"].items()},
     {int(k): veteran for k, veteran in tables["saddles"].items()},

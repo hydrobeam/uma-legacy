@@ -32,6 +32,7 @@ usage: mono.py BIN [JOB ...] [-j N] [-n ROLLS]   (default: every job in val/plan
   writes its job files and outputs to a temporary folder (printed at the end); exits 1 when a V rises by more than 1e-9 relative under a fixed fit, or a plan or roll
   fails (above)"""
 
+import argparse
 import copy
 import json
 import math
@@ -131,20 +132,22 @@ REPO = os.path.dirname(VALIDATION_DIR)
 PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
 
 
-def option(args, flag, default):
-    if flag not in args:
-        return default
-    i = args.index(flag)
-    value = int(args[i + 1])
-    del args[i : i + 2]
-    return value
-
-
-args = sys.argv[1:]
-parallelism = option(args, "-j", 2)
-roll_count = option(args, "-n", 3)
-binary = os.path.abspath(args[0])
-want = set(args[1:])
+parser = argparse.ArgumentParser(description="Monotonicity tripwire for the career planner.", allow_abbrev=False)
+parser.add_argument("binary", metavar="BIN")
+parser.add_argument("jobs", nargs="*", metavar="JOB", help="val/plan jobs (default: every job in val/plan/jobs.json)")
+parser.add_argument("-j", type=int, default=2, dest="parallelism", metavar="N", help="jobs at a time")
+parser.add_argument(
+    "-n",
+    type=int,
+    default=3,
+    dest="roll_count",
+    metavar="ROLLS",
+    help="rolled veterans per pool, 0 for the last-veteran check alone",
+)
+arguments = parser.parse_intermixed_args()
+parallelism, roll_count = arguments.parallelism, arguments.roll_count
+binary = os.path.abspath(arguments.binary)
+want = set(arguments.jobs)
 jobs = [(era, name) for era, name in json.load(open(os.path.join(PLAN_DIR, "jobs.json"))) if not want or name in want]
 temporary_dir = tempfile.mkdtemp(prefix="mono_")
 

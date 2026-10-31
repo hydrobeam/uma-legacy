@@ -16,7 +16,15 @@ data.json (run after export_rs.py) and writes career.json next to it:
            (its badge, atlas/statusrank utx_ico_statusrank_{id - 1}) is the last whose minimum her score reaches.
 usage: export_career.py global|jp"""
 
-import sqlite3, json, os
+import argparse, sqlite3, json, os
+
+parser = argparse.ArgumentParser(
+    description="Tables for reading a veteran export into the career planner -> the era's career.json.",
+    allow_abbrev=False,
+)
+parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
+parser.parse_args()  # parsed before era's import, which opens the era's database
+
 from era import q, OUT, GLOBAL_MDB
 
 data_path, out_path = os.path.join(OUT, "data.json"), os.path.join(OUT, "career.json")

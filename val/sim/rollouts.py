@@ -25,6 +25,7 @@ usage: uv run val/sim/rollouts.py BIN OUT_DIR [--runs 50] [--careers 50] [--rows
   95% t interval, and the score difference it is compared with. Cost: one plan per run and row (the final pool's), so
   rows x runs plans per pool: size it with --runs 1 first."""
 
+import argparse
 import json
 import math
 import os
@@ -141,24 +142,29 @@ def report(pool, plan, rows, totals):
         )
 
 
-def main(args):
-    def option(flag, default):
-        if flag not in args:
-            return default
-        i = args.index(flag)
-        value = int(args[i + 1])
-        del args[i : i + 2]
-        return value
-
-    settings = {"runs": option("--runs", 50), "careers": option("--careers", 50), "rows": option("--rows", 3)}
-    parallelism = option("-j", 2)
-    binary, out_dir = os.path.abspath(args[0]), args[1]
+def main():
+    parser = argparse.ArgumentParser(
+        description="Paired truncated rollouts of the career planner's top rows.", allow_abbrev=False
+    )
+    parser.add_argument("binary", metavar="BIN")
+    parser.add_argument("out_dir", metavar="OUT_DIR")
+    parser.add_argument(
+        "pools", nargs="*", metavar="POOL", help="val/plan pools (default: " + " ".join(DEFAULT_POOLS) + ")"
+    )
+    parser.add_argument("--runs", type=int, default=50)
+    parser.add_argument("--careers", type=int, default=50)
+    parser.add_argument("--rows", type=int, default=3)
+    parser.add_argument("-j", type=int, default=2, dest="parallelism", metavar="N", help="solver runs at a time")
+    arguments = parser.parse_intermixed_args()
+    settings = {"runs": arguments.runs, "careers": arguments.careers, "rows": arguments.rows}
+    parallelism = arguments.parallelism
+    binary, out_dir = os.path.abspath(arguments.binary), arguments.out_dir
     os.makedirs(out_dir, exist_ok=True)
     with ThreadPoolExecutor(parallelism) as executor:
-        for pool in args[2:] or DEFAULT_POOLS:
+        for pool in arguments.pools or DEFAULT_POOLS:
             rollouts(binary, out_dir, pool, settings, executor)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

@@ -27,7 +27,7 @@ Imported, it is the one reader of those files (no other code decodes them). The 
     event], ...]] (`conditional_events`, `extra`).
 """
 
-import glob, json, os, sys, urllib.request
+import argparse, glob, json, os, urllib.request
 from typing import NamedTuple
 
 H = os.path.dirname(os.path.abspath(__file__))
@@ -46,9 +46,9 @@ def local_name(key):
     return key.removeprefix("static/").replace("/", "_")
 
 
-def main(argv):
+def main(latest):
     pins = json.load(open(PINS))
-    if "--latest" in argv:
+    if latest:
         manifest = json.loads(get(pins["manifest"]))
         moved = {k: manifest[k] for k in pins["files"] if manifest.get(k) and manifest[k] != pins["files"][k]}
         pins["files"].update(moved)
@@ -242,4 +242,10 @@ def extra(event, code):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(description="GameTora's data files into cache/gametora/.", allow_abbrev=False)
+    parser.add_argument(
+        "--latest",
+        action="store_true",
+        help="pin the newest versions from GameTora's manifest first, then download them",
+    )
+    main(parser.parse_args().latest)

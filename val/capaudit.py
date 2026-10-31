@@ -9,6 +9,7 @@ usage: capaudit.py BIN [JOB ...]
   checks only classes whose normal cap is below the reached cap.
   Exits 1 when an answer moves or a ratio passes its cap."""
 
+import argparse
 import json
 import os
 import subprocess
@@ -32,9 +33,17 @@ VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(VALIDATION_DIR)
 PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
 CLS = ["0-1", "2", "3", "4+"]
-args = sys.argv[1:]
-binary = os.path.abspath(args[0])
-want = args[1:] or ["p16", "gm16", "v_uc_k1:pu"]
+parser = argparse.ArgumentParser(description="Audit of the exact caps per deck structure class.", allow_abbrev=False)
+parser.add_argument("binary", metavar="BIN")
+parser.add_argument(
+    "jobs",
+    nargs="*",
+    metavar="JOB",
+    help="a val/plan job, or a val/jobs job with ':pu' for per-uma (default: p16 gm16 v_uc_k1:pu)",
+)
+arguments = parser.parse_args()
+binary = os.path.abspath(arguments.binary)
+want = arguments.jobs or ["p16", "gm16", "v_uc_k1:pu"]
 plan_dirs = {name: era for era, name in json.load(open(os.path.join(PLAN_DIR, "jobs.json")))}
 val_eras = {name: era for era, name in json.load(open(os.path.join(VALIDATION_DIR, "jobs.json")))}
 temporary_dir = tempfile.mkdtemp(prefix="capaudit_")

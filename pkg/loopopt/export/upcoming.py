@@ -9,7 +9,14 @@ Run as a script (step data, after the other exports): pkg/loopopt/data/global/up
 {umas, outfits, cards: [[id, start (unix s)], ...]}, for webapp/example.mjs, whose precomputed result must not use them.
 """
 
-import json, os
+import argparse, json, os
+
+parser = argparse.ArgumentParser(
+    description="What the export holds that is dated but has not started yet -> upcoming.json.", allow_abbrev=False
+)
+parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
+parser.parse_args()  # parsed before era's import, which opens the era's database
+
 from era import q, CUT, NOW, OUT, BASE, outfit_starts
 
 

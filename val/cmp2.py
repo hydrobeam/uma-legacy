@@ -1,5 +1,6 @@
 """Compare rounded validation values, selected decks, and exact/product cap margins."""
 
+import argparse
 import json
 import sys
 import glob
@@ -63,7 +64,13 @@ def near_cap(ratio, cap):
     return ratio > 1 + 0.75 * (cap - 1)
 
 
-tag = sys.argv[1]
+parser = argparse.ArgumentParser(
+    description="Compare rounded validation values, selected decks, and exact/product cap margins.", allow_abbrev=False
+)
+parser.add_argument("tag", help="the outputs val/TAG__*.out")
+parser.add_argument("ref", help="the references val/REF__*.out")
+arguments = parser.parse_args()
+tag, ref = arguments.tag, arguments.ref
 mismatches = 0
 compared = 0
 
@@ -76,8 +83,8 @@ def load(p):
         return None
 
 
-for reference_path in sorted(glob.glob(VALIDATION_DIR + sys.argv[2] + "__*.out")):
-    name = reference_path.split(sys.argv[2] + "__")[1]
+for reference_path in sorted(glob.glob(VALIDATION_DIR + ref + "__*.out")):
+    name = reference_path.split(ref + "__")[1]
     candidate_path = VALIDATION_DIR + f"{tag}__{name}"
     if not os.path.exists(candidate_path):
         continue

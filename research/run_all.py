@@ -10,6 +10,7 @@ outputs); a script whose fingerprint is unchanged is not run again. --force reco
 research/render.py renders docs/RESEARCH.md. Without the run records (research/data/runs.jsonl, not included)
 sections skip record-dependent calculations or return findings as "needs data"; game-backed checks still need their inputs."""
 
+import argparse
 import collections, concurrent.futures, glob, hashlib, importlib, inspect, json, os, pickle, re, sys, time, traceback
 
 for v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
@@ -155,9 +156,14 @@ def compute_pending(pending: dict[str, Pending], jobs: int, got: dict[str, Claim
 
 
 def main() -> None:
-    quick = "--quick" in sys.argv
-    force = "--force" in sys.argv
-    jobs = int(next((a.split("=")[1] for a in sys.argv if a.startswith("--jobs=")), JOBS))
+    parser = argparse.ArgumentParser(
+        description="Run every section script and write research/results.json.", allow_abbrev=False
+    )
+    parser.add_argument("--quick", action="store_true", help="skip the section 13 variant over every other skill")
+    parser.add_argument("--force", action="store_true", help="recompute every script, cached results or not")
+    parser.add_argument("--jobs", type=int, default=JOBS, metavar="N", help=f"worker processes (default {JOBS})")
+    arguments = parser.parse_args()
+    quick, force, jobs = arguments.quick, arguments.force, arguments.jobs
     stamp = data_stamp()
     os.makedirs(CACHE, exist_ok=True)
     if not common.have_runs():

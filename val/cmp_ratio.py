@@ -1,8 +1,8 @@
 """Compare a validation tag with a reference when every value is expected to scale: same loops and decks, and the
 new/reference ratios of p_all and p_minus1 for the first result. usage: cmp_ratio.py TAG REF"""
 
+import argparse
 import json
-import sys
 import glob
 import os
 from dataclasses import dataclass
@@ -24,7 +24,13 @@ class RatioComparison:
 
 
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__)) + "/"
-tag, ref = sys.argv[1], sys.argv[2]
+parser = argparse.ArgumentParser(
+    description="Compare a validation tag with a reference when every value is expected to scale.", allow_abbrev=False
+)
+parser.add_argument("tag")
+parser.add_argument("ref")
+arguments = parser.parse_args()
+tag, ref = arguments.tag, arguments.ref
 
 
 def load(p):

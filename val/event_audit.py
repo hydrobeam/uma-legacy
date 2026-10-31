@@ -9,6 +9,7 @@ usage (repo root): uv run val/event_audit.py [--all]     --all also prints the n
 Needs game/global/master.mdb.
 """
 
+import argparse
 import json
 import sqlite3
 import sys
@@ -31,6 +32,11 @@ REPO = os.path.dirname(os.path.abspath(__file__)) + "/../"
 sys.path.insert(0, REPO + "pkg/loopopt/export")
 import gametora
 
+parser = argparse.ArgumentParser(
+    description="Audit the hand-entered pal and group card entries against GameTora's event files.", allow_abbrev=False
+)
+parser.add_argument("--all", action="store_true", help="also print the non-target hints")
+SHOW_ALL = parser.parse_args().all
 connection = sqlite3.connect(REPO + "game/global/master.mdb")
 query = lambda s, *a: connection.execute(s, a).fetchall()
 skill_names = dict(query("select [index], text from text_data where category = 47"))
@@ -54,7 +60,6 @@ TARGETS = {
     "Risky Business",
     "Nothing Ventured",
 }
-SHOW_ALL = "--all" in sys.argv
 
 
 def event_hints(choices):

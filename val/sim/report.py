@@ -8,9 +8,9 @@
 An output file is the solver's stdout for one job (one JSON line); several files of one policy (split runs) pool.
 """
 
+import argparse
 import json
 import math
-import sys
 from collections import defaultdict
 from typing import NamedTuple
 
@@ -218,9 +218,17 @@ def audit(paths):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "e1":
-        e1(sys.argv[2:])
-    elif sys.argv[1] == "audit":
-        audit(sys.argv[2:])
+    parser = argparse.ArgumentParser(description="Summaries of policy-simulator outputs.", allow_abbrev=False)
+    parser.add_argument(
+        "outputs",
+        nargs="+",
+        metavar="OUT",
+        help="solver outputs, after the summary's name: runs (the default), e1 or audit",
+    )
+    outputs = parser.parse_args().outputs
+    if outputs[0] == "e1":
+        e1(outputs[1:])
+    elif outputs[0] == "audit":
+        audit(outputs[1:])
     else:
-        runs(sys.argv[2:] if sys.argv[1] == "runs" else sys.argv[1:])
+        runs(outputs[1:] if outputs[0] == "runs" else outputs)

@@ -14,13 +14,13 @@ expectation by inclusion-exclusion over per-target "no gold" / "no hint" require
 
 usage: uv run val/joint_check.py TAG        (val/TAG__*.out and val/TAGpu__*.out)"""
 
+import argparse
 import functools
 import itertools
 import json
 import math
 import os
 import re
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -450,7 +450,11 @@ def check(out, job, d, alt_q=None):
 
 
 if __name__ == "__main__":
-    tag = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description="Independent check of the solver's exact landing odds.", allow_abbrev=False
+    )
+    parser.add_argument("tag", help="the outputs val/TAG__*.out and val/TAGpu__*.out")
+    tag = parser.parse_args().tag
     bad = 0
     for era, j in json.load(open(os.path.join(V, "jobs.json"))):
         job = json.load(open(os.path.join(V, "jobs", j + ".json")))

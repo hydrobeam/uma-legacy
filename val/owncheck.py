@@ -2,11 +2,16 @@
 Brute-force check of the character rule: every 6-card deck from a small owned set, each with its best legal
 loop (deck locked, blocked umas excluded), against the search's answer (exact odds; the character rule as a legality filter)."""
 
-import tempfile, json, itertools, subprocess, sys, os, concurrent.futures as cf
+import argparse, tempfile, json, itertools, subprocess, os, concurrent.futures as cf
 
 S = os.path.dirname(os.path.abspath(__file__)) + "/../pkg/loopopt/data/global/"
-BIN, K = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 3
-REQ = sys.argv[3].split(",") if len(sys.argv) > 3 else []
+parser = argparse.ArgumentParser(description="Brute-force check of the character rule.", allow_abbrev=False)
+parser.add_argument("binary", metavar="BIN")
+parser.add_argument("k", nargs="?", type=int, default=3, metavar="K")
+parser.add_argument("required", nargs="?", metavar="Required Uma,Other Uma", help="umas every loop must hold")
+arguments = parser.parse_args()
+BIN, K = arguments.binary, arguments.k
+REQ = arguments.required.split(",") if arguments.required is not None else []
 data = json.load(open(S + "data.json"))
 cards = {c["id"]: c for c in json.load(open(S + "web_cards.json"))["cards"]}
 uid = {u["name"]: u["id"] for u in data["umas"]}
