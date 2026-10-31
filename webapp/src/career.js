@@ -1830,23 +1830,22 @@ function targetsEl(r) {
   return s;
 }
 // the chance of each count of targets (all n first), as columns in the game's gauge colours: the chance over a column
-// as tall as its share (the likeliest's figure bold, all n in gold), the count under it; under the axis, the game's
-// limit arrow where the average roll lands (the expected count, between the columns it falls between)
+// as tall as its share (all n in gold), the count under it, "1 in X" on hover; under the axis, the game's limit arrow
+// where the average roll lands (the expected count, between the columns it falls between)
 function countsEl(r) {
   const n = state.targets.length,
     ex = landedCounts(r),
     top = Math.max(...ex),
-    likeliest = ex.indexOf(top),
     chart = el('div', 'tgchart'),
     cols = el('div', 'tgcounts');
   for (let k = n; k >= 0; k--) {
-    const c = el('span', `tgc${k === n ? ' all' : ''}${k === likeliest ? ' top' : ''}`),
+    const c = el('span', `tgc${k === n ? ' all' : ''}`),
       bar = el('span', 'tgcb'),
       col = el('i');
     col.style.height = `${top > 0 ? Math.max(2, Math.round((ex[k] / top) * 100)) : 0}%`;
     bar.appendChild(col);
     c.append(el('b', '', pct(ex[k])), bar, el('span', 'tgck', `${k}/${n}`));
-    c.title = `Exactly ${k} of ${n}: ${pct(ex[k])}`;
+    c.title = `Exactly ${k} of ${n}: ${fmtIn(ex[k])} (${pct(ex[k])})`;
     cols.appendChild(c);
   }
   chart.appendChild(cols);
@@ -3016,7 +3015,7 @@ function openSaveWhy(planReport, notes = []) {
   );
   // the table's notes, where any
   if (notes.length) {
-    body.appendChild(el('h4', 'gmdsub', 'Notes'));
+    body.appendChild(el('div', 'gmdsub', 'Notes')); // (as the popup's other heading: no heading margins)
     for (const text of notes) body.appendChild(el('p', 'optnote', text));
   }
   saveDlg.appendChild(body);
