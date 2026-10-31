@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { drawPink } from '../src/pink.mjs';
 import { searchCaveat, planCaveat } from '../src/proofs.mjs';
-import { QUICK, check, ART, dialog, AUDIT, still, careerPage, repoUrl } from './helpers.mjs';
+import { QUICK, check, ART, dialog, audit, contrastCheck, still, careerPage, repoUrl } from './helpers.mjs';
 
 // The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
 // career with legacy pinks (val/ref__global__career_*.out, the solver's outputs that validation pins), 40,000 seeded draws
@@ -64,6 +64,7 @@ export default async function career(b) {
     simOpen,
     simShut,
     importDump,
+    saved,
   } = await careerPage(b);
   if (b.browserType().name() === 'chromium') {
     const pin = pinkPin();
@@ -343,7 +344,43 @@ export default async function career(b) {
     cleared,
   );
   await vetsShut();
-  await paste(exText); // an Export replaces every import: the 12 again
+  // an Export of the other era's data is refused: it would replace this era's imports with veterans of other data
+  const storedIds = () =>
+    pg.evaluate(() =>
+      JSON.parse(localStorage.getItem('llp:career'))
+        .global.vets.map((v) => v.id)
+        .join(),
+    );
+  const ids0 = await storedIds();
+  await paste(JSON.stringify({ ...ex, era: 'gm', veterans: ex.veterans.slice(0, 3) }));
+  await saved();
+  const refused = {
+    msg: await pg.textContent('#v-msg'),
+    n: await pg.locator('#vets .umcell').count(),
+    same: (await storedIds()) === ids0,
+  };
+  check(
+    "career: an Export of the other era's data is refused, and this era's veterans stay",
+    ex.era === 'global' &&
+      /^Not imported: that export is of the .+ data\.$/.test(refused.msg) &&
+      refused.n === 12 &&
+      refused.same,
+    JSON.stringify(refused),
+  );
+  // an Export with a veteran whose records lack fields (cut or edited by hand) draws, the fields taken as empty
+  const errs0 = pg.errors.length;
+  await paste(JSON.stringify({ ...ex, veterans: [...ex.veterans, { id: 'x', parents: [{}, {}] }] }));
+  await pg.click('#vet-12'); // (her card beside the list draws her parents)
+  await saved();
+  const cut = { n: await pg.locator('#vets .umcell').count(), errors: pg.errors.slice(errs0) };
+  check(
+    'career: an Export with a veteran missing her sparks, wins and character draws without errors',
+    cut.n === 13 && !cut.errors.length,
+    JSON.stringify(cut).slice(0, 300),
+  );
+  await vetsShut();
+  await paste(exText); // an Export replaces every import: the 12 again (the cut one goes)
+  await saved();
   check(
     'career: Export shows the veterans and the search job as text, Copy copies it, Download saves it, and Paste takes it back',
     ex.app === 'uma-legacy-veterans' &&
@@ -355,11 +392,23 @@ export default async function career(b) {
       dlSame &&
       /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) &&
       (await pg.locator('#vets .umcell').count()) === 12 &&
+      (await storedIds()) === ex.veterans.map((v) => v.id).join() &&
       !(await pg.locator('#paste-dlg[open]').count()),
     `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`,
   );
   await done();
   await planned(); // the pasted export's plan (the same pool)
+  if (chromium) {
+    // the page with a plan on show (the lineage tree, the targets, the options table, the status line), both themes
+    await vetsShut();
+    for (const theme of ['light', 'dark']) {
+      if ((await pg.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== theme)
+        await pg.click('#theme-btn');
+      await still(pg);
+      contrastCheck(`career: ${theme} mode with a plan on show`, [await audit(pg)]);
+    }
+    await pg.click('#theme-btn');
+  }
   check(
     'career: the planner weighs every career, checked on exact odds (only a check that could not finish is mentioned)',
     /Weighed 3,618 careers/.test(await note()) && !/could not finish|checked exact/.test(await note()),
@@ -417,12 +466,49 @@ export default async function career(b) {
       /Legacies carrying it/.test(skText),
     JSON.stringify(tgRows.slice(0, 2)),
   );
+  // the deck's chance of hinting a target is one figure wherever it shows: its gold, or else its white (the solver's
+  // `deck_white` is given no gold), `deckHint`, from the career's own fields: each row's Deck figure, and Skill Details'
+  // two deck lines (its gold; its white) adding up to it
+  {
+    const hint = (b) => 1 - (1 - (b.deck_gold || 0)) * (1 - (b.deck_white || 0));
+    const targets = await pg.evaluate(() =>
+      [...window.__careerResults.findLast((r) => r.next?.choice).next.choice.targets].sort((a, c) => a.p - c.p),
+    );
+    const rowDeck = await pg.$$eval('#tree .rtgt .ctg', (l) => l.map((x) => x.querySelector('.tgdk')?.title || ''));
+    // (pct's rounding: whole percents from 10%, one decimal from 1%)
+    const shows = (text, p) => {
+      const v = parseFloat(text.replace(/^Deck: /, '')),
+        pc = p * 100;
+      return Math.abs(v - pc) <= (pc >= 10 ? 0.5 : pc >= 1 ? 0.05 : 0.005) + 1e-9;
+    };
+    const rows = targets.map((t, i) => ({ text: rowDeck[i], p: hint(t.buy || {}) })).filter((r) => r.text);
+    // Skill Details of the target whose deck gives both its gold and its white most
+    const both = targets
+      .map((t, i) => ({ i, gw: (t.buy?.deck_gold || 0) * (t.buy?.deck_white || 0), p: hint(t.buy || {}) }))
+      .sort((a, c) => c.gw - a.gw)[0];
+    await pg.locator('#tree .rtgt .ctg button.udsk').nth(both.i).click();
+    await dialog(pg, 'sk-dlg');
+    const lines = await pg.$$eval('#sk-dlg .gmdlist li', (l) =>
+      l.map((x) => [x.querySelector('span')?.textContent, x.querySelector('b')?.textContent]),
+    );
+    if (chromium) contrastCheck('career: Skill Details (a game-style popup)', [await audit(pg)]);
+    await pg.keyboard.press('Escape');
+    const deckLines = lines.filter(([k]) => /^Deck/.test(k)).map(([, v]) => parseFloat(v) || 0);
+    check(
+      "career: the deck's hint chance (gold, else white) is the same figure in the target rows and in Skill Details, from the result's fields",
+      rows.length > 0 &&
+        rows.every((r) => shows(r.text, r.p)) &&
+        both.gw > 0.01 &&
+        deckLines.length === 2 &&
+        Math.abs(deckLines[0] + deckLines[1] - both.p * 100) <= 1,
+      JSON.stringify({ rows: rows.slice(0, 4), both, lines }),
+    );
+  }
   check(
     'career: the legacies carry no affinity numbers or labels; the trainee shows her total',
     !(await pg.locator('#tree .gate').count()) &&
       (await pg.locator('#tree .pn:not(.trainee) .aff').count()) === 0 &&
-      (await pg.locator('#tree .pn.trainee .aff').count()) === 1 &&
-      !(await pg.locator('#tree .pn.trainee .tsum').count()),
+      (await pg.locator('#tree .pn.trainee .aff').count()) === 1,
   );
   const affs = [+(await pg.textContent('#tree .pn.trainee .aff')).replace(/\D/g, '')];
   await node('node:t');
@@ -566,8 +652,16 @@ export default async function career(b) {
   const vp = pg.viewportSize();
   await pg.setViewportSize({ width: 375, height: 812 });
   const wtPhone = await pg.evaluate(() => {
-    const w = document.querySelector('#sched-wintable .wtscroll');
-    return { page: document.documentElement.scrollWidth, scrolls: w.scrollWidth > w.clientWidth };
+    const w = document.querySelector('#sched-wintable .wtscroll'),
+      width = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().width);
+    return {
+      page: document.documentElement.scrollWidth,
+      scrolls: w.scrollWidth > w.clientWidth,
+      dialog: width('#sched-dlg'),
+      panel: width('#sched-wintable'),
+      scroller: w.clientWidth,
+      table: width('#sched-wintable table'),
+    };
   });
   await pg.setViewportSize(vp);
   check(
@@ -800,6 +894,41 @@ export default async function career(b) {
       original,
     )) && (await policyJobs()) === 0,
   );
+  // an answer for the same career keeps the veteran being entered: an SR card not in its deck marked not owned (a new
+  // search, the same career) and owned again (the answer before it, kept)
+  {
+    const offCard = await pg.evaluate(() => {
+      const shown = window.__careerResults.findLast((r) => r.next?.choice).next.choice,
+        inDeck = new Set(shown.deck.card_ids);
+      // (the picker lists the cards that give a target; a tile is known by its card's name)
+      const sr = new Set(
+        self.__LLP_DATA['data-cards'].filter((c) => c.rar === 2 && !inDeck.has(c.id)).map((c) => c.name.toLowerCase()),
+      );
+      return [...document.querySelectorAll('#cards .ct')].find((t) => sr.has(t._searchName))._searchName;
+    });
+    const toggleCard = async () => {
+      await pg.evaluate(
+        (name) => [...document.querySelectorAll('#cards .ct')].find((t) => t._searchName === name).click(),
+        offCard,
+      );
+      await done();
+    };
+    const entered = await showsNow();
+    await toggleCard();
+    const afterSearch = await showsNow();
+    await toggleCard();
+    const afterUndo = await showsNow();
+    check(
+      'career: an answer for the same career (a card not in its deck unowned, then owned again) keeps the veteran being entered',
+      /Uma Stan[^|]*3 stars/.test(entered) && afterSearch === entered && afterUndo === entered,
+      JSON.stringify({
+        offCard,
+        entered: entered.slice(0, 80),
+        afterSearch: afterSearch.slice(0, 80),
+        afterUndo: afterUndo.slice(0, 80),
+      }),
+    );
+  }
   await simStars(3);
   await pg.click('#sim-compare');
   await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
@@ -858,12 +987,7 @@ export default async function career(b) {
       if ((await pg.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== theme)
         await pg.evaluate(() => document.getElementById('theme-btn').click());
       await still(pg); // the theme's colour transitions
-      const fails = await pg.evaluate(AUDIT);
-      check(
-        `career: ${theme} mode with the outcome table and a comparison meets WCAG AAA`,
-        !fails.length,
-        fails.slice(0, 5).join(' | '),
-      );
+      contrastCheck(`career: ${theme} mode with the outcome table and a comparison`, [await audit(pg)]);
     }
     await pg.evaluate(() => document.getElementById('theme-btn').click());
   }

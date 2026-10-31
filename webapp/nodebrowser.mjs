@@ -136,6 +136,6 @@ async function runBrowser(name) {
 await Promise.all(BROWSERS.map(runBrowser));
 const { passed, failed, skipped } = tally;
 console.log(
-  `\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped (no game art)` : ''} in ${((Date.now() - T0) / 1000).toFixed(1)} s`,
+  `\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped` : ''} in ${((Date.now() - T0) / 1000).toFixed(1)} s`,
 );
 process.exit(failed ? 1 : 0);

@@ -1,4 +1,4 @@
-import { PAGE_URL, check, artless, open, until, AUDIT } from './helpers.mjs';
+import { PAGE_URL, check, open, until, audit, contrastCheck } from './helpers.mjs';
 
 export default async function about(b) {
   // "How this works": a link in the header to its own page (/about), which links back
@@ -48,10 +48,7 @@ export default async function about(b) {
         );
       })()),
   );
-  if (b.browserType().name() === 'chromium') {
-    const f = artless(await pg.evaluate(AUDIT));
-    check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | '));
-  }
+  if (b.browserType().name() === 'chromium') contrastCheck('/about', [await audit(pg)]);
   const toc = await pg.evaluate(() => {
     const a = [...document.querySelectorAll('main.about nav.toc a')];
     return {

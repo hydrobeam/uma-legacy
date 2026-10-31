@@ -1,7 +1,8 @@
-import { PAGE_URL, check, artless, open, settle, dialog, AUDIT, still } from './helpers.mjs';
+import { PAGE_URL, check, open, settle, audit, contrastCheck } from './helpers.mjs';
 
 export default async function dark(b) {
   // dark mode: the system's preference until the header button is used, then the visitor's choice, kept in this browser
+  // (the loop planner's colours in dark mode are audited in `contrast`)
   const pg = await open(b, { scheme: 'dark' });
   const theme = () => pg.evaluate(() => document.documentElement.getAttribute('data-theme'));
   check(
@@ -22,37 +23,6 @@ export default async function dark(b) {
   await pg
     .waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark', null, { timeout: 3000 })
     .catch(() => {});
-  if (b.browserType().name() === 'chromium') {
-    await still(pg); // the results' fade back from the searching dim
-    const fails = [...(await pg.evaluate(AUDIT))];
-    await pg.click('#x-scen');
-    fails.push(...(await pg.evaluate(AUDIT)));
-    await pg.keyboard.press('Escape');
-    await pg.click('#rank-q');
-    fails.push(...(await pg.evaluate(AUDIT)).filter((x) => /rtab|rfoot|gpop/.test(x)));
-    await pg.keyboard.press('Escape');
-    await pg.locator('.deck .dc').first().click();
-    fails.push(...(await pg.evaluate(AUDIT)).filter((x) => /cpop|sw|gtl|ctt/.test(x)));
-    await pg.keyboard.press('Escape');
-    await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click();
-    await dialog(pg, 'sched-dlg');
-    fails.push(...(await pg.evaluate(AUDIT)));
-    await pg.locator('#sched-dlg .stab').last().click();
-    fails.push(...(await pg.evaluate(AUDIT)));
-    await pg.keyboard.press('Escape');
-    await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click();
-    await dialog(pg, 'why-dlg');
-    fails.push(...(await pg.evaluate(AUDIT)));
-    await pg.keyboard.press('Escape');
-    {
-      const shown = artless(fails);
-      check(
-        'dark: every text run meets WCAG AAA (page, scenario picker, rank popup, card popup, schedule, affinity)',
-        !shown.length,
-        shown.slice(0, 5).join(' | '),
-      );
-    }
-  }
   await pg.click('#theme-btn');
   check(
     'dark: the header button switches to light and remembers it',
@@ -81,10 +51,7 @@ export default async function dark(b) {
   await pg.goto(PAGE_URL.replace(/\/?$/, '/') + 'about');
   await pg.waitForLoadState('load');
   check('dark: /about takes the same choice', (await theme()) === 'dark');
-  if (b.browserType().name() === 'chromium') {
-    const f = await pg.evaluate(AUDIT);
-    check('dark: /about meets WCAG AAA', !f.length, f.slice(0, 5).join(' | '));
-  }
+  if (b.browserType().name() === 'chromium') contrastCheck('dark: /about', [await audit(pg)]);
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
 }

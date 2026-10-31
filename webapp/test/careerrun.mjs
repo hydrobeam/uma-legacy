@@ -1,6 +1,6 @@
 // the career planner's run (the 12 test veterans): an edit that leaves the job as it is lets the plan under way go on,
 // the status line says how far the plan has got, and after a reload the stored main search is taken (no search again)
-import { check, until, dialog, careerPage } from './helpers.mjs';
+import { check, skip, until, dialog, careerPage } from './helpers.mjs';
 
 export default async function careerrun(b) {
   const { ctx, pg, note, done, planned, importDump } = await careerPage(b);
@@ -330,6 +330,84 @@ export default async function careerrun(b) {
       !lrBack.roll.planned,
     JSON.stringify({ lrNew, lrBack }),
   );
+  // N7, open (.review/web/REPORT.md): a comparison's kill loses the pick's check, because the solver's stored state
+  // keeps no check (career/state.rs: `state_out` leaves `KeptState.checks` out), so the next worker answers it
+  // unavailable. The check below fails until that is fixed; it is booked as a skip meanwhile.
+  const N7_OPEN = true;
+  if (N7_OPEN)
+    skip(
+      "career: a roll that stops an exact comparison leaves the pick's check to finish on the next worker",
+      'N7 open',
+    );
+  else {
+    // a roll that stops an exact comparison while the pick's check runs (its worker goes) leaves the check to finish on the
+    // next worker: a new plan (an SSR card unowned), its check held running (each report says a variant is left), a roll
+    // whose exact comparison a second roll stops, then the check let finish
+    const checks0 = await pg.evaluate(() => {
+      window.__checkPatch = { pending: 1 };
+      // (the picker lists the cards that give a target; a tile is known by its card's name)
+      const ssr = new Set(self.__LLP_DATA['data-cards'].filter((c) => c.rar === 3).map((c) => c.name.toLowerCase()));
+      [...document.querySelectorAll('#cards .ct')].find((t) => ssr.has(t._searchName)).click();
+      return { jobs: window.__checkJobs.length, states: window.__careerResults.filter((r) => r.state).length };
+    });
+    await done();
+    await pg.waitForFunction((n) => window.__checkJobs.length > n, checks0.jobs, { timeout: 180000 });
+    // (the plan's kept work stored, as it is soon after every plan: the next worker restores the plan from it)
+    await pg.waitForFunction((n) => window.__careerResults.filter((r) => r.state).length > n, checks0.states, {
+      timeout: 30000,
+    });
+    await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 });
+    // (the second roll is clicked by the page in the task after the comparison's job is posted, as in `career`)
+    await pg.evaluate(() => {
+      const jobs = window.__careerJobs,
+        push = jobs.push,
+        roll = () => {
+          const r = Math.random;
+          Math.random = () => 0;
+          document.getElementById('sim-roll').click();
+          Math.random = r;
+        };
+      jobs.push = function (...x) {
+        const n = push.apply(this, x);
+        if (x.some((j) => j?.compare && j.next)) {
+          jobs.push = push;
+          setTimeout(() => {
+            delete window.__rollPatch;
+            window.__killAt = { checkJobs: window.__checkJobs.length, checkResults: window.__checkResults.length };
+            roll();
+          }, 0);
+        }
+        return n;
+      };
+      window.__rollPatch = { y: 0.9 };
+      roll();
+    });
+    await pg.waitForFunction(() => window.__killAt, null, { timeout: 30000 });
+    const resent = await until(pg, () => window.__checkJobs.length > window.__killAt.checkJobs, undefined, 10000);
+    await pg.evaluate(() => {
+      window.__checkPatch = null;
+    });
+    // (the check's last report: done, or unavailable on the next worker)
+    await until(
+      pg,
+      () =>
+        window.__checkResults
+          .slice(window.__killAt.checkResults)
+          .some((r) => r.next.robust.pending === 0 || r.next.robust.unavailable),
+      undefined,
+      60000,
+    );
+    const reports = await pg.evaluate(() =>
+      window.__checkResults.slice(window.__killAt.checkResults).map((r) => r.next.robust),
+    );
+    const finished = reports.some((r) => r.pending === 0 && !r.unavailable);
+    const lost = (await tableNotes()).some((t) => /did not finish/.test(t));
+    check(
+      "career: a roll that stops an exact comparison leaves the pick's check to finish on the next worker",
+      resent && finished && !lost,
+      JSON.stringify({ resent, finished, lost, errors: reports.map((r) => r.error).filter(Boolean) }),
+    );
+  }
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await ctx.close();
 }

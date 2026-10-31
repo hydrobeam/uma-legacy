@@ -42,27 +42,30 @@ export default async function settings(b) {
     (await pg.locator('#roster .ut[data-s="out"]').count()) >=
       1 + (await pg.locator('#roster .ut[data-uma="1001"]').count()),
   );
-  // export, then import the same text
+  // export, then import it with the rank changed: the import sets it
   await pg.click('#ex-open');
   const text = await pg.inputValue('#ex-text');
-  await pg.fill('#ex-text', text);
+  const other = JSON.parse(text);
+  other.settings.rank = '0.50,0.45,0.05';
+  await pg.fill('#ex-text', JSON.stringify(other));
   await pg.click('#ex-load');
   check(
     'export then import: settings load',
-    (await pg.locator('#ex-msg').innerText()) === 'Settings loaded.' && JSON.parse(text).settings.era === 'global',
+    (await pg.locator('#ex-msg').innerText()) === 'Settings loaded.' &&
+      JSON.parse(text).settings.rank === '0.20,0.70,0.10' &&
+      (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05',
   );
   // a setting of the wrong shape (a hand edit) is left out and named; the rest loads, and the page still loads after it
   // (the wrong value used to be saved first, and every later load failed on it)
   const bad = JSON.parse(text);
   bad.settings.targets = 5;
-  bad.settings.rank = '0.50,0.45,0.05';
   await pg.fill('#ex-text', JSON.stringify(bad));
   await pg.click('#ex-load');
   check(
     'import: a malformed setting is named and left as it was, the others load',
     /Not understood, so left as they were: targets\.$/.test(await pg.locator('#ex-msg').innerText()) &&
       (await pg.locator('#targets .tgt').count()) === 8 &&
-      (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05',
+      (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10',
     await pg.locator('#ex-msg').innerText(),
   );
   await pg.click('#ex-close');

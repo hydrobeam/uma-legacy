@@ -1,4 +1,4 @@
-import { check, open, busy, settle, kind, until, note, json, AUDIT } from './helpers.mjs';
+import { check, open, busy, settle, kind, until, note, json, audit, contrastCheck } from './helpers.mjs';
 
 export default async function states(b) {
   // what the status line says when the settings can't be searched, and the results on screen meanwhile (kept, dimmed)
@@ -42,8 +42,7 @@ export default async function states(b) {
     JSON.stringify(h),
   );
   if (b.browserType().name() === 'chromium') {
-    const cf = (await pg.evaluate(AUDIT)).filter((x) => /^p\.runnote/.test(x));
-    check('contrast: the error status line meets WCAG AAA', !cf.length, cf.join(' | '));
+    contrastCheck('contrast: the error status line', [await audit(pg, (x) => /^p\.runnote/.test(x))]);
   }
   await pg.evaluate(() => {
     window.__trap = false;
@@ -58,6 +57,17 @@ export default async function states(b) {
     'no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed',
     h.kind === 'empty' && /Add a target skill/.test(h.note) && /8\/8 example/.test(h.act) && h.loops > 0 && h.stale,
     JSON.stringify(h),
+  );
+  // a preset is never emptied: with no targets, Overwrite is off on every preset
+  await pg.click('#t-preset');
+  const overwrite = await pg.$$eval('#pr-list .prow button', (l) =>
+    l.filter((x) => x.textContent === 'Overwrite').map((x) => x.disabled),
+  );
+  await pg.click('#preset-dlg .dclose');
+  check(
+    '… and Overwrite is off on every preset',
+    overwrite.length > 0 && overwrite.every(Boolean),
+    JSON.stringify(overwrite),
   );
   await pg.click('#r-act button');
   await settle(pg);

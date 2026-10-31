@@ -52,13 +52,14 @@ export const ART =
       return false;
     }
   })();
-export function artCheck(name, ok, detail = '') {
-  if (ART) {
-    check(name, ok, detail);
-    return;
-  }
+/** A check that did not run, booked with why (so the tally shows it). */
+export function skip(name, why) {
   tally.skipped++;
-  say(`  skip ${name} · no game art in this build`);
+  say(`  skip ${name} · ${why}`);
+}
+export function artCheck(name, ok, detail = '') {
+  if (ART) check(name, ok, detail);
+  else skip(name, 'no game art in this build');
 }
 export const artless = (fails) => (ART ? fails : fails.filter((x) => !/^span\.cav\b/.test(x)));
 
@@ -221,6 +222,7 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
     window.__made = 0;
     window.__killed = 0;
     window.__runs = []; // the jobs sent to the engine, in order
+    window.__results = []; // the engine's answers (each job's `r`), in order
     // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
     window.Worker = function (...a) {
       const w = new W(...a);
@@ -245,6 +247,7 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
         },
       });
       w.addEventListener('message', (e) => {
+        if (e.data?.type === 'result') window.__results.push(e.data.r);
         if (window.__hold) q.push(e);
         else if (h) h(e);
       });
@@ -341,12 +344,17 @@ export const still = (pg) =>
     document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
   );
 
-// ---------- in-page audits (pg.evaluate(AUDIT) and so on): each returns what is wrong, one line per fault
-// WCAG 2 contrast of every visible text run in the open dialog (or the page)
+// ---------- in-page audits (pg.evaluate(PILLS) and so on): each returns what is wrong, one line per fault
+// WCAG 2 contrast of every visible text run in the open dialog (or the page): {fails, skipped, bar}, the runs under the
+// bar, the runs it did not measure (exempt, or over a picture it can't see), and the bar it held (`audit` runs it)
 export const AUDIT = () => {
   const game = document.documentElement.classList.contains('game');
+  // a computed colour: rgb()/rgba() (0-255), or color(srgb r g b / a) (0-1: Chromium's form of color-mix()); null
+  // for any other form, which the audit names as a fault rather than measure against the wrong layer
   const parse = (c) => {
-    const m = c.match(/rgba?\(([^)]+)\)/);
+    const m = c.match(/^rgba?\(([^)]+)\)$/),
+      s = c.match(/^color\(srgb ([\d.e-]+) ([\d.e-]+) ([\d.e-]+)(?: \/ ([\d.e-]+))?\)$/);
+    if (s) return { r: 255 * +s[1], g: 255 * +s[2], b: 255 * +s[3], a: s[4] === undefined ? 1 : +s[4] };
     if (!m) return null;
     const p = m[1]
       .split(/[ ,/]+/)
@@ -373,23 +381,28 @@ export const AUDIT = () => {
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
   };
   // the colour behind el: its ancestors' background colours composited down to the first opaque one (over white);
-  // img: a background picture lies behind it, which the audit can't see
+  // img: a background picture lies behind it, which the audit can't see; unread: a background colour it can't parse
   const bgOf = (el) => {
     const layers = [];
     let e = el,
-      img = false;
+      img = false,
+      unread = null;
     for (; e; e = e.parentElement) {
       const cs = getComputedStyle(e);
       if (cs.backgroundImage !== 'none' && !cs.backgroundImage.startsWith('linear')) img = true;
       const c = parse(cs.backgroundColor);
-      if (c && c.a > 0) {
+      if (!c) {
+        unread = cs.backgroundColor;
+        break;
+      }
+      if (c.a > 0) {
         layers.push(c);
         if (c.a >= 1) break;
       }
     }
     let bg = { r: 255, g: 255, b: 255, a: 1 };
     for (let i = layers.length - 1; i >= 0; i--) bg = over(layers[i], bg);
-    return { bg, img };
+    return { bg, img, unread };
   };
   const opac = (el) => {
     let o = 1;
@@ -397,6 +410,7 @@ export const AUDIT = () => {
     return o;
   };
   const out = [];
+  let skipped = 0;
   const dlg = [...document.querySelectorAll('dialog[open]')];
   const scope = dlg.length ? dlg[dlg.length - 1] : document.body;
   for (const el of scope.querySelectorAll('*')) {
@@ -410,31 +424,56 @@ export const AUDIT = () => {
     if (!r.width || !r.height) continue;
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none' || el.closest('[hidden]') || el.closest('select')) continue;
-    const { bg, img } = bgOf(el);
-    if (img) continue;
-    if (el.closest('h1.brand') && /^b[uma]$/.test(el.className)) continue; // the brand's coloured "uma": the logo's colours by choice
-    // the planner pages' recreation of the game's UI (html.game): the game's colours by choice over AAA
-    if (
-      game &&
-      el.closest(
-        '.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lp .swhead, .lptgt h2, .afpick [aria-pressed="true"], .rankseg [aria-checked="true"], .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b',
-      )
-    )
-      continue; // also text on the game's sprites (skill tiles), which the audit can't see behind it
-    if (el.closest('.ptabs [aria-current="page"]')) continue; // every page's header: the game's green tab with white outlined text
-    if (el.closest('.gmdlg')) continue;
-    if (game && el.closest('dialog > .dlg > .dhead, dialog .btn.primary')) continue; // the planner pages' game-style dialogs
-    const fg0 = parse(cs.color);
+    const { bg, img, unread } = bgOf(el);
+    const exempt =
+      img ||
+      (el.closest('h1.brand') && /^b[uma]$/.test(el.className)) || // the brand's coloured "uma": the logo's colours by choice
+      // the planner pages' recreation of the game's UI (html.game): the game's colours by choice over AAA; also text on
+      // the game's sprites (skill tiles), which the audit can't see behind it
+      (game &&
+        el.closest(
+          '.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lp .swhead, .lptgt h2, .afpick [aria-pressed="true"], .rankseg [aria-checked="true"], .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b',
+        )) ||
+      el.closest('.ptabs [aria-current="page"]') || // every page's header: the game's green tab with white outlined text
+      // the planner pages' game-style dialogs: their headers (white outlined text on the game's green) and primary buttons
+      (game && el.closest('dialog > .dlg > .dhead, dialog .btn.primary, .gmdlg > .gmdhdr'));
+    if (exempt) {
+      skipped++;
+      continue;
+    }
+    const tag = `${el.tagName.toLowerCase()}.${el.className} "${txt.slice(0, 30)}"`,
+      fg0 = parse(cs.color);
+    if (unread || !fg0) {
+      out.push(`${tag}: unread colour ${unread || cs.color}`);
+      continue;
+    }
     const fg = over({ ...fg0, a: fg0.a * opac(el) }, bg);
     const px = parseFloat(cs.fontSize),
       large = px >= 24 || (+cs.fontWeight >= 700 && px >= 18.66),
       need = game ? 3 : large ? 4.5 : 7; // AAA (/about); the planner pages keep the game's colours, held only to a 3:1 floor
     const rt = ratio(fg, bg);
-    if (rt < need)
-      out.push(`${el.tagName.toLowerCase()}.${el.className} "${txt.slice(0, 30)}" ${rt.toFixed(2)}<${need}`);
+    if (rt < need) out.push(`${tag} ${rt.toFixed(2)}<${need}`);
   }
-  return out;
+  return { fails: out, skipped, bar: game ? 'the 3:1 floor' : 'WCAG AAA' };
 };
+/** @typedef {{fails: string[], skipped: number, bar: string}} Audit */
+/** The contrast audit of what shows now (AUDIT); `keep` filters its faults to the part a check is about.
+ * @returns {Promise<Audit>} */
+export async function audit(pg, keep = () => true) {
+  const a = await pg.evaluate(AUDIT);
+  return { ...a, fails: artless(a.fails).filter(keep) };
+}
+/** One check over audits of the same page: every audited text run meets the bar they held; the detail says how many
+ * runs they skipped (exempt, or over a picture), so a growing exemption shows. @param {Audit[]} audits */
+export function contrastCheck(name, audits) {
+  const fails = audits.flatMap((a) => a.fails),
+    skipped = audits.reduce((n, a) => n + a.skipped, 0);
+  check(
+    `${name}: every audited text run meets ${audits[0].bar}`,
+    !fails.length,
+    `${skipped} runs skipped${fails.length ? ' · ' + fails.slice(0, 5).join(' | ') : ''}`,
+  );
+}
 // every visible pill track (the segmented controls and the veteran card's tabs): its segments fill it flush, the full
 // inner height, no gap at its ends or between them, the track a pill that clips them to its own curve, none of them drawn
 // with the game's pill sprite (whose fixed-width caps don't fit other heights). Distances in CSS px, 0.6 px tolerance.
@@ -469,6 +508,17 @@ export const PILLS = () => {
     });
   }
   return bad;
+};
+// the card list's pictures: their widths (one, loaded or not) and how many overflow their tile
+export const CARD_ART = () => {
+  const s = new Set();
+  let over = 0;
+  for (const t of document.querySelectorAll('#cards .ct')) {
+    const c = t.querySelector('.cav').getBoundingClientRect();
+    s.add(Math.round(c.width));
+    if (c.width > t.getBoundingClientRect().width + 0.5) over++;
+  }
+  return { sizes: [...s], over };
 };
 // what scrolls sideways: the page, an open dialog's body, or an open dialog that leaves the screen
 export const SIDEWAYS = () => {

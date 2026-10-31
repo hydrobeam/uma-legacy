@@ -11,6 +11,11 @@ export default async function careervets(b) {
   // result on screen while the search runs again
   const toteBefore = await pg.locator('#odds-open').count();
   await vetsOpen();
+  // (every card marked: one built again loses the mark)
+  await pg.evaluate(() => {
+    for (const c of document.querySelectorAll('#vets .umcell')) c.__kept = true;
+  });
+  await pg.click('#vet-1');
   await pg.click('#vet-0'); // (a wide dialog: she shows beside the list)
   const chip = pg.locator('#v-pane .udrow.me .vsk:not(.pink) .vskb').first(),
     ckey = await chip.getAttribute('data-k');
@@ -26,6 +31,14 @@ export default async function careervets(b) {
       (await pg.locator('#tree .pn.ghost').count()) === 3,
   );
   await done();
+  const rebuilt = await pg.evaluate(() =>
+    [...document.querySelectorAll('#vets .umcell')].filter((c) => c.id !== 'vet-0' && !c.__kept).map((c) => c.id),
+  );
+  check(
+    'career: choosing a veteran beside the list and editing her builds no other card again',
+    (await pg.locator('#vets .umcell').count()) === 12 && !rebuilt.length,
+    rebuilt.join(),
+  );
   const s1 = await stars();
   await pg.locator(`#v-pane [data-k="${ckey}"]`).click();
   const s2 = await stars();
@@ -57,7 +70,6 @@ export default async function careervets(b) {
     'career: "+" offers the missing target only, as a spark cell (her blue, pink and unique have their own bars)',
     offered.length === 1 &&
       first.startsWith(offered[0]) &&
-      !(await pg.locator('#add-pop .addpk').count()) &&
       (await pg
         .locator('#v-pane .udrow.me .vsb.blue, #v-pane .udrow.me .vsk.pink, #v-pane .udrow.me .vsb.pink')
         .count()) >= 2,

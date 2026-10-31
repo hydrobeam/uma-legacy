@@ -1,4 +1,17 @@
-import { check, ART, artCheck, open, settle, jobSent, lastJob, dialog, note, scen, pickScen } from './helpers.mjs';
+import {
+  check,
+  skip,
+  ART,
+  artCheck,
+  open,
+  settle,
+  jobSent,
+  lastJob,
+  dialog,
+  note,
+  scen,
+  pickScen,
+} from './helpers.mjs';
 
 export default async function load(b) {
   const pg = await open(b);
@@ -93,6 +106,41 @@ export default async function load(b) {
   );
   await oi.click();
   check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
+  // the deck's chance of hinting a target is one figure wherever it shows: its gold, or else its white (the solver's
+  // white is given no gold), `deckHint`, from the result's own fields: the (i) panel's white tiles and Export's figures
+  const hint = (o) => 1 - (1 - o.gold) * (1 - o.white);
+  const deckOdds = (
+    await pg.evaluate(() => window.__results.findLast((r) => r?.top?.length)).then((r) => r.top[0].deck.odds)
+  ).filter((o) => o.white > 0.005 || o.gold > 0.005);
+  const tiles = await pg.$$eval('#results .loop .dodds', (l) =>
+    [...l[0].querySelectorAll('.dsk:not(.g) b')].map((b) => b.textContent),
+  );
+  await pg.click('#ex-open');
+  const exOdds = JSON.parse(await pg.inputValue('#ex-text')).results.decks[0].deck_odds;
+  await pg.click('#ex-close');
+  check(
+    "the deck's hint chance (gold, else white) is the same figure in the (i) panel and in Export, from the result's fields",
+    deckOdds.some((o) => o.gold > 0.005 && o.white > 0.005) &&
+      tiles.join() ===
+        deckOdds
+          .filter((o) => hint(o) - o.gold > 0.005)
+          .map((o) => `${Math.round(hint(o) * 100)}%`)
+          .join() &&
+      exOdds.length === deckOdds.length &&
+      exOdds.every((x, i) => x.white === +hint(deckOdds[i]).toFixed(3) && x.gold === +deckOdds[i].gold.toFixed(3)),
+    JSON.stringify({ tiles, ex: exOdds.slice(0, 3), result: deckOdds.slice(0, 3) }),
+  );
+  // a result card's picture names nothing on hover: the chip's title (name, title, tag, what to prioritise) is what
+  // hovering shows (gmtip.js shows the innermost [title])
+  const chipTitles = await pg.$$eval('#results .deck .dc', (l) => [
+    l.length,
+    l.flatMap((c) => [...c.querySelectorAll('[title]')].map((t) => t.title)),
+  ]);
+  check(
+    "result cards: nothing inside a card's chip carries a title of its own",
+    chipTitles[0] > 0 && !chipTitles[1].length,
+    JSON.stringify(chipTitles[1].slice(0, 3)),
+  );
   const sw = await pg.evaluate(() =>
     [...document.querySelectorAll('#results .loop .deck.swap .swho')].map((w) => ({
       av: w.querySelectorAll('.av').length,
@@ -151,7 +199,7 @@ export default async function load(b) {
       folded = (await more.locator('.swd1:visible').count()) === n0;
     }
     check("clicking a swap's changes shows them all, again folds them", unfolded && folded);
-  }
+  } else skip("clicking a swap's changes shows them all, again folds them", 'no swap row has more than two changes');
   check(
     'a label marks where the swap rows start',
     await pg.evaluate(() => {
@@ -243,12 +291,28 @@ export default async function load(b) {
     '8/8 example under URA: eight targets, no guaranteed golds',
     (await pg.locator('#targets .tgt').count()) === 8 && (await pg.getAttribute('#g-20049', 'data-g')) === '0',
   );
-  // a saved preset: kept across a reload, and an import adds its presets to yours instead of replacing them
+  // a saved preset: kept across a reload, and an import adds its presets to yours instead of replacing them. Saving it
+  // starts no search and leaves the one under way running (its replies held, so it is under way: a search started anew
+  // would kill its worker at once)
+  await settle(pg); // (the worker idle: a new one's start would wait on its held messages)
+  const runs0 = await pg.evaluate(() => {
+    window.__hold = true;
+    return window.__runs.length;
+  });
   await pg.locator('#targets .tgt .x').first().click();
+  await jobSent(pg, (n) => window.__runs.length > n, runs0);
   await pg.click('#t-preset');
   await pg.click('#pr-save');
   await pg.fill('#prn-name', 'Seven');
+  const before = await pg.evaluate(() => [window.__runs.length, window.__killed]);
   await pg.click('#prn-save');
+  const after = await pg.evaluate(() => [window.__runs.length, window.__killed]);
+  check(
+    'a preset save starts no search: the one under way goes on',
+    after.join() === before.join(),
+    `jobs sent, workers killed: ${before} -> ${after}`,
+  );
+  await pg.evaluate(() => window.__release());
   check('a saved preset is the current one', (await pg.locator('#pr-list .prow.cur .pname').textContent()) === 'Seven');
   await pg.click('#preset-dlg .dclose');
   await pg.reload();

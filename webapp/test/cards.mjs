@@ -1,4 +1,4 @@
-import { check, open, settle, pickScen } from './helpers.mjs';
+import { check, open, settle, pickScen, CARD_ART } from './helpers.mjs';
 
 export default async function cards(b) {
   const pg = await open(b);
@@ -13,16 +13,7 @@ export default async function cards(b) {
       notes.every(([n, t]) => /^(hint|event|\d(st|nd|rd|th) event)( · \d+%)?$/.test(n) && t.length > 0),
     JSON.stringify(notes.filter(([n]) => !/^(hint|event|\d(st|nd|rd|th) event)( · \d+%)?$/.test(n)).slice(0, 3)),
   );
-  const art = await pg.evaluate(() => {
-    const s = new Set();
-    let over = 0;
-    for (const t of document.querySelectorAll('#cards .ct')) {
-      const c = t.querySelector('.cav').getBoundingClientRect();
-      s.add(Math.round(c.width));
-      if (c.width > t.getBoundingClientRect().width + 0.5) over++;
-    }
-    return { sizes: [...s], over };
-  });
+  const art = await pg.evaluate(CARD_ART);
   check(
     'card list: every card picture is the same size and inside its tile, loaded or not',
     art.sizes.length === 1 && !art.over,

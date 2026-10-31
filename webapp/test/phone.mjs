@@ -1,4 +1,4 @@
-import { check, artCheck, open, settle, dialog, until, PILLS, SIDEWAYS } from './helpers.mjs';
+import { check, artCheck, open, settle, dialog, until, PILLS, SIDEWAYS, CARD_ART } from './helpers.mjs';
 
 export default async function phone(b) {
   const pg = await open(b, { w: 375, h: 812, mobile: true });
@@ -123,16 +123,7 @@ export default async function phone(b) {
       }, id),
     );
   }
-  const part = await pg.evaluate(() => {
-    const s = new Set();
-    let over = 0;
-    for (const t of document.querySelectorAll('#cards .ct')) {
-      const c = t.querySelector('.cav').getBoundingClientRect();
-      s.add(Math.round(c.width));
-      if (c.width > t.getBoundingClientRect().width + 0.5) over++;
-    }
-    return { sizes: [...s], over };
-  });
+  const part = await pg.evaluate(CARD_ART);
   check(
     'phone: every card picture is the same size and inside its tile, loaded or not',
     part.sizes.length === 1 && !part.over,

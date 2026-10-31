@@ -1,4 +1,4 @@
-import { check, open, settle } from './helpers.mjs';
+import { check, skip, open, settle } from './helpers.mjs';
 
 export default async function panels(b) {
   const pg = await open(b);
@@ -26,8 +26,12 @@ export default async function panels(b) {
     JSON.stringify(side),
   );
   // the picker's tiles carry no card id: a tile is known by its picture's title, the card's full name (images.js
-  // cardAv, art or not; names are unique), which the deck card's picture carries too; null when no tile shows the card
-  const cardName = await dc.locator('.cav').getAttribute('title');
+  // cardAv, art or not; names are unique), here the deck card's (its id in the page's data; the result's pictures carry
+  // no title, the chip's says more); null when no tile shows the card
+  const cardName = await pg.evaluate(
+    (id) => self.__LLP_DATA['data-cards'].find((c) => c.id === id)?.name ?? null,
+    +(await dc.getAttribute('data-cid')),
+  );
   const pickerPressed = () =>
     pg.evaluate(
       (name) =>
@@ -67,7 +71,7 @@ export default async function panels(b) {
     );
     await pg.keyboard.press('Escape');
     await mb.click();
-  }
+  } else skip('a portrait in a swap row opens the same member panel', 'the result has no swap row');
   check('member panel has one Owned switch', (await pg.locator('.cpop input[role=switch]').count()) === 1);
   const uh = await pg.locator('.cpop .gtl').getAttribute('href');
   check(

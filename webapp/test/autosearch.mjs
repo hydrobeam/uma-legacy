@@ -19,6 +19,15 @@ export default async function autosearch(b) {
       /press Search/.test(await note(pg)) &&
       (await pg.locator('#r-act button', { hasText: 'Search' }).count()) === 1,
   );
+  // Export pairs these settings with the result on show, which is from before the change: it says so
+  await pg.click('#ex-open');
+  const exported = JSON.parse(await pg.inputValue('#ex-text')).results;
+  await pg.click('#ex-close');
+  check(
+    '… and Export marks the result on show as from other settings',
+    exported?.stale === true && exported.decks.length > 0,
+    JSON.stringify({ stale: exported?.stale }),
+  );
   await pg.locator('#r-act button', { hasText: 'Search' }).click();
   await settle(pg);
   check(
