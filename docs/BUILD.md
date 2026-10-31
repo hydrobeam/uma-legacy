@@ -85,7 +85,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing). Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs) |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs); `webapp/test/static.mjs`, what the browser suite can't see going stale: CSS classes no script, template or `build.py` names (a name built from parts is listed in its `BUILT` with where), exports no other file uses, and `localStorage` writes of a copy not read from storage after the function's last `await` (one tab's write then erases another's) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, the flags and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -148,6 +148,10 @@ search works (a spinner when a build has none). How the pipeline works and what 
   font faces and UI sprites as CSS variables), the shared data script (`self.__LLP_DATA`), the page bundles, the wasm,
   each era's solver data, the Grand Masters page data (loaded when that era is chosen), the fonts and `img.<hash>/`.
   A revisit fetches only the HTML (about 33 KB).
+- each page's first-visit cost, printed at the end of the build: the page, the local files it names and, on the planner
+  pages, the wasm and the Global solver data, raw and at brotli quality 4 (the host's transfer of the wasm to within
+  0.1%). A page over its budget in `webapp/budgets.json` fails the build; a budget rises only in the commit that needs
+  it, which says why.
 - favicons, `og.png`, font licences in `licenses/`, `_headers` (the host caches the pages 5 minutes, `assets/` a
   year), `_redirects` (`/loop` to `/`) and `robots.txt`. `serve.mjs` caches `assets/` a year as the host does and
   serves the pages uncached.
@@ -230,7 +234,8 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
 - **Pre-commit hook:** `./build.sh hooks` (once per clone; it sets `core.hooksPath`, so it applies in every worktree)
   turns on `.githooks/pre-commit`, which checks what the commit stages, by kind: Rust, `cargo fmt --check` and native
   clippy with warnings denied (about 5 s after a change; a minute the first time in a new worktree); Python, ruff check
-  and format on the staged files; the page's JS, Biome (lint and formatting) on the staged files and `tsc` (each under a second). It checks
+  and format on the staged files; the page's JS, Biome (lint and formatting) on the staged files and `tsc`, and for any
+  page source, `webapp/test/static.mjs` (each under a second). It checks
   the working tree's files, not only the staged parts. The wasm clippy and the whole-repo checks are left to `lint`.
 - **Blame:** commits that only reformat are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.

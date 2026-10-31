@@ -28,6 +28,7 @@
 !/webapp/
 /webapp/*
 !/webapp/build.py
+!/webapp/budgets.json
 !/webapp/index.template.html
 !/webapp/about.template.html
 !/webapp/career.template.html

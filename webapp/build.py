@@ -8,6 +8,7 @@ Served over http(s): the page fetches the wasm, data and images, so it is not me
 
 import json, subprocess, os, sqlite3, shutil, hashlib, re, io
 from html import unescape
+import brotli
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -721,5 +722,30 @@ open(os.path.join(DIST, "robots.txt"), "w").write("User-agent: *\nAllow: /\n")
 # the front page (a temporary redirect: Cloudflare Pages reads _redirects)
 open(os.path.join(DIST, "_redirects"), "w").write("/career / 302\n/career/ / 302\n")
 print(
-    f"{VERSION}: dist/loop.html {len(html.encode()) / 1e6:.2f} MB, solver data {len(global_era.engine.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(gm_era.engine.encode())) / 1e6:.2f} MB, {image_catalog.base} {len(image_catalog.keys)} files {image_catalog.size_bytes / 1e6:.2f} MB, {len(faces)} font files"
+    f"{VERSION}: GM era {(len(gm_ui.encode()) + len(gm_era.engine.encode())) / 1e6:.2f} MB, {image_catalog.base} {len(image_catalog.keys)} files {image_catalog.size_bytes / 1e6:.2f} MB, {len(faces)} font files"
 )
+
+
+# What a first visit to each page fetches before it can work: the page, every local file it names (scripts, the
+# stylesheet, preloaded fonts, its inline style's fonts), and on the planner pages the solver and its Global data (the
+# page starts the solver at once). Raw and at brotli quality 4, which reproduces the host's transfer of the wasm to
+# within 0.1% (measured against v50's deploy, 2026-10-31). Checked against webapp/budgets.json: a page over its budget
+# fails the build; a budget is raised in the commit that needs it, saying why (art is left out: it loads as seen).
+def page_cost(name, solver):
+    page = open(os.path.join(DIST, name)).read()
+    files = set(re.findall(r'(?:src|href)="(assets/[^"]+)"', page)) | set(re.findall(r"url\((assets/[^)]+)\)", page))
+    if solver:
+        files |= {ASSETS["wasm"], ASSETS["engine"]["global"]}
+    blobs = [page.encode()] + [open(os.path.join(DIST, f), "rb").read() for f in sorted(files)]
+    return sum(map(len, blobs)), sum(len(brotli.compress(b, quality=4)) for b in blobs)
+
+
+budgets = json.load(open(os.path.join(HERE, "budgets.json")))
+over = []
+for name, solver in (("index.html", True), ("loop.html", True), ("about.html", False)):
+    raw, sent = page_cost(name, solver)
+    budget = budgets["pages_kb_sent"][name]
+    print(f"  {name}: {raw / 1e3:,.0f} KB, about {sent / 1e3:,.0f} KB sent (budget {budget:,} KB)")
+    if sent / 1e3 > budget:
+        over.append(f"{name} sends about {sent / 1e3:,.0f} KB, over its budget of {budget:,} KB (webapp/budgets.json)")
+assert not over, "; ".join(over)
