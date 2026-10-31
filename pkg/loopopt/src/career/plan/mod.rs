@@ -244,6 +244,12 @@ pub(crate) struct PlanJob {
     pair_decompose: Option<Vec<(u32, usize, usize)>>,
 }
 
+/// A measurement asked of the browser build, which leaves it out (`cfg!(target_arch = "wasm32")`): the native loopopt
+/// runs it.
+pub(crate) fn not_in_browser(job: &str) -> Value {
+    serde_json::json!({ "error": format!("{job}: not in the browser build (the native loopopt runs it)") })
+}
+
 /// A diagnostic V beside the plan's (`PlanJob::oracle`).
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -625,17 +631,23 @@ pub(crate) fn index_rule<'data>(
         }
         _ => Value::Null,
     };
-    let lift_audit = if input.settings.audit_lifts && scores.any_scored {
-        audit::audit_lifts(&mut sim, &context, &rows, &scores, &mut deck_values)
-    } else {
+    // (the audit and the oracles are measurements the page never asks for: the browser build answers an error, and its
+    // wasm leaves their code out, about 90 KB)
+    let lift_audit = if !(input.settings.audit_lifts && scores.any_scored) {
         Value::Null
+    } else if cfg!(target_arch = "wasm32") {
+        not_in_browser("audit_lifts")
+    } else {
+        audit::audit_lifts(&mut sim, &context, &rows, &scores, &mut deck_values)
     };
     let pair_sweep = sweep::pair_sweep(&mut sim, &context, &rows, &scores, &mut deck_values);
     let pair_ascent = ascent::pair_ascent(&mut sim, &context, &rows, &scores, &mut deck_values);
     let pair_decompose = ascent::pair_decompose(&mut sim, &context, &scores, &mut deck_values);
     let oracle = match input.settings.oracle {
+        None => Value::Null,
+        Some(_) if cfg!(target_arch = "wasm32") => not_in_browser("oracle"),
         Some(Oracle::Sequenced) => sequenced::sequenced_oracle(&mut sim, &context, &rows, &scores, &mut deck_values),
-        _ => oracle::joint_oracle(&mut sim, &context, &rows, &scores, &mut deck_values),
+        Some(Oracle::Joint) => oracle::joint_oracle(&mut sim, &context, &rows, &scores, &mut deck_values),
     };
     // (what the check reads, kept after the output: the shown rows, and the deck cache, which the output does not read)
     let check_draft = robust::check_draft(&context, &rows, &scores.fit, scores.any_scored);

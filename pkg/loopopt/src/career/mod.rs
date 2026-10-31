@@ -531,6 +531,11 @@ pub(crate) fn run_career_in(
         let legacies = &career_job.legacies;
         let rho_top = env.setup.space.rho_top();
         if let Some(simulation) = &career_job.simulate {
+            // (a measurement the page never asks for: left out of the browser build's wasm, as the plan's audit and
+            // oracles are)
+            if cfg!(target_arch = "wasm32") {
+                return plan::not_in_browser("simulate");
+            }
             return crate::career::sim::play::simulate(&mut env, kept, &input, legacies, &trainees, simulation);
         }
         let pool = env.setup.pool(legacies);

@@ -76,7 +76,7 @@ step_hooks() { git -C "$R" config core.hooksPath .githooks && echo "hooks: core.
 step_wasm() {
   MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd rustup "$TOOLS_RUST: adds the wasm target"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check wasm
   step_npm
-  (cd "$C" && RUSTC_BOOTSTRAP=1 RUSTFLAGS="-C panic=abort" cargo build --release --lib --target wasm32-unknown-unknown -Z build-std=std,panic_abort 2>&1 | tail -1)
+  (cd "$C" && RUSTFLAGS="-C panic=abort" cargo build --release --lib --target wasm32-unknown-unknown 2>&1 | tail -1)
   # -ocimfs=0: wasm-opt inlines no function for having one caller (by default it inlines any such function, whatever its
   # size, undoing #[inline(never)]): a loop split into its own function stays one, so V8 tiers it up (docs/PERF.md)
   # wasm-opt is nearly all of an unchanged rebuild (about a minute): skipped when the compiled wasm, the flags and

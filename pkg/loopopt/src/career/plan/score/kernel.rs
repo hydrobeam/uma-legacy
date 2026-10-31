@@ -648,6 +648,12 @@ impl<L: Leaves> OutcomeContext<'_, '_, L> {
     }
 }
 
+/// `sc_loop`'s joint lifts in lifted-set order. A function of its own, not generic: inside `sc_loop` the sort was compiled
+/// into each of its 12 instances (51 KB of the wasm); the same sort, so the same order.
+fn sort_joint_lifts(joint_lifts: &mut [(u64, f64)]) {
+    joint_lifts.sort_by_key(|&(lifted_set, _)| lifted_set);
+}
+
 /// `evaluate_outcomes`' loop, specialised: PL (the products taken here, `OutcomeContext::row`), COL (a target collapsed), Y (y and its sums
 /// computed; else E[y] and the lift 0.0, no step costed), S (the stats; else none), L (the leaves taken, in order; rows,
 /// y and the representatives' records at each leaf's row). With S a representative outcome that
@@ -943,7 +949,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     }
     let lift_reads = std::mem::take(&mut estimate.workspace.lift_reads);
     let mut joint_lifts: Vec<(u64, f64)> = joint_lifts.into_iter().collect();
-    joint_lifts.sort_by_key(|&(lifted_set, _)| lifted_set);
+    sort_joint_lifts(&mut joint_lifts);
     ScoringEvaluation {
         expected_saving,
         improvement_chance,
