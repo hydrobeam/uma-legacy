@@ -30,9 +30,7 @@ self.onmessage = async (e) => {
             progress: (ph, k, n) => self.postMessage({ type: 'progress', id: runId, ph, k, n }),
           },
         };
-        if (message.module)
-          solver = (await WebAssembly.instantiate(message.module, imports)).exports; // compiled once by the page
-        else solver = (await WebAssembly.instantiate(message.bytes, imports)).instance.exports;
+        solver = (await WebAssembly.instantiate(message.module, imports)).exports; // compiled once by the page
       } catch {
         throw new Error(
           'This browser refused to run WebAssembly, which the solver needs. Use a current browser with WebAssembly enabled.',

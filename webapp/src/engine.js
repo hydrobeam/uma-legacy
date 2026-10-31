@@ -29,7 +29,7 @@ let worker = null,
 /** @type {Map<number, PendingJob>} */
 const pending = new Map();
 // The wasm (ASSETS.wasm, fingerprinted next to the page) is fetched and compiled once here and the compiled module handed to every
-// worker, so a restart skips fetching and compiling it. Where a module can't be posted, the worker gets the bytes.
+// worker, so a restart skips fetching and compiling it.
 let wasmModule = null,
   engineGen = 0; // engineGen: a kill during the compile wait cancels that start
 const eraKey = () => (ERA === 'gm' ? 'gm' : 'global');
@@ -51,44 +51,14 @@ function eraEngineData() {
   }
   return engineData;
 }
+// Compiled as it streams in, so Chrome keeps the optimised code for the next visit (it caches only streaming compiles).
+// A failed fetch, a response that is not ok or not served as application/wasm, and a compile error all reject.
+/** @returns {Promise<WebAssembly.Module>} */
 function compiled() {
   if (!wasmModule)
-    wasmModule = (async () => {
-      // compiled as it streams in, so Chrome keeps the optimised code for the next visit (it caches only streaming compiles);
-      // a clone of the response gives the bytes (for a worker that can't take the module, and for compiling them where the
-      // streaming compile is missing or refuses, e.g. a host serving the wasm under another type)
-      let response,
-        streamed = null,
-        bytes;
-      try {
-        response = await fetch(ASSETS.wasm);
-        if (!response.ok) throw 0;
-      } catch {
-        throw new Error(loadFail('the solver'));
-      }
-      if (WebAssembly.compileStreaming) {
-        const whole = response.clone();
-        try {
-          streamed = WebAssembly.compileStreaming(response).catch(() => null);
-        } catch {
-          streamed = null;
-        }
-        response = whole;
-      }
-      try {
-        bytes = await response.arrayBuffer();
-      } catch {
-        throw new Error(loadFail('the solver'));
-      }
-      let module = streamed && (await streamed);
-      if (!module)
-        try {
-          module = await WebAssembly.compile(bytes);
-        } catch {
-          module = null;
-        }
-      return { module, bytes };
-    })();
+    wasmModule = WebAssembly.compileStreaming(fetch(ASSETS.wasm)).catch(() => {
+      throw new Error(loadFail('the solver'));
+    });
   wasmModule.catch(() => {
     wasmModule = null;
   }); // a failed load is retried on the next search
@@ -159,7 +129,7 @@ function startEngine() {
   if (ready) return ready;
   const gen = engineGen;
   ready = Promise.all([compiled(), eraEngineData()]).then(
-    ([{ module, bytes }, data]) =>
+    ([module, data]) =>
       new Promise((resolve, reject) => {
         if (gen !== engineGen) {
           reject(new Error('superseded'));
@@ -179,12 +149,7 @@ function startEngine() {
         const start = { resolve, reject, url };
         worker.onmessage = (e) => onWorkerMessage(e.data, start);
         worker.onerror = (e) => reject(new Error(`The solver failed to start: ${e.message || 'unknown error'}`));
-        try {
-          if (!module) throw 0;
-          worker.postMessage({ type: 'init', module, data });
-        } catch {
-          worker.postMessage({ type: 'init', bytes, data });
-        } // module not transferable here
+        worker.postMessage({ type: 'init', module, data });
       }),
   );
   ready = ready.then(() => restore().catch(() => {})); // the last session's kept work, before the first job
