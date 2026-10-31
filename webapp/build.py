@@ -6,7 +6,8 @@ whole set, as a folder name), so it is served with a one-year immutable cache an
 the pages keep a 5-minute cache and always point at the current names. Favicons (icons.py) sit at the root.
 Served over http(s): the page fetches the wasm, data and images, so it is not meant to be opened as a file."""
 
-import json, subprocess, os, sqlite3, shutil, hashlib, re
+import json, subprocess, os, sqlite3, shutil, hashlib, re, io
+from html import unescape
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -546,19 +547,29 @@ css = css_min(
     + css
 )
 CSS_LINK = f'<link rel="stylesheet" href="{fingerprint("style.css", css)}">'
-# /about's formulas (MathML): STIX Two Math, whole (its MATH table stretches brackets and big operators); the browser
-# fetches it only on a page that draws math, so only /about gets the face
-_d = os.path.join(HERE, "node_modules", "@fontsource", "stix-two-math")
-MATHFACE = re.sub(
-    r"src: [^;]+;",
-    "src: url("
-    + fingerprint(
-        "stix-two-math-latin-400-normal.woff2",
-        open(os.path.join(_d, "files", "stix-two-math-latin-400-normal.woff2"), "rb").read(),
-    )
-    + ") format('woff2');",
-    open(os.path.join(_d, "latin-400.css")).read(),
-).strip()
+# /about's formulas (MathML): STIX Two Math, subset to what the built page's <math> elements hold (the whole face is
+# 403 KB; this, about 33 KB), its MATH table kept with the glyphs it reaches (stretched brackets, big operators). MathML
+# draws a single-letter <mi> in math italic, so the italic Latin and Greek letters, ℎ and the invisible operators are
+# kept too. The browser fetches it only on a page that draws math, so only /about gets the face.
+MATH_EXTRA = [*range(0x1D434, 0x1D468), 0x210E, *range(0x1D6E2, 0x1D71C), *range(0x2061, 0x2065)]
+
+
+def math_face(page):
+    from fontTools import subset
+
+    d = os.path.join(HERE, "node_modules", "@fontsource", "stix-two-math")
+    formulas = re.findall(r"<math\b.*?</math>", page, re.S)
+    chars = {ord(c) for f in formulas for c in unescape(re.sub(r"<[^>]+>", "", f))} | set(MATH_EXTRA)
+    options = subset.Options(layout_features=["*"], flavor="woff2")
+    font = subset.load_font(os.path.join(d, "files", "stix-two-math-latin-400-normal.woff2"), options)
+    subsetter = subset.Subsetter(options)
+    subsetter.populate(unicodes=sorted(chars))
+    subsetter.subset(font)
+    out = io.BytesIO()
+    subset.save_font(font, out, options)
+    url = fingerprint("stix-two-math.woff2", out.getvalue())
+    face = open(os.path.join(d, "latin-400.css")).read()
+    return re.sub(r"src: [^;]+;", f"src: url({url}) format('woff2');", face).strip()
 
 
 # the planner pages' shared data (the Global era's lists, image keys, skill icons, race ids, the scenarios' hint bases),
@@ -666,12 +677,12 @@ for k, v in [
     ("__VERSION__", VERSION),
     ("__SITE__", SITE),
     ("__SITE__", SITE),
-    ("__CSS__", CSS_LINK + "\n<style>\n" + MATHFACE + "\n</style>"),
     ("__FONTPRELOAD__", "\n".join(preloads)),
     ("__LOGO__", LOGO),
     *((placeholder, f"{research_value(key):.3f}") for placeholder, key in P_ALL_RATIO_ENDS.items()),
 ]:
     about = about.replace(k, v, 1)
+about = about.replace("__CSS__", CSS_LINK + "\n<style>\n" + math_face(about) + "\n</style>", 1)
 assert not re.search(r"__[A-Z]+__", about), re.findall(r"__[A-Z]+__", about)
 open(os.path.join(DIST, "about.html"), "w").write(about)
 # the career planner (/career): the planner's settings, styles, data and engine, its own script and veteran data
