@@ -40,6 +40,7 @@ STEPS=(
   "valq|TAG||val without the slow jobs, joint_check and planval's proxy gate (about 2.5 CPU-min)"
   "mono|||the solver, then the planner's monotonicity check (val/mono.py, 10-20 CPU-min: in the background)"
   "research|||research/run_all.py into research/results.json, then docs/RESEARCH.md from its template"
+  "prune-replies|||delete the recorded solver replies (cache/solver-replies) of every solver and data but this tree's"
   "all|||the steps marked all, in the table's order"
   "help|||this list"
 )
@@ -262,22 +263,36 @@ step_browsers() {
   npm_deps
   (cd "$W" && npx --no-install playwright install chromium firefox)
 }
-# test and testq build the page first (1.4 s), so they test this tree's webapp/src, never a dist left from before
-step_test() {
+step_test() { browser_suite full; }
+step_testq() { LLP_QUICK=1 browser_suite quick --project chromium --grep @quick; }
+# The browser suite on the page this tree builds (1.4 s first), never a dist left from before. Its replaying groups
+# answer from the solver replies recorded for this solver and data (webapp/test/replaystore.mjs); when this tier has
+# none, the run is live (LLP_SOLVER=live), which records them, and a passing live run marks them recorded.
+browser_suite() {   # browser_suite quick|full PLAYWRIGHT_ARGS...
+  local tier=$1 store solver=${LLP_SOLVER:-replay}
+  shift
   step_page
   step_browsers
-  (cd "$W" && npx playwright test)
+  store=$(cd "$W" && node test/replaystore.mjs)
+  if [ "$solver" = replay ] && ! replies_recorded "$store" "$tier"; then
+    echo "solver replies: none recorded for this solver and data (${store#"$R"/}): this run is live and records them"
+    solver=live
+  fi
+  (cd "$W" && LLP_SOLVER=$solver npx --no-install playwright test "$@")
+  if [ "$solver" = live ]; then mkdir -p "$store"; touch "$store/.recorded-$tier"; fi
 }
-step_testq() {
-  step_page
-  step_browsers
-  (cd "$W" && LLP_QUICK=1 npx playwright test --project chromium --grep @quick)
+# replies_recorded STORE quick|full: a passing live run of this tier, or of the full suite, recorded into STORE
+replies_recorded() { [ -e "$1/.recorded-full" ] || { [ "$2" = quick ] && [ -e "$1/.recorded-quick" ]; }; }
+step_prune_replies() {
+  need_uv; check prune-replies
+  step_page   # the current solver and data are this tree's
+  "${PY[@]}" "$W/test/prune_replies.py" "$(cd "$W" && node test/replaystore.mjs)"
 }
 step_serve() {
   need_node; need "$NEED_DIST"; check serve
   node "$W/serve.mjs" "${PORT:-8000}" localhost h2
 }
-# Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
+# Cloudflare Pages, a direct upload of webapp/dist (set up once: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
   local dirty
   dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg research/results.json)
@@ -320,7 +335,7 @@ step_help() {
   for row in "${STEPS[@]}"; do
     IFS='|' read -r name arg _ desc <<<"$row"
     [ "$name" = all ] && desc="$desc: $(steps_in all | xargs)"
-    printf '  %-12s %s\n' "$name${arg:+ $arg}" "$desc"
+    printf '  %-14s %s\n' "$name${arg:+ $arg}" "$desc"
   done
 }
 

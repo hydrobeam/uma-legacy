@@ -1,8 +1,9 @@
 // The solver's replies, recorded and replayed (docs/BUILD.md, *Tests*; .review/web/testperf.md). Most groups use the
 // solver only to put the page in a state. In those (groups.spec.mjs REPLAY) a stand-in for the page's Worker answers
-// each job from cache/solver-replies/, and the page's wasm compile is handed an empty module, so the solver neither
-// compiles nor runs. `LLP_SOLVER=live` runs every group on the real solver and records its replies; a job the store
-// lacks fails its group with the job named (no live fallback: recording is that explicit live run).
+// each job from the store (cache/solver-replies/, a directory per solver and data: replaystore.mjs), and the page's
+// wasm compile is handed an empty module, so the solver neither compiles nor runs. `LLP_SOLVER=live` runs every group
+// on the real solver and records its replies (./build.sh test and testq do so when the store has none for this solver
+// and data); a job the store lacks fails its group with the job named (no live fallback within a run).
 //
 // The key of a reply: SHA-256 over the wasm's fingerprinted name (ASSETS.wasm), the era data the worker was given (its
 // SHA-256, which its fingerprint ASSETS.engine[era] truncates), every job that worker ran before, in order, and the
@@ -17,12 +18,11 @@
 // the same jobs in the recording run and in replay.
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { STORE_ROOT, storeName } from './replaystore.mjs';
 
 /** 'live' (every group on the real solver, its replies recorded) or 'replay' (the default: REPLAY groups from the store). */
 export const SOLVER = process.env.LLP_SOLVER || 'replay';
 if (!['live', 'replay'].includes(SOLVER)) throw new Error(`LLP_SOLVER is live or replay, not ${SOLVER}`);
-const STORE = fileURLToPath(new URL('../../cache/solver-replies/', import.meta.url));
 
 // a reply's content for the determinism check: every field but the timings (val/same.py's rule)
 const untimed = (text) =>
@@ -40,9 +40,11 @@ export async function installSolver(ctx, mode, tally) {
   await ctx.addInitScript(seedRandom);
   const record = SOLVER === 'live';
   if (!mode.replay && !record) return; // the real worker, untouched
-  await ctx.exposeBinding('__llpSolver', async (_, op, key, text) => {
+  // assets: the page's data-assets JSON, which names the store's directory
+  await ctx.exposeBinding('__llpSolver', async (_, op, assets, key, text) => {
     if (!/^[0-9a-f]{64}$/.test(key)) throw new Error(`bad solver reply key ${key}`);
-    const file = path.join(STORE, `${key}.json`);
+    const dir = path.join(STORE_ROOT, storeName(JSON.parse(assets)));
+    const file = path.join(dir, `${key}.json`);
     const stored = await fs.promises.readFile(file, 'utf8').catch(() => null);
     if (op === 'get') {
       if (stored !== null) tally.replayed++;
@@ -58,7 +60,7 @@ export async function installSolver(ctx, mode, tally) {
       tally.differs++;
       console.log(`  solver reply differs from the one stored under ${key} (${JSON.parse(text).cmd})`);
     }
-    await fs.promises.mkdir(STORE, { recursive: true });
+    await fs.promises.mkdir(dir, { recursive: true });
     const partial = `${file}.${process.pid}.part`; // written whole, then renamed: a concurrent reader sees all or none
     await fs.promises.writeFile(partial, text);
     await fs.promises.rename(partial, file);
@@ -125,8 +127,9 @@ function workerStandIn(replay) {
           )
         : v,
     );
-  const wasmName = () =>
-    (self.__LLP_DATA?.['data-assets'] || JSON.parse(document.getElementById('data-assets').textContent)).wasm;
+  const assets = () =>
+    self.__LLP_DATA?.['data-assets'] || JSON.parse(document.getElementById('data-assets').textContent);
+  const store = (op, key, text) => window.__llpSolver(op, JSON.stringify(assets()), key, text);
   const sleep = (ms) =>
     new Promise((resolve) => {
       setTimeout(resolve, ms);
@@ -204,7 +207,7 @@ function workerStandIn(replay) {
     postMessage(message, transfer) {
       if (this.#dead) return;
       if (message?.type === 'init') {
-        this.#base = sha256(String(message.data)).then((digest) => `${wasmName()}|${digest}`);
+        this.#base = sha256(String(message.data)).then((digest) => `${assets().wasm}|${digest}`);
         if (replay) this.#queue = this.#queue.then(() => this.#emit({ type: 'ready' }));
         else this.#real.postMessage(message, transfer);
         return;
@@ -250,12 +253,12 @@ function workerStandIn(replay) {
       if (this.#dead) return;
       const job = message.job,
         what = `${job?.cmd}${job?.next ? '.next' : ''} (job ${n} of its worker, key ${key.slice(0, 12)}): ${canonical(job).slice(0, 160)}`;
-      const stored = await window.__llpSolver('get', key);
+      const stored = await store('get', key);
       if (stored === null && background(job)) {
         // a background job the recording run never sent: the page moved on before it there (the next check step goes
         // out only as the last one answers). It stays unanswered, as a job still running when the page moved on, whose
         // answer the page drops; a check that waits for it fails, with this named in the test's annotations
-        window.__llpSolver('held', key, what);
+        store('held', key, what);
         this.#ended(message.id);
         return;
       }
@@ -264,11 +267,11 @@ function workerStandIn(replay) {
         // given a moment, the page stops it here too
         await sleep(STOP_GRACE_MS);
         if (this.#dead) {
-          window.__llpSolver('stopped', key, what);
+          store('stopped', key, what);
           return;
         }
         // the worker's answer to a failed job: the page drops the worker and shows the error
-        window.__llpSolver('missing', key, what);
+        store('missing', key, what);
         this.#emit({ type: 'error', id: message.id, message: `no stored reply for ${what}` });
         return;
       }
@@ -286,7 +289,7 @@ function workerStandIn(replay) {
         job.messages.push(JSON.parse(JSON.stringify(d)));
         if (d.type === 'result' || d.type === 'error') {
           this.#recording.delete(id);
-          job.key.then((k) => window.__llpSolver('put', k, JSON.stringify({ cmd: job.cmd, msgs: job.messages })));
+          job.key.then((k) => store('put', k, JSON.stringify({ cmd: job.cmd, msgs: job.messages })));
         }
       }
       this.#emit(data);

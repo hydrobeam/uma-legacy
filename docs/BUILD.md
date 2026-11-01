@@ -96,7 +96,8 @@ it stops; the `art` step instead says what it skipped.
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
-| `test` / `testq` | the page (`page`, 1.4 s), then the browser suite on it, full or its fast tier (see *Tests*) |
+| `test` / `testq` | the page (`page`, 1.4 s), then the browser suite on it, full or its fast tier; live, recording the solver's replies, when none are recorded for this solver and data (see *Tests*) |
+| `prune-replies` | the page, then deletes the recorded solver replies of every solver and data but its own (see *Tests*, *Recorded solver replies*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it: the certificate is self-signed (`cache/tls/`), so a browser warns once |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
 | `mono` | the release solver, then the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
@@ -188,15 +189,20 @@ IndexedDB.
   (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
   `webapp/test-results/report.json`. `LLP_PROF=file` logs where the time goes.
 - **Recorded solver replies:** the groups that use the solver only to put the page in a state, or check what the page
-  draws from its replies (`REPLAY` in `groups.spec.mjs`), answer every solver job from `cache/solver-replies/`
+  draws from its replies (`REPLAY` in `groups.spec.mjs`), answer every solver job from the recorded replies
   (`webapp/test/solverreplay.mjs`): the page's worker is a stand-in and its wasm compile gets an empty module, so they
   cost about a third of their live CPU. The other groups run the real solver: they check its worker's live behaviour
   (kills, restarts, progress, races, the stored work), the wasm as served, or the deck solver's odds. A reply's key is
   the wasm's and era data's fingerprints, the jobs that worker ran before and the job, so a solver, data or page change
-  that alters a job fails its group with the job named; nothing falls back to the live solver.
-  `LLP_SOLVER=live ./build.sh test` runs every group on the real solver and records the replies (about 45 MB): run it
-  after a solver or data change, after a page change that makes a replaying group fail on a missing reply, and before
-  a release. It also prints any reply that differs from the one stored under its key, which would mean the solver is
+  that alters a job fails its group with the job named; nothing falls back to the live solver. The replies of one
+  solver and data are one directory, `cache/solver-replies/WASM-GLOBAL-GM` (the fingerprints in the asset names of the
+  wasm and the two eras' engine data: `webapp/test/replaystore.mjs`). `LLP_SOLVER=live ./build.sh test` runs every
+  group on the real solver and records the replies (about 45 MB). `test` and `testq` do so by themselves, saying so in
+  one line, when the current directory holds no passing live run of their tier (`.recorded-full`, written by a passing
+  live `test`, serves both; `.recorded-quick` serves `testq`), so after a solver or data change the first run records.
+  Run it by hand after a page change that makes a replaying group fail on a missing reply, and before a release.
+  `./build.sh prune-replies` deletes the directories of every other solver and data, naming each, and leaves anything
+  a recording does not write. A live run also prints any reply that differs from the one stored under its key, which would mean the solver is
   not deterministic given its jobs and replay unsound. Replaying groups wait, before a reload, for the page's 100 ms
   state save to land, so the next worker's history does not depend on timing.
 - **Fast tier:** `./build.sh testq` (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its
@@ -250,7 +256,8 @@ IndexedDB.
 `.github/workflows/ci.yml` runs on every push to main and every pull request, with the same `./build.sh` steps:
 - **solver:** `lint`, `native` (release build, clippy, tests), then `val ci` (every output byte-identical to the
   references, work counters included; *Tests*) and `mono`.
-- **page:** `wasm page` (no game art in a clone: the page shows initials) and `testq` (Chromium); the checks that need
+- **page:** `wasm page` (no game art in a clone: the page shows initials) and `testq` (Chromium; live, since CI holds no
+  recorded solver replies); the checks that need
   the art skip themselves.
 
 ## Rust style
