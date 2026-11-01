@@ -19,7 +19,7 @@ STEPS=(
   "gametora|||GameTora's data files at the pinned versions into cache/gametora (GAMETORA_LATEST=1 moves the pins)"
   "events||all|each era's card event file from GameTora's files and the manual entries; runs gametora first"
   "native||all default|the release binary, clippy (as lint runs it), cargo test --release"
-  "pb||all|pairwise affinity ceilings into both data.json files; rerun after data or solver changes"
+  "pb||all|the solver, then pairwise affinity ceilings into both data.json; rerun after data or solver changes"
   "wasm||all default|the wasm32 build, wasm-opt (skipped when its key matches), webapp/example.json"
   "art||all default|images and runners when their game files are in game/global/ (each skipped, with a note, if not)"
   "page||all default|webapp/dist: the pages, webapp/src bundled, both eras' data, the optimised wasm, img/"
@@ -28,13 +28,13 @@ STEPS=(
   "lint|||every formatter and linter, warnings denied: Rust, shell, Python, the page's JS"
   "hooks|||use the tracked git hooks (.githooks: the pre-commit check); once per clone"
   "browsers|||Playwright's Chromium and Firefox into cache/ms-playwright"
-  "test|||the browser suite on webapp/dist (Chromium, and Firefox on the @both groups): releases"
-  "testq|||the suite's fast tier (Chromium, the @quick tests, about 30 s): after each page change"
+  "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
+  "testq|||the page, then the suite's fast tier (Chromium, the @quick tests, about 30 s): after each page change"
   "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (PORT=...; a self-signed certificate)"
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
-  "val|TAG||every validation check against the references (about 7 CPU-min): before landing a result change"
-  "valq|TAG||the same without the slow jobs, joint_check and planval's proxy gate (about 2.5 CPU-min)"
-  "mono|||the planner's monotonicity check (val/mono.py, 10-20 CPU-min: run it in the background)"
+  "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
+  "valq|TAG||val without the slow jobs, joint_check and planval's proxy gate (about 2.5 CPU-min)"
+  "mono|||the solver, then the planner's monotonicity check (val/mono.py, 10-20 CPU-min: in the background)"
   "research|||research/run_all.py into research/results.json, then docs/RESEARCH.md from its template"
   "all|||the steps marked all, in the table's order"
   "help|||this list"
@@ -43,7 +43,6 @@ STEPS=(
 # ---- requirements: a step names everything it is missing before it stops ----
 GLOBAL_MDB="game/global/master.mdb: the Global client's game database"
 JP_MDB="game/jp/master.mdb: the JP client's game database (Grand Masters era)"
-NEED_BIN="pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"
 NEED_DIST="webapp/dist/index.html: the built page (./build.sh page)"
 NEED_OPT_WASM="webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"
 DECRYPTED="game/global/decrypted: the Global client's asset bundles, decrypted, by asset path"
@@ -97,17 +96,21 @@ step_events() {
   (cd "$C/export" && "${PY[@]}" build_card_events.py global && "${PY[@]}" build_card_events.py jp)
 }
 step_pb() {
-  need_uv; need "$NEED_BIN"; check pb
+  need_uv; need_cargo; check pb
+  build_solver
   "${PY[@]}" "$C/export/add_pb.py" "$BIN" "$C/data/global/data.json" "$C/data/jp/data.json"
 }
 
 # ---- the solver ----
 step_native() {
   need_cargo; check native
-  (cd "$C" && cargo build --release 2>&1 | tail -1)
+  build_solver
   (cd "$C" && clippy_all)
   cargo_test
 }
+# The release binary. pb, val, valq and mono build it first, so they never run a binary left from before a change
+# (cargo's own check makes this a no-op on an unchanged tree).
+build_solver() { (cd "$C" && cargo build --release 2>&1 | tail -1); }
 # clippy as lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() {
   cargo clippy --quiet --all-targets -- -D warnings \
@@ -166,7 +169,8 @@ step_hooks() {
 step_val() {
   local tag="${1:?val needs a tag}" quick=() rc=0
   [ "${2:-}" = --quick ] && quick=(--quick)
-  need_uv; need "$NEED_BIN"; check val
+  need_uv; need_cargo; check val
+  build_solver
   "${PY[@]}" "$R/val/runval.py" "$BIN" "$tag" "${quick[@]}" || return 1
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref || rc=1
   "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu || rc=1
@@ -179,7 +183,8 @@ step_val() {
 }
 step_valq() { step_val "$1" --quick; }
 step_mono() {
-  need_uv; need "$NEED_BIN"; check mono
+  need_uv; need_cargo; check mono
+  build_solver
   "${PY[@]}" "$R/val/mono.py" "$BIN"
 }
 step_research() {
@@ -232,13 +237,14 @@ step_browsers() {
   ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* "$PLAYWRIGHT_BROWSERS_PATH"/firefox-* >/dev/null 2>&1 \
     || (cd "$W" && npx playwright install chromium firefox)
 }
+# test and testq build the page first (1.4 s), so they test this tree's webapp/src, never a dist left from before
 step_test() {
-  need "$NEED_DIST"; check test
+  step_page
   step_browsers
   (cd "$W" && npx playwright test)
 }
 step_testq() {
-  need "$NEED_DIST"; check testq
+  step_page
   step_browsers
   (cd "$W" && LLP_QUICK=1 npx playwright test --project chromium --grep @quick)
 }

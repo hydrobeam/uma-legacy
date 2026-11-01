@@ -90,16 +90,16 @@ it stops; the `art` step instead says what it skipped.
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
 | `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs); `webapp/test/static.mjs`, what the browser suite can't see going stale: CSS classes no script, template or `build.py` names (a name built from parts is listed in its `BUILT` with where), exports no other file uses, and `localStorage` writes of a copy not read from storage after the function's last `await` (one tab's write then erases another's) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
-| `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
+| `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (stable; rebuilding std with `-Z build-std` was measured on 2026-10-31 to change neither the output nor the speed, and under 2 KB of size), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
 | `page` | `webapp/dist/` (see *The page*) |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers into `cache/ms-playwright` (once) |
-| `test` / `testq` | the browser suite, full or its fast tier (see *Tests*) |
+| `test` / `testq` | the page (`page`, 1.4 s), then the browser suite on it, full or its fast tier (see *Tests*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it: the certificate is self-signed (`cache/tls/`), so a browser warns once |
-| `val TAG` / `valq TAG` | validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
-| `mono` | the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
+| `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
+| `mono` | the release solver, then the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 | `help` | the steps, from `build.sh`'s table |
@@ -173,7 +173,7 @@ IndexedDB.
 ## Tests
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
-- **Browser suite:** `./build.sh test` runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
+- **Browser suite:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
   `playwright` package) against `webapp/dist`, served by `serve.mjs` over HTTP/2 with TLS as the host serves it (a
   self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
   `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 1: four each kept the laptop at its thermal
@@ -202,7 +202,8 @@ IndexedDB.
 - **Fast tier:** `./build.sh testq` (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its
   one-run answer; about 30 s, 14 s with `LLP_JOBS=4`; popups, phone and contrast replay, career, load and about run live): run it after each
   page change, and the full suite before a release.
-- **Validation:** `./build.sh val TAG` runs every validation check, each whatever the others found, and fails if any
+- **Validation:** `./build.sh val TAG` builds the release solver (so it never validates a binary left from before a
+  change) and runs every validation check, each whatever the others found, and fails if any
   does (about 7 CPU-min, summed from the recorded run times: `val/ref_times.txt`, `val/plan/*_times.txt` and the proxy
   runs' `timing_s`):
   - the 26 reference jobs in `val/jobs.json` (22 deck jobs, shared and per-uma decks, one of them in Grand Masters, and
