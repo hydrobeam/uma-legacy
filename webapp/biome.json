@@ -7,7 +7,6 @@
       "src/**/*.ts",
       "src/**/*.tsx",
       "*.mjs",
-      ".size-limit.mjs",
       "vite/*.mjs",
       "chibi/*.mjs",
       "test/**/*.mjs",

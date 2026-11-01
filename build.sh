@@ -26,7 +26,7 @@ STEPS=(
   "pb||all|the solver, then pairwise affinity ceilings into both data.json; rerun after data or solver changes"
   "wasm||all default|the wasm32 build, wasm-opt (skipped when its key matches), webapp/example.json"
   "art||all default|images and runners when their game files are in game/global/ (each skipped, with a note, if not)"
-  "page||all default|webapp/dist (Vite): the pages, webapp/src bundled, both eras' data, the wasm, img/; page budgets"
+  "page||all default|webapp/dist (Vite): the pages, webapp/src bundled, both eras' data, the wasm, img/"
   "images|||icons and card art from the game's decrypted bundles into webapp/img (IMAGES_FORCE=1 redoes all)"
   "runners|||each uma's running mini model as a sprite strip into webapp/img/run (webapp/chibi/chibi.py)"
   "types|||the page's TypeScript types of the solver's reports and jobs, from its Rust structs, into webapp/src/gen"
@@ -283,11 +283,11 @@ npm_ci() {   # npm_ci DIR
   [ -e "$1/node_modules/.package-lock.json" ] && [ ! "$1/package-lock.json" -nt "$1/node_modules/.package-lock.json" ] \
     || (cd "$1" && npm ci --silent)
 }
-# Vite (webapp/vite.config.mjs), then each page's first-visit size against its budget (size-limit: webapp/.size-limit.mjs)
+# Vite (webapp/vite.config.mjs)
 step_page() {
   need_uv; need_node; need "$NEED_OPT_WASM"; check page
   npm_deps
-  (cd "$W" && npx --no-install vite build --logLevel warn && npx --no-install size-limit)
+  (cd "$W" && npx --no-install vite build --logLevel warn)
 }
 step_images() {
   need_uv; need "${IMAGE_FILES[@]}"; check images

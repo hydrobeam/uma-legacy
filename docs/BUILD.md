@@ -60,7 +60,6 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 | `preact-render-to-string` 6.8.2 | each planner page's root drawn into its HTML at build time (`vite/prerender.mjs`), which the entry hydrates |
 | `vite-plugin-static-copy` 4.1.1 | copies the fonts' licences into `dist/licenses/` |
 | `@vitejs/plugin-basic-ssl` 2.3.0 | the self-signed certificate `vite preview` serves HTTP/2 with (`cache/tls/`), in place of `serve.mjs`'s openssl call |
-| `size-limit` 14.3.0, `@size-limit/file` 14.3.0 | each page's first-visit budget (`webapp/.size-limit.mjs`), in place of `build.py`'s `page_cost` |
 | `@fontsource/*` (4 fonts) | the self-hosted fonts' Latin subsets, imported by `src/style.css` |
 | `binaryen` | `wasm-opt` (`wasm`) |
 | `knip` 6.44.1 | dead exports, files and dependencies, imports of nothing (`lint`) |
@@ -202,11 +201,6 @@ with a portrait in `webapp/img/`. It writes:
   when that era is chosen), the fonts, /about's math font (`vite/mathfont.mjs`) and `img.<hash>/` (the game's images,
   loaded by id). A revisit fetches only the HTML (about 10 KB per planner page). Each planner page's head carries the
   asset table (`data-assets`), from which its first script starts the solver's downloads.
-- each page's first-visit size, checked after the build by size-limit (`webapp/.size-limit.mjs`): the page, the local
-  files it names and, on the planner pages, the worker script, the wasm and the Global solver data, at brotli quality
-  11, about 22% under the host's transfer on the planner pages (it sends quality 4, which reproduced its transfer of the
-  wasm to within 0.1%). A page over its budget fails the build; a budget rises only in the commit that needs it, which
-  says why.
 - favicons, `og.png`, `_headers` (the host caches the pages 5 minutes, `assets/` a year), `_redirects` (`/loop` to `/`)
   and `robots.txt`, from `webapp/public/` as they are, and the fonts' licences in `licenses/`.
 

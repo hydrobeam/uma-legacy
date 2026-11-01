@@ -113,7 +113,7 @@ function site() {
       rolldownOptions: {
         input: Object.fromEntries(['index', 'loop', 'about'].map((page) => [page, path.join(HERE, `${page}.html`)])),
         output: {
-          // the modules both pages' scripts share, in one file (.size-limit.json counts it for each)
+          // the modules both pages' scripts share, in one file
           chunkFileNames: 'assets/shared-[hash].js',
           // top-level const and let stay as written (Vite turns them into var by default): a read before its
           // declaration has run throws at load, which the browser suite sees, in place of an undefined read going on
