@@ -1,7 +1,7 @@
 // The shared setup editors (ui/Presets, ui/Targets) on a fake document (fakedom.mjs), bundled with esbuild as the page
 // bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
-// (F2); a sort menu over a stored value it doesn't list (F3).
+// (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -19,6 +19,7 @@ const built = await esbuild.build({
     contents: `
       import '@preact/signals';
       export * as settings from './src/settings.ts';
+      export * as presets from './src/presets.js';
       export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
       export { mountTargets } from './src/ui/Targets.tsx';
       export { mountRank } from './src/ui/Scenario.tsx';
@@ -43,6 +44,7 @@ const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const {
   settings: S,
+  presets: P,
   PresetDialogs,
   openPresets,
   mountTargets,
@@ -221,4 +223,29 @@ test('a sort menu given a value it does not list (a hand-edited storage) shows i
   await settle();
   assert.equal(text(byId(root, 'vs')), 'First ↓');
   render(null, root);
+});
+
+test('two presets of one name in storage (a hand-edit): the first is kept, so Overwrite and Delete hit one', () => {
+  const stored = fresh({
+    presets: [
+      { name: 'X', groups: [20049] },
+      { name: 'X', groups: [20046] },
+      { name: 'Y', groups: [20166] },
+    ],
+    targets: [{ group: 20159 }],
+  });
+  assert.deepEqual(
+    S.settings.value.presets.map((p) => [p.name, ...p.groups]),
+    [
+      ['X', 20049],
+      ['Y', 20166],
+    ],
+  );
+  P.overwritePreset('X');
+  assert.deepEqual(stored().presets, [
+    { name: 'X', groups: [20159] },
+    { name: 'Y', groups: [20166] },
+  ]);
+  P.deletePreset('X');
+  assert.deepEqual(stored().presets, [{ name: 'Y', groups: [20166] }]);
 });
