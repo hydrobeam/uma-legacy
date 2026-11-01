@@ -3,6 +3,7 @@
 // (the era's data) or `call` (a job) returns where its JSON answer starts and `result_len` its length, and the request's
 // memory is freed (`dealloc`).
 // Typed against the protocol in solver.ts, with the worker's own globals (tsconfig.worker.json).
+import { must } from './must.ts';
 import type { FromWorker, SolverReply, ToWorker } from './solver.ts';
 
 /** `init` or `call`: the request's address and length in; where the JSON answer starts out */
@@ -17,23 +18,21 @@ interface SolverExports extends WebAssembly.Exports {
   result_len: () => number;
 }
 
+// solver: the instance's exports (null until init); runId: the job in the solver now (its progress reports name it; the
+// page's ids start at 1)
 let solver: SolverExports | null = null,
-  runId: number | undefined; // solver: the instance's exports; runId: the job in the solver now (its progress reports name it)
+  runId = 0;
 const encoder = new TextEncoder(),
   decoder = new TextDecoder();
-function callRaw(entry: SolverEntry, text: string): SolverReply {
+function callRaw(entry: 'init' | 'call', text: string): SolverReply {
+  const instance = must(solver, 'the solver, instantiated by init (the page sends jobs once the worker is ready)');
   const request = encoder.encode(text);
-  // @ts-expect-error solver is null before init: the strict commit passes the instance in
-  const at = solver.alloc(request.length);
-  // @ts-expect-error as above
-  new Uint8Array(solver.memory.buffer, at, request.length).set(request);
-  const answerAt = entry(at, request.length);
-  // @ts-expect-error as above
-  const answerLength = solver.result_len();
-  // @ts-expect-error as above
-  const answer = decoder.decode(new Uint8Array(solver.memory.buffer, answerAt, answerLength)); // a view, no copy: the memory is not shared and nothing runs in between
-  // @ts-expect-error as above
-  solver.dealloc(at, request.length);
+  const at = instance.alloc(request.length);
+  new Uint8Array(instance.memory.buffer, at, request.length).set(request);
+  const answerAt = instance[entry](at, request.length);
+  const answerLength = instance.result_len();
+  const answer = decoder.decode(new Uint8Array(instance.memory.buffer, answerAt, answerLength)); // a view, no copy: the memory is not shared and nothing runs in between
+  instance.dealloc(at, request.length);
   return JSON.parse(answer);
 }
 const post = (type: 'interim' | 'result', id: number, r: SolverReply, t0: number) =>
@@ -49,14 +48,7 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
           env: {
             clock_ms: () => performance.now(),
             progress: (ph: number, k: number, n: number) =>
-              self.postMessage({
-                type: 'progress',
-                // @ts-expect-error runId is undefined before the first job: the strict commit starts it at 0
-                id: runId,
-                ph,
-                k,
-                n,
-              } satisfies FromWorker),
+              self.postMessage({ type: 'progress', id: runId, ph, k, n } satisfies FromWorker),
           },
         };
         solver = (await WebAssembly.instantiate(message.module, imports)).exports as SolverExports; // compiled once by the page
@@ -65,7 +57,7 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
           'This browser refused to run WebAssembly, which the solver needs. Use a current browser with WebAssembly enabled.',
         );
       }
-      const r = callRaw(solver.init, message.data);
+      const r = callRaw('init', message.data);
       if (r.error) throw new Error(r.error);
       self.postMessage({ type: 'ready' } satisfies FromWorker);
     } else if (message.type === 'run') {
@@ -74,23 +66,20 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       runId = message.id;
       // a deck search runs twice: first by the product of per-target odds (fast, posted at once), then by exact odds
       if ((job.cmd === 'deck' || job.mode === 'deck') && job.exact !== false) {
-        // @ts-expect-error solver is null before init: the strict commit asserts it (a job comes after `ready`)
-        const quick = callRaw(solver.call, JSON.stringify(Object.assign({}, job, { exact: false })));
+        const quick = callRaw('call', JSON.stringify(Object.assign({}, job, { exact: false })));
         post('interim', message.id, quick, t0);
         if (quick.error) {
           post('result', message.id, quick, t0);
           return;
         }
       }
-      // @ts-expect-error as above
-      post('result', message.id, callRaw(solver.call, JSON.stringify(job)), t0);
+      post('result', message.id, callRaw('call', JSON.stringify(job)), t0);
     }
   } catch (err) {
     self.postMessage({
       type: 'error',
       id: message.type === 'run' ? message.id : undefined,
-      // @ts-expect-error err is unknown: the strict commit reads the message of an Error
-      message: String(err?.message || err),
+      message: String((err instanceof Error && err.message) || err),
     } satisfies FromWorker);
   }
 };

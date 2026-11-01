@@ -4,3 +4,7 @@
 cddc544d0fe49330276c79394b15fde5486d59c6
 # Biome formatter on the page JS (2026-10-22): layout only
 6763c4d61c714d0ac19f76acc5ed656a8d005407
+# frontend.md step 5: worker.template.js -> src/worker.ts, annotated (samecode: the same code)
+2bcb34add152577abbdf56a65da94cf9c6a0b22b
+# frontend.md step 5: engine.js -> engine.ts, annotated (samecode: the same code)
+d633ec575d5ef72de56f7af06981697d402d8156
