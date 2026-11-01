@@ -31,16 +31,17 @@ export default async function popups(b) {
     'agenda: every race has its banner',
     (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()),
   );
+  await pg.mouse.move(0, 0); // (off any race: a hovered one's title is held while its balloon shows)
   check(
     'agenda: a race\'s "x% win" sits in its turn bar, its tooltip says why',
     await pg.evaluate(() =>
       [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(
         (w) =>
           /^(Early|Late) [A-Z][a-z]{2}\d+% win$/.test(w.textContent) &&
-          /^\d+% win: 110/.test(w.querySelector('b').title || w.querySelector('b').dataset.tip),
+          /^\d+% win: 110/.test(w.querySelector('b').title),
       ),
     ),
-  ); // (a hovered one's title is held in data-tip while its balloon shows)
+  );
   await pg.locator('#sched-dlg .stab').last().click();
   check(
     'All three shows the comparison table, a column per member',
@@ -95,6 +96,41 @@ export default async function popups(b) {
     'affinity: in a rotation the trainee is her own grandparent twice, marked, with 0 relation points',
     at.own.length === 2 && at.own.every((x) => x === 0),
     JSON.stringify(at.own),
+  );
+  // gmtip.js over a modal dialog: the balloon is its own element in the top layer (never put inside the dialog, which a
+  // component draws), the title held while it shows; a title drawn again meanwhile (as a render that changes it does)
+  // is kept when the balloon goes, not overwritten by the one held
+  const pill = pg.locator('#why-dlg .afpick:not(.afpar) button').first();
+  await pill.hover();
+  await pg.waitForSelector('.gmtip:not([hidden])');
+  const tip = await pg.evaluate(() => {
+    const t = document.querySelector('.gmtip'),
+      held = document.querySelector('#why-dlg .afpick:not(.afpar) button');
+    const shown = {
+      inBody: t.parentElement === document.body,
+      top: t.matches(':popover-open'),
+      text: t.textContent,
+      held: !held.hasAttribute('title'),
+    };
+    held.title = 'Drawn again';
+    return shown;
+  });
+  await pg.mouse.move(0, 0);
+  const after = await pg.evaluate(() => ({
+    title: document.querySelector('#why-dlg .afpick:not(.afpar) button').title,
+    hidden: document.querySelector('.gmtip').hidden,
+    top: document.querySelector('.gmtip').matches(':popover-open'),
+  }));
+  check(
+    'tooltip over a modal dialog: the balloon in the top layer, outside the dialog; a title drawn again meanwhile is kept',
+    tip.inBody &&
+      tip.top &&
+      tip.held &&
+      tip.text.length > 0 &&
+      after.title === 'Drawn again' &&
+      after.hidden &&
+      !after.top,
+    JSON.stringify({ tip, after }),
   );
   await pg.keyboard.press('Escape');
   // a deck card the search ends at a link: its panel names the skill IT needs prioritised to take the ending choice.

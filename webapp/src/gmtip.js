@@ -1,15 +1,22 @@
 // ---------- the planner pages' tooltips (html.game): an element's title as the game's balloon ----------
 // game-style tooltips: after a short hover (or on keyboard focus) an element's title shows as the game's balloon; the
-// title is lifted only while the balloon shows (no native tooltip twice), and put back when it goes
+// title is lifted only while the balloon shows (no native tooltip twice), and put back when it goes, unless it was drawn
+// again meanwhile (a component's render, the status line's marks): that one is current. Lifting the title is the one
+// write it makes into elements it does not own (a component's too: Preact diffs a title against its own last render,
+// never the element, so a title lifted and put back unchanged is invisible to it). The balloon is its own element in
+// <body>, shown in the top layer (a manual popover) so it stays over an open modal dialog without being put inside it.
 const tipEl = document.createElement('div');
 tipEl.className = 'gmtip';
 tipEl.setAttribute('role', 'tooltip');
 tipEl.hidden = true;
+const popover = 'showPopover' in tipEl; // (a browser without popovers shows it under an open modal dialog)
+if (popover) tipEl.popover = 'manual';
 const GAP = 10,
   EDGE = 8; // px: between the element and the balloon; the least between the balloon and the window's sides
 /** @type {HTMLElement | null} */
-let tipFor = null,
-  lifted = []; // lifted: the elements whose title is held while the balloon shows
+let tipFor = null;
+/** the elements whose title is held while the balloon shows, and their titles @type {Map<HTMLElement, string>} */
+const lifted = new Map();
 /** @type {number | undefined} */
 let tipTimer;
 function tipShow(target) {
@@ -19,13 +26,16 @@ function tipShow(target) {
   tipEl.textContent = target.title;
   for (let e = target; e && e !== document.documentElement; e = e.parentElement) {
     if (e.hasAttribute('title')) {
-      e.dataset.tip = e.title;
+      lifted.set(e, e.title);
       e.removeAttribute('title');
-      lifted.push(e);
     }
   }
-  (target.closest('dialog[open]') || document.body).appendChild(tipEl);
+  if (!tipEl.isConnected) document.body.appendChild(tipEl);
   tipEl.hidden = false;
+  if (popover) {
+    if (tipEl.matches(':popover-open')) tipEl.hidePopover();
+    tipEl.showPopover(); // (again: on top of a dialog opened since)
+  }
   const rect = target.getBoundingClientRect(),
     width = tipEl.offsetWidth,
     height = tipEl.offsetHeight;
@@ -36,13 +46,11 @@ function tipShow(target) {
 }
 function tipHide() {
   clearTimeout(tipTimer);
-  for (const e of lifted) {
-    if (e.dataset.tip !== undefined) e.title = e.dataset.tip;
-    delete e.dataset.tip;
-  }
-  lifted = [];
+  for (const [e, title] of lifted) if (!e.hasAttribute('title')) e.title = title; // (drawn again meanwhile: kept)
+  lifted.clear();
   tipFor = null;
   tipEl.hidden = true;
+  if (popover && tipEl.matches(':popover-open')) tipEl.hidePopover();
 }
 // moving onto a child of the element showing its balloon keeps it (its title is lifted, so a lookup for [title] would
 // find an ancestor, put the title back and the browser would show its own tooltip beside ours)

@@ -1033,7 +1033,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 :root.game .cpop, :root.game #add-pop { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 2px solid var(--gm-bright2); border-radius: 12px; box-shadow: 0 6px 18px var(--gm-shadow); }
 /* tooltips: the game's balloon */
 .gmtip { position: fixed; z-index: 1000; max-width: 300px; pointer-events: none; font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; font-size: 0.82rem; line-height: 1.3;
-  color: var(--gm-ink); background: var(--gm-panel); border: 2px solid var(--gm-bright2); border-radius: 12px; padding: 6px 10px; box-shadow: 0 4px 12px var(--gm-shadow); white-space: pre-line; }
+  color: var(--gm-ink); background: var(--gm-panel); border: 2px solid var(--gm-bright2); border-radius: 12px; padding: 6px 10px; box-shadow: 0 4px 12px var(--gm-shadow); white-space: pre-line;
+  inset: auto; margin: 0; overflow: visible; }   /* (a popover: not the browser's centred box, and its arrow not clipped) */
 .gmtip::before { content: ''; position: absolute; top: -8px; left: calc(50% - 7px); border: 7px solid transparent; border-top: 0; border-bottom: 8px solid var(--gm-bright2); }
 .gmtip.up::before { top: auto; bottom: -8px; border-bottom: 0; border-top: 8px solid var(--gm-bright2); }
 /* skill tiles: the game's tile art scaled whole (its 9-slice stretched the middle into a vertical band) */
