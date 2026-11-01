@@ -93,9 +93,8 @@ impl DeckSpace<'_> {
             || (matches!(band_bound, BandBound::StateBound) && one_lineage && !crate::checks::get().state_bound_off);
         let state_rows: std::rc::Rc<StateRows> =
             if state_bound && (cap_free || !legal_entries.iter().any(|&j| self.sources[j].uncertified_association)) {
-                let hit = self.state_row_cache.borrow().get(&set_id).cloned();
-                hit.unwrap_or_else(|| {
-                    let rows = std::rc::Rc::new(
+                crate::memoised(&self.state_row_cache, set_id, |_| {
+                    std::rc::Rc::new(
                         (0..self.card_indices.len())
                             .map(|j| {
                                 legal_entries
@@ -103,9 +102,7 @@ impl DeckSpace<'_> {
                                     .then(|| self.sources[j].miss_levels(self.kind[j].stop, target_count))
                             })
                             .collect::<Vec<_>>(),
-                    );
-                    self.state_row_cache.borrow_mut().insert(set_id, std::rc::Rc::clone(&rows));
-                    rows
+                    )
                 })
             } else {
                 std::rc::Rc::new(vec![])

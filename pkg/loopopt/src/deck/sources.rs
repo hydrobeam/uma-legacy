@@ -194,42 +194,45 @@ pub(super) fn group_nuod(group: &Group) -> bool {
             rewards: outcome.rewards.clone(),
         })
         .collect();
-    if let Some(cached) = GN.with(|cache| cache.borrow().get(&key).copied()) {
-        return cached;
-    }
-    let mut targets: Vec<usize> =
-        group.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
-    targets.sort_unstable();
-    targets.dedup();
-    // Exhaustive checking is exponential. An unchecked group is not a proof of negative dependence;
-    // decline the bound before constructing masks, which also avoids shifts beyond the mask width.
-    if targets.len() > 20 {
-        return false;
-    }
-    // per outcome, the targets it hints as a bit set
-    let outcomes: Vec<HintMaskOutcome> = group
-        .iter()
-        .map(|outcome| HintMaskOutcome {
-            probability: outcome.probability,
-            targets: outcome.rewards.iter().fold(0u32, |mask, reward| {
-                mask | (1 << targets.iter().position(|&target| target == reward.target).unwrap())
-            }),
+    GN.with(|memo| {
+        crate::memoised(memo, key, |_| {
+            let mut targets: Vec<usize> =
+                group.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
+            targets.sort_unstable();
+            targets.dedup();
+            // Exhaustive checking is exponential. An unchecked group is not a proof of negative dependence;
+            // decline the bound before constructing masks, which also avoids shifts beyond the mask width.
+            if targets.len() > 20 {
+                return false;
+            }
+            // per outcome, the targets it hints as a bit set
+            let outcomes: Vec<HintMaskOutcome> = group
+                .iter()
+                .map(|outcome| HintMaskOutcome {
+                    probability: outcome.probability,
+                    targets: outcome.rewards.iter().fold(0u32, |mask, reward| {
+                        mask | (1 << targets.iter().position(|&target| target == reward.target).unwrap())
+                    }),
+                })
+                .collect();
+            let marginal_chance: Vec<f64> = (0..targets.len())
+                .map(|i| {
+                    outcomes
+                        .iter()
+                        .filter(|outcome| outcome.targets >> i & 1 == 1)
+                        .map(|outcome| outcome.probability)
+                        .sum()
+                })
+                .collect();
+            (1u32..1 << targets.len()).filter(|s| s.count_ones() >= 2).all(|s| {
+                let joint: f64 =
+                    outcomes.iter().filter(|outcome| outcome.targets & s == s).map(|outcome| outcome.probability).sum();
+                joint
+                    <= (0..targets.len()).filter(|i| s >> i & 1 == 1).map(|i| marginal_chance[i]).product::<f64>()
+                        * (1.0 + ORTHANT_RELATIVE)
+            })
         })
-        .collect();
-    let marginal_chance: Vec<f64> = (0..targets.len())
-        .map(|i| {
-            outcomes.iter().filter(|outcome| outcome.targets >> i & 1 == 1).map(|outcome| outcome.probability).sum()
-        })
-        .collect();
-    let certified = (1u32..1 << targets.len()).filter(|s| s.count_ones() >= 2).all(|s| {
-        let joint: f64 =
-            outcomes.iter().filter(|outcome| outcome.targets & s == s).map(|outcome| outcome.probability).sum();
-        joint
-            <= (0..targets.len()).filter(|i| s >> i & 1 == 1).map(|i| marginal_chance[i]).product::<f64>()
-                * (1.0 + ORTHANT_RELATIVE)
-    });
-    GN.with(|cache| cache.borrow_mut().insert(key, certified));
-    certified
+    })
 }
 /// What `upper_na` needs of a group: the orthant inequality at every hint level, since a target's factor rises with
 /// gold as well as with any hint. A white-only group has one level, so the any-hint check is that (`group_nuod`, up to

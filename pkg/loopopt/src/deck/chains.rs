@@ -297,16 +297,15 @@ pub(crate) fn chain_marginals(events: ChainEvents, kinds: &[ChainKind]) -> HashM
     let mut sorted_kinds: Vec<ChainKind> = kinds.to_vec();
     sorted_kinds.sort_unstable();
     let key = ChainKey { kinds: sorted_kinds, events: events.key() };
-    if let Some(marginals) = CM.with(|cell| cell.borrow().get(&key).cloned()) {
-        return marginals;
-    }
-    let marginals = if key.kinds.iter().any(|k| k.stop_risk != 0) {
-        chain_marginals_risk(events, &key.kinds)
-    } else {
-        chain_marginals_dense(events, &key.kinds)
-    };
-    CM.with(|cell| cell.borrow_mut().insert(key, marginals.clone()));
-    marginals
+    CM.with(|memo| {
+        crate::memoised(memo, key, |key| {
+            if key.kinds.iter().any(|k| k.stop_risk != 0) {
+                chain_marginals_risk(events, &key.kinds)
+            } else {
+                chain_marginals_dense(events, &key.kinds)
+            }
+        })
+    })
 }
 /// Kinds with a stop risk: the chance that IT's default choice ends a chain at a link is independent of how many
 /// chain events the run gets, so the run is a mixture over where each risky entry would stop. Each realisation is a
@@ -452,31 +451,30 @@ pub(super) struct ChainState {
 pub(super) fn chain_states(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc<Vec<ChainState>> {
     thread_local! { static CS: std::cell::RefCell<crate::FxMap<ChainKey, std::rc::Rc<Vec<ChainState>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let key = ChainKey { kinds: kinds.to_vec(), events: events.key() };
-    if let Some(states) = CS.with(|cell| cell.borrow().get(&key).cloned()) {
-        return states;
-    }
-    let n = kinds.len();
-    let links: Vec<u8> = kinds.iter().map(|k| k.links).collect();
-    let mut state_chances: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
-    for_each_realisation(kinds, |w, stops| {
-        let total: usize = stops.iter().map(|&stop| stop as usize).sum();
-        let event_weights = event_pmf(events, total);
-        // (a state below the last level has an entry not stopped: final with P(N = L); at it, with P(N >= L))
-        chain_walk(&links, stops, total, &vec![0; n], events.rule, |progress, event_count, _, probability| {
-            let final_chance = if event_count < total {
-                event_weights[event_count]
-            } else {
-                (1.0 - event_weights[..event_count].iter().sum::<f64>()).max(0.0)
-            };
-            *state_chances.entry(progress.to_vec()).or_insert(0.0) += w * probability * final_chance;
-        });
-    });
-    let mut sorted: Vec<ChainState> =
-        state_chances.into_iter().map(|(progress, probability)| ChainState { progress, probability }).collect();
-    sorted.sort_by(|a, b| a.progress.cmp(&b.progress));
-    let states = std::rc::Rc::new(sorted);
-    CS.with(|cell| cell.borrow_mut().insert(key, std::rc::Rc::clone(&states)));
-    states
+    CS.with(|memo| {
+        crate::memoised(memo, key, |_| {
+            let n = kinds.len();
+            let links: Vec<u8> = kinds.iter().map(|k| k.links).collect();
+            let mut state_chances: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
+            for_each_realisation(kinds, |w, stops| {
+                let total: usize = stops.iter().map(|&stop| stop as usize).sum();
+                let event_weights = event_pmf(events, total);
+                // (a state below the last level has an entry not stopped: final with P(N = L); at it, with P(N >= L))
+                chain_walk(&links, stops, total, &vec![0; n], events.rule, |progress, event_count, _, probability| {
+                    let final_chance = if event_count < total {
+                        event_weights[event_count]
+                    } else {
+                        (1.0 - event_weights[..event_count].iter().sum::<f64>()).max(0.0)
+                    };
+                    *state_chances.entry(progress.to_vec()).or_insert(0.0) += w * probability * final_chance;
+                });
+            });
+            let mut sorted: Vec<ChainState> =
+                state_chances.into_iter().map(|(progress, probability)| ChainState { progress, probability }).collect();
+            sorted.sort_by(|a, b| a.progress.cmp(&b.progress));
+            std::rc::Rc::new(sorted)
+        })
+    })
 }
 
 /// Per chain-kind key (sorted kinds, fillers as (2, 2)): for each position, P(links done = l | N = n), n = 0..=max_events,
@@ -509,85 +507,85 @@ impl KeyLevel {
     }
     /// `pair_marg` at every event count m = 0..=n, kept per pair (a function of the key alone)
     pub(super) fn pair_margs(&self, i: usize, j: usize) -> std::rc::Rc<PairMarginals> {
-        if let Some(by_count) = self.pair_marginals.borrow().get(&(i, j)) {
-            return std::rc::Rc::clone(by_count);
-        }
-        let by_count =
-            std::rc::Rc::new((0..self.level_probabilities.len()).map(|m| self.pair_marg(i, j, m)).collect::<Vec<_>>());
-        self.pair_marginals.borrow_mut().insert((i, j), std::rc::Rc::clone(&by_count));
-        by_count
+        crate::memoised(&self.pair_marginals, (i, j), |_| {
+            std::rc::Rc::new((0..self.level_probabilities.len()).map(|m| self.pair_marg(i, j, m)).collect::<Vec<_>>())
+        })
     }
     /// The orthant check with positions i and j as one block: for every up-set A of the (i, j) grid and every
     /// threshold vector t on the other positions, P((X_i, X_j) in A, X_k >= t_k) <= P((X_i, X_j) in A) prod P(X_k >= t_k).
     /// Any rising function of (X_i, X_j) is a positive combination of up-set indicators, so this is what the bound
     /// needs when one group holds both cards.
     pub(super) fn pair_ok(&self, i: usize, j: usize) -> bool {
-        if let Some(&cached) = self.pairs.borrow().get(&(i, j)) {
-            return cached;
-        }
-        let (first_dimension, second_dimension) = (self.dimensions[i], self.dimensions[j]);
-        // up-sets of the di x dj grid: for each row a, the first column c_a in the set, non-increasing in a
-        let mut up_sets: Vec<Vec<usize>> = vec![];
-        fn upsets(a: usize, first_dimension: usize, hi: usize, current: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-            if a == first_dimension {
-                out.push(current.clone());
-                return;
+        crate::memoised(&self.pairs, (i, j), |_| {
+            let (first_dimension, second_dimension) = (self.dimensions[i], self.dimensions[j]);
+            // up-sets of the di x dj grid: for each row a, the first column c_a in the set, non-increasing in a
+            let mut up_sets: Vec<Vec<usize>> = vec![];
+            fn upsets(
+                a: usize,
+                first_dimension: usize,
+                hi: usize,
+                current: &mut Vec<usize>,
+                out: &mut Vec<Vec<usize>>,
+            ) {
+                if a == first_dimension {
+                    out.push(current.clone());
+                    return;
+                }
+                for c in 0..=hi {
+                    current.push(c);
+                    upsets(a + 1, first_dimension, c, current, out);
+                    current.pop();
+                }
             }
-            for c in 0..=hi {
-                current.push(c);
-                upsets(a + 1, first_dimension, c, current, out);
-                current.pop();
-            }
-        }
-        upsets(0, first_dimension, second_dimension, &mut vec![], &mut up_sets);
-        let n = self.dimensions.len();
-        let others: Vec<usize> = (0..n).filter(|&k| k != i && k != j).collect();
-        let mut ok = true;
-        'outer: for m in 0..self.level_probabilities.len() {
-            let distribution = &self.level_probabilities[m];
-            for up_set in &up_sets {
-                // indicator of the up-set (column c >= up_set[row]) over the grid, times the distribution
-                let mut mass: Vec<f64> = distribution
-                    .iter()
-                    .enumerate()
-                    .map(|(grid_index, &p)| {
-                        let a = (grid_index / self.grid_strides[i]) % first_dimension;
-                        let c = (grid_index / self.grid_strides[j]) % second_dimension;
-                        if c >= up_set[a] { p } else { 0.0 }
-                    })
-                    .collect();
-                let up_set_chance: f64 = mass.iter().sum();
-                for &k in &others {
-                    for grid_index in (0..mass.len()).rev() {
-                        let c = (grid_index / self.grid_strides[k]) % self.dimensions[k];
-                        if c + 1 < self.dimensions[k] {
-                            mass[grid_index] += mass[grid_index + self.grid_strides[k]];
+            upsets(0, first_dimension, second_dimension, &mut vec![], &mut up_sets);
+            let n = self.dimensions.len();
+            let others: Vec<usize> = (0..n).filter(|&k| k != i && k != j).collect();
+            let mut ok = true;
+            'outer: for m in 0..self.level_probabilities.len() {
+                let distribution = &self.level_probabilities[m];
+                for up_set in &up_sets {
+                    // indicator of the up-set (column c >= up_set[row]) over the grid, times the distribution
+                    let mut mass: Vec<f64> = distribution
+                        .iter()
+                        .enumerate()
+                        .map(|(grid_index, &p)| {
+                            let a = (grid_index / self.grid_strides[i]) % first_dimension;
+                            let c = (grid_index / self.grid_strides[j]) % second_dimension;
+                            if c >= up_set[a] { p } else { 0.0 }
+                        })
+                        .collect();
+                    let up_set_chance: f64 = mass.iter().sum();
+                    for &k in &others {
+                        for grid_index in (0..mass.len()).rev() {
+                            let c = (grid_index / self.grid_strides[k]) % self.dimensions[k];
+                            if c + 1 < self.dimensions[k] {
+                                mass[grid_index] += mass[grid_index + self.grid_strides[k]];
+                            }
+                        }
+                    }
+                    for grid_index in 0..mass.len() {
+                        if !(grid_index / self.grid_strides[i]).is_multiple_of(first_dimension)
+                            || !(grid_index / self.grid_strides[j]).is_multiple_of(second_dimension)
+                        {
+                            continue;
+                        }
+                        let prod: f64 = others
+                            .iter()
+                            .map(|&k| {
+                                self.marginals[k][m][(grid_index / self.grid_strides[k]) % self.dimensions[k]..]
+                                    .iter()
+                                    .sum::<f64>()
+                            })
+                            .product();
+                        if mass[grid_index] > up_set_chance * prod * (1.0 + 1e-12) + 1e-15 {
+                            ok = false;
+                            break 'outer;
                         }
                     }
                 }
-                for grid_index in 0..mass.len() {
-                    if !(grid_index / self.grid_strides[i]).is_multiple_of(first_dimension)
-                        || !(grid_index / self.grid_strides[j]).is_multiple_of(second_dimension)
-                    {
-                        continue;
-                    }
-                    let prod: f64 = others
-                        .iter()
-                        .map(|&k| {
-                            self.marginals[k][m][(grid_index / self.grid_strides[k]) % self.dimensions[k]..]
-                                .iter()
-                                .sum::<f64>()
-                        })
-                        .product();
-                    if mass[grid_index] > up_set_chance * prod * (1.0 + 1e-12) + 1e-15 {
-                        ok = false;
-                        break 'outer;
-                    }
-                }
             }
-        }
-        self.pairs.borrow_mut().insert((i, j), ok);
-        ok
+            ok
+        })
     }
 }
 pub(super) fn key_level(events: ChainEvents, kinds: &[ChainKind]) -> std::rc::Rc<KeyLevel> {
