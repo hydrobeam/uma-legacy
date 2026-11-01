@@ -37,7 +37,7 @@ const close = () => {
 export function SkillDetails() {
   const { spec, open } = shown.value;
   return (
-    <Dialog size="md" id="sk-dlg" skin="game" labelledBy="sk-title" open={open} onClose={close}>
+    <Dialog size="md" id="sk-dlg" kind="popup" labelledBy="sk-title" open={open} onClose={close}>
       <DialogTitle id="sk-title">Skill Details</DialogTitle>
       <Guard what="Skill Details" also={shownSpec}>
         {spec && <Skill spec={spec} />}

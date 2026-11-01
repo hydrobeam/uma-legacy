@@ -280,7 +280,7 @@ export function SavesPopup() {
     if (open) close.current?.focus();
   }, [open]);
   return (
-    <Dialog size="md" id="save-dlg" skin="game" labelledBy="save-title" open={open} onClose={closeSaves}>
+    <Dialog size="md" id="save-dlg" kind="popup" labelledBy="save-title" open={open} onClose={closeSaves}>
       <DialogTitle id="save-title">What these mean</DialogTitle>
       <Guard what="The Saves popup" also={savesSubject}>
         {subject && <SavesBody planReport={subject.planReport} notes={subject.notes} />}

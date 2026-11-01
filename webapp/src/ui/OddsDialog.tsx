@@ -28,7 +28,7 @@ const close = () => {
 export function OddsDialog() {
   const { spec, open } = shown.value;
   return (
-    <Dialog size="md" id="odds-dlg" skin="game" labelledBy="odds-title" open={open} onClose={close}>
+    <Dialog size="md" id="odds-dlg" kind="popup" labelledBy="odds-title" open={open} onClose={close}>
       <RenderGuard input={shownSpec} what="The odds">
         {spec && <Odds spec={spec} />}
       </RenderGuard>

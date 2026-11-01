@@ -4,8 +4,8 @@
 // effect) reaches `onClose`, so whoever holds `open` hears every close. A click on the backdrop (the dialog element
 // itself is the target) closes it. The browser returns the focus to the element that had it when the dialog opened.
 // A deck card's panel opened from inside it shows inside it (ui/CardPop.tsx: the page behind a modal is out of reach).
-// Two skins, both the game's: `game`, a popup (a green title bar, a pale body that scrolls, a footer with Close and the
-// actions: DialogTitle, DialogBody, DialogFoot, DialogClose), and `panel`, a window (DialogPanel, a body that scrolls
+// Two kinds, both the game's: `popup`, a popup (a green title bar, a pale body that scrolls, a footer with Close and the
+// actions: DialogTitle, DialogBody, DialogFoot, DialogClose), and `window`, a window (DialogPanel, a body that scrolls
 // under its sticky green head, DialogHead, with the title and Close at the right). `size` is its width, one of the
 // theme's five (the screen's less the browser's margin, on a phone); every dialog names its own.
 import type { ComponentChildren, Ref } from 'preact';
@@ -16,47 +16,30 @@ import { CardPop } from './CardPop.tsx';
 import { tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
 
-// every part's look, by skin and size: the frame (the <dialog>), the game skin's title, body and footer, the panel
-// skin's panel, head and head title
-const look = tv({
-  slots: {
-    frame: 'bg-gm-panel font-game text-gm-ink shadow-dialog backdrop:bg-backdrop overflow-hidden rounded-2xl',
-    title: 'art-bar text-shadow-outline text-heading flex-none px-3 py-2 text-center font-black text-white',
-    body: 'bg-gm-pane grid min-h-0 flex-auto gap-2.5 overflow-auto px-4 py-3.5',
-    foot: 'bg-gm-panel flex flex-none flex-wrap justify-center gap-2.5 p-3',
-    panel: 'bg-gm-panel gap-3.5 p-4.5',
-    head: 'art-bar sticky -top-4.5 z-6 -mx-4.5 -mt-4.5 flex flex-nowrap items-center justify-between gap-2 px-4.5 pt-3 pb-2.5',
-    headTitle: 'text-shadow-outline text-heading flex-1 text-center font-black text-balance text-white',
-  },
+// the frame (the <dialog>): its width, its height, and a popup's column of title, body and footer
+const frame = tv({
+  base: 'bg-gm-panel font-game text-gm-ink shadow-dialog backdrop:bg-backdrop overflow-hidden rounded-2xl',
   variants: {
-    skin: { game: { frame: 'open:flex open:flex-col' }, panel: {} },
+    kind: { popup: 'open:flex open:flex-col', window: '' },
     size: {
-      sm: { frame: 'w-dialog-sm' },
-      md: { frame: 'w-dialog-md' },
-      lg: { frame: 'w-dialog-lg' },
-      xl: { frame: 'w-dialog-xl' },
-      full: { frame: 'w-dialog-full' },
+      sm: 'w-dialog-sm',
+      md: 'w-dialog-md',
+      lg: 'w-dialog-lg',
+      xl: 'w-dialog-xl',
+      full: 'w-dialog-full',
     },
     /** as tall as the screen allows less 24 px (else less 48) */
-    tall: { true: { frame: 'max-h-[calc(100dvh-24px)]' }, false: { frame: 'max-h-[calc(100dvh-48px)]' } },
-    fit: {
-      /** the body scrolls, the head stays on top */
-      scroll: { panel: 'grid max-h-[calc(100dvh-48px)] overflow-auto' },
-      /** the body never scrolls: its contents take the room left and scroll on their own */
-      fill: { panel: 'flex max-h-[calc(100dvh-48px)] flex-col overflow-hidden' },
-      /** the same, the dialog as tall as the screen allows whatever it holds */
-      full: { panel: 'flex h-[calc(100dvh-48px)] max-h-[calc(100dvh-48px)] flex-col overflow-hidden' },
-    },
+    tall: { true: 'max-h-[calc(100dvh-24px)]', false: 'max-h-[calc(100dvh-48px)]' },
   },
-  defaultVariants: { skin: 'panel', tall: false, fit: 'scroll' },
+  defaultVariants: { kind: 'window', tall: false },
 });
-const parts = look();
-type Look = VariantProps<typeof look>;
+type Frame = VariantProps<typeof frame>;
 interface DialogProps {
   id: string;
-  skin?: Look['skin'];
+  /** a popup (title, body, footer) or a window (a panel under a sticky head) */
+  kind?: Frame['kind'];
   /** its width: the theme's --container-dialog-* */
-  size: NonNullable<Look['size']>;
+  size: NonNullable<Frame['size']>;
   tall?: boolean;
   /** the id of its heading */
   labelledBy?: string;
@@ -71,7 +54,7 @@ interface DialogProps {
 let openDialogs = 0;
 /** some dialog is open (a popup closing hands the focus back only onto a page with none open) */
 export const anyDialogOpen = () => openDialogs > 0;
-export function Dialog({ id, skin, size, tall, labelledBy, label, open, onClose, children }: DialogProps) {
+export function Dialog({ id, kind, size, tall, labelledBy, label, open, onClose, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null),
     // (for its unmount: the props of its last render)
     last = useRef({ open, onClose });
@@ -101,7 +84,7 @@ export function Dialog({ id, skin, size, tall, labelledBy, label, open, onClose,
     <dialog
       ref={ref}
       id={id}
-      class={parts.frame({ skin, size, tall })}
+      class={frame({ kind, size, tall })}
       aria-labelledby={labelledBy}
       aria-label={label}
       onClose={(e) => {
@@ -118,10 +101,10 @@ export function Dialog({ id, skin, size, tall, labelledBy, label, open, onClose,
   );
 }
 
-// ---------- the game skin's parts ----------
+// ---------- a popup's parts ----------
 /** its title, in the green bar */
 export const DialogTitle = ({ id, children }: { id: string; children: ComponentChildren }) => (
-  <h3 id={id} class={parts.title()}>
+  <h3 id={id} class="art-bar text-shadow-outline text-heading flex-none px-3 py-2 text-center font-black text-white">
     {children}
   </h3>
 );
@@ -135,12 +118,14 @@ export const DialogBody = ({
   ref?: Ref<HTMLDivElement>;
   children: ComponentChildren;
 }) => (
-  <div id={id} ref={ref} class={parts.body()}>
+  <div id={id} ref={ref} class="bg-gm-pane grid min-h-0 flex-auto gap-2.5 overflow-auto px-4 py-3.5">
     {children}
   </div>
 );
 /** its footer: Close and the dialog's actions, centred, wrapping */
-export const DialogFoot = ({ children }: { children: ComponentChildren }) => <div class={parts.foot()}>{children}</div>;
+export const DialogFoot = ({ children }: { children: ComponentChildren }) => (
+  <div class="bg-gm-panel flex flex-none flex-wrap justify-center gap-2.5 p-3">{children}</div>
+);
 /** the footer's Close */
 export const DialogClose = ({
   onClick,
@@ -156,10 +141,31 @@ export const DialogClose = ({
   </Button>
 );
 
-// ---------- the panel skin's parts ----------
+// ---------- a window's parts ----------
+// its panel: the head stays on top as the body scrolls (scroll), or nothing scrolls but its contents' own lists (fill),
+// the dialog as tall as the screen allows whatever it holds (full)
+const panel = tv({
+  base: 'bg-gm-panel gap-3.5 p-4.5',
+  variants: {
+    fit: {
+      scroll: 'grid max-h-[calc(100dvh-48px)] overflow-auto',
+      fill: 'flex max-h-[calc(100dvh-48px)] flex-col overflow-hidden',
+      full: 'flex h-[calc(100dvh-48px)] max-h-[calc(100dvh-48px)] flex-col overflow-hidden',
+    },
+  },
+  defaultVariants: { fit: 'scroll' },
+});
 /** the window's body: its head first, then its contents */
-export const DialogPanel = ({ id, fit, children }: { id?: string; fit?: Look['fit']; children: ComponentChildren }) => (
-  <div id={id} class={parts.panel({ fit })}>
+export const DialogPanel = ({
+  id,
+  fit,
+  children,
+}: {
+  id?: string;
+  fit?: VariantProps<typeof panel>['fit'];
+  children: ComponentChildren;
+}) => (
+  <div id={id} class={panel({ fit })}>
     {children}
   </div>
 );
@@ -185,8 +191,12 @@ export function DialogHead({
   children?: ComponentChildren;
 }) {
   return (
-    <div class={parts.head()}>
-      <h3 id={id} title={tip} class={parts.headTitle()}>
+    <div class="art-bar sticky -top-4.5 z-6 -mx-4.5 -mt-4.5 flex flex-nowrap items-center justify-between gap-2 px-4.5 pt-3 pb-2.5">
+      <h3
+        id={id}
+        title={tip}
+        class="text-shadow-outline text-heading flex-1 text-center font-black text-balance text-white"
+      >
         {title}
       </h3>
       {children}

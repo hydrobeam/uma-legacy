@@ -216,7 +216,7 @@ function ColourDialog({ edit }: { edit: ColourEdit | null }) {
     if (edit?.open) done.current?.focus();
   }, [edit]);
   return (
-    <Dialog size="md" id="col-dlg" skin="game" labelledBy="col-title" open={!!nd} onClose={colourClosed}>
+    <Dialog size="md" id="col-dlg" kind="popup" labelledBy="col-title" open={!!nd} onClose={colourClosed}>
       <DialogTitle id="col-title">{edit ? KIND[edit.kind].title : ''}</DialogTitle>
       {edit && nd && <Colours nd={nd} at={edit.at} kind={edit.kind} />}
       <DialogFoot>
