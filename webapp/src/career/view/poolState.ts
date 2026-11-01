@@ -1,6 +1,6 @@
 // The veterans dialog's state (Pool.tsx draws it): the tab on show, the one chosen beside the list, the list's order,
-// whether the dialog has opened and whether it is open, and each tab's veterans in that order. Apart from the component, so the el() modules
-// (io.ts's imports switch the tab) take it without importing a view.
+// whether the dialog has opened and whether it is open, and each tab's veterans in that order. Apart from the
+// component, so modules that are not views (io.ts's imports switch the tab) take it without importing a view.
 import { batch, computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { settings } from '../../settings.ts';

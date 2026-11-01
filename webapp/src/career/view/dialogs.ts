@@ -1,7 +1,7 @@
 // Which of the career page's popups is open, and for what: the node popup (its node), the deck popup and the parent
-// picker (its place). The views (Tree.tsx, NodeDialog.tsx, Sections.tsx,
-// ParentPicker.tsx) draw from these; the modules still built with el() (the pool, the veteran analysis, uma.moe's
-// list) open them through the functions here, and import no component.
+// picker (its place). The views (Tree.tsx, NodeDialog.tsx, Sections.tsx, ParentPicker.tsx) draw from these; the other
+// views (the pool, the veteran analysis, uma.moe's list) open them through the functions here, and import no component
+// to do it.
 import { signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 

@@ -25,8 +25,8 @@ export default async function panels(b) {
     side.beside && side.top <= 2,
     JSON.stringify(side),
   );
-  // the picker's tiles carry no card id: a tile is known by its picture's title, the card's full name (images.ts
-  // cardAv, art or not; names are unique), here the deck card's (its id in the page's data; the result's pictures carry
+  // the picker's tiles carry no card id: a tile is known by its picture's title, the card's full name (ui/Images.tsx
+  // CardAv, art or not; names are unique), here the deck card's (its id in the page's data; the result's pictures carry
   // no title, the chip's says more); null when no tile shows the card
   const cardName = await pg.evaluate(
     (id) => self.__LLP_DATA['data-cards'].find((c) => c.id === id)?.name ?? null,

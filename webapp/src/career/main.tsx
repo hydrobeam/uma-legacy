@@ -167,7 +167,6 @@ const run = createRun({
 // of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the proofs rest on);
 // or, when no career can land every target, which targets nothing can give (no veteran or parent carries their spark;
 // no deck, outfit or event gives them either, or some career would have them)
-/** @returns {Status} */
 function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status {
   const cert = searchCaveat(m.r),
     dropped = chosenDropped?.places === placesKey(places.peek()) ? ` ${chosenDropped.text}` : '';

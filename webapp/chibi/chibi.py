@@ -1,5 +1,5 @@
 """The runner: each uma's mini model running, as one sprite strip per uma (webapp/img/run/{chara}.avif, 18 frames of
-128 px side by side, a 0.6 s loop the page steps through with CSS: webapp/src/images.ts runnerHTML).
+128 px side by side, a 0.6 s loop the page steps through with CSS: webapp/src/ui/Images.tsx Runner).
 
 From the game's own files (the decrypted bundles images.py reads, found by name through the asset index
 game/global/meta.db): her mini body (mbdy{id}_00), hair (mchr{id}_00), the shared mini face (mchr0001_00_face0, her
