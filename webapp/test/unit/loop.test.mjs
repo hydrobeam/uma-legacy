@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test } from 'node:test';
 import { loadData } from '../../src/data.js';
-import { fmtIn } from '../../src/dom.js';
+import { fmtIn } from '../../src/dom.ts';
 import { gameData } from '../../src/data.js';
 import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.js';
 import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';

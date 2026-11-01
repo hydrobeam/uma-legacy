@@ -1,5 +1,5 @@
 // The data build.py embeds in the page, for the chosen era.
-import { $ } from './dom.js';
+import { $ } from './dom.ts';
 import { ERA } from './saved.ts';
 import { must } from './must.ts';
 // the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed 'data-cards', ...); what stays
