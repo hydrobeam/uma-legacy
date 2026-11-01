@@ -11,6 +11,7 @@
 // `max_follower_num` 999: trainers at 1,000 followers can't be followed (left out unless the player asks for full
 // trainers too). Pages count from 0, 100 results each.
 import { careerTables } from './data.js';
+import { must } from './must.ts';
 import type { UmamoeListing } from './umadump.ts';
 
 const KEY_STORE = 'llp:umamoe-key',
@@ -61,8 +62,7 @@ export function targetFactors(groups: readonly number[]): number[][] {
   for (const [factor, group] of Object.entries(careerTables().factors)) {
     if (listed && !listed.has(+factor)) continue;
     if (!of.has(group)) of.set(group, []);
-    // @ts-expect-error the list is set just above: must() in the strict commit
-    of.get(group).push(+factor);
+    must(of.get(group), 'the list set just above').push(+factor);
   }
   return groups.map((g) => of.get(g) || []).filter((f) => f.length);
 }
