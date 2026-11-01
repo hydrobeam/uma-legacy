@@ -1,5 +1,5 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
-import { signal } from '@preact/signals-core';
+import { batch, signal } from '@preact/signals-core';
 import { esc } from './dom.js';
 import { gameData } from './data.js';
 import { settings, setOwned } from './settings.ts';
@@ -41,10 +41,12 @@ export function closePop() {
 // the panel opens from `button`
 /** @param {HTMLElement} button */
 function openFor(button) {
-  closePop();
-  popFor = button;
-  expanded(button, true);
-  opener.value = button;
+  batch(() => {
+    closePop();
+    popFor = button;
+    expanded(button, true);
+    opener.value = button;
+  });
 }
 // after an ownership change in the panel: the el()-drawn result greys what is no longer owned (a drawn one derives it)
 const ownChanged = () => {

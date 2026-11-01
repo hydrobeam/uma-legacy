@@ -150,6 +150,21 @@ export default async function autosearch(b) {
   await settle(pg);
   check('a change mid-search restarts the worker', (await pg.evaluate(() => window.__killed)) > k0);
   check('the restarted search finishes', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)));
+  // the focus on a deck card panel's Owned switch when the card is un-owned: its search draws a new result, which
+  // closes the panel, and the focus goes to the results column (not the page top)
+  await pg.locator('.deck .dc:not(.bor)').first().click();
+  await pg.locator('.cpop input[role=switch]').focus();
+  await pg.keyboard.press('Space');
+  await settle(pg);
+  const refocused = await pg.evaluate(() => ({
+    active: document.activeElement?.id || document.activeElement?.tagName,
+    panelHidden: document.querySelector('.cpop').hidden,
+  }));
+  check(
+    'a result drawn while the focus is in its panel: the focus goes to the results column',
+    refocused.active === 'rcol' && refocused.panelHidden,
+    JSON.stringify(refocused),
+  );
   // a reload shows the kept result as done at once: its line is a change to the region the page loaded with
   await pg.reload();
   await settle(pg);

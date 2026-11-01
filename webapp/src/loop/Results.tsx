@@ -4,7 +4,7 @@
 // longer owned is greyed (`off`) from the settings as they change. Their panels are popover.js's: it reads what it
 // shows from the buttons (data-*), and each button draws its aria-expanded from popover.js's `popOpener`.
 // `ResultsCount` is the Results 1 or 3 switch above them.
-import { untracked } from '@preact/signals';
+import { batch, untracked } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { $, fmtIn } from '../dom.js';
@@ -41,25 +41,25 @@ function useOpener() {
     open = popOpener.value;
   return { ref: self, 'aria-expanded': open !== null && open === self.current };
 }
-// focus inside the old result (an open panel's Owned switch, say) that a redraw removes would fall back to the page top:
-// it goes to the results column instead (set by drawResult, used once the redraw is done)
-let refocus = false;
-/** draws a result (run.ts's `render`): the panel open on the old one closes, the runner becomes one of its umas */
+/** draws a result (run.ts's `render`): the panel open on the old one closes, the runner becomes one of its umas. Focus
+ *  inside the old result (an open panel's Owned switch, say) is noted in the drawn record (`refocus`), so that once the
+ *  redraw is done focus that it removed goes to the results column, not the page top */
 export function drawResult(r: LoopReport, targets: readonly JobTarget[]) {
-  refocus = popHasFocus() || $('results').contains(document.activeElement);
-  closePop();
+  const refocus = popHasFocus() || $('results').contains(document.activeElement);
+  batch(() => {
+    closePop();
+    draw(r, targets, refocus);
+  });
   setRunnerFrom(r.top[0].loop.members.map((m) => m.id)); // the runner while the next search works: one of this loop's umas
-  draw(r, targets);
 }
 
 /** every result drawn, one card each, ranked when there are more than one */
 export function Results() {
   const drawn = loopDrawn.value;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per drawn record (two in a row may each refocus)
   useLayoutEffect(() => {
-    if (!refocus) return;
-    refocus = false;
-    if (!document.activeElement?.closest('#results')) $('rcol').focus({ preventScroll: true });
-  }); // (it renders only when the drawn result changes)
+    if (drawn?.refocus && !document.activeElement?.closest('#results')) $('rcol').focus({ preventScroll: true });
+  }, [drawn]);
   if (!drawn) return null;
   const { r, targets } = drawn,
     many = r.top.length > 1,
@@ -67,7 +67,7 @@ export function Results() {
   return (
     <>
       {r.top.map((t, i) => (
-        <LoopCard key={keys[i]} t={t} n={targets.length} rank={many ? i + 1 : 0} top={r.top[0]} />
+        <LoopCard key={keys[i]} result={t} targetCount={targets.length} rank={many ? i + 1 : 0} top={r.top[0]} />
       ))}
     </>
   );
@@ -94,15 +94,25 @@ export function ResultsCount() {
 }
 // one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. rank: 1-based, 0 when
 // only one result is shown; top: the #1 result (to say what differs from it)
-function LoopCard({ t, n, rank, top }: { t: LoopResult; n: number; rank: number; top: LoopResult }) {
-  const loop = t.loop,
+function LoopCard({
+  result,
+  targetCount,
+  rank,
+  top,
+}: {
+  result: LoopResult;
+  targetCount: number;
+  rank: number;
+  top: LoopResult;
+}) {
+  const loop = result.loop,
     sameLoop = rank > 1 && loopKey(top.loop) === loopKey(loop);
   return (
     <article class={`loop${rank <= 1 ? ' first' : ''}`}>
       <div class="lhead">
         {rank ? <span class="rank">#{rank}</span> : null}
         <span class="odds">
-          <b>{fmtIn(loop.p_all)}</b> runs to land all {n}
+          <b>{fmtIn(loop.p_all)}</b> runs to land all {targetCount}
         </span>
       </div>
       {sameLoop ? (
@@ -110,8 +120,8 @@ function LoopCard({ t, n, rank, top }: { t: LoopResult; n: number; rank: number;
       ) : (
         <Members loop={loop} />
       )}
-      {t.deck && <Decks loop={loop} shared={t.deck} decks={t.decks || null} />}
-      <Actions loop={loop} n={n} />
+      {result.deck && <Decks loop={loop} shared={result.deck} decks={result.decks || null} />}
+      <Actions loop={loop} targetCount={targetCount} />
     </article>
   );
 }
@@ -137,6 +147,7 @@ function Member({ loop, k, pick }: { loop: ResultLoop; k: number; pick: ReturnTy
     face = pick.list[0]?.id ?? null;
   const u = gameData().umas.find((x) => x.id === m.id),
     off = !!u && (umaState(u) === 'out' || (outfitId !== null && fields.outfits.value[outfitId] === false));
+  const opener = useOpener();
   return (
     <div
       class={`mem${off ? ' off' : ''}`}
@@ -145,7 +156,7 @@ function Member({ loop, k, pick }: { loop: ResultLoop; k: number; pick: ReturnTy
       data-outfit-label={outfit}
       data-outfit-note={outfitNote(pick)}
     >
-      <button type="button" class="head memb" aria-haspopup="dialog" {...useOpener()}>
+      <button type="button" class="head memb" aria-haspopup="dialog" {...opener}>
         <UmaAv key={`${m.id}:${face}`} uma={m.id} outfit={face} size={38} />
         <span class="nm">{m.name}</span>
       </button>
@@ -175,6 +186,7 @@ function FaceButton({ loop, k, size }: { loop: ResultLoop; k: number; size: numb
     outfits = loop.outfits[k].outfits,
     one = outfits.length === 1 ? outfits[0] : null,
     name = member.name + (one ? ` ${one.label}` : '');
+  const opener = useOpener();
   return (
     <button
       type="button"
@@ -183,7 +195,7 @@ function FaceButton({ loop, k, size }: { loop: ResultLoop; k: number; size: numb
       title={name}
       aria-label={name}
       aria-haspopup="dialog"
-      {...useOpener()}
+      {...opener}
     >
       <UmaAv key={`${member.id}:${one?.id}`} uma={member.id} outfit={one?.id ?? null} size={size} />
     </button>
@@ -241,6 +253,7 @@ function CardChip({ deck, i }: { deck: ResultDeck; i: number }) {
     full = title.nm + (title.ti ? ` · ${title.ti}` : '') + (tag ? ` (${tag})` : '') + pickNote;
   // greyed while it is marked not owned (a borrowed card is not yours to own)
   const off = !!c && !borrowed && fields.cardsOff.value[c.id] === false;
+  const opener = useOpener();
   return (
     <button
       type="button"
@@ -251,7 +264,7 @@ function CardChip({ deck, i }: { deck: ResultDeck; i: number }) {
       title={full}
       aria-label={full}
       aria-haspopup="dialog"
-      {...useOpener()}
+      {...opener}
     >
       <CardAv c={c || null} size={96} titled={false} />
       <span class="dn">{full}</span>
@@ -446,7 +459,7 @@ const Arrow = () => (
 );
 // the result's dialogs: the odds of each count landed (the solver's, exact over the landed sets, as the career
 // planner's), the race schedule and the affinity
-function Actions({ loop, n }: { loop: ResultLoop; n: number }) {
+function Actions({ loop, targetCount }: { loop: ResultLoop; targetCount: number }) {
   const landed = loop.landed;
   return (
     <div class="row lacts">
@@ -458,7 +471,7 @@ function Actions({ loop, n }: { loop: ResultLoop; n: number }) {
           onClick={() =>
             openOdds({
               title: 'Odds of this loop',
-              n,
+              n: targetCount,
               ex: landed,
               pAll: loop.p_all,
               expected: landed.reduce((sum, p, k) => sum + k * p, 0),

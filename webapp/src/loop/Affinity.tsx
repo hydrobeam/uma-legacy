@@ -49,7 +49,8 @@ function Careers({ loop }: { loop: ResultLoop }) {
   const [at, setAt] = useState(byAffinity[0]);
   const lineage = lineages[at],
     careers = careersFor(lineage.t);
-  // her outfit's portrait, as the result names it (the outfit as the settings are now, as her result card says)
+  // her outfit's portrait, picked as her result card picks it, from the settings as they are when the dialog opens (the
+  // card's is from when the result was drawn: an outfit owned since can differ)
   const face = (i: number, size: number) => {
     const outfit = untracked(() => pickOutfit(members[i].id, loop.outfits[i].outfits).list[0]?.id ?? null);
     return <UmaAv key={`${members[i].id}:${outfit}`} uma={members[i].id} outfit={outfit} size={size} />;

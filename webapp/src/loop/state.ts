@@ -31,6 +31,9 @@ export interface LoopView {
 export interface Drawn {
   r: LoopReport;
   targets: readonly JobTarget[];
+  /** the focus was inside the result it replaces (an open panel's Owned switch, say): focus the redraw removes goes to
+   *  the results column, not the page top */
+  refocus: boolean;
 }
 
 const IDLE: RunState = { searching: false, phase: 'search', startedAt: 0, now: 0 };
@@ -88,7 +91,7 @@ export const settle = (status: Status, result?: ShownResult) =>
     viewRecord.value = freezeView({ status, lastResult: result ?? viewRecord.peek().lastResult });
     runRecord.value = Object.freeze({ ...runRecord.peek(), searching: false, phase: 'search' });
   });
-/** the results column draws `r` (searched for `targets`) */
-export const draw = (r: LoopReport, targets: readonly JobTarget[]) => {
-  drawnRecord.value = Object.freeze({ r, targets });
+/** the results column draws `r` (searched for `targets`); `refocus`: Drawn's */
+export const draw = (r: LoopReport, targets: readonly JobTarget[], refocus: boolean) => {
+  drawnRecord.value = Object.freeze({ r, targets, refocus });
 };

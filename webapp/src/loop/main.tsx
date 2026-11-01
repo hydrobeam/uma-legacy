@@ -136,7 +136,7 @@ function start() {
   initSetup();
   // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
   // the setup the first search starts from); what the result on show no longer owns greys at once (Results.tsx)
-  on([jobSetup], loop.scheduleSearch);
+  on([jobSetup], () => loop.scheduleSearch());
   // phone: the floating status button shows while the results are out of view, and takes you back up to them
   if (window.IntersectionObserver)
     new IntersectionObserver((entries) =>
