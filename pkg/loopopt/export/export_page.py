@@ -15,7 +15,11 @@ parser = argparse.ArgumentParser(
     description="The page's lists for one era -> the era's page.json, and page_raceids.json.", allow_abbrev=False
 )
 parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
-ERA = parser.parse_args().era
+parser.add_argument(
+    "--fallback", action="store_true", help="without master.mdb, replace dates a page.json read from it"
+)
+ARGS = parser.parse_args()
+ERA = ARGS.era
 
 # era.py is not imported: it opens master.mdb, which this export can do without (release dates from upcoming.json)
 R = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -226,6 +230,13 @@ if ERA == "jp":  # GM era: the spark factors Global has, the only ones uma.moe (
     career["moe"] = sorted(map(int, global_factors))
 
 # Phase 5: the files
+# A checkout without game/ would replace release dates read from master.mdb with id order, a tracked change a commit
+# could carry: refuse unless asked.
+OLD = os.path.join(OUT, "page.json")
+if not os.path.exists(MDB) and not ARGS.fallback and os.path.exists(OLD):
+    made_from = json.load(open(OLD))["inputs"]
+    if any(path.startswith("game" + os.sep) for path in made_from):
+        raise SystemExit(f"{OLD} was made from master.mdb, which is missing here: --fallback to replace its dates")
 json.dump(
     {
         "cards": page_cards,

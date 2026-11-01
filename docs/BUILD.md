@@ -133,6 +133,8 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
   release dates; without it, `upcoming.json`'s and id order). `data`, `gametora`, `events` and `pb` end by running it,
   since each writes one of its inputs. `page.json` records the sha256 of every file it was made from, and the page
   build stops ("run ./build.sh data") when one has changed since; a `master.mdb` absent from the checkout is skipped.
+  Without `master.mdb`, the export refuses to replace a `page.json` that was made from it (its dates would fall back to
+  id order in a tracked file); `--fallback` does it anyway.
 - New characters' art comes from `./build.sh images` (and `runners`); without it they show initials.
 
 ## Art
