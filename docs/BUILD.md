@@ -120,7 +120,7 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
   (`AHEAD` in `pkg/loopopt/export/era.py`; an outfit starts with its first gacha, else with its uma; content the game has
   not dated carries a 2050 placeholder and stays out). `pkg/loopopt/data/global/upcoming.json` lists what starts after the build.
   The page hides each entry until its start time and leaves it out of every search (`webapp/src/data.js` `gameData().later`,
-  `engine.js`), so a banner turns on by itself; the precomputed example leaves the same entries out
+  `engine.ts`), so a banner turns on by itself; the precomputed example leaves the same entries out
   (`webapp/example.mjs`). Validation runs on everything in the data, upcoming included.
 - Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): each era's
   `pkg/loopopt/data/<era>/manual.json`, which `events` merges into that era's `card_events.json`. GameTora's files are
@@ -167,7 +167,7 @@ The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, minified to `as
 `localStorage['llp:settings']`, migrated in `settings.js`. Shared page state is two exported objects (`state`: the
 settings, `ui`: what is on screen). No framework.
 
-In `src/`, `main.js` and `career.js` are the two pages' entries; `engine.js` talks to the worker, `job.js` builds the
+In `src/`, `main.js` and `career.js` are the two pages' entries; `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` builds the
 job both pages send, `save.js` decides what a settings change does, and `statestore.js` keeps the solver's work in
 IndexedDB.
 

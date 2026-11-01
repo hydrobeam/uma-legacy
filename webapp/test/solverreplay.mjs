@@ -68,7 +68,7 @@ export async function installSolver(ctx, mode, tally) {
   await ctx.addInitScript(workerStandIn, !record);
   if (mode.replay) ctx.on('page', settleBeforeLeaving);
 }
-// A page stores the worker's kept work 100 ms after a plan (engine.js engineSaveState), and a new worker restores it
+// A page stores the worker's kept work 100 ms after a plan (engine.ts engineSaveState), and a new worker restores it
 // before its first job (`state_in`), so whether a reload comes before or after that save decides the next worker's
 // history. In a replaying group (when recorded and when replayed, alike) a reload or a navigation waits for that save:
 // until no `state_out` is open and no foreground job ended in the last 300 ms, unless a foreground job is under way (the

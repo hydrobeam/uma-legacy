@@ -6,7 +6,7 @@ import { SAVED, ERA } from './settings.js';
 import { PRESET, loadData } from './data.js';
 import { state, ui, writeSaved } from './state.js';
 import { save, doSearch, firstResult, paintRunNote } from './search.js';
-import { warmEngine } from './engine.js';
+import { warmEngine } from './engine.ts';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
 import { initScenario, eraScenario } from './scenario.js';

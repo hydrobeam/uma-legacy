@@ -3,43 +3,45 @@ import { ERA } from './settings.js';
 import { ASSETS, loadFail, gameData } from './data.js';
 import { stateLoad, stateSave, stateDrop } from './statestore.js';
 import { must } from './must.ts';
+import type {
+  FromWorker,
+  PlanProgress,
+  SolverAnswer,
+  SolverJob,
+  SolverReply,
+  StateOutReply,
+  ToWorker,
+} from './solver.ts';
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
-/**
- * The worker's answer to a job: the solver's report, whose shape is the job command's (a deck search's
- * `results.js` LoopReport, a career search's `career.js` CareerSearch, ...), and the solver's time in ms.
- * @typedef {{r: any, ms: number}} SolverAnswer
- *
- * A job for the solver: its command and that command's fields.
- * @typedef {{cmd: string} & Record<string, unknown>} SolverJob
- *
- * A career plan's phase report (career/plan/mod.rs `index_rule`): phase `ph`, step k of n.
- * @typedef {{ph: number, k: number, n: number}} PlanProgress
- *
- * A job posted to the worker and not answered yet, by its id.
- * @typedef {object} PendingJob
- * @property {(answer: SolverAnswer) => void} done called with the solver's answer
- * @property {(message: {r: any}) => void} [interim] a deck search's fast first pass
- * @property {(message: PlanProgress) => void} [progress] a career plan's phase reports
- * @property {boolean} [background] a job an edit lets finish (the career plan's check, one short variant a job; the
- *   state store, `engineSaveState`): `engineBusy` leaves it out, so the worker and what it keeps stay
- */
-/** @type {Worker | null} */
-let worker = null,
-  /** @type {Promise<void> | null} */
-  ready = null,
+/** A job posted to the worker and not answered yet, by its id. */
+interface PendingJob {
+  /** called with the solver's answer */
+  done: (answer: SolverAnswer) => void;
+  /** a deck search's fast first pass */
+  interim: ((answer: SolverAnswer) => void) | undefined;
+  /** a career plan's phase reports */
+  progress: ((progress: PlanProgress) => void) | undefined;
+  /** a job an edit lets finish (the career plan's check, one short variant a job; the state store, `engineSaveState`):
+   * `engineBusy` leaves it out, so the worker and what it keeps stay */
+  background: boolean;
+}
+/** what `startEngine` resolves or rejects as the worker answers its `init` */
+interface Start {
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
+let worker: Worker | null = null,
+  ready: Promise<void> | null = null,
   lastJobId = 0;
-/** @type {Map<number, PendingJob>} */
-const pending = new Map();
+const pending = new Map<number, PendingJob>();
 // The wasm (ASSETS.wasm, fingerprinted next to the page) is fetched and compiled once here and the compiled module handed to every
 // worker, so a restart skips fetching and compiling it.
-/** @type {Promise<WebAssembly.Module> | null} */
-let wasmModule = null,
+let wasmModule: Promise<WebAssembly.Module> | null = null,
   engineGen = 0; // engineGen: a kill during the compile wait cancels that start
-const eraKey = () => (ERA === 'gm' ? 'gm' : 'global');
+const eraKey = (): 'gm' | 'global' => (ERA === 'gm' ? 'gm' : 'global');
 // the solver's data for the active era (its own file, preloaded by the page head)
-/** @type {Promise<string> | null} */
-let engineData = null;
-function eraEngineData() {
+let engineData: Promise<string> | null = null;
+function eraEngineData(): Promise<string> {
   if (!engineData) {
     engineData = fetch(ASSETS.engine[eraKey()])
       .then((response) => {
@@ -57,8 +59,7 @@ function eraEngineData() {
 }
 // Compiled as it streams in, so Chrome keeps the optimised code for the next visit (it caches only streaming compiles).
 // A failed fetch, a response that is not ok or not served as application/wasm, and a compile error all reject.
-/** @returns {Promise<WebAssembly.Module>} */
-function compiled() {
+function compiled(): Promise<WebAssembly.Module> {
   if (!wasmModule)
     wasmModule = WebAssembly.compileStreaming(fetch(ASSETS.wasm)).catch(() => {
       throw new Error(loadFail('the solver'));
@@ -74,12 +75,10 @@ export const engineBusy = () => waiting > 0 || [...pending.values()].some((job) 
 // foreground jobs waiting for the worker to start and restore (`run`): busy too, and a kill drops them
 let waiting = 0;
 // the next kill (`killEngine`): a job in flight then never answers, so a background job's caller waits on this too
-/** @type {{promise: Promise<unknown>, resolve: (value?: unknown) => void} | null} */
-let nextKillAt = null;
-export function nextKill() {
+let nextKillAt: { promise: Promise<unknown>; resolve: (value?: unknown) => void } | null = null;
+export function nextKill(): Promise<unknown> {
   if (!nextKillAt) {
-    /** @type {(value?: unknown) => void} */
-    let resolve = () => {
+    let resolve: (value?: unknown) => void = () => {
       // replaced by the promise's resolve below, before anyone can call it
     };
     const promise = new Promise((r) => {
@@ -111,7 +110,7 @@ export function restartEngine() {
   warmEngine();
 }
 // A message from the worker. `start`: the start under way ({resolve, reject} of its promise).
-function onWorkerMessage(message, start) {
+function onWorkerMessage(message: FromWorker, start: Start) {
   if (message.type === 'ready') start.resolve();
   else if (message.type === 'error') {
     if (message.id === undefined) {
@@ -132,7 +131,7 @@ function onWorkerMessage(message, start) {
     job?.done(message);
   }
 }
-function startEngine() {
+function startEngine(): Promise<void> {
   if (ready) return ready;
   const gen = engineGen;
   // the worker starts at once, so its script loads while the wasm compiles and the era's data arrives; it is told to
@@ -146,12 +145,12 @@ function startEngine() {
     }
     const starting = worker,
       start = { resolve, reject };
-    starting.onmessage = (e) => onWorkerMessage(e.data, start);
+    starting.onmessage = (e: MessageEvent<FromWorker>) => onWorkerMessage(e.data, start);
     starting.onerror = (e) => reject(new Error(`The solver failed to start: ${e.message || 'unknown error'}`));
     Promise.all([compiled(), eraEngineData()]).then(([module, data]) => {
       if (gen !== engineGen)
         reject(new Error('superseded')); // killed meanwhile (and this worker with it)
-      else starting.postMessage({ type: 'init', module, data });
+      else starting.postMessage({ type: 'init', module, data } satisfies ToWorker);
     }, reject);
   });
   ready = ready.then(() =>
@@ -175,17 +174,26 @@ let persistOn = false,
   saveTimer = 0;
 // (also the key a saved Use this choice carries, career.js `chosenSetup`: a career id another solver or data release
 // searched is dropped)
-export const stateKey = () => `${ASSETS.wasm}|${ASSETS.engine[eraKey()]}`;
+export const stateKey = (): string => `${ASSETS.wasm}|${ASSETS.engine[eraKey()]}`;
 export function enginePersist() {
   persistOn = true;
 }
-// posts a job to the running worker as it is (no gate) and resolves with its answer
-/** @param {SolverJob} job @param {PendingJob['interim']} [interim] @param {PendingJob['progress']} [progress] @returns {Promise<SolverAnswer>} */
-function post(job, interim, progress, background = false) {
+// posts a job to the running worker as it is (no gate) and resolves with its answer; R: the report the job's command
+// makes (the worker's JSON is taken to be it: the caller chose the command)
+function post<R extends SolverReply = SolverReply>(
+  job: SolverJob,
+  interim?: (answer: SolverAnswer<R>) => void,
+  progress?: (progress: PlanProgress) => void,
+  background = false,
+): Promise<SolverAnswer<R>> {
   return new Promise((done) => {
     const id = ++lastJobId;
-    pending.set(id, { done, interim, progress, background });
-    must(worker, 'a job is posted once startEngine has made the worker').postMessage({ type: 'run', id, job });
+    pending.set(id, { done, interim, progress, background } as PendingJob);
+    must(worker, 'a job is posted once startEngine has made the worker').postMessage({
+      type: 'run',
+      id,
+      job,
+    } satisfies ToWorker);
   });
 }
 async function restore() {
@@ -215,7 +223,7 @@ export function engineSaveState() {
     }
     try {
       await ready;
-      const answer = await post({ cmd: 'state_out' }, undefined, undefined, true);
+      const answer = await post<StateOutReply>({ cmd: 'state_out' }, undefined, undefined, true);
       if (answer.r?.state) stateSave(stateKey(), answer.r.state);
     } catch {
       /* the worker went: nothing to save */
@@ -224,7 +232,7 @@ export function engineSaveState() {
 }
 // what has not started yet (data.js gameData().later) is left out of every search (a roll's plan job, `next.roll`, alike: the
 // solver finds the plan's kept state by the job as it ran)
-const gate = (job) =>
+const gate = (job: SolverJob): SolverJob =>
   !['deck', 'career'].includes(job.cmd)
     ? job
     : {
@@ -235,14 +243,13 @@ const gate = (job) =>
       };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: career/plan/mod.rs `index_rule`) while it runs
-/**
- * @param {SolverJob} job
- * @param {PendingJob['interim']} [interim]
- * @param {PendingJob['progress']} [progress]
- * @param {boolean} [background]  `PendingJob['background']`
- * @returns {Promise<SolverAnswer>}
- */
-export function run(job, interim, progress, background = false) {
+// R: the report the job's command makes (results.js LoopReport for `deck`, career.js CareerSearch for `career`)
+export function run<R extends SolverReply = SolverReply>(
+  job: SolverJob,
+  interim?: (answer: SolverAnswer<R>) => void,
+  progress?: (progress: PlanProgress) => void,
+  background = false,
+): Promise<SolverAnswer<R>> {
   const gen = engineGen;
   if (!background) waiting++;
   const started = () => {

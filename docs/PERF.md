@@ -94,7 +94,7 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
 ## In the page
 
 The page compiles the wasm once with `WebAssembly.compileStreaming(fetch(url))`, keeps the promise, and posts the
-`WebAssembly.Module` to each restarted worker (`webapp/src/engine.js`). Streaming enables Chrome's
+`WebAssembly.Module` to each restarted worker (`webapp/src/engine.ts`). Streaming enables Chrome's
 [compiled-code cache](https://v8.dev/blog/wasm-code-caching). Worker ready was about 100-190 ms,
 against 180-490 ms when each worker decoded a base64 copy (2026-10-10).
 Optimised wasm ran within 3% of native when measured (2026-10-10); code V8 has not optimised yet runs

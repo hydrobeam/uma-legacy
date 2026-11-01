@@ -8,7 +8,7 @@
 import { $, $dialog, el, fmtIn } from '../dom.js';
 import { careerTables } from '../data.js';
 import { state } from '../state.js';
-import { restartEngine, engineSaveState } from '../engine.js';
+import { restartEngine, engineSaveState } from '../engine.ts';
 import { umaAv, runnerHTML } from '../images.js';
 import { pct } from '../odds.js';
 import { vets, plan, changed, newVet, umaName, openWins } from '../vets.js';

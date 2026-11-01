@@ -1,11 +1,11 @@
-// ---------- search: the planner's deck search, its scheduling and its status line (the solver's worker: engine.js) ----------
+// ---------- search: the planner's deck search, its scheduling and its status line (the solver's worker: engine.ts) ----------
 // The search runs by itself: any change to a setting schedules one (after a short pause, so a run of clicks is one
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { runnerHTML } from './images.js';
 import { ERA } from './settings.js';
 import { ASSETS, EXAMPLE, gameData } from './data.js';
-import { run, restartEngine } from './engine.js';
+import { run, restartEngine } from './engine.ts';
 import { save, onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { state, ui, DEFAULTS } from './state.js';
@@ -14,6 +14,7 @@ import { renderDeck } from './results.js';
 import { markOwn } from './popover.js';
 import { loadExample } from './presets.js';
 import { must } from './must.ts';
+/** The solver's answer to a deck job, a loop search's report. @typedef {import('./solver.ts').SolverAnswer<import('./results.js').LoopReport>} DeckAnswer */
 // The search's state. searching: a search runs or is about to (the status line shows it); searchT0: when it started
 // (performance.now); searchTick: the timer redrawing the status line each second; pauseTimer: the pause before an
 // automatic search; searchId: the newest search's number (an older one's answer is dropped); busy: a search is running
@@ -314,7 +315,7 @@ export async function doSearch(auto = false) {
     const hasLoops = (r) => !r.error && r.top && r.top.length;
     phase = 'search';
     busy = true;
-    const answer = await run(job, (interim) => {
+    const answer = await run(job, (/** @type {DeckAnswer} */ interim) => {
       if (thisSearch !== searchId || !hasLoops(interim.r)) return;
       draw(interim.r);
       phase = 'check';

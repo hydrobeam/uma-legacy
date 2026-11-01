@@ -21,7 +21,7 @@ import {
   engineSaveState,
   nextKill,
   stateKey,
-} from './engine.js';
+} from './engine.ts';
 import { answerLoad, answerSave } from './statestore.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
@@ -567,7 +567,7 @@ export function buildJob() {
 // pair before it is shown; listed with the plan's `builder_careers` above 1, its default 1, which the page keeps: none by
 // default) or the pair search's recommendation (`pair_search`). It is sent only while it applies (`chosenApplies`): its
 // places, the setup it was chosen on (`chosenSetup`: the job's settings, its targets and cards among them, its two
-// parents' records and the solver's and data's fingerprints, engine.js `stateKey`) and its parents' places in the veteran list (the id names them by index) all as they were. One
+// parents' records and the solver's and data's fingerprints, engine.ts `stateKey`) and its parents' places in the veteran list (the id names them by index) all as they were. One
 // saved before a reload that no longer applies is dropped, and the search's status says so (`chosenDropped`)
 /** @type {(job: CareerJob) => string} */
 export const chosenSetup = (job) =>
@@ -697,9 +697,12 @@ function oneOutfit(t) {
   t.anyOutfit = f.any;
   t.outfitNote = outfitNote(f);
 }
-/** @type {(job: CareerJob, progress?: (p: import('./engine.js').PlanProgress) => void, background?: boolean) => Promise<{r: CareerSearch, ms: number}>} */
+/** @type {(job: CareerJob, progress?: (p: import('./solver.ts').PlanProgress) => void, background?: boolean) => Promise<{r: CareerSearch, ms: number}>} */
 export const runJob = async (job, progress, background = false) => {
-  const m = await engineRun(job, undefined, progress, background),
+  // (a career job: its report is a CareerSearch)
+  const m = /** @type {import('./solver.ts').SolverAnswer<CareerSearch>} */ (
+      await engineRun(job, undefined, progress, background)
+    ),
     r = m.r || {};
   for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
   // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
