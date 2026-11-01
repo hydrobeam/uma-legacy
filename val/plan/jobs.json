@@ -50,5 +50,13 @@
 [
 "global",
 "p11_noagnes"
+],
+[
+"global",
+"p16_borrow_check"
+],
+[
+"global",
+"p16_borrow_never"
 ]
 ]

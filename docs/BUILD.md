@@ -181,8 +181,8 @@ IndexedDB.
   `webapp/test-results/report.json`. `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier
   (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its one-run answer; about 15 s): run it
   after each page change, and the full suite before a release.
-- **Validation:** `./build.sh val TAG` runs the 25 reference jobs in `val/jobs.json` (21 deck jobs, shared and per-uma
-  decks, and 4 career jobs; every job leaves out the R cards that are not pals, as the page does) and compares them with `val/ref__*` / `val/refpu__*` twice, and fails if either comparison does; `valq TAG` skips the
+- **Validation:** `./build.sh val TAG` runs the 26 reference jobs in `val/jobs.json` (22 deck jobs, shared and per-uma
+  decks, one of them in Grand Masters, and 4 career jobs; every job leaves out the R cards that are not pals, as the page does) and compares them with `val/ref__*` / `val/refpu__*` twice, and fails if either comparison does; `valq TAG` skips the
   three slow jobs in `val/slow.json`. `val/cmp2.py` says what moved: P(all) rounded to 14 decimals, rank by rank, and
   each rank that names another deck or career, which passes only as a confirmed tie (P(all) and P(all but one) equal
   to the bit); `val/same.py TAG` then compares the whole outputs (every field but the timings: the byte identity speed
@@ -190,9 +190,13 @@ IndexedDB.
   purpose, check the diff and copy the new outputs over the references in the same commit; when every value should
   scale by one factor, compare with `val/cmp_ratio.py`. Solver process failures and comparison failures exit nonzero. `uv run val/test_validation.py` checks these failure
   paths with synthetic outputs and a stub solver, without running any searches.
-- **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the ten plan jobs in
-  `val/plan/` and compares each whole output with `val/plan/ref__*.out`; `val/mono.py BIN` checks that adding a veteran
-  never raises the planner's estimate; `val/capaudit.py BIN` checks the exact caps.
+- **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the plan jobs in
+  `val/plan/jobs.json` and compares each whole output with `val/plan/ref__*.out`. Two of them take the page's own
+  settings: `p16_borrow_check` asks for the robustness check and the pair search (`next.robust: "all"`, every
+  variant in one job, where the page sends `"next"`, one variant per job), `p16_borrow_never` sets `borrowed_parent:
+  "never"`. An output without a reference fails (planval and `cmp2.py`) until its reference is taken. `val/mono.py BIN`
+  checks that adding a veteran never raises the planner's estimate (on every plan job but the check's, whose plan
+  `p16_borrow` already is); `val/capaudit.py BIN` checks the exact caps.
 - **Policy simulator:** `uv run val/simval.py pkg/loopopt/target/release/loopopt TAG` runs the five short simulator
   jobs in `val/sim/jobs.json` (each policy on `val/sim/pools/pool4.json`, about 6 s) and compares each whole output,
   wall clocks aside, with `val/sim/ref__*.out` (`val/same.py TAG --sim`).

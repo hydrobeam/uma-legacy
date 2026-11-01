@@ -152,6 +152,12 @@ def load(p):
         return None
 
 
+# an output without a reference (a new job) compares with nothing: it fails until its reference is taken
+for candidate_path in sorted(glob.glob(VALIDATION_DIR + tag + "__*.out")):
+    name = candidate_path.split(tag + "__")[1]
+    if not os.path.exists(VALIDATION_DIR + f"{ref}__{name}"):
+        print(f"{name}: NO REFERENCE ({ref}__{name}): take it once the output is checked")
+        mismatches += 1
 for reference_path in sorted(glob.glob(VALIDATION_DIR + ref + "__*.out")):
     name = reference_path.split(ref + "__")[1]
     candidate_path = VALIDATION_DIR + f"{tag}__{name}"

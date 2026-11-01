@@ -120,6 +120,12 @@ class ValidationExitTests(unittest.TestCase):
                 self.assertEqual(comparison.returncode != 0, fails, comparison.stdout)
                 self.assertIn(says, comparison.stdout)
 
+    def test_comparison_fails_an_output_without_reference(self):
+        self.write(self.val / "trial__new.out", self.output)
+        comparison = self.compare(self.output)
+        self.assertNotEqual(comparison.returncode, 0)
+        self.assertIn("new.out: NO REFERENCE", comparison.stdout)
+
     def test_comparison_fails_without_comparisons(self):
         self.assertNotEqual(self.run_script("cmp2.py", "trial", "ref").returncode, 0)
 

@@ -41,9 +41,8 @@ Then the completeness gate: a job fails where its plan, or its proxy_check run, 
 so its savings are lower bounds, not the model's, and the checks above read them. Where an output carries the plan's
 robustness check (`next.robust`, whose variants and pair search score in their own runs), it also fails on the check's
 `robust.scoring_complete` false or missing, or, where it ran a pair search, that search's `pairs.scoring_complete` not
-exactly true. The val/plan jobs do
-not ask for the check today, so that part reads nothing on them. It fails on any such output; none of the jobs has one
-today.
+exactly true. Of the val/plan jobs, p16_borrow_check asks for the check and its pair search (`next.robust` "all",
+`next.pair_search`); its proxy run leaves both out, as they change no pick, V or row.
 
 Base rows only: a looped row (her career on two full veterans) is priced against her unconstrained proxy, which is her
 base row's career; rows marked `looped` are dropped, or, from a solver that does not mark them, every row but each
@@ -309,7 +308,9 @@ def builders_searched_exactly(job):
 def proxy_gate(job_entry, job_dir):
     era, name = job_entry
     job = json.loads(json.dumps(job_files[name]))
-    job["next"] = {**job.get("next", {}), "proxy_check": True}
+    # (the robustness check and its pair search change no pick, V or row: left out of the all-exact run)
+    plan = {key: value for key, value in job.get("next", {}).items() if key not in ("robust", "pair_search")}
+    job["next"] = {**plan, "proxy_check": True}
     path = os.path.join(job_dir, name + ".json")
     json.dump(job, open(path, "w"))
     result = subprocess.run(

@@ -27,7 +27,8 @@ plan), flagged QUICK Y OFF where it differs from the fixed-fit saving by more th
 picks, each candidate's (lam, phi, pinf, p0) under both fits, and whether the builder pair her pinf comes from switched
 (where the plan reports `pinf_builders`: {chara: [first, second]}).
 
-usage: mono.py BIN [JOB ...] [-j N] [-n ROLLS]   (default: every job in val/plan/jobs.json; -j jobs at a time, default
+usage: mono.py BIN [JOB ...] [-j N] [-n ROLLS]   (default: every job in val/plan/jobs.json but those asking for the
+  robustness check, `checks_only`; -j jobs at a time, default
   2; -n rolled veterans per pool, default 3, 0 for the last-veteran check alone)
   writes its job files and outputs to a temporary folder (printed at the end); exits 1 when a V rises by more than 1e-9 relative under a fixed fit, or a plan or roll
   fails (above)"""
@@ -148,7 +149,19 @@ arguments = parser.parse_intermixed_args()
 parallelism, roll_count = arguments.parallelism, arguments.roll_count
 binary = os.path.abspath(arguments.binary)
 want = set(arguments.jobs)
-jobs = [(era, name) for era, name in json.load(open(os.path.join(PLAN_DIR, "jobs.json"))) if not want or name in want]
+
+
+def checks_only(name):
+    """a job that asks for the robustness check (`next.robust`): the plan of a pool another job plans, which the check
+    leaves as it is, so the default list leaves it out"""
+    return "robust" in (json.load(open(os.path.join(PLAN_DIR, name + ".json"))).get("next") or {})
+
+
+jobs = [
+    (era, name)
+    for era, name in json.load(open(os.path.join(PLAN_DIR, "jobs.json")))
+    if name in want or (not want and not checks_only(name))
+]
 temporary_dir = tempfile.mkdtemp(prefix="mono_")
 
 
