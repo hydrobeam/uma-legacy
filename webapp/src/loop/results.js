@@ -1,7 +1,6 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
 import { $, esc, fmtIn } from '../dom.js';
 import { gameData } from '../data.js';
-import { ui } from '../state.js';
 import { umaAv, cardAv, skillIcon, setRunnerFrom } from '../images.js';
 import { cardTitle, borLast, chainEndNote } from '../cards.js';
 import { closePop, markOwn, popHasFocus } from '../popover.js';
@@ -374,7 +373,6 @@ export function renderDeck(res, meta) {
     refocus = popHasFocus() || box.contains(document.activeElement);
   closePop();
   box.textContent = '';
-  ui.headline = fmtIn(res.top[0].loop.p_all); // only results with loops reach this (search.js keeps errors off the page)
   setRunnerFrom(res.top[0].loop.members.map((m) => m.id)); // the runner while the next search works: one of this loop's umas
   const many = res.top.length > 1;
   res.top.forEach((t, i) => {

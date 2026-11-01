@@ -1,0 +1,32 @@
+{
+  "defaults": {
+    "job": "{\"cmd\":\"deck\",\"targets\":[{\"group\":20159,\"guaranteed\":0},{\"group\":20049,\"guaranteed\":2},{\"group\":20166,\"guaranteed\":0},{\"group\":20046,\"guaranteed\":2},{\"group\":20161,\"guaranteed\":0},{\"group\":21010,\"guaranteed\":0},{\"group\":20165,\"guaranteed\":0},{\"group\":20203,\"guaranteed\":0}],\"star_dist\":[0.5,0.45,0.05],\"exclude\":[],\"exclude_outfits\":[],\"extra\":[[1003,20190,1],[1078,20165,1]],\"owned_cards\":[],\"borrow\":true,\"top_decks\":1,\"per_uma\":true,\"scenario\":\"unity\",\"exclude_cards\":[30003]}"
+  },
+  "partlyOwned": {
+    "job": "{\"cmd\":\"deck\",\"targets\":[{\"group\":20049,\"guaranteed\":0},{\"group\":20159,\"guaranteed\":0},{\"group\":20166,\"guaranteed\":0}],\"star_dist\":[0.2,0.7,0.1],\"exclude\":[1002,1005],\"exclude_outfits\":[100101,100501,100502],\"extra\":[[1003,20190,1],[1078,20165,1]],\"owned_cards\":[30001,30003,30004,30005],\"borrow\":true,\"top_decks\":3,\"per_uma\":false,\"scenario\":\"gc\",\"exclude_cards\":[30003]}"
+  },
+  "noCards": {
+    "job": "{\"cmd\":\"deck\",\"targets\":[{\"group\":20049,\"guaranteed\":2},{\"group\":20046,\"guaranteed\":2}],\"star_dist\":[0.5,0.45,0.05],\"exclude\":[],\"exclude_outfits\":[],\"extra\":[[1003,20190,1],[1078,20165,1]],\"owned_cards\":[0],\"borrow\":true,\"top_decks\":1,\"per_uma\":true,\"scenario\":\"unity\",\"exclude_cards\":[30003]}"
+  },
+  "grandMasters": {
+    "job": "{\"cmd\":\"deck\",\"targets\":[{\"group\":20049,\"guaranteed\":0}],\"star_dist\":[0.2,0.7,0.1],\"exclude\":[],\"exclude_outfits\":[],\"extra\":[[1003,20190,1],[1078,20165,1]],\"owned_cards\":[],\"borrow\":true,\"top_decks\":1,\"per_uma\":true,\"scenario\":\"grandmasters\",\"exclude_cards\":[30003]}"
+  },
+  "noTargets": {
+    "blocked": {
+      "kind": "empty",
+      "text": "Add a target skill to search.",
+      "act": "Load the 8/8 example targets",
+      "click": "t-preset",
+      "run": true
+    }
+  },
+  "twoUmas": {
+    "blocked": {
+      "kind": "empty",
+      "text": "Mark at least 3 umas as owned to search (2 owned now).",
+      "act": "Mark all umas owned",
+      "click": "r-all",
+      "run": false
+    }
+  }
+}

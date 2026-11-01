@@ -277,17 +277,17 @@ if (knownCycles.length)
 // logic module's call into one could read it for it.
 // The rule's other logic (frontend.md: run machines, uma.moe sync, io) lives today inside modules that are views too, so
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
-// the review of step 4 traced every such read): loop/search.js (the loop page's run machine with its status line, split into
-// a run record and a machine that takes values), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
+// the review of step 4 traced every such read): loop/run.ts (the loop page's run machine: it changes loop/state.ts
+// through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
 // read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
 // (the career run machine, split in step 8).
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
-  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll']],
-  ['stores', ['settings', 'state', 'vets']],
+  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job']],
+  ['stores', ['settings', 'loop/state', 'vets']],
   ['shared', null], // every module not named elsewhere
-  ['page:loop', ['loop/main', 'loop/search', 'loop/results', 'loop/io', 'loop/affinity']],
+  ['page:loop', ['loop/main', 'loop/run', 'loop/runnote', 'loop/results', 'loop/io', 'loop/affinity']],
   ['page:career', ['career', 'career/analysis', 'career/options']],
 ];
 {
