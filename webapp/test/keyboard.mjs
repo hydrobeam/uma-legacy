@@ -27,7 +27,11 @@ const clickOpens = async (pg, button, id) => {
 };
 
 // Dialog (modal): Enter on its button opens it with the focus inside; Escape closes it and the focus returns to the
-// button (`back`: the element it returns to, when another stands in for the button)
+// button (`back`: the element it returns to, when another stands in for the button). For a dialog opened by
+// showModal() both of the last two are the browser's: Escape fails only when the dialog is opened some other way (Odds
+// opened by show() failed it), and the focus returns to the button with the page's own close handler removed (Odds,
+// Deck and the trainee's popup passed without theirs in Chromium), so that clause fails when a page handler moves the
+// focus away (Deck's close focusing another button failed it), not when one is missing.
 async function dialogKeys(pg, name, button, id, back = button) {
   await button.focus();
   await pg.keyboard.press('Enter');
@@ -142,7 +146,9 @@ export default async function keyboard(b) {
       )),
   );
   // Tooltip (gmtip.js): a control with a title shows it as the game's balloon on keyboard focus, and hides it when the
-  // focus leaves it (APG: Escape would hide it too; the page does not)
+  // focus leaves it (APG: Escape would hide it too; the page does not). The focus leaves for nothing (a blur): moved to
+  // another titled control, the balloon would show that one's title, and a check for this title gone would pass with
+  // the hiding removed
   const auto = pg.getByRole('switch', { name: 'Auto-search' });
   await auto.focus();
   await pg.keyboard.press('Shift+Tab'); // (out and back by the keyboard: a focus by script may not be focus-visible)
@@ -153,14 +159,10 @@ export default async function keyboard(b) {
     return `${a?.id} fv ${a?.matches(':focus-visible')} tip ${!!t} hidden ${t?.hidden} "${t?.textContent}"`;
   });
   const tip = / tip true hidden false "Automatically search/.test(tipSeen);
-  await pg.keyboard.press('Shift+Tab');
+  await pg.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
   check(
     'keyboard, tooltip: keyboard focus on a titled control shows its balloon; moving the focus away hides it',
-    tip &&
-      (await pg.evaluate(() => {
-        const t = document.querySelector('.gmtip'); // (hidden, or showing the next control's title)
-        return t.hidden || !/Automatically search/.test(t.textContent);
-      })),
+    tip && (await pg.evaluate(() => document.querySelector('.gmtip').hidden)),
     tipSeen,
   );
   // Auto-search off first, so the settings changed below send no job (the status line asks for a Search instead)
