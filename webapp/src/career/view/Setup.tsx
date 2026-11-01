@@ -7,7 +7,6 @@ import { ERA } from '../../saved.ts';
 import { RANKS } from '../../data.js';
 import { settings, setBorrowPar } from '../../settings.ts';
 import { scenarioOf } from '../../scenario.js';
-import { vets } from '../../veterans/store.ts';
 import { must } from '../../must.ts';
 import { BORROW_CHOICES, borrowChoice } from '../job.js';
 
@@ -57,11 +56,13 @@ const foldChosen = signal<boolean | null>(
     }
   })(),
 );
-let sawVets = false; // (the first veterans fold it, and it stays folded)
-const folded = computed(() => {
-  if (vets.value.length) sawVets = true;
-  return foldChosen.value ?? sawVets;
-});
+// the first veterans fold it, and it stays folded (a latch: the entry sets it when veterans arrive, `sawVeterans`)
+const sawVets = signal(false);
+const folded = computed(() => foldChosen.value ?? sawVets.value);
+/** veterans are here: the panel folds until a fold is chosen (and stays folded should they go) */
+export function sawVeterans() {
+  sawVets.value = true;
+}
 /** the ribbon toggles it (all of it, its edges included); folded, the whole bar (its summary included) */
 export function initFold() {
   const bar = must(document.querySelector('.rbbar'), 'the career page has the setup bar');

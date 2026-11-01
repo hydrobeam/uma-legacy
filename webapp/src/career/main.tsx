@@ -90,7 +90,7 @@ import { NodeDialog } from './view/NodeDialog.tsx';
 import { ParentPicker } from './view/ParentPicker.tsx';
 import { DeckDialog } from './view/Sections.tsx';
 import { SkillDetails } from './view/SkillDetails.tsx';
-import { BorrowChoice, SetupSummary, initFold } from './view/Setup.tsx';
+import { BorrowChoice, SetupSummary, initFold, sawVeterans } from './view/Setup.tsx';
 import { nodeOpen, openNode, pickerFor } from './view/dialogs.ts';
 import { Results, SavesPopup } from './view/Options.tsx';
 import { PoolBody, PoolTabs, initVSort } from './view/Pool.tsx';
@@ -251,6 +251,11 @@ function initSettings() {
   enginePersist(); // the solver's kept work survives a page reload
   initSetup();
   initFold();
+  // the first veterans fold the setup panel (until a fold is chosen)
+  if (vets.peek().length) sawVeterans();
+  on([vets], (list) => {
+    if (list.length) sawVeterans();
+  });
   mount('set-sum', <SetupSummary />, 'The setup summary');
   // a change of setup (targets, umas, cards, scenario, rank, Borrowed parent): the tree shows the new targets, and the
   // search runs again

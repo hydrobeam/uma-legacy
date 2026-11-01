@@ -83,7 +83,7 @@ function Face({ nd, at, size, label, change }: FaceProps) {
     </button>
   );
 }
-/** her G1 wins: the button that edits them (veterans/pickers.js winsBtn), or (a listed veteran) their count */
+/** her G1 wins: the button that opens their window (veterans/pickers.js openWins), or (a listed veteran) their count */
 interface WinsProps {
   nd: NodeRecord;
   /** where her edits go */
