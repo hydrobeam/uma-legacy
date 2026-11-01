@@ -794,7 +794,7 @@ export default async function career(b) {
       `${name}: she runs some, and no scrolling`,
       nRun > 0 &&
         (await pg.evaluate(() => {
-          const d = document.querySelector('#sched-dlg .dlg');
+          const d = document.getElementById('sched-body');
           return d.scrollHeight <= d.clientHeight + 1;
         })),
       `runs ${nRun}`,
@@ -1373,8 +1373,8 @@ export default async function career(b) {
     .catch(() => '');
   await pg.click('#udpane-insp [aria-label="Her sparks"] [data-spark="blue"] [data-bar]');
   await dialog(pg, 'col-dlg');
-  const blueOpts = await pg.$$eval('#col-dlg .colgrid .vskb', (l) => l.map((b) => b.textContent));
-  await pg.locator('#col-dlg .spstar').nth(2).click();
+  const blueOpts = await pg.$$eval('#col-dlg [data-bar]', (l) => l.map((b) => b.textContent));
+  await pg.locator('#col-dlg').getByRole('button', { name: '3 stars', exact: true }).click();
   {
     const name = 'career: … a roll draws her blue spark; its bar opens a picker of the five stats and the stars';
     check(
@@ -1462,7 +1462,7 @@ export default async function career(b) {
   // an n/n veteran: Compare says step 1 of the goal is done (no odds verdict)
   for (let i = 0; i < 12; i++) {
     await pg.locator('#simulation [data-k$=":add"]').click();
-    const b = pg.locator('#add-pop .addsk').first();
+    const b = pg.locator('#add-pop button').first();
     if (!(await b.count())) {
       await pg.locator('#simulation [data-k$=":add"]').click();
       break;
@@ -1513,7 +1513,7 @@ export default async function career(b) {
     window.__seq = [];
   });
   await pg.fill('#pick-filter', 'Agnes Digital');
-  await pg.locator('#pick-list .upick:visible').first().click();
+  await pg.locator('#pick-list button:visible').first().click();
   await done();
   await pg.waitForSelector('#sim-compare:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup)
   const fixedRun = await oneAnswer('Agnes Digital/');

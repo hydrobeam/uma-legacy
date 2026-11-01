@@ -286,10 +286,10 @@ test('the uma picker closed draws no list; a G1 wins window whose draft is repla
   render(h(VetEditors, null), editors);
   openUmaPicker('Which uma?', () => undefined);
   await settle();
-  assert.ok(byId(editors, 'pick-list').querySelectorAll('button.upick').length > 0, 'open: every uma');
+  assert.ok(within(byId(editors, 'pick-list')).getAllByRole('button').length > 0, 'open: every uma');
   umaPickClosed();
   await settle();
-  assert.equal(byId(editors, 'pick-list')?.querySelectorAll('button.upick').length ?? 0, 0, 'closed: none');
+  assert.equal(byId(editors, 'pick-list'), null, 'closed: none');
   vs.setDraft({ ...node(1001), borrowed: false, parents: [node(1002), node(1003)] });
   let back = 0;
   openWins(vs.draftRef(), 'her', { onClose: () => back++ });

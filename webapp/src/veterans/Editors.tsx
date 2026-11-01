@@ -2,7 +2,9 @@
 // The uma picker, the skills prompt, the G1 wins window and the colour picker: one root (#vet-editors, `VetEditors`),
 // their dialogs in that order, so a picker closing as the prompt opens gives the focus up first. The "+" list
 // (`AddList`) draws into #add-pop, which it places by the "+" that opened it, inside that "+"'s open dialog (the page
-// around a modal dialog is inert). What each shows, and its openers, are pickers.ts's and sparks.ts's.
+// around a modal dialog is inert). What each shows, and its openers, are pickers.ts's and sparks.ts's. The checks find
+// an uma's button as a button in #pick-list (or #vp-umas), a choice of the colour picker as its [data-bar] in #col-dlg,
+// its stars by their names ("3 stars"), the "+" list's skills as the buttons in #add-pop.
 import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact';
 import type { Ref } from 'preact';
@@ -36,7 +38,8 @@ import {
 } from './pickers.ts';
 import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.ts';
 import { Button } from '../ui/Button.tsx';
-import { cx } from 'tailwind-variants/lite';
+import { field } from '../ui/Field.ts';
+import { SPARK_CELL, SPARK_NAME, sparkBar } from '../ui/Sparks.tsx';
 
 /** the editors' dialogs (their requests read here, so one render opens one and closes another in this order), each
  *  in a render guard of its own: one that throws is gone, says so on the status line, and gives up its request (a
@@ -86,17 +89,21 @@ function PickBody({ only, filterRef }: { only: UmaPick['only']; filterRef: Ref<H
         ref={filterRef}
         type="search"
         id="pick-filter"
+        class={field.tap}
         placeholder="Filter by name"
         aria-label="Filter umas by name"
         value={filter}
         onInput={(e) => setFilter(e.currentTarget.value)}
       />
-      <div class="umapick" id="pick-list">
+      <div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-1.5" id="pick-list">
         <UmaList filter={filter} onPick={umaPicked} only={only} />
       </div>
     </>
   );
 }
+// an uma's button: her portrait and her name, on the panel in a thin line (the accent's under the pointer)
+const UMA =
+  'border-line bg-panel text-ink text-ui hover:border-accent flex cursor-pointer items-center gap-2 rounded-md border py-1 pr-2 pl-1 text-left';
 /** every uma `only` lets through, by name, the filter applied by hiding (typing builds nothing); onPick(chara id) */
 export function UmaList(props: {
   filter: string;
@@ -113,12 +120,12 @@ export function UmaList(props: {
   return (
     <>
       {umas.map((u) => (
-        <button key={u.id} type="button" class="upick" hidden={!shown(u)} onClick={() => onPick(u.id)}>
+        <button key={u.id} type="button" class={UMA} hidden={!shown(u)} onClick={() => onPick(u.id)}>
           <UmaAv uma={u.id} outfit={null} size={40} />
           <span>{u.name}</span>
         </button>
       ))}
-      <p class="hint" hidden={umas.some(shown)}>
+      <p class="text-note text-gm-ink2" hidden={umas.some(shown)}>
         No uma matches.
       </p>
     </>
@@ -145,13 +152,15 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
   return (
     <Dialog size="xl" id="ask-dlg" labelledBy="ask-title" open={!!asked?.open} onClose={askClosed}>
       <DialogPanel>
-        <h3 id="ask-title">{shown ? `Add skills to ${shown.name}?` : 'Add skills?'}</h3>
-        <p id="ask-text">
+        <h3 class="text-heading font-black text-balance" id="ask-title">
+          {shown ? `Add skills to ${shown.name}?` : 'Add skills?'}
+        </h3>
+        <p class="max-w-[75ch]" id="ask-text">
           {shown
             ? `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them${shown.withParents ? ', and so do her own two parents: the same choice goes on them.' : '.'} You can change the stars of each afterwards.`
             : ''}
         </p>
-        <div class="row askrow" id="ask-btns">
+        <div class="flex flex-wrap items-center gap-2" id="ask-btns">
           {shown &&
             choices.map(({ label, sparks, primary }) => (
               <Button
@@ -185,7 +194,7 @@ function WinsDialog({ edit }: { edit: WinsEdit | null }) {
           close="Done"
           onClose={winsClosed}
         >
-          <span class="num mr-3 ml-auto whitespace-nowrap" id="wins-count">
+          <span class="text-ink mr-3 ml-auto font-bold whitespace-nowrap tabular-nums" id="wins-count">
             {nd ? winsText(nd) : ''}
           </span>
         </DialogHead>
@@ -225,6 +234,13 @@ function ColourDialog({ edit }: { edit: ColourEdit | null }) {
     </Dialog>
   );
 }
+// a star of the picker's three, the game's, lit or unlit (a 44 px button)
+const STAR = {
+  on: 'art-star-on-lg drop-shadow-star-lg focus-visible:outline-accent size-11 rounded-full p-0 focus-visible:outline-3 focus-visible:outline-offset-2 enabled:cursor-pointer disabled:cursor-default disabled:opacity-50',
+  off: 'art-star-off-lg drop-shadow-star-lg focus-visible:outline-accent size-11 rounded-full p-0 focus-visible:outline-3 focus-visible:outline-offset-2 enabled:cursor-pointer disabled:cursor-default disabled:opacity-50',
+} as const;
+// what a 3-star blue or an A pink takes, under the stars
+const STAT = 'text-gm-ink2 font-bold';
 function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEdit['kind'] }) {
   const spec = KIND[kind];
   // her spark now: its group (null: none yet, so no stars to pick) and stars (0: none)
@@ -233,29 +249,30 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
     curStars = cur ? cur[1] : 0;
   return (
     <DialogBody>
-      <div class="ud udbare">
-        <div class="colgrid vsparks">
-          {spec.groups(nd).map((g) => (
-            <span key={g} class={kind === 'pink' ? 'vsk pink' : cx('vsb', kind)}>
-              <button
-                type="button"
-                class="vskb"
-                aria-pressed={g === curGroup}
-                onClick={() => at.edit(() => ({ [spec.field]: { [g]: curStars || NEW_STARS } }))}
-              >
-                <span class="vskn">{spec.name(g)}</span>
-              </button>
-            </span>
-          ))}
-        </div>
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
+        {spec.groups(nd).map((g) => (
+          <span key={g} class={SPARK_CELL.pick} data-spark={kind}>
+            <button
+              type="button"
+              class={sparkBar({ look: kind, use: 'pick' })}
+              data-bar=""
+              aria-pressed={g === curGroup}
+              onClick={() => at.edit(() => ({ [spec.field]: { [g]: curStars || NEW_STARS } }))}
+            >
+              <span class={SPARK_NAME.short} data-spark-name="">
+                {spec.name(g)}
+              </span>
+            </button>
+          </span>
+        ))}
       </div>
       {/* biome-ignore lint/a11y/useSemanticElements: today's markup (the game's star row); a fieldset would need it restyled */}
-      <div class="spstars" role="group" aria-label="Stars">
+      <div class="mt-1.5 flex justify-center gap-2" role="group" aria-label="Stars">
         {[1, 2, 3].map((k) => (
           <button
             key={k}
             type="button"
-            class={cx('spstar', k <= curStars ? 'on' : '')}
+            class={k <= curStars ? STAR.on : STAR.off}
             aria-label={`${k} star${k > 1 ? 's' : ''}`}
             aria-pressed={k === curStars}
             disabled={curGroup === null}
@@ -264,10 +281,10 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
         ))}
       </div>
       {kind === 'blue' && (
-        <p class="gmdstat">A 3★ blue needs that stat at 600 or more (rank B) by the end of the career.</p>
+        <p class={STAT}>A 3★ blue needs that stat at 600 or more (rank B) by the end of the career.</p>
       )}
       {kind === 'pink' && (
-        <p class="gmdstat">
+        <p class={STAT}>
           {nd.apt
             ? 'The aptitudes she ends this career at A or S.'
             : "Her uma's aptitudes at A or S (a pink needs A or better)."}
@@ -282,6 +299,9 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
 // shut; open from a "+" inside a dialog, it is drawn inside that dialog (a portal: the page behind a modal dialog is out
 // of reach), placed against the "+". A dropdown (ui/dropdown.ts useDropdown): a press outside it and its "+" closes it
 // (another "+" moves it there); Escape closes it, not the dialog around it, back to the "+".
+// a skill she lacks, as the game's white spark cell (its dot at the left)
+const ADD_SKILL =
+  'art-spark-add text-spark-ink inset-shadow-spark-add font-game before:art-add-dot focus-visible:outline-accent flex min-h-8.5 cursor-pointer items-center gap-2 rounded-md pr-3 pl-2 text-left font-bold before:size-4.5 before:flex-none before:rounded-full hover:brightness-105 focus-visible:outline-3 focus-visible:outline-offset-2';
 export const AddList = () => <AddBody open={addOpen.value} />;
 // the "+" the list is open on, as the dropdown's button: read when a click lands, so a second "+" pressed has the list
 // before the click reaches the document; once closed, the last one (Escape gives it the focus back)
@@ -316,19 +336,19 @@ function AddBody({ open }: { open: { btn: HTMLElement; at: NodeRef } | null }) {
   useDropdown(!!open, closeAdd, opener, inside);
   const list = open && (
     <AddPop hidden={false} boxRef={box}>
-      <p class="hint">{missing.length ? 'Target skills she lacks' : 'She has every target skill.'}</p>
-      <div class="addlist">
+      <p class="text-note text-gm-ink2">{missing.length ? 'Target skills she lacks' : 'She has every target skill.'}</p>
+      <div class="grid gap-1.5">
         {missing.map((g) => (
           <button
             key={g}
             type="button"
-            class="addsk"
+            class={ADD_SKILL}
             onClick={() => {
               closeAdd();
               open.at.edit((now) => ({ sparks: { ...now.sparks, [g]: NEW_STARS } }));
             }}
           >
-            <span class="addn">{skillName(g)}</span>
+            <span>{skillName(g)}</span>
           </button>
         ))}
       </div>

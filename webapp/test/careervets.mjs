@@ -76,7 +76,7 @@ export default async function careervets(b) {
   check('career: the x shows on hover', vis === 'visible', vis);
   await expect.soft(skills, 'career: … and removes the skill').toHaveCount(n0 - 1);
   await pg.locator('#v-pane [data-row="me"] [data-k$=":add"]').click();
-  const offered = await pg.$$eval('#add-pop .addsk', (els) => els.map((e) => e.textContent));
+  const offered = await pg.$$eval('#add-pop button', (els) => els.map((e) => e.textContent));
   check(
     'career: "+" offers the missing target only, as a spark cell (her blue, pink and unique have their own bars)',
     offered.length === 1 &&
@@ -86,7 +86,7 @@ export default async function careervets(b) {
         .count()) >= 2,
     offered.join(', '),
   );
-  await pg.locator('#add-pop .addsk').first().click();
+  await pg.locator('#add-pop button').first().click();
   await expect.soft(skills, 'career: … which comes back').toHaveCount(n0);
   await expect
     .soft(pg.locator('#v-pane [data-row="me"] [data-bar]', { hasText: offered[0] }), 'career: … at 2 stars')
@@ -134,7 +134,7 @@ export default async function careervets(b) {
   await expect.soft(pg.locator('#vp-list button'), 'career: the parent picker lists your veterans').toHaveCount(12);
   await pg.click('#vp-tab-new');
   await pg.fill('#vp-filter', 'Special Week');
-  await pg.locator('#vp-umas .upick:visible').first().click();
+  await pg.locator('#vp-umas button:visible').first().click();
   await dialog(pg, 'ask-dlg');
   await expect
     .soft(pg.locator('#ask-title'), 'career: picking a new uma asks whether to add the skills')
@@ -175,7 +175,7 @@ export default async function careervets(b) {
   await pg.locator('#node-dlg [data-face]').click();
   await dialog(pg, 'pick-dlg');
   await pg.fill('#pick-filter', 'Gold Ship');
-  await pg.locator('#pick-list .upick:visible').first().click();
+  await pg.locator('#pick-list button:visible').first().click();
   await ask('All 8 at 3★');
   await done();
   const g1 = pg.locator('#tree [data-legacy="1"] [data-node="gp"]').first();
@@ -194,7 +194,7 @@ export default async function careervets(b) {
   await inNode(/^(Choose|Change) trainee$/).click();
   await dialog(pg, 'pick-dlg');
   await pg.fill('#pick-filter', 'Agnes Digital');
-  await pg.locator('#pick-list .upick:visible').first().click();
+  await pg.locator('#pick-list button:visible').first().click();
   await done();
   await expect
     .soft(pg.locator('#tree [data-node="trainee"]'), 'career: the chosen trainee is set')
@@ -268,7 +268,7 @@ export default async function careervets(b) {
   await inNode(/^(Choose|Change) trainee$/).click();
   await dialog(pg, 'pick-dlg');
   await pg.fill('#pick-filter', 'Agnes Digital');
-  await pg.locator('#pick-list .upick:visible').first().click();
+  await pg.locator('#pick-list button:visible').first().click();
   await done();
   await expect.soft(ghosts, `${backTo}: her place`).toHaveCount(1);
   check(

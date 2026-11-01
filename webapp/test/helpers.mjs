@@ -568,7 +568,7 @@ export async function careerPage(b) {
     const loc = pg.locator('[data-k="sim:s20159"]');
     if (!(await loc.count())) {
       await pg.locator('#simulation [data-k$=":add"]').click();
-      await pg.locator('#add-pop .addsk', { hasText: 'Uma Stan' }).click();
+      await pg.locator('#add-pop button', { hasText: 'Uma Stan' }).click();
     }
     for (let i = 0; i < 3; i++) {
       if (+(await loc.getAttribute('aria-label')).match(/(\d) star/)[1] === n) return;

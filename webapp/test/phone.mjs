@@ -198,7 +198,7 @@ export default async function phone(b) {
     .soft(pg.locator('#sched-dlg [data-slot~="pre"]:visible'), 'phone: agenda stacks without the grey Junior cells')
     .toHaveCount(0);
   await pg.evaluate(() => {
-    const d = document.querySelector('#sched-dlg .dlg');
+    const d = document.getElementById('sched-body');
     d.scrollTo(0, d.scrollHeight);
   });
   const closeVis = () =>
@@ -219,7 +219,7 @@ export default async function phone(b) {
   await pg.locator('#results').getByRole('button', { name: 'Affinity', exact: true }).first().click();
   await dialog(pg, 'why-dlg');
   await pg.evaluate(() => {
-    const d = document.querySelector('#why-dlg .dlg');
+    const d = document.getElementById('why-body');
     d.scrollTo(0, d.scrollHeight);
   });
   check("phone: the affinity's Close stays on screen too", await closeVis());

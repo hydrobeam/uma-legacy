@@ -34,7 +34,7 @@ export default async function popups(b) {
   check(
     'agenda: fits the window without scrolling',
     await pg.evaluate(() => {
-      const d = document.querySelector('#sched-dlg .dlg');
+      const d = document.getElementById('sched-body');
       return d.scrollHeight <= d.clientHeight + 1;
     }),
   );

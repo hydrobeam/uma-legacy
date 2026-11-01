@@ -25,14 +25,14 @@ import type { VariantProps } from 'tailwind-variants/lite';
 type Kind = 'blue' | 'pink' | 'green';
 /** a spark's cell (its bar, the stars hanging under it, its corner x): in a list, room under it for the stars; the
  *  colour picker's choices have none */
-const SPARK_CELL = {
+export const SPARK_CELL = {
   list: 'group/spark relative block min-w-0 pb-3 max-sm:pb-2.5',
   pick: 'relative block min-w-0',
 } as const;
 /** a spark's bar: `look`, its colour (`none`, a dashed bar where she has no spark: blue's dashes, or `none-green` for
  *  the unique); `off`, greyed (a spark not a target); `use`, a control (`edit`), a parent's (`parent`: the plain
  *  cursor), read-only (`view`), or a colour picker's choice (`pick`, ringed in brown while it is hers) */
-const sparkBar = tv({
+export const sparkBar = tv({
   base: 'text-body max-sm:text-note relative isolate grid h-8.5 w-full min-w-0 grid-cols-[20px_minmax(0,1fr)] items-center gap-x-1.5 rounded-md pr-2.5 pl-1.75 text-left leading-tight font-bold before:absolute before:inset-0 before:-z-1 after:col-start-1 after:row-start-1 after:size-4.5 after:rounded-full max-sm:h-7 max-sm:grid-cols-[12px_minmax(0,1fr)] max-sm:gap-x-1 max-sm:pr-1.25 max-sm:pl-1 max-sm:after:size-3',
   variants: {
     look: {
@@ -59,7 +59,7 @@ const sparkBar = tv({
 });
 type BarUse = NonNullable<VariantProps<typeof sparkBar>['use']>;
 /** a spark's name, after its dot, cut short at the bar's end; a long one (more than 18 letters) a step smaller */
-const SPARK_NAME = {
+export const SPARK_NAME = {
   short: 'col-start-2 block truncate',
   long: 'text-ui max-sm:text-caption col-start-2 block truncate tracking-tight',
 } as const;
