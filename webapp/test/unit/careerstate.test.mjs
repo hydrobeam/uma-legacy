@@ -292,7 +292,31 @@ test('an effect wakes only for the signals it names: a check wakes the answer an
   expect("the check's step (the pick unchanged)", () => setPlanCheck(id, check(1)), 0, 1, 0, 1);
   expect('a new answer with a plan', () => showAnswer(made('new'), WHERE), 0, 1, 1, 1);
   expect('the answer dropped', () => dropAnswer(), 0, 1, 1, 0);
-  expect('the run over, with an answer (one batch)', () => runEndsWith(made()), 1, 1, 1, 0);
+  expect('the run over, with an answer (its batch: the one-batch test)', () => runEndsWith(made()), 1, 1, 1, 0);
   expect('a load failure (status only)', () => loadFails('x'), 0, 1, 0, 0);
   for (const stop of stops) stop();
+});
+
+// a transition that writes two signals writes them in one batch: an effect naming both runs once (one per signal would
+// run once each, batch or not)
+test('each two-signal transition is one batch: an effect on both signals runs once', () => {
+  showAnswer(made(), WHERE);
+  const once = (what, signals, step) => {
+    let runs = 0;
+    const stop = on(signals, () => runs++);
+    runs = 0;
+    step();
+    stop();
+    assert.equal(runs, 1, what);
+  };
+  once('the run ends unsearched: the run view and the answer', [answer, runView], () => runEndsWith(made()));
+  once('an answer with a plan: the answer and the reference', [answer, reference], () => showAnswer(made(), WHERE));
+  const id = answer.value.planState.id;
+  once("a check step: the answer and the reference (the plan's)", [answer, reference], () =>
+    setPlanCheck(id, check(1)),
+  );
+  once('the check unavailable: the answer and the reference', [answer, reference], () => checkUnavailable(id));
+  runWaits(1);
+  const kept = made();
+  once('a kept answer drawn again: the answer and the run view', [answer, runView], () => showKeptAnswer(kept));
 });
