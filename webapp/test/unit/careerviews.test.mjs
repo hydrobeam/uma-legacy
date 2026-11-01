@@ -23,7 +23,7 @@ const built = await esbuild.build({
       export { openNode, closeNode } from './src/career/view/dialogs.ts';
       export { sayRenderErrors } from './src/ui/RenderGuard.tsx';
       export { answer, loadFails } from './src/career/state.ts';
-      export { PoolBody, PoolTabs } from './src/career/view/Pool.tsx';
+      export { PoolBody, PoolHead } from './src/career/view/Pool.tsx';
       export { openPool, poolClosed, choose } from './src/career/view/poolState.ts';
       export { h, render, options } from 'preact';
       export { loadData } from './src/data.js';`,
@@ -44,7 +44,7 @@ fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
-const { PoolBody, PoolTabs, openPool, poolClosed, choose, answer, loadFails } = page;
+const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
 await loadData();
 
@@ -107,7 +107,7 @@ test('the veterans dialog: a selection draws two cards, one list is #vets, each 
   );
   const tabs = document.createElement('div'),
     body = document.createElement('div');
-  render(h(PoolTabs, null), tabs);
+  render(h(PoolHead, null), tabs);
   render(h(PoolBody, null), body);
   openPool();
   await settle();
@@ -126,7 +126,9 @@ test('the veterans dialog: a selection draws two cards, one list is #vets, each 
   assert.equal(withId('vets').length, 1, 'one list is #vets');
   assert.equal(withId('vets-bor').length, 1, "the Guests list, hidden, by its tab's name");
   assert.deepEqual(
-    elements(tabs).map((b) => [b.attributes.id, b.attributes['aria-controls']]),
+    elements(tabs)
+      .filter((b) => b.attributes.role === 'tab')
+      .map((b) => [b.attributes.id, b.attributes['aria-controls']]),
     [
       ['v-tab-own', 'vets'],
       ['v-tab-bor', 'vets-bor'],

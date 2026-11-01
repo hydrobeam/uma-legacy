@@ -89,7 +89,7 @@ import { SkillDetails } from './view/SkillDetails.tsx';
 import { BorrowChoice, SetupSummary, initFold, sawVeterans } from './view/Setup.tsx';
 import { nodeOpen, openNode, pickerFor } from './view/dialogs.ts';
 import { Results, SavesPopup } from './view/Options.tsx';
-import { PoolBody, PoolTabs, initVSort } from './view/Pool.tsx';
+import { PoolBody, PoolHead } from './view/Pool.tsx';
 import { poolTab, inTab, openPool, poolClosed, selected } from './view/poolState.ts';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
 import { searchCaveat } from '../proofs.mjs';
@@ -342,10 +342,9 @@ loadData().then(
         $('v-msg').textContent = `Removed ${what}.`;
       }
     };
-    initVSort();
     mount('tree', <Tree />, 'The lineage tree');
     mount('lodds', <Verdict />, 'The odds');
-    mount('v-tabs', <PoolTabs />, "The veterans' tabs", poolTab);
+    mount('v-head', <PoolHead />, "The veterans' tabs", poolTab);
     mount('v-body', <PoolBody />, 'The veterans', selected);
     mount('node-root', <NodeDialog />, 'The node popup', nodeOpen);
     mount('deck-root', <DeckDialog />, 'The deck popup');

@@ -294,7 +294,7 @@ const MOUNTS = {
     ],
     ['bp', 'src/career/view/Setup.tsx', [], []],
     ['set-sum', 'src/career/view/Setup.tsx', [], ['sumkv', 'sumk']],
-    ['v-tabs', 'src/career/view/Pool.tsx', ['v-tab-own', 'v-tab-bor'], []],
+    ['v-head', 'src/career/view/Pool.tsx', ['v-tabs', 'v-tab-own', 'v-tab-bor', 'vs', 'vs-menu', 'vs-dd'], []],
     ['v-body', 'src/career/view/Pool.tsx', ['vets', 'v-pane'], ['umcell', 'vsec', 'vptitle', 'vctl', 'vpars']],
     [
       'node-root',
