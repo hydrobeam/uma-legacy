@@ -156,6 +156,20 @@ test("the run machine's hooks and a comparison never interleave: a stale chain's
     assert.equal(simulation.peek(), shownNow);
     p.stop();
   }
+  // a roll's quick chain, the same after its baseline; the exact one after its first job
+  for (const start of ['roll', 'compare']) {
+    const p = page({ fix: start === 'roll' ? [0] : [] });
+    p.c[start]();
+    await flush();
+    p.c.outdate();
+    p.c.show(career('other'));
+    const before = p.writes.length;
+    p.engine.answer(0, { results: [career('x', [0, 2])] });
+    await flush();
+    assert.equal(sent(p), 1, `${start}: nothing sent after the stale reply`);
+    assert.equal(p.writes.length, before, `${start}: and nothing written`);
+    p.stop();
+  }
   // a late answer of the exact comparison's last job, after a new answer is shown
   const p = page();
   p.c.compare();
@@ -243,6 +257,30 @@ test("a roll's zero: the best career with her, provisional, then checked after 0
   assert.equal(simulation.peek().refining, true);
   assert.equal(simulation.peek().provisional, true, 'shown as checking until the exact count lands');
   q.stop();
+});
+
+test("a timer of a roll rolled over: the next roll's figures are not checked before their own 0.8 s", async () => {
+  for (const y of [2, 0]) {
+    const p = page();
+    const quick = async (n) => {
+      p.c.roll();
+      await flush();
+      p.engine.answer(n, { results: [], next: { roll: { y } } });
+      await flush();
+      if (y === 0) {
+        p.engine.answer(n + 1, { results: [career('withHer', [0, 2])] });
+        await flush();
+      }
+    };
+    await quick(0);
+    p.clock.advance(STAND_MS / 2);
+    await quick(y ? 1 : 2);
+    p.clock.advance(STAND_MS / 2); // the first roll's timer
+    assert.ok(!simulation.peek().refining, `y ${y}: the first roll's timer starts nothing`);
+    p.clock.advance(STAND_MS / 2);
+    assert.equal(simulation.peek().refining, true, `y ${y}: the second's own`);
+    p.stop();
+  }
 });
 
 test('cancel: Compare again kills an exact comparison in flight, never a quick search; a check behind a roll is killed too', async () => {
