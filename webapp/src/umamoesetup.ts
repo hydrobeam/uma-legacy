@@ -102,7 +102,9 @@ const ago = (at: number): string => {
 // the popup's orders, uma.moe's own: its search's order (best covered first), then by her rank, her affinity score, her
 // race wins, her white sparks' stars, the latest updated; each starts best (or latest) first, and picking the chosen one
 // again reverses it, as the umas' and cards' sort menus do; the choice is kept in this browser
-export type UmSort = 'match' | 'rank' | 'affinity' | 'wins' | 'sparks' | 'updated';
+/** the orders, in the menu's order */
+export const UM_SORTS = ['match', 'rank', 'affinity', 'wins', 'sparks', 'updated'] as const;
+export type UmSort = (typeof UM_SORTS)[number];
 export const SORTS: Record<UmSort, [string, string, (v: VetRecord) => number]> = {
   match: ['Best match', 'uma.moe’s order: the best covered first', (v) => -(order.get(v.id) ?? 1e9)],
   rank: ['Rank', 'Her career rank', (v) => v.rank || 0],

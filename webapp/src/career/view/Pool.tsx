@@ -22,6 +22,7 @@ import { importText } from '../io.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { must } from '../../must.ts';
 import {
+  VET_SORTS,
   VSORTS,
   choose,
   inTab,
@@ -64,7 +65,7 @@ export function PoolHead() {
     </>
   );
 }
-const SORT_ITEMS = (['no', 'tg', 'rank'] as const).map((k) => ({ k, label: VSORTS[k][0], hint: VSORTS[k][1] }));
+const SORT_ITEMS = VET_SORTS.map((k) => ({ k, label: VSORTS[k][0], hint: VSORTS[k][1] }));
 /** the two tabs, each with its count */
 function PoolTabs() {
   const all = vets.value,

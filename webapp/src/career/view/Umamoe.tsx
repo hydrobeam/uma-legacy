@@ -12,6 +12,7 @@ import { vets } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import {
   SORTS,
+  UM_SORTS,
   forgetUmKey,
   hasKey,
   pickUmSort,
@@ -81,7 +82,7 @@ export function UmButton() {
     </button>
   );
 }
-const SORT_ITEMS = (['match', 'rank', 'affinity', 'wins', 'sparks', 'updated'] as const).map((k) => ({
+const SORT_ITEMS = UM_SORTS.map((k) => ({
   k,
   label: SORTS[k][0],
   hint: SORTS[k][1],

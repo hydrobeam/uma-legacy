@@ -27,7 +27,9 @@ export const inTab = (v: VetRecord, t: Tab = tab.peek()) => !!v.borrowed === (t 
 // the list's orders: the order added (uma.moe's listings in uma.moe's order), how many targets she carries (the
 // default; ties in the order added), her rank; each starts as the menu says and picking the chosen one again reverses
 // it (as the umas' and cards' sort menus)
-export type VetSort = 'no' | 'tg' | 'rank';
+/** the orders, in the menu's order */
+export const VET_SORTS = ['no', 'tg', 'rank'] as const;
+export type VetSort = (typeof VET_SORTS)[number];
 export const VSORTS: Record<VetSort, [string, string, (v: VetRecord, i: number) => number]> = {
   no: ['Added', 'In the order they were added to this page (uma.moe’s: in its own order)', (_v, i) => -i],
   tg: [
