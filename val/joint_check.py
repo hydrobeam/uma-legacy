@@ -12,7 +12,8 @@ them), and compare with the
 reported p_all. Written separately from the Rust code: final chain states by plain forward iteration, and the joint
 expectation by inclusion-exclusion over per-target "no gold" / "no hint" requirements.
 
-usage: uv run val/joint_check.py TAG        (val/TAG__*.out and val/TAGpu__*.out)"""
+usage: uv run val/joint_check.py TAG        (val/TAG__*.out and val/TAGpu__*.out; exits 1 when a result is outside
+1e-3 or nothing was checked)"""
 
 import argparse
 import functools
@@ -21,6 +22,7 @@ import json
 import math
 import os
 import re
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -455,7 +457,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("tag", help="the outputs val/TAG__*.out and val/TAGpu__*.out")
     tag = parser.parse_args().tag
-    bad = 0
+    bad = checked = 0
     for era, j in json.load(open(os.path.join(V, "jobs.json"))):
         job = json.load(open(os.path.join(V, "jobs", j + ".json")))
         if job.get("mode") != "deck":
@@ -468,5 +470,7 @@ if __name__ == "__main__":
             w = check(json.load(open(f)), job, os.path.join(S, "pkg", "loopopt", "data", era))
             flag = w > 1e-3
             bad += flag
+            checked += 1
             print(f"{m or 'sh'} {name}: max |python / solver - 1| = {w:.1e}{'  <<' if flag else ''}", flush=True)
-    print("all within 1e-3" if not bad else f"{bad} outside 1e-3")
+    print(f"{checked} checked, " + ("all within 1e-3" if not bad else f"{bad} outside 1e-3"))
+    sys.exit(1 if bad or not checked else 0)

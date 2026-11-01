@@ -54,6 +54,7 @@ class ValidationExitTests(unittest.TestCase):
             },
         }
         self.write(self.plan / "jobs.json", [["global", "tiny"]])
+        self.write(self.plan / "slow.json", [])
         self.write(self.plan / "tiny.json", {})
         self.write(self.plan / "ref__tiny.out", self.output)
         self.fake_solver(self.output)
@@ -202,6 +203,15 @@ class ValidationExitTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout)
                 self.assertEqual("no proxy check" in result.stdout, skipped, result.stdout)
                 self.assertEqual(proxy_output.exists(), not skipped)
+
+    def test_plan_quick_leaves_out_slow_jobs_and_the_proxy_gate(self):
+        self.write(self.plan / "jobs.json", [["global", "tiny"], ["global", "slow"]])
+        self.write(self.plan / "slow.json", [["global", "slow"]])
+        result = self.run_script("planval.py", self.solver, "trial", "-j", "1", "--quick")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("1 plan jobs", result.stdout)
+        self.assertIn("no proxy gate", result.stdout)
+        self.assertFalse((self.plan / "trial_proxy__tiny.out").exists())
 
     def first_step_run(self, output=None, job=None, **plan):
         """planval on the fixture with these `next` fields replaced (or a whole output), and this job"""

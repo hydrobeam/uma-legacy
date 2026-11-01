@@ -49,7 +49,8 @@ base row's career; rows marked `looped` are dropped, or, from a solver that does
 trainee's best by exact odds. A high-side error (a proxy that reads high only costs a search) is reported, not failed
 on.
 
-usage: planval.py BIN TAG [REF] [-j N]
+usage: planval.py BIN TAG [REF] [-j N] [--quick]
+  --quick  leave out the jobs in val/plan/slow.json and run no proxy gate: tier A (docs/BUILD.md, *Tests*)
   writes val/plan/TAG__NAME.out, val/plan/TAG_proxy__NAME.out and val/plan/TAG_times.txt; compares with
   val/plan/REF__NAME.out (default REF: ref)
   -j N  jobs at a time (default 2; timings are only comparable at the same load)"""
@@ -94,11 +95,17 @@ parser.add_argument(
     metavar="N",
     help="jobs at a time (default 2; timings are only comparable at the same load)",
 )
+parser.add_argument(
+    "--quick",
+    action="store_true",
+    help="leave out the jobs in val/plan/slow.json and run no proxy gate (tier A)",
+)
 arguments = parser.parse_intermixed_args()
 parallelism = arguments.parallelism
 binary, tag = os.path.abspath(arguments.binary), arguments.tag
 ref = arguments.ref
-jobs = json.load(open(os.path.join(PLAN_DIR, "jobs.json")))
+slow = json.load(open(os.path.join(PLAN_DIR, "slow.json"))) if arguments.quick else []
+jobs = [job for job in json.load(open(os.path.join(PLAN_DIR, "jobs.json"))) if job not in slow]
 job_files = {name: json.load(open(os.path.join(PLAN_DIR, name + ".json"))) for _era, name in jobs}
 times = {}
 
@@ -590,10 +597,13 @@ print(f"{len(jobs)} plan jobs, {failures} differ")
 first_step_failures = sum(first_step_tripwire(name) for _era, name in jobs)
 print(f"{len(jobs)} first steps, {first_step_failures} fail (below {FIRST_STEP_FLOOR} careers, or unpriced)")
 exactly = {name: builders_searched_exactly(job_files[name]) for _era, name in jobs}
-proxy_jobs = [(era, name) for era, name in jobs if not exactly[name]]
-for name, reason in exactly.items():
-    if reason:
-        print(f"{name}: no proxy check: every builder is searched exactly ({reason})")
+proxy_jobs = [] if arguments.quick else [(era, name) for era, name in jobs if not exactly[name]]
+if arguments.quick:
+    print("--quick: no proxy gate")
+else:
+    for name, reason in exactly.items():
+        if reason:
+            print(f"{name}: no proxy check: every builder is searched exactly ({reason})")
 with tempfile.TemporaryDirectory() as job_dir, ThreadPoolExecutor(parallelism) as ex:
     gates = list(ex.map(lambda job_entry: proxy_gate(job_entry, job_dir), proxy_jobs))
 proxy_failures = 0
@@ -623,7 +633,7 @@ print(
     f"{len(proxy_jobs)} proxy checks, {proxy_failures} fail (the plan moves, an efficiency over {PROXY_GATE:.0%} low, or a "
     f"saving over {SAVING_GATE} careers low)"
 )
-incomplete = sum(scoring_incomplete(name, proxy_run=not exactly[name]) for _era, name in jobs)
+incomplete = sum(scoring_incomplete(name, proxy_run=(era, name) in proxy_jobs) for era, name in jobs)
 print(
     f"{len(jobs)} plans, {incomplete} with incomplete scoring (fails: `scoring_complete` false or missing in the plan or "
     "its proxy_check run)"

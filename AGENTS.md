@@ -20,9 +20,11 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   `CHAIN_B`, `CHAIN_STOP_SHARE`). The training-hint constants are read from `research/results.json` when the solver is
   built (`pkg/loopopt/build.rs`), so recomputing the research can move the solver's results. Measured outcome shares
   are in `pkg/loopopt/data/event_shares.json` and `pkg/loopopt/data/*/manual.json`, exported by `./build.sh events`.
-- **Results are pinned.** A change that can move the solver's results runs `./build.sh valq TAG` while iterating and
-  `./build.sh val TAG` before it lands; career-planner changes also run `val/planval.py` and `val/mono.py`. When results
-  move on purpose:
+- **Results are pinned.** Each change runs a validation tier (`docs/BUILD.md`, *Tests*): a commit touching the solver
+  (`pkg/loopopt/src`, its data or `research/results.json`) runs `./build.sh tiera TAG` (about 2.5 CPU-min; `valq TAG`
+  alone while iterating); a change that can move the solver's results runs `./build.sh tierb TAG` before it lands; a
+  career-planner change also runs `./build.sh tierc` (mono, in the background). A tie the solver breaks another way
+  fails both tiers until its reference is re-taken. When results move on purpose:
   - the new outputs replace `val/ref__*` / `val/refpu__*` (or `val/plan/ref__*`) in the same commit;
   - `val/joint_check.py TAG`, an independent recomputation of the odds, agrees within 1e-3;
   - the `plan_roll` fixture (`pkg/loopopt/tests/fixtures/plan_roll.json`) is re-taken from the solver's own rolls;

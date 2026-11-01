@@ -97,6 +97,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `test` / `testq` | the browser suite, full or its fast tier (see *Tests*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it: the certificate is self-signed (`cache/tls/`), so a browser warns once |
 | `val TAG` / `valq TAG` | validation (see *Tests*) |
+| `tiera TAG` / `tierb TAG` / `tierc` | the validation tiers (see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 
@@ -172,9 +173,10 @@ IndexedDB.
 - **Browser suite:** `./build.sh test` runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
   `playwright` package) against `webapp/dist`, served by `serve.mjs` over HTTP/2 with TLS as the host serves it (a
   self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
-  `LLP_URL`, in Chromium and Firefox, test groups in parallel
-  (`LLP_JOBS` per browser, default 4). Each group is a module in `webapp/test/` and one test of
-  `webapp/test/groups.spec.mjs`; each check is a step of its test, a failed one a soft failure (the group goes on), a
+  `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 4): every group in Chromium, and in Firefox the
+  groups tagged `@both` in `groups.spec.mjs` (where its engine matters: the worker, wasm, storage, timing, layout and
+  focus; the others test the page's logic, which Chromium covers, and cost about 400 CPU-s a run in Firefox). Each
+  group is a module in `webapp/test/` and one test of `webapp/test/groups.spec.mjs`; each check is a step of its test, a failed one a soft failure (the group goes on), a
   throw ends the group. Shared helpers are in `webapp/test/helpers.mjs`. One group: `cd webapp && npx playwright test
   --project chromium -g roster` (`-g` is a regular expression over the titles). A failed test keeps its trace
   (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
@@ -190,6 +192,15 @@ IndexedDB.
   purpose, check the diff and copy the new outputs over the references in the same commit; when every value should
   scale by one factor, compare with `val/cmp_ratio.py`. Solver process failures and comparison failures exit nonzero. `uv run val/test_validation.py` checks these failure
   paths with synthetic outputs and a stub solver, without running any searches.
+- **Tiers.** Which tier a change runs is in AGENTS.md, *Results are pinned*. Each tier runs every check whatever the
+  others found and fails if any does. The CPU times are sums of the recorded run times (`val/ref_times.txt`,
+  `val/plan/*_times.txt`, the proxy runs' `timing_s`), not a timed tier:
+  - `./build.sh tiera TAG`, every solver commit, about 2.5 CPU-min: `valq TAG` (with `same.py`), `val/simval.py`,
+    `val/planval.py --quick` (the plan jobs but those in `val/plan/slow.json`, no proxy gate) and `val/same.py TAG --plan`;
+  - `./build.sh tierb TAG`, a change that can move results, about 6-7 CPU-min: `val TAG`, `val/joint_check.py TAG`,
+    `val/simval.py`, every plan job with the proxy gate, and `val/same.py TAG --plan`;
+  - `./build.sh tierc`, career-planner changes, about 10-20 CPU-min (estimated from the plan jobs' times; run it in
+    the background): `val/mono.py`.
 - **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the plan jobs in
   `val/plan/jobs.json` and compares each whole output with `val/plan/ref__*.out`. Two of them take the page's own
   settings: `p16_borrow_check` asks for the robustness check and the pair search (`next.robust: "all"`, every
