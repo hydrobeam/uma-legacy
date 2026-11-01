@@ -1,4 +1,4 @@
-"""Favicon files from webapp/icons/favicon.svg (drawn for the site, no game art): three sparkles styled on the URA Finale
+"""Favicon files from webapp/public/favicon.svg (drawn for the site, no game art): three sparkles styled on the URA Finale
 logo's, a little off kilter, one per spark type in the game's own spark colours (stat blue, aptitude pink, unique green;
 atlas/singlecommon utx_frm_factor_s_02..04 and the atlas/common utx_ico_factor_* badges):
 favicon.ico (16/32/48), favicon-32.png, apple-touch-icon.png (180, opaque on the page background; iOS turns
@@ -8,7 +8,7 @@ import os, subprocess
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ICON_DIR = os.path.join(HERE, "icons")
+ICON_DIR = os.path.join(HERE, "public")  # Vite copies public/ to the site's root
 subprocess.run(["node", os.path.join(HERE, "icons.mjs")], check=True)
 images_by_size = {
     size: Image.open(os.path.join(ICON_DIR, f"_{size}.png")).convert("RGBA") for size in (16, 32, 48, 180)

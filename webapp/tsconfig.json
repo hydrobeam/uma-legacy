@@ -20,6 +20,8 @@
     "lib": ["es2023", "dom", "dom.iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
+    // a JSON import is typed by its declaration (globals.d.ts), not by what one build of it holds
+    "resolveJsonModule": false,
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],

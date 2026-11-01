@@ -17,7 +17,7 @@ export default async function gm(b) {
   // the era buttons: switching to the Grand Masters-era data (fetched, the status line says so meanwhile) opens on
   // Grand Masters (rank SS, no Unity golds) and searches with it; back on Global the scenario is Unity Cup again
   const pg = await open(b);
-  await pg.route('**/assets/data-gm.*', async (r) => {
+  await pg.route('**/assets/data-gm-*', async (r) => {
     await new Promise((x) => setTimeout(x, 1500));
     await r.continue();
   }); // a slow fetch of the GM era's data
@@ -30,7 +30,7 @@ export default async function gm(b) {
     await note(pg),
   );
   await settle(pg);
-  await pg.unroute('**/assets/data-gm.*');
+  await pg.unroute('**/assets/data-gm-*');
   check(
     'switching to the GM era selects Grand Masters, at rank SS, and searches with it',
     (await scen(pg)) === 'grandmasters' &&
@@ -105,16 +105,19 @@ export default async function gm(b) {
   await pg.context().close();
   await stopsAtLoad(b);
 }
-// a page whose scripts stop while they load (here a scenario's hint base missing from the page's data, which build.py
+// a page whose scripts stop while they load (here Unity Cup's hint base missing from the page's data, which the build
 // refuses: data.ts reads it as it loads) says so on its status line, both pages, rather than stay blank (errorlog.ts)
 async function stopsAtLoad(b) {
   const ctx = await b.newContext(CONTEXT),
     pg = await ctx.newPage(),
     errors = [];
   pg.on('pageerror', (e) => errors.push(String(e)));
-  await pg.route('**/assets/data-global.*.js', async (r) => {
-    const response = await r.fetch();
-    await r.fulfill({ response, body: `${await response.text()}\nself.__LLP_DATA['data-hintbase']={};` });
+  // the hint bases are one JSON text in the scripts both pages share (vite/pagedata.mjs '#page-data')
+  await pg.route('**/assets/shared-*.js', async (r) => {
+    const response = await r.fetch(),
+      text = await response.text();
+    if (text.split('{"unity":').length !== 2) throw new Error('the shared script holds no one hint-base table');
+    await r.fulfill({ response, body: text.replace('{"unity":', '{"unity cup":') });
   });
   const said = [];
   for (const url of [PAGE_URL, LOOP_URL]) {
@@ -130,7 +133,7 @@ async function stopsAtLoad(b) {
     'a script that stops as the page loads: the status line says the page could not start, and why (both pages)',
     said.every(
       ([text, kind]) =>
-        text === "The page could not start: failed: build.py writes unity's hint base" && kind === 'error',
+        text === "The page could not start: failed: the build writes unity's hint base" && kind === 'error',
     ) && errors.length === 2,
     `${JSON.stringify(said)} | ${errors.join(' | ')}`,
   );

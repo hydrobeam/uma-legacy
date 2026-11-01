@@ -1,5 +1,4 @@
-// Career planner page: entry point. build.py bundles this and the modules it imports into dist/assets/career.<hash>.js,
-// which dist/index.html loads.
+// Career planner page: entry point, index.html's script (Vite bundles it and the modules it imports).
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (veterans/) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
@@ -37,6 +36,7 @@ import type { VNode } from 'preact';
 import { $ } from '../dom.ts';
 import { ERA } from '../saved.ts';
 import { loadData } from '../data.ts';
+import CAREER from '#career-data';
 import { jobSetup, settings, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
 import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from '../engine.ts';
@@ -268,7 +268,7 @@ addEventListener('pagehide', flushPersist);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushPersist();
 });
-loadData().then(
+loadData(CAREER).then(
   async () => {
     initSettings();
     initPopover();

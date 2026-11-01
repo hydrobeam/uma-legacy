@@ -1,5 +1,4 @@
-// Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
-// dist/assets/main.<hash>.js, which dist/loop.html loads after its data script.
+// Legacy Loop Planner page: entry point, loop.html's script (Vite bundles it and the modules it imports).
 // The page's own modules (loop/): types.ts the report's types, state.ts the run state (signals), run.ts the search's
 // run machine, job.ts its job, io.ts the export's text; the views, components drawn from the state and the settings:
 // RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
@@ -9,7 +8,8 @@ import { started } from '../errorlog.ts'; // first: it listens before any other 
 import { render } from 'preact';
 import { $, $input } from '../dom.ts';
 import { ERA } from '../saved.ts';
-import { EXAMPLE, loadData } from '../data.ts';
+import { loadData } from '../data.ts';
+import EXAMPLE from '../../example.json'; // the default settings' result, precomputed (example.mjs)
 import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
 import { beginSearch, headline, interim, loopDrawn, loopRun, loopView, resultsStale, settle, tick } from './state.ts';
@@ -67,7 +67,7 @@ const loop = createRun({
   settings: () => settings.peek(),
   render: drawResult,
   loadExample,
-  example: ERA === 'global' && EXAMPLE ? { r: EXAMPLE, settings: DEFAULTS } : null,
+  example: ERA === 'global' ? { r: EXAMPLE, settings: DEFAULTS } : null,
 });
 // ---------- the status line (RunNote.tsx), and what it marks around it: the status bar's state (its colours), the
 // results' (busy or dimmed: from other settings than these), the status line's own (busy, its tooltip) and the phone's
@@ -111,7 +111,7 @@ if (ERA === 'gm') {
   settle({ kind: 'loading', text: 'Loading the JP Grand Masters-era data…' });
   showStatus();
 } // fetched: about a second
-loadData().then(start, (e) => {
+loadData(null).then(start, (e) => {
   settle({ kind: 'error', text: e.message });
   showStatus();
 });

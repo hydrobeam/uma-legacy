@@ -3,7 +3,9 @@
 // in-page audits (contrast, pill tracks, sideways scroll), the career page's fixture, and the data the checks read from
 // the repo.
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from 'playwright/test';
+import { imageCatalog } from '../vite/images.mjs';
 import { SOLVER, installSolver } from './solverreplay.mjs';
 
 // ---------- the page under test and the run's mode
@@ -14,7 +16,7 @@ export const LOOP_URL = `${PAGE_URL.replace(/\/?$/, '/')}loop`;
 /** The fast tier (LLP_QUICK=1; ./build.sh testq): career stops at its one-run answer, contrast checks light only. */
 export const QUICK = !!process.env.LLP_QUICK;
 const REPO_ROOT = new URL('../../', import.meta.url);
-/** Every test context: the local server's certificate is self-signed (serve.mjs, HTTP/2 over TLS as the host). */
+/** Every test context: the local server's certificate is self-signed (vite preview, HTTP/2 over TLS as the host). */
 export const CONTEXT = { ignoreHTTPSErrors: true };
 /** A file of the repository (data the page was built from, the solver's sources, validation outputs) as a file URL. */
 export const repoUrl = (relative) => new URL(relative, REPO_ROOT);
@@ -382,15 +384,21 @@ export async function navClick(pg, sel) {
 } // a click that reloads the page
 export const note = (pg) => pg.locator('#run-note').innerText();
 export const odds = (pg) => pg.evaluate(() => document.querySelector('#results .loop .odds')?.textContent || '');
-// the page's data by its id ('data-cards', ...): the shared lists come from build.py's data scripts (self.__LLP_DATA), the rest from JSON elements
-export const json = (pg, id) =>
-  pg.evaluate(
-    (id) =>
-      self.__LLP_DATA && id in self.__LLP_DATA
-        ? self.__LLP_DATA[id]
-        : JSON.parse(document.getElementById(id).textContent),
-    id,
-  );
+// the page's Global-era data by its old element id ('data-cards', ...), read here from what the build reads
+// (vite/pagedata.mjs '#page-data': page.json's lists, the image catalog, the skill icons), which a test may hand to the
+// page as an argument
+const readJson = (url) => JSON.parse(fs.readFileSync(url, 'utf8'));
+const pageLists = readJson(repoUrl('pkg/loopopt/data/global/page.json'));
+const imgFile = (name) => new URL(`../img/${name}`, import.meta.url);
+const icons = (name) => (fs.existsSync(imgFile(name)) ? readJson(imgFile(name)) : {});
+const PAGE_DATA = {
+  'data-cards': pageLists.cards,
+  'data-umas': pageLists.umas,
+  'data-skills': pageLists.skills,
+  'data-img': imageCatalog(fileURLToPath(imgFile(''))),
+  'data-skillicon': { white: icons('skill_icons.json'), gold: icons('skill_icons_gold.json') },
+};
+export const json = async (_pg, id) => PAGE_DATA[id];
 export const scen = (pg) => pg.getAttribute('#x-scen', 'data-value'); // the chosen scenario
 export async function pickScen(pg, v) {
   await pg.click('#x-scen');

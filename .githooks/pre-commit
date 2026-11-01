@@ -4,7 +4,7 @@
 #     a minute the first time in a new worktree); clippy on the wasm lib stays in ./build.sh lint and CI
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
 #   the page's JS: Biome (lint and formatting) on the staged files, then tsc over the page and the worker (seconds)
-#   the page's JS, CSS or templates: webapp/test/static.mjs (no dead CSS, no dead exports; well under a second)
+#   the page's JS, CSS, pages or build: webapp/test/static.mjs (no dead CSS, no dead exports; well under a second)
 #   the page's sources or tests: the node tests, webapp/test/unit/ (well under a second)
 # A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
 root=$(git rev-parse --show-toplevel) || exit 1
@@ -29,7 +29,7 @@ if [ -n "$js" ]; then
     && npx --no-install tsc -p . && npx --no-install tsc -p tsconfig.worker.json) || fail 'Biome or tsc (above; npx biome format --write in webapp fixes formatting)'
 fi
 
-if [ -n "$(staged 'webapp/src/*' 'webapp/*.template.*' 'webapp/build.py')" ]; then
+if [ -n "$(staged 'webapp/src/*' 'webapp/*.html' 'webapp/partials/*' 'webapp/vite/*' 'webapp/vite.config.mjs')" ]; then
   (cd "$root/webapp" && node test/static.mjs >&2) || fail 'static checks (above: dead CSS or exports, a stale storage write)'
 fi
 

@@ -1,9 +1,11 @@
 // Declarations for the type checker only (tsconfig.json; nothing here is bundled): what the page adds to the browser's
 // globals and elements, and the element type its selector queries return.
 
-interface Window {
-  /** build.py's fingerprinted data scripts: each embedded JSON value, keyed by the id of the element that used to hold it */
-  __LLP_DATA?: Record<string, unknown>;
+/** the loop page's precomputed result for the default settings (example.mjs writes it; typed here, unchecked, as the
+ * page's other data: tsconfig.json leaves JSON imports to declarations) */
+declare module '*/example.json' {
+  const report: import('./loop/types.ts').LoopReport;
+  export default report;
 }
 
 interface HTMLElement {

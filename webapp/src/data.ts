@@ -1,26 +1,16 @@
-// The data build.py embeds in the page, for the chosen era.
-import { $ } from './dom.ts';
+// The page's data, for the chosen era: the Global era's comes with the page's scripts ('#page-data', built in by
+// vite/pagedata.mjs; package.json's imports give node tests test/unit/pagedata.mjs instead), the GM era's is fetched.
+import * as page from '#page-data';
 import { ERA } from './saved.ts';
 import { assert, must } from './must.ts';
-import type { LoopReport } from './loop/types.ts';
-// the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed 'data-cards', ...); what stays
-// in the page (the asset table, the example) from its JSON elements of the same ids
-// (each value is JSON build.py wrote, unchecked: `parse` returns it as the type T its reader names, the one place the
-// embedded data gets a type; an element's textContent is a string, never null)
-const BUNDLED = self.__LLP_DATA || {};
-const parse = <T>(id: string): T => (id in BUNDLED ? BUNDLED[id] : JSON.parse($(id).textContent as string)) as T;
-const has = (id: string) => id in BUNDLED || !!$(id);
-// Fingerprinted files next to the page (build.py): the wasm, each era's solver data, the GM era's page data, the image folder,
-// the solver's worker script.
+/** Fingerprinted files of the build (vite/pagedata.mjs): the wasm, each era's solver data, the GM era's page data. */
 export interface Assets {
   wasm: string;
   /** each era's solver data */
   engine: { global: string; gm: string };
   dataGm: string;
-  img: string;
-  worker: string;
 }
-export const ASSETS: Assets = parse('data-assets');
+export const ASSETS: Assets = page.assets;
 /** A support card (pkg/loopopt/export/export_page.py, its `cards`). */
 export interface Card {
   id: number;
@@ -83,25 +73,28 @@ export interface RaceTrack {
   ground: 1 | 2;
 }
 const isDistance = (x: unknown): x is Distance => x === 0 || x === 1 || x === 2 || x === 3;
-// each G1's track by name. build.py stops on a race without a distance and a ground (`check_race_tracks`); the check here
+// each G1's track by name. export_page.py stops on a race without a distance and a ground (`check_race_tracks`); the check here
 // repeats it for a data file the build did not make (stale or hand-edited), and fails the data load (the status line
 // says so) rather than give a race a wrong figure
 function tracksOf(career: CareerTables | null): Map<string, RaceTrack> {
   const cats = career?.race_cat;
   if (!career || !cats) return new Map();
-  const grounds = must(career.race_ground, 'build.py writes race_ground with race_cat');
+  const grounds = must(career.race_ground, 'export_page.py writes race_ground with race_cat');
   return new Map(
     career.races.map((name, ix): [string, RaceTrack] => {
       const cat = cats[ix],
         ground = grounds[ix];
-      assert(isDistance(cat) && (ground === 1 || ground === 2), `build.py checks race ${ix}'s distance and ground`);
+      assert(
+        isDistance(cat) && (ground === 1 || ground === 2),
+        `export_page.py checks race ${ix}'s distance and ground`,
+      );
       return [name, { cat, ground }];
     }),
   );
 }
 /** a skill group's white name and its gold's (null: none) */
 export type SkillNames = { w: string; gd: string | null };
-/** The career page's tables (export_page.py `career`, its mobs cut to those with a portrait by build.py; the planner
+/** The career page's tables (export_page.py `career`, its mobs cut to those with a portrait by the build; the planner
  * page has them only in the GM era). */
 export interface CareerTables {
   /** a white spark's factor group -> its skill group */
@@ -131,8 +124,8 @@ export interface CareerTables {
   /** GM era: the factors Global has (uma.moe lists only those) */
   moe?: number[];
 }
-/** The active era's data, loaded once by loadData() before the page starts (Global's comes with the page's data
- * scripts; the GM era's is fetched, ASSETS.dataGm, only when that era is selected: switching era reloads the page). */
+/** The active era's data, loaded once by loadData() before the page starts (Global's comes with the page's scripts;
+ * the GM era's is fetched, ASSETS.dataGm, only when that era is selected: switching era reloads the page). */
 export interface GameData {
   /** the cards started by now */
   cards: Card[];
@@ -155,8 +148,8 @@ export interface GameData {
    * start, so a banner turns on by itself. Fixed at page load. */
   later: { umas: number[]; outfits: number[]; cards: number[] };
 }
-/** the data as build.py writes it (an era's page data: export_page.py) */
-interface PageData {
+/** an era's page data (export_page.py) as the build gives it */
+export interface PageData {
   cards: Card[];
   umas: Uma[];
   skills: GameData['catalog'];
@@ -210,14 +203,11 @@ export const loadFail = (what: string): string => {
     location.protocol === 'file:' ? ' The page has to be served, not opened as a file: ./build.sh serve.' : '';
   return `Could not load ${what}. Check your connection and reload the page.${asFile}`;
 };
-export async function loadData() {
+/** Loads the active era's data; `career`: the Global era's career tables, on a page that has them (the career page's
+ * '#career-data'), else null. */
+export async function loadData(career: CareerTables | null) {
   if (ERA !== 'gm') {
-    setData({
-      cards: parse('data-cards'),
-      umas: parse('data-umas'),
-      skills: parse('data-skills'),
-      career: has('data-career') ? parse('data-career') : null,
-    });
+    setData({ cards: page.cards, umas: page.umas, skills: page.skills, career });
     return;
   }
   let response: Response | null;
@@ -229,26 +219,24 @@ export async function loadData() {
   if (!response?.ok) throw new Error(loadFail('the Grand Masters-era data'));
   setData(await response.json());
 }
-export const EXAMPLE: LoopReport | null = $('data-example') ? parse('data-example') : null; // precomputed default result (the planner page)
-const IMAGES: { keys: string[]; base: string; ext: Record<string, string> } = parse('data-img');
+const IMAGES = page.img;
 export const SHIPPED = new Set(IMAGES.keys); // images in dist/<IMG_BASE>: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
 export const IMG_BASE = IMAGES.base; // the fingerprinted image folder, e.g. 'assets/img.1a2b3c4d5e/'
 export const IMG_EXT = IMAGES.ext; // file extension per kind: avif, webp for the UI sprites
-const SKILL_ICONS: { white: Record<number, number>; gold: Record<number, number> } = parse('data-skillicon');
-export const SKILLICON = SKILL_ICONS.white,
-  SKILLICON_GOLD = SKILL_ICONS.gold; // skill group -> icon id of its white / gold version
-export const RACEIDS: Record<string, number> = parse('data-raceids'); // race name -> race id (banner key)
+export const SKILLICON = page.skillIcons.white,
+  SKILLICON_GOLD = page.skillIcons.gold; // skill group -> icon id of its white / gold version
+export const RACEIDS = page.raceIds; // race name -> race id (banner key)
 // target golds a scenario hands out in every Independent Training run (Unity Cup: No Stopping Me!, It's On!)
 export const SCEN_GOLDS: Record<string, number[]> = { unity: [20049, 20046] };
-// each scenario's training-hint base by scenario key: research/results.json's fit rounded to 3 decimals, which build.py
-// reads with pkg/loopopt/build.rs's keys and rounding, so it is the solver's hint_base
-const HINT_BASE: Record<string, unknown> = parse('data-hintbase');
-// a scenario's hint base, checked where the page first reads it: build.py writes one per scenario key (`hint_bases`,
+// each scenario's training-hint base by scenario key: research/results.json's fit rounded to 3 decimals, which the build
+// reads with pkg/loopopt/build.rs's keys and rounding (vite/research.mjs), so it is the solver's hint_base
+const HINT_BASE: Record<string, unknown> = page.hintBase;
+// a scenario's hint base, checked where the page first reads it: the build writes one per scenario key (`hintBases`,
 // which stops on a missing one). Read as this module loads, so a miss stops the page there (errorlog.ts says so on the
 // status line)
 const hintBase = (key: string): number => {
   const base = HINT_BASE[key];
-  assert(typeof base === 'number', `build.py writes ${key}'s hint base`);
+  assert(typeof base === 'number', `the build writes ${key}'s hint base`);
   return base;
 };
 // the scenario picker's tiles, in its order. id: Global single_mode_scenario id (logo img/scen/{id}); base: training

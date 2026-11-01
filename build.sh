@@ -26,7 +26,7 @@ STEPS=(
   "pb||all|the solver, then pairwise affinity ceilings into both data.json; rerun after data or solver changes"
   "wasm||all default|the wasm32 build, wasm-opt (skipped when its key matches), webapp/example.json"
   "art||all default|images and runners when their game files are in game/global/ (each skipped, with a note, if not)"
-  "page||all default|webapp/dist: the pages, webapp/src bundled, both eras' data, the optimised wasm, img/"
+  "page||all default|webapp/dist (Vite): the pages, webapp/src bundled, both eras' data, the wasm, img/; page budgets"
   "images|||icons and card art from the game's decrypted bundles into webapp/img (IMAGES_FORCE=1 redoes all)"
   "runners|||each uma's running mini model as a sprite strip into webapp/img/run (webapp/chibi/chibi.py)"
   "lint|||every formatter and linter, warnings denied: Rust, shell, Python, the page's JS"
@@ -34,7 +34,7 @@ STEPS=(
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
   "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
   "testq|||the page, then the suite's fast tier (Chromium, the @quick tests, about 30 s): after each page change"
-  "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (PORT=...; a self-signed certificate)"
+  "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (vite preview; PORT=...; a self-signed certificate)"
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
   "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
   "valq|TAG||val without the slow jobs, joint_check and planval's proxy gate (about 2.5 CPU-min)"
@@ -90,7 +90,7 @@ quiet() {
 
 # ---- the data ----
 # the page's lists for both eras (export/export_page.py): run by every step that writes one of their inputs, so the
-# tracked page.json never lags them (webapp/build.py refuses one that does)
+# tracked page.json never lags them (the page's build refuses one that does: webapp/vite/pagedata.mjs)
 export_page() {
   (cd "$C/export" && "${PY[@]}" export_page.py global && "${PY[@]}" export_page.py jp)
 }
@@ -235,13 +235,14 @@ step_research() {
 # dependency change (a new or bumped package) is never checked against a stale node_modules
 npm_deps() {
   need_node; check npm
-  [ -x "$W/node_modules/.bin/esbuild" ] && [ ! "$W/package-lock.json" -nt "$W/node_modules/.package-lock.json" ] \
+  [ -x "$W/node_modules/.bin/vite" ] && [ ! "$W/package-lock.json" -nt "$W/node_modules/.package-lock.json" ] \
     || (cd "$W" && npm ci --silent)
 }
+# Vite (webapp/vite.config.mjs), then each page's first-visit size against its budget (size-limit: webapp/.size-limit.mjs)
 step_page() {
   need_uv; need_node; need "$NEED_OPT_WASM"; check page
   npm_deps
-  (cd "$W" && "${PY[@]}" build.py)
+  (cd "$W" && npx --no-install vite build --logLevel warn && npx --no-install size-limit)
 }
 step_images() {
   need_uv; need "${IMAGE_FILES[@]}"; check images
@@ -302,7 +303,7 @@ step_prune_replies() {
 }
 step_serve() {
   need_node; need "$NEED_DIST"; check serve
-  node "$W/serve.mjs" "${PORT:-8000}" localhost h2
+  (cd "$W" && npx --no-install vite preview --port "${PORT:-8000}" --host localhost --strictPort)
 }
 # Cloudflare Pages, a direct upload of webapp/dist (set up once: npx wrangler login; npx wrangler pages project create)
 step_deploy() {

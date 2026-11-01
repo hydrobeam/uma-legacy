@@ -1,4 +1,4 @@
-// ---------- the setup both planner pages share (panels.template.html): its editors, and the Umas and Support cards ----------
+// ---------- the setup both planner pages share (webapp/partials/): its editors, and the Umas and Support cards ----------
 // dialogs. `setupViews` lists each editor with its mount point, and each entry renders them (behind a render guard: a
 // render into a mount point is an effect, made by the entries only); the Umas and Support cards dialogs are two of
 // them, each with its panel inside (Done, Escape or a click on the backdrop closes one). Their template-owned buttons

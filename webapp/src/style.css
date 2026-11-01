@@ -1,4 +1,17 @@
 /* Layout: settings rail on the left (roster, skills, rank), results column on the right; stacks at phone width. */
+/* Fonts: the Fontsource packages (package.json), self-hosted, each weight's Latin subset; anything else (symbols, the JP
+   era's untranslated names) falls back to the system font per glyph. Zen Maru Gothic is the career page's game-style
+   veteran card's (fetched only where used). */
+@import '@fontsource/zen-kaku-gothic-new/latin-400.css';
+@import '@fontsource/zen-kaku-gothic-new/latin-500.css';
+@import '@fontsource/zen-kaku-gothic-new/latin-700.css';
+@import '@fontsource/zen-kaku-gothic-new/latin-900.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-600.css';
+@import '@fontsource/zen-maru-gothic/latin-500.css';
+@import '@fontsource/zen-maru-gothic/latin-700.css';
+@import '@fontsource/zen-maru-gothic/latin-900.css';
 :root {
   --bg: #f3f5f8;
   --panel: #ffffff;

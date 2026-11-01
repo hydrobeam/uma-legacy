@@ -64,7 +64,7 @@ const {
   loadData,
 } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [] };
-await loadData();
+await loadData(globalThis.__LLP_DATA['data-career']);
 initStore(() => memory());
 
 const node = (chara) => ({ chara, sparks: {}, pinks: {}, blues: {}, greens: {}, wins: [] });

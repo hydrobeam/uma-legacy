@@ -30,7 +30,7 @@ import { on } from '../../src/store.ts';
 import { FIXTURES } from './loopfixtures.mjs';
 import { fakeClock, flush, memory } from './fakes.mjs';
 
-await loadData();
+await loadData(null);
 const GOLDEN = JSON.parse(fs.readFileSync(new URL('./loopgolden.json', import.meta.url), 'utf8'));
 const LAST = 'llp:last:global';
 

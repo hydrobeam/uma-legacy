@@ -131,8 +131,7 @@ function workerStandIn(replay) {
           )
         : v,
     );
-  const assets = () =>
-    self.__LLP_DATA?.['data-assets'] || JSON.parse(document.getElementById('data-assets').textContent);
+  const assets = () => JSON.parse(document.getElementById('data-assets').textContent);
   const store = (op, key, text) => window.__llpSolver(op, JSON.stringify(assets()), key, text);
   const sleep = (ms) =>
     new Promise((resolve) => {

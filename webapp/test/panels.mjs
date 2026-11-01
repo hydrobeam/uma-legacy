@@ -1,4 +1,4 @@
-import { check, skip, open, settle } from './helpers.mjs';
+import { check, skip, open, settle, json } from './helpers.mjs';
 
 export default async function panels(b) {
   const pg = await open(b);
@@ -28,10 +28,8 @@ export default async function panels(b) {
   // the picker's tiles carry no card id: a tile is known by its picture's title, the card's full name (ui/Images.tsx
   // CardAv, art or not; names are unique), here the deck card's (its id in the page's data; the result's pictures carry
   // no title, the chip's says more); null when no tile shows the card
-  const cardName = await pg.evaluate(
-    (id) => self.__LLP_DATA['data-cards'].find((c) => c.id === id)?.name ?? null,
-    +(await dc.getAttribute('data-cid')),
-  );
+  const cardId = +(await dc.getAttribute('data-cid'));
+  const cardName = (await json(pg, 'data-cards')).find((c) => c.id === cardId)?.name ?? null;
   const pickerPressed = () =>
     pg.evaluate(
       (name) =>

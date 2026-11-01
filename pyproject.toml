@@ -5,8 +5,8 @@ description = "Python side of the Legacy Loop Planner: master.mdb exporters, eve
 requires-python = ">=3.14"
 license = "GPL-3.0-or-later"
 dependencies = [
-    "fonttools>=4.68.0",  # subsets /about's math font to the characters its formulas use (webapp/build.py)
-    "brotli>=1.2.0",  # fonttools' woff2 writer; the page budgets' transfer estimate (webapp/build.py)
+    "fonttools>=4.68.0",  # subsets /about's math font to the characters its formulas use (webapp/vite/mathfont.py)
+    "brotli>=1.2.0",  # fonttools' woff2 writer
 ]
 
 [tool.uv]

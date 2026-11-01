@@ -37,14 +37,32 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
-| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome`, `typescript`; `preact` and `@preact/signals` (pinned; bundled into the page, for its views as they become components) | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
-| `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset; the page budgets' transfer estimate); the exporters use the standard library |
+| `webapp/package.json` (`npm ci` on first use) | the page's packages, below | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
+| `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset, `webapp/vite/mathfont.py`; `brotli` is fonttools' woff2 writer); the exporters use the standard library |
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
 | `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
 | `pyproject.toml`, group `research` | `numpy`, `scipy` | `research` |
 | `cache/ms-playwright/` (`./build.sh browsers`) | Playwright's Chromium and Firefox (`PLAYWRIGHT_BROWSERS_PATH`; outside `node_modules`, so `npm ci` keeps them) | `test`, `testq`, `runners` |
 | `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/data/gametora.json`. GameTora does not keep old versions online (6 of the 13 pins answered 404 on 2026-10-21), so the pinned set exists only in a cache that already holds it; elsewhere `GAMETORA_LATEST=1` moves the pins, and the events may change | `events` |
 | `cache/chibi/tools/` (`runners`, first use) | AssetStudioModCLI 0.19.0, a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 (Arch's libxml2-legacy; always this copy) | `runners` |
+
+The page's packages (`webapp/package.json`; build and dev tools pinned exactly), each for what it replaces or does:
+
+| Package | Why |
+|---|---|
+| `preact`, `@preact/signals`, `@preact/signals-core` | the page's views and stores (bundled into the page) |
+| `vite` 8.3.5 | builds `webapp/dist/` (`page`): bundles the entries and the worker, fingerprints every asset, minifies the stylesheet, serves the build (`serve`, the browser suite); in place of the hand-written `build.py` and `serve.mjs` |
+| `vite-plugin-handlebars` 2.0.3 | the pages' shared markup (`webapp/partials/`) and the values they show (version, site address, /about's research figures); in place of `build.py`'s own templating |
+| `vite-plugin-static-copy` 4.1.1 | copies the fonts' licences into `dist/licenses/` |
+| `@vitejs/plugin-basic-ssl` 2.3.0 | the self-signed certificate `vite preview` serves HTTP/2 with (`cache/tls/`), in place of `serve.mjs`'s openssl call |
+| `size-limit` 14.3.0, `@size-limit/file` 14.3.0 | each page's first-visit budget (`webapp/.size-limit.mjs`), in place of `build.py`'s `page_cost` |
+| `@fontsource/*` (4 fonts) | the self-hosted fonts' Latin subsets, imported by `src/style.css` |
+| `binaryen` | `wasm-opt` (`wasm`) |
+| `esbuild` | bundles for `test/samecode.mjs` (and `static.mjs`'s load-order check through it) and the node tests that draw views; the page itself is built by Vite |
+| `playwright` (pinned) | the browser suite, `icons.mjs`, `runners` |
+| `three` | `runners` (the running mini models) |
+| `wrangler` | `deploy` (Cloudflare Pages) |
+| `@biomejs/biome`, `typescript` | `lint` |
 
 **Game files you supply**, all in `game/` (gitignored; needed only to refresh the data or make the art)
 
@@ -98,7 +116,7 @@ it stops; the `art` step instead says what it skipped.
 | `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
 | `test` / `testq` | the page (`page`, 1.4 s), then the browser suite on it, full or its fast tier; live, recording the solver's replies, when none are recorded for this solver and data (see *Tests*) |
 | `prune-replies` | the page, then deletes the recorded solver replies of every solver and data but its own (see *Tests*, *Recorded solver replies*) |
-| `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it: the certificate is self-signed (`cache/tls/`), so a browser warns once |
+| `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it (`vite preview`): the certificate is self-signed (`cache/tls/`), so a browser warns once. Unlike the host, it revalidates `assets/` on each load (ETags) rather than caching them a year |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
 | `mono` | the release solver, then the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
@@ -109,8 +127,8 @@ The solver's training-hint constants (each scenario's base and specialty weight,
 the research fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every
 build, native or wasm, and rounds them to 3 decimals, so a `research` run that moves one at that precision moves the
 solver's results (rerun validation, `pb`, and update `/about` and `docs/MODEL.md`, which state them by hand). The page's
-scenario tiles take the bases the same way: `webapp/build.py` (`hint_bases`) reads build.rs's keys with its rounding
-into the page's data. A missing key fails either build with its name.
+scenario tiles take the bases the same way: `webapp/vite/research.mjs` (`hintBases`) reads build.rs's keys with its
+rounding into the page's data. A missing key fails either build with its name.
 
 ## Data updates
 
@@ -143,7 +161,7 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
 character icons, card art, skill icons, race banners, scenario logos and select art, mob portraits, and the UI
 sprites as lossless WebP with dark versions made here (the game has no dark mode). The full list of kinds and the
 bundles they come from is in `webapp/images.py`'s docstring. `uv run --group art webapp/icons.py` renders the favicons and the
-link-preview image from `webapp/icons/favicon.svg`.
+link-preview image from `webapp/public/favicon.svg`.
 
 `runners` writes one sprite strip per uma to `webapp/img/run/{chara}.avif`, the uma being planned running while a
 search works (a spinner when a build has none). How the pipeline works and what to check when it breaks:
@@ -151,30 +169,34 @@ search works (a spinner when a build has none). How the pipeline works and what 
 
 ## The page
 
-`webapp/build.py` assembles `webapp/dist/`. It prepares no game data: the page's lists are each era's exported
-`page.json` (*Data updates*), refused when a file they were made from has changed since; the build adds only what
-depends on the tree it runs in, the research constants (`research/results.json`, read as `build.rs` reads them) and
-the career tables' mobs cut to those with a portrait in `webapp/img/`. It writes:
+Vite builds `webapp/dist/` (`webapp/vite.config.mjs`; its plugins in `webapp/vite/`). It prepares no game data: the
+page's lists are each era's exported `page.json` (*Data updates*), refused when a file they were made from has changed
+since (`vite/pagedata.mjs`); the build adds only what depends on the tree it runs in, the research constants
+(`research/results.json`, read as `build.rs` reads them: `vite/research.mjs`) and the career tables' mobs cut to those
+with a portrait in `webapp/img/`. It writes:
 - `index.html` (the career planner, the front page; an old `/career` link redirects there), `loop.html` (`/loop`, the
-  loop planner) and `about.html` (`/about`, "How this works", which holds
-  the model text), from their templates. Shared markup lives in `panels.template.html`, blocks marked
-  `<!--panel:name-->` … `<!--/panel:name-->` that fill each `__PANEL_NAME__`. Both planner pages carry `class="game"`
-  on `<html>`, which scopes the game-style rules in `style.css` (career-only layout under `.rb`, the loop planner's
-  under `.lp`).
+  loop planner) and `about.html` (`/about`, "How this works", which holds the model text), from the pages of those names
+  in `webapp/`. Shared markup lives in `webapp/partials/` (the theme script, the header's tabs, the setup rows, the
+  Enhance buttons, the settings editors' mount points), each `{{> name}}` filled by `vite-plugin-handlebars`, which also
+  fills the values a page shows (`{{version}}`, `{{site}}`, /about's figures; a name without a value stops the build).
+  Both planner pages carry `class="game"` on `<html>`, which scopes the game-style rules in `style.css` (career-only
+  layout under `.rb`, the loop planner's under `.lp`).
 - `assets/`: every shared file named by a fingerprint of its content and cached for a year: the stylesheet (with the
-  font faces and UI sprites as CSS variables), the shared data script (`self.__LLP_DATA`), the page bundles, the
-  solver's worker script, the wasm, each era's solver data, the Grand Masters page data (loaded when that era is
-  chosen), the fonts and `img.<hash>/`. A revisit fetches only the HTML (about 25 KB for the career planner, 35 KB for
-  the loop planner).
-- each page's first-visit cost, printed at the end of the build: the page, the local files it names and, on the planner
-  pages, the worker script, the wasm and the Global solver data, raw and at brotli quality 4 (the host's transfer of the wasm to within
-  0.1%). A page over its budget in `webapp/budgets.json` fails the build; a budget rises only in the commit that needs
-  it, which says why.
-- favicons, `og.png`, font licences in `licenses/`, `_headers` (the host caches the pages 5 minutes, `assets/` a
-  year), `_redirects` (`/loop` to `/`) and `robots.txt`. `serve.mjs` caches `assets/` a year as the host does and
-  serves the pages uncached.
+  font faces and the UI sprites as CSS variables, `vite/images.mjs`), the page scripts (each page's entry and the
+  modules both share, with the Global era's data: `#page-data`, and the career tables on the career page:
+  `#career-data`), the solver's worker script, the wasm, each era's solver data, the Grand Masters page data (loaded
+  when that era is chosen), the fonts, /about's math font (`vite/mathfont.mjs`) and `img.<hash>/` (the game's images,
+  loaded by id). A revisit fetches only the HTML (about 10 KB per planner page). Each planner page's head carries the
+  asset table (`data-assets`), from which its first script starts the solver's downloads.
+- each page's first-visit size, checked after the build by size-limit (`webapp/.size-limit.mjs`): the page, the local
+  files it names and, on the planner pages, the worker script, the wasm and the Global solver data, at brotli quality
+  11, about 22% under the host's transfer on the planner pages (it sends quality 4, which reproduced its transfer of the
+  wasm to within 0.1%). A page over its budget fails the build; a budget rises only in the commit that needs it, which
+  says why.
+- favicons, `og.png`, `_headers` (the host caches the pages 5 minutes, `assets/` a year), `_redirects` (`/loop` to `/`)
+  and `robots.txt`, from `webapp/public/` as they are, and the fonts' licences in `licenses/`.
 
-The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, minified to `assets/worker.<hash>.js`; its messages both ways are typed in `src/solver.ts`). Saved settings are one versioned object,
+The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, built by Vite to `assets/worker-<hash>.js`; its messages both ways are typed in `src/solver.ts`). Saved settings are one versioned object,
 `localStorage['llp:settings']`, read and written in `saved.ts`. The settings are a store (`settings.ts`, on
 @preact/signals-core): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
@@ -236,11 +258,12 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
   HEAD tree alone, no bundle may read a top-level variable at load before its declaration has run (esbuild prints
   top-level `const` and `class` as `var`, so such a read finds `undefined`, with no TDZ error; static.mjs runs the same
   check). Its own cases, behaviour changes it must report and moves it must pass, are `test/unit/samecode.test.mjs`.
-  Not compared: templates, CSS, build.py's flags, and what functions called at load read through methods, constructors
-  or callbacks.
+  Not compared: the pages, CSS, the build's settings, and what functions called at load read through methods,
+  constructors or callbacks. It reads esbuild's bundles, which order modules as the page's Vite build does (both follow
+  the modules' evaluation order), but not byte for byte.
   A commit it passes changes no behaviour and needs no browser run; one that changes behaviour fails it by design.
 - **Browser suite:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
-  `playwright` package) against `webapp/dist`, served by `serve.mjs` over HTTP/2 with TLS as the host serves it (a
+  `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host serves it (a
   self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
   `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 1: four each kept the laptop at its thermal
   limit, 96.9 C on average, where two groups at once averaged 82.8 C; `LLP_JOBS=4` is about 2.5 times faster, by estimate, and hot):
@@ -442,7 +465,8 @@ Check a deploy on its own address (`https://<hash>.uma-legacy.pages.dev`, printe
 build.sh             the one entry point for every build step
 .githooks/           the pre-commit hook (`./build.sh hooks` turns it on)
 .github/             CI (`workflows/ci.yml`)
-webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
+webapp/              the page: index.html, loop.html, about.html, partials/, src/ (styles and modules), the Vite
+                     build (vite.config.mjs, vite/), public/, the browser suite, chibi/
 pkg/loopopt/         the Rust solver (src/, its module map in docs/SOLVER.md; tests/; build.rs takes the training-hint
                      constants from research/results.json)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)

@@ -51,7 +51,7 @@ const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, 
 const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails, OddsDialog, openOdds } = page;
 const { ScheduleDialog, openSched, schedOpened, Guard, nodeOpen, pickerFor, pickerClosed, on } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
-await loadData();
+await loadData(globalThis.__LLP_DATA['data-career']);
 
 const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));

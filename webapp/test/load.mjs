@@ -1,5 +1,6 @@
 import {
   check,
+  json,
   skip,
   ART,
   artCheck,
@@ -165,22 +166,24 @@ export default async function load(b) {
   );
   // a target on the swapping uma's own skill list is no change for her (her deck drops its hints because she has it):
   // not listed (the default's Agnes Digital [Full-Color Fangirling] has Superstan, so no "Uma Stan 100% → 0%")
-  const owned = await pg.evaluate(() => {
-    const skl = self.__LLP_DATA['data-skills'],
-      wOf = new Map(skl.filter((s) => s[2]).map((s) => [s[2], s[1]]));
-    return [...document.querySelectorAll('#results .loop .deck.swap')].map((d) => {
-      const ids = [...d.querySelectorAll('.swho .facebtn')].map((f) => f.dataset.uma);
-      const per = ids.map((id) =>
-        [...document.querySelectorAll(`#results .loop .mem[data-uma="${id}"] .sk .spark`)].flatMap((s) =>
-          s.classList.contains('g') ? [s.textContent, wOf.get(s.textContent)] : [s.textContent],
-        ),
-      );
-      return {
-        mine: per.length ? per[0].filter((n) => per.every((p) => p.includes(n))) : [],
-        swd: [...d.querySelectorAll('.swd1')].map((x) => x.textContent.trim()),
-      };
-    });
-  });
+  const owned = await pg.evaluate(
+    (skl) => {
+      const wOf = new Map(skl.filter((s) => s[2]).map((s) => [s[2], s[1]]));
+      return [...document.querySelectorAll('#results .loop .deck.swap')].map((d) => {
+        const ids = [...d.querySelectorAll('.swho .facebtn')].map((f) => f.dataset.uma);
+        const per = ids.map((id) =>
+          [...document.querySelectorAll(`#results .loop .mem[data-uma="${id}"] .sk .spark`)].flatMap((s) =>
+            s.classList.contains('g') ? [s.textContent, wOf.get(s.textContent)] : [s.textContent],
+          ),
+        );
+        return {
+          mine: per.length ? per[0].filter((n) => per.every((p) => p.includes(n))) : [],
+          swd: [...d.querySelectorAll('.swd1')].map((x) => x.textContent.trim()),
+        };
+      });
+    },
+    await json(pg, 'data-skills'),
+  );
   check(
     'swap rows leave out the targets their umas have on their own skill list',
     owned.some((r) => r.mine.length) &&

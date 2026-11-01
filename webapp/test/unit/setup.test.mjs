@@ -64,7 +64,7 @@ const {
 globalThis.__LLP_DATA['data-skills'].push([20301, 'Pressure', null], [20302, 'Pressure', null]);
 // the outfits' labels the Umas panel shows (the fake page's outfits have none)
 for (const u of globalThis.__LLP_DATA['data-umas']) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
-await loadData();
+await loadData(null);
 
 const KEY = 'llp:settings';
 // the store loaded from a new storage holding these shared settings; returns what is stored, read afresh each call

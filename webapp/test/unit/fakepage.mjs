@@ -1,6 +1,7 @@
-// A page for node tests of modules that read the game data (data.ts): the data build.py embeds (self.__LLP_DATA) for a
-// small made-up game, and a document that has no element. Import it before any module of the page; then
-// `await loadData()` as the page does. Its released dates are in the past (FUTURE: one card not out yet), so what a
+// A page for node tests of modules that read the game data (data.ts): the data the build gives the page, keyed by the
+// elements that once held it (self.__LLP_DATA; pagedata.mjs hands it to data.ts as '#page-data'), for a small made-up
+// game, and a document that has no element. Import it before any module of the page; then `await loadData(career)` as
+// the page does. Its released dates are in the past (FUTURE: one card not out yet), so what a
 // job holds does not depend on the day the test runs.
 const PAST = 1_600_000_000,
   FUTURE = 9_000_000_000;

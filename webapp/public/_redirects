@@ -1,0 +1,4 @@
+# Cloudflare Pages: the career planner is the front page, the loop planner /loop; an old /career link lands on the
+# front page (a temporary redirect)
+/career / 302
+/career/ / 302

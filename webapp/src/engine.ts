@@ -138,7 +138,7 @@ function startEngine(): Promise<void> {
   // initialise once both are in
   ready = new Promise((resolve, reject) => {
     try {
-      worker = new Worker(ASSETS.worker); // its own fingerprinted file (build.py), cached like the other assets
+      worker = new Worker(new URL('./worker.ts', import.meta.url)); // its own fingerprinted file (Vite), cached like the other assets
     } catch {
       reject(new Error('This browser blocked the background worker the solver runs in.'));
       return;

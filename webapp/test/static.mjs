@@ -1,6 +1,6 @@
 // Static checks on the page's source, run by `./build.sh lint` (no browser, no build): what the browser suite can't see
 // going stale.
-// - dead CSS: a class or id in style.css's selectors that no page script, template or build.py names (as a whole word,
+// - dead CSS: a class or id in style.css's selectors that no page script, page, partial or build plugin names (a word,
 //   HTML entities aside). A name the code builds from parts is listed in BUILT with where it is built.
 // - dead exports: an export of src/ that no other file (src/, test/ and its folders) names outside a comment.
 // - stale storage writes: `localStorage.setItem(key, JSON.stringify(x))` where `x` was not read or built in the same
@@ -8,7 +8,7 @@
 //   call stored meanwhile; read what is stored, change your part, write it.
 // - template ids: every id a module looks up by a literal name ($, $dialog, $input, $textarea, getElementById, a
 //   querySelector/closest of '#id') exists on each page whose bundle holds the module (esbuild's metafile), in its
-//   template with the panels filled in, in build.py's own markup or made by one of the bundle's modules. A module that
+//   page with its partials filled in, in the build plugins' own markup or made by one of the bundle's modules. A module that
 //   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
 //   purpose is listed in MAY_BE_MISSING, per page, with why An exemption whose id the page has, or that no module of the page looks
 //   up, fails too.
@@ -72,9 +72,15 @@ const BUILT = {
   leg1: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
 };
 
-const sources = [...ls('src', /\.(js|mjs|ts|tsx)$/, true), ...ls('.', /\.template\.(html|js)$/), 'build.py'].map(
-  (f) => [f, read(f)],
-);
+// the pages, their partials and the build's plugins (vite/), which write markup of their own
+const PAGE_FILES = ['index.html', 'loop.html', 'about.html'];
+const BUILD_FILES = ['vite.config.mjs', ...ls('vite', /\.mjs$/)];
+const sources = [
+  ...ls('src', /\.(js|mjs|ts|tsx)$/, true),
+  ...PAGE_FILES,
+  ...ls('partials', /\.hbs$/),
+  ...BUILD_FILES,
+].map((f) => [f, read(f)]);
 const problems = [];
 
 // ---------- dead CSS
@@ -93,7 +99,9 @@ const problems = [];
       }
   }
   for (const [name, lines] of dead)
-    problems.push(`style.css: .${name} (lines ${lines.join(', ')}) is named by no script, template or build.py`);
+    problems.push(
+      `style.css: .${name} (lines ${lines.join(', ')}) is named by no script, page, partial or build plugin`,
+    );
 }
 
 // ---------- dead exports
@@ -139,29 +147,26 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 }
 
 // ---------- template ids: every id a module looks up by name exists on each page whose bundle holds the module
-// A page's markup is its template with the shared panels filled in (as build.py fills them), the markup build.py
+// A page's markup is its page with the shared partials filled in (as the build fills them), the markup the build
 // writes itself (the theme button) and what the bundle's modules make with an id. A lookup a module makes on purpose
 // where the element may be missing is listed in MAY_BE_MISSING, under each page (its bundle's entry) where it may be,
 // with why: an exemption on one page leaves the other page's lookup checked.
 const MAY_BE_MISSING = {
   'src/loop/main.tsx': {},
-  'src/career/main.tsx': {
-    'data-example': "data.ts probes it: the loop page's precomputed example result; the career page has none",
-  },
+  'src/career/main.tsx': {},
 };
-const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.tsx': 'career.template.html' };
+const PAGES = { 'src/loop/main.tsx': 'loop.html', 'src/career/main.tsx': 'index.html' };
 const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
 const SELECTOR_ID = /\.(?:querySelector(?:All)?|closest|matches)\(\s*(['"])#([A-Za-z][\w-]*)\1\s*\)/g;
 const MADE_ID = /(?:\.id\s*=\s*|\bid:\s*|setAttribute\(\s*'id',\s*)(['"`])([A-Za-z][\w-]*)\1|\bid="([A-Za-z][\w-]*)"/g;
-const PANELS = Object.fromEntries(
-  [...read('panels.template.html').matchAll(/<!--panel:(\w+)-->([\s\S]*?)<!--\/panel:\1-->/g)].map((m) => [m[1], m[2]]),
-);
+// the partials (partials/*.hbs), each `{{> name ...}}` of a page filled with its file (vite.config.mjs, handlebars)
+const PANELS = Object.fromEntries(ls('partials', /\.hbs$/).map((f) => [path.basename(f, '.hbs'), read(f)]));
 const fillPanels = (page) => {
   let filled = page;
-  let m = filled.match(/__PANEL_([A-Z]+)__/);
-  for (; m; m = filled.match(/__PANEL_([A-Z]+)__/)) filled = filled.replace(m[0], PANELS[m[1].toLowerCase()]);
+  let m = filled.match(/\{\{> (\w+)[^}]*\}\}/);
+  for (; m; m = filled.match(/\{\{> (\w+)[^}]*\}\}/)) filled = filled.replace(m[0], PANELS[m[1]]);
   return filled;
 };
 const idsIn = (text) => [...text.matchAll(MADE_ID)].map((m) => m[2] || m[3]);
@@ -183,7 +188,7 @@ for (const [entry, template] of Object.entries(PAGES)) {
   const modules = bundled[entry];
   const ids = new Set([
     ...idsIn(fillPanels(read(template))),
-    ...idsIn(read('build.py')),
+    ...BUILD_FILES.flatMap((f) => idsIn(read(f))),
     ...modules.flatMap((f) => idsIn(srcText[f])),
   ]);
   const lookedHere = new Set();
@@ -194,7 +199,7 @@ for (const [entry, template] of Object.entries(PAGES)) {
       .concat([...text.matchAll(SELECTOR_ID)].map((m) => m[2]))) {
       looked.add(m);
       lookedHere.add(m);
-      const message = `${file}: looks up #${m}, which ${template} (with its panels) and its bundle's modules don't have`;
+      const message = `${file}: looks up #${m}, which ${template} (with its partials) and its bundle's modules don't have`;
       if (!ids.has(m) && !(m in MAY_BE_MISSING[entry]) && !problems.includes(message)) problems.push(message);
     }
   }
@@ -623,7 +628,7 @@ const ENTRIES = ['src/loop/main.tsx', 'src/career/main.tsx'];
 {
   const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
   const templateDialogs = new Set(
-    [...ls('.', /\.template\.html$/), 'build.py'].flatMap((f) =>
+    [...PAGE_FILES, ...ls('partials', /\.hbs$/), ...BUILD_FILES].flatMap((f) =>
       [...read(f).matchAll(/<dialog\b[^>]*\bid="([\w-]+)"/g)].map((m) => m[1]),
     ),
   );
@@ -686,7 +691,7 @@ for (const entry of [...Object.keys(PAGES), WORKER])
 const reports = [];
 // ids in the templates that nothing names: no script, no style rule, no other markup (for=, aria-*, href="#")
 {
-  const templates = ls('.', /\.template\.html$/).filter((f) => f !== 'about.template.html');
+  const templates = PAGE_FILES.filter((f) => f !== 'about.html');
   const others = (file) =>
     [...sources.filter(([f]) => f !== file), ['src/style.css', read('src/style.css')]].map(([, t]) => t).join('\n');
   // an id the code builds from a name and a suffix (`${id}-menu`) is named when its name is
@@ -700,11 +705,11 @@ const reports = [];
     const text = read(file);
     for (const id of new Set(idsIn(text)))
       if (!isNamed(id, others(file)) && !isNamed(id, text.split(`id="${id}"`).join('')))
-        unnamed.push(`${file.replace('.template.html', '')}#${id}`);
+        unnamed.push(`${file.replace('.html', '')}#${id}`);
   }
   if (unnamed.length) reports.push(`ids no script, style or markup names (${unnamed.length}): ${unnamed.join(', ')}`);
   const unused = Object.keys(PANELS).filter(
-    (name) => !templates.some((f) => read(f).includes(`__PANEL_${name.toUpperCase()}__`)),
+    (name) => ![...templates, ...ls('partials', /\.hbs$/)].some((f) => read(f).includes(`{{> ${name}`)),
   );
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
 }

@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 export const STORE_ROOT = fileURLToPath(new URL('../../cache/solver-replies/', import.meta.url));
 
-/** The store directory's name for a page's data-assets (build.py ASSETS): its wasm's and engines' fingerprints.
+/** The store directory's name for a page's data-assets (vite/pagedata.mjs): its wasm's and engines' fingerprints.
  * @param {{wasm: string, engine: {global: string, gm: string}}} assets */
 export function storeName(assets) {
   const files = [assets.wasm, assets.engine.global, assets.engine.gm];
-  const hashes = files.map((f) => /\.([0-9a-f]+)\.[a-z]+$/.exec(f)?.[1]);
+  const hashes = files.map((f) => /-([\w-]{8})\.[a-z]+$/.exec(f)?.[1]);
   if (hashes.some((h) => !h)) throw new Error(`no fingerprint in the asset names ${files.join(', ')}`);
   return hashes.join('-');
 }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { drawPink } from '../src/pink.ts';
 import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.ts';
 import { searchCaveat, planCaveat } from '../src/proofs.ts';
-import { QUICK, check, ART, dialog, audit, contrastCheck, still, careerPage, repoUrl } from './helpers.mjs';
+import { QUICK, check, ART, dialog, audit, contrastCheck, still, careerPage, repoUrl, json } from './helpers.mjs';
 
 // The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
 // career with legacy pinks (val/ref__global__career_*.out, the solver's outputs that validation pins), 40,000 seeded draws
@@ -1012,16 +1012,19 @@ export default async function career(b) {
   // an answer for the same career keeps the veteran being entered: an SR card not in its deck marked not owned (a new
   // search, the same career) and owned again (the answer before it, kept)
   {
-    const offCard = await pg.evaluate(() => {
-      const shown = window.__careerResults.findLast((r) => r.next?.choice).next.choice,
-        inDeck = new Set(shown.deck.card_ids);
-      // (the picker lists the cards that give a target; a tile is known by its card's name, its picture's title)
-      const sr = new Set(
-        self.__LLP_DATA['data-cards'].filter((c) => c.rar === 2 && !inDeck.has(c.id)).map((c) => c.name.toLowerCase()),
-      );
-      const title = [...document.querySelectorAll('#cards .ct .cav')].find((t) => sr.has(t.title.toLowerCase())).title;
-      return { title, id: self.__LLP_DATA['data-cards'].find((c) => c.name === title).id };
-    });
+    const offCard = await pg.evaluate(
+      (cards) => {
+        const shown = window.__careerResults.findLast((r) => r.next?.choice).next.choice,
+          inDeck = new Set(shown.deck.card_ids);
+        // (the picker lists the cards that give a target; a tile is known by its card's name, its picture's title)
+        const sr = new Set(cards.filter((c) => c.rar === 2 && !inDeck.has(c.id)).map((c) => c.name.toLowerCase()));
+        const title = [...document.querySelectorAll('#cards .ct .cav')].find((t) =>
+          sr.has(t.title.toLowerCase()),
+        ).title;
+        return { title, id: cards.find((c) => c.name === title).id };
+      },
+      await json(pg, 'data-cards'),
+    );
     // the card's stored mark: false while it is marked not owned, else none
     const storedMark = () =>
       pg.evaluate((id) => JSON.parse(localStorage.getItem('llp:settings')).global.cardsOff?.[id], offCard.id);

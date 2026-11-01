@@ -1,4 +1,4 @@
-import { check, open, settle, pickScen, CARD_ART } from './helpers.mjs';
+import { check, open, settle, pickScen, CARD_ART, json } from './helpers.mjs';
 
 export default async function cards(b) {
   const pg = await open(b);
@@ -70,7 +70,7 @@ export default async function cards(b) {
   );
   await tile.click();
   // R cards are left out (no setting): the R section holds only the R pals
-  const rpals = await pg.evaluate(() => self.__LLP_DATA['data-cards'].filter((c) => c.rar === 1 && c.pal).length);
+  const rpals = (await json(pg, 'data-cards')).filter((c) => c.rar === 1 && c.pal).length;
   const rCount = () =>
     pg.evaluate(() => {
       const g = [...document.querySelectorAll('#cards .cgroup')].find((x) => x.querySelector('h3').textContent === 'R');

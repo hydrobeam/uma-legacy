@@ -23,7 +23,7 @@
 // after-bundle does. A nested local esbuild suffixed in some functions and not others can't be paired so and still
 // shows. Not compared: what a function called at load reads through a method, a
 // constructor or a callback; a getter's or a function's own reads against the effects (only declarations are
-// ordered); the templates, the CSS and build.py's flags.
+// ordered); the pages, the CSS and the build's settings.
 // --effects lists each bundle's load-time steps. Exits 1 on any difference or misordered read.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -62,7 +62,7 @@ const castsDropped = {
   },
 };
 
-// The bundle of `entry` in the webapp folder `dir`, as build.py makes it but unminified and without JSDoc type
+// The bundle of `entry` in the webapp folder `dir`, as a bundler makes it but unminified and without JSDoc type
 // comments; the packages resolve from this checkout's node_modules
 export const bundle = async (dir, entry) =>
   (

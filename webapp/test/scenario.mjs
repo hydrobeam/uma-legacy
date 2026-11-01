@@ -1,5 +1,6 @@
 import {
   check,
+  json,
   open,
   settle,
   lastJob,
@@ -30,7 +31,7 @@ export default async function scenario(b) {
     (await menu.isHidden()) &&
       (await scen(pg)) === 'unity' &&
       (await btnName()) === 'Scenario: Unity Cup' &&
-      ((await pg.evaluate(() => self.__LLP_DATA['data-img'].keys.includes('scen:2')))
+      ((await json(pg, 'data-img')).keys.includes('scen:2')
         ? (await pg.locator('#x-scen').innerText()).trim() === '' && (await pg.locator('#x-scen img').count()) === 1
         : (await pg.locator('#x-scen').innerText()).trim() === 'Unity Cup'),
   );
@@ -82,26 +83,27 @@ export default async function scenario(b) {
     t.map((x) => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '),
   );
   // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
-  const golds = await pg.evaluate(() => {
-    const skl = self.__LLP_DATA['data-skills'],
-      gi = self.__LLP_DATA['data-skillicon'].gold;
-    const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
-    return {
-      want: [20049, 20046].map((x) => ({ name: skl.find((s) => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })),
-      // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
-      group: g && g.getAttribute('aria-label'),
-      got: g
-        ? [...g.querySelectorAll('img')].map((i) => ({
-            alt: i.alt,
-            title: i.title,
-            src: i.getAttribute('src'),
-            h: Math.round(i.getBoundingClientRect().height),
-          }))
-        : [],
-      text: g ? g.innerText.trim() : null,
-      others: document.querySelectorAll('#scen-menu .stile:not([data-v="unity"]) .sgolds').length,
-    };
-  });
+  const golds = await pg.evaluate(
+    ([skl, gi]) => {
+      const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
+      return {
+        want: [20049, 20046].map((x) => ({ name: skl.find((s) => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })),
+        // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
+        group: g && g.getAttribute('aria-label'),
+        got: g
+          ? [...g.querySelectorAll('img')].map((i) => ({
+              alt: i.alt,
+              title: i.title,
+              src: i.getAttribute('src'),
+              h: Math.round(i.getBoundingClientRect().height),
+            }))
+          : [],
+        text: g ? g.innerText.trim() : null,
+        others: document.querySelectorAll('#scen-menu .stile:not([data-v="unity"]) .sgolds').length,
+      };
+    },
+    [await json(pg, 'data-skills'), (await json(pg, 'data-skillicon')).gold],
+  );
   check(
     "Unity Cup tile: No Stopping Me! and It's On! as gold icons on the rate line, no visible names",
     golds.group === 'Guaranteed in every run' &&

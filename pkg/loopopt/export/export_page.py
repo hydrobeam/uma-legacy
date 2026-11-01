@@ -2,8 +2,9 @@
 catalog and the career page's tables, with release dates from master.mdb. usage: export_page.py global|jp
 
 Writes pkg/loopopt/data/<era>/page.json, {cards, umas, skills, career, inputs}, where `inputs` maps each file read
-(relative to the repository) to its sha256: webapp/build.py checks them, so a page is never built from lists older than
-the exports they come from. The career tables keep every mob; build.py keeps the ones with a portrait. Also writes
+(relative to the repository) to its sha256: the page's build checks them (webapp/vite/pagedata.mjs), so a page is never
+built from lists older than the exports they come from. The career tables keep every mob; the build keeps the ones with
+a portrait. Each G1's distance and ground are checked here (`check_race_tracks`). Also writes
 pkg/loopopt/data/page_raceids.json, one map for both eras: the race id of each race name and of its schedule-chart name.
 
 Run by ./build.sh data, events, gametora and pb, which write its inputs."""
@@ -232,10 +233,29 @@ career = {
     "race_cat": data["race_cat"],  # each race's distance (0-3 sprint to long) and ground (1 turf, 2 dirt)
     "race_ground": data["race_ground"],
     "race_turns": race_turns,
-    "mobs": career_tables.get("mobs", []),  # every mob; build.py keeps the ones with a portrait
+    "mobs": career_tables.get("mobs", []),  # every mob; the page's build keeps the ones with a portrait
     "sourced": sourced,
     "ranks": career_tables.get("ranks", []),
 }
+
+
+def check_race_tracks(career):
+    """Each G1's distance (0-3, sprint to long) and ground (1 turf, 2 dirt), one of each per race: the career page reads
+    them as these codes (webapp/src/data.ts `tracksOf`, which fails the page's data load on any other), so one out of
+    range, or lists of the wrong length, stops the export here, naming it."""
+    races, distances, grounds = career["races"], career.get("race_cat"), career.get("race_ground")
+    where = f"pkg/loopopt/data/{ERA}/data.json"
+    if not isinstance(distances, list) or not isinstance(grounds, list):
+        raise SystemExit(f"{where}: race_cat and race_ground missing")
+    if not len(distances) == len(grounds) == len(races):
+        raise SystemExit(f"{where}: {len(races)} races, {len(distances)} distances, {len(grounds)} grounds")
+    code_in = lambda value, codes: type(value) is int and value in codes  # (a bool or a float is no code)
+    for name, distance, ground in zip(races, distances, grounds, strict=True):
+        if not (code_in(distance, range(4)) and code_in(ground, (1, 2))):
+            raise SystemExit(f"{where}: {name}'s distance {distance!r} (0-3) or ground {ground!r} (1-2) is not one")
+
+
+check_race_tracks(career)
 if ERA == "jp":  # GM era: the spark factors Global has, the only ones uma.moe (a Global site) can list
     global_factors = read_json(os.path.join(DATA, "global", "career.json"))["factors"]
     career["moe"] = sorted(map(int, global_factors))

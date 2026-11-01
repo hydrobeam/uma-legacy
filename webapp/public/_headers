@@ -1,0 +1,7 @@
+# Cloudflare Pages: the pages cached 5 minutes, so a new deploy shows quickly; the build's assets a year, immutable
+# (their names change with their content)
+/*
+  Cache-Control: public, max-age=300
+/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable

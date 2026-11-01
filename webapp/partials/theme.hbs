@@ -1,0 +1,16 @@
+{{!-- light / dark: the visitor's choice (the header's button, saved in this browser), else the system's preference,
+followed live until the button is used; set on <html> before the first paint (no light flash), on all three pages --}}
+<script>
+(function () {
+  var K = 'llp:theme', t = null, d = document.documentElement, m = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  try { t = localStorage.getItem(K); } catch (e) {}
+  if (t !== 'dark' && t !== 'light') t = null;
+  function set() { var v = t || (m && m.matches ? 'dark' : 'light'), b = document.getElementById('theme-btn'); d.setAttribute('data-theme', v);
+    if (b) { b.setAttribute('aria-pressed', String(v === 'dark')); b.title = v === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'; } }
+  set(); if (m && m.addEventListener) m.addEventListener('change', function () { if (!t) set(); });
+  document.addEventListener('DOMContentLoaded', set);
+  document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('#theme-btn')) return;
+    t = d.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; try { localStorage.setItem(K, t); } catch (x) {}
+    d.classList.add('themeswap'); set(); requestAnimationFrame(function () { requestAnimationFrame(function () { d.classList.remove('themeswap'); }); }); });
+})();
+</script>

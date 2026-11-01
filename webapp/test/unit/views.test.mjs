@@ -57,7 +57,7 @@ globalThis.__LLP_DATA['data-career'] = {
   races: ['Arima Kinen'],
   race_turns: [[47, 71]],
 };
-await loadData();
+await loadData(globalThis.__LLP_DATA['data-career']);
 
 const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
