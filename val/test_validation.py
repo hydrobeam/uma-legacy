@@ -18,6 +18,11 @@ class ValidationExitTests(unittest.TestCase):
         self.plan = self.val / "plan"
         self.plan.mkdir(parents=True)
         (self.root / "pkg/loopopt/data/global").mkdir(parents=True)
+        # (planval reads the solver's exact_builders threshold from its source)
+        (self.root / "pkg/loopopt/src/career/plan").mkdir(parents=True)
+        (self.root / "pkg/loopopt/src/career/plan/candidates.rs").write_text(
+            "const EXACT_BUILDERS_TARGETS: usize = 10;\n"
+        )
         for name in ("cmp2.py", "runval.py", "planval.py", "same.py"):
             shutil.copyfile(Path(__file__).with_name(name), self.val / name)
         self.solver = self.root / "solver"
@@ -171,6 +176,26 @@ class ValidationExitTests(unittest.TestCase):
         self.write(self.plan / "ref__tiny.out", output)
         self.fake_solver(output)
         self.assertEqual(self.plan_run().returncode, 0)
+
+    def test_plan_skips_the_proxy_run_where_every_builder_is_searched_exactly(self):
+        # (10 targets, or a borrowed veteran a career may use: no proxy run; under "later" or "never" it keeps one)
+        borrowed = [{"chara": 5, "borrowed": False}, {"chara": 6, "borrowed": True}]
+        for job, skipped in (
+            ({"targets": [{"group": g} for g in range(10)]}, True),
+            ({"targets": [{"group": g} for g in range(9)]}, False),
+            ({"legacies": borrowed}, True),
+            ({"legacies": borrowed, "borrowed_parent": "later"}, False),
+            ({"legacies": borrowed, "borrowed_parent": "never"}, False),
+            ({"next": {"exact_all": True}}, True),
+        ):
+            with self.subTest(job=job):
+                proxy_output = self.plan / "trial_proxy__tiny.out"
+                proxy_output.unlink(missing_ok=True)
+                self.write(self.plan / "tiny.json", job)
+                result = self.plan_run()
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual("no proxy check" in result.stdout, skipped, result.stdout)
+                self.assertEqual(proxy_output.exists(), not skipped)
 
     def first_step_run(self, output=None, job=None, **plan):
         """planval on the fixture with these `next` fields replaced (or a whole output), and this job"""

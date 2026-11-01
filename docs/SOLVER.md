@@ -230,8 +230,7 @@ and `detail` (per lineage: the six legacy slots' affinity parts, q, each target'
 Finds the support deck and the loop together. Needs `skills_file`, `cards_file` (`web_cards.json`, from `export/export_cards.py`) and usually `events_file` (`card_events.json`, from `export/build_card_events.py` over the GameTora files that `./build.sh gametora` caches in `cache/gametora/` at the repository root).
 
 ```bash
-(cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/deck_unity8.json)        # everyone owned
-(cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/deck_unity8_noti.json)   # no Tamamo / Inari
+(cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/pal_U.json)   # everyone owned
 ```
 
 Extra fields (on top of the shared fields above; scenario-guaranteed skills stay `guaranteed: 2`, everything the deck can give is left at 0):
@@ -1327,7 +1326,7 @@ engine to itself; an independent recomputation can catch a wrong result.
 | Check | Kind | Detects |
 |---|---|---|
 | `val/planval.py` (val/plan pools), `val/simval.py` (val/sim/jobs.json), test `plan_roll` (a self-pin: its fixture is re-taken from the solver's own rolls) | pin | a moved output |
-| `val/planval.py`'s proxy gate (`next.proxy_check`: every builder searched exactly, base rows) | the plan against the all-exact plan; each proxy against its exact row | the pick, V or the set of the top 8 rows moving when proxies are on; a proxy efficiency more than 3% low (half the 6% band, where the exact one is at least 1% of the row's best); a proxy saving more than 0.25 careers low. `proxy_check` prices proxies on the deck cache from before the builders' searches (rows.rs `check_plan_proxies`) while the exact rows were scored on later caches, so until the two share a cache the saving criterion can fail on a proxy that is the exact career |
+| `val/planval.py`'s proxy gate (`next.proxy_check`: every builder searched exactly, base rows; not run on a job whose fields say its plan reads no proxy: `exact_all`, the surrogate, `exact_builders`) | the plan against the all-exact plan; each proxy against its exact row | the pick, V or the set of the top 8 rows moving when proxies are on; a proxy efficiency more than 3% low (half the 6% band, where the exact one is at least 1% of the row's best); a proxy saving more than 0.25 careers low. `proxy_check` prices proxies on the deck cache from before the builders' searches (rows.rs `check_plan_proxies`) while the exact rows were scored on later caches, so until the two share a cache the saving criterion can fail on a proxy that is the exact career |
 | tests `plan_state`, `plan_memo`, `plan_value`, `plan_borrowed`, `career_fold_and_scale` | invariance | a broken equality (kept state, memo, reload, borrowing rule, fold) |
 | test `plan_looped` | one semantic property | two real full veterans make the finish the pick, saving at least one career |
 | test `sim_determinism` | invariance | an `index` run that depends on the runs before it |

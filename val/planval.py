@@ -17,9 +17,11 @@ proxy efficiency (within PROXY_EFF 6% of a candidate's second best) and promotes
   proxies on the cache from before the builders' searches, so until that is changed a proxy that is the exact career
   itself can read low here, and the gate fails on the cache, not the proxy.
 
-The two error criteria apply only where the plan reads proxies: a job whose builders are all searched exactly
-(`exact_all`, or the solver's `exact_builders`: a usable borrowed veteran or 10+ targets; `plan_uses_proxies` false in
-the proxy_check output) has its errors reported, and fails only if the plan moves.
+The gate applies only where the plan reads proxies. A job whose fields say every builder is searched exactly
+(`builders_searched_exactly`: `exact_all`, the surrogate, or the solver's `exact_builders`, 10+ targets or a borrowed
+veteran a career may use) gets no proxy run: the all-exact plan is the plan, and the run cost a third of planval's time
+(p16_t10's alone about 100 s). Where a proxy run finds the plan read no proxy after all (`plan_uses_proxies` false), its
+errors are reported and it fails only if the plan moves.
 
 Then the first-step tripwire: the row that runs V's route first (`route_first_step`) should score about 0, since by
 policy improvement the route's own next step saves nothing over V (a career costs 1 and V's route promises it saves 1:
@@ -57,6 +59,7 @@ import argparse
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -97,6 +100,7 @@ parallelism = arguments.parallelism
 binary, tag = os.path.abspath(arguments.binary), arguments.tag
 ref = arguments.ref
 jobs = json.load(open(os.path.join(PLAN_DIR, "jobs.json")))
+job_files = {name: json.load(open(os.path.join(PLAN_DIR, name + ".json"))) for _era, name in jobs}
 times = {}
 
 
@@ -276,9 +280,35 @@ def proxy_errors(output):
     )
 
 
+def exact_builders_targets():
+    """`EXACT_BUILDERS_TARGETS` from the solver's source (career/plan/candidates.rs), read as its build reads it"""
+    source = open(os.path.join(REPO, "pkg", "loopopt", "src", "career", "plan", "candidates.rs")).read()
+    return int(re.search(r"const EXACT_BUILDERS_TARGETS: usize = (\d+);", source).group(1))
+
+
+def builders_searched_exactly(job):
+    """Why the job's plan searches every builder exactly and so reads no proxy, which leaves its proxy run nothing to
+    check (None where it may read proxies): candidates.rs `builders_use_proxies`, from the job's fields. Sufficient
+    conditions only: a borrowed veteran under `borrowed_parent` "later" may count there or not, so such a job keeps
+    its proxy run, which reports where the plan read no proxy after all."""
+    plan = job.get("next") or {}
+    targets = len(job.get("targets") or [])
+    if plan.get("exact_all"):
+        return "next.exact_all"
+    if plan.get("sur", 0):
+        return f"next.sur {plan['sur']}: builders through the surrogate"
+    if targets >= exact_builders_targets():
+        return f"{targets} targets: exact_builders"
+    if job.get("borrowed_parent", "allow") == "allow" and any(
+        legacy.get("borrowed") for legacy in job.get("legacies") or []
+    ):
+        return "a borrowed veteran a career may use: exact_builders"
+    return None
+
+
 def proxy_gate(job_entry, job_dir):
     era, name = job_entry
-    job = json.load(open(os.path.join(PLAN_DIR, name + ".json")))
+    job = json.loads(json.dumps(job_files[name]))
     job["next"] = {**job.get("next", {}), "proxy_check": True}
     path = os.path.join(job_dir, name + ".json")
     json.dump(job, open(path, "w"))
@@ -525,12 +555,13 @@ def check_incomplete(plan):
     return None
 
 
-def scoring_incomplete(name):
-    """True (fails) where the plan output or its proxy_check run does not report `next.scoring_complete` true (module
-    notes): an unreadable output, a missing `next` or field, or false; or where its robustness check, if it has one,
-    says a scoring of it was incomplete (`check_incomplete`). Prints the job's line only where it fails."""
+def scoring_incomplete(name, proxy_run):
+    """True (fails) where the plan output or its proxy_check run (where `proxy_run`) does not report
+    `next.scoring_complete` true (module notes): an unreadable output, a missing `next` or field, or false; or where its
+    robustness check, if it has one, says a scoring of it was incomplete (`check_incomplete`). Prints the job's line
+    only where it fails."""
     reasons = []
-    for kind in ("", "_proxy"):
+    for kind in ("", "_proxy") if proxy_run else ("",):
         path = os.path.join(PLAN_DIR, f"{tag}{kind}__{name}.out")
         try:
             plan = json.loads([line for line in open(path).read().splitlines() if line.strip()][-1]).get("next")
@@ -557,10 +588,15 @@ failures = sum(compare_job(name) for _era, name in jobs)
 print(f"{len(jobs)} plan jobs, {failures} differ")
 first_step_failures = sum(first_step_tripwire(name) for _era, name in jobs)
 print(f"{len(jobs)} first steps, {first_step_failures} fail (below {FIRST_STEP_FLOOR} careers, or unpriced)")
+exactly = {name: builders_searched_exactly(job_files[name]) for _era, name in jobs}
+proxy_jobs = [(era, name) for era, name in jobs if not exactly[name]]
+for name, reason in exactly.items():
+    if reason:
+        print(f"{name}: no proxy check: every builder is searched exactly ({reason})")
 with tempfile.TemporaryDirectory() as job_dir, ThreadPoolExecutor(parallelism) as ex:
-    gates = list(ex.map(lambda job_entry: proxy_gate(job_entry, job_dir), jobs))
+    gates = list(ex.map(lambda job_entry: proxy_gate(job_entry, job_dir), proxy_jobs))
 proxy_failures = 0
-for (_era, name), gate in zip(jobs, gates):
+for (_era, name), gate in zip(proxy_jobs, gates):
     if gate is None:
         print(f"{name}: no proxy_check in the output")
         proxy_failures += 1
@@ -580,13 +616,13 @@ for (_era, name), gate in zip(jobs, gates):
         f"({errors.other_deck} on another deck): efficiency {errors.efficiency_low:+.2%} .. {errors.efficiency_high:+.2%}"
         f"{' LOW' if efficiency_low else ''}, saving {errors.careers_low:+.2f} careers at worst{' LOW' if saving_low else ''}"
         f" (saving + 1 {errors.saving_low:+.2%} .. {errors.saving_high:+.2%}, reported only)"
-        f"{'' if uses_proxies else '; the plan reads no proxy (every builder searched exactly): reported, not failed'}"
+        f"{'' if uses_proxies else '; the plan reads no proxy (every builder searched exactly): reported, not failed (builders_searched_exactly did not foresee it)'}"
     )
 print(
-    f"{len(jobs)} proxy checks, {proxy_failures} fail (the plan moves, an efficiency over {PROXY_GATE:.0%} low, or a "
+    f"{len(proxy_jobs)} proxy checks, {proxy_failures} fail (the plan moves, an efficiency over {PROXY_GATE:.0%} low, or a "
     f"saving over {SAVING_GATE} careers low)"
 )
-incomplete = sum(scoring_incomplete(name) for _era, name in jobs)
+incomplete = sum(scoring_incomplete(name, proxy_run=not exactly[name]) for _era, name in jobs)
 print(
     f"{len(jobs)} plans, {incomplete} with incomplete scoring (fails: `scoring_complete` false or missing in the plan or "
     "its proxy_check run)"
