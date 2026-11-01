@@ -19,8 +19,11 @@ import path from 'node:path';
 import * as esbuild from 'esbuild';
 
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
-const ENTRIES = ['src/main.js', 'src/career.js', 'worker.template.js'];
-// what a bundle's build reads beside the sources: the tsconfig (JSX, import elision) and the package's module type
+// each bundle's entry by the names it has had, newest first: a tree's entry is the first name it holds, so a move or a
+// rename to .ts compares the bundle across it
+const ENTRIES = [['src/main.js'], ['src/career.js'], ['src/worker.ts', 'worker.template.js']];
+// what a bundle's build reads beside the sources: the tsconfig (JSX, import elision) and the package's module type; a
+// path a revision lacks (an entry's older name) is left out of its tree
 const TREE = ['webapp/src', 'webapp/worker.template.js', 'webapp/tsconfig.json', 'webapp/package.json'];
 
 // The bundle of `entry` in the webapp folder `dir`, as build.py makes it but unminified; the packages resolve from this
@@ -186,7 +189,9 @@ export function listDiff(a, b) {
 function tree(rev) {
   if (!rev) return W;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'samecode-'));
-  const archive = spawnSync('git', ['-C', path.join(W, '..'), 'archive', '--format=tar', rev, ...TREE], {
+  const root = path.join(W, '..');
+  const held = TREE.filter((p) => spawnSync('git', ['-C', root, 'cat-file', '-e', `${rev}:${p}`]).status === 0);
+  const archive = spawnSync('git', ['-C', root, 'archive', '--format=tar', rev, ...held], {
     maxBuffer: 1 << 28,
   });
   if (archive.status !== 0) throw new Error(`git archive ${rev}: ${archive.stderr}`);
@@ -202,8 +207,16 @@ if (import.meta.main) {
   const base = tree(baseRev);
   const head = tree(headRev);
   let same = true;
-  for (const entry of ENTRIES) {
-    const [a, b] = [bundle(base, entry), bundle(head, entry)];
+  // the entry's name in the tree `dir`
+  const entryIn = (dir, names) => {
+    const name = names.find((n) => fs.existsSync(path.join(dir, n)));
+    if (!name) throw new Error(`no entry ${names.join(' or ')} in ${dir}`);
+    return name;
+  };
+  for (const names of ENTRIES) {
+    const [fromName, toName] = [entryIn(base, names), entryIn(head, names)];
+    const entry = fromName === toName ? toName : `${fromName} -> ${toName}`;
+    const [a, b] = [bundle(base, fromName), bundle(head, toName)];
     const [sa, sb] = [statements(a), statements(b)];
     const [onlyA, onlyB] = listDiff(sa, sb);
     const [ea, eb] = [effects(a), effects(b)];

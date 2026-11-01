@@ -12,8 +12,9 @@
 //   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
 //   purpose is listed in MAY_BE_MISSING with why.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
-// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, and imports
-// against the layer order (LAYERS, frontend.md §2; an error from the career split on).
+// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
+// against the layer order (LAYERS, frontend.md §2; an error from the career split on), and the `@ts-expect-error`
+// markers left by renames to .ts.
 import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
@@ -208,6 +209,16 @@ const LAYERS = [
     }
   }
   if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
+}
+// the type checker's `@ts-expect-error` markers: each a line a module's rename to .ts left for its strict commit
+// (frontend.md, *The ladder*; none may remain at step 13)
+{
+  const markers = sources
+    .filter(([f]) => f.startsWith('src'))
+    .flatMap(([f, text]) =>
+      text.split('\n').flatMap((line, k) => (line.includes('@ts-expect-error') ? [`${f}:${k + 1}`] : [])),
+    );
+  if (markers.length) reports.push(`@ts-expect-error markers (${markers.length}): ${markers.join(', ')}`);
 }
 
 if (problems.length) {
