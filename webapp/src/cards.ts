@@ -80,7 +80,8 @@ export function chainEndAt(c: Card | undefined, link: number): ChainEndAdvice {
     others: named(choice?.go),
   };
 }
-// a skill's name at a level (2: its gold's); a group missing from the catalog is named by its number
+// a skill's name at a level (2: its gold's, which export_page.py makes sure the catalog has); a group missing from the
+// catalog is named by its number
 const skillName = (group: number, level: number): string => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: String(group) };
   return level === 2 ? must(names.gd, 'a skill given at gold has a gold name (export_page.py skills)') : names.w;

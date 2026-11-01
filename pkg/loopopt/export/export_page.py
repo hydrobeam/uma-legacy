@@ -175,6 +175,17 @@ for card in cards["cards"]:
         }
     )
 
+# every gold a card gives (an event's skill at rarity 2, a chain end's on either choice) has a gold name in the skill
+# list: the page names it by that (cards.ts `skillName`, a must()), so a gap fails here and not in the card list
+gold_names = {group_id: gold for group_id, _, gold in skills["skills"]}
+for page_card in page_cards:
+    golds = [group_id for group_id, rarity, *_ in page_card["ev"] if rarity == 2] + [
+        group_id for end in page_card.get("end", []) for group_id, rarity in end["end"] + end["go"] if rarity == 2
+    ]
+    for group_id in golds:
+        if group_id in gold_names and not gold_names[group_id]:
+            raise SystemExit(f"card {page_card['id']} gives skill group {group_id} at gold, which has no gold name")
+
 # Phase 3: the roster's umas and their outfits
 page_umas = [
     {
