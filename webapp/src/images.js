@@ -2,26 +2,11 @@
 // Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near the
 // view (loading is set before src).
 import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, gameData } from './data.js';
-import { el, spinHTML } from './dom.js';
+import { spinHTML } from './dom.js';
 import { must } from './must.ts';
 /** @param {string} kind the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...) @param {number|string} id @returns {string|null} */
 export function srcFor(kind, id) {
   return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null;
-}
-// a grade letter (code 1..8 = G..S): the game's sprite, or the letter
-// twin: ui/Images.tsx Grade (the same markup, as a component): an edit here goes there too
-/** @param {number} g @returns {HTMLElement} */
-export function gradeEl(g) {
-  const s = srcFor('ui', `grade_${g - 1}`),
-    letter = 'GFEDCBAS'[g - 1] || '?';
-  if (s) {
-    const im = new Image();
-    im.className = 'udg';
-    im.src = s;
-    im.alt = letter;
-    return im;
-  }
-  return el('b', `udg txt g${letter}`, letter);
 }
 // the runner in place of a spinner: an uma's mini model running (img/run/<chara>: a strip of 18 frames of the game's
 // mini run, stepped by CSS, webapp/chibi/chibi.py). Who runs: the uma being planned (setRunner: the career page's

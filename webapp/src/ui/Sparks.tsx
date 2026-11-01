@@ -219,7 +219,7 @@ function AddSpark({ k, at }: { k: string; at: NodeRef }) {
       aria-haspopup="dialog"
       aria-expanded={open}
       data-k={`${k}:add`}
-      onClick={(e) => openAdd(e.currentTarget, at, true)}
+      onClick={(e) => openAdd(e.currentTarget, at)}
     >
       +
     </button>

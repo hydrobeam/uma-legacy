@@ -1,9 +1,7 @@
 // ---------- a node's colour sparks (blue, pink, unique): their kinds and their picker ----------
-// (The sparks themselves are drawn by ui/Sparks.tsx.)
-import { lazyDialog } from '../dom.js';
+// (The sparks themselves are drawn by ui/Sparks.tsx, the picker by Editors.tsx.)
+import { signal } from '@preact/signals-core';
 import { careerTables, gameData } from '../data.js';
-import { must } from '../must.ts';
-import { NEW_STARS } from './store.ts';
 import { pinkName, blueName, uniqueName } from './names.js';
 /** @import { NodeRecord, NodeRef } from './store.ts' */
 
@@ -44,104 +42,18 @@ function pinkChoices(nd) {
 }
 // her spark of one kind, as [group (an object key: a string), stars], or undefined (none)
 export const currentSpark = (nd, kind) => Object.entries(nd[KIND[kind].field] || {}).find(([, stars]) => stars > 0);
-// the picker (game style): the choices as bars of the spark's colour, its stars (click one), Done (no remove: every
-// veteran has one blue and one pink). Each pick lands on her record as it is then (`at`). Closed, the focus goes back
-// to the bar that opened it, while it is there.
-/** @type {(() => HTMLElement | null) | null} */
-let colBack = null;
-const colourDialog = lazyDialog('gmdlg coldlg', (dialog) => {
-  dialog.id = 'col-dlg';
-  dialog.setAttribute('aria-labelledby', 'col-title');
-  dialog.addEventListener('close', () => colBack?.()?.focus());
-});
+// the picker (game style, Editors.tsx ColourDialog): the choices as bars of the spark's colour, its stars (click one),
+// Done (no remove: every veteran has one blue and one pink). Each pick lands on her record as it is then (`at`).
+/** @typedef {{at: NodeRef, kind: 'blue'|'pink'|'green', open: boolean, n: number}} ColourEdit */
+const colour = signal(/** @type {ColourEdit | null} */ (null));
+/** the colour picker's node and kind (null: never opened) */
+export const colourEditing = /** @type {import('@preact/signals-core').ReadonlySignal<ColourEdit | null>} */ (colour);
 /** @param {NodeRef} at @param {'blue'|'pink'|'green'} kind */
 export function openColour(at, kind) {
-  const spec = KIND[kind];
-  const colDlg = colourDialog.get(),
-    opener = /** @type {HTMLElement | null} */ (document.activeElement);
-  colBack = () => (opener?.isConnected ? opener : null);
-  const draw = () => {
-    const nd = at.node();
-    if (!nd) return;
-    colDlg.textContent = '';
-    // her spark now: its group (null: none yet, so no stars to pick) and stars (0: none)
-    const cur = currentSpark(nd, kind),
-      curGroup = cur ? +cur[0] : null,
-      curStars = cur ? cur[1] : 0;
-    const h = document.createElement('h3');
-    h.className = 'gmdhdr';
-    h.id = 'col-title';
-    h.textContent = spec.title;
-    colDlg.appendChild(h);
-    const body = document.createElement('div');
-    body.className = 'gmdbody';
-    const wrap = document.createElement('div');
-    wrap.className = 'ud udbare';
-    body.appendChild(wrap);
-    const grid = document.createElement('div');
-    grid.className = 'colgrid vsparks';
-    for (const g of spec.groups(nd)) {
-      const c = document.createElement('span');
-      c.className = kind === 'pink' ? 'vsk pink' : `vsb ${kind}`;
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'vskb';
-      b.setAttribute('aria-pressed', String(g === curGroup));
-      b.appendChild(Object.assign(document.createElement('span'), { className: 'vskn', textContent: spec.name(g) }));
-      b.onclick = () => {
-        at.edit(() => ({ [spec.field]: { [g]: curStars || NEW_STARS } }));
-        draw();
-      };
-      c.appendChild(b);
-      grid.appendChild(c);
-    }
-    wrap.appendChild(grid);
-    const row = document.createElement('div');
-    row.className = 'spstars';
-    row.setAttribute('role', 'group');
-    row.setAttribute('aria-label', 'Stars');
-    for (let k = 1; k <= 3; k++) {
-      const st = document.createElement('button');
-      st.type = 'button';
-      st.className = `spstar${k <= curStars ? ' on' : ''}`;
-      st.setAttribute('aria-label', `${k} star${k > 1 ? 's' : ''}`);
-      st.setAttribute('aria-pressed', String(k === curStars));
-      st.disabled = curGroup === null;
-      st.onclick = () => {
-        at.edit(() => ({ [spec.field]: { [must(curGroup, 'a star is enabled once a colour is chosen')]: k } }));
-        draw();
-      };
-      row.appendChild(st);
-    }
-    body.appendChild(row);
-    if (kind === 'blue')
-      body.appendChild(
-        Object.assign(document.createElement('p'), {
-          className: 'gmdstat',
-          textContent: 'A 3★ blue needs that stat at 600 or more (rank B) by the end of the career.',
-        }),
-      );
-    if (kind === 'pink')
-      body.appendChild(
-        Object.assign(document.createElement('p'), {
-          className: 'gmdstat',
-          textContent: nd.apt
-            ? 'The aptitudes she ends this career at A or S.'
-            : "Her uma's aptitudes at A or S (a pink needs A or better).",
-        }),
-      );
-    colDlg.appendChild(body);
-    const f = document.createElement('div');
-    f.className = 'gmdfoot';
-    const done = document.createElement('button');
-    done.type = 'button';
-    done.className = 'btn gmclose';
-    done.textContent = 'Done';
-    done.onclick = () => colDlg.close();
-    f.appendChild(done);
-    colDlg.appendChild(f);
-  };
-  draw();
-  colDlg.showModal();
-  colDlg.querySelector('.gmclose:last-child')?.focus();
+  colour.value = { at, kind, open: true, n: (colour.peek()?.n ?? 0) + 1 };
+}
+/** the picker has closed (Done, Escape, the backdrop) */
+export function colourClosed() {
+  const now = colour.peek();
+  if (now?.open) colour.value = { ...now, open: false };
 }

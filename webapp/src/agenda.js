@@ -1,10 +1,8 @@
-// ---------- race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all of them ----------
-// One member (the career page): no "All three" / "All four" tab; `shared` then means a parent won the race (it builds affinity when
-// she is a parent herself).
-import { $, $dialog, esc } from './dom.js';
+// ---------- the race calendar's logic: turns, the community win table, what a race's figure means ----------
+// The schedule window and the G1 wins editor draw it (ui/Agenda.tsx, ui/Schedule.tsx); the career page's sections read
+// the community table (`tableCost`, `tableChance`).
 import { RACEIDS } from './data.js';
-import { umaAv, srcFor, gradeEl } from './images.js';
-import { pickOutfit } from './roster.js';
+import { srcFor } from './images.js';
 import { must } from './must.ts';
 
 /**
@@ -33,44 +31,49 @@ import { must } from './must.ts';
  * @property {boolean[]} [parents]  one member: which of her parents won it
  * @property {number} runners  how many members run it
  * @property {string[]} [alts]  the other race of an "A/B" pair
+ *
+ * A race in her schedule, for the G1 wins editor: its turn and its schedule cell with the win odds; `parent`: a parent
+ * won it too.
+ * @typedef {object} WinInfo
+ * @property {number} [turn]
+ * @property {ScheduleCell | null} [cell]
+ * @property {boolean} parent
  */
 
 // a turn is one of 72 half-months: 24 per year (the year t / 24; its slot t % 24: month (t % 24) / 2, odd slots Late)
-const YEARS = ['Junior', 'Classic', 'Senior'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const YEARS = ['Junior', 'Classic', 'Senior'];
+export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // a schedule row's `when` ("Cl E-Apr") as {late, month}, or null when it isn't one
-const parseWhen = (when) => {
+const parseWhen = (/** @type {string} */ when) => {
   const m = /^(Jr|Cl|Sr) ([EL])-(\w+)$/.exec(when);
   return m ? { late: m[2] === 'L', month: m[3] } : null;
 };
 // its slot in the year (0-23), or -1
-const slotOf = (when) => {
+/** @type {(when: string) => number} */
+export const slotOf = (when) => {
   const w = parseWhen(when);
   return w ? MONTHS.indexOf(w.month) * 2 + (w.late ? 1 : 0) : -1;
 };
-// a race's banner (by its full or chart name), or null
-const banner = (name) => {
-  const id = RACEIDS[name],
-    src = id && srcFor('race', id);
-  return src ? Object.assign(new Image(), { className: 'banner', alt: '', loading: 'lazy', src }) : null;
+// a turn as the "All" table writes it ("Early Apr", the year being the group row)
+/** @type {(when: string) => string} */
+export const turnLabel = (when) => {
+  const w = parseWhen(when);
+  return w ? (w.late ? 'Late ' : 'Early ') + w.month : when;
 };
-// the bar at the foot of a slot: "Early Apr", and the win odds of the race run there
-function whenBar(slot, /** @type {ScheduleCell|null} */ cell = null) {
-  const bar = document.createElement('div');
-  bar.className = 'ag-when';
-  const label = document.createElement('span');
-  label.textContent = (slot % 2 ? 'Late ' : 'Early ') + MONTHS[slot >> 1];
-  bar.appendChild(label);
-  if (cell) {
-    const p = document.createElement('b');
-    p.textContent = `${shownP(cell)}% win`;
-    p.title = why(cell);
-    bar.appendChild(p);
-  }
-  return bar;
-}
+// a slot's label in its date bar ("Early Apr")
+/** @type {(slot: number) => string} */
+export const slotLabel = (slot) => (slot % 2 ? 'Late ' : 'Early ') + MONTHS[slot >> 1];
+// a race's banner (by its full or chart name): its image's source, or null
+/** @type {(name: string) => string | null} */
+export const bannerSrc = (name) => {
+  const id = /** @type {Record<string, number>} */ (RACEIDS)[name];
+  return (id && srcFor('race', id)) || null;
+};
+/** @type {(turn: number) => string} */
+export const turnName = (turn) =>
+  `${YEARS[(turn / 24) | 0]} Year, ${turn % 2 ? 'Late' : 'Early'} ${MONTHS[(turn % 24) >> 1]}`;
 // the figure a cell shows: the community table's on the career page, else the planner's
-const shownP = (/** @type {ScheduleCell} */ cell) => cell.tbl ?? cell.p;
+export const shownP = (/** @type {ScheduleCell} */ cell) => cell.tbl ?? cell.p;
 // the community table (110, minus each aptitude's cost, minus the k-th race in a row's penalty, at most 100): what the
 // career page shows, and the Win table panel
 const GRADE = ['G', 'F', 'E', 'D', 'C', 'B', 'A', 'S'],
@@ -87,56 +90,23 @@ export function tableCost(apt, cat, ground) {
   };
 }
 export const tableChance = (cost, row) => Math.max(0, Math.min(100, 110 - cost - ROW_PEN[Math.min(row, 6) - 1]));
-// the community table, as the schedule window's Win table panel shows it (its own layout): a column per aptitude pair
-// (A with each grade, then each grade with G; drawn in the game's grade letters), a row per races in a row, each cell
-// 110 minus the pair's cost and the row's penalty as the table prints it (not capped at 100)
-const TABLE_PAIRS = ['AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'BG', 'CG', 'DG', 'EG', 'FG', 'GG'];
-function winTable() {
-  const p = document.createElement('div');
-  p.className = 'wintable';
-  p.id = 'sched-wintable';
-  p.hidden = true;
-  const t = document.createElement('table'),
-    head = t.createTHead().insertRow(),
-    code = (l) => 'GFEDCBA'.indexOf(l) + 1, // 1 G .. 7 A
-    corner = document.createElement('th');
-  corner.scope = 'col';
-  corner.innerHTML = 'Aptitude Combination<br>/ Consecutive Races';
-  corner.title = 'Her distance and surface grades (S counts as A) and the races she has run in a row';
-  head.appendChild(corner);
-  for (const pair of TABLE_PAIRS) {
-    const th = document.createElement('th');
-    th.scope = 'col';
-    th.title = `${pair[0]} and ${pair[1]}`;
-    th.append(gradeEl(code(pair[0])), gradeEl(code(pair[1])));
-    head.appendChild(th);
-  }
-  const body = t.createTBody();
-  for (let k = 1; k <= 6; k++) {
-    const tr = body.insertRow(),
-      th = document.createElement('th');
-    th.scope = 'row';
-    th.textContent = k === 6 ? '6 or more Races' : `${k} Race${k > 1 ? 's' : ''}`;
-    tr.appendChild(th);
-    for (const pair of TABLE_PAIRS) {
-      const cost = GRADE_COST[code(pair[0]) - 1] + GRADE_COST[code(pair[1]) - 1];
-      tr.insertCell().textContent = `${Math.max(0, 110 - cost - ROW_PEN[k - 1])}%`;
-    }
-  }
-  const wrap = document.createElement('div');
-  wrap.className = 'wtscroll'; // (13 columns: scrolls sideways inside the panel on a phone)
-  wrap.appendChild(t);
-  p.appendChild(wrap);
-  return p;
-}
+// the community table as the schedule window's Win table panel shows it (its own layout): a column per aptitude pair (A
+// with each grade, then each grade with G; drawn in the game's grade letters), a row per races in a row, each cell 110
+// minus the pair's cost and the row's penalty as the table prints it (not capped at 100)
+export const TABLE_PAIRS = ['AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'BG', 'CG', 'DG', 'EG', 'FG', 'GG'];
+/** a grade letter's code (1 G .. 7 A) @type {(letter: string) => number} */
+export const gradeCode = (letter) => 'GFEDCBA'.indexOf(letter) + 1;
+/** the table's figure for a pair of grade letters ("AB") and k races in a row @type {(pair: string, k: number) => number} */
+export const tableFigure = (pair, k) =>
+  Math.max(0, 110 - GRADE_COST[gradeCode(pair[0]) - 1] - GRADE_COST[gradeCode(pair[1]) - 1] - ROW_PEN[k - 1]);
 // why a race isn't a sure win, a line each: the career page's community-table figure (110 minus her grades' cost, minus
 // the k-th race in a row's), then the planner's; elsewhere 110 minus the aptitude cost (distance and surface grades),
 // minus the career planner's low-aptitude cost, minus the penalty for the k-th race in a row (a goal race pays the
 // (k-1)-th's), capped at 100% ('' when the cell doesn't say)
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th or later'];
-const why = (/** @type {ScheduleCell} */ cell) => {
+export const why = (/** @type {ScheduleCell} */ cell) => {
   if (cell.tbl !== undefined) {
-    // (career/view/Sections.js sets the table's figure with its cost and grades, on a cell the solver gave its row)
+    // (career/view/parts.js tableRows sets the table's figure with its cost and grades, on a cell the solver gave its row)
     const row = must(cell.row, 'a scheduled race has its place in a row'),
       tapt = must(cell.tapt, 'a table figure comes with its cost on her grades');
     const pen = ROW_PEN[Math.min(row, 6) - 1],
@@ -164,494 +134,3 @@ const why = (/** @type {ScheduleCell} */ cell) => {
     capped = 110 - cell.apt - low - pen > 100 ? ', capped at 100' : '';
   return `${cell.p}% win: 110${costs}${capped}`;
 };
-// a race in its slot (the schedule window's cell, and a win in the G1 wins editor): banner (by `bannerName`), name, Goal badge
-function raceCell(tag, { bannerName, label, goal }) {
-  const el = document.createElement(tag);
-  el.className = 'ag-race';
-  const bn = banner(bannerName);
-  if (bn) el.appendChild(bn);
-  const nm = document.createElement('div');
-  nm.className = 'ag-nm';
-  nm.textContent = label;
-  el.appendChild(nm);
-  if (goal) {
-    const g = document.createElement('span');
-    g.className = 'ag-goal';
-    g.textContent = 'Goal';
-    el.appendChild(g);
-  }
-  return el;
-}
-const turnName = (turn) => `${YEARS[(turn / 24) | 0]} Year, ${turn % 2 ? 'Late' : 'Early'} ${MONTHS[(turn % 24) >> 1]}`;
-// the schedule window's calendar: three year columns of half-month slots, Junior's from July (the career starts in Junior
-// Year, early July); fill(year, slot index 0-23, slot element) fills each slot
-// On the planner pages (html.game) it is the game's Scheduled Races, all three years side by side: each year 4 x 6 slots, Junior's
-// first three rows the game's grey cells for April to June (labelled as the game labels them, each half-month twice).
-/** @param {(year: number, slot: number, cell: HTMLElement) => void} fill @returns {HTMLDivElement} */
-function agendaGrid(fill) {
-  const game = document.documentElement.classList.contains('game');
-  const ag = document.createElement('div');
-  ag.className = `agenda${game ? ' game' : ''}`;
-  for (let y = 0; y < 3; y++) {
-    const col = document.createElement('section');
-    col.className = `ag-year y${y}`;
-    col.innerHTML = `<h4>${YEARS[y]} Year</h4>`;
-    const grid = document.createElement('div');
-    grid.className = 'ag-grid';
-    if (game && y === 0)
-      for (let i = 0; i < 12; i++) {
-        // April to June, before the career: 4 cells a month
-        const slot = document.createElement('div');
-        slot.className = 'ag-slot pre';
-        const bar = document.createElement('div');
-        bar.className = 'ag-when';
-        const label = document.createElement('span');
-        label.textContent = (i % 4 < 2 ? 'Early ' : 'Late ') + MONTHS[3 + (i >> 2)];
-        bar.appendChild(label);
-        slot.appendChild(bar);
-        grid.appendChild(slot);
-      }
-    for (let slotIndex = 0; slotIndex < 24; slotIndex++) {
-      const slot = document.createElement('div');
-      if (y === 0 && slotIndex < 12) {
-        // Junior January to June, before the career: off html.game, one note fills it
-        if (!game && slotIndex === 0) {
-          slot.className = 'ag-pre';
-          slot.textContent = 'The career starts in Junior Year, early July';
-          grid.appendChild(slot);
-        }
-        continue;
-      }
-      slot.className = 'ag-slot';
-      fill(y, slotIndex, slot);
-      grid.appendChild(slot);
-    }
-    col.appendChild(grid);
-    ag.appendChild(col);
-  }
-  return ag;
-}
-// ---------- the G1 wins editor (a pool veteran's, and the veteran analysis' draft), on the same calendar ----------
-// Each win sits in one slot as the schedule window's cell; a click removes it and the slot is empty. An empty slot where a
-// G1 is held is a button: a menu of the races held then, and a pick marks one won there. A race held in Classic and Senior
-// is one race (one win saddle): it shows once, at the turn picked for it (`at`, kept by the page for display only),
-// else the turn her schedule runs it (`info`), else its first turn free of another win (an imported win has no turn).
-/**
- * @typedef {object} WinsEditorOptions
- * @property {{ix: number, name: string, turns: number[]}[]} races  every G1: its race index, name and the turns it is held
- * @property {() => readonly number[]} get  the race indices she won
- * @property {() => Readonly<Record<number, number>>} at  race index -> the turn its win shows at
- * @property {((turn: number) => number[]|null)|null} [offer]  the races the menu lists at a turn (null: every race held then)
- * @property {((ix: number) => {turn?: number, cell?: ScheduleCell, parent: boolean}|null)|null} [info]  the race in her
- *   schedule: its turn and its schedule cell with the win odds; `parent`: a parent won it too
- * @property {(wins: number[], at: Record<number, number>) => void} onWins  an edit: her wins (sorted, no repeats) and
- *   where each shows, both new
- */
-/** @type {{menu: HTMLElement, opener: HTMLElement} | null} */
-let menuOpen = null; // one menu at a time
-function closeMenu(refocus) {
-  if (!menuOpen) return;
-  const { menu, opener } = menuOpen;
-  menuOpen = null;
-  menu.hidden = true;
-  opener.setAttribute('aria-expanded', 'false');
-  if (refocus && opener.isConnected) opener.focus();
-}
-document.addEventListener(
-  'pointerdown',
-  (/** @type {TargetedEvent<Node, PointerEvent>} */ e) => {
-    if (menuOpen && !menuOpen.menu.contains(e.target) && !menuOpen.opener.contains(e.target)) closeMenu(false);
-  },
-  true,
-);
-/** @param {WinsEditorOptions} opts */
-export function winsAgenda(opts) {
-  const raceName = new Map(opts.races.map((r) => [r.ix, r.name])),
-    raceTurns = new Map(opts.races.map((r) => [r.ix, r.turns]));
-  const heldAt = new Map(); // turn -> the races held then
-  for (const r of opts.races)
-    for (const t of r.turns) {
-      if (!heldAt.has(t)) heldAt.set(t, []);
-      heldAt.get(t).push(r.ix);
-    }
-  const info = (ix) => opts.info?.(ix) || null;
-  const box = document.createElement('div');
-  box.className = 'winsed';
-  const menu = document.createElement('div');
-  menu.className = 'cpop wmenu';
-  menu.hidden = true;
-  menu.setAttribute('role', 'dialog');
-  menu.tabIndex = -1;
-  // where each win shows: byTurn, turn -> [ix] (two wins on one turn only when the record says so; they share the slot);
-  // offCalendar, the wins of races with no turn
-  function layout() {
-    const at = opts.at(),
-      byTurn = new Map(),
-      offCalendar = [];
-    // wins placed by the page first, then those her schedule runs, then the rest (each in race order)
-    const rank = (ix) => ((raceTurns.get(ix) || []).includes(at[ix]) ? 0 : info(ix)?.turn !== undefined ? 1 : 2);
-    for (const ix of [...opts.get()].sort((a, b) => rank(a) - rank(b) || a - b)) {
-      const turns = raceTurns.get(ix) || [];
-      if (!turns.length) {
-        offCalendar.push(ix);
-        continue;
-      }
-      // (a race not placed by the page, or not in her schedule, has no turn there)
-      const preferred = [at[ix], info(ix)?.turn, ...turns].flatMap((t) =>
-        t !== undefined && turns.includes(t) ? [t] : [],
-      );
-      const t = preferred.find((t) => !byTurn.has(t)) ?? preferred[0];
-      if (!byTurn.has(t)) byTurn.set(t, []);
-      byTurn.get(t).push(ix);
-    }
-    return { byTurn, offCalendar };
-  }
-  /** @type {(wins: number[], at: Record<number, number>) => void} */
-  const edit = (wins, at) =>
-    opts.onWins(
-      [...new Set(wins)].sort((a, b) => a - b),
-      at,
-    );
-  const remove = (ix) => {
-    const { [ix]: _, ...at } = opts.at();
-    edit(
-      opts.get().filter((x) => x !== ix),
-      at,
-    );
-  };
-  // a win in its slot: a button that removes it
-  function winButton(ix, turn) {
-    const name = must(raceName.get(ix), 'a win is a race of the data'),
-      scheduled = info(ix),
-      cellRun =
-        scheduled && scheduled.turn === turn ? must(scheduled.cell, 'a race in her schedule has its cell') : null;
-    const b = raceCell('button', { bannerName: name, label: name, goal: !!cellRun?.goal });
-    b.type = 'button';
-    b.classList.add('wbtn');
-    b.dataset.k = `win:${ix}`;
-    b.dataset.ix = ix;
-    b.setAttribute('aria-label', `${name}, won: remove`);
-    const odds = cellRun ? ` · ${why(cellRun) || `${shownP(cellRun)}% win`}` : '';
-    b.title = `${name} · won${odds}${scheduled?.parent ? ' · a parent won it too' : ''} · click to remove`;
-    b.onclick = () => {
-      remove(ix);
-      draw(`add:${turn}`);
-    };
-    return b;
-  }
-  // an empty slot's "+": the menu of the races held then
-  function addButton(turn, offered, shownAt) {
-    const a = document.createElement('button');
-    a.type = 'button';
-    a.className = 'ag-add';
-    a.dataset.k = `add:${turn}`;
-    a.innerHTML = '<span aria-hidden="true">+</span>';
-    a.setAttribute('aria-label', `${turnName(turn)}: add a G1 win`);
-    a.title = 'Add a G1 win';
-    a.setAttribute('aria-haspopup', 'dialog');
-    a.setAttribute('aria-expanded', 'false');
-    a.onclick = () => (menuOpen && menuOpen.opener === a ? closeMenu(false) : openMenu(a, turn, offered, shownAt));
-    return a;
-  }
-  // a win with no turn on the calendar (not in the race data): listed, still removable
-  function offCalendarNote(offCalendar) {
-    const p = document.createElement('p');
-    p.className = 'hint';
-    p.textContent = 'Not on the calendar: ';
-    for (const ix of offCalendar) {
-      const name = raceName.get(ix) || `Race ${ix}`;
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn';
-      b.dataset.k = `win:${ix}`;
-      b.textContent = `${name} ×`;
-      b.setAttribute('aria-label', `${name}, won: remove`);
-      b.onclick = () => {
-        remove(ix);
-        draw();
-      };
-      p.appendChild(b);
-    }
-    return p;
-  }
-  // redraw the calendar; focusKey: the control (data-k) to focus afterwards
-  /** @param {string | null} [focusKey] */
-  function draw(focusKey = null) {
-    closeMenu(false);
-    const { byTurn, offCalendar } = layout(),
-      shownAt = new Map();
-    for (const [t, list] of byTurn) for (const ix of list) shownAt.set(ix, t);
-    const ag = agendaGrid((y, slotIndex, slot) => {
-      const turn = y * 24 + slotIndex,
-        here = byTurn.get(turn) || [];
-      if (here.length) slot.classList.add('on');
-      if (here.length > 1) slot.classList.add('many');
-      for (const ix of here) slot.appendChild(winButton(ix, turn));
-      const offered = here.length ? [] : (opts.offer ? opts.offer(turn) : heldAt.get(turn)) || [];
-      if (offered.length) {
-        slot.classList.add('free');
-        slot.appendChild(addButton(turn, offered, shownAt));
-      }
-      const only = here.length === 1 ? info(here[0]) : null;
-      slot.appendChild(whenBar(slotIndex, only && only.turn === turn ? only.cell : null));
-    });
-    box.textContent = '';
-    box.appendChild(ag);
-    if (offCalendar.length) box.appendChild(offCalendarNote(offCalendar));
-    box.appendChild(menu);
-    if (focusKey) (box.querySelector(`[data-k="${CSS.escape(focusKey)}"]`) || box.querySelector('button'))?.focus();
-  }
-  // the races held at turn t: her schedule's first, then by name; a race won at another turn moves here
-  function openMenu(opener, turn, offered, shownAt) {
-    closeMenu(false);
-    menuOpen = { menu, opener };
-    opener.setAttribute('aria-expanded', 'true');
-    menu.textContent = '';
-    menu.setAttribute('aria-label', `${turnName(turn)}: G1s held`);
-    const h = document.createElement('p');
-    h.className = 'hint';
-    h.textContent = `${turnName(turn)}: which G1 did she win?`;
-    menu.appendChild(h);
-    const inSchedule = (ix) => info(ix)?.turn === turn;
-    const nameOf = (ix) => must(raceName.get(ix), 'an offered race is a race of the data');
-    for (const ix of [...offered].sort(
-      (x, y) => Number(inSchedule(y)) - Number(inSchedule(x)) || nameOf(x).localeCompare(nameOf(y)),
-    )) {
-      // each race as its banner (the name stays for the screen reader and when the banner is missing)
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn wpick';
-      b.title = nameOf(ix);
-      const bn = banner(nameOf(ix));
-      if (bn) {
-        bn.loading = 'eager';
-        b.appendChild(bn);
-        b.classList.add('art');
-      }
-      const nm = document.createElement('span');
-      nm.className = 'wpn';
-      nm.textContent = nameOf(ix);
-      b.appendChild(nm);
-      const sub = inSchedule(ix)
-        ? `her schedule · ${shownP(must(info(ix)?.cell, 'a race in her schedule has its cell'))}% win`
-        : shownAt.has(ix)
-          ? `won, shown in ${turnName(shownAt.get(ix))}: moves here`
-          : '';
-      if (sub) {
-        const s = document.createElement('small');
-        s.textContent = sub;
-        b.appendChild(s);
-      }
-      b.onclick = () => {
-        edit([...opts.get(), ix], { ...opts.at(), [ix]: turn });
-        draw(`win:${ix}`);
-      };
-      menu.appendChild(b);
-    }
-    // by the slot, inside the editor (it scrolls with the calendar); clamped to the editor's width
-    menu.hidden = false;
-    const boxRect = box.getBoundingClientRect(),
-      slotRect = opener.closest('.ag-slot').getBoundingClientRect(),
-      width = menu.offsetWidth;
-    menu.style.left = `${Math.max(0, Math.min(slotRect.left - boxRect.left, box.clientWidth - width))}px`;
-    // below the slot, or above it when it would run past the editor's foot (no scrolling to reach it)
-    const below = slotRect.bottom - boxRect.top + 4,
-      above = slotRect.top - boxRect.top - menu.offsetHeight - 4;
-    menu.style.top = `${below + menu.offsetHeight > box.clientHeight && above >= 0 ? above : below}px`;
-    menu.querySelector('.wpick')?.focus();
-  }
-  // Escape closes the menu (not the dialog) and returns to its slot; Tab past either end does the same
-  menu.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      closeMenu(true);
-      return;
-    }
-    if (e.key !== 'Tab') return;
-    const buttons = [...menu.querySelectorAll('button')],
-      i = buttons.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
-    if (!buttons.length || (e.shiftKey ? i <= 0 : i === buttons.length - 1)) {
-      e.preventDefault();
-      closeMenu(true);
-    }
-  });
-  draw();
-  return box;
-}
-// the race schedule window: one tab per member, her races on the calendar
-/** @param {{members: {id: number, name: string, short?: string}[], outfits: {outfits: {id: number, label: string}[]}[], schedule: ScheduleRow[]}} loop */
-export function openSched(loop) {
-  const members = loop.members,
-    schedule = loop.schedule,
-    body = $('sched-body');
-  body.textContent = '';
-  const outfitOf = (k) => pickOutfit(loop.members[k].id, loop.outfits[k].outfits).list[0]?.id ?? null;
-  const head = document.createElement('div');
-  head.className = 'row between dhead'; // stays at the top while the dialog scrolls
-  head.innerHTML = '<h3 id="sched-title">Race schedule</h3>';
-  const close = document.createElement('button');
-  close.className = 'btn';
-  close.textContent = 'Close';
-  close.onclick = () => $dialog('sched-dlg').close();
-  // the career page's figures are the community table's: its contents behind a button
-  const tableBtn = document.createElement('button'),
-    table = winTable();
-  tableBtn.className = 'btn sm';
-  tableBtn.type = 'button';
-  tableBtn.textContent = 'Win table';
-  tableBtn.title = 'How a race’s win chance is worked out';
-  tableBtn.setAttribute('aria-expanded', 'false');
-  tableBtn.setAttribute('aria-controls', 'sched-wintable');
-  tableBtn.onclick = () => {
-    table.hidden = !table.hidden;
-    tableBtn.setAttribute('aria-expanded', String(!table.hidden));
-  };
-  if (schedule.some((row) => row.cells.some((c) => c?.tbl !== undefined))) head.appendChild(tableBtn);
-  head.appendChild(close);
-  const tabs = document.createElement('div');
-  tabs.className = 'stabs';
-  tabs.setAttribute('role', 'tablist');
-  const view = document.createElement('div');
-  view.className = 'sview';
-  view.id = 'sched-view';
-  view.setAttribute('role', 'tabpanel');
-  // tabs: one in the Tab order (the selected), the arrows (and Home/End) move between them and select
-  // a tab's key: the member's index, or 'all'
-  const tabBtn = (key, label, avatar) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'stab';
-    b.setAttribute('role', 'tab');
-    b.id = `stab-${key}`;
-    b.setAttribute('aria-controls', 'sched-view');
-    if (avatar) b.appendChild(avatar);
-    b.appendChild(document.createTextNode(label));
-    b.onclick = () => show(key);
-    tabs.appendChild(b);
-    return b;
-  };
-  const btns = members.map((m, k) => tabBtn(k, m.short || m.name, umaAv(m.id, outfitOf(k), 28)));
-  const single = members.length === 1;
-  if (!single) btns.push(tabBtn('all', members.length === 3 ? 'All three' : 'All four', null));
-  const tabKey = (j) => (j === members.length ? 'all' : j);
-  tabs.addEventListener('keydown', (e) => {
-    const i = btns.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
-    if (i < 0) return;
-    const to = {
-      ArrowRight: (i + 1) % btns.length,
-      ArrowLeft: (i - 1 + btns.length) % btns.length,
-      Home: 0,
-      End: btns.length - 1,
-    }[e.key];
-    if (to === undefined) return;
-    e.preventDefault();
-    show(tabKey(to));
-    btns[to].focus();
-  });
-  const keyEl = document.createElement('span');
-  keyEl.className = 'agkey';
-  keyEl.innerHTML = single
-    ? '<span><i class="sh"></i>A parent won it: builds affinity</span><span><i class="op"></i>No parent won it</span>'
-    : '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>';
-  tabs.appendChild(keyEl);
-  // one scheduled race in member k's slot
-  function cell(/** @type {ScheduleRow} */ row, k) {
-    const c = must(row.cells[k], 'cell() draws a member who runs the race'),
-      names = row.race.split('/');
-    const el = raceCell('div', { bannerName: names[0], label: names.join(' or '), goal: c.goal });
-    if (!row.shared) el.classList.add('opt');
-    const others = members.map((_, j) => j).filter((j) => j !== k && row.cells[j]);
-    const wonBy =
-      single && row.parents ? row.parents.map((won, j) => (won ? `parent ${j + 1}` : '')).filter(Boolean) : [];
-    // with whom she runs it (one member: which parent won it)
-    const company = single
-      ? wonBy.length
-        ? ` · won by ${wonBy.join(' and ')}`
-        : ' · no parent won it'
-      : others.length
-        ? ` · with ${others.map((j) => members[j].name).join(', ')}`
-        : ' · alone (no affinity, optional)';
-    el.title = `${names.join(' or ')} · ${why(c) || `win ${shownP(c)}%`}${c.goal ? ' · goal' : ''}${company}`;
-    return el;
-  }
-  function show(key) {
-    btns.forEach((b, j) => {
-      const on = tabKey(j) === key;
-      b.setAttribute('aria-selected', on ? 'true' : 'false');
-      b.tabIndex = on ? 0 : -1;
-    });
-    view.setAttribute('aria-labelledby', `stab-${key}`);
-    keyEl.hidden = key === 'all'; // the table says shared and optional in its own captions
-    view.textContent = '';
-    if (key === 'all') {
-      view.appendChild(schedTable(members, schedule, outfitOf));
-      return;
-    }
-    const ag = agendaGrid((y, slotIndex, slot) => {
-      const row = schedule.find((x) => x.year === y && x.cells[key] && slotOf(x.when) === slotIndex);
-      if (row) {
-        slot.classList.add('on');
-        if (!row.shared) slot.classList.add('opt');
-        slot.appendChild(cell(row, key));
-      }
-      // the turn, and the win odds of the race run there (in the bar, not over the banner's lettering)
-      slot.appendChild(whenBar(slotIndex, row ? row.cells[key] : null));
-    });
-    view.appendChild(ag);
-  }
-  body.append(head, table, tabs, view);
-  show(0);
-  $dialog('sched-dlg').showModal();
-}
-// the "All three" / "All four" tab: every member's schedule as one table
-// (turns written as on the member tabs, "Early Apr", the year being the group row; the members' columns headed by their
-// portrait and short name, the name dropped to the screen reader on a narrow phone so the table fits)
-const turnLabel = (when) => {
-  const w = parseWhen(when);
-  return w ? (w.late ? 'Late ' : 'Early ') + w.month : when;
-};
-function schedTable(members, /** @type {ScheduleRow[]} */ schedule, outfitOf) {
-  const wrap = document.createElement('div');
-  wrap.className = 'tablewrap';
-  const t = document.createElement('table');
-  t.className = 'sched';
-  const head = `<tr><th>G1</th><th class="when">When</th>${members.map((x, k) => `<th class="mh" data-k="${k}"><span class="hn">${esc(x.short || x.name)}</span></th>`).join('')}<th>Runners</th></tr>`;
-  // a member's cell: her win %, * for a goal race, its reason on hover; · when she doesn't run it
-  const memberCell = (c) =>
-    c
-      ? `<td class="${c.goal ? 'goal' : ''}"${why(c) ? ` title="${esc(why(c))}"` : ''}>${c.goal ? '*' : ''}${shownP(c)}</td>`
-      : '<td class="dot">·</td>';
-  // the rows, a year row before each year's first
-  const body = (rows) => {
-    let out = '',
-      year = -1;
-    for (const r of rows) {
-      if (r.year !== year) {
-        year = r.year;
-        out += `<tr class="year"><td colspan="${members.length + 3}">${YEARS[year]}</td></tr>`;
-      }
-      out += `<tr><td>${esc(r.race)}</td><td class="when">${esc(turnLabel(r.when))}</td>${r.cells.map(memberCell).join('')}<td>${r.runners}/${members.length}</td></tr>`;
-    }
-    return out;
-  };
-  const shared = schedule.filter((r) => r.shared),
-    optional = schedule.filter((r) => !r.shared);
-  t.innerHTML = `<caption>Shared G1s (these build affinity)</caption><thead>${head}</thead><tbody>${body(shared)}</tbody>`;
-  wrap.appendChild(t);
-  if (optional.length) {
-    const t2 = document.createElement('table');
-    t2.className = 'sched';
-    t2.innerHTML = `<caption>Optional G1s (one runner, no affinity; free to run, skip freely)</caption><thead>${head}</thead><tbody>${body(optional)}</tbody>`;
-    wrap.appendChild(t2);
-  }
-  for (const th of wrap.querySelectorAll('th.mh')) {
-    const k = +must(th.dataset.k, "a member's column head names her");
-    th.prepend(umaAv(members[k].id, outfitOf(k), 22));
-  }
-  const note = document.createElement('p');
-  note.className = 'hint';
-  note.textContent = `Number = win % at that attempt (aptitude and races in a row included; hover for why). * = goal race. · = not running it. Turns not listed are rest or a goal race that isn't a G1.${schedule.some((r) => r.alts?.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : ''}`;
-  wrap.appendChild(note);
-  return wrap;
-}

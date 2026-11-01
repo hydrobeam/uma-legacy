@@ -114,8 +114,12 @@ class Element extends Node {
   showModal() {
     this.open = true;
   }
+  // as a real dialog: closing an open one fires `close` (at once here; a browser queues it)
   close() {
+    if (!this.open) return;
     this.open = false;
+    const e = { type: 'close', target: this, currentTarget: this };
+    for (const f of this.listeners.close || []) f.call(this, e);
   }
   focus() {
     globalThis.document.activeElement = this;

@@ -58,7 +58,9 @@ import {
   dropMissing,
   handBackPlaces,
 } from '../veterans/store.ts';
-import { winsOpen } from '../veterans/pickers.js';
+import { searchHeld } from '../veterans/pickers.js';
+import { AddList, VetEditors } from '../veterans/Editors.tsx';
+import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.js';
 import { initUmamoe, syncListings, umamoeButton } from '../umamoesetup.js';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
@@ -265,6 +267,9 @@ function initSettings() {
   });
 }
 // ---------- start ----------
+// the template's dialogs: Close (or Done) closes each
+for (const d of document.querySelectorAll('dialog'))
+  for (const b of d.querySelectorAll<HTMLElement>('.dclose')) b.onclick = () => d.close();
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
 try {
   localStorage.removeItem('llp:loops');
@@ -294,12 +299,12 @@ loadData().then(
     dropStaleChosen();
     // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
     // places, so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new
-    // one is ready. While a pool veteran's G1 wins window is open its edits are saved, and the search waits for it to
-    // close.
+    // one is ready. While a pool veteran's G1 wins window or a skills prompt is open its edits are saved, and the search
+    // waits for it to close (veterans/pickers.js `searchHeld`).
     const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
     let ids = idsOf(vets.peek());
-    on([vets, places, winsOpen], (list, _places, editingWins) => {
-      if (editingWins) return;
+    on([vets, places, searchHeld], (list, _places, held) => {
+      if (held) return;
       if (idsOf(list) !== ids) {
         ids = idsOf(list);
         batch(() => {
@@ -353,6 +358,9 @@ loadData().then(
     mount('node-root', <NodeDialog />, 'The node popup', nodeOpen);
     mount('deck-root', <DeckDialog />, 'The deck popup');
     mount('skill-root', <SkillDetails />, 'Skill Details');
+    mount('vet-editors', <VetEditors />, "The veterans' editors");
+    mount('add-pop', <AddList host={$('add-pop')} />, 'The "+" list');
+    mount('sched-dlg', <ScheduleDialog />, 'The race schedule');
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
     mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);
     drawUnported();

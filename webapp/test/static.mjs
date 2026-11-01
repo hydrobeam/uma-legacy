@@ -52,9 +52,9 @@ const words = (text) => new Set(text.replace(/&#?\w+;/g, ' ').match(/[A-Za-z_][\
 
 // class names the code builds from parts (a whole-word search can't find them): name -> where
 const BUILT = {
-  y0: 'agenda.js, the year rows: ag-year y + the year',
-  y1: 'agenda.js, the year rows: ag-year y + the year',
-  y2: 'agenda.js, the year rows: ag-year y + the year',
+  y0: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
+  y1: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
+  y2: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
   leg0: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
   leg1: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
 };
@@ -269,6 +269,26 @@ const MOUNTS = {
       ['nodedlg', 'twho', 'vxy', 'srctag', 'simtag', 'vdel', 'tempty', 'onote', 'ctt', 'nact'],
     ],
     ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
+    [
+      'sched-dlg',
+      'src/ui/Schedule.tsx',
+      ['sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
+      ['wintable', 'wtscroll', 'stabs', 'stab', 'agkey', 'sview', 'tablewrap'],
+    ],
+    [
+      'vet-editors',
+      'src/veterans/Editors.tsx',
+      ['pick-dlg', 'pick-title', 'pick-filter', 'pick-list', 'ask-dlg', 'ask-title', 'ask-text', 'ask-btns'].concat([
+        'wins-dlg',
+        'wins-title',
+        'wins-count',
+        'wins-list',
+        'col-dlg',
+        'col-title',
+      ]),
+      ['askrow', 'coldlg', 'colgrid', 'spstars', 'spstar', 'upick'],
+    ],
+    ['add-pop', 'src/veterans/Editors.tsx', [], ['addlist', 'addsk', 'addn']],
     ['skill-root', 'src/career/view/SkillDetails.tsx', ['sk-dlg', 'sk-title'], ['gmdfaces', 'gmdcard', 'gmdcards']],
     [
       'sim-top',
@@ -327,6 +347,12 @@ const MOUNTS = {
       [],
     ],
     ['odds-root', 'src/ui/OddsDialog.tsx', ['odds-dlg', 'odds-title'], ['oddtab']],
+    [
+      'sched-dlg',
+      'src/ui/Schedule.tsx',
+      ['sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
+      ['wintable', 'wtscroll', 'stabs', 'stab', 'agkey', 'sview', 'tablewrap'],
+    ],
   ],
 };
 // (file, selector) -> why it may stay

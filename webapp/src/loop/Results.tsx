@@ -13,7 +13,7 @@ import { setRunnerFrom } from '../images.js';
 import { borLast, cardTitle, chainEndNote } from '../cards.js';
 import { closePop, popHasFocus, popOpener } from '../popover.js';
 import { outfitNote, pickOutfit, umaState } from '../roster.js';
-import { openSched } from '../agenda.js';
+import { openSched } from '../ui/Schedule.tsx';
 import { deckHint } from '../odds.js';
 import { openOdds } from '../ui/OddsDialog.tsx';
 import { fields, setDecksTop } from '../settings.ts';

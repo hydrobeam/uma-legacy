@@ -90,7 +90,7 @@ export function ScenLogo({ sc, title }: { sc: { id: number; name: string; tint: 
     </span>
   );
 }
-/** a grade letter (code 1..8 = G..S): the game's sprite, or the letter (images.js gradeEl) */
+/** a grade letter (code 1..8 = G..S): the game's sprite, or the letter */
 export function Grade({ g }: { g: number }) {
   const src = srcFor('ui', `grade_${g - 1}`),
     letter = 'GFEDCBAS'[g - 1] || '?';

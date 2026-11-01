@@ -28,6 +28,7 @@ import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
 import { OddsDialog } from '../ui/OddsDialog.tsx';
+import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.js';
 import { loadExample } from '../presets.js';
 import { initSetup } from '../setup.js';
@@ -168,6 +169,8 @@ function start() {
     }); // the filter hides tiles
     if (window.ResizeObserver) new ResizeObserver(update).observe(box); // also when its dialog opens (its size goes from 0)
   }
+  // the race schedule: drawn into the template's dialog (its mount point), which a backdrop click closes
+  render(<ScheduleDialog />, $('sched-dlg'));
   backdropCloses($dialog('sched-dlg'));
 
   renderRoster();

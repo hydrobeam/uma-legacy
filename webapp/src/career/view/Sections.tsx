@@ -6,7 +6,6 @@ import { settings } from '../../settings.ts';
 import { srcFor } from '../../images.js';
 import { scenarioOf } from '../../scenario.js';
 import { popOpener } from '../../popover.js';
-import { openSched } from '../../agenda.js';
 import { pct, deckHint } from '../../odds.js';
 import { vets } from '../../veterans/store.ts';
 import { deckCardAt } from '../../details.js';
@@ -18,6 +17,7 @@ import { tName, tableRows } from './parts.js';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { openSkill } from './SkillDetails.tsx';
+import { openSched } from '../../ui/Schedule.tsx';
 
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
