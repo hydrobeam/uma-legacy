@@ -21,6 +21,10 @@ interface DialogProps {
   onClose: () => void;
   children: ComponentChildren;
 }
+// how many dialogs are open now (by their `open` prop, which every close reaches through `onClose`)
+let openDialogs = 0;
+/** some dialog is open (a popup closing hands the focus back only onto a page with none open) */
+export const anyDialogOpen = () => openDialogs > 0;
 export function Dialog({ id, cls, labelledBy, label, open, onClose, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null),
     // (for its unmount: the props of its last render)
@@ -34,6 +38,13 @@ export function Dialog({ id, cls, labelledBy, label, open, onClose, children }: 
     },
     [],
   );
+  useLayoutEffect(() => {
+    if (!open) return;
+    openDialogs++;
+    return () => {
+      openDialogs--;
+    };
+  }, [open]);
   useLayoutEffect(() => {
     const dialog = must(ref.current, 'the dialog is mounted');
     if (open && !dialog.open) dialog.showModal();

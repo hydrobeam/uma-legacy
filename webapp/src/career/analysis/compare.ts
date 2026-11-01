@@ -411,8 +411,21 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
     roll,
   };
 }
-declare const made: unique symbol;
-/** a comparison: what `createComparison` makes, and nothing else can be (its brand exists in the type alone), so the run
- *  machine's `analysis` is this machine and never a stand-in (career/run.ts RunDeps) */
-export type Comparison = ReturnType<typeof comparisonOf> & { readonly [made]: true };
-export const createComparison = (deps: ComparisonDeps) => comparisonOf(deps) as Comparison;
+/** A comparison: what `createComparison` makes, and nothing else can be: its machine is a private field, which no object
+ *  literal or spread of one has, so the run machine's `analysis` (career/run.ts RunDeps) is this machine and never a
+ *  stand-in whose `stop` or `outdate` does nothing. */
+export class Comparison {
+  readonly #machine: ReturnType<typeof comparisonOf>;
+  constructor(deps: ComparisonDeps) {
+    this.#machine = comparisonOf(deps);
+  }
+  // (fields, not methods: each is handed out alone, as a click's handler)
+  readonly outdate = () => this.#machine.outdate();
+  readonly stop = () => this.#machine.stop();
+  readonly show = (r: DeepReadonly<CareerReport> | null) => this.#machine.show(r);
+  readonly clear = () => this.#machine.clear();
+  readonly keepBaseline = (key: string, result: DeepReadonly<CareerReport>) => this.#machine.keepBaseline(key, result);
+  readonly compare = () => this.#machine.compare();
+  readonly roll = () => this.#machine.roll();
+}
+export const createComparison = (deps: ComparisonDeps) => new Comparison(deps);

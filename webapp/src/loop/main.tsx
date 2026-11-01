@@ -1,26 +1,26 @@
 // Legacy Loop Planner page: entry point, loop.html's script (Vite bundles it and the modules it imports).
 // The page's own modules (loop/): types.ts the report's types, state.ts the run state (signals), run.ts the search's
-// run machine, job.ts its job, io.ts the export's text; the views, components drawn from the state and the settings:
-// RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
-// dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root), inside a
-// ui/RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
+// run machine, job.ts its job, io.ts the export's text; Layout.tsx the page's one root; the views, components drawn from
+// the state and the settings: RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch,
+// Affinity.tsx and Export.tsx their dialogs. Each is drawn in its place in the layout, inside a ui/RenderGuard.tsx (a
+// dialog's guard is inside it) that reports a throw while drawing on the status line.
 import { started } from '../errorlog.ts'; // first: it listens before any other module runs
-import { render } from 'preact';
-import { $, $input } from '../dom.ts';
+import { createRef, hydrate } from 'preact';
+import { signal } from '@preact/signals';
 import { ERA } from '../saved.ts';
+import type { Era } from '../eras.ts';
 import { browserStorage } from '../storage.ts';
 import { loadData } from '../data.ts';
 import EXAMPLE from '../../example.json'; // the default settings' result, precomputed (example.mjs)
-import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
+import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma } from '../settings.ts';
 import { on } from '../store.ts';
+import { must } from '../must.ts';
 import { beginSearch, headline, interim, loopDrawn, loopRun, loopView, resultsStale, settle, tick } from './state.ts';
-import type { LoopView, RunState } from './state.ts';
-import type { DeepReadonly } from '../store.ts';
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
-import { RenderGuard, renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
+import { RenderGuard, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
-import { initScenario, eraScenario } from '../scenario.ts';
+import { initScenario } from '../scenario.ts';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
@@ -29,32 +29,12 @@ import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.ts';
 import { CardPop } from '../ui/CardPop.tsx';
 import { loadExample } from '../presets.ts';
-import { cardsBadge, setupButtons, setupViews, umasBadge } from '../ui/Setup.tsx';
-import { rosterCounts } from '../roster.ts';
-import { cardsOwned } from '../cards.ts';
+import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
+import { useHydrated } from '../ui/Shell.tsx';
+import { LoopLayout } from './Layout.tsx';
+import type { LoopState, LoopViews } from './Layout.tsx';
 import '../gmtip.ts'; // the game-style tooltips (both planner pages)
 
-// ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
-{
-  const column = document.querySelector<HTMLElement>('.rcol');
-  if (column) {
-    const MARGIN = 12; // px kept above it (and below it, when it is taller than the window)
-    const fit = () =>
-      column.style.setProperty('--rtop', `${Math.min(MARGIN, innerHeight - column.offsetHeight - MARGIN)}px`);
-    new ResizeObserver(fit).observe(column);
-    addEventListener('resize', fit);
-  }
-}
-// ---------- game data ----------
-$('era-global').setAttribute('aria-pressed', String(ERA === 'global'));
-$('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
-const setEra = (era: 'global' | 'gm') => {
-  if (era === ERA) return;
-  switchEra(era, eraScenario(era));
-  location.reload();
-};
-$('era-global').onclick = () => setEra('global');
-$('era-gm').onclick = () => setEra('gm');
 // ---------- the search (run.ts), with what it reaches outside itself
 const loop = createRun({
   run: (job, interim) => run(job, interim),
@@ -70,43 +50,110 @@ const loop = createRun({
   loadExample,
   example: ERA === 'global' ? { r: EXAMPLE, settings: DEFAULTS } : null,
 });
-// ---------- the status line (RunNote.tsx), and what it marks around it: the status bar's state (its colours), the
-// results' (busy or dimmed: from other settings than these), the status line's own (busy, its tooltip) and the phone's
-// floating button. The status line (the template's live region, empty from load) is drawn from the first
-// status worth showing on (the GM era's loading, a failed load, the first search or the kept result): the example's
-// status, between showFirst and the first search, is never shown.
 // a view that could not be drawn says so as a failed search does
 sayRenderErrors((text) => settle({ kind: 'error', text }));
-function marks(run: DeepReadonly<RunState>, view: DeepReadonly<LoopView>) {
-  $('rhead').dataset.kind = run.searching ? 'busy' : view.status.kind;
-  const note = $('run-note');
-  note.classList.toggle('busy', run.searching);
-  note.title = noteTitle(run);
-  const results = $('results');
-  results.setAttribute('aria-busy', String(run.searching));
-  results.classList.toggle('stale', resultsStale.peek() && !run.searching);
-  const pill = $('run-pill');
-  pill.hidden = !noteShown(run, view.status);
-  pill.textContent = pillText(run, view.status, headline.peek());
-}
-let statusShown = false;
-function showStatus() {
-  render(
-    <RenderGuard input={loopView}>
-      <RunNote />
-    </RenderGuard>,
-    $('run-note'),
+
+// ---------- the page: one root (Layout.tsx), the build's markup hydrated ----------
+// the results column, which the result cards move the focus to when a redraw removed it (Results.tsx)
+const column = createRef<HTMLElement>();
+// the views, made once (the same vnodes on every draw of the root, so a redraw of the layout leaves them be); drawn
+// once the game data is in (`ready`), the status line from the first status worth showing on (`statusShown`: the GM
+// era's loading, a failed load, the first search or the kept result; the example's status, between showFirst and the
+// first search, is never shown)
+const NOTE = (
+  <RenderGuard input={loopView}>
+    <RunNote />
+  </RenderGuard>
+);
+const ACT = (
+  <RenderGuard input={loopView}>
+    <RunAct stop={loop.stopSearch} />
+  </RenderGuard>
+);
+const setup = setupViews({ fadeMore: true });
+const VIEWS: LoopViews = {
+  scenario: setup.scenario,
+  rank: setup.rank,
+  targets: setup.targets,
+  count: (
+    <RenderGuard input={fields.decksTop} what="The Results switch">
+      <ResultsCount />
+    </RenderGuard>
+  ),
+  results: (
+    <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>
+      <Results column={column} />
+    </RenderGuard>
+  ),
+  cardPop: <CardPop home={null} />, // (its slot in the results column)
+  dialogs: {
+    'set-umas-root': setup.umasDialog,
+    'set-cards-root': setup.cardsDialog,
+    'why-root': <AffinityDialog />,
+    'sched-root': <ScheduleDialog />,
+    'ex-root': <ExportDialog />,
+    'odds-root': <OddsDialog />,
+  },
+};
+const ready = signal(false),
+  statusShown = signal(false);
+// phone: the columns stacked (the results column first: Layout.tsx)
+const PHONE = matchMedia('(max-width: 960px)'),
+  phone = signal(PHONE.matches);
+PHONE.addEventListener('change', () => {
+  phone.value = PHONE.matches;
+});
+/** The root: the build's markup on the first draw (the hydration), then the page. Around the views it draws what the
+ *  status line marks: the status bar's state (its colours), the results' (busy, or dimmed: from other settings than
+ *  these), the status line's own (busy, its tooltip) and the phone's floating button. */
+function App() {
+  const hydrated = useHydrated();
+  if (!hydrated) return <LoopLayout version={__LLP_VERSION__} state={{ phone: phone.peek() }} />;
+  const isReady = ready.value,
+    noting = statusShown.value,
+    s = settings.value;
+  const state: LoopState = { era: ERA, phone: phone.value, auto: s.auto !== false, perUma: s.perUma !== false };
+  if (noting) {
+    const r = loopRun.value,
+      view = loopView.value;
+    Object.assign(state, {
+      kind: r.searching ? 'busy' : view.status.kind,
+      busy: r.searching,
+      noteTitle: noteTitle(r),
+      resultsStale: resultsStale.value && !r.searching,
+      pill: noteShown(r, view.status) ? pillText(r, view.status, headline.value) : null,
+    });
+  }
+  if (isReady)
+    Object.assign(state, {
+      ...setupBadges(),
+      onEra: (era: Era) => pickEra(era),
+      onUmas: () => openSetupDialog('umas'),
+      onCards: () => openSetupDialog('cards'),
+      // the switch changes no result: switching it on searches only changes made while it was off
+      onAuto: (on: boolean) => {
+        setAuto(on);
+        if (settings.value.auto && loopView.value.status.kind === 'pending') loop.scheduleSearch();
+      },
+      onPerUma: setPerUma,
+      onExport: openExport,
+    });
+  return (
+    <LoopLayout
+      version={__LLP_VERSION__}
+      note={noting ? NOTE : null}
+      act={noting ? ACT : null}
+      views={isReady ? VIEWS : null}
+      state={state}
+      column={column}
+    />
   );
-  render(
-    <RenderGuard input={loopView}>
-      <RunAct stop={loop.stopSearch} />
-    </RenderGuard>,
-    $('r-act'),
-  );
-  marks(loopRun.peek(), loopView.peek());
-  if (!statusShown) on([loopRun, loopView], marks);
-  statusShown = true;
 }
+const showStatus = () => {
+  statusShown.value = true;
+};
+hydrate(<App />, must(document.getElementById('app'), 'loop.html has the root'));
+
 // everything below needs the era's data (Global's from the page's data script, the GM era's fetched)
 if (ERA === 'gm') {
   settle({ kind: 'loading', text: 'Loading the JP Grand Masters-era data…' });
@@ -117,60 +164,12 @@ loadData(null).then(start, (e) => {
   showStatus();
 });
 function start() {
-  $input('x-auto').checked = settings.value.auto !== false;
-  $input('x-auto').onchange = () => {
-    setAuto($input('x-auto').checked);
-    if (settings.value.auto && loopView.value.status.kind === 'pending') loop.scheduleSearch();
-  }; // the switch changes no result: switching it on searches only changes made while it was off
-  $input('c-peruma').checked = settings.value.perUma;
-  $input('c-peruma').onchange = () => setPerUma($input('c-peruma').checked);
   initScenario(); // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
-
-  render(
-    <RenderGuard input={fields.decksTop} what="The Results switch">
-      <ResultsCount />
-    </RenderGuard>,
-    $('rtop'),
-  );
-  render(<AffinityDialog />, $('why-root'));
-  render(<ExportDialog />, $('ex-root'));
-  // the odds popup: its own mount point at the end of <body> (the template has none)
-  render(<OddsDialog />, document.body.appendChild(Object.assign(document.createElement('div'), { id: 'odds-root' })));
-  $('ex-open').onclick = openExport;
   initPopover();
-  render(<CardPop home={null} />, $('pop-root')); // the deck card panel's slot in the results column
-  // the setup editors both pages share (ui/Setup.tsx), each into its mount point; the Umas and Support cards buttons
-  // open their dialogs, and their counts follow what you own
-  for (const { id, what, view } of setupViews({ fadeMore: true })) renderGuarded(view, $(id), what, settings);
-  setupButtons();
-  on([rosterCounts], umasBadge);
-  on([cardsOwned], cardsBadge);
+  ready.value = true;
   // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
   // the setup the first search starts from); what the result on show no longer owns greys at once (Results.tsx)
   on([jobSetup], () => loop.scheduleSearch());
-  // phone: the floating status button shows while the results are out of view, and takes you back up to them
-  if (window.IntersectionObserver)
-    new IntersectionObserver((entries) => {
-      // (#rcol's changes since the last call, the newest last)
-      for (const entry of entries) document.documentElement.classList.toggle('rin', entry.isIntersecting);
-    }).observe($('rcol'));
-  $('run-pill').onclick = () => {
-    const column = $('rcol');
-    column.scrollIntoView({
-      block: 'start',
-      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    });
-    column.focus({ preventScroll: true });
-  };
-  // the race schedule: drawn into the template's dialog (its mount point), which a backdrop click closes
-  render(<ScheduleDialog />, $('sched-root'));
-
-  render(
-    <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>
-      <Results />
-    </RenderGuard>,
-    $('results'),
-  );
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
   const first = loop.showFirst();
   // the first search, with the saved settings (also warms the engine); none when the result on show is these settings'

@@ -19,11 +19,16 @@ GlobalRegistrator.register({ width: 1440, height: 900 });
 document.documentElement.className = 'game'; // (the planner pages' class)
 
 const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
-// the editors' mount points: the setup partials both planner pages hold (vite.config.mjs fills them in)
-const SETUP_PARTIALS = ['era', 'scen', 'rank', 'enh', 'skills', 'dlgumas', 'dlgcards'];
-document.body.innerHTML = SETUP_PARTIALS.map((p) =>
-  fs.readFileSync(path.join(WEBAPP, 'partials', `${p}.hbs`), 'utf8'),
-).join('');
+// the editors' boxes, as both planner pages' layouts hold them (career/Layout.tsx, loop/Layout.tsx), and the view
+// each draws (ui/Setup.tsx `setupViews`)
+const BOXES = {
+  'scen-dd': 'scenario',
+  'rank-ctl': 'rank',
+  'skills-panel': 'targets',
+  'set-umas-root': 'umasDialog',
+  'set-cards-root': 'cardsDialog',
+};
+for (const id of Object.keys(BOXES)) document.body.appendChild(document.createElement('div')).id = id;
 const built = await esbuild.build({
   stdin: {
     contents: `
@@ -33,7 +38,6 @@ const built = await esbuild.build({
       export * as presets from './src/presets.ts';
       export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
       export { setupViews } from './src/ui/Setup.tsx';
-      export { renderGuarded } from './src/ui/RenderGuard.tsx';
       export { SettingsSort, SortMenu } from './src/ui/SortMenu.tsx';
       export { h, options, render } from 'preact';
       export { gameData, loadData } from './src/data.ts';`,
@@ -59,7 +63,6 @@ const {
   PresetDialogs,
   openPresets,
   setupViews,
-  renderGuarded,
   SettingsSort,
   SortMenu,
   h,
@@ -81,11 +84,8 @@ const fresh = (common) => {
   S.initStore(() => ({ getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) }));
   return () => JSON.parse(map.get(KEY)).common;
 };
-// an editor into its mount point, as the entries draw it (ui/Setup.tsx `setupViews`)
-const mount = (id) => {
-  const { view, what } = setupViews().find((v) => v.id === id);
-  renderGuarded(view, document.getElementById(id), what, S.settings);
-};
+// an editor into its box, behind its guard, as the layouts draw it
+const mount = (id) => render(setupViews()[BOXES[id]], document.getElementById(id));
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 };

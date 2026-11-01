@@ -5,6 +5,7 @@
 // reloads the page with the other data set. The settings themselves (the record, its setters) are settings.ts's.
 import { browserStorage, readJson, updateJson } from './storage.ts';
 import type { Backing } from './storage.ts';
+import type { Era } from './eras.ts';
 
 const SETTINGS_KEY = 'llp:settings',
   SETTINGS_VERSION = 2;
@@ -24,7 +25,7 @@ export const COMMON = [
   'borrowPar',
 ] as const;
 export const SETTINGS = [...COMMON, ...PER_ERA]; // exported and imported (older exports may carry more keys; those are ignored)
-export type Era = 'global' | 'gm';
+export type { Era };
 /** one part of the stored object: a setting's name -> its value as stored (unchecked: whatever was saved) */
 export type SavedPart = Record<string, unknown>;
 /** the stored object */

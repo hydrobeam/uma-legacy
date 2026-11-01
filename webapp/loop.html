@@ -24,57 +24,19 @@
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-{{> preload}}
 <a class="skip" href="#rcol">Skip to results</a>
 <header class="top">
   <h1 class="brand" aria-label="uma-legacy">{{{logo}}}<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
   {{> nav current="loop"}}
 </header>
 
-
-<div class="wrap lp">
-  <div class="lpside">
-  <section class="rbbar" aria-labelledby="h-set">
-    <h2 class="sethdr" id="h-set">Loop setup</h2>
-    <div class="setlist">
-{{> era}}
-      {{> scen}}{{> rank}}
-    </div>
-    <div class="setenh">
-{{> enh}}
-    </div>
-    <div class="rhead" id="rhead">
-        <p class="runnote" id="run-note" role="status" aria-live="polite"></p>
-        <span class="ract" id="r-act"></span>
-        <label class="sw rauto" title="Automatically search 0.55s after a change"><input type="checkbox" role="switch" id="x-auto" checked>Auto-search</label>
-      <label class="sw rper" title="Each uma gets the best deck for her own outfit and targets: better odds than one deck for the whole loop"><input type="checkbox" role="switch" id="c-peruma" checked>Deck per uma</label>
-      </div>
-  </section>
-  <div class="lptgt">{{> skills}}</div>
-  </div>
-
-  <main class="rcol" id="rcol" tabindex="-1" aria-label="Results">
-    <span class="rtop" id="rtop"></span>
-    <div class="results" id="results"></div>
-    <div id="pop-root"></div>
-  </main>
-  <button class="runpill" id="run-pill" type="button" hidden></button>
-  <script>
-  // phone (the columns stacked): the results come first, before the setup, in the reading and Tab order too; "rin": the
-  // results are in view (loop/main.tsx keeps it current), which hides the floating status button
-  (function () { var m = matchMedia('(max-width: 960px)'), w = document.querySelector('.wrap'), r = document.getElementById('rcol'), s = w.querySelector('.lpside');
-    function place() { if (m.matches) w.prepend(r); else s.after(r); }
-    place(); if (m.addEventListener) m.addEventListener('change', place); document.documentElement.classList.add('rin'); })();
-  </script>
-</div>
-
-{{> dlgumas}}{{> dlgcards}}
-<div id="why-root"></div>
-<div id="sched-root"></div>
-<div id="ex-root"></div>
-
-<footer class="foot">
-  <p class="row"><button class="btn" id="ex-open">Export / import settings</button><span class="hint" id="ver">Version {{version}}</span></p>
-</footer>
+<div id="app"></div>
+<script>
+// phone (the columns stacked): the results column first, before the setup, in the reading and Tab order too, from the
+// first paint (src/loop/Layout.tsx draws it there from then on); html.rin: the results are in view, which hides the
+// floating status button (the layout keeps it current)
+(function () { var w = document.querySelector('.wrap'), r = document.getElementById('rcol');
+  if (matchMedia('(max-width: 960px)').matches) w.prepend(r); document.documentElement.classList.add('rin'); })();
+</script>
 
 <script type="module" src="/src/loop/main.tsx"></script>

@@ -11,7 +11,7 @@ import { umaState } from '../roster.ts';
 import { cardTitle, cardGives, chainEndAt } from '../cards.ts';
 import type { CardGift } from '../cards.ts';
 import { must } from '../must.ts';
-import { popBack, popOpen, setPanel } from '../popover.ts';
+import { popBack, popOpen, popOpener, setPanel, togglePop } from '../popover.ts';
 import type { PopOpen, PopSubject } from '../popover.ts';
 
 const GAP = 8; // px between the panel and the element it belongs to (beside it); below it, 6
@@ -43,6 +43,18 @@ function place(pop: HTMLElement, { opener: anchor, beside }: PopOpen, inPopup: b
     pop.style.left = `${host.scrollLeft + Math.max(0, Math.min(rect.left - hostRect.left, host.clientWidth - width))}px`;
     pop.style.top = `${host.scrollTop + rect.bottom - hostRect.top + 6}px`;
   }
+}
+/** an opener of the panel (a deck card, a member's name, a portrait): its ref, its aria-expanded (whether the panel is
+ *  open from it) and its click, which toggles the panel about `subject` (`beside`: beside it, a deck card's; else
+ *  under it) */
+export function usePopOpener(beside: boolean, subject: () => PopSubject) {
+  const ref = useRef<HTMLButtonElement>(null),
+    open = popOpener.value;
+  return {
+    ref,
+    'aria-expanded': open !== null && open === ref.current,
+    onClick: (e: MouseEvent) => togglePop(e.currentTarget as HTMLElement, beside, subject()),
+  };
 }
 /** the panel's slot: `home`, the id of the ui/Dialog it sits in (null: the results column, where the hidden panel is
  *  always drawn; a popup's slot draws nothing until a panel opens in it) */

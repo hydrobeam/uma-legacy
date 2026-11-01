@@ -186,7 +186,7 @@ step_lint() {
   lint knip in_dir "$W" npx --no-install knip
   lint dependency-cruiser in_dir "$W" npx --no-install depcruise --config .dependency-cruiser.mjs src
   lint "dead CSS" in_dir "$W" node test/deadcss.mjs
-  lint static.mjs in_dir "$W" node test/static.mjs
+  lint "@ts-expect-error" no_ts_expect_error
   # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the terminal
   lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*'
   if [ ${#LINT_FAILED[@]} -gt 0 ]; then
@@ -198,6 +198,8 @@ step_lint() {
   echo "lint: clean"
 }
 lint() { local name=$1; shift; "$@" || LINT_FAILED+=("$name"); }   # lint NAME COMMAND...
+# tsc accepts a `@ts-expect-error` and no Biome rule sees a comment: one in the page's source fails lint (and the hook)
+no_ts_expect_error() { ! grep -rn --include='*.ts' --include='*.tsx' '@ts-expect-error' "$W/src"; }
 in_dir() { (cd "$1" && shift && "$@"); }   # in_dir DIR COMMAND...
 step_hooks() {
   git -C "$R" config core.hooksPath .githooks

@@ -1,19 +1,21 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
 // `Results` draws state.ts's `loopDrawn` into #results: each result keyed by its loop and decks (keys.ts), so a redraw with the same
 // loops (an interim answer, then the final) keeps every element, an open (i) panel and the focus. A card or a member no
-// longer owned is greyed (`off`) from the settings as they change. Their panels are popover.ts's: it reads what it
-// shows from the buttons (data-*), and each button draws its aria-expanded from popover.ts's `popOpener`.
+// longer owned is greyed (`off`) from the settings as they change. Their panels are popover.ts's: each button says what
+// its panel shows and draws its aria-expanded (ui/CardPop.tsx `usePopOpener`).
 // `ResultsCount` is the Results 1 or 3 switch above them.
 import { batch, untracked } from '@preact/signals';
-import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { $, fmtIn } from '../dom.ts';
+import type { ComponentChildren, RefObject } from 'preact';
+import { useLayoutEffect, useState } from 'preact/hooks';
+import { fmtIn } from '../dom.ts';
 import { gameData } from '../data.ts';
 import { setRunnerFrom } from '../images.ts';
 import { cardTitle, chainEndNote } from '../cards.ts';
 import { borrowedLast, deckCards } from '../details.ts';
 import type { DeckSlot } from '../details.ts';
-import { closePop, popHasFocus, popOpener } from '../popover.ts';
+import { closePop, popHasFocus } from '../popover.ts';
+import type { PopSubject } from '../popover.ts';
+import { usePopOpener } from '../ui/CardPop.tsx';
 import { outfitNote, pickOutfit, umaState } from '../roster.ts';
 import { openSched } from '../ui/Schedule.tsx';
 import { deckHint } from '../odds.ts';
@@ -42,17 +44,22 @@ const atLeastWhite = (odds: Odds | undefined) => (odds ? deckHint(odds.gold, odd
 const namesOf = (group: number) => gameData().skillNames.get(group) || { w: String(group), gd: null };
 const percent = (p: number) => `${Math.round(p * 100)}%`;
 
-// a button that opens a popover.ts panel: its aria-expanded says whether the panel is open from it
-function useOpener() {
-  const self = useRef<HTMLButtonElement>(null),
-    open = popOpener.value;
-  return { ref: self, 'aria-expanded': open !== null && open === self.current };
-}
+// a member's panel: her uma, the outfit the loop fixes (none: any) and the outfit her result names, with its note
+const memberSubject = (m: Member): PopSubject => {
+  const pick = untracked(() => pickOutfit(m.id, m.outfits));
+  return {
+    kind: 'uma',
+    uma: m.id,
+    outfit: onlyOutfit(m)?.id ?? null,
+    outfitLabel: pick.list[0]?.label || '',
+    outfitNote: outfitNote(pick),
+  };
+};
 /** draws a result (run.ts's `render`): the panel open on the old one closes, the runner becomes one of its umas. Focus
  *  inside the old result (an open panel's Owned switch, say) is noted in the drawn record (`refocus`), so that once the
  *  redraw is done focus that it removed goes to the results column, not the page top */
 export function drawResult(r: Report.DrawnReport, targets: readonly JobTarget[]) {
-  const refocus = popHasFocus() || $('results').contains(document.activeElement);
+  const refocus = popHasFocus() || !!document.activeElement?.closest('#results');
   batch(() => {
     closePop();
     draw(r, targets, refocus);
@@ -60,12 +67,13 @@ export function drawResult(r: Report.DrawnReport, targets: readonly JobTarget[])
   setRunnerFrom(r.top[0].loop.members.map((m) => m.id)); // the runner while the next search works: one of this loop's umas
 }
 
-/** every result drawn, one card each, ranked when there are more than one */
-export function Results() {
+/** every result drawn, one card each, ranked when there are more than one; `column`: the results column (the
+ *  layout's), which takes the focus a redraw removed */
+export function Results({ column }: { column: RefObject<HTMLElement | null> }) {
   const drawn = loopDrawn.value;
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per drawn record (two in a row may each refocus)
   useLayoutEffect(() => {
-    if (drawn?.refocus && !document.activeElement?.closest('#results')) $('rcol').focus({ preventScroll: true });
+    if (drawn?.refocus && !document.activeElement?.closest('#results')) column.current?.focus({ preventScroll: true });
   }, [drawn]);
   if (!drawn) return null;
   const { r, targets } = drawn,
@@ -157,7 +165,7 @@ function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit
     face = pick.list[0]?.id ?? null;
   const u = gameData().umas.find((x) => x.id === m.id),
     off = !!u && (umaState(u) === 'out' || (outfitId !== null && fields.outfits.value[outfitId] === false));
-  const opener = useOpener();
+  const opener = usePopOpener(false, () => memberSubject(m));
   return (
     <div
       class={`mem${off ? ' off' : ''}`}
@@ -194,7 +202,7 @@ function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit
 function FaceButton({ member, size }: { member: Member; size: number }) {
   const one = onlyOutfit(member),
     name = member.name + (one ? ` ${one.label}` : '');
-  const opener = useOpener();
+  const opener = usePopOpener(false, () => memberSubject(member));
   return (
     <button
       type="button"
@@ -267,7 +275,13 @@ function CardChip({ deck, slot }: { deck: ResultDeck; slot: DeckSlot }) {
     full = title.nm + (title.ti ? ` · ${title.ti}` : '') + (tag ? ` (${tag})` : '') + pickNote;
   // greyed while it is marked not owned (a borrowed card is not yours to own)
   const off = !!c && !borrowed && fields.cardsOff.value[c.id] === false;
-  const opener = useOpener();
+  const opener = usePopOpener(true, () => ({
+    kind: 'card',
+    cid: c ? c.id : null, // (a chip with no card entry: no card)
+    name: title.nm,
+    borrowed,
+    end: endAt || 0,
+  }));
   return (
     <button
       type="button"

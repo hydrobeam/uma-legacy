@@ -83,7 +83,8 @@ export interface RunDeps {
     saveAnswer: (key: string, value: AnswerView) => void;
   };
   /** the veteran analysis' comparison, which follows the runs: only analysis/compare.ts `createComparison` makes one
-   *  (its type carries a brand), so the page can't hand in a stand-in whose `stop` or `outdate` does nothing */
+   *  (a class with a private field, which no object literal or spread has), so the page can't hand in a stand-in
+   *  whose `stop` or `outdate` does nothing */
   analysis: Comparison;
   /** what the page draws of a run */
   view: {

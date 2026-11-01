@@ -93,7 +93,11 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
     e.preventDefault();
     const next = around(tabs, to);
     setTab(next);
-    must(document.getElementById(`stab-${tabKey(next)}`), 'each tab is drawn').focus();
+    // (the tab list the key was pressed in holds every tab)
+    must(
+      (e.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(`#stab-${tabKey(next)}`),
+      'each tab is drawn',
+    ).focus();
   };
   // the career page's figures are the community table's: its contents behind a button
   const tabled = schedule.some((row) => row.cells.some((c) => c?.tbl !== undefined));

@@ -37,6 +37,7 @@
     "esbuild": "^0.28.2",
     "knip": "6.44.1",
     "playwright": "1.63.0",
+    "preact-render-to-string": "6.8.2",
     "purgecss": "8.0.0",
     "size-limit": "14.3.0",
     "three": "^0.170.0",

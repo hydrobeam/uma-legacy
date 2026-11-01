@@ -19,6 +19,16 @@ const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 // a module export of a JSON value, parsed when the module loads (faster than an object literal for large data)
 const jsonExport = (name, value) => `export const ${name} = JSON.parse(${JSON.stringify(JSON.stringify(value))});`;
 
+// The solver's downloads, started while the page is still being parsed: the wasm and the active era's data (the era as
+// the settings keep it), from the asset table just before it (`data-assets`)
+const PRELOAD = `(function () {
+  var A = JSON.parse(document.getElementById('data-assets').textContent), gm = false;
+  try { var o = JSON.parse(localStorage.getItem('llp:settings') || 'null'); gm = !!o && o.era === 'gm'; } catch (e) {}
+  [A.wasm].concat(gm ? [A.engine.gm, A.dataGm] : [A.engine.global]).forEach(function (h) {
+    var l = document.createElement('link'); l.rel = 'preload'; l.as = 'fetch'; l.crossOrigin = 'anonymous'; l.href = h; document.head.appendChild(l);
+  });
+})();`;
+
 /** The era's page.json: the card picker's cards, the roster, the skill catalog and the career page's tables. Its
  * `inputs` (each file it was made from, with its sha256) must match the files now, or the build stops; one under game/
  * that is absent is skipped, so a checkout without the game files builds from the exported lists. */
@@ -119,6 +129,7 @@ export function pageData({ catalog, imgDir, wasm, solverPages }) {
           };
           const attrs = { type: 'application/json', id: 'data-assets' };
           tags.push({ tag: 'script', attrs, children: JSON.stringify(assets), injectTo: 'head' });
+          tags.push({ tag: 'script', children: PRELOAD, injectTo: 'head' });
         }
         return { html, tags };
       },

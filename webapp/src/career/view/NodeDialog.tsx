@@ -22,7 +22,7 @@ import {
 import { umaName } from '../../veterans/names.ts';
 import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.ts';
 import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans/store.ts';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, anyDialogOpen } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../ui/AffTable.tsx';
 import { InspView } from '../../ui/InspView.tsx';
@@ -442,7 +442,7 @@ export function NodeDialog() {
     const back = nodeClosed();
     if (back)
       setTimeout(() => {
-        if (document.activeElement === document.body && !document.querySelector('dialog[open]')) back();
+        if (document.activeElement === document.body && !anyDialogOpen()) back();
       });
   };
   return (

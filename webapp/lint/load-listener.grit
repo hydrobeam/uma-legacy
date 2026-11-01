@@ -1,0 +1,21 @@
+// No listener added at a module's top level, when it is imported: a load-time effect is the entries' to make, in their
+// order (biome.json's plugins, src/ but: the two entries; errorlog.ts, first of all, which logs every uncaught error;
+// gmtip.ts, whose game-style tooltips listen to the whole document on both pages). A listener a function, a method or
+// a component's effect adds is not matched.
+language js
+
+or { `addEventListener($...)`, `$target.addEventListener($...)` } as $call where {
+  not $call <: within or {
+    JsFunctionDeclaration(),
+    JsFunctionExpression(),
+    JsArrowFunctionExpression(),
+    JsMethodClassMember(),
+    JsMethodObjectMember(),
+    JsConstructorClassMember()
+  },
+  register_diagnostic(
+    span = $call,
+    message = "A listener added at import: an entry makes the page's load-time effects",
+    severity = "error"
+  )
+}

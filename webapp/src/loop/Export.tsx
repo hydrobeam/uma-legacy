@@ -1,10 +1,9 @@
 // ---------- Export / import: the settings and the result on show as text to copy, or another's text to load ----------
 // The text is made when the dialog opens (io.ts exportText) and stays while it is open, editable: Load reads what is in
 // the box then (io.ts readImport). Settings for the other data set are stored under its keys and the page reloads into
-// it; the template's controls that aren't components yet are painted again after a load.
+// it; the layout's switches follow the settings loaded.
 import { signal } from '@preact/signals';
 import { useRef, useState } from 'preact/hooks';
-import { $input } from '../dom.ts';
 import { ERA } from '../saved.ts';
 import { importSettings, importToEra, settings } from '../settings.ts';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -66,9 +65,6 @@ function ExportBody({ made }: { made: string }) {
       return;
     }
     importSettings(read.loaded);
-    // what the template draws itself (the rest reads the settings)
-    $input('c-peruma').checked = settings.peek().perUma !== false;
-    $input('x-auto').checked = settings.peek().auto !== false;
     setMessage(
       `Settings loaded.${read.bad.length ? ` Not understood, so left as they were: ${read.bad.join(', ')}.` : ''}`,
     );

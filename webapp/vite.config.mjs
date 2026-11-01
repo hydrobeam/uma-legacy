@@ -15,6 +15,7 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { imageCatalog, images } from './vite/images.mjs';
 import { mathFont } from './vite/mathfont.mjs';
 import { pageData } from './vite/pagedata.mjs';
+import { prerender } from './vite/prerender.mjs';
 import { aboutFigures } from './vite/research.mjs';
 
 const HERE = import.meta.dirname;
@@ -39,25 +40,37 @@ const logo = fs
   .replace('<svg ', '<svg class="logo" aria-hidden="true" focusable="false" ')
   .trim();
 const catalog = imageCatalog(IMG);
+const VERSION = version();
 
 export default defineConfig({
   root: HERE,
   appType: 'mpa', // /loop serves loop.html, as the host serves it; a path with no page is a 404
   // JSX compiles to Preact's jsx() calls, imported from preact/jsx-runtime
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
+  // the version the planner pages' footer shows (drawn by their layouts: vite/prerender.mjs at build, the entry on load)
+  define: { __LLP_VERSION__: JSON.stringify(VERSION) },
   plugins: [
-    // the pages' shared markup (partials/: the theme script, the header's tabs, the setup rows, the Enhance buttons, the
-    // settings editors' mount points; one copy of each, one set of ids) and the values they show
+    // the pages' shared head and header markup (partials/: the theme script, the header's tabs; /about's too) and the
+    // values they show
     handlebars({
       partialDirectory: path.join(HERE, 'partials'),
       compileOptions: { strict: true }, // a value a page names and the build lacks stops the build
       helpers: { eq: (a, b) => a === b },
       context: {
-        version: version(),
+        version: VERSION,
         // the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own
         site: (process.env.SITE_URL || 'https://uma-legacy.pages.dev').replace(/\/+$/, ''),
         logo,
         ...aboutFigures(),
+      },
+    }),
+    // each planner page's one root, drawn into its HTML (the first paint), which its entry hydrates
+    prerender({
+      root: HERE,
+      version: VERSION,
+      pages: {
+        'index.html': { module: 'src/career/Layout.tsx', layout: 'CareerLayout' },
+        'loop.html': { module: 'src/loop/Layout.tsx', layout: 'LoopLayout' },
       },
     }),
     images(catalog, IMG, path.join(HERE, 'src', 'style.css')),
