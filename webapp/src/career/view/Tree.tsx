@@ -6,7 +6,8 @@
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
 import { $dialog } from '../../dom.js';
-import { vets, vetsRev, plan, umaName } from '../../vets.js';
+import { vets, vetsRev, plan } from '../../veterans/store.js';
+import { umaName } from '../../veterans/names.js';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
 import { renderSimulation } from '../analysis.js';

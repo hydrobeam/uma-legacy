@@ -2,7 +2,8 @@
 import { $, $dialog, $textarea } from '../dom.js';
 import { ERA } from '../saved.ts';
 import { settings } from '../settings.ts';
-import { vets, plan, umaName, importVets, isVeteran, asVeteran, addVets } from '../vets.js';
+import { vets, plan, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.js';
+import { umaName } from '../veterans/names.js';
 import { parseExport, parseTree } from '../umadump.js';
 import { orNull } from '../must.ts';
 import { Blocked, buildJob } from './job.js';

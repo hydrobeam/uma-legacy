@@ -189,7 +189,7 @@ result wherever the plan is kept. Views are Preact components that read the stor
 page's, and the career page's status line, tree, node popup, parent picker and deck popup, each rendered by its page's
 entry into the template's mount points; the rest (the career page's results column and veterans pool among them)
 still build their markup with `el()` and `innerHTML`, and the entry draws them again after a change. The veterans are
-edited in place until their store goes copy-on-write, so `vets.js` counts the edits (`vetsRev`, moved by `changed`)
+edited in place until their store goes copy-on-write, so `veterans/store.js` counts the edits (`vetsRev`, moved by `changed`)
 and every component that draws a veteran or a place reads it. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
 machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import no component, and only a
 component's own module looks into what it draws (`test/static.mjs`).

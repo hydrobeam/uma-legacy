@@ -6,13 +6,14 @@ import { gameData } from '../data.js';
 import { settings } from '../settings.ts';
 import { run as engineRun, stateKey } from '../engine.ts';
 import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.js';
-import { vets, plan, chosen, persist, vetById, umaName, sampleVets, addVets, legaciesJob } from '../vets.js';
+import { vets, plan, chosen, persist, vetById, sampleVets, addVets, legaciesJob } from '../veterans/store.js';
+import { umaName } from '../veterans/names.js';
 import { answer, answerCareer, reference } from './state.ts';
 import { must, orNull } from '../must.ts';
 import { planKey } from './keys.js';
 import { pickOutfit, outfitNote } from '../roster.js';
 import { unprovenWhy } from '../proofs.mjs';
-/** @import { LineagePlan } from '../vets.js' */
+/** @import { LineagePlan } from '../veterans/store.js' */
 /** @import { DeepReadonly } from '../store.ts' */
 
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
@@ -32,7 +33,7 @@ export const placesKey = (p = plan) => JSON.stringify({ trainee: p.trainee, pare
  * @property {number[]} star_dist  the lineage rank's chances of 1, 2 and 3 stars
  * @property {string} scenario
  * @property {number[]} [exclude_cards]  R cards (not pals) left out
- * @property {import('../vets.js').JobLegacy[]} legacies  every veteran, by legacy index (`legaciesJob`)
+ * @property {import('../veterans/store.js').JobLegacy[]} legacies  every veteran, by legacy index (`legaciesJob`)
  * @property {number[]} trainees  the trainee chosen (none: the planner picks)
  * @property {number[]} fix  the parents chosen, by legacy index
  * @property {boolean} per_trainee
@@ -322,7 +323,7 @@ export function buildJob(s) {
   if (allPlaced && chosenApplies(job)) job.career = must(chosen.career, 'chosenApplies: a choice is saved').id;
   return job;
 }
-// the career Use this chose with its deck (vets.js `chosen`, saved with the plan): a builder's other career (an option
+// the career Use this chose with its deck (veterans/store.js `chosen`, saved with the plan): a builder's other career (an option
 // with `alternative`: a search on its places would give her best deck there instead, but for the pick, searched on its
 // pair before it is shown; listed with the plan's `builder_careers` above 1, its default 1, which the page keeps: none by
 // default) or the pair search's recommendation (`pair_search`). It is sent only while it applies (`chosenApplies`): its

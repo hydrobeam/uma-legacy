@@ -2,8 +2,10 @@
 // dialogs.ts `pickerFor` names a place.
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
-import { vets, vetsRev, plan, changed, vetById, umaName, askSkills, newVet, drawUmas, filterUmas } from '../../vets.js';
-import type { Veteran } from '../../vets.js';
+import { vets, vetsRev, plan, changed, vetById, newVet } from '../../veterans/store.js';
+import { umaName } from '../../veterans/names.js';
+import { askSkills, drawUmas, filterUmas } from '../../veterans/pickers.js';
+import type { Veteran } from '../../veterans/store.js';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.js';
@@ -88,7 +90,7 @@ export function ParentPicker() {
   const place = lastK.current,
     tab: Tab = chosenTab && chosenTab[1] === opening.current ? chosenTab[0] : vets.length ? 'vets' : 'new';
   const close = pickerClosed;
-  // A new one: every uma, filterable (vets.js drawUmas builds the list into its box; the filter hides, never rebuilds)
+  // A new one: every uma, filterable (veterans/pickers.js drawUmas builds the list into its box; the filter hides, never rebuilds)
   useLayoutEffect(() => {
     const opened = shownFor.current !== k;
     shownFor.current = k;

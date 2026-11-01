@@ -2,8 +2,8 @@
 // "Sparks", her sparks as the game's spark bars, then "Legacy Origin": her parents' (each a row with her portrait). The
 // markup inspView draws; inspView stays for the veteran analysis (step 9). Her parents' sparks are editable when
 // `parentKey` names their controls.
-import { umaName } from '../vets.js';
-import type { LineageNode } from '../vets.js';
+import { umaName } from '../veterans/names.js';
+import type { LineageNode } from '../veterans/store.js';
 import { UmaAv } from './Images.tsx';
 import { Sparks } from './Sparks.tsx';
 

@@ -7,7 +7,7 @@
 // nothing draws them.
 // A plan is known by its id (`PlanDone.id`, given when it is made or loaded), never by its object: its check's writes
 // replace the record (`setPlanCheck`), and reach every place that keeps the plan (the answers cache, `reference`).
-// Records are frozen as they come in, except the jobs: a job holds the veterans' own arrays (vets.js `legaciesJob`)
+// Records are frozen as they come in, except the jobs: a job holds the veterans' own arrays (veterans/store.js `legaciesJob`)
 // until the veterans store copies on write. Nothing here subscribes: the entry makes the effects (store.ts `on`).
 import { batch, computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
@@ -15,7 +15,7 @@ import { must } from '../must.ts';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerJob, CareerSearch, PlanReport } from './job.js';
-import type { LineagePlan } from '../vets.js';
+import type { LineagePlan } from '../veterans/store.js';
 import { planKey } from './keys.js';
 
 /** what the page draws of the run under way */

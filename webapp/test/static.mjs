@@ -463,7 +463,7 @@ const LAYERS = [
     'model',
     ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/keys', 'career/run', 'loop/job', 'loop/keys'],
   ],
-  ['stores', ['settings', 'loop/state', 'vets', 'career/state']],
+  ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state']],
   ['shared', null], // every module not named elsewhere
   [
     'page:loop',
@@ -499,8 +499,9 @@ const LAYERS = [
     ],
   ],
 ];
-// the imports against the layers that stand: vets.js is the veterans' store and their editors (split in step 10)
-const KNOWN_AGAINST = ['vets (stores) -> images (shared)', 'vets (stores) -> agenda (shared)'];
+// the imports against the layers that stand: the veterans' store draws its sample veterans' portraits (step 10b moves
+// sampleVets to the career page)
+const KNOWN_AGAINST = ['veterans/store (stores) -> images (shared)'];
 {
   const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
   const layerOf = (mod) => {

@@ -5,7 +5,7 @@
 import { el } from './dom.js';
 import { careerTables } from './data.js';
 import { umaAv, srcFor } from './images.js';
-import { umaName, blueName, pinkName, uniqueName } from './vets.js';
+import { umaName, blueName, pinkName, uniqueName } from './veterans/names.js';
 
 // her main sparks as the game's legacy list shows them under a portrait: blue (her stat), pink (her aptitude), green
 // (her unique skill), each a short tag of its colour with its stars under it
@@ -55,7 +55,7 @@ function mainSparks(v) {
   return row;
 }
 /**
- * @param {import('./vets.js').Veteran} v
+ * @param {import('./veterans/store.js').Veteran} v
  * @param {{name: string, label: string, onClick: () => void, tab?: string, sub?: string}} o  the name under her, the
  *   button's accessible label, what a click does, a role tab over her ("Parent 1"), a line under her name
  */

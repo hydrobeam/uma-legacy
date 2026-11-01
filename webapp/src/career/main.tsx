@@ -1,7 +1,7 @@
 // Career planner page: entry point. build.py bundles this and the modules it imports into dist/assets/career.<hash>.js,
 // which dist/index.html loads.
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
-// which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
+// which tries every owned uma and every pair of the player's veterans (veterans/) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
 // Here: the run machine's wiring (run.ts `createRun` on this page's solver, clock, store, job and views), the views'
 // mount points, settings and start. The rest of career/:
@@ -45,7 +45,18 @@ import '../agenda.js'; // (its document listener is added before gmtip's)
 import { initSetup } from '../setup.js';
 import '../gmtip.js'; // the game-style tooltips (both planner pages)
 import { initTargets, renderTargets } from '../targets.js';
-import { vets, vetsRev, plan, onVetsChange, persist, clearVets, dropMissing, handBackPlaces } from '../vets.js';
+import {
+  vets,
+  vetsRev,
+  plan,
+  onVetsChange,
+  persist,
+  clearVets,
+  dropMissing,
+  handBackPlaces,
+} from '../veterans/store.js';
+import '../veterans/pickers.js'; // (the editors' dialog and document listeners are added with the veterans' load)
+import '../veterans/sparks.js';
 import { setRunner } from '../images.js';
 import { initUmamoe, syncListings } from '../umamoesetup.js';
 import { Boundary } from '../ui/Boundary.tsx';

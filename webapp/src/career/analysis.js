@@ -11,7 +11,9 @@ import { settings } from '../settings.ts';
 import { restartEngine, engineSaveState } from '../engine.ts';
 import { umaAv, runnerHTML } from '../images.js';
 import { pct } from '../odds.js';
-import { vets, plan, changed, newVet, umaName, openWins } from '../vets.js';
+import { vets, plan, changed, newVet } from '../veterans/store.js';
+import { umaName } from '../veterans/names.js';
+import { openWins } from '../veterans/pickers.js';
 import { detailsEl, fitSparks } from '../details.js';
 import { scheduledRaces, rolledOutcome } from './roll.mjs';
 import { answer, keepComparisonPlan, runView } from './state.ts';
@@ -21,7 +23,7 @@ import { shown, isFull, baseKey, ROLL_K, runJob } from './job.js';
 import { btn, sectionEl, deckEl, fmtN, tableRows } from './view/parts.js';
 import { openNode } from './view/dialogs.ts';
 import { must } from '../must.ts';
-/** @import { LineageNode } from '../vets.js' */
+/** @import { LineageNode } from '../veterans/store.js' */
 /** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from './job.js' */
 /** @import { PlanDone } from './state.ts' */
 /** @import { DeepReadonly } from '../store.ts' */

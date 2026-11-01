@@ -4,12 +4,13 @@
 // "Legacy Origin": her two parents' sparks) and Career Info (her support cards, her two legacies, the G1s she ran and
 // won). No stats (the model has none).
 // The game's own art where the build shipped it (images.py: grade letters, spark bars and bullets, skill tiles), the
-// same shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
+// same shapes in CSS without it. Her sparks stay editable (veterans/sparks.js sparksEl: click for stars, x removes, + adds).
 import { el, lazyDialog } from './dom.js';
 import { gameData } from './data.js';
 import { umaAv, skillIcon, cardAv, gradeEl } from './images.js';
-import { umaName, sparksEl } from './vets.js';
-/** @import { LineageNode } from './vets.js' */
+import { umaName } from './veterans/names.js';
+import { sparksEl } from './veterans/sparks.js';
+/** @import { LineageNode } from './veterans/store.js' */
 import { borLast } from './cards.js';
 
 let tab = 'insp'; // the tab on show, kept across redraws (Inspiration first: it is where her sparks are entered)
@@ -103,7 +104,7 @@ const when = (turn) =>
  * @property {(j: number) => string} parentLabel  a parent's place ("#3")
  * @property {import('./career/job.js').CareerTarget[]} [targets]  the career's per-target report
  * @property {import('./loop/types.ts').ResultDeck|null} [deck]  her deck
- * @property {{v: import('./vets.js').Veteran, label: string, open: () => void}[]} [legacies]  her two parents, each with
+ * @property {{v: import('./veterans/store.js').Veteran, label: string, open: () => void}[]} [legacies]  her two parents, each with
  *   her place and what opens her node
  */
 /** @param {DetailsSpec} spec */

@@ -8,7 +8,7 @@ import { scenarioOf } from '../../scenario.js';
 import { popOpener } from '../../popover.js';
 import { openSched } from '../../agenda.js';
 import { pct, deckHint } from '../../odds.js';
-import { vets, vetsRev } from '../../vets.js';
+import { vets, vetsRev } from '../../veterans/store.js';
 import { deckCardAt, openSkill } from '../../details.js';
 import { cardTitle, borLast, chainEndNote } from '../../cards.js';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';

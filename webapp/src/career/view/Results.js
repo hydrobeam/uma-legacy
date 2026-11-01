@@ -2,7 +2,7 @@
 // (steps 9 and 11), so drawn again by the entry after each change.
 import { $ } from '../../dom.js';
 import { markOwn } from '../../popover.js';
-import { plan } from '../../vets.js';
+import { plan } from '../../veterans/store.js';
 import { optionsEl } from '../options.js';
 import { renderSimulation } from '../analysis.js';
 import { answer } from '../state.ts';

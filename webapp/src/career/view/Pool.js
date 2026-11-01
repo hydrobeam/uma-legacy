@@ -6,7 +6,8 @@ import { ERA } from '../../saved.ts';
 import { RANKS } from '../../data.js';
 import { settings } from '../../settings.ts';
 import { scenarioOf } from '../../scenario.js';
-import { vets, plan, umaName } from '../../vets.js';
+import { vets, plan } from '../../veterans/store.js';
+import { umaName } from '../../veterans/names.js';
 import { vetCell } from '../../vetcell.js';
 import { wireMenu } from '../../sortmenu.js';
 import { umamoeButton } from '../../umamoesetup.js';
@@ -58,7 +59,7 @@ export function setVTab(t) {
 // the list's orders: the order added (uma.moe's listings in uma.moe's order), how many targets she carries (the
 // default; ties in the order added), her rank; each starts as the menu says and picking the chosen one again reverses
 // it (as the umas' and cards' sort menus)
-/** @type {Record<string, [string, string, (v: import('../../vets.js').Veteran, i: number) => number]>} */
+/** @type {Record<string, [string, string, (v: import('../../veterans/store.js').Veteran, i: number) => number]>} */
 const VSORTS = {
   no: ['Added', 'In the order they were added to this page (uma.moe’s: in its own order)', (_v, i) => -i],
   tg: [
@@ -127,7 +128,7 @@ export function renderPool() {
 // edit or a tab switch builds only the cards that changed (300 veterans are about 1,900 elements)
 /** @type {Map<string, {sig: string, card: HTMLElement}>} */
 const poolCards = new Map();
-/** @param {import('../../vets.js').Veteran} v @param {number} i */
+/** @param {import('../../veterans/store.js').Veteran} v @param {number} i */
 function poolCard(v, i) {
   const sig = JSON.stringify([v, i, plan.parents.indexOf(v.id), settings.value.targets]),
     kept = poolCards.get(v.id);
@@ -156,11 +157,11 @@ export function drawPool() {
   const by = VSORTS[vSort][2],
     sign = vRev ? -1 : 1,
     shown = vets
-      .map((v, i) => /** @type {[import('../../vets.js').Veteran, number]} */ ([v, i]))
+      .map((v, i) => /** @type {[import('../../veterans/store.js').Veteran, number]} */ ([v, i]))
       .filter(([v]) => inTab(v))
       .sort(([a, i], [b, j]) => sign * (by(b, j) - by(a, i)));
   // Guests: your borrow list, then uma.moe's listings, each under its heading
-  /** @type {[string, [import('../../vets.js').Veteran, number][]][]} */
+  /** @type {[string, [import('../../veterans/store.js').Veteran, number][]][]} */
   const groups =
     vTab === 'own'
       ? [['', shown]]

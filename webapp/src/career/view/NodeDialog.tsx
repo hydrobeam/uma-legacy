@@ -8,19 +8,10 @@ import { $ } from '../../dom.js';
 import { settings } from '../../settings.ts';
 import { isOwned } from '../../job.js';
 import { fitSparks } from '../../details.js';
-import {
-  vets,
-  vetsRev,
-  plan,
-  changed,
-  umaName,
-  openWins,
-  winsText,
-  changeUma,
-  removeVet,
-  openUmaPicker,
-} from '../../vets.js';
-import type { LineageNode, Veteran } from '../../vets.js';
+import { vets, vetsRev, plan, changed, removeVet } from '../../veterans/store.js';
+import { umaName } from '../../veterans/names.js';
+import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.js';
+import type { LineageNode, Veteran } from '../../veterans/store.js';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../ui/AffTable.tsx';
@@ -83,7 +74,7 @@ function Face({ nd, size, label, change }: { nd: LineageNode; size: number; labe
     </button>
   );
 }
-/** her G1 wins: the button that edits them (vets.js winsBtn), or (a listed veteran) their count */
+/** her G1 wins: the button that edits them (veterans/pickers.js winsBtn), or (a listed veteran) their count */
 function Wins({ nd, who, k, edit }: { nd: LineageNode; who: string; k: string; edit: boolean }) {
   if (!edit) return <span class="vwins">{winsText(nd)}</span>;
   return (
