@@ -1,7 +1,8 @@
 // ---------- the settings store: the planner's settings (both pages), one record in a signal ----------
 // `settings` hands the record out read-only. Each setter builds the next record copy-on-write (only the fields it
 // changes are new objects), persists it (saved.ts), then assigns it: effects run inside the assignment, so one that
-// throws cannot lose the write. `fields` has a signal per setting, which changes only when that field is replaced;
+// throws cannot lose the write. Every record is frozen all the way down (`deepFreeze`), DEFAULTS too, and a record
+// shares none of DEFAULTS' objects: a write past the read-only type throws. `fields` has a signal per setting, which changes only when that field is replaced;
 // `jobSetup` changes when any setting a job reads is. Nothing here subscribes: the entries make the effects (store.ts
 // `on`). Read `.value` in handlers and in what an entry's effect calls (`on` runs it untracked); logic modules take
 // the values as arguments.
@@ -9,6 +10,7 @@ import { computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { COMMON, ERA, PER_ERA, SAVED, SETTINGS, browserStorage, loadSaved, writeSaved } from './saved.ts';
 import type { Era, Saved, SavedPart, SettingsStorage } from './saved.ts';
+import { deepFreeze } from './store.ts';
 import type { DeepReadonly } from './store.ts';
 
 export interface Target {
@@ -46,7 +48,7 @@ export type SettingsView = DeepReadonly<Settings>;
 // the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them: job.js
 // goldGiven)
 export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];
-export const DEFAULTS: SettingsView = {
+export const DEFAULTS: SettingsView = deepFreeze({
   targets: PRESET.map((group) => ({ group })),
   presets: [{ name: '8/8 example', groups: [...PRESET] }],
   rank: '0.50,0.45,0.05',
@@ -63,19 +65,20 @@ export const DEFAULTS: SettingsView = {
   outfits: {},
   cardsOff: {},
   borrowPar: 'allow',
-};
+});
 // The page once had a third mark, "must include" ('req' in roster and outfits); a saved or imported one reads as owned.
 function dropRequired(settings: Record<string, unknown>) {
   const marked = (key: string) =>
     Object.fromEntries(Object.entries(settings[key] || {}).filter(([, mark]) => mark !== 'req'));
   return { ...settings, roster: marked('roster'), outfits: marked('outfits') } as unknown as SettingsView;
 }
-// the record from the stored object: each setting as saved (its era's part for the per-era ones), else its default
+// the record from the stored object: each setting as saved (its era's part for the per-era ones), else a copy of its
+// default
 function fromSaved(saved: Saved) {
   const savedValue = (key: string) => ((PER_ERA as readonly string[]).includes(key) ? saved[ERA] : saved.common)?.[key];
-  return dropRequired(
-    Object.fromEntries(SETTINGS.map((key) => [key, savedValue(key) !== undefined ? savedValue(key) : DEFAULTS[key]])),
-  );
+  const value = (key: (typeof SETTINGS)[number]) =>
+    savedValue(key) !== undefined ? savedValue(key) : structuredClone(DEFAULTS[key]);
+  return deepFreeze(dropRequired(Object.fromEntries(SETTINGS.map((key) => [key, value(key)]))));
 }
 const pick = (record: SettingsView, keys: readonly string[]): SavedPart =>
   Object.fromEntries(keys.map((key) => [key, record[key as keyof SettingsView]]));
@@ -102,7 +105,7 @@ export const jobSetup = computed(() =>
 
 // persist, then assign (the effects run in the assignment)
 function commit(patch: Partial<SettingsView>) {
-  const next = { ...record.peek(), ...patch };
+  const next = deepFreeze({ ...record.peek(), ...patch });
   writeSaved(storage, { common: pick(next, COMMON), [ERA]: pick(next, PER_ERA) });
   record.value = next;
 }

@@ -8,6 +8,15 @@ export type DeepReadonly<T> = T extends (infer U)[]
   : T extends object
     ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
     : T;
+/** `value` frozen all the way down, as DeepReadonly says it is: a write past the type (a cast, `Object.assign`, which
+ * TS lets through on a readonly target) then throws, modules being strict, instead of changing a store unseen */
+export function deepFreeze<T>(value: T): DeepReadonly<T> {
+  if (value !== null && typeof value === 'object') {
+    Object.freeze(value);
+    for (const inner of Object.values(value)) deepFreeze(inner);
+  }
+  return value as DeepReadonly<T>;
+}
 type Values<S extends readonly ReadonlySignal<unknown>[]> = {
   [K in keyof S]: S[K] extends ReadonlySignal<infer T> ? T : never;
 };

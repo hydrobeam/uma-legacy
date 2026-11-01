@@ -211,3 +211,28 @@ test('storage round trip: what is saved loads back; old and broken shapes load a
   initStore(() => storage);
   assert.deepEqual(settings.value, written, 'loads back as written');
 });
+
+test('every record is frozen all the way down, DEFAULTS too, and no record shares an object of DEFAULTS', () => {
+  fresh(); // (nothing saved: every setting its default)
+  for (const key of ['targets', 'presets', 'roster', 'outfits', 'cardsOff'])
+    assert.notEqual(settings.value[key], DEFAULTS[key], `${key}: a copy of the default`);
+  assert.notEqual(settings.value.presets[0].groups, DEFAULTS.presets[0].groups);
+  // writes past the read-only type: Object.assign (TS lets it through on a readonly target) and what a cast allows
+  assert.throws(() => Object.assign(settings.value.cardsOff, { 1: false }), TypeError);
+  assert.throws(() => settings.value.targets.push({ group: 1 }), TypeError);
+  assert.throws(() => {
+    settings.value.presets[0].name = 'renamed';
+  }, TypeError);
+  assert.throws(() => DEFAULTS.targets.push({ group: 1 }), TypeError);
+  assert.throws(() => {
+    DEFAULTS.roster[1] = 'out';
+  }, TypeError);
+  // a setter's record, its new field included, and an import's
+  setTargets([{ group: 7 }]);
+  assert.throws(() => {
+    settings.value.targets[0].group = 8;
+  }, TypeError);
+  importSettings({ roster: { 3: 'out' } });
+  assert.throws(() => Object.assign(settings.value.roster, { 4: 'out' }), TypeError);
+  assert.deepEqual(settings.value.roster, { 3: 'out' });
+});
