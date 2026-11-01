@@ -21,9 +21,11 @@ export const PAUSE_MS = 550;
 export type Timer = ReturnType<typeof setTimeout>;
 export type DeckAnswer = SolverAnswer<LoopReport>;
 export interface LoopDeps {
-  /** the engine (engine.ts `run`): the job's answer; `interim` gets its fast first pass. A killed job never answers */
+  /** the engine (engine.ts `run`): the job's answer; `interim` gets its fast first pass. A job killed while it runs never
+   *  answers; one killed while it waits for the worker to start rejects (`superseded`), so a caught error may be stale */
   run: (job: DeckJob, interim: (answer: DeckAnswer) => void) => Promise<DeckAnswer>;
-  /** kill the worker, so the job it runs never answers, and start a fresh one (engine.ts `restartEngine`) */
+  /** kill the worker (the job it runs never answers; one waiting for its start rejects) and start a fresh one
+   *  (engine.ts `restartEngine`) */
   restart: () => void;
   /** the clock (ms) */
   now: () => number;
@@ -35,7 +37,7 @@ export interface LoopDeps {
   storage: () => Pick<Storage, 'getItem' | 'setItem'>;
   /** the settings now (read when a search or its pause starts) */
   settings: () => SettingsView;
-  /** draws a result (results.js `renderDeck`) */
+  /** draws a result (Results.tsx `drawResult`) */
   render: (r: LoopReport, targets: JobTarget[]) => void;
   /** the "no targets" status's button (presets.js `loadExample`) */
   loadExample: () => void;
@@ -178,7 +180,13 @@ export function createRun(deps: LoopDeps) {
   // else the precomputed example when the settings are the example's, else nothing (the example under other settings
   // would show a result that isn't theirs)
   function showFirst(): First {
-    const built = buildJob(deps.settings());
+    let built: Built;
+    try {
+      built = buildJob(deps.settings());
+    } catch (e) {
+      reportError(e); // a bug (doSearch shows it as the search's error): the page goes on with nothing on show
+      return null;
+    }
     if (!('job' in built)) return null;
     const key = jobKey(built.job);
     let kept: { key?: string; ms: number; r: LoopReport } | null = null;

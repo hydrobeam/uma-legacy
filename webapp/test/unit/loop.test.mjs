@@ -7,7 +7,9 @@ import fs from 'node:fs';
 import { test } from 'node:test';
 import { loadData } from '../../src/data.js';
 import { fmtIn } from '../../src/dom.js';
-import { blockedStatus, buildJob } from '../../src/loop/job.ts';
+import { gameData } from '../../src/data.js';
+import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.js';
+import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
 import { PAUSE_MS, createRun } from '../../src/loop/run.ts';
 import { headline, initLoopState, loopRun, loopView, resultsStale } from '../../src/loop/state.ts';
 import {
@@ -61,7 +63,7 @@ const doneTextOf = (ms) =>
   `Checked ${(1200).toLocaleString()} decks / ${(30).toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s`;
 
 // a page: the settings stored in `saved` (FIXTURES' shape), the run state fresh, the machine on the fakes
-function page({ saved = FIXTURES.defaults, storage = memory(), example = null } = {}) {
+function page({ saved = FIXTURES.defaults, storage = memory(), example = null, settingsOf = (s) => s } = {}) {
   const settingsStorage = memory();
   settingsStorage.setItem('llp:settings', JSON.stringify(saved));
   initStore(() => settingsStorage);
@@ -78,7 +80,7 @@ function page({ saved = FIXTURES.defaults, storage = memory(), example = null } 
     every: clock.every,
     clearTimer: clock.clearTimer,
     storage: () => storage,
-    settings: () => settings.peek(),
+    settings: () => settingsOf(settings.peek()),
     render: (r) => drawn.push(r),
     loadExample: () => examples.push('loaded'),
     example,
@@ -121,6 +123,11 @@ test('Stop during the search kills the worker once; its late answer changes noth
   await flush();
   assert.deepEqual(snapshot(), before);
   assert.equal(p.drawn.length, 0);
+  // its Search again searches the same settings at once
+  loopView.peek().status.act.run();
+  await flush();
+  assert.equal(p.engine.jobs.length, 2);
+  assert.equal(loopRun.peek().searching, true);
 });
 
 test('Stop during the exact check keeps the fast result, said so', async () => {
@@ -167,6 +174,23 @@ test("an edit during a search kills it, and the old search's late answers change
   assert.equal(loopView.peek().lastResult.r.top[0].loop.p_all, 0.03);
 });
 
+test("a job rejected when its worker is killed during the start ('superseded') changes nothing: the newer search keeps the page", async () => {
+  const p = page();
+  const old = await searching(p); // waiting for the worker to start, say (engine.ts rejects it when that start is killed)
+  p.loop.scheduleSearch(); // an edit kills it
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.equal(p.engine.jobs.length, 2);
+  const before = snapshot();
+  old.reject(new Error('superseded'));
+  await flush();
+  assert.deepEqual(snapshot(), before);
+  // the newer search still runs in the engine: the next edit kills it
+  const restarts = p.engine.restarts;
+  p.loop.scheduleSearch();
+  assert.equal(p.engine.restarts, restarts + 1);
+});
+
 test('a burst of edits inside the pause sends one job; the clock starts at the job', async () => {
   const p = page();
   for (let k = 0; k < 5; k++) {
@@ -183,12 +207,29 @@ test('a burst of edits inside the pause sends one job; the clock starts at the j
   assert.equal(loopRun.peek().now - loopRun.peek().startedAt, 2000); // the clock ticks each second
 });
 
+test("the clock's ticker: one while a search runs, none in an edit's pause, none once the search ends", async () => {
+  const p = page();
+  await searching(p);
+  assert.deepEqual(p.clock.pending(), ['every']);
+  p.loop.doSearch(); // the Search button during a search: a new search, its own ticker
+  await flush();
+  assert.deepEqual(p.clock.pending(), ['every']);
+  p.loop.scheduleSearch(); // an edit: its pause, no clock yet
+  assert.deepEqual(p.clock.pending(), ['once']);
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.deepEqual(p.clock.pending(), ['every']);
+  p.engine.jobs.at(-1).resolve(answer(report(0.02)));
+  await flush();
+  assert.deepEqual(p.clock.pending(), []);
+});
+
 test('Auto-search off: an edit stops the search and asks for Search, which runs even for the job already done', async () => {
   const p = page();
   const job = await searching(p);
   job.resolve(answer(report(0.02)));
   await flush();
-  const second = await searching(p); // the same settings searched again, running
+  await searching(p); // the same settings searched again, running
   setAuto(false);
   p.loop.scheduleSearch();
   assert.equal(p.engine.restarts, 1);
@@ -203,7 +244,6 @@ test('Auto-search off: an edit stops the search and asks for Search, which runs 
   status.act.run();
   await flush();
   assert.equal(p.engine.jobs.length, 3, 'Search runs the done job again');
-  assert.notEqual(p.engine.jobs[2], second);
 });
 
 // ---------- the done-key shortcut
@@ -317,8 +357,15 @@ test('first result: the kept result of these settings, else the example for its 
   const record = settings.peek();
   assert.equal(p.loop.showFirst(), 'kept');
   assert.equal(loopView.peek().status.text, doneTextOf(2500));
+  assert.deepEqual(loopView.peek().lastResult, { kind: 'deck', r: report(0.02), meta: {} }, 'Export has it');
   assert.equal(p.drawn.length, 1);
   assert.equal(settings.peek(), record, 'showFirst writes no setting');
+  // it is a finished search: an edit and its undo search nothing
+  p.loop.scheduleSearch();
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.equal(p.engine.jobs.length, 0);
+  assert.equal(loopView.peek().status.text, doneTextOf(2500));
   // the defaults, nothing kept: the example
   const example = report(0.009);
   const q = page({ example: { r: example, settings: DEFAULTS } });
@@ -333,6 +380,20 @@ test('first result: the kept result of these settings, else the example for its 
   assert.equal(r.loop.showFirst(), null);
   assert.equal(r.drawn.length, 0);
   assert.equal(loopView.peek().status.kind, 'loading');
+});
+
+test('first result: a job that throws (a bug) is reported, and the page goes on with nothing on show', () => {
+  const reported = [],
+    report0 = globalThis.reportError;
+  globalThis.reportError = (e) => reported.push(e);
+  try {
+    const p = page({ settingsOf: (s) => ({ ...s, targets: null }) });
+    assert.equal(p.loop.showFirst(), null);
+    assert.equal(reported.length, 1);
+    assert.equal(loopView.peek().status.kind, 'loading');
+  } finally {
+    globalThis.reportError = report0;
+  }
 });
 
 // ---------- storage
@@ -417,6 +478,30 @@ test("golden jobs: each fixture's job byte-identical to 9307950's, the blocked o
   }
 });
 
+// the key a finished result is kept under (and the suite's replies are found by): the fingerprints, then the job; the
+// Grand Masters era's under its own data's fingerprint
+test("golden job keys: the defaults' job keyed as recorded, in both eras", () => {
+  page();
+  const { job } = buildJob(settings.peek());
+  assert.equal(jobKey(job), GOLDEN.defaults.key);
+  assert.equal(jobKey(job, 'gm'), GOLDEN.defaults.keyGm);
+});
+
+// the career page's job carries the same shared fields (job.js), in its own order: owned, then the rank, then the
+// scenario (career.js builds it; this pins what the helpers give it and that order, from 4ef2a4b)
+test("golden career fields: each fixture's shared career-job fields as recorded", () => {
+  for (const [name, saved] of Object.entries(FIXTURES)) {
+    if (!GOLDEN[name].career) continue;
+    page({ saved });
+    const s = settings.peek();
+    const exclude = gameData()
+      .umas.filter((u) => !isOwned(u, s))
+      .map((u) => u.id);
+    const fields = { ...ownedFields(s, exclude), star_dist: starDist(s), ...scenarioFields(s) };
+    assert.equal(JSON.stringify(fields), GOLDEN[name].career, name);
+  }
+});
+
 // ---------- effects (main.js's two, made the same way)
 test('effects: the setup effect wakes for job settings only, once per setter; the status line once per transition', async () => {
   const p = page();
@@ -429,6 +514,7 @@ test('effects: the setup effect wakes for job settings only, once per setter; th
   // presets, sorts and the Auto switch change no job (P2)
   setPresets([{ name: 'mine', groups: [20049] }]);
   setSort({ prefix: 'r', sort: 'name', dir: 'asc' });
+  setAuto(false);
   setAuto(true);
   assert.deepEqual(runs, { setup: 0, paint: 0 });
   // ownership and targets do, once per setter call; each schedules one search (its pause: one paint)

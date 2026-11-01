@@ -35,7 +35,7 @@ const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 // each bundle's entry by the names it has had, newest first: a tree's entry is the first name it holds, so a move or a
 // rename to .ts compares the bundle across it
 const ENTRIES = [
-  ['src/loop/main.js', 'src/main.js'],
+  ['src/loop/main.tsx', 'src/loop/main.js', 'src/main.js'],
   ['src/career/main.js', 'src/career.js'],
   ['src/worker.ts', 'worker.template.js'],
 ];

@@ -1,7 +1,7 @@
 // ---------- support cards: the picker (owned or not, by rarity) and deck options ----------
 import { $, $input, esc } from './dom.js';
 import { SCENARIOS, gameData } from './data.js';
-import { settings, setDecksTop, setOwned, setPerUma } from './settings.ts';
+import { settings, setOwned, setPerUma } from './settings.ts';
 import { goldGiven } from './job.js';
 import { cardAv } from './images.js';
 import { paintSort, sortMenu } from './sortmenu.js';
@@ -214,40 +214,9 @@ export function initCards() {
     });
     paintCards();
   };
-  if (!$('c-top')) return; // the career page has neither: one career, one deck
-  // Results: 1 or 3, the game's pill switch (a radio group: the arrows move and select)
-  const top = $('c-top'),
-    pickTop = (v) => {
-      if (v === settings.value.decksTop) return;
-      setDecksTop(v);
-      paintTop();
-    };
-  top.querySelectorAll('button').forEach((b) => {
-    b.onclick = () => pickTop(b.dataset.v);
-  });
-  top.addEventListener('keydown', (e) => {
-    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-    e.preventDefault();
-    const other = must(
-      [...top.querySelectorAll('button')].find((b) => b.dataset.v !== settings.value.decksTop),
-      'the switch has two options',
-    ); // two options: any arrow goes to the other
-    pickTop(other.dataset.v);
-    other.focus();
-  });
-  paintTop();
+  if (!$('c-peruma')) return; // the career page has none: one career, one deck
   $input('c-peruma').checked = settings.value.perUma;
   $input('c-peruma').onchange = (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
     setPerUma(e.target.checked);
   };
-}
-export function paintTop() {
-  const top = document.getElementById('c-top');
-  if (!top) return;
-  top.querySelectorAll('button').forEach((b) => {
-    const on = b.dataset.v === settings.value.decksTop;
-    b.setAttribute('aria-checked', String(on));
-    b.setAttribute('aria-pressed', String(on));
-    b.tabIndex = on ? 0 : -1;
-  });
 }

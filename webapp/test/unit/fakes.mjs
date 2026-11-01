@@ -19,8 +19,8 @@ export function fakeClock() {
     setTimer: (run, ms) => add(run, ms, 0),
     every: (run, ms) => add(run, ms, ms),
     clearTimer: (id) => void timers.delete(id),
-    // the timers and tickers still set
-    pending: () => timers.size,
+    /** the timers set and not cleared or fired: 'once' or 'every' each */
+    pending: () => [...timers.values()].map((t) => (t.every ? 'every' : 'once')),
     advance(ms) {
       const end = now + ms;
       for (;;) {

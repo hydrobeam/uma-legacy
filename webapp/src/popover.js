@@ -1,4 +1,5 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
+import { signal } from '@preact/signals-core';
 import { esc } from './dom.js';
 import { gameData } from './data.js';
 import { settings, setOwned } from './settings.ts';
@@ -18,12 +19,37 @@ pop.tabIndex = -1;
 must(document.getElementById('rcol'), 'both planner pages have the results column').appendChild(pop);
 /** @type {HTMLElement | null} */
 let popFor = null; // the card or name button whose panel is open
+// A page whose result is drawn by components (the loop page, initPopover({drawn: true})): each opener draws its own
+// aria-expanded from `popOpener`, and each card and member its own greying (`off`) from the settings, so nothing here
+// writes into them. On the other page (its result built with el()) the panel writes both, as before.
+let drawn = false;
+/** @type {import('@preact/signals-core').Signal<HTMLElement | null>} */
+const opener = signal(null);
+/** the button whose panel is open (null: none) */
+export const popOpener = /** @type {import('@preact/signals-core').ReadonlySignal<HTMLElement | null>} */ (opener);
+/** @param {HTMLElement} button @param {boolean} open */
+function expanded(button, open) {
+  if (!drawn) button.setAttribute('aria-expanded', String(open));
+}
 export const popHasFocus = () => !pop.hidden && pop.contains(document.activeElement);
 export function closePop() {
   pop.hidden = true;
-  if (popFor) popFor.setAttribute('aria-expanded', 'false');
+  if (popFor) expanded(popFor, false);
   popFor = null;
+  opener.value = null;
 }
+// the panel opens from `button`
+/** @param {HTMLElement} button */
+function openFor(button) {
+  closePop();
+  popFor = button;
+  expanded(button, true);
+  opener.value = button;
+}
+// after an ownership change in the panel: the el()-drawn result greys what is no longer owned (a drawn one derives it)
+const ownChanged = () => {
+  if (!drawn) markOwn();
+};
 const focusables = () => [...pop.querySelectorAll('input, a[href], button')];
 // close the panel and focus the button that opened it
 function back() {
@@ -97,9 +123,7 @@ function placePop(anchor, beside = false) {
 // (another outfit would be a different trainee); with "any outfit" it is the uma.
 function openUmaPop(btn, member = btn.closest('.mem')) {
   // member: her member block (a portrait elsewhere in the result passes it)
-  closePop();
-  popFor = btn;
-  btn.setAttribute('aria-expanded', 'true');
+  openFor(btn);
   const uma = +must(member.dataset.uma, 'a member block names her'),
     u = must(
       gameData().umas.find((x) => x.id === uma),
@@ -130,7 +154,7 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
     else roster[u.id] = 'out';
     setOwned({ roster, outfits });
     paintRoster(u.id);
-    markOwn();
+    ownChanged();
     toggle.checked = owned();
   };
 }
@@ -175,9 +199,7 @@ function chainEndHTML(c, link) {
   );
 }
 function openCardPop(chip) {
-  closePop();
-  popFor = chip;
-  chip.setAttribute('aria-expanded', 'true');
+  openFor(chip);
   const c = gameData().cardById.get(+chip.dataset.cid),
     title = c ? cardTitle(c) : { nm: chip.dataset.name, ti: '' };
   const borrowed = chip.classList.contains('bor'),
@@ -201,7 +223,7 @@ function openCardPop(chip) {
       const { [c.id]: _, ...rest } = settings.value.cardsOff;
       setOwned({ cardsOff: toggle.checked ? rest : { ...rest, [c.id]: false } });
       paintCards();
-      markOwn();
+      ownChanged();
     };
 }
 // a click on what is already open closes it; on another card or name, its panel opens instead
@@ -209,7 +231,9 @@ const toggleFor = (button, open) => {
   if (popFor === button) closePop();
   else open();
 };
-export function initPopover() {
+/** @param {{drawn?: boolean}} [page] drawn: the page's result is components (see `drawn` above) */
+export function initPopover(page = {}) {
+  drawn = !!page.drawn;
   document.addEventListener('click', (/** @type {TargetedEvent} */ e) => {
     const chip = e.target.closest('.deck .dc'),
       name = e.target.closest('.mem .memb');

@@ -195,7 +195,7 @@ test('a Blocked job ends the run unsearched, with its message; a thrown job erro
   assert.equal(answer.peek().status.text, 'No target skills.');
   assert.equal(runView.peek().searching, false);
   assert.equal(p.seen.cleared, 1, 'the analysis is cleared');
-  assert.equal(p.clock.pending(), 0);
+  assert.equal(p.clock.pending().length, 0);
 });
 
 test('the engine failing or refusing: the error is shown and the run ends', async () => {
@@ -223,23 +223,23 @@ test('the engine failing or refusing: the error is shown and the run ends', asyn
 test('the status line ticks each second while a job runs, and every timer ends with the run', async () => {
   const p = page();
   p.run.schedule();
-  assert.equal(p.clock.pending(), 1, 'the pause');
+  assert.equal(p.clock.pending().length, 1, 'the pause');
   p.run.schedule(); // the same job: nothing new
   p.job.targets.push({ group: 905 });
   p.run.schedule(); // a new edit replaces the pause
-  assert.equal(p.clock.pending(), 1);
+  assert.equal(p.clock.pending().length, 1);
   p.clock.advance(PAUSE_MS);
   await flush();
-  assert.equal(p.clock.pending(), 1, 'the ticker');
+  assert.equal(p.clock.pending().length, 1, 'the ticker');
   const paints = p.seen.paints;
   p.clock.advance(3000);
   assert.equal(p.seen.paints - paints, 3, 'a repaint each second');
   await answered(p, 0, ['best']);
   p.clock.advance(1000);
-  assert.equal(p.clock.pending(), 1, 'one ticker through the plan phase');
+  assert.equal(p.clock.pending().length, 1, 'one ticker through the plan phase');
   p.engine.answer(1, planned('pick'));
   await flush();
-  assert.equal(p.clock.pending(), 0, 'no ticker after the answer');
+  assert.equal(p.clock.pending().length, 0, 'no ticker after the answer');
   const done = p.seen.paints;
   p.clock.advance(5000);
   assert.equal(p.seen.paints, done, 'no repaint after');
@@ -248,7 +248,7 @@ test('the status line ticks each second while a job runs, and every timer ends w
   await edited(p);
   p.job.targets.push({ group: 907 });
   await edited(p);
-  assert.equal(p.clock.pending(), 1, 'the killed run left no ticker');
+  assert.equal(p.clock.pending().length, 1, 'the killed run left no ticker');
 });
 
 // ---------- the comparison follows the runs
@@ -339,7 +339,7 @@ test('an edit and its undoing: the kept answer is drawn again with no job, and i
   assert.equal(runView.peek().searching, false);
   assert.equal(sent(p), jobs + 1, 'no search: one job, its check resumed');
   assert.equal(p.engine.jobs.at(-1).background, true);
-  assert.equal(p.clock.pending(), 0, "the third run's ticker ends with it");
+  assert.equal(p.clock.pending().length, 0, "the third run's ticker ends with it");
 });
 
 test('a reload: the answer kept for this setup and these fingerprints is drawn at once, its check resumes', async () => {

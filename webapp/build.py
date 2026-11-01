@@ -200,7 +200,7 @@ def era(data_dir):
 
 global_era = era(GLOBAL_DATA)
 gm_era = era(JP_DATA)  # GM era: pal first-year date events left out of its card_events.json, as in Global
-# the page scripts: src/loop/main.js, src/career/main.js and the modules they import, each bundled into one minified IIFE (esbuild
+# the page scripts: src/loop/main.tsx, src/career/main.js and the modules they import, each bundled into one minified IIFE (esbuild
 # from node_modules: npm ci); also the solver's worker script, src/worker.ts, minified and wrapped the same way
 # (JSX compiles to Preact's jsx() calls, imported from preact/jsx-runtime)
 ESBUILD = os.path.join(HERE, "node_modules", ".bin", "esbuild")
@@ -238,7 +238,7 @@ def css_min(text):
     ).stdout
 
 
-app = bundle("src/loop/main.js")
+app = bundle("src/loop/main.tsx")
 css = open(os.path.join(HERE, "src", "style.css")).read()
 assert "</style" not in css.lower()
 html = open(os.path.join(HERE, "index.template.html")).read()

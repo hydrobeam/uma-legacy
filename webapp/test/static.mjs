@@ -24,6 +24,9 @@
 //   the imports that broke it when it became a failure are listed (KNOWN_AGAINST) until their module is split.
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
 //   `loadOrder`, on the bundles as samecode builds them).
+// - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
+//   the entry only at its mount points, a deliberate read listed with why (MOUNT_READS).
+// - components stay views: no .ts or .js module imports a .tsx one.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
 // imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
@@ -111,14 +114,14 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // where the element may be missing is listed in MAY_BE_MISSING, under each page (its bundle's entry) where it may be,
 // with why: an exemption on one page leaves the other page's lookup checked.
 const MAY_BE_MISSING = {
-  'src/loop/main.js': {},
+  'src/loop/main.tsx': {},
   'src/career/main.js': {
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
-    'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
-    'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
+    'c-peruma':
+      "cards.js: the loop page's Deck per uma switch; the career page has none (cards.js returns before using it)",
   },
 };
-const PAGES = { 'src/loop/main.js': 'index.template.html', 'src/career/main.js': 'career.template.html' };
+const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.js': 'career.template.html' };
 const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
@@ -168,7 +171,7 @@ for (const [entry, template] of Object.entries(PAGES)) {
     }
   }
   // an exemption holds only while its id is missing from the page and a module of the page looks it up: one whose id
-  // the page now has would hide the lookups the code guards with it (cards.js's c-top guard, then #c-peruma)
+  // the page now has would hide the lookups the code guards with it (cards.js's c-peruma guard)
   for (const id of Object.keys(MAY_BE_MISSING[entry])) {
     if (ids.has(id))
       problems.push(`MAY_BE_MISSING: #${id} is exempt on ${entry}'s page, which has it: drop the exemption`);
@@ -229,6 +232,83 @@ const cycles = [];
     );
 }
 
+// ---------- mount roots: what a component draws is looked into by its own module only
+// Each mount point of a page, the module whose components draw into it, and what they draw (the ids, and the classes
+// no other module of that page's bundle draws). Another module of the bundle that looks one up (`$`/getElementById of
+// an id, or a querySelector/closest/matches selector naming the id or a class) would read or write a component's DOM
+// behind its back: a write is undone, or kept against what the component would draw, by its next render. The entry
+// renders into its mount points and marks them (attributes on the mount point itself), so it may look those up. A
+// lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
+const MOUNTS = {
+  'src/loop/main.tsx': [
+    ['run-root', 'src/loop/RunNote.tsx', ['run-note', 'r-act'], ['runnote', 'ract']],
+    ['rtop', 'src/loop/Results.tsx', ['c-top', 'c-top-l'], []],
+    [
+      'results',
+      'src/loop/Results.tsx',
+      [],
+      ['loop', 'lhead', 'members', 'mem', 'memb', 'facebtn', 'deck', 'dtitle', 'dwho', 'dcards', 'dc', 'oinfo', 'dodds']
+        .concat(['dsk', 'swap', 'swrow', 'swho', 'swcards', 'swc', 'swout', 'swin', 'swto', 'swa', 'swd', 'swd1'])
+        .concat(['swmore', 'swhead', 'lacts', 'same']),
+    ],
+    ['why-root', 'src/loop/Affinity.tsx', ['why-dlg', 'why-body', 'why-title'], ['afpick', 'afpar', 'aflab', 'afpn']],
+    [
+      'ex-root',
+      'src/loop/Export.tsx',
+      ['ex-dlg', 'ex-title', 'ex-close', 'ex-text', 'ex-copy', 'ex-load', 'ex-msg'],
+      [],
+    ],
+  ],
+};
+// (file, selector) -> why it may stay
+const MOUNT_READS = {
+  'src/popover.js': {
+    '.deck .dc':
+      "markOwn: the career page's el()-built decks; on the loop page it never runs (initPopover({drawn: true})); " +
+      'and the click delegation, which reads the opener it was clicked on (the Popover port, step 11)',
+    '.mem[data-uma]': "markOwn: the career page's member blocks (it has none); never run on the loop page",
+    '.mem': 'reads the clicked member block’s data-* for her panel (the Popover port, step 11)',
+    '.mem .memb': 'the click delegation, reading the opener (the Popover port, step 11)',
+    '.loop .facebtn': 'the click delegation, reading the opener (the Popover port, step 11)',
+    '.loop': "reads a portrait's result card for her member block (the Popover port, step 11)",
+    '.loop.first ${mem}': 'reads #1\'s member block for a "Same loop as #1" portrait (the Popover port, step 11)',
+  },
+};
+{
+  const SELECTOR = /\.(?:querySelector(?:All)?|closest|matches)(?:<[^>]*>)?\(\s*(['"`])((?:(?!\1).)*)\1/g;
+  const used = new Set();
+  for (const [entry, mounts] of Object.entries(MOUNTS)) {
+    for (const file of bundled[entry]) {
+      const text = srcText[file];
+      const ids = [...text.matchAll(LOOKUP)].map((m) => m[2]);
+      const selectors = [...text.matchAll(SELECTOR)].map((m) => m[2]);
+      for (const [root, owner, ownIds, ownClasses] of mounts) {
+        if (file === owner) continue;
+        const named = (id) => (id === root ? file !== entry : ownIds.includes(id));
+        for (const id of ids.filter(named))
+          problems.push(`${file}: looks up #${id}, which ${owner} draws (mount point #${root})`);
+        for (const selector of selectors) {
+          const hit =
+            [...selector.matchAll(/#([\w-]+)/g)].some((m) => named(m[1]) || (m[1] === root && file !== entry)) ||
+            [...selector.matchAll(/\.([\w-]+)/g)].some((m) => ownClasses.includes(m[1]));
+          if (!hit) continue;
+          if (MOUNT_READS[file]?.[selector] !== undefined) used.add(`${file} ${selector}`);
+          else problems.push(`${file}: looks into ${owner}'s components (#${root}) with '${selector}'`);
+        }
+      }
+    }
+  }
+  for (const [file, reads] of Object.entries(MOUNT_READS))
+    for (const selector of Object.keys(reads))
+      if (!used.has(`${file} ${selector}`))
+        problems.push(`MOUNT_READS: ${file} no longer looks up '${selector}': drop it`);
+}
+
+// ---------- components stay views: a module that is not one (.ts, .js) imports no .tsx module
+for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && !f.endsWith('.tsx')))
+  for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'([^']+\.tsx)'/g))
+    problems.push(`${file}: imports the component module ${spec}; logic takes values, components import logic`);
+
 // ---------- read before declared: each bundle as samecode reads it (`loadOrder`)
 for (const entry of [...Object.keys(PAGES), WORKER])
   for (const problem of loadOrder(await bundle(W, entry))) problems.push(`${entry} bundle: ${loadOrderText(problem)}`);
@@ -276,7 +356,7 @@ const LAYERS = [
   ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/keys', 'career/run', 'loop/job']],
   ['stores', ['settings', 'loop/state', 'vets', 'career/state']],
   ['shared', null], // every module not named elsewhere
-  ['page:loop', ['loop/main', 'loop/run', 'loop/runnote', 'loop/results', 'loop/io', 'loop/affinity']],
+  ['page:loop', ['loop/main', 'loop/run', 'loop/io', 'loop/RunNote', 'loop/Results', 'loop/Affinity', 'loop/Export']],
   [
     'page:career',
     [

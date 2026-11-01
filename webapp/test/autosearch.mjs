@@ -11,6 +11,27 @@ export default async function autosearch(b) {
     /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)) &&
       !(await pg.evaluate(() => document.getElementById('results').classList.contains('stale'))),
   );
+  // P5: a card un-owned in the picker greys its card in the result on show at once, the same element (auto-search
+  // off: that result stays); owned again, it is not greyed
+  const tile = await pg.evaluate(() => {
+    const chip = document.querySelector('#results .deck .dc:not(.bor)'),
+      name = chip.dataset.name;
+    window.__chip = chip;
+    return [...document.querySelectorAll('#cards .ct')].findIndex((t) => {
+      const shown = t.querySelector('.cn').textContent;
+      return name === shown || name.startsWith(`${shown} `);
+    });
+  });
+  await pg.locator('#cards .ct').nth(tile).click();
+  const greyed = await pg.evaluate(() => window.__chip.isConnected && window.__chip.classList.contains('off'));
+  await pg.locator('#cards .ct').nth(tile).click();
+  check(
+    'P5: un-owning a card in the picker greys it in the result on screen at once (the same element), owning it ungreys it',
+    tile >= 0 &&
+      greyed &&
+      (await pg.evaluate(() => window.__chip.isConnected && !window.__chip.classList.contains('off'))),
+    `tile ${tile}, greyed ${greyed}`,
+  );
   await pg.locator('#cards .ct').nth(6).click();
   await pg.waitForTimeout(1300);
   check(

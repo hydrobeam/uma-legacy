@@ -63,9 +63,9 @@ export const blockedStatus = (blocked: Blocked, loadExample: () => void): Status
         act: { label: 'Mark all umas owned', click: 'r-all' },
       };
 // A job's result is kept with its key: the solver's and the era data's fingerprints, what is still held back for a
-// later start (data.js gameData().later) and the job, so a reload with unchanged settings finds it
-export const jobKey = (job: DeckJob) =>
-  JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], gameData().later, job]);
+// later start (data.js gameData().later) and the job, so a reload with unchanged settings finds it (`era`: the page's)
+export const jobKey = (job: DeckJob, era = ERA) =>
+  JSON.stringify([ASSETS.wasm, ASSETS.engine[era === 'gm' ? 'gm' : 'global'], gameData().later, job]);
 
 // What the result is checked against (the solver's `exact`: rho = the cap it is certified under, rho_target the cap
 // aimed for; see the model notes on /about): nothing when fully checked, else a short caveat
