@@ -90,6 +90,9 @@ class Element extends Node {
   removeEventListener(type, f) {
     this.listeners[type] = (this.listeners[type] || []).filter((x) => x !== f);
   }
+  get classList() {
+    return { contains: (c) => this.classes.includes(c) };
+  }
   get classes() {
     return `${this.className || ''} ${this.attributes.class || ''}`.split(/\s+/).filter(Boolean);
   }
@@ -149,6 +152,7 @@ const ids = new Map();
 const body = new Element('body');
 globalThis.document = {
   body,
+  documentElement: Object.assign(new Element('html'), { className: 'game' }), // (the planner pages' class)
   activeElement: body,
   visibilityState: 'visible',
   createElement: (name) => new Element(name),

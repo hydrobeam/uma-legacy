@@ -23,6 +23,8 @@ const built = await esbuild.build({
       export { on } from './src/store.ts';
       export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed, openAdd, addOpen } from './src/veterans/pickers.js';
       export { VetEditors, AddList } from './src/veterans/Editors.tsx';
+      export { WinsEditor } from './src/ui/Agenda.tsx';
+      export { openColour } from './src/veterans/sparks.js';
       export { InspView } from './src/ui/InspView.tsx';
       export { Details, legaciesOf } from './src/career/analysis/Details.tsx';
       export { h, render } from 'preact';
@@ -44,9 +46,14 @@ fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, on, changeUma, searchHeld, VetEditors, InspView, Details, legaciesOf, h, render, loadData } = page;
-const { openWins, winsClosed, askSkills, askClosed, openAdd, addOpen, AddList } = page;
+const { openWins, winsClosed, askSkills, askClosed, openAdd, addOpen, AddList, WinsEditor, openColour } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
-globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: { 30001: 'Her Own' }, races: [] };
+globalThis.__LLP_DATA['data-career'] = {
+  blues: {},
+  pinks: { 11: 'Turf', 12: 'Dirt' },
+  uniques: { 30001: 'Her Own' },
+  races: [],
+};
 await loadData();
 
 const settle = async () => {
@@ -205,4 +212,48 @@ test('a second "+" pressed while a "+" list is open moves the list there (review
   dispatchToDocument('click', { target: document.createElement('div') });
   await settle();
   assert.ok(addOpen.peek() === null, 'closed by a press outside');
+});
+
+// review-11b 2: the editors' writes and releases that no check covered (sabotages M1, M3, M6)
+test("Escape on a pool veteran's G1 wins window releases the search hold (M1)", async () => {
+  const editors = document.createElement('div');
+  render(h(VetEditors, null), editors);
+  openWins(vs.vetRef('a'), 'Veteran #1');
+  await settle();
+  const wins = byId(editors, 'wins-dlg');
+  assert.equal(wins.open, true, 'open');
+  assert.equal(searchHeld.peek(), true, 'the search held');
+  wins.close(); // Escape (the backdrop closes it the same way)
+  await settle();
+  assert.equal(searchHeld.peek(), false, 'released');
+});
+test('a win moved to another turn of its race ("moves here") is written once, at the new turn (M3)', async () => {
+  const edits = [],
+    root = document.createElement('div');
+  render(
+    h(WinsEditor, {
+      races: [{ ix: 0, name: 'Arima Kinen', turns: [47, 71] }],
+      wins: [0],
+      winAt: { 0: 47 },
+      onWins: (wins, winAt) => edits.push({ wins, winAt }),
+    }),
+    root,
+  );
+  await settle();
+  root
+    .querySelectorAll('button')
+    .find((b) => b.attributes['data-k'] === 'add:71')
+    .click();
+  await settle();
+  root.querySelectorAll('button.wpick')[0].click();
+  assert.deepEqual(edits, [{ wins: [0], winAt: { 0: 71 } }]);
+});
+test('a colour bar picked keeps her spark of that colour at its stars (M6)', async () => {
+  vs.editVet('a', () => ({ pinks: { 11: 3 } }));
+  const editors = document.createElement('div');
+  render(h(VetEditors, null), editors);
+  openColour(vs.vetRef('a'), 'pink');
+  await settle();
+  button(byId(editors, 'col-dlg'), 'Dirt').click();
+  assert.deepEqual(vs.vetById('a').pinks, { 12: 3 }, 'Dirt, at 3 stars as Turf was');
 });
