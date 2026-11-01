@@ -82,8 +82,14 @@ export default defineConfig({
     assetsInlineLimit: 0, // every asset its own file, cached on its own
     rolldownOptions: {
       input: Object.fromEntries(['index', 'loop', 'about'].map((page) => [page, path.join(HERE, `${page}.html`)])),
-      // the modules both pages' scripts share, in one file (.size-limit.json counts it for each)
-      output: { chunkFileNames: 'assets/shared-[hash].js' },
+      output: {
+        // the modules both pages' scripts share, in one file (.size-limit.json counts it for each)
+        chunkFileNames: 'assets/shared-[hash].js',
+        // top-level const and let stay as written (Vite turns them into var by default): a read before its declaration
+        // has run throws at load, which the browser suite sees, in place of an undefined read going on unnoticed
+        // (Rolldown still writes a top-level class as `var X = class`)
+        topLevelVar: false,
+      },
     },
   },
 });
