@@ -6,7 +6,6 @@
 // not from the settings, which can have changed under it (an answer stays on show, dimmed, until the next is ready).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
-import './fakedom.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
@@ -15,6 +14,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { memory } from './fakes.mjs';
+import { GlobalRegistrator } from '@happy-dom/global-registrator';
+
+GlobalRegistrator.register({ width: 1440, height: 900 });
+document.documentElement.className = 'game'; // (the planner pages' class)
 
 const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
 const built = await esbuild.build({
@@ -137,11 +140,11 @@ test("the targets' count chart is the report's: a target removed since leaves it
     outcome_sets: [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125],
     expected: 1.5,
   };
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(Targets, { r }), root);
   await new Promise((resolve) => setTimeout(resolve, 0));
   // each column: its chance, then its count
-  const columns = root.querySelectorAll('span').filter((s) => /^tgc( all)?$/.test(s.attributes.class));
+  const columns = [...root.querySelectorAll('span')].filter((s) => /^tgc( all)?$/.test(s.className));
   assert.deepEqual(
     columns.map((s) => s.textContent),
     ['13%3/3', '38%2/3', '38%1/3', '13%0/3'],

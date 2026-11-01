@@ -37,7 +37,7 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
-| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome`, `typescript`; `preact` and `@preact/signals` (pinned; bundled into the page, for its views as they become components) | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
+| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome`, `typescript`, `@happy-dom/global-registrator` (pinned; the node tests' document); `preact` and `@preact/signals` (pinned; bundled into the page, for its views as they become components) | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
 | `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset; the page budgets' transfer estimate); the exporters use the standard library |
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
 | `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
@@ -222,8 +222,11 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
 ## Tests
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
-- **Page logic in node:** `node --test 'test/unit/*.test.*'` in `webapp` (part of `lint` and the pre-commit hook; well
-  under a second) runs the page's node tests, `webapp/test/unit/`.
+- **Page logic in node:** `node --test 'test/unit/*.test.*'` in `webapp` (part of `lint` and the pre-commit hook; about
+  a second) runs the page's node tests, `webapp/test/unit/`. Those that draw views or run editors register happy-dom's
+  window as node's globals (`@happy-dom/global-registrator`) before the page's modules load, and mount them in its
+  document as the page does; `fakepage.mjs` supplies a small made-up game's data. happy-dom fires a dialog's `close`
+  at once where a browser queues it, so a test lets tasks run after a close before it reads what the close did.
 - **Same code:** `node test/samecode.mjs [BASE [HEAD]]` in `webapp` (BASE defaults to `HEAD`, HEAD to the working tree;
   under a second) says whether a change to the page's code only moved or renamed it: each page bundle and the worker,
   built unminified without JSDoc type comments and read as tokens (comments and line breaks dropped), must have the

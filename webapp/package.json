@@ -20,6 +20,7 @@
     "@fontsource/stix-two-math": "^5.3.0",
     "@fontsource/zen-kaku-gothic-new": "^5.3.0",
     "@fontsource/zen-maru-gothic": "^5.3.0",
+    "@happy-dom/global-registrator": "21.0.4",
     "esbuild": "^0.28.2",
     "playwright": "1.63.0",
     "three": "^0.170.0",
