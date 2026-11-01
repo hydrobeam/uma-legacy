@@ -85,7 +85,7 @@ pub(crate) fn best_finisher(
                 .map(|upper_bound| FinisherCeiling { upper_bound: upper_bound * scale(lineage.trainee), lineage })
         })
         .collect();
-    finishers.sort_by(|first, second| second.upper_bound.partial_cmp(&first.upper_bound).unwrap());
+    finishers.sort_by(|first, second| second.upper_bound.total_cmp(&first.upper_bound));
     // (the best so far: her scaled odds, her odds, her uma)
     let mut best: Option<(f64, f64, crate::uma::UmaIndex)> = None;
     for &FinisherCeiling { upper_bound, lineage } in &finishers {

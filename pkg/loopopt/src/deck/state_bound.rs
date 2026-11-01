@@ -570,8 +570,7 @@ impl StateBoundContext<'_> {
                 order_indices.sort_by(|&a, &b| {
                     configuration.states[b as usize]
                         .probability
-                        .partial_cmp(&configuration.states[a as usize].probability)
-                        .unwrap()
+                        .total_cmp(&configuration.states[a as usize].probability)
                         .then(a.cmp(&b))
                 });
                 let mut suffix = vec![0.0f64; state_count + 1];

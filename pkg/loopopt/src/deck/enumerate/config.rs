@@ -504,7 +504,7 @@ impl<V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'_, '_, V> {
             }
         }
         // stable: equal bounds keep enumeration order
-        configurations.sort_by(|a, b| b.root.partial_cmp(&a.root).unwrap());
+        configurations.sort_by(|a, b| b.root.total_cmp(&a.root));
         ConfigurationQueue { configurations, pending, key_ratios, multi, assumed }
     }
 }

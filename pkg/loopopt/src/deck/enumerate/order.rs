@@ -26,7 +26,7 @@ impl PartialOrd for QueuedConfig {
 
 impl Ord for QueuedConfig {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.root.partial_cmp(&other.root).unwrap().then(other.insertion_index.cmp(&self.insertion_index))
+        self.root.total_cmp(&other.root).then(other.insertion_index.cmp(&self.insertion_index))
     }
 }
 
@@ -80,7 +80,7 @@ impl ConfigOrder {
         let SearchControl { lazy, check_ratio_bounds, target_count, column_count, .. } = controls;
         let ConfigurationQueue { configurations, pending, key_ratios, .. } = queue;
         let mut pending_order: Vec<usize> = (0..pending.len()).collect();
-        pending_order.sort_by(|&a, &b| pending[b].upper_bound.partial_cmp(&pending[a].upper_bound).unwrap());
+        pending_order.sort_by(|&a, &b| pending[b].upper_bound.total_cmp(&pending[a].upper_bound));
         let heap: std::collections::BinaryHeap<QueuedConfig> = std::collections::BinaryHeap::default();
         let (white_chances, gold_chances, ratio_products, prune_bounds, order_bounds) = (
             vec![0.0f64; target_count],

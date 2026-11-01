@@ -170,7 +170,7 @@ pub(crate) fn continuation_evidence(
                     }
                 })
                 .collect();
-            lifts.sort_by(|first, second| second.efficiency.partial_cmp(&first.efficiency).unwrap());
+            lifts.sort_by(|first, second| second.efficiency.total_cmp(&first.efficiency));
             let most_efficient = *lifts.first()?;
             let second_builder = lifts
                 .iter()

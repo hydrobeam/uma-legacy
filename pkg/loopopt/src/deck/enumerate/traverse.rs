@@ -569,9 +569,9 @@ impl<V> DeckSearchContext<'_, '_, V> {
         for t in 0..target_count {
             let mut white_sorted: Vec<f64> =
                 owned_entries.iter().map(|&j| misses.white[j * target_count + t]).collect();
-            white_sorted.sort_by(|left, right| left.partial_cmp(right).unwrap());
+            white_sorted.sort_by(f64::total_cmp);
             let mut gold_sorted: Vec<f64> = owned_entries.iter().map(|&j| misses.gold[j * target_count + t]).collect();
-            gold_sorted.sort_by(|left, right| left.partial_cmp(right).unwrap());
+            gold_sorted.sort_by(f64::total_cmp);
             for r in 1..=size {
                 owned_misses[r].white[t] =
                     owned_misses[r - 1].white[t] * white_sorted.get(r - 1).copied().unwrap_or(1.0);
@@ -605,7 +605,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
         let (mut owned_ratios, mut borrow_ratios) = (vec![], vec![]);
         for i in 0..column_count {
             let mut sorted_ratios: Vec<f64> = owned_card_ratios.iter().map(|card_ratios| card_ratios[i]).collect();
-            sorted_ratios.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            sorted_ratios.sort_by(|a, b| b.total_cmp(a));
             let best_borrowed_ratio =
                 borrowed_card_ratios.iter().map(|card_ratios| card_ratios[i]).fold(f64::NEG_INFINITY, f64::max);
             let mut prefixes = vec![1.0f64; size + 1];

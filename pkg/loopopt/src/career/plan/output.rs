@@ -127,7 +127,7 @@ pub(crate) fn assemble_plan_output<'data>(
     // (by score, best first; a score JSON cannot hold, not finite, sorts as the lowest, as it did when the options
     // were read back as JSON)
     let sort_score = |option: &PlanOption| option.score.filter(|score| score.is_finite()).unwrap_or(f64::NEG_INFINITY);
-    options.sort_by(|a, b| sort_score(b).partial_cmp(&sort_score(a)).unwrap());
+    options.sort_by(|a, b| sort_score(b).total_cmp(&sort_score(a)));
     let choice = (!runs.is_empty()).then(|| env.setup.report(&mut env.state, pool, &runs[pick].career, true));
     let (v0_plan, members) = context.trio_report(scores, &runs, &env.setup.space);
     // the career a roll of this plan is of (`next.roll`, `roll_kept`: its saving per outcome, computed on demand from the

@@ -233,7 +233,7 @@ fn deck_odds_ceilings(
                 .collect();
             let lowest = |miss_of: &dyn Fn(usize) -> f64| {
                 let mut misses: Vec<f64> = legal.iter().map(|&j| miss_of(j)).collect();
-                misses.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                misses.sort_by(f64::total_cmp);
                 misses.iter().take(deck_size).product::<f64>()
             };
             let (mut white_hint_chances, mut gold_hint_chances) =
