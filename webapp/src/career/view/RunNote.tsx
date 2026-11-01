@@ -1,8 +1,8 @@
-// The status line (into #run-note, the template's live region, there from load): the phase of the run at work, or its
+// The status line (in #run-note, the layout's live region, there from the first paint): the phase of the run at work, or its
 // answer's status and actions. Its buttons are keyed by what they say, so a status that offers the same one keeps the
 // element, and its focus. The phase's seconds come from `clock`, which the run machine's ticker moves (`tickNote`).
 import { Fragment } from 'preact';
-import { signal } from '@preact/signals-core';
+import { signal } from '@preact/signals';
 import { Runner } from '../../ui/Images.tsx';
 import { planCaveat } from '../../proofs.ts';
 import { answer, runView } from '../state.ts';

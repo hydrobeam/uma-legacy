@@ -4,8 +4,9 @@
 #     a minute the first time in a new worktree); clippy on the wasm lib stays in ./build.sh lint and CI
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
 #   the page's JS: Biome (lint and formatting) on the staged files, then tsc over the page and the worker (seconds)
-#   the page's JS, CSS or templates: webapp/test/static.mjs (no dead CSS, no dead exports; well under a second)
-#   the page's sources or tests: the node tests, webapp/test/unit/ (well under a second)
+#   the page's JS, CSS, pages, tests or build: knip (dead exports, files, dependencies), dependency-cruiser (the module
+#     layers), test/deadcss.mjs (PurgeCSS) and no `@ts-expect-error` in src/ (a grep: no linter sees a comment); about 4 s
+#   the page's sources or tests: the node tests, webapp/test/unit/ (Vitest; about 2 s)
 # A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
 root=$(git rev-parse --show-toplevel) || exit 1
 staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
@@ -29,11 +30,14 @@ if [ -n "$js" ]; then
     && npx --no-install tsc -p . && npx --no-install tsc -p tsconfig.worker.json) || fail 'Biome or tsc (above; npx biome format --write in webapp fixes formatting)'
 fi
 
-if [ -n "$(staged 'webapp/src/*' 'webapp/*.template.*' 'webapp/build.py')" ]; then
-  (cd "$root/webapp" && node test/static.mjs >&2) || fail 'static checks (above: dead CSS or exports, a stale storage write)'
+if [ -n "$(staged 'webapp/src/*' 'webapp/test/*' 'webapp/*.html' 'webapp/partials/*' 'webapp/vite/*' 'webapp/*.mjs' 'webapp/*.json' 'webapp/*.jsonc')" ]; then
+  (cd "$root/webapp" && npx --no-install knip >&2 && npx --no-install depcruise --config .dependency-cruiser.mjs src >&2 \
+    && node test/deadcss.mjs >&2 && ! grep -rn --include='*.ts' --include='*.tsx' '@ts-expect-error' src >&2) \
+    || fail 'knip, dependency-cruiser, dead CSS or a @ts-expect-error (above)'
 fi
 
 if [ -n "$(staged 'webapp/src/*' 'webapp/test/*')" ]; then
-  (cd "$root/webapp" && NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*' >&2) || fail 'node tests (above)'
+  (cd "$root/webapp" && NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest run --reporter=dot >&2) \
+    || fail 'node tests (above)'
 fi
 exit 0

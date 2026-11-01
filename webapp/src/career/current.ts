@@ -3,7 +3,7 @@
 // and the veteran in each parent place, and the Use this choice a reload no longer fits (`dropStaleChosen`). What a
 // component calls here reads the stores with .value (it draws again when they change); what the run machine calls,
 // with .peek().
-import { computed } from '@preact/signals-core';
+import { batch, computed } from '@preact/signals';
 import { careerTables } from '../data.ts';
 import { settings } from '../settings.ts';
 import { run as engineRun } from '../engine.ts';
@@ -11,7 +11,9 @@ import { goldGiven } from '../job.ts';
 import { srcFor } from '../images.ts';
 import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob } from '../veterans/store.ts';
 import { targetGroups } from '../veterans/names.ts';
-import { answer, answerCareer, answerPool, choiceDropped, reference } from './state.ts';
+import { answer, answerCareer, answerPool, choiceDropped, dropAnswer, reference } from './state.ts';
+import { on } from '../store.ts';
+import { searchHeld } from '../veterans/pickers.ts';
 import { must, orNull } from '../must.ts';
 import { pickOutfit, outfitNote } from '../roster.ts';
 import { unprovenWhy } from '../proofs.ts';
@@ -188,3 +190,24 @@ export const runJob = async (
   }
   return m;
 };
+
+// ---------- the veterans and places, followed
+// A result names parents by their place in the veteran list: adding, removing or importing veterans changes the places,
+// so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new one is ready.
+// While a pool veteran's G1 wins window or a skills prompt is open its edits are saved, and the search waits for it to
+// close (veterans/pickers.ts `searchHeld`). The entry calls it once, with its run machine and comparison.
+export function followPool(run: { schedule: () => void }, comparison: { clear: () => void }) {
+  const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
+  let ids = idsOf(vets.peek());
+  return on([vets, places, searchHeld], (list, _places, held) => {
+    if (held) return;
+    if (idsOf(list) !== ids) {
+      ids = idsOf(list);
+      batch(() => {
+        dropAnswer();
+        comparison.clear();
+      });
+    }
+    run.schedule();
+  });
+}

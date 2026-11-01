@@ -20,7 +20,11 @@
     "lib": ["es2023", "dom", "dom.iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
-    "skipLibCheck": true
+    // a JSON import is typed by its declaration (globals.d.ts), not by what one build of it holds
+    "resolveJsonModule": false,
+    "skipLibCheck": true,
+    // the page data, modules the Vite build writes (vite/pagedata.mjs): typed by their declarations
+    "paths": { "#page-data": ["./src/pagedata.d.ts"], "#career-data": ["./src/careerdata.d.ts"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   // the solver's worker has a worker's globals, not the page's: tsconfig.worker.json

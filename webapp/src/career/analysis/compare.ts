@@ -7,8 +7,8 @@
 // `stop`; a newer comparison). What the popup draws is the analysis store's (career/analysis/state.ts), written only
 // through its transitions, one per phase. Everything else of the page (the solver, the clock, the answer store, the
 // career on show, the roll) comes in `deps`, so the node tests run the machine on fakes. It reads no store itself (a
-// model module: static.mjs checks it).
-import { batch } from '@preact/signals-core';
+// model module: .dependency-cruiser.mjs checks it).
+import { batch } from '@preact/signals';
 import type { DeepReadonly } from '../../store.ts';
 import type * as AnswerStore from '../state.ts';
 import type { PlanDone } from '../state.ts';
@@ -143,7 +143,7 @@ export function savedWhere({
   return `Improves a later ${best ? `${best} ` : ''}career; the next career ${samePick ? 'stays' : 'is'} ${pickA.trainee.name}.`;
 }
 
-export function createComparison({ engine, clock, answers, store, page }: ComparisonDeps) {
+function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
   // the comparison under way; a newer one makes it stale, and so does a run: the run machine calls `stop` or `outdate`
   // whenever a new run begins (career/run.ts, its node tests), so this one id covers both
   let comparisonId = 0;
@@ -423,4 +423,21 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
     roll,
   };
 }
-export type Comparison = ReturnType<typeof createComparison>;
+/** A comparison: what `createComparison` makes, and nothing else can be: its machine is a private field, which no object
+ *  literal or spread of one has, so the run machine's `analysis` (career/run.ts RunDeps) is this machine and never a
+ *  stand-in whose `stop` or `outdate` does nothing. */
+export class Comparison {
+  readonly #machine: ReturnType<typeof comparisonOf>;
+  constructor(deps: ComparisonDeps) {
+    this.#machine = comparisonOf(deps);
+  }
+  // (fields, not methods: each is handed out alone, as a click's handler)
+  readonly outdate = () => this.#machine.outdate();
+  readonly stop = () => this.#machine.stop();
+  readonly show = (r: DeepReadonly<CareerReport> | null) => this.#machine.show(r);
+  readonly clear = () => this.#machine.clear();
+  readonly keepBaseline = (key: string, result: DeepReadonly<CareerReport>) => this.#machine.keepBaseline(key, result);
+  readonly compare = () => this.#machine.compare();
+  readonly roll = () => this.#machine.roll();
+}
+export const createComparison = (deps: ComparisonDeps) => new Comparison(deps);

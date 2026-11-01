@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How it works · uma-legacy</title>
@@ -7,10 +8,10 @@
 <meta name="theme-color" content="#e84898">
 <meta property="og:site_name" content="uma-legacy">
 <meta property="og:type" content="website">
-<meta property="og:url" content="__SITE__/about">
+<meta property="og:url" content="{{site}}/about">
 <meta property="og:title" content="uma-legacy">
 <meta property="og:description" content="Pick your skills and get the best umas to loop and decks to run for Independent Training.">
-<meta property="og:image" content="__SITE__/og.png">
+<meta property="og:image" content="{{site}}/og.png">
 <meta property="og:image:width" content="512">
 <meta property="og:image:height" content="512">
 <meta property="og:image:alt" content="Three sparkles in the spark colours: stat blue, aptitude pink, unique green">
@@ -19,13 +20,13 @@
 <link rel="icon" href="favicon.ico" sizes="32x32">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-__FONTPRELOAD__
-<script>__THEMEJS__</script>
-__CSS__
-
+{{> theme}}
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
 <header class="top">
-  <h1 class="brand" aria-label="uma-legacy">__LOGO__<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
-  __NAV__
+  <h1 class="brand" aria-label="uma-legacy">{{{logo}}}<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
+  {{> nav current="about"}}
 </header>
 
 <main class="about">
@@ -603,8 +604,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   grade by 1, 2, 3 or 4 grades at 1, 4, 7 or 10 stars, at most to A. At each of the two April inspirations every
   legacy's pink spark fires with</p>
   <math display="block"><mi>min</mi><mo>(</mo><mn>1</mn><mo>,</mo><msub><mi>β</mi><mi>σ</mi></msub><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><msub><mi>A</mi><mi>ℓ</mi></msub><mn>100</mn></mfrac><mo>)</mo></mrow><mo>)</mo><mo>,</mo><mspace width="1em"/><msub><mi>β</mi><mi>σ</mi></msub><mo>=</mo><mn>1</mn><mo>,</mo><mn>3</mn><mo>,</mo><mn>5</mn><mo>%</mo><mtext> at 1, 2, 3 stars</mtext></math>
-  <p>each firing +1 grade, at most S; firings are independent. A race's win chance (step 9's table, with __LOWBASISCOST__ more points of
-  aptitude cost where 110 less her two aptitude costs is __LOWBASISMAX__ or less: on grades with pinks the table predicts too many
+  <p>each firing +1 grade, at most S; firings are independent. A race's win chance (step 9's table, with {{lowBasisCost}} more points of
+  aptitude cost where 110 less her two aptitude costs is {{lowBasisMax}} or less: on grades with pinks the table predicts too many
   wins there, research section 4; the loop planner keeps the table) is the expectation over her distance and surface
   grades at its turn: the starting grades before the Classic April, after one inspiration
   until the Senior April, after both from then on. Her schedule maximises her expected wins of the G1s her parents won,
@@ -767,7 +768,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   careers or 5% of the top) are scored again under the model without the step caps it kept from earlier plans (the
   control: every variant drops them) and six variants of it, the share and the exponent at the four
   corners of the range the leave-one-pool-out refits span, and every career's chance of landing all its targets times
-  __PALLLOW__ and times __PALLHIGH__, the ends of the 95% interval of the observed over predicted all-target chance
+  {{pAllLow}} and times {{pAllHigh}}, the ends of the 95% interval of the observed over predicted all-target chance
   (research section 13): the stage candidates' odds, the lifted odds, C's and the scored career's own, the mass taken
   from her full set spread over her other results in proportion; each continuation refitted under its variant. Scaling
   every chance alike leaves a career that finishes the goal scored the same (its odds and the careers left scale
@@ -910,7 +911,7 @@ room-match data.</li>
 <a href="https://github.com/Acrith/uma-it-optimizer">uma-it-optimizer</a>'s measurements.</li>
 <li><strong>Art:</strong> character icons and card art from the game, © Cygames.</li>
 </ul>
-<p class="hint">Version __VERSION__</p>
+<p class="hint">Version {{version}}</p>
 </main>
 <script>
 // a link to "in detail" (the contents, or another page's #model / #career-planner) opens its "Show …" box

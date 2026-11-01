@@ -27,25 +27,35 @@
 !/pkg/loopopt/rustfmt.toml
 !/webapp/
 /webapp/*
-!/webapp/build.py
-!/webapp/budgets.json
-!/webapp/index.template.html
-!/webapp/about.template.html
-!/webapp/career.template.html
-!/webapp/panels.template.html
+# the pages (Vite's entries), their partials, the build's config and plugins, the page budgets
+!/webapp/index.html
+!/webapp/loop.html
+!/webapp/about.html
+!/webapp/partials/
+!/webapp/vite.config.mjs
+!/webapp/vite/
+!/webapp/.size-limit.mjs
+# the lint tools' configs: knip, dependency-cruiser, Biome's GritQL plugins
+!/webapp/knip.jsonc
+!/webapp/.dependency-cruiser.mjs
+!/webapp/lint/
 !/webapp/src/
 !/webapp/test/
 !/webapp/example.mjs
 !/webapp/example.json
 !/webapp/nodebench.mjs
 !/webapp/playwright.config.mjs
-!/webapp/serve.mjs
 !/webapp/images.py
 !/webapp/icons.py
 !/webapp/icons.mjs
-!/webapp/icons/
+# favicons and hosting rules, copied to the site's root as they are
+!/webapp/public/
 # the runner strips' pipeline (its tools and outputs stay out: cache/chibi, webapp/img/run)
 !/webapp/chibi/
+/webapp/chibi/node_modules/
+# deploy's own packages (wrangler), installed by ./build.sh deploy only
+!/webapp/deploy/
+/webapp/deploy/node_modules/
 !/webapp/package.json
 !/webapp/package-lock.json
 !/webapp/biome.json

@@ -39,9 +39,9 @@ export default defineConfig({
   webServer: process.env.LLP_URL
     ? undefined
     : {
-        command: `node serve.mjs ${process.env.LLP_PORT} 127.0.0.1 h2`,
+        command: `npx --no-install vite preview --port ${process.env.LLP_PORT} --host 127.0.0.1 --strictPort`,
         url: process.env.LLP_PAGE,
-        ignoreHTTPSErrors: true, // its certificate is self-signed (serve.mjs)
+        ignoreHTTPSErrors: true, // its certificate is self-signed (vite.config.mjs, basicSsl)
         reuseExistingServer: false,
       },
   use: {

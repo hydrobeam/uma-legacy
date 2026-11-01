@@ -1,0 +1,14 @@
+// No view built from a markup string: every view is a component (biome.json's plugins, src/)
+language js
+
+or {
+  `$el.innerHTML = $html`,
+  `$el.outerHTML = $html`,
+  `$el.insertAdjacentHTML($...)`
+} as $write where {
+  register_diagnostic(
+    span = $write,
+    message = "A view built from a markup string: draw it as a component",
+    severity = "error"
+  )
+}

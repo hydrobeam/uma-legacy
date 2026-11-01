@@ -32,7 +32,7 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
 
   Speed work keeps outputs byte-identical (`val/same.py`, `docs/PERF.md`). After data or solver changes, rerun
   `./build.sh pb`.
-- **`/about` states the model's exact constants** (`webapp/about.template.html`), each in one place. A change to a
+- **`/about` states the model's exact constants** (`webapp/about.html`), each in one place. A change to a
   modelling constant updates it in the same change, along with `docs/MODEL.md` and `docs/RESEARCH.md`.
 - **`docs/RESEARCH.md` is rendered** from `docs/RESEARCH.template.md` and `research/results.json` (`./build.sh research`):
   edit the template, never the rendered file. Every number in it is a placeholder for a value a `research/` script

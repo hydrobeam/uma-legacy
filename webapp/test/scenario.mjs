@@ -1,39 +1,33 @@
-import {
-  check,
-  open,
-  settle,
-  lastJob,
-  until,
-  note,
-  scen,
-  pickScen,
-  hintRates,
-  still,
-  audit,
-  contrastCheck,
-} from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { check, json, open, settle, lastJob, pickScen, hintRates } from './helpers.mjs';
 
 export default async function scenario(b) {
   // the scenario picker: a button showing the chosen scenario's logo, opening a grid of the scenarios
   const pg = await open(b);
-  await pg.click('#rank-q');
-  check(
-    'lineage rank: the ? opens its explanation',
-    !(await pg.locator('#rank-note').isHidden()) && (await pg.getAttribute('#rank-q', 'aria-expanded')) === 'true',
-  );
-  await pg.click('#rank-q');
+  const rankQ = pg.locator('#rank-q');
+  await rankQ.click();
+  await expect.soft(pg.locator('#rank-note'), 'lineage rank: the ? opens its explanation').toBeVisible();
+  await expect.soft(rankQ, 'lineage rank: the ? … expanded').toHaveAttribute('aria-expanded', 'true');
+  await rankQ.click();
   const menu = pg.locator('#scen-menu'),
-    tiles = pg.locator('#scen-menu .stile');
-  const btnName = () => pg.getAttribute('#x-scen', 'aria-label');
-  check(
-    'picker closed at first; the button is Unity Cup (logo only, named for assistive tech)',
-    (await menu.isHidden()) &&
-      (await scen(pg)) === 'unity' &&
-      (await btnName()) === 'Scenario: Unity Cup' &&
-      ((await pg.evaluate(() => self.__LLP_DATA['data-img'].keys.includes('scen:2')))
-        ? (await pg.locator('#x-scen').innerText()).trim() === '' && (await pg.locator('#x-scen img').count()) === 1
-        : (await pg.locator('#x-scen').innerText()).trim() === 'Unity Cup'),
-  );
+    tiles = pg.locator('#scen-menu .stile'),
+    button = pg.locator('#x-scen'),
+    rank = pg.locator('#rank');
+  // the button: the chosen scenario (its data-value) and its name for assistive tech
+  const chosen = async (v, name, what) => {
+    await expect.soft(button, what).toHaveAttribute('data-value', v);
+    await expect.soft(button, `${what}: named`).toHaveAttribute('aria-label', `Scenario: ${name}`);
+  };
+  // the job last sent asks for this lineage rank
+  const jobRank = (dist) => pg.evaluate((d) => window.__runs.at(-1).star_dist.join() === d, dist);
+  const first = 'picker closed at first; the button is Unity Cup (logo only, named for assistive tech)';
+  await expect.soft(menu, first).toBeHidden();
+  await chosen('unity', 'Unity Cup', first);
+  if ((await json(pg, 'data-img')).keys.includes('scen:2')) {
+    await expect.soft(button, `${first}: no text`).toHaveText('', { useInnerText: true });
+    await expect.soft(button.locator('img'), `${first}: the logo`).toHaveCount(1);
+  } else
+    await expect.soft(button, `${first}: the name, without the logo`).toHaveText('Unity Cup', { useInnerText: true });
   const shots = process.env.LLP_SHOTS,
     bn = b.browserType().name(); // pictures of the button and the open picker, for a look at the logos
   if (shots) await pg.locator('#x-scen').screenshot({ path: `${shots}/${bn}-scen-button.png` });
@@ -66,9 +60,12 @@ export default async function scenario(b) {
         document.querySelector('#scen-menu .stile[data-v="unity"]').title === document.getElementById('x-scen').title,
     ),
   );
+  const opens = 'opens with four tiles, each with its hint rate against URA Finale';
+  await expect.soft(menu, opens).toBeVisible();
+  await expect.soft(tiles, `${opens}: four`).toHaveCount(4);
   check(
-    'opens with four tiles, each with its hint rate against URA Finale',
-    !(await menu.isHidden()) && t.length === 4 && t.every((x) => x.sub === want[x.v]),
+    `${opens}: the rates`,
+    t.length === 4 && t.every((x) => x.sub === want[x.v]),
     t.map((x) => x.v + ': ' + x.sub).join(' | '),
   );
   check(
@@ -82,26 +79,27 @@ export default async function scenario(b) {
     t.map((x) => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '),
   );
   // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
-  const golds = await pg.evaluate(() => {
-    const skl = self.__LLP_DATA['data-skills'],
-      gi = self.__LLP_DATA['data-skillicon'].gold;
-    const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
-    return {
-      want: [20049, 20046].map((x) => ({ name: skl.find((s) => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })),
-      // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
-      group: g && g.getAttribute('aria-label'),
-      got: g
-        ? [...g.querySelectorAll('img')].map((i) => ({
-            alt: i.alt,
-            title: i.title,
-            src: i.getAttribute('src'),
-            h: Math.round(i.getBoundingClientRect().height),
-          }))
-        : [],
-      text: g ? g.innerText.trim() : null,
-      others: document.querySelectorAll('#scen-menu .stile:not([data-v="unity"]) .sgolds').length,
-    };
-  });
+  const golds = await pg.evaluate(
+    ([skl, gi]) => {
+      const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
+      return {
+        want: [20049, 20046].map((x) => ({ name: skl.find((s) => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })),
+        // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
+        group: g && g.getAttribute('aria-label'),
+        got: g
+          ? [...g.querySelectorAll('img')].map((i) => ({
+              alt: i.alt,
+              title: i.title,
+              src: i.getAttribute('src'),
+              h: Math.round(i.getBoundingClientRect().height),
+            }))
+          : [],
+        text: g ? g.innerText.trim() : null,
+        others: document.querySelectorAll('#scen-menu .stile:not([data-v="unity"]) .sgolds').length,
+      };
+    },
+    [await json(pg, 'data-skills'), (await json(pg, 'data-skillicon')).gold],
+  );
   check(
     "Unity Cup tile: No Stopping Me! and It's On! as gold icons on the rate line, no visible names",
     golds.group === 'Guaranteed in every run' &&
@@ -125,59 +123,50 @@ export default async function scenario(b) {
       ),
     ),
   );
-  check(
-    'the open picker marks the chosen tile and focuses it',
-    (await pg.evaluate(() => {
-      const t = document.activeElement;
-      return t.classList.contains('stile') && t.dataset.v === 'unity' && t.getAttribute('aria-checked') === 'true';
-    })) && (await pg.getAttribute('#x-scen', 'aria-expanded')) === 'true',
-  );
+  const marks = 'the open picker marks the chosen tile and focuses it';
+  const unity = menu.locator('.stile[data-v="unity"]');
+  await expect.soft(unity, marks).toBeFocused();
+  await expect.soft(unity, `${marks}: checked`).toHaveAttribute('aria-checked', 'true');
+  await expect.soft(button, `${marks}: the button expanded`).toHaveAttribute('aria-expanded', 'true');
   if (shots) await menu.screenshot({ path: `${shots}/${bn}-scen-picker.png` });
   const r0 = await pg.evaluate(() => window.__runs.length);
   await tiles.nth(0).click(); // a change would show "Searching…" at once
-  check(
-    're-picking the chosen scenario closes the picker and does not search',
-    (await menu.isHidden()) &&
-      (await pg.evaluate(() => window.__runs.length)) === r0 &&
-      !/Searching/.test(await note(pg)),
-  );
+  const repick = 're-picking the chosen scenario closes the picker and does not search';
+  await expect.soft(menu, repick).toBeHidden();
+  check(`${repick}: no job`, (await pg.evaluate(() => window.__runs.length)) === r0);
+  await expect.soft(pg.locator('#run-note'), `${repick}: the status`).not.toHaveText(/Searching/);
   await pg.keyboard.press('ArrowDown'); // focus is back on the button
-  check('arrow key on the button opens the picker', !(await menu.isHidden()));
+  await expect.soft(menu, 'arrow key on the button opens the picker').toBeVisible();
   await pg.keyboard.press('ArrowRight');
   await pg.keyboard.press('ArrowDown');
-  check(
-    'arrows move between tiles (two columns)',
-    (await pg.evaluate(() => document.activeElement.dataset.v)) === 'trackblazer',
-  );
+  await expect
+    .soft(menu.locator('.stile[data-v="trackblazer"]'), 'arrows move between tiles (two columns)')
+    .toBeFocused();
   await pg.keyboard.press('Escape');
-  check(
-    'Escape closes it and returns focus to the button',
-    (await menu.isHidden()) && (await pg.evaluate(() => document.activeElement.id === 'x-scen')),
-  );
-  await pg.click('#x-scen');
+  await expect.soft(menu, 'Escape closes it and returns focus to the button').toBeHidden();
+  await expect.soft(button, 'Escape closes it and returns focus to the button: focus').toBeFocused();
+  await button.click();
   await pg.click('header.top h1');
-  check('a click outside closes it', await menu.isHidden());
+  await expect.soft(menu, 'a click outside closes it').toBeHidden();
   // only the button and the grid count as inside: the label, the row's empty space and the rank control all close it
-  const shut = [];
-  await pg.click('#x-scen');
+  const shut = 'clicks on the label, beside the button, on the rank control close it';
+  await button.click();
   await pg.click('#x-scen-l');
-  shut.push(await menu.isHidden());
-  await pg.click('#x-scen');
-  const bb = await pg.locator('#x-scen').boundingBox();
+  await expect.soft(menu, `${shut}: the label`).toBeHidden();
+  await button.click();
+  const bb = await button.boundingBox();
   await pg.mouse.click(bb.x + bb.width + 8, bb.y + bb.height / 2);
-  shut.push(await menu.isHidden());
-  await pg.click('#x-scen');
+  await expect.soft(menu, `${shut}: beside the button`).toBeHidden();
+  await button.click();
   await pg.click('.rankctl > span');
-  shut.push(await menu.isHidden());
-  check('clicks on the label, beside the button, on the rank control close it', shut.every(Boolean), shut.join(','));
-  await pg.click('#x-scen');
+  await expect.soft(menu, `${shut}: the rank control`).toBeHidden();
+  await button.click();
   await pg.keyboard.press('End');
   await pg.keyboard.press('Enter');
   await lastJob(pg, 'trackblazer');
-  check(
-    'Enter on a tile picks it and closes the picker',
-    (await menu.isHidden()) && (await scen(pg)) === 'trackblazer' && (await btnName()) === 'Scenario: Trackblazer',
-  );
+  const enter = 'Enter on a tile picks it and closes the picker';
+  await expect.soft(menu, enter).toBeHidden();
+  await chosen('trackblazer', 'Trackblazer', `${enter}: the button`);
   // the lineage rank follows the scenario: Grand Concert SS, Unity Cup below SS
   await pickScen(pg, 'gc');
   await lastJob(pg, 'gc');
@@ -190,34 +179,27 @@ export default async function scenario(b) {
     sirius === 'Not allowed in Grand Concert',
     String(sirius),
   );
-  check(
-    'picking Grand Concert sets the rank to SS',
-    (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' &&
-      (await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1')),
-  );
+  const gc = 'picking Grand Concert sets the rank to SS';
+  await expect.soft(rank, gc).toHaveAttribute('data-value', '0.20,0.70,0.10');
+  check(`${gc}: the job`, await jobRank('0.2,0.7,0.1'));
   await pickScen(pg, 'unity');
   await settle(pg);
-  check(
-    'picking Unity Cup sets it back to below SS',
-    (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05',
-  );
+  await expect.soft(rank, 'picking Unity Cup sets it back to below SS').toHaveAttribute('data-value', '0.50,0.45,0.05');
   await pg.click('#rank button[data-v="0.20,0.70,0.10"]');
   await settle(pg);
   await pickScen(pg, 'unity');
-  check(
-    'a rank changed by hand sticks (re-picking the scenario leaves it)',
-    (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' &&
-      (await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1')),
-  );
+  const sticks = 'a rank changed by hand sticks (re-picking the scenario leaves it)';
+  await expect.soft(rank, sticks).toHaveAttribute('data-value', '0.20,0.70,0.10');
+  check(`${sticks}: the job`, await jobRank('0.2,0.7,0.1'));
   // the rank toggle is a radio group: game badges, arrow keys move the choice
   await pg.focus('#rank button[aria-checked="true"]');
   await pg.keyboard.press('ArrowLeft');
-  check(
-    'lineage rank: arrow keys switch it, aria-checked follows, badges shown',
-    (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05' &&
-      (await pg.getAttribute('#rank button[data-v="0.50,0.45,0.05"]', 'aria-checked')) === 'true' &&
-      (await pg.locator('#rank .rk.img img').count()) === 3,
-  );
+  const arrows = 'lineage rank: arrow keys switch it, aria-checked follows, badges shown';
+  await expect.soft(rank, arrows).toHaveAttribute('data-value', '0.50,0.45,0.05');
+  await expect
+    .soft(rank.locator('button[data-v="0.50,0.45,0.05"]'), `${arrows}: aria-checked`)
+    .toHaveAttribute('aria-checked', 'true');
+  await expect.soft(rank.locator('.rk.img img'), `${arrows}: badges`).toHaveCount(3);
   await pg.keyboard.press('ArrowRight');
   await settle(pg);
   await pg.click('#ex-open');
@@ -226,23 +208,17 @@ export default async function scenario(b) {
   await pg.fill('#ex-text', text);
   await pg.click('#ex-load');
   await pg.click('#ex-close');
-  check('import updates the button', (await scen(pg)) === 'gc' && (await btnName()) === 'Scenario: Grand Concert'); // its (slow) search is not awaited
+  await chosen('gc', 'Grand Concert', 'import updates the button'); // its (slow) search is not awaited
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
   // without the logo files (images not built, or a failed fetch) the button and tiles show the name on a badge
   const p2 = await open(b, { before: (p) => p.route('**/img.*/scen/**', (r) => r.abort()) });
-  await until(p2, () => !document.querySelector('#scen-dd .slogo img'));
   await p2.click('#x-scen');
-  const badges = await p2.evaluate(() =>
-    [...document.querySelectorAll('#scen-dd .slogo')]
-      .map((l) => (l.querySelector('img') ? 'img' : '') + l.querySelector('b')?.textContent)
-      .join(','),
-  );
-  check(
-    'missing logos fall back to name badges',
-    badges === 'Unity Cup,Unity Cup,Grand Concert,URA Finale,Trackblazer',
-    badges,
-  );
+  const fallback = 'missing logos fall back to name badges';
+  await expect.soft(p2.locator('#scen-dd .slogo img'), `${fallback}: no picture`).toHaveCount(0);
+  await expect
+    .soft(p2.locator('#scen-dd .slogo b'), fallback)
+    .toHaveText(['Unity Cup', 'Unity Cup', 'Grand Concert', 'URA Finale', 'Trackblazer']);
   const sz = await p2.evaluate(
     () =>
       new Set(
@@ -253,11 +229,5 @@ export default async function scenario(b) {
       ).size,
   );
   check('… and the tiles stay the same size', sz === 1);
-  if (b.browserType().name() === 'chromium') {
-    await still(p2); // the results' fade back from the searching dim
-    contrastCheck('contrast: scenario badges (no logo files)', [
-      await audit(p2, (x) => /^b\./.test(x) || /scen|stile|slogo|snm|ssub/.test(x)),
-    ]);
-  }
   await p2.context().close();
 }

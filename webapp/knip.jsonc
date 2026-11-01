@@ -1,0 +1,23 @@
+// knip (./build.sh lint): files no entry reaches, exports no other file imports, dependencies nothing uses and imports
+// of packages not in package.json or of files that do not exist.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/worker.ts", "test/**/*.{mjs,ts}", "*.mjs", "chibi/*.mjs"],
+  "project": ["src/**/*.{ts,tsx}", "test/**/*.{mjs,ts}", "vite/**/*.mjs", "*.mjs", "chibi/*.mjs"],
+  "rules": {
+    // exported types and interfaces stay unchecked, as before knip (24 are used only in their own module)
+    "types": "off"
+  },
+  "ignoreDependencies": [
+    // run by build.sh, which knip does not read: wasm-opt (wasm), Biome and dependency-cruiser (lint)
+    "binaryen",
+    "@biomejs/biome",
+    "dependency-cruiser",
+    // dependency-cruiser's parser (.dependency-cruiser.mjs `parser: 'swc'`)
+    "@swc/core",
+    // imported by src/style.css, which knip does not read
+    "@fontsource/.+"
+  ],
+  // vite/mathfont.mjs runs fontTools in the repository's Python environment
+  "ignoreBinaries": ["uv"]
+}

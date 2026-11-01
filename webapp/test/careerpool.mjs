@@ -1,12 +1,13 @@
 // the career planner on pasted pools: the goal's steps (full veterans of two umas), a borrowed or owned fully looped
 // veteran, the trio path (from the 12 test veterans' export, changed)
+import { expect } from 'playwright/test';
 import { check, dialog, careerPage } from './helpers.mjs';
 
 export default async function careerpool(b) {
   const { ctx, pg, done, vetsOpen, vetsShut, importDump } = await careerPage(b);
   await importDump();
   await done();
-  await pg.evaluate(() => document.getElementById('set-vets').close()); // (Export is on the page, under the dialog)
+  await vetsShut(); // (Export is on the page, under the dialog)
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
   const exText = await pg.inputValue('#vx-text');
@@ -32,16 +33,18 @@ export default async function careerpool(b) {
     window.__careerJobs.filter((j) => j.cmd === 'career' && !j.next && !j.compare).at(-1),
   );
   const goalRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
+  const goalCheck =
+    'career: with full veterans of two umas nothing is fixed (no goal steps), and the planner prices them in its trio and picks';
+  await expect.soft(pg.locator('#goal-note'), `${goalCheck}: no goal steps`).toHaveCount(0);
+  await expect.soft(pg.locator('.alts .otag.pick'), `${goalCheck}: one pick`).toHaveCount(1);
   check(
-    'career: with full veterans of two umas nothing is fixed (no goal steps), and the planner prices them in its trio and picks',
-    !(await pg.locator('#goal-note').count()) &&
-      goalJob &&
+    goalCheck,
+    goalJob &&
       goalJob.fix.length === 0 &&
       goalRes &&
       goalRes.next.mode === 'trio' &&
       goalRes.next.members.length === 2 &&
-      goalRes.next.members.every((m) => typeof m.real === 'boolean') &&
-      (await pg.locator('.alts .otag.pick').count()) === 1,
+      goalRes.next.members.every((m) => typeof m.real === 'boolean'),
     `${JSON.stringify(goalJob?.fix)} | ${goalRes && JSON.stringify(goalRes.next.v0_plan)} | pick ${goalRes && JSON.stringify(goalRes.next.choice && [goalRes.next.choice.trainee.name, goalRes.next.choice.parents])}`,
   );
   // each uma also gets her career on two of those full veterans (only there is her own full veteran a fully looped parent), the trio's last
@@ -88,14 +91,14 @@ export default async function careerpool(b) {
     timeout: 300000,
   });
   const ownRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
+  const ownCheck =
+    'career: with a fully looped parent of yours the planner goes for the next one and scores every career';
   check(
-    'career: with a fully looped parent of yours the planner goes for the next one and scores every career',
-    ownRes &&
-      ownRes.next.mode === 'trio' &&
-      ownRes.next.options.every((o) => o.score != null) &&
-      (await pg.locator('.alts .otag.pick').count()) === 1,
+    ownCheck,
+    ownRes && ownRes.next.mode === 'trio' && ownRes.next.options.every((o) => o.score != null),
     `${ownRes?.next.mode}`,
   );
+  await expect.soft(pg.locator('.alts .otag.pick'), `${ownCheck}: one pick`).toHaveCount(1);
   // the trio path: the same veterans without one target and with their parents' sparks cleared: every career scored
   // against the cheapest trio, each step named, the pick explained
   const trioEx = JSON.parse(exText),
@@ -122,8 +125,19 @@ export default async function careerpool(b) {
   const trioLoop = await pg.textContent('#save-dlg .oloop'),
     saveTxt = await pg.textContent('#save-dlg');
   await pg.mouse.click(5, 5); // a click on the backdrop closes it
+  const trioCheck =
+    'career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means';
+  await expect
+    .soft(pg.locator('#save-dlg'), `${trioCheck}: the popup closed by its backdrop`)
+    .not.toHaveAttribute('open');
+  await expect.soft(pg.locator('.alts .otag.pick'), `${trioCheck}: one pick`).toHaveCount(1);
+  // (no caveat under the table: every row is proven, and a named assumption a proof rests on is the run note's to say;
+  // the tie note and the negative-top line are statements about the scores, not caveats)
+  await expect
+    .soft(pg.locator('.alts p.hint:not(.negtop), .alts .oloop'), `${trioCheck}: no caveat under the table`)
+    .toHaveCount(0);
   check(
-    'career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means',
+    trioCheck,
     !!trioRes &&
       trioRes.next.mode === 'trio' &&
       trioRes.next.members.length === 2 &&
@@ -136,12 +150,7 @@ export default async function careerpool(b) {
       ) &&
       /The planner makes a rough estimate of how many careers you still need \(about [\d,]+ today\)/.test(saveTxt) &&
       trioCells.length >= 2 &&
-      trioCells.every((c) => /^(–|≈0|[+−]\d+\.\d)$/.test(c)) &&
-      (await pg.locator('.alts .otag.pick').count()) === 1 &&
-      !(await pg.locator('#save-dlg[open]').count()) &&
-      // (no caveat under the table: every row is proven, and a named assumption a proof rests on is the run note's to
-      // say; the tie note and the negative-top line are statements about the scores, not caveats)
-      !(await pg.locator('.alts p.hint:not(.negtop), .alts .oloop').count()),
+      trioCells.every((c) => /^(–|≈0|[+−]\d+\.\d)$/.test(c)),
     `${trioRes?.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`,
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));

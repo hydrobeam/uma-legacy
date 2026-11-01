@@ -7,6 +7,8 @@
       "src/**/*.ts",
       "src/**/*.tsx",
       "*.mjs",
+      ".size-limit.mjs",
+      "vite/*.mjs",
       "chibi/*.mjs",
       "test/**/*.mjs",
       "test/**/*.ts"
@@ -26,25 +28,182 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "a11y": { "useButtonType": "error", "useKeyWithClickEvents": "error" },
-      "complexity": { "noUselessFragments": "error" },
+      "a11y": {
+        "useButtonType": "error",
+        "useKeyWithClickEvents": "error"
+      },
+      "complexity": {
+        "noUselessFragments": "error"
+      },
       "correctness": {
         "noChildrenProp": "error",
         "useExhaustiveDependencies": "error",
         "useHookAtTopLevel": "error",
         "useJsxKeyInIterable": "error"
       },
-      "nursery": { "noFloatingPromises": "info" },
-      "style": { "noNonNullAssertion": "error", "useImportType": "error" },
+      "nursery": {
+        "noFloatingPromises": "info"
+      },
+      "style": {
+        "noNonNullAssertion": "error",
+        "noRestrictedGlobals": {
+          "level": "error",
+          "options": {
+            "deniedGlobals": {
+              "localStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)",
+              "sessionStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)",
+              "requestAnimationFrame": "a DOM write runs from the layout effect of the component that draws what it measures (useLayoutEffect); a frame's wait is veterans/store.ts's alone (its save waits a frame: it writes storage, not the DOM)"
+            }
+          }
+        },
+        "useImportType": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "@preact/signals": {
+                "importNames": ["effect"],
+                "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
+              },
+              "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph (a second copy of core, nested by npm, would leave its signals' effects unseen)",
+              "preact": {
+                "importNames": ["render", "hydrate"],
+                "message": "only the two entries render: each planner page is one Preact root (its Layout.tsx), which its entry hydrates; a view is drawn in its place there"
+              }
+            }
+          }
+        }
+      },
       "suspicious": {
         "noArrayIndexKey": "error",
         "noDuplicateJsxProps": "error",
         "noEmptyBlockStatements": "error",
-        "noImportCycles": "error"
+        "noImportCycles": "error",
+        "noTsIgnore": "error"
       }
     }
   },
+  "plugins": [
+    {
+      "path": "./lint/effects.grit",
+      "includes": ["src/**", "!src/store.ts"]
+    },
+    {
+      "path": "./lint/mutable-export.grit",
+      "includes": ["src/**"]
+    },
+    {
+      "path": "./lint/storage-write.grit",
+      "includes": ["src/**", "!src/storage.ts"]
+    },
+    {
+      "path": "./lint/dom-lookup.grit",
+      "includes": ["src/**", "!src/career/main.tsx", "!src/loop/main.tsx", "!src/errorlog.ts"]
+    },
+    {
+      "path": "./lint/dialogs.grit",
+      "includes": ["src/**", "!src/ui/Dialog.tsx"]
+    },
+    {
+      "path": "./lint/markup-string.grit",
+      "includes": ["src/**"]
+    },
+    {
+      "path": "./lint/load-listener.grit",
+      "includes": ["src/**", "!src/career/main.tsx", "!src/loop/main.tsx", "!src/errorlog.ts", "!src/gmtip.ts"]
+    }
+  ],
   "overrides": [
+    {
+      "includes": [
+        "src/settings.ts",
+        "src/loop/state.ts",
+        "src/veterans/store.ts",
+        "src/career/state.ts",
+        "src/career/analysis/state.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@preact/signals": {
+                    "importNames": ["effect", "signal"],
+                    "message": "a store module (.dependency-cruiser.mjs's stores layer) makes its records with store.ts's store(), which hands them out read-only all the way down, and computed() over them; only store.ts makes an effect"
+                  },
+                  "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph",
+                  "preact": {
+                    "importNames": ["render", "hydrate"],
+                    "message": "only the two entries render: each planner page is one Preact root (its Layout.tsx), which its entry hydrates; a view is drawn in its place there"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/career/main.tsx", "src/loop/main.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@preact/signals": {
+                    "importNames": ["effect"],
+                    "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
+                  },
+                  "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph (a second copy of core, nested by npm, would leave its signals' effects unseen)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/veterans/store.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "localStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)",
+                  "sessionStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/storage.ts", "test/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/store.ts", "test/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["**/*.js", "**/*.mjs"],
       "linter": {

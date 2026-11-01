@@ -1,70 +1,42 @@
-// The shared setup editors (ui/Presets, ui/Targets) on a fake document (fakedom.mjs), bundled with esbuild as the page
-// bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
+// @vitest-environment happy-dom
+// The shared setup editors (ui/Presets, ui/Targets) on happy-dom's document, compiled as the page's build compiles
+// them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
 // (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4); the
 // editors redraw for the settings they show only (F6); their lists' keys are unique (F7, preact/debug's check); two
 // picks of a pill row in one task (careerrun's edit and its undoing) both count.
-// node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs';
-import './fakedom.mjs';
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as esbuild from 'esbuild';
+import { test, vi } from 'vitest';
+import 'preact/debug';
+import '@preact/signals';
+import { h, options, render } from 'preact';
+import * as S from '../../src/settings.ts';
+import * as P from '../../src/presets.ts';
+import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
+import { setupViews } from '../../src/ui/Setup.tsx';
+import { SettingsSort, SortMenu } from '../../src/ui/SortMenu.tsx';
+import { gameData, loadData } from '../../src/data.ts';
+import { SKILLS, UMAS } from './fakepage.mjs';
 
-const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
-const built = await esbuild.build({
-  stdin: {
-    contents: `
-      import 'preact/debug';
-      import '@preact/signals';
-      export * as settings from './src/settings.ts';
-      export * as presets from './src/presets.ts';
-      export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
-      export { setupViews } from './src/ui/Setup.tsx';
-      export { renderGuarded } from './src/ui/RenderGuard.tsx';
-      export { SettingsSort, SortMenu } from './src/ui/SortMenu.tsx';
-      export { h, options, render } from 'preact';
-      export { gameData, loadData } from './src/data.ts';`,
-    resolveDir: WEBAPP,
-    loader: 'js',
-  },
-  bundle: true,
-  write: false,
-  format: 'esm',
-  jsx: 'automatic',
-  jsxImportSource: 'preact',
-  logLevel: 'silent',
-});
-// (imported from a file, so a failure's stack names its lines)
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-setup-')),
-  file = path.join(dir, 'setup.mjs');
-fs.writeFileSync(file, built.outputFiles[0].text);
-const page = await import(pathToFileURL(file).href);
-fs.rmSync(dir, { recursive: true });
-const {
-  settings: S,
-  presets: P,
-  PresetDialogs,
-  openPresets,
-  setupViews,
-  renderGuarded,
-  SettingsSort,
-  SortMenu,
-  h,
-  options,
-  render,
-  gameData,
-  loadData,
-} = page;
+vi.mock('#page-data', () => import('./fakepage.mjs'));
+
+document.documentElement.className = 'game'; // (the planner pages' class)
+// the editors' boxes, as both planner pages' layouts hold them (career/Layout.tsx, loop/Layout.tsx), and the view
+// each draws (ui/Setup.tsx `setupViews`)
+const BOXES = {
+  'scen-dd': 'scenario',
+  'rank-ctl': 'rank',
+  'skills-panel': 'targets',
+  'set-umas-root': 'umasDialog',
+  'set-cards-root': 'cardsDialog',
+};
+for (const id of Object.keys(BOXES)) document.body.appendChild(document.createElement('div')).id = id;
 // two skills of one white name (the GM era's two "Pressure" skills)
-globalThis.__LLP_DATA['data-skills'].push([20301, 'Pressure', null], [20302, 'Pressure', null]);
+SKILLS.push([20301, 'Pressure', null], [20302, 'Pressure', null]);
 // the outfits' labels the Umas panel shows (the fake page's outfits have none)
-for (const u of globalThis.__LLP_DATA['data-umas']) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
-await loadData();
+for (const u of UMAS) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
+await loadData(null);
 
 const KEY = 'llp:settings';
 // the store loaded from a new storage holding these shared settings; returns what is stored, read afresh each call
@@ -73,32 +45,17 @@ const fresh = (common) => {
   S.initStore(() => ({ getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) }));
   return () => JSON.parse(map.get(KEY)).common;
 };
-// an editor into its mount point, as the entries draw it (ui/Setup.tsx `setupViews`)
-const mount = (id) => {
-  const { view, what } = setupViews().find((v) => v.id === id);
-  renderGuarded(view, document.getElementById(id), what, S.settings);
-};
+// an editor into its box, behind its guard, as the layouts draw it
+const mount = (id) => render(setupViews()[BOXES[id]], document.getElementById(id));
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 };
-const descendants = (root) => {
-  const out = [];
-  const walk = (n) => {
-    for (const c of n.childNodes)
-      if (c.nodeType === 1) {
-        out.push(c);
-        walk(c);
-      }
-  };
-  walk(root);
-  return out;
-};
-const byId = (root, id) => descendants(root).find((e) => e.id === id || e.attributes.id === id);
+const byId = (root, id) => root.querySelector(`#${id}`);
 const text = (e) => e.textContent.trim();
-// typing into a box: its value, then the input event Preact listens for
+// typing into a box: its value, then the input event
 const type = (box, value) => {
   box.value = value;
-  for (const f of box.listeners.input || []) f.call(box, { type: 'input', target: box, currentTarget: box });
+  box.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
 test('presets by name: Load, a rename onto a taken name (refused), a rename, Overwrite and Delete of the renamed one', async () => {
@@ -109,18 +66,15 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
     ],
     targets: [{ group: 20159 }],
   });
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(PresetDialogs, {}), root);
   openPresets();
   await settle();
-  const rows = () => root.querySelectorAll('div.prow');
-  const row = (name) => rows().find((r) => r.attributes['aria-label'] === name);
-  const button = (name, label) =>
-    row(name)
-      .querySelectorAll('button.btn')
-      .find((b) => text(b) === label);
+  const rows = () => [...root.querySelectorAll('div.prow')];
+  const row = (name) => root.querySelector(`div.prow[aria-label="${name}"]`);
+  const button = (name, label) => [...row(name).querySelectorAll('button.btn')].find((b) => text(b) === label);
   assert.deepEqual(
-    rows().map((r) => r.attributes['aria-label']),
+    rows().map((r) => r.getAttribute('aria-label')),
     ['A', 'B'],
   );
   // Load B: its skills become the targets, the presets stay as they were
@@ -179,9 +133,9 @@ test("a target's × removes its own place (one skill held twice too); the focus 
   mount('skills-panel');
   await settle();
   const box = document.getElementById('skills-panel');
-  const removes = () => box.querySelectorAll('button.x');
+  const removes = () => [...box.querySelectorAll('button.x')];
   const groups = () => stored().targets.map((t) => t.group);
-  const labels = () => removes().map((b) => b.attributes['aria-label']);
+  const labels = () => removes().map((b) => b.getAttribute('aria-label'));
   assert.deepEqual(labels(), ['Remove Skill 20049', 'Remove Skill 20159', 'Remove Skill 20049', 'Remove Skill 20166']);
   removes()[1].click(); // the second place
   await settle();
@@ -205,30 +159,28 @@ test("the lineage rank's ? opens its note and stops its click there (other popup
   await settle();
   const box = document.getElementById('rank-ctl'),
     question = byId(box, 'rank-q');
-  let stopped = false;
-  const click = { type: 'click', target: question, currentTarget: question, preventDefault: () => undefined };
-  for (const f of question.listeners.click || [])
-    f.call(question, {
-      ...click,
-      stopPropagation: () => {
-        stopped = true;
-      },
-    });
+  let reached = false;
+  const outside = () => {
+    reached = true;
+  };
+  document.addEventListener('click', outside);
+  question.click();
+  document.removeEventListener('click', outside);
   await settle();
-  const expanded = question.attributes['aria-expanded'];
+  const expanded = question.getAttribute('aria-expanded');
   render(null, box); // (first: a failure here leaves no control drawn for the tests after)
   assert.equal(expanded, 'true', 'the note is open');
-  assert.ok(stopped, 'the click went no further than the ?');
+  assert.ok(!reached, 'the click went no further than the ?');
 });
 
 test('a sort menu given a value it does not list (a hand-edited storage) shows its first item instead of throwing', async () => {
   fresh({ rsort: 'bogus', rdir: 'sideways' });
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   // the umas' menu: read as the roster orders by it (release, ascending)
   render(h(SettingsSort, { prefix: 'r', id: 'rs', what: 'sort umas' }), root);
   await settle();
   assert.equal(text(byId(root, 'rs')), 'Release ↑');
-  assert.equal(byId(root, 'rs').attributes.title, 'Sorted oldest first');
+  assert.equal(byId(root, 'rs').title, 'Sorted oldest first');
   const items = [
     { k: 'a', label: 'First', hint: '' },
     { k: 'b', label: 'Second', hint: '' },
@@ -341,23 +293,14 @@ test('two picks of the rank in one task (an edit and its undoing, before any red
   mount('rank-ctl');
   await settle();
   const box = document.getElementById('rank-ctl'),
-    pill = (v) => box.querySelectorAll('button').find((b) => b.attributes['data-v'] === v);
+    pill = (v) => box.querySelector(`button[data-v="${v}"]`);
   const written = [],
     stop = S.fields.rank.subscribe((rank) => written.push(rank));
   pill('0.20,0.70,0.10').click();
   pill('0.50,0.45,0.05').click();
   await settle();
   const group = byId(box, 'rank'),
-    key = (k) => {
-      for (const f of group.listeners.keydown || [])
-        f.call(group, {
-          type: 'keydown',
-          key: k,
-          target: group,
-          currentTarget: group,
-          preventDefault: () => undefined,
-        });
-    };
+    key = (k) => group.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
   key('ArrowRight');
   key('ArrowRight'); // (two pills: round to where it was)
   await settle();

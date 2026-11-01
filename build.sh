@@ -26,7 +26,7 @@ STEPS=(
   "pb||all|the solver, then pairwise affinity ceilings into both data.json; rerun after data or solver changes"
   "wasm||all default|the wasm32 build, wasm-opt (skipped when its key matches), webapp/example.json"
   "art||all default|images and runners when their game files are in game/global/ (each skipped, with a note, if not)"
-  "page||all default|webapp/dist: the pages, webapp/src bundled, both eras' data, the optimised wasm, img/"
+  "page||all default|webapp/dist (Vite): the pages, webapp/src bundled, both eras' data, the wasm, img/; page budgets"
   "images|||icons and card art from the game's decrypted bundles into webapp/img (IMAGES_FORCE=1 redoes all)"
   "runners|||each uma's running mini model as a sprite strip into webapp/img/run (webapp/chibi/chibi.py)"
   "types|||the page's TypeScript types of the solver's reports and jobs, from its Rust structs, into webapp/src/gen"
@@ -35,7 +35,7 @@ STEPS=(
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
   "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
   "testq|||the page, then the suite's fast tier (Chromium, the @quick tests, about 30 s): after each page change"
-  "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (PORT=...; a self-signed certificate)"
+  "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (vite preview; PORT=...; a self-signed certificate)"
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
   "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
   "valq|TAG||val without the slow jobs, joint_check and planval's proxy gate (about 2.5 CPU-min)"
@@ -91,7 +91,7 @@ quiet() {
 
 # ---- the data ----
 # the page's lists for both eras (export/export_page.py): run by every step that writes one of their inputs, so the
-# tracked page.json never lags them (webapp/build.py refuses one that does)
+# tracked page.json never lags them (the page's build refuses one that does: webapp/vite/pagedata.mjs)
 export_page() {
   (cd "$C/export" && "${PY[@]}" export_page.py global && "${PY[@]}" export_page.py jp)
 }
@@ -216,9 +216,13 @@ step_lint() {
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
-  lint static.mjs in_dir "$W" node test/static.mjs
-  # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the terminal
-  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*'
+  lint knip in_dir "$W" npx --no-install knip
+  lint dependency-cruiser in_dir "$W" npx --no-install depcruise --config .dependency-cruiser.mjs src
+  lint "dead CSS" in_dir "$W" node test/deadcss.mjs
+  lint "@ts-expect-error" no_ts_expect_error
+  # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the
+  # terminal, and a hung one at 5 minutes (each test's own limit, 60 s: vite.config.mjs)
+  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest run --reporter=dot
   if [ ${#LINT_FAILED[@]} -gt 0 ]; then
     local list
     list=$(printf '%s, ' "${LINT_FAILED[@]}")
@@ -228,6 +232,8 @@ step_lint() {
   echo "lint: clean"
 }
 lint() { local name=$1; shift; "$@" || LINT_FAILED+=("$name"); }   # lint NAME COMMAND...
+# tsc accepts a `@ts-expect-error` and no Biome rule sees a comment: one in the page's source fails lint (and the hook)
+no_ts_expect_error() { ! grep -rn --include='*.ts' --include='*.tsx' '@ts-expect-error' "$W/src"; }
 in_dir() { (cd "$1" && shift && "$@"); }   # in_dir DIR COMMAND...
 build_and_run() { build_solver && quiet "$@"; }   # build_and_run COMMAND...: the release binary first
 step_hooks() {
@@ -265,17 +271,23 @@ step_research() {
 }
 
 # ---- the page ----
-# reinstalls when the lockfile is newer than what npm last installed (node_modules/.package-lock.json), so a pulled
-# dependency change (a new or bumped package) is never checked against a stale node_modules
+# the page's packages (webapp/package.json); wrangler (webapp/deploy) and three (webapp/chibi) are packages of their
+# own, installed only by the steps that use them (deploy, runners), so every other install goes without them
 npm_deps() {
   need_node; check npm
-  [ -x "$W/node_modules/.bin/esbuild" ] && [ ! "$W/package-lock.json" -nt "$W/node_modules/.package-lock.json" ] \
-    || (cd "$W" && npm ci --silent)
+  npm_ci "$W"
 }
+# npm ci in DIR when it has no install or its lockfile is newer than what npm last installed there
+# (node_modules/.package-lock.json), so a pulled dependency change is never run against a stale node_modules
+npm_ci() {   # npm_ci DIR
+  [ -e "$1/node_modules/.package-lock.json" ] && [ ! "$1/package-lock.json" -nt "$1/node_modules/.package-lock.json" ] \
+    || (cd "$1" && npm ci --silent)
+}
+# Vite (webapp/vite.config.mjs), then each page's first-visit size against its budget (size-limit: webapp/.size-limit.mjs)
 step_page() {
   need_uv; need_node; need "$NEED_OPT_WASM"; check page
   npm_deps
-  (cd "$W" && "${PY[@]}" build.py)
+  (cd "$W" && npx --no-install vite build --logLevel warn && npx --no-install size-limit)
 }
 step_images() {
   need_uv; need "${IMAGE_FILES[@]}"; check images
@@ -295,6 +307,7 @@ step_runners() {
   fi
   need "${RUNNER_FILES[@]}"; check runners
   step_browsers
+  npm_ci "$W/chibi"   # three.js (chibi/package.json)
   "${PYART[@]}" "$W/chibi/chibi.py" all
 }
 step_art() {   # in the default build: runs what the game files in game/ allow, says what it skips
@@ -336,9 +349,10 @@ step_prune_replies() {
 }
 step_serve() {
   need_node; need "$NEED_DIST"; check serve
-  node "$W/serve.mjs" "${PORT:-8000}" localhost h2
+  (cd "$W" && npx --no-install vite preview --port "${PORT:-8000}" --host localhost --strictPort)
 }
-# Cloudflare Pages, a direct upload of webapp/dist (set up once: npx wrangler login; npx wrangler pages project create)
+# Cloudflare Pages, a direct upload of webapp/dist by wrangler, installed here from webapp/deploy's own lockfile (set up
+# once, in webapp/deploy: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
   local dirty
   dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg research/results.json)
@@ -350,7 +364,8 @@ step_deploy() {
   local dirty_flag=false
   if [ -n "$dirty" ]; then dirty_flag=true; fi
   step_wasm; step_page   # the solver it ships is built from this tree, never one left from another
-  (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" \
+  npm_ci "$W/deploy"
+  (cd "$W/deploy" && npx --no-install wrangler pages deploy ../dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" \
     --branch "${CF_PAGES_BRANCH:-main}" --commit-hash "$(git -C "$R" rev-parse HEAD)" \
     --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty="$dirty_flag")
 }

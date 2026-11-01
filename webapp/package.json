@@ -6,11 +6,10 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "dependencies": {
     "@preact/signals": "2.11.4",
-    "@preact/signals-core": "1.14.5",
     "binaryen": "^132.0.0",
     "preact": "11.1.1"
   },
@@ -20,10 +19,20 @@
     "@fontsource/stix-two-math": "^5.3.0",
     "@fontsource/zen-kaku-gothic-new": "^5.3.0",
     "@fontsource/zen-maru-gothic": "^5.3.0",
-    "esbuild": "^0.28.2",
+    "@size-limit/file": "14.3.0",
+    "@swc/core": "1.16.21",
+    "@vitejs/plugin-basic-ssl": "2.3.0",
+    "dependency-cruiser": "18.7.0",
+    "happy-dom": "21.0.4",
+    "knip": "6.44.1",
     "playwright": "1.63.0",
-    "three": "^0.170.0",
+    "preact-render-to-string": "6.8.2",
+    "purgecss": "8.0.0",
+    "size-limit": "14.3.0",
     "typescript": "7.0.2",
-    "wrangler": "^4.147.0"
+    "vite": "8.3.5",
+    "vite-plugin-handlebars": "2.0.3",
+    "vite-plugin-static-copy": "4.1.1",
+    "vitest": "5.0.5"
   }
 }

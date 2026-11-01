@@ -1,7 +1,8 @@
-// A page for node tests of modules that read the game data (data.ts): the data build.py embeds (self.__LLP_DATA) for a
-// small made-up game, and a document that has no element. Import it before any module of the page; then
-// `await loadData()` as the page does. Its released dates are in the past (FUTURE: one card not out yet), so what a
-// job holds does not depend on the day the test runs.
+// The page data for node tests of modules that read the game data (data.ts): a module shaped as the '#page-data' the
+// build writes (vite/pagedata.mjs), for a small made-up game. A test file hands it to the page's modules with
+// `vi.mock('#page-data', () => import('./fakepage.mjs'))`, then `await loadData(career)` as the page does; the lists
+// are its arrays, so a test may add to them before `loadData`. Its released dates are in the past (FUTURE: one card not
+// out yet), so what a job holds does not depend on the day the test runs.
 const PAST = 1_600_000_000,
   FUTURE = 9_000_000_000;
 const outfit = (id) => ({ id, rel: PAST });
@@ -23,21 +24,16 @@ export const CARDS = [
 ];
 // the made-up game's cards that are out
 export const CARDS_OUT = CARDS.filter((c) => c.rel <= PAST).map((c) => c.id);
-const SKILLS = [
+export const SKILLS = [
   [20049, 'Skill 20049', 'Gold 20049'],
   [20046, 'Skill 20046', 'Gold 20046'],
   [20159, 'Skill 20159', null],
   [20166, 'Skill 20166', null],
 ];
-globalThis.self = globalThis;
-globalThis.__LLP_DATA = {
-  'data-assets': { wasm: 'solver.test.wasm', engine: { global: 'engine.global.test', gm: 'engine.gm.test' } },
-  'data-img': { keys: [], base: 'img/', ext: {} },
-  'data-skillicon': { white: {}, gold: {} },
-  'data-raceids': {},
-  'data-hintbase': { unity: 0.5, gc: 0.6, ura: 0.4, trackblazer: 0.45, grandmasters: 0.55 },
-  'data-cards': CARDS,
-  'data-umas': UMAS,
-  'data-skills': SKILLS,
-};
-globalThis.document = { getElementById: () => null };
+// the rest of what '#page-data' exports
+export const assets = { wasm: 'solver.test.wasm', engine: { global: 'engine.global.test', gm: 'engine.gm.test' } };
+export const img = { keys: [], base: 'img/', ext: {} };
+export const skillIcons = { white: {}, gold: {} };
+export const raceIds = {};
+export const hintBase = { unity: 0.5, gc: 0.6, ura: 0.4, trackblazer: 0.45, grandmasters: 0.55 };
+export { CARDS as cards, SKILLS as skills, UMAS as umas };

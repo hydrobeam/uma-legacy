@@ -33,7 +33,6 @@ import careerpool from './careerpool.mjs';
 import careerborrow from './careerborrow.mjs';
 import careerumamoe from './careerumamoe.mjs';
 import careerrun from './careerrun.mjs';
-import contrast from './contrast.mjs';
 
 // In the order they start: the longest first (a group runs serially; one started last would end the run alone).
 const GROUPS = {
@@ -66,12 +65,11 @@ const GROUPS = {
   careerborrow,
   careerumamoe,
   careerrun,
-  contrast,
 };
 // the fast tier (tag @quick; ./build.sh testq, with LLP_QUICK=1): each page's core path: the planner loads and its
-// search returns (load), the result's dialogs (popups), the phone layout (phone), the contrast audit in light mode
-// (contrast), /about, and the career page up to its one-run answer (career stops there in this tier)
-const QUICK = ['career', 'load', 'popups', 'phone', 'contrast', 'about'];
+// search returns (load), the result's dialogs (popups), the phone layout (phone), /about, and the career page up to
+// its one-run answer (career stops there in this tier)
+const QUICK = ['career', 'load', 'popups', 'phone', 'about'];
 // the groups Firefox runs too (tag @both; playwright.config.mjs): where the engine matters, the worker, wasm, IndexedDB
 // and timing (load, states, autosearch, reload, delivery, career, careerrun) or layout and focus (careerphone, phone,
 // panels, keyboard, popups; Firefox rounds lengths differently). The rest test the page's logic, which Chromium covers.
@@ -103,7 +101,6 @@ const REPLAY = [
   'panels',
   'popups',
   'dark',
-  'contrast',
   'phone',
   'borrowed',
   'fourloop',

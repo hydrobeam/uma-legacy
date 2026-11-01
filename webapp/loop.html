@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" class="game">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop planner · uma-legacy</title>
+<meta name="description" content="Umamusume looping uma &amp; deck optimizer for Independent Training">
+<meta name="theme-color" content="#e84898">
+<meta property="og:site_name" content="uma-legacy">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{site}}/loop">
+<meta property="og:title" content="Loop planner · uma-legacy">
+<meta property="og:description" content="Pick your skills and get the best umas to loop and decks to run for Independent Training.">
+<meta property="og:image" content="{{site}}/og.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Three sparkles in the spark colours: stat blue, aptitude pink, unique green">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://uma-legacy.pages.dev/loop">
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+{{> theme}}
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<a class="skip" href="#rcol">Skip to results</a>
+<header class="top">
+  <h1 class="brand" aria-label="uma-legacy">{{{logo}}}<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
+  {{> nav current="loop"}}
+</header>
+
+<div id="app"></div>
+<script>
+// phone (the columns stacked): the results column first, before the setup, in the reading and Tab order too, from the
+// first paint (src/loop/Layout.tsx draws it there from then on); html.rin: the results are in view, which hides the
+// floating status button (the layout keeps it current)
+(function () { var w = document.querySelector('.wrap'), r = document.getElementById('rcol');
+  if (matchMedia('(max-width: 960px)').matches) w.prepend(r); document.documentElement.classList.add('rin'); })();
+</script>
+
+<script type="module" src="/src/loop/main.tsx"></script>

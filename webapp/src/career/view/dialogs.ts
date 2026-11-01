@@ -2,8 +2,8 @@
 // picker (its place). The views (Tree.tsx, NodeDialog.tsx, Sections.tsx, ParentPicker.tsx) draw from these; the other
 // views (the pool, the veteran analysis, uma.moe's list) open them through the functions here, and import no component
 // to do it.
-import { signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import type { ParentPlace } from '../../veterans/store.ts';
 
 /** a node of the tree or the pool: the trainee, parent place k, parent k's parent j, a veteran of the pool */

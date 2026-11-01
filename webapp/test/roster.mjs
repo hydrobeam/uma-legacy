@@ -1,13 +1,15 @@
-import { check, open, json, repoUrl } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { check, open, openEditor, json, repoUrl } from './helpers.mjs';
 
 export default async function roster(b) {
   const pg = await open(b);
+  await openEditor(pg, 'umas');
   // as the page shows them: outfits dated after now hidden, an uma whose every outfit is (data.ts `gameData().later`)
   const umas = (await json(pg, 'data-umas'))
     .map((u) => ({ ...u, outfits: u.outfits.filter((o) => o.rel <= Date.now() / 1000), had: u.outfits.length }))
     .filter((u) => u.outfits.length || !u.had);
   const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
-  check('one tile per outfit', (await pg.locator('#roster .ut').count()) === nOut, nOut + ' outfits');
+  await expect.soft(pg.locator('#roster .ut'), 'one tile per outfit').toHaveCount(nOut);
   const all = umas.flatMap((u) =>
     (u.outfits.length ? u.outfits : [{ label: '', rel: 0, id: 0 }]).map((o) => ({
       n: u.name + (o.label ? ' ' + o.label : ''),
@@ -15,31 +17,26 @@ export default async function roster(b) {
       id: o.id,
     })),
   );
-  const firstTile = async () => (await pg.locator('#roster .ut').first().innerText()).replace(/\n/g, ' ').trim();
+  const sort = pg.locator('#rs'),
+    firstTile = pg.locator('#roster .ut').first(),
+    menu = pg.locator('#rs-menu');
+  // the first tile shows `name` (its text as drawn, line breaks as spaces)
+  const firstIs = (name, what) => expect.soft(firstTile, what).toHaveText(name, { useInnerText: true });
   const newest = [...all].sort((a, c) => c.rel - a.rel || c.id - a.id)[0].n,
     oldest = [...all].sort((a, c) => a.rel - c.rel || a.id - c.id)[0].n;
-  check(
-    'default sort: release, newest first',
-    (await pg.locator('#rs').innerText()) === 'Release ↓' && (await firstTile()) === newest,
-    await firstTile(),
-  );
-  await pg.click('#rs');
-  await pg.click('#rs-menu [data-k="rel"]');
-  check(
-    're-picking Release reverses it (oldest first)',
-    (await pg.locator('#rs').innerText()) === 'Release ↑' && (await firstTile()) === oldest,
-    await firstTile(),
-  );
-  check('the sort menu stays open after a pick', !(await pg.locator('#rs-menu').isHidden()));
-  await pg.click('#rs-menu [data-k="name"]');
+  await expect.soft(sort, 'default sort: release').toHaveText('Release ↓');
+  await firstIs(newest, 'default sort: … newest first');
+  await sort.click();
+  await menu.locator('[data-k="rel"]').click();
+  await expect.soft(sort, 're-picking Release reverses it').toHaveText('Release ↑');
+  await firstIs(oldest, 're-picking Release reverses it: … oldest first');
+  await expect.soft(menu, 'the sort menu stays open after a pick').toBeVisible();
+  await menu.locator('[data-k="name"]').click();
   const byName = [...all].sort((a, c) => a.n.localeCompare(c.n))[0].n;
-  check(
-    'Name sorts A to Z',
-    (await pg.locator('#rs').innerText()) === 'Name ↑' && (await firstTile()) === byName,
-    await firstTile(),
-  );
+  await expect.soft(sort, 'Name sorts A to Z').toHaveText('Name ↑');
+  await firstIs(byName, 'Name sorts A to Z: … the first tile');
   await pg.keyboard.press('Escape');
-  check('Escape closes the menu', await pg.locator('#rs-menu').isHidden());
+  await expect.soft(menu, 'Escape closes the menu').toBeHidden();
   // an uma with several outfits: a tap marks that outfit not owned, a second tap owned again
   const multi = umas.find((u) => u.outfits.length > 1);
   const states = () =>

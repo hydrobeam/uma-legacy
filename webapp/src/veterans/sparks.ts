@@ -1,7 +1,7 @@
 // ---------- a node's colour sparks (blue, pink, unique): their kinds and their picker ----------
 // (The sparks themselves are drawn by ui/Sparks.tsx, the picker by Editors.tsx.)
-import { signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { careerTables, gameData } from '../data.ts';
 import { gradeAt } from '../grades.ts';
 import { pinkName, blueName, uniqueName } from './names.ts';

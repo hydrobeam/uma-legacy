@@ -3,7 +3,7 @@
 // first draws the outcome by its chance, as the solver's own draw does (career/schedule.rs `draw_pink`), then the
 // draw goes on from that outcome's start.
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { drawPink } from '../../src/pink.ts';
 
 const pinkGen = Array.from({ length: 10 }, (_, k) => ({ group: 100 + k, p: 0.1 }));

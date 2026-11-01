@@ -89,7 +89,7 @@ export function ScenarioPicker() {
       setOpen(false);
     });
   };
-  // the focus leaving the picker (the template's #scen-dd, around both) closes it
+  // the focus leaving the picker (the layout's #scen-dd, around both) closes it
   const onFocusOut = (e: FocusEvent & { currentTarget: HTMLElement }) => {
     const to = e.relatedTarget as Node | null;
     if (to && !e.currentTarget.parentElement?.contains(to)) setOpen(false);

@@ -1,10 +1,10 @@
-// Career planner page: entry point. build.py bundles this and the modules it imports into dist/assets/career.<hash>.js,
-// which dist/index.html loads.
+// Career planner page: entry point, index.html's script (Vite bundles it and the modules it imports).
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (veterans/) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
-// Here: the run machine's wiring (run.ts `createRun` on this page's solver, clock, store, job and views), the views'
-// mount points, settings and start. The rest of career/:
+// Here: the run machine's wiring (run.ts `createRun` on this page's solver, clock, store, job and views), the page's
+// one root (Layout.tsx, hydrated over the build's markup) with its views, settings and start. The rest of career/:
+//   Layout.tsx         the page's one root: its markup, drawn at build time (vite/prerender.mjs) and hydrated here
 //   state.ts           the answer store: the run on show, the answer, the last plan made, the answers kept
 //   run.ts             the run machine: an edit's pause, the search, the plan job's `next`, the robustness check
 //   job.ts             the career job from the settings, veterans and places (values in); the solver's types
@@ -30,25 +30,27 @@
 //   view/parts.ts      small parts the views share
 import { started } from '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
-import { render } from 'preact';
-import { batch } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
-import type { VNode } from 'preact';
-import { $ } from '../dom.ts';
+import { hydrate } from 'preact';
+import type { ComponentChildren } from 'preact';
+import { signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { ERA } from '../saved.ts';
+import type { Era } from '../eras.ts';
+import { must } from '../must.ts';
+import { update } from '../storage.ts';
 import { loadData } from '../data.ts';
-import { jobSetup, settings, switchEra } from '../settings.ts';
+import CAREER from '#career-data';
+import { jobSetup, settings } from '../settings.ts';
 import { on } from '../store.ts';
-import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from '../engine.ts';
+import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from '../engine.ts';
 import { answerLoad, answerSave } from '../statestore.ts';
 import { goldGiven } from '../job.ts';
-import { initScenario, eraScenario } from '../scenario.ts';
+import { initScenario } from '../scenario.ts';
 import { initPopover } from '../popover.ts';
 import { CardPop } from '../ui/CardPop.tsx';
 import '../agenda.ts'; // (its document listener is added before gmtip's)
-import { cardsBadge, setupButtons, setupViews, umasBadge } from '../ui/Setup.tsx';
-import { rosterCounts } from '../roster.ts';
-import { cardsOwned } from '../cards.ts';
+import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
+import { useHydrated } from '../ui/Shell.tsx';
 import '../gmtip.ts'; // the game-style tooltips (both planner pages)
 import {
   vets,
@@ -60,21 +62,22 @@ import {
   handBackPlaces,
   setListings,
 } from '../veterans/store.ts';
-import { searchHeld } from '../veterans/pickers.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
-import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
+import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.ts';
 import { connectUmamoe, syncListings } from '../umamoesetup.ts';
 import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
-import { renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
+import { sayRenderErrors } from '../ui/RenderGuard.tsx';
+import { CareerLayout } from './Layout.tsx';
+import type { CareerState, CareerViews } from './Layout.tsx';
 import { placesKey, isFull, ROLL_K, umasNotOwned } from './job.ts';
-import { currentJob, dropStaleChosen, shown, runJob } from './current.ts';
+import { currentJob, dropStaleChosen, followPool, shown, runJob } from './current.ts';
 import { baseKey, refBase } from './keys.ts';
 import { TryRunDialog, draftOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
-import { answer, dropAnswer, dropped, keepComparisonPlan, loadFails, runView } from './state.ts';
+import { answer, dropped, keepComparisonPlan, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
 import { tName } from './view/parts.ts';
 import { Guard } from './view/Guard.tsx';
@@ -84,7 +87,7 @@ import { NodeDialog } from './view/NodeDialog.tsx';
 import { ParentPicker } from './view/ParentPicker.tsx';
 import { DeckDialog } from './view/Sections.tsx';
 import { SkillDetails } from './view/SkillDetails.tsx';
-import { BorrowChoice, SetupSummary, initFold, sawVeterans } from './view/Setup.tsx';
+import { BorrowChoice, SetupSummary, foldClick, folded, sawVeterans, summaryLabel } from './view/Setup.tsx';
 import { nodeOpen, pickerFor } from './view/dialogs.ts';
 import { Results, SavesPopup } from './view/Options.tsx';
 import { VetsDialog } from './view/Pool.tsx';
@@ -127,7 +130,6 @@ const run = createRun({
     restart: restartEngine,
     nextKill,
     saveState: engineSaveState,
-    key: stateKey,
   },
   clock: {
     now: () => performance.now(),
@@ -148,14 +150,7 @@ const run = createRun({
     saveAnswer: (key, value) => answerSave(ERA, key, value),
   },
   analysis: comparison,
-  view: {
-    shown,
-    paint,
-    // (every view is a component: each follows its signals)
-    drawAll: paint,
-    // (the check's report is in the answer store: the table follows it)
-    drawCheck: paint,
-  },
+  view: { shown, paint },
 });
 // the search's status: done, with a caveat (proofs.ts `searchCaveat`) when the search could not prove the best odds'
 // order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report establishes
@@ -181,70 +176,108 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${droppedText}` };
 }
-// ---------- the views: each component into its mount point, behind a render guard (view/Guard.tsx) ----------
+// ---------- the page: one root (Layout.tsx), the build's markup hydrated ----------
 // a view that could not be drawn says so on the status line, as a failed search does (the answer on show stays)
 sayRenderErrors(loadFails);
-/** `what`: the view's name on the status line (none for the status line itself); `also`: what else it draws from */
-const mount = (id: string, view: VNode, what?: string, also?: ReadonlySignal<unknown>) =>
-  render(
-    <Guard what={what} also={also}>
-      {view}
-    </Guard>,
-    $(id),
+/** `view` behind the render guard (view/Guard.tsx): `what`, its name on the status line (none for the status line
+ *  itself); `also`, what else it draws from */
+const guarded = (what: string | undefined, view: ComponentChildren, also?: ReadonlySignal<unknown>) => (
+  <Guard what={what} also={also}>
+    {view}
+  </Guard>
+);
+// the views, made once (the same vnodes on every draw of the root, so a redraw of the layout leaves them be); drawn
+// once the game data is in (`ready`), the status line from the first paint the run machine asks for (`noteShown`)
+const NOTE = guarded(undefined, <RunNote />);
+const setup = setupViews();
+const VIEWS: CareerViews = {
+  rank: setup.rank,
+  scenario: setup.scenario,
+  targets: setup.targets,
+  borrow: guarded('Borrowed parent', <BorrowChoice />),
+  summary: guarded('The setup summary', <SetupSummary />),
+  verdict: guarded('The odds', <Verdict />),
+  umamoe: guarded("uma.moe's button", <UmButton />),
+  tree: guarded('The lineage tree', <Tree />),
+  results: guarded('The other careers', <Results />),
+  cardPop: guarded('The deck card panel', <CardPop home={null} />), // (its slot in the results column)
+  dialogs: {
+    'vets-root': guarded('The veterans dialog', <VetsDialog />),
+    'um-dlg-root': guarded("uma.moe's popup", <UmamoeDialog />),
+    'sim-root': guarded('Try a run', <TryRunDialog comparison={comparison} />),
+    'set-umas-root': setup.umasDialog,
+    'set-cards-root': setup.cardsDialog,
+    'vpick-root': guarded('The parent picker', <ParentPicker />, pickerFor),
+    'node-root': guarded('The node popup', <NodeDialog />, nodeOpen),
+    'deck-root': guarded('The deck popup', <DeckDialog />),
+    'skill-root': guarded('Skill Details', <SkillDetails />),
+    'save-root': guarded('The Saves popup', <SavesPopup />),
+    'sched-root': <ScheduleDialog />,
+    'vet-editors': guarded("The veterans' editors", <VetEditors />), // (each editor has a guard of its own)
+    'paste-root': guarded('The Paste popup', <PasteDialog />),
+    'vx-root': guarded('The Export popup', <ExportDialog />),
+  },
+  addList: guarded('The "+" list', <AddList />),
+};
+const ready = signal(false),
+  noteShown = signal(false);
+/** The root: the build's markup on the first draw (the hydration), then the page. Around the views it draws the
+ *  status bar's state (its colours), the results and the tree dimmed while a run replaces the answer on show, the
+ *  setup bar's fold, the Enhance buttons' counts and the buttons' actions. */
+function App() {
+  const hydrated = useHydrated();
+  if (!hydrated) return <CareerLayout version={__LLP_VERSION__} />;
+  const isReady = ready.value,
+    noting = noteShown.value;
+  const state: CareerState = { era: ERA };
+  if (noting) {
+    const { searching, started } = runView.value,
+      { status } = answer.value,
+      dimmed = searching && started && !!shown(); // the previous answer, on screen until this run's
+    Object.assign(state, {
+      kind: searching ? 'busy' : status.kind,
+      resultsStale: dimmed || (!searching && ['error', 'empty'].includes(status.kind)),
+      treeStale: dimmed,
+      busy: searching,
+    });
+  }
+  if (isReady)
+    Object.assign(state, {
+      ...setupBadges(),
+      folded: folded.value,
+      summaryLabel: summaryLabel.value,
+      onEra: (era: Era) => pickEra(era, persist),
+      onUmas: () => openSetupDialog('umas'),
+      onCards: () => openSetupDialog('cards'),
+      onBar: foldClick,
+      onVeterans: openPool,
+      onExport: openExport,
+    });
+  return (
+    <CareerLayout version={__LLP_VERSION__} note={noting ? NOTE : null} views={isReady ? VIEWS : null} state={state} />
   );
-// The status line (its live region is the template's, there from load) and what it marks around it: the status bar's
-// state (its colours), the results and the tree dimmed while a run replaces the answer on show, the runner (the trainee
-// you chose, else the career on show). Drawn from the first paint the run machine asks for; then `paint` moves its clock.
-function marks() {
-  const { searching, started } = runView.peek(),
-    { status } = answer.peek(),
-    r = shown();
-  setRunner(places.peek().trainee || r?.trainee?.id);
-  $('rhead').dataset.kind = searching ? 'busy' : status.kind;
-  const dimmed = searching && started && !!r; // the previous answer, on screen until this run's
-  $('results').classList.toggle('stale', dimmed || (!searching && ['error', 'empty'].includes(status.kind)));
-  $('tree').classList.toggle('stale', dimmed);
-  $('results').setAttribute('aria-busy', String(searching));
 }
-let noteShown = false;
+// the status line, drawn from the first paint the run machine asks for; then `paint` moves its clock. The runner: the
+// trainee you chose, else the career on show.
 function paint() {
-  if (!noteShown) {
-    noteShown = true;
-    marks();
-    on([runView, answer, places], marks);
-    mount('run-note', <RunNote />);
+  if (!noteShown.peek()) {
+    noteShown.value = true;
+    const runner = () => setRunner(places.peek().trainee || shown()?.trainee?.id);
+    runner();
+    on([runView, answer, places], runner);
   }
   tickNote();
 }
 
 // ---------- settings ----------
 function initSettings() {
-  $('era-global').setAttribute('aria-pressed', String(ERA === 'global'));
-  $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
-  const setEra = (e: 'global' | 'gm') => {
-    if (e === ERA) return;
-    switchEra(e, eraScenario(e));
-    persist();
-    location.reload();
-  };
-  $('era-global').onclick = () => setEra('global');
-  $('era-gm').onclick = () => setEra('gm');
   initScenario(); // (first: the era's scenario swap is the setup the first search starts from)
-  mount('bp', <BorrowChoice />, 'Borrowed parent');
   enginePersist(); // the solver's kept work survives a page reload
-  // the setup editors both pages share (ui/Setup.tsx), each into its mount point; the Umas and Support cards buttons
-  // open their dialogs, and their counts follow what you own
-  for (const { id, what, view } of setupViews()) renderGuarded(view, $(id), what, settings);
-  setupButtons();
-  on([rosterCounts], umasBadge);
-  on([cardsOwned], cardsBadge);
-  initFold();
   // the first veterans fold the setup panel (until a fold is chosen)
   if (vets.peek().length) sawVeterans();
   on([vets], (list) => {
     if (list.length) sawVeterans();
   });
-  mount('set-sum', <SetupSummary />, 'The setup summary');
   // a change of setup (targets, umas, cards, scenario, rank, Borrowed parent): the tree shows the new targets, and the
   // search runs again
   on([jobSetup], () => {
@@ -256,11 +289,7 @@ function initSettings() {
 }
 // ---------- start ----------
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
-try {
-  localStorage.removeItem('llp:loops');
-} catch {
-  // storage blocked: nothing was kept to remove
-}
+update('llp:loops', () => null); // (storage blocked: nothing was kept to remove)
 // a resize: the spark names on show shrink to fit their new width (details.ts fitSparks)
 addEventListener('resize', () => fitSparks(document));
 // a save of the veterans still due goes out when the page is hidden or left (a reload or close loses nothing)
@@ -268,54 +297,20 @@ addEventListener('pagehide', flushPersist);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushPersist();
 });
-loadData().then(
+hydrate(<App />, must(document.getElementById('app'), 'index.html has the root'));
+loadData(CAREER).then(
   async () => {
     initSettings();
     initPopover();
-    mount('pop-root', <CardPop home={null} />, 'The deck card panel'); // its slot in the results column
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
     dropStaleChosen();
-    // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
-    // places, so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new
-    // one is ready. While a pool veteran's G1 wins window or a skills prompt is open its edits are saved, and the search
-    // waits for it to close (veterans/pickers.ts `searchHeld`).
-    const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
-    let ids = idsOf(vets.peek());
-    on([vets, places, searchHeld], (list, _places, held) => {
-      if (held) return;
-      if (idsOf(list) !== ids) {
-        ids = idsOf(list);
-        batch(() => {
-          dropAnswer();
-          comparison.clear();
-        });
-      }
-      run.schedule();
-    });
+    followPool(run, comparison); // (an edit of the veterans or places searches again: current.ts)
     // an edit of Try a run's draft: the comparison on show is for the veteran before it (a roll or a new career clears
     // the figures with her, so it marks nothing)
     on([draft], analysisStore.draftChanged);
-    $('v-toggle').onclick = openPool;
-    $('v-export').onclick = openExport;
-    mount('tree', <Tree />, 'The lineage tree');
-    mount('lodds', <Verdict />, 'The odds');
-    mount('vets-root', <VetsDialog />, 'The veterans dialog');
-    mount('paste-root', <PasteDialog />, 'The Paste popup');
-    mount('vx-root', <ExportDialog />, 'The Export popup');
-    mount('node-root', <NodeDialog />, 'The node popup', nodeOpen);
-    mount('deck-root', <DeckDialog />, 'The deck popup');
-    mount('skill-root', <SkillDetails />, 'Skill Details');
-    mount('vet-editors', <VetEditors />, "The veterans' editors"); // (each editor has a guard of its own)
-    mount('add-pop', <AddList host={$('add-pop')} />, 'The "+" list');
-    mount('results', <Results />, 'The other careers');
-    mount('um-root', <UmButton />, "uma.moe's button");
-    mount('um-dlg-root', <UmamoeDialog />, "uma.moe's popup");
-    mount('save-root', <SavesPopup />, 'The Saves popup');
-    mount('sched-root', <ScheduleDialog />, 'The race schedule', schedOpened);
-    mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
-    mount('sim-root', <TryRunDialog comparison={comparison} />, 'Try a run');
+    ready.value = true;
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },
   (e: Error) => {

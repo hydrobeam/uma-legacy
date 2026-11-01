@@ -28,8 +28,8 @@ export default async function delivery(b) {
   );
   check(
     'the solver data and binary come from fingerprinted files',
-    urls.some((u) => /^\/assets\/engine-global\.[0-9a-f]{10}\.json$/.test(u)) &&
-      urls.some((u) => /^\/assets\/loopopt\.[0-9a-f]{10}\.wasm$/.test(u)),
+    urls.some((u) => /^\/assets\/engine-global-[\w-]{8}\.json$/.test(u)) &&
+      urls.some((u) => /^\/assets\/loopopt\.opt-[\w-]{8}\.wasm$/.test(u)),
     urls.filter((u) => u.startsWith('/assets/') && !u.includes('/img.')).join(' '),
   );
   // (cached a year like them, not in the page, which is cached 5 minutes)
@@ -37,7 +37,7 @@ export default async function delivery(b) {
   const workers = pg.workers().map((w) => new URL(w.url(), pg.url()).pathname);
   check(
     "the solver's worker script comes from a fingerprinted file",
-    workers.length === 1 && /^\/assets\/worker\.[0-9a-f]{10}\.js$/.test(workers[0]),
+    workers.length === 1 && /^\/assets\/worker-[\w-]{8}\.js$/.test(workers[0]),
     workers.join(' '),
   );
   check(

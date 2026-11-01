@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" class="game">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>uma-legacy</title>
+<meta name="description" content="Pick the next Independent Training career from the veterans you have: trainee, parents and deck">
+<meta name="theme-color" content="#e84898">
+<meta property="og:site_name" content="uma-legacy">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{site}}/">
+<meta property="og:title" content="uma-legacy">
+<meta property="og:description" content="Build a lineage from your veterans, or let the planner pick the parents, and get the odds and deck for every target skill.">
+<meta property="og:image" content="{{site}}/og.png">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://uma-legacy.pages.dev/">
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+{{> theme}}
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<header class="top">
+  <h1 class="brand" aria-label="uma-legacy career planner">{{{logo}}}<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
+  {{> nav current="career"}}
+</header>
+
+<div id="app"></div>
+
+<script type="module" src="/src/career/main.tsx"></script>

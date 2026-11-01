@@ -12,6 +12,7 @@
 // trainers too). Pages count from 0, 100 results each.
 import { careerTables } from './data.ts';
 import { must } from './must.ts';
+import { read, readJson, update, updateJson } from './storage.ts';
 import type { UmamoeListing } from './umadump.ts';
 
 const KEY_STORE = 'llp:umamoe-key',
@@ -22,37 +23,13 @@ const KEY_STORE = 'llp:umamoe-key',
   PAGE_SIZE = 100,
   FOLLOWABLE = 999;
 
-export function savedKey(): string {
-  try {
-    return localStorage.getItem(KEY_STORE) || '';
-  } catch {
-    return '';
-  }
-}
+// (storage blocked: no key kept, no full trainers, and what is set lasts for this visit only)
+export const savedKey = (): string => read(KEY_STORE) || '';
 // full trainers (1,000 followers: they can't be followed) included in the search: the player's choice, kept here
-export const fullTrainers = (): boolean => {
-  try {
-    return localStorage.getItem('llp:umamoe-full') === '1';
-  } catch {
-    return false;
-  }
-};
-export function setFullTrainers(on: boolean): void {
-  try {
-    localStorage.setItem('llp:umamoe-full', on ? '1' : '0');
-  } catch {
-    // storage blocked: the choice lasts for this visit only
-  }
-}
+export const fullTrainers = (): boolean => read('llp:umamoe-full') === '1';
+export const setFullTrainers = (on: boolean) => update('llp:umamoe-full', () => (on ? '1' : '0'));
 /** an empty key forgets it */
-export function saveKey(key: string): void {
-  try {
-    if (key) localStorage.setItem(KEY_STORE, key);
-    else localStorage.removeItem(KEY_STORE);
-  } catch {
-    // storage blocked: the key lasts for this visit only
-  }
-}
+export const saveKey = (key: string) => update(KEY_STORE, () => key || null);
 
 // the factor groups of each target skill group (careerTables().factors: factor group -> skill group); a target no white spark
 // carries (none in the data) is left out of the filters
@@ -95,27 +72,21 @@ function queryString({ factors, min, page, full = false }: Query): string {
   return p.toString();
 }
 
-function loadCache(): Record<string, CacheEntry> {
-  try {
-    const c = JSON.parse(localStorage.getItem(CACHE_STORE) ?? 'null'); // (nothing stored yet: null)
-    if (c && typeof c === 'object') return c;
-  } catch {
-    // storage blocked or the cache unreadable: no answers kept
-  }
-  return {};
-}
-// one answer added to the kept ones as stored now (another search or tab may have added one meanwhile)
-function storeCache(id: string, entry: CacheEntry): void {
-  const kept = Object.entries({ ...loadCache(), [id]: entry })
-    .filter(([, x]) => Date.now() - x.at < CACHE_MS)
-    .sort((a, b) => b[1].at - a[1].at)
-    .slice(0, CACHE_KEEP);
-  try {
-    localStorage.setItem(CACHE_STORE, JSON.stringify(Object.fromEntries(kept)));
-  } catch {
-    // storage blocked or full: the answer is not kept
-  }
-}
+// (storage blocked or the cache unreadable: no answers kept)
+const asCache = (c: unknown): Record<string, CacheEntry> =>
+  c && typeof c === 'object' ? (c as Record<string, CacheEntry>) : {};
+const loadCache = () => asCache(readJson(CACHE_STORE));
+// one answer added to the kept ones as stored now (another search or tab may have added one meanwhile); storage blocked
+// or full, the answer is not kept
+const storeCache = (id: string, entry: CacheEntry) =>
+  updateJson(CACHE_STORE, (stored) =>
+    Object.fromEntries(
+      Object.entries({ ...asCache(stored), [id]: entry })
+        .filter(([, x]) => Date.now() - x.at < CACHE_MS)
+        .sort((a, b) => b[1].at - a[1].at)
+        .slice(0, CACHE_KEEP),
+    ),
+  );
 
 // the reason a search failed, in words for the page; `badKey`: uma.moe refused the key itself
 export class SearchError extends Error {

@@ -1,70 +1,30 @@
+// @vitest-environment happy-dom
 // A career names its parents by their place in the pool its job was built from (legacy indices). While a pool
 // veteran's G1 wins window or a skills prompt holds the search, the pool can change under the answer on show (an uma.moe
 // listing lands, say), so the page reads a parent by the id her place held when the job was built (career/state.ts
 // `answerPool`), never by her place in the pool now: Try a run's draft (`draftOf`) and Use this (`takeCareer`) get the
 // right veterans, or, where one has left the pool, none. The targets' count chart sizes itself from the report it draws,
 // not from the settings, which can have changed under it (an answer stays on show, dimmed, until the next is ready).
-// node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs';
-import './fakedom.mjs';
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as esbuild from 'esbuild';
+import { test, vi } from 'vitest';
+import '@preact/signals';
+import { h, render } from 'preact';
+import * as vs from '../../src/veterans/store.ts';
+import { initStore, setTargets } from '../../src/settings.ts';
+import { dropAnswer, showAnswer } from '../../src/career/state.ts';
+import { takeCareer } from '../../src/career/options.ts';
+import { draftOf } from '../../src/career/analysis/view.tsx';
+import { legaciesOf } from '../../src/career/analysis/Details.tsx';
+import { legacyNumber, legacyVet } from '../../src/career/current.ts';
+import { Targets } from '../../src/career/view/Sections.tsx';
+import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.mjs';
 
-const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
-const built = await esbuild.build({
-  stdin: {
-    contents: `
-      import '@preact/signals';
-      export * as vs from './src/veterans/store.ts';
-      export { initStore, setTargets } from './src/settings.ts';
-      export { showAnswer, dropAnswer } from './src/career/state.ts';
-      export { takeCareer } from './src/career/options.ts';
-      export { draftOf } from './src/career/analysis/view.tsx';
-      export { legaciesOf } from './src/career/analysis/Details.tsx';
-      export { legacyNumber, legacyVet } from './src/career/current.ts';
-      export { Targets } from './src/career/view/Sections.tsx';
-      export { h, render } from 'preact';
-      export { loadData } from './src/data.ts';`,
-    resolveDir: WEBAPP,
-    loader: 'js',
-  },
-  bundle: true,
-  write: false,
-  format: 'esm',
-  jsx: 'automatic',
-  jsxImportSource: 'preact',
-  logLevel: 'silent',
-});
-// (imported from a file, so a failure's stack names its lines)
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-heldpool-')),
-  file = path.join(dir, 'heldpool.mjs');
-fs.writeFileSync(file, built.outputFiles[0].text);
-const page = await import(pathToFileURL(file).href);
-fs.rmSync(dir, { recursive: true });
-const {
-  vs,
-  initStore,
-  setTargets,
-  showAnswer,
-  dropAnswer,
-  takeCareer,
-  draftOf,
-  legaciesOf,
-  legacyNumber,
-  legacyVet,
-  Targets,
-  h,
-  render,
-  loadData,
-} = page;
-globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [] };
-await loadData();
+vi.mock('#page-data', () => import('./fakepage.mjs'));
+
+document.documentElement.className = 'game'; // (the planner pages' class)
+await loadData({ blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [] });
 initStore(() => memory());
 
 const node = (chara) => ({ chara, sparks: {}, pinks: {}, blues: {}, greens: {}, wins: [] });
@@ -137,11 +97,11 @@ test("the targets' count chart is the report's: a target removed since leaves it
     outcome_sets: [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125],
     expected: 1.5,
   };
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(Targets, { r }), root);
   await new Promise((resolve) => setTimeout(resolve, 0));
   // each column: its chance, then its count
-  const columns = root.querySelectorAll('span').filter((s) => /^tgc( all)?$/.test(s.attributes.class));
+  const columns = [...root.querySelectorAll('span')].filter((s) => /^tgc( all)?$/.test(s.className));
   assert.deepEqual(
     columns.map((s) => s.textContent),
     ['13%3/3', '38%2/3', '38%1/3', '13%0/3'],

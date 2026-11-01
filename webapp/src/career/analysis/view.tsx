@@ -6,7 +6,7 @@
 // made by the entry and handed in). Her card is ./Details.tsx. This module also makes her draft from a career
 // (`draftOf`, `rollOf`: the page's veterans and settings, for the machine's deps) and adds her to the veterans.
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { computed, signal } from '@preact/signals-core';
+import { computed, signal } from '@preact/signals';
 import { fmtIn } from '../../dom.ts';
 import { careerTables } from '../../data.ts';
 import { settings } from '../../settings.ts';

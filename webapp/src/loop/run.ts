@@ -8,8 +8,10 @@
 // answer with the same loops is not drawn again) and the finished search of it (`done`: an automatic search of the same
 // job shows that again instead of running). Everything outside, the engine, the clock, the timers, storage, the
 // settings, the store's transitions and what draws a result, comes in `deps`, made once by main.tsx: a model module, it
-// reads no store itself (static.mjs checks it).
+// reads no store itself (.dependency-cruiser.mjs checks it).
 import { ERA } from '../saved.ts';
+import { readJson, update } from '../storage.ts';
+import type { Backing } from '../storage.ts';
 import type { SettingsView } from '../settings.ts';
 import type { SolverAnswer, SolverRefusal } from '../solver.ts';
 import { blockedStatus, buildJob, doneText, jobKey } from './job.ts';
@@ -37,7 +39,7 @@ export interface LoopDeps {
   every: (run: () => void, ms: number) => Timer;
   clearTimer: (timer: Timer | undefined) => void;
   /** where the last finished result is kept */
-  storage: () => Pick<Storage, 'getItem' | 'setItem'>;
+  storage: () => Backing;
   /** the run store (state.ts): its transitions, and the run state read with .peek() */
   store: LoopStore;
   /** the settings now (read when a search or its pause starts) */
@@ -169,11 +171,8 @@ export function createRun(deps: LoopDeps) {
         result = draw(answer.r);
         status = doneText(answer.r, answer.ms);
         done = { key, status };
-        try {
-          deps.storage().setItem(lastResultKey(), JSON.stringify({ key, ms: answer.ms, r: answer.r }));
-        } catch {
-          // storage blocked or full: the result is not kept for a reload
-        }
+        // (the whole entry is this result's: storage blocked or full, it is not kept for a reload)
+        update(lastResultKey(), () => JSON.stringify({ key, ms: answer.ms, r: answer.r }), deps.storage);
       }
     } catch (e) {
       if (thisSearch !== searchId) return;
@@ -195,12 +194,8 @@ export function createRun(deps: LoopDeps) {
     }
     if (!('job' in built)) return null;
     const key = jobKey(built.job);
-    let kept: { key?: string; ms: number; r?: LoopReport | null } | null = null;
-    try {
-      kept = JSON.parse(deps.storage().getItem(lastResultKey()) || 'null');
-    } catch {
-      // storage blocked or the kept result unreadable: none to show
-    }
+    // (storage blocked or the kept result unreadable: none to show)
+    const kept = readJson(lastResultKey(), deps.storage) as { key?: string; ms: number; r?: LoopReport | null } | null;
     if (kept?.key === key && kept.r?.top && hasLoops(kept.r)) {
       shown = { key, r: JSON.stringify(kept.r.top), example: false };
       done = { key, status: doneText(kept.r, kept.ms) };

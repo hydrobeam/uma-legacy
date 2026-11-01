@@ -1,0 +1,10 @@
+{
+  "name": "legacy-loop-planner-runners",
+  "version": "1.0.0",
+  "private": true,
+  "description": "What ./build.sh runners alone needs besides the page's Playwright: three.js, which chibi.html draws the runner strips with (render.mjs serves it from here; that step installs it, the page's npm ci does not)",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "three": "0.170.0"
+  }
+}

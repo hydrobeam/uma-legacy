@@ -1,9 +1,9 @@
-// Render icons/favicon.svg to icons/_<n>.png (16, 32, 48, 180) in Chromium, for icons.py to pack. usage: node webapp/icons.mjs
+// Render public/favicon.svg to public/_<n>.png (16, 32, 48, 180) in Chromium, for icons.py to pack. usage: node webapp/icons.mjs
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-const ICONS = path.join(path.dirname(fileURLToPath(import.meta.url)), 'icons');
+const ICONS = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 process.env.PLAYWRIGHT_BROWSERS_PATH ??= fileURLToPath(new URL('../cache/ms-playwright', import.meta.url)); // the browsers (./build.sh browsers)
 let playwright;
 try {

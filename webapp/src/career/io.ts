@@ -1,6 +1,7 @@
 // Export and Import of the veterans: the page's own export, an uma.moe tree, the game's export. The Export and Paste
 // popups that show them are view/Io.tsx's; an import's outcome is said in the veterans dialog (poolState.ts `sayVets`).
-import { $ } from '../dom.ts';
+import { ERA_NAMES } from '../eras.ts';
+import type { Era } from '../eras.ts';
 import { ERA } from '../saved.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
@@ -82,7 +83,7 @@ export function importText(text: string): boolean {
   const own = ownExport(text);
   if (own) {
     if (own.era && own.era !== ERA) {
-      sayVets(`Not imported: that export is of the ${$('era-' + own.era)?.textContent} data.`);
+      sayVets(`Not imported: that export is of the ${ERA_NAMES[own.era as Era]} data.`);
       return true;
     }
     const damaged = own.veterans.filter((v) => !isVeteran(v)).length;

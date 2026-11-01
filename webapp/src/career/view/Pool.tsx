@@ -5,6 +5,7 @@
 // elsewhere redraws no pane). A card is drawn again only when her record, her number, her parent place or the targets
 // change (her card reads the chosen one through a computed of its own, so a selection draws two cards).
 import { useComputed } from '@preact/signals';
+import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { settings } from '../../settings.ts';
 import type { Target } from '../../settings.ts';
@@ -100,12 +101,14 @@ interface CardProps {
   /** her parent place (-1: none) */
   k: number;
   targets: readonly Target[];
+  /** the list she is in: where her card is found again to take the focus back */
+  grid: RefObject<HTMLDivElement | null>;
 }
 // her card, as the game's legacy list draws her: her number (an uma.moe one: her trainer) under her, a "Parent 1" tab
 // when she is one of the next career's parents. A click shows her beside the list (a wide dialog) or opens her popup
 // (her sparks editable, Yours / Guest, Remove). It reads the chosen one through its own computed, so it draws again
 // only when its props change or it is chosen or no longer chosen.
-function PoolCard({ v, i, k, targets }: CardProps) {
+function PoolCard({ v, i, k, targets, grid }: CardProps) {
   const sel = useComputed(() => selected.value === v.id).value,
     have = targets.filter((t) => (v.sparks as Record<number, number>)?.[t.group]).length,
     id = v.id;
@@ -120,7 +123,8 @@ function PoolCard({ v, i, k, targets }: CardProps) {
       label={`Veteran #${i + 1}: ${umaName(v.chara)}, ${have} of ${targets.length} target skills. Her sparks`}
       tab={k >= 0 ? `Parent ${k + 1}` : undefined}
       onClick={() => {
-        if (!wideVets()) openNode({ kind: 'v', id }, () => document.getElementById(`vet-${idxOf(id)}`)?.focus());
+        if (!wideVets())
+          openNode({ kind: 'v', id }, () => grid.current?.querySelector<HTMLElement>(`#vet-${idxOf(id)}`)?.focus());
         else if (selected.peek() !== id) choose(id);
       }}
     />
@@ -171,7 +175,7 @@ function PoolList({ t }: { t: Tab }) {
                   </p>
                 ),
                 ...rows.map(([v, i]) => (
-                  <PoolCard key={v.id} v={v} i={i} k={parents.indexOf(v.id)} targets={targets} />
+                  <PoolCard key={v.id} v={v} i={i} k={parents.indexOf(v.id)} targets={targets} grid={grid} />
                 )),
               ]
             : [],
