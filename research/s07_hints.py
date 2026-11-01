@@ -77,9 +77,8 @@ class GameData:
     cards: dict[int, dict[str, Any]]  # web_cards.json by card id
 
 
+@functools.cache
 def _game() -> GameData:
-    if "g" in common._cache:
-        return common._cache["g"]
     db = common.mdb()
 
     def query(sql: str) -> list[tuple]:
@@ -106,8 +105,7 @@ def _game() -> GameData:
     for cid, gain_type, v in query("select support_card_id, hint_gain_type, hint_value_1 from single_mode_hint_gain"):
         if gain_type == 0:
             hint_pool[cid].append(norm(skill_name[v]))
-    g = common._cache["g"] = GameData(level_cap, effects, card_info, unique, hint_pool, common.cards())
-    return g
+    return GameData(level_cap, effects, card_info, unique, hint_pool, common.cards())
 
 
 def effect(g: GameData, cid: int, typ: int, level: int) -> int:
@@ -262,11 +260,9 @@ def draws_of(x: CardRun, skill: str) -> tuple[int, int]:
     return 1, 1
 
 
+@functools.cache
 def build() -> Data:
     """card-runs and pool-skill rows of every record"""
-    key = "obs"
-    if key in common._cache:
-        return common._cache[key]
     obs = card_runs(_game())
     ci, skn, kk, kind, cat = [], [], [], [], []
     for i, x in enumerate(obs):
@@ -307,7 +303,6 @@ def build() -> Data:
         seq=per_card_run("seq", int),
         N=len(obs),
     )
-    common._cache[key] = D
     return D
 
 
@@ -322,7 +317,7 @@ def cap_draws(hinc: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------- the draw model
-@functools.lru_cache(None)
+@functools.cache
 def miss(k: int, n: int, t: int, cap: int, extra: int = 0) -> float:
     """P(none of k given pool skills drawn) in t draws from an initial pool of n skills, each draw uniform over skills still below Lv 5; a skill
     leaves after `cap` draws (pkg/loopopt/src/deck/hints.rs miss_draws). `extra` options that never leave (a stat
