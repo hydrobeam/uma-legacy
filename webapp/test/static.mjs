@@ -10,7 +10,8 @@
 //   querySelector/closest of '#id') exists on each page whose bundle holds the module (esbuild's metafile), in its
 //   template with the panels filled in, in build.py's own markup or made by one of the bundle's modules. A module that
 //   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
-//   purpose is listed in MAY_BE_MISSING, per page, with why.
+//   purpose is listed in MAY_BE_MISSING, per page, with why An exemption whose id the page has, or that no module of the page looks
+//   up, fails too.
 // - store reads: a logic module (the types, io and model layers of LAYERS) imports no store's values: it takes the
 //   settings and records as arguments (`import type` only), so nothing it reads can subscribe an effect.
 // - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
@@ -107,14 +108,13 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // where the element may be missing is listed in MAY_BE_MISSING, under each page (its bundle's entry) where it may be,
 // with why: an exemption on one page leaves the other page's lookup checked.
 const ON_EITHER_PAGE = {
-  'data-example':
-    'data.js probes it: the data comes in self.__LLP_DATA (build.py), a script element only in old builds',
   'o-skills-n': 'targets.js: the Target skills button, in the targets panel, which neither page uses now',
 };
 const MAY_BE_MISSING = {
   'src/main.js': ON_EITHER_PAGE,
   'src/career.js': {
     ...ON_EITHER_PAGE,
+    'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
     'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
     'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
   },
@@ -156,15 +156,25 @@ for (const [entry, template] of Object.entries(PAGES)) {
     ...idsIn(read('build.py')),
     ...modules.flatMap((f) => idsIn(srcText[f])),
   ]);
+  const lookedHere = new Set();
   for (const file of modules) {
     const text = srcText[file];
     for (const m of [...text.matchAll(LOOKUP)]
       .map((m) => m[2])
       .concat([...text.matchAll(SELECTOR_ID)].map((m) => m[2]))) {
       looked.add(m);
+      lookedHere.add(m);
       const message = `${file}: looks up #${m}, which ${template} (with its panels) and its bundle's modules don't have`;
       if (!ids.has(m) && !(m in MAY_BE_MISSING[entry]) && !problems.includes(message)) problems.push(message);
     }
+  }
+  // an exemption holds only while its id is missing from the page and a module of the page looks it up: one whose id
+  // the page now has would hide the lookups the code guards with it (cards.js's c-top guard, then #c-peruma)
+  for (const id of Object.keys(MAY_BE_MISSING[entry])) {
+    if (ids.has(id))
+      problems.push(`MAY_BE_MISSING: #${id} is exempt on ${entry}'s page, which has it: drop the exemption`);
+    if (!lookedHere.has(id))
+      problems.push(`MAY_BE_MISSING: #${id} is exempt on ${entry}'s page, where no module looks it up: drop it`);
   }
 }
 

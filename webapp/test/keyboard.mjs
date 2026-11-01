@@ -28,8 +28,8 @@ const clickOpens = async (pg, button, id) => {
 
 // Dialog (modal): Enter on its button opens it with the focus inside; Escape closes it and the focus returns to the
 // button (`back`: the element it returns to, when another stands in for the button). For a dialog opened by
-// showModal() both of the last two are the browser's: Escape fails only when the dialog is opened some other way (Odds
-// opened by show() failed it), and the focus returns to the button with the page's own close handler removed (Odds,
+// showModal() both of the last two are the browser's: Escape fails when the dialog is not modal (Odds opened by show()
+// failed it) or a page key handler takes the Escape first (sortmenu.js's capture-phase keydown, say), and the focus returns to the button with the page's own close handler removed (Odds,
 // Deck and the trainee's popup passed without theirs in Chromium), so that clause fails when a page handler moves the
 // focus away (Deck's close focusing another button failed it), not when one is missing.
 async function dialogKeys(pg, name, button, id, back = button) {
