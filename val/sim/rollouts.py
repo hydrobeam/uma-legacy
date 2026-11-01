@@ -37,7 +37,7 @@ from scipy.stats import t as student_t
 
 SIM_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(SIM_DIR))  # val/, for the shared solver module
-from solver import PLAN_DIR, solve, with_next, with_part
+from solver import PLAN_DIR, plan_rows, solve, with_next, with_part
 
 DEFAULT_POOLS = ["p10", "p11", "boot_mob", "p16"]
 
@@ -59,7 +59,7 @@ def rollouts(binary, out_dir, pool, settings, executor):
     era = era_of(pool)
     job = json.load(open(os.path.join(PLAN_DIR, pool + ".json")))
     plan = solve(binary, era, with_next(job), os.path.join(out_dir, f"{pool}_plan"))["next"]
-    rows = sorted((o for o in plan["options"] if o.get("score") is not None), key=lambda o: -o["score"])
+    rows = sorted((o for o in plan_rows(plan) if o.get("score") is not None), key=lambda o: -o["score"])
     rows = rows[: settings["rows"]]
     simulate = {
         "policy": "greedy",

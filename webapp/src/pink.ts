@@ -20,10 +20,10 @@ interface PinkStart {
 /** What the draw reads of the report's `aptitudes` (the solver's `Aptitudes`): per aptitude the pink spark's group, and
  *  her start, or, with a veteran before her result is known among her legacies, each start with its chance (a job's
  *  own veterans always have one: the page is never sent several) */
-export type PinkAptitudes = { pink_gen: readonly { group: number }[] } & (
-  | PinkStart
-  | { outcomes: readonly (PinkStart & { p: number })[] }
-);
+export type PinkAptitudes = {
+  pink_gen: readonly { group: number }[];
+  start: ({ kind: 'known' } & PinkStart) | { kind: 'outcomes'; outcomes: readonly { p: number; outcome: PinkStart }[] };
+};
 /** The pink she draws (group -> stars; empty when none) and her end grades (null without `aptitudes`). */
 export interface PinkDraw {
   pinks: Record<number, number>;
@@ -34,7 +34,7 @@ export function drawPink(ap: PinkAptitudes | null | undefined, rnd: () => number
   // the random draws keep this order (the suite's seeded check replays it): with several starts, one for the start (by
   // their chances, as the solver's `draw_pink`); every fire chance per inspiration in `fire` order, then the aptitude,
   // then her stars
-  const { start, fire } = 'outcomes' in ap ? drawnStart(ap.outcomes, rnd()) : ap;
+  const { start, fire } = ap.start.kind === 'outcomes' ? drawnStart(ap.start.outcomes, rnd()) : ap.start;
   const grades = start.slice();
   for (let inspiration = 0; inspiration < INSPIRATIONS; inspiration++) {
     for (const f of fire) if (rnd() < f.p) grades[f.apt] = Math.min(GRADE_S, gradeAt(grades, f.apt) + 1);
@@ -49,11 +49,11 @@ export function drawPink(ap: PinkAptitudes | null | undefined, rnd: () => number
   return { pinks: { [pink.group]: stars }, apt: grades };
 }
 // the start `u` (uniform in [0, 1)) falls in, by the starts' chances in order; the last where rounding leaves u past them
-function drawnStart(outcomes: readonly (PinkStart & { p: number })[], u: number): PinkStart {
+function drawnStart(outcomes: readonly { p: number; outcome: PinkStart }[], u: number): PinkStart {
   let remaining = u;
-  for (const outcome of outcomes) {
-    remaining -= outcome.p;
+  for (const { p, outcome } of outcomes) {
+    remaining -= p;
     if (remaining < 0) return outcome;
   }
-  return must(outcomes[outcomes.length - 1], 'a career has a start');
+  return must(outcomes[outcomes.length - 1], 'a career has a start').outcome;
 }

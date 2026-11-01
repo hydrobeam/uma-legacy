@@ -52,14 +52,18 @@ function fakeEngine() {
 }
 
 // the reports: a search's best careers, a plan (a plan job's search: no career reports, its plan in `next`), a check
-// step (a kept plan's follow-up: its `next` alone)
+// step (a kept plan's follow-up, `kind` "check": the check alone)
 const career = (name) => ({ trainee: { id: 1001, name }, parents: [0, 1], career: name, p_all: 0.01 });
-const searched = (...names) => ({ results: names.map(career), candidates: 120 });
+const searched = (...names) => ({ kind: 'search', results: names.map(career), candidates: 120 });
 const planned = (pick) => ({
+  kind: 'search',
   results: [],
-  next: { choice: career(pick), options: [career(pick)], v0: 9, outcomes: { career: pick } },
+  next: { kind: 'plan', choice: career(pick), options: [career(pick)], v0: 9, outcomes: { career: pick } },
 });
-const check = (pending, pairs = null, plan = 'pick') => ({ next: { robust: { plan, pending, stable: true, pairs } } });
+const check = (pending, pairs = null, plan = 'pick') => ({
+  kind: 'check',
+  robust: { kind: 'report', plan, pending, stable: true, pairs },
+});
 
 let pages = 0;
 // a page: its own job (a target no other page's has, so no answer kept by an earlier test is taken), the machine on
@@ -227,7 +231,7 @@ test('a Blocked job ends the run unsearched, with its message; a thrown job erro
 test('a failure clears the analysis; a Blocked edit under a live ticker ends it', async () => {
   const p = page();
   await edited(p);
-  p.engine.answer(0, { error: 'bad' });
+  p.engine.answer(0, { kind: 'refusal', error: 'bad' });
   await flush();
   assert.equal(p.seen.cleared, 1);
   p.job.skills.targets.push({ group: 990 });
@@ -242,7 +246,7 @@ test('a failed plan: not kept, not saved, and the same job runs again', async ()
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
-  p.engine.answer(1, { results: [], next: { error: 'no option' } });
+  p.engine.answer(1, { kind: 'search', results: [], next: { kind: 'refusal', error: 'no option' } });
   await flush();
   assert.equal(answer.peek().planState.state, 'error');
   assert.equal(p.seen.saved.length, 0, 'not saved');
@@ -275,7 +279,7 @@ test('an undo onto a kept answer shows it at once, with her analysis; one whose 
   await edited(q);
   q.engine.answer(0, searched('best'));
   await flush();
-  q.engine.answer(1, { results: [], next: { error: 'no option' } });
+  q.engine.answer(1, { kind: 'search', results: [], next: { kind: 'refusal', error: 'no option' } });
   await flush();
   q.job.skills.targets.push({ group: 992 });
   await edited(q);
@@ -294,7 +298,7 @@ test('the engine failing or refusing: the error is shown and the run ends', asyn
   assert.equal(runView.peek().searching, false);
   p.job.skills.targets.push({ group: 904 });
   await edited(p);
-  p.engine.answer(1, { error: 'bad job' });
+  p.engine.answer(1, { kind: 'refusal', error: 'bad job' });
   await flush();
   assert.equal(answer.peek().status.text, 'Not searched: bad job');
   // the same job again (Search, or an edit and its undoing): a failed answer does not stand, so it runs again
@@ -472,7 +476,7 @@ test("Compare's kept plan: the plan phase takes it and sends no plan job", async
   // its check runs, and each step reaches the kept plan too: a run that takes it again finds the check as far as it ran
   p.engine.answer(1, check(1, null, 'kept'));
   await flush();
-  assert.deepEqual(store.keptPlan(planKey(jp)).r.robust, check(1, null, 'kept').next.robust);
+  assert.deepEqual(store.keptPlan(planKey(jp)).r.robust, check(1, null, 'kept').robust);
 });
 
 test('a trainee chosen by hand: no plan phase, the best odds shown', async () => {
@@ -491,7 +495,7 @@ test("Compare's kept plan with its check cut short: the run that takes it resume
   const p = page();
   const jp = { ...p.job, career: { ...p.job.career, next: {}, no_reports: true } },
     plan = planned('kept').next;
-  store.keepComparisonPlan(jp, { ...plan, robust: check(1, null, 'kept').next.robust }, 7);
+  store.keepComparisonPlan(jp, { ...plan, robust: check(1, null, 'kept').robust }, 7);
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
@@ -500,7 +504,7 @@ test("Compare's kept plan with its check cut short: the run that takes it resume
   assert.equal(p.engine.jobs[1].background, true);
   // its check done, or unavailable: nothing more is sent
   for (const r of [
-    { ...plan, robust: check(0, { trainees: [] }, 'kept').next.robust },
+    { ...plan, robust: check(0, { trainees: [] }, 'kept').robust },
     { ...plan, check_unavailable: true },
   ]) {
     const q = page();

@@ -9,9 +9,33 @@ import tempfile
 import unittest
 
 
+# a plan option's career fields, which the solver writes under the option's `report` (its place in the plan beside it)
+REPORT_FIELDS = ("trainee", "career", "parents", "p_all")
+
+
+def option(row):
+    """the plan option of a row read as one record (val/solver.py `plan_rows` reads it back)"""
+    return {
+        "report": {key: row[key] for key in REPORT_FIELDS if key in row},
+        **{key: value for key, value in row.items() if key not in REPORT_FIELDS},
+    }
+
+
 def plan_job(skills=None, career=None):
     """a val/plan job file with these parts (each {} unless given)"""
     return {"files": {}, "job": {"cmd": "career", "skills": skills or {}, "career": career or {}}}
+
+
+# the fixture plan's one row, as a reader reads it
+ROW = {
+    "trainee": {"name": "A", "id": 1},
+    "role": "plan",
+    "looped": False,
+    "career": "1:0,1:x/y/0",
+    "parents": [0, 1],
+    "p_all": 0.1,
+    "score": 0.0,
+}
 
 
 class ValidationExitTests(unittest.TestCase):
@@ -38,17 +62,7 @@ class ValidationExitTests(unittest.TestCase):
                 "members": [
                     {"trainee": "A", "real": False, "building_careers": 0, "careers": 10.0, "parents": [0, 1], "p": 0.1}
                 ],
-                "options": [
-                    {
-                        "trainee": {"name": "A", "id": 1},
-                        "role": "plan",
-                        "looped": False,
-                        "career": "1:0,1:x/y/0",
-                        "parents": [0, 1],
-                        "p_all": 0.1,
-                        "score": 0.0,
-                    }
-                ],
+                "options": [option(ROW)],
                 "v0": 10.0,
                 "v0_plan": {"a": "A", "b": "B", "c": "C", "careers": [10.0, 0.0, 0.0]},
             },
@@ -217,7 +231,10 @@ class ValidationExitTests(unittest.TestCase):
         self.assertFalse((self.plan / "trial_proxy__tiny.out").exists())
 
     def first_step_run(self, output=None, job=None, **plan):
-        """planval on the fixture with these `next` fields replaced (or a whole output), and this job"""
+        """planval on the fixture with these `next` fields replaced (or a whole output), and this job; `options` as rows
+        read as one record"""
+        if "options" in plan:
+            plan["options"] = [option(row) for row in plan["options"]]
         output = output or {**self.output, "next": {**self.output["next"], **plan}}
         self.write(self.plan / "ref__tiny.out", output)
         self.write(self.plan / "tiny.json", job or plan_job())
@@ -229,7 +246,7 @@ class ValidationExitTests(unittest.TestCase):
         self.assertIn(says, result.stdout)
 
     def test_plan_first_step_fails_below_the_floor_only(self):
-        row = self.output["next"]["options"][0]
+        row = ROW
         # (V's own first step scoring -0.5 fails; +0.5 is reported as V not its own fixed point)
         for score, fails, says in ((-0.5, True, "BELOW"), (0.5, False, "not its own fixed point")):
             with self.subTest(score=score):
@@ -238,7 +255,7 @@ class ValidationExitTests(unittest.TestCase):
                 self.assertIn("own full-veteran term 1.0000", result.stdout)
 
     def test_plan_first_step_fails_an_unpriced_ambiguous_or_masked_step(self):
-        row = self.output["next"]["options"][0]
+        row = ROW
         other = {**row, "career": "1:2,3:x/y/0", "parents": [2, 3], "score": 0.5}
         for options, says in (
             ([], "no row of hers"),

@@ -62,7 +62,7 @@ function Skill({
   const ahead = got === undefined; // (a career not run yet: chances only)
   // where it comes from, each with its chance (a source under half a percent isn't listed)
   const sources: { label: string; chance: number }[] = [];
-  if (b.scenario) sources.push({ label: 'The scenario', chance: 1 });
+  if (b.kind === 'scenario') sources.push({ label: 'The scenario', chance: 1 });
   if (b.outfit === 2) sources.push({ label: 'Her own skill (gold)', chance: 1 });
   else if (b.outfit === 1) sources.push({ label: 'Her own skill', chance: 1 });
   // the deck's gold, else its white (`deck_white` is given no gold): the two add up to its chance of a hint, `deckHint`

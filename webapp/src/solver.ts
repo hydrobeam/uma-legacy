@@ -3,29 +3,29 @@
 // the page builds and reads them (loop/job.ts `DeckJob` and loop/types.ts `LoopReport` for `deck`; career/job.ts `CareerJob` and
 // `CareerSearch` for `career`); here, what the worker and the engine read. The solver's side is
 // pkg/loopopt/src/web.rs (`handle`: the commands).
-import type { Refusal, Request, ScheduleCell as SolverCell, ScheduleRow as SolverRow, StateOut } from './gen/solver.ts';
+import type { Request, ScheduleCell as SolverCell, ScheduleRow as SolverRow, StateOut } from './gen/solver.ts';
 import type { DeepReadonly } from './store.ts';
 
 /** A job: its command and that command's fields (the solver's `Request`, src/request.rs in pkg/loopopt: generated),
  *  read-only (the engine posts a copy; a career job shares the veterans store's arrays) */
 export type SolverJob = DeepReadonly<Request>;
-/** A reply as the worker reads it: a report, or a refusal (`error`). */
+/** A reply as the worker reads it: every reply says what it is (`kind`); a refusal says why (`error`). */
 export interface SolverReply {
+  kind: string;
   error?: string;
 }
 
-/** A command's report: its own shape (the caller of `run` names it, R). It has no `error`: a reply with one is a
- * refusal. */
-export type SolverReport = object;
+/** A command's report: its own shape (the caller of `run` names it, R), its `kind` never "refusal". */
+export type SolverReport = { kind: string };
 
 /** A refusal: why the job was not done (web.rs `handle` and each command's checks), or, from the engine, that the
- * worker stopped with an error. Only a refusal carries `error`. */
-export type SolverRefusal = Refusal;
+ * worker stopped with an error. */
+export type SolverRefusal = { kind: 'refusal'; error: string };
 
 /** `state_out`'s report: what the worker keeps of the career planner's work (career/state.rs `state_out`) */
-export type StateOutReply = StateOut;
+export type StateOutReply = StateOut & { kind: 'state_out' };
 
-/** The answer to a job: the solver's report R or a refusal (`'error' in r` tells them apart), and its time in ms. */
+/** The answer to a job: the solver's report R or a refusal (`r.kind` tells them apart), and its time in ms. */
 export interface SolverAnswer<R extends SolverReport = SolverReport> {
   r: R | SolverRefusal;
   ms: number;

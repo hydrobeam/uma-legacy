@@ -44,29 +44,30 @@ export type CareerReport = Omit<Gen.CareerReport, 'trainee' | 'targets'> & {
 export type { CareerScheduleRow, CareerSlot, PairSearch } from '../gen/solver.ts';
 /** A target of a career, its buying read as one record */
 export type CareerTarget = Omit<Gen.CareerTarget, 'buy'> & { buy: CareerBuy };
-/** How she buys a target and lands it, as the page reads it: either of the solver's `TargetBuy`s (an uncertain
- *  target's, with its sources; a scenario gold's, with `scenario`) as one record, each field absent where it does not
- *  apply (either is assignable to it) */
-export type CareerBuy = Pick<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'> &
-  Partial<Omit<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'>> &
-  Partial<Pick<Gen.ScenarioBuy, 'scenario'>>;
-/** A plan option's own fields (career/plan/output.rs), and the pair search's recommendation's, which the page sets on
- *  the row it makes of it (`pairSearchRow`) */
-export type PlanOptionFields = Omit<Gen.PlanOption, keyof Gen.CareerReport> & {
+/** How she buys a target and lands it, as the page reads it: either of the solver's `TargetBuy`s (`kind` "sourced", an
+ *  uncertain target's, with its sources; "scenario", a scenario gold's) as one record, each field absent where it does
+ *  not apply (either is assignable to it) */
+export type CareerBuy = Pick<Gen.TargetBuy, 'kind' | 'gold' | 'white' | 'land_gold' | 'land_white'> &
+  Partial<Omit<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'>>;
+/** A plan option's own fields (career/plan/output.rs: its place in the plan, beside its career, `report`), and the
+ *  pair search's recommendation's, which the page sets on the row it makes of it (`pairSearchRow`) */
+export type PlanOptionFields = Omit<Gen.PlanOption, 'report'> & {
   /** the pair search's recommendation (`pairSearchRow`): run as it is, its deck kept */
   pair_search?: boolean;
   /** its Saves per run in the pair search */
   pair_search_score?: number | null | undefined;
 };
-/** One career of the plan's table: a career report with its place in the plan. */
+/** One career of the plan's table, as the table reads it: its career report's fields beside its place in the plan
+ *  (`current.ts` `runJob` makes these rows of the solver's options) */
 export type PlanOption = CareerReport & PlanOptionFields;
 /** A row of the Career choices table: a plan option, or a career of the search (without the plan's fields). */
 export type OptionRow = CareerReport & Partial<PlanOptionFields>;
 /** The robustness check's report on the pick (plan/robust.rs), as the page keeps it from its follow-up jobs */
-export type PlanCheck = Gen.CheckReport;
+export type PlanCheck = Extract<Gen.CheckReply, { kind: 'report' }>;
 /** The plan (the solver's `next`, career/plan/output.rs), with what the page sets on it: its check (`checkPhase`), that
  *  the check could not finish, why its searches proved nothing (`unprovenWhy`), the plan job's named assumptions */
 export type PlanReport = Omit<Gen.Plan, 'choice' | 'options' | 'robust'> & {
+  kind: 'plan';
   /** the plan's pick */
   choice: CareerReport | null;
   /** by score, best first */
@@ -89,14 +90,17 @@ export type PlanFit = Gen.Plan['fit'];
 /** The career search's report (career/run.rs `search_output`), its careers as the page shows them, its plan (`next`)
  *  or the plan's refusal; `pending`: set by the page, a quick comparison's stand-in while the search runs */
 export type CareerSearch = Omit<Gen.CareerSearch, 'results' | 'next'> & {
+  kind: 'search';
   results: CareerReport[];
-  next?: PlanReport | Gen.Refusal;
+  next?: PlanReport | PlanRefusal;
   pending?: boolean;
 };
-/** What a career job the page sends is answered with: its search (with its plan when it asked for one), or, for a plan
- *  job's roll or check that the worker answers from the plan it keeps, that alone (career/reply.rs `PlanFollowUp`); a
- *  refusal is a SolverRefusal */
-export type CareerReply = CareerSearch | Gen.PlanFollowUp;
+/** Why the plan job made no plan (`next` of kind "refusal") */
+export type PlanRefusal = Extract<Gen.PlanReply, { kind: 'refusal' }>;
+/** What a career job the page sends is answered with, by `kind`: its search (with its plan when it asked for one), or,
+ *  for a plan job's roll or check that the worker answers from the plan it keeps, that alone (career/reply.rs
+ *  `CareerReply`); a refusal is a SolverRefusal */
+export type CareerReply = CareerSearch | Extract<Gen.CareerReply, { kind: 'roll' | 'check' }>;
 // ---------- the job ----------
 /** A status line's button: its label and what it does. */
 export interface StatusAct {
@@ -252,5 +256,5 @@ export function pairBlock(
   if (v.borrowed && borrowChoice(s) !== 'allow') return 'setting';
   return '';
 }
-/** The solver's answer to a career job: its CareerReply, or a refusal (`'error' in m.r`). */
+/** The solver's answer to a career job: its CareerReply, or a refusal (`m.r.kind`). */
 export type CareerAnswer = SolverAnswer<CareerReply>;

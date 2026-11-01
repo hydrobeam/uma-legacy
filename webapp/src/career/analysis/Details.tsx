@@ -90,7 +90,7 @@ export function Details({
 }) {
   const { d, r } = spec,
     outfit = r.trainee.outfits[0]?.label || null,
-    apt = d.apt || (r.aptitudes && 'start' in r.aptitudes ? r.aptitudes.start : null);
+    apt = d.apt || (r.aptitudes?.start.kind === 'known' ? r.aptitudes.start.start : null);
   return (
     <div class="ud">
       <div class="udtop">

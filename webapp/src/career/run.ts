@@ -166,9 +166,9 @@ export async function checkPhase(deps: CheckDeps, planned: DeepReadonly<PlanDone
     }
     if (!current()) return;
     // (a kill loses the check: the stored state keeps no check, so the next worker could not run it; REPORT N7)
-    const check = m && !('error' in m.r) ? checkIn(m.r) : undefined;
-    // (no check: the worker kept no plan to check, `unavailable`, or refused, `error`)
-    if (!check || 'unavailable' in check || 'error' in check) {
+    const check = m && m.r.kind !== 'refusal' ? checkIn(m.r) : undefined;
+    // (no check: the worker kept no plan to check, `unavailable`, or refused)
+    if (check?.kind !== 'report') {
       deps.checked(checkUnavailable(planned.id));
       deps.redraw();
       return;
@@ -299,7 +299,7 @@ export function createRun(deps: RunDeps) {
     try {
       const m = await engine.run(job);
       if (runId !== id) return;
-      if ('error' in m.r) fail(`Not searched: ${m.r.error}`);
+      if (m.r.kind === 'refusal') fail(`Not searched: ${m.r.error}`);
       else {
         const r = must(searchIn(m.r), 'a career job without a roll or check is answered with its search'),
           result = { r, ms: m.ms },
@@ -386,12 +386,12 @@ export function createRun(deps: RunDeps) {
           });
       if (runId !== id) return null;
       // (the job's refusal, or the plan's: `error`)
-      const refusal = 'r' in m2 && 'error' in m2.r ? m2.r.error : undefined,
-        x = 'plan' in m2 ? m2.plan : 'error' in m2.r ? undefined : planIn(m2.r);
+      const refusal = 'r' in m2 && m2.r.kind === 'refusal' ? m2.r.error : undefined,
+        x = 'plan' in m2 ? m2.plan : m2.r.kind === 'refusal' ? undefined : planIn(m2.r);
       planned =
-        x && !('error' in x) && x.options?.length
+        x?.kind === 'plan' && x.options?.length
           ? { state: 'done', id: store.newPlanId(), r: x as PlanReport, ms: m2.ms, job: jp }
-          : { state: 'error', text: refusal || (x && 'error' in x ? x.error : undefined) || 'no option found.' };
+          : { state: 'error', text: refusal || (x?.kind === 'refusal' ? x.error : undefined) || 'no option found.' };
     } catch (e) {
       if (runId !== id) return null;
       planned = { state: 'error', text: (e as Error).message };

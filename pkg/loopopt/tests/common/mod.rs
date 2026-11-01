@@ -115,6 +115,16 @@ pub fn val_job(path: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(&full).expect("a val job")).expect("a JSON job")
 }
 
+/// A plan job's roll: answered from the plan the worker keeps (`kind` "roll"), else the plan's own (`next.roll`).
+pub fn roll_of(output: &Value) -> &Value {
+    if output["kind"] == "roll" { &output["roll"] } else { &output["next"]["roll"] }
+}
+
+/// A plan job's check, likewise (`kind` "check", else `next.robust`).
+pub fn check_of(output: &Value) -> &Value {
+    if output["kind"] == "check" { &output["robust"] } else { &output["next"]["robust"] }
+}
+
 /// `value` without the keys `drop` names, at any depth.
 fn without(value: &Value, drop: &impl Fn(&str) -> bool) -> Value {
     match value {

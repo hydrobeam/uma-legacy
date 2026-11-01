@@ -368,9 +368,9 @@ pub(crate) fn pair_decompose(
     Some(rows)
 }
 
-/// One requested (chara, pair) of the decomposition (`next.pair_decompose`), or why it has none.
+/// One requested (chara, pair) of the decomposition (`next.pair_decompose`), or why it has none, by `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum PairDecomposition {
     Done(Decomposed),
     Refusal(Refusal),

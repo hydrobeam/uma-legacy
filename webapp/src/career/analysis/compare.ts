@@ -23,8 +23,8 @@ import { PLAN_NEXT } from '../run.ts';
 // a plan job's plan, or null where it made none (the job refused, or the plan did: a plan's refusal reads as none, as
 // every reader below treats it)
 const planMade = (m: Answer): PlanReport | null => {
-  const plan = 'error' in m.r ? undefined : planIn(m.r);
-  return plan && !('error' in plan) ? plan : null;
+  const plan = m.r.kind === 'refusal' ? undefined : planIn(m.r);
+  return plan?.kind === 'plan' ? plan : null;
 };
 
 /** what the comparison needs of the page, built once by the entry (career/main.tsx) */
@@ -175,7 +175,7 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
       open = !shownNow.job.career.trainees.length && !shownNow.job.career.fix.length,
       cached = baselineCache?.key === key ? baselineCache.result : null;
     const before = cached ? { results: [cached] } : open ? shownNow.r : (await engine.run(base)).r;
-    if ('error' in before) throw new Error(before.error);
+    if ('kind' in before && before.kind === 'refusal') throw new Error(before.error);
     const [best] = ('results' in before ? before.results : undefined) ?? [];
     if (!best) throw new Error('No career found in the current roster.');
     baselineCache = { key, result: best };
@@ -225,8 +225,8 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
       } as CareerJob);
       if (gone()) return;
       // (no saving from the plan: the exact comparison answers instead)
-      const roll = 'error' in m.r ? undefined : rollIn(m.r),
-        saving = roll && 'y' in roll ? roll.y : undefined;
+      const roll = m.r.kind === 'refusal' ? undefined : rollIn(m.r),
+        saving = roll?.kind === 'answer' && roll.outcome.kind === 'saving' ? roll.outcome.y : undefined;
       if (typeof saving !== 'number') {
         batch(() => {
           store.quickHandsOver();
@@ -259,7 +259,7 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
     try {
       const m = await engine.run(withHer(base, legaciesWithHer, herIndex));
       if (gone()) return;
-      if ('error' in m.r) throw new Error(m.r.error);
+      if (m.r.kind === 'refusal') throw new Error(m.r.error);
       const search = searchIn(m.r);
       if (!search?.results?.length) throw new Error('No next career found.');
       // a zero is checked by the exact comparison too (the plan's routes are not every route a replan can take), shown
@@ -313,7 +313,7 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
         herIndex = base.career.legacies.length;
       const m = await engine.run(withHer(base, legaciesWithHer, herIndex));
       if (gone()) return;
-      if ('error' in m.r) throw new Error(m.r.error);
+      if (m.r.kind === 'refusal') throw new Error(m.r.error);
       const search = searchIn(m.r);
       if (!search?.results?.length) throw new Error('No next career found.');
       const full = page.isFull(draftNow());

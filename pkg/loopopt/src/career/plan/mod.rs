@@ -715,7 +715,7 @@ pub(crate) fn index_rule<'data>(
     } else if cfg!(target_arch = "wasm32") {
         Some(LiftAuditReply::Refusal(not_in_browser("audit_lifts")))
     } else {
-        Some(LiftAuditReply::Rows(audit::audit_lifts(&mut sim, &context, &rows, &scores, &mut deck_values)))
+        Some(LiftAuditReply::Rows { rows: audit::audit_lifts(&mut sim, &context, &rows, &scores, &mut deck_values) })
     };
     let pair_sweep = sweep::pair_sweep(&mut sim, &context, &rows, &scores, &mut deck_values);
     let pair_ascent = ascent::pair_ascent(&mut sim, &context, &rows, &scores, &mut deck_values);

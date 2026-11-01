@@ -313,8 +313,8 @@ def careers_of(output):
     plan = output.get("next") or {}
     if plan.get("choice"):
         yield "next.choice", plan["choice"]
-    for i, report in enumerate(plan.get("options") or []):
-        yield f"next.options[{i}]", report
+    for i, option in enumerate(plan.get("options") or []):
+        yield f"next.options[{i}].report", option["report"]
 
 
 def check_output(name, job_path, output_path, era):

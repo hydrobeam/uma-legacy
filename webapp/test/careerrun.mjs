@@ -126,7 +126,7 @@ export default async function careerrun(b) {
   });
   // (or until a variant finds no kept plan: a new worker took the old one's place, which this check fails)
   await pg.waitForFunction(
-    () => window.__checkResults.some((r) => r.next.robust.pending === 0 || r.next.robust.unavailable),
+    () => window.__checkResults.some((r) => r.robust.pending === 0 || r.robust.kind === 'unavailable'),
     null,
     { timeout: 180000 },
   );
@@ -138,9 +138,9 @@ export default async function careerrun(b) {
     )
     .toBeFocused();
   const checked = await pg.evaluate(() => {
-    const robust = window.__checkResults.findLast((r) => r.next.robust.pending === 0)?.next.robust || {
+    const robust = window.__checkResults.findLast((r) => r.robust.pending === 0)?.robust || {
       variants: [],
-      gone: window.__checkResults.find((r) => r.next.robust.unavailable)?.next.robust.error,
+      gone: window.__checkResults.find((r) => r.robust.kind === 'unavailable')?.robust.error,
     };
     const alts = document.querySelector('section.alts');
     return {
@@ -289,18 +289,18 @@ export default async function careerrun(b) {
     document.getElementById('sim-roll').click();
     Math.random = r;
   });
-  await pg.waitForFunction(() => window.__careerResults.some((r) => r.next?.roll), null, { timeout: 180000 });
-  const ro = await pg.evaluate(() => window.__careerResults.find((r) => r.next?.roll).next.roll),
+  await pg.waitForFunction(() => window.__careerResults.some((r) => r.kind === 'roll'), null, { timeout: 180000 });
+  const ro = await pg.evaluate(() => window.__careerResults.find((r) => r.kind === 'roll').roll),
     restoredNow = await pg.evaluate(() => window.__careerResults.find((r) => r.solve !== undefined));
   check(
     'career: after a reload a roll is answered from the stored roll state (no plan runs again)',
-    restoredNow?.rolls > 0 && typeof ro?.y === 'number' && !ro.planned,
+    restoredNow?.rolls > 0 && typeof ro?.outcome?.y === 'number' && !ro.planned,
     JSON.stringify({ rolls: restoredNow?.rolls, ro }),
   );
   // a new plan (another rank): a roll asks that plan; back on the first answer (no run), a roll asks the first plan
   // again, which the worker still keeps
   const rollNow = async () => {
-    const n = await pg.evaluate(() => window.__careerResults.filter((r) => r.next?.roll).length);
+    const n = await pg.evaluate(() => window.__careerResults.filter((r) => r.kind === 'roll').length);
     await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup, shut)
     await pg.evaluate(() => {
       const r = Math.random;
@@ -308,7 +308,7 @@ export default async function careerrun(b) {
       document.getElementById('sim-roll').click();
       Math.random = r;
     });
-    await pg.waitForFunction((n) => window.__careerResults.filter((r) => r.next?.roll).length > n, n, {
+    await pg.waitForFunction((n) => window.__careerResults.filter((r) => r.kind === 'roll').length > n, n, {
       timeout: 180000,
     });
     return pg.evaluate(() => {
@@ -319,7 +319,7 @@ export default async function careerrun(b) {
       return {
         same: JSON.stringify(plan) === JSON.stringify(p),
         dist: j.skills.rank_class,
-        roll: window.__careerResults.filter((r) => r.next?.roll).at(-1).next.roll,
+        roll: window.__careerResults.filter((r) => r.kind === 'roll').at(-1).roll,
       };
     });
   };
@@ -339,10 +339,10 @@ export default async function careerrun(b) {
     'career: … a roll after a new plan asks the new plan; back on the first answer it asks the first plan, still kept',
     lrNew.same &&
       lrNew.dist === 'ss_and_up' &&
-      typeof lrNew.roll?.y === 'number' &&
+      typeof lrNew.roll?.outcome?.y === 'number' &&
       !lrNew.roll.planned &&
       lrBack.dist === 'below_ss' &&
-      typeof lrBack.roll?.y === 'number' &&
+      typeof lrBack.roll?.outcome?.y === 'number' &&
       !lrBack.roll.planned,
     JSON.stringify({ lrNew, lrBack }),
   );

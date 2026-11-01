@@ -4,7 +4,7 @@
 //! the page's run as two jobs, after an "allow" run in the same worker, plans as the combined job does (each setting's
 //! main search is kept under its own key). "never" answers as the pool without the borrowed veteran.
 mod common;
-use common::{run_jobs, val_job, without_work};
+use common::{check_of, run_jobs, val_job, without_work};
 use serde_json::{Value, json};
 
 const BOR: usize = 14;
@@ -93,7 +93,7 @@ fn later_picks_without_a_borrowed_parent_and_plans_with_one() {
         !l["results"].as_array().unwrap().is_empty() && l["results"].as_array().unwrap().iter().all(|r| !has_bor(r))
     );
     let opts = l["next"]["options"].as_array().unwrap();
-    assert!(!opts.is_empty() && opts.iter().all(|o| !has_bor(o)), "a row with a borrowed parent");
+    assert!(!opts.is_empty() && opts.iter().all(|o| !has_bor(&o["report"])), "a row with a borrowed parent");
     assert!(!has_bor(&l["next"]["choice"]));
     assert_eq!(opts.iter().filter(|o| o["chosen"] == true).count(), 1);
     // the look-ahead: the allow job's
@@ -145,7 +145,7 @@ fn later_checks_from_the_kept_plan_without_a_borrowed_parent() {
         let pairs = outputs
             .iter()
             .rev()
-            .find_map(|output| output["next"]["robust"]["pairs"].as_object().cloned())
+            .find_map(|output| check_of(output)["pairs"].as_object().cloned())
             .expect("no check answered with its pair search");
         let paired = |parents: &[Value]| parents.iter().any(|p| p.as_u64() == Some(PAIRED));
         let any_pair =

@@ -1393,7 +1393,7 @@ pub(crate) fn check_kept<'data>(
     let Some(index) = worker.checks.iter().position(|check| check.key == key) else {
         // (the page's one-variant job never runs the plan behind the player's next job)
         return (request == CheckRequest::Next)
-            .then(|| CheckReply::Unavailable { error: "no kept plan to check".to_owned(), unavailable: true });
+            .then(|| CheckReply::Unavailable { error: "no kept plan to check".to_owned() });
     };
     let kept_check = &worker.checks[index];
     let pairs_lost = plan_job.pair_search && kept_check.pairs.is_none() && kept_check.work.is_none();

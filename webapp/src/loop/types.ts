@@ -2,17 +2,12 @@
 // Types only (no values), shared by the page's model, store, run machine and views. The solver's report is generated
 // from its Rust structs (src/gen/solver.ts: loop_planner/output.rs and what it holds); re-exported here under the names
 // the loop page reads.
-import type { LoopReport, LoopResult } from '../gen/solver.ts';
+import type { DeckReply, LoopResult } from '../gen/solver.ts';
 
-export type {
-  LegacySlot,
-  Lineage,
-  LoopMember,
-  LoopReport,
-  LoopResult,
-  ResultDeck,
-  ResultLoop,
-} from '../gen/solver.ts';
+export type { LegacySlot, Lineage, LoopMember, LoopResult, ResultDeck, ResultLoop } from '../gen/solver.ts';
+
+/** a deck job's loops (the solver's `DeckReply` of kind "loops") */
+export type LoopReport = Extract<DeckReply, { kind: 'loops' }>;
 
 /** a report with loops: the only kind the page draws, keeps and exports (run.ts `hasLoops` checks it) */
 export type DrawnReport = LoopReport & { top: [LoopResult, ...LoopResult[]] };

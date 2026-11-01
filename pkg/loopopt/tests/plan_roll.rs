@@ -9,7 +9,7 @@
 //! page's Reroll sends it), a roll with no plan kept (the plan runs first), and a roll in a new process after
 //! `state_out` / `state_in` (the stored roll state, no plan).
 mod common;
-use common::{State, TempFile, loopopt, run_with, val_job};
+use common::{State, TempFile, loopopt, roll_of, run_with, val_job};
 use serde_json::{Value, json};
 
 const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/plan_roll.json");
@@ -38,7 +38,7 @@ fn bits(y: &Value) -> Option<u64> {
 /// a roll's answer against the table's y at that outcome, to the bit
 fn same(r: &Value, want: &[Value], what: &str) {
     let y = &want[1];
-    assert!(bits(&r["y"]) == bits(y), "{what}: stars {}: roll {r} vs table y {y}", want[0]);
+    assert!(bits(&r["outcome"]["y"]) == bits(y), "{what}: stars {}: roll {r} vs table y {y}", want[0]);
 }
 /// Whether this run re-takes the fixture (`BLESS=1`) instead of checking against it.
 fn blessing() -> bool {
@@ -62,20 +62,21 @@ fn rolls_equal_their_pinned_values() {
             "{name}: the plan's outcomes"
         );
         for (r, w) in out[1..].iter().zip(rolls) {
-            let ro = &r["next"]["roll"];
+            let ro = roll_of(r);
             assert!(
-                ro["planned"].is_null() && r["next"].get("options").is_none(),
+                ro["planned"].is_null() && r["kind"] == "roll",
                 "{name}: a roll of a kept plan planned again: {}",
                 r.to_string().chars().take(200).collect::<String>()
             );
             if !bless {
                 same(ro, w.as_array().unwrap(), name);
-            } else if bits(&ro["y"]) != bits(&w[1]) {
+            } else if bits(&ro["outcome"]["y"]) != bits(&w[1]) {
                 // (a sample whose y crossed 0.5 left its band: the fixture keeps one of each, so pick another there)
                 let band = |y: &Value| y.as_f64().is_some_and(|y| y >= 0.5);
-                let crossed = if band(&ro["y"]) == band(&w[1]) { "" } else { ", crossed y = 0.5" };
-                eprintln!("{name}: stars {}: y {} -> {}{crossed}", w[0], w[1], ro["y"]);
-                w[1] = ro["y"].clone();
+                let y = &ro["outcome"]["y"];
+                let crossed = if band(y) == band(&w[1]) { "" } else { ", crossed y = 0.5" };
+                eprintln!("{name}: stars {}: y {} -> {y}{crossed}", w[0], w[1]);
+                w[1] = y.clone();
                 changed += 1;
             }
         }
@@ -110,24 +111,24 @@ fn rolls_carried_cold_and_after_a_reload() {
     let out =
         run("global", "cold", &[carried(w0), with_roll(&plan, &w1[0])], State { load: None, save: Some(st.path()) });
     assert!(
-        out[0]["results"].is_array() && out[0]["roll"]["planned"] == json!(true),
+        out[0]["reply"]["results"].is_array() && out[0]["roll"]["planned"] == json!(true),
         "the carried roll: {}",
         out[0]["roll"]
     );
     same(&out[0]["roll"], w0, "carried, cold");
     assert!(
-        out[1]["next"]["roll"]["planned"].is_null(),
+        roll_of(&out[1])["planned"].is_null(),
         "the second roll planned again: {}",
         out[1].to_string().chars().take(300).collect::<String>()
     );
-    same(&out[1]["next"]["roll"], w1, "kept");
+    same(roll_of(&out[1]), w1, "kept");
     // a new process with the stored state: answered from the stored roll state, no plan
     let out =
         run("global", "reload", &[carried(w1), with_roll(&plan, &w0[0])], State { load: Some(st.path()), save: None });
     assert!(
-        out[0]["roll"]["planned"].is_null() && out[1]["next"]["roll"]["planned"].is_null(),
+        out[0]["roll"]["planned"].is_null() && roll_of(&out[1])["planned"].is_null(),
         "a roll planned again after the reload"
     );
     same(&out[0]["roll"], w1, "carried, after the reload");
-    same(&out[1]["next"]["roll"], w0, "after the reload");
+    same(roll_of(&out[1]), w0, "after the reload");
 }

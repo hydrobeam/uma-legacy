@@ -290,8 +290,9 @@ def proxy_gate(job_entry, job_dir):
 def plan_view(plan):
     """what a player sees of a plan: the pick's career, V, and the top OPT_SHOW rows by score"""
     career = lambda o: o.get("career") or [o["trainee"]["name"], o.get("parents")]
-    chosen = next((o for o in plan["options"] if o.get("chosen")), None)
-    scored = sorted((o for o in plan["options"] if o.get("score") is not None), key=lambda o: -o["score"])
+    rows = solver.plan_rows(plan)
+    chosen = next((o for o in rows if o.get("chosen")), None)
+    scored = sorted((o for o in rows if o.get("score") is not None), key=lambda o: -o["score"])
     return (
         json.dumps(career(chosen)) if chosen else None,
         plan.get("v0"),
@@ -318,7 +319,7 @@ ODDS_MATCH = 1e-9
 
 def trainee_ids(plan):
     """{trainee name: uma id} from the plan's rows and its choice"""
-    rows = [*(plan.get("options") or []), *([plan["choice"]] if plan.get("choice") else [])]
+    rows = [*solver.plan_rows(plan), *([plan["choice"]] if plan.get("choice") else [])]
     return {row["trainee"]["name"]: row["trainee"]["id"] for row in rows if "id" in row.get("trainee", {})}
 
 
@@ -353,7 +354,7 @@ def route_first_step(plan, job):
     the job's `next.fit` gave her Cont (output.rs: no builder then), and a builder career missing from the rows is
     documented when the job's borrowing rule keeps one of its parents from running now; every other missing or
     ambiguous match fails"""
-    options, ids = plan.get("options") or [], trainee_ids(plan)
+    options, ids = solver.plan_rows(plan), trainee_ids(plan)
     given_fit = {entry[0] for entry in (solver.part(job, "career").get("next") or {}).get("fit") or []}
     for member in plan.get("members") or []:
         if member.get("real"):

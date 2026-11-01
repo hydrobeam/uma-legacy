@@ -4,6 +4,7 @@ use crate::career::decks::DeckSearchCache;
 use crate::career::plan::kept::Bests;
 use crate::career::plan::roll::RollKeep;
 use crate::career::pool::Pool;
+use crate::career::reply::CareerReply;
 use crate::career::search::{Assumes, CareerSearchResult, Found, Ref, Unproven};
 use crate::career::{CareerSetup, ClassFlags};
 use crate::deck::space::{MAX_DECK, SelectedDeck};
@@ -456,7 +457,6 @@ fn solve_in(stored: &[StoredSolve]) -> Option<Vec<KeptSolve>> {
 
 pub(crate) fn state_out(kept: &KeptState) -> StateOut {
     StateOut {
-        ok: true,
         state: StoredState {
             v: STATE_VERSION,
             bests: crate::career::plan::kept::bests_out(&kept.bests),
@@ -471,9 +471,9 @@ pub(crate) fn state_out(kept: &KeptState) -> StateOut {
 
 /// replaces the kept plans, proofs, main searches, plans' roll states and step caps with the page's stored ones and unions its
 /// class flags into the worker's (all or nothing: a store of another version, or that does not parse, is refused)
-pub(crate) fn state_in(kept: &mut KeptState, stored: &StoredState) -> StateIn {
+pub(crate) fn state_in(kept: &mut KeptState, stored: &StoredState) -> CareerReply {
     if stored.v != STATE_VERSION {
-        return StateIn::Refusal(Refusal::new("state: another version"));
+        return CareerReply::Refusal(Refusal::new("state: another version"));
     }
     // Decode every store before replacing any live state.
     let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls), Some(step_caps)) = (
@@ -484,10 +484,9 @@ pub(crate) fn state_in(kept: &mut KeptState, stored: &StoredState) -> StateIn {
         crate::career::plan::roll::rolls_in(&stored.rolls),
         crate::career::plan::caps::caps_in(&stored.caps),
     ) else {
-        return StateIn::Refusal(Refusal::new("state: does not parse"));
+        return CareerReply::Refusal(Refusal::new("state: does not parse"));
     };
     let counts = StateCounts {
-        ok: true,
         bests: bests.len(),
         seen: seen.len(),
         solve: searches.len(),
@@ -511,7 +510,7 @@ pub(crate) fn state_in(kept: &mut KeptState, stored: &StoredState) -> StateIn {
         checks: std::mem::take(&mut kept.checks),
         decks: std::mem::take(&mut kept.decks),
     };
-    StateIn::Restored(counts)
+    CareerReply::StateIn(counts)
 }
 
 impl CareerSetup<'_> {
@@ -557,24 +556,13 @@ impl CareerSetup<'_> {
 /// `state_out`'s answer: the kept work to store.
 #[derive(Serialize, TS)]
 pub(crate) struct StateOut {
-    /// always true
-    pub(crate) ok: bool,
     pub(crate) state: StoredState,
 }
 
-/// `state_in`'s answer: what it restored, or why it refused the store (the page then drops it).
-#[derive(Serialize, TS)]
-#[serde(untagged)]
-pub(crate) enum StateIn {
-    Restored(StateCounts),
-    Refusal(Refusal),
-}
-
-/// What a store restored: the kept plans, proofs' keys, main searches, roll states and step caps.
+/// What a store restored (`state_in`; a store it refuses is a refusal, which the page drops): the kept plans, proofs'
+/// keys, main searches, roll states and step caps.
 #[derive(Serialize, TS)]
 pub(crate) struct StateCounts {
-    /// always true
-    pub(crate) ok: bool,
     pub(crate) bests: usize,
     pub(crate) seen: usize,
     pub(crate) solve: usize,

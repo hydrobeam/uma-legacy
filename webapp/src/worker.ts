@@ -61,7 +61,7 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
         );
       }
       const r = callRaw('init', message.data);
-      if (r.error) throw new Error(r.error);
+      if (r.kind === 'refusal') throw new Error(r.error);
       self.postMessage({ type: 'ready' } satisfies FromWorker);
     } else if (message.type === 'run') {
       const t0 = performance.now(),
@@ -71,7 +71,7 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       if (job.cmd === 'deck' && job.deck.exact !== false) {
         const quick = callRaw('call', JSON.stringify({ ...job, deck: { ...job.deck, exact: false } }));
         post('interim', message.id, quick, t0);
-        if (quick.error) {
+        if (quick.kind === 'refusal') {
           post('result', message.id, quick, t0);
           return;
         }

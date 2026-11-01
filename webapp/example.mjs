@@ -38,38 +38,42 @@ call(
 // what the data holds ahead of its start (export/upcoming.py: dated after the export): left out, as the page leaves it
 // out until then. Taken as of the export rather than today, so the example changes only with the data or the solver.
 const later = (kind) => readJson('upcoming.json')[kind].map(([id]) => id);
-// the page's defaults (settings.ts PRESET and DEFAULTS, job.ts EXTRA and jobTargets)
+// the page's defaults (settings.ts PRESET and DEFAULTS, job.ts EXTRA, jobTargets, skillsPart and deckPart)
 const r = call({
   cmd: 'deck',
-  targets: [
-    { group: 20159 },
-    { group: 20049, guaranteed: 2 },
-    { group: 20166 },
-    { group: 20046, guaranteed: 2 },
-    { group: 20161 },
-    { group: 21010 },
-    { group: 20165 },
-    { group: 20203 },
-  ],
-  extra: [
-    [1003, 20190, 1],
-    [1078, 20165, 1],
-  ],
-  star_dist: [0.5, 0.45, 0.05],
-  borrow: true,
-  top_decks: 1,
-  per_uma: true,
-  exclude: later('umas'),
-  exclude_outfits: later('outfits'),
-  exclude_cards: [
-    ...readJson('web_cards.json')
-      .cards.filter((c) => c.rarity === 1 && !c.pal)
-      .map((c) => c.id),
-    ...later('cards'),
-  ],
+  skills: {
+    targets: [
+      { group: 20159 },
+      { group: 20049, guaranteed: 2 },
+      { group: 20166 },
+      { group: 20046, guaranteed: 2 },
+      { group: 20161 },
+      { group: 21010 },
+      { group: 20165 },
+      { group: 20203 },
+    ],
+    rank_class: 'below_ss',
+    exclude: later('umas'),
+    exclude_outfits: later('outfits'),
+    extra: [
+      [1003, 20190, 1],
+      [1078, 20165, 1],
+    ],
+  },
+  deck: {
+    borrow: true,
+    top_decks: 1,
+    per_uma: true,
+    exclude_cards: [
+      ...readJson('web_cards.json')
+        .cards.filter((c) => c.rarity === 1 && !c.pal)
+        .map((c) => c.id),
+      ...later('cards'),
+    ],
+  },
 });
 fs.writeFileSync('example.json', JSON.stringify(r));
 console.log(
-  r.error || '',
+  r.kind === 'refusal' ? r.error : '',
   r.top.map((t) => Math.round(1 / t.loop.p_all)),
 );

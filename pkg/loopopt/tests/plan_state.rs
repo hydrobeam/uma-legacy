@@ -3,7 +3,7 @@
 //! worker keeps with what its product searches proved, so its plan does the work of one combined job and gives its
 //! output; after a reload the stored main search is taken as it is (no search nodes) and both jobs answer as before.
 mod common;
-use common::{Ran, State, TempFile, loopopt, run_with, val_job, without_work};
+use common::{Ran, State, TempFile, check_of, loopopt, run_with, val_job, without_work};
 use serde_json::{Value, json};
 
 /// one process running `jobs` in turn (one output line each), with `state`'s files
@@ -101,7 +101,7 @@ fn a_pair_search_asked_after_its_check_finished_says_why_or_runs_again() {
         with_next(json!({"robust": "all", "pair_search": true})),
     ];
     let outputs = run_with(loopopt("global", State::NONE), "late-pairs", &jobs).outputs;
-    let check = |k: usize| &outputs[k]["next"]["robust"];
+    let check = |k: usize| check_of(&outputs[k]);
     assert_eq!(check(1)["pending"], json!(0));
     assert!(check(1)["pairs"].is_null() && check(1)["pairs_error"].is_null(), "no pair search asked yet");
     assert!(check(2)["pairs"].is_null());

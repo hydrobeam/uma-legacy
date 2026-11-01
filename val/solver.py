@@ -42,6 +42,25 @@ def with_next(job, **fields):
     return with_part(job, "career", next={**part(job, "career").get("next", {}), **fields})
 
 
+def plan_rows(plan):
+    """a plan's options as rows read as one record: each option's career report (`report`) with its place in the plan
+    beside its fields, as the page's plan table reads them (career/current.ts `asTableRows`)"""
+    return [
+        {**option["report"], **{k: v for k, v in option.items() if k != "report"}}
+        for option in plan.get("options") or []
+    ]
+
+
+def roll_of(output):
+    """a plan job's roll: the kept plan's answer (`kind` "roll"), else the plan's own (`next.roll`); None without one"""
+    return output.get("roll") if output.get("kind") == "roll" else (output.get("next") or {}).get("roll")
+
+
+def roll_saving(roll):
+    """a roll's saving (`outcome.y`); None where the roll, or its outcome, is a refusal"""
+    return ((roll or {}).get("outcome") or {}).get("y")
+
+
 def era_dir(era):
     """the era's data folder (pkg/loopopt/data/ERA), where the solver runs: jobs name their data files relative to it"""
     return os.path.join(REPO, "pkg", "loopopt", "data", era)

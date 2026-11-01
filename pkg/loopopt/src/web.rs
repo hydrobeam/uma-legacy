@@ -6,7 +6,7 @@
 //!           {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in
 //!           (page reloads)
 #![allow(unsafe_code, reason = "the wasm exports take the host's pointers: `alloc`/`dealloc`, `init` and `call`")]
-use crate::career::reply::{CareerAnswer, CareerReply};
+use crate::career::reply::CareerReply;
 use crate::data::{Data, DataRaw, load_raw};
 use crate::refusal::Refusal;
 use crate::request::{InitReply, Loaded, Request};
@@ -118,7 +118,7 @@ fn load(request_text: &str) -> InitReply {
     }
     STATE.with(|state| *state.borrow_mut() = Some((data, request.skills)));
     crate::career::forget_kept_decks();
-    InitReply::Loaded(Loaded { ok: true, umas: uma_count })
+    InitReply::Loaded(Loaded { umas: uma_count })
 }
 
 /// `call`'s work: one job run on the data `init` kept, its reply written into the output buffer (`respond`; a reply
@@ -172,18 +172,18 @@ fn handle(request_text: &str) {
             if stored_state.borrow().is_none() {
                 return respond(&Refusal::new("not initialised"));
             }
-            respond(&crate::career::state::KEPT.with(|kept| {
-                CareerReply::Answer(CareerAnswer::StateOut(crate::career::state::state_out(&kept.borrow())))
-            }))
+            respond(
+                &crate::career::state::KEPT
+                    .with(|kept| CareerReply::StateOut(crate::career::state::state_out(&kept.borrow()))),
+            )
         }),
         Request::StateIn { state } => STATE.with(|stored_state| {
             if stored_state.borrow().is_none() {
                 return respond(&Refusal::new("not initialised"));
             }
-            respond(&crate::career::state::KEPT.with(|kept| {
-                let state_in = crate::career::state::state_in(&mut kept.borrow_mut(), &state);
-                CareerReply::Answer(CareerAnswer::StateIn(state_in))
-            }))
+            respond(
+                &crate::career::state::KEPT.with(|kept| crate::career::state::state_in(&mut kept.borrow_mut(), &state)),
+            )
         }),
     };
 }

@@ -78,7 +78,7 @@ export function exportText(s: SettingsView, shown: DeepReadonly<ShownResult> | n
     results = {
       example: !!meta.example,
       decks: (r.top || []).map(resultSummary),
-      decks_searched: r.decks_built,
+      decks_searched: r.stats.decks_built,
       proven: r.proven,
       ...(stale && { stale: true }), // from other settings than these
     };

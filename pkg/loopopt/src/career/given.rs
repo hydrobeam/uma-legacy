@@ -2,7 +2,7 @@
 //! The page's Use this sends it for a builder's other career (`PlanJob::builder_careers`), which a search on its
 //! parents would replace with her best deck there.
 use crate::career::inherit::{ExactOptions, Inheritance, inherit};
-use crate::career::reply::{CareerAnswer, CareerSearch, JobCertificates, SearchWork};
+use crate::career::reply::{CareerReply, CareerSearch, JobCertificates, SearchWork};
 use crate::career::run::CareerRun;
 use crate::career::search::Found;
 use crate::career::{Env, Lineage};
@@ -50,8 +50,8 @@ fn parse_id(id: &str) -> Option<CareerId<'_>> {
 /// take, the job's deck size. Its search fields say one career was scored, and none other weighed: `given`, and neither
 /// `complete` nor `proven_top` (no search compared it with any other career or deck; the page says so, proofs.ts
 /// `searchCaveat`).
-pub(super) fn given_career_output(env: &mut Env, run: &CareerRun, id: &str) -> CareerAnswer {
-    let error = |why: &str| CareerAnswer::Refusal(Refusal::new(format!("career: {why}")));
+pub(super) fn given_career_output(env: &mut Env, run: &CareerRun, id: &str) -> CareerReply {
+    let error = |why: &str| CareerReply::Refusal(Refusal::new(format!("career: {why}")));
     let Some(career) = parse_id(id) else {
         return error("not a career id (uma:parent,parent:entries/plain pals/filler cards).");
     };
@@ -115,7 +115,7 @@ pub(super) fn given_career_output(env: &mut Env, run: &CareerRun, id: &str) -> C
     let found = Found { trainee, first_parent, second_parent, value, ceiling, deck };
     let report = env.setup.report(&mut env.state, pool, &found, true);
     let rho_top = env.setup.space.rho_top();
-    CareerAnswer::Search(Box::new(CareerSearch {
+    CareerReply::Search(Box::new(CareerSearch {
         results: vec![report],
         candidates: 1,
         solved: 1,

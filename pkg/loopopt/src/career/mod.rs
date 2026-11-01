@@ -55,7 +55,7 @@ use crate::career::outcomes::CornerKey;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use crate::career::plan::{CEIL_SHARE, EXACT_BUILDERS_TARGETS, LAM_DECAY};
 use crate::career::pool::Pool;
-use crate::career::reply::{CareerAnswer, CareerReply, FollowUp, PlanFollowUp, SearchWork};
+use crate::career::reply::{CareerReply, SearchWork};
 use crate::career::run::{
     CareerRun, answer_kept_check, answer_kept_roll, keep_flags, keep_seen, note_job_certificates, plan_next,
     run_carried_roll, search_output,
@@ -617,13 +617,13 @@ pub(crate) fn run_career(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job:
 /// The worker's kept work out (`state_out`), on the worker's kept work (the native command line's).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn kept_state_out() -> CareerReply {
-    KEPT.with(|kept| CareerReply::Answer(CareerAnswer::StateOut(state::state_out(&kept.borrow()))))
+    KEPT.with(|kept| CareerReply::StateOut(state::state_out(&kept.borrow())))
 }
 
 /// The worker's kept work back in (`state_in`), on the worker's kept work (the native command line's).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn kept_state_in(state: &state::StoredState) -> CareerReply {
-    KEPT.with(|kept| CareerReply::Answer(CareerAnswer::StateIn(state::state_in(&mut kept.borrow_mut(), state))))
+    KEPT.with(|kept| state::state_in(&mut kept.borrow_mut(), state))
 }
 
 /// Run one job against the caller's retained work; simulator jobs reuse this borrow without entering worker TLS.
@@ -636,7 +636,7 @@ pub(crate) fn run_career_in(
 ) -> CareerReply {
     match &job.roll {
         Some(roll) => CareerReply::Carried(Box::new(run_carried_roll(data, skills, cards, job, roll, kept))),
-        None => CareerReply::Answer(answer_job(data, skills, cards, job, kept)),
+        None => answer_job(data, skills, cards, job, kept),
     }
 }
 
@@ -647,13 +647,13 @@ fn answer_job(
     cards: &CardsRaw,
     job: &CareerRequest,
     kept: &mut KeptState,
-) -> CareerAnswer {
+) -> CareerReply {
     let t_all = Instant::now();
     let input = JobInputs { data, skills, cards, job };
     let model = Model::new(data, skills, &job.skills);
     let CareerBuild { mut env, trainees, seen_fingerprint } = match career_setup(&input, &model, kept) {
         Ok(setup) => setup,
-        Err(refusal) => return CareerAnswer::Refusal(refusal),
+        Err(refusal) => return CareerReply::Refusal(refusal),
     };
     let out = (|| {
         let career_job = &job.career;
@@ -663,18 +663,16 @@ fn answer_job(
             // (a measurement the page never asks for: left out of the browser build's wasm, as the plan's audit and
             // oracles are)
             if cfg!(target_arch = "wasm32") {
-                return CareerAnswer::Refusal(plan::not_in_browser("simulate"));
+                return CareerReply::Refusal(plan::not_in_browser("simulate"));
             }
-            return CareerAnswer::Simulation(Box::new(crate::career::sim::play::simulate(
-                &mut env, kept, &input, legacies, &trainees, simulation,
-            )));
+            return crate::career::sim::play::simulate(&mut env, kept, &input, legacies, &trainees, simulation);
         }
         let pool = env.setup.pool(legacies);
         // (tests: the job's Env and pool handed to a check instead of the search)
         #[cfg(test)]
         if let Some(hook) = tests::ENV_HOOK.with(|cell| cell.borrow_mut().take()) {
             hook(&mut env, &pool);
-            return CareerAnswer::Hooked {};
+            return CareerReply::Hooked {};
         }
         // `borrowed_parent` "later": the career picked (the search's results, the plan's rows, and a kept check's pair
         // search and recommendation, answered below before any search) comes from the pool without borrowed parents;
@@ -689,14 +687,14 @@ fn answer_job(
             pick_pool: own_pool.as_ref(),
         };
         if let Some(roll) = answer_kept_roll(&mut env, kept, &run) {
-            return CareerAnswer::FollowUp(PlanFollowUp { next: FollowUp::Roll { roll } });
+            return CareerReply::Roll { roll };
         }
         if let Some(robust) = answer_kept_check(&mut env, kept, &run) {
-            return CareerAnswer::FollowUp(PlanFollowUp { next: FollowUp::Robust { robust } });
+            return CareerReply::Check { robust };
         }
         if let Some(id) = &career_job.given {
             let mut reply = given::given_career_output(&mut env, &run, id);
-            if let CareerAnswer::Search(search) = &mut reply {
+            if let CareerReply::Search(search) = &mut reply {
                 search.timing_s = t_all.elapsed().as_secs_f64();
             }
             return reply;
@@ -713,7 +711,7 @@ fn answer_job(
         env.state.use_seen = true;
         if search.candidates == 0 {
             keep_seen(kept, &env.state, seen_fingerprint);
-            return CareerAnswer::Refusal(Refusal::new(if career_job.borrowed_parent == BorrowedParent::Allow {
+            return CareerReply::Refusal(Refusal::new(if career_job.borrowed_parent == BorrowedParent::Allow {
                 "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each \
                  other), at most one of them borrowed."
             } else {
@@ -730,7 +728,7 @@ fn answer_job(
         keep_seen(kept, &env.state, seen_fingerprint);
         note_job_certificates(&env.setup, &env.state, &env.audit, &mut out, rho_top, &trainees);
         out.timing_s = t_all.elapsed().as_secs_f64();
-        CareerAnswer::Search(Box::new(out))
+        CareerReply::Search(Box::new(out))
     })();
     // Publish reusable tables after every completed path, including early answers and simulator jobs.
     keep_flags(kept, &env.setup, &env.state);

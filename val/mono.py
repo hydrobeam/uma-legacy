@@ -109,7 +109,7 @@ def quick_saves(era, job, name, veterans):
         json.dump(roll_job, open(paths[-1], "w"))
     stdout = solver.run(binary, era, *paths, name=f"{name} (quick rolls)")
     open(os.path.join(temporary_dir, f"{name}_quick.out"), "w").write(stdout)
-    return [((output.get("next") or {}).get("roll") or {}).get("y") for output in solver.outputs(stdout)[1:]]
+    return [solver.roll_saving(solver.roll_of(output)) for output in solver.outputs(stdout)[1:]]
 
 
 def route_steps(plan):
@@ -189,7 +189,7 @@ def scheduled_races(report, race_names):
     for row in report.get("schedule") or []:
         if row.get("run") is False:
             continue
-        race = row.get("name") or row.get("race")
+        race = row.get("name") or row["chart"].get("race")
         if race not in race_names:
             continue
         index = race_names.index(race)
@@ -201,9 +201,10 @@ def drawn_pink(aptitudes, rng):
     """pink.ts drawPink: {group: stars}, its draws in the same order (fires per inspiration, aptitude, stars)"""
     if not aptitudes:
         return {}
-    grades = list(aptitudes["start"])
+    start = aptitudes["start"]  # (kind "known": a job's own veterans always have their pinks on record)
+    grades = list(start["start"])
     for _ in range(INSPIRATIONS):
-        for fire in aptitudes["fire"]:
+        for fire in start["fire"]:
             if rng.random() < fire["p"]:
                 grades[fire["apt"]] = min(GRADE_S, grades[fire["apt"]] + 1)
     at_least_a = [k for k, grade in enumerate(grades) if grade >= GRADE_A]

@@ -329,7 +329,7 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
     nearCount = trios.filter((t) => t.near).length;
   const trioText =
     trios.length > 1
-      ? `The ${trios.length} cheapest routes: ${trios.map((t) => `${t.a} and ${t.b}, then ${t.c} (about ${fmtN(t.value)} careers)`).join('; ')}. ${
+      ? `The ${trios.length} cheapest routes: ${trios.map((t) => `${t.route.a} and ${t.route.b}, then ${t.route.c} (about ${fmtN(t.value)} careers)`).join('; ')}. ${
           nearCount > 1
             ? `The first ${nearCount} are within 2% of each other (a band assumed for the estimate's error between routes): too close for it to say which is cheapest.`
             : `The others are more than 2% dearer (a band assumed for the estimate's error between routes).`

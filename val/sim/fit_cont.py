@@ -99,7 +99,7 @@ def pool_job(entry):
 def trainees_built_for(plan):
     """(A's id, her name, her builders' ids) for each stage candidate of the cheapest trio without a full veteran"""
     ids = {}
-    for row in plan["options"] + [plan["choice"]]:
+    for row in [*solver.plan_rows(plan), plan["choice"]]:
         ids[row["trainee"]["name"]] = row["trainee"]["id"]
     members = {member["trainee"]: member for member in plan.get("members", [])}
     out = []
@@ -108,7 +108,7 @@ def trainees_built_for(plan):
         if members.get(name, {}).get("real") or name not in ids:
             continue
         builders = []
-        for row in sorted(plan["options"], key=lambda row: -row["score"]):
+        for row in sorted(solver.plan_rows(plan), key=lambda row: -row["score"]):
             builder = row["trainee"]["id"]
             if row["role"] == "builder" and builder != ids[name] and builder not in builders:
                 builders.append(builder)

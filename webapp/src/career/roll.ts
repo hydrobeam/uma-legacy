@@ -44,7 +44,7 @@ export interface RaceChance {
 export function scheduledRaces(r: Pick<Report, 'schedule'>, races: readonly string[]): RaceChance[] {
   const byIndex = new Map<number, RaceChance>();
   for (const w of (r.schedule || []).filter((w) => w.run !== false)) {
-    const ix = races.indexOf(w.name || w.race);
+    const ix = races.indexOf(w.name || w.chart.race);
     if (ix < 0) continue;
     // run at another turn too: p, the chance she wins it at least once, taking the two runs as independent. The solver
     // does too when her grades are certain; an April pink that may raise them links the runs (MODEL.md, E[p_C p_S]),
@@ -52,7 +52,7 @@ export function scheduledRaces(r: Pick<Report, 'schedule'>, races: readonly stri
     const prev = byIndex.get(ix);
     byIndex.set(ix, {
       ix,
-      name: w.name || w.race,
+      name: w.name || w.chart.race,
       // (a row she runs has its chance: schedule.rs makes it null only on a skipped row, filtered out above)
       p: 1 - (1 - (prev?.p || 0)) * (1 - must(w.p, 'the win chance of a race she runs')),
       turns: [...(prev?.turns || []), w.turn],

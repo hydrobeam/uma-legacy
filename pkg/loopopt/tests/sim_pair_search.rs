@@ -10,7 +10,7 @@
 //! P(all), each equal to the page's career's to the bit (the `career` job the page's Use this sends for it, or the plan's
 //! pick).
 mod common;
-use common::{run_jobs, val_job};
+use common::{check_of, run_jobs, val_job};
 use serde_json::{Value, json};
 
 /// The check jobs the page sends after the plan, at most: one per variant (7 fixed, up to 3 per-uma scenarios), then
@@ -58,7 +58,7 @@ fn page_recommendation(pool: &str) -> PageRecommendation {
     let jobs: Vec<Value> = std::iter::once(job).chain(std::iter::repeat_n(check_job, CHECK_JOBS)).collect();
     let outputs = run_jobs(pool, &jobs);
     let plan = &outputs[0]["next"];
-    let check = &outputs[CHECK_JOBS]["next"]["robust"];
+    let check = check_of(&outputs[CHECK_JOBS]);
     assert_eq!(check["pending"], json!(0), "{pool}: the check is complete");
     assert_eq!(check["plan"], plan["outcomes"]["career"], "{pool}: the check is of the plan's pick");
     let pairs = &check["pairs"];

@@ -17,12 +17,14 @@ export const fmtN = (x: number): string => Math.round(x).toLocaleString();
 // her schedule's rows, each race's figure the community table's on her own grades (agenda.ts `tableChance`; the
 // planner's, which counts the pink sparks she may get, on hover)
 export const tableRows = (r: DeepReadonly<CareerReport>) =>
-  (r.schedule || []).map((row) => {
-    const [c] = row.cells,
+  (r.schedule || []).map(({ chart, ...row }) => {
+    // (the chart's row, with her turn, what she does and which parents won it beside it)
+    const shown = { ...chart, ...row };
+    const [c] = chart.cells,
       track = gameData().tracks.get(row.name),
       apt = r.aptitudes?.base;
-    if (!c || !track || !apt) return row;
+    if (!c || !track || !apt) return shown;
     const { cost, grades } = tableCost(apt, track);
     const tbl = tableChance(cost, must(c.row, 'a scheduled race has its place in a row'));
-    return { ...row, cells: [{ ...c, tbl, tapt: cost, grades }] };
+    return { ...shown, cells: [{ ...c, tbl, tapt: cost, grades }] };
   });

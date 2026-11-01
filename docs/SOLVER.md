@@ -565,7 +565,7 @@ the career named at a tie from depending on what the worker ran before on anothe
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
 | `roll` (beside `skills`, `deck` and `career`) | `{job, stars}`: a roll of a plan, answered beside this job's own answer as `roll` (the plan job `job`, a career job's parts without `cmd`, run after this one with `next.roll` = `stars`, its `next.roll`; below). (The page's Reroll now sends the plan job with `next.roll` alone first, so the saving shows at once, then its search) | none |
 | `given` | a career id (`career` in a report: `kept::career_id`, the uma, her parents in order (legacy indices) and her deck by card identity: each named entry's card id, choice variant and early-end link, the plain pals' card ids, the filler count, so an id names the same deck in every job on the same cards and veterans) to report as it is, with no deck search (`career/given.rs`): needs one trainee and both parents fixed, the id's; its hint chances are worked out from its cards (`DeckSpace::hint_chances_at`), so its odds can differ from the report that named it in the last bits; the deck must be one of this job's for her (every entry in this job's deck space, none of her own card, one per character, every locked card held, at most the borrowed cards allowed, the plain pals the first she may take, the deck size); the answer has one result, `given: true`, and neither `complete` nor `proven_top` (no search compared it with another career). The page's Use this sends it for a builder's other career (`builder_careers`), which a search on its parents would replace with her best deck | none |
-| (`cmd: "state_out"` / `cmd: "state_in"`, requests of their own) | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`KeptState::searches` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`KeptState::rolls`, *Next career*: a reload's first roll plans nothing again) and step caps, as plain serde records (`StoredState`, its TypeScript in `webapp/src/gen/solver.ts`) with every float as its bit pattern in hex and every 64-bit key in hex (the state passes through the page's JavaScript, whose JSON writes an infinite float as null and whose numbers cannot hold a 64-bit key: `src/hex.rs`); `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`; so is one with a stored count above 1024 (`STATE_MAX_N`; a count is at most the umas in the data), an index past its list, a NaN, a chance outside [0, 1], a deck of more than six cards or a roll state whose vectors do not fit together or exceed the plan's 12 targets, 10 uncertain. Stored decks and careers are checked again where they meet a setup (`CareerSetup::seen_fits`, `solved_fits`): one naming a deck entry, trainee or veteran the setup does not have is not used there). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
+| (`cmd: "state_out"` / `cmd: "state_in"`, requests of their own) | the worker's kept work across page loads: `state_out` returns `{kind: "state_out", state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`KeptState::searches` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`KeptState::rolls`, *Next career*: a reload's first roll plans nothing again) and step caps, as plain serde records (`StoredState`, its TypeScript in `webapp/src/gen/solver.ts`) with every float as its bit pattern in hex and every 64-bit key in hex (the state passes through the page's JavaScript, whose JSON writes an infinite float as null and whose numbers cannot hold a 64-bit key: `src/hex.rs`); `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`; so is one with a stored count above 1024 (`STATE_MAX_N`; a count is at most the umas in the data), an index past its list, a NaN, a chance outside [0, 1], a deck of more than six cards or a roll state whose vectors do not fit together or exceed the plan's 12 targets, 10 uncertain. Stored decks and careers are checked again where they meet a setup (`CareerSetup::seen_fits`, `solved_fits`): one naming a deck entry, trainee or veteran the setup does not have is not used there). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
 
 #### Model per career
 
@@ -633,8 +633,9 @@ product at their marginal chances), `own_event`, `inherit`, `outfit` (0, 1 her w
 the two inheritance rolls passes it on, 1/3/5% for 1/2/3 stars × (1 + affinity/100), capped at 1 per roll, and `carriers`; reported only: aptitudes
 do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: `base` and `start` codes in `apt` order,
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
-veteran's pink is that one; with a veteran before her result is known among the six, `outcomes` ([{p, start, fire}],
-one per combination of the pinks such veterans may carry) in place of `start` and `fire`; her schedule's win chances
+veteran's pink is that one; `start` is `{kind: "known", start, fire}`, or, with a veteran before her result is known
+among the six, `{kind: "outcomes", outcomes: [{p, outcome: {start, fire}}]}`, one per combination of the pinks such
+veterans may carry); her schedule's win chances
 count them, combining repeated races over the shared grade history as above; a hypothetical veteran
 (`CareerSetup::veteran`) carries `pink_gen` split by the 20/70/10 star draw as her possible pinks, which her children's
 `pink_career` expands into those outcomes (exact given her pink is independent of her win chances, which share her
@@ -647,7 +648,8 @@ assumptions what it proves rests on: `two_feeder_cap`, `multi_feeder_cap`, *What
 `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
 when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's
 cap (`EXACT_CAPS`, an assumption) has its deck search rerun cap-free (*Cap-free rerun* above), and the search it was in
-is not complete. The output lists the classes in `cap_exceeded` ([class, highest ratio, cap]), the capped deck
+is not complete. The output's `certificates` (what every search of the job certified) lists the classes in
+`cap_exceeded` ([class, highest ratio, cap]), the capped deck
 searches that breached in `cap_breaches`, the reruns in `cap_rerun`, the trainees whose class is breached in
 `cap_breached` (chara ids), the reasons any search of the job (the plan's included) or the flags of a class it answers
 for leave an answer incomplete in `job_unproven` (band overflows, breaches), `job_assumes` likewise for the named
@@ -927,7 +929,7 @@ requests, `CareerRequest::plan_key`; not in `state_out`): the rows the page show
 score and every other within the search margin of the top, `search_floor`, less repeats), their careers and scores, the plan's candidates, its fit
 (each continuation's evidence, the sides, the trios) and its deck cache, moved out of the plan's simulator (the output
 does not read it). The plan job again with `next.robust: "next"` (the page, once the pick is shown) runs the next
-variant on that state, no search and no plan (an error, `unavailable`, where the worker keeps none); `"all"` runs every
+variant on that state, no search and no plan (a reply of kind "check": its `robust`, of kind "unavailable" where the worker keeps none); `"all"` runs every
 variant left, the plan run first where none is kept (the CLI). With `next.oracle` too, `"next"` is refused and `"all"`
 runs the plan (the kept state has no oracle). After the last variant the state keeps its report alone (the rows, fit,
 candidates and cache go). So the pick's wait does not grow. The page sends these as background jobs (`engine.ts`): an
@@ -1120,7 +1122,7 @@ lowers those by 13% (p16_borrow, 360.1 -> 312.6 at best) and 19-20% (boot_build,
 of the other 12 val/plan pools sequencing lowers V by 8.7-11.9% (boot_mob 40.9%, p16_88 0).
 
 **Output `next`:**
-- `options`: per career `role` (plan / finish / loop / candidate / builder; finish is C's career on A's and B's real
+- `options`: per career its report (`report`, as in `results`) and `role` (plan / finish / loop / candidate / builder; finish is C's career on A's and B's real
   full veterans, the trios' last step, only when both sides are real and her parents are both full veterans), `looped` (both parents
   full veterans), `best_odds` (the main search's best career, one row), `index`, `score`, `lift` (the chance her roll
   lowers V), `lifts_side` (a scored row's, null otherwise: `{uma, chance, own}`; over the outcomes where her roll lowers
@@ -1157,9 +1159,10 @@ of the other 12 val/plan pools sequencing lowers V by 8.7-11.9% (boot_mob 40.9%,
   carries it: her uma, her parents in order and her deck by card identity, `kept::career_id`; two decks on the same parents are two
   careers, and the page matches careers by it): the pick, her uncertain targets and the
   scenario's guaranteed ones (job-target indices). The page checks a roll's career against it.
-- `roll` (a job with `next.roll`; a carried `roll` returns it as the job's `roll`): `{y}` at her outcome (her
-  stars per uncertain target, at most 3, and the guaranteed targets landed or not), with `ms` and `prof`, and
-  `planned: true` when the plan had to run for it. The plan keeps its pick's roll state (`RollKeep`, the last 4 plans,
+- `roll` (a job with `next.roll`: answered from the kept roll state as a reply of kind "roll", else as the plan's
+  `next.roll`; a carried `roll` returns it as the carried reply's `roll`): `{kind: "answer", outcome: {kind: "saving",
+  y}}` at her outcome (her stars per uncertain target, at most 3, and the guaranteed targets landed or not), with `ms`
+  and `prof`, and `planned: true` when the plan had to run for it. The plan keeps its pick's roll state (`RollKeep`, the last 4 plans,
   `ROLL_KEEP`, keyed by the plan job without `next.roll`, top-level `roll`, `no_reports` and `compare`; in `state_out`): the pick's last
   scoring as its fold and outcome loop read it (`Scored`: the kept tables, her miss factors and spark scales per
   setup (partner and finisher slots), the collapsed targets, her landed sets' chances, the routes), with the base it was

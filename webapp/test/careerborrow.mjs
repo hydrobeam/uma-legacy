@@ -16,7 +16,7 @@ export default async function careerborrow(b) {
       s: window.__careerResults.filter((r) => !r.next && r.results?.length).at(-1),
     }));
   const withBor = (p) =>
-    [p.r.next.choice, ...p.r.next.options, ...p.s.results].filter((r) =>
+    [p.r.next.choice, ...p.r.next.options.map((o) => o.report), ...p.s.results].filter((r) =>
       r?.parents.some((i) => p.job.career.legacies[i].borrowed),
     ).length;
   const exported = async () => {

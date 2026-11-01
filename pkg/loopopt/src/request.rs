@@ -83,9 +83,9 @@ pub(crate) struct JobFiles {
     pub(crate) events: Option<std::path::PathBuf>,
 }
 
-/// `init`'s answer: the data loaded, or why not.
+/// `init`'s answer, by its `kind`: the data loaded, or why not.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 #[cfg_attr(not(target_arch = "wasm32"), expect(dead_code, reason = "the wasm's `init` (web.rs) answers it"))]
 pub(crate) enum InitReply {
     Loaded(Loaded),
@@ -96,8 +96,6 @@ pub(crate) enum InitReply {
 #[derive(Serialize, TS)]
 #[cfg_attr(not(any(target_arch = "wasm32", test)), expect(dead_code, reason = "the wasm's `init` (web.rs) answers it"))]
 pub(crate) struct Loaded {
-    /// always true
-    pub(crate) ok: bool,
     pub(crate) umas: usize,
 }
 

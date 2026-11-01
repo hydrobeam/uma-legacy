@@ -53,9 +53,10 @@ function fakeEngine() {
 }
 // a loop report: its top loop's odds `p`
 const report = (p, more = {}) => ({
+  kind: 'loops',
   top: [{ loop: { p_all: p, members: [] }, deck: { cards: [], card_ids: [], odds: [] } }],
   per_uma: true,
-  decks_built: 1200,
+  stats: { decks_built: 1200 },
   foursomes: 30,
   proven: true,
   exact: { rho: 2, rho_target: 2, complete: true },
@@ -303,7 +304,7 @@ test('an interim answer with loops is drawn and the phase is check; one without 
   const job = await searching(p);
   const before = snapshot();
   job.interim(answer(report(0.01, { top: [] })));
-  job.interim(answer({ error: 'trap' }));
+  job.interim(answer({ kind: 'refusal', error: 'trap' }));
   assert.deepEqual(snapshot(), before);
   const fast = report(0.01);
   job.interim(answer(fast));
@@ -340,7 +341,7 @@ test('errors: an engine that throws, a refusal, a report without loops', async (
   (await searching(p)).reject(new Error('the solver could not load'));
   await flush();
   assert.deepEqual(loopView.peek().status, { kind: 'error', text: 'the solver could not load' });
-  (await searching(p)).resolve(answer({ error: 'bad job' }));
+  (await searching(p)).resolve(answer({ kind: 'refusal', error: 'bad job' }));
   await flush();
   assert.deepEqual(loopView.peek().status, { kind: 'error', text: 'Not searched: bad job' });
   (await searching(p)).resolve(answer(report(0.01, { top: [] })));
@@ -434,7 +435,7 @@ test('resultsStale after stop, pending, blocked, error and while searching; not 
   p.loop.doSearch();
   assert.equal(resultsStale.value, true, 'blocked');
   setTargets(DEFAULTS.targets);
-  (await searching(p)).resolve(answer({ error: 'x' }));
+  (await searching(p)).resolve(answer({ kind: 'refusal', error: 'x' }));
   await flush();
   assert.equal(resultsStale.value, true, 'error');
 });

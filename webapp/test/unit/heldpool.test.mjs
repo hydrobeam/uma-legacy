@@ -41,7 +41,7 @@ const career = {
   bound: 0,
   deck: { cards: [], card_ids: [], odds: [] },
   pinks: [],
-  aptitudes: { base: [], start: [], fire: [], pink_gen: [] },
+  aptitudes: { base: [], start: { kind: 'known', start: [], fire: [] }, pink_gen: [] },
   schedule: null,
   outcome_sets: null,
   g1_wins: null,

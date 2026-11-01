@@ -32,8 +32,8 @@ fn looped_career_is_offered() {
     assert!(
         pick["looped"] == true && pick["role"] == "finish",
         "pick {} on {}: role {}, looped {}",
-        pick["trainee"]["name"],
-        pick["parents"],
+        pick["report"]["trainee"]["name"],
+        pick["report"]["parents"],
         pick["role"],
         pick["looped"]
     );

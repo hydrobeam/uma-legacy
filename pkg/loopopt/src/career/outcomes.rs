@@ -186,7 +186,6 @@ impl CareerSetup<'_> {
                     white: 0.0,
                     land_gold: crate::skills::GEN_GOLD * scales.guaranteed.get(pos).copied().unwrap_or(1.0),
                     land_white: 0.0,
-                    scenario: true,
                 })
             }
         };

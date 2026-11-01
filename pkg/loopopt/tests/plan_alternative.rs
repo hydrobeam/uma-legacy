@@ -23,7 +23,7 @@ fn an_alternative_sides_builder_saves_about_one_career() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|row| row["career"] == builder)
+        .find(|row| row["report"]["career"] == builder)
         .unwrap_or_else(|| panic!("a row of her builder {builder}"));
     let score = row["score"].as_f64().unwrap();
     assert!(score >= -0.1, "V's route's first step saves {} careers, against the 1 it promises", score + 1.0);

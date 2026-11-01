@@ -1134,7 +1134,9 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .filter_map(|row| Some((row["career"].as_str()?.to_owned(), row["score"].as_f64()?.to_bits())))
+                .filter_map(|row| {
+                    Some((row["report"]["career"].as_str()?.to_owned(), row["score"].as_f64()?.to_bits()))
+                })
                 .collect()
         };
         assert_eq!(scores(full), scores(cut), "every row's score");

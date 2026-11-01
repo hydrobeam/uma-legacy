@@ -123,7 +123,7 @@ function onWorkerMessage(message: FromWorker, start: Start) {
     const waiting = [...pending.values()];
     killEngine();
     for (const job of waiting)
-      job.done({ r: { error: `the solver stopped with an error (${message.message})` }, ms: 0 });
+      job.done({ r: { kind: 'refusal', error: `the solver stopped with an error (${message.message})` }, ms: 0 });
   } else if (message.type === 'interim') pending.get(message.id)?.interim?.(message);
   else if (message.type === 'progress') pending.get(message.id)?.progress?.(message);
   else if (message.type === 'result') {
@@ -208,7 +208,7 @@ async function restore() {
   if (!stored || !worker) return;
   // (the solver checks what comes back: a state of another shape or version is refused, and dropped here)
   const answer = await post({ cmd: 'state_in', state: stored as StoredState });
-  if (!answer.r || 'error' in answer.r) stateDrop(key);
+  if (!answer.r || answer.r.kind === 'refusal') stateDrop(key);
 }
 // after a plan: store what the worker holds as soon as it is idle (a job in flight comes first, a background one
 // excepted: the store waits behind it in the worker; a killed worker saves nothing). The store is a background job
@@ -227,7 +227,7 @@ export function engineSaveState() {
     try {
       await ready;
       const answer = await post<StateOutReply>({ cmd: 'state_out' }, undefined, undefined, true);
-      if (!('error' in answer.r) && answer.r.state) stateSave(stateKey(), answer.r.state);
+      if (answer.r.kind === 'state_out') stateSave(stateKey(), answer.r.state);
     } catch {
       /* the worker went: nothing to save */
     }

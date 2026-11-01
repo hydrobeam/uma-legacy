@@ -399,7 +399,7 @@ export const SIDEWAYS = () => {
  */
 // The career planner in a fresh context, its first (empty) run done. window.__careerJobs and __careerResults list the
 // jobs sent and their results; window.__seq records what the page shows each time it changes; a test sets
-// window.__rollPatch to stand in for a roll's saving, window.__planPatch for fields of a plan's report (or
+// window.__rollPatch to stand in for a roll's outcome (`{ y }`), window.__planPatch for fields of a plan's report (or
 // window.__planEdit, a function given the report to change in place), window.__checkPatch for fields of its check's.
 // Each career group (career, careerpool, careervets, careergen, careerrun, careerborrow) runs from its own fresh page,
 // so they run in parallel.
@@ -423,13 +423,14 @@ export async function careerPage(b) {
     // (`__rollPatch`: a test's stand-in for a roll's saving, put over the solver's before the page reads it)
     hooks.message.push((d) => {
       if (d?.type !== 'result') return;
-      if (window.__rollPatch && d.r?.next?.roll) Object.assign(d.r.next.roll, window.__rollPatch);
+      // (a roll: a kept plan's, `kind` "roll", or a plan's own `next.roll`; the patch stands in for its outcome)
+      const roll = d.r?.kind === 'roll' ? d.r.roll : d.r?.next?.roll;
+      if (window.__rollPatch && roll?.outcome) Object.assign(roll.outcome, { kind: 'saving' }, window.__rollPatch);
       // (`__planPatch`: a test's stand-in for fields of a plan's report, put over the solver's the same way)
       if (window.__planPatch && d.r?.next?.options) Object.assign(d.r.next, window.__planPatch);
       if (window.__planEdit && d.r?.next?.options) window.__planEdit(d.r.next);
-      if (window.__checkPatch && d.r?.next?.robust && !d.r.next.options)
-        Object.assign(d.r.next.robust, window.__checkPatch);
-      if (d.r?.next?.robust && !d.r.next.options) window.__checkResults.push(d.r);
+      if (window.__checkPatch && d.r?.kind === 'check') Object.assign(d.r.robust, window.__checkPatch);
+      if (d.r?.kind === 'check') window.__checkResults.push(d.r);
       else window.__careerResults.push(d.r);
     });
     hooks.post.push((m) => {

@@ -64,5 +64,5 @@ function certText(exact: LoopReport['exact'] | null | undefined) {
 /** the status line of a finished search: what it checked, in how long, and what it could not prove */
 export const doneText = (r: LoopReport, ms: number): Status => ({
   kind: 'done',
-  text: `Checked ${r.decks_built.toLocaleString()} decks / ${r.foursomes.toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s${r.proven === false ? ' · cut short: not proven best' : ''}${certText(r.exact)}`,
+  text: `Checked ${r.stats.decks_built.toLocaleString()} decks / ${r.foursomes.toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s${r.proven === false ? ' · cut short: not proven best' : ''}${certText(r.exact)}`,
 });

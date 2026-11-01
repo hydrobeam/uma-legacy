@@ -834,7 +834,7 @@ export default async function career(b) {
   const tableRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next?.options).at(-1));
   const roles = await pg.evaluate((next) => {
     const titles = [...document.querySelectorAll('.alts .optab tbody .onum[title]')].map((t) => t.title),
-      byId = new Map(next.options.map((o) => [o.trainee.id, o.trainee.name])),
+      byId = new Map(next.options.map((o) => [o.report.trainee.id, o.report.trainee.name])),
       shown = next.options.slice(0, 8).filter((o) => o.role !== 'plan' && o.role !== 'finish' && o.index != null);
     const lifted = shown
       .filter((o) => o.lifts_side?.uma != null && o.lifts_side.chance >= o.lifts_side.own && byId.has(o.lifts_side.uma))
@@ -1189,7 +1189,7 @@ export default async function career(b) {
   const lastRoll = () =>
     pg.evaluate(() => {
       const j = window.__careerJobs.filter((j) => j.career.next?.roll).at(-1),
-        r = window.__careerResults.filter((r) => r.next?.roll).at(-1);
+        r = window.__careerResults.filter((r) => r.kind === 'roll').at(-1);
       const ps = window.__careerJobs
         .filter((j) => j.career.next && !j.career.next.roll && !j.career.compare)
         .map((p) => JSON.stringify(p));
@@ -1202,8 +1202,8 @@ export default async function career(b) {
         same: !!j && ps.includes(JSON.stringify(plan)),
         stars: j?.career.next.roll,
         dist: j?.skills.rank_class,
-        roll: r?.next.roll,
-        first: ir >= 0 && (ic > ir || r.next.roll.y >= 0.5),
+        roll: r?.roll,
+        first: ir >= 0 && (ic > ir || r.roll.outcome.y >= 0.5),
         verdict: document.getElementById('sim-verdict')?.textContent || '',
       };
     });
@@ -1214,9 +1214,9 @@ export default async function career(b) {
       lr.first &&
       lr.stars.length === 8 &&
       lr.stars.every((s) => s === 3) &&
-      typeof lr.roll?.y === 'number' &&
+      typeof lr.roll?.outcome?.y === 'number' &&
       !lr.roll.planned &&
-      (lr.roll.y >= 0.5 || /^No (careers saved|saving found yet)/.test(lr.verdict)),
+      (lr.roll.outcome.y >= 0.5 || /^No (careers saved|saving found yet)/.test(lr.verdict)),
     JSON.stringify(lr),
   );
   // a zero (the solver's answer replaced: y 0; every zero is checked) shows no saving while it is checked,
@@ -1281,7 +1281,7 @@ export default async function career(b) {
         jobs.push = push;
         setTimeout(() => {
           delete window.__rollPatch;
-          window.__nr = window.__careerResults.filter((r) => r.next?.roll).length;
+          window.__nr = window.__careerResults.filter((r) => r.kind === 'roll').length;
           roll();
         }, 0);
       }
@@ -1302,16 +1302,16 @@ export default async function career(b) {
       () => false,
     );
   const nr = await pg.evaluate(() => window.__nr);
-  await pg.waitForFunction((n) => window.__careerResults.filter((r) => r.next?.roll).length > n, nr, {
+  await pg.waitForFunction((n) => window.__careerResults.filter((r) => r.kind === 'roll').length > n, nr, {
     timeout: 180000,
   });
   const after = await pg.evaluate(() => ({
     ins: window.__careerJobs.filter((j) => j.cmd === 'state_in').length,
-    roll: window.__careerResults.filter((r) => r.next?.roll).at(-1).next.roll,
+    roll: window.__careerResults.filter((r) => r.kind === 'roll').at(-1).roll,
   }));
   check(
     'career: … a roll that stops an exact comparison (its worker goes) is answered from the restored state, not planned again',
-    exStarted && after.ins > ins0 && typeof after.roll.y === 'number' && !after.roll.planned,
+    exStarted && after.ins > ins0 && typeof after.roll.outcome?.y === 'number' && !after.roll.planned,
     JSON.stringify({ exStarted, ins0, after }),
   );
   await pg.waitForFunction(

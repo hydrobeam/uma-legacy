@@ -46,7 +46,7 @@ const made = (pick = 'pick') => {
   return {
     status: { kind: 'done', text: 'Weighed 2 careers in 0.1 s.' },
     last: {
-      r: { results: [career('best'), choice], candidates: 2 },
+      r: { kind: 'search', results: [career('best'), choice], candidates: 2 },
       job: { career: { legacies: [] } },
       key: 'job',
       plan: PLACES,
@@ -63,7 +63,14 @@ const made = (pick = 'pick') => {
 const WHERE = { base: 'base', places: { trainee: null, parents: [null, null] } };
 // the veterans the answers' jobs were built on (their ids by legacy index)
 const POOL = ['a', 'b'];
-const check = (pending, pairs = null) => ({ plan: 'pick', pending, stable: true, contenders: [], pairs });
+const check = (pending, pairs = null) => ({
+  kind: 'report',
+  plan: 'pick',
+  pending,
+  stable: true,
+  contenders: [],
+  pairs,
+});
 
 // each transition: what it does to the record, and the fields it replaces (the rest stay the same objects)
 const RUN_STEPS = [
@@ -223,7 +230,7 @@ const fakes = (replies, during = () => undefined) => {
       runCheck: async (job) => {
         seen.jobs.push(job);
         during(seen.jobs.length);
-        return { r: { next: { robust: replies.shift() } } };
+        return { r: { kind: 'check', robust: replies.shift() } };
       },
       redraw: () => seen.redraws++,
       checked: (plan) => seen.checked.push(plan),
@@ -264,7 +271,7 @@ test('a new plan stops the check, even one like it; so do a new run and a worker
   assert.equal(run.seen.jobs.length, 1);
   assert.equal(answer.value.planState.r.robust, undefined);
   // the worker lost the plan: the check is unavailable, drawn, and stops
-  run = fakes([{ ...check(0), unavailable: true }]);
+  run = fakes([{ kind: 'unavailable', error: 'no kept plan to check' }]);
   await checkPhase(run.deps, answer.value.planState);
   assert.equal(answer.value.planState.r.check_unavailable, true);
   assert.equal(run.seen.redraws, 1);

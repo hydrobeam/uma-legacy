@@ -8,9 +8,9 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
-/// The plan (`next`), or why there is none.
+/// The plan (`next`), or why there is none, by `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum PlanReply {
     Refusal(Refusal),
     Plan(Box<Plan>),
@@ -98,17 +98,17 @@ pub(crate) struct Plan {
     pub(crate) proxy_check: Option<crate::career::plan::rows::ProxyCheck>,
 }
 
-/// The lift audit (`next.audit_lifts`), or the browser build's refusal of it (the native loopopt runs it).
+/// The lift audit (`next.audit_lifts`), or the browser build's refusal of it (the native loopopt runs it), by `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum LiftAuditReply {
-    Rows(Vec<crate::career::plan::audit::LiftAudit>),
+    Rows { rows: Vec<crate::career::plan::audit::LiftAudit> },
     Refusal(Refusal),
 }
 
-/// The oracle asked for (`next.oracle`), or the browser build's refusal of it.
+/// The oracle asked for (`next.oracle`), or the browser build's refusal of it, by `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum OracleReport {
     Joint(Box<crate::career::plan::oracle::JointOracle>),
     Sequenced(Box<crate::career::plan::sequenced::SequencedOracle>),
@@ -156,7 +156,6 @@ pub(crate) struct Route {
 /// One of the cheapest routes, with its value and whether it is about as cheap as V's.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct RankedRoute {
-    #[serde(flatten)]
     pub(crate) route: Route,
     pub(crate) value: f64,
     /// within NEAR_TRIO_SHARE of V's
@@ -258,7 +257,7 @@ pub(crate) struct SurrogateDifference {
 /// One career of the plan's table: a career report with its place in the plan.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct PlanOption {
-    #[serde(flatten)]
+    /// the career
     pub(crate) report: CareerReport,
     /// her place in today's estimate
     pub(crate) role: OptionRole,
@@ -321,9 +320,9 @@ pub(crate) struct LiftsSide {
     pub(crate) own: f64,
 }
 
-/// A roll of the plan's pick (`next.roll`), or why there is none.
+/// A roll of the plan's pick (`next.roll`), or why there is none, by `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum RollReply {
     Answer(RollAnswer),
     Refusal(Refusal),
@@ -332,7 +331,7 @@ pub(crate) enum RollReply {
 /// A roll's answer from the plan's kept roll state, with its time and counters.
 #[derive(Serialize, TS)]
 pub(crate) struct RollAnswer {
-    #[serde(flatten)]
+    /// what the outcome is worth
     pub(crate) outcome: RollOutcome,
     pub(crate) ms: f64,
     /// the roll's own timers and counters
@@ -343,9 +342,9 @@ pub(crate) struct RollAnswer {
     pub(crate) planned: Option<bool>,
 }
 
-/// What a roll's outcome is worth, or why it could not be scored.
+/// What a roll's outcome is worth, or why it could not be scored, by `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum RollOutcome {
     /// the careers her veteran saves at that outcome, to 0.01
     Saving {
@@ -354,15 +353,14 @@ pub(crate) enum RollOutcome {
     Refusal(Refusal),
 }
 
-/// The plan's robustness check so far (`next.robust`), or why there is none.
+/// The plan's robustness check so far (`next.robust`), or why there is none, by `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum CheckReply {
     Report(Box<CheckReport>),
-    /// the worker keeps no plan to check (`unavailable`: always true)
+    /// the worker keeps no plan to check
     Unavailable {
         error: String,
-        unavailable: bool,
     },
     Refusal(Refusal),
 }
@@ -497,7 +495,7 @@ pub(crate) struct TraineePairsReport {
 /// Phase 2: a best pair of phase 1 tried for a trainee without her own search.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct SharedPair {
-    #[serde(flatten)]
+    /// the pair's career
     pub(crate) finalist: FinalistReport,
     pub(crate) trainee: String,
     /// always "shared_pair"

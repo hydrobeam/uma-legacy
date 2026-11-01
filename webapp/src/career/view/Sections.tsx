@@ -173,7 +173,7 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
     deckP = deckHint(b.deck_gold || 0, b.deck_white || 0),
     bg = b.gold || 0,
     bw = b.white || 0,
-    sc = b.scenario ? scenarioOf(settings.value.scen) : null;
+    sc = b.kind === 'scenario' ? scenarioOf(settings.value.scen) : null;
   return (
     <li class="ctg">
       <button

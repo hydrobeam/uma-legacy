@@ -264,9 +264,10 @@ imports the generated types, adding only the fields it sets itself (a type like 
 }`).
 
 How serde's encoding reads in the TypeScript: an `Option` written as null is `T | null`; a field left out where it does
-not apply (`skip_serializing_if`) is `field?: T`; an untagged enum is a union of its variants' shapes (a reply is its
-report or a `Refusal`, told apart by `'error' in reply`); a flattened struct is an intersection; an f64 that can be
-infinite is written as null (serde_json), and such a field is typed `number | null`.
+not apply (`skip_serializing_if`) is `field?: T`; a reply with several shapes is an enum tagged by `kind`
+(`#[serde(tag = "kind")]`), so the TypeScript is a discriminated union the page narrows by `kind` (a refusal is `{kind:
+"refusal", error}`); a record inside another is a nested object (no `#[serde(flatten)]`); an f64 that can be infinite
+is written as null (serde_json), and such a field is typed `number | null`.
 
 ## Tests
 

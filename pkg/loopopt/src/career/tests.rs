@@ -182,8 +182,8 @@ fn state_round_trips_and_refuses_malformed() {
         assert!(worker.rolls.is_empty() && worker.decks.is_empty(), "simulation must isolate rolls and decks");
         state::kept_swap(&mut worker, saved);
         assert_eq!(
-            serde_json::to_value(state::state_out(&worker)).unwrap(),
-            out,
+            serde_json::to_value(state::state_out(&worker)).unwrap()["state"],
+            out["state"],
             "simulation must restore every serialized collection"
         );
         assert_eq!(worker.decks.len(), deck_setups);
@@ -193,18 +193,20 @@ fn state_round_trips_and_refuses_malformed() {
     }
     let mut rolled = v.clone();
     rolled["career"]["next"]["roll"] = json!(vec![1u8; v["skills"]["targets"].as_array().unwrap().len()]);
+    // (a roll of the plan the worker keeps: answered from it, `kind` "roll"; without one, the plan's own)
     let roll = || {
-        let mut r = run(&rolled);
-        assert!(r["next"]["roll"].get("error").is_none() && r["next"]["roll"]["y"].is_number(), "{r}");
+        let r = run(&rolled);
+        let mut roll = if r["kind"] == "roll" { r["roll"].clone() } else { r["next"]["roll"].clone() };
+        assert!(roll["outcome"]["y"].is_number(), "{r}");
         for k in ["ms", "prof"] {
-            r["next"]["roll"].as_object_mut().unwrap().remove(k);
+            roll.as_object_mut().unwrap().remove(k);
         }
-        r
+        roll
     };
     let roll0 = roll();
     let empty = json!({"v": STATE_VERSION, "bests": [], "seen": [], "solve": [], "flags": [], "rolls": [], "caps": []});
-    assert_eq!(state_in(&empty)["ok"], true);
-    assert_eq!(state_in(&st)["ok"], true);
+    assert_eq!(state_in(&empty)["kind"], "state_in");
+    assert_eq!(state_in(&st)["kind"], "state_in");
     assert_eq!(state_out(), out, "the state did not round-trip");
     assert_eq!(roll(), roll0, "a roll after the round trip");
 
@@ -336,7 +338,7 @@ fn state_round_trips_and_refuses_malformed() {
 
     // ---- stores that parse but do not fit the setup they meet: not used there ----
     let seen_used = |st: &Value| {
-        assert_eq!(state_in(st)["ok"], true);
+        assert_eq!(state_in(st)["kind"], "state_in");
         let used = std::rc::Rc::new(std::cell::Cell::new(false));
         let u = std::rc::Rc::clone(&used);
         ENV_HOOK.with(|c| {
@@ -362,7 +364,7 @@ fn state_round_trips_and_refuses_malformed() {
             f["trainee"] = json!(1_000_000);
         }
     });
-    assert_eq!(state_in(&bad)["ok"], true);
+    assert_eq!(state_in(&bad)["kind"], "state_in");
     let again = run(&v);
     assert!(again.get("error").is_none(), "{}", again["error"]);
     assert_eq!((&again["next"]["choice"], &again["results"]), (&plan["next"]["choice"], &plan["results"]));
@@ -373,8 +375,8 @@ fn state_round_trips_and_refuses_malformed() {
     for entry in flagged["flags"].as_array_mut().unwrap() {
         entry[1] = json!(entry[1].as_u64().unwrap() | 1);
     }
-    assert_eq!(state_in(&flagged)["ok"], true);
-    assert_eq!(state_in(&st)["ok"], true);
+    assert_eq!(state_in(&flagged)["kind"], "state_in");
+    assert_eq!(state_in(&st)["kind"], "state_in");
     let flags = state_out()["state"]["flags"].clone();
     assert!(
         flags.as_array().unwrap().iter().all(|entry| entry[1].as_u64().unwrap() & 1 == 1),
@@ -409,7 +411,7 @@ fn a_kept_plan_keeps_its_flags_through_flag_churn() {
     KEPT.with(|worker| {
         state::kept_swap(&mut worker.borrow_mut(), KeptState::default());
     });
-    assert_eq!(run(&json!({"cmd": "state_in", "state": st}))["ok"], true);
+    assert_eq!(run(&json!({"cmd": "state_in", "state": st}))["kind"], "state_in");
     let again = run(&v);
     assert_eq!((&again["complete"], &again["proven_top"]), (&json!(false), &json!(false)), "{}", again["unproven"]);
     assert!(again["unproven"].as_array().is_some_and(|reasons| reasons.contains(&json!("cap_breach"))));

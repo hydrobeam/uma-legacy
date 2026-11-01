@@ -4,11 +4,12 @@
 use crate::career::cache::Cache;
 use crate::career::evaluator::{Cur, SurrogatePick};
 use crate::career::pool::Pool;
+use crate::career::reply::CareerReply;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
 use crate::career::sim::report::{
-    IndexRecord, LoopAudit, PickChange, RunStats, SimReply, SimReport, SimRun, SurrogateAudit, SurrogateCheck,
+    IndexRecord, LoopAudit, PickChange, RunStats, SimReport, SimRun, SurrogateAudit, SurrogateCheck,
 };
 use crate::career::sim::{
     Goal, IndexAction, Policy, Sim, SimJob, SimulationOptions, SimulationRoster, family, legacy_record,
@@ -454,8 +455,8 @@ pub(in crate::career) fn simulate<'data>(
     legacies: &[Legacy],
     trainees: &[crate::uma::UmaIndex],
     config: &SimJob,
-) -> SimReply {
-    let refused = |why: String| SimReply::Refusal(Refusal::new(why));
+) -> CareerReply {
+    let refused = |why: String| CareerReply::Refusal(Refusal::new(why));
     let target_count = env.setup.target_count;
     if target_count > 12 || env.setup.uncertain_count > 10 {
         return refused("simulate takes at most 12 targets, 10 of them not guaranteed".to_owned());
@@ -509,7 +510,7 @@ pub(in crate::career) fn simulate<'data>(
     let initialization_started = std::time::Instant::now();
     let initial_state = simulator.initial(legacies, base);
     if base == Base::Trace {
-        return SimReply::Trace(simulator.trace(&initial_state));
+        return CareerReply::Trace(Box::new(simulator.trace(&initial_state)));
     }
     let initialization_seconds = initialization_started.elapsed().as_secs_f64();
     let mut runs = vec![];
@@ -599,7 +600,7 @@ pub(in crate::career) fn simulate<'data>(
         kept_swap(simulator.kept, kept);
     }
     let looped_goal = config.goal == Goal::Looped;
-    SimReply::Report(Box::new(SimReport {
+    CareerReply::Simulation(Box::new(SimReport {
         simulate: config.clone(),
         expected: stats(&run_expectations),
         policy: config.policy,
