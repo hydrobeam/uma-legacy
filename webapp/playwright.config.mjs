@@ -24,7 +24,7 @@ const freePort = () =>
 if (!process.env.LLP_URL) process.env.LLP_PORT ??= String(await freePort());
 process.env.LLP_PAGE ??= process.env.LLP_URL || `https://127.0.0.1:${process.env.LLP_PORT}/`; // helpers.mjs PAGE_URL; HTTP/2 over TLS, as the host
 // per browser. One each keeps the laptop below its thermal limit on average: 4 each (8 groups at once) averaged 6.9 busy
-// cores and 96.9 C over the run, two groups at once 2.1 cores and 82.8 C (.review/web/testperf.md); LLP_JOBS=4 for speed
+// cores and 96.9 C over the run, two groups at once 2.1 cores and 82.8 C; LLP_JOBS=4 for speed
 const JOBS = Math.max(1, +process.env.LLP_JOBS || 1);
 
 export default defineConfig({

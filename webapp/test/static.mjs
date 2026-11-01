@@ -13,8 +13,8 @@
 //   purpose is listed in MAY_BE_MISSING, per page, with why.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
-// against the layer order (LAYERS, frontend.md §2; an error from the career split on), and the `@ts-expect-error`
-// markers left by renames to .ts.
+// against the layer order (LAYERS; a report while existing modules still break it), and the `@ts-expect-error` markers
+// left by renames to .ts.
 import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
@@ -187,7 +187,7 @@ const reports = [];
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
 }
 // layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page
-// (frontend.md §2: an error from the career split on; a report until then)
+// (a report while existing modules still break it)
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker']],
@@ -218,7 +218,7 @@ const LAYERS = [
   if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
 }
 // the type checker's `@ts-expect-error` markers: each a line a module's rename to .ts left for its strict commit
-// (frontend.md, *The ladder*; none may remain at step 13)
+// (a count of what the strict commits have left to remove)
 {
   const markers = sources
     .filter(([f]) => f.startsWith('src'))

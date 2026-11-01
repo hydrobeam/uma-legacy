@@ -1,4 +1,4 @@
-// The solver's replies, recorded and replayed (docs/BUILD.md, *Tests*; .review/web/testperf.md). Most groups use the
+// The solver's replies, recorded and replayed (docs/BUILD.md, *Tests*). Most groups use the
 // solver only to put the page in a state. In those (groups.spec.mjs REPLAY) a stand-in for the page's Worker answers
 // each job from the store (cache/solver-replies/, a directory per solver and data: replaystore.mjs), and the page's
 // wasm compile is handed an empty module, so the solver neither compiles nor runs. `LLP_SOLVER=live` runs every group

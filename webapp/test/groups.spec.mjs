@@ -94,8 +94,7 @@ const BOTH = [
 // run the real solver: they check its worker's live behaviour (load, autosearch, states: kills, restarts, a failing job,
 // jobs in flight; career, careerrun: progress phases, races between rolls and comparisons, the background check, the
 // kept work stored and restored; delivery: the wasm and worker as served), or the deck solver's own odds (nonecards), or
-// use no solver (about). Why each: .review/web/testperf.md. Under LLP_SOLVER=live every group runs the real solver and
-// records its replies.
+// use no solver (about). Under LLP_SOLVER=live every group runs the real solver and records its replies.
 const REPLAY = [
   'cards',
   'roster',

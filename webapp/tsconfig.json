@@ -1,6 +1,6 @@
 {
   // The page's TypeScript (.ts, .tsx), strict. The .js modules it imports are typed by inference; their own checks are
-  // tsconfig.js.json's (checkJs, not strict) until every module is converted (frontend.md, step 13).
+  // tsconfig.js.json's (checkJs, not strict) until every module is converted to .ts.
   "compilerOptions": {
     "allowJs": true,
     "checkJs": false,

@@ -25,7 +25,8 @@ export default async function dark(b) {
   await pg
     .waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark', null, { timeout: 3000 })
     .catch(() => {
-      // as above
+      // the change event arrives asynchronously; on a timeout the theme is still light, the click below makes it dark
+      // and the next check fails
     });
   await pg.click('#theme-btn');
   check(
