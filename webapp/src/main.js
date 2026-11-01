@@ -1,5 +1,6 @@
 // Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
 // dist/assets/main.<hash>.js, which dist/index.html loads after its data script.
+import './errorlog.ts'; // first: it listens before any other module runs
 import { $, $dialog, $input, backdropCloses } from './dom.js';
 import { SAVED, ERA } from './settings.js';
 import { PRESET, loadData } from './data.js';

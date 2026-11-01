@@ -8,6 +8,7 @@
 //   roll.mjs      a roll: a random result of a career (no page state; the suite runs it in node)
 //   analysis.js   the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
 //   options.js    the options table ("Other careers": the plan's careers, Use this) and its Saves popup
+import './errorlog.ts'; // first: it listens before any other module runs
 import { $, $dialog, $input, $textarea, backdropCloses, el, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, SK, CAREER, RANKS, loadData } from './data.js';
