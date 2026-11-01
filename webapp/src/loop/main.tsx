@@ -19,7 +19,6 @@ import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
-import { initTargets, renderTargets } from '../targets.js';
 import { initScenario, eraScenario } from '../scenario.js';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
@@ -124,7 +123,6 @@ function start() {
     </RenderGuard>,
     $('rtop'),
   );
-  initTargets();
   render(<AffinityDialog />, $('why-root'));
   render(<ExportDialog />, $('ex-root'));
   $('ex-open').onclick = openExport;
@@ -148,7 +146,6 @@ function start() {
   };
   backdropCloses($dialog('sched-dlg'));
 
-  renderTargets(); // renderTargets draws the card picker too (it lists the cards that give a target)
   render(
     <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>
       <Results />

@@ -7,7 +7,6 @@ import { SCENARIOS, SCEN_GOLDS, RANKS, gameData } from './data.js';
 import { ERA } from './saved.ts';
 import { settings, setRank, setScenario } from './settings.ts';
 import { scenLogo, skillIcon, srcFor } from './images.js';
-import { renderTargets } from './targets.js';
 import { must } from './must.ts';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 const LIST = SCENARIOS.filter((s) => !s.era || s.era === ERA);
@@ -208,9 +207,8 @@ export function initScenario() {
   function pick(v) {
     if (v !== settings.value.scen) {
       chooseScenario(v);
-      renderTargets();
       paintScen();
-    } // renderTargets redraws the card picker too (bans, what each card gives)
+    } // the targets' golds and the card picker (bans, what each card gives) follow the scenario
     close(true);
   }
   btn.onclick = () => (menu.hidden ? open(true) : close(false));

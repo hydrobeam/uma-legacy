@@ -258,6 +258,14 @@ const SETUP_MOUNTS = [
     ['h-deck', 'c-all', 'c-none', 'c-file', 'c-count', 'c-msg', 'c-filter', 'cs', 'cs-dd', 'cs-menu', 'cards'],
     ['cgroup', 'ctiles', 'ct', 'cban'],
   ],
+  [
+    'skills-panel',
+    'src/ui/Targets.tsx',
+    ['h-skills', 't-preset', 't-add', 't-sugg', 'targets', 'preset-dlg', 'pr-title', 'pr-list', 'pr-msg', 'pr-save']
+      .concat(['pr-new', 'prn-title', 'prn-name', 'prn-msg', 'prn-save', 'pr-view', 'prv-title', 'prv-tiles'])
+      .concat(['prv-ren', 'prv-name', 'prv-msg', 'prv-rename']),
+    ['adder', 'sugg', 'snote', 'tgt', 'prlist', 'prow', 'pview', 'pname', 'pmeta', 'pcur', 'pbtns', 'ptrash'],
+  ],
 ];
 const MOUNTS = {
   'src/career/main.tsx': [
