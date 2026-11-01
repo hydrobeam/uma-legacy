@@ -2,6 +2,8 @@
 //! pairwise-ceiling table (`pbtable`) or the model constants scripts read (`constants`). A file it cannot read or parse
 //! is an error naming the file, and the process exits 2. Solver algorithms and the wasm interface live in their own
 //! modules; the wasm build leaves this one (and clap) out.
+use crate::career::reply::CareerReply;
+use crate::career::state::KeptState;
 use crate::data::{Data, DataRaw, PbRaw, load_raw, pb_fingerprint};
 use crate::deck::CardsRaw;
 use crate::loop_planner::schedules::pair_ceilings;
@@ -102,7 +104,9 @@ fn run_jobs(data_path: &Path, job_paths: &[PathBuf]) -> Result<(), CliError> {
             print_deck_job(&inputs, &job);
         }
         Request::Career(_) => {
-            restore_cli_career_state()?;
+            // the career planner's work kept between the run's jobs (and across runs: LOOPOPT_STATE_IN / _OUT)
+            let mut kept = KeptState::default();
+            restore_cli_career_state(&mut kept)?;
             // several career jobs share the first job's skills and cards and the worker's caches; each job is read with
             // its own events
             for path in job_paths {
@@ -113,9 +117,9 @@ fn run_jobs(data_path: &Path, job_paths: &[PathBuf]) -> Result<(), CliError> {
                 if let Some(events) = &files.events {
                     add_cli_events(&mut job, &cli_events(events, &skills)?);
                 }
-                print_career_job(&inputs, &job);
+                print_career_job(&inputs, &job, &mut kept);
             }
-            save_cli_career_state()?;
+            save_cli_career_state(&kept)?;
         }
         Request::StateOut | Request::StateIn { .. } => {
             return Err(CliError(format!(
@@ -204,18 +208,18 @@ struct SavedState {
 }
 
 /// Restores the career worker's kept work (`STATE_IN`) before any job runs, as the page does across reloads.
-fn restore_cli_career_state() -> Result<(), CliError> {
+fn restore_cli_career_state(kept: &mut KeptState) -> Result<(), CliError> {
     if let Some(path) = &crate::checks::get().state_in {
         let saved: SavedState = parse(Path::new(path))?;
-        eprintln!("state_in: {}", json_line(&crate::career::kept_state_in(&saved.state)));
+        eprintln!("state_in: {}", json_line(&crate::career::state::state_in(kept, &saved.state)));
     }
     Ok(())
 }
 
 /// Saves the career worker's kept work (`STATE_OUT`) once, after every job's output is printed.
-fn save_cli_career_state() -> Result<(), CliError> {
+fn save_cli_career_state(kept: &KeptState) -> Result<(), CliError> {
     if let Some(path) = &crate::checks::get().state_out {
-        std::fs::write(path, json_line(&crate::career::kept_state_out()))
+        std::fs::write(path, json_line(&CareerReply::StateOut(crate::career::state::state_out(kept))))
             .map_err(|e| CliError(format!("cannot write {path}: {e}")))?;
     }
     Ok(())
@@ -228,10 +232,10 @@ fn print_deck_job(inputs: &CliInputs, job: &DeckRequest) {
     print_timed(&reply, started);
 }
 
-/// Runs a career job and prints its reply (`print_timed`).
-fn print_career_job(inputs: &CliInputs, job: &CareerRequest) {
+/// Runs a career job on the run's kept work and prints its reply (`print_timed`).
+fn print_career_job(inputs: &CliInputs, job: &CareerRequest, kept: &mut KeptState) {
     let started = Instant::now();
-    let reply = crate::career::run_career(inputs.data, inputs.skills, inputs.cards, job);
+    let reply = crate::career::run_career_in(inputs.data, inputs.skills, inputs.cards, job, kept);
     print_timed(&reply, started);
 }
 

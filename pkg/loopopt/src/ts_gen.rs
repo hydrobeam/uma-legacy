@@ -42,7 +42,6 @@ fn visit_roots(declarations: &mut Declarations) {
     declarations.visit::<crate::loop_planner::output::DeckReply>();
     declarations.visit::<crate::career::reply::CareerReply>();
     declarations.visit::<crate::request::Request>();
-    declarations.visit::<crate::request::InitReply>();
 }
 
 /// The solver's 64-bit integers are counts and ids well inside a double's exact range.

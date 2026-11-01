@@ -14,7 +14,8 @@
 // (biome.json's overrides name the stores layer's modules: they make their records with store.ts's store())
 export const LAYERS = [
   ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types', 'eras', 'gen/solver', 'gen/constants']],
-  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved', 'storage']],
+  // (gen/loopopt: wasm-bindgen's glue, which the worker imports; JavaScript, the one module of src/ that is)
+  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'gen/loopopt', 'saved', 'storage']],
   [
     'model',
     ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/reply']
@@ -45,7 +46,7 @@ export const LAYERS = [
       .concat(['career/view/Pool', 'career/view/Io', 'career/view/poolState', 'career/view/Setup']),
   ],
 ];
-const modules = (names) => `^src/(${names.join('|')})\\.tsx?$`;
+const modules = (names) => `^src/(${names.join('|')})\\.(tsx?|js)$`;
 const NAMED = modules(LAYERS.flatMap(([, names]) => names ?? []));
 const layer = ([, names]) => (names ? { path: modules(names) } : { path: '^src/', pathNot: NAMED });
 const VALUE = { dependencyTypesNot: ['type-only'] };

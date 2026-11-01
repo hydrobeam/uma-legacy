@@ -42,12 +42,6 @@ pub(crate) struct KeptState {
     pub(crate) decks: Vec<(u64, DeckSearchCache)>,
 }
 
-thread_local! {
-    /// Native and wasm entry points retain one record per worker thread. Search code receives `&mut KeptState`;
-    /// recursive simulator jobs use that borrow directly rather than borrowing this cell again.
-    pub(crate) static KEPT: std::cell::RefCell<KeptState> = std::cell::RefCell::default();
-}
-
 /// Replace all kept work, including roll states, when isolating a simulated index run.
 pub(crate) const fn kept_swap(kept: &mut KeptState, replacement: KeptState) -> KeptState {
     std::mem::replace(kept, replacement)

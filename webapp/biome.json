@@ -10,7 +10,9 @@
       "vite/*.mjs",
       "chibi/*.mjs",
       "test/**/*.mjs",
-      "test/**/*.ts"
+      "test/**/*.ts",
+      "!src/gen/loopopt.js",
+      "!src/gen/loopopt.d.ts"
     ]
   },
   "formatter": {

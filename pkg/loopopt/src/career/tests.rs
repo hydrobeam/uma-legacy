@@ -10,8 +10,39 @@ thread_local! { pub(super) static ENV_HOOK: std::cell::RefCell<Option<Hook>> = c
 fn global(name: &str) -> String {
     std::fs::read_to_string(format!("{}/data/global/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
 }
-/// val/plan's p16 plan job (a `Request`, as the page sends it), and the Global data it runs on
-fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
+/// The page's worker as the tests drive it: the Global data, and the kept work its jobs share (in a cell, so a test's
+/// helpers can each run jobs on it, as the page's calls share the worker's)
+struct Worker {
+    data: Data,
+    skills: SkillsRaw,
+    cards: CardsRaw,
+    kept: std::cell::RefCell<KeptState>,
+}
+impl Worker {
+    /// A job as the page's worker takes it (`Request`, as JSON: web.rs `Solver::call`) on its kept work: a career job
+    /// with the Global card events added, the kept work out or in; its reply as JSON (a refusal where it does not parse)
+    fn call(&self, job: &Value) -> Value {
+        let kept = &mut self.kept.borrow_mut();
+        let reply = match serde_json::from_value::<Request>(job.clone()) {
+            Ok(Request::Career(mut job)) => {
+                let events = crate::deck::sources::event_lists(
+                    &self.skills,
+                    serde_json::from_str(&global("card_events.json")).unwrap(),
+                );
+                events.add_to(&mut job.deck);
+                run_career_in(&self.data, &self.skills, &self.cards, &job, kept)
+            }
+            Ok(Request::StateOut) => CareerReply::StateOut(state::state_out(kept)),
+            Ok(Request::StateIn { state }) => state::state_in(kept, &state),
+            Ok(Request::Deck(_)) => panic!("a deck job"),
+            Err(e) => return json!({"error": format!("bad request: {e}")}),
+        };
+        serde_json::to_value(reply).unwrap()
+    }
+}
+/// val/plan's p16 plan job (a `Request`, as the page sends it), and a worker on the Global data it runs on, with
+/// nothing kept
+fn p16() -> (Worker, Value) {
     let data = crate::data::load_str(&global("data.json"));
     let skills: SkillsRaw = serde_json::from_str(&global("web_skills.json")).unwrap();
     let cards: CardsRaw = serde_json::from_str(&global("web_cards.json")).unwrap();
@@ -19,29 +50,12 @@ fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
     )
     .unwrap();
-    (data, skills, cards, file["job"].clone())
+    (Worker { data, skills, cards, kept: std::cell::RefCell::default() }, file["job"].clone())
 }
-/// A job as the page's worker takes it (`Request`, as JSON: web.rs `handle`) on the worker's kept work: a career job
-/// with the Global card events added, the kept work out or in; its reply as JSON (a refusal where it does not parse)
-fn call(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> Value {
-    let reply = match serde_json::from_value::<Request>(job.clone()) {
-        Ok(Request::Career(mut job)) => {
-            let events =
-                crate::deck::sources::event_lists(skills, serde_json::from_str(&global("card_events.json")).unwrap());
-            events.add_to(&mut job.deck);
-            run_career(data, skills, cards, &job)
-        }
-        Ok(Request::StateOut) => kept_state_out(),
-        Ok(Request::StateIn { state }) => kept_state_in(&state),
-        Ok(Request::Deck(_)) => panic!("a deck job"),
-        Err(e) => return json!({"error": format!("bad request: {e}")}),
-    };
-    serde_json::to_value(reply).unwrap()
-}
-/// `run_career` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `hook` given its Env and
+/// `run_career_in` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `hook` given its Env and
 /// pool
 pub(super) fn with_env(hook: Hook) {
-    let (data, skills, cards, mut job) = p16();
+    let (worker, mut job) = p16();
     job["career"].as_object_mut().unwrap().remove("next");
     for (i, legacy) in job["career"]["legacies"].as_array_mut().unwrap().iter_mut().enumerate() {
         legacy["wins"] = json!([(i % 5) as u64, 7 + (i % 3) as u64, 20]);
@@ -50,7 +64,7 @@ pub(super) fn with_env(hook: Hook) {
         }
     }
     ENV_HOOK.with(|cell| *cell.borrow_mut() = Some(hook));
-    call(&data, &skills, &cards, &job);
+    worker.call(&job);
     assert!(ENV_HOOK.with(|cell| cell.borrow().is_none()), "the hook did not run");
 }
 /// Each key the worker keeps work under (`career::keys`) reads its parts of the job and no others: a change to a part
@@ -58,7 +72,7 @@ pub(super) fn with_env(hook: Hook) {
 /// out.
 #[test]
 fn job_keys_read_their_parts() {
-    let (_, _, _, v) = p16();
+    let (_, v) = p16();
     let keys = |job: &Value| {
         let Ok(Request::Career(job)) = serde_json::from_value::<Request>(job.clone()) else { panic!("{job}") };
         [job.setup_key(), job.search_key(), job.borrowing_search_key(), job.plan_key()]
@@ -165,29 +179,29 @@ fn inheritance_copies_match_lineage() {
 /// (`CareerSetup::seen_fits`, `solved_fits`) is not used there.
 #[test]
 fn state_round_trips_and_refuses_malformed() {
-    let (data, skills, cards, v) = p16();
-    let run = |job: &Value| call(&data, &skills, &cards, job);
+    let (worker, v) = p16();
+    let run = |job: &Value| worker.call(job);
     let state_out = || run(&json!({"cmd": "state_out"}));
     let state_in = |st: &Value| run(&json!({"cmd": "state_in", "state": st}));
     let plan = run(&v);
     assert!(plan.get("error").is_none(), "{}", plan["error"]);
     let out = state_out();
     let st = out["state"].clone();
-    KEPT.with(|worker| {
-        let mut worker = worker.borrow_mut();
-        let deck_setups = worker.decks.len();
+    {
+        let mut kept = worker.kept.borrow_mut();
+        let deck_setups = kept.decks.len();
         assert!(deck_setups > 0, "the completed job did not publish deck memos");
-        let saved = state::kept_swap(&mut worker, KeptState::default());
-        assert!(worker.bests.is_empty() && worker.seen.is_empty() && worker.searches.is_empty());
-        assert!(worker.rolls.is_empty() && worker.decks.is_empty(), "simulation must isolate rolls and decks");
-        state::kept_swap(&mut worker, saved);
+        let saved = state::kept_swap(&mut kept, KeptState::default());
+        assert!(kept.bests.is_empty() && kept.seen.is_empty() && kept.searches.is_empty());
+        assert!(kept.rolls.is_empty() && kept.decks.is_empty(), "simulation must isolate rolls and decks");
+        state::kept_swap(&mut kept, saved);
         assert_eq!(
-            serde_json::to_value(state::state_out(&worker)).unwrap()["state"],
+            serde_json::to_value(state::state_out(&kept)).unwrap()["state"],
             out["state"],
             "simulation must restore every serialized collection"
         );
-        assert_eq!(worker.decks.len(), deck_setups);
-    });
+        assert_eq!(kept.decks.len(), deck_setups);
+    }
     for k in ["bests", "seen", "solve", "flags", "rolls"] {
         assert!(st[k].as_array().is_some_and(|a| !a.is_empty()), "{k}: nothing kept");
     }
@@ -394,8 +408,8 @@ fn state_round_trips_and_refuses_malformed() {
 /// job reusing the kept plan and main search reports the breach (the main search not proven, rows not proven).
 #[test]
 fn a_kept_plan_keeps_its_flags_through_flag_churn() {
-    let (data, skills, cards, v) = p16();
-    let run = |job: &Value| call(&data, &skills, &cards, job);
+    let (worker, v) = p16();
+    let run = |job: &Value| worker.call(job);
     let plan = run(&v);
     assert!(plan.get("error").is_none(), "{}", plan["error"]);
     assert_eq!(plan["proven_top"], json!(true), "the first plan is not proven: {}", plan["unproven"]);
@@ -408,9 +422,7 @@ fn a_kept_plan_keeps_its_flags_through_flag_churn() {
         }
     }
     st["flags"] = Value::Array((0..100u64).map(|i| json!([format!("{:016x}", 0xdead_0000 + i), 2])).collect());
-    KEPT.with(|worker| {
-        state::kept_swap(&mut worker.borrow_mut(), KeptState::default());
-    });
+    state::kept_swap(&mut worker.kept.borrow_mut(), KeptState::default());
     assert_eq!(run(&json!({"cmd": "state_in", "state": st}))["kind"], "state_in");
     let again = run(&v);
     assert_eq!((&again["complete"], &again["proven_top"]), (&json!(false), &json!(false)), "{}", again["unproven"]);
@@ -426,14 +438,14 @@ fn a_kept_plan_keeps_its_flags_through_flag_churn() {
 /// [1003, 1004] plan is never reused by a [1004] one. The same filter twice gives the same keys.
 #[test]
 fn a_trainee_filter_that_changes_a_class_changes_the_plan_key() {
-    let (data, skills, cards, _) = p16();
+    let (worker, _) = p16();
     let file: Value = serde_json::from_str(
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nested_nopal.json")).unwrap(),
     )
     .unwrap();
     let mut job = file["job"].clone();
     job["deck"]["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
-    let her = UmaIndex(data.umas.iter().position(|uma| uma.id == 1004).unwrap());
+    let her = UmaIndex(worker.data.umas.iter().position(|uma| uma.id == 1004).unwrap());
     let keys = |trainees: Value| {
         let mut filtered = job.clone();
         filtered["career"]["trainees"] = trainees;
@@ -445,7 +457,7 @@ fn a_trainee_filter_that_changes_a_class_changes_the_plan_key() {
                 sink.set((env.setup.class_key[her], env.setup.plan_space_key, plain_pals));
             }));
         });
-        call(&data, &skills, &cards, &filtered);
+        worker.call(&filtered);
         seen.get()
     };
     let (wide, narrow) = (keys(json!([1003, 1004])), keys(json!([1004])));

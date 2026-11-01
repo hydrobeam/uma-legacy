@@ -8,6 +8,11 @@ C="$R/pkg/loopopt"
 W="$R/webapp"
 BIN="$C/target/release/loopopt"
 RAW_WASM="$C/target/wasm32-unknown-unknown/release/loopopt.wasm"
+# wasm-bindgen's output: the wasm with its glue's exports (BOUND_WASM, wasm-opt's input) and the glue itself, whose
+# loopopt.js and loopopt.d.ts the wasm step copies into webapp/src/gen (tracked, so tsc and knip see them unbuilt)
+BINDGEN="$C/target/bindgen"
+BOUND_WASM="$BINDGEN/loopopt_bg.wasm"
+WASM_BINDGEN="$R/cache/wasm-bindgen/bin/wasm-bindgen"
 PY=(uv run --quiet --project "$R" python)
 PYART=(uv run --quiet --project "$R" --group art python)   # the art steps: UnityPy and Pillow (group art)
 # Playwright's browsers: in the repository, outside node_modules (npm ci empties it)
@@ -24,7 +29,7 @@ STEPS=(
   "events||all|each era's card event file from GameTora's files and the manual entries; runs gametora first"
   "native||all default|the release binary, clippy (as lint runs it), cargo test --release"
   "pb||all|the solver, then pairwise affinity ceilings into both data.json; rerun after data or solver changes"
-  "wasm||all default|the wasm32 build, wasm-opt (skipped when its key matches), webapp/example.json"
+  "wasm||all default|the wasm32 build, wasm-bindgen's glue, wasm-opt (skipped when its key matches), webapp/example.json"
   "art||all default|images and runners when their game files are in game/global/ (each skipped, with a note, if not)"
   "page||all default|webapp/dist (Vite): the pages, webapp/src bundled, both eras' data, the wasm, img/"
   "images|||icons and card art from the game's decrypted bundles into webapp/img (IMAGES_FORCE=1 redoes all)"
@@ -148,7 +153,12 @@ cargo_test() {
 step_wasm() {
   need_cargo; need_cmd rustup "https://rustup.rs: adds the wasm target"; need_node; check wasm
   npm_deps
+  wasm_bindgen_cli
   (cd "$C" && quiet cargo build --release --lib --target wasm32-unknown-unknown)
+  # --target web: an ES module the worker imports (Vite bundles it), instantiated from the page's compiled module by
+  # initSync; --omit-default-module-path: no fallback fetch of the wasm by URL, which Vite would ship a second copy for
+  "$WASM_BINDGEN" --target web --omit-default-module-path --out-dir "$BINDGEN" --out-name loopopt "$RAW_WASM"
+  cp "$BINDGEN/loopopt.js" "$BINDGEN/loopopt.d.ts" "$W/src/gen/"
   # wasm-opt is nearly all of an unchanged rebuild (about a minute): skipped when its key matches the last optimised
   # build's (webapp/.loopopt.wasm.key, untracked); the example (1.5 s, it reads the data and today's date) always runs
   local key
@@ -156,7 +166,7 @@ step_wasm() {
   if [ -f "$W/loopopt.opt.wasm" ] && [ "$(cat "$W/.loopopt.wasm.key" 2>/dev/null)" = "$key" ]; then
     echo "wasm-opt: the wasm, its flags and wasm-opt are unchanged, skipped"
   else
-    (cd "$W" && npx wasm-opt "${WASM_OPT_FLAGS[@]}" "$RAW_WASM" -o loopopt.opt.wasm)
+    (cd "$W" && npx wasm-opt "${WASM_OPT_FLAGS[@]}" "$BOUND_WASM" -o loopopt.opt.wasm)
     echo "$key" >"$W/.loopopt.wasm.key"
   fi
   (cd "$W" && node example.mjs)
@@ -165,7 +175,18 @@ step_wasm() {
 wasm_opt_key() {
   local binaryen
   binaryen=$(node -p "require('$W/node_modules/binaryen/package.json').version")
-  { cat "$RAW_WASM"; printf '%s\n' "${WASM_OPT_FLAGS[@]}" "$binaryen"; } | sha256sum | cut -d' ' -f1
+  { cat "$BOUND_WASM"; printf '%s\n' "${WASM_OPT_FLAGS[@]}" "$binaryen"; } | sha256sum | cut -d' ' -f1
+}
+# wasm-bindgen-cli at the version of the wasm-bindgen crate in Cargo.lock (the glue's format is the crate's), installed
+# by cargo into cache/wasm-bindgen on first use and again when the crate's pin moves (a few CPU-minutes)
+wasm_bindgen_cli() {
+  local version
+  version=$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;}' "$C/Cargo.lock")
+  [ -n "$version" ] || { echo "wasm: no wasm-bindgen in pkg/loopopt/Cargo.lock" >&2; exit 1; }
+  if [ "$("$WASM_BINDGEN" --version 2>/dev/null)" != "wasm-bindgen $version" ]; then
+    echo "wasm-bindgen-cli $version: installing into cache/wasm-bindgen (cargo install, once)"
+    cargo install --quiet --locked --root "$R/cache/wasm-bindgen" wasm-bindgen-cli --version "=$version"
+  fi
 }
 
 # ---- checks ----
