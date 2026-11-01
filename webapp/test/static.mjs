@@ -482,7 +482,7 @@ const LAYERS = [
     'page:career',
     [
       'career/main',
-      'career/analysis',
+      'career/analysis/view',
       'career/options',
       'career/job',
       'career/io',

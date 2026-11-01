@@ -12,7 +12,7 @@
 //   keys.js            the keys a job, a plan job and a career are known by
 //   io.js              Export and Import of the veterans
 //   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
-//   analysis.js        the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
+//   analysis/view.js   the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
 //   options.js         the options table ("Other careers": the plan's careers, Use this) and its Saves popup
 //   view/RunNote.tsx   the status line
 //   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
@@ -50,7 +50,7 @@ import { setRunner } from '../images.js';
 import { initUmamoe, syncListings } from '../umamoesetup.js';
 import { Boundary } from '../ui/Boundary.tsx';
 import { placesKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown, runJob } from './job.js';
-import { outdateComparison, stopComparison, showAnalysis, clearAnalysis, keepBaseline } from './analysis.js';
+import { outdateComparison, stopComparison, showAnalysis, clearAnalysis, keepBaseline } from './analysis/view.js';
 import * as answerStore from './state.ts';
 import { answer, dropAnswer, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';

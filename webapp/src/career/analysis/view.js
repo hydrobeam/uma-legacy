@@ -5,26 +5,26 @@
 // baseline `baselineCache`; the plan Compare kept is the answer store's, `keepComparisonPlan`); the run machine (main.js) changes it only through
 // the transitions below. It reads the answer from the answer store (career/state.ts), the job's helpers from job.js and
 // keys.js.
-import { $, $dialog, el, fmtIn } from '../dom.js';
-import { careerTables } from '../data.js';
-import { settings } from '../settings.ts';
-import { restartEngine, engineSaveState } from '../engine.ts';
-import { umaAv, runnerHTML } from '../images.js';
-import { pct } from '../odds.js';
-import { vets, plan, changed, newVet, umaName, openWins } from '../vets.js';
-import { detailsEl, fitSparks } from '../details.js';
-import { scheduledRaces, rolledOutcome } from './roll.mjs';
-import { answer, keepComparisonPlan, runView } from './state.ts';
-import { PLAN_NEXT } from './run.ts';
-import { keyOf } from './keys.js';
-import { shown, isFull, baseKey, ROLL_K, runJob } from './job.js';
-import { btn, sectionEl, deckEl, fmtN, tableRows } from './view/parts.js';
-import { openNode } from './view/dialogs.ts';
-import { must } from '../must.ts';
-/** @import { LineageNode } from '../vets.js' */
-/** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from './job.js' */
-/** @import { PlanDone } from './state.ts' */
-/** @import { DeepReadonly } from '../store.ts' */
+import { $, $dialog, el, fmtIn } from '../../dom.js';
+import { careerTables } from '../../data.js';
+import { settings } from '../../settings.ts';
+import { restartEngine, engineSaveState } from '../../engine.ts';
+import { umaAv, runnerHTML } from '../../images.js';
+import { pct } from '../../odds.js';
+import { vets, plan, changed, newVet, umaName, openWins } from '../../vets.js';
+import { detailsEl, fitSparks } from '../../details.js';
+import { scheduledRaces, rolledOutcome } from '../roll.mjs';
+import { answer, keepComparisonPlan, runView } from '../state.ts';
+import { PLAN_NEXT } from '../run.ts';
+import { keyOf } from '../keys.js';
+import { shown, isFull, baseKey, ROLL_K, runJob } from '../job.js';
+import { btn, sectionEl, deckEl, fmtN, tableRows } from '../view/parts.js';
+import { openNode } from '../view/dialogs.ts';
+import { must } from '../../must.ts';
+/** @import { LineageNode } from '../../vets.js' */
+/** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from '../job.js' */
+/** @import { PlanDone } from '../state.ts' */
+/** @import { DeepReadonly } from '../../store.ts' */
 /** @typedef {{results: CareerReport[], pending: true}} PendingSearch a stand-in while the quick comparison looks for the best career with her */
 
 /**
@@ -122,7 +122,7 @@ async function baselineFor(base) {
   const key = JSON.stringify(base),
     open = !shownNow.job.trainees.length && !shownNow.job.fix.length,
     cached = baselineCache?.key === key ? baselineCache.result : null;
-  /** @type {{results: readonly DeepReadonly<CareerReport>[]} | import('../solver.ts').SolverRefusal} */
+  /** @type {{results: readonly DeepReadonly<CareerReport>[]} | import('../../solver.ts').SolverRefusal} */
   const before = cached ? { results: [cached] } : open ? shownNow.r : (await runJob(base)).r;
   if ('error' in before) throw new Error(before.error);
   if (!before.results?.length) throw new Error('No career found in the current roster.');
@@ -192,7 +192,7 @@ const copyNode = (v) => ({
   wins: [...v.wins],
 });
 // what a roll reads of the settings and data (career/roll.mjs)
-/** @type {() => import('./roll.mjs').RollSetup} */
+/** @type {() => import('../roll.mjs').RollSetup} */
 const rollSetup = () => ({ career: careerTables(), targets: settings.value.targets, rank: settings.value.rank });
 function rollDraft() {
   const r = shown();

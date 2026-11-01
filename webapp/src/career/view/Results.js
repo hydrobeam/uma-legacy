@@ -4,7 +4,7 @@ import { $ } from '../../dom.js';
 import { markOwn } from '../../popover.js';
 import { plan } from '../../vets.js';
 import { optionsEl } from '../options.js';
-import { renderSimulation } from '../analysis.js';
+import { renderSimulation } from '../analysis/view.js';
 import { answer } from '../state.ts';
 import { must } from '../../must.ts';
 import { refFor, shown } from '../job.js';

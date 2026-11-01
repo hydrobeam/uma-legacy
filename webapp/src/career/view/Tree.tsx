@@ -9,7 +9,7 @@ import { $dialog } from '../../dom.js';
 import { vets, vetsRev, plan, umaName } from '../../vets.js';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
-import { renderSimulation } from '../analysis.js';
+import { renderSimulation } from '../analysis/view.js';
 import { idxOf, shown, parentAt } from '../job.js';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { openNode } from './dialogs.ts';
