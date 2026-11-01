@@ -160,88 +160,108 @@ enum PoolProvenance {
     Extended,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, ts_rs::TS)]
 pub(crate) struct PlanJob {
     /// the surrogate's refresh margin (`sim` module notes)
     #[serde(default = "p_margin")]
+    #[ts(as = "Option<_>", optional)]
     margin: f64,
     /// work budget (career-search units) of each candidate search beyond the job's own (also each loop bootstrap
     /// search), and of each deck search a continuation makes (a refresh); 0 = the job's budget
     #[serde(default = "p_swork")]
+    #[ts(as = "Option<_>", optional)]
     search_work: usize,
     /// Named rotation (chara ids, in order) added to the stage candidates; absent or empty: no named rotation.
     #[serde(default)]
+    #[ts(optional)]
     loop_members: Option<Vec<u32>>,
     /// `index_rule`: each uma's best career through the surrogate (`best_sur`) instead of the career search (1), or
     /// both, reporting where they differ (2); the surrogate's refresh margin there
     #[serde(default)]
     #[serde(rename = "sur")]
+    #[ts(as = "Option<_>", optional)]
     surrogate_mode: u8,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     sur_margin: f64,
     /// `index_rule` measurement: each builder's career also from her deck class's winning decks alone (no career search),
     /// its lifts and score beside the exact ones (`proxy_check` in the output); changes nothing else
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     proxy_check: bool,
     /// `index_rule`: search every allowed uma's best career instead of using builder proxies.
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     exact_all: bool,
     /// `index_rule`: the stage candidates (chara ids, in order) and their continuations taken as given, not fitted to
     /// this pool: a comparison prices a pool with one more veteran under the fit of the plan it compares with (the
     /// plan's `fit`), so the two values differ only by what she changes, not by a refit (`FitEntry`)
     #[serde(default)]
+    #[ts(optional)]
     fit: Option<Vec<FitEntry>>,
     /// `index_rule` knob: partners kept per candidate where a scored career's veteran is a parent (IDX_PARTNERS, at most
     /// MAX_PARTNERS)
     #[serde(default = "default_partners")]
+    #[ts(as = "Option<_>", optional)]
     partners: usize,
     /// `index_rule` knob: careers per builder scored as rows (her best and her next `builder_careers - 1` through her
     /// cached decks, `RowOrigin::Alternative`); 1: her best alone
     #[serde(default = "default_builder_careers")]
+    #[ts(as = "Option<_>", optional)]
     builder_careers: usize,
     /// `index_rule` knob: fresh lineages a trio side may take per candidate (`FRESH_LINEAGES` unless the job says; 1 to
     /// 64): her best career now and her next best careers by cached decks
     #[serde(default = "default_fresh_lineages")]
+    #[ts(as = "Option<_>", optional)]
     fresh_lineages: usize,
     /// `index_rule` measurement: the lifted odds the pick's and the top 3 builders' scorings read (their cached decks,
     /// their best partners) beside every partner's and an exact career search with her veteran fixed, at each one's 5
     /// likeliest outcomes that land a target (`lift_audit` in the output); changes nothing else
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     audit_lifts: bool,
     /// `index_rule` test knob: PROXY_EFF in place of 0.06 (-1 leaves pass 1's builders to their proxies, so the pass-2
     /// searches refit Cont: tests/plan_memo.rs runs that path)
     #[serde(default)]
+    #[ts(optional)]
     proxy_eff: Option<f64>,
     /// a roll of the plan's pick (her stars per job target, 0 where it did not land): answered from the plan's kept roll
     /// state (`roll_kept`), the plan run first when the worker keeps none
     #[serde(default)]
+    #[ts(optional)]
     roll: Option<Vec<u8>>,
     /// the robustness check on the pick (`robust` in the output): its next variant or every one left, answered from the
     /// plan's kept check state (`robust::check_kept`), the plan run first when the worker keeps none; absent: none (the
     /// plan keeps the state). It changes nothing else
     #[serde(default)]
+    #[ts(optional)]
     robust: Option<CheckRequest>,
     /// with `robust`, after its variants: the within-trainee pair search (`robust::CheckWork::pair_search`, `pairs` in
     /// the check's report): for the pick's trainee and each the differential scenarios pick, her every runnable pair
     /// scored; it changes no pick
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pair_search: bool,
     /// `index_rule` measurement: "joint", the joint-lift oracle beside V (`oracle` in the output,
     /// `oracle::joint_oracle`), or "sequenced", the sequenced oracle (`sequenced::sequenced_oracle`, whose searches can
     /// keep proofs and set class flags); changes no pick or V
     #[serde(default)]
+    #[ts(optional)]
     oracle: Option<Oracle>,
     /// `index_rule` measurement: the best-scoring trainees' careers on their best pairs by ceiling, each scored
     /// (`pair_sweep` in the output, `sweep::pair_sweep`); changes nothing else
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pair_sweep: bool,
     /// `index_rule` measurement: coordinate ascent over (trainee, parent pair) by score (`pair_ascent` in the output,
     /// `ascent::pair_ascent`); changes nothing else
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pair_ascent: bool,
     /// `index_rule` measurement: per (chara id, first parent, second parent), her best cached deck there scored with its
     /// saving split by outcome class (`pair_decompose` in the output, `ascent::pair_decompose`); changes nothing else
     #[serde(default)]
+    #[ts(optional)]
     pair_decompose: Option<Vec<(u32, usize, usize)>>,
 }
 
@@ -252,7 +272,7 @@ pub(crate) fn not_in_browser(job: &str) -> crate::refusal::Refusal {
 }
 
 /// A diagnostic V beside the plan's (`PlanJob::oracle`).
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Oracle {
     /// The cheapest trios on a joint two-side lattice of their continuations (`oracle::JointLattice`).
@@ -262,7 +282,7 @@ pub(crate) enum Oracle {
 }
 
 /// What a check job asks of the plan's kept check state (`PlanJob::robust`).
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum CheckRequest {
     /// The next variant, from a kept state only (the page: one short job at a time, so a newer job waits at most one
@@ -297,7 +317,7 @@ impl PlanJob {
 
 /// A given continuation (`PlanJob::fit`, a plan's own `fit` output): `[chara, lam, phi, pinf, p0]`, p0 the odds it was
 /// fitted at (`Cont::anchor_odds`); a 4-element entry (written before p0 was) is anchored at the candidate's odds now
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, ts_rs::TS)]
 #[serde(untagged)]
 pub(crate) enum FitEntry {
     Anchored(u32, f64, f64, f64, f64),

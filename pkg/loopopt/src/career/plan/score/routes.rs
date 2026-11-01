@@ -1147,7 +1147,7 @@ mod lifted_tests {
             &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p10.json")).unwrap(),
         )
         .unwrap();
-        let events: serde_json::Value = serde_json::from_str(&read("card_events.json")).unwrap();
+        let events: crate::deck::sources::CardEventCache = serde_json::from_str(&read("card_events.json")).unwrap();
         crate::deck::sources::apply_events_db(&mut job, &skills, &events);
         job["no_reports"] = serde_json::json!(true);
         let legacy_count = job["legacies"].as_array().unwrap().len();

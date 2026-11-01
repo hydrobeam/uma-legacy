@@ -42,7 +42,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 /// An event that names two or more skills (`DeckJob::choice_events`), read from the job's array
 /// `[card, link, choices]`.
-#[derive(Deserialize)]
+#[derive(Deserialize, ts_rs::TS)]
+#[ts(type = "[number, number, Array<Array<Array<[number, number]>>>]")]
 pub(crate) struct ChoiceEvent {
     pub(crate) card: u32,
     pub(crate) link: u8,
@@ -103,98 +104,125 @@ pub(crate) struct CardsRaw {
     pub restrict: HashMap<String, Vec<u32>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ts_rs::TS)]
 pub(crate) struct DeckJob {
     /// experiments: chain events per run Binomial(n, p) for every deck, in place of the pal-count rate
     #[serde(default)]
+    #[ts(optional)]
     pub chain_events: Option<(u32, f64)>,
     /// experiments: the pal-count rate's (intercept, slope) in place of (CHAIN_A, CHAIN_B); not with `chain_events`
     #[serde(default)]
+    #[ts(optional)]
     pub chain_budget: Option<(f64, f64)>,
     /// experiments: "slots" picks the card a chain event advances in proportion to its links left and stops each
     /// card-event stop risk on its own k of n (the model before the card rule), with either law; default "card", each
     /// running card equally and every card-event stop at `CHAIN_STOP_SHARE`
     #[serde(default)]
+    #[ts(optional)]
     pub chain_rule: Option<String>,
     /// Independent Training scenario: "unity" (default), "gc" (Grand Concert), "ura", "trackblazer", "grandmasters" (JP); sets how many
     /// training-hint draws a card gives (`hint_base`)
     #[serde(default = "d_scenario")]
+    #[ts(as = "Option<_>", optional)]
     pub scenario: String,
     #[serde(default = "d_size")]
+    #[ts(as = "Option<_>", optional)]
     pub deck_size: usize,
     /// (card id, skill group, 1 white | 2 gold, chain link 1..; 0 = whenever the card is in the deck)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub events: Vec<(u32, u32, u8, u8)>,
     /// chain events whose reward depends on the outcome: (card, group, level, link, chance given the link fires)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub events_p: Vec<(u32, u32, u8, u8, f64)>,
     /// non-chain events with a fixed chance per run when the card is in the deck: (card, group, 1 | 2, chance)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub odds_events: Vec<(u32, u32, u8, f64)>,
     /// choices that end a card's chain: (card, link) for every such choice, and their skill rewards
     /// (card, link, group, 1 | 2, chance given the link fires)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub end_links: Vec<(u32, u8)>,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub ends: Vec<(u32, u8, u32, u8, f64)>,
     /// the job's own stops: (card, link, k, of n), the chain ending at that link on k of n firings, exactly (e.g. a
     /// certain stop pinned as 1 of 1); at a link it names, the card-event stop below is left out
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub stop_risk: Vec<(u32, u8, u8, u8)>,
     /// links where IT's default choice ends a card's chain on some outcomes (card_events.json `stop_risk`, added by
     /// `apply_event_lists`): (card, link, k outcomes, of n); the chain ends there on `chain_stop_share` of its firings
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub event_stop_risk: Vec<(u32, u8, u8, u8)>,
     /// events that name two or more skills, in full (`ChoiceEvent`), the choices that keep the chain going, outcomes
     /// equally likely. At these links they replace `events` / `events_p`, which credit every skill on its own.
     #[serde(default)]
     #[serde(rename = "alts")]
+    #[ts(as = "Option<_>", optional)]
     pub choice_events: Vec<ChoiceEvent>,
     /// measured outcome weights for `choice_events` events: (card, link, [choice][outcome] -> share); an event not
     /// listed here keeps equally likely outcomes (event_shares.json, applied by the event builders)
     #[serde(default)]
     #[serde(rename = "alt_w")]
+    #[ts(as = "Option<_>", optional)]
     pub choice_weights: Vec<(u32, u8, Vec<Vec<f64>>)>,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub owned_cards: Vec<u32>,
     /// allow one card the player does not own (a friend's card) in the deck
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub borrow: bool,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub lock_cards: Vec<u32>,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub exclude_cards: Vec<u32>,
     /// lowest rarity allowed for cards with chain events (R cards have none and always count: no chain slots)
     #[serde(default = "d_rar")]
+    #[ts(as = "Option<_>", optional)]
     pub min_rarity: u8,
     /// only decks with exactly this many pals
     #[serde(default)]
+    #[ts(optional)]
     pub pals: Option<usize>,
     /// how many distinct decks to return (each with its best loop)
     #[serde(default = "d_one")]
+    #[ts(as = "Option<_>", optional)]
     pub top_decks: usize,
     /// experiment: fixed per-uma race schedules instead of loop-optimised ones. "solo" = each uma maximises her
     /// own expected race wins; "goals" = career objectives only; "none" = shared wins count for nothing.
     #[serde(default)]
+    #[ts(optional)]
     pub schedule: Option<String>,
     /// one deck per uma instead of one shared deck: each trainee runs her own best legal deck across her lineages
     /// (three in a four-uma loop, one in a rotation); `top_decks` then counts structures
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub per_uma: bool,
     /// internal: return the skyline decks only (used for a uma's own-card-free deck set in per-uma mode)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub deck_only: bool,
     /// per-uma: rank loops and decks by exact odds (EXACT_RHO); false = prune by product odds, as a fast first pass
     /// (what is reported is still scored exactly, `exact.complete` false)
     #[serde(default = "d_true")]
+    #[ts(as = "Option<_>", optional)]
     pub exact: bool,
     /// audit: every class cap (`EXACT_CAPS`) at 2.0, so a deck whose exact / product exceeds its class's cap is still
     /// found and reported (`val/capaudit.py`; slow)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub cap_audit: bool,
     /// career jobs: every deck search cap-free (`best_deck_cf`: pruned by proven bounds only, no assumed cap), not only
     /// those that saw a deck past its class's cap (checks and comparisons; slower)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub cap_free: bool,
 }
 impl DeckJob {

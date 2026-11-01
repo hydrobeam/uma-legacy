@@ -116,8 +116,10 @@ mod chart;
 mod checks;
 mod cli;
 mod data;
+mod hex;
 mod loop_planner;
 mod refusal;
+mod request;
 mod schedule;
 #[cfg(test)]
 mod tests;

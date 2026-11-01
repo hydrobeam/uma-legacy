@@ -6,7 +6,7 @@ use crate::career::state::{KeptSolve, KeptState, ProductProof, SOLVE_KEEP};
 use crate::career::{CareerSetup, ClassFlags, Env, Lineage, SearchState};
 use crate::deck::space::SelectedDeck;
 use crate::uma::{UmaIndex, UmaTable};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 /// How a bound proves a career out (`CareerSetup::ceiling_out`, `refs_out`, `ruled_out`): `Below(threshold)`, `solve`'s
 /// prune, the bound below the bar with its slack s, b (1 + s) < threshold (a computed bound a hair under the true one
@@ -168,34 +168,9 @@ impl Assumes {
             .filter_map(|(holds, name)| holds.then_some(name))
             .collect()
     }
-    /// The assumptions from their names (`names`; absent: none); None for an unknown name.
-    pub(crate) fn from_names(value: Option<&serde_json::Value>) -> Option<Self> {
-        let mut assumes = Self::default();
-        for name in value.map_or(Some(&vec![]), serde_json::Value::as_array)? {
-            match name.as_str()? {
-                "two_feeder_cap" => assumes.two_feeder = true,
-                "multi_feeder_cap" => assumes.multi_feeder = true,
-                _ => return None,
-            }
-        }
-        Some(assumes)
-    }
 }
 
 impl Unproven {
-    /// The reasons from their names (`names`); None for an unknown name.
-    pub(crate) fn from_names(value: &serde_json::Value) -> Option<Self> {
-        let mut unproven = Self::default();
-        for name in value.as_array()? {
-            match name.as_str()? {
-                "work_cap" => unproven.work_cap = true,
-                "band_overflow" => unproven.band_overflow = true,
-                "cap_breach" => unproven.cap_breach = true,
-                _ => return None,
-            }
-        }
-        Some(unproven)
-    }
     /// Whether any reason occurred.
     pub(crate) const fn any(self) -> bool {
         self.work_cap || self.band_overflow || self.cap_breach
@@ -225,8 +200,37 @@ impl Serialize for Assumes {
     }
 }
 
+/// The reasons from their names (a kept search, `state_in`); an unknown name does not parse.
+impl<'de> Deserialize<'de> for Unproven {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut unproven = Self::default();
+        for reason in Vec::<UnprovenReason>::deserialize(deserializer)? {
+            match reason {
+                UnprovenReason::WorkCap => unproven.work_cap = true,
+                UnprovenReason::BandOverflow => unproven.band_overflow = true,
+                UnprovenReason::CapBreach => unproven.cap_breach = true,
+            }
+        }
+        Ok(unproven)
+    }
+}
+
+/// The assumptions from their names (a kept search, `state_in`); an unknown name does not parse.
+impl<'de> Deserialize<'de> for Assumes {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut assumes = Self::default();
+        for assumption in Vec::<Assumption>::deserialize(deserializer)? {
+            match assumption {
+                Assumption::TwoFeederCap => assumes.two_feeder = true,
+                Assumption::MultiFeederCap => assumes.multi_feeder = true,
+            }
+        }
+        Ok(assumes)
+    }
+}
+
 /// Why a search is not complete.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum UnprovenReason {
     /// the work ran out (a deck search passed its budget, or the hard work cap stopped taking candidates)
@@ -238,7 +242,7 @@ pub(crate) enum UnprovenReason {
 }
 
 /// A named assumption a proof rests on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Assumption {
     /// the class cap for decks of two chain-varying targets fed by two or more chain cards

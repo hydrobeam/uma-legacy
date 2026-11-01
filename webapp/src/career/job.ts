@@ -14,52 +14,25 @@ import type { DeepReadonly } from '../store.ts';
 
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
 export const placesKey = (p: PlacesRecord): string => JSON.stringify({ trainee: p.trainee, parents: p.parents });
-/** The career job (`buildJob`; the solver reads it as `SkillJob` + `DeckJob` + `CareerJob`, web.rs); a plan job adds
- *  `next` and `no_reports`, a comparison `compare`. (A type, not an interface: it is passed as a SolverJob, whose index
- *  signature an interface does not meet.) */
-export type CareerJob = {
-  cmd: 'career';
-  targets: { group: number }[];
-  /** umas not owned (by character id) */
-  exclude: number[];
-  /** outfits not owned */
-  exclude_outfits: number[];
-  extra: number[][];
-  owned_cards: number[];
-  borrow: boolean;
-  /** the lineage rank's chances of 1, 2 and 3 stars */
-  star_dist: number[];
-  scenario: string;
-  /** R cards (not pals) left out */
-  exclude_cards?: number[];
-  /** every veteran, by legacy index (`legaciesJob`) */
-  legacies: readonly JobLegacy[];
-  /** the trainee chosen (none: the planner picks) */
-  trainees: number[];
-  /** the parents chosen, by legacy index */
-  fix: number[];
-  per_trainee: boolean;
-  /** careers to return */
-  top: number;
-  /** never set by `buildJob`, and the solver reads no such field: a leftover of the rollout planner that `baseOf`,
-   *  `planKey` and the plan job still clear */
-  rollout?: undefined;
-  /** likewise */
-  p_now?: undefined;
-  /** left out at 'allow' */
-  borrowed_parent?: 'later' | 'never';
-  /** a plan job: its settings (`roll`: a roll's spark stars, per target; `fit`: another plan's continuations, taken as
-   *  given instead of fitted to this pool; `robust`: the next step of the kept plan's robustness check, `checkPhase`;
-   *  `pair_search`: that check ends with the within-trainee pair search, sent on the check's jobs only) */
-  next?: { roll?: number[]; fit?: PlanFit; robust?: 'next'; pair_search?: boolean };
-  /** a plan job: no career reports, `next` only */
-  no_reports?: boolean;
-  /** a comparison's job */
-  compare?: boolean;
-  /** one career reported as it is, no deck search (career/given.rs: its `career` id, on the trainee and both parents
-   *  fixed): Use this on a builder's other career or the pair search's (`chosen`) */
-  career?: string | undefined;
-};
+/** The career job (`buildJob`): the solver's `Request` for `career` (its `SkillJob`, `DeckJob` and `CareerJob` parts;
+ *  generated), its veterans as the veterans store holds them, one array that every job made from the same veterans
+ *  shares (read-only); a plan job adds `next` and `no_reports`, a comparison `compare`. */
+export type CareerJob = Omit<SolverCareerJob, 'legacies'> &
+  Required<Pick<SolverCareerJob, CareerJobFields>> & { legacies: readonly JobLegacy[] };
+type SolverCareerJob = Extract<Gen.Request, { cmd: 'career' }>;
+/** the fields `buildJob` always writes (the solver has a default for each) */
+type CareerJobFields =
+  | 'trainees'
+  | 'fix'
+  | 'per_trainee'
+  | 'top'
+  | 'exclude'
+  | 'exclude_outfits'
+  | 'extra'
+  | 'owned_cards'
+  | 'borrow'
+  | 'star_dist'
+  | 'scenario';
 // ---------- the solver's reports, generated from its Rust structs (src/gen/solver.ts), with what the page adds ----------
 /** A career's trainee as the page shows her: the solver's, and what the page sets on her (`oneOutfit`) */
 export type CareerTrainee = Omit<Gen.CareerTrainee, 'outfits'> & {

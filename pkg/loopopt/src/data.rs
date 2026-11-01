@@ -220,7 +220,7 @@ fn pb_table_from(raw: &DataRaw) -> Option<UmaPairTable<f64>> {
             return None;
         }
         for (offset, b) in (a + 1..roster_len).enumerate() {
-            let value = f64::from_bits(u64::from_str_radix(row.get(16 * offset..16 * offset + 16)?, 16).ok()?);
+            let value = crate::hex::hex_f64(row.get(16 * offset..16 * offset + 16)?)?;
             table[a * roster_len + b] = value;
             table[b * roster_len + a] = value;
         }

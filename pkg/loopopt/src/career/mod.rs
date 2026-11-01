@@ -129,19 +129,22 @@ pub(crate) struct JobInputs<'data> {
     pub(crate) job: &'data Value,
 }
 
-#[derive(Deserialize, Clone, Default)]
+#[derive(Deserialize, Clone, Default, ts_rs::TS)]
 pub(crate) struct Ancestor {
     #[serde(rename = "chara")]
     pub character_id: u32,
     /// (skill group, stars 1..=3) of its white skill sparks
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub sparks: Vec<(u32, u8)>,
     /// race indices (data.json `races`) of the single-race G1s it won
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
     /// (aptitude factor group, stars) of its pink sparks: 11 turf, 12 dirt, 21-24 front runner .. end closer, 31-34
     /// sprint .. long; reported (inheritance chance per aptitude), not part of the odds
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub pinks: Vec<(u32, u8)>,
     /// internal (the parent of a veteran before her result is known is such a veteran): the pinks it may carry
     /// (`Legacy::pink_chances`)
@@ -207,20 +210,25 @@ fn recorded_parents<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result
     Ok(parents)
 }
 
-#[derive(Deserialize, Clone, Default)]
+#[derive(Deserialize, Clone, Default, ts_rs::TS)]
 pub(crate) struct Legacy {
     #[serde(rename = "chara")]
     pub character_id: u32,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub borrowed: bool,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub sparks: Vec<(u32, u8)>,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub pinks: Vec<(u32, u8)>,
     /// its own parents (the new trainee's grandparents), at most two; empty when unknown
     #[serde(default, deserialize_with = "recorded_parents")]
+    #[ts(as = "Option<_>", optional)]
     pub parents: Vec<Ancestor>,
     /// internal (a veteran before her result is known, `CareerSetup::veteran`): win chance per race index in place of
     /// `wins`, the star mix her sparks are drawn from in place of fixed stars, and the pinks she may carry in place of
@@ -246,45 +254,56 @@ const fn d_top() -> usize {
 /// overrides it.
 const CAREER_BUDGET: usize = 300_000_000;
 
-#[derive(Deserialize)]
-struct CareerJob {
-    legacies: Vec<Legacy>,
+/// A career job's own fields (beside its `SkillJob` and `DeckJob`, read from the same request).
+#[derive(Deserialize, ts_rs::TS)]
+pub(crate) struct CareerJob {
+    pub(crate) legacies: Vec<Legacy>,
     /// trainees to consider (chara ids); empty = every owned uma
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     trainees: Vec<u32>,
     #[serde(default = "d_top")]
+    #[ts(as = "Option<_>", optional)]
     top: usize,
     /// legacies (indices) that must be among the two parents
     #[serde(default)]
     #[serde(rename = "fix")]
+    #[ts(as = "Option<_>", optional)]
     fixed_parents: Vec<usize>,
     /// one result per trainee (false: the best careers whoever trains, e.g. with the trainee fixed: the best parents)
     #[serde(default = "d_true")]
+    #[ts(as = "Option<_>", optional)]
     per_trainee: bool,
     /// the builder-trace simulator (`sim`): runs instead of the search when present
     #[serde(default)]
+    #[ts(as = "Option<crate::career::sim::SimJob>", optional)]
     simulate: Option<Value>,
     /// the page's next career without simulation (`plan::index_rule`): the career saving the most careers to a fully looped veteran
     #[serde(default)]
+    #[ts(as = "Option<crate::career::plan::PlanJob>", optional)]
     next: Option<Value>,
     /// the page's veteran-analysis comparison (echoed in the output, nothing else)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     compare: bool,
     /// the plan-only jobs' flag: the page reads only `next` from them, so the main search's career reports (and the first
     /// one's schedule search) are left out
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     no_reports: bool,
     /// borrowed parents: "allow" (at most one per career, now and in the plan's look-ahead), "later" (none in the career
     /// picked: the search's results and the plan's rows; the plan's look-ahead still borrows), "never" (none anywhere)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     borrowed_parent: BorrowedParent,
     /// one career to report as it is (`given`: its id, `plan::kept::career_id`), on the job's one trainee and both fixed
     /// parents, with no deck search: the page's Use this on a builder's other career
     #[serde(default)]
+    #[ts(optional)]
     career: Option<String>,
 }
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Default, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 enum BorrowedParent {
     #[default]
