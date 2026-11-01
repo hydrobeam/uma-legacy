@@ -17,6 +17,7 @@ import { initPopover } from './popover.js';
 import { initIO } from './io.js';
 import { initSetup } from './setup.js';
 import './gmtip.js'; // the game-style tooltips (both planner pages)
+import { must } from './must.ts';
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
 {
@@ -105,7 +106,7 @@ function start() {
     ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} };
     ui.status = first.example
       ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' }
-      : first.status;
+      : must(first.status, 'a kept result comes with its status line');
   }
   // the first search, with the saved settings (also warms the engine); none when the result on show is these settings'
   // finished search from before (it shows as done; the engine still warms for the next edit)

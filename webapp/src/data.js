@@ -1,6 +1,7 @@
 // The data build.py embeds in the page, for the chosen era.
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
+import { must } from './must.ts';
 // the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed 'data-cards', ...); what stays
 // in the page (the asset table, the example) from its JSON elements of the same ids
 const BUNDLED = self.__LLP_DATA || {};
@@ -203,7 +204,10 @@ export const SCENARIOS = [
 ];
 // lineage rank: the star mix of the legacies' sparks (state.rank), below SS (rank score 6,500-17,499) or SS (17,500+)
 export const RANKS = { below: '0.50,0.45,0.05', ss: '0.20,0.70,0.10' };
-const URA_BASE = SCENARIOS.find((s) => s.v === 'ura').base;
+const URA_BASE = must(
+  SCENARIOS.find((s) => s.v === 'ura'),
+  'SCENARIOS lists URA',
+).base;
 // mult: "Hint rate ×1.76" (the tile's line, which adds "(estimate)" itself); rate: with "(estimate)" (tooltips, labels)
 for (const scenario of SCENARIOS) {
   scenario.mult = `Hint rate ×${(scenario.base / URA_BASE).toFixed(2)}`;

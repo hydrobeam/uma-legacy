@@ -8,6 +8,7 @@ import { $, $dialog } from './dom.js';
 import { umaAv } from './images.js';
 import { affEl, affTable } from './afftable.js';
 import { pickOutfit } from './roster.js';
+import { must } from './must.ts';
 /**
  * One career in the solver's affinity detail (`loop.detail.lineages`); uma numbers index the loop's members.
  * @typedef {object} Lineage
@@ -100,7 +101,7 @@ export function openWhy(loop) {
         ? `${members[trainee].name} as the trainee`
         : `${members[trainee].name}, parents ${members[p0].name} and ${members[p1].name}`,
     );
-    b.title = b.getAttribute('aria-label');
+    b.title = must(b.getAttribute('aria-label'), 'button() labels each pill');
     b.append(
       face(trainee, 28),
       Object.assign(document.createElement('span'), { className: 'afpn', textContent: shortName(trainee) }),

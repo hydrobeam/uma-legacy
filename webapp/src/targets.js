@@ -22,8 +22,9 @@ export function tileEl(group) {
   if (gold) tile.classList.add('gold');
   const icon = skillIcon(group, gold);
   if (icon) name.appendChild(icon);
-  name.append(gold ? names.gd : names.w);
-  if ((gold ? names.gd : names.w).length > 18) tile.classList.add('long'); // (the game scales a long name down to fit)
+  const label = (gold && names.gd) || names.w; // (gold: it has a gold name)
+  name.append(label);
+  if (label.length > 18) tile.classList.add('long'); // (the game scales a long name down to fit)
   if (gold) name.title = `Gold of ${names.w}, guaranteed by the scenario`; // a plain target's name is on the tile: no hover
   return tile;
 }

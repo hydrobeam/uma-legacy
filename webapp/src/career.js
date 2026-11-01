@@ -81,6 +81,7 @@ import {
 } from './career/analysis.js';
 import { optionsEl } from './career/options.js';
 import { unprovenWhy, searchCaveat, planCaveat } from './proofs.mjs';
+import { must } from './must.ts';
 
 const tName = (g) => {
   const s = gameData().skillNames.get(g) || { w: `Skill ${g}`, gd: null };
@@ -315,12 +316,12 @@ const progText = ({ ph, k, n }) =>
  * @property {boolean} [check_unavailable]  set by the page: the robustness check could not finish (`checkPhase`)
  * @property {boolean} [scoring_complete]  false: the plan's memory budget left out a route no batch could hold or a
  *   partner setup (career/plan/output.rs), so its savings are lower bounds and its pick may not be the model's
- * @property {{plan: string, pending: number, stable: boolean, contenders: string[], pick_varies?: boolean, pairs?: PairSearch|null, scoring_complete?: boolean}} [robust]
+ * @property {{plan: string, pending: number, stable: boolean, contenders: string[], pick_varies?: boolean, pairs?: PairSearch|null, scoring_complete?: boolean, error?: string, unavailable?: boolean}} [robust]
  *   the robustness check on the pick (plan/robust.rs), set by the page from its follow-up jobs (`checkPhase`): the pick
  *   it is of, the variants left, whether every tested variant scores the pick highest (`stable`), the careers (`keyOf`)
  *   the variants score highest (`contenders`), whether they disagree (`pick_varies`: the pick varies under these
  *   variants, a sensitivity, not a tie); the within-trainee pair search once it has run (`pairs`: null before, absent
- *   from a solver without it)
+ *   from a solver without it); `error` and `unavailable`: the worker kept no plan to check (robust.rs)
  * @property {PlanFit} [fit]  the stage candidates and their continuations the plan was fitted to: a comparison passes
  *   it on unchanged (`next.fit`), so the pool with her is priced the same way
  * @property {string[]} [unproven_why]  set by the page: why some of its career searches proved nothing (`unprovenWhy`)
@@ -515,7 +516,8 @@ export function buildJob() {
     { trainee: plan.trainee, v: second },
   ];
   for (const { trainee, v, other } of checks) {
-    const k = v ? pairBlock(trainee, v, other) : '';
+    if (!v) continue; // (no parent in that place: nothing to check)
+    const k = pairBlock(trainee, v, other);
     if (k === 'same')
       throw new Blocked('error', `Both parents are ${umaName(v.chara)}: a career takes two different umas.`);
     if (k === 'both') throw new Blocked('error', 'Both parents are borrowed: a career can borrow one.');
@@ -557,7 +559,7 @@ export function buildJob() {
     top: allPlaced ? 1 : ROLL_K,
   };
   if (borrowChoice() !== 'allow') job.borrowed_parent = borrowChoice();
-  if (allPlaced && chosenApplies(job)) job.career = chosen.career.id;
+  if (allPlaced && chosenApplies(job)) job.career = must(chosen.career, 'chosenApplies: a choice is saved').id;
   return job;
 }
 // the career Use this chose with its deck (vets.js `chosen`, saved with the plan): a builder's other career (an option
@@ -840,6 +842,7 @@ async function checkPhase(id, planned) {
     redraw();
   };
   for (;;) {
+    /** @type {{r: {next?: PlanReport, error?: string}, ms: number} | null} */
     let m = null;
     try {
       const job = {
@@ -1001,9 +1004,9 @@ function traineeEl(r) {
   // the affinity she holds from her six legacies (its breakdown is in her popup)
   if (r && r.trainee.id === id) {
     const tot = legacyAff(r),
-      a = affEl(tot, 'aff tot');
+      a = must(affEl(tot, 'aff tot'), 'her legacies sum to an affinity');
     a.title = `Affinity ${Math.round(tot)}, her six legacies: click her for the breakdown`;
-    n.querySelector('.pnh').appendChild(a);
+    must(n.querySelector('.pnh'), "pnode() makes the place's head").appendChild(a);
   }
   const sub = id && r && r.trainee.id === id ? r.trainee.outfits[0]?.label || null : null;
   const t = id
@@ -1162,7 +1165,7 @@ function fillNode() {
     return;
   }
   // the popup's actions sit in its footer beside Close (no row of their own)
-  const foot = nodeDlg.querySelector('.gmdfoot');
+  const foot = must(nodeDlg.querySelector('.gmdfoot'), 'the popup is made with its footer');
   for (const e of foot.querySelectorAll('.nact')) e.remove();
   for (const b of [...acts.children]) {
     b.classList.add('nact');
@@ -1429,7 +1432,10 @@ function fillGrandparentNode({ k, j }, r, body) {
     inspView({ d: { ...g, parents: [] }, key: `p${k}g${j}`, onEdit: changed, header: false, readOnly: !edit }),
   );
   // (a copy without parents for the view; her sparks object is hers: edits land on her)
-  if (edit) iv.querySelector('.simskills').replaceChildren(sparksEl(g, `p${k}g${j}`, changed));
+  if (edit)
+    must(iv.querySelector('.simskills'), 'inspView() draws her sparks').replaceChildren(
+      sparksEl(g, `p${k}g${j}`, changed),
+    );
   body.append(w, iv);
   return true;
 }
@@ -1514,7 +1520,8 @@ const BLOCKED = {
   both: 'the other parent is borrowed',
 };
 function blockedFor(v, k) {
-  const why = pairBlock(plan.trainee, v, plan.parents[1 - k] && vetById(plan.parents[1 - k]));
+  const otherId = plan.parents[1 - k];
+  const why = pairBlock(plan.trainee, v, otherId && vetById(otherId));
   return why === 'setting' ? `borrowed (Borrowed parent: ${BORROW_CHOICES[borrowChoice()]})` : BLOCKED[why] || '';
 }
 function openParentPicker(k) {
@@ -1627,8 +1634,8 @@ export function deckEl(r, title = '') {
   const d = r.deck;
   const dk = el('div', 'deck');
   dk.innerHTML = `${title ? '<div class="dtitle"><b></b></div>' : ''}<div class="dcards"></div>`;
-  if (title) dk.querySelector('.dtitle b').textContent = title;
-  const box = dk.querySelector('.dcards');
+  if (title) must(dk.querySelector('.dtitle b'), 'the deck is made with its title').textContent = title;
+  const box = must(dk.querySelector('.dcards'), 'the deck is made with its cards box');
   borLast(d.cards).forEach((i) => {
     const { base, borrowed: bor, card: c } = deckCardAt(d, i);
     const endAt = (d.end_chain_at || [])[i] || 0,
@@ -1823,11 +1830,13 @@ function countsEl(r) {
 // planner's, which counts the pink sparks she may get, on hover)
 export const tableRows = (r) =>
   (r.schedule || []).map((row) => {
-    const c = row.cells[0],
-      ix = careerTables().races.indexOf(row.name),
+    const tables = careerTables(),
+      c = row.cells[0],
+      ix = tables.races.indexOf(row.name),
       apt = r.aptitudes?.base;
-    if (!c || ix < 0 || !apt || !careerTables().race_cat) return row;
-    const { cost, grades } = tableCost(apt, careerTables().race_cat[ix], careerTables().race_ground[ix]);
+    if (!c || ix < 0 || !apt || !tables.race_cat) return row;
+    const ground = must(tables.race_ground, 'build.py writes race_ground with race_cat')[ix];
+    const { cost, grades } = tableCost(apt, tables.race_cat[ix], ground);
     return { ...row, cells: [{ ...c, tbl: tableChance(cost, c.row), tapt: cost, grades }] };
   });
 const schedOf = (r) => ({
@@ -1852,7 +1861,12 @@ function renderResults() {
   }
   // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
   const open = !plan.trainee || plan.parents.some((p) => !p);
-  if ((open && (planState.state === 'done' ? planState.r.options : last.r.results).length > 1) || refFor())
+  if (
+    (open &&
+      (planState.state === 'done' ? planState.r.options : must(last, 'the sections draw a career on show').r.results)
+        .length > 1) ||
+    refFor()
+  )
     box.appendChild(optionsEl());
   renderSimulation();
   markOwn();
@@ -1923,8 +1937,9 @@ function paintVSort() {
   for (const x of $('vs-menu').querySelectorAll('button')) {
     const on = x.dataset.k === vSort;
     x.setAttribute('aria-checked', String(on));
-    x.textContent = VSORTS[x.dataset.k][0] + (on ? ` ${arrow}` : '');
-    x.title = on ? 'Click to reverse' : VSORTS[x.dataset.k][1];
+    const [name, hint] = VSORTS[must(x.dataset.k, 'a menu item names its key')];
+    x.textContent = name + (on ? ` ${arrow}` : '');
+    x.title = on ? 'Click to reverse' : hint;
   }
 }
 function initVSort() {
@@ -2122,7 +2137,7 @@ let folded = (() => {
   }
 })();
 function paintFold() {
-  const bar = document.querySelector('.rbbar'),
+  const bar = must(document.querySelector('.rbbar'), 'the career page has the setup bar'),
     b = $('set-fold'),
     sum = $('set-sum');
   bar.classList.toggle('folded', folded);
@@ -2152,7 +2167,7 @@ function paintFold() {
 }
 // the pink ribbon toggles it (all of it, its edges included); folded, the whole bar (its summary included)
 function initFold() {
-  const bar = document.querySelector('.rbbar');
+  const bar = must(document.querySelector('.rbbar'), 'the career page has the setup bar');
   bar.addEventListener('click', (/** @type {TargetedEvent} */ e) => {
     if (!folded && !e.target.closest('#h-set')) return;
     folded = !folded;
@@ -2323,7 +2338,7 @@ loadData().then(
       changed();
     };
     $('v-file').onchange = async (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
-      const f = e.target.files[0];
+      const f = must(e.target.files, 'a file input has its file list')[0];
       if (f) importText(await f.text());
       e.target.value = '';
     };

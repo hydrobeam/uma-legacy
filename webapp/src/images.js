@@ -3,6 +3,7 @@
 // view (loading is set before src).
 import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, gameData } from './data.js';
 import { el, spinHTML } from './dom.js';
+import { must } from './must.ts';
 /** @param {string} kind the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...) @param {number|string} id @returns {string|null} */
 export function srcFor(kind, id) {
   return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null;
@@ -34,7 +35,7 @@ const hasRun = (id) => SHIPPED.has(`run:${id}`);
 export function setRunner(id) {
   if (!id || !hasRun(id) || id === runner) return;
   runner = id;
-  new Image().src = srcFor('run', id);
+  new Image().src = must(srcFor('run', id), 'hasRun: her strip is shipped');
 }
 // (the one running stays while she is among them: a new strip is fetched and decoded only when the loop changes)
 /** @param {number[]} ids character ids */

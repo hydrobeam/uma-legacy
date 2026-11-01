@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { umaAv } from './images.js';
 import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
+import { must } from './must.ts';
 const STATE_LABEL = { own: 'owned', out: 'not owned' };
 // her ownership: 'out' when marked not owned or every outfit of hers is, else her roster mark ('own' by default)
 /** @param {import('./data.js').Uma} u @returns {'own'|'out'} */
@@ -65,14 +66,18 @@ function rosterCount() {
 /** @param {number|null} [umaId] her tiles only */
 export function paintRoster(umaId = null) {
   for (const tile of /** @type {HTMLCollectionOf<HTMLElement>} */ ($('roster').children))
-    if (umaId == null || +tile.dataset.uma === umaId) tile._paint();
+    if (umaId == null || +must(tile.dataset.uma, 'a roster tile names its uma') === umaId)
+      must(tile._paint, 'rosterTile gives each tile its _paint')();
   rosterCount();
 }
 // the filter hides tiles (name or outfit containing the text) instead of rebuilding the list on every keystroke
 function filterRoster() {
   const filter = $input('r-filter').value.trim().toLowerCase();
   for (const tile of /** @type {HTMLCollectionOf<HTMLElement>} */ ($('roster').children))
-    tile.hidden = !!filter && !tile._searchName.includes(filter) && !tile._outfitLabel.includes(filter);
+    tile.hidden =
+      !!filter &&
+      !must(tile._searchName, 'rosterTile names each tile').includes(filter) &&
+      !must(tile._outfitLabel, 'rosterTile labels each tile').includes(filter);
 }
 // a click on a tile: owned <-> not owned, for its outfit (or the uma, on a tile without one)
 function toggleTile(u, o) {

@@ -25,6 +25,7 @@ import {
   fullTrainers,
   setFullTrainers,
 } from './umamoe.js';
+import { must } from './must.ts';
 
 /**
  * What the popup needs from the career page.
@@ -81,7 +82,7 @@ function paintSortMenu() {
   btn.title = `${SORTS[sortBy][1]}${reversed ? ', reversed' : ''}`;
   btn.setAttribute('aria-label', `${btn.textContent}, order veterans`);
   for (const b of $('um-sort-menu').querySelectorAll('button')) {
-    const k = b.dataset.k,
+    const k = must(b.dataset.k, 'a menu item names its key'),
       on = k === sortBy;
     b.setAttribute('aria-checked', String(on));
     b.textContent = SORTS[k][0] + (on ? ` ${arrow}` : '');

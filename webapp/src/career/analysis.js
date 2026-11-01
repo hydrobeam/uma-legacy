@@ -33,8 +33,10 @@ import {
   tableRows,
   openNode,
 } from '../career.js';
+import { must } from '../must.ts';
 /** @import { LineageNode } from '../vets.js' */
 /** @import { CareerJob, CareerReport, CareerSearch, PlanDone, PlanOption, PlanReport } from '../career.js' */
+/** @typedef {{results: CareerReport[], pending: true}} PendingSearch a stand-in while the quick comparison looks for the best career with her */
 
 // the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
 // (`runComparison`):
@@ -49,7 +51,7 @@ let planKept = null;
  * @typedef {object} Simulation
  * @property {'none'|'ready'|'busy'|'done'|'error'} state  none: no career on show; ready: no comparison yet
  * @property {Draft|null} [draft]  the entered veteran
- * @property {CareerSearch|null} [r]  the comparison's search: the best career with her as a parent (`pending` while the
+ * @property {CareerSearch|PendingSearch|null} [r]  the comparison's search: the best career with her as a parent (`pending` while the
  *   quick comparison looks for it)
  * @property {CareerReport|null} [baseline]  today's best career, without her
  * @property {string|null} [error]
@@ -110,7 +112,7 @@ export const keptPlan = (key) => (planKept && planKept.key === key ? planKept : 
 
 // ---------- the analysis
 function comparisonJob() {
-  return JSON.parse(baseKey(last.job));
+  return JSON.parse(baseKey(must(last, 'a comparison is of the career on show').job));
 }
 
 // the veteran analysis, ready for the career on show: she starts as a random result of it
@@ -135,11 +137,12 @@ const simulationFor = (r) => {
 // searched without places (a fixed trainee or parent makes it the best of those), else cached or searched now
 /** @param {CareerJob} base `comparisonJob()` @returns {Promise<CareerReport>} */
 async function baselineFor(base) {
+  const shownNow = must(last, 'a comparison is of the career on show');
   const key = JSON.stringify(base),
-    open = !last.job.trainees.length && !last.job.fix.length,
+    open = !shownNow.job.trainees.length && !shownNow.job.fix.length,
     cached = baselineCache?.key === key ? baselineCache.result : null;
   /** @type {{results: CareerReport[], error?: string}} */
-  const before = cached ? { results: [cached] } : open ? last.r : (await runJob(base)).r;
+  const before = cached ? { results: [cached] } : open ? shownNow.r : (await runJob(base)).r;
   if (before.error || !before.results?.length)
     throw new Error(before.error || 'No career found in the current roster.');
   baselineCache = { key, result: before.results[0] };
@@ -213,7 +216,9 @@ const rollSetup = () => ({ career: careerTables(), targets: state.targets, rank:
 function rollDraft() {
   const r = shown();
   if (!r || run.searching) return;
-  Object.assign(simulation.draft, rolledOutcome(r, rollSetup()), { winAt: {} });
+  Object.assign(must(simulation.draft, 'a roll redraws the entered veteran'), rolledOutcome(r, rollSetup()), {
+    winAt: {},
+  });
   simulation.r = null;
   simulation.stale = false;
   const request = rollReq(simulation.draft, r);
@@ -276,7 +281,7 @@ async function quickCompare(request) {
     }
     y = roll.y;
     const v0 = /** @type {PlanDone} */ (planState).r.v0; // done: `request` came from its `rollReq`
-    simulation.r = /** @type {CareerSearch} */ ({ results: [], pending: true });
+    simulation.r = { results: [], pending: true };
     simulation.full = isFull(simulation.draft);
     simulation.v0 = { now: v0, withHer: v0 != null ? Math.max(0, v0 - y) : null }; // r: a stand-in, no search figures
     simulation.fixedFit = true; // (y is the plan's own scoring, under its fit)
@@ -299,7 +304,7 @@ async function quickCompare(request) {
   // saving can be off either way (it prices her in its own routes only: a few partners, one deck per lifted side, one C
   // per route), so the exact count replaces it, shown as checking meanwhile; a zero is checked too, after the best
   // career with her
-  if (y >= 0.5) {
+  if (must(y, "a roll's done figures have its saving") >= 0.5) {
     simulation.standing = true;
     renderSimulation();
     setTimeout(() => {
@@ -462,7 +467,10 @@ async function runComparison(refine = false) {
       compare: true,
       no_reports: true,
     }); // as a run's plan job, once she is added
-    let planNow = planState.state === 'done' && !last.job.fix.length ? planState.r : null;
+    let planNow =
+      planState.state === 'done' && !must(last, 'a comparison is of the career on show').job.fix.length
+        ? planState.r
+        : null;
     if (!planNow) {
       const mb = await runJob(planOf(base.legacies));
       if (gone()) return;
@@ -473,7 +481,7 @@ async function runComparison(refine = false) {
     // careers on a weak pool, in either direction). The plan Add to veterans shows is that refit, run on Add. Only when
     // today's plan has no V to compare with (no route: `v0` null, though its `fit` may still list candidates) or no fit
     // is the refit run here, and kept so that Add takes it as it is
-    const fit = Number.isFinite(planNow?.v0) && planNow.fit?.length ? planNow.fit : null,
+    const fit = planNow && Number.isFinite(planNow.v0) && planNow.fit?.length ? planNow.fit : null,
       jobWithHer = fit ? { ...planOf(legaciesWithHer), next: { fit } } : planOf(legaciesWithHer),
       ma = await runJob(jobWithHer);
     if (gone()) return;
@@ -643,7 +651,9 @@ function verdictText(d, next, saves) {
           ? `Saves ${saves.toFixed(1)} careers`
           : simulation.herParent
             ? 'Parent of the next career'
-            : next && next.p_all > simulation.baseline.p_all * (1 + 1e-9)
+            : next &&
+                next.p_all >
+                  must(simulation.baseline, 'figures with her best career have a baseline').p_all * (1 + 1e-9)
               ? `Better odds, no ${none}`
               : `No ${none}`;
 }
@@ -670,7 +680,7 @@ function comparisonResult(result, d) {
   const before = simulation.baseline,
     n = state.targets.length,
     { now: careersNow, withHer: careersWithHer } = simulation.v0 || { now: null, withHer: null };
-  const next = simulation.r.results[0]; // (none yet while the quick search for the best career with her runs)
+  const next = must(simulation.r, 'a result is drawn for a comparison').results[0]; // (none yet while the quick search for the best career with her runs)
   const saves = careersNow != null && careersWithHer != null ? careersNow - careersWithHer : null;
   const verdict = el('p', 'simverdict');
   verdict.id = 'sim-verdict';
@@ -737,13 +747,14 @@ function comparisonResult(result, d) {
       next.trainee.outfits[0]?.label || '',
     ),
   );
+  const baseline = must(before, 'figures with her best career have a baseline');
   figs.appendChild(
     figureEl({
       label: `All ${n} odds`,
-      now: fmtIn(before.p_all),
+      now: fmtIn(baseline.p_all),
       withHer: fmtIn(next.p_all),
-      direction: direction(before.p_all, next.p_all, false),
-      title: `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`,
+      direction: direction(baseline.p_all, next.p_all, false),
+      title: `All ${n}: today's best career → the best career with her as a parent (${pct(baseline.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(baseline.p_minus1)} → ${fmtIn(next.p_minus1)})`,
     }),
   );
   result.appendChild(figs);

@@ -5,6 +5,7 @@ import { state, goldGiven } from './state.js';
 import { cardAv } from './images.js';
 import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
+import { must } from './must.ts';
 /** @import { Card } from './data.js' */
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 const BORROWED = /\(borrowed\)$/; // a deck names its borrowed card with this suffix
@@ -156,7 +157,7 @@ export function renderCards() {
     const section = document.createElement('div');
     section.className = 'cgroup';
     section.innerHTML = `<h3>${label}</h3><div class="ctiles"></div>`;
-    const tiles = section.querySelector('.ctiles');
+    const tiles = must(section.querySelector('.ctiles'), 'the section is made with its tiles box');
     for (const { c, gifts } of list) tiles.appendChild(cardTile(c, gifts));
     box.appendChild(section);
   }
@@ -165,7 +166,7 @@ export function renderCards() {
 }
 // after an ownership change: every card's pressed state and the count (the list doesn't depend on ownership)
 export function paintCards() {
-  for (const tile of $('cards').querySelectorAll('.ct')) tile._paint();
+  for (const tile of $('cards').querySelectorAll('.ct')) must(tile._paint, 'cardTile gives each tile its _paint')();
   cardCount();
 }
 // the filter hides cards (and a rarity section left empty) instead of rebuilding the list on every keystroke
@@ -174,7 +175,7 @@ function filterCards() {
   for (const section of $('cards').querySelectorAll('.cgroup')) {
     let any = false;
     for (const tile of section.querySelectorAll('.ct')) {
-      tile.hidden = !!filter && !tile._searchName.includes(filter);
+      tile.hidden = !!filter && !must(tile._searchName, 'cardTile names each tile').includes(filter);
       any ||= !tile.hidden;
     }
     section.hidden = !any;
@@ -224,7 +225,10 @@ export function initCards() {
   top.addEventListener('keydown', (e) => {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
     e.preventDefault();
-    const other = [...top.querySelectorAll('button')].find((b) => b.dataset.v !== state.decksTop); // two options: any arrow goes to the other
+    const other = must(
+      [...top.querySelectorAll('button')].find((b) => b.dataset.v !== state.decksTop),
+      'the switch has two options',
+    ); // two options: any arrow goes to the other
     pickTop(other.dataset.v);
     other.focus();
   });

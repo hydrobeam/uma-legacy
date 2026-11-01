@@ -13,6 +13,7 @@ import { noOutfit } from './roster.js';
 import { renderDeck } from './results.js';
 import { markOwn } from './popover.js';
 import { loadExample } from './presets.js';
+import { must } from './must.ts';
 // The search's state. searching: a search runs or is about to (the status line shows it); searchT0: when it started
 // (performance.now); searchTick: the timer redrawing the status line each second; pauseTimer: the pause before an
 // automatic search; searchId: the newest search's number (an older one's answer is dropped); busy: a search is running
@@ -82,11 +83,12 @@ export function paintRunNote() {
   } else {
     note.textContent = status.text;
     note.title = '';
-    if (status.act)
+    const act = status.act;
+    if (act)
       setAct(
-        status.act.click || status.act.label,
-        status.act.label,
-        status.act.run || (() => $(status.act.click).click()),
+        act.click || act.label,
+        act.label,
+        act.run || (() => $(must(act.click, 'an act without run names the button it presses')).click()),
       );
     else setAct(null);
     const answered = status.kind === 'done' || status.kind === 'example';

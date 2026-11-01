@@ -5,6 +5,7 @@ import { $, $dialog, esc } from './dom.js';
 import { RACEIDS } from './data.js';
 import { umaAv, srcFor, gradeEl } from './images.js';
 import { pickOutfit } from './roster.js';
+import { must } from './must.ts';
 
 /**
  * One member's attempt at a scheduled race (the solver's schedule report).
@@ -135,11 +136,14 @@ function winTable() {
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th or later'];
 const why = (/** @type {ScheduleCell} */ cell) => {
   if (cell.tbl !== undefined) {
-    const pen = ROW_PEN[Math.min(cell.row, 6) - 1],
+    // (career.js sets the table's figure with its cost and grades, on a cell the solver gave its row)
+    const row = must(cell.row, 'a scheduled race has its place in a row'),
+      tapt = must(cell.tapt, 'a table figure comes with its cost on her grades');
+    const pen = ROW_PEN[Math.min(row, 6) - 1],
       parts = [];
-    if (cell.tapt > 0) parts.push(`${cell.tapt} for her aptitudes (${cell.grades})`);
-    if (pen > 0) parts.push(`${pen} for the ${ORD[Math.min(cell.row, 6)]} race in a row`);
-    const capped = 110 - cell.tapt - pen > 100 ? ', at most 100' : '';
+    if (tapt > 0) parts.push(`${tapt} for her aptitudes (${cell.grades})`);
+    if (pen > 0) parts.push(`${pen} for the ${ORD[Math.min(row, 6)]} race in a row`);
+    const capped = 110 - tapt - pen > 100 ? ', at most 100' : '';
     return [
       `${cell.tbl}% to win (community table)`,
       parts.length ? `110${parts.map((x) => ` − ${x}`).join('')}${capped}` : 'Nothing taken off: her aptitudes suit it',
@@ -147,16 +151,17 @@ const why = (/** @type {ScheduleCell} */ cell) => {
     ].join('\n');
   }
   if (cell.apt === undefined) return '';
+  // (the solver writes apt, row and pen together: career/schedule.rs, chart.rs)
+  const row = must(cell.row, 'the solver writes row with apt'),
+    pen = must(cell.pen, 'the solver writes pen with apt');
   const parts = [];
   if (cell.apt > 0) parts.push(`aptitude −${cell.apt}`);
   const low = cell.low ?? 0;
   if (low > 0) parts.push(`low-aptitude cost −${low}`);
-  if (cell.pen > 0)
-    parts.push(
-      `${ORD[Math.min(cell.row, 6)]} race in a row${cell.goal ? ' (a goal race: one less)' : ''} −${cell.pen}`,
-    );
+  if (pen > 0)
+    parts.push(`${ORD[Math.min(row, 6)]} race in a row${cell.goal ? ' (a goal race: one less)' : ''} −${pen}`);
   const costs = parts.length ? `, ${parts.join(', ')}` : '',
-    capped = 110 - cell.apt - low - cell.pen > 100 ? ', capped at 100' : '';
+    capped = 110 - cell.apt - low - pen > 100 ? ', capped at 100' : '';
   return `${cell.p}% win: 110${costs}${capped}`;
 };
 // a race in its slot (the schedule window's cell, and a win in the G1 wins editor): banner (by `bannerName`), name, Goal badge
@@ -308,16 +313,17 @@ export function winsAgenda(opts) {
   };
   // a win in its slot: a button that removes it
   function winButton(ix, turn) {
-    const name = raceName.get(ix),
+    const name = must(raceName.get(ix), 'a win is a race of the data'),
       scheduled = info(ix),
-      inSchedule = scheduled && scheduled.turn === turn;
-    const b = raceCell('button', { bannerName: name, label: name, goal: inSchedule && scheduled.cell.goal });
+      cellRun =
+        scheduled && scheduled.turn === turn ? must(scheduled.cell, 'a race in her schedule has its cell') : null;
+    const b = raceCell('button', { bannerName: name, label: name, goal: !!cellRun?.goal });
     b.type = 'button';
     b.classList.add('wbtn');
     b.dataset.k = `win:${ix}`;
     b.dataset.ix = ix;
     b.setAttribute('aria-label', `${name}, won: remove`);
-    const odds = inSchedule ? ` · ${why(scheduled.cell) || `${shownP(scheduled.cell)}% win`}` : '';
+    const odds = cellRun ? ` · ${why(cellRun) || `${shownP(cellRun)}% win`}` : '';
     b.title = `${name} · won${odds}${scheduled?.parent ? ' · a parent won it too' : ''} · click to remove`;
     b.onclick = () => {
       remove(ix);
@@ -399,15 +405,16 @@ export function winsAgenda(opts) {
     h.textContent = `${turnName(turn)}: which G1 did she win?`;
     menu.appendChild(h);
     const inSchedule = (ix) => info(ix)?.turn === turn;
+    const nameOf = (ix) => must(raceName.get(ix), 'an offered race is a race of the data');
     for (const ix of [...offered].sort(
-      (x, y) => Number(inSchedule(y)) - Number(inSchedule(x)) || raceName.get(x).localeCompare(raceName.get(y)),
+      (x, y) => Number(inSchedule(y)) - Number(inSchedule(x)) || nameOf(x).localeCompare(nameOf(y)),
     )) {
       // each race as its banner (the name stays for the screen reader and when the banner is missing)
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'btn wpick';
-      b.title = raceName.get(ix);
-      const bn = banner(raceName.get(ix));
+      b.title = nameOf(ix);
+      const bn = banner(nameOf(ix));
       if (bn) {
         bn.loading = 'eager';
         b.appendChild(bn);
@@ -415,10 +422,10 @@ export function winsAgenda(opts) {
       }
       const nm = document.createElement('span');
       nm.className = 'wpn';
-      nm.textContent = raceName.get(ix);
+      nm.textContent = nameOf(ix);
       b.appendChild(nm);
       const sub = inSchedule(ix)
-        ? `her schedule · ${shownP(info(ix).cell)}% win`
+        ? `her schedule · ${shownP(must(info(ix)?.cell, 'a race in her schedule has its cell'))}% win`
         : shownAt.has(ix)
           ? `won, shown in ${turnName(shownAt.get(ix))}: moves here`
           : '';
@@ -543,7 +550,7 @@ export function openSched(loop) {
   tabs.appendChild(keyEl);
   // one scheduled race in member k's slot
   function cell(/** @type {ScheduleRow} */ row, k) {
-    const c = row.cells[k],
+    const c = must(row.cells[k], 'cell() draws a member who runs the race'),
       names = row.race.split('/');
     const el = raceCell('div', { bannerName: names[0], label: names.join(' or '), goal: c.goal });
     if (!row.shared) el.classList.add('opt');
@@ -631,8 +638,10 @@ function schedTable(members, /** @type {ScheduleRow[]} */ schedule, outfitOf) {
     t2.innerHTML = `<caption>Optional G1s (one runner, no affinity; free to run, skip freely)</caption><thead>${head}</thead><tbody>${body(optional)}</tbody>`;
     wrap.appendChild(t2);
   }
-  for (const th of wrap.querySelectorAll('th.mh'))
-    th.prepend(umaAv(members[+th.dataset.k].id, outfitOf(+th.dataset.k), 22));
+  for (const th of wrap.querySelectorAll('th.mh')) {
+    const k = +must(th.dataset.k, "a member's column head names her");
+    th.prepend(umaAv(members[k].id, outfitOf(k), 22));
+  }
   const note = document.createElement('p');
   note.className = 'hint';
   note.textContent = `Number = win % at that attempt (aptitude and races in a row included; hover for why). * = goal race. · = not running it. Turns not listed are rest or a goal race that isn't a G1.${schedule.some((r) => r.alts?.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : ''}`;

@@ -3,6 +3,7 @@
 // (`wireMenu` is the button and menu alone; the uma.moe popup's orders use it too.)
 import { $ } from './dom.js';
 import { state, writeSaved } from './state.js';
+import { must } from './must.ts';
 const HOW = { 'rel-desc': 'newest first', 'rel-asc': 'oldest first', 'name-asc': 'A to Z', 'name-desc': 'Z to A' };
 /** @param {string} id the sort button's id @param {string} key the state's sort keys' prefix ('r': rsort, rdir) */
 export function paintSort(id, key) {
@@ -10,7 +11,8 @@ export function paintSort(id, key) {
     direction = state[`${key}dir`],
     arrow = direction === 'desc' ? '↓' : '↑';
   const btn = $(id);
-  if (!btn.dataset.what) btn.dataset.what = btn.getAttribute('aria-label').toLowerCase(); // 'sort umas', kept from the first paint
+  if (!btn.dataset.what)
+    btn.dataset.what = must(btn.getAttribute('aria-label'), 'a sort button has its label').toLowerCase(); // 'sort umas', kept from the first paint
   const what = btn.dataset.what;
   btn.textContent = `${sortBy === 'name' ? 'Name ' : 'Release '}${arrow}`;
   btn.title = `Sorted ${HOW[`${sortBy}-${direction}`]}`;
@@ -64,7 +66,7 @@ export function wireMenu(id, pick) {
     }
   });
   items().forEach((b) => {
-    b.onclick = () => pick(b.dataset.k);
+    b.onclick = () => pick(must(b.dataset.k, 'a menu item names its key'));
   });
   menu.addEventListener('keydown', (e) => {
     const all = items(),

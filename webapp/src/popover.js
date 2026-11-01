@@ -5,6 +5,7 @@ import { state, goldGiven } from './state.js';
 import { save } from './save.js';
 import { umaState, paintRoster } from './roster.js';
 import { cardTitle, cardGives, giftsHTML, paintCards, chainEndAt } from './cards.js';
+import { must } from './must.ts';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
 // Keyboard: opening moves the focus into the panel; Escape, or Tab past either end, closes it and returns the focus to
@@ -14,7 +15,7 @@ pop.className = 'cpop';
 pop.hidden = true;
 pop.setAttribute('role', 'dialog');
 pop.tabIndex = -1;
-document.getElementById('rcol').appendChild(pop);
+must(document.getElementById('rcol'), 'both planner pages have the results column').appendChild(pop);
 /** @type {HTMLElement | null} */
 let popFor = null; // the card or name button whose panel is open
 export const popHasFocus = () => !pop.hidden && pop.contains(document.activeElement);
@@ -41,13 +42,17 @@ pop.addEventListener('keydown', (e) => {
 });
 export function markOwn() {
   document.querySelectorAll('.deck .dc').forEach((chip) => {
-    chip.classList.toggle('off', !chip.classList.contains('bor') && state.cardsOff[+chip.dataset.cid] === false);
+    chip.classList.toggle(
+      'off',
+      !chip.classList.contains('bor') &&
+        state.cardsOff[+must(chip.dataset.cid, 'a card chip names its card')] === false,
+    );
   });
   document.querySelectorAll('.mem[data-uma]').forEach((member) => {
-    const u = gameData().umas.find((x) => x.id === +member.dataset.uma);
+    const u = gameData().umas.find((x) => x.id === +must(member.dataset.uma, 'a member block names her'));
     member.classList.toggle(
       'off',
-      !!u && (umaState(u) === 'out' || (member.dataset.outfit && state.outfits[+member.dataset.outfit] === false)),
+      !!u && (umaState(u) === 'out' || (!!member.dataset.outfit && state.outfits[+member.dataset.outfit] === false)),
     );
   });
 }
@@ -95,7 +100,11 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
   closePop();
   popFor = btn;
   btn.setAttribute('aria-expanded', 'true');
-  const u = gameData().umas.find((x) => x.id === +member.dataset.uma),
+  const uma = +must(member.dataset.uma, 'a member block names her'),
+    u = must(
+      gameData().umas.find((x) => x.id === uma),
+      "a loop's member is an uma of the data",
+    ),
     outfitId = member.dataset.outfit ? +member.dataset.outfit : null;
   const owned = () => (outfitId ? umaState(u) !== 'out' && state.outfits[outfitId] !== false : umaState(u) !== 'out');
   const title = u.name + (outfitId ? ` ${member.dataset.outfitLabel}` : '');
@@ -108,7 +117,7 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
     `<a class="gtl" href="${umaUrl(u, outfitId)}" target="_blank" rel="noopener">GameTora ↗︎</a></div>`;
   placePop(btn);
   /** @type {HTMLInputElement} */
-  const toggle = pop.querySelector('[data-act="uma"]');
+  const toggle = must(pop.querySelector('[data-act="uma"]'), 'the panel is made with its switch');
   toggle.onchange = () => {
     if (toggle.checked) {
       if (state.roster[u.id] === 'out') delete state.roster[u.id];
@@ -180,9 +189,9 @@ function openCardPop(chip) {
     `<div class="pfoot">${c && !borrowed ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${owned ? ' checked' : ''}>Owned</label>` : '<span></span>'}` +
     `${c ? `<a class="gtl" href="${gametoraUrl(c)}" target="_blank" rel="noopener">GameTora ↗︎</a>` : ''}</div>`;
   placePop(chip, true);
-  /** @type {HTMLInputElement} */
+  /** @type {HTMLInputElement | null} a card of the data that is not borrowed has one */
   const toggle = pop.querySelector('[data-act="own"]');
-  if (toggle)
+  if (toggle && c)
     toggle.onchange = () => {
       if (toggle.checked) delete state.cardsOff[c.id];
       else state.cardsOff[c.id] = false;
@@ -213,7 +222,11 @@ export function initPopover() {
       // a "Same loop as #1" card has no member blocks: #1's (the same umas and outfits) stand in
       const mem = `.mem[data-uma="${face.dataset.uma}"]`;
       toggleFor(face, () =>
-        openUmaPop(face, face.closest('.loop').querySelector(mem) || document.querySelector(`.loop.first ${mem}`)),
+        openUmaPop(
+          face,
+          must(face.closest('.loop'), 'a portrait button is in a loop card').querySelector(mem) ||
+            document.querySelector(`.loop.first ${mem}`),
+        ),
       );
       return;
     }

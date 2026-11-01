@@ -26,6 +26,7 @@ import {
   deckEl,
   fmtN,
 } from '../career.js';
+import { must } from '../must.ts';
 /** @import { OptionRow, PlanOption, PlanReport } from '../career.js' */
 // an option's role, in plain words: one of the two parents of today's estimate (the route the (i) popup walks through)
 // or its last run, else what her run does for it: the side her veteran's routes lift most often where she lowers it,
@@ -62,8 +63,9 @@ function routeFirstStep(planReport) {
       return m.builder ? { what: `a builder for ${m.trainee}`, parents: careerParents(m.builder) } : null;
     return m.parents ? { what: `${m.trainee}'s run`, parents: m.parents } : null;
   }
-  const real = (planReport.v0_plan?.sides || []).map((side) => /^real:(\d+)$/.exec(side)).filter(Boolean);
-  return real.length === 2 ? { what: `${planReport.v0_plan.c}'s run`, parents: real.map((m) => +m[1]) } : null;
+  const route = planReport.v0_plan;
+  const real = (route?.sides || []).map((side) => /^real:(\d+)$/.exec(side)).filter((m) => m !== null);
+  return route && real.length === 2 ? { what: `${route.c}'s run`, parents: real.map((m) => +m[1]) } : null;
 }
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
 const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
@@ -151,7 +153,7 @@ export function optionsEl() {
           unsettled(planReport).has(keyOf(o)) ||
           (on && keyOf(o) === keyOf(on)),
       )
-    : last.r.results.slice();
+    : must(last, 'the options table draws a career on show').r.results.slice();
   // the pair search's recommendation where the plan's rows don't hold it: a row run as it is, its deck kept (`useBtn`)
   // (a row the table already has gets its flag, pair-search score and id merged in, as a copy: the plan's own rows stay)
   const recommended = pairSearchRow(planReport);
@@ -173,7 +175,7 @@ export function optionsEl() {
     '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
   // both columns explain themselves on hover or keyboard focus (gmtip.js); the (i) popup says more about extra careers
   const n = state.targets.length,
-    ths = tb.tHead.rows[0].cells;
+    ths = must(tb.tHead, 'the table is made with its head').rows[0].cells;
   const t = el('span', 'thtip', 'Odds');
   t.title = `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`;
   t.tabIndex = 0;
@@ -193,7 +195,7 @@ export function optionsEl() {
     q.setAttribute('aria-label', 'What these numbers mean');
     q.title = 'What these numbers mean';
     q.onclick = () => openSaveWhy(planReport, notes);
-    box.querySelector(':scope > h3').append(q);
+    must(box.querySelector(':scope > h3'), 'the box is made with its heading').append(q);
   }
   for (const r of list) tb.tBodies[0].appendChild(optionRow(r, { on, mine, planReport, places, pick }));
   const nameOf = (o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
@@ -279,7 +281,8 @@ const unsettled = (planReport) => {
 // option's trainee as the table names her
 /** @type {(planReport: PlanReport|null, nameOf: (o: PlanOption) => string) => string[]} */
 function pairSearchNotes(planReport, nameOf) {
-  const check = planReport && checkDone(planReport);
+  if (!planReport) return [];
+  const check = checkDone(planReport);
   if (!check?.pairs) return [];
   const vetName = (i) => (vets[i] ? `#${i + 1} ${umaName(vets[i].chara)}` : `#${i + 1}`);
   const shownOf = (found) => planReport.options.find((o) => keyOf(o) === found.shown);

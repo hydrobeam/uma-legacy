@@ -10,6 +10,7 @@ import { save } from './save.js';
 import { paintRoster } from './roster.js';
 import { paintCards } from './cards.js';
 import { parseOwned } from './umadump.js';
+import { must } from './must.ts';
 
 // Mark owned exactly the outfits in `owned` (outfit ids), and an uma the data lists without outfits when the file has an
 // outfit of hers (character id = outfit id / 100). Returns how many of the file's ids the data has; 0 changes nothing.
@@ -60,7 +61,7 @@ function importOwned(text) {
 async function importFiles(input, status) {
   const said = [];
   let changed = false;
-  for (const file of input.files) {
+  for (const file of must(input.files, 'a file input has its file list')) {
     try {
       said.push(importOwned(await file.text()));
       changed = true;

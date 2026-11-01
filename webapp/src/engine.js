@@ -2,6 +2,7 @@
 import { ERA } from './settings.js';
 import { ASSETS, loadFail, gameData } from './data.js';
 import { stateLoad, stateSave, stateDrop } from './statestore.js';
+import { must } from './must.ts';
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 /**
  * The worker's answer to a job: the solver's report, whose shape is the job command's (a deck search's
@@ -184,7 +185,7 @@ function post(job, interim, progress, background = false) {
   return new Promise((done) => {
     const id = ++lastJobId;
     pending.set(id, { done, interim, progress, background });
-    worker.postMessage({ type: 'run', id, job });
+    must(worker, 'a job is posted once startEngine has made the worker').postMessage({ type: 'run', id, job });
   });
 }
 async function restore() {

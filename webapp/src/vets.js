@@ -39,6 +39,7 @@ import { careerTables, gameData } from './data.js';
 import { state, goldGiven } from './state.js';
 import { umaAv, skillIcon, srcFor } from './images.js';
 import { winsAgenda } from './agenda.js';
+import { must } from './must.ts';
 
 const STORAGE_KEY = 'llp:career',
   STORAGE_VERSION = 2;
@@ -215,10 +216,10 @@ export function filterUmas(box, filter) {
   const f = filter.trim().toLowerCase();
   let n = 0;
   for (const b of box.querySelectorAll('.upick')) {
-    b.hidden = !!f && !b._nm.includes(f);
+    b.hidden = !!f && !must(b._nm, 'the picker names each button').includes(f);
     n += Number(!b.hidden);
   }
-  box.querySelector('p.hint').hidden = n > 0;
+  must(box.querySelector('p.hint'), 'the picker has its no-match hint').hidden = n > 0;
 }
 // after an uma is picked for a node that carries sparks: whether to give her the target skills. onChoice(sparks | null:
 // keep what she has)
@@ -252,7 +253,7 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
     box.appendChild(b);
   }
   $dialog('ask-dlg').showModal();
-  box.querySelector('.primary').focus();
+  must(box.querySelector('.primary'), 'the prompt is made with its first choice').focus();
 }
 // the G1 wins of one node, on the schedule window's calendar (the editor in agenda.js): each win in its slot, click it to
 // remove it; an empty slot where a G1 is held lists the races held then. A pool veteran's wins are saved on each edit, and
@@ -563,8 +564,11 @@ function colourBar(nd, kind, key, onEdit, readOnly) {
         },
       });
       c.className = 'vsb green';
-      const b = c.querySelector('.vskb');
-      b.setAttribute('aria-label', b.getAttribute('aria-label').replace(/^([^,]+),/, '$1 (unique),'));
+      const b = must(c.querySelector('.vskb'), 'chip() makes its face');
+      b.setAttribute(
+        'aria-label',
+        must(b.getAttribute('aria-label'), 'chip() labels its face').replace(/^([^,]+),/, '$1 (unique),'),
+      );
       return c;
     }
     const c = document.createElement('span');
@@ -598,7 +602,7 @@ function colourBar(nd, kind, key, onEdit, readOnly) {
         onEdit();
       },
     });
-    const b = c.querySelector('.vskb');
+    const b = must(c.querySelector('.vskb'), 'chip() makes its face');
     if (!readOnly) {
       b.setAttribute('aria-haspopup', 'dialog');
       b.setAttribute('aria-label', `${pinkName(group)} (aptitude), ${stars} star${stars > 1 ? 's' : ''}. Change`);
@@ -693,7 +697,7 @@ function openColour(nd, kind, key, onEdit) {
       st.setAttribute('aria-pressed', String(k === curStars));
       st.disabled = curGroup === null;
       st.onclick = () => {
-        nd[spec.field] = { [curGroup]: k };
+        nd[spec.field] = { [must(curGroup, 'a star is enabled once a colour is chosen')]: k };
         onEdit();
         draw();
       };

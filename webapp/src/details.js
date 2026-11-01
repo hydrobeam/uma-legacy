@@ -28,8 +28,8 @@ export function fitSparks(root = document) {
     for (const e of names) e.style.fontSize = '';
     const fits = (e) => !(e.scrollWidth > e.clientWidth + 0.5);
     // per name that overflows (and is on show): base size f0 in px, the steps known not to fit (lo) and known to fit, or
-    // the floor (hi); step k is the size f0 - 0.5k, and k = 0 is the CSS size
-    /** @type {{e: HTMLElement, f0: number, lo: number, hi: number, mid?: number}[]} */
+    // the floor (hi); step k is the size f0 - 0.5k, and k = 0 is the CSS size; mid: the step being tried
+    /** @type {{e: HTMLElement, f0: number, lo: number, hi: number, mid: number}[]} */
     const shrinking = names
       .filter((e) => e.clientWidth)
       .map((e) => ({ e, f0: parseFloat(getComputedStyle(e).fontSize) }))
@@ -37,7 +37,7 @@ export function fitSparks(root = document) {
       .map((x) => {
         let floorStep = 0;
         while (x.f0 - 0.5 * floorStep > 9) floorStep++;
-        return { ...x, lo: 0, hi: floorStep };
+        return { ...x, lo: 0, hi: floorStep, mid: 0 };
       });
     // the answer is the smallest step that fits, else hi
     let open = shrinking.filter((x) => x.hi - x.lo > 1);

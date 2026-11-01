@@ -64,6 +64,7 @@ const resultSummary = (top) => ({
 function exportText() {
   const settings = Object.fromEntries(SETTINGS.map((k) => [k, state[k]]));
   const readable = readableSettings();
+  /** @type {Record<string, unknown> | null} */
   let results = null;
   if (ui.lastResult) {
     const { r, meta } = ui.lastResult;

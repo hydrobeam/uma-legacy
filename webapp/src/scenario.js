@@ -9,6 +9,7 @@ import { state, writeSaved } from './state.js';
 import { scenLogo, skillIcon, srcFor } from './images.js';
 import { save } from './save.js';
 import { renderTargets } from './targets.js';
+import { must } from './must.ts';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 const LIST = SCENARIOS.filter((s) => !s.era || s.era === ERA);
 export const scenarioOf = (v) => LIST.find((s) => s.v === v) || LIST[0];
@@ -63,7 +64,7 @@ export function paintScen() {
   btn.dataset.value = sc.v;
   btn.setAttribute('aria-label', `Scenario: ${sc.name}`);
   btn.title = label(sc);
-  btn.querySelector('.slogo').replaceWith(scenLogo(sc));
+  must(btn.querySelector('.slogo'), 'the scenario button holds its logo').replaceWith(scenLogo(sc));
   btn.style.setProperty('--scen-art', artUrl(sc) || 'none');
   $('scen-menu')
     .querySelectorAll('.stile')

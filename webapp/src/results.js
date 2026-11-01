@@ -9,6 +9,7 @@ import { pickOutfit, outfitNote } from './roster.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 import { openOdds, deckHint } from './odds.js';
+import { must } from './must.ts';
 /**
  * A deck in a result (the solver's `PDeck::out`, deck/pdeck.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
  * ` (end chain at link N)` appended where that applies; `card_ids[i]` is its id (plain pals have a name but no entry).
@@ -238,19 +239,22 @@ function appendDecks(card, loop, shared, decks) {
     b.onclick = () => {
       const open = b.getAttribute('aria-expanded') !== 'true';
       b.setAttribute('aria-expanded', String(open));
-      const more = b.querySelector('.swmore');
+      const more = must(b.querySelector('.swmore'), 'the button holds its label');
       more.textContent = open ? 'Show less' : `+${more.dataset.n} more`;
     };
   });
   card.querySelectorAll('.deck .oinfo').forEach((b) => {
     b.onclick = () => {
-      const odds = b.closest('.deck').querySelector('.dodds');
+      const odds = must(
+        must(b.closest('.deck'), 'the button is in its deck').querySelector('.dodds'),
+        'a deck with an odds button has its odds',
+      );
       odds.hidden = !odds.hidden;
       b.setAttribute('aria-expanded', String(!odds.hidden));
     };
   });
   card.querySelectorAll('.deck .dc').forEach((chip) => {
-    const c = gameData().cardById.get(+chip.dataset.cid);
+    const c = gameData().cardById.get(+must(chip.dataset.cid, 'a deck chip names its card'));
     chip.prepend(cardAv(c || null, 96, false));
   });
 }
@@ -274,10 +278,11 @@ function membersEl(loop) {
     member.dataset.outfit = String(offered.outfits.length === 1 ? offered.outfits[0].id : '');
     member.dataset.outfitLabel = outfit;
     member.dataset.outfitNote = outfitNote(pick);
-    member.querySelector('.nm').textContent = m.name;
-    member.querySelector('.of').textContent = outfit;
-    member.querySelector('.head').prepend(umaAv(m.id, pick.list[0]?.id ?? null, 38));
-    const skills = member.querySelector('.sk');
+    const part = (selector) => must(member.querySelector(selector), `the member is made with ${selector}`);
+    part('.nm').textContent = m.name;
+    part('.of').textContent = outfit;
+    part('.head').prepend(umaAv(m.id, pick.list[0]?.id ?? null, 38));
+    const skills = part('.sk');
     for (const cover of offered.covers) {
       // each its icon and name
       const names = namesOf(cover.group),
@@ -306,16 +311,17 @@ const smallButton = (text) => {
 function actionsEl(loop, n) {
   const row = document.createElement('div');
   row.className = 'row lacts';
-  if (loop.landed) {
+  const landed = loop.landed;
+  if (landed) {
     const odds = smallButton('Odds');
     odds.setAttribute('aria-haspopup', 'dialog');
     odds.onclick = () =>
       openOdds({
         title: 'Odds of this loop',
         n,
-        ex: loop.landed,
+        ex: landed,
         pAll: loop.p_all,
-        expected: loop.landed.reduce((sum, p, k) => sum + k * p, 0),
+        expected: landed.reduce((sum, p, k) => sum + k * p, 0),
       });
     row.appendChild(odds);
   }

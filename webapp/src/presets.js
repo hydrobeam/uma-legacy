@@ -9,6 +9,7 @@ import { PRESET } from './data.js';
 import { state, writeSaved } from './state.js';
 import { save } from './save.js';
 import { tileEl } from './targets.js';
+import { must } from './must.ts';
 
 const NAME_MAX = 40;
 // the same skills, in any order
@@ -52,6 +53,7 @@ export function mergePresets(mine, theirs) {
   return out;
 }
 
+/** @type {(name: string, except?: {name: string} | null) => boolean} except: a preset whose own name doesn't count */
 const nameTaken = (name, except = null) => state.presets.some((p) => p !== except && p.name === name);
 // the name offered: "Preset N+1", N the presets now (counting on past a name already taken)
 function suggestName() {
@@ -135,23 +137,24 @@ function renameMode(on) {
   $('prv-rename').textContent = on ? 'Save name' : 'Rename';
   if (on) {
     const input = $input('prv-name');
-    input.value = viewing.name;
+    input.value = must(viewing, 'Rename is in the open preset').name;
     input.focus();
     input.select();
   }
 }
 function commitRename() {
+  const preset = must(viewing, 'Save name is in the open preset');
   const name = $input('prv-name').value.trim();
-  if (!name || name === viewing.name) {
+  if (!name || name === preset.name) {
     renameMode(false);
     return;
   }
-  if (nameTaken(name, viewing)) {
+  if (nameTaken(name, preset)) {
     $('prv-msg').textContent = `“${name}” is taken: names are unique.`;
     return;
   }
-  const old = viewing.name;
-  viewing.name = name;
+  const old = preset.name;
+  preset.name = name;
   writeSaved();
   $('prv-title').textContent = name;
   $('prv-msg').textContent = `Renamed “${old}” to “${name}”.`;

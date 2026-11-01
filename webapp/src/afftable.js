@@ -4,6 +4,7 @@
 // three (3 points each); a grandparent's, her trio relation and the G1s she shares with the parent between them. The
 // total is the six summed.
 import { el } from './dom.js';
+import { must } from './must.ts';
 // her affinity as the game's heart and the number
 /** @param {number|null|undefined} affinity @param {string} [cls] @returns {HTMLSpanElement|null} */
 export function affEl(affinity, cls = 'aff') {
@@ -40,7 +41,9 @@ export function affTable(legs, caption = 'Affinity') {
     th.scope = 'row';
     th.append(...who);
     tr.append(th, el('td', '', whole(legacy.rel)), el('td', '', whole(legacy.race)), el('td', 'afv'));
-    tr.lastChild.appendChild(affEl(legacy.aff));
+    must(tr.lastChild, 'the affinity cell, appended above').appendChild(
+      must(affEl(legacy.aff), 'a legacy has an affinity'),
+    );
     return tr;
   };
   // legacyIndex: the parent's place (Legacy 1, 2); a grandparent's row has none
@@ -53,12 +56,13 @@ export function affTable(legs, caption = 'Affinity') {
   legs.forEach((parent, k) => {
     const group = el('tbody', `leg${k}`);
     group.appendChild(row('par', who(parent, k), parent));
-    for (const grandparent of parent.gps) group.appendChild(row('gp', who(grandparent), grandparent));
+    for (const grandparent of must(parent.gps, "a parent's row carries her parents"))
+      group.appendChild(row('gp', who(grandparent), grandparent));
     table.appendChild(group);
   });
-  const everyone = legs.flatMap((parent) => [parent, ...parent.gps]),
+  const everyone = legs.flatMap((parent) => [parent, ...must(parent.gps, "a parent's row carries her parents")]),
     sum = (field) => everyone.reduce((total, x) => total + field(x), 0);
-  table.tFoot.appendChild(
+  must(table.tFoot, 'the table is made with its foot').appendChild(
     row('tot', [el('span', 'afk', 'Total')], {
       rel: sum((x) => x.rel),
       race: sum((x) => x.race),
