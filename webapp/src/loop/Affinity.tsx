@@ -14,6 +14,7 @@ import { RadioPills } from '../ui/RadioPills.tsx';
 import { AffHeart, AffTable } from '../ui/AffTable.tsx';
 import type { AffinityLeg } from '../ui/AffTable.tsx';
 import { UmaAv } from '../ui/Images.tsx';
+import { RenderGuard } from './RenderGuard.tsx';
 import type { Lineage, ResultLoop } from './types.ts';
 
 // the loop shown at the last opening (`n` counts them: each opening starts at the best career), and whether it is open
@@ -29,7 +30,9 @@ export function AffinityDialog() {
   return (
     <Dialog id="why-dlg" labelledBy="why-title" open={open} onClose={close}>
       <div class="dlg" id="why-body">
-        {loop && <Careers key={n} loop={loop} />}
+        <RenderGuard input={shown} what="The affinity">
+          {loop && <Careers key={n} loop={loop} />}
+        </RenderGuard>
       </div>
     </Dialog>
   );

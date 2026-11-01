@@ -159,6 +159,33 @@ export default async function states(b) {
       !r.some((x) => x.sameAs1),
     JSON.stringify(r),
   );
+  // a result that throws while it is drawn (here the kept result with its first loop's outfits gone, as a malformed
+  // report would be): the status line says so, as a failed search does, the column says why it is empty, the error is
+  // logged; the next result draws
+  await pg.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => k.startsWith('llp:last:')) || '',
+      kept = JSON.parse(localStorage.getItem(key) || 'null');
+    kept.r.top[0].loop.outfits = [];
+    localStorage.setItem(key, JSON.stringify(kept));
+  });
+  const errors0 = pg.errors.length;
+  await pg.reload();
+  const failed = await until(pg, () => document.getElementById('rhead').dataset.kind === 'error', null, 10000);
+  h = await head();
+  const drawErrors = pg.errors.splice(errors0);
+  check(
+    'a result that throws while drawn: the status line says it could not be drawn, the column says so, the error is logged',
+    failed &&
+      /^The result could not be drawn: /.test(h.note) &&
+      h.loops === 0 &&
+      (await pg.locator('#results').innerText()) === 'The result could not be drawn.' &&
+      drawErrors.length > 0,
+    JSON.stringify({ h, drawErrors }),
+  );
+  await pg.locator('#cards .ct').nth(6).click();
+  await settle(pg);
+  h = await head();
+  check('… and the next result draws', h.kind === 'done' && h.loops > 0 && !h.stale, JSON.stringify(h));
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
 }

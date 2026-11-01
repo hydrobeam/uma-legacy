@@ -14,6 +14,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { must } from '../must.ts';
 import { exportText, readImport } from './io.js';
 import { loopView, resultsStale } from './state.ts';
+import { RenderGuard } from './RenderGuard.tsx';
 
 // the export made at the last opening (`n` counts them: each opening starts the box afresh), and whether it is open
 const opened = signal({ n: 0, text: '', open: false });
@@ -31,7 +32,9 @@ export function ExportDialog() {
   const { n, text, open } = opened.value;
   return (
     <Dialog id="ex-dlg" labelledBy="ex-title" open={open} onClose={close}>
-      <ExportBody key={n} made={text} />
+      <RenderGuard input={opened} what="Export">
+        <ExportBody key={n} made={text} />
+      </RenderGuard>
     </Dialog>
   );
 }

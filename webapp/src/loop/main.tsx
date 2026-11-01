@@ -3,19 +3,21 @@
 // The page's own modules (loop/): types.ts the report's types, state.ts the run state (signals), run.ts the search's
 // run machine, job.ts its job, io.js the export's text; the views, components drawn from the state and the settings:
 // RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
-// dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root).
+// dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root), inside a
+// RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
 import '../errorlog.ts'; // first: it listens before any other module runs
 import { render } from 'preact';
 import { $, $dialog, $input, backdropCloses } from '../dom.js';
 import { ERA } from '../saved.ts';
 import { EXAMPLE, loadData } from '../data.js';
-import { DEFAULTS, jobSetup, settings, setAuto, switchEra } from '../settings.ts';
+import { DEFAULTS, fields, jobSetup, settings, setAuto, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
-import { headline, loopRun, loopView, resultsStale, settle } from './state.ts';
+import { headline, loopDrawn, loopRun, loopView, resultsStale, settle } from './state.ts';
 import type { LoopView, RunState } from './state.ts';
 import type { DeepReadonly } from '../store.ts';
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
+import { RenderGuard } from './RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
 import { initRoster, renderRoster } from '../roster.js';
 import { initTargets, renderTargets } from '../targets.js';
@@ -84,8 +86,18 @@ function marks(run: DeepReadonly<RunState>, view: DeepReadonly<LoopView>) {
 }
 let statusShown = false;
 function showStatus() {
-  render(<RunNote />, $('run-note'));
-  render(<RunAct stop={loop.stopSearch} />, $('r-act'));
+  render(
+    <RenderGuard input={loopView}>
+      <RunNote />
+    </RenderGuard>,
+    $('run-note'),
+  );
+  render(
+    <RenderGuard input={loopView}>
+      <RunAct stop={loop.stopSearch} />
+    </RenderGuard>,
+    $('r-act'),
+  );
   marks(loopRun.peek(), loopView.peek());
   if (!statusShown) on([loopRun, loopView], marks);
   statusShown = true;
@@ -109,7 +121,12 @@ function start() {
 
   initRoster();
   initCards();
-  render(<ResultsCount />, $('rtop'));
+  render(
+    <RenderGuard input={fields.decksTop} what="The Results switch">
+      <ResultsCount />
+    </RenderGuard>,
+    $('rtop'),
+  );
   initOwnedImport();
   initTargets();
   render(<AffinityDialog />, $('why-root'));
@@ -150,7 +167,12 @@ function start() {
 
   renderRoster();
   renderTargets(); // renderTargets draws the card picker too (it lists the cards that give a target)
-  render(<Results />, $('results'));
+  render(
+    <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>
+      <Results />
+    </RenderGuard>,
+    $('results'),
+  );
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
   const first = loop.showFirst();
   // the first search, with the saved settings (also warms the engine); none when the result on show is these settings'
