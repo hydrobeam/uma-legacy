@@ -9,10 +9,10 @@ import { settings } from '../../settings.ts';
 import type { Target } from '../../settings.ts';
 import { vets, places } from '../../veterans/store.ts';
 import type { VetRecord } from '../../veterans/store.ts';
-import { umaName } from '../../veterans/names.js';
+import { umaName } from '../../veterans/names.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
 import { VetCell } from '../../ui/VetCell.tsx';
-import { idxOf } from '../job.js';
+import { idxOf } from '../job.ts';
 import { openNode } from './dialogs.ts';
 import { VetPane } from './NodeDialog.tsx';
 import {

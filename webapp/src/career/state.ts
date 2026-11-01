@@ -15,7 +15,7 @@ import type { ReadonlySignal } from '@preact/signals-core';
 import { must } from '../must.ts';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { CareerJob, CareerSearch, PlanReport } from './job.js';
+import type { CareerJob, CareerSearch, PlanReport } from './job.ts';
 import type { PlacesRecord } from '../veterans/store.ts';
 import { planKey } from './keys.ts';
 

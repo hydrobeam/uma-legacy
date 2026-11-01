@@ -2,7 +2,7 @@
 // identity). It reads no store.
 import { ERA } from '../saved.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { CareerJob } from './job.js';
+import type { CareerJob } from './job.ts';
 
 /** what the keys read of a job: they never write it */
 type Job = DeepReadonly<CareerJob>;

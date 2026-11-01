@@ -2,10 +2,10 @@
 // Her ownership and a tile's, a tile's click, All / None owned and the counts; the outfit a result names for her. The
 // Umas panel that draws them is ui/Roster.tsx.
 import { computed } from '@preact/signals';
-import { gameData } from './data.js';
+import { gameData } from './data.ts';
 import { fields, settings, setOwned } from './settings.ts';
-import { isOwned } from './job.js';
-import type { Uma, Outfit } from './data.js';
+import { isOwned } from './job.ts';
+import type { Uma, Outfit } from './data.ts';
 import type { SettingsView } from './settings.ts';
 // her ownership: 'out' when marked not owned or every outfit of hers is, else her roster mark ('own' by default)
 export function umaState(u: Uma): 'own' | 'out' {

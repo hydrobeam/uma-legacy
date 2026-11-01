@@ -7,9 +7,9 @@
 // ui/RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
 import '../errorlog.ts'; // first: it listens before any other module runs
 import { render } from 'preact';
-import { $, $dialog, $input, backdropCloses } from '../dom.js';
+import { $, $dialog, $input, backdropCloses } from '../dom.ts';
 import { ERA } from '../saved.ts';
-import { EXAMPLE, loadData } from '../data.js';
+import { EXAMPLE, loadData } from '../data.ts';
 import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
 import { headline, loopDrawn, loopRun, loopView, resultsStale, settle } from './state.ts';
@@ -19,16 +19,16 @@ import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { RenderGuard, renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
-import { initScenario, eraScenario } from '../scenario.js';
+import { initScenario, eraScenario } from '../scenario.ts';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
 import { OddsDialog } from '../ui/OddsDialog.tsx';
 import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
-import { initPopover } from '../popover.js';
-import { loadExample } from '../presets.js';
+import { initPopover } from '../popover.ts';
+import { loadExample } from '../presets.ts';
 import { mountSetup } from '../ui/Setup.tsx';
-import '../gmtip.js'; // the game-style tooltips (both planner pages)
+import '../gmtip.ts'; // the game-style tooltips (both planner pages)
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
 {

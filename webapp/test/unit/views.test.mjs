@@ -21,15 +21,15 @@ const built = await esbuild.build({
       import '@preact/signals';
       export * as store from './src/veterans/store.ts';
       export { on } from './src/store.ts';
-      export { openUmaPicker, umaPickClosed } from './src/veterans/pickers.js';
-      export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed, openAdd, addOpen } from './src/veterans/pickers.js';
+      export { openUmaPicker, umaPickClosed } from './src/veterans/pickers.ts';
+      export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed, openAdd, addOpen } from './src/veterans/pickers.ts';
       export { VetEditors, AddList } from './src/veterans/Editors.tsx';
       export { WinsEditor } from './src/ui/Agenda.tsx';
-      export { openColour } from './src/veterans/sparks.js';
+      export { openColour } from './src/veterans/sparks.ts';
       export { InspView } from './src/ui/InspView.tsx';
       export { Details, legaciesOf } from './src/career/analysis/Details.tsx';
       export { h, render } from 'preact';
-      export { loadData } from './src/data.js';`,
+      export { loadData } from './src/data.ts';`,
     resolveDir: WEBAPP,
     loader: 'js',
   },

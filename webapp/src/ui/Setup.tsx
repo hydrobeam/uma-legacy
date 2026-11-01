@@ -2,10 +2,10 @@
 // dialogs. `mountSetup` draws each editor into its mount point, and makes the Umas and Support cards buttons open their
 // dialogs (Done, Escape or a click on the backdrop closes one), each button with its count. Called once, by each page's
 // entry; each editor draws inside a render guard (ui/RenderGuard.tsx).
-import { $, $dialog, backdropCloses } from '../dom.js';
+import { $, $dialog, backdropCloses } from '../dom.ts';
 import { on } from '../store.ts';
-import { rosterCounts } from '../roster.js';
-import { cardsOwned } from '../cards.js';
+import { rosterCounts } from '../roster.ts';
+import { cardsOwned } from '../cards.ts';
 import { mountRoster } from './Roster.tsx';
 import { mountCards } from './Cards.tsx';
 import { mountTargets } from './Targets.tsx';

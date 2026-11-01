@@ -1,13 +1,13 @@
 // ---------- export / import: the text Export shows, and what an import's text may set ----------
 // Values in, values out (the settings, the result on show): Export.tsx shows them and applies an import.
-import { fmtIn } from '../dom.js';
+import { fmtIn } from '../dom.ts';
 import { SETTINGS, ERA } from '../saved.ts';
-import { SCENARIOS, RANKS, gameData } from '../data.js';
-import { goldGiven, isOwned } from '../job.js';
-import { pickOutfit } from '../roster.js';
-import { mergePresets } from '../presets.js';
-import { deckHint } from '../odds.js';
-import { scenarioOf } from '../scenario.js';
+import { SCENARIOS, RANKS, gameData } from '../data.ts';
+import { goldGiven, isOwned } from '../job.ts';
+import { pickOutfit } from '../roster.ts';
+import { mergePresets } from '../presets.ts';
+import { deckHint } from '../odds.ts';
+import { scenarioOf } from '../scenario.ts';
 import type { SettingsView } from '../settings.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { LoopResult, ResultLoop, ShownResult } from './types.ts';

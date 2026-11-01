@@ -6,11 +6,11 @@
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
 import { vets, places } from '../../veterans/store.ts';
-import { umaName } from '../../veterans/names.js';
+import { umaName } from '../../veterans/names.ts';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
 import { openTryRun } from '../analysis/view.tsx';
-import { idxOf, shown, parentAt } from '../job.js';
+import { idxOf, shown, parentAt } from '../job.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { openNode } from './dialogs.ts';
 import type { NodeSpec } from './dialogs.ts';

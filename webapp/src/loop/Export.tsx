@@ -4,12 +4,12 @@
 // it; the template's controls that aren't components yet are painted again after a load.
 import { signal } from '@preact/signals';
 import { useRef, useState } from 'preact/hooks';
-import { $input } from '../dom.js';
+import { $input } from '../dom.ts';
 import { ERA } from '../saved.ts';
 import { importSettings, importToEra, settings } from '../settings.ts';
 import { Dialog } from '../ui/Dialog.tsx';
 import { must } from '../must.ts';
-import { exportText, readImport } from './io.js';
+import { exportText, readImport } from './io.ts';
 import { loopView, resultsStale } from './state.ts';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 

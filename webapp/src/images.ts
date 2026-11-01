@@ -1,10 +1,10 @@
 // ---------- character icons, card art and skill icons: files in the page's image folder (data.js IMG_BASE; from the game's own files) ----------
 // Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near the
 // view (loading is set before src).
-import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, gameData } from './data.js';
-import { spinHTML } from './dom.js';
+import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, gameData } from './data.ts';
+import { spinHTML } from './dom.ts';
 import { must } from './must.ts';
-import type { Card } from './data.js';
+import type { Card } from './data.ts';
 // kind: the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...)
 export function srcFor(kind: string, id: number | string): string | null {
   return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null;

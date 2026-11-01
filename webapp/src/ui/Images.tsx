@@ -5,9 +5,9 @@
 // goes to the other, until step 8c drops the builders. A twin that keeps state (an image that fails) is keyed by its
 // subject at the call site, so a reused one never shows the last subject's state.
 import { useState } from 'preact/hooks';
-import { SKILLICON, SKILLICON_GOLD, gameData } from '../data.js';
-import type { Card } from '../data.js';
-import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, srcFor } from '../images.js';
+import { SKILLICON, SKILLICON_GOLD, gameData } from '../data.ts';
+import type { Card } from '../data.ts';
+import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, srcFor } from '../images.ts';
 
 interface UmaAvProps {
   uma: number | null;

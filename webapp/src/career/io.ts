@@ -1,12 +1,12 @@
 // Export and Import of the veterans: the page's own export, an uma.moe tree, the game's export.
-import { $, $dialog, $textarea } from '../dom.js';
+import { $, $dialog, $textarea } from '../dom.ts';
 import { ERA } from '../saved.ts';
 import { settings } from '../settings.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
-import { umaName } from '../veterans/names.js';
-import { parseExport, parseTree } from '../umadump.js';
+import { umaName } from '../veterans/names.ts';
+import { parseExport, parseTree } from '../umadump.ts';
 import { orNull } from '../must.ts';
-import { Blocked, buildJob } from './job.js';
+import { Blocked, buildJob } from './job.ts';
 import { setVTab } from './view/poolState.ts';
 
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a

@@ -1,14 +1,14 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
 import { batch, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
-import { esc } from './dom.js';
-import { gameData } from './data.js';
+import { esc } from './dom.ts';
+import { gameData } from './data.ts';
 import { settings, setOwned } from './settings.ts';
-import { goldGiven } from './job.js';
-import { umaState } from './roster.js';
-import { cardTitle, cardGives, giftsHTML, chainEndAt } from './cards.js';
+import { goldGiven } from './job.ts';
+import { umaState } from './roster.ts';
+import { cardTitle, cardGives, giftsHTML, chainEndAt } from './cards.ts';
 import { must } from './must.ts';
-import type { Card, Uma } from './data.js';
+import type { Card, Uma } from './data.ts';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
 // Keyboard: opening moves the focus into the panel; Escape, or Tab past either end, closes it and returns the focus to

@@ -5,7 +5,7 @@
 // they stay, dimmed, instead of being wiped: main.tsx marks the template's elements around (`pillText` is the phone's
 // floating button's text). Two mount points, both in the template from load: `RunNote` draws the text into the live
 // region #run-note, `RunAct` the button into #r-act.
-import { $ } from '../dom.js';
+import { $ } from '../dom.ts';
 import { must } from '../must.ts';
 import { Runner } from '../ui/Images.tsx';
 import { loopDrawn, loopRun, loopView } from './state.ts';

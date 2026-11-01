@@ -10,9 +10,9 @@
 // picker and the "+" list are veterans/sparks.js's and pickers.js's (openColour, openAdd).
 import { useRef } from 'preact/hooks';
 import { NEW_STARS } from '../veterans/store.ts';
-import { pinkName, skillName, uniqueName } from '../veterans/names.js';
-import { addOpener, openAdd } from '../veterans/pickers.js';
-import { KIND, currentSpark, openColour } from '../veterans/sparks.js';
+import { pinkName, skillName, uniqueName } from '../veterans/names.ts';
+import { addOpener, openAdd } from '../veterans/pickers.ts';
+import { KIND, currentSpark, openColour } from '../veterans/sparks.ts';
 import type { NodeRecord, NodeRef } from '../veterans/store.ts';
 import { SkillIcon } from './Images.tsx';
 

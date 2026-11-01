@@ -2,9 +2,9 @@
 // her chance of it, where it comes from, which legacies carry it and which cards give it. One dialog, there from load
 // (empty); `openSkill` fills and opens it, and the browser gives the focus back to the tile that opened it.
 import { computed, signal } from '@preact/signals';
-import type { Card } from '../../data.js';
-import type { CareerBuy } from '../job.js';
-import { umaName } from '../../veterans/names.js';
+import type { Card } from '../../data.ts';
+import type { CareerBuy } from '../job.ts';
+import { umaName } from '../../veterans/names.ts';
 import { CardAv, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { Guard } from './Guard.tsx';

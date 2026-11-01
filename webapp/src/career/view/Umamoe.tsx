@@ -3,9 +3,9 @@
 // (ui/SortMenu.tsx), every listing as a card (ui/VetCell.tsx: a card opens her veteran popup), Refresh and Disconnect.
 // What they show is umamoesetup.js's (its signals and its sync).
 import { useRef } from 'preact/hooks';
-import { $dialog } from '../../dom.js';
+import { $dialog } from '../../dom.ts';
 import { vets } from '../../veterans/store.ts';
-import { umaName } from '../../veterans/names.js';
+import { umaName } from '../../veterans/names.ts';
 import {
   SORTS,
   forgetUmKey,
@@ -19,7 +19,7 @@ import {
   umFull,
   umSort,
   umStatus,
-} from '../../umamoesetup.js';
+} from '../../umamoesetup.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
 import { VetCell } from '../../ui/VetCell.tsx';
 import { openNode } from './dialogs.ts';

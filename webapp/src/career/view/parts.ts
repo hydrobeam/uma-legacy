@@ -1,11 +1,11 @@
 // Small parts the career page's views share: a target's name, numbers, her schedule's rows.
-import { careerTables, gameData } from '../../data.js';
+import { careerTables, gameData } from '../../data.ts';
 import { settings } from '../../settings.ts';
-import { goldGiven } from '../../job.js';
-import { tableCost, tableChance } from '../../agenda.js';
+import { goldGiven } from '../../job.ts';
+import { tableCost, tableChance } from '../../agenda.ts';
 import { must } from '../../must.ts';
 import type { DeepReadonly } from '../../store.ts';
-import type { CareerReport } from '../job.js';
+import type { CareerReport } from '../job.ts';
 
 export const tName = (g: number): string => {
   const s = gameData().skillNames.get(g) || { w: `Skill ${g}`, gd: null };

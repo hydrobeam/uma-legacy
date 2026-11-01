@@ -3,8 +3,8 @@
 // button in as `children`; the Presets view shows the tiles alone.
 import type { ComponentChildren } from 'preact';
 import { fields } from '../settings.ts';
-import { goldGiven } from '../job.js';
-import { namesOf } from '../targets.js';
+import { goldGiven } from '../job.ts';
+import { namesOf } from '../targets.ts';
 import { SkillIcon } from './Images.tsx';
 
 // A list key per tile of `groups`: the group, and its count before when it repeats (only a hand-edited import repeats

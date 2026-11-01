@@ -4,9 +4,9 @@
 import { renderGuarded } from './RenderGuard.tsx';
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { $ } from '../dom.js';
+import { $ } from '../dom.ts';
 import { fields, settings } from '../settings.ts';
-import { addTarget, namesOf, removeTargetAt, suggest } from '../targets.js';
+import { addTarget, namesOf, removeTargetAt, suggest } from '../targets.ts';
 import { must } from '../must.ts';
 import { SkillIcon } from './Images.tsx';
 import { PresetDialogs, openPresets } from './Presets.tsx';

@@ -2,8 +2,8 @@
 // (The sparks themselves are drawn by ui/Sparks.tsx, the picker by Editors.tsx.)
 import { signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
-import { careerTables, gameData } from '../data.js';
-import { pinkName, blueName, uniqueName } from './names.js';
+import { careerTables, gameData } from '../data.ts';
+import { pinkName, blueName, uniqueName } from './names.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 
 /** Her blue / pink / unique spark: one each (the game gives every veteran one blue and one pink; a unique spark is hers

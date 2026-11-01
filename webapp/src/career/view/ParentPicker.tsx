@@ -4,13 +4,13 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
 import { batch } from '@preact/signals-core';
 import { vets, places, vetById, newVet, setParent } from '../../veterans/store.ts';
-import { umaName } from '../../veterans/names.js';
-import { askSkills } from '../../veterans/pickers.js';
+import { umaName } from '../../veterans/names.ts';
+import { askSkills } from '../../veterans/pickers.ts';
 import { UmaList } from '../../veterans/Editors.tsx';
 import type { VetRecord } from '../../veterans/store.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
-import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.js';
+import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.ts';
 import { pickerFor, pickerClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 

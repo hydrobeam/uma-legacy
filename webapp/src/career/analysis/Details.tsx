@@ -9,17 +9,17 @@
 // unchanged. Her sparks are edited through the store (`draftRef`).
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
-import { gameData } from '../../data.js';
+import { gameData } from '../../data.ts';
 import { settings } from '../../settings.ts';
-import { popOpener } from '../../popover.js';
-import { umaName } from '../../veterans/names.js';
-import { deckCardAt, fitSparks } from '../../details.js';
+import { popOpener } from '../../popover.ts';
+import { umaName } from '../../veterans/names.ts';
+import { deckCardAt, fitSparks } from '../../details.ts';
 import { openSkill } from '../view/SkillDetails.tsx';
 import { InspView } from '../../ui/InspView.tsx';
-import { borLast } from '../../cards.js';
+import { borLast } from '../../cards.ts';
 import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
-import type { CareerReport } from '../job.js';
+import type { CareerReport } from '../job.ts';
 import { draftRef } from '../../veterans/store.ts';
 import type { Draft, VetRecord } from '../../veterans/store.ts';
 import { detailsTab as tab, racesShown, showTab, toggleRaces } from './state.ts';

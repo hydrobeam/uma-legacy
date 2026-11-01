@@ -1,8 +1,8 @@
 // ---------- target skills: the adder's suggestions, adding and removing a target ----------
 // The Target skills panel that draws them is ui/Targets.tsx.
-import { gameData } from './data.js';
+import { gameData } from './data.ts';
 import { settings, setTargets } from './settings.ts';
-import type { SkillNames } from './data.js';
+import type { SkillNames } from './data.ts';
 import type { Target } from './settings.ts';
 
 // a skill group's names: white, and gold where it has one

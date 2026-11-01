@@ -2,13 +2,13 @@
 // change runs the planner again: the entry's effect on the setup), and the panel's fold with its summary.
 import { computed, signal } from '@preact/signals-core';
 import { useLayoutEffect } from 'preact/hooks';
-import { $ } from '../../dom.js';
+import { $ } from '../../dom.ts';
 import { ERA } from '../../saved.ts';
-import { RANKS } from '../../data.js';
+import { RANKS } from '../../data.ts';
 import { settings, setBorrowPar } from '../../settings.ts';
-import { scenarioOf } from '../../scenario.js';
+import { scenarioOf } from '../../scenario.ts';
 import { must } from '../../must.ts';
-import { BORROW_CHOICES, borrowChoice } from '../job.js';
+import { BORROW_CHOICES, borrowChoice } from '../job.ts';
 
 const CHOICES = [
   ['allow', 'Allowed', 'This career may borrow one parent, and so may the careers after it'],

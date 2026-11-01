@@ -4,9 +4,9 @@
 // 1"), her three main sparks under it as the list's tags with their stars (blue: her stat, pink: her aptitude, green:
 // her unique skill), her name and a line under it.
 import { useState } from 'preact/hooks';
-import { careerTables } from '../data.js';
-import { srcFor } from '../images.js';
-import { blueName, pinkName, uniqueName, umaName } from '../veterans/names.js';
+import { careerTables } from '../data.ts';
+import { srcFor } from '../images.ts';
+import { blueName, pinkName, uniqueName, umaName } from '../veterans/names.ts';
 import type { NodeRecord, VetRecord } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
 

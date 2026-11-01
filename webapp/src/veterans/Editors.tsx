@@ -5,8 +5,8 @@
 // around a modal dialog is inert). What each shows, and its openers, are pickers.js's and sparks.js's.
 import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Ref } from 'preact';
-import { gameData } from '../data.js';
-import type { Uma } from '../data.js';
+import { gameData } from '../data.ts';
+import type { Uma } from '../data.ts';
 import { Dialog } from '../ui/Dialog.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
@@ -14,9 +14,9 @@ import { WinsEditor } from '../ui/Agenda.tsx';
 import { useDropdown } from '../ui/dropdown.ts';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
-import { skillName, targetGroups } from './names.js';
-import { KIND, colourClosed, colourEditing, currentSpark } from './sparks.js';
-import type { ColourEdit } from './sparks.js';
+import { skillName, targetGroups } from './names.ts';
+import { KIND, colourClosed, colourEditing, currentSpark } from './sparks.ts';
+import type { ColourEdit } from './sparks.ts';
 import {
   addOpen,
   allRaces,
@@ -30,8 +30,8 @@ import {
   winsClosed,
   winsEditing,
   winsText,
-} from './pickers.js';
-import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.js';
+} from './pickers.ts';
+import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.ts';
 
 /** the editors' dialogs (their requests read here, so one render opens one and closes another in this order), each
  *  in a render guard of its own: one that throws is gone, says so on the status line, and gives up its request (a

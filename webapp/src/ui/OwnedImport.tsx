@@ -2,7 +2,7 @@
 // Either takes card_data.json (owned outfits) or support_card_data.json (owned support cards), or both (owned.js);
 // `onSaid` gets what the import says, for the panel's status (`useSaid`).
 import { useState } from 'preact/hooks';
-import { importFiles } from '../owned.js';
+import { importFiles } from '../owned.ts';
 
 /** what the last import said; `n` counts the imports */
 export interface Said {

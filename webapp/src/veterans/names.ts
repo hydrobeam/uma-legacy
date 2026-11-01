@@ -1,5 +1,5 @@
 // ---------- the names the career page shows (umas, skills, sparks), and the target skills' groups ----------
-import { careerTables, gameData } from '../data.js';
+import { careerTables, gameData } from '../data.ts';
 import { settings } from '../settings.ts';
 
 export const umaName = (id: number | null | undefined): string =>

@@ -22,14 +22,14 @@ const built = await esbuild.build({
       import 'preact/debug';
       import '@preact/signals';
       export * as settings from './src/settings.ts';
-      export * as presets from './src/presets.js';
+      export * as presets from './src/presets.ts';
       export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
       export { mountTargets } from './src/ui/Targets.tsx';
       export { mountRank } from './src/ui/Scenario.tsx';
       export { SettingsSort, SortMenu } from './src/ui/SortMenu.tsx';
       export { mountRoster } from './src/ui/Roster.tsx';
       export { h, options, render } from 'preact';
-      export { gameData, loadData } from './src/data.js';`,
+      export { gameData, loadData } from './src/data.ts';`,
     resolveDir: WEBAPP,
     loader: 'js',
   },

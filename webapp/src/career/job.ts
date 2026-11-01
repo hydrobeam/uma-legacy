@@ -2,20 +2,20 @@
 // what reads the job, the places and the career on show, and its run on the solver (`runJob`). The solver's career job
 // and its reports are typed here.
 import { computed } from '@preact/signals-core';
-import { $ } from '../dom.js';
-import { careerTables, gameData } from '../data.js';
+import { $ } from '../dom.ts';
+import { careerTables, gameData } from '../data.ts';
 import { settings } from '../settings.ts';
 import { run as engineRun, stateKey } from '../engine.ts';
-import { goldGiven, isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.js';
-import { srcFor } from '../images.js';
+import { goldGiven, isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
+import { srcFor } from '../images.ts';
 import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob } from '../veterans/store.ts';
-import { umaName, targetGroups } from '../veterans/names.js';
+import { umaName, targetGroups } from '../veterans/names.ts';
 import { answer, answerCareer, reference } from './state.ts';
 import { must, orNull } from '../must.ts';
-import { planKey } from './keys.js';
-import { pickOutfit, outfitNote } from '../roster.js';
+import { planKey } from './keys.ts';
+import { pickOutfit, outfitNote } from '../roster.ts';
 import { unprovenWhy } from '../proofs.ts';
-import type { ScheduleRow } from '../agenda.js';
+import type { ScheduleRow } from '../agenda.ts';
 import type { ResultDeck } from '../loop/types.ts';
 import type { SettingsView } from '../settings.ts';
 import type { PlanProgress, SolverAnswer } from '../solver.ts';

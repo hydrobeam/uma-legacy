@@ -7,7 +7,7 @@
 // umas), only the G1s it shares with its child.
 import { signal, untracked } from '@preact/signals';
 import { useState } from 'preact/hooks';
-import { pickOutfit } from '../roster.js';
+import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
 import { Dialog } from '../ui/Dialog.tsx';
 import { RadioPills } from '../ui/RadioPills.tsx';

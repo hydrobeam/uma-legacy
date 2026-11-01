@@ -4,19 +4,19 @@
 // emptied) closes it. Its edits address the node by where it is (veterans/store.ts `vetRef`, `parentRef`).
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { $ } from '../../dom.js';
+import { $ } from '../../dom.ts';
 import { settings } from '../../settings.ts';
-import { isOwned } from '../../job.js';
-import { fitSparks } from '../../details.js';
+import { isOwned } from '../../job.ts';
+import { fitSparks } from '../../details.ts';
 import { vets, places, editVet, removeVet, setTrainee, setParent, vetRef, parentRef } from '../../veterans/store.ts';
-import { umaName } from '../../veterans/names.js';
-import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.js';
+import { umaName } from '../../veterans/names.ts';
+import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.ts';
 import type { NodeRecord, NodeRef, VetRecord } from '../../veterans/store.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../ui/AffTable.tsx';
 import { InspView } from '../../ui/InspView.tsx';
-import { idxOf, shown, parentAt, listed } from '../job.js';
+import { idxOf, shown, parentAt, listed } from '../job.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts';
 import type { NodeSpec } from './dialogs.ts';

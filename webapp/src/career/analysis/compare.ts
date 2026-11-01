@@ -13,7 +13,7 @@ import type { DeepReadonly } from '../../store.ts';
 import type * as AnswerStore from '../state.ts';
 import type { PlanDone } from '../state.ts';
 import type * as AnalysisStore from './state.ts';
-import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.js';
+import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.ts';
 import type { Draft, NodeRecord } from '../../veterans/store.ts';
 import { keyOf } from '../keys.ts';
 import { PLAN_NEXT } from '../run.ts';

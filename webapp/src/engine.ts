@@ -1,7 +1,7 @@
 // ---------- the engine: a Web Worker running the WebAssembly solver (shared by the planner and the career page) ----------
 import { ERA } from './saved.ts';
-import { ASSETS, loadFail, gameData } from './data.js';
-import { stateLoad, stateSave, stateDrop } from './statestore.js';
+import { ASSETS, loadFail, gameData } from './data.ts';
+import { stateLoad, stateSave, stateDrop } from './statestore.ts';
 import { must } from './must.ts';
 import type {
   FromWorker,

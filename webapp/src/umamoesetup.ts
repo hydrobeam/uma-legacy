@@ -14,7 +14,7 @@ import { batch, computed, signal } from '@preact/signals-core';
 import { ERA } from './saved.ts';
 import { settings } from './settings.ts';
 import { vets, setListings } from './veterans/store.ts';
-import { parseListing } from './umadump.js';
+import { parseListing } from './umadump.ts';
 import {
   savedKey,
   saveKey,
@@ -24,7 +24,7 @@ import {
   SearchError,
   fullTrainers,
   setFullTrainers,
-} from './umamoe.js';
+} from './umamoe.ts';
 import type { ReadonlySignal } from '@preact/signals-core';
 import type { UmamoeListing } from './umadump.ts';
 import type { VetRecord } from './veterans/store.ts';

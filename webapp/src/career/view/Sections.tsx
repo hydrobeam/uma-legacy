@@ -1,19 +1,19 @@
 // The career's sections in the tree: the odds, the deck (its button and popup), the race schedule's button, the
 // targets with what gives each, and the chance of each count of them.
 import { useRef } from 'preact/hooks';
-import { fmtIn } from '../../dom.js';
+import { fmtIn } from '../../dom.ts';
 import { settings } from '../../settings.ts';
-import { srcFor } from '../../images.js';
-import { scenarioOf } from '../../scenario.js';
-import { popOpener } from '../../popover.js';
-import { pct, deckHint } from '../../odds.js';
+import { srcFor } from '../../images.ts';
+import { scenarioOf } from '../../scenario.ts';
+import { popOpener } from '../../popover.ts';
+import { pct, deckHint } from '../../odds.ts';
 import { vets } from '../../veterans/store.ts';
-import { deckCardAt } from '../../details.js';
-import { cardTitle, borLast, chainEndNote } from '../../cards.js';
+import { deckCardAt } from '../../details.ts';
+import { cardTitle, borLast, chainEndNote } from '../../cards.ts';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
-import { shown } from '../job.js';
-import { tName, tableRows } from './parts.js';
+import { shown } from '../job.ts';
+import { tName, tableRows } from './parts.ts';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { openSkill } from './SkillDetails.tsx';

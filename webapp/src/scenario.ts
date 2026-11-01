@@ -1,10 +1,10 @@
 // ---------- the scenarios: those this era offers, a pick (with its golds and default lineage rank), their labels ----------
 // The scenario picker and the lineage rank control that draw them are ui/Scenario.tsx.
-import { SCENARIOS, SCEN_GOLDS, RANKS, gameData } from './data.js';
+import { SCENARIOS, SCEN_GOLDS, RANKS, gameData } from './data.ts';
 import { ERA } from './saved.ts';
 import { settings, setScenario } from './settings.ts';
-import { srcFor } from './images.js';
-import type { Scenario } from './data.js';
+import { srcFor } from './images.ts';
+import type { Scenario } from './data.ts';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 export const LIST = SCENARIOS.filter((s) => !s.era || s.era === ERA);
 export const scenarioOf = (v: string): Scenario => LIST.find((s) => s.v === v) || LIST[0];

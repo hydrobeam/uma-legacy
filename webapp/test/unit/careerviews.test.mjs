@@ -29,7 +29,7 @@ const built = await esbuild.build({
       export { ScheduleDialog, openSched, schedOpened } from './src/ui/Schedule.tsx';
       export { Guard } from './src/career/view/Guard.tsx';
       export { h, render, options } from 'preact';
-      export { loadData } from './src/data.js';`,
+      export { loadData } from './src/data.ts';`,
     resolveDir: WEBAPP,
     loader: 'js',
   },

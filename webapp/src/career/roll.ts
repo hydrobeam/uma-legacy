@@ -4,7 +4,7 @@
 import { must } from '../must.ts';
 import { drawPink } from '../pink.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { CareerReport } from './job.js';
+import type { CareerReport } from './job.ts';
 
 /** What a roll reads besides the career's report. */
 export interface RollSetup {

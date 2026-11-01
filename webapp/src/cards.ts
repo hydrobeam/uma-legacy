@@ -1,11 +1,11 @@
 // ---------- support cards: a card's name and what it gives, as the page shows them; what you own of them ----------
 // The Support cards panel that draws the picker is ui/Cards.tsx.
 import { computed } from '@preact/signals';
-import { esc } from './dom.js';
-import { gameData } from './data.js';
+import { esc } from './dom.ts';
+import { gameData } from './data.ts';
 import { fields, settings, setOwned } from './settings.ts';
 import { must } from './must.ts';
-import type { Card } from './data.js';
+import type { Card } from './data.ts';
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 const BORROWED = /\(borrowed\)$/; // a deck names its borrowed card with this suffix
 // a deck's card indices with the borrowed card last: the sixth slot, as in the game

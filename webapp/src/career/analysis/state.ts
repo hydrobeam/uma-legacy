@@ -15,7 +15,7 @@ import { deepFreeze } from '../../store.ts';
 import type { DeepReadonly } from '../../store.ts';
 import { clearPlaces, draft, newVet, setDraft, setDraftParents } from '../../veterans/store.ts';
 import type { Draft } from '../../veterans/store.ts';
-import type { CareerReport, CareerSearch, PlanOption } from '../job.js';
+import type { CareerReport, CareerSearch, PlanOption } from '../job.ts';
 
 /** a stand-in while the quick comparison looks for the best career with her */
 export interface PendingSearch {

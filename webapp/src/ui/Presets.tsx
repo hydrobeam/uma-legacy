@@ -16,7 +16,7 @@ import {
   sameSkills,
   skillCount,
   suggestName,
-} from '../presets.js';
+} from '../presets.ts';
 import { must } from '../must.ts';
 import { Dialog } from './Dialog.tsx';
 import { TargetTile, groupKeys } from './TargetTile.tsx';

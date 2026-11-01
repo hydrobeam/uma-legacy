@@ -5,7 +5,7 @@
 // position_id 10 and 20, same fields). A veteran counts as borrowed when owner_viewer_id is set: it is 0 on your own
 // veterans and the lender's viewer_id (= viewer_id) on the ones offered for borrowing (rental_chara_data.json, the
 // career start screen's borrow list); use_type is 0 on both.
-import { careerTables } from './data.js';
+import { careerTables } from './data.ts';
 import type { LineageNode, Sparks, Veteran } from './veterans/store.ts';
 
 // The files are the game's JSON (or uma.moe's), typed below by the fields read: their shape is trusted once a record

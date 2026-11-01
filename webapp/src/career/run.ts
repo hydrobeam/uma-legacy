@@ -5,7 +5,7 @@
 // solver, the clock, the job its settings and veterans make, the analysis, the redraws) comes in `deps` too, so the
 // node tests run the machine on fakes. It reads no store itself (a model module: static.mjs checks it).
 import type { PlanProgress } from '../solver.ts';
-import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } from './job.js';
+import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } from './job.ts';
 import type { DeepReadonly } from '../store.ts';
 import type * as AnswerStore from './state.ts';
 import type { Answer, AnswerView, PlanDone, PlanState, Status } from './state.ts';

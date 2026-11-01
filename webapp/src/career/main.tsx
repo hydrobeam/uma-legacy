@@ -34,19 +34,19 @@ import { render } from 'preact';
 import { batch, computed } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import type { VNode } from 'preact';
-import { $, $dialog, $textarea, backdropCloses } from '../dom.js';
+import { $, $dialog, $textarea, backdropCloses } from '../dom.ts';
 import { ERA } from '../saved.ts';
-import { loadData } from '../data.js';
+import { loadData } from '../data.ts';
 import { jobSetup, settings, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
 import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from '../engine.ts';
-import { answerLoad, answerSave } from '../statestore.js';
-import { goldGiven } from '../job.js';
-import { initScenario, eraScenario } from '../scenario.js';
-import { initPopover } from '../popover.js';
-import '../agenda.js'; // (its document listener is added before gmtip's)
+import { answerLoad, answerSave } from '../statestore.ts';
+import { goldGiven } from '../job.ts';
+import { initScenario, eraScenario } from '../scenario.ts';
+import { initPopover } from '../popover.ts';
+import '../agenda.ts'; // (its document listener is added before gmtip's)
 import { mountSetup } from '../ui/Setup.tsx';
-import '../gmtip.js'; // the game-style tooltips (both planner pages)
+import '../gmtip.ts'; // the game-style tooltips (both planner pages)
 import {
   vets,
   places,
@@ -57,11 +57,11 @@ import {
   dropMissing,
   handBackPlaces,
 } from '../veterans/store.ts';
-import { searchHeld } from '../veterans/pickers.js';
+import { searchHeld } from '../veterans/pickers.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
 import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
-import { setRunner } from '../images.js';
-import { syncListings } from '../umamoesetup.js';
+import { setRunner } from '../images.ts';
+import { syncListings } from '../umamoesetup.ts';
 import { UmButton, UmamoePanel } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
 import {
@@ -75,14 +75,14 @@ import {
   runJob,
   isFull,
   ROLL_K,
-} from './job.js';
+} from './job.ts';
 import { Analysis, draftOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
 import { answer, dropAnswer, keepComparisonPlan, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
-import { tName } from './view/parts.js';
+import { tName } from './view/parts.ts';
 import { Guard } from './view/Guard.tsx';
 import { RunNote, tickNote } from './view/RunNote.tsx';
 import { Tree, Verdict } from './view/Tree.tsx';
@@ -95,11 +95,11 @@ import { nodeOpen, pickerFor } from './view/dialogs.ts';
 import { Results, SavesPopup } from './view/Options.tsx';
 import { PoolBody, PoolHead } from './view/Pool.tsx';
 import { poolTab, inTab, openPool, poolClosed, selected } from './view/poolState.ts';
-import { exportVets, copyExport, downloadExport, importText } from './io.js';
+import { exportVets, copyExport, downloadExport, importText } from './io.ts';
 import { searchCaveat } from '../proofs.ts';
 import { must } from '../must.ts';
 import type { Status } from './state.ts';
-import type { CareerSearch } from './job.js';
+import type { CareerSearch } from './job.ts';
 
 // ---------- the run ----------
 // The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,

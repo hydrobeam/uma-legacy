@@ -1,8 +1,8 @@
 // ---------- the race calendar's logic: turns, the community win table, what a race's figure means ----------
 // The schedule window and the G1 wins editor draw it (ui/Agenda.tsx, ui/Schedule.tsx); the career page's sections read
 // the community table (`tableCost`, `tableChance`).
-import { RACEIDS } from './data.js';
-import { srcFor } from './images.js';
+import { RACEIDS } from './data.ts';
+import { srcFor } from './images.ts';
 import { must } from './must.ts';
 
 /** One member's attempt at a scheduled race (the solver's schedule report). */

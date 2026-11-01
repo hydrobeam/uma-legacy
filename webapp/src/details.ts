@@ -1,8 +1,8 @@
 // ---------- the veteran card's parts the views share: the game's "Umamusume Details" screen ----------
 // What Try a run's card (career/analysis/Details.tsx), the node popups and the decks share: the spark names' fit
 // (`fitSparks`) and a deck's card by its index (`deckCardAt`). (Its Skill Details popup is career/view/SkillDetails.tsx.)
-import { gameData } from './data.js';
-import type { Card } from './data.js';
+import { gameData } from './data.ts';
+import type { Card } from './data.ts';
 import type { ResultDeck } from './loop/types.ts';
 import type { DeepReadonly } from './store.ts';
 
