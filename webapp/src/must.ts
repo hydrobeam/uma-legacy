@@ -6,6 +6,12 @@ export function must<T>(value: T, reason: string): NonNullable<T> {
   return value;
 }
 
+// A condition the code knows holds (Rust's `assert!`): nothing when it does, else an error naming why it should have.
+// For a fact about values (two lists the solver builds from the same members are as long), where `must` is for one value.
+export function assert(cond: unknown, reason: string): asserts cond {
+  if (!cond) throw new Error(`failed: ${reason}`);
+}
+
 // `run()`'s value, or null when it throws an `expected` error (one the caller goes on without the value for: settings
 // that make no job, say). Any other error is a bug: it is reported through the page's error path (errorlog.ts logs it,
 // and the browser suite fails on it) and the caller goes on as for an expected one, so a bug costs that value, not the
