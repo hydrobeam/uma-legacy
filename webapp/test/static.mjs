@@ -32,6 +32,9 @@
 //   write of its content), looked up or held in a variable.
 // - components stay views: no .ts or .js module imports a .tsx one, by any import esbuild resolves (each bundle's
 //   import graph) or a type import it erases (a relative path in the module that resolves to a .tsx file).
+// - specifiers: every relative import in src/ and test/ names a file that exists (`./x.ts`, never `./x.js` for it:
+//   esbuild and tsc would map that to x.ts, Node would not). test/unit's esbuild bundles resolve `./src/...` from
+//   webapp/; samecode.test.mjs's specifiers are fixtures of its own trees.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
 // imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
@@ -95,6 +98,15 @@ const uncommented = (text) => text.replace(/\/\*[\s\S]*?\*\/|(?<![:'"`\w])\/\/.*
       if (!others.some(([f, t]) => f !== file && re.test(uncommented(t))))
         problems.push(`${file}: export ${name} is used by no other file (unexport it, or delete it)`);
     }
+}
+
+// ---------- specifiers
+for (const f of [...ls('src', /\.(ts|tsx)$/, true), ...ls('test', /\.(mjs|ts)$/, true)]) {
+  if (f === path.join('test', 'unit', 'samecode.test.mjs')) continue;
+  for (const [, spec] of read(f).matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)['"](\.\.?\/[^'"]+)['"]/g)) {
+    const base = spec.startsWith('./src/') && f.startsWith(path.join('test', 'unit')) ? '' : path.dirname(f);
+    if (!fs.existsSync(path.join(W, base, spec))) problems.push(`${f}: imports ${spec}, which is no file`);
+  }
 }
 
 // ---------- stale storage writes
