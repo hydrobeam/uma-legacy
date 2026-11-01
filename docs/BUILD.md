@@ -38,7 +38,7 @@ Everything a build reads lives inside the repository folder, apart from the tool
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
 | `webapp/package.json` (`npm ci` on first use) | the page's packages, below | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
-| `pyproject.toml` (`.venv/`, created by uv) | nothing: the exporters and validation use the standard library | |
+| `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset, `webapp/vite/mathfont.py`; `brotli` is fonttools' woff2 writer); the exporters use the standard library |
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
 | `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
 | `pyproject.toml`, group `research` | `numpy`, `scipy` | `research` |
@@ -56,7 +56,6 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 | `vite-plugin-static-copy` 4.1.1 | copies the fonts' licences into `dist/licenses/` |
 | `@vitejs/plugin-basic-ssl` 2.3.0 | the self-signed certificate `vite preview` serves HTTP/2 with (`cache/tls/`), in place of `serve.mjs`'s openssl call |
 | `size-limit` 14.3.0, `@size-limit/file` 14.3.0 | each page's first-visit budget (`webapp/.size-limit.mjs`), in place of `build.py`'s `page_cost` |
-| `subset-font` 2.9.0, `entities` 9.0.0 | /about's math font subset by harfbuzz, the MATH table kept (`webapp/vite/mathfont.mjs`), the formulas' text decoded; in place of fontTools (and the Python `fonttools` and `brotli` packages): the same glyphs, cmap and MATH coverage, 36 bytes smaller |
 | `@fontsource/*` (4 fonts) | the self-hosted fonts' Latin subsets, imported by `src/style.css` |
 | `binaryen` | `wasm-opt` (`wasm`) |
 | `esbuild` | bundles for `test/samecode.mjs` (and `static.mjs`'s load-order check through it; its metafiles give `static.mjs` each page's modules) and the node tests that draw views; the page itself is built by Vite |

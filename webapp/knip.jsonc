@@ -21,5 +21,7 @@
     "@fontsource/.+",
     // served to the runner pages from node_modules by chibi/render.mjs
     "three"
-  ]
+  ],
+  // vite/mathfont.mjs runs fontTools in the repository's Python environment
+  "ignoreBinaries": ["uv"]
 }
