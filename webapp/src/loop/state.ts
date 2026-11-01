@@ -9,7 +9,7 @@ import type { ReadonlySignal } from '@preact/signals-core';
 import { fmtIn } from '../dom.js';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { LoopReport } from './results.js';
+import type { ShownResult, Status } from './types.ts';
 
 /** 'check': the fast result is on screen and the exact check is running */
 export type Phase = 'search' | 'check';
@@ -20,25 +20,6 @@ export interface RunState {
   /** when the search (or its pause) started, and the clock now (performance.now ms; `now` ticks each second) */
   startedAt: number;
   now: number;
-}
-/** the button beside the status line: `run` called, else the button whose id is `click` pressed (`click` also names
- *  the button, so a status that offers the same one keeps it, and its focus) */
-export interface Act {
-  label: string;
-  click?: string;
-  run?: () => void;
-}
-/** the status line when no search runs */
-export interface Status {
-  kind: 'done' | 'example' | 'error' | 'empty' | 'stopped' | 'pending' | 'loading';
-  text: string;
-  act?: Act;
-}
-/** the result on show, for Export: the solver's report, and whether it is the precomputed example */
-export interface ShownResult {
-  kind: 'deck';
-  r: LoopReport;
-  meta: { example?: boolean };
 }
 export interface LoopView {
   status: Status;

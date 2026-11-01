@@ -187,7 +187,7 @@ const progText = ({ ph, k, n }) =>
  * @property {number} p_minus1  the chance she lands all but at most one
  * @property {number} expected  the targets she lands, expected
  * @property {number} bound
- * @property {import('./loop/results.js').ResultDeck} deck
+ * @property {import('./loop/types.ts').ResultDeck} deck
  * @property {{group: number, q: number, carriers: number}[]} pinks  per pink the six legacies carry: the chance at least
  *   one of the two inheritance events passes it on, and its carriers
  * @property {{base: number[], start: number[], fire: object[], pink_gen: {group: number, p: number}[]}} aptitudes  her

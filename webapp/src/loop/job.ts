@@ -5,8 +5,7 @@ import { ASSETS, gameData } from '../data.js';
 import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.js';
 import { ERA } from '../saved.ts';
 import type { SettingsView } from '../settings.ts';
-import type { LoopReport } from './results.js';
-import type { Status } from './state.ts';
+import type { LoopReport, Status } from './types.ts';
 
 /** a target as the job sends it: its skill group, and 2 when the scenario hands out its gold */
 export type JobTarget = ReturnType<typeof jobTargets>[number];

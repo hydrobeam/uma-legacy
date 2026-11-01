@@ -13,9 +13,8 @@ import type { SettingsView } from '../settings.ts';
 import type { SolverAnswer, SolverRefusal } from '../solver.ts';
 import { blockedStatus, buildJob, doneText, jobKey } from './job.ts';
 import type { Built, DeckJob, JobTarget } from './job.ts';
-import type { LoopReport } from './results.js';
 import { beginSearch, interim, loopRun, settle, tick } from './state.ts';
-import type { ShownResult, Status } from './state.ts';
+import type { LoopReport, ShownResult, Status } from './types.ts';
 
 /** the pause after a change before the automatic search (ms) */
 export const PAUSE_MS = 550;

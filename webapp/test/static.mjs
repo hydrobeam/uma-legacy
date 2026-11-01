@@ -278,7 +278,7 @@ if (knownCycles.length)
 // read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
 // (the career run machine, split in step 8).
 const LAYERS = [
-  ['types', ['globals.d', 'must', 'solver', 'store']],
+  ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
   ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job']],
   ['stores', ['settings', 'loop/state', 'vets']],
@@ -297,7 +297,10 @@ const LAYERS = [
     stores = LAYERS.findIndex(([layer]) => layer === 'stores');
   for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
     const from = layerOf(moduleOf(file));
-    for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g)) {
+    // (a type-only import or export is left out: types are erased, so they set no load order and read no store)
+    for (const [, spec] of text.matchAll(
+      /(?:^|\n)\s*(?:import|export)\b(?!\s+type\b)[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g,
+    )) {
       const to = layerOf(moduleOf(path.join(path.dirname(file), spec)));
       const pages = [from, to].map((k) => LAYERS[k][0]);
       if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))

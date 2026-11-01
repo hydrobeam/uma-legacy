@@ -9,21 +9,6 @@ import { umaAv } from '../images.js';
 import { affEl, affTable } from '../afftable.js';
 import { pickOutfit } from '../roster.js';
 import { must } from '../must.ts';
-/**
- * One career in the solver's affinity detail (`loop.detail.lineages`); uma numbers index the loop's members.
- * @typedef {object} Lineage
- * @property {number} t the trainee
- * @property {[number, number]} p her parents
- * @property {LegacySlot[]} slots her six legacies
- */
-/**
- * @typedef {object} LegacySlot
- * @property {'parent' | 'grandparent'} kind
- * @property {number[]} who [parent] or [parent, grandparent]
- * @property {number} rel relation points
- * @property {number} race the G1 wins shared (expected), as points
- * @property {number} aff affinity
- */
 const careerTotal = (lineage) => lineage.slots.reduce((sum, slot) => sum + slot.aff, 0);
 const button = (label) => {
   const b = document.createElement('button');
@@ -61,7 +46,7 @@ const mark = (pills, isOn) =>
     b.setAttribute('aria-pressed', String(on));
     b.tabIndex = on ? 0 : -1;
   });
-/** @param {import('./results.js').ResultLoop} loop */
+/** @param {import('./types.ts').ResultLoop} loop */
 export function openWhy(loop) {
   const lineages = loop.detail.lineages,
     members = loop.members,
