@@ -1,6 +1,6 @@
 // ---------- the scenario picker and the lineage rank control (scenario.js holds the scenarios and the pick) ----------
 // The picker: a button showing the chosen scenario, opening a grid of the scenarios (role=menu, the tiles menuitemradio
-// buttons, as the sort menus: ui/SortMenu.tsx). Opening focuses the chosen tile; the arrows move between tiles (two
+// buttons, as the sort menus: ui/SortMenu.tsx, dropdown.ts). Opening focuses the chosen tile; the arrows move between tiles (two
 // columns); Escape, a click outside the button and the grid, or the focus leaving the picker closes it. A pick brings
 // its guaranteed golds (the targets and the card picker follow the scenario) and sets its default lineage rank.
 // The rank control: a two-option toggle (B to S+ / SS and up) with the game's rank badges, and a ? that explains it.
@@ -17,7 +17,7 @@ import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../s
 import { srcFor } from '../images.js';
 import { RadioPills } from './RadioPills.tsx';
 import { ScenLogo } from './Images.tsx';
-import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './SortMenu.tsx';
+import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
 
 // a guaranteed gold: its icon, named by its tooltip (the name as small text only when there is no icon), so every
 // tile stays logo + one line

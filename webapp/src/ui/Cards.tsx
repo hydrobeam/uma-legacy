@@ -87,6 +87,7 @@ function Gift({ gift }: { gift: CardGift }) {
 }
 function CardTile({ c, gifts, banNote }: Listed) {
   const t = cardTitle(c, false);
+  // (the computeds read props: right because each tile is keyed by its card, so `c` never changes)
   const pressed = useComputed(() => (fields.cardsOff.value[c.id] !== false ? 'true' : 'false')),
     hidden = useComputed(() => !matches(c, query.value));
   return (
@@ -110,6 +111,7 @@ function CardTile({ c, gifts, banNote }: Listed) {
   );
 }
 function CardSection({ label, list }: { label: string; list: Listed[] }) {
+  // (keyed by its label, so the computed's `label` never changes)
   const hidden = useComputed(() => !sectionsShown.value.has(label));
   return (
     <div class="cgroup" hidden={hidden}>
