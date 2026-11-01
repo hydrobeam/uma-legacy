@@ -10,7 +10,7 @@
 //   querySelector/closest of '#id') exists on each page whose bundle holds the module (esbuild's metafile), in its
 //   template with the panels filled in, in build.py's own markup or made by one of the bundle's modules. A module that
 //   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
-//   purpose is listed in MAY_BE_MISSING with why.
+//   purpose is listed in MAY_BE_MISSING, per page, with why.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
 // against the layer order (LAYERS, frontend.md §2; an error from the career split on), and the `@ts-expect-error`
@@ -95,13 +95,20 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // ---------- template ids: every id a module looks up by name exists on each page whose bundle holds the module
 // A page's markup is its template with the shared panels filled in (as build.py fills them), the markup build.py
 // writes itself (the theme button) and what the bundle's modules make with an id. A lookup a module makes on purpose
-// where the element may be missing is listed in MAY_BE_MISSING with why.
-const MAY_BE_MISSING = {
+// where the element may be missing is listed in MAY_BE_MISSING, under each page (its bundle's entry) where it may be,
+// with why: an exemption on one page leaves the other page's lookup checked.
+const ON_EITHER_PAGE = {
   'data-example':
     'data.js probes it: the data comes in self.__LLP_DATA (build.py), a script element only in old builds',
-  'o-skills-n': 'targets.js: the Target skills button, a panel on neither page now (planner.md P6: deleted in step 6)',
-  'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
-  'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
+  'o-skills-n': 'targets.js: the Target skills button, in the targets panel, which neither page uses now',
+};
+const MAY_BE_MISSING = {
+  'src/main.js': ON_EITHER_PAGE,
+  'src/career.js': {
+    ...ON_EITHER_PAGE,
+    'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
+    'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
+  },
 };
 const PAGES = { 'src/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
@@ -148,7 +155,7 @@ for (const [entry, template] of Object.entries(PAGES)) {
       .concat([...text.matchAll(SELECTOR_ID)].map((m) => m[2]))) {
       looked.add(m);
       const message = `${file}: looks up #${m}, which ${template} (with its panels) and its bundle's modules don't have`;
-      if (!ids.has(m) && !(m in MAY_BE_MISSING) && !problems.includes(message)) problems.push(message);
+      if (!ids.has(m) && !(m in MAY_BE_MISSING[entry]) && !problems.includes(message)) problems.push(message);
     }
   }
 }
