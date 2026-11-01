@@ -73,8 +73,10 @@ export interface DetailsSpec {
   raceName: (ix: number) => string;
   /** the target skills' groups, in the job's order */
   targets: readonly number[];
-  /** her two parents' records, each with her place and what opens her node */
+  /** her two parents' records, each with her number and what opens her node */
   legacies: { v: VetRecord; label: string; open: () => void }[];
+  /** a parent's number on the page ("#3"), by her legacy index (career/current.ts `legacyNumber`) */
+  numberOf: (i: number) => string;
 }
 /** her card: `actions` beside her portrait, `winsButton` (the G1 wins editor's) in Career Info */
 export function Details({
@@ -136,18 +138,20 @@ export function Details({
   );
 }
 
-/** her two parents' legacy boxes for career `r`, each veteran found by `vetAt` from her legacy index
- *  (career/current.ts `legacyVet`; `open`: her node popup). One who has left the pool is left out: while a pool
+/** her two parents' legacy boxes for career `r`, each veteran found by `vetAt` from her legacy index and numbered by
+ *  `numberOf` (career/current.ts `legacyVet`, `legacyNumber`; `open`: her node popup). One who has left the pool is
+ *  left out: while a pool
  *  veteran's G1 wins window is open the answer on show waits, so the pool can change under it (an uma.moe listing
  *  landing) */
 export const legaciesOf = (
   r: Career,
   vetAt: (i: number) => VetRecord | undefined,
+  numberOf: (i: number) => string,
   open: (id: string) => void,
 ): DetailsSpec['legacies'] =>
   r.parents.flatMap((i) => {
     const v = vetAt(i);
-    return v ? [{ v, label: `#${i + 1}`, open: () => open(v.id) }] : [];
+    return v ? [{ v, label: numberOf(i), open: () => open(v.id) }] : [];
   });
 
 const DEFS = [
@@ -175,7 +179,7 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
     list.current?.querySelector<HTMLElement>(`#udtab-${next}`)?.focus(); // (every tab is always drawn)
   };
   // (her draft's parents are the career's, in its order: draftOf)
-  const [first, second] = spec.r.parents;
+  const legacyIndex = spec.r.parents;
   const pane = (key: DetailsTab) =>
     key === 'skills' ? (
       <SkillsPane spec={spec} />
@@ -189,7 +193,7 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
         targets={spec.targets}
         header
         meClass="simwho"
-        parentLabel={(j) => `#${(j === 0 ? first : second) + 1}`}
+        parentLabel={(j) => spec.numberOf(legacyIndex[j])}
       />
     ) : (
       <InfoPane spec={spec} winsButton={winsButton} />

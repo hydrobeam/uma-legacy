@@ -37,6 +37,14 @@ const legacyIn = (pool: readonly string[], list: readonly VetRecord[], i: number
   const id = must(pool[i], "a career's legacy index is a place in its job's pool");
   return list.find((v) => v.id === id);
 };
+/** a veteran's number on the page: her place in the pool now ("#3"), as the pool list, the tree and her popup give it */
+export const poolNumber = (v: VetRecord): string => `#${idxOf(v.id) + 1}`;
+/** the number of the veteran at legacy index `i` of the answer on show: her `poolNumber`, which differs from `i + 1`
+ *  once the pool has changed under a held answer; one who has left the pool since keeps the answer's, `#${i + 1}` */
+export const legacyNumber = (i: number): string => {
+  const v = legacyVet(i);
+  return v ? poolNumber(v) : `#${i + 1}`;
+};
 /** the legacy index of veteran `id` in the answer on show (-1: none: she joined the pool since) */
 const legacyOf = (id: string): number => answerPool.value.indexOf(id);
 // the status line's buttons when the veterans make no job: the veterans dialog, the sample veterans

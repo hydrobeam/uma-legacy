@@ -26,6 +26,8 @@ const built = await esbuild.build({
       export { showAnswer, dropAnswer } from './src/career/state.ts';
       export { takeCareer } from './src/career/options.ts';
       export { draftOf } from './src/career/analysis/view.tsx';
+      export { legaciesOf } from './src/career/analysis/Details.tsx';
+      export { legacyNumber, legacyVet } from './src/career/current.ts';
       export { Targets } from './src/career/view/Sections.tsx';
       export { h, render } from 'preact';
       export { loadData } from './src/data.ts';`,
@@ -45,7 +47,22 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-heldpool-')),
 fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
-const { vs, initStore, setTargets, showAnswer, dropAnswer, takeCareer, draftOf, Targets, h, render, loadData } = page;
+const {
+  vs,
+  initStore,
+  setTargets,
+  showAnswer,
+  dropAnswer,
+  takeCareer,
+  draftOf,
+  legaciesOf,
+  legacyNumber,
+  legacyVet,
+  Targets,
+  h,
+  render,
+  loadData,
+} = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [] };
 await loadData();
 initStore(() => memory());
@@ -99,6 +116,16 @@ test("Use this places the career's parents by the ids the job was built on, afte
   vs.removeVet('d');
   takeCareer(career, { trainee: null, parents: [null, null] });
   assert.deepEqual(vs.places.peek().parents, [null, null], 'a parent left the pool: nothing is placed');
+});
+
+test("a career's parents are numbered by their place in the pool now, as the pool list numbers them (review-nuia F7)", () => {
+  heldAnswer();
+  assert.deepEqual(
+    legaciesOf(career, legacyVet, legacyNumber, () => undefined).map((x) => x.label),
+    ['#2', '#3'],
+    "legacy indices 2 and 3 (c and d): #2 and #3 of the pool now that b has left, not the job's #3 and #4",
+  );
+  assert.equal(legacyNumber(1), '#2', "b has left the pool: the job's number, the only one she has");
 });
 
 test("the targets' count chart is the report's: a target removed since leaves it whole", async () => {

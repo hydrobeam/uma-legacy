@@ -168,9 +168,11 @@ test('change uma: the uma is hers at the pick (saved, the page told once the pro
 test("Try a run's legacies: a place no veteran holds any more (the list changed under the answer) is left out (review-9 F6)", async () => {
   const career = { parents: [0, 4], trainee: { id: 1001, outfits: [] }, targets: [], deck: null };
   const list = [{ ...node(1002), id: 'a', borrowed: false, parents: [node(1), node(2)] }];
+  const numberOf = (i) => `#${i + 1}`;
   const legacies = legaciesOf(
     career,
     (i) => list[i],
+    numberOf,
     () => undefined,
   );
   assert.deepEqual(
@@ -179,7 +181,7 @@ test("Try a run's legacies: a place no veteran holds any more (the list changed 
     'the veteran at #5 is gone: her box goes',
   );
   vs.setDraft({ ...node(1001), borrowed: false, parents: [node(1002), node(1003)] });
-  const spec = { d: vs.draft.peek(), r: career, races: [], raceName: String, targets: [T], legacies };
+  const spec = { d: vs.draft.peek(), r: career, races: [], raceName: String, targets: [T], legacies, numberOf };
   const root = document.createElement('div');
   render(h(Details, { spec, actions: null, winsButton: null }), root);
   await settle();

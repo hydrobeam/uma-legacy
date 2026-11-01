@@ -14,7 +14,7 @@ import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { answer, searching } from '../state.ts';
 import { keyOf } from '../keys.ts';
-import { legacyVet, looped, refFor, shown } from '../current.ts';
+import { legacyNumber, legacyVet, looped, poolNumber, refFor, shown } from '../current.ts';
 import type { OptionRow as Row, PlanReport } from '../job.ts';
 import type { Note } from '../options.ts';
 import { TIE_CAREERS, extraText, optionsTable, roleText, takeCareer, unsettled, netText } from '../options.ts';
@@ -250,7 +250,7 @@ function PickWhat({ r, places }: { r: DeepReadonly<Row>; places: Places }) {
         <Fragment key={i}>
           {j > 0 && ' + '}
           <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={24} />
-          {` #${i + 1} ${umaName(v.chara)}`}
+          {` ${poolNumber(v)} ${umaName(v.chara)}`}
         </Fragment>
       ))}
     </div>
@@ -309,7 +309,7 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
     const who = m.has_full_veteran ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
     // the career her fresh side is from: her best today, or (`alternative`) another of her top careers, which the
     // cheapest route takes for its parents
-    const on = m.parents ? ` on parents ${m.parents.map((j) => `#${j + 1}`).join(' + ')}` : '',
+    const on = m.parents ? ` on parents ${m.parents.map(legacyNumber).join(' + ')}` : '',
       career = m.alternative
         ? `another of ${m.trainee}'s careers${on} (not her best today: the cheapest route takes it)`
         : `${m.trainee}'s best career${on}`;

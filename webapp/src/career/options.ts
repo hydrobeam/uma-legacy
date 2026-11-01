@@ -12,7 +12,7 @@ import { whyText } from '../proofs.ts';
 import { answer, forgetDroppedChoice } from './state.ts';
 import { keyOf } from './keys.ts';
 import { Blocked, chosenSetup, placesKey, BORROW_CHOICES } from './job.ts';
-import { currentJob, legacyVet, refFor, shown } from './current.ts';
+import { currentJob, legacyVet, poolNumber, refFor, shown } from './current.ts';
 import { assert, must } from '../must.ts';
 import type { OptionRow, PairSearch, PlanOption, PlanReport } from './job.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -131,7 +131,7 @@ function negativeTopText(planReport: Plan | null, pick: Row | null): string | nu
   const borrowed: string[] = [];
   for (const i of step ? step.parents : []) {
     const v = legacyVet(i);
-    if (v?.borrowed) borrowed.push(`#${i + 1} ${umaName(v.chara)}`);
+    if (v?.borrowed) borrowed.push(`${poolNumber(v)} ${umaName(v.chara)}`);
   }
   if (!borrowed.length) return text;
   const who = borrowed.join(' and ');
@@ -253,7 +253,7 @@ function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanO
   // (one who has left the pool under the answer, `legacyVet`: her number alone)
   const vetName = (i: number): string => {
     const v = legacyVet(i);
-    return v ? `#${i + 1} ${umaName(v.chara)}` : `#${i + 1}`;
+    return v ? `${poolNumber(v)} ${umaName(v.chara)}` : `#${i + 1}`;
   };
   const shownOf = (found: PairFound) => planReport.options.find((o) => keyOf(o) === found.shown);
   // (a bound on the pairs scored per uma, `pair_bound`: past it, her pairs with the highest all-target ceilings)

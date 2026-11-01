@@ -26,7 +26,7 @@ import type { Roll, RollSetup } from '../roll.ts';
 import { answer, answerPool, runView, searching as runSearching } from '../state.ts';
 import { keyOf } from '../keys.ts';
 import { isFull } from '../job.ts';
-import { legacyVet, legacyVetNow, shown } from '../current.ts';
+import { legacyNumber, legacyVet, legacyVetNow, poolNumber, shown } from '../current.ts';
 import type { CareerReport } from '../job.ts';
 import { borrowedLast, deckCards } from '../../details.ts';
 import { fmtN, tableRows } from '../view/parts.ts';
@@ -163,7 +163,7 @@ const parentFace = (i: number, who: DraftView) => {
     return { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true };
   const v = legacyVet(i);
   return v
-    ? { chara: v.chara, outfit: v.outfit, label: `#${i + 1} ${umaName(v.chara)}` }
+    ? { chara: v.chara, outfit: v.outfit, label: `${poolNumber(v)} ${umaName(v.chara)}` }
     : { chara: null, label: `#${i + 1}` };
 };
 // a figure's direction: 'up' (better with her), 'down' (worse) or 'same' (within the estimate's noise, or unknown)
@@ -237,8 +237,11 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
     { now: careersNow, withHer: careersWithHer } = sim.v0 || { now: null, withHer: null },
     next = sim.r?.results[0] as Career | undefined, // (none yet while the quick search for the best career with her runs)
     rose = careersNow != null && careersWithHer != null && careersNow - careersWithHer <= -0.5;
+  // a parent of the next career with her: her by the place the comparison's job gives her (last, compare.ts), the
+  // others by their number in the pool now
+  const parentNumber = (i: number) => (i === answerPool.value.length ? `#${i + 1}` : legacyNumber(i));
   const nextWithHer = sim.pickA
-    ? `. With her the planner's next career is ${sim.pickA.trainee.name} (${sim.pickA.parents.map((i) => `#${i + 1}`).join(' + ')}).`
+    ? `. With her the planner's next career is ${sim.pickA.trainee.name} (${sim.pickA.parents.map(parentNumber).join(' + ')}).`
     : '.';
   const fromTable = sim.quick
     ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances; only the routes the plan kept); Compare checks this exact roll."
@@ -385,7 +388,8 @@ function Analysis({ comparison }: { comparison: Comparison }) {
     races: scheduledRaces(r, careerTables().races),
     raceName: (ix) => careerTables().races[ix] || `G1 ${ix}`,
     targets: settings.value.targets.map((t) => t.group),
-    legacies: legaciesOf(r, legacyVet, (id) => openNode({ kind: 'v', id })),
+    legacies: legaciesOf(r, legacyVet, legacyNumber, (id) => openNode({ kind: 'v', id })),
+    numberOf: legacyNumber,
   };
   // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose answer
   // replaces the career on show)
