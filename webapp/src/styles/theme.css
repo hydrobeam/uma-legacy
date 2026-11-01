@@ -134,6 +134,8 @@
   --color-legacy-pink-soft: color-mix(in srgb, var(--color-legacy-pink) 7%, var(--color-gm-panel));
   /* a skill tile's words on the game's white tile (ui/skillTile.ts; dark mode's tile is dark) */
   --color-skill-ink: #794016;
+  /* the (i) on a green section bar: its italic i's green on the white button (career/view/Options.tsx) */
+  --color-bar-info: #3c7a00;
   /* the career's count chart: the average roll's words (career/view/Sections.tsx) */
   --color-count-avg: #c4245a;
 
@@ -218,6 +220,8 @@
   --shadow-node: 0 1px 4px var(--color-gm-shadow);
   --shadow-node-hover: 0 0 0 3px color-mix(in srgb, var(--color-gm-bright) 45%, transparent), 0 2px 8px var(--color-gm-shadow);
   --shadow-node-face: 0 0 0 3px var(--color-gm-panel), 0 0 0 5px #efe3cf, 0 2px 6px var(--color-gm-shadow);
+  /* the (i) on a green section bar, lifted off it (career/view/Options.tsx) */
+  --shadow-info: 0 1px 2px rgba(0, 0, 0, 0.25);
   /* the career's count chart's columns (career/view/Sections.tsx): their edge and light top, green, and gold for all n */
   --inset-shadow-count-bar: inset 0 0 0 1px rgba(40, 140, 60, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.5);
   --inset-shadow-count-all: inset 0 0 0 1px rgba(200, 130, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.55);

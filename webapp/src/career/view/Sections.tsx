@@ -116,7 +116,7 @@ const CARDS = {
   popup: 'grid grid-cols-[repeat(3,minmax(0,104px))] items-start justify-center gap-2.5 max-md:gap-1.5',
 } as const;
 /** a deck's cards, borrowed last, each a DeckCard (data-deck-cards: the checks find a deck's by it) */
-function DeckCards({ deck, fit }: { deck: Parameters<typeof deckCards>[0]; fit: keyof typeof CARDS }) {
+export function DeckCards({ deck, fit }: { deck: Parameters<typeof deckCards>[0]; fit: keyof typeof CARDS }) {
   return (
     <div class={CARDS[fit]} data-deck-cards="">
       {borrowedLast(deckCards(deck)).map((slot) => (

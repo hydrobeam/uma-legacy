@@ -62,18 +62,18 @@ export default async function careerrun(b) {
   const tableNotes = async () => {
     await pg.click('#save-why');
     await dialog(pg, 'save-dlg');
-    const t = await pg.$$eval('#save-dlg .optnote', (l) => l.map((x) => x.textContent));
+    const t = await pg.$$eval('#save-dlg [data-note]', (l) => l.map((x) => x.textContent));
     await pg.keyboard.press('Escape');
     return t;
   };
   const edited = await pg.evaluate(() => {
-    const alts = document.querySelector('section.alts'),
-      noNotes = !alts?.querySelector('p.optnote');
+    const alts = document.querySelector('section[data-sec="options"]'),
+      noNotes = !alts?.querySelector('p[data-note]');
     return {
       edited: window.__edited,
       noNotes,
-      extras: [...(alts?.querySelectorAll('tbody .onum') || [])].map((x) => x.textContent),
-      tieTags: alts?.querySelectorAll('.otag.tie, .tienote').length ?? -1,
+      extras: [...(alts?.querySelectorAll('tbody [data-extra]') || [])].map((x) => x.textContent),
+      tieTags: alts?.querySelectorAll('[data-tag="tie"]').length ?? -1,
     };
   });
   edited.negative = (await tableNotes()).find((t) => /saves its own run/.test(t)) || '';
@@ -142,13 +142,15 @@ export default async function careerrun(b) {
       variants: [],
       gone: window.__checkResults.find((r) => r.robust.kind === 'unavailable')?.robust.error,
     };
-    const alts = document.querySelector('section.alts');
+    const alts = document.querySelector('section[data-sec="options"]');
     return {
       robust,
       workers: window.__workers,
       jobs: window.__checkJobs.length,
       rank: document.getElementById('rank').dataset.value, // the edit undone: the rank as it was
-      varies: alts ? [...alts.querySelectorAll('.otag')].filter((t) => t.textContent === 'pick varies').length : -1,
+      varies: alts
+        ? [...alts.querySelectorAll('tbody [data-tag]')].filter((t) => t.textContent === 'pick varies').length
+        : -1,
     };
   });
   {

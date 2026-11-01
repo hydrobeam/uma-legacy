@@ -8,7 +8,6 @@ import { settings } from '../../settings.ts';
 import { pct } from '../../odds.ts';
 import { places as yourPlaces, backToPick } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
-import { borrowedLast, deckCards } from '../../details.ts';
 import { must } from '../../must.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
@@ -20,7 +19,7 @@ import type { Note } from '../options.ts';
 import { TIE_CAREERS, extraText, optionsTable, roleText, takeCareer, unsettled, netText } from '../options.ts';
 import type { DeepReadonly } from '../../store.ts';
 import { fmtN } from './parts.ts';
-import { DeckCard } from './Sections.tsx';
+import { DeckCards } from './Sections.tsx';
 import { Guard } from './Guard.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { panel } from '../../ui/Panel.tsx';
@@ -42,19 +41,47 @@ export function Results() {
     planState.state === 'done' ? planState.r.options : must(last, 'the column draws a career on show').r.results;
   return (open && rows.length > 1) || refFor() ? <OptionsTable /> : null;
 }
+// The table: its rows 4 px apart, each cell's look whole. The heads ruled off below; a row's cells unshaded, the row
+// on show shaded the game's lavender with its ends rounded; on a phone each row a card (the career's name over its two
+// figures, each labelled, the button at the right; the row on show shaded whole). The rows' ends keep a thin line, and
+// their cells only 2 px of height: the target table's later rules reached this table too (kept as it showed).
+const HEAD = {
+  who: 'border-line text-gm-ink2 border-b py-0.75 pr-2 pl-3 text-left font-bold',
+  figure: 'border-line text-gm-ink2 border-b px-2 py-0.75 text-right font-bold',
+  act: 'border-line text-gm-ink2 border-b py-0.75 pr-3 pl-2 text-right font-bold',
+} as const;
+const CELL = {
+  who: 'border-gm-line text-gm-ink w-[46%] rounded-l-md border-l py-0.5 pr-2 pl-3 text-left align-middle font-semibold max-md:col-span-full max-md:w-auto',
+  odds: "text-gm-ink max-md:before:text-muted px-2 py-0.5 text-right align-middle font-bold whitespace-nowrap max-md:col-start-1 max-md:row-start-2 max-md:text-left max-md:before:content-['This_career:_']",
+  extra:
+    "text-gm-ink max-md:before:text-muted px-2 py-0.5 text-right align-middle font-bold whitespace-nowrap max-md:col-start-1 max-md:row-start-3 max-md:text-left max-md:before:content-['Careers_to_land:_']",
+  act: 'border-gm-line text-gm-ink rounded-r-md border-r py-0.5 pr-3 pl-2 text-right align-middle font-bold whitespace-nowrap max-md:col-start-2 max-md:row-span-4 max-md:row-start-2 max-md:justify-self-end max-md:text-left',
+} as const;
+// the row on show: its cells shaded (on a phone the row instead)
+const ON = 'bg-gm-current max-md:bg-transparent';
+// a column head's tooltip, dotted as a hint that it explains
+const TIP =
+  'focus-visible:outline-accent cursor-help rounded-xs underline decoration-dotted underline-offset-3 focus-visible:outline-2 focus-visible:outline-offset-2';
+// a career's tags as the game's pills: the planner's pick green, the others plain
+const TAG = {
+  plain: 'border-gm-edge bg-gm-cell text-caption text-gm-ink rounded-full border px-2 py-px font-bold',
+  pick: 'border-gm-green2 bg-gm-bright2 text-caption text-shadow-outline rounded-full border px-2 py-px font-bold text-white',
+} as const;
 function OptionsTable() {
   const { on, planReport, places, pick, list, mine, recommended, notes, nameOf, back } = optionsTable(),
     n = settings.value.targets.length;
   return (
-    <section class="rbsec alts">
+    // (data-sec: the checks find the table's section by it)
+    <section class="relative mt-5.5 grid min-w-0 gap-2" data-sec="options">
       <GameBar>
         Other careers
         {/* "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the
-            numbers (the popup behind a small (i) right after the section's title, in its header bar) */}
+            numbers (the popup behind a small (i) right after the section's title, in its header bar: white on the
+            green, its tap area 44 px) */}
         {planReport && (
           <button
             type="button"
-            class="oinfo savewhy"
+            class="font-glyph text-caption text-bar-info shadow-info relative ml-2 inline-grid size-4.5 cursor-pointer place-items-center rounded-full bg-white leading-none font-black italic text-shadow-none before:absolute before:-inset-3.25"
             id="save-why"
             data-k="save-why"
             aria-haspopup="dialog"
@@ -66,66 +93,62 @@ function OptionsTable() {
           </button>
         )}
       </GameBar>
-      <div class="optwrap">
-        <table class="cartab optab">
-          <thead>
-            <tr>
-              <th scope="col">Career</th>
-              {/* both columns explain themselves on hover or keyboard focus (gmtip.ts); the (i) popup says more */}
-              <th scope="col">
-                <span
-                  class="thtip"
-                  title={`Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`}
-                  // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (gmtip.ts shows a title on focus); a button would offer an action it has not
-                  tabIndex={0}
-                >
-                  Odds
-                </span>
-              </th>
-              <th scope="col">
-                <span
-                  class="thtip"
-                  title={`How many more careers than the pick this one costs, on the planner's estimate (≈0: within ${TIE_CAREERS}, as good).`}
-                  // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (gmtip.ts shows a title on focus); a button would offer an action it has not
-                  tabIndex={0}
-                >
-                  Extra careers
-                </span>
-              </th>
-              <th scope="col">
-                <span class="sr">Choose</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((r) => (
-              <OptionRow
-                key={`${keyOf(r)}:${r === mine ? 'mine' : ''}`}
-                r={r}
-                cur={!!on && keyOf(r) === keyOf(on)}
-                mine={r === mine}
-                planReport={planReport}
-                places={places}
-                pick={pick}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <table class="text-ui w-full border-separate border-spacing-x-0 border-spacing-y-1 tabular-nums max-md:block">
+        <thead class="max-md:hidden">
+          <tr>
+            <th scope="col" class={HEAD.who}>
+              Career
+            </th>
+            {/* both columns explain themselves on hover or keyboard focus (gmtip.ts); the (i) popup says more */}
+            <th scope="col" class={HEAD.figure}>
+              <span
+                class={TIP}
+                title={`Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`}
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (gmtip.ts shows a title on focus); a button would offer an action it has not
+                tabIndex={0}
+              >
+                Odds
+              </span>
+            </th>
+            <th scope="col" class={HEAD.figure}>
+              <span
+                class={TIP}
+                title={`How many more careers than the pick this one costs, on the planner's estimate (≈0: within ${TIE_CAREERS}, as good).`}
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (gmtip.ts shows a title on focus); a button would offer an action it has not
+                tabIndex={0}
+              >
+                Extra careers
+              </span>
+            </th>
+            <th scope="col" class={HEAD.act}>
+              <span class="sr-only">Choose</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="max-md:block">
+          {list.map((r) => (
+            <OptionRow
+              key={`${keyOf(r)}:${r === mine ? 'mine' : ''}`}
+              r={r}
+              cur={!!on && keyOf(r) === keyOf(on)}
+              mine={r === mine}
+              planReport={planReport}
+              places={places}
+              pick={pick}
+            />
+          ))}
+        </tbody>
+      </table>
       {recommended && (
-        <div class={cx(panel, 'deck relative grid gap-2 p-2.5 max-md:p-2')}>
-          <div class="dtitle">
+        <div class={cx(panel, 'relative grid gap-2 p-2.5 max-md:p-2')}>
+          <div class="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 pr-8">
             <b>{`Deck of the pair search's career: ${nameOf(recommended)}`}</b>
           </div>
-          <div class="dcards">
-            {borrowedLast(deckCards(recommended.deck)).map((slot) => (
-              <DeckCard key={`${slot.i}:${slot.named}`} slot={slot} />
-            ))}
-          </div>
+          <DeckCards deck={recommended.deck} fit="row" />
         </div>
       )}
       {back && (
-        <div class="optfoot">
+        <div class="mt-2">
           <Button
             id="opt-back"
             disabled={searching.value}
@@ -161,26 +184,28 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
         : undefined;
   const saves =
     r.pair_search_score == null ? '' : ` (Saves ${netText(r.pair_search_score)} per run in the pair search)`;
+  // (data-tag: which tag it is, for the checks)
   const tags = [
     mine && (
-      <span key="mine" class="otag">
+      <span key="mine" class={TAG.plain} data-tag="mine">
         your choice
       </span>
     ),
     planReport && r.chosen && (
-      <span key="pick" class="otag pick">
+      <span key="pick" class={TAG.pick} data-tag="pick">
         planner's pick
       </span>
     ),
     planReport && r.best_odds && (
-      <span key="odds" class="otag">
+      <span key="odds" class={TAG.plain} data-tag="odds">
         best odds now
       </span>
     ),
     planReport && r.pair_search && (
       <span
         key="pair"
-        class="otag"
+        class={TAG.plain}
+        data-tag="pair"
         title={`The pair search’s recommendation${saves}, see below: Use this runs it with this deck`}
       >
         pair search
@@ -189,7 +214,8 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
     planReport && unsettled(planReport).has(keyOf(r)) && (
       <span
         key="varies"
-        class="otag"
+        class={TAG.plain}
+        data-tag="varies"
         title="At least one tested variant of the planner’s model scores this career highest (its building curve, the all-target chances’ calibration, or one uma’s calibration against another’s), and the variants disagree"
       >
         pick varies
@@ -198,7 +224,8 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
     looped(r) && (
       <span
         key="looped"
-        class="otag"
+        class={TAG.plain}
+        data-tag="looped"
         title={`Both parents are ${n}/${n}s: if she lands all ${n}, her veteran is a fully looped parent`}
       >
         {`${n}/${n} parents`}
@@ -206,22 +233,30 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
     ),
   ].filter(Boolean);
   return (
-    <tr class={cur ? 'on' : undefined}>
-      <th scope="row">
-        <PickWhat r={r} places={places} />
-        {tags.length > 0 && <span class="otags">{tags}</span>}
+    // aria-current: the career on show
+    <tr
+      class={cx(
+        'max-md:border-line max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-center max-md:gap-x-3 max-md:gap-y-0.5 max-md:border-b max-md:px-3 max-md:py-1.5',
+        cur && 'max-md:bg-gm-current max-md:rounded-lg',
+      )}
+      aria-current={cur ? 'true' : undefined}
+    >
+      <th scope="row" class={cx(CELL.who, cur && ON)}>
+        <PickWhat r={r} places={places} cur={cur} />
+        {tags.length > 0 && <span class="mt-0.75 flex flex-wrap gap-1">{tags}</span>}
       </th>
-      <td>{fmtIn(r.p_all)}</td>
+      <td class={cx(CELL.odds, cur && ON)}>{fmtIn(r.p_all)}</td>
       {/* the number carries the tooltip (its balloon points at the number, not the middle of the cell) */}
-      <td class="orole">
-        {/* (keyed by having a tip: Preact sets `title` as a property, so a title taken away would stay as title="") */}
-        <span key={tip ? 'tip' : 'none'} class="onum" tabIndex={tip ? 0 : undefined} title={tip}>
+      <td class={cx(CELL.extra, cur && ON)}>
+        {/* (keyed by having a tip: Preact sets `title` as a property, so a title taken away would stay as title="";
+            data-extra: the checks read the figure by it) */}
+        <span key={tip ? 'tip' : 'none'} tabIndex={tip ? 0 : undefined} title={tip} data-extra="">
           {extraText(r, pick, planReport)}
         </span>
       </td>
-      <td>
+      <td class={cx(CELL.act, cur && ON)}>
         {cur ? (
-          <span class="hint">shown above</span>
+          <span class="text-note text-gm-ink2">shown above</span>
         ) : (
           // (an old answer's option, while a run works on the next)
           <Button disabled={searching.value} onClick={() => takeCareer(r, places)}>
@@ -233,14 +268,15 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
   );
 }
 // who an option places: only the places left open, the trainee and the parents
-function PickWhat({ r, places }: { r: DeepReadonly<Row>; places: Places }) {
+function PickWhat({ r, places, cur }: { r: DeepReadonly<Row>; places: Places; cur: boolean }) {
   // the career's parents not in a place (one who has left the pool under the answer on show, `legacyVet`: none to show)
   const open = r.parents.flatMap((i) => {
     const v = legacyVet(i);
     return v && !places.parents.includes(v.id) ? [{ i, v }] : [];
   });
   return (
-    <div class="altw">
+    // (the career on show's in the accent; data-who: the checks read it)
+    <div class={cx('flex flex-wrap items-center gap-1 font-semibold', cur && 'text-accent')} data-who="">
       {!places.trainee && (
         <>
           <UmaAv key={r.trainee.id} uma={r.trainee.id} outfit={r.trainee.outfits[0]?.id} size={32} />
@@ -295,6 +331,14 @@ export function SavesPopup() {
 // row is measured against it (run this career once first, then follow the route), with a worked example from the plan.
 // For anyone: the two columns in a sentence each, the key points in bold and italics, how the saving is worked out in
 // three plain sentences; today's estimate and a worked example behind dropdowns (no formula)
+// the popup's paragraphs (a dropdown's set off from its summary), its two headings ruled off below, its dropdowns ruled
+// off above, the route in the body's brown
+const P = 'leading-normal';
+const MORE_P = 'mt-2 leading-normal';
+const ROUTE = 'text-gm-ink mt-2 leading-normal';
+const SUB = 'border-gm-line border-b-2 pb-0.5 font-black';
+const MORE = 'border-gm-line border-t pt-1.5';
+const SUMMARY = 'text-gm-ink cursor-pointer font-bold';
 function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly Note[] }) {
   const n = settings.value.targets.length;
   const routePlan = planReport.v0_plan,
@@ -339,11 +383,11 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
     exampleOdds = example && (example.building_careers > 0 ? example.p_switch : example.p);
   return (
     <DialogBody>
-      <p>
+      <p class={P}>
         <b>This career</b>
         {`: her chance of landing all ${n} targets in this one run.`}
       </p>
-      <p>
+      <p class={P}>
         <b>Extra careers</b>
         {`: how many more careers than the pick this one costs on the planner's estimate (below) of the careers you still need for a `}
         <i>fully looped parent</i>
@@ -355,18 +399,18 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
         <i>comparing careers</i>
         {', not a forecast.'}
       </p>
-      <p>
+      <p class={P}>
         {"The best odds aren't always the best choice: a career can be worth more for "}
         <b>the veteran she leaves behind</b>
         {', who becomes a parent for your next runs.'}
       </p>
-      <p>
+      <p class={P}>
         {'The pick is the career with the '}
         <b>most Saves per run</b>
         {". Better odds don't break a near-tie: the Saves per run already count the runs where she lands every target."}
       </p>
-      <div class="gmdsub">How it is worked out</div>
-      <p>
+      <div class={SUB}>How it is worked out</div>
+      <p class={P}>
         {'The planner makes a '}
         <b>rough estimate</b>
         {' of how many careers you still need'}
@@ -381,20 +425,26 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
         <i>How much the estimate drops</i>
         {', minus the run itself, is the saving.'}
       </p>
-      <details class="savemore">
-        <summary>Today's estimate, step by step</summary>
-        <p class="oloop">{route}</p>
-        {trioText && <p class="oloop">{trioText}</p>}
-        <p>
+      <details class={MORE}>
+        <summary class={SUMMARY}>Today's estimate, step by step</summary>
+        <p class={ROUTE} data-route="">
+          {route}
+        </p>
+        {trioText && (
+          <p class={ROUTE} data-route="">
+            {trioText}
+          </p>
+        )}
+        <p class={MORE_P}>
           {'A '}
           <i>yardstick</i>
           {`, not advice: it assumes the simplest road (${n}/${n}s of two umas, then a career of a third with them as parents), and only its total is used.`}
         </p>
       </details>
       {example && exampleOdds && (
-        <details class="savemore">
-          <summary>An example</summary>
-          <p>
+        <details class={MORE}>
+          <summary class={SUMMARY}>An example</summary>
+          <p class={MORE_P}>
             {`Say her veteran, as a parent, lifts ${example.trainee}'s odds for her reruns from ${fmtIn(exampleOdds)} to ${fmtIn(exampleOdds * 1.06)}. Those reruns then take `}
             <b>{`about ${(1 / exampleOdds - 1 / (exampleOdds * 1.06)).toFixed(1)} fewer careers`}</b>
             {
@@ -403,15 +453,17 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
           </p>
         </details>
       )}
-      <p class="hint">
+      <p class="text-note text-gm-ink2 leading-normal">
         {'The whole method: '}
-        <a href="about#career-planner">How this works, the career planner in detail</a>
+        <a class="text-accent underline" href="about#career-planner">
+          How this works, the career planner in detail
+        </a>
         {'.'}
       </p>
       {/* the table's notes, where any (as the popup's other heading: no heading margins) */}
-      {notes.length > 0 && <div class="gmdsub">Notes</div>}
+      {notes.length > 0 && <div class={SUB}>Notes</div>}
       {notes.map((note) => (
-        <p key={note.id} class="optnote">
+        <p key={note.id} class={P} data-note="">
           {note.text}
         </p>
       ))}

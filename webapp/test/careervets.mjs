@@ -193,10 +193,12 @@ export default async function careervets(b) {
     .not.toHaveAttribute('data-ghost');
   check(
     'career: … and the picks list only parents',
-    await pg.$$eval('.alts tbody .altw', (ws) => ws.every((w) => /^Parents /.test(w.textContent.trim()))),
+    await pg.$$eval('[data-sec="options"] tbody [data-who]', (ws) =>
+      ws.every((w) => /^Parents /.test(w.textContent.trim())),
+    ),
   );
   await pg
-    .locator('.alts tbody tr')
+    .locator('[data-sec="options"] tbody tr')
     .filter({ has: pg.getByRole('button', { name: 'Use this' }) })
     .first()
     .getByRole('button', { name: 'Use this' })
@@ -206,12 +208,14 @@ export default async function careervets(b) {
   await expect.soft(runNote, useThis).toHaveText(/Scored in/);
   await expect.soft(ghosts, `${useThis}: no place left`).toHaveCount(0);
   // the last plan's table stays (it once went with the plan, so its other careers were out of reach), her row marked
-  const saves = await pg.$$eval('.alts tbody .onum', (ns) => ns.map((n) => n.textContent.trim()));
+  const saves = await pg.$$eval('[data-sec="options"] tbody [data-extra]', (ns) => ns.map((n) => n.textContent.trim()));
   const tableStays =
     "career: … the last plan's careers stay listed, with their savings, the planner's pick and hers marked";
-  await expect.soft(pg.locator('.alts'), `${tableStays}: the table`).toHaveCount(1);
-  await expect.soft(pg.locator('.alts tbody tr.on'), `${tableStays}: hers`).toHaveText(/shown above/);
-  await expect.soft(pg.locator('.alts .otag.pick'), `${tableStays}: the pick`).toHaveCount(1);
+  await expect.soft(pg.locator('[data-sec="options"]'), `${tableStays}: the table`).toHaveCount(1);
+  await expect
+    .soft(pg.locator('[data-sec="options"] tbody tr[aria-current="true"]'), `${tableStays}: hers`)
+    .toHaveText(/shown above/);
+  await expect.soft(pg.locator('[data-sec="options"] [data-tag="pick"]'), `${tableStays}: the pick`).toHaveCount(1);
   check(
     `${tableStays}: the savings`,
     saves.some((x) => /^[+−]\d/.test(x)),
@@ -302,7 +306,7 @@ export default async function careervets(b) {
   await vetsShut(); // (the table is on the page, under the dialog)
   // a career taken from the table holds for its setup: a settings change hands the places back to the planner
   await pg
-    .locator('.alts tbody tr')
+    .locator('[data-sec="options"] tbody tr')
     .filter({ has: pg.getByRole('button', { name: 'Use this' }) })
     .first()
     .getByRole('button', { name: 'Use this' })

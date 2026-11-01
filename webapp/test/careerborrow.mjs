@@ -78,7 +78,7 @@ export default async function careerborrow(b) {
   await pg.click('#save-why');
   await dialog(pg, 'save-dlg');
   const laterLine =
-    (await pg.$$eval('#save-dlg .optnote', (l) => l.map((x) => x.textContent))).find((t) =>
+    (await pg.$$eval('#save-dlg [data-note]', (l) => l.map((x) => x.textContent))).find((t) =>
       /saves its own run/.test(t),
     ) || '';
   await pg.keyboard.press('Escape');

@@ -63,7 +63,7 @@ export default async function careerphone(b) {
     pills.slice(0, 4).join(' | '),
   );
   const pick = await pg.evaluate(() => {
-    const tr = document.querySelector('.alts .optab tbody tr.on');
+    const tr = document.querySelector('[data-sec="options"] tbody tr[aria-current="true"]');
     if (!tr) return null;
     const th = tr.querySelector('th');
     return {

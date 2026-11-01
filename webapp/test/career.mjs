@@ -383,7 +383,7 @@ export default async function career(b) {
   await vetsShut();
   await pg.click('#save-why');
   await dialog(pg, 'save-dlg');
-  const memNotes = await pg.$$eval('#save-dlg .optnote', (l) =>
+  const memNotes = await pg.$$eval('#save-dlg [data-note]', (l) =>
     l.map((x) => x.textContent).filter((t) => /ran out of memory/.test(t)),
   );
   await pg.keyboard.press('Escape');
@@ -695,7 +695,7 @@ export default async function career(b) {
   {
     const name = 'career: … the career on show is its pick, with why under the odds';
     await expect.soft(trainee, name).toHaveText(lastRes?.next.choice.trainee.name ?? '(no plan result)');
-    await expect.soft(pg.locator('.alts .otag.pick'), `${name}: the pick tagged`).toHaveCount(1);
+    await expect.soft(pg.locator('[data-sec="options"] [data-tag="pick"]'), `${name}: the pick tagged`).toHaveCount(1);
   }
   // the deck (its popup): a card's panel, as in the planner; marking it not owned searches again without it
   await pg.click('#deck-open');
@@ -837,7 +837,7 @@ export default async function career(b) {
   );
   await pg.keyboard.press('Escape');
   // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section
-  const opts = await pg.$$eval('.alts .optab tbody tr', (ls) =>
+  const opts = await pg.$$eval('[data-sec="options"] tbody tr', (ls) =>
     ls.map((l) => [...l.children].map((c) => c.textContent)),
   );
   {
@@ -850,19 +850,24 @@ export default async function career(b) {
         opts.filter((c) => c[2] === '–').length >= 1,
       opts.map((c) => c.join(' / ')).join(' | '),
     );
-    await expect.soft(pg.locator('.alts > h3').first(), `${name}: the heading`).toHaveText(/^Other careers/);
+    await expect
+      .soft(pg.locator('[data-sec="options"] > h3').first(), `${name}: the heading`)
+      .toHaveText(/^Other careers/);
     await expect.soft(pg.locator('#save-why'), `${name}: its (i)`).toHaveCount(1);
     await expect
-      .soft(pg.locator('.alts tr.on', { hasText: 'shown above' }), `${name}: the pick shown above`)
+      .soft(
+        pg.locator('[data-sec="options"] tbody tr[aria-current="true"]', { hasText: 'shown above' }),
+        `${name}: the pick shown above`,
+      )
       .toHaveCount(1);
-    await expect.soft(pg.locator('.alts .otag.pick'), `${name}: the pick marked`).toHaveCount(1);
+    await expect.soft(pg.locator('[data-sec="options"] [data-tag="pick"]'), `${name}: the pick marked`).toHaveCount(1);
     await expect.soft(pg.locator('#ahead-sec'), `${name}: no after-this-career section`).toHaveCount(0);
   }
   // what each row's run does (its Saves per run's tooltip): one of the route's two parents or its last run as before;
   // else the side her routes lift most often with that chance per run (`lifts_side`), never "not on the route"
   const tableRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next?.options).at(-1));
   const roles = await pg.evaluate((next) => {
-    const titles = [...document.querySelectorAll('.alts .optab tbody .onum[title]')].map((t) => t.title),
+    const titles = [...document.querySelectorAll('[data-sec="options"] tbody [data-extra][title]')].map((t) => t.title),
       byId = new Map(next.options.map((o) => [o.report.trainee.id, o.report.trainee.name])),
       shown = next.options.slice(0, 8).filter((o) => o.role !== 'plan' && o.role !== 'finish' && o.index != null);
     const lifted = shown
@@ -888,12 +893,12 @@ export default async function career(b) {
     topScore = Math.max(...scored.map((o) => o.score));
   // (each listed row's extra careers as shown: ≈0 for a row within 0.25 of the pick, else at least 0.25 up to the rounding)
   const tables = await pg.evaluate(() => {
-    const rows = [...document.querySelectorAll('.alts .optab tbody tr')].filter(
-      (tr) => !tr.querySelector('.otag.pick'),
+    const rows = [...document.querySelectorAll('[data-sec="options"] tbody tr')].filter(
+      (tr) => !tr.querySelector('[data-tag="pick"]'),
     );
     return {
-      extras: rows.map((tr) => tr.querySelector('.onum').textContent),
-      ties: document.querySelectorAll('.alts .tienote, .alts .otag.tie').length,
+      extras: rows.map((tr) => tr.querySelector('[data-extra]').textContent),
+      ties: document.querySelectorAll('[data-sec="options"] [data-tag="tie"]').length,
       negative: 0,
     };
   });
@@ -913,7 +918,7 @@ export default async function career(b) {
     await pg.click('#save-why');
     await dialog(pg, 'save-dlg');
     await expect
-      .soft(pg.locator('#save-dlg .optnote', { hasText: /saves its own run/ }), `${name}: the (i) popup's note`)
+      .soft(pg.locator('#save-dlg [data-note]', { hasText: /saves its own run/ }), `${name}: the (i) popup's note`)
       .toHaveCount(topScore < 0 ? 1 : 0);
     // the trio: each step's line (her odds now and the lifts building pays for, or your full veteran at no cost)
     await expect
@@ -923,7 +928,7 @@ export default async function career(b) {
       )
       .toHaveCount(1);
   }
-  const memTxt = await pg.textContent('#save-dlg .oloop').catch(() => '');
+  const memTxt = await pg.textContent('#save-dlg [data-route]').catch(() => '');
   await pg.keyboard.press('Escape');
   check(
     'career: the plan names its route and, per step, the odds now and what building pays for',

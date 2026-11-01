@@ -36,7 +36,7 @@ export default async function careerpool(b) {
   const goalCheck =
     'career: with full veterans of two umas nothing is fixed (no goal steps), and the planner prices them in its trio and picks';
   await expect.soft(pg.locator('#goal-note'), `${goalCheck}: no goal steps`).toHaveCount(0);
-  await expect.soft(pg.locator('.alts .otag.pick'), `${goalCheck}: one pick`).toHaveCount(1);
+  await expect.soft(pg.locator('[data-sec="options"] [data-tag="pick"]'), `${goalCheck}: one pick`).toHaveCount(1);
   check(
     goalCheck,
     goalJob &&
@@ -49,7 +49,7 @@ export default async function careerpool(b) {
   );
   // each uma also gets her career on two of those full veterans (only there is her own full veteran a fully looped parent), the trio's last
   // run is one, and the table tags them
-  const nTags = await pg.locator('.alts .otag', { hasText: /^\d+\/\d+ parents$/ }).count();
+  const nTags = await pg.locator('[data-sec="options"] tbody [data-tag]', { hasText: /^\d+\/\d+ parents$/ }).count();
   check(
     "career: with full veterans the plan offers careers on two of them, the route's last run among them, tagged in the table",
     goalRes?.next.options.some((o) => o.looped) &&
@@ -98,7 +98,7 @@ export default async function careerpool(b) {
     ownRes && ownRes.next.mode === 'trio' && ownRes.next.options.every((o) => o.score != null),
     `${ownRes?.next.mode}`,
   );
-  await expect.soft(pg.locator('.alts .otag.pick'), `${ownCheck}: one pick`).toHaveCount(1);
+  await expect.soft(pg.locator('[data-sec="options"] [data-tag="pick"]'), `${ownCheck}: one pick`).toHaveCount(1);
   // the trio path: the same veterans without one target and with their parents' sparks cleared: every career scored
   // against the cheapest trio, each step named, the pick explained
   const trioEx = JSON.parse(exText),
@@ -118,11 +118,11 @@ export default async function careerpool(b) {
     timeout: 300000,
   });
   const trioRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
-  const trioCells = await pg.$$eval('.alts .optab tbody tr', (ls) => ls.map((l) => l.children[2].textContent));
+  const trioCells = await pg.$$eval('[data-sec="options"] tbody tr', (ls) => ls.map((l) => l.children[2].textContent));
   // the plan behind the numbers sits in the "What do these mean?" popup: saves per run defined first, then the route and its formula
   await pg.click('#save-why');
   await dialog(pg, 'save-dlg');
-  const trioLoop = await pg.textContent('#save-dlg .oloop'),
+  const trioLoop = await pg.textContent('#save-dlg [data-route]'),
     saveTxt = await pg.textContent('#save-dlg');
   await pg.mouse.click(5, 5); // a click on the backdrop closes it
   const trioCheck =
@@ -130,11 +130,14 @@ export default async function careerpool(b) {
   await expect
     .soft(pg.locator('#save-dlg'), `${trioCheck}: the popup closed by its backdrop`)
     .not.toHaveAttribute('open');
-  await expect.soft(pg.locator('.alts .otag.pick'), `${trioCheck}: one pick`).toHaveCount(1);
+  await expect.soft(pg.locator('[data-sec="options"] [data-tag="pick"]'), `${trioCheck}: one pick`).toHaveCount(1);
   // (no caveat under the table: every row is proven, and a named assumption a proof rests on is the run note's to say;
   // the tie note and the negative-top line are statements about the scores, not caveats)
   await expect
-    .soft(pg.locator('.alts p.hint:not(.negtop), .alts .oloop'), `${trioCheck}: no caveat under the table`)
+    .soft(
+      pg.locator('[data-sec="options"] p, [data-sec="options"] [data-route]'),
+      `${trioCheck}: no caveat under the table`,
+    )
     .toHaveCount(0);
   check(
     trioCheck,
