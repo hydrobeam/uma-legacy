@@ -159,18 +159,30 @@ wasm_opt_key() {
 }
 
 # ---- checks ----
+# every linter runs, whatever the others found; the step lists the ones that failed
 step_lint() {
   need_cargo; need_uv; need_node; check lint
   npm_deps
-  (cd "$C" && cargo fmt --check && clippy_all)
-  uv run --quiet --project "$R" shellcheck "$R/build.sh" "$R/.githooks/pre-commit"
-  (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check)
-  (cd "$R" && quiet "${PY[@]}" val/test_validation.py)
-  (cd "$W" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn)
-  (cd "$W" && npx --no-install tsc -p .)
-  (cd "$W" && node test/static.mjs)
+  LINT_FAILED=()
+  lint rustfmt in_dir "$C" cargo fmt --check
+  lint clippy in_dir "$C" clippy_all
+  lint shellcheck uv run --quiet --project "$R" shellcheck "$R/build.sh" "$R/.githooks/pre-commit"
+  lint "ruff check" in_dir "$R" uv run --quiet ruff check
+  lint "ruff format" in_dir "$R" uv run --quiet ruff format --check
+  lint test_validation in_dir "$R" quiet "${PY[@]}" val/test_validation.py
+  lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
+  lint tsc in_dir "$W" npx --no-install tsc -p .
+  lint static.mjs in_dir "$W" node test/static.mjs
+  if [ ${#LINT_FAILED[@]} -gt 0 ]; then
+    local list
+    list=$(printf '%s, ' "${LINT_FAILED[@]}")
+    echo "lint: failed: ${list%, }" >&2
+    return 1
+  fi
   echo "lint: clean"
 }
+lint() { local name=$1; shift; "$@" || LINT_FAILED+=("$name"); }   # lint NAME COMMAND...
+in_dir() { (cd "$1" && shift && "$@"); }   # in_dir DIR COMMAND...
 step_hooks() {
   git -C "$R" config core.hooksPath .githooks
   echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"
