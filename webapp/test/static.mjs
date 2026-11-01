@@ -43,7 +43,8 @@
 // - deferred writes and listeners at import: no requestAnimationFrame but the ones listed (RAF_KEPT: a measured DOM
 //   write runs from the layout effect of the component that draws what it measures), and no listener added at a
 //   module's top level outside the entries but the load-time effects listed (LOAD_LISTENERS); no view built from a
-//   markup string (innerHTML, outerHTML, insertAdjacentHTML): every view is a component.
+//   markup string (innerHTML, outerHTML, insertAdjacentHTML): every view is a component; no exported mutable binding
+//   (`export let`/`var`): state another module reads is a store's signal.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
 // imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
@@ -652,6 +653,8 @@ const LOAD_LISTENERS = {
       problems.push(
         `${file}: requestAnimationFrame: a DOM write runs from the layout effect of the component it measures`,
       );
+    if (/^export (let|var)\b/m.test(body))
+      problems.push(`${file}: exports a mutable binding; state another module reads is a store's signal`);
     if (/\.(innerHTML|outerHTML)\s*=|\.insertAdjacentHTML\(/.test(body))
       problems.push(`${file}: builds a view from a markup string; draw it as a component`);
     if (/^[\w.]*addEventListener\(/m.test(body) && !LOAD_LISTENERS[file] && !ENTRIES.includes(file))
