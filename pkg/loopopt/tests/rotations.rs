@@ -14,10 +14,10 @@ fn run_bounded(job: &Value) -> Value {
 #[test]
 fn fixed_pals_distinct_decks_finish() {
     let mut j = job(false, json!([3, 4]), json!([]));
-    j["pals"] = json!(5);
+    j["job"]["deck"]["pals"] = json!(5);
     let single = run_bounded(&j);
     for count in [2, 3] {
-        j["top_decks"] = json!(count);
+        j["job"]["deck"]["top_decks"] = json!(count);
         let result = run_bounded(&j);
         assert_eq!(result["top"].as_array().unwrap().len(), count);
         assert_eq!(result["top"][0], single["top"][0]);
@@ -34,22 +34,22 @@ fn fixed_pals_distinct_decks_finish() {
 #[test]
 fn fixed_pals_fewer_decks_than_requested() {
     let mut j = job(false, json!([3, 4]), json!([]));
-    j["deck_size"] = json!(1);
-    j["pals"] = json!(1);
-    j["owned_cards"] = json!([30052]);
-    j["lock_cards"] = json!([30052]);
+    j["job"]["deck"]["deck_size"] = json!(1);
+    j["job"]["deck"]["pals"] = json!(1);
+    j["job"]["deck"]["owned_cards"] = json!([30052]);
+    j["job"]["deck"]["lock_cards"] = json!([30052]);
     let single = run_bounded(&j);
-    j["top_decks"] = json!(3);
+    j["job"]["deck"]["top_decks"] = json!(3);
     let result = run_bounded(&j);
     assert_eq!(result["top"], single["top"]);
     assert_eq!(result["top"].as_array().unwrap().len(), 1);
     assert_eq!(result["proven"], json!(true));
 
     // Two versions of Light Hello: the skyline omits the weaker deck, which must still be returned.
-    j["owned_cards"] = json!([10083, 30052]);
-    j["lock_cards"] = json!([]);
+    j["job"]["deck"]["owned_cards"] = json!([10083, 30052]);
+    j["job"]["deck"]["lock_cards"] = json!([]);
     for count in [2, 3] {
-        j["top_decks"] = json!(count);
+        j["job"]["deck"]["top_decks"] = json!(count);
         let result = run_bounded(&j);
         assert_eq!(result["top"].as_array().unwrap().len(), 2);
         assert_eq!(result["top"][0], single["top"][0]);
@@ -58,9 +58,9 @@ fn fixed_pals_fewer_decks_than_requested() {
 }
 fn job(per_uma: bool, sizes: Value, require: Value) -> Value {
     let mut j = val_job("jobs/pal_U.json");
-    j["per_uma"] = json!(per_uma);
-    j["sizes"] = sizes;
-    j["require"] = require;
+    j["job"]["deck"]["per_uma"] = json!(per_uma);
+    j["job"]["skills"]["sizes"] = sizes;
+    j["job"]["skills"]["require"] = require;
     j
 }
 fn ids(l: &Value) -> Vec<u64> {

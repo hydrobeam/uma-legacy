@@ -20,12 +20,12 @@ fn run(era: &str, tag: &str, jobs: &[Value], state: State) -> Vec<Value> {
 }
 fn job(name: &str) -> Value {
     let mut j = val_job(&format!("plan/{name}.json"));
-    j["no_reports"] = json!(true);
+    j["job"]["career"]["no_reports"] = json!(true);
     j
 }
 fn with_roll(plan: &Value, stars: &Value) -> Value {
     let mut j = plan.clone();
-    j["next"]["roll"] = stars.clone();
+    j["job"]["career"]["next"]["roll"] = stars.clone();
     j
 }
 fn fixture() -> Value {
@@ -94,12 +94,15 @@ fn rolls_carried_cold_and_after_a_reload() {
     let plan = job("p16");
     // the page's Reroll: its search job (her veteran fixed as a parent) carries the roll of the plan on show
     let mut search = plan.clone();
-    let o = search.as_object_mut().unwrap();
-    o.remove("next");
-    o.insert("compare".into(), json!(true));
+    let career = search["job"]["career"].as_object_mut().unwrap();
+    career.remove("next");
+    career.insert("compare".into(), json!(true));
+    // (the carried plan job as a job's part: no command)
+    let mut plan_part = plan["job"].clone();
+    plan_part.as_object_mut().unwrap().remove("cmd");
     let carried = |w: &[Value]| {
         let mut j = search.clone();
-        j["roll"] = json!({"job": plan, "stars": w[0]});
+        j["job"]["roll"] = json!({"job": plan_part, "stars": w[0]});
         j
     };
     let st = TempFile::new("plan-roll-state");

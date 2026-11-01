@@ -244,7 +244,7 @@ test('a commit of a setting the editors do not show redraws none of them and re-
     });
   }
   try {
-    S.setRank('0.20,0.70,0.10');
+    S.setRank('ss_and_up');
     await settle();
     readsAfter = idReads;
   } finally {
@@ -289,15 +289,15 @@ test("a list's keys are unique: a target held twice, in the list and in a preset
 });
 
 test('two picks of the rank in one task (an edit and its undoing, before any redraw) both count: by click and by key', async () => {
-  fresh({ rank: '0.50,0.45,0.05' });
+  fresh({ rank: 'below_ss' });
   mount('rank-ctl');
   await settle();
   const box = document.getElementById('rank-ctl'),
     pill = (v) => box.querySelector(`button[data-v="${v}"]`);
   const written = [],
     stop = S.fields.rank.subscribe((rank) => written.push(rank));
-  pill('0.20,0.70,0.10').click();
-  pill('0.50,0.45,0.05').click();
+  pill('ss_and_up').click();
+  pill('below_ss').click();
   await settle();
   const group = byId(box, 'rank'),
     key = (k) => group.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
@@ -307,6 +307,6 @@ test('two picks of the rank in one task (an edit and its undoing, before any red
   stop();
   const rank = S.settings.value.rank;
   render(null, box);
-  assert.deepEqual(written, ['0.50,0.45,0.05', '0.20,0.70,0.10', '0.50,0.45,0.05', '0.20,0.70,0.10', '0.50,0.45,0.05']);
-  assert.equal(rank, '0.50,0.45,0.05');
+  assert.deepEqual(written, ['below_ss', 'ss_and_up', 'below_ss', 'ss_and_up', 'below_ss']);
+  assert.equal(rank, 'below_ss');
 });

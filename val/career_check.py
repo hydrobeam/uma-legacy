@@ -151,7 +151,7 @@ class Findings:
 
 def check_career(report, job, relations, model, findings, where):
     findings.careers += 1
-    legacies, targets = job["legacies"], job["targets"]
+    legacies, targets = job["job"]["career"]["legacies"], job["job"]["skills"]["targets"]
     groups = [t["group"] for t in targets]
     trainee = report["trainee"]["id"]
     slots = slots_of(relations, legacies, trainee, report["parents"])
@@ -214,7 +214,7 @@ def target_chances(report, job, inherited, model):
     miss_probability = model.deck_miss_probability(report["deck"])
     uncertain = model.uncertain_targets
     chances = []
-    for k, (target, reported) in enumerate(zip(job["targets"], report["targets"])):
+    for k, (target, reported) in enumerate(zip(job["job"]["skills"]["targets"], report["targets"])):
         scale = inherited.scale[k]
         if target["group"] not in uncertain:
             chances.append(TargetChances(gold=1.0, p=GEN_GOLD * scale))
@@ -263,10 +263,10 @@ def check_buying(where, findings, target, reported, exact, scale):
 def joint_p_all(report, job, inherited, model):
     """E over the deck of the product of each target's landing chance (inclusion-exclusion over its no-gold / no-hint
     requirements, joint_check's `lineage` with per-target q and spark scale)"""
-    groups = [t["group"] for t in job["targets"]]
+    groups = [t["group"] for t in job["job"]["skills"]["targets"]]
     miss_probability = model.deck_miss_probability(report["deck"])  # (memoised per deck: `memoised`)
     coefficients, fixed = [], 1.0
-    for k, (target, reported) in enumerate(zip(job["targets"], report["targets"])):
+    for k, (target, reported) in enumerate(zip(job["job"]["skills"]["targets"], report["targets"])):
         scale = inherited.scale[k]
         if target["group"] not in model.uncertain_targets:
             fixed *= GEN_GOLD * scale
@@ -340,7 +340,7 @@ def main(tag):
     pairs = []
     for era, name in json.load(open(os.path.join(VALIDATION_DIR, "jobs.json"))):
         job_path = os.path.join(VALIDATION_DIR, "jobs", name + ".json")
-        if json.load(open(job_path)).get("mode") == "career":
+        if json.load(open(job_path))["job"]["cmd"] == "career":
             pairs.append((f"{era}__{name}", job_path, os.path.join(VALIDATION_DIR, f"{tag}__{era}__{name}.out"), era))
     plan_dir = os.path.join(VALIDATION_DIR, "plan")
     for era, name in json.load(open(os.path.join(plan_dir, "jobs.json"))):

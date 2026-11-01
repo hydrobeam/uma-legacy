@@ -30,7 +30,7 @@ fn candidates(next: &Value) -> (Vec<Value>, Vec<Value>) {
 fn the_veterans_order_changes_no_candidate() {
     let in_order = val_job("plan/p10.json");
     let mut reversed = in_order.clone();
-    reversed["legacies"].as_array_mut().unwrap().reverse();
+    reversed["job"]["career"]["legacies"].as_array_mut().unwrap().reverse();
     let next = [&plans("in-order", &[&in_order])[0], &plans("reversed", &[&reversed])[0]];
     assert_eq!(candidates(next[0]), candidates(next[1]));
     assert_eq!(next[0]["v0"].as_f64().unwrap().to_bits(), next[1]["v0"].as_f64().unwrap().to_bits());
@@ -40,7 +40,7 @@ fn the_veterans_order_changes_no_candidate() {
 fn the_veterans_order_changes_no_presearched_candidate() {
     let in_order = p16_borrow();
     let mut reversed = in_order.clone();
-    reversed["legacies"].as_array_mut().unwrap().reverse();
+    reversed["job"]["career"]["legacies"].as_array_mut().unwrap().reverse();
     let next = [&plans("borrow-in-order", &[&in_order])[0], &plans("borrow-reversed", &[&reversed])[0]];
     assert!(
         next[0]["hint"].as_array().unwrap().iter().all(|entry| entry["basis"] == "searched"),
@@ -54,9 +54,9 @@ fn the_veterans_order_changes_no_presearched_candidate() {
 #[test]
 fn a_cap_kept_under_another_fixed_veteran_is_not_read() {
     let mut in_order = val_job("plan/p10.json");
-    in_order["fix"] = serde_json::json!([6]);
+    in_order["job"]["career"]["fix"] = serde_json::json!([6]);
     let mut swapped = in_order.clone();
-    swapped["legacies"].as_array_mut().unwrap().swap(1, 6);
+    swapped["job"]["career"]["legacies"].as_array_mut().unwrap().swap(1, 6);
     let chained = plans("chained", &[&swapped, &in_order]);
     let plain = &plans("plain", &[&in_order])[0];
     assert_eq!(chained[1]["v0"].as_f64().unwrap().to_bits(), plain["v0"].as_f64().unwrap().to_bits());

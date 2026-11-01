@@ -2894,12 +2894,6 @@
  "findings": [
   {
    "section": "2",
-   "statement": "The solver's default mix is the page's below-17,500 mix",
-   "verdict": "holds",
-   "evidence": "solver (0.5, 0.45, 0.05), page (0.5, 0.45, 0.05)"
-  },
-  {
-   "section": "2",
    "statement": "Each scenario's band is the one most of its careers reach: the share at 17,500 or more is above one half (95% interval) exactly for the scenarios the page puts at 17,500 and up",
    "verdict": "holds",
    "evidence": "every scenario agrees"

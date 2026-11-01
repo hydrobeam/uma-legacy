@@ -50,7 +50,7 @@ pub(crate) struct Plan {
     pub(crate) umas_certified: usize,
     pub(crate) umas_unproven: usize,
     pub(crate) work: PlanWork,
-    pub(crate) sur: u8,
+    pub(crate) sur: crate::career::plan::SurrogateMode,
     pub(crate) sur_diff: Vec<SurrogateDifference>,
     pub(crate) loop_ms: f64,
     pub(crate) search_ms: f64,

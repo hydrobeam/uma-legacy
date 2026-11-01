@@ -4,12 +4,13 @@
 //! a side dearer than the old fit says it is, and a lift since then still lowers the cap. A plan keeps its candidates'
 //! curves (`KeptCaps`, in `KeptState::step_caps` and the page's store) and a later plan of the same setup reads them
 //! while its pool holds that pool's veterans; a removed veteran voids them.
+use crate::career::Legacy;
 use crate::career::plan::cont::{BuildPlan, Cont};
-use crate::career::state::{KeptState, STATE_MAX_N, hash_text};
+use crate::career::state::{KeptState, STATE_MAX_N};
 use crate::hex::{Bits, Key};
+use crate::key::content_key;
 use crate::uma::UmaIndex;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use ts_rs::TS;
 
 /// Kept plans' caps held (the most recent last): a few numbers each.
@@ -131,7 +132,7 @@ impl StepCaps {
 
 /// Where a plan's caps hold: its scope (the setup, deck space and borrowing rule, `kept::plan_scope`; the fixed parents'
 /// veterans; and the trainee filter: the careers a kept plan's policy runs must stay open) and its pool's veterans, each
-/// veteran by her record's text (`hash_text`), ascending (a multiset: two identical records are two veterans). The fixed
+/// veteran by her record's key (`content_key`), ascending (a multiset: two identical records are two veterans). The fixed
 /// parents are named by their veterans, not their positions: the pool's order is not part of the key, so a position
 /// would name another veteran once the legacies are reordered
 #[derive(Clone, PartialEq, Eq)]
@@ -141,20 +142,15 @@ pub(crate) struct CapPool {
 }
 
 impl CapPool {
-    /// A job's: `fixed_parents` its fixed parents' positions in its legacies, `plan_scope` its `kept::plan_scope`.
-    pub(crate) fn of(job: &Value, fixed_parents: &[usize], plan_scope: u64) -> Self {
-        let trainees = job.get("trainees").map_or_else(String::new, Value::to_string);
-        let legacies = job.get("legacies").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
-        let veteran = |legacy: &Value| hash_text(&legacy.to_string());
-        let mut veterans: Vec<u64> = legacies.iter().map(veteran).collect();
+    /// A job's: its `legacies` and `trainees` filter, `fixed_parents` its fixed parents' positions in its legacies,
+    /// `plan_scope` its `kept::plan_scope`.
+    pub(crate) fn of(legacies: &[Legacy], trainees: &[u32], fixed_parents: &[usize], plan_scope: u64) -> Self {
+        let mut veterans: Vec<u64> = legacies.iter().map(content_key).collect();
         veterans.sort_unstable();
         let mut fixed: Vec<u64> =
-            fixed_parents.iter().filter_map(|&parent| legacies.get(parent)).map(veteran).collect();
+            fixed_parents.iter().filter_map(|&parent| legacies.get(parent)).map(content_key).collect();
         fixed.sort_unstable();
-        Self {
-            scope: plan_scope ^ hash_text(&trainees).rotate_left(5) ^ hash_text(&format!("{fixed:?}")).rotate_left(1),
-            veterans,
-        }
+        Self { scope: plan_scope ^ content_key(trainees).rotate_left(5) ^ content_key(&fixed).rotate_left(1), veterans }
     }
     /// Whether this pool holds every veteran of `kept` (each as often), in the same scope.
     fn holds(&self, kept: &Self) -> bool {
@@ -303,7 +299,14 @@ pub(crate) fn caps_in(stored: &[StoredCaps]) -> Option<Vec<KeptCaps>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
+
+    /// The pool of a job's `legacies` and `trainees` (JSON as a job sends them), its fixed parents at `fixed`.
+    fn pool_of(job: &Value, fixed: &[usize], scope: u64) -> CapPool {
+        let legacies: Vec<Legacy> = serde_json::from_value(job["legacies"].clone()).unwrap();
+        let trainees: Vec<u32> = serde_json::from_value(job["trainees"].clone()).unwrap();
+        CapPool::of(&legacies, &trainees, fixed, scope)
+    }
 
     /// Her odds in the kept plan and now (a veteran added since lifted her).
     const KEPT_ODDS: f64 = 0.001;
@@ -321,7 +324,7 @@ mod tests {
     }
 
     fn pool(job: Value) -> CapPool {
-        CapPool::of(&job, &[], 7)
+        pool_of(&job, &[], 7)
     }
 
     /// A pool holds a kept one when it has each of its veterans (as often, any order) in the same scope; a removed
@@ -348,7 +351,7 @@ mod tests {
         assert!(careers(&kept, &removed).is_none(), "a removed veteran keeps the cap");
         assert!(careers(&kept, &filtered).is_none(), "another trainee filter keeps the cap");
         assert!(careers(&kept, &twice).is_none(), "a repeated veteran stands for a missing one");
-        let other_scope = CapPool::of(&json!({"legacies": [first, second, third], "trainees": []}), &[], 8);
+        let other_scope = pool_of(&json!({"legacies": [first, second, third], "trainees": []}), &[], 8);
         assert!(careers(&kept, &other_scope).is_none(), "another scope");
         keep_caps(&mut kept, added, vec![(UmaIndex(4), fast)]);
         let more = pool(json!({"legacies": [first, second, third, json!({"chara": 9})], "trainees": []}));
@@ -377,8 +380,8 @@ mod tests {
         let swapped = json!({"legacies": [first, third, second], "trainees": []});
         let in_order = json!({"legacies": [first, second, third], "trainees": []});
         let mut kept = KeptState::default();
-        keep_caps(&mut kept, CapPool::of(&swapped, &[2], 7), vec![(UmaIndex(4), kept_cap(0.01))]);
-        let read = |job: &Value, fixed: &[usize]| careers(&kept, &CapPool::of(job, fixed, 7));
+        keep_caps(&mut kept, pool_of(&swapped, &[2], 7), vec![(UmaIndex(4), kept_cap(0.01))]);
+        let read = |job: &Value, fixed: &[usize]| careers(&kept, &pool_of(job, fixed, 7));
         assert!(read(&in_order, &[2]).is_none(), "position 2 is another veteran now");
         assert!(read(&in_order, &[1]).is_some(), "the same veteran");
         assert!(read(&in_order, &[]).is_none(), "no fixed parent is another policy");

@@ -15,14 +15,15 @@ const TARGET_ONE_VETERAN_LACKS: u64 = 20166;
 /// The constructed pool's simulation under `goal`, stopped at `max_careers`.
 fn simulate(goal: &str, max_careers: usize) -> Value {
     let career_job = val_job("jobs/career_U.json");
-    let mut legacies: Vec<Value> = [0, 3, 6, 9].iter().map(|&i| career_job["legacies"][i].clone()).collect();
+    let mut legacies: Vec<Value> =
+        [0, 3, 6, 9].iter().map(|&i| career_job["job"]["career"]["legacies"][i].clone()).collect();
     for legacy in &mut legacies[1..] {
         legacy["sparks"].as_array_mut().unwrap().retain(|spark| spark[0] != TARGET_ONE_VETERAN_LACKS);
     }
     let mut job = career_job;
-    job["targets"] = json!([{"group": 20049, "guaranteed": 2}, {"group": TARGET_ONE_VETERAN_LACKS}]);
-    job["legacies"] = json!(legacies);
-    job["simulate"] =
+    job["job"]["skills"]["targets"] = json!([{"group": 20049, "guaranteed": 2}, {"group": TARGET_ONE_VETERAN_LACKS}]);
+    job["job"]["career"]["legacies"] = json!(legacies);
+    job["job"]["career"]["simulate"] =
         json!({"policy": "greedy", "goal": goal, "seed": 1, "runs": 1, "max_careers": max_careers, "margin": 0});
     run_job(&format!("sim-looped-{goal}-{max_careers}"), &job)
 }

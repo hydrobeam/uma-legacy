@@ -66,7 +66,8 @@ pub(crate) struct SkillsRaw {
     pub names: std::collections::HashMap<String, (u32, u8)>,
 }
 
-#[derive(Deserialize, Clone, ts_rs::TS)]
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct SkillTarget {
     pub group: u32,
     /// 0 = none, 1 = white guaranteed, 2 = gold guaranteed
@@ -80,15 +81,16 @@ pub(crate) struct SkillTarget {
     #[ts(as = "Option<_>", optional)]
     pub deck_gold: f64,
 }
-#[derive(Deserialize, ts_rs::TS)]
+/// A job's targets and roster: the skill model's half of a deck or career job (`request::DeckRequest`, `CareerRequest`).
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct SkillJob {
     pub targets: Vec<SkillTarget>,
-    /// Assumed 1/2/3-star shares of the lineage's sparks; defaults to the below-17,500-rank mix (`dstar`).
-    /// The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2). Checked as it is read
-    /// (`star_shares`).
-    #[serde(default = "dstar", deserialize_with = "star_shares")]
+    /// the lineage's rank band, which sets the 1/2/3-star shares of its sparks (`RankClass::star_mix`); below SS
+    /// unless sent
+    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub star_dist: [f64; 3],
+    pub rank_class: RankClass,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub owned: Vec<u32>,
@@ -124,26 +126,36 @@ pub(crate) struct SkillJob {
     #[ts(as = "Option<_>", optional)]
     pub sizes: Vec<usize>,
 }
-pub(crate) const fn dstar() -> [f64; 3] {
-    [0.50, 0.45, 0.05]
+/// The rank band a job assumes its lineages were bred at (the player picks it): its star mix is the 1/2/3-star shares
+/// of their sparks (assumed; docs/RESEARCH.md section 2).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RankClass {
+    /// rank score 6,500 to 17,499 (B to S+)
+    #[default]
+    BelowSs,
+    /// rank score 17,500 and up (SS and above)
+    SsAndUp,
 }
 
-/// How far a star mix's shares may sum from 1 (`star_shares`).
-const STAR_MIX_TOLERANCE: f64 = 1e-9;
-
-/// A job's star mix: three finite, non-negative shares (1, 2 and 3 stars) summing to 1 within `STAR_MIX_TOLERANCE`.
-/// Every reader then takes the same distribution: the inheritance's mix terms (`mix_term`, the loop's base chance)
-/// weight by the shares, and a drawn spark (`star_draw`) gets its third share as 1 less the other two, which is the
-/// third share to within the tolerance.
-fn star_shares<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<[f64; 3], D::Error> {
-    let shares = <[f64; 3]>::deserialize(deserializer)?;
-    let sum: f64 = shares.iter().sum();
-    if shares.iter().any(|share| !share.is_finite() || *share < 0.0) || (sum - 1.0).abs() > STAR_MIX_TOLERANCE {
-        return Err(serde::de::Error::custom(format!(
-            "star_dist: three non-negative shares of 1, 2 and 3 stars summing to 1, not {shares:?}"
-        )));
+impl RankClass {
+    /// Every class.
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 2] = [Self::BelowSs, Self::SsAndUp];
+    /// The 1/2/3-star shares of a lineage's sparks at this rank: three non-negative shares summing to 1.
+    pub(crate) const fn star_mix(self) -> [f64; 3] {
+        match self {
+            Self::BelowSs => [0.50, 0.45, 0.05],
+            Self::SsAndUp => [0.20, 0.70, 0.10],
+        }
     }
-    Ok(shares)
+}
+
+impl SkillJob {
+    /// The job's star mix (`RankClass::star_mix`).
+    pub(crate) const fn star_mix(&self) -> [f64; 3] {
+        self.rank_class.star_mix()
+    }
 }
 
 /// A spark's stars drawn from star mix `star_mix` with `uniform` in [0, 1) (the simulator's draw; the page's roll
@@ -309,7 +321,8 @@ impl<'data> Model<'data> {
         let uncertain: Vec<usize> = (0..job.targets.len()).filter(|&i| job.targets[i].guaranteed != 2).collect();
         let n_fixed_gold = (job.targets.len() - uncertain.len()) as i32;
         // (INSP_PER_STAR at 1, 2 and 3 stars)
-        let base = job.star_dist[0] * 0.03 + job.star_dist[1] * 0.06 + job.star_dist[2] * 0.09;
+        let star_mix = job.star_mix();
+        let base = star_mix[0] * 0.03 + star_mix[1] * 0.06 + star_mix[2] * 0.09;
         let mut outfit_options = vec![];
         let mut no_outfit = vec![];
         let mut event_chances: Vec<Vec<Vec<f64>>> = vec![];
@@ -1137,13 +1150,17 @@ mod tests {
     }
 
     #[test]
-    fn star_dist_is_three_shares_of_one() {
-        let job = |star_dist: serde_json::Value| {
-            serde_json::from_value::<SkillJob>(json!({"targets": [{"group": 20159}], "star_dist": star_dist}))
-        };
-        assert_eq!(job(json!([0.2, 0.7, 0.1])).unwrap().star_dist, [0.2, 0.7, 0.1]);
-        for bad in [json!([0.5, 0.5, 0.5]), json!([1.2, -0.1, -0.1]), json!([0.5, 0.45])] {
+    fn rank_classes_are_star_mixes() {
+        let job = |fields: serde_json::Value| serde_json::from_value::<SkillJob>(fields);
+        let mix = |fields| job(fields).unwrap().star_mix();
+        assert_eq!(mix(json!({"targets": [{"group": 20159}]})), [0.5, 0.45, 0.05], "below SS unless sent");
+        assert_eq!(mix(json!({"targets": [{"group": 20159}], "rank_class": "ss_and_up"})), [0.2, 0.7, 0.1]);
+        for bad in [json!({"targets": [], "rank_class": "ss"}), json!({"targets": [], "star_dist": [0.2, 0.7, 0.1]})] {
             assert!(job(bad.clone()).is_err(), "{bad} accepted");
+        }
+        for class in RankClass::ALL {
+            let shares = class.star_mix();
+            assert!(shares.iter().all(|&share| share >= 0.0) && (shares.iter().sum::<f64>() - 1.0).abs() < 1e-12);
         }
         // the draw reads the mix as the mix terms do: 1 star below the first share, 2 below the first two
         assert_eq!([0.0, 0.19, 0.2, 0.89, 0.9].map(|u| star_draw([0.2, 0.7, 0.1], u)), [1, 1, 2, 2, 3]);

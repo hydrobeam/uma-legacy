@@ -192,28 +192,29 @@ class DeckModel(NamedTuple):
 
 
 def deck_model(job, d):
-    """The solver's deck model for `job` (data folder `d`): per reported deck, P(no outcome of the deck's sources breaks a
-    requirement), jointly over the chain process; and a loop lineage's P(all) from it (`lineage`)"""
+    """The solver's deck model for job file `job` (data folder `d`): per reported deck, P(no outcome of the deck's
+    sources breaks a requirement), jointly over the chain process; and a loop lineage's P(all) from it (`lineage`)"""
     read_data = lambda f: json.load(open(os.path.join(d, f)))
+    files, skills, deck = job["files"], job["job"]["skills"], job["job"]["deck"]
     skill_targets = {}
-    for g, w, gd in read_data(job["skills_file"])["skills"]:
+    for g, w, gd in read_data(files["skills"])["skills"]:
         skill_targets[w] = SkillReference(group=g, tier=1)
         if gd:
             skill_targets[gd] = SkillReference(group=g, tier=2)
-    cards = {c["id"]: c for c in read_data(job["cards_file"])["cards"]}
-    card_events = read_data(job.get("events_file", "card_events.json"))["cards"]
+    cards = {c["id"]: c for c in read_data(files["cards"])["cards"]}
+    card_events = read_data(files.get("events", "card_events.json"))["cards"]
     # the solver's model, restated: chain events ~ Binomial(n, p), p by the deck's pals unless the job fixes (n, p);
     # training draws h = base(scenario) x (1 + hf/100) x (1 + d(scenario) x specialty/100) over the card's skill options
-    slots = job.get("chain_rule", "card") == "slots"
-    base, spec_d = HINT["hint_base"](job.get("scenario", "unity")), HINT["hint_spec"](job.get("scenario", "unity"))
+    slots = deck.get("chain_rule", "card") == "slots"
+    base, spec_d = HINT["hint_base"](deck.get("scenario", "unity")), HINT["hint_spec"](deck.get("scenario", "unity"))
 
     def event_law(pals):
         """the deck's chain-event pmf"""
-        count, chance = job.get("chain_events") or (CHAIN_N, 1 / (1 + math.exp(-(CHAIN_A + CHAIN_B * pals))))
+        count, chance = deck.get("chain_events") or (CHAIN_N, 1 / (1 + math.exp(-(CHAIN_A + CHAIN_B * pals))))
         return lambda e: math.comb(count, e) * chance**e * (1 - chance) ** (count - e) if 0 <= e <= count else 0.0
 
-    uncertain_targets = [t["group"] for t in job["targets"] if t.get("guaranteed", 0) != 2]
-    fixed_target_count = len(job["targets"]) - len(uncertain_targets)
+    uncertain_targets = [t["group"] for t in skills["targets"] if t.get("guaranteed", 0) != 2]
+    fixed_target_count = len(skills["targets"]) - len(uncertain_targets)
     target_count = len(uncertain_targets)
     nm = lambda x: (x, 1.0) if isinstance(x, str) else (x[0], x[1])
     target_skill = lambda n: (
@@ -267,7 +268,7 @@ def deck_model(job, d):
         for n, p in e.get("chance", []):
             if target_skill(n):
                 fixed.append([(p, [target_skill(n)])])
-        for c_, g, lvl, p in job.get("odds_events", []):  # inline per-run events of the job
+        for c_, g, lvl, p in deck.get("odds_events", []):  # inline per-run events of the job
             if c_ == cid and g in uncertain_targets:
                 fixed.append([(p, [(uncertain_targets.index(g), lvl)])])
         chain = {}
@@ -319,7 +320,7 @@ def deck_model(job, d):
             kind=kind,
         )
 
-    skills_db = read_data(job["skills_file"])
+    skills_db = read_data(files["skills"])
     names = {g: (w, gd) for g, w, gd in skills_db["skills"]}
     skill_name = lambda k, l: (
         names[uncertain_targets[k]][1] if l == 2 and names[uncertain_targets[k]][1] else names[uncertain_targets[k]][0]
@@ -402,6 +403,7 @@ def check_loops(out, job, d, alt_q=None):
     """(max |recomputed / reported p_all - 1| over the result's loops, [[P per vector] per loop]): with `alt_q` (top ->
     list of per-lineage q vectors), per loop the mean P(all) at each of those q vectors (none without it)"""
     deck_miss_probability, lineage, skills_db, uncertain_targets, _ = deck_model(job, d)
+    skills = job["job"]["skills"]
     worst = 0.0
     alt = []
     for top in out.get("top", []):
@@ -413,24 +415,24 @@ def check_loops(out, job, d, alt_q=None):
         # `extra` / white guarantees), and the trainee events that hint a target's white (`trainee_hints`)
         def options(t, loop=loop):
             uid = loop["members"][t]["id"]
-            outs = [o for o in skills_db["cards"].get(str(uid), []) if o[0] not in job.get("exclude_outfits", [])] or [
-                [0, "any", []]
-            ]
+            outs = [
+                o for o in skills_db["cards"].get(str(uid), []) if o[0] not in skills.get("exclude_outfits", [])
+            ] or [[0, "any", []]]
             res = []
             for o in outs:
                 lv = []
                 for g in uncertain_targets:
                     l = max(
                         [x[1] for x in o[2] if x[0] == g]
-                        + [x[2] for x in job.get("extra", []) if x[0] == uid and x[1] == g]
+                        + [x[2] for x in skills.get("extra", []) if x[0] == uid and x[1] == g]
                         + [0]
                     )
-                    if job["targets"][[t_["group"] for t_ in job["targets"]].index(g)].get("guaranteed", 0) == 1:
+                    if skills["targets"][[t_["group"] for t_ in skills["targets"]].index(g)].get("guaranteed", 0) == 1:
                         l = max(l, 1)
                     lv.append(l)
                 ids = {uid, o[0]}
                 ew = [
-                    1 - math.prod(1 - h[2] for h in job.get("trainee_hints", []) if h[0] in ids and h[1] == g)
+                    1 - math.prod(1 - h[2] for h in skills.get("trainee_hints", []) if h[0] in ids and h[1] == g)
                     for g in uncertain_targets
                 ]
                 res.append((lv, ew))
@@ -460,7 +462,7 @@ if __name__ == "__main__":
     bad = checked = 0
     for era, j in json.load(open(os.path.join(V, "jobs.json"))):
         job = json.load(open(os.path.join(V, "jobs", j + ".json")))
-        if job.get("mode") != "deck":
+        if job["job"]["cmd"] != "deck":
             continue
         name = era + "__" + j
         for m in ("", "pu"):

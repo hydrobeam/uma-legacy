@@ -3,7 +3,7 @@ use crate::deck::chains::{
     CHAIN_A, CHAIN_B, CHAIN_N, ChainEvents, ChainKind, PickRule, chain_marginals, chain_marginals_dense,
     chain_marginals_ref, chain_states, event_pmf, expit, key_level, stop_risk_code,
 };
-use crate::deck::hints::{hint_base, hint_miss, hint_spec, miss_draws};
+use crate::deck::hints::{Scenario, hint_base, hint_miss, hint_spec, miss_draws};
 use crate::deck::joint::reference::joint_trainee_ref;
 use crate::deck::joint::upper::upper_na;
 use crate::deck::joint::{JointExt, JointQuery, LandPre, joint, joint_fast, land_factor};
@@ -173,9 +173,9 @@ fn training_draws_over_two_targets() {
     }
     let both = g.iter().filter(|x| x.rewards.len() == 2).map(|x| x.probability).sum::<f64>();
     assert!(both < tr[0].probability * tr[1].probability);
-    let h = hint_base("unity")
+    let h = hint_base(Scenario::Unity)
         * (1.0 + c.hint_frequency / 100.0)
-        * (1.0 + hint_spec("unity") * c.specialty_priority / 100.0);
+        * (1.0 + hint_spec(Scenario::Unity) * c.specialty_priority / 100.0);
     // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
     assert!((tr[0].probability - (1.0 - hint_miss(1, c.skill_count as usize, h, c.hint_levels))).abs() < 1e-12);
     let (mut white_misses, mut gold_misses) = (vec![1.0; 2], vec![1.0; 2]);

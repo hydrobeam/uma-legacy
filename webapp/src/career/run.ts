@@ -155,9 +155,10 @@ export async function checkPhase(deps: CheckDeps, planned: DeepReadonly<PlanDone
   for (;;) {
     let m: Awaited<ReturnType<CheckDeps['runCheck']>> = null;
     try {
+      const { career } = planned.job;
       const job = {
         ...planned.job,
-        next: { ...planned.job.next, robust: 'next' as const, pair_search: true },
+        career: { ...career, next: { ...career.next, robust: 'next' as const, pair_search: true } },
       };
       m = await deps.runCheck(job);
     } catch {
@@ -322,7 +323,8 @@ export function createRun(deps: RunDeps) {
           page.saveAnswer(`${stateKey()}\n${answerKey}`, store.answer.peek());
         }
         analysis.show(view.shown());
-        if (best && !job.trainees.length && !job.fix.length) analysis.keepBaseline(page.baseKey(job), best);
+        if (best && !job.career.trainees.length && !job.career.fix.length)
+          analysis.keepBaseline(page.baseKey(job), best);
       }
     } catch (e) {
       if (runId !== id) return;
@@ -372,7 +374,7 @@ export function createRun(deps: RunDeps) {
     let planned: PlanState;
     try {
       // Compare may have run this very plan job already (`keptPlan`): take its answer instead of planning again
-      const jp = { ...plain, next: { ...PLAN_NEXT }, no_reports: true },
+      const jp = { ...plain, career: { ...plain.career, next: { ...PLAN_NEXT }, no_reports: true } },
         kept = store.keptPlan(planKey(jp));
       const m2: CareerAnswer | { plan: DeepReadonly<PlanReport>; ms: number } = kept
         ? { plan: kept.r, ms: kept.ms }

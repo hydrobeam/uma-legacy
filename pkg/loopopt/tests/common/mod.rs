@@ -108,7 +108,8 @@ pub fn run_job(tag: &str, job: &Value) -> Value {
     outputs.into_iter().next().expect("one output")
 }
 
-/// The job at `path` under the repository's val/ folder ("plan/p16.json", "jobs/pal_U.json").
+/// The job file at `path` under the repository's val/ folder ("plan/p16.json", "jobs/pal_U.json"): `files` and the
+/// `job` (`cmd`, `skills`, `deck`, `career`).
 pub fn val_job(path: &str) -> Value {
     let full = format!("{}/../../val/{path}", env!("CARGO_MANIFEST_DIR"));
     serde_json::from_str(&std::fs::read_to_string(&full).expect("a val job")).expect("a JSON job")

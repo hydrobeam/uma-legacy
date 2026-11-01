@@ -13,10 +13,13 @@ pub(crate) const CHAIN_B: f64 = 0.168_072;
 /// `stop_risk`, the job's `event_stop_risk`) ends it, as k of n: one share for every such link, in place of its own k
 /// of n outcomes (docs/RESEARCH.md section 8's STOP_SHARE). Packed like a stop risk (`stop_risk_code`), so the chain odds take it as the exact fraction 1/3.
 pub(crate) const CHAIN_STOP_SHARE: (u8, u8) = (1, 3);
-/// How a chain event picks the card it advances among the cards whose chains still run (`pick_weight`).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+/// How a chain event picks the card it advances among the cards whose chains still run (`pick_weight`); a job's
+/// `chain_rule`.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum PickRule {
     /// Each running card equally, however many links it has left: the model (docs/RESEARCH.md section 8).
+    #[default]
     Card,
     /// Each running card in proportion to its links left: the model before the card rule (job `chain_rule: "slots"`).
     Slots,

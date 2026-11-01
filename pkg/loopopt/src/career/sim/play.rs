@@ -10,11 +10,12 @@ use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
 use crate::career::sim::report::{
     IndexRecord, LoopAudit, PickChange, RunStats, SimReply, SimReport, SimRun, SurrogateAudit, SurrogateCheck,
 };
-use crate::career::sim::{Goal, IndexAction, Sim, SimJob, SimulationOptions, SimulationRoster, family, legacy_record};
+use crate::career::sim::{
+    Goal, IndexAction, Policy, Sim, SimJob, SimulationOptions, SimulationRoster, family, legacy_record,
+};
 use crate::career::state::{KeptState, kept_swap};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use crate::refusal::Refusal;
-use serde_json::Value;
 use std::rc::Rc;
 
 /// A veteran's stars per job target, her distinct G1 wins and her pink sparks, sorted: what dominance pruning
@@ -297,7 +298,7 @@ impl Sim<'_, '_> {
         let (mut finishing_careers, mut last_finishing_p_all) = (0usize, None::<f64>);
         let mut interpolation_scratch = vec![];
         let mut last_key = String::new();
-        let exact = self.settings.policy == "greedy_exact";
+        let exact = self.settings.policy == Policy::GreedyExact;
         // Exact and index policies keep their decision until the pool changes.
         let mut kept_decision: Option<Rc<Cur>> = None;
         let mut since_check = 0usize;
@@ -336,7 +337,7 @@ impl Sim<'_, '_> {
             if self.settings.progress > 0 && career_index.is_multiple_of(self.settings.progress) && career_index > 0 {
                 eprintln!(
                     "  {} run {}: {} careers, pool {}, S {:.4}, p {:.3e}",
-                    self.settings.policy,
+                    self.settings.policy.name(),
                     run,
                     career_index,
                     state.legacies.len(),
@@ -452,23 +453,18 @@ pub(in crate::career) fn simulate<'data>(
     input: &JobInputs<'data>,
     legacies: &[Legacy],
     trainees: &[crate::uma::UmaIndex],
-    configuration: &Value,
+    config: &SimJob,
 ) -> SimReply {
     let refused = |why: String| SimReply::Refusal(Refusal::new(why));
-    let config: SimJob = match serde_json::from_value(configuration.clone()) {
-        Ok(config) => config,
-        Err(error) => return refused(format!("simulate: {error}")),
-    };
     let target_count = env.setup.target_count;
     if target_count > 12 || env.setup.uncertain_count > 10 {
         return refused("simulate takes at most 12 targets, 10 of them not guaranteed".to_owned());
     }
-    let base = match config.policy.as_str() {
-        "greedy" | "greedy_exact" => Base::Greedy,
-        "loop" => Base::Loop,
-        "trace" => Base::Trace,
-        "index" => Base::Index,
-        policy => return refused(format!("simulate: unknown policy {policy}")),
+    let base = match config.policy {
+        Policy::Greedy | Policy::GreedyExact => Base::Greedy,
+        Policy::Loop => Base::Loop,
+        Policy::Trace => Base::Trace,
+        Policy::Index => Base::Index,
     };
     if config.force.is_some() && matches!(base, Base::Loop | Base::Trace) {
         return refused(
@@ -544,7 +540,7 @@ pub(in crate::career) fn simulate<'data>(
         let wall = started.elapsed().as_secs_f64();
         eprintln!(
             "{} run {}: E {:.1}, {} careers, tail {:.2}, final p {:.3e}, pool {}, {:.1} s",
-            config.policy,
+            config.policy.name(),
             run,
             expected_careers,
             careers,
@@ -604,7 +600,7 @@ pub(in crate::career) fn simulate<'data>(
     }
     let looped_goal = config.goal == Goal::Looped;
     SimReply::Report(Box::new(SimReport {
-        simulate: configuration.clone(),
+        simulate: config.clone(),
         expected: stats(&run_expectations),
         policy: config.policy,
         runs,

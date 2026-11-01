@@ -16,7 +16,8 @@ use crate::career::plan::score::{CareerScore, KeptScoring, score_career};
 use crate::career::plan::search::alternative_deck_careers;
 use crate::career::plan::search::{OPT_SHOW, PROXY_SAVE, best_sur, capped, certified, is_full};
 use crate::career::plan::{
-    ParentPool, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, found_career, found_lineage,
+    ParentPool, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, SurrogateMode, found_career,
+    found_lineage,
 };
 use crate::career::search::{Found, RankedPair};
 use crate::career::sim::Sim;
@@ -323,7 +324,7 @@ fn looped_career(
         let pair = [first_parent, second_parent];
         // (the exact search's bar starts at the best looped career so far: only a career above it can
         // replace it, as in `best_of`; a tie keeps the earlier pair either way)
-        let found = if settings.surrogate_mode == 1 {
+        let found = if settings.surrogate_mode == SurrogateMode::Surrogate {
             best_sur(simulator, ParentPool { pool: pick_pool, fixed_parents: &pair }, trainee, settings.sur_margin, buf)
         } else {
             simulator.env.state.floor = best.as_ref().map_or(f64::NEG_INFINITY, |career| career.value);

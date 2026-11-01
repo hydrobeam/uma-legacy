@@ -1,8 +1,10 @@
 // A roll: a random result of a career (the veteran it leaves), drawn from the solver's report of it. No page state:
 // each function takes the report, what it reads of the settings and data (`RollSetup`) and the random source (`rnd`,
 // Math.random on the page; the browser suite's `career` group passes a seeded one and runs these in node).
-import { assert, must } from '../must.ts';
+import { must } from '../must.ts';
 import { drawPink } from '../pink.ts';
+import { SOLVER } from '../gen/constants.ts';
+import type { RankClass } from '../gen/solver.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerReport } from './job.ts';
 
@@ -12,8 +14,8 @@ export interface RollSetup {
   career: { races: readonly string[]; uniques?: Readonly<Record<number, unknown>> };
   /** the target skills, in the job's order (the outcome sets' bit order) */
   targets: readonly { group: number }[];
-  /** the rank band's star mix: the chances of 1, 2 and 3 stars, comma-separated */
-  rank: string;
+  /** the lineage's rank band, whose star mix (the chances of 1, 2 and 3 stars) the solver has */
+  rank: RankClass;
 }
 /** A roll: the sparks she landed (skill group -> stars), the skills she bought (group -> 'gold' | 'white'), the G1s she
  * won (race indices, ascending), her pink spark and end grades (pink.ts), her blue (stat -> stars) and unique (outfit
@@ -80,10 +82,9 @@ export function rolledBought(
   }
   return bought;
 }
-// a spark's stars, drawn from the rank band's star mix (`rank`: the chances of 1, 2 and 3 stars)
-export function starDraw(rank: string, rnd: () => number = Math.random): () => number {
-  const [one, two] = rank.split(',').map(Number);
-  assert(one !== undefined && two !== undefined, 'a lineage rank is its chances of 1, 2 and 3 stars (data.ts RANKS)');
+// a spark's stars, drawn from the rank band's star mix (the solver's: the chances of 1, 2 and 3 stars)
+export function starDraw(rank: RankClass, rnd: () => number = Math.random): () => number {
+  const [one, two] = SOLVER.star_mix[rank];
   return () => {
     const u = rnd();
     return u < one ? 1 : u < one + two ? 2 : 3;

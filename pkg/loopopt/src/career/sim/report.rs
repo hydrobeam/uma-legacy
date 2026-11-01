@@ -35,10 +35,9 @@ pub(crate) struct TraceRun {
 /// Every run of a policy on the job's pool, and the expected careers over them.
 #[derive(Serialize, TS)]
 pub(crate) struct SimReport {
-    /// the job's `simulate` object, as sent
-    #[ts(type = "unknown")]
-    pub(crate) simulate: serde_json::Value,
-    pub(crate) policy: String,
+    /// the job's `simulate` settings, each as the job set it or at its default
+    pub(crate) simulate: crate::career::sim::SimJob,
+    pub(crate) policy: crate::career::sim::Policy,
     pub(crate) runs: Vec<SimRun>,
     /// the expected careers over the runs (null: no run)
     #[serde(rename = "E")]

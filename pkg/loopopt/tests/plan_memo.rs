@@ -35,7 +35,7 @@ fn memos_exact_through_a_refit() {
     let mut job = val_job("plan/p11_noagnes.json");
     // (`builder_careers` 1: with the default 3 the alternative rows' lifts already give Cont its exact builders, and no
     // refit follows the pass-2 searches)
-    job["next"] = json!({"proxy_eff": -1.0, "builder_careers": 1});
+    job["job"]["career"]["next"] = json!({"proxy_eff": -1.0, "builder_careers": 1});
     let (on, err_on) = run(&job, false);
     let (off, err_off) = run(&job, true);
     // the refit path ran, with the memos looked up (and hit) in one run and not at all in the other

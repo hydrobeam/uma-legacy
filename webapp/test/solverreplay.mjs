@@ -284,8 +284,8 @@ function workerStandIn(how) {
       this.#jobs++;
       if (background(job)) {
         const step = (this.#steps.get(text) ?? 0) + 1;
-        if (job.next?.robust) this.#steps.set(text, step);
-        const tag = job.next?.robust ? `check step ${step}` : 'store';
+        if (job.career?.next?.robust) this.#steps.set(text, step);
+        const tag = job.career?.next?.robust ? `check step ${step}` : 'store';
         return Promise.all([this.#base, this.#key]).then(([base, history]) =>
           sha256(`${base}\n${history}\n${tag}\n${text}`),
         );

@@ -11,9 +11,9 @@ const BOR: usize = 14;
 
 fn job(bp: Option<&str>) -> Value {
     let mut j = val_job("plan/p16.json");
-    j["legacies"][BOR]["borrowed"] = json!(true);
+    j["job"]["career"]["legacies"][BOR]["borrowed"] = json!(true);
     if let Some(b) = bp {
-        j["borrowed_parent"] = json!(b);
+        j["job"]["career"]["borrowed_parent"] = json!(b);
     }
     j
 }
@@ -106,13 +106,13 @@ fn later_picks_without_a_borrowed_parent_and_plans_with_one() {
     // the page's run as two jobs, after an allow run in the same worker: the combined later job's answer
     let strip_next = |j: &Value| {
         let mut s = j.clone();
-        s.as_object_mut().unwrap().remove("next");
+        s["job"]["career"].as_object_mut().unwrap().remove("next");
         s
     };
     let mut lp = later.clone();
-    lp["no_reports"] = json!(true);
+    lp["job"]["career"]["no_reports"] = json!(true);
     let mut ap = allow.clone();
-    ap["no_reports"] = json!(true);
+    ap["job"]["career"]["no_reports"] = json!(true);
     let two = run_jobs("two", &[&strip_next(&allow), &ap, &strip_next(&later), &lp]);
     assert!(
         without_work(&two[2]["results"]) == without_work(&l["results"]),
@@ -133,11 +133,11 @@ fn later_checks_from_the_kept_plan_without_a_borrowed_parent() {
     const PAIRED: u64 = 15;
     let checked = |bp: Option<&str>| {
         let mut plan = job(bp);
-        plan["legacies"][BOR]["borrowed"] = json!(false);
-        plan["legacies"][PAIRED as usize]["borrowed"] = json!(true);
-        plan["no_reports"] = json!(true);
+        plan["job"]["career"]["legacies"][BOR]["borrowed"] = json!(false);
+        plan["job"]["career"]["legacies"][PAIRED as usize]["borrowed"] = json!(true);
+        plan["job"]["career"]["no_reports"] = json!(true);
         let mut check = plan.clone();
-        check["next"] = json!({"robust": "next", "pair_search": true});
+        check["job"]["career"]["next"] = json!({"robust": "next", "pair_search": true});
         let mut jobs = vec![&plan];
         // (more than the check's variants: the last ones answer its finished report again)
         jobs.extend(std::iter::repeat_n(&check, 14));
@@ -166,7 +166,7 @@ fn later_checks_from_the_kept_plan_without_a_borrowed_parent() {
 fn never_is_the_pool_without_borrowed_veterans() {
     let never = job(Some("never"));
     let mut gone = job(None);
-    gone["legacies"].as_array_mut().unwrap().remove(BOR);
+    gone["job"]["career"]["legacies"].as_array_mut().unwrap().remove(BOR);
     let n = &run_jobs("nv", &[&never])[0];
     let g = &run_jobs("g", &[&gone])[0];
     assert!(without_work(&renumber(&n["results"], BOR)) == without_work(&g["results"]), "results differ");

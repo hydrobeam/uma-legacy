@@ -11,7 +11,7 @@ export const FIXTURES = {
   partlyOwned: stored(
     {
       targets: [{ group: 20049 }, { group: 20159 }, { group: 20166 }],
-      rank: '0.20,0.70,0.10',
+      rank: 'ss_and_up',
       scen: 'gc',
       decksTop: '3',
       perUma: false,
@@ -24,7 +24,7 @@ export const FIXTURES = {
     { cardsOff: { 30001: false, 30002: false, 30003: false, 30004: false, 30005: false } },
   ),
   // the Grand Masters scenario (no guaranteed gold), every card owned
-  grandMasters: stored({ targets: [{ group: 20049 }], scen: 'grandmasters', rank: '0.20,0.70,0.10' }),
+  grandMasters: stored({ targets: [{ group: 20049 }], scen: 'grandmasters', rank: 'ss_and_up' }),
   // blocked: no target
   noTargets: stored({ targets: [] }),
   // blocked: two umas owned

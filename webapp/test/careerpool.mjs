@@ -15,7 +15,7 @@ export default async function careerpool(b) {
   // the goal's steps: full veterans of two different umas -> step 3 in the note; the planner still picks (nothing fixed),
   // pricing them as real full-veteran sides of its trio
   const goalEx = JSON.parse(exText),
-    all8 = Object.fromEntries(goalEx.job.targets.map((t) => [t.group, 2]));
+    all8 = Object.fromEntries(goalEx.job.skills.targets.map((t) => [t.group, 2]));
   for (const v of goalEx.veterans) for (const g of v.parents) g.sparks = {}; // (the test file's parents carry every spark: they would make a looped parent at once)
   const two = [0, goalEx.veterans.findIndex((v) => v.chara !== goalEx.veterans[0].chara)];
   for (const k of two) goalEx.veterans[k].sparks = { ...all8 };
@@ -30,7 +30,7 @@ export default async function careerpool(b) {
     timeout: 300000,
   });
   const goalJob = await pg.evaluate(() =>
-    window.__careerJobs.filter((j) => j.cmd === 'career' && !j.next && !j.compare).at(-1),
+    window.__careerJobs.filter((j) => j.cmd === 'career' && !j.career.next && !j.career.compare).at(-1),
   );
   const goalRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
   const goalCheck =
@@ -102,7 +102,7 @@ export default async function careerpool(b) {
   // the trio path: the same veterans without one target and with their parents' sparks cleared: every career scored
   // against the cheapest trio, each step named, the pick explained
   const trioEx = JSON.parse(exText),
-    drop = String(trioEx.job.targets.find((x) => !x.guaranteed).group);
+    drop = String(trioEx.job.skills.targets.find((x) => !x.guaranteed).group);
   for (const v of trioEx.veterans) {
     delete v.sparks[drop];
     for (const g of v.parents) g.sparks = {};

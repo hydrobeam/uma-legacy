@@ -4,10 +4,11 @@ mod common;
 use common::{run_job, val_job, without_clocks};
 use serde_json::{Value, json};
 
+/// pal_U's deck job with deck settings `fields`.
 fn job(fields: Value) -> Value {
     let mut job = val_job("jobs/pal_U.json");
     for (key, value) in fields.as_object().unwrap() {
-        job[key] = value.clone();
+        job["job"]["deck"][key] = value.clone();
     }
     job
 }

@@ -5,7 +5,7 @@ career.json), its single-race G1 wins (win saddle -> race index, career.json) an
 player's own veterans and the lender's viewer_id on the ones offered for borrowing (rental_chara_data.json).
 
 usage: career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB [TABLES]
-  BASE_JOB  a deck job (targets, cards, events files...); its mode becomes "career"
+  BASE_JOB  a deck job file (files, targets, cards...); it becomes a career job on these veterans
   TABLES    career.json (default pkg/loopopt/data/global/career.json)"""
 
 import argparse
@@ -84,7 +84,6 @@ for veteran in veterans:
     ]
     legacies.append(legacy)
 job = json.load(open(base_path))
-job["mode"] = "career"
-job["legacies"] = legacies
+job["job"] = {**job["job"], "cmd": "career", "career": {"legacies": legacies}}
 json.dump(job, open(out_path, "w"))
 print(len(legacies), "veterans,", sum(legacy["borrowed"] for legacy in legacies), "borrowed")

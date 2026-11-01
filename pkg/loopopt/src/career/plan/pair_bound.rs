@@ -205,7 +205,7 @@ mod tests {
         crate::career::tests::with_env(Box::new(|env: &mut Env, _: &crate::career::pool::Pool| {
             let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json");
             let job: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-            let legacies: Vec<Legacy> = serde_json::from_value(job["legacies"].clone()).unwrap();
+            let legacies: Vec<Legacy> = serde_json::from_value(job["job"]["career"]["legacies"].clone()).unwrap();
             let mut reversed = legacies.clone();
             reversed.reverse();
             let trainees = env.setup.owned.clone();

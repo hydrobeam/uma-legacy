@@ -93,12 +93,14 @@ for requested in want:
         era = val_eras[name]
         job = json.load(open(os.path.join(VALIDATION_DIR, "jobs", name + ".json")))
         if mode == "pu":
-            job["per_uma"] = True
+            job["job"]["deck"]["per_uma"] = True
             name += "_pu"
     normal, normal_seconds = run(era=era, job=job, name=name)
     # Validation jobs get a larger exact-search budget to reduce fallback down the cap ladder.
     env = None if requested in plan_dirs else dict(os.environ, EXACT_BUDGET=str(300_000_000))
-    audited, audit_seconds = run(era=era, job=dict(job, cap_audit=True), name=name + "_audit", env=env)
+    audited, audit_seconds = run(
+        era=era, job=solver.with_part(job, "deck", cap_audit=True), name=name + "_audit", env=env
+    )
     differences = solver.differences(normal, audited, SKIP, limit=6)
     # the certificate and the per-class ratios: per-uma jobs in `exact`, plan jobs in `next.work`
     audit_certificate = audited.get("exact") or ((audited.get("next") or {}).get("work")) or {}

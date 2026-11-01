@@ -12,7 +12,6 @@ an unselected veteran cannot be read from them. What is computed here:
 - the star mix of the runs' legacies per scenario (the six ancestors' skill-white sparks in the run records, one count
   per spark per run): a selected reference, not the unselected mix, and it keys each legacy to the scenario of the
   career she is a legacy in, not the one she was bred in;
-- that the solver's default mix (pkg/loopopt/src/skills.rs) is the page's below-17,500 mix (webapp/src/data.ts RANKS);
 - what replacing a legacy's stars by the expected base per roll b = 0.03 (pi_1 + 2 pi_2 + 3 pi_3) costs: per run of
   the records (research/data/runs.jsonl), with its six real affinities (common.six_affinities), q with b in each of the two
   rolls against the exact 1 - prod_l E_s[(1 - min(1, b(s)(1 + A_l / 100)))^2] (a legacy's stars are the same in both
@@ -29,27 +28,25 @@ SEC: str = "2"
 CUT: int = 17500  # the rank score from which the page uses the 17,500-and-up mix
 SLACK: tuple[int, ...] = (250, 500, 1000)  # rank-score points the real score may sit below the ceiling
 SLOTS: tuple[str, ...] = ("parent", "grandparent", "grandparent", "parent", "grandparent", "grandparent")  # G_OF order
-BAND_LABEL: dict[str, str] = {"below": "below 17,500", "ss": "17,500 and up"}  # the page's mixes by RANKS key
+BAND_LABEL: dict[str, str] = {"below": "below 17,500", "ss": "17,500 and up"}  # the mixes by band (`StarMixes.page`)
 
 # a star mix: the shares of 1, 2 and 3-star legacies
 Mix = tuple[float, ...]
 
 
 class StarMixes(NamedTuple):
-    """the star mixes the page and the solver use"""
+    """the star mixes a job's rank class sets, and the band the page puts each scenario at"""
 
-    page: dict[str, Mix]  # webapp/src/data.ts RANKS: 'below' and 'ss'
+    page: dict[str, Mix]  # by band: 'below' (rank class below_ss) and 'ss' (ss_and_up), as the solver has them
     scenario_ss: dict[int, bool]  # scenario id -> the page puts its careers at 17,500 and up (data.ts `ss`)
-    solver_default: Mix  # the solver's default mix (skills.rs dstar(), `loopopt constants`)
 
 
 def mixes() -> StarMixes:
     src = open(os.path.join(common.ROOT, "webapp", "src", "data.ts")).read()
-    ranks = dict(re.findall(r"(\w+): '([\d.]+,[\d.]+,[\d.]+)'", re.search(r"RANKS = \{(.*?)\}", src).group(1)))
-    page = {k: tuple(float(x) for x in v.split(",")) for k, v in ranks.items()}
+    star_mix = common.solver_constants()["star_mix"]  # RankClass::star_mix (skills.rs), `loopopt constants`
+    page = {"below": tuple(star_mix["below_ss"]), "ss": tuple(star_mix["ss_and_up"])}
     scenario_ss = {int(i): b == "true" for i, b in re.findall(r"id: (\d+),[^}]*?ss: (true|false)", src)}
-    below, middle, above = common.solver_constants()["default_star_mix"]
-    return StarMixes(page, scenario_ss, (below, middle, above))
+    return StarMixes(page, scenario_ss)
 
 
 def expected_base(pi: Mix) -> float:
@@ -60,14 +57,8 @@ def expected_base(pi: Mix) -> float:
 def claims() -> list[Value | Finding]:
     m = mixes()
     out: list[Value | Finding] = [
-        common.finding(
-            SEC,
-            "The solver's default mix is the page's below-17,500 mix",
-            m.solver_default == m.page["below"],
-            f"solver {m.solver_default}, page {m.page['below']}",
-        )
+        Value(SEC, f"expected base, {BAND_LABEL[k]}", expected_base(pi)) for k, pi in m.page.items()
     ]
-    out += [Value(SEC, f"expected base, {BAND_LABEL[k]}", expected_base(pi)) for k, pi in m.page.items()]
     out += scenario_bands(m.scenario_ss, m.page)
     out += legacy_star_mix(m.page, m.scenario_ss)
     out += averaging_cost(m.page)

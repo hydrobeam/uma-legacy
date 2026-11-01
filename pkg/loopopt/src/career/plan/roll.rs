@@ -10,13 +10,12 @@ use crate::career::plan::step::{NO_SLOT, Route, WhileBuilding};
 use crate::career::plan::{OutcomeIndex, PlanJob, TargetMask};
 use crate::career::search::Found;
 use crate::career::sim::Sim;
-use crate::career::state::{KeptState, StoredDeck, chances, hash_text, number, numbers, sel_in, sel_out};
+use crate::career::state::{KeptState, StoredDeck, chances, number, numbers, sel_in, sel_out};
 use crate::career::{Env, JobInputs, Lineage};
 use crate::deck::space::SelectedDeck;
 use crate::hex::{Bits, Key, bits};
 use crate::refusal::Refusal;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use ts_rs::TS;
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
 /// The base a kept scoring was scored against (`ScoreBase` without the trios, their sides and C's umas, which only the
@@ -100,16 +99,6 @@ impl RollKeep {
 /// plans' roll states kept (the most recent last): the run's plan and the plan Compare makes with her added
 const ROLL_KEEP: usize = 4;
 
-/// a plan job's roll key: the whole job but its roll (`next.roll`), its check and oracle requests (`next.robust`,
-/// `next.oracle`) and the page's flags that change no plan (`no_reports`, `compare`)
-pub(crate) fn roll_key(job: &Value) -> u64 {
-    hash_text(&crate::career::state::json_without(
-        job,
-        &["no_reports", "compare", "roll"],
-        &["roll", "robust", "oracle", "pair_search"],
-    ))
-}
-
 pub(crate) fn keep_roll(kept: &mut KeptState, roll: RollKeep) {
     kept.rolls.retain(|entry| entry.key != roll.key);
     kept.rolls.push(roll);
@@ -129,7 +118,7 @@ pub(crate) fn roll_kept<'data>(
     plan_job: &PlanJob,
 ) -> Option<RollReply> {
     let stars = plan_job.roll.as_ref()?;
-    let key = roll_key(input.job);
+    let key = input.job.plan_key();
     let index = worker.rolls.iter().position(|roll| roll.key == key)?;
     let kept = worker.rolls.remove(index);
     // (the roll's own timers and counters, `prof`; what the job counted before goes back after)

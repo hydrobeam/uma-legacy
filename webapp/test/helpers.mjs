@@ -150,7 +150,12 @@ async function profile(ctx, pg) {
       if (m?.type === 'run')
         kinds
           .get(w)
-          .set(m.id, m.job.cmd ? m.job.cmd + (m.job.next ? '.next' : '') + (m.job.compare ? '.compare' : '') : 'loop');
+          .set(
+            m.id,
+            m.job.cmd
+              ? m.job.cmd + (m.job.career?.next ? '.next' : '') + (m.job.career?.compare ? '.compare' : '')
+              : 'loop',
+          );
     });
     hooks.message.push((d, w) => {
       if (d?.type === 'result') window.__llpSolved(kinds.get(w).get(d.id) || '?', Math.round(d.ms));
@@ -264,7 +269,7 @@ async function searchSettled(pg, timeout = 180000) {
 }
 export const jobSent = (pg, fn, arg) => pg.waitForFunction(fn, arg); // a search's job has gone to the engine (its result is not awaited)
 export const lastJob = (pg, scenario) =>
-  jobSent(pg, (s) => window.__runs.length > 0 && window.__runs.at(-1).scenario === s, scenario);
+  jobSent(pg, (s) => window.__runs.length > 0 && window.__runs.at(-1).deck.scenario === s, scenario);
 export const kind = (pg, k) => pg.waitForFunction((k) => document.getElementById('rhead').dataset.kind === k, k); // the status line's state
 export const dialog = (pg, id) => pg.waitForSelector(`#${id}[open]`);
 // a condition the page reaches on its own (an observer, a smooth scroll, a resize handler): true once it holds, false
@@ -428,7 +433,7 @@ export async function careerPage(b) {
       else window.__careerResults.push(d.r);
     });
     hooks.post.push((m) => {
-      if (m?.type === 'run') (m.job?.next?.robust ? window.__checkJobs : window.__careerJobs).push(m.job);
+      if (m?.type === 'run') (m.job?.career?.next?.robust ? window.__checkJobs : window.__careerJobs).push(m.job);
     });
     // what the page shows, each time it changes: busy or not, the phase named, the trainee on show, the veteran you
     // got (her sparks), whether the old answer is dimmed

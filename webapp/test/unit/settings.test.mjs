@@ -46,8 +46,8 @@ const { rcards: _, ...SAVED_DEFAULTS } = DEFAULTS; // rcards is never saved, so 
 const SETTERS = [
   ['setTargets', () => setTargets([{ group: 1 }]), ['targets']],
   ['setPresets', () => setPresets([{ name: 'a', groups: [1, 2] }]), ['presets']],
-  ['setRank', () => setRank('0.20,0.70,0.10'), ['rank']],
-  ['setScenario', () => setScenario({ scen: 'grandmasters', rank: '0.20,0.70,0.10' }), ['scen', 'rank']],
+  ['setRank', () => setRank('ss_and_up'), ['rank']],
+  ['setScenario', () => setScenario({ scen: 'grandmasters', rank: 'ss_and_up' }), ['scen', 'rank']],
   ['setAuto', () => setAuto(false), ['auto']],
   ['setDecksTop', () => setDecksTop('3'), ['decksTop']],
   ['setPerUma', () => setPerUma(false), ['perUma']],
@@ -138,7 +138,7 @@ test('an effect runs only when a signal it names changes, never on an unrelated 
   // once the body that reads the whole record has run, setters of other fields still don't wake it: what it read
   // subscribed it to nothing (`on` runs it untracked)
   setPresets([{ name: 'a', groups: [1, 2] }]);
-  setRank('0.20,0.70,0.10');
+  setRank('ss_and_up');
   setSort({ prefix: 'r', sort: 'name', dir: 'asc' });
   setAuto(!settings.value.auto);
   assert.equal(runs['reads everything'], 1, 'reads everything: after other setters');
@@ -188,7 +188,7 @@ test('storage round trip: what is saved loads back; old and broken shapes load a
   setAuto(false);
   assert.equal(settings.value.auto, false, 'blocked storage: a setting lasts for the visit');
 
-  // version 2 with "must include" marks and a setting missing
+  // version 2 with "must include" marks, a setting missing and the rank as a star mix (before rank classes)
   const storage = fresh({
     v: 2,
     era: OTHER, // another tab switched the era: this tab's writes keep it
@@ -199,7 +199,7 @@ test('storage round trip: what is saved loads back; old and broken shapes load a
   assert.deepEqual(settings.value, {
     ...SAVED_DEFAULTS,
     targets: [{ group: 3 }],
-    rank: '0.20,0.70,0.10',
+    rank: 'ss_and_up',
     roster: { 1002: 'out' },
     outfits: { 100201: false },
   });

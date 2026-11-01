@@ -13,7 +13,11 @@ export default async function nonecards(b) {
     .toHaveText(/^0 of \d+ owned$/, { useInnerText: true });
   const job = await pg.evaluate(() => window.__runs.at(-1));
   const none = 'None owned: the job allows no owned card, only the one borrowed, and the odds drop';
-  check(none, job.owned_cards.length === 1 && job.owned_cards[0] === 0 && job.borrow === true, JSON.stringify(job));
+  check(
+    none,
+    job.deck.owned_cards.length === 1 && job.deck.owned_cards[0] === 0 && job.deck.borrow === true,
+    JSON.stringify(job),
+  );
   await expect.soft(pg.locator('#results .loop .odds').first(), `${none}: the odds`).not.toHaveText(all);
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();

@@ -130,6 +130,7 @@ mod cli;
 mod constants;
 mod data;
 mod hex;
+mod key;
 mod loop_planner;
 mod refusal;
 mod request;

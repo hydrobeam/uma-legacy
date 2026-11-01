@@ -52,8 +52,8 @@ def prepare_tasks():
         job = json.load(open(job_path))
         if ("", era, job_name) not in slow and ("sh", era, job_name) not in slow:
             tasks.append(ValidationTask(mode="", name=name, era=era, job_path=job_path))
-        if job.get("mode") == "deck" and ("pu", era, job_name) not in slow:
-            job["per_uma"] = True
+        if job["job"]["cmd"] == "deck" and ("pu", era, job_name) not in slow:
+            job["job"]["deck"]["per_uma"] = True
             temporary_job = os.path.join(VALIDATION_DIR, f"_pu_tmp_{tag}__{name}.json")
             json.dump(job, open(temporary_job, "w"))
             tasks.append(ValidationTask(mode="pu", name=name, era=era, job_path=temporary_job))

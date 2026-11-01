@@ -126,7 +126,7 @@ function negativeTopText(planReport: Plan | null, pick: Row | null): string | nu
   const text = 'No career saves its own run today: the pick costs least.';
   const { last, planState } = answer.value,
     job = planState.state === 'done' ? planState.job : last?.job,
-    step = job?.borrowed_parent === 'later' ? routeFirstStep(planReport) : null;
+    step = job?.career.borrowed_parent === 'later' ? routeFirstStep(planReport) : null;
   // the step's borrowed parents (one who has left the pool under the answer, `legacyVet`, is none of them)
   const borrowed: string[] = [];
   for (const i of step ? step.parents : []) {

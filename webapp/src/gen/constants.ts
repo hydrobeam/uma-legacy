@@ -26,10 +26,10 @@ ceil_share: number,
  */
 lam_decay: number, 
 /**
- * a job's default 1/2/3-star shares of its lineage's sparks (`SkillJob::star_dist`, skills.rs `dstar`): the
- * page's below-17,500-rank mix
+ * the 1/2/3-star shares of a lineage's sparks at each rank class a job may name (`RankClass::star_mix`,
+ * skills.rs; a job is below SS unless it says otherwise)
  */
-default_star_mix: [number, number, number], 
+star_mix: StarMixes, 
 /**
  * a gold / white skill's chance to become a spark on the veteran when all six ancestors carry it (skills.rs)
  */
@@ -38,6 +38,11 @@ gen_gold: number, gen_white: number,
  * one inspiration's base chance per spark star (skills.rs)
  */
 insp_per_star: number, };
+
+/**
+ * Each rank class's star mix, by its name in a job (`RankClass`).
+ */
+export type StarMixes = { below_ss: [number, number, number], ss_and_up: [number, number, number], };
 
 /** the model constants as this build of the solver has them */
 export const SOLVER: SolverConstants = {
@@ -51,11 +56,18 @@ export const SOLVER: SolverConstants = {
   "exact_builders_targets": 10,
   "ceil_share": 0.6,
   "lam_decay": 1.5,
-  "default_star_mix": [
-    0.5,
-    0.45,
-    0.05
-  ],
+  "star_mix": {
+    "below_ss": [
+      0.5,
+      0.45,
+      0.05
+    ],
+    "ss_and_up": [
+      0.2,
+      0.7,
+      0.1
+    ]
+  },
   "gen_gold": 0.7086244,
   "gen_white": 0.3543122,
   "insp_per_star": 0.03

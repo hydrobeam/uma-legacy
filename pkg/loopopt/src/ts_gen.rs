@@ -50,11 +50,11 @@ fn config() -> Config {
     Config::new().with_large_int("number")
 }
 
-/// `solver.ts`: every root's declaration and its dependencies'.
-fn solver_ts() -> String {
+/// The file's header, then every declaration `visit` reaches, sorted by name.
+fn declarations_text(visit: impl FnOnce(&mut Declarations)) -> String {
     let cfg = config();
     let mut declarations = Declarations { cfg: &cfg, seen: HashSet::new(), by_name: BTreeMap::new() };
-    visit_roots(&mut declarations);
+    visit(&mut declarations);
     let mut text = String::from(HEADER);
     for declaration in declarations.by_name.values() {
         text.push('\n');
@@ -63,16 +63,18 @@ fn solver_ts() -> String {
     text
 }
 
-/// `constants.ts`: `SolverConstants`'s declaration and `SOLVER`, this build's values.
+/// `solver.ts`: every root's declaration and its dependencies'.
+fn solver_ts() -> String {
+    declarations_text(visit_roots)
+}
+
+/// `constants.ts`: `SolverConstants`'s declaration and its dependencies', and `SOLVER`, this build's values.
 fn constants_ts() -> String {
     use crate::constants::SolverConstants;
-    let cfg = config();
     let values = serde_json::to_string_pretty(&SolverConstants::now()).expect("the constants serialise");
+    let declarations = declarations_text(|declarations| declarations.visit::<SolverConstants>());
     format!(
-        "{HEADER}\n{}export {}\n\n/** the model constants as this build of the solver has them */\nexport const SOLVER: \
-         SolverConstants = {values};\n",
-        SolverConstants::docs().unwrap_or_default(),
-        SolverConstants::decl(&cfg)
+        "{declarations}\n/** the model constants as this build of the solver has them */\nexport const SOLVER: SolverConstants = {values};\n"
     )
 }
 

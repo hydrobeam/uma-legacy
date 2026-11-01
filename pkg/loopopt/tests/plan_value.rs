@@ -1,5 +1,6 @@
-//! The obsolete `next.value_only` field must not change the plan's V, continuation fit or chosen trio.
-//! The boot_mob fixture exercises a continuation that builds before grinding.
+//! The obsolete `next.value_only` field is refused (a job's records refuse a field they do not know), so it cannot
+//! change the plan's V, continuation fit or chosen trio. The boot_mob fixture exercises a continuation that builds
+//! before grinding.
 mod common;
 use common::{run_job, val_job};
 use serde_json::{Value, json};
@@ -12,7 +13,7 @@ fn run(job: &Value, tag: &str) -> Value {
 #[test]
 fn v_does_not_depend_on_the_output() {
     let mut job = val_job("plan/boot_mob.json");
-    job["next"] = json!({});
+    job["job"]["career"]["next"] = json!({});
     let full = run(&job, "full");
     // (the setup: V's sides build before they grind, so Cont is in V)
     assert!(
@@ -20,9 +21,9 @@ fn v_does_not_depend_on_the_output() {
         "{}",
         full["members"]
     );
-    job["next"] = json!({"value_only": true});
-    let vo = run(&job, "vo");
-    for k in ["v0", "fit", "members", "v0_plan"] {
-        assert_eq!(vo[k], full[k], "{k}");
-    }
+    job["job"]["career"]["next"] = json!({"value_only": true});
+    let file = common::TempFile::job("plan-value-vo", &job);
+    let output = common::loopopt("global", common::State::NONE).arg("data.json").arg(file.path()).output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.code() == Some(2) && stderr.contains("unknown field `value_only`"), "{stderr}");
 }

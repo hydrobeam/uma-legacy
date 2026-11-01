@@ -2,7 +2,8 @@
 // buildJob: the job for settings `s`, or why they can't be searched (blockedStatus says it); jobKey: the key a job's
 // result is kept and recognised by; doneText: the status line of a finished search.
 import { ASSETS, gameData } from '../data.ts';
-import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
+import { deckPart, isOwned, skillsPart } from '../job.ts';
+import type { jobTargets } from '../job.ts';
 import { ERA } from '../saved.ts';
 import type { SettingsView } from '../settings.ts';
 import type { Request } from '../gen/solver.ts';
@@ -10,9 +11,9 @@ import type { LoopReport, Status } from './types.ts';
 
 /** a target as the job sends it: its skill group, and 2 when the scenario hands out its gold */
 export type JobTarget = ReturnType<typeof jobTargets>[number];
-/** the loop search's job: the solver's `Request` for `deck` (its targets and roster, `SkillJob`, and its deck search's
- *  settings, `DeckJob`; generated). The field order `buildDeckJob` writes is part of its key (jobKey), which the kept
- *  result and the suite's recorded solver replies are found by: keep it. */
+/** the loop search's job: the solver's `Request` for `deck` (its targets and roster, `skills`, and its deck search's
+ *  settings, `deck`; generated). The field order `buildJob` writes is part of its key (jobKey), which the kept result
+ *  and the suite's recorded solver replies are found by: keep it. */
 export type DeckJob = Extract<Request, { cmd: 'deck' }>;
 /** settings the search cannot start from: no target, or fewer than 3 umas owned (`owned` of them) */
 export type Blocked = { blocked: 'targets' } | { blocked: 'umas'; owned: number };
@@ -26,17 +27,13 @@ export function buildJob(s: SettingsView): Built {
     .map((u) => u.id);
   const owned = gameData().umas.length - exclude.length;
   if (owned < 3) return { blocked: 'umas', owned };
-  const targets = jobTargets(s);
+  const skills = skillsPart(s, exclude);
   const job: DeckJob = {
     cmd: 'deck',
-    targets,
-    star_dist: starDist(s),
-    ...ownedFields(s, exclude),
-    top_decks: +s.decksTop,
-    per_uma: s.perUma !== false,
-    ...scenarioFields(s),
+    skills,
+    deck: { ...deckPart(s), top_decks: +s.decksTop, per_uma: s.perUma !== false },
   };
-  return { job, targets };
+  return { job, targets: skills.targets };
 }
 /** what the status line says of blocked settings, with the button that fixes it (`loadExample`: presets.ts's) */
 export const blockedStatus = (blocked: Blocked, loadExample: () => void): Status =>

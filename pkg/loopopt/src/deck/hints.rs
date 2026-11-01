@@ -1,38 +1,61 @@
 //! Training hints: the base draw count per scenario and the chance a card's draws miss a target.
 
-/// A scenario's display name; unknown names pass through unchanged.
-pub(super) fn scenario_name(scenario: &str) -> &str {
-    match scenario {
-        "unity" => "Unity Cup",
-        "gc" => "Grand Concert",
-        "ura" => "URA Finale",
-        "trackblazer" => "Trackblazer",
-        "grandmasters" => "Grand Masters",
-        other => other,
+/// An Independent Training scenario, as a job names it (a choice the job makes: the page's `scen`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Scenario {
+    #[default]
+    Unity,
+    Gc,
+    Ura,
+    Trackblazer,
+    /// the JP Grand Masters era's
+    Grandmasters,
+}
+
+impl Scenario {
+    /// Its name in a job, which also keys the card table's bans (`CardsRaw::restrict`).
+    pub(super) const fn key(self) -> &'static str {
+        match self {
+            Self::Unity => "unity",
+            Self::Gc => "gc",
+            Self::Ura => "ura",
+            Self::Trackblazer => "trackblazer",
+            Self::Grandmasters => "grandmasters",
+        }
+    }
+    /// Its display name.
+    pub(super) const fn label(self) -> &'static str {
+        match self {
+            Self::Unity => "Unity Cup",
+            Self::Gc => "Grand Concert",
+            Self::Ura => "URA Finale",
+            Self::Trackblazer => "Trackblazer",
+            Self::Grandmasters => "Grand Masters",
+        }
     }
 }
 // The bases and specialty weights: research/results.json's section 7 fit, rounded to 3 decimals by build.rs.
 include!(concat!(env!("OUT_DIR"), "/hint_constants.rs"));
 
-/// A card's training-hint draws per run at hint frequency 0 and specialty priority 0 (docs/RESEARCH.md section 7);
-/// an unknown scenario reads as Unity Cup.
-pub(crate) fn hint_base(scenario: &str) -> f64 {
+/// A card's training-hint draws per run at hint frequency 0 and specialty priority 0 (docs/RESEARCH.md section 7).
+pub(crate) const fn hint_base(scenario: Scenario) -> f64 {
     match scenario {
-        "gc" => BASE_GRAND_CONCERT,
-        "ura" => BASE_URA_FINALE,
-        "trackblazer" => BASE_TRACKBLAZER,
-        "grandmasters" => BASE_GRAND_MASTERS,
-        _ => BASE_UNITY_CUP,
+        Scenario::Gc => BASE_GRAND_CONCERT,
+        Scenario::Ura => BASE_URA_FINALE,
+        Scenario::Trackblazer => BASE_TRACKBLAZER,
+        Scenario::Grandmasters => BASE_GRAND_MASTERS,
+        Scenario::Unity => BASE_UNITY_CUP,
     }
 }
 /// Specialty priority's weight in the draws: h scales by 1 + d x specialty/100 (fitted with `hint_base`).
-pub(crate) fn hint_spec(scenario: &str) -> f64 {
+pub(crate) const fn hint_spec(scenario: Scenario) -> f64 {
     match scenario {
-        "gc" => SPEC_GRAND_CONCERT,
-        "ura" => SPEC_URA_FINALE,
-        "trackblazer" => SPEC_TRACKBLAZER,
-        "grandmasters" => SPEC_GRAND_MASTERS,
-        _ => SPEC_UNITY_CUP,
+        Scenario::Gc => SPEC_GRAND_CONCERT,
+        Scenario::Ura => SPEC_URA_FINALE,
+        Scenario::Trackblazer => SPEC_TRACKBLAZER,
+        Scenario::Grandmasters => SPEC_GRAND_MASTERS,
+        Scenario::Unity => SPEC_UNITY_CUP,
     }
 }
 /// P(none of the target skills is drawn) in `draws` training-hint draws over `pool_size` skills, each draw

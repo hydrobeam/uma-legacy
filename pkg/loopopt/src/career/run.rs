@@ -6,37 +6,34 @@ use crate::career::plan::report::{PlanReply, RollReply};
 use crate::career::pool::Pool;
 use crate::career::reply::{CapRerun, CareerSearch, CarriedRoll, JobCertificates, SearchWork};
 use crate::career::search::{Assumes, CareerSearchResult, SearchRequest, Unproven, solve_kept};
-use crate::career::state::{KeptSeen, KeptState, SEEN_KEEP, hash_text, json_without};
+use crate::career::state::{KeptSeen, KeptState, SEEN_KEEP};
 use crate::career::{
     CareerJob, CareerSetup, ClassFlags, DeckSearchAudit, Env, JobInputs, SearchState, answer_job, run_career_in,
 };
 use crate::data::Data;
 use crate::deck::CardsRaw;
 use crate::refusal::Refusal;
+use crate::request::{CareerRequest, CarriedRollJob};
 use crate::skills::SkillsRaw;
 use crate::uma::UmaIndex;
-use serde_json::Value;
 /// A roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll now sends the
-/// plan job with `next.roll` on its own first, so its saving shows before the search): the job runs without it, then
-/// the plan job with `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as
-/// `roll`
+/// plan job with `next.roll` on its own first, so its saving shows before the search): the job runs (its own answer
+/// never reads `roll`), then the plan job with `next.roll` (its kept roll state, or the plan run again when the worker
+/// has none), its answer as `roll`
 pub(super) fn run_carried_roll(
     data: &Data,
     skills: &SkillsRaw,
     cards: &CardsRaw,
-    job: &Value,
-    roll: &Value,
+    job: &CareerRequest,
+    roll: &CarriedRollJob,
     kept: &mut KeptState,
 ) -> CarriedRoll {
-    let mut search_job = job.clone();
-    if let Some(object) = search_job.as_object_mut() {
-        object.remove("roll");
-    }
-    let reply = answer_job(data, skills, cards, &search_job, kept);
-    let mut plan_job = roll["job"].clone();
-    let roll = match plan_job.get_mut("next").and_then(|next| next.as_object_mut()) {
+    let reply = answer_job(data, skills, cards, job, kept);
+    // (a copy of the carried plan job, asking the roll: the job as the page would send it)
+    let mut plan_job = roll.job.clone();
+    let roll = match &mut plan_job.career.next {
         Some(next) => {
-            next.insert("roll".into(), roll["stars"].clone());
+            next.ask_roll(roll.stars.clone());
             run_career_in(data, skills, cards, &plan_job, kept).into_roll()
         }
         None => RollReply::Refusal(Refusal::new("roll: the job is not a plan job (no `next`)")),
@@ -74,13 +71,8 @@ pub(super) fn answer_kept_roll<'data>(
     kept: &mut KeptState,
     run: &CareerRun<'_, 'data>,
 ) -> Option<RollReply> {
-    let career_job = run.job;
-    let plan_job = career_job
-        .next
-        .as_ref()
-        .filter(|next_job| next_job.get("roll").is_some_and(|roll_value| !roll_value.is_null()))
-        .and_then(|next_job| serde_json::from_value::<crate::career::plan::PlanJob>(next_job.clone()).ok())?;
-    crate::career::plan::roll::roll_kept(env, kept, run.input, &plan_job)
+    let plan_job = run.job.next.as_ref().filter(|next_job| next_job.asks_roll())?;
+    crate::career::plan::roll::roll_kept(env, kept, run.input, plan_job)
 }
 
 /// The check of a plan this worker keeps (`next.robust`): answered from its check state, no search
@@ -92,18 +84,14 @@ pub(super) fn answer_kept_check<'data>(
     run: &CareerRun<'_, 'data>,
 ) -> Option<crate::career::plan::report::CheckReply> {
     let career_job = run.job;
-    let plan_job = career_job
-        .next
-        .as_ref()
-        .filter(|next_job| next_job.get("robust").is_some_and(|request| !request.is_null()))
-        .and_then(|next_job| serde_json::from_value::<crate::career::plan::PlanJob>(next_job.clone()).ok())?;
+    let plan_job = career_job.next.as_ref().filter(|next_job| next_job.asks_check())?;
     let pool = crate::career::plan::ScoringPool {
         legacies: &career_job.legacies,
         pool: run.pool,
         pick_pool: run.pick_pool.unwrap_or(run.pool),
         fixed_parents: &career_job.fixed_parents,
     };
-    crate::career::plan::check_before_plan(env, kept, run.input, pool, &plan_job)
+    crate::career::plan::check_before_plan(env, kept, run.input, pool, plan_job)
 }
 
 /// What the job's main search and its plan read.
@@ -132,12 +120,6 @@ impl CareerRun<'_, '_> {
     /// The main search of the career picked: over `pick_pool` when there is one.
     pub(super) fn pick_search_request(&self) -> SearchRequest<'_> {
         SearchRequest { pool: self.pick_pool.unwrap_or(self.pool), ..self.search_request() }
-    }
-    /// The key a main search is kept under (`KeptState::searches`): the hash of the job's text without the keys `drop`
-    /// (`json_without`: no clone). The page sends a career job, then the same job with `next`: the plan job reuses
-    /// that job's main search (a search is deterministic for its job, so the result is the one it would compute).
-    pub(super) fn search_key(&self, drop: &[&str]) -> u64 {
-        hash_text(&json_without(self.input.job, drop, &[]))
     }
 }
 
@@ -196,25 +178,16 @@ pub(super) fn plan_next<'data>(
     kept: &mut KeptState,
     run: &CareerRun<'_, 'data>,
     search: &CareerSearchResult,
-    next: &Value,
+    settings: &crate::career::plan::PlanJob,
 ) -> PlanReply {
     let career_job = run.job;
-    let settings = match serde_json::from_value::<crate::career::plan::PlanJob>(next.clone()) {
-        Ok(settings) => settings,
-        Err(e) => return PlanReply::Refusal(Refusal::new(format!("next: {e}"))),
-    };
     let borrowing;
     let (solved, pick_search) = match run.pick_pool {
         None => (search, None),
         // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
         // key (so a plan after an "allow" run takes it as it is)
         Some(pick_pool) => {
-            borrowing = solve_kept(
-                env,
-                kept,
-                run.search_key(&["next", "no_reports", "borrowed_parent"]),
-                &run.search_request(),
-            );
+            borrowing = solve_kept(env, kept, run.input.job.borrowing_search_key(), &run.search_request());
             (&borrowing, Some(crate::career::plan::PickSearch { pool: pick_pool, solved: search }))
         }
     };
@@ -228,7 +201,7 @@ pub(super) fn plan_next<'data>(
             solved,
             fixed_parents: &career_job.fixed_parents,
             trainees: run.trainees,
-            settings: &settings,
+            settings,
             pick_search,
         },
     )

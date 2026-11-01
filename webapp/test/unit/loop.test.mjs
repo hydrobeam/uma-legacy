@@ -7,7 +7,7 @@ import { test, vi } from 'vitest';
 import { loadData } from '../../src/data.ts';
 import { fmtIn } from '../../src/dom.ts';
 import { gameData } from '../../src/data.ts';
-import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.ts';
+import { deckPart, isOwned, skillsPart } from '../../src/job.ts';
 import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
 import { PAUSE_MS, createRun } from '../../src/loop/run.ts';
 import { resultKeys } from '../../src/loop/keys.ts';
@@ -264,7 +264,7 @@ test('an automatic search of the finished job on show runs nothing; with other l
   assert.equal(p.engine.jobs.length, 1, 'no job for the job on show');
   assert.equal(loopView.peek().status, done);
   // another job running (its settings), then back: the kill leaves the engine idle, the shortcut holds
-  setRank('0.20,0.70,0.10');
+  setRank('ss_and_up');
   p.loop.scheduleSearch();
   p.clock.advance(PAUSE_MS);
   await flush();
@@ -276,7 +276,7 @@ test('an automatic search of the finished job on show runs nothing; with other l
   assert.equal(p.engine.jobs.length, 2);
   assert.equal(loopView.peek().status, done);
   // that other job's fast loops drawn: the result on show is not the done job's, so it searches
-  setRank('0.20,0.70,0.10');
+  setRank('ss_and_up');
   p.loop.scheduleSearch();
   p.clock.advance(PAUSE_MS);
   await flush();
@@ -491,8 +491,8 @@ test("golden job keys: the defaults' job keyed as recorded, in both eras", () =>
   assert.equal(jobKey(job, 'gm'), GOLDEN.defaults.keyGm);
 });
 
-// the career page's job carries the same shared fields (job.ts), in its own order: owned, then the rank, then the
-// scenario (career/job.ts builds it; this pins what the helpers give it and that order, from 4ef2a4b)
+// the career page's job carries the same shared parts (job.ts: its targets and roster, its deck space; career/job.ts
+// builds it; this pins what the helpers give it and their order: 4ef2a4b's fields, nested)
 test("golden career fields: each fixture's shared career-job fields as recorded", () => {
   for (const [name, saved] of Object.entries(FIXTURES)) {
     if (!GOLDEN[name].career) continue;
@@ -501,7 +501,7 @@ test("golden career fields: each fixture's shared career-job fields as recorded"
     const exclude = gameData()
       .umas.filter((u) => !isOwned(u, s))
       .map((u) => u.id);
-    const fields = { ...ownedFields(s, exclude), star_dist: starDist(s), ...scenarioFields(s) };
+    const fields = { skills: skillsPart(s, exclude), deck: deckPart(s) };
     assert.equal(JSON.stringify(fields), GOLDEN[name].career, name);
   }
 });

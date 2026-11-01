@@ -7,7 +7,7 @@ export default async function reload(b) {
   const pg = await open(b),
     ctx = pg.context(),
     def = await odds(pg);
-  await pg.click('#rank button[data-v="0.20,0.70,0.10"]');
+  await pg.click('#rank button[data-v="ss_and_up"]');
   await settle(pg); // rank SS: a different result, quick to search
   const mine = await odds(pg);
   await ctx.addInitScript(() => {
@@ -55,7 +55,7 @@ export default async function reload(b) {
   );
   await pg.click('#x-auto');
   const runsBefore = await pg.evaluate(() => window.__runs.length);
-  await pg.click('#rank button[data-v="0.50,0.45,0.05"]');
+  await pg.click('#rank button[data-v="below_ss"]');
   await settle(pg);
   check('reload: … and the next edit searches', (await pg.evaluate(() => window.__runs.length)) > runsBefore);
   await expect.soft(pg.locator('#results .loop .odds').first(), "reload: … the default's odds again").toHaveText(def);

@@ -16,7 +16,7 @@ use crate::data::{Choice, Data, NT, Sched, Uma};
 use crate::deck::pdeck::{Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
-use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::deck::{Card, CardsRaw, DeckJob, FixedSchedule};
 use crate::loop_planner::dominance::DeckCluster;
 use crate::loop_planner::output::{DeckReply, DeckStats};
 use crate::loop_planner::schedules::{Res, members};
@@ -294,7 +294,7 @@ impl<'data> Multi<'data> {
             return Err(Refusal::new(error));
         }
         let (allow_three, allow_four) = (inputs.skill_job.sizes.contains(&3), inputs.skill_job.sizes.contains(&4));
-        let fixed_schedules: Option<UmaTable<Option<Sched>>> = inputs.deck_job.schedule.as_deref().map(|mode| {
+        let fixed_schedules: Option<UmaTable<Option<Sched>>> = inputs.deck_job.schedule.map(|mode| {
             inputs
                 .data
                 .umas
@@ -302,7 +302,7 @@ impl<'data> Multi<'data> {
                 .map(|i| pool.contains(&i).then(|| prebuilt(inputs.data, &inputs.data.umas[i], mode)))
                 .collect()
         });
-        let no_race = inputs.deck_job.schedule.as_deref() == Some("none");
+        let no_race = inputs.deck_job.schedule == Some(FixedSchedule::None);
         let pair_bounds = pair_table(inputs.data, &pool, fixed_schedules.as_ref(), no_race);
         let fixed = inputs.model.fixed_factor();
         let maximum_chances: UmaTable<f64> = inputs
@@ -387,9 +387,9 @@ impl<'data> Multi<'data> {
     }
 }
 /// Fixed schedule for one uma (see DeckJob::schedule).
-fn prebuilt(data: &Data, uma: &Uma, mode: &str) -> Sched {
+fn prebuilt(data: &Data, uma: &Uma, mode: FixedSchedule) -> Sched {
     let solo = data.best_response(uma, &vec![1.0; data.race_count], None).expect("infeasible goals").0;
-    if mode != "goals" {
+    if mode != FixedSchedule::Goals {
         return solo;
     }
 

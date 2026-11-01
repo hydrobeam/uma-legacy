@@ -41,7 +41,7 @@ def main(out):
 
     def write_job(source, name, **sim):
         job = json.load(open(source))
-        job["simulate"] = sim
+        job["job"]["career"]["simulate"] = sim
         json.dump(job, open(f"{out}/{name}.json", "w"))
         jobs.append(name)
 
@@ -117,7 +117,7 @@ def looped(out, pools, runs):
         }
         for label, simulate in policies.items():
             job = json.load(open(f"{PLAN_DIR}/{pool}.json"))
-            job["simulate"] = {**common, **simulate}
+            job["job"]["career"]["simulate"] = {**common, **simulate}
             json.dump(job, open(f"{out}/lp_{pool}_{label}.json", "w"))
             jobs.append(f"lp_{pool}_{label}")
     open(f"{out}/queue_looped.txt", "w").write("\n".join(jobs) + "\n")

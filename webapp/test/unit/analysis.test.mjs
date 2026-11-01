@@ -54,12 +54,17 @@ function page({ fix = [], planFor = 'shown' } = {}) {
     engine = fakeEngine(),
     kept = [],
     shown = career('shown');
-  const job = { cmd: 'career', targets: [{ group: 1 }], legacies: [{ v: 0 }, { v: 1 }], trainees: [], fix };
+  const job = {
+    cmd: 'career',
+    skills: { targets: [{ group: 1 }] },
+    deck: {},
+    career: { legacies: [{ v: 0 }, { v: 1 }], trainees: [], fix },
+  };
   const plan = {
     state: 'done',
     id: 1,
     ms: 10,
-    job: { ...job, next: {} },
+    job: { ...job, career: { ...job.career, next: {} } },
     r: { v0: 20, fit: [[1]], outcomes: { career: planFor }, options: [{ ...career('next'), chosen: true }] },
   };
   const answer = signal({
@@ -75,8 +80,8 @@ function page({ fix = [], planFor = 'shown' } = {}) {
     page: {
       shown: () => shown,
       searching: () => deps.searching,
-      targets: () => job.targets,
-      baseKey: (j) => JSON.stringify({ ...j, fix: [] }),
+      targets: () => job.skills.targets,
+      baseKey: (j) => JSON.stringify({ ...j, career: { ...j.career, fix: [] } }),
       isFull: (nd) => (nd.sparks[1] || 0) > 0,
       planTop: 6,
       // her first result lands target 1 at 1 star, every later one (a roll) at 3
@@ -124,13 +129,13 @@ test('Compare: one write per phase, the baseline from the run (no places), the f
   assert.equal(p.writes.length, 2, 'the baseline is known: one write');
   assert.equal(simulation.peek().baseline.career, 'shown', "the run's own best (no places set): no job");
   assert.equal(sent(p), 1, 'the best career with her');
-  assert.deepEqual(p.engine.jobs[0].job.fix, [2], 'her legacy index is after every veteran');
+  assert.deepEqual(p.engine.jobs[0].job.career.fix, [2], 'her legacy index is after every veteran');
   await exactAnswers(p, 0);
   assert.deepEqual(states(p), ['busy', 'busy', 'done'], 'the end: one write');
   const done = simulation.peek();
   assert.deepEqual(done.v0, { now: 20, withHer: 15 });
   assert.equal(done.fixedFit, true, "priced under today's plan's fit");
-  assert.equal(p.engine.jobs[1].job.next.fit[0][0], 1, "the plan's fit passed on");
+  assert.equal(p.engine.jobs[1].job.career.next.fit[0][0], 1, "the plan's fit passed on");
   assert.equal(p.kept.length, 0, 'a plan under today’s fit is not kept for Add');
   assert.equal(p.engine.saves, 1);
   assert.ok(Object.isFrozen(done), 'the record frozen');
@@ -147,7 +152,7 @@ test('Compare with no fit on show: the refit with her is kept, so Add takes it a
   await flush();
   await exactAnswers(p, 0);
   assert.equal(p.kept.length, 1, 'the refit kept');
-  assert.equal(p.engine.jobs[1].job.next.fit, undefined);
+  assert.equal(p.engine.jobs[1].job.career.next.fit, undefined);
   assert.equal(simulation.peek().fixedFit, false);
   p.stop();
 });
@@ -211,7 +216,7 @@ test('a roll: quick figures, the 0.8 s stand, then the exact check behind them; 
     assert.deepEqual(states(p), ['busy'], 'the roll and the quick start: one write');
     await flush(); // (the baseline: the run's own)
     assert.equal(sent(p), 1, "the roll's saving asked of the plan");
-    assert.deepEqual(p.engine.jobs[0].job.next.roll, [3]);
+    assert.deepEqual(p.engine.jobs[0].job.career.next.roll, [3]);
     p.engine.answer(0, { results: [], next: { roll: { y: 2 } } });
     await flush();
     const quick = simulation.peek();
@@ -342,7 +347,7 @@ test("F5: with a parent fixed, the roll's baseline and Compare's are one job's (
   p.c.roll();
   await flush();
   assert.equal(sent(p), 1, 'the baseline first');
-  assert.deepEqual(p.engine.jobs[0].job.fix, [], 'the best over everything, no place fixed');
+  assert.deepEqual(p.engine.jobs[0].job.career.fix, [], 'the best over everything, no place fixed');
   p.engine.answer(0, { results: [career('everything', [3, 4], 0.05)] });
   await flush();
   assert.equal(simulation.peek().baseline.career, 'everything');
@@ -354,7 +359,7 @@ test("F5: with a parent fixed, the roll's baseline and Compare's are one job's (
   await flush();
   const jobs = p.engine.jobs.slice(2).map((j) => j.job);
   assert.ok(
-    jobs.every((j) => j.fix.length === 1),
+    jobs.every((j) => j.career.fix.length === 1),
     'no second baseline job',
   );
   assert.equal(simulation.peek().baseline.career, 'everything');

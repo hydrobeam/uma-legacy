@@ -70,7 +70,7 @@ export function dropStaleChosen(): void {
   const c = chosen.peek();
   if (!c) return;
   // (settings that make no job: the chosen career no longer applies; a bug building it is reported, and the start goes on)
-  if (orNull(currentJob, Blocked)?.career === c.id) return;
+  if (orNull(currentJob, Blocked)?.career.given === c.id) return;
   choiceDropped({
     places: c.places,
     text: 'The deck you chose with Use this before the reload no longer fits (its trainee, parents, their records, the targets or the card settings changed), so this is the deck the search finds.',

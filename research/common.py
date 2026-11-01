@@ -148,7 +148,8 @@ def must[T](value: T | None, what: str) -> T:
 @functools.cache
 def solver_constants() -> dict[str, Any]:
     """the model constants the solver itself uses, as `loopopt constants` prints them (chain_n, chain_a, chain_b,
-    chain_stop_share, exact_builders_targets, ceil_share, lam_decay, default_star_mix); the release build is needed"""
+    chain_stop_share, exact_builders_targets, ceil_share, lam_decay, star_mix, gen_gold, gen_white, insp_per_star); the
+    release build is needed"""
     if not os.path.exists(SOLVER):
         raise FileNotFoundError(f"{SOLVER} is missing: ./build.sh native builds it")
     return json.loads(subprocess.run([SOLVER, "constants"], capture_output=True, text=True, check=True).stdout)
@@ -1508,6 +1509,11 @@ def legacy_tree(r: Run, M: Model, wins: RaceWins) -> list[dict[str, Any]]:
     return legs
 
 
+def with_targets(job: dict[str, Any], targets: list[dict[str, Any]]) -> dict[str, Any]:
+    """job file `job` with `targets` as its targets"""
+    return {**job, "job": {**job["job"], "skills": {**job["job"]["skills"], "targets": targets}}}
+
+
 def job_targets(r: Run, M: Model, wide: bool, scen: str) -> tuple[list[dict[str, Any]], list[int]]:
     """the job's targets and the candidate targets nothing can give. A target nothing can give has P = 0 in every
     mechanism; the career search drops careers with P(all) = 0, so such targets are not sent and are scored 0 by the
@@ -1598,33 +1604,29 @@ def build_jobs(
         scen = SCENARIO_KEY[r["scenario"]]
         targets, unreachable = job_targets(r, M, wide, scen)
         ids = [variant(c, lb) for c, lb, _ in r["deck"]]
-        job = {
-            "mode": "career",
+        # (a job file: its data files, and the job's targets and roster, deck and career, as the solver reads them)
+        skills = {
             "iters": 30,
             "seed": 3,
-            "skills_file": os.path.join(GD, "web_skills.json"),
-            "cards_file": os.path.join(OUTD, "cards_lb.json"),
-            "events_file": os.path.join(OUTD, "events_lb.json"),
-            "scenario": scen,
             "targets": targets,
             "extra": EXTRA,
             "exclude_outfits": [o for o in outfits if o != outfit],
             "owned": [chara],
-            "trainees": [chara],
-            "owned_cards": ids,
-            "lock_cards": ids,
-            "borrow": False,
-            "legacies": legs,
-            "fix": [0, 1],
-            "top": 1,
-            "per_trainee": True,
+        }
+        deck = {"scenario": scen, "owned_cards": ids, "lock_cards": ids, "borrow": False}
+        career = {"trainees": [chara], "legacies": legs, "fix": [0, 1], "top": 1, "per_trainee": True}
+        data_files = {
+            "skills": os.path.join(GD, "web_skills.json"),
+            "cards": os.path.join(OUTD, "cards_lb.json"),
+            "events": os.path.join(OUTD, "events_lb.json"),
         }
         stops, off, open_ends = end_pins(r)
         unpinned += open_ends > 0
         if stops:
-            job["stop_risk"] = stops
+            deck["stop_risk"] = stops
         if off:
-            job["events_file"] = events_without_ends(off)
+            data_files["events"] = events_without_ends(off)
+        job = {"files": data_files, "job": {"cmd": "career", "skills": skills, "deck": deck, "career": career}}
         if not wide:
             write_atomic(os.path.join(jobdir, f"{r['id']}.json"), json.dumps(job))
             files.append(str(r["id"]))
@@ -1633,7 +1635,7 @@ def build_jobs(
             for k in range(0, len(rest), WIDE_JOB_TARGETS):
                 chunk = f"{r['id']}_{k // WIDE_JOB_TARGETS}"
                 write_atomic(
-                    os.path.join(jobdir, f"{chunk}.json"), json.dumps(dict(job, targets=rest[k : k + WIDE_JOB_TARGETS]))
+                    os.path.join(jobdir, f"{chunk}.json"), json.dumps(with_targets(job, rest[k : k + WIDE_JOB_TARGETS]))
                 )
                 files.append(chunk)
         man.append(ManEntry(r["id"], unreachable))
@@ -1646,7 +1648,7 @@ def build_jobs(
 
 def fingerprint(jobdir: str, files: Iterable[str]) -> str:
     """a hash of the jobs and of every file the solver reads for them: the binary, data.json, web_skills.json (each
-    job's skills_file), cards_lb.json (its cards_file), events_lb.json and its end-free variants"""
+    job's files.skills), cards_lb.json (its files.cards), events_lb.json and its end-free variants"""
     h = hashlib.sha256()
     for f in sorted(files):
         h.update(open(os.path.join(jobdir, f + ".json"), "rb").read())

@@ -27,6 +27,9 @@ gen_white: number,
  */
 gen_gold: number, pairs: Array<PairDetail>, lineages: Array<Lineage>, };
 
+/**
+ * A veteran's parent as her record names it.
+ */
 export type Ancestor = { chara: number, 
 /**
  * (skill group, stars 1..=3) of its white skill sparks
@@ -93,6 +96,9 @@ export type BestPair = { trainee: string, career: string, best_parents: [number,
  */
 export type Bits = string;
 
+/**
+ * Where a career may take a borrowed parent (`CareerJob::borrowed_parent`).
+ */
 export type BorrowedParent = "allow" | "later" | "never";
 
 /**
@@ -129,6 +135,51 @@ unanswered: number, work: number, };
  * A career job's own answer.
  */
 export type CareerAnswer = Refusal | CareerSearch | PlanFollowUp | SimReply | StateOut | StateIn;
+
+/**
+ * A career job's own fields (beside its `SkillJob` and `DeckJob`: `request::CareerRequest`). Every field is in or out
+ * of each key the worker keeps work under (`keys`).
+ */
+export type CareerJob = { legacies: Array<Legacy>, 
+/**
+ * trainees to consider (chara ids); empty = every owned uma
+ */
+trainees?: Array<number>, top?: number, 
+/**
+ * legacies (indices) that must be among the two parents
+ */
+fix?: Array<number>, 
+/**
+ * one result per trainee (false: the best careers whoever trains, e.g. with the trainee fixed: the best parents)
+ */
+per_trainee?: boolean, 
+/**
+ * the builder-trace simulator (`sim`): runs instead of the search when present
+ */
+simulate?: SimJob, 
+/**
+ * the page's next career without simulation (`plan::index_rule`): the career saving the most careers to a fully looped veteran
+ */
+next?: PlanJob, 
+/**
+ * the page's veteran-analysis comparison (echoed in the output, nothing else)
+ */
+compare?: boolean, 
+/**
+ * the plan-only jobs' flag: the page reads only `next` from them, so the main search's career reports (and the first
+ * one's schedule search) are left out
+ */
+no_reports?: boolean, 
+/**
+ * borrowed parents: "allow" (at most one per career, now and in the plan's look-ahead), "later" (none in the career
+ * picked: the search's results and the plan's rows; the plan's look-ahead still borrows), "never" (none anywhere)
+ */
+borrowed_parent?: BorrowedParent, 
+/**
+ * one career to report as it is (`given`: its id, `plan::kept::career_id`), on the job's one trainee and both fixed
+ * parents, with no deck search: the page's Use this on a builder's other career
+ */
+given?: string, };
 
 /**
  * A career job's answer: the job's own, or, for a job that carried a roll of a kept plan (`roll`), its own with the
@@ -191,173 +242,15 @@ outcome_sets: Array<number> | null,
 g1_wins: number | null, };
 
 /**
- * A career job: a deck job's parts and the career search's (`CareerJob`: the veterans, places, plan or simulation).
+ * A career job: a deck job's parts and the career search's (`CareerJob`: the veterans, places, plan or simulation),
+ * and a roll of a kept plan it carries.
  */
-export type CareerRequest = { targets: Array<SkillTarget>, 
+export type CareerRequest = { skills: SkillJob, deck: DeckJob, career: CareerJob, 
 /**
- * Assumed 1/2/3-star shares of the lineage's sparks; defaults to the below-17,500-rank mix (`dstar`).
- * The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2). Checked as it is read
- * (`star_shares`).
+ * a roll of a kept plan, answered beside this job's own answer (`career::run::run_carried_roll`); the page sends
+ * the plan job with `next.roll` instead
  */
-star_dist?: [number, number, number], owned?: Array<number>, exclude?: Array<number>, require?: Array<number>, 
-/**
- * outfits (card ids) not owned; an uma whose every outfit is listed counts as not owned
- */
-exclude_outfits?: Array<number>, 
-/**
- * undocumented guarantees: (chara id, skill group, 1 white | 2 gold), applied to every outfit
- */
-extra?: Array<[number, number, number]>, 
-/**
- * trainee events that hint a target: (chara id for every outfit, or outfit card id; skill group; chance per
- * career). The hinted white counts like a deck white hint for that trainee only.
- */
-trainee_hints?: Array<[number, number, number]>, iters?: number, seed?: number, 
-/**
- * structure sizes searched: 3 (three-uma rotations) and/or 4 (four-uma loops), ranked together on the mean over
- * their lineages
- */
-sizes?: Array<number>, 
-/**
- * experiments: chain events per run Binomial(n, p) for every deck, in place of the pal-count rate
- */
-chain_events?: [number, number], 
-/**
- * experiments: the pal-count rate's (intercept, slope) in place of (CHAIN_A, CHAIN_B); not with `chain_events`
- */
-chain_budget?: [number, number], 
-/**
- * experiments: "slots" picks the card a chain event advances in proportion to its links left and stops each
- * card-event stop risk on its own k of n (the model before the card rule), with either law; default "card", each
- * running card equally and every card-event stop at `CHAIN_STOP_SHARE`
- */
-chain_rule?: string, 
-/**
- * Independent Training scenario: "unity" (default), "gc" (Grand Concert), "ura", "trackblazer", "grandmasters" (JP); sets how many
- * training-hint draws a card gives (`hint_base`)
- */
-scenario?: string, deck_size?: number, 
-/**
- * (card id, skill group, 1 white | 2 gold, chain link 1..; 0 = whenever the card is in the deck)
- */
-events?: Array<[number, number, number, number]>, 
-/**
- * chain events whose reward depends on the outcome: (card, group, level, link, chance given the link fires)
- */
-events_p?: Array<[number, number, number, number, number]>, 
-/**
- * non-chain events with a fixed chance per run when the card is in the deck: (card, group, 1 | 2, chance)
- */
-odds_events?: Array<[number, number, number, number]>, 
-/**
- * choices that end a card's chain: (card, link) for every such choice, and their skill rewards
- * (card, link, group, 1 | 2, chance given the link fires)
- */
-end_links?: Array<[number, number]>, ends?: Array<[number, number, number, number, number]>, 
-/**
- * the job's own stops: (card, link, k, of n), the chain ending at that link on k of n firings, exactly (e.g. a
- * certain stop pinned as 1 of 1); at a link it names, the card-event stop below is left out
- */
-stop_risk?: Array<[number, number, number, number]>, 
-/**
- * links where IT's default choice ends a card's chain on some outcomes (card_events.json `stop_risk`, added by
- * `apply_event_lists`): (card, link, k outcomes, of n); the chain ends there on `chain_stop_share` of its firings
- */
-event_stop_risk?: Array<[number, number, number, number]>, 
-/**
- * events that name two or more skills, in full (`ChoiceEvent`), the choices that keep the chain going, outcomes
- * equally likely. At these links they replace `events` / `events_p`, which credit every skill on its own.
- */
-alts?: Array<ChoiceEvent>, 
-/**
- * measured outcome weights for `choice_events` events: (card, link, [choice][outcome] -> share); an event not
- * listed here keeps equally likely outcomes (event_shares.json, applied by the event builders)
- */
-alt_w?: Array<[number, number, Array<Array<number>>]>, owned_cards?: Array<number>, 
-/**
- * allow one card the player does not own (a friend's card) in the deck
- */
-borrow?: boolean, lock_cards?: Array<number>, exclude_cards?: Array<number>, 
-/**
- * lowest rarity allowed for cards with chain events (R cards have none and always count: no chain slots)
- */
-min_rarity?: number, 
-/**
- * only decks with exactly this many pals
- */
-pals?: number, 
-/**
- * how many distinct decks to return (each with its best loop)
- */
-top_decks?: number, 
-/**
- * experiment: fixed per-uma race schedules instead of loop-optimised ones. "solo" = each uma maximises her
- * own expected race wins; "goals" = career objectives only; "none" = shared wins count for nothing.
- */
-schedule?: string, 
-/**
- * one deck per uma instead of one shared deck: each trainee runs her own best legal deck across her lineages
- * (three in a four-uma loop, one in a rotation); `top_decks` then counts structures
- */
-per_uma?: boolean, 
-/**
- * internal: return the skyline decks only (used for a uma's own-card-free deck set in per-uma mode)
- */
-deck_only?: boolean, 
-/**
- * per-uma: rank loops and decks by exact odds (EXACT_RHO); false = prune by product odds, as a fast first pass
- * (what is reported is still scored exactly, `exact.complete` false)
- */
-exact?: boolean, 
-/**
- * audit: every class cap (`EXACT_CAPS`) at 2.0, so a deck whose exact / product exceeds its class's cap is still
- * found and reported (`val/capaudit.py`; slow)
- */
-cap_audit?: boolean, 
-/**
- * career jobs: every deck search cap-free (`best_deck_cf`: pruned by proven bounds only, no assumed cap), not only
- * those that saw a deck past its class's cap (checks and comparisons; slower)
- */
-cap_free?: boolean, legacies: Array<Legacy>, 
-/**
- * trainees to consider (chara ids); empty = every owned uma
- */
-trainees?: Array<number>, top?: number, 
-/**
- * legacies (indices) that must be among the two parents
- */
-fix?: Array<number>, 
-/**
- * one result per trainee (false: the best careers whoever trains, e.g. with the trainee fixed: the best parents)
- */
-per_trainee?: boolean, 
-/**
- * the builder-trace simulator (`sim`): runs instead of the search when present
- */
-simulate?: SimJob, 
-/**
- * the page's next career without simulation (`plan::index_rule`): the career saving the most careers to a fully looped veteran
- */
-next?: PlanJob, 
-/**
- * the page's veteran-analysis comparison (echoed in the output, nothing else)
- */
-compare?: boolean, 
-/**
- * the plan-only jobs' flag: the page reads only `next` from them, so the main search's career reports (and the first
- * one's schedule search) are left out
- */
-no_reports?: boolean, 
-/**
- * borrowed parents: "allow" (at most one per career, now and in the plan's look-ahead), "later" (none in the career
- * picked: the search's results and the plan's rows; the plan's look-ahead still borrows), "never" (none anywhere)
- */
-borrowed_parent?: BorrowedParent, 
-/**
- * one career to report as it is (`given`: its id, `plan::kept::career_id`), on the job's one trainee and both fixed
- * parents, with no deck search: the page's Use this on a builder's other career
- */
-career?: string, };
+roll?: CarriedRollJob, };
 
 /**
  * A G1 of a career's schedule: the loop schedule's row (one cell, hers; `shared`: a parent won it), with the race's
@@ -589,6 +482,11 @@ schedule_outfit: number, };
 export type CarriedRoll = { roll: RollReply, } & (Refusal | CareerSearch | PlanFollowUp | SimReply | StateOut | StateIn);
 
 /**
+ * A roll carried by another job: the plan job and her stars per job target (0 where it did not land).
+ */
+export type CarriedRollJob = { job: CareerRequest, stars: Array<number>, };
+
+/**
  * The plan's robustness check so far (`next.robust`), or why there is none.
  */
 export type CheckReply = CheckReport | { error: string, unavailable: boolean, } | Refusal;
@@ -653,38 +551,11 @@ export type ClassMaxDeck = { trainee: string, cards: Array<string>, };
 export type DeckChoice = { p_all_deck_score: number, best_cached_score: number, score_deck_differs: boolean, searched_score: number, kept: string, };
 
 /**
- * A deck job's answer.
+ * A job's deck search: the deck space (cards, size, scenario), the event lists (the job's own, then the card-event
+ * cache's: `sources::EventLists`), the chain law and the search's settings; the deck half of a deck or career job
+ * (`request::DeckRequest`, `CareerRequest`).
  */
-export type DeckReply = Refusal | Skyline | LoopReport;
-
-/**
- * A deck job: the targets and roster (`SkillJob`) and the deck search's settings (`DeckJob`).
- */
-export type DeckRequest = { targets: Array<SkillTarget>, 
-/**
- * Assumed 1/2/3-star shares of the lineage's sparks; defaults to the below-17,500-rank mix (`dstar`).
- * The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2). Checked as it is read
- * (`star_shares`).
- */
-star_dist?: [number, number, number], owned?: Array<number>, exclude?: Array<number>, require?: Array<number>, 
-/**
- * outfits (card ids) not owned; an uma whose every outfit is listed counts as not owned
- */
-exclude_outfits?: Array<number>, 
-/**
- * undocumented guarantees: (chara id, skill group, 1 white | 2 gold), applied to every outfit
- */
-extra?: Array<[number, number, number]>, 
-/**
- * trainee events that hint a target: (chara id for every outfit, or outfit card id; skill group; chance per
- * career). The hinted white counts like a deck white hint for that trainee only.
- */
-trainee_hints?: Array<[number, number, number]>, iters?: number, seed?: number, 
-/**
- * structure sizes searched: 3 (three-uma rotations) and/or 4 (four-uma loops), ranked together on the mean over
- * their lineages
- */
-sizes?: Array<number>, 
+export type DeckJob = { 
 /**
  * experiments: chain events per run Binomial(n, p) for every deck, in place of the pal-count rate
  */
@@ -694,16 +565,16 @@ chain_events?: [number, number],
  */
 chain_budget?: [number, number], 
 /**
- * experiments: "slots" picks the card a chain event advances in proportion to its links left and stops each
- * card-event stop risk on its own k of n (the model before the card rule), with either law; default "card", each
- * running card equally and every card-event stop at `CHAIN_STOP_SHARE`
+ * how a chain event picks the card it advances (`chains::PickRule`): "card" (default), each running card equally,
+ * every card-event stop at `CHAIN_STOP_SHARE`; experiments: "slots", in proportion to its links left, each
+ * card-event stop risk on its own k of n (the model before the card rule), with either law
  */
-chain_rule?: string, 
+chain_rule?: PickRule, 
 /**
- * Independent Training scenario: "unity" (default), "gc" (Grand Concert), "ura", "trackblazer", "grandmasters" (JP); sets how many
- * training-hint draws a card gives (`hint_base`)
+ * the Independent Training scenario (`hints::Scenario`; Unity Cup unless sent): how many training-hint draws a card
+ * gives (`Scenario::hint_base`), and the cards the game bans from its deck (`CardsRaw::restrict`)
  */
-scenario?: string, deck_size?: number, 
+scenario?: Scenario, deck_size?: number, 
 /**
  * (card id, skill group, 1 white | 2 gold, chain link 1..; 0 = whenever the card is in the deck)
  */
@@ -758,10 +629,9 @@ pals?: number,
  */
 top_decks?: number, 
 /**
- * experiment: fixed per-uma race schedules instead of loop-optimised ones. "solo" = each uma maximises her
- * own expected race wins; "goals" = career objectives only; "none" = shared wins count for nothing.
+ * experiment: fixed per-uma race schedules instead of loop-optimised ones (`FixedSchedule`)
  */
-schedule?: string, 
+schedule?: FixedSchedule, 
 /**
  * one deck per uma instead of one shared deck: each trainee runs her own best legal deck across her lineages
  * (three in a four-uma loop, one in a rotation); `top_decks` then counts structures
@@ -786,6 +656,16 @@ cap_audit?: boolean,
  * those that saw a deck past its class's cap (checks and comparisons; slower)
  */
 cap_free?: boolean, };
+
+/**
+ * A deck job's answer.
+ */
+export type DeckReply = Refusal | Skyline | LoopReport;
+
+/**
+ * A deck job: the targets and roster (`SkillJob`) and the deck search's settings (`DeckJob`).
+ */
+export type DeckRequest = { skills: SkillJob, deck: DeckJob, };
 
 /**
  * Her best cached deck on the pair, scored with its saving split by outcome class, beside the plain scoring.
@@ -860,6 +740,11 @@ search: string, deck_choice: DeckChoice, };
  * fitted at (`Cont::anchor_odds`); a 4-element entry (written before p0 was) is anchored at the candidate's odds now
  */
 export type FitEntry = [number, number, number, number, number] | [number, number, number, number];
+
+/**
+ * A deck job's fixed race schedules (`DeckJob::schedule`), an experiment.
+ */
+export type FixedSchedule = "solo" | "goals" | "none";
 
 /**
  * What a follow-up answers.
@@ -944,6 +829,9 @@ best_trio_changes: boolean, trios: Array<OracleTrio>, oracle_ms: number, scoring
  */
 export type Key = string;
 
+/**
+ * A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents.
+ */
 export type Legacy = { chara: number, borrowed?: boolean, sparks?: Array<[number, number]>, wins?: Array<number>, pinks?: Array<[number, number]>, 
 /**
  * its own parents (the new trainee's grandparents), at most two; empty when unknown
@@ -1261,6 +1149,12 @@ export type PairSweep = { trainees: Array<SweptTrainee>, sweep_ms: number, scori
 export type PickChange = { t: number, pick: string, trainee: string, p: number, pool: number, s: number, };
 
 /**
+ * How a chain event picks the card it advances among the cards whose chains still run (`pick_weight`); a job's
+ * `chain_rule`.
+ */
+export type PickRule = "card" | "slots";
+
+/**
  * A legacy pink that can fire: its group and aptitude, its chance, the legacy slot and its stars.
  */
 export type PinkFireReport = { group: number, apt: number, p: number, slot: number, stars: number, };
@@ -1328,7 +1222,7 @@ pinf_builders: { [key in string]: [number, number] },
 /**
  * per candidate (chara id, as text) whose step is her kept cap's, its careers and her odds then
  */
-step_caps: { [key in string]: StepCap }, loop_members: Array<UmaName>, loop_note: string | null, hint: Array<CandidateHint>, cut: Array<CandidateHint>, side_only: Array<UmaName>, umas_scored: number, umas_searched: number, umas_certified: number, umas_unproven: number, work: PlanWork, sur: number, sur_diff: Array<SurrogateDifference>, loop_ms: number, search_ms: number, combo_ms: number, index_ms: number, total_ms: number, options: Array<PlanOption>, 
+step_caps: { [key in string]: StepCap }, loop_members: Array<UmaName>, loop_note: string | null, hint: Array<CandidateHint>, cut: Array<CandidateHint>, side_only: Array<UmaName>, umas_scored: number, umas_searched: number, umas_certified: number, umas_unproven: number, work: PlanWork, sur: SurrogateMode, sur_diff: Array<SurrogateDifference>, loop_ms: number, search_ms: number, combo_ms: number, index_ms: number, total_ms: number, options: Array<PlanOption>, 
 /**
  * routes the scorings' memory budget left out (each lowers its row's saving, never raises it)
  */
@@ -1379,6 +1273,10 @@ proxy_check?: ProxyCheck, };
  */
 export type PlanFollowUp = { next: FollowUp, };
 
+/**
+ * A plan job's `next`: the plan's settings and measurements, and the follow-ups asked of a kept plan (`roll`, `robust`,
+ * `pair_search`, `oracle`). A field the job leaves out takes `PlanJob::default()`'s.
+ */
 export type PlanJob = { 
 /**
  * the surrogate's refresh margin (`sim` module notes)
@@ -1394,10 +1292,10 @@ search_work?: number,
  */
 loop_members?: Array<number>, 
 /**
- * `index_rule`: each uma's best career through the surrogate (`best_sur`) instead of the career search (1), or
- * both, reporting where they differ (2); the surrogate's refresh margin there
+ * `index_rule`: each uma's best career by the career search (`SurrogateMode`), and the surrogate's refresh margin
+ * where it searches through it
  */
-sur?: number, sur_margin?: number, 
+sur?: SurrogateMode, sur_margin?: number, 
 /**
  * `index_rule` measurement: each builder's career also from her deck class's winning decks alone (no career search),
  * its lifts and score beside the exact ones (`proxy_check` in the output); changes nothing else
@@ -1612,6 +1510,11 @@ export type PlanWork = { nodes: number, exact: number, max_ratio: number, class_
 prof: { [key in string]: number }, };
 
 /**
+ * What the simulator runs (`SimJob::policy`; module notes).
+ */
+export type Policy = "greedy" | "greedy_exact" | "loop" | "trace" | "index";
+
+/**
  * The proxy check (`next.proxy_check`): each row's proxy beside her exact career.
  */
 export type ProxyCheck = { 
@@ -1641,6 +1544,12 @@ cand: boolean,
  * her deck class (an uma index)
  */
 class: number, exact_val: number, proxy_val: number | null, same_pair: boolean, same_deck: boolean, score: number | null, proxy_score: number | null, eff: Array<number>, proxy_eff: Array<number>, };
+
+/**
+ * The rank band a job assumes its lineages were bred at (the player picks it): its star mix is the 1/2/3-star shares
+ * of their sparks (assumed; docs/RESEARCH.md section 2).
+ */
+export type RankClass = "below_ss" | "ss_and_up";
 
 /**
  * One of the cheapest routes, with its value and whether it is about as cheap as V's.
@@ -1680,15 +1589,13 @@ score: number | null, report: CareerReport, };
 export type Refusal = { error: string, };
 
 /**
- * A job by its command (the page's `SolverJob`). For the page's types: `handle` reads the command (`Command`), then
- * each command its parts from the request. Not every field a job may carry is here: a career job's `roll` (a roll of a
- * kept plan carried by another job, which the page does not send) and the event lists the solver adds (`sources`).
+ * A job by its command (`cmd`).
  */
 export type Request = { "cmd": "deck" } & DeckRequest | { "cmd": "career" } & CareerRequest | { "cmd": "state_out" } | { "cmd": "state_in", 
 /**
  * what `state_out` gave, as the page stored it
  */
-state: unknown, };
+state: StoredState, };
 
 /**
  * A deck in a result. Parallel lists: `cards[i]` is named with ` (borrowed)` or ` (end chain at link N)` appended
@@ -1883,6 +1790,11 @@ careers: number | null, };
 export type RunStats = { n: number, mean: number, sd: number, ci95: [number, number], min: number, max: number, };
 
 /**
+ * An Independent Training scenario, as a job names it (a choice the job makes: the page's `scen`).
+ */
+export type Scenario = "unity" | "gc" | "ura" | "trackblazer" | "grandmasters";
+
+/**
  * A scenario gold: bought for sure, landing at the gold rate.
  */
 export type ScenarioBuy = { gold: number, white: number, land_gold: number, land_white: number, 
@@ -2004,11 +1916,11 @@ reason: string, best_parents: [number, number], pairs_tried: number, phase_ms: n
  */
 search: string, deck_choice: DeckChoice, };
 
-export type SimJob = { 
 /**
- * greedy | greedy_exact | loop | trace | index
+ * A career job's `simulate`: the policy simulator's settings (module notes). A field the job leaves out takes
+ * `SimJob::default()`'s.
  */
-policy?: string, runs?: number, first?: number, seed?: number, eps?: number, max_careers?: number, 
+export type SimJob = { policy?: Policy, runs?: number, first?: number, seed?: number, eps?: number, max_careers?: number, 
 /**
  * refresh margin m (module notes); 0 = refresh whenever a bound exceeds the table value
  */
@@ -2040,7 +1952,7 @@ audit?: boolean, audit_sample?: number, audit_every?: number,
  */
 progress?: number, 
 /**
- * index: the plan job's `next` (docs/SOLVER.md "Next career"); the page sends `{}`
+ * index: the plan job's `next` (docs/SOLVER.md "Next career"); the page's is the default
  */
 next?: PlanJob, 
 /**
@@ -2072,9 +1984,9 @@ export type SimReply = Refusal | SimReport | TraceReport;
  */
 export type SimReport = { 
 /**
- * the job's `simulate` object, as sent
+ * the job's `simulate` settings, each as the job set it or at its default
  */
-simulate: unknown, policy: string, runs: Array<SimRun>, 
+simulate: SimJob, policy: Policy, runs: Array<SimRun>, 
 /**
  * the expected careers over the runs (null: no run)
  */
@@ -2104,6 +2016,34 @@ segs: Array<PickChange>, checks: Array<SurrogateCheck>, audits: Array<SurrogateA
  * the index policy's plans
  */
 index?: IndexRecord, finishing?: number, full_veterans?: number, censored?: boolean, survival?: number, final_legacies?: Array<LegacyRecord>, };
+
+/**
+ * A job's targets and roster: the skill model's half of a deck or career job (`request::DeckRequest`, `CareerRequest`).
+ */
+export type SkillJob = { targets: Array<SkillTarget>, 
+/**
+ * the lineage's rank band, which sets the 1/2/3-star shares of its sparks (`RankClass::star_mix`); below SS
+ * unless sent
+ */
+rank_class?: RankClass, owned?: Array<number>, exclude?: Array<number>, require?: Array<number>, 
+/**
+ * outfits (card ids) not owned; an uma whose every outfit is listed counts as not owned
+ */
+exclude_outfits?: Array<number>, 
+/**
+ * undocumented guarantees: (chara id, skill group, 1 white | 2 gold), applied to every outfit
+ */
+extra?: Array<[number, number, number]>, 
+/**
+ * trainee events that hint a target: (chara id for every outfit, or outfit card id; skill group; chance per
+ * career). The hinted white counts like a deck white hint for that trainee only.
+ */
+trainee_hints?: Array<[number, number, number]>, iters?: number, seed?: number, 
+/**
+ * structure sizes searched: 3 (three-uma rotations) and/or 4 (four-uma loops), ranked together on the mean over
+ * their lineages
+ */
+sizes?: Array<number>, };
 
 export type SkillTarget = { group: number, 
 /**
@@ -2293,6 +2233,11 @@ export type SurrogateCheck = { argmax: ArgmaxCheck, lineages: Array<[number, num
  * Where the surrogate's best career for a trainee differs from the search's (`sur` 2): each one's parents and odds.
  */
 export type SurrogateDifference = { trainee: string, search: [[number, number] | null, number], sur: [[number, number] | null, number], };
+
+/**
+ * How the plan finds each uma's best career (`PlanJob::surrogate_mode`, the job's `sur`).
+ */
+export type SurrogateMode = "search" | "surrogate" | "both";
 
 /**
  * A pair by its ceiling; where she has a cached deck, her best one there (P(all), score) and every cached deck's

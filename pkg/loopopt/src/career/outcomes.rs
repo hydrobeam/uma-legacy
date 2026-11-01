@@ -425,7 +425,7 @@ impl CareerSetup<'_> {
             parents: vec![Ancestor::of_legacy(&legacies[first_parent]), Ancestor::of_legacy(&legacies[second_parent])],
             // (the veteran owns her copies: the record stays in the memo)
             win_chances: record.win_chances.to_vec(),
-            mix: Some(self.skill_job.star_dist),
+            mix: Some(self.skill_job.star_mix()),
             pink_chances: record.pink_chances.to_vec(),
         }
     }

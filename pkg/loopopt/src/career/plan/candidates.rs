@@ -15,8 +15,8 @@ use crate::career::plan::search::{
     today_umas,
 };
 use crate::career::plan::{
-    ParentPool, PlanCandidates, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, PlanSetup, found_career,
-    search_best_career,
+    ParentPool, PlanCandidates, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, PlanSetup, SurrogateMode,
+    found_career, search_best_career,
 };
 use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Found};
@@ -63,7 +63,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // a ranking with no deck search cut Gold Ship, a trio side on today's veterans, on both exported rosters with
     // borrows (V +2.2%, +0.6%). `proxy_check` presearches alike, so its plan picks the same candidates as the plan it
     // checks (planval compares their V); its cache snapshot is taken before the builders' decks are added
-    let presearch = settings.surrogate_mode == 0
+    let presearch = settings.surrogate_mode == SurrogateMode::Search
         && settings.fit.is_none()
         && (settings.exact_all || exact_builders(env.setup.target_count, legacies, input.pool.max_borrowed));
     if presearch {
@@ -79,7 +79,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let StageCandidates { trainees: stage_trainees, hint, cut, side_only } =
         stage_candidates(env, input, &main_career, &loop_rotation.members, presearch.then_some(&searches));
     let loop_ms = now_ms() - started_ms;
-    if settings.surrogate_mode != 1 {
+    if settings.surrogate_mode != SurrogateMode::Surrogate {
         for &trainee in &stage_trainees {
             if searches.best_careers[trainee].is_unsearched() {
                 let search = best_of(env, input.input_parents(), trainee, searches.kept_plans(legacies.len()));
@@ -92,8 +92,10 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let mut search_ms = now_ms() - searches_started_ms;
     // the caps the kept fits of pools this one holds keep for each stage candidate (none under a given fit: the job's
     // model; none for a side-only uma, who has no step)
+    let (legacies, trainee_filter) = input.resources.job.veterans_and_trainees();
     let cap_pool = CapPool::of(
-        input.resources.job,
+        legacies,
+        trainee_filter,
         input.fixed_parents,
         plan_scope(input.resources.job, env.setup.plan_space_key),
     );
@@ -130,11 +132,11 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     }
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut surrogate_differences: Vec<SurrogateDifference> = vec![];
-    if settings.surrogate_mode > 0 {
+    if settings.surrogate_mode != SurrogateMode::Search {
         let surrogate_started_ms = now_ms();
         capped(&mut sim, settings.search_work, env_budget, |sim| {
             for &trainee in &stage_trainees {
-                if (settings.surrogate_mode == 2 || searches.best_careers[trainee].is_unsearched())
+                if (settings.surrogate_mode == SurrogateMode::Both || searches.best_careers[trainee].is_unsearched())
                     && let Some(difference) = plan_surrogate(sim, input, &mut searches.best_careers, trainee, buf)
                 {
                     surrogate_differences.push(difference);
@@ -169,7 +171,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         .zip(&careers)
         .map(|(&trainee, career)| {
             career.is_some()
-                && settings.surrogate_mode != 1
+                && settings.surrogate_mode != SurrogateMode::Surrogate
                 && if trainee == main_career.trainee {
                     input.solved.complete
                 } else {
@@ -277,7 +279,9 @@ pub(crate) fn builders_use_proxies(
     legacies: &[crate::career::Legacy],
     max_borrowed: u8,
 ) -> bool {
-    settings.surrogate_mode == 0 && !settings.exact_all && !exact_builders(target_count, legacies, max_borrowed)
+    settings.surrogate_mode == SurrogateMode::Search
+        && !settings.exact_all
+        && !exact_builders(target_count, legacies, max_borrowed)
 }
 
 /// `PlanCandidates::proxies_enabled`: `builders_use_proxies`, and not in the `proxy_check` run (which prices proxies
@@ -296,10 +300,10 @@ mod proxy_tests {
     use super::{EXACT_BUILDERS_TARGETS, builders_use_proxies, proxies_enabled};
 
     /// The plan's proxy test and `proxy_check`'s `plan_uses_proxies` agree with `proxy_check` off, for every surrogate
-    /// mode (0, 1, 2), `exact_all` and `exact_builders` (here by the target count): proxies only at mode 0 with neither
+    /// mode, `exact_all` and `exact_builders` (here by the target count): proxies only searching with neither
     #[test]
     fn the_plan_and_its_proxy_check_agree_on_proxies() {
-        for surrogate_mode in 0..=2u8 {
+        for surrogate_mode in ["search", "surrogate", "both"] {
             for exact_all in [false, true] {
                 for exact_builders in [false, true] {
                     let settings: crate::career::plan::PlanJob = serde_json::from_value(
@@ -313,7 +317,7 @@ mod proxy_tests {
                         plan, check,
                         "mode {surrogate_mode}, exact_all {exact_all}, exact_builders {exact_builders}"
                     );
-                    assert_eq!(plan, surrogate_mode == 0 && !exact_all && !exact_builders);
+                    assert_eq!(plan, surrogate_mode == "search" && !exact_all && !exact_builders);
                 }
             }
         }
@@ -601,14 +605,15 @@ fn pass_one_rows(
             continue;
         }
         if searches.best_careers[trainee].is_unsearched()
-            || (settings.surrogate_mode == 2 && !candidates.trainees.contains(&trainee))
+            || (settings.surrogate_mode == SurrogateMode::Both && !candidates.trainees.contains(&trainee))
         {
             let search_started_ms = now_ms();
             capped(simulator, settings.search_work, searches.env_budget, |simulator| {
-                if settings.surrogate_mode != 1 && searches.best_careers[trainee].is_unsearched() {
+                if settings.surrogate_mode != SurrogateMode::Surrogate && searches.best_careers[trainee].is_unsearched()
+                {
                     search_best_career(simulator, context, searches, trainee);
                 }
-                if settings.surrogate_mode > 0
+                if settings.surrogate_mode != SurrogateMode::Search
                     && let Some(difference) = plan_surrogate(simulator, input, &mut searches.best_careers, trainee, buf)
                 {
                     profile.surrogate_differences.push(difference);
@@ -742,7 +747,7 @@ fn plan_surrogate(
 ) -> Option<SurrogateDifference> {
     let settings = input.settings;
     let surrogate = best_sur(simulator, input.input_parents(), trainee, settings.sur_margin, buf);
-    if settings.surrogate_mode != 2 {
+    if settings.surrogate_mode != SurrogateMode::Both {
         best_careers[trainee] = CachedSearch::Known(surrogate);
         return None;
     }
@@ -827,7 +832,7 @@ pub(crate) fn exact_no_borrow_career(
     let settings = context.settings();
     let no_kept_plans = KeptPlans { same_pool: None, previous_pool: None, legacy_count: context.legacy_count() };
     capped(simulator, settings.search_work, searches.env_budget, |simulator| {
-        if settings.surrogate_mode == 1 {
+        if settings.surrogate_mode == SurrogateMode::Surrogate {
             best_sur(simulator, context.pick_parents(), trainee, settings.sur_margin, buf)
         } else {
             let search = best_of(simulator.env, context.pick_parents(), trainee, no_kept_plans);

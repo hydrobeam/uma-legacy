@@ -9,6 +9,11 @@ import tempfile
 import unittest
 
 
+def plan_job(skills=None, career=None):
+    """a val/plan job file with these parts (each {} unless given)"""
+    return {"files": {}, "job": {"cmd": "career", "skills": skills or {}, "career": career or {}}}
+
+
 class ValidationExitTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -50,7 +55,7 @@ class ValidationExitTests(unittest.TestCase):
         }
         self.write(self.plan / "jobs.json", [["global", "tiny"]])
         self.write(self.plan / "slow.json", [])
-        self.write(self.plan / "tiny.json", {})
+        self.write(self.plan / "tiny.json", plan_job())
         self.write(self.plan / "ref__tiny.out", self.output)
         self.fake_solver(self.output)
 
@@ -186,12 +191,12 @@ class ValidationExitTests(unittest.TestCase):
         # (10 targets, or a borrowed veteran a career may use: no proxy run; under "later" or "never" it keeps one)
         borrowed = [{"chara": 5, "borrowed": False}, {"chara": 6, "borrowed": True}]
         for job, skipped in (
-            ({"targets": [{"group": g} for g in range(10)]}, True),
-            ({"targets": [{"group": g} for g in range(9)]}, False),
-            ({"legacies": borrowed}, True),
-            ({"legacies": borrowed, "borrowed_parent": "later"}, False),
-            ({"legacies": borrowed, "borrowed_parent": "never"}, False),
-            ({"next": {"exact_all": True}}, True),
+            (plan_job(skills={"targets": [{"group": g} for g in range(10)]}), True),
+            (plan_job(skills={"targets": [{"group": g} for g in range(9)]}), False),
+            (plan_job(career={"legacies": borrowed}), True),
+            (plan_job(career={"legacies": borrowed, "borrowed_parent": "later"}), False),
+            (plan_job(career={"legacies": borrowed, "borrowed_parent": "never"}), False),
+            (plan_job(career={"next": {"exact_all": True}}), True),
         ):
             with self.subTest(job=job):
                 proxy_output = self.plan / "trial_proxy__tiny.out"
@@ -215,7 +220,7 @@ class ValidationExitTests(unittest.TestCase):
         """planval on the fixture with these `next` fields replaced (or a whole output), and this job"""
         output = output or {**self.output, "next": {**self.output["next"], **plan}}
         self.write(self.plan / "ref__tiny.out", output)
-        self.write(self.plan / "tiny.json", job or {})
+        self.write(self.plan / "tiny.json", job or plan_job())
         self.fake_solver(output)
         return self.plan_run()
 
@@ -261,7 +266,7 @@ class ValidationExitTests(unittest.TestCase):
     def test_plan_first_step_skips_a_given_cont_and_a_borrowing_exclusion(self):
         building = {**self.output["next"]["members"][0], "building_careers": 5.0, "builder": None}
         # (her Cont given by the job's next.fit: the solver reports no builder; without it, a missing builder fails)
-        fit = {"next": {"fit": [[1, 0.1, 0.1, 0.01, 0.001]]}}
+        fit = plan_job(career={"next": {"fit": [[1, 0.1, 0.1, 0.01, 0.001]]}})
         self.assert_first_step(self.first_step_run(job=fit, members=[building]), False, "Cont given")
         self.assert_first_step(self.first_step_run(members=[building]), True, "not reported")
         # (her builder on a borrowed parent under "later" is no option; under "allow" its missing row fails)
@@ -269,7 +274,7 @@ class ValidationExitTests(unittest.TestCase):
         borrowing = {**building, "builder": "2:0,1:x/y/0"}
         for rule, fails, says in (("later", False, "borrowing rule"), ("allow", True, "no row has its career id")):
             with self.subTest(rule=rule):
-                job = {"borrowed_parent": rule, "legacies": legacies}
+                job = plan_job(career={"borrowed_parent": rule, "legacies": legacies})
                 self.assert_first_step(self.first_step_run(job=job, members=[borrowing]), fails, says)
 
     def test_plan_fails_mismatch_and_missing_reference(self):
@@ -282,7 +287,7 @@ class ValidationExitTests(unittest.TestCase):
         self.fake_solver(self.output, status=3)
         (self.val / "jobs").mkdir()
         self.write(self.val / "jobs.json", [["global", "tiny"]])
-        self.write(self.val / "jobs/tiny.json", {"mode": "career"})
+        self.write(self.val / "jobs/tiny.json", {"files": {}, "job": {"cmd": "career"}})
         for name, args in (
             ("runval.py", ("trial", "-j", "1")),
             ("planval.py", ("trial", "-j", "1")),

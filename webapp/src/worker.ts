@@ -68,8 +68,8 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
         job = message.job;
       runId = message.id;
       // a deck search runs twice: first by the product of per-target odds (fast, posted at once), then by exact odds
-      if (job.cmd === 'deck' && job.exact !== false) {
-        const quick = callRaw('call', JSON.stringify(Object.assign({}, job, { exact: false })));
+      if (job.cmd === 'deck' && job.deck.exact !== false) {
+        const quick = callRaw('call', JSON.stringify({ ...job, deck: { ...job.deck, exact: false } }));
         post('interim', message.id, quick, t0);
         if (quick.error) {
           post('result', message.id, quick, t0);

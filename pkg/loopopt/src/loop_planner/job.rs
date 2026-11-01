@@ -10,27 +10,19 @@ use crate::loop_planner::dominance::{DeckEval, DominanceIndex, dominates, k_filt
 use crate::loop_planner::output::{DeckReply, DeckStats, Skyline};
 use crate::loop_planner::search::{LoopJobInputs, run_multi};
 use crate::refusal::Refusal;
-use crate::skills::{Model, SkillJob, SkillsRaw};
-use serde::Deserialize;
-use serde_json::Value;
+use crate::request::DeckRequest;
+use crate::skills::{Model, SkillsRaw};
 use std::collections::HashMap;
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
 /// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with
 /// per-uma decks, for every structure member with a shared deck.
-pub(crate) fn run_deck(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> DeckReply {
+pub(crate) fn run_deck(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &DeckRequest) -> DeckReply {
     run_deck_relaxed(data, skills, cards, job)
 }
 
-pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> DeckReply {
-    let skill_job: SkillJob = match SkillJob::deserialize(job) {
-        Ok(x) => x,
-        Err(e) => return DeckReply::Refusal(Refusal::new(e.to_string())),
-    };
-    let deck_job: DeckJob = match DeckJob::deserialize(job) {
-        Ok(x) => x,
-        Err(e) => return DeckReply::Refusal(Refusal::new(e.to_string())),
-    };
-    let model = Model::new(data, skills, &skill_job);
+pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &DeckRequest) -> DeckReply {
+    let DeckRequest { skills: skill_job, deck: deck_job } = job;
+    let model = Model::new(data, skills, skill_job);
     let target_groups: Vec<u32> = model.uncertain.iter().map(|&i| skill_job.targets[i].group).collect();
     let target_count = target_groups.len();
     let pool_ids: Vec<u32> = data
@@ -42,16 +34,16 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
                 && !skill_job.exclude.contains(&id)
         })
         .collect();
-    let mut entries = match deck_entries(cards, &deck_job, &target_groups, &pool_ids) {
+    let mut entries = match deck_entries(cards, deck_job, &target_groups, &pool_ids) {
         Ok(e) => e,
         Err(refusal) => return DeckReply::Refusal(refusal),
     };
     // every entry, before card dominance drops any: the exact per-uma search enumerates decks from these
-    let space = (!deck_job.deck_only).then(|| deck_space(cards, &deck_job, skills, &target_groups, &entries));
-    let source_builder = Sources { deck_job: &deck_job, target_groups: &target_groups };
-    let dropped_card_count = entries.drop_dominated_cards(&deck_job, target_count);
+    let space = (!deck_job.deck_only).then(|| deck_space(cards, deck_job, skills, &target_groups, &entries));
+    let source_builder = Sources { deck_job, target_groups: &target_groups };
+    let dropped_card_count = entries.drop_dominated_cards(deck_job, target_count);
     let coordinates = dominance_coords(&entries.sources, target_count);
-    let enumerator = match DeckEnumerator::new(&entries, &deck_job, target_count, &coordinates) {
+    let enumerator = match DeckEnumerator::new(&entries, deck_job, target_count, &coordinates) {
         Ok(x) => x,
         Err(refusal) => return DeckReply::Refusal(refusal),
     };
@@ -81,8 +73,8 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
         data,
         cards,
         model: &model,
-        skill_job: &skill_job,
-        deck_job: &deck_job,
+        skill_job,
+        deck_job,
         skyline: &display_decks,
         deck_space: space.as_ref().unwrap(),
     };

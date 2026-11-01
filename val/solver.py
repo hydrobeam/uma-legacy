@@ -16,13 +16,30 @@ BINARY = os.path.join(REPO, "pkg", "loopopt", "target", "release", "loopopt")  #
 @functools.cache
 def constants(binary=BINARY):
     """the model constants the solver itself uses, as `loopopt constants` prints them: chain_n, chain_a, chain_b,
-    chain_stop_share ([k, n]), exact_builders_targets, ceil_share, lam_decay, default_star_mix"""
+    chain_stop_share ([k, n]), exact_builders_targets, ceil_share, lam_decay, star_mix (by rank class), gen_gold,
+    gen_white, insp_per_star"""
     if not os.path.exists(binary):
         raise FileNotFoundError(f"{binary} is missing: ./build.sh native builds it")
     result = subprocess.run([binary, "constants"], capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(f"constants: solver exited {result.returncode}\n{result.stderr}")
     return json.loads(result.stdout)
+
+
+def part(job, name):
+    """a job file's job part `name`: "skills", "deck" or "career" (the solver's SkillJob, DeckJob and CareerJob fields;
+    {} where the job has none). A job file is {"files": {skills, cards, events}, "job": {cmd, skills, deck, career}}."""
+    return job["job"].get(name, {})
+
+
+def with_part(job, name, **fields):
+    """a copy of job file `job` whose part `name` has `fields` set, the rest shared with `job`"""
+    return {**job, "job": {**job["job"], name: {**part(job, name), **fields}}}
+
+
+def with_next(job, **fields):
+    """a copy of career job file `job` whose plan (`career.next`) has `fields` set: a plan job, whatever `job` was"""
+    return with_part(job, "career", next={**part(job, "career").get("next", {}), **fields})
 
 
 def era_dir(era):

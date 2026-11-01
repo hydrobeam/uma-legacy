@@ -1,4 +1,4 @@
-//! The command line's errors and its `constants` subcommand: a file it cannot read, a job without a known mode or a
+//! The command line's errors and its `constants` subcommand: a file it cannot read, a job file that is not one or a
 //! missing argument exits 2 with a message (no panic), and `constants` prints the model constants as one JSON object.
 mod common;
 use common::State;
@@ -23,9 +23,13 @@ fn errors_name_the_file_and_exit_2() {
     refused(&loopopt(&["no_such_data.json", "../../../../val/jobs/pal_U.json"]), "cannot read no_such_data.json");
     refused(&loopopt(&["pbtable", "no_such_data.json"]), "cannot read no_such_data.json");
     refused(&loopopt(&["data.json"]), "required arguments");
-    let job = common::TempFile::job("cli-mode", &serde_json::json!({"mode": "decks"}));
+    let files = serde_json::json!({"skills": "web_skills.json", "cards": "web_cards.json"});
+    let job = common::TempFile::job("cli-cmd", &serde_json::json!({"files": files, "job": {"cmd": "decks"}}));
     let output = loopopt(&["data.json", job.path().to_str().expect("a UTF-8 path")]);
-    refused(&output, r#""mode" must be "deck" or "career""#);
+    refused(&output, "unknown variant `decks`");
+    let job = common::TempFile::job("cli-flat", &serde_json::json!({"mode": "deck", "targets": []}));
+    let output = loopopt(&["data.json", job.path().to_str().expect("a UTF-8 path")]);
+    refused(&output, "unknown field `mode`");
 }
 
 #[test]
@@ -42,17 +46,18 @@ fn constants_prints_the_model_constants() {
             "chain_b",
             "chain_n",
             "chain_stop_share",
-            "default_star_mix",
             "exact_builders_targets",
-            "lam_decay"
+            "gen_gold",
+            "gen_white",
+            "insp_per_star",
+            "lam_decay",
+            "star_mix"
         ],
         "the keys scripts read"
     );
-    let mix: f64 = constants["default_star_mix"]
-        .as_array()
-        .expect("three shares")
-        .iter()
-        .filter_map(serde_json::Value::as_f64)
-        .sum();
-    assert!((mix - 1.0).abs() < 1e-12, "the star mix sums to 1: {mix}");
+    for class in ["below_ss", "ss_and_up"] {
+        let shares = constants["star_mix"][class].as_array().expect("three shares");
+        let mix: f64 = shares.iter().filter_map(serde_json::Value::as_f64).sum();
+        assert!(shares.len() == 3 && (mix - 1.0).abs() < 1e-12, "{class}: the star mix sums to 1: {mix}");
+    }
 }

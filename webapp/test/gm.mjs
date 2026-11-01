@@ -35,12 +35,13 @@ export default async function gm(b) {
     'switching to the GM era selects Grand Masters, at rank SS, and searches with it',
     (await scen(pg)) === 'grandmasters' &&
       (await pg.getAttribute('#x-scen', 'aria-label')) === 'Scenario: Grand Masters' &&
-      (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' &&
+      (await pg.getAttribute('#rank', 'data-value')) === 'ss_and_up' &&
       /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)) &&
       (await pg.locator('#results .loop').count()) > 0 &&
       (await pg.evaluate(
         () =>
-          window.__runs.at(-1).scenario === 'grandmasters' && window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1',
+          window.__runs.at(-1).deck.scenario === 'grandmasters' &&
+          window.__runs.at(-1).skills.rank_class === 'ss_and_up',
       )),
     await odds(pg),
   );
@@ -92,13 +93,13 @@ export default async function gm(b) {
   check(
     'back on Global: Unity Cup with its golds, rank below SS',
     (await scen(pg)) === 'unity' &&
-      (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05' &&
+      (await pg.getAttribute('#rank', 'data-value')) === 'below_ss' &&
       (await pg.getAttribute('#g-20049', 'data-g')) === '2' &&
       // (Global's result from before the switch is saved: it shows as done, no search; else the search is Unity Cup's)
       (await pg.evaluate(() =>
         window.__runs.length === 0
           ? /^Checked [\d,]+ decks/.test(document.getElementById('run-note').textContent)
-          : window.__runs.at(-1).scenario === 'unity',
+          : window.__runs.at(-1).deck.scenario === 'unity',
       )),
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));

@@ -36,7 +36,7 @@ class SimulatorJob(NamedTuple):
 def run_job(binary, tag, job_dir, job):
     """Runs one job; returns its wall seconds."""
     career_job = json.load(open(os.path.join(REPO, job.pool)))
-    career_job["simulate"] = job.simulate
+    career_job["job"]["career"]["simulate"] = job.simulate
     job_path = os.path.join(job_dir, job.name + ".json")
     json.dump(career_job, open(job_path, "w"))
     started = time.time()

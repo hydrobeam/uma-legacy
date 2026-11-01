@@ -32,7 +32,8 @@
 //! A career job enters at `run_career` (`run_career_in` with the worker's kept state, both here with the job's records
 //! and `Env`): `setup::career_setup` builds the job's `Env`, `search::solve_kept` runs the main search, and `run` turns
 //! it into the answer.
-//! - `setup`: the job read three ways (`CareerJobs`) and its `Env`: deck space, deck-odds ceilings, deck classes.
+//! - `setup`: the job's `Env`: deck space, deck-odds ceilings, deck classes.
+//! - `keys`: what the worker keeps a job's work under (the parts of the job each piece of work reads).
 //! - `run`: the main search's answer (`search_output`), the plan (`plan_next`), rolls and the job's certificates.
 //! - `search`: career candidates, bounds and the best careers.
 //! - `decks`: the exact career deck searches and their kept memos.
@@ -60,16 +61,16 @@ use crate::career::run::{
     run_carried_roll, search_output,
 };
 use crate::career::search::{Ref, solve_kept};
-use crate::career::setup::{CareerBuild, CareerJobs, career_setup};
-use crate::career::state::{KEPT, KeptState, ProductProof, state_in, state_out};
+use crate::career::setup::{CareerBuild, career_setup};
+use crate::career::state::{KEPT, KeptState, ProductProof};
 use crate::data::Data;
 use crate::deck::space::{DeckSpace, SelectedDeck};
 use crate::deck::{CardsRaw, d_true};
 use crate::refusal::Refusal;
+use crate::request::CareerRequest;
 use crate::skills::{Model, SkillJob, SkillsRaw};
 use crate::uma::{UmaIndex, UmaTable};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
 mod clock;
 mod decks;
 mod inherit;
@@ -82,6 +83,7 @@ pub(crate) mod state;
 mod cache;
 mod evaluator;
 mod given;
+mod keys;
 
 mod plan;
 pub(crate) mod reply;
@@ -128,11 +130,13 @@ pub(crate) struct JobInputs<'data> {
     pub(crate) skills: &'data SkillsRaw,
     /// Support card source data.
     pub(crate) cards: &'data CardsRaw,
-    /// Original job settings, including planner settings.
-    pub(crate) job: &'data Value,
+    /// The job as sent (its events added), the planner's settings included.
+    pub(crate) job: &'data CareerRequest,
 }
 
-#[derive(Deserialize, Clone, Default, ts_rs::TS)]
+/// A veteran's parent as her record names it.
+#[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Ancestor {
     #[serde(rename = "chara")]
     pub character_id: u32,
@@ -186,17 +190,77 @@ pub(crate) struct RecordIdentity {
     pub(crate) text: String,
 }
 
+/// A legacy's recorded fields as her identity's text writes them (`Legacy::identity`): named in alphabetical order, so the
+/// text is the one the identities have always had (a JSON object with sorted keys), and so is their order.
+#[derive(Serialize)]
+struct IdentityRecord<'legacy> {
+    borrowed: bool,
+    chara: u32,
+    parents: Vec<IdentityParent<'legacy>>,
+    pinks: &'legacy [(u32, u8)],
+    sparks: &'legacy [(u32, u8)],
+    wins: &'legacy [usize],
+}
+
+/// A recorded parent's fields in her child's identity, in alphabetical order (`IdentityRecord`).
+#[derive(Serialize)]
+struct IdentityParent<'legacy> {
+    chara: u32,
+    pinks: &'legacy [(u32, u8)],
+    sparks: &'legacy [(u32, u8)],
+    wins: &'legacy [usize],
+}
+
 impl Legacy {
     /// Her identity as a record, for orders that must not read the pool's order (`plan::pair_bound`): the canonical
     /// text of her recorded fields and her recorded parents' (character, borrowed, sparks, wins, pinks), and its hash.
     /// Two identical records have one identity. The internal fields are not in it: a job's legacies, as read, have none
     pub(crate) fn identity(&self) -> RecordIdentity {
-        let parent = |parent: &Ancestor| json!({"chara": parent.character_id, "sparks": parent.sparks, "wins": parent.wins, "pinks": parent.pinks});
-        let parents: Vec<Value> = self.parents.iter().map(parent).collect();
-        let text = json!({"chara": self.character_id, "borrowed": self.borrowed, "sparks": self.sparks,
-            "wins": self.wins, "pinks": self.pinks, "parents": parents})
-        .to_string();
+        let record = IdentityRecord {
+            borrowed: self.borrowed,
+            chara: self.character_id,
+            parents: self
+                .parents
+                .iter()
+                .map(|parent| IdentityParent {
+                    chara: parent.character_id,
+                    pinks: &parent.pinks,
+                    sparks: &parent.sparks,
+                    wins: &parent.wins,
+                })
+                .collect(),
+            pinks: &self.pinks,
+            sparks: &self.sparks,
+            wins: &self.wins,
+        };
+        let text = serde_json::to_string(&record).expect("a record's text");
         RecordIdentity { hash: crate::career::state::hash_text(&text), text }
+    }
+    /// Her record as a job sends it (`legacies`): the internal fields left out (a veteran whose result was drawn
+    /// keeps only what was drawn).
+    pub(crate) fn recorded(&self) -> Self {
+        Self {
+            character_id: self.character_id,
+            borrowed: self.borrowed,
+            sparks: self.sparks.clone(),
+            wins: self.wins.clone(),
+            pinks: self.pinks.clone(),
+            parents: self.parents.iter().map(Ancestor::recorded).collect(),
+            ..Self::default()
+        }
+    }
+}
+
+impl Ancestor {
+    /// Her record as a job sends it (`Legacy::recorded`).
+    fn recorded(&self) -> Self {
+        Self {
+            character_id: self.character_id,
+            sparks: self.sparks.clone(),
+            wins: self.wins.clone(),
+            pinks: self.pinks.clone(),
+            ..Self::default()
+        }
     }
 }
 
@@ -213,7 +277,9 @@ fn recorded_parents<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result
     Ok(parents)
 }
 
-#[derive(Deserialize, Clone, Default, ts_rs::TS)]
+/// A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents.
+#[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Legacy {
     #[serde(rename = "chara")]
     pub character_id: u32,
@@ -257,8 +323,10 @@ const fn d_top() -> usize {
 /// overrides it.
 const CAREER_BUDGET: usize = 300_000_000;
 
-/// A career job's own fields (beside its `SkillJob` and `DeckJob`, read from the same request).
-#[derive(Deserialize, ts_rs::TS)]
+/// A career job's own fields (beside its `SkillJob` and `DeckJob`: `request::CareerRequest`). Every field is in or out
+/// of each key the worker keeps work under (`keys`).
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CareerJob {
     pub(crate) legacies: Vec<Legacy>,
     /// trainees to consider (chara ids); empty = every owned uma
@@ -279,12 +347,12 @@ pub(crate) struct CareerJob {
     per_trainee: bool,
     /// the builder-trace simulator (`sim`): runs instead of the search when present
     #[serde(default)]
-    #[ts(as = "Option<crate::career::sim::SimJob>", optional)]
-    simulate: Option<Value>,
+    #[ts(optional)]
+    simulate: Option<crate::career::sim::SimJob>,
     /// the page's next career without simulation (`plan::index_rule`): the career saving the most careers to a fully looped veteran
     #[serde(default)]
-    #[ts(as = "Option<crate::career::plan::PlanJob>", optional)]
-    next: Option<Value>,
+    #[ts(optional)]
+    next: Option<crate::career::plan::PlanJob>,
     /// the page's veteran-analysis comparison (echoed in the output, nothing else)
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
@@ -303,12 +371,33 @@ pub(crate) struct CareerJob {
     /// parents, with no deck search: the page's Use this on a builder's other career
     #[serde(default)]
     #[ts(optional)]
-    career: Option<String>,
+    given: Option<String>,
 }
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Default, ts_rs::TS)]
+impl CareerJob {
+    /// This job's settings on other veterans, `legacies`, with no simulation (`sim::Sim::own_job`): every other field
+    /// copied.
+    fn on_veterans(&self, legacies: Vec<Legacy>) -> Self {
+        Self {
+            legacies,
+            trainees: self.trainees.clone(),
+            top: self.top,
+            fixed_parents: self.fixed_parents.clone(),
+            per_trainee: self.per_trainee,
+            simulate: None,
+            next: self.next.clone(),
+            compare: self.compare,
+            no_reports: self.no_reports,
+            borrowed_parent: self.borrowed_parent,
+            given: self.given.clone(),
+        }
+    }
+}
+
+/// Where a career may take a borrowed parent (`CareerJob::borrowed_parent`).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
-enum BorrowedParent {
+pub(crate) enum BorrowedParent {
     #[default]
     Allow,
     Later,
@@ -519,9 +608,22 @@ pub(crate) fn forget_kept_decks() {
     KEPT.with(|cell| cell.borrow_mut().decks.clear());
 }
 
+/// A career job on the worker's kept work (the native command line's).
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn run_career(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> CareerReply {
+pub(crate) fn run_career(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &CareerRequest) -> CareerReply {
     KEPT.with(|kept| run_career_in(data, skills, cards, job, &mut kept.borrow_mut()))
+}
+
+/// The worker's kept work out (`state_out`), on the worker's kept work (the native command line's).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn kept_state_out() -> CareerReply {
+    KEPT.with(|kept| CareerReply::Answer(CareerAnswer::StateOut(state::state_out(&kept.borrow()))))
+}
+
+/// The worker's kept work back in (`state_in`), on the worker's kept work (the native command line's).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn kept_state_in(state: &state::StoredState) -> CareerReply {
+    KEPT.with(|kept| CareerReply::Answer(CareerAnswer::StateIn(state::state_in(&mut kept.borrow_mut(), state))))
 }
 
 /// Run one job against the caller's retained work; simulator jobs reuse this borrow without entering worker TLS.
@@ -529,40 +631,32 @@ pub(crate) fn run_career_in(
     data: &Data,
     skills: &SkillsRaw,
     cards: &CardsRaw,
-    job: &Value,
+    job: &CareerRequest,
     kept: &mut KeptState,
 ) -> CareerReply {
-    // (the kept work out and back in answers first; then a carried roll)
-    let is_state = matches!(job["cmd"].as_str(), Some("state_out" | "state_in"));
-    match job.get("roll").filter(|roll| !roll.is_null()) {
-        Some(roll) if !is_state => {
-            CareerReply::Carried(Box::new(run_carried_roll(data, skills, cards, job, roll, kept)))
-        }
-        _ => CareerReply::Answer(answer_job(data, skills, cards, job, kept)),
+    match &job.roll {
+        Some(roll) => CareerReply::Carried(Box::new(run_carried_roll(data, skills, cards, job, roll, kept))),
+        None => CareerReply::Answer(answer_job(data, skills, cards, job, kept)),
     }
 }
 
-/// A job's own answer (`run_career_in`, a carried roll aside).
-fn answer_job(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value, kept: &mut KeptState) -> CareerAnswer {
-    // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
-    match job["cmd"].as_str() {
-        Some("state_out") => return CareerAnswer::StateOut(state_out(kept)),
-        Some("state_in") => return CareerAnswer::StateIn(state_in(kept, &job["state"])),
-        _ => {}
-    }
-    let jobs = match CareerJobs::parse(job) {
-        Ok(jobs) => jobs,
-        Err(refusal) => return CareerAnswer::Refusal(refusal),
-    };
+/// A job's own answer (`run_career_in`; a carried roll's `roll` is not read here).
+fn answer_job(
+    data: &Data,
+    skills: &SkillsRaw,
+    cards: &CardsRaw,
+    job: &CareerRequest,
+    kept: &mut KeptState,
+) -> CareerAnswer {
     let t_all = Instant::now();
     let input = JobInputs { data, skills, cards, job };
-    let model = Model::new(data, skills, &jobs.skills);
-    let CareerBuild { mut env, trainees, seen_fingerprint } = match career_setup(&input, &jobs, &model, kept) {
+    let model = Model::new(data, skills, &job.skills);
+    let CareerBuild { mut env, trainees, seen_fingerprint } = match career_setup(&input, &model, kept) {
         Ok(setup) => setup,
         Err(refusal) => return CareerAnswer::Refusal(refusal),
     };
     let out = (|| {
-        let career_job = &jobs.career;
+        let career_job = &job.career;
         let legacies = &career_job.legacies;
         let rho_top = env.setup.space.rho_top();
         if let Some(simulation) = &career_job.simulate {
@@ -600,7 +694,7 @@ fn answer_job(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value, ke
         if let Some(robust) = answer_kept_check(&mut env, kept, &run) {
             return CareerAnswer::FollowUp(PlanFollowUp { next: FollowUp::Robust { robust } });
         }
-        if let Some(id) = &career_job.career {
+        if let Some(id) = &career_job.given {
             let mut reply = given::given_career_output(&mut env, &run, id);
             if let CareerAnswer::Search(search) = &mut reply {
                 search.timing_s = t_all.elapsed().as_secs_f64();
@@ -611,7 +705,7 @@ fn answer_job(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value, ke
         // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
         // search was kept from the job before
         let (nodes_before, exact_scorings_before) = (env.setup.space.nodes.get(), env.state.exact_scorings);
-        let search = solve_kept(&mut env, kept, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
+        let search = solve_kept(&mut env, kept, job.search_key(), &run.pick_search_request());
         let search_work = SearchWork {
             nodes: env.setup.space.nodes.get() - nodes_before,
             exact: env.state.exact_scorings - exact_scorings_before,

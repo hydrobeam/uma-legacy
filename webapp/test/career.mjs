@@ -60,7 +60,7 @@ function pinkPin() {
 function rollPin() {
   const rnd = seeded(),
     N = 20000,
-    rank = '0.20,0.70,0.10',
+    rank = 'ss_and_up',
     mix = rank.split(',').map(Number);
   let figures = 0,
     worst = 0,
@@ -514,7 +514,7 @@ export default async function career(b) {
         ex.veterans.length === 12 &&
         ex.job &&
         ex.job.cmd === 'career' &&
-        ex.job.legacies.length === 12 &&
+        ex.job.career.legacies.length === 12 &&
         copied &&
         dlSame &&
         (await storedIds()) === ex.veterans.map((v) => v.id).join(),
@@ -644,7 +644,7 @@ export default async function career(b) {
   );
   // the planner's pick: the K best careers by odds, then the plan over them and a few more
   const lastJob = await pg.evaluate(() =>
-    window.__careerJobs.filter((j) => j.cmd === 'career' && j.next && !j.compare).at(-1),
+    window.__careerJobs.filter((j) => j.cmd === 'career' && j.career.next && !j.career.compare).at(-1),
   );
   const lastRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
   {
@@ -1005,7 +1005,7 @@ export default async function career(b) {
   }
   const draft = () =>
     pg.$$eval('#simulation .simskills .vskb', (l) => l.map((b) => b.getAttribute('aria-label')).join('|'));
-  const policyJobs = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.compare).length);
+  const policyJobs = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.career.compare).length);
   const d0 = await draft();
   {
     const name = 'career: the veteran you got starts as a random result (no default), and nothing is compared yet';
@@ -1127,12 +1127,12 @@ export default async function career(b) {
   check(
     'career: the comparison sends her fixed stars, race indices and her parents',
     await pg.evaluate(() => {
-      const j = window.__careerJobs.filter((j) => j.compare && !j.next).at(-1),
-        v = j.legacies.at(-1);
+      const j = window.__careerJobs.filter((j) => j.career.compare && !j.career.next).at(-1),
+        v = j.career.legacies.at(-1);
       return (
-        j.compare === true &&
-        j.fix.length === 1 &&
-        j.fix[0] === j.legacies.length - 1 &&
+        j.career.compare === true &&
+        j.career.fix.length === 1 &&
+        j.career.fix[0] === j.career.legacies.length - 1 &&
         v.sparks.some(([g, s]) => g === 20159 && s === 3) &&
         v.wins.every(Number.isInteger) &&
         v.parents.length === 2 &&
@@ -1146,9 +1146,9 @@ export default async function career(b) {
     check(
       name,
       await pg.evaluate(() => {
-        const j = window.__careerJobs.filter((j) => j.compare && j.next).at(-1),
+        const j = window.__careerJobs.filter((j) => j.career.compare && j.career.next).at(-1),
           r = window.__careerResults.filter((r) => r.next?.fit && !r.compare).at(-1);
-        return !!j && !!r && JSON.stringify(j.next) === JSON.stringify({ fit: r.next.fit });
+        return !!j && !!r && JSON.stringify(j.career.next) === JSON.stringify({ fit: r.next.fit });
       }),
     );
     await expect.soft(pg.locator('#sim-result > .simfit'), `${name}: the line`).toHaveCount(1);
@@ -1164,7 +1164,7 @@ export default async function career(b) {
     }, u);
     await pg.waitForFunction(
       (n) =>
-        window.__careerJobs.filter((j) => j.compare).length > n &&
+        window.__careerJobs.filter((j) => j.career.compare).length > n &&
         document.querySelector('#sim-verdict') &&
         !document.querySelector('#sim-result .simbest'),
       before,
@@ -1188,18 +1188,20 @@ export default async function career(b) {
   // plan job on show with `next.roll`, her stars per target), from the plan's kept state: no plan runs again
   const lastRoll = () =>
     pg.evaluate(() => {
-      const j = window.__careerJobs.filter((j) => j.next?.roll).at(-1),
+      const j = window.__careerJobs.filter((j) => j.career.next?.roll).at(-1),
         r = window.__careerResults.filter((r) => r.next?.roll).at(-1);
-      const ps = window.__careerJobs.filter((j) => j.next && !j.next.roll && !j.compare).map((p) => JSON.stringify(p));
+      const ps = window.__careerJobs
+        .filter((j) => j.career.next && !j.career.next.roll && !j.career.compare)
+        .map((p) => JSON.stringify(p));
       const plan = j && JSON.parse(JSON.stringify(j));
-      if (plan) delete plan.next.roll;
+      if (plan) delete plan.career.next.roll;
       const all = window.__careerJobs,
         ir = all.lastIndexOf(j),
-        ic = all.findLastIndex((x) => x.compare && !x.next);
+        ic = all.findLastIndex((x) => x.career.compare && !x.career.next);
       return {
         same: !!j && ps.includes(JSON.stringify(plan)),
-        stars: j?.next.roll,
-        dist: j?.star_dist.join(),
+        stars: j?.career.next.roll,
+        dist: j?.skills.rank_class,
         roll: r?.next.roll,
         first: ir >= 0 && (ic > ir || r.next.roll.y >= 0.5),
         verdict: document.getElementById('sim-verdict')?.textContent || '',
@@ -1220,7 +1222,7 @@ export default async function career(b) {
   // a zero (the solver's answer replaced: y 0; every zero is checked) shows no saving while it is checked,
   // and the exact comparison starts once the roll has stood 0.8 s
   await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 }); // (the last roll's check done)
-  const refines = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.compare && j.next).length),
+  const refines = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.career.compare && j.career.next).length),
     rf0 = await refines();
   // (what shows, and whether the exact comparison has started, read the moment "Checking…" renders: a DOM observer runs
   // before the 0.8 s timer can, where reading it after `roll` returned raced that timer under load)
@@ -1232,7 +1234,7 @@ export default async function career(b) {
       if (window.__provSeen || !r || !/Checking…/.test(r.textContent)) return;
       window.__provSeen = {
         verdict: document.getElementById('sim-verdict')?.textContent || '',
-        n: window.__careerJobs.filter((j) => j.compare && j.next).length,
+        n: window.__careerJobs.filter((j) => j.career.compare && j.career.next).length,
       };
       o.disconnect();
     });
@@ -1242,7 +1244,9 @@ export default async function career(b) {
   const provAt = await (await pg.waitForFunction(() => window.__provSeen, null, { timeout: 30000 })).jsonValue();
   const prov = { shown: /^No saving found yet/.test(provAt.verdict), early: provAt.n === rf0 };
   prov.started = await pg
-    .waitForFunction((n) => window.__careerJobs.filter((j) => j.compare && j.next).length > n, rf0, { timeout: 30000 })
+    .waitForFunction((n) => window.__careerJobs.filter((j) => j.career.compare && j.career.next).length > n, rf0, {
+      timeout: 30000,
+    })
     .then(
       () => true,
       () => false,
@@ -1273,7 +1277,7 @@ export default async function career(b) {
       };
     jobs.push = function (...x) {
       const n = push.apply(this, x);
-      if (x.some((j) => j?.compare && j.next)) {
+      if (x.some((j) => j?.career.compare && j.career.next)) {
         jobs.push = push;
         setTimeout(() => {
           delete window.__rollPatch;
@@ -1288,7 +1292,8 @@ export default async function career(b) {
   });
   const exStarted = await pg
     .waitForFunction(
-      (n) => window.__careerJobs.filter((j) => j.compare && j.next).length > n && window.__nr !== undefined,
+      (n) =>
+        window.__careerJobs.filter((j) => j.career.compare && j.career.next).length > n && window.__nr !== undefined,
       ex0,
       { timeout: 30000 },
     )
@@ -1351,7 +1356,9 @@ export default async function career(b) {
   // a comparison is one job for the best career with her (no trainee set) plus, when she doesn't raise the best odds,
   // the planner's candidates (a `next` job when no plan ran) and one job per candidate
   const mainJobs = () =>
-    pg.evaluate(() => window.__careerJobs.filter((j) => j.compare && !j.trainees.length && !j.next).length);
+    pg.evaluate(
+      () => window.__careerJobs.filter((j) => j.career.compare && !j.career.trainees.length && !j.career.next).length,
+    );
   const [rj0, rr0, rm0] = [await policyJobs(), await policyResults(), await mainJobs()];
   const usable = await pg.evaluate(() => {
     const r = Math.random,
@@ -1386,7 +1393,7 @@ export default async function career(b) {
         (await pg.evaluate(
           () =>
             window.__careerJobs
-              .filter((j) => j.compare && !j.next)
+              .filter((j) => j.career.compare && !j.career.next)
               .at(-1)
               .legacies.at(-1).sparks.length === 0,
         )),
@@ -1444,7 +1451,12 @@ export default async function career(b) {
     pg.evaluate(
       () =>
         window.__careerJobs.filter(
-          (j) => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1 && !j.next,
+          (j) =>
+            j.cmd === 'career' &&
+            !j.career.trainees.length &&
+            !j.career.fix.length &&
+            j.career.top === 1 &&
+            !j.career.next,
         ).length,
     );
   const cachedRuns = await baselineRuns();
@@ -1467,7 +1479,8 @@ export default async function career(b) {
   );
   // with the trainee chosen there is nothing for the plan to pick: Compare pressed twice restarts the comparison,
   // which finishes, and no plan job is sent
-  const aheadJobs = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.next && !j.compare).length),
+  const aheadJobs = () =>
+      pg.evaluate(() => window.__careerJobs.filter((j) => j.career.next && !j.career.compare).length),
     la0 = await aheadJobs();
   await pg.evaluate(() => {
     document.getElementById('sim-compare').click();

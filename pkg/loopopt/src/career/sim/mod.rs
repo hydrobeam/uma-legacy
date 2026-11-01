@@ -85,12 +85,12 @@
 use crate::career::evaluator::{Cur, Evaluator};
 /// the page's next career (`next` on a career job)
 use crate::career::sim::play::PathState;
-use crate::career::{Env, JobInputs, Legacy, Lineage};
+use crate::career::{CareerJob, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
-use crate::deck::{CardsRaw, d_true};
+use crate::deck::CardsRaw;
+use crate::request::CareerRequest;
 use crate::skills::SkillsRaw;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
 
 mod audit;
 mod draw;
@@ -98,129 +98,149 @@ pub(super) mod play;
 mod policies;
 pub(crate) mod report;
 
-fn d_policy() -> String {
-    "greedy".into()
-}
-const fn d_runs() -> usize {
-    16
-}
-const fn d_seed() -> u32 {
-    1
-}
-const fn d_eps() -> f64 {
-    1e-3
-}
-const fn d_maxc() -> usize {
-    100_000
-}
-const fn d_frac() -> f64 {
-    0.3
-}
-const fn d_asample() -> usize {
-    3
-}
-const fn d_aevery() -> usize {
-    50
-}
-
-#[derive(Deserialize, Clone, ts_rs::TS)]
-pub(super) struct SimJob {
-    /// greedy | greedy_exact | loop | trace | index
-    #[serde(default = "d_policy")]
+/// A career job's `simulate`: the policy simulator's settings (module notes). A field the job leaves out takes
+/// `SimJob::default()`'s.
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct SimJob {
     #[ts(as = "Option<_>", optional)]
-    policy: String,
-    #[serde(default = "d_runs")]
+    policy: Policy,
     #[ts(as = "Option<_>", optional)]
     runs: usize,
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     first: usize,
-    #[serde(default = "d_seed")]
     #[ts(as = "Option<_>", optional)]
     seed: u32,
-    #[serde(default = "d_eps")]
     #[serde(rename = "eps")]
     #[ts(as = "Option<_>", optional)]
     survival_cutoff: f64,
-    #[serde(default = "d_maxc")]
     #[ts(as = "Option<_>", optional)]
     max_careers: usize,
     /// refresh margin m (module notes); 0 = refresh whenever a bound exceeds the table value
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     margin: f64,
-    #[serde(default = "d_true")]
     #[ts(as = "Option<_>", optional)]
     prune: bool,
     /// keep the deck cache across runs (faster; with m > 0 a pick can depend on what earlier runs cached)
-    #[serde(default = "d_true")]
     #[ts(as = "Option<_>", optional)]
     share_cache: bool,
     /// every `check` new veterans (and at the start), compare the surrogate with exact searches
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     check: usize,
     /// lineages checked per check (the newest veteran's candidates, ceiling at least `check_frac` x B, best first)
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     check_lineages: usize,
-    #[serde(default = "d_frac")]
     #[ts(as = "Option<_>", optional)]
     check_frac: f64,
     /// loop: rotation members (chara ids) in order; trace: the trainee built for, then her builders
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     loop_members: Vec<u32>,
     /// fidelity audit (`audit_row`): at every pick change of greedy (the exact argmax, the pick and `audit_sample`
     /// random candidates with the newest veteran), and every `audit_every` careers of the loop (its career, and its
     /// keep-or-replace decision under exact values)
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     audit: bool,
-    #[serde(default = "d_asample")]
     #[ts(as = "Option<_>", optional)]
     audit_sample: usize,
-    #[serde(default = "d_aevery")]
     #[ts(as = "Option<_>", optional)]
     audit_every: usize,
     /// log progress to stderr every this many careers (0: off)
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     progress: usize,
-    /// index: the plan job's `next` (docs/SOLVER.md "Next career"); the page sends `{}`
-    #[serde(default = "d_next")]
-    #[ts(as = "Option<crate::career::plan::PlanJob>", optional)]
-    next: Value,
+    /// index: the plan job's `next` (docs/SOLVER.md "Next career"); the page's is the default
+    #[ts(as = "Option<_>", optional)]
+    next: crate::career::plan::PlanJob,
     /// index: what each step runs (`IndexAction`)
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     act_on: IndexAction,
     /// first (default) | looped: what a run ends at (module notes)
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     goal: Goal,
     /// greedy, greedy_exact, index: every run's first career, the trainee (chara id) on the two parents (legacy
     /// indices) with her best deck, the policy taking over from the second (paired truncated rollouts,
     /// val/sim/rollouts.py)
-    #[serde(default)]
     #[ts(optional)]
     force: Option<ForcedCareer>,
     /// per run also the pool at the stop (`final_legacies`) and the survival there (`survival`)
-    #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     keep_pool: bool,
 }
+impl Default for SimJob {
+    /// greedy, 16 runs from seed 1, the cache shared: every setting at its default
+    fn default() -> Self {
+        Self {
+            policy: Policy::Greedy,
+            runs: 16,
+            first: 0,
+            seed: 1,
+            survival_cutoff: 1e-3,
+            max_careers: 100_000,
+            margin: 0.0,
+            prune: true,
+            share_cache: true,
+            check: 0,
+            check_lineages: 0,
+            check_frac: 0.3,
+            loop_members: vec![],
+            audit: false,
+            audit_sample: 3,
+            audit_every: 50,
+            progress: 0,
+            next: crate::career::plan::PlanJob::default(),
+            act_on: IndexAction::Choice,
+            goal: Goal::First,
+            force: None,
+            keep_pool: false,
+        }
+    }
+}
+
+impl SimJob {
+    /// The plan's simulator settings (`plan::search::sim_for`): the defaults at its refresh margin.
+    pub(crate) fn with_margin(margin: f64) -> Self {
+        Self { margin, ..Self::default() }
+    }
+}
+
+/// What the simulator runs (`SimJob::policy`; module notes).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Policy {
+    /// the surrogate's best career each step
+    #[default]
+    Greedy,
+    /// the in-process career search's best career each step
+    GreedyExact,
+    /// a named rotation (`loop_members`)
+    Loop,
+    /// the builder trace for a named trainee (`loop_members`)
+    Trace,
+    /// the page's plan each step
+    Index,
+}
+
+impl Policy {
+    /// Its name in a job, for the simulator's progress lines.
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Greedy => "greedy",
+            Self::GreedyExact => "greedy_exact",
+            Self::Loop => "loop",
+            Self::Trace => "trace",
+            Self::Index => "index",
+        }
+    }
+}
+
 /// A run's first career, fixed by the job (`SimJob::force`).
-#[derive(Deserialize, Clone, Copy, ts_rs::TS)]
+#[derive(Serialize, Deserialize, Clone, Copy, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ForcedCareer {
     pub(super) trainee: u32,
     pub(super) parents: [usize; 2],
 }
-fn d_next() -> Value {
-    json!({})
-}
 /// What `index` runs each step (`SimJob::act_on`).
-#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq, ts_rs::TS)]
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum IndexAction {
     /// The plan's pick, `next.choice` (the table's first row).
@@ -231,7 +251,7 @@ pub(super) enum IndexAction {
     PairSearch,
 }
 /// What a run's path ends at (`SimJob::goal`; module notes).
-#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq, ts_rs::TS)]
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub(super) enum Goal {
     /// The first veteran that lands every target.
@@ -271,7 +291,7 @@ pub(crate) struct Sim<'env, 'data> {
     pub(super) data: &'data Data,
     skills: &'data SkillsRaw,
     cards: &'data CardsRaw,
-    job: &'data Value,
+    job: &'data CareerRequest,
     pub(super) settings: SimJob,
     pub(super) evaluator: Evaluator,
     trainees: Vec<crate::uma::UmaIndex>,
@@ -325,12 +345,23 @@ fn legacy_record(legacy: &Legacy) -> report::LegacyRecord {
     }
 }
 
-/// A veteran in the simulator's own career jobs (`legacies`), as a job sends her.
-fn legacy_job_value(legacy: &Legacy) -> Value {
-    serde_json::to_value(legacy_record(legacy)).unwrap()
-}
-
 impl<'env, 'data> Sim<'env, 'data> {
+    /// A career job of the simulator's own (`policies`), run in process as the page would send it: the job's targets,
+    /// deck and settings, `legacies` (as a job sends them, `Legacy::recorded`) as its veterans, no simulation, no places
+    /// (the job's `fix` indexes its own legacies), its best career alone (`top` 1, not per trainee); `adjust` sets what
+    /// the policy's job sets besides.
+    pub(super) fn own_job<'legacy>(
+        &self,
+        legacies: impl Iterator<Item = &'legacy Legacy>,
+        adjust: impl FnOnce(&mut CareerJob),
+    ) -> CareerRequest {
+        let mut career = self.job.career.on_veterans(legacies.map(Legacy::recorded).collect());
+        career.fixed_parents = vec![];
+        career.top = 1;
+        career.per_trainee = false;
+        adjust(&mut career);
+        CareerRequest { skills: self.job.skills.clone(), deck: self.job.deck.clone(), career, roll: None }
+    }
     /// The simulator's machinery for a job (`simulate`'s, and the plan's through `plan::search::sim_for`): the landed sets in
     /// order of size, each owned trainee's ceiling at q = 1 (`static_ceilings`), the rank's star mix, the evaluator
     /// (`Evaluator::new`)
@@ -360,7 +391,7 @@ impl<'env, 'data> Sim<'env, 'data> {
                 }
             })
             .collect();
-        let star_mix = setup.skill_job.star_dist;
+        let star_mix = setup.skill_job.star_mix();
         let evaluator = Evaluator::new(setup, settings.margin, options.fill_missing_decks);
         Sim {
             env,

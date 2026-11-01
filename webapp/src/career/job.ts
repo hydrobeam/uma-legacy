@@ -3,7 +3,7 @@
 // reports, typed here. A model module: it reads no store (.dependency-cruiser.mjs checks it).
 import { gameData } from '../data.ts';
 import { stateKey } from '../engine.ts';
-import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
+import { deckPart, isOwned, skillsPart } from '../job.ts';
 import { starsOf, umaName } from '../veterans/names.ts';
 import { must } from '../must.ts';
 import type { SolverAnswer } from '../solver.ts';
@@ -14,25 +14,17 @@ import type { DeepReadonly } from '../store.ts';
 
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
 export const placesKey = (p: PlacesRecord): string => JSON.stringify({ trainee: p.trainee, parents: p.parents });
-/** The career job (`buildJob`): the solver's `Request` for `career` (its `SkillJob`, `DeckJob` and `CareerJob` parts;
+/** The career job (`buildJob`): the solver's `Request` for `career` (its `skills`, `deck` and `career` parts;
  *  generated), its veterans as the veterans store holds them, one array that every job made from the same veterans
- *  shares (read-only); a plan job adds `next` and `no_reports`, a comparison `compare`. */
-export type CareerJob = Omit<SolverCareerJob, 'legacies'> &
-  Required<Pick<SolverCareerJob, CareerJobFields>> & { legacies: readonly JobLegacy[] };
+ *  shares (read-only); a plan job adds `career.next` and `career.no_reports`, a comparison `career.compare`. Each part
+ *  has the fields `buildJob` always writes (the solver has a default for each). */
+export type CareerJob = Omit<SolverCareerJob, 'skills' | 'deck' | 'career'> & {
+  skills: Gen.SkillJob & Required<Pick<Gen.SkillJob, 'rank_class' | 'exclude' | 'exclude_outfits' | 'extra'>>;
+  deck: Gen.DeckJob & Required<Pick<Gen.DeckJob, 'owned_cards' | 'borrow' | 'scenario'>>;
+  career: Omit<Gen.CareerJob, 'legacies'> &
+    Required<Pick<Gen.CareerJob, 'trainees' | 'fix' | 'per_trainee' | 'top'>> & { legacies: readonly JobLegacy[] };
+};
 type SolverCareerJob = Extract<Gen.Request, { cmd: 'career' }>;
-/** the fields `buildJob` always writes (the solver has a default for each) */
-type CareerJobFields =
-  | 'trainees'
-  | 'fix'
-  | 'per_trainee'
-  | 'top'
-  | 'exclude'
-  | 'exclude_outfits'
-  | 'extra'
-  | 'owned_cards'
-  | 'borrow'
-  | 'star_dist'
-  | 'scenario';
 // ---------- the solver's reports, generated from its Rust structs (src/gen/solver.ts), with what the page adds ----------
 /** A career's trainee as the page shows her: the solver's, and what the page sets on her (`oneOutfit`) */
 export type CareerTrainee = Omit<Gen.CareerTrainee, 'outfits'> & {
@@ -187,20 +179,20 @@ export function buildJob(from: JobFrom, acts: PoolActs): CareerJob {
   // scores every owned uma, `planPhase`)
   const job: CareerJob = {
     cmd: 'career',
-    targets: jobTargets(s),
-    ...ownedFields(s, exclude),
-    star_dist: starDist(s),
-    ...scenarioFields(s),
-    legacies: from.legacies,
-    trainees: plan.trainee ? [plan.trainee] : [],
-    fix: plan.parents.filter(Boolean).map((id) => pool.findIndex((v) => v.id === id)),
-    per_trainee: false,
-    top: allPlaced ? 1 : ROLL_K,
+    skills: skillsPart(s, exclude),
+    deck: deckPart(s),
+    career: {
+      legacies: from.legacies,
+      trainees: plan.trainee ? [plan.trainee] : [],
+      fix: plan.parents.filter(Boolean).map((id) => pool.findIndex((v) => v.id === id)),
+      per_trainee: false,
+      top: allPlaced ? 1 : ROLL_K,
+    },
   };
   const borrowed = borrowChoice(s);
-  if (borrowed !== 'allow') job.borrowed_parent = borrowed;
+  if (borrowed !== 'allow') job.career.borrowed_parent = borrowed;
   if (allPlaced && chosenApplies(job, from.chosen, plan))
-    job.career = must(from.chosen, 'chosenApplies: a choice is saved').id;
+    job.career.given = must(from.chosen, 'chosenApplies: a choice is saved').id;
   return job;
 }
 // the career Use this chose with its deck (veterans/store.ts `chosen`, saved with the plan): a builder's other career (an
@@ -215,9 +207,12 @@ export const chosenSetup = (job: DeepReadonly<CareerJob>): string =>
   JSON.stringify({
     engine: stateKey(),
     ...job,
-    legacies: job.fix.map((i) => job.legacies[i]),
-    career: undefined,
-    top: undefined,
+    career: {
+      ...job.career,
+      legacies: job.career.fix.map((i) => job.career.legacies[i]),
+      given: undefined,
+      top: undefined,
+    },
   });
 const chosenApplies = (
   job: DeepReadonly<CareerJob>,
@@ -226,7 +221,7 @@ const chosenApplies = (
 ): boolean => {
   if (!c || c.places !== placesKey(places) || c.setup !== chosenSetup(job)) return false;
   const named = (c.id.split(':')[1] || '').split(',').map(Number),
-    fixed = job.fix;
+    fixed = job.career.fix;
   return named.length === 2 && fixed.length === 2 && named.every((i) => fixed.includes(i));
 };
 // a full veteran: a spark of every target (with full veteran parents: a fully looped parent)

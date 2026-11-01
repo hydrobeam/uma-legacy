@@ -27,7 +27,7 @@ fn capped_searches_are_reported_unproven() {
     assert_eq!(n["umas_unproven"], 0);
     assert_eq!(unproven(&n), 0);
     let mut capped = job;
-    capped["next"]["search_work"] = json!(1);
+    capped["job"]["career"]["next"]["search_work"] = json!(1);
     let n = plan(&capped);
     assert!(n["umas_unproven"].as_u64().unwrap() > 0, "no search reported unproven under a cap of 1");
     assert!(unproven(&n) > 0, "no row marked unproven under a cap of 1");

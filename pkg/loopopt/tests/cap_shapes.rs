@@ -37,7 +37,7 @@ fn nested_decks_match_the_cap_free_search() {
     for (name, assumes) in [("nested_nopal", false), ("nested_three_cards", true), ("nested_seeded", false)] {
         let job = fixture(name);
         let mut cap_free = job.clone();
-        cap_free["cap_free"] = json!(true);
+        cap_free["job"]["deck"]["cap_free"] = json!(true);
         let capped = &run(&format!("{name}-capped"), &[&job], None, State::NONE)[0];
         let free = &run(&format!("{name}-free"), &[&cap_free], None, State::NONE)[0];
         let p_all = |out: &Value| out["results"][0]["p_all"].as_f64().unwrap();
@@ -61,8 +61,8 @@ fn nested_decks_match_the_cap_free_search() {
 fn p16_jobs() -> (Value, Value) {
     let mut job = val_job("plan/p16.json");
     let mut search = job.clone();
-    search.as_object_mut().unwrap().remove("next");
-    job["no_reports"] = json!(true);
+    search["job"]["career"].as_object_mut().unwrap().remove("next");
+    job["job"]["career"]["no_reports"] = json!(true);
     (job, search)
 }
 
@@ -143,7 +143,7 @@ fn a_breach_under_another_trainee_filter_reaches_the_kept_plan() {
             ids.push(id);
         }
     }
-    narrow["trainees"] = json!(ids);
+    narrow["job"]["career"]["trainees"] = json!(ids);
     let narrowed = run(
         "filter-narrow",
         &[&narrow],
@@ -170,9 +170,9 @@ fn a_breach_under_another_trainee_filter_reaches_the_kept_plan() {
 #[test]
 fn a_nested_card_beside_another_feeder_matches_the_cap_free_search() {
     let mut job = fixture("nested_nopal");
-    job["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30027);
+    job["job"]["deck"]["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30027);
     let mut cap_free = job.clone();
-    cap_free["cap_free"] = json!(true);
+    cap_free["job"]["deck"]["cap_free"] = json!(true);
     let capped = &run("palmer-capped", &[&job], None, State::NONE)[0];
     let free = &run("palmer-free", &[&cap_free], None, State::NONE)[0];
     let p_all = |out: &Value| out["results"][0]["p_all"].as_f64().unwrap();
