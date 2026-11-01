@@ -56,12 +56,13 @@ import {
   clearVets,
   dropMissing,
   handBackPlaces,
+  setListings,
 } from '../veterans/store.ts';
 import { searchHeld } from '../veterans/pickers.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
 import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.ts';
-import { syncListings } from '../umamoesetup.ts';
+import { connectUmamoe, syncListings } from '../umamoesetup.ts';
 import { UmButton, UmamoePanel } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { placesKey, isFull, ROLL_K, umasNotOwned } from './job.ts';
@@ -93,6 +94,8 @@ import type { Status } from './state.ts';
 import type { CareerSearch } from './job.ts';
 
 // ---------- the run ----------
+// uma.moe's sync (umamoesetup.ts): the targets it searches for, and the pool its listings join
+connectUmamoe({ targets: () => settings.peek().targets, setListings });
 // The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,
 // the analysis store, the career on show and her draft. The run machine below drives it through its hooks.
 // Try a run draws her comparison and her draft

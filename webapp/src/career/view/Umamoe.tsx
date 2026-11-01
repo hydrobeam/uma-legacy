@@ -2,6 +2,7 @@
 // the key until one is saved, then the status, what was searched, Include max borrows, the order menu
 // (ui/SortMenu.tsx), every listing as a card (ui/VetCell.tsx: a card opens her veteran popup), Refresh and Disconnect.
 // What they show is umamoesetup.ts's (its signals and its sync).
+import { computed } from '@preact/signals-core';
 import { useRef } from 'preact/hooks';
 import { $dialog } from '../../dom.ts';
 import { vets } from '../../veterans/store.ts';
@@ -10,7 +11,6 @@ import {
   SORTS,
   forgetUmKey,
   hasKey,
-  listings,
   pickUmSort,
   saveUmKey,
   setUmFull,
@@ -47,6 +47,13 @@ export function UmButton() {
   );
 }
 const SORT_ITEMS = Object.entries(SORTS).map(([k, [label, hint]]) => ({ k, label, hint }));
+/** the listings in the popup's order */
+const listings = computed(() => {
+  const { by, reversed } = umSort.value,
+    score = SORTS[by][2],
+    sign = reversed ? -1 : 1;
+  return vets.value.filter((v) => v.src === 'umamoe').sort((x, y) => sign * (score(y) - score(x)));
+});
 /** the popup's contents */
 export function UmamoePanel() {
   const { sig, text, min, n } = umStatus.value,

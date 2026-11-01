@@ -606,11 +606,12 @@ const reports = [];
 // through any chain of imports, static, dynamic or re-exported, is a failure: a shared module may read a store, so a
 // logic module's call into one could read it for it.
 // The rule's logic (frontend.md: run machines, buildJob, uma.moe sync, io) is in the model layer: both run machines
-// (career/run.ts, loop/run.ts: their store's transitions and the settings come in their deps) and career/job.ts (its
+// (career/run.ts, loop/run.ts: their store's transitions and the settings come in their deps), career/job.ts (its
 // buildJob takes the settings and the veterans store's record as values; career/current.ts, a page module, passes the
-// stores' own). Outside it: umamoesetup.ts (the uma.moe panel with its sync: `sigOf` and `query` read the targets),
-// and loop/io.ts (the loop page's Export and Import, an editor: its own code takes the settings as values, but it
-// calls shared helpers that read them, roster.ts's pickOutfit and presets.ts's mergePresets).
+// stores' own) and umamoesetup.ts (uma.moe's sync: the targets and the pool's setListings come in through
+// connectUmamoe). Outside it: loop/io.ts (the loop page's Export and Import, an editor: its own code takes the
+// settings as values, but it imports shared modules that read them, roster.ts, presets.ts and scenario.ts, and
+// pickOutfit reads the outfits).
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
@@ -630,6 +631,7 @@ const LAYERS = [
       'loop/job',
       'loop/keys',
       'loop/run',
+      'umamoesetup',
       'veterans/names',
     ],
   ],

@@ -9,11 +9,11 @@
 // set has no answer kept (on saving the key, after a target change) or on Refresh; edits to veterans or settings never
 // send one. uma.moe lists Global veterans: on the Grand Masters-era data it is asked only for the targets Global has
 // (`targetFactors`). `syncListings` runs inside the career page's settings effect: it reads every signal with peek(),
-// so that effect subscribes to none of them.
+// so that effect subscribes to none of them. What it reads and writes of the page, the targets and the veterans store's
+// listings, comes in through `connectUmamoe`, called once by the entry: it reads no store itself (static.mjs checks it).
 import { batch, computed, signal } from '@preact/signals-core';
 import { ERA } from './saved.ts';
-import { settings } from './settings.ts';
-import { vets, setListings } from './veterans/store.ts';
+import { must } from './must.ts';
 import { parseListing } from './umadump.ts';
 import {
   savedKey,
@@ -27,7 +27,22 @@ import {
 } from './umamoe.ts';
 import type { ReadonlySignal } from '@preact/signals-core';
 import type { UmamoeListing } from './umadump.ts';
-import type { VetRecord } from './veterans/store.ts';
+import type { SettingsView } from './settings.ts';
+import type { Veteran, VetRecord } from './veterans/store.ts';
+
+/** what the sync reads and writes of the page (career/main.tsx) */
+export interface UmPage {
+  /** the target skills now */
+  targets: () => SettingsView['targets'];
+  /** the pool's listings replaced (veterans/store.ts `setListings`) */
+  setListings: (list: readonly Veteran[]) => void;
+}
+let page: UmPage | null = null;
+/** the page's side of the sync, once, before any sync */
+export function connectUmamoe(to: UmPage): void {
+  page = to;
+}
+const pageNow = () => must(page, 'the entry connects uma.moe (connectUmamoe) before a sync');
 
 /** The target set the pool's listings are for ('' none), the popup's status and the button's (`shown*`: the answer on
  *  show's, put back when a request for another set is dropped), and what was searched. */
@@ -66,13 +81,17 @@ const statusPatch = (patch: Partial<UmStatus>) => {
 };
 
 const sigOf = () =>
-  `${ERA}|${settings
-    .peek()
-    .targets.map((t) => t.group)
+  `${ERA}|${pageNow()
+    .targets()
+    .map((t) => t.group)
     .join(',')}|${full.peek() ? 'full' : ''}`;
 // the query for the target set: parents carrying at least n - 1 of the n targets herself, the first 100
 function query() {
-  const factors = targetFactors(settings.peek().targets.map((t) => t.group));
+  const factors = targetFactors(
+    pageNow()
+      .targets()
+      .map((t) => t.group),
+  );
   return factors.length ? { factors, min: Math.max(1, factors.length - 1), page: 0, full: full.peek() } : null;
 }
 // how long ago the answer was fetched: "just now", "12 min ago", "3 h ago" (a kept answer is reused for 24 h)
@@ -117,13 +136,6 @@ export function pickUmSort(k: string): void {
 }
 /** each listing's place in uma.moe's answer */
 const order = new Map<string, number>();
-/** the listings in the popup's order */
-export const listings = computed(() => {
-  const { by, reversed } = sort.value,
-    score = SORTS[by][2],
-    sign = reversed ? -1 : 1;
-  return vets.value.filter((v) => v.src === 'umamoe').sort((x, y) => sign * (score(y) - score(x)));
-});
 
 function take(
   a: { items: readonly UmamoeListing[]; total: number; at: number },
@@ -134,7 +146,7 @@ function take(
   for (const [i, v] of listed.entries()) order.set(v.id, i);
   const n = a.items.length;
   batch(() => {
-    setListings(listed);
+    pageNow().setListings(listed);
     statusPatch({
       text: `${n} veterans found, searched ${ago(a.at)}`,
       shownText: `${n} veterans found, searched ${ago(a.at)}`,
@@ -160,7 +172,7 @@ export async function syncListings(fresh = false): Promise<void> {
     batch(() => {
       if (status.peek().sig) {
         statusPatch({ sig: '' });
-        setListings([]);
+        pageNow().setListings([]);
       }
       statusPatch({ text: !q ? 'No targets' : '', short: !q ? 'No targets' : '' });
     });
