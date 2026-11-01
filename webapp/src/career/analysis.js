@@ -1,10 +1,10 @@
-// The veteran analysis (the veteran you got): career.js's "Try a run" popup. The decision is per veteran: enter the one
+// The veteran analysis (the veteran you got): the "Try a run" popup. The decision is per veteran: enter the one
 // you got (she starts as a random result, drawn as Reroll draws, career/roll.mjs) and Compare runs both choices,
 // running this career again or using her in the next one, on the plan's terms (expected careers to land).
 // This module owns the analysis' state (`simulation`, the comparison under way `simulationId`, the comparisons'
-// baseline `baselineCache`, the plan Compare kept `planKept`); career.js changes it only through the transitions
-// below. It reads the answer from the answer store (career/state.ts) and the run machine from career.js (an import
-// cycle: this module's body only declares, so nothing of career.js is read while the bundle loads).
+// baseline `baselineCache`, the plan Compare kept `planKept`); the run machine (main.js) changes it only through
+// the transitions below. It reads the answer from the answer store (career/state.ts), the run's id from run.ts and the
+// job's helpers from job.js and keys.js.
 import { $, $dialog, el, fmtIn } from '../dom.js';
 import { careerTables } from '../data.js';
 import { settings } from '../settings.ts';
@@ -15,26 +15,14 @@ import { vets, plan, changed, newVet, umaName, openWins } from '../vets.js';
 import { detailsEl, fitSparks } from '../details.js';
 import { scheduledRaces, rolledOutcome } from './roll.mjs';
 import { answer, runView } from './state.ts';
-import {
-  shown,
-  run,
-  runJob,
-  keyOf,
-  isFull,
-  baseKey,
-  planKey,
-  PLAN_NEXT,
-  ROLL_K,
-  btn,
-  sectionEl,
-  deckEl,
-  fmtN,
-  tableRows,
-  openNode,
-} from '../career.js';
+import { run, runJob, PLAN_NEXT } from './run.ts';
+import { keyOf, planKey } from './keys.js';
+import { shown, isFull, baseKey, ROLL_K } from './job.js';
+import { btn, sectionEl, deckEl, fmtN, tableRows } from './view/parts.js';
+import { openNode } from './view/NodeDialog.js';
 import { must } from '../must.ts';
 /** @import { LineageNode } from '../vets.js' */
-/** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from '../career.js' */
+/** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from './job.js' */
 /** @import { PlanDone } from './state.ts' */
 /** @import { DeepReadonly } from '../store.ts' */
 /** @typedef {{results: CareerReport[], pending: true}} PendingSearch a stand-in while the quick comparison looks for the best career with her */
@@ -84,7 +72,7 @@ let simulationId = 0; // the comparison under way; a newer one (or a run) makes 
 /** @type {{key: string, result: DeepReadonly<CareerReport>} | null} key: baseKey(job); result: today's best career, the comparisons' baseline */
 let baselineCache = null;
 
-// ---------- the transitions the run machine (career.js) makes
+// ---------- the transitions the run machine (main.js) makes
 // a new run: the comparison under way, if any, is stale (its answer is ignored)
 export function outdateComparison() {
   simulationId++;

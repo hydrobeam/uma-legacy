@@ -16,7 +16,7 @@ import { drawPink } from '../pink.mjs';
  * -> stars) sparks.
  * @typedef {{sparks: Object<number, number>, bought: Object<number, string>, wins: number[], pinks: Object<number,
  *   number>, apt: number[]|null, blues: Object<number, number>, greens: Object<number, number>}} Roll
- * (`r`, below: the career's report, career.js `CareerReport`)
+ * (`r`, below: the career's report, career/job.js `CareerReport`)
  */
 
 // the G1s she runs (`races`: the career tables' race names, by index), each with p, the chance she wins it at least

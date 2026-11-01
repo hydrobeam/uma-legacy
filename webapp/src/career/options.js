@@ -1,8 +1,7 @@
 // The options table ("Other careers") under the career on show: the plan's careers by Saves per run (or the search's,
 // with a place open), each with Use this, and the Saves popup that explains the plan's figures and its check. It reads
-// the answer and the run from the answer store (career/state.ts) and the career's helpers from career.js (an import
-// cycle: this module's body only declares, so nothing of career.js is read while the bundle loads); its one write there
-// is `forgetDroppedChoice`.
+// the answer and the run from the answer store (career/state.ts) and the career's helpers from job.js, keys.js and
+// view/parts.js; its one write there is `forgetDroppedChoice`.
 import { $, el, esc, fmtIn, lazyDialog } from '../dom.js';
 import { settings } from '../settings.ts';
 import { umaAv } from '../images.js';
@@ -10,6 +9,7 @@ import { pct } from '../odds.js';
 import { vets, plan, chosen, changed, umaName } from '../vets.js';
 import { whyText } from '../proofs.mjs';
 import { answer, runView } from './state.ts';
+import { keyOf } from './keys.js';
 import {
   shown,
   refFor,
@@ -19,15 +19,11 @@ import {
   placesKey,
   forgetDroppedChoice,
   BORROW_CHOICES,
-  keyOf,
   looped,
-  btn,
-  sectionEl,
-  deckEl,
-  fmtN,
-} from '../career.js';
+} from './job.js';
+import { btn, sectionEl, deckEl, fmtN } from './view/parts.js';
 import { must } from '../must.ts';
-/** @import { OptionRow, PlanOption, PlanReport } from '../career.js' */
+/** @import { OptionRow, PlanOption, PlanReport } from './job.js' */
 /** @import { DeepReadonly } from '../store.ts' */
 // an option's role, in plain words: one of the two parents of today's estimate (the route the (i) popup walks through)
 // or its last run, else what her run does for it: the side her veteran's routes lift most often where she lowers it,
@@ -99,7 +95,7 @@ function useBtn(r, places = plan) {
     const unplaced = r.parents.filter((i) => !parents.includes(vets[i].id));
     for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets[unplaced.shift()].id;
     plan.parents = parents;
-    plan.fromTable = true; // (a change of setup hands the places back to the planner: career.js initSettings)
+    plan.fromTable = true; // (a change of setup hands the places back to the planner: main.js initSettings)
     // a builder's other career, or the pair search's recommendation, keeps its deck: the job then reports that career
     // (`career`) instead of searching, while the setup it was chosen on stands (`chosenApplies`)
     chosen.career = null;

@@ -186,9 +186,11 @@ plan made, each a read-only signal that named transitions replace. A plan is kno
 made, so the robustness check (`career/run.ts`), whose writes replace the plan's record, writes its result wherever the
 plan is kept. No framework.
 
-In `src/`, `loop/main.js` and `career.js` are the two pages' entries (the loop page's own modules are in `loop/`); `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` holds the
-job fields both pages send (from the settings it is given; `loop/job.ts` and `career.js` build their jobs from them), and `statestore.js` keeps the solver's work in
-IndexedDB.
+In `src/`, `loop/main.js` and `career/main.js` are the two pages' entries (each page's own modules are in its folder,
+`loop/` and `career/`; `career/main.js`'s header maps its folder: the job, the run, the views in `career/view/`); `engine.ts`
+talks to the worker (the messages both ways typed in `solver.ts`), `job.js` holds the job fields both pages send (from
+the settings it is given; `loop/job.ts` and `career/job.js` build their jobs from them), and `statestore.js` keeps the
+solver's work in IndexedDB.
 
 ## Tests
 

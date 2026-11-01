@@ -3,7 +3,7 @@
 // show (the search's status, its result, the plan); `reference` is the last plan made, whose table stays while you weigh
 // a career you chose. Each is handed out read-only; the transitions below build the next record copy-on-write and
 // assign it (nothing here is saved: statestore.js keeps the answer, the run machine calls it). The run machine's
-// tokens, timers and the job in flight are career.js's, not here: nothing draws them.
+// tokens, timers and the job in flight are the run machine's (career/run.ts `run`), not here: nothing draws them.
 // A plan is known by its id (`PlanDone.id`, given when it is made or loaded), never by its object: its check's writes
 // replace the record (`setPlanCheck`), and reach every place that keeps the plan (the answers cache, `reference`).
 // Records are frozen as they come in, except the jobs: a job holds the veterans' own arrays (vets.js `legaciesJob`)
@@ -13,7 +13,7 @@ import type { ReadonlySignal } from '@preact/signals-core';
 import { must } from '../must.ts';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { CareerJob, CareerSearch, PlanReport } from '../career.js';
+import type { CareerJob, CareerSearch, PlanReport } from './job.js';
 import type { LineagePlan } from '../vets.js';
 
 /** what the page draws of the run under way */
@@ -28,7 +28,7 @@ export interface RunView {
   phaseStart: number;
   /** the plan phase's lead: what the search found ("Weighed N careers in X s.") */
   lead: string;
-  /** the plan's progress, as the solver reports it from inside the plan (career.js `progText`) */
+  /** the plan's progress, as the solver reports it from inside the plan (career/run.ts `progText`) */
   progress: string;
 }
 /** The status line's message once no run is at work. */
@@ -44,7 +44,7 @@ export interface Searched {
   r: CareerSearch;
   /** the job it answers */
   job: CareerJob;
-  /** career.js `jobKey(job)` */
+  /** career/keys.js `jobKey(job)` */
   key: string;
   /** the places, as JSON (`plan` when it ran) */
   plan: string;
@@ -73,7 +73,7 @@ export interface Answer {
   last: Searched | null;
   planState: PlanState;
 }
-/** the last plan made: `base`, career.js `refBase` of its job; `places`, as it ran with; `result`, its `next` report;
+/** the last plan made: `base`, career/job.js `refBase` of its job; `places`, as it ran with; `result`, its `next` report;
  *  `planId`, its plan's */
 export interface Reference {
   base: string;
@@ -96,10 +96,10 @@ const shownAnswer = signal<AnswerView>(
 export const answer: ReadonlySignal<AnswerView> = shownAnswer;
 const lastPlan = signal<DeepReadonly<Reference> | null>(null);
 export const reference: ReadonlySignal<DeepReadonly<Reference> | null> = lastPlan;
-// the last few answers, by job and places (career.js `runKey`), the most recent last (not a signal: nothing draws it)
+// the last few answers, by job and places (career/job.js `runKey`), the most recent last (not a signal: nothing draws it)
 const answers = new Map<string, AnswerView>(),
   ANSWERS = 4;
-/** the career the answer shows, the places it ran with aside (career.js `shown` holds it to the places on screen): the
+/** the career the answer shows, the places it ran with aside (career/job.js `shown` holds it to the places on screen): the
  *  plan's pick once it is made, else the highest odds; null without a result */
 export const answerCareer = computed(() => {
   const { last, planState } = shownAnswer.value,
@@ -193,7 +193,7 @@ function revisePlan(id: number, revise: (r: DeepReadonly<PlanReport>) => DeepRea
   });
   return planState;
 }
-/** plan `id`'s robustness check, as far as it has run (career.js `checkPhase`) */
+/** plan `id`'s robustness check, as far as it has run (career/run.ts `checkPhase`) */
 export const setPlanCheck = (id: number, check: Check) => revisePlan(id, (r) => ({ ...r, robust: deepFreeze(check) }));
 /** plan `id`'s check could not finish: the worker no longer keeps the plan */
 export const checkUnavailable = (id: number) => revisePlan(id, (r) => ({ ...r, check_unavailable: true }));

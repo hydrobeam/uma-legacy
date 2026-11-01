@@ -91,7 +91,7 @@ export const plan = MINE.plan || { trainee: null, parents: [null, null] };
 /** @typedef {{places: string, id: string, setup: string}} ChosenCareer */
 /** @type {(c: any) => boolean} */
 const isChosen = (c) => !!c && typeof c.places === 'string' && typeof c.id === 'string' && typeof c.setup === 'string';
-// the career Use this chose with its deck (career.js `chosenSetup`, `chosenApplies`), saved with the plan: the page checks
+// the career Use this chose with its deck (career/job.js `chosenSetup`, `chosenApplies`), saved with the plan: the page checks
 // it against the setup it meets before it sends it (a damaged one is left out)
 /** @type {{career: ChosenCareer|null}} */
 export const chosen = { career: isChosen(MINE.chosen) ? MINE.chosen : null };

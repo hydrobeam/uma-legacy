@@ -111,13 +111,13 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // with why: an exemption on one page leaves the other page's lookup checked.
 const MAY_BE_MISSING = {
   'src/loop/main.js': {},
-  'src/career.js': {
+  'src/career/main.js': {
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
     'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
     'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
   },
 };
-const PAGES = { 'src/loop/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
+const PAGES = { 'src/loop/main.js': 'index.template.html', 'src/career/main.js': 'career.template.html' };
 const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
@@ -272,16 +272,34 @@ if (knownCycles.length)
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
 // the review of step 4 traced every such read): loop/run.ts (the loop page's run machine: it changes loop/state.ts
 // through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
-// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
-// (the career run machine, split in step 8).
+// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career/main.js
+// (the career run machine, until step 8b) and career/job.js (the career job, built from the veterans and settings).
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
-  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job']],
+  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/keys', 'loop/job']],
   ['stores', ['settings', 'loop/state', 'vets', 'career/state']],
   ['shared', null], // every module not named elsewhere
   ['page:loop', ['loop/main', 'loop/run', 'loop/runnote', 'loop/results', 'loop/io', 'loop/affinity']],
-  ['page:career', ['career', 'career/analysis', 'career/options', 'career/run']],
+  [
+    'page:career',
+    [
+      'career/main',
+      'career/analysis',
+      'career/options',
+      'career/run',
+      'career/job',
+      'career/io',
+      'career/view/parts',
+      'career/view/RunNote',
+      'career/view/Tree',
+      'career/view/NodeDialog',
+      'career/view/ParentPicker',
+      'career/view/Sections',
+      'career/view/Pool',
+      'career/view/Setup',
+    ],
+  ],
 ];
 {
   const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
