@@ -94,7 +94,7 @@ const doneTextOf = (ms) =>
   `Checked ${(1200).toLocaleString()} decks / ${(30).toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s`;
 
 // a page: the settings stored in `saved` (FIXTURES' shape), the run state fresh, the machine on the fakes
-function page({ saved = FIXTURES.defaults, storage = memory(), example = null } = {}) {
+function page({ saved = FIXTURES.defaults, storage = memory(), example = null, settingsOf = (s) => s } = {}) {
   const settingsStorage = memory();
   settingsStorage.setItem('llp:settings', JSON.stringify(saved));
   initStore(() => settingsStorage);
@@ -111,7 +111,7 @@ function page({ saved = FIXTURES.defaults, storage = memory(), example = null } 
     every: clock.every,
     clearTimer: clock.clearTimer,
     storage: () => storage,
-    settings: () => settings.peek(),
+    settings: () => settingsOf(settings.peek()),
     render: (r) => drawn.push(r),
     loadExample: () => examples.push('loaded'),
     example,
@@ -383,6 +383,20 @@ test('first result: the kept result of these settings, else the example for its 
   assert.equal(r.loop.showFirst(), null);
   assert.equal(r.drawn.length, 0);
   assert.equal(loopView.peek().status.kind, 'loading');
+});
+
+test('first result: a job that throws (a bug) is reported, and the page goes on with nothing on show', () => {
+  const reported = [],
+    report0 = globalThis.reportError;
+  globalThis.reportError = (e) => reported.push(e);
+  try {
+    const p = page({ settingsOf: (s) => ({ ...s, targets: null }) });
+    assert.equal(p.loop.showFirst(), null);
+    assert.equal(reported.length, 1);
+    assert.equal(loopView.peek().status.kind, 'loading');
+  } finally {
+    globalThis.reportError = report0;
+  }
 });
 
 // ---------- storage

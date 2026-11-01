@@ -180,7 +180,13 @@ export function createRun(deps: LoopDeps) {
   // else the precomputed example when the settings are the example's, else nothing (the example under other settings
   // would show a result that isn't theirs)
   function showFirst(): First {
-    const built = buildJob(deps.settings());
+    let built: Built;
+    try {
+      built = buildJob(deps.settings());
+    } catch (e) {
+      reportError(e); // a bug (doSearch shows it as the search's error): the page goes on with nothing on show
+      return null;
+    }
     if (!('job' in built)) return null;
     const key = jobKey(built.job);
     let kept: { key?: string; ms: number; r: LoopReport } | null = null;
