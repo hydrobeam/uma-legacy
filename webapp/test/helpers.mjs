@@ -4,6 +4,7 @@
 // the repo.
 import fs from 'node:fs';
 import { expect, test } from 'playwright/test';
+import { SOLVER, installSolver } from './solverreplay.mjs';
 
 // ---------- the page under test and the run's mode
 /** The planner's address: LLP_URL, or webapp/dist served on a free local port (playwright.config.mjs sets both). */
@@ -77,15 +78,34 @@ export const PROF = process.env.LLP_PROF;
 let groupProf = null;
 /**
  * Runs one group (groups.spec.mjs): its checks are steps of the running test; a throw ends the group and fails its
- * test. With LLP_PROF, appends the group's profile line: browser, group, wall and start (ms from the run's start).
+ * test. Every context it makes reaches the solver as `solver` says (solverreplay.mjs: replayed or live, recorded under
+ * LLP_SOLVER=live); the test's `solver` annotation counts the replies replayed and recorded, and a job with no stored
+ * reply fails the test with the job named. With LLP_PROF, appends the group's profile line: browser, group, wall and
+ * start (ms from the run's start).
  * @param {string} group @param {(browser: object) => Promise<void>} run @param {object} browser
+ * @param {import('./solverreplay.mjs').SolverMode} solver
  */
-export async function runGroup(group, run, browser) {
+export async function runGroup(group, run, browser, solver) {
   groupProf = PROF ? {} : null;
   const t0 = Date.now();
+  // the browser is the worker's, shared by the groups it runs: its newContext is wrapped for this group only
+  const newContext = browser.newContext.bind(browser),
+    /** @type {import('./solverreplay.mjs').SolverTally} */
+    tally = { replayed: 0, recorded: 0, differs: 0, missing: [], held: [], stopped: [] };
+  browser.newContext = async (options) => {
+    const ctx = await newContext(options);
+    await installSolver(ctx, solver, tally);
+    return ctx;
+  };
   try {
     await run(browser);
   } finally {
+    browser.newContext = newContext;
+    const how = SOLVER === 'live' ? 'live, recorded' : solver.replay ? 'replayed' : 'live';
+    test.info().annotations.push({
+      type: 'solver',
+      description: `${how}: ${tally.replayed} replies replayed, ${tally.recorded} recorded${tally.differs ? `, ${tally.differs} differing from the stored reply` : ''}${tally.stopped.length ? `; jobs the page stopped, never recorded: ${tally.stopped.join(' | ')}` : ''}${tally.held.length ? `; background jobs left unanswered (not recorded): ${tally.held.join(' | ')}` : ''}`,
+    });
     if (PROF) {
       const line = {
         browser: browser.browserType().name(),
@@ -96,6 +116,11 @@ export async function runGroup(group, run, browser) {
       fs.appendFileSync(PROF, JSON.stringify({ ...line, ...groupProf }) + '\n');
     }
   }
+  // (after the group, so its checks still report: the first missing job is usually the cause of the failed ones)
+  if (tally.missing.length)
+    throw new Error(
+      `${tally.missing.length} solver jobs have no stored reply (a solver, data or page change: LLP_SOLVER=live records them):\n${tally.missing.slice(0, 5).join('\n')}`,
+    );
 }
 /** Adds the time until `promise` settles to the group's profile under `key` (and counts it); returns the promise. */
 const timed = (key, promise, prof = groupProf) => {

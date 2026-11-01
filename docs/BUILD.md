@@ -176,13 +176,27 @@ IndexedDB.
   `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 4): every group in Chromium, and in Firefox the
   groups tagged `@both` in `groups.spec.mjs` (where its engine matters: the worker, wasm, storage, timing, layout and
   focus; the others test the page's logic, which Chromium covers, and took 420 of Firefox's 650 CPU-s a run). Each
-  group is a module in `webapp/test/` and one test of `webapp/test/groups.spec.mjs`; each check is a step of its test, a failed one a soft failure (the group goes on), a
-  throw ends the group. Shared helpers are in `webapp/test/helpers.mjs`. One group: `cd webapp && npx playwright test
-  --project chromium -g roster` (`-g` is a regular expression over the titles). A failed test keeps its trace
+  group is a module in `webapp/test/` and one test of `webapp/test/groups.spec.mjs`; each check is a step of its test,
+  a failed one a soft failure (the group goes on), a throw ends the group. Shared helpers are in
+  `webapp/test/helpers.mjs`. One group: `cd webapp && npx playwright test --project chromium -g roster` (`-g` is a
+  regular expression over the titles). A failed test keeps its trace
   (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
-  `webapp/test-results/report.json`. `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier
-  (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its one-run answer; about 15 s): run it
-  after each page change, and the full suite before a release.
+  `webapp/test-results/report.json`. `LLP_PROF=file` logs where the time goes.
+- **Recorded solver replies:** the groups that use the solver only to put the page in a state, or check what the page
+  draws from its replies (`REPLAY` in `groups.spec.mjs`), answer every solver job from `cache/solver-replies/`
+  (`webapp/test/solverreplay.mjs`): the page's worker is a stand-in and its wasm compile gets an empty module, so they
+  cost about a third of their live CPU. The other groups run the real solver: they check its worker's live behaviour
+  (kills, restarts, progress, races, the stored work), the wasm as served, or the deck solver's odds. A reply's key is
+  the wasm's and era data's fingerprints, the jobs that worker ran before and the job, so a solver, data or page change
+  that alters a job fails its group with the job named; nothing falls back to the live solver.
+  `LLP_SOLVER=live ./build.sh test` runs every group on the real solver and records the replies (about 45 MB): run it
+  after a solver or data change, after a page change that makes a replaying group fail on a missing reply, and before
+  a release. It also prints any reply that differs from the one stored under its key, which would mean the solver is
+  not deterministic given its jobs and replay unsound. Replaying groups wait, before a reload, for the page's 100 ms
+  state save to land, so the next worker's history does not depend on timing.
+- **Fast tier:** `./build.sh testq` (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its
+  one-run answer; about 15 s; popups, phone and contrast replay, career, load and about run live): run it after each
+  page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` runs every validation check, each whatever the others found, and fails if any
   does (about 7 CPU-min, summed from the recorded run times: `val/ref_times.txt`, `val/plan/*_times.txt` and the proxy
   runs' `timing_s`):
