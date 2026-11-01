@@ -354,9 +354,9 @@ const MOUNTS = {
     ],
     ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
     [
-      'sched-dlg',
+      'sched-root',
       'src/ui/Schedule.tsx',
-      ['sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
+      ['sched-dlg', 'sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
       ['wintable', 'wtscroll', 'stabs', 'stab', 'agkey', 'sview', 'tablewrap'],
     ],
     [
@@ -433,9 +433,9 @@ const MOUNTS = {
     ],
     ['odds-root', 'src/ui/OddsDialog.tsx', ['odds-dlg', 'odds-title'], ['oddtab']],
     [
-      'sched-dlg',
+      'sched-root',
       'src/ui/Schedule.tsx',
-      ['sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
+      ['sched-dlg', 'sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
       ['wintable', 'wtscroll', 'stabs', 'stab', 'agkey', 'sview', 'tablewrap'],
     ],
   ],
@@ -521,7 +521,7 @@ const MOUNT_READS = {
         '(pickers.ts searchHeld; review-10 1, 2)',
     ],
     [
-      /mount\('sched-dlg', <ScheduleDialog \/>, 'The race schedule', schedOpened\);/,
+      /mount\('sched-root', <ScheduleDialog \/>, 'The race schedule', schedOpened\);/,
       "the race schedule's guard draws it again for a new opening (Schedule.tsx schedOpened: review-11b 5)",
     ],
     [
@@ -534,7 +534,7 @@ const MOUNT_READS = {
     if (!wire.test(srcText['src/career/main.tsx']))
       problems.push(`src/career/main.tsx: the run machine's wiring: ${what}`);
   if (
-    !/renderGuarded\(<ScheduleDialog \/>, \$\('sched-dlg'\), 'The race schedule', schedOpened\);/.test(
+    !/renderGuarded\(<ScheduleDialog \/>, \$\('sched-root'\), 'The race schedule', schedOpened\);/.test(
       srcText['src/loop/main.tsx'],
     )
   )
@@ -577,7 +577,7 @@ const VIEW_IMPORTS_KEPT = {};
 // ---------- dialogs and mounts: ui/Dialog.tsx is every modal dialog (it calls showModal() and close() from its `open`,
 // restores the focus, closes on the backdrop); a render into a mount point starts a view's effects, which the entries
 // alone decide (frontend.md §2 Rules). The template dialogs a module still opens by hand, until each is ported:
-const TEMPLATE_DIALOGS = ['sched-dlg', 'set-vets', 'um-dlg', 'sim-dlg', 'paste-dlg', 'vx-dlg'];
+const TEMPLATE_DIALOGS = ['set-vets', 'um-dlg', 'sim-dlg', 'paste-dlg', 'vx-dlg'];
 const ENTRIES = ['src/loop/main.tsx', 'src/career/main.tsx'];
 {
   const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');

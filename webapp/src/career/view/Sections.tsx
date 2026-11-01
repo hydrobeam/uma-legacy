@@ -22,7 +22,6 @@ import { openSched } from '../../ui/Schedule.tsx';
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
 type CareerReport = ShownCareer;
-// ui/Schedule.tsx's openSched takes the schedule's rows as mutable types; it only reads them
 /** the career's odds of landing all n (each count is under the targets: Counts) */
 export function Odds({ r }: { r: CareerReport }) {
   const n = settings.value.targets.length;

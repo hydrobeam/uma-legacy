@@ -208,16 +208,18 @@ test('the race schedule, after it failed to draw, draws on its next opening (rev
   const reported = [];
   globalThis.reportError = (e) => reported.push(e);
   sayRenderErrors(() => undefined);
-  // the template's dialog is its mount point (the career entry's guard, with the schedule's openings as its subject)
-  const dialog = document.createElement('dialog');
-  render(h(Guard, { what: 'The race schedule', also: schedOpened }, h(ScheduleDialog, null)), dialog);
+  // into its mount point (the career entry's guard, with the schedule's openings as its subject)
+  const root = document.createElement('div');
+  render(h(Guard, { what: 'The race schedule', also: schedOpened }, h(ScheduleDialog, null)), root);
   const member = { id: 1001, name: 'Uma A' };
   openSched({ members: [member], outfits: [], schedule: [] }); // (malformed: no outfits for her)
   await settle();
+  const dialog = root.querySelector('dialog');
   assert.equal(reported.length, 1, 'the throw reported');
   const close = dialog.querySelectorAll('button').find((b) => b.textContent === 'Close');
   assert.ok(close !== undefined, 'its heading and Close stay');
   close.click();
+  await settle();
   assert.equal(dialog.open, false, 'closed');
   openSched({ members: [member], outfits: [{ outfits: [] }], schedule: [] });
   await settle();

@@ -1,18 +1,18 @@
 // ---------- the race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all ----------
 // One member (the career page): no "All three" / "All four" tab; `shared` then means a parent won the race (it builds
-// affinity when she is a parent herself). The popup is the template's #sched-dlg on both pages: this draws its contents
-// into it (the dialog is its mount point) and opens it; Close, Escape and the backdrop close it. Each opening starts on
-// the first member, the Win table folded.
-import { signal, untracked } from '@preact/signals';
+// affinity when she is a parent herself). The popup (#sched-dlg) is ui/Dialog's on both pages; Close, Escape and the
+// backdrop close it. Each opening starts on the first member, the Win table folded.
+import { batch, signal, untracked } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import { YEARS, TABLE_PAIRS, gradeCode, shownP, slotOf, tableFigure, turnLabel, why } from '../agenda.ts';
 import type { ScheduleCell, ScheduleRow } from '../solver.ts';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
 import type { DeepReadonly } from '../store.ts';
 import { AgendaGrid, RaceFace, WhenBar } from './Agenda.tsx';
+import { Dialog } from './Dialog.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 import { Grade, UmaAv } from './Images.tsx';
 
@@ -22,33 +22,34 @@ export interface SchedSpec {
   outfits: readonly { outfits: readonly { id: number; label: string }[] }[];
   schedule: DeepReadonly<ScheduleRow[]>;
 }
-// the schedule on show, and its opening (each opening draws it afresh)
+// the schedule on show and its opening (each opening draws it afresh), and whether it is open
 const shown = signal<{ spec: SchedSpec | null; n: number }>({ spec: null, n: 0 });
+const isOpen = signal(false);
 /** the schedule on show and its opening, which only `openSched` writes: what its render guard draws again for (each
  *  entry's), so opening it again after a failure draws it, and nothing else does */
 export const schedOpened: ReadonlySignal<{ spec: SchedSpec | null; n: number }> = shown;
 /** the race schedule window for a loop's members (the career page: her alone) */
 export function openSched(spec: SchedSpec) {
-  shown.value = { spec, n: shown.peek().n + 1 };
+  batch(() => {
+    shown.value = { spec, n: shown.peek().n + 1 };
+    isOpen.value = true;
+  });
 }
-/** the popup's contents, rendered into the template's #sched-dlg */
+const close = () => {
+  isOpen.value = false;
+};
+/** the popup (each entry renders it into #sched-root) */
 export function ScheduleDialog() {
-  const { spec, n } = shown.value,
-    body = useRef<HTMLDivElement>(null);
-  const dialog = () => must(body.current?.parentElement, 'the popup is drawn into its dialog') as HTMLDialogElement;
-  // each opening (`n` moves) shows it
-  useLayoutEffect(() => {
-    const d = body.current?.parentElement as HTMLDialogElement | null | undefined;
-    if (n && d && !d.open) d.showModal();
-  }, [n]);
-  const close = () => dialog().close();
+  const { spec, n } = shown.value;
   // (a schedule that fails to draw leaves its heading and Close: the dialog is open by then)
   return (
-    <div class="dlg" id="sched-body" ref={body}>
-      <RenderGuard input={schedOpened} what="The race schedule" fallback={<SchedHead close={close} />}>
-        {spec && <Schedule key={n} spec={spec} close={close} />}
-      </RenderGuard>
-    </div>
+    <Dialog id="sched-dlg" labelledBy="sched-title" open={isOpen.value} onClose={close}>
+      <div class="dlg" id="sched-body">
+        <RenderGuard input={schedOpened} what="The race schedule" fallback={<SchedHead close={close} />}>
+          {spec && <Schedule key={n} spec={spec} close={close} />}
+        </RenderGuard>
+      </div>
+    </Dialog>
   );
 }
 const SchedHead = ({ close, children }: { close: () => void; children?: ComponentChildren }) => (

@@ -7,7 +7,7 @@
 // ui/RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
 import '../errorlog.ts'; // first: it listens before any other module runs
 import { render } from 'preact';
-import { $, $dialog, $input, backdropCloses } from '../dom.ts';
+import { $, $input } from '../dom.ts';
 import { ERA } from '../saved.ts';
 import { EXAMPLE, loadData } from '../data.ts';
 import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
@@ -159,8 +159,7 @@ function start() {
     column.focus({ preventScroll: true });
   };
   // the race schedule: drawn into the template's dialog (its mount point), which a backdrop click closes
-  renderGuarded(<ScheduleDialog />, $('sched-dlg'), 'The race schedule', schedOpened);
-  backdropCloses($dialog('sched-dlg'));
+  renderGuarded(<ScheduleDialog />, $('sched-root'), 'The race schedule', schedOpened);
 
   render(
     <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>

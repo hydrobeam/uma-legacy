@@ -351,7 +351,7 @@ loadData().then(
     mount('um-root', <UmButton />, "uma.moe's button");
     mount('um-body', <UmamoePanel />, "uma.moe's popup");
     mount('save-root', <SavesPopup />, 'The Saves popup');
-    mount('sched-dlg', <ScheduleDialog />, 'The race schedule', schedOpened);
+    mount('sched-root', <ScheduleDialog />, 'The race schedule', schedOpened);
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
     mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
