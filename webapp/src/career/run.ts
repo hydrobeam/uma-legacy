@@ -320,7 +320,8 @@ export function createRun(deps: RunDeps) {
           { status, last: { r: m.r, job, key, plan: places }, planState: planned },
           planned.state === 'done' ? { base: page.refBase(job), places: JSON.parse(places) } : null,
         );
-        if (planned.state === 'done' && !planned.r.robust) checkFor = planned;
+        // (a plan Compare kept may hold a check an edit cut short: it resumes, as a kept answer's does)
+        if (planned.state === 'done' && checkPending(planned)) checkFor = planned;
         if (status.kind === 'done' && planned.state !== 'error') {
           store.keepAnswer(answerKey);
           // kept across a reload too: the same setup draws it at once (`preloadAnswer`)

@@ -396,3 +396,30 @@ test('a trainee chosen by hand: no plan phase, the best odds shown', async () =>
   assert.equal(sent(p), 1);
   assert.equal(p.seen.shown.at(-1).career, 'mine');
 });
+
+// review-7 P1: Compare's kept plan whose check an edit cut short (its record holds the variants run so far): a run that
+// takes it resumes the check, as a kept answer's does; one whose check is done, or unavailable, sends none
+test("Compare's kept plan with its check cut short: the run that takes it resumes the check", async () => {
+  const p = page();
+  const jp = { ...p.job, next: {}, no_reports: true },
+    plan = planned('kept').next;
+  store.keepComparisonPlan(jp, { ...plan, robust: check(1, null, 'kept').next.robust }, 7);
+  await edited(p);
+  p.engine.answer(0, searched('best'));
+  await flush();
+  assert.equal(answer.peek().planState.r.robust.pending, 1);
+  assert.equal(p.engine.jobs.length, 2, 'a check job');
+  assert.equal(p.engine.jobs[1].background, true);
+  // its check done, or unavailable: nothing more is sent
+  for (const r of [
+    { ...plan, robust: check(0, { trainees: [] }, 'kept').next.robust },
+    { ...plan, check_unavailable: true },
+  ]) {
+    const q = page();
+    store.keepComparisonPlan({ ...q.job, next: {}, no_reports: true }, r, 7);
+    await edited(q);
+    q.engine.answer(0, searched('best'));
+    await flush();
+    assert.equal(q.engine.jobs.length, 1, 'only the search');
+  }
+});
