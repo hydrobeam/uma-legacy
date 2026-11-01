@@ -173,7 +173,9 @@ IndexedDB.
 - **Browser suite:** `./build.sh test` runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
   `playwright` package) against `webapp/dist`, served by `serve.mjs` over HTTP/2 with TLS as the host serves it (a
   self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
-  `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 4): every group in Chromium, and in Firefox the
+  `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 1: four each kept the laptop at its thermal
+  limit, 96.9 C on average, where two groups at once averaged 82.8 C; `LLP_JOBS=4` is about 2.5 times faster, by estimate, and hot):
+  every group in Chromium, and in Firefox the
   groups tagged `@both` in `groups.spec.mjs` (where its engine matters: the worker, wasm, storage, timing, layout and
   focus; the others test the page's logic, which Chromium covers, and took 420 of Firefox's 650 CPU-s a run). Each
   group is a module in `webapp/test/` and one test of `webapp/test/groups.spec.mjs`; each check is a step of its test,
@@ -195,7 +197,7 @@ IndexedDB.
   not deterministic given its jobs and replay unsound. Replaying groups wait, before a reload, for the page's 100 ms
   state save to land, so the next worker's history does not depend on timing.
 - **Fast tier:** `./build.sh testq` (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its
-  one-run answer; about 15 s; popups, phone and contrast replay, career, load and about run live): run it after each
+  one-run answer; about 30 s, 14 s with `LLP_JOBS=4`; popups, phone and contrast replay, career, load and about run live): run it after each
   page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` runs every validation check, each whatever the others found, and fails if any
   does (about 7 CPU-min, summed from the recorded run times: `val/ref_times.txt`, `val/plan/*_times.txt` and the proxy

@@ -2,7 +2,7 @@
 //   npx playwright test                              every group in Chromium, those tagged @both in Firefox too
 //   npx playwright test --project chromium -g roster  one browser, the groups whose title matches (a regular expression)
 //   LLP_QUICK=1 npx playwright test --project chromium --grep @quick   the fast tier (./build.sh testq)
-// LLP_JOBS groups run in parallel per browser (default 4); LLP_PROF=file appends where each group's time went;
+// LLP_JOBS groups run in parallel per browser (default 1); LLP_PROF=file appends where each group's time went;
 // LLP_SHOTS=dir saves pictures of the scenario button and picker there. Exit code 1 if any check fails. A failed test
 // keeps its trace (npx playwright show-trace test-results/<test>/trace.zip); the run's report is test-results/report.json.
 import net from 'node:net';
@@ -23,7 +23,9 @@ const freePort = () =>
   });
 if (!process.env.LLP_URL) process.env.LLP_PORT ??= String(await freePort());
 process.env.LLP_PAGE ??= process.env.LLP_URL || `https://127.0.0.1:${process.env.LLP_PORT}/`; // helpers.mjs PAGE_URL; HTTP/2 over TLS, as the host
-const JOBS = Math.max(1, +process.env.LLP_JOBS || 4); // per browser
+// per browser. One each keeps the laptop below its thermal limit on average: 4 each (8 groups at once) averaged 6.9 busy
+// cores and 96.9 C over the run, two groups at once 2.1 cores and 82.8 C (.review/web/testperf.md); LLP_JOBS=4 for speed
+const JOBS = Math.max(1, +process.env.LLP_JOBS || 1);
 
 export default defineConfig({
   testDir: 'test',
