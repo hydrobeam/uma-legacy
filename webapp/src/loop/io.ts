@@ -8,16 +8,16 @@ import { pickOutfit } from '../roster.js';
 import { mergePresets } from '../presets.js';
 import { deckHint } from '../odds.js';
 import { scenarioOf } from '../scenario.js';
-/** @import { SettingsView } from '../settings.ts' */
-/** @import { ShownResult } from './types.ts' */
+import type { SettingsView } from '../settings.ts';
+import type { DeepReadonly } from '../store.ts';
+import type { LoopResult, ResultLoop, ShownResult } from './types.ts';
 // a skill group's name at a level (2: its gold's, when it has one)
-const skillName = (group, level) => {
+const skillName = (group: number, level: number) => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: null };
   return level === 2 ? names.gd || names.w : names.w;
 };
 // the settings in words, for a reader of the export (an import reads `settings`)
-/** @param {SettingsView} s */
-function readableSettings(s) {
+function readableSettings(s: SettingsView) {
   return {
     targets: s.targets.map((t) => ({
       skill: skillName(t.group, 1),
@@ -36,22 +36,26 @@ function readableSettings(s) {
   };
 }
 // a loop's odds and members, each with the outfit the result names
-const loopSummary = (loop) => ({
+const loopSummary = (loop: DeepReadonly<ResultLoop>) => ({
   all_land: fmtIn(loop.p_all),
   at_least_n_minus_1: fmtIn(loop.p_minus1),
   umas: loop.members.map((m, k) => {
+    // @ts-expect-error the result's outfits are read-only; pickOutfit takes a list it may hand back (strict commit: a copy)
     const outfit = pickOutfit(m.id, loop.outfits[k].outfits).list[0];
     return m.name + (outfit ? ` ${outfit.label}` : '');
   }),
 });
 // one result: its loop, its deck (and each member's when they differ), the deck's hint odds above half a percent
-const resultSummary = (top) => ({
+const resultSummary = (top: DeepReadonly<LoopResult>) => ({
   ...loopSummary(top.loop),
   deck: top.deck.cards,
   pals: top.deck.pals,
   borrowed: top.deck.borrowed,
   ...(top.decks
-    ? { deck_per_uma: Object.fromEntries(top.loop.members.map((m, k) => [m.name, top.decks[k].cards])) }
+    ? {
+        // @ts-expect-error the check on top.decks doesn't narrow it inside the callback (strict commit: destructured)
+        deck_per_uma: Object.fromEntries(top.loop.members.map((m, k) => [m.name, top.decks[k].cards])),
+      }
     : {}),
   deck_odds: top.deck.odds
     .filter((o) => o.white > 0.005 || o.gold > 0.005)
@@ -62,12 +66,10 @@ const resultSummary = (top) => ({
     })),
 });
 // the export: the settings (as saved, and in words) and the result on show (`stale`: it is from other settings)
-/** @param {SettingsView} s @param {import('../store.ts').DeepReadonly<ShownResult> | null} shown @param {boolean} stale */
-export function exportText(s, shown, stale) {
+export function exportText(s: SettingsView, shown: DeepReadonly<ShownResult> | null, stale: boolean) {
   const saved = Object.fromEntries(SETTINGS.map((k) => [k, s[k]]));
   const readable = readableSettings(s);
-  /** @type {Record<string, unknown> | null} */
-  let results = null;
+  let results: Record<string, unknown> | null = null;
   if (shown) {
     const { r, meta } = shown;
     results = {
@@ -85,9 +87,10 @@ export function exportText(s, shown, stale) {
   );
 }
 // What an import may set, per setting: a value of another shape (a hand edit, an old format) is left out, and the
-// setting keeps its value (saved, a wrong type would break every later load).
-const obj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-const VALID = {
+// setting keeps its value (saved, a wrong type would break every later load). Each takes the imported value as it
+// comes (unknown) and the era the export names.
+const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const VALID: Record<(typeof SETTINGS)[number], (v: unknown, era: string) => boolean> = {
   targets: (v) => Array.isArray(v) && v.every((t) => obj(t) && Number.isInteger(t.group)),
   presets: (v) =>
     Array.isArray(v) &&
@@ -99,11 +102,11 @@ const VALID = {
         Array.isArray(p.groups) &&
         p.groups.every(Number.isInteger),
     ),
-  rank: (v) => Object.values(RANKS).includes(v),
+  rank: (v) => Object.values(RANKS).includes(v as string), // (includes compares with ===: any value may be asked)
   auto: (v) => typeof v === 'boolean',
   perUma: (v) => typeof v === 'boolean',
   decksTop: (v) => v === '1' || v === '3',
-  borrowPar: (v) => ['allow', 'later', 'never'].includes(v),
+  borrowPar: (v) => ['allow', 'later', 'never'].includes(v as string),
   scen: (v, era) => SCENARIOS.some((s) => s.v === v && (!s.era || s.era === era)),
   rsort: (v) => v === 'rel' || v === 'name',
   csort: (v) => v === 'rel' || v === 'name',
@@ -115,8 +118,10 @@ const VALID = {
 };
 // An import: the settings an export's `text` carries, those of a known shape (`bad`: the rest, named and left as they
 // were), for the era it names; presets join `presets` (yours), never replace them. Throws when the text is no export.
-/** @param {string} text @param {SettingsView['presets']} presets @returns {{era: 'gm' | 'global', loaded: Record<string, unknown>, bad: string[]}} */
-export function readImport(text, presets) {
+export function readImport(
+  text: string,
+  presets: SettingsView['presets'],
+): { era: 'gm' | 'global'; loaded: Record<string, unknown>; bad: string[] } {
   const parsed = JSON.parse(text);
   if (!parsed?.settings) throw new Error('no settings');
   const given = parsed.settings,
@@ -125,6 +130,7 @@ export function readImport(text, presets) {
     use = keys.filter((k) => VALID[k](given[k], era)),
     bad = keys.filter((k) => !use.includes(k));
   if (!use.length) throw new Error('nothing to load');
-  const imported = (k) => (k === 'presets' ? mergePresets(presets, given.presets) : given[k]);
+  const imported = (k: (typeof SETTINGS)[number]) =>
+    k === 'presets' ? mergePresets(presets, given.presets) : given[k];
   return { era, loaded: Object.fromEntries(use.map((k) => [k, imported(k)])), bad };
 }
