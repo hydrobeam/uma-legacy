@@ -2,6 +2,7 @@
 // grandparent. It draws the node on show (dialogs.ts `nodeOpen`) from the answer and the veterans store, so an edit in
 // it, or one behind it, redraws it in place; a node that is gone (a removed veteran, a grandparent whose parent place
 // emptied) closes it. Its edits address the node by where it is (veterans/store.ts `vetRef`, `parentRef`).
+import { batch } from '@preact/signals-core';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { $ } from '../../dom.ts';
@@ -53,11 +54,12 @@ function Affinity({ r }: { r: CareerReport }) {
     }));
   return <AffTable legs={legs} />;
 }
-// a dialog of its own from the popup (the uma or parent picker): the popup closes first
-const fromNode = (fn: () => void) => () => {
-  closeNode();
-  fn();
-};
+// a dialog of its own from the popup (the uma or parent picker): the popup closes first, in the same write
+const fromNode = (fn: () => void) => () =>
+  batch(() => {
+    closeNode();
+    fn();
+  });
 /** her face: a button that changes who she is, or (a listed veteran) just her face */
 interface FaceProps {
   nd: NodeRecord;
@@ -208,8 +210,10 @@ function VeteranView({ id }: { id: string }) {
             label="Remove"
             cls="vdel"
             onClick={() => {
-              closeNode();
-              removeVet(id);
+              batch(() => {
+                closeNode();
+                removeVet(id);
+              });
               $('v-msg').textContent = `Removed ${name} from your veterans.`;
             }}
           />
