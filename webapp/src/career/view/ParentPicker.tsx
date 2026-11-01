@@ -2,7 +2,7 @@
 // dialogs.ts `pickerFor` names a place.
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
-import { batch } from '@preact/signals-core';
+import { batch } from '@preact/signals';
 import { vets, places, vetById, newVet, setParent } from '../../veterans/store.ts';
 import { starsOf, umaName } from '../../veterans/names.ts';
 import { askSkills } from '../../veterans/pickers.ts';

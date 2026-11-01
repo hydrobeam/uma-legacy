@@ -1,6 +1,6 @@
 // What every store shares: the read-only view of a record, and the one way an entry reacts to a store (`on`).
-import { effect, untracked } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { effect, untracked } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 
 /** a record as a store hands it out: read-only all the way down (a write from outside is a compile error); an array
  *  or tuple becomes a readonly one (the mapped type keeps its shape), and a function in it stays callable */

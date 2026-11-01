@@ -2,7 +2,7 @@
 // grandparent. It draws the node on show (dialogs.ts `nodeOpen`) from the answer and the veterans store, so an edit in
 // it, or one behind it, redraws it in place; a node that is gone (a removed veteran, a grandparent whose parent place
 // emptied) closes it. Its edits address the node by where it is (veterans/store.ts `vetRef`, `parentRef`).
-import { batch } from '@preact/signals-core';
+import { batch } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';

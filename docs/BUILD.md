@@ -50,7 +50,7 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 
 | Package | Why |
 |---|---|
-| `preact`, `@preact/signals`, `@preact/signals-core` | the page's views and stores (bundled into the page) |
+| `preact`, `@preact/signals` | the page's views and stores (bundled into the page); signals are imported from `@preact/signals` alone (Biome's `noRestrictedImports` bans `@preact/signals-core`: one package, one signal graph) |
 | `vite` 8.3.5 | builds `webapp/dist/` (`page`): bundles the entries and the worker, fingerprints every asset, minifies the stylesheet, serves the build (`serve`, the browser suite); in place of the hand-written `build.py` and `serve.mjs` |
 | `vite-plugin-handlebars` 2.0.3 | the pages' shared markup (`webapp/partials/`) and the values they show (version, site address, /about's research figures); in place of `build.py`'s own templating |
 | `vite-plugin-static-copy` 4.1.1 | copies the fonts' licences into `dist/licenses/` |
@@ -202,7 +202,7 @@ with a portrait in `webapp/img/`. It writes:
 
 The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, built by Vite to `assets/worker-<hash>.js`; its messages both ways are typed in `src/solver.ts`). Saved settings are one versioned object,
 `localStorage['llp:settings']`, read and written in `saved.ts`. The settings are a store (`settings.ts`, on
-@preact/signals-core): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
+@preact/signals): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
 the loop page's run state (the search as the status line draws it, the status and the result on show) is a store too
 (`loop/state.ts`), changed only by the transitions its run machine (`loop/run.ts`, `createRun(deps)`: the engine, clock,

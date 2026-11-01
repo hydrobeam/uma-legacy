@@ -7,7 +7,7 @@
 // node --test 'test/unit/*.test.*' (in webapp)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { effect, signal } from '@preact/signals-core';
+import { effect, signal } from '@preact/signals';
 import { STAND_MS, createComparison, savedWhere } from '../../src/career/analysis/compare.ts';
 import * as store from '../../src/career/analysis/state.ts';
 import * as vs from '../../src/veterans/store.ts';

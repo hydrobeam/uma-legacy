@@ -8,8 +8,8 @@
 // Saved per data era in localStorage['llp:career'] = {v: 2, global: {vets, plan, chosen}, gm: {...}}: an edit is saved
 // once after the next frame (edits in between share it), at once while the page is hidden, and a save still due goes
 // out when the page is hidden or left (the entry listens: `flushPersist`).
-import { computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { computed, signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { ERA } from '../saved.ts';
 import { isGrades } from '../grades.ts';
 import type { DeepReadonly } from '../store.ts';

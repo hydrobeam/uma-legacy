@@ -48,10 +48,7 @@
                 "importNames": ["effect"],
                 "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
               },
-              "@preact/signals-core": {
-                "importNames": ["effect"],
-                "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
-              }
+              "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph (a second copy of core, nested by npm, would leave its signals' effects unseen)"
             }
           }
         }

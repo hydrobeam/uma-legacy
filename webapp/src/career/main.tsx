@@ -30,8 +30,8 @@
 import { started } from '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
-import { batch } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { batch } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import type { VNode } from 'preact';
 import { $ } from '../dom.ts';
 import { ERA } from '../saved.ts';

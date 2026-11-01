@@ -10,8 +10,8 @@
 // Records are frozen as they come in, except the jobs: a job holds the veterans store's legacies (veterans/store.ts
 // `legaciesJob`), one array every job made from the same veterans shares, and the veterans store's to keep. Nothing
 // here subscribes: the entry makes the effects (store.ts `on`).
-import { batch, computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { batch, computed, signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { must } from '../must.ts';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';

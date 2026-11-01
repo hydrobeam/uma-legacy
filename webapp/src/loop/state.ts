@@ -6,8 +6,8 @@
 // them only through the transitions below, each one write (a batch when it changes both), so an effect wakes once per
 // transition. What nothing draws stays in the machine: its staleness token (`searchId`), `busy` and its timers.
 // `resultsStale` and `headline` derive from the two.
-import { batch, computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { batch, computed, signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { fmtIn } from '../dom.ts';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';

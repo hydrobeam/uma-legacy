@@ -3,7 +3,7 @@
 // and the veteran in each parent place, and the Use this choice a reload no longer fits (`dropStaleChosen`). What a
 // component calls here reads the stores with .value (it draws again when they change); what the run machine calls,
 // with .peek().
-import { computed } from '@preact/signals-core';
+import { computed } from '@preact/signals';
 import { careerTables } from '../data.ts';
 import { settings } from '../settings.ts';
 import { run as engineRun } from '../engine.ts';

@@ -9,8 +9,8 @@
 // that goes with her (a new career on show, a roll, Add to veterans), in one batch.
 // The folder: state.ts (this store), compare.ts (the comparison's run machine), view.tsx (Try a run's popup: her card's
 // actions and the comparison panel), Details.tsx (her card, the game's Umamusume Details screen).
-import { batch, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { batch, signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { deepFreeze } from '../../store.ts';
 import type { DeepReadonly } from '../../store.ts';
 import { clearPlaces, draft, newVet, setDraft, setDraftParents } from '../../veterans/store.ts';

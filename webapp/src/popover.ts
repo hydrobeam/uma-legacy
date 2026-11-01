@@ -5,8 +5,8 @@
 // out of reach). What the panel shows is read from the opener's data-* at the click.
 // Keyboard: opening moves the focus into the panel; Escape, or Tab past either end, closes it and returns the focus to
 // the card or name that opened it.
-import { computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { computed, signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { must } from './must.ts';
 
 /** what a panel is about: a deck card (by its card id; a chip with no card entry has none) or a loop's member */

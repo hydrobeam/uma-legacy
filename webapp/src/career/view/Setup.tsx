@@ -1,6 +1,6 @@
 // The career setup's components: the Borrowed parent choice (into #bp: three choices, saved with the other settings; a
 // change runs the planner again: the entry's effect on the setup), and the panel's fold with its summary.
-import { computed, signal } from '@preact/signals-core';
+import { computed, signal } from '@preact/signals';
 import { useLayoutEffect } from 'preact/hooks';
 import { $ } from '../../dom.ts';
 import { ERA } from '../../saved.ts';

@@ -11,7 +11,7 @@
 // (`targetFactors`). `syncListings` runs inside the career page's settings effect: it reads every signal with peek(),
 // so that effect subscribes to none of them. What it reads and writes of the page, the targets and the veterans store's
 // listings, comes in through `connectUmamoe`, called once by the entry: it reads no store itself (.dependency-cruiser.mjs checks it).
-import { batch, computed, signal } from '@preact/signals-core';
+import { batch, computed, signal } from '@preact/signals';
 import { ERA } from './saved.ts';
 import { must } from './must.ts';
 import { parseListing } from './umadump.ts';
@@ -25,7 +25,7 @@ import {
   fullTrainers,
   setFullTrainers,
 } from './umamoe.ts';
-import type { ReadonlySignal } from '@preact/signals-core';
+import type { ReadonlySignal } from '@preact/signals';
 import type { UmamoeListing } from './umadump.ts';
 import type { SettingsView } from './settings.ts';
 import type { Veteran, VetRecord } from './veterans/store.ts';

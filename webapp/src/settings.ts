@@ -6,8 +6,8 @@
 // `jobSetup` changes when any setting a job reads is. Nothing here subscribes: the entries make the effects (store.ts
 // `on`). Read `.value` in handlers and in what an entry's effect calls (`on` runs it untracked); logic modules take
 // the values as arguments.
-import { computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { computed, signal } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { COMMON, ERA, PER_ERA, SAVED, SETTINGS, browserStorage, loadSaved, writeSaved } from './saved.ts';
 import type { Era, Saved, SavedPart, SettingsStorage } from './saved.ts';
 import { deepFreeze } from './store.ts';
