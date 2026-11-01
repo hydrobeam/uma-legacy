@@ -267,7 +267,11 @@ How serde's encoding reads in the TypeScript: an `Option` written as null is `T 
 not apply (`skip_serializing_if`) is `field?: T`; a reply with several shapes is an enum tagged by `kind`
 (`#[serde(tag = "kind")]`), so the TypeScript is a discriminated union the page narrows by `kind` (a refusal is `{kind:
 "refusal", error}`); a record inside another is a nested object (no `#[serde(flatten)]`); an f64 that can be infinite
-is written as null (serde_json), and such a field is typed `number | null`.
+is written as null (serde_json), and such a field is typed `number | null`. A choice a job makes is an enum written by
+name (`RankClass`, `Scenario`, `PickRule`, ...); a game's integer code is an enum written as its integer (`serde_repr`,
+src/codes.rs: `Grade`, `Distance`, `Surface`) with `#[ts(repr(enum))]`, so its TypeScript is an `export enum` of the
+same integers (ts-rs reads no serde_repr: without it, it writes a union of the names for a value the wire carries as an
+integer).
 
 ## Tests
 

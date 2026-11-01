@@ -126,6 +126,7 @@ mod chart;
 mod checks;
 #[cfg(not(target_arch = "wasm32"))]
 mod cli;
+mod codes;
 #[cfg(not(target_arch = "wasm32"))]
 mod constants;
 mod data;

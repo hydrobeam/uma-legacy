@@ -268,7 +268,7 @@ struct RaceAptitudes {
 
 impl RaceAptitudes {
     fn of(data: &Data, race: usize) -> Self {
-        Self { distance: data.race_distance[race] as usize, surface: if data.race_surface[race] == 1 { 4 } else { 5 } }
+        Self { distance: data.race_distance[race].aptitude(), surface: data.race_surface[race].aptitude() }
     }
 }
 

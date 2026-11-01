@@ -35,6 +35,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/checks.rs` | The environment switches, read once into `Checks` (`checks::get`), and their thread-local counters |
 | `src/data.rs` | Race data, schedule choices, relation and ceiling tables, win probabilities and feasibility |
 | `src/hex.rs` | Floats and 64-bit keys as hex text, bit for bit (the kept state's, data.json's `pb` table) |
+| `src/codes.rs` | The game's integer codes as enums written as their integers (`Grade`, `Distance`, `Surface`: data.json's `apt`, `race_cat`, `race_ground`, the replies' grades) |
 | `src/key.rs` | Content keys: a typed value hashed through its serde encoding (`content_key`), what kept work is keyed by |
 | `src/uma.rs` | Roster indices and per-uma tables (`UmaIndex`, `UmaTable`) |
 | `src/schedule.rs` | Exact single-uma best responses (`Uma::dp_exact`, `Data::best_response`), scratch buffers and scoped memo |

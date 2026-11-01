@@ -9,6 +9,7 @@ use crate::career::reply::{
 use crate::career::schedule::{ExpectedRecord, PinkOutcome, ScheduleOutfits, apt_pink, pink_p};
 use crate::career::search::Found;
 use crate::career::{Ancestor, CareerSetup, DeckSearchMemo, Legacy, Lineage, SearchState};
+use crate::codes::Grade;
 use crate::deck::joint::exact::{JointScratch, joint_eval_in, joint_prep};
 use crate::deck::joint::{JointExt, JointOptions};
 use crate::deck::sources::TargetSources;
@@ -235,7 +236,7 @@ impl CareerSetup<'_> {
         let aptitudes = pink_career.map(|pink| {
             let pink_gen = Self::pink_gen(pink);
             let outcome_report = |outcome: &PinkOutcome| PinkOutcomeReport {
-                start: outcome.start,
+                start: outcome.start.map(Grade::of),
                 fire: outcome
                     .fire
                     .iter()
@@ -260,7 +261,7 @@ impl CareerSetup<'_> {
                 }
             };
             Aptitudes {
-                base: pink.base,
+                base: pink.base.map(Grade::of),
                 pink_gen: (0..10).map(|k| PinkTypeChance { group: apt_pink(k), p: pink_gen[k] }).collect(),
                 start,
             }

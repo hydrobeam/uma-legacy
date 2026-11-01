@@ -57,13 +57,13 @@ export type AncestorRecord = { chara: number, sparks: Array<[number, number]>, w
 export type AptitudeStart = { "kind": "known" } & PinkOutcomeReport | { "kind": "outcomes", outcomes: Array<WeightedPinkOutcome>, };
 
 /**
- * Her aptitude grades (data.json `apt` order, codes 1..8 = G..S) and her veteran's pink spark.
+ * Her aptitude grades (data.json `apt` order) and her veteran's pink spark.
  */
 export type Aptitudes = { 
 /**
  * her grades before any pink spark fires
  */
-base: [number, number, number, number, number, number, number, number, number, number], 
+base: [Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade], 
 /**
  * the chance of each pink type on her veteran
  */
@@ -742,6 +742,11 @@ export type ForcedCareer = { trainee: number, parents: [number, number], };
 export type Goal = "first" | "looped";
 
 /**
+ * An aptitude grade, data.json's `apt` codes and the replies' (`Aptitudes`): G = 1 .. S = 8.
+ */
+export enum Grade { "G" = 1, "F" = 2, "E" = 3, "D" = 4, "C" = 5, "B" = 6, "A" = 7, "S" = 8 }
+
+/**
  * The greedy audit at a pick change: the exact career search's pick against the surrogate's, with audit rows.
  */
 export type GreedyAudit = { t: number, pool: number, sur: string, sur_p: number, ex: string | null, ex_p: number | null, differs: boolean, proven: boolean, rows: Array<[number, number, number, number, number, boolean]>, };
@@ -1172,7 +1177,7 @@ carriers: number, };
 /**
  * A start's grades and the legacy pinks that can fire at an April inspiration.
  */
-export type PinkOutcomeReport = { start: [number, number, number, number, number, number, number, number, number, number], fire: Array<PinkFireReport>, };
+export type PinkOutcomeReport = { start: [Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade], fire: Array<PinkFireReport>, };
 
 /**
  * A pink type's chance on her veteran.

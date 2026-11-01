@@ -5,6 +5,7 @@
 use crate::career::plan::report::{CheckReply, PlanReply, RollReply};
 use crate::career::search::{Assumes, Unproven};
 use crate::chart::ScheduleRow;
+use crate::codes::Grade;
 use crate::deck::pdeck::ResultDeck;
 use crate::loop_planner::output::{OutfitLabel, TargetCover};
 use crate::refusal::Refusal;
@@ -292,11 +293,11 @@ pub(crate) struct PinkInheritance {
     pub(crate) carriers: usize,
 }
 
-/// Her aptitude grades (data.json `apt` order, codes 1..8 = G..S) and her veteran's pink spark.
+/// Her aptitude grades (data.json `apt` order) and her veteran's pink spark.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct Aptitudes {
     /// her grades before any pink spark fires
-    pub(crate) base: [u8; 10],
+    pub(crate) base: [Grade; 10],
     /// the chance of each pink type on her veteran
     pub(crate) pink_gen: Vec<PinkTypeChance>,
     /// where her grades start
@@ -318,7 +319,7 @@ pub(crate) enum AptitudeStart {
 /// A start's grades and the legacy pinks that can fire at an April inspiration.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct PinkOutcomeReport {
-    pub(crate) start: [u8; 10],
+    pub(crate) start: [Grade; 10],
     pub(crate) fire: Vec<PinkFireReport>,
 }
 
