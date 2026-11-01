@@ -23,8 +23,11 @@
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
 //   `loadOrder`, on the bundles as samecode builds them).
 // - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
-//   the entry only at its mount points, a deliberate read listed with why (MOUNT_READS).
-// - components stay views: no .ts or .js module imports a .tsx one.
+//   the entry only at its mount points, a deliberate read listed with why (MOUNT_READS): by a selector or a class
+//   lookup naming what the component draws, or by walking down from a mount point (its children, a query from it, a
+//   write of its content), looked up or held in a variable.
+// - components stay views: no .ts or .js module imports a .tsx one, by any import esbuild resolves (each bundle's
+//   import graph) or a type import it erases (a relative path in the module that resolves to a .tsx file).
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
 // against the layer order (LAYERS; a report while existing modules still break it), and the `@ts-expect-error` markers
@@ -242,7 +245,9 @@ const cycles = [];
 // no other module of that page's bundle draws). Another module of the bundle that looks one up (`$`/getElementById of
 // an id, or a querySelector/closest/matches selector naming the id or a class) would read or write a component's DOM
 // behind its back: a write is undone, or kept against what the component would draw, by its next render. The entry
-// renders into its mount points and marks them (attributes on the mount point itself), so it may look those up. A
+// renders into its mount points and marks them (attributes on the mount point itself), so it may look those up, but
+// not walk down from one (TRAVERSAL: its children, a query from it, its content written), whether straight from the
+// lookup or from a variable that holds it; nor may it name what is under one in a selector ('#results > *'). A
 // lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
 const MOUNTS = {
   'src/loop/main.tsx': [
@@ -255,9 +260,14 @@ const MOUNTS = {
       [],
       ['loop', 'lhead', 'members', 'mem', 'memb', 'facebtn', 'deck', 'dtitle', 'dwho', 'dcards', 'dc', 'oinfo', 'dodds']
         .concat(['dsk', 'swap', 'swrow', 'swho', 'swcards', 'swc', 'swout', 'swin', 'swto', 'swa', 'swd', 'swd1'])
-        .concat(['swmore', 'swhead', 'lacts', 'same']),
+        .concat(['swmore', 'swhead', 'lacts', 'same', 'sk', 'dnm', 'dbar', 'dlab', 'n3']),
     ],
-    ['why-root', 'src/loop/Affinity.tsx', ['why-dlg', 'why-body', 'why-title'], ['afpick', 'afpar', 'aflab', 'afpn']],
+    [
+      'why-root',
+      'src/loop/Affinity.tsx',
+      ['why-dlg', 'why-body', 'why-title'],
+      ['afpick', 'afpar', 'aflab', 'afpn', 'afview'],
+    ],
     [
       'ex-root',
       'src/loop/Export.tsx',
@@ -282,20 +292,42 @@ const MOUNT_READS = {
 };
 {
   const SELECTOR = /\.(?:querySelector(?:All)?|closest|matches)(?:<[^>]*>)?\(\s*(['"`])((?:(?!\1).)*)\1/g;
+  // a class lookup, read as the selector of its classes
+  const CLASS_LOOKUP = /\.getElementsByClassName\(\s*(['"`])((?:(?!\1).)*)\1/g;
+  // a walk down from an element, or a write of its content
+  const TRAVERSAL =
+    /^\s*\)?\s*\??\.\s*(?:children|childNodes|(?:first|last)(?:Element)?Child|querySelector(?:All)?|getElementsBy\w+|inner(?:HTML|Text)|outerHTML|textContent|replaceChildren|append(?:Child)?|prepend|insert\w*|removeChild|replaceChild)\b/;
+  // the variable a lookup is held in: `const results = $('results')`, `…, results = $('results')`
+  const HELD = /(?:\b(?:const|let|var)|,)\s*([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*$/;
   const used = new Set();
   for (const [entry, mounts] of Object.entries(MOUNTS)) {
     for (const file of bundled[entry]) {
       const text = srcText[file];
-      const ids = [...text.matchAll(LOOKUP)].map((m) => m[2]);
-      const selectors = [...text.matchAll(SELECTOR)].map((m) => m[2]);
+      const lookups = [...text.matchAll(LOOKUP)];
+      const ids = lookups.map((m) => m[2]);
+      const selectors = [
+        ...[...text.matchAll(SELECTOR)].map((m) => m[2]),
+        ...[...text.matchAll(CLASS_LOOKUP)].map((m) => m[2].replace(/(^|\s+)(?=\S)/g, '.')),
+      ];
       for (const [root, owner, ownIds, ownClasses] of mounts) {
         if (file === owner) continue;
         const named = (id) => (id === root ? file !== entry : ownIds.includes(id));
         for (const id of ids.filter(named))
           problems.push(`${file}: looks up #${id}, which ${owner} draws (mount point #${root})`);
+        // walking down from the mount point: straight from its lookup, or from the variable that holds it
+        for (const m of lookups.filter((lookup) => lookup[2] === root)) {
+          const after = text.slice(m.index + m[0].length);
+          const held = text.slice(Math.max(0, m.index - 80), m.index).match(HELD)?.[1];
+          const walks =
+            TRAVERSAL.test(after) ||
+            (held !== undefined &&
+              new RegExp(`(?<![\\w$.])${held.replace(/\$/g, '\\$')}${TRAVERSAL.source.slice(1)}`, 'm').test(after));
+          if (walks) problems.push(`${file}: walks into #${root}, which ${owner} draws, from its mount point`);
+        }
         for (const selector of selectors) {
           const hit =
             [...selector.matchAll(/#([\w-]+)/g)].some((m) => named(m[1]) || (m[1] === root && file !== entry)) ||
+            new RegExp(`#${root}(?![\\w-])\\s*[\\s>~+]\\s*\\S`).test(selector) ||
             [...selector.matchAll(/\.([\w-]+)/g)].some((m) => ownClasses.includes(m[1]));
           if (!hit) continue;
           if (MOUNT_READS[file]?.[selector] !== undefined) used.add(`${file} ${selector}`);
@@ -311,9 +343,30 @@ const MOUNT_READS = {
 }
 
 // ---------- components stay views: a module that is not one (.ts, .js) imports no .tsx module
-for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && !f.endsWith('.tsx')))
-  for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'([^']+\.tsx)'/g))
-    problems.push(`${file}: imports the component module ${spec}; logic takes values, components import logic`);
+// What runs: each bundle's import graph (esbuild's metafiles), so every import esbuild resolves counts (a dynamic
+// import(), either quote, a path without its extension). What esbuild erases before it resolves (an `import type`, a
+// JSDoc `@import` or `import('…')` type): any relative path written in the module that resolves to a .tsx file.
+{
+  const isView = (file) => file.endsWith('.tsx');
+  const viewImports = new Set();
+  for (const meta of Object.values(metafiles))
+    for (const [file, input] of Object.entries(meta.inputs))
+      if (file.startsWith('src/') && !isView(file))
+        for (const imported of input.imports) if (isView(imported.path)) viewImports.add(`${file} ${imported.path}`);
+  const resolvesToView = (file, spec) => {
+    const base = path.join(path.dirname(file), spec);
+    return [base, `${base}.tsx`, path.join(base, 'index.tsx')].find((f) => isView(f) && fs.existsSync(path.join(W, f)));
+  };
+  for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && !isView(f)))
+    for (const [, , spec] of text.matchAll(/(['"`])(\.{1,2}\/[^'"`\s]*)\1/g)) {
+      const view = resolvesToView(file, spec);
+      if (view) viewImports.add(`${file} ${view}`);
+    }
+  for (const pair of viewImports) {
+    const [file, view] = pair.split(' ');
+    problems.push(`${file}: imports the component module ${view}; logic takes values, components import logic`);
+  }
+}
 
 // ---------- read before declared: each bundle as samecode reads it (`loadOrder`)
 for (const entry of [...Object.keys(PAGES), WORKER])
@@ -364,7 +417,19 @@ const LAYERS = [
   ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job']],
   ['stores', ['settings', 'loop/state', 'vets']],
   ['shared', null], // every module not named elsewhere
-  ['page:loop', ['loop/main', 'loop/run', 'loop/io', 'loop/RunNote', 'loop/Results', 'loop/Affinity', 'loop/Export']],
+  [
+    'page:loop',
+    [
+      'loop/main',
+      'loop/run',
+      'loop/io',
+      'loop/RunNote',
+      'loop/Results',
+      'loop/Affinity',
+      'loop/Export',
+      'loop/RenderGuard',
+    ],
+  ],
   ['page:career', ['career', 'career/analysis', 'career/options']],
 ];
 {
