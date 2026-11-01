@@ -1,15 +1,17 @@
 // samecode: is the page's code in one tree the same code as in another, moved or renamed but not changed?
-//   node test/samecode.mjs [BASE [HEAD]] [--effects]   (./build.sh samecode; BASE defaults to HEAD, HEAD to the working tree)
-// Each tree's three bundles (the two pages' entries and the solver's worker) are built by esbuild unminified, without
-// minifying names, the path comments dropped, and compared twice:
-// - the multiset of code lines: the same lines, possibly in another order. A move, a rename to .ts with annotations or a
-//   split keeps it; any changed line breaks it. (A minified hash can't serve: esbuild's minified names follow the
-//   input's character counts, so a type annotation can rename them, and a split moves code earlier in the bundle.)
+//   node test/samecode.mjs [BASE [HEAD]] [--effects]   (BASE defaults to HEAD, HEAD to the working tree)
+// Each tree's three bundles (the two pages' entries and the solver's worker) are built by esbuild without minifying,
+// read as tokens (comments dropped, so esbuild's `// path/file.js` lines go; whitespace dropped, so a line the formatter
+// reflowed reads the same) and compared twice:
+// - the multiset of statements: the token runs between one `;`, `{` or `}` and the next, possibly in another order. A
+//   move, a rename to .ts with annotations or a split keeps it; any changed statement breaks it. (A minified hash can't
+//   serve: esbuild's minified names follow the input's character counts, so a type annotation can rename them, and a
+//   split moves code earlier in the bundle.)
 // - the ordered list of load-time effects: the top-level statements that do something when the bundle loads (not a
 //   declaration of a function, class or plain value). Modules run in import order, so a move that changes the order of
 //   storage reads or document listeners breaks it.
-// A module order change also swaps esbuild's collision suffixes (GAP, GAP2), which shows as changed lines: evaluation
-// order did change, so it is reported. --effects lists each bundle's effects. Exits 1 on any difference.
+// A module order change also swaps esbuild's collision suffixes (GAP, GAP2), which shows as changed statements:
+// evaluation order did change, so it is reported. --effects lists each bundle's effects. Exits 1 on any difference.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -21,8 +23,8 @@ const ENTRIES = ['src/main.js', 'src/career.js', 'worker.template.js'];
 // what a bundle's build reads beside the sources: the tsconfig (JSX, import elision) and the package's module type
 const TREE = ['webapp/src', 'webapp/worker.template.js', 'webapp/tsconfig.json', 'webapp/package.json'];
 
-// The bundle of `entry` in the webapp folder `dir`, as build.py makes it but unminified, as lines; the packages resolve
-// from this checkout's node_modules
+// The bundle of `entry` in the webapp folder `dir`, as build.py makes it but unminified; the packages resolve from this
+// checkout's node_modules
 const bundle = (dir, entry) =>
   esbuild.buildSync({
     entryPoints: [path.join(dir, entry)],
@@ -38,103 +40,133 @@ const bundle = (dir, entry) =>
     write: false,
   }).outputFiles[0].text;
 
-// The code lines of a bundle: blank lines and esbuild's `// path/file.js` comments dropped
-export const codeLines = (text) =>
-  text.split('\n').filter((line) => line.trim() && !/^\s*\/\/ \S+\.(m?[jt]sx?|json)$/.test(line));
+const WORD = /[\w$]/;
+// a `/` starts a regular expression after these (an operator, an opening bracket, a keyword), else it divides
+const REGEX_AFTER =
+  /^$|^[(,=:[!&|?{};+\-*%<>~^]$|^(return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
 
-// Per line of `text`, whether it starts outside any string, template or comment and at bracket depth `depth`: a scan of
-// the JS lexical grammar sufficient for esbuild's output (a `/` is a regular expression after an operator, an opening
-// bracket or a keyword, else a division)
-export function lineStarts(text, depth) {
-  const starts = [true];
-  const stack = []; // open brackets, and '`' for a template literal whose `${` is open
+// The tokens of esbuild's output: {text, depth (open brackets before it), lineStart (the first token of its line),
+// indent (its line's leading spaces)}. Strings, regular expressions and template literals (with what their `${}` hold)
+// are one token each; comments and whitespace are dropped.
+export function tokenize(text) {
+  const tokens = [];
+  let depth = 0;
   let i = 0;
-  let prev = ''; // the last significant character or word outside strings and comments
-  const regexBefore =
-    /^$|[(,=:[!&|?{};+\-*%<>~^]$|^(return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
-  const skipString = (quote) => {
-    for (i++; i < text.length && text[i] !== quote; i++) if (text[i] === '\\') i++;
-  };
-  const skipRegex = () => {
-    // from its opening '/' to its closing one, a '/' in a character class or escaped not closing it
-    let inClass = false;
-    for (i++; i < text.length && (inClass || text[i] !== '/'); i++) {
-      if (text[i] === '\\') i++;
-      else if (text[i] === '[') inClass = true;
-      else if (text[i] === ']') inClass = false;
+  let lineStart = true;
+  let indent = 0;
+  // the end (exclusive) of the string, template or regular expression opening at `at`
+  const quoteEnd = (at) => {
+    const quote = text[at];
+    let j = at + 1;
+    let inClass = false; // in a regular expression's [...]
+    for (; j < text.length; j++) {
+      const ch = text[j];
+      if (ch === '\\') j++;
+      else if (quote === '/' && ch === '[') inClass = true;
+      else if (quote === '/' && ch === ']') inClass = false;
+      else if (ch === quote && !inClass) return j + 1;
+      else if (quote === '`' && ch === '$' && text[j + 1] === '{') j = codeEnd(j + 2) - 1;
     }
+    return j;
   };
-  const skipTemplate = () => {
-    // from after a '`' or a template's closing '}': to its end, or into a `${` (pushed)
-    for (; i < text.length; i++) {
-      if (text[i] === '\\') i++;
-      else if (text[i] === '\n') starts.push(false);
-      else if (text[i] === '`') return;
-      else if (text[i] === '$' && text[i + 1] === '{') {
-        stack.push('`');
-        i++;
-        return;
-      }
+  // the end (exclusive) of a template's `${ ... }`, from just inside it
+  const codeEnd = (at) => {
+    let open = 1;
+    let j = at;
+    for (; j < text.length && open > 0; j++) {
+      const ch = text[j];
+      if (ch === '"' || ch === "'" || ch === '`') j = quoteEnd(j) - 1;
+      else if (ch === '{') open++;
+      else if (ch === '}') open--;
     }
+    return j;
   };
-  for (; i < text.length; i++) {
+  const push = (end) => {
+    tokens.push({ text: text.slice(i, end), depth, lineStart, indent });
+    lineStart = false;
+    i = end;
+  };
+  while (i < text.length) {
     const ch = text[i];
     if (ch === '\n') {
-      starts.push(stack.length === depth);
-      continue;
-    }
-    if (ch === ' ' || ch === '\t' || ch === '\r') continue;
-    if (ch === '/' && text[i + 1] === '/') {
-      while (i + 1 < text.length && text[i + 1] !== '\n') i++;
-      continue;
-    }
-    if (ch === '/' && text[i + 1] === '*') {
-      for (i += 2; i < text.length && !(text[i] === '*' && text[i + 1] === '/'); i++)
-        if (text[i] === '\n') starts.push(false);
+      lineStart = true;
+      indent = text.slice(i + 1).match(/^ */)[0].length;
       i++;
-      continue;
-    }
-    if (ch === '"' || ch === "'") skipString(ch);
-    else if (ch === '`') {
-      i++;
-      skipTemplate();
-    } else if (ch === '/' && regexBefore.test(prev)) {
-      skipRegex();
-    } else if ('([{'.includes(ch)) stack.push(ch);
-    else if (')]}'.includes(ch)) {
-      if (stack.pop() === '`') {
-        i++;
-        skipTemplate();
-      }
-    } else if (/[\w$]/.test(ch)) {
-      let j = i;
-      while (j + 1 < text.length && /[\w$]/.test(text[j + 1])) j++;
-      prev = text.slice(i, j + 1);
-      i = j;
-      continue;
-    }
-    prev = ch;
+    } else if (ch === ' ' || ch === '\t' || ch === '\r') i++;
+    else if (ch === '/' && text[i + 1] === '/') while (i < text.length && text[i] !== '\n') i++;
+    else if (ch === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      i = close < 0 ? text.length : close + 2;
+    } else if (ch === '"' || ch === "'" || ch === '`') push(quoteEnd(i));
+    else if (ch === '/' && REGEX_AFTER.test(tokens.at(-1)?.text ?? '')) {
+      let end = quoteEnd(i);
+      while (end < text.length && /[a-z]/.test(text[end])) end++; // its flags
+      push(end);
+    } else if (WORD.test(ch)) {
+      let end = i + 1;
+      while (end < text.length && WORD.test(text[end])) end++;
+      push(end);
+    } else if ('([{'.includes(ch)) {
+      push(i + 1);
+      depth++;
+    } else if (')]}'.includes(ch)) {
+      depth--;
+      push(i + 1);
+    } else push(i + 1);
   }
-  return starts;
+  return tokens;
+}
+
+// tokens as text: a space only where two words would otherwise merge, or two signs (`a - -b`)
+const join = (tokens) =>
+  tokens
+    .map((t, k) => {
+      const before = tokens[k - 1]?.text.at(-1) ?? '';
+      const glue = (WORD.test(before) && WORD.test(t.text[0])) || ('+-'.includes(before) && before === t.text[0]);
+      return (k && glue ? ' ' : '') + t.text;
+    })
+    .join('');
+
+// The statements of a bundle: its tokens cut after each `;`, `{` and `}`, as text
+export function statements(text) {
+  const out = [];
+  let run = [];
+  for (const token of tokenize(text)) {
+    run.push(token);
+    if (';{}'.includes(token.text)) {
+      out.push(join(run));
+      run = [];
+    }
+  }
+  if (run.length) out.push(join(run));
+  return out;
 }
 
 // a top-level statement that declares and does nothing else: a function or class, or a value made without a call
-const DECLARATION = /^(async function|function\*?|class) /;
+const DECLARATION = /^(async function|function)\b|^class\b/;
 const PURE_VALUE =
-  /^(var|let|const) [\w$]+ = (\(|async \(|[\w$]+ =>|\[|\{|function|class|[0-9"'`-]|null|true|false|void 0|\/|new (Map|Set|WeakMap)\(\))/;
-// The load-time effects of a bundle: the first line of each top-level statement of its IIFE (two spaces in, outside any
-// string or bracket but the IIFE's own) that is not a declaration (a `var x = f()` is: the call runs at load)
+  /^(var|let|const) [\w$]+=(\(|async\(|async [\w$]+=>|[\w$]+=>|\[|\{|function\b|class\b|[0-9"'`-]|null;|true;|false;|void 0;|\/|new (Map|Set|WeakMap)\(\);)/;
+// The load-time effects of a bundle: the top-level statements of its IIFE (its own first tokens on a line two spaces
+// in, inside the IIFE's two brackets) that are not declarations (a `var x = f()` is not: the call runs at load), each
+// as its text up to its first `{` or `;`
 export function effects(text) {
-  const lines = text.split('\n');
-  const starts = lineStarts(text, 2);
-  return lines
-    .map((line, k) => (starts[k] && /^ {2}\S/.test(line) ? line.slice(2) : null))
-    .filter((s) => s !== null && !/^([)\]}]|\/\/|\/\*)/.test(s))
-    .filter((s) => !DECLARATION.test(s) && !(/^(var|let|const) /.test(s) && (PURE_VALUE.test(s) || !s.includes('('))));
+  const tokens = tokenize(text);
+  const heads = [];
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (!(t.lineStart && t.depth === 2 && t.indent === 2) || ')]}'.includes(t.text)) continue;
+    let end = k;
+    while (end < tokens.length && !'{;'.includes(tokens[end].text)) end++;
+    const head = join(tokens.slice(k, end + 1));
+    const isDeclaration =
+      DECLARATION.test(head) || (/^(var|let|const) /.test(head) && (PURE_VALUE.test(head) || !head.includes('(')));
+    if (!isDeclaration) heads.push(head);
+  }
+  return heads;
 }
 
-// The difference of two bundles' code: [lines only in a, lines only in b] (each as often as it is in excess)
-export function lineDiff(a, b) {
+// The difference of two lists: [entries only in a, entries only in b] (each as often as it is in excess)
+export function listDiff(a, b) {
   const count = new Map();
   for (const l of a) count.set(l, (count.get(l) || 0) + 1);
   for (const l of b) count.set(l, (count.get(l) || 0) - 1);
@@ -164,16 +196,18 @@ if (import.meta.main) {
   let same = true;
   for (const entry of ENTRIES) {
     const [a, b] = [bundle(base, entry), bundle(head, entry)];
-    const [onlyA, onlyB] = lineDiff(codeLines(a), codeLines(b));
+    const [sa, sb] = [statements(a), statements(b)];
+    const [onlyA, onlyB] = listDiff(sa, sb);
     const [ea, eb] = [effects(a), effects(b)];
     const sameOrder = ea.length === eb.length && ea.every((e, k) => e === eb[k]);
+    const changed = onlyA.length + onlyB.length;
     console.log(
-      `${entry}: ${codeLines(b).length} code lines, ${onlyA.length + onlyB.length ? `${onlyA.length} gone and ${onlyB.length} new` : 'the same'}; ` +
+      `${entry}: ${sb.length} statements, ${changed ? `${onlyA.length} gone and ${onlyB.length} new` : 'the same'}; ` +
         `${eb.length} load-time effects, ${sameOrder ? 'in the same order' : `ORDER CHANGED (${ea.length} before)`}`,
     );
-    for (const l of onlyA.slice(0, 8)) console.log(`  - ${l.slice(0, 150)}`);
-    for (const l of onlyB.slice(0, 8)) console.log(`  + ${l.slice(0, 150)}`);
-    if (onlyA.length + onlyB.length > 16) console.log(`  (${onlyA.length + onlyB.length} differing lines in all)`);
+    for (const s of onlyA.slice(0, 8)) console.log(`  - ${s.slice(0, 150)}`);
+    for (const s of onlyB.slice(0, 8)) console.log(`  + ${s.slice(0, 150)}`);
+    if (changed > 16) console.log(`  (${changed} differing statements in all)`);
     if (!sameOrder) {
       const k = ea.findIndex((e, j) => e !== eb[j]);
       const at = k < 0 ? ea.length : k;
@@ -182,7 +216,7 @@ if (import.meta.main) {
       );
     }
     if (listEffects) for (const e of eb) console.log(`    ${e.slice(0, 150)}`);
-    same &&= sameOrder && onlyA.length + onlyB.length === 0;
+    same &&= sameOrder && changed === 0;
   }
   for (const dir of [base, head]) if (dir !== W) fs.rmSync(path.dirname(dir), { recursive: true });
   console.log(same ? 'samecode: the same code' : 'samecode: the code differs (above)');

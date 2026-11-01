@@ -178,8 +178,9 @@ IndexedDB.
   under a second) runs the page's node tests, `webapp/test/unit/`.
 - **Same code:** `node test/samecode.mjs [BASE [HEAD]]` in `webapp` (BASE defaults to `HEAD`, HEAD to the working tree;
   under a second) says whether a change to the page's code only moved or renamed it: each page bundle and the worker,
-  built unminified without the path comments, must have the same multiset of code lines and the same ordered list of
-  load-time effects (the top-level statements that run when the bundle loads: storage reads, listeners, lookups).
+  built unminified and read as tokens (comments and line breaks dropped), must have the same multiset of statements and
+  the same ordered list of load-time effects (the top-level statements that run when the bundle loads: storage reads,
+  listeners, lookups).
   A commit it passes changes no behaviour and needs no browser run; one that changes behaviour fails it by design.
 - **Browser suite:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
   `playwright` package) against `webapp/dist`, served by `serve.mjs` over HTTP/2 with TLS as the host serves it (a

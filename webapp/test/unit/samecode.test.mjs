@@ -1,7 +1,7 @@
 // samecode's parts (test/samecode.mjs) on small bundles shaped as esbuild writes them: node --test test/unit/
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { codeLines, effects, lineDiff } from '../samecode.mjs';
+import { effects, listDiff, statements } from '../samecode.mjs';
 
 const iife = (...body) => ['(() => {', ...body, '})();', ''].join('\n');
 
@@ -21,8 +21,11 @@ test('declarations are not effects; calls, listeners and storage reads are', () 
     '    add(e);',
     '  });',
     '  var LIMIT = 3;',
+    '  var list = [',
+    '    1',
+    '  ];',
   );
-  assert.deepEqual(effects(text), ['var SAVED = loadSaved();', 'document.addEventListener("click", (e) => {']);
+  assert.deepEqual(effects(text), ['var SAVED=loadSaved();', 'document.addEventListener("click",(e)=>{']);
 });
 
 test('lines inside a template literal, a string or a comment are not statements', () => {
@@ -44,12 +47,12 @@ test('lines inside a template literal, a string or a comment are not statements'
 test('a reordered effect changes the list; a moved declaration does not', () => {
   const a = iife('  var x = 1;', '  read();', '  listen();', '  function f() {', '  }');
   const b = iife('  function f() {', '  }', '  var x = 1;', '  listen();', '  read();');
-  assert.deepEqual(lineDiff(codeLines(a), codeLines(b)), [[], []]);
+  assert.deepEqual(listDiff(statements(a), statements(b)), [[], []]);
   assert.notDeepEqual(effects(a), effects(b));
 });
 
-test('path comments are dropped; a changed line is found once per excess', () => {
-  const a = codeLines(iife('  // src/x.js', '  go();', '  go();'));
-  const b = codeLines(iife('  // src/y/x.ts', '  go();', '  stop();'));
-  assert.deepEqual(lineDiff(a, b), [['  go();'], ['  stop();']]);
+test('path comments and line breaks are dropped; a changed statement is found once per excess', () => {
+  const a = statements(iife('  // src/x.js', '  go(1, 2);', '  go(1, 2);'));
+  const b = statements(iife('  // src/y/x.ts', '  go(', '    1,', '    2', '  );', '  stop(a - -b);'));
+  assert.deepEqual(listDiff(a, b), [['go(1,2);'], ['stop(a- -b);']]);
 });
