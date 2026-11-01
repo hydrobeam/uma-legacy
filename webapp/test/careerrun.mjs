@@ -1,5 +1,6 @@
 // the career planner's run (the 12 test veterans): an edit that leaves the job as it is lets the plan under way go on,
 // the status line says how far the plan has got, and after a reload the stored main search is taken (no search again)
+import { expect } from 'playwright/test';
 import { check, until, dialog, careerPage } from './helpers.mjs';
 
 export default async function careerrun(b) {
@@ -130,11 +131,12 @@ export default async function careerrun(b) {
     { timeout: 180000 },
   );
   await pg.waitForTimeout(700); // (past the pause: the edit's undoing ran its search, the answer on show)
-  check(
-    "career: the focus stays on the careers table's (i) while the check writes its report",
-    await pg.evaluate(() => document.activeElement?.id === 'save-why'),
-    await pg.evaluate(() => document.activeElement?.outerHTML.slice(0, 80) ?? 'none'),
-  );
+  await expect
+    .soft(
+      pg.locator('#save-why'),
+      "career: the focus stays on the careers table's (i) while the check writes its report",
+    )
+    .toBeFocused();
   const checked = await pg.evaluate(() => {
     const robust = window.__checkResults.findLast((r) => r.next.robust.pending === 0)?.next.robust || {
       variants: [],
@@ -260,22 +262,25 @@ export default async function careerrun(b) {
     restored: window.__careerResults.find((r) => r.solve !== undefined),
     search: window.__careerResults.find((r) => r.results),
   }));
+  const storedTaken = 'career: after a reload the stored main search is taken: the search job searches no deck';
   check(
-    'career: after a reload the stored main search is taken: the search job searches no deck',
-    saved && re.restored?.solve > 0 && re.search?.work?.nodes === 0 && /Planned in/.test(await note()),
+    storedTaken,
+    saved && re.restored?.solve > 0 && re.search?.work?.nodes === 0,
     `stored ${saved} | state_in ${JSON.stringify(re.restored)} | nodes ${re.search?.work?.nodes} | before: ${before} | after: ${await note()}`,
   );
+  await expect.soft(pg.locator('#run-note'), `${storedTaken}: planned`).toHaveText(/Planned in/);
   // a reload with nothing changed: the last answer drawn at once, no search or plan job
   const shownBefore = await pg.textContent('#tree .pn.trainee .nm');
   await pg.reload();
   await done();
+  const noRun = 'career: a reload with nothing changed draws the last answer at once: no search or plan runs';
   check(
-    'career: a reload with nothing changed draws the last answer at once: no search or plan runs',
-    (await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length)) === 0 &&
-      (await pg.textContent('#tree .pn.trainee .nm')) === shownBefore &&
-      /Planned in/.test(await note()),
+    noRun,
+    (await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length)) === 0,
     `${shownBefore} | ${await note()}`,
   );
+  await expect.soft(pg.locator('#tree .pn.trainee .nm'), `${noRun}: the same trainee`).toHaveText(shownBefore);
+  await expect.soft(pg.locator('#run-note'), `${noRun}: planned`).toHaveText(/Planned in/);
   // a roll in a new worker (the stored roll state taken in): answered from it, the plan not run again
   await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup, shut)
   await pg.evaluate(() => {

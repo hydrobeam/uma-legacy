@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import { drawPink } from '../src/pink.ts';
 import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.ts';
 import { searchCaveat, planCaveat } from '../src/proofs.ts';
-import { QUICK, check, ART, dialog, careerPage, repoUrl, json } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { QUICK, check, ART, dialog, careerPage, openEditor, closeEditor, repoUrl, json } from './helpers.mjs';
 
 // The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
 // career with legacy pinks (val/ref__global__career_*.out, the solver's outputs that validation pins), 40,000 seeded draws
@@ -265,17 +266,22 @@ export default async function career(b) {
       planCaveat(undefined, both) === '',
     [planSame, planMore, planUnproven].join(' | '),
   );
-  check(
-    'career: with no veterans it asks for parents or an import, and offers sample veterans',
-    /Choose both parents, or import/.test(await note()) && /Try sample veterans/.test(await pg.textContent('#run-act')),
-    await note(),
-  );
-  check(
-    "career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner's editor)",
-    (await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count()) === 2 &&
-      (await pg.locator('.rbbar .lptgt #targets .tgt').count()) === 8 &&
-      !(await pg.locator('#o-skills, #set-skills').count()),
-  );
+  const runNote = pg.locator('#run-note');
+  await expect
+    .soft(runNote, 'career: with no veterans it asks for parents or an import')
+    .toHaveText(/Choose both parents, or import/);
+  await expect
+    .soft(pg.locator('#run-act'), 'career: with no veterans … it offers sample veterans')
+    .toHaveText(/Try sample veterans/);
+  {
+    const name =
+      "career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner's editor)";
+    await expect
+      .soft(pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg'), `${name}: the Enhance buttons`)
+      .toHaveCount(2);
+    await expect.soft(pg.locator('.rbbar .lptgt #targets .tgt'), `${name}: the targets`).toHaveCount(8);
+    await expect.soft(pg.locator('#o-skills, #set-skills'), `${name}: no Target skills dialog`).toHaveCount(0);
+  }
   // the presets popup inside that panel lays out as on the planner: one column, its tiles the dialog's width, the buttons under them
   await pg.click('#t-preset');
   await pg.locator('#pr-list .pview').first().click();
@@ -298,31 +304,29 @@ export default async function career(b) {
   await pg.locator('#pr-view .dclose').click();
   await pg.locator('#preset-dlg .dclose').click();
   // the pink ribbon toggles it, its edge too (not the bare strip beside it); folded, the summary (the whole bar) opens it
-  const hb = await pg.locator('#h-set').boundingBox(),
-    bb = await pg.locator('.rbbar').boundingBox();
-  await pg.locator('.rbbar').click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
-  const stripStays = !(await pg.locator('.rbbar .setlist').isHidden());
-  // (the ribbon measured again: clicking the bar may have scrolled it)
-  const hb2 = await pg.locator('#h-set').boundingBox();
-  await pg.mouse.click(hb2.x + 6, hb2.y + 4);
-  const foldSum = await pg.getAttribute('#set-sum', 'aria-label'),
-    foldHid = await pg.locator('.rbbar .setlist').isHidden();
-  await pg.click('#set-sum');
-  const sumOpen = !(await pg.locator('.rbbar .setlist').isHidden());
-  await pg.click('#set-fold');
-  const ribFold = await pg.locator('.rbbar .setlist').isHidden();
-  await pg.click('#set-fold');
-  check(
-    'career: the Career setup ribbon (its edge too, not the strip beside it; folded, the summary) folds the panel to a one-line summary and back',
-    stripStays &&
-      foldHid &&
-      sumOpen &&
-      ribFold &&
-      /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum) &&
-      !(await pg.locator('.rbbar .setlist').isHidden()) &&
-      (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true',
-    foldSum,
-  );
+  {
+    const name =
+        'career: the Career setup ribbon (its edge too, not the strip beside it; folded, the summary) folds the panel to a one-line summary and back',
+      list = pg.locator('.rbbar .setlist');
+    const hb = await pg.locator('#h-set').boundingBox(),
+      bb = await pg.locator('.rbbar').boundingBox();
+    await pg.locator('.rbbar').click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
+    await expect.soft(list, `${name}: the strip beside the ribbon leaves it open`).toBeVisible();
+    // (the ribbon measured again: clicking the bar may have scrolled it)
+    const hb2 = await pg.locator('#h-set').boundingBox();
+    await pg.mouse.click(hb2.x + 6, hb2.y + 4);
+    await expect.soft(list, `${name}: the ribbon's edge folds it`).toBeHidden();
+    await expect
+      .soft(pg.locator('#set-sum'), `${name}: … to a one-line summary`)
+      .toHaveAttribute('aria-label', /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/);
+    await pg.click('#set-sum');
+    await expect.soft(list, `${name}: the summary opens it`).toBeVisible();
+    await pg.click('#set-fold');
+    await expect.soft(list, `${name}: the ribbon folds it`).toBeHidden();
+    await pg.click('#set-fold');
+    await expect.soft(list, `${name}: … and opens it again`).toBeVisible();
+    await expect.soft(pg.locator('#set-fold'), `${name}: … expanded`).toHaveAttribute('aria-expanded', 'true');
+  }
   // the sample veterans stand in until your own arrive: an import of yours retires them
   await pg.click('#run-act');
   await done();
@@ -334,29 +338,36 @@ export default async function career(b) {
   });
   await importDump();
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
-  check(
-    'career: the umadump file imports 12 veterans, and the sample veterans tried before it go',
-    /Imported 12 veterans/.test(await pg.textContent('#v-msg')) &&
-      (await pg.locator('#vets .umcell').count()) === 12 &&
+  const vMsg = pg.locator('#v-msg'),
+    vCells = pg.locator('#vets .umcell');
+  {
+    const name = 'career: the umadump file imports 12 veterans, and the sample veterans tried before it go';
+    await expect.soft(vMsg, name).toHaveText(/Imported 12 veterans/);
+    await expect.soft(vCells, `${name}: 12 cards`).toHaveCount(12);
+    check(
+      `${name}: none of the samples stays`,
       samples > 0 &&
-      (await pg.evaluate(
-        () => !JSON.parse(localStorage.getItem('llp:career')).global.vets.some((v) => v.src === 'sample'),
-      )),
-    `samples before: ${samples}`,
-  );
+        (await pg.evaluate(
+          () => !JSON.parse(localStorage.getItem('llp:career')).global.vets.some((v) => v.src === 'sample'),
+        )),
+      `samples before: ${samples}`,
+    );
+  }
   // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
-  const vbtn =
-    (await pg.getAttribute('#v-toggle', 'aria-label')) === 'Your veterans' &&
-    /^Veteran Umamusume$/.test((await pg.textContent('#v-toggle')).trim());
-  await pg.click('#v-toggle');
-  await dialog(pg, 'set-vets');
-  check(
-    'career: the Veteran Umamusume button opens your veterans with their import (Export is at the foot of the page)',
-    vbtn &&
-      (await pg.locator('#set-vets #vets .umcell').count()) === 12 &&
-      (await pg.locator('#set-vets #v-paste, #set-vets #v-clear, #set-vets #v-file').count()) === 3 &&
-      (await pg.locator('footer #v-export').count()) === 1,
-  );
+  {
+    const name =
+      'career: the Veteran Umamusume button opens your veterans with their import (Export is at the foot of the page)';
+    const vbtn = pg.locator('#v-toggle');
+    await expect.soft(vbtn, `${name}: the button`).toHaveAttribute('aria-label', 'Your veterans');
+    await expect.soft(vbtn, `${name}: … named as in the game`).toHaveText(/^\s*Veteran Umamusume\s*$/);
+    await vbtn.click();
+    await expect.soft(pg.locator('#set-vets'), `${name}: … opens the dialog`).toHaveAttribute('open');
+    await expect.soft(pg.locator('#set-vets #vets .umcell'), `${name}: … with the 12`).toHaveCount(12);
+    await expect
+      .soft(pg.locator('#set-vets #v-paste, #set-vets #v-clear, #set-vets #v-file'), `${name}: … and its tools`)
+      .toHaveCount(3);
+    await expect.soft(pg.locator('footer #v-export'), `${name}: Export at the foot`).toHaveCount(1);
+  }
   // (the first plan's report says its scoring was incomplete: the page must say so; later plans are the solver's own)
   await pg.evaluate(() => {
     window.__planPatch = { scoring_complete: false };
@@ -367,7 +378,8 @@ export default async function career(b) {
   await pg.evaluate(() => {
     window.__planPatch = null;
   });
-  // (the table's notes are in its (i) popup)
+  // (the table's notes are in its (i) popup, on the page under the veterans dialog)
+  await vetsShut();
   await pg.click('#save-why');
   await dialog(pg, 'save-dlg');
   const memNotes = await pg.$$eval('#save-dlg .optnote', (l) =>
@@ -375,14 +387,15 @@ export default async function career(b) {
   );
   await pg.keyboard.press('Escape');
   const incomplete = { count: memNotes.length, text: memNotes[0] };
-  check(
-    "career: one answer per run: while it searches, then plans, no career is drawn; the status names each phase; the answer is the plan's pick with the veteran drawn once",
-    firstRun.ok &&
-      firstRun.phases.join() === 'search,plan' &&
-      firstRes &&
-      (await pg.textContent('#tree .pn.trainee .nm')) === firstRes.next.choice.trainee.name,
-    firstRun.detail,
-  );
+  const trainee = pg.locator('#tree .pn.trainee .nm');
+  {
+    const name =
+      "career: one answer per run: while it searches, then plans, no career is drawn; the status names each phase; the answer is the plan's pick with the veteran drawn once";
+    check(name, firstRun.ok && firstRun.phases.join() === 'search,plan' && !!firstRes, firstRun.detail);
+    await expect
+      .soft(trainee, `${name}: the trainee on show is the pick`)
+      .toHaveText(firstRes?.next.choice.trainee.name ?? '(no plan result)');
+  }
   check(
     "career: a plan whose scoring the memory budget cut short (`scoring_complete` false) says so in the careers table's (i) popup",
     firstRes?.next.scoring_complete === false &&
@@ -395,8 +408,7 @@ export default async function career(b) {
     return ctx.close();
   } // the fast tier: the one-run answer
   // Export: a dialog with the veterans and the solver job as text; Copy puts it on the clipboard, Download saves it, Paste takes it back
-  await pg.evaluate(() => document.getElementById('set-vets').close()); // (Export is on the page, under the dialog)
-  await pg.click('#v-export');
+  await pg.click('#v-export'); // (on the page: the veterans dialog is shut)
   await dialog(pg, 'vx-dlg');
   const exText = await pg.inputValue('#vx-text'),
     ex = JSON.parse(exText);
@@ -451,13 +463,17 @@ export default async function career(b) {
   const cleared = await seen(),
     emptyHint = await pg.textContent('#vets');
   await pg.click('#v-tab-own');
-  check(
-    'career: Remove all on the Borrowed tab removes only the borrowed, and the empty tab says how to fill it',
-    /^Removed 2 borrowed veterans\. \| true \| 0 \| Veteran Umamusume · 12 \| Guests · 0$/.test(cleared) &&
-      /None yet/.test(emptyHint) &&
-      (await pg.locator('#vets .umcell').count()) === 12,
-    cleared,
-  );
+  {
+    const name =
+      'career: Remove all on the Borrowed tab removes only the borrowed, and the empty tab says how to fill it';
+    check(
+      name,
+      /^Removed 2 borrowed veterans\. \| true \| 0 \| Veteran Umamusume · 12 \| Guests · 0$/.test(cleared) &&
+        /None yet/.test(emptyHint),
+      cleared,
+    );
+    await expect.soft(vCells, `${name}: your 12 stay`).toHaveCount(12);
+  }
   await vetsShut();
   // an Export of the other era's data is refused: it would replace this era's imports with veterans of other data
   const storedIds = () =>
@@ -469,76 +485,79 @@ export default async function career(b) {
   const ids0 = await storedIds();
   await paste(JSON.stringify({ ...ex, era: 'gm', veterans: ex.veterans.slice(0, 3) }));
   await saved();
-  const refused = {
-    msg: await pg.textContent('#v-msg'),
-    n: await pg.locator('#vets .umcell').count(),
-    same: (await storedIds()) === ids0,
-  };
-  check(
-    "career: an Export of the other era's data is refused, and this era's veterans stay",
-    ex.era === 'global' &&
-      /^Not imported: that export is of the .+ data\.$/.test(refused.msg) &&
-      refused.n === 12 &&
-      refused.same,
-    JSON.stringify(refused),
-  );
+  {
+    const name = "career: an Export of the other era's data is refused, and this era's veterans stay";
+    await expect.soft(vMsg, name).toHaveText(/^Not imported: that export is of the .+ data\.$/);
+    await expect.soft(vCells, `${name}: the 12 shown`).toHaveCount(12);
+    check(`${name}: the 12 stored`, ex.era === 'global' && (await storedIds()) === ids0, ex.era);
+  }
   // an Export with a veteran whose records lack fields (cut or edited by hand) draws, the fields taken as empty
   const errs0 = pg.errors.length;
   await paste(JSON.stringify({ ...ex, veterans: [...ex.veterans, { id: 'x', parents: [{}, {}] }] }));
   await pg.click('#vet-12'); // (her card beside the list draws her parents)
   await saved();
-  const cut = { n: await pg.locator('#vets .umcell').count(), errors: pg.errors.slice(errs0) };
-  check(
-    'career: an Export with a veteran missing her sparks, wins and character draws without errors',
-    cut.n === 13 && !cut.errors.length,
-    JSON.stringify(cut).slice(0, 300),
-  );
+  {
+    const name = 'career: an Export with a veteran missing her sparks, wins and character draws without errors';
+    await expect.soft(vCells, `${name}: 13 cards`).toHaveCount(13);
+    const errors = pg.errors.slice(errs0);
+    check(name, !errors.length, JSON.stringify(errors).slice(0, 300));
+  }
   await vetsShut();
   await paste(exText); // an Export replaces every import: the 12 again (the cut one goes)
   await saved();
-  check(
-    'career: Export shows the veterans and the search job as text, Copy copies it, Download saves it, and Paste takes it back',
-    ex.app === 'uma-legacy-veterans' &&
-      ex.veterans.length === 12 &&
-      ex.job &&
-      ex.job.cmd === 'career' &&
-      ex.job.legacies.length === 12 &&
-      copied &&
-      dlSame &&
-      /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) &&
-      (await pg.locator('#vets .umcell').count()) === 12 &&
-      (await storedIds()) === ex.veterans.map((v) => v.id).join() &&
-      !(await pg.locator('#paste-dlg[open]').count()),
-    `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`,
-  );
+  {
+    const name =
+      'career: Export shows the veterans and the search job as text, Copy copies it, Download saves it, and Paste takes it back';
+    check(
+      name,
+      ex.app === 'uma-legacy-veterans' &&
+        ex.veterans.length === 12 &&
+        ex.job &&
+        ex.job.cmd === 'career' &&
+        ex.job.legacies.length === 12 &&
+        copied &&
+        dlSame &&
+        (await storedIds()) === ex.veterans.map((v) => v.id).join(),
+      `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`,
+    );
+    await expect.soft(vMsg, `${name}: Paste says so`).toHaveText(/Imported 12 veterans from an export/);
+    await expect.soft(vCells, `${name}: … the 12 shown`).toHaveCount(12);
+    await expect.soft(pg.locator('#paste-dlg'), `${name}: … the Paste dialog closed`).not.toHaveAttribute('open');
+  }
   await done();
   await planned(); // the pasted export's plan (the same pool)
-  check(
-    'career: the planner weighs every career, checked on exact odds (only a check that could not finish is mentioned)',
-    /Weighed 3,618 careers/.test(await note()) && !/could not finish|checked exact/.test(await note()),
-    await note(),
-  );
-  check(
-    "career: the tree shows the planner's trainee and parents",
-    (await pg.locator('#tree .pn.ghost').count()) === 3 && (await pg.locator('#tree .pn.gp').count()) === 4,
-  );
+  await vetsShut(); // (the plan on show: the page under the veterans dialog)
+  {
+    const name =
+      'career: the planner weighs every career, checked on exact odds (only a check that could not finish is mentioned)';
+    await expect.soft(runNote, name).toHaveText(/Weighed 3,618 careers/);
+    await expect.soft(runNote, `${name}: no check mentioned`).not.toHaveText(/could not finish|checked exact/);
+  }
+  await expect
+    .soft(pg.locator('#tree .pn.ghost'), "career: the tree shows the planner's trainee and parents")
+    .toHaveCount(3);
+  await expect
+    .soft(pg.locator('#tree .pn.gp'), "career: the tree shows the planner's trainee and parents: … grandparents")
+    .toHaveCount(4);
   // the odds lead the next career; under the targets, the chance of landing exactly each count, all 8 first
-  const oddsTxt = await pg.textContent('.rbtitle .lodds #odds-open');
-  const oddRows = await pg.$$eval('#tree .rtgt .tgcounts .tgc', (l) =>
-    l.map((c) => [c.querySelector('.tgck').textContent, c.querySelector('b').textContent]),
-  );
-  const avgTxt = await pg.textContent('#tree .rtgt .tgavg b');
-  check(
-    'career: the odds lead the next career; under the targets, the chance of landing exactly each count, in percent, and the average roll',
-    /^1 in [\d,.]+ to land all 8/.test(oddsTxt) &&
+  {
+    const name =
+      'career: the odds lead the next career; under the targets, the chance of landing exactly each count, in percent, and the average roll';
+    await expect.soft(pg.locator('.rbtitle .lodds #odds-open'), name).toHaveText(/^1 in [\d,.]+ to land all 8/);
+    await expect.soft(pg.locator('#tree .rtgt .tgavg b'), `${name}: the average`).toHaveText(/^Avg \d\.\d$/);
+    const oddRows = await pg.$$eval('#tree .rtgt .tgcounts .tgc', (l) =>
+      l.map((c) => [c.querySelector('.tgck').textContent, c.querySelector('b').textContent]),
+    );
+    check(
+      `${name}: the counts`,
       oddRows.length === 9 &&
-      oddRows[0][0] === '8/8' &&
-      oddRows[1][0] === '7/8' &&
-      oddRows[8][0] === '0/8' &&
-      oddRows.every((r) => /^[<\d.]+%$/.test(r[1])) &&
-      /^Avg \d\.\d$/.test(avgTxt),
-    JSON.stringify({ rows: oddRows.slice(0, 3), avgTxt }),
-  );
+        oddRows[0][0] === '8/8' &&
+        oddRows[1][0] === '7/8' &&
+        oddRows[8][0] === '0/8' &&
+        oddRows.every((r) => /^[<\d.]+%$/.test(r[1])),
+      JSON.stringify(oddRows.slice(0, 3)),
+    );
+  }
   // the targets, lowest first: the game's skill tile with the chance to land; under it her six legacies' faces and the
   // cards that give it; a tile opens Skill Details (her six legacies, the cards)
   const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
@@ -548,28 +567,28 @@ export default async function career(b) {
       legs: x.querySelector('.tgfig')?.title,
     })),
   );
-  await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
-  await dialog(pg, 'sk-dlg');
-  const skFaces = await pg.locator('#sk-dlg .gmdfaces .av').count(),
-    skText = await pg.textContent('#sk-dlg');
-  await pg.keyboard.press('Escape');
-  check(
-    "career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land, its gold / white bar and the legacies' chance under it; a tile opens Skill Details with her six legacies",
-    (await (async () => {
-      await pg.click('#deck-open');
-      await dialog(pg, 'deck-dlg');
-      const n = await pg.locator('#deck-dlg #tree-deck .dc').count();
-      await pg.keyboard.press('Escape');
-      return n;
-    })()) === 6 &&
+  {
+    const name =
+      "career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land, its gold / white bar and the legacies' chance under it; a tile opens Skill Details with her six legacies";
+    await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
+    await dialog(pg, 'sk-dlg');
+    const sk = pg.locator('#sk-dlg');
+    await expect.soft(sk.locator('.gmdfaces .av'), `${name}: Skill Details' six legacies`).toHaveCount(6);
+    await expect.soft(sk, `${name}: … its chance to land`).toHaveText(/Lands as a spark: [<\d.]+%/);
+    await expect.soft(sk, `${name}: … the legacies carrying it`).toHaveText(/Legacies carrying it/);
+    await pg.keyboard.press('Escape');
+    await pg.click('#deck-open');
+    await dialog(pg, 'deck-dlg');
+    await expect.soft(pg.locator('#deck-dlg #tree-deck .dc'), `${name}: the deck's six cards`).toHaveCount(6);
+    await pg.keyboard.press('Escape');
+    check(
+      `${name}: the targets`,
       tgRows.length === 8 &&
-      tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
-      tgRows.every((t) => t.bar === 2 && /^Inherited: [<\d.]+%$/.test(t.legs)) &&
-      skFaces === 6 &&
-      /Lands as a spark: [<\d.]+%/.test(skText) &&
-      /Legacies carrying it/.test(skText),
-    JSON.stringify(tgRows.slice(0, 2)),
-  );
+        tgRows.every((t, i) => !i || t.land >= tgRows[i - 1].land) &&
+        tgRows.every((t) => t.bar === 2 && /^Inherited: [<\d.]+%$/.test(t.legs)),
+      JSON.stringify(tgRows.slice(0, 2)),
+    );
+  }
   // the deck's chance of hinting a target is one figure wherever it shows: its gold, or else its white (the solver's
   // `deck_white` is given no gold), `deckHint`, from the career's own fields: each row's Deck figure, and Skill Details'
   // two deck lines (its gold; its white) adding up to it
@@ -607,12 +626,12 @@ export default async function career(b) {
       JSON.stringify({ rows: rows.slice(0, 4), both, lines }),
     );
   }
-  check(
-    'career: the legacies carry no affinity numbers or labels; the trainee shows her total',
-    !(await pg.locator('#tree .gate').count()) &&
-      (await pg.locator('#tree .pn:not(.trainee) .aff').count()) === 0 &&
-      (await pg.locator('#tree .pn.trainee .aff').count()) === 1,
-  );
+  {
+    const name = 'career: the legacies carry no affinity numbers or labels; the trainee shows her total';
+    await expect.soft(pg.locator('#tree .gate'), `${name}: no labels`).toHaveCount(0);
+    await expect.soft(pg.locator('#tree .pn:not(.trainee) .aff'), `${name}: no numbers`).toHaveCount(0);
+    await expect.soft(pg.locator('#tree .pn.trainee .aff'), `${name}: her total`).toHaveCount(1);
+  }
   const affs = [+(await pg.textContent('#tree .pn.trainee .aff')).replace(/\D/g, '')];
   await node('node:t');
   const affRows = await pg.$$eval('#node-dlg .afftab tbody tr', (l) => l.length),
@@ -628,27 +647,31 @@ export default async function career(b) {
     window.__careerJobs.filter((j) => j.cmd === 'career' && j.next && !j.compare).at(-1),
   );
   const lastRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
-  check(
-    'career: with places open the planner picks the next career (the highest saving per run) after the six best by odds',
-    lastJob &&
-      lastJob.top === 6 &&
-      lastJob.per_trainee === false &&
-      !lastJob.rollout &&
-      lastRes &&
-      lastRes.next.options.length >= 2 &&
-      /^index$/.test(lastRes.next.rule) &&
-      /Planned in/.test(await note()),
-  );
-  check(
-    'career: the trainee names one outfit (never "any outfit")',
-    !/any outfit/i.test(await pg.textContent('#tree')) && !/any outfit/i.test(await pg.textContent('#results')),
-  );
-  check(
-    'career: … the career on show is its pick, with why under the odds',
-    (await pg.textContent('#tree .pn.trainee .nm')) === lastRes.next.choice.trainee.name &&
-      (await pg.locator('.alts .otag.pick').count()) === 1,
-    await pg.textContent('#tree .pn.trainee .nm'),
-  );
+  {
+    const name =
+      'career: with places open the planner picks the next career (the highest saving per run) after the six best by odds';
+    check(
+      name,
+      lastJob &&
+        lastJob.top === 6 &&
+        lastJob.per_trainee === false &&
+        !lastJob.rollout &&
+        lastRes &&
+        lastRes.next.options.length >= 2 &&
+        /^index$/.test(lastRes.next.rule),
+    );
+    await expect.soft(runNote, `${name}: the status line`).toHaveText(/Planned in/);
+  }
+  {
+    const name = 'career: the trainee names one outfit (never "any outfit")';
+    await expect.soft(pg.locator('#tree'), `${name}: the tree`).not.toHaveText(/any outfit/i);
+    await expect.soft(pg.locator('#results'), `${name}: the results`).not.toHaveText(/any outfit/i);
+  }
+  {
+    const name = 'career: … the career on show is its pick, with why under the odds';
+    await expect.soft(trainee, name).toHaveText(lastRes?.next.choice.trainee.name ?? '(no plan result)');
+    await expect.soft(pg.locator('.alts .otag.pick'), `${name}: the pick tagged`).toHaveCount(1);
+  }
   // the deck (its popup): a card's panel, as in the planner; marking it not owned searches again without it
   await pg.click('#deck-open');
   await dialog(pg, 'deck-dlg');
@@ -711,38 +734,42 @@ export default async function career(b) {
   }
   if (await pg.evaluate(() => document.getElementById('deck-dlg')?.open))
     await pg.locator('#deck-dlg .gmclose').click();
-  await pg.click('#o-cards');
-  await dialog(pg, 'set-cards');
+  await openEditor(pg, 'cards');
   await pg.click('#c-all');
-  await pg.locator('#set-cards .dclose').click();
+  await closeEditor(pg, 'cards');
   await done();
   // the schedule and the deck: buttons under the trainee, the schedule window (the game's calendar) and the deck's popup
-  check(
-    'career: the race schedule and the deck are buttons under the trainee, not sections of the page',
-    (await pg.locator('#tree .pn.trainee #sched-open').count()) === 1 &&
-      (await pg.locator('#tree .pn.trainee #deck-open').count()) === 1 &&
-      !(await pg.locator('#tree .lraces, #tree .ldeck').count()),
-  );
+  {
+    const name = 'career: the race schedule and the deck are buttons under the trainee, not sections of the page';
+    await expect.soft(pg.locator('#tree .pn.trainee #sched-open'), `${name}: the schedule`).toHaveCount(1);
+    await expect.soft(pg.locator('#tree .pn.trainee #deck-open'), `${name}: the deck`).toHaveCount(1);
+    await expect.soft(pg.locator('#tree .lraces, #tree .ldeck'), `${name}: no sections`).toHaveCount(0);
+  }
   await pg.click('#sched-open');
   await dialog(pg, 'sched-dlg');
-  const nRun = +(await pg.getAttribute('#sched-open', 'title')).match(/She runs (\d+) G1s/)[1];
-  check(
-    "career: her schedule opens in the planner's schedule window as the game's Scheduled Races: only the races she runs, the three years at once without scrolling, Junior's April to June grey, no plus (nothing to add there), the parent-won legend",
-    nRun > 0 &&
-      (await pg.locator('#sched-dlg .ag-slot.on').count()) === nRun &&
-      (await pg.locator('#sched-dlg .ag-race').count()) === nRun &&
-      !(await pg.locator('#sched-dlg .ag-race.wbtn').count()) &&
-      /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) &&
-      (await pg.locator('#sched-dlg .stab').count()) === 1 &&
-      (await pg.locator('#sched-dlg .ag-year').count()) === 3 &&
-      (await pg.locator('#sched-dlg .ag-slot.pre').count()) === 12 &&
-      !(await pg.locator('#sched-dlg .ag-plus, #sched-dlg .ag-add').count()) &&
-      (await pg.evaluate(() => {
-        const d = document.querySelector('#sched-dlg .dlg');
-        return d.scrollHeight <= d.clientHeight + 1;
-      })),
-    `runs ${nRun}`,
-  );
+  {
+    const name =
+      "career: her schedule opens in the planner's schedule window as the game's Scheduled Races: only the races she runs, the three years at once without scrolling, Junior's April to June grey, no plus (nothing to add there), the parent-won legend";
+    const nRun = +(await pg.getAttribute('#sched-open', 'title')).match(/She runs (\d+) G1s/)[1],
+      sched = pg.locator('#sched-dlg');
+    await expect.soft(sched.locator('.ag-slot.on'), `${name}: a slot per race she runs`).toHaveCount(nRun);
+    await expect.soft(sched.locator('.ag-race'), `${name}: … and only those races`).toHaveCount(nRun);
+    await expect.soft(sched.locator('.ag-race.wbtn'), `${name}: no win buttons`).toHaveCount(0);
+    await expect.soft(sched.locator('.agkey').first(), `${name}: the legend`).toHaveText(/A parent won it/);
+    await expect.soft(sched.locator('.stab'), `${name}: one tab`).toHaveCount(1);
+    await expect.soft(sched.locator('.ag-year'), `${name}: three years`).toHaveCount(3);
+    await expect.soft(sched.locator('.ag-slot.pre'), `${name}: Junior's April to June grey`).toHaveCount(12);
+    await expect.soft(sched.locator('.ag-plus, .ag-add'), `${name}: no plus`).toHaveCount(0);
+    check(
+      `${name}: she runs some, and no scrolling`,
+      nRun > 0 &&
+        (await pg.evaluate(() => {
+          const d = document.querySelector('#sched-dlg .dlg');
+          return d.scrollHeight <= d.clientHeight + 1;
+        })),
+      `runs ${nRun}`,
+    );
+  }
   // Win table: the community table as published, a column per aptitude pair (AA to GG, in the game's letters), a row
   // per races in a row, uncapped as it prints them; on a phone it scrolls inside its panel
   await pg.locator('#sched-dlg button', { hasText: 'Win table' }).click();
@@ -784,18 +811,24 @@ export default async function career(b) {
   const opts = await pg.$$eval('.alts .optab tbody tr', (ls) =>
     ls.map((l) => [...l.children].map((c) => c.textContent)),
   );
-  check(
-    'career: Other careers lists each with "1 in X" and its extra careers against the pick (≈0 within 0.25; – for the pick), the pick marked and shown above',
-    opts.length >= 2 &&
-      opts.every((c) => /^1 in [\d,.]+$/.test(c[1]) && /^(–|≈0|[+−]\d+\.\d)$/.test(c[2])) &&
-      opts.filter((c) => c[2] === '–').length >= 1 &&
-      (await pg.textContent('.alts > h3')).startsWith('Other careers') &&
-      (await pg.locator('#save-why').count()) === 1 &&
-      (await pg.locator('.alts tr.on', { hasText: 'shown above' }).count()) === 1 &&
-      (await pg.locator('.alts .otag.pick').count()) === 1 &&
-      !(await pg.locator('#ahead-sec').count()),
-    opts.map((c) => c.join(' / ')).join(' | '),
-  );
+  {
+    const name =
+      'career: Other careers lists each with "1 in X" and its extra careers against the pick (≈0 within 0.25; – for the pick), the pick marked and shown above';
+    check(
+      name,
+      opts.length >= 2 &&
+        opts.every((c) => /^1 in [\d,.]+$/.test(c[1]) && /^(–|≈0|[+−]\d+\.\d)$/.test(c[2])) &&
+        opts.filter((c) => c[2] === '–').length >= 1,
+      opts.map((c) => c.join(' / ')).join(' | '),
+    );
+    await expect.soft(pg.locator('.alts > h3').first(), `${name}: the heading`).toHaveText(/^Other careers/);
+    await expect.soft(pg.locator('#save-why'), `${name}: its (i)`).toHaveCount(1);
+    await expect
+      .soft(pg.locator('.alts tr.on', { hasText: 'shown above' }), `${name}: the pick shown above`)
+      .toHaveCount(1);
+    await expect.soft(pg.locator('.alts .otag.pick'), `${name}: the pick marked`).toHaveCount(1);
+    await expect.soft(pg.locator('#ahead-sec'), `${name}: no after-this-career section`).toHaveCount(0);
+  }
   // what each row's run does (its Saves per run's tooltip): one of the route's two parents or its last run as before;
   // else the side her routes lift most often with that chance per run (`lifts_side`), never "not on the route"
   const tableRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next?.options).at(-1));
@@ -836,32 +869,33 @@ export default async function career(b) {
     };
   });
   const near = tables.extras.filter((x) => x === '≈0').length;
-  check(
-    'career: rows within 0.25 careers of the pick show ≈0 (the pick stays the top score; no tag or note), the others their extra careers, and its (i) popup says no career saves its run only where the top score is below 0',
-    pickScore === topScore &&
-      near <= tiedCount &&
-      (tiedCount === 0 || near >= 1) &&
-      tables.extras.every((x) => x === '≈0' || x === '–' || Math.abs(Number(x.replace('−', '-'))) >= 0.2) &&
-      tables.ties === 0 &&
-      (await (async () => {
-        await pg.click('#save-why');
-        await dialog(pg, 'save-dlg');
-        const n = await pg.$$eval(
-          '#save-dlg .optnote',
-          (l) => l.filter((x) => /saves its own run/.test(x.textContent)).length,
-        );
-        await pg.keyboard.press('Escape');
-        return n;
-      })()) === (topScore < 0 ? 1 : 0),
-    JSON.stringify({ tiedCount, topScore, pickScore, tables }),
-  );
-  // the trio: each step's line (her odds now and the lifts building pays for, or your full veteran at no cost)
-  await pg.click('#save-why');
-  await dialog(pg, 'save-dlg');
-  const memTxt = await pg.textContent('#save-dlg .oloop').catch(() => ''),
-    aboutLink = await pg.locator('#save-dlg a[href="about#career-planner"]').count();
+  {
+    const name =
+      'career: rows within 0.25 careers of the pick show ≈0 (the pick stays the top score; no tag or note), the others their extra careers, and its (i) popup says no career saves its run only where the top score is below 0';
+    check(
+      name,
+      pickScore === topScore &&
+        near <= tiedCount &&
+        (tiedCount === 0 || near >= 1) &&
+        tables.extras.every((x) => x === '≈0' || x === '–' || Math.abs(Number(x.replace('−', '-'))) >= 0.2) &&
+        tables.ties === 0,
+      JSON.stringify({ tiedCount, topScore, pickScore, tables }),
+    );
+    await pg.click('#save-why');
+    await dialog(pg, 'save-dlg');
+    await expect
+      .soft(pg.locator('#save-dlg .optnote', { hasText: /saves its own run/ }), `${name}: the (i) popup's note`)
+      .toHaveCount(topScore < 0 ? 1 : 0);
+    // the trio: each step's line (her odds now and the lifts building pays for, or your full veteran at no cost)
+    await expect
+      .soft(
+        pg.locator('#save-dlg a[href="about#career-planner"]'),
+        'career: What these mean links to the career planner in detail on /about',
+      )
+      .toHaveCount(1);
+  }
+  const memTxt = await pg.textContent('#save-dlg .oloop').catch(() => '');
   await pg.keyboard.press('Escape');
-  check('career: What these mean links to the career planner in detail on /about', aboutLink === 1);
   check(
     'career: the plan names its route and, per step, the odds now and what building pays for',
     !lastRes.next.members?.length || /(your \d+\/\d+ of .+ \(no careers\)|1 in [\d,]+)/.test(memTxt),
@@ -920,65 +954,64 @@ export default async function career(b) {
       );
     });
   await simOpen(); // her card: Try a run's popup (open through her checks)
-  const wide = await simLayout();
-  await pg.setViewportSize({ width: 375, height: 812 });
-  await pg.waitForTimeout(200);
-  const phone = await simLayout();
-  await pg.setViewportSize({ width: 1440, height: 1000 });
-  await pg.waitForTimeout(200);
-  check(
-    "career: the veteran analysis is the game's details card: portrait (named for screen readers), aptitude grades, Skills / Inspiration / Career Info tabs, her sparks beside her portrait and her parents' under Legacy Origin, also on a 375 px phone (iPhone 13 mini) with no sideways scroll",
-    wide === true && phone === true,
-    `wide ${wide}, phone ${phone}`,
-  );
+  {
+    const name =
+      "career: the veteran analysis is the game's details card: portrait (named for screen readers), aptitude grades, Skills / Inspiration / Career Info tabs, her sparks beside her portrait and her parents' under Legacy Origin, also on a 375 px phone (iPhone 13 mini) with no sideways scroll";
+    await expect.soft.poll(simLayout, `${name}: wide`).toBe(true);
+    await pg.setViewportSize({ width: 375, height: 812 });
+    await expect.soft.poll(simLayout, `${name}: at 375 px`).toBe(true);
+    await pg.setViewportSize({ width: 1440, height: 1000 });
+  }
   // Skills: her learned targets (a spark of one) and the scenario's golds, as skill tiles; the tabs switch by click and arrow keys
   await pg.click('#udtab-skills');
   // every target she could acquire, as the game's tiles (name only), acquired bright, others greyed; a spark means she
   // acquired it (at least as many acquired tiles as skill sparks); a tile opens the game-style skill popup
-  const tiles = await pg.$$eval('#udpane-skills .udsk', (l) =>
-    l.map((t) => [t.classList.contains('off'), t.getAttribute('aria-label') || '']),
-  );
-  const sparkN = await pg.locator('#udpane-insp .simskills .vsk:not(.pink)').count();
-  check(
-    "career: the Skills tab lists the target skills she could acquire as the game's tiles, acquired ones bright",
-    !(await pg.locator('#udpane-skills').isHidden()) &&
-      (await pg.locator('#udpane-insp').isHidden()) &&
+  {
+    const name =
+      "career: the Skills tab lists the target skills she could acquire as the game's tiles, acquired ones bright";
+    await expect.soft(pg.locator('#udpane-skills'), `${name}: its pane shows`).toBeVisible();
+    await expect.soft(pg.locator('#udpane-insp'), `${name}: … in place of Inspiration's`).toBeHidden();
+    const tiles = await pg.$$eval('#udpane-skills .udsk', (l) =>
+      l.map((t) => [t.classList.contains('off'), t.getAttribute('aria-label') || '']),
+    );
+    const sparkN = await pg.locator('#udpane-insp .simskills .vsk:not(.pink)').count();
+    check(
+      name,
       tiles.length > 0 &&
-      tiles.every((t) => /: (acquired|not acquired)/.test(t[1]) && t[0] === /: not acquired/.test(t[1])) &&
-      tiles.filter((t) => !t[0]).length >= sparkN,
-    JSON.stringify(tiles) + ' | sparks ' + sparkN,
-  );
+        tiles.every((t) => /: (acquired|not acquired)/.test(t[1]) && t[0] === /: not acquired/.test(t[1])) &&
+        tiles.filter((t) => !t[0]).length >= sparkN,
+      JSON.stringify(tiles) + ' | sparks ' + sparkN,
+    );
+  }
   await pg.locator('#udpane-skills .udsk').first().click();
   await dialog(pg, 'sk-dlg');
-  const pop = await pg.textContent('#sk-dlg');
-  await pg.keyboard.press('Escape');
-  check(
-    'career: … a skill opens its details (acquired or not, where it comes from, how likely), and closing returns to the tile',
-    /Skill Details/.test(pop) &&
-      /(Acquired|Not acquired)( \(gold\))? in this result/.test(pop) &&
-      /Where it comes from/.test(pop) &&
-      /Lands as a spark/.test(pop) &&
-      (await pg.evaluate(() => document.activeElement?.matches('#udpane-skills .udsk'))),
-    pop.slice(0, 160),
-  );
+  {
+    const name =
+      'career: … a skill opens its details (acquired or not, where it comes from, how likely), and closing returns to the tile';
+    const sk = pg.locator('#sk-dlg');
+    await expect.soft(sk, name).toHaveText(/Skill Details/);
+    await expect.soft(sk, `${name}: acquired or not`).toHaveText(/(Acquired|Not acquired)( \(gold\))? in this result/);
+    await expect.soft(sk, `${name}: where it comes from`).toHaveText(/Where it comes from/);
+    await expect.soft(sk, `${name}: how likely`).toHaveText(/Lands as a spark/);
+    await pg.keyboard.press('Escape');
+    await expect.soft(pg.locator('#udpane-skills .udsk:focus'), `${name}: the focus back on a tile`).toHaveCount(1);
+  }
   await pg.focus('#udtab-skills');
   await pg.keyboard.press('ArrowRight');
-  check(
-    'career: … an arrow key moves to the next tab',
-    await pg.evaluate(
-      () =>
-        document.activeElement.id === 'udtab-insp' &&
-        document.getElementById('udtab-insp').getAttribute('aria-selected') === 'true',
-    ),
-  );
+  {
+    const name = 'career: … an arrow key moves to the next tab';
+    await expect.soft(pg.locator('#udtab-insp'), name).toBeFocused();
+    await expect.soft(pg.locator('#udtab-insp'), `${name}: selected`).toHaveAttribute('aria-selected', 'true');
+  }
   const draft = () =>
     pg.$$eval('#simulation .simskills .vskb', (l) => l.map((b) => b.getAttribute('aria-label')).join('|'));
   const policyJobs = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.compare).length);
   const d0 = await draft();
-  check(
-    'career: the veteran you got starts as a random result (no default), and nothing is compared yet',
-    d0.length > 0 && (await policyJobs()) === 0 && !(await pg.locator('#sim-verdict').count()),
-  );
+  {
+    const name = 'career: the veteran you got starts as a random result (no default), and nothing is compared yet';
+    check(name, d0.length > 0 && (await policyJobs()) === 0);
+    await expect.soft(pg.locator('#sim-verdict'), `${name}: no verdict`).toHaveCount(0);
+  }
   // her pink spark: her roll carries at most one (an aptitude she ends at A or S)
   const pinkChips = () =>
     pg.$$eval('#simulation .simskills .vsk.pink .vskb', (l) => l.map((b) => b.getAttribute('aria-label')));
@@ -1055,30 +1088,42 @@ export default async function career(b) {
   await simStars(3);
   await pg.click('#sim-compare');
   await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
-  check(
-    'career: Compare says, exactly, what she changes for the next career and shows that career with her',
-    /^(Saves \d+\.\d careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(
-      await pg.textContent('#sim-verdict'),
-    ) &&
-      /→/.test(await pg.textContent('#sim-result')) &&
-      !/Careers until one lands|Your best career today →/.test(await pg.textContent('#sim-result')),
-  );
+  const verdict = pg.locator('#sim-verdict'),
+    simResult = pg.locator('#sim-result');
+  // what Compare and Try again say
+  const VERDICTS =
+    /^(Saves \d+\.\d careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/;
+  {
+    const name = 'career: Compare says, exactly, what she changes for the next career and shows that career with her';
+    await expect.soft(verdict, name).toHaveText(VERDICTS);
+    await expect.soft(simResult, `${name}: that career`).toHaveText(/→/);
+    await expect
+      .soft(simResult, `${name}: … not today's best`)
+      .not.toHaveText(/Careers until one lands|Your best career today →/);
+  }
   // (careers to a fully looped parent: an estimate, whole careers with "about"; a saving at one decimal)
-  const loopFigure = await pg.textContent('#sim-result .simodds .tc .tv').catch(() => '');
-  check(
-    'career: … its careers to loop read "about N → M" (whole careers), a saving one decimal',
-    /^(about [\d,]+|\?) → ([\d,]+|\?)$/.test(loopFigure) &&
-      !/Saves [\d,]+ careers|rises by [\d,]+ with/.test(await pg.textContent('#sim-verdict')),
-    loopFigure,
-  );
-  check(
-    'career: … the best career with her folded under "Best career with her": portraits (trainee, then her two parents, her marked) and its deck; its odds outside',
-    (await pg.locator('#sim-result details.nextdeck:not([open]) .nextc .cface').count()) === 3 &&
-      (await pg.locator('#sim-result .nextc .cface .her').count()) === 1 &&
-      (await pg.locator('#sim-result details.nextdeck:not([open]) .deck .dc').count()) === 6 &&
-      (await pg.locator('#sim-result > .simodds .tc').count()) === 2 &&
-      /^Best career with her$/.test(await pg.textContent('#sim-result details.nextdeck summary')),
-  );
+  {
+    const name = 'career: … its careers to loop read "about N → M" (whole careers), a saving one decimal';
+    await expect
+      .soft(pg.locator('#sim-result .simodds .tc .tv').first(), name)
+      .toHaveText(/^(about [\d,]+|\?) → ([\d,]+|\?)$/);
+    await expect.soft(verdict, `${name}: the saving`).not.toHaveText(/Saves [\d,]+ careers|rises by [\d,]+ with/);
+  }
+  {
+    const name =
+      'career: … the best career with her folded under "Best career with her": portraits (trainee, then her two parents, her marked) and its deck; its odds outside';
+    await expect
+      .soft(pg.locator('#sim-result details.nextdeck:not([open]) .nextc .cface'), `${name}: the portraits`)
+      .toHaveCount(3);
+    await expect.soft(pg.locator('#sim-result .nextc .cface .her'), `${name}: her marked`).toHaveCount(1);
+    await expect
+      .soft(pg.locator('#sim-result details.nextdeck:not([open]) .deck .dc'), `${name}: the deck`)
+      .toHaveCount(6);
+    await expect.soft(pg.locator('#sim-result > .simodds .tc'), `${name}: its odds outside`).toHaveCount(2);
+    await expect
+      .soft(pg.locator('#sim-result details.nextdeck summary'), `${name}: the fold`)
+      .toHaveText(/^Best career with her$/);
+  }
   check(
     'career: the comparison sends her fixed stars, race indices and her parents',
     await pg.evaluate(() => {
@@ -1095,14 +1140,19 @@ export default async function career(b) {
       );
     }),
   );
-  check(
-    "career: … and prices the pool with her under today's plan's fit (the plan's `fit`, passed on unchanged), with a line saying Add refits",
-    (await pg.evaluate(() => {
-      const j = window.__careerJobs.filter((j) => j.compare && j.next).at(-1),
-        r = window.__careerResults.filter((r) => r.next?.fit && !r.compare).at(-1);
-      return !!j && !!r && JSON.stringify(j.next) === JSON.stringify({ fit: r.next.fit });
-    })) && (await pg.locator('#sim-result > .simfit').count()) === 1,
-  );
+  {
+    const name =
+      "career: … and prices the pool with her under today's plan's fit (the plan's `fit`, passed on unchanged), with a line saying Add refits";
+    check(
+      name,
+      await pg.evaluate(() => {
+        const j = window.__careerJobs.filter((j) => j.compare && j.next).at(-1),
+          r = window.__careerResults.filter((r) => r.next?.fit && !r.compare).at(-1);
+        return !!j && !!r && JSON.stringify(j.next) === JSON.stringify({ fit: r.next.fit });
+      }),
+    );
+    await expect.soft(pg.locator('#sim-result > .simfit'), `${name}: the line`).toHaveCount(1);
+  }
   // a roll: a random result of this career, compared at once (stubbed random numbers: nothing lands, then everything at 3 stars)
   const roll = async (u) => {
     const before = await policyJobs();
@@ -1266,10 +1316,8 @@ export default async function career(b) {
     { timeout: 180000 },
   );
   await roll(0);
-  check(
-    'career: … a low roll lands nothing',
-    (await pg.locator('#simulation .simskills .vsk:not(.pink)').count()) === 0,
-  );
+  const skillSparks = pg.locator('#simulation .simskills .vsk:not(.pink)');
+  await expect.soft(skillSparks, 'career: … a low roll lands nothing').toHaveCount(0);
   // … and draws her pink: every legacy pink fires at both inspirations (+1 grade each), the first aptitude at A or S, 1 star
   const pkLow = await pinkChips();
   // … her blue spark: one stat, stars by the rank band; its bar opens the picker (the five stats, the stars)
@@ -1280,15 +1328,19 @@ export default async function career(b) {
   await dialog(pg, 'col-dlg');
   const blueOpts = await pg.$$eval('#col-dlg .colgrid .vskb', (l) => l.map((b) => b.textContent));
   await pg.locator('#col-dlg .spstar').nth(2).click();
-  const blue3 = await pg.getAttribute('#udpane-insp .simskills .vsb.blue .vskb', 'aria-label').catch(() => '');
+  {
+    const name = 'career: … a roll draws her blue spark; its bar opens a picker of the five stats and the stars';
+    check(
+      name,
+      /^(Speed|Stamina|Power|Guts|Wit) \(stat\), [123] stars?/.test(blueLbl) &&
+        blueOpts.join() === 'Speed,Stamina,Power,Guts,Wit',
+      `${blueLbl} | ${blueOpts.join()}`,
+    );
+    await expect
+      .soft(pg.locator('#udpane-insp .simskills .vsb.blue .vskb').first(), `${name}: the third star picked`)
+      .toHaveAttribute('aria-label', /, 3 stars/);
+  }
   await pg.keyboard.press('Escape');
-  check(
-    'career: … a roll draws her blue spark; its bar opens a picker of the five stats and the stars',
-    /^(Speed|Stamina|Power|Guts|Wit) \(stat\), [123] stars?/.test(blueLbl) &&
-      blueOpts.join() === 'Speed,Stamina,Power,Guts,Wit' &&
-      /, 3 stars/.test(blue3),
-    `${blueLbl} | ${blueOpts.join()} | ${blue3}`,
-  );
   check(
     'career: … a roll draws at most one pink spark for her (stars from 20/70/10: a low draw is 1 star)',
     pkLow.length <= 1 && pkLow.every((x) => /, 1 star\./.test(x)),
@@ -1324,30 +1376,37 @@ export default async function career(b) {
   // state) runs out with its answer ignored, so the worker keeps its caches, and only the last roll goes on: its best
   // career with her, then, since every quick zero is provisional, the exact comparison once the roll has stood 0.8 s,
   // which searches the best career with her again (2). Either way only the last roll's shows
-  check(
-    "career: rolling again while a comparison runs supersedes it: only the last roll's comparison shows",
-    usable &&
-      (rm === 2 || rm === 3) &&
-      rr === rj &&
-      (await pg.locator('#simulation .simskills .vsk:not(.pink)').count()) === 0 &&
-      (await pg.evaluate(
-        () =>
-          window.__careerJobs
-            .filter((j) => j.compare && !j.next)
-            .at(-1)
-            .legacies.at(-1).sparks.length === 0,
-      )),
-    `usable ${usable}, comparisons ${rm}, jobs ${rj}, results ${rr}`,
-  );
-  check(
-    'career: there is no "back to the most likely result" button; Compare, Roll and Add sit in her card\'s header',
-    !(await pg.locator('#sim-reset').count()) &&
-      (await pg
-        .locator(
+  {
+    const name = "career: rolling again while a comparison runs supersedes it: only the last roll's comparison shows";
+    check(
+      name,
+      usable &&
+        (rm === 2 || rm === 3) &&
+        rr === rj &&
+        (await pg.evaluate(
+          () =>
+            window.__careerJobs
+              .filter((j) => j.compare && !j.next)
+              .at(-1)
+              .legacies.at(-1).sparks.length === 0,
+        )),
+      `usable ${usable}, comparisons ${rm}, jobs ${rj}, results ${rr}`,
+    );
+    await expect.soft(skillSparks, `${name}: the last roll (nothing landed) on show`).toHaveCount(0);
+  }
+  {
+    const name =
+      'career: there is no "back to the most likely result" button; Compare, Roll and Add sit in her card\'s header';
+    await expect.soft(pg.locator('#sim-reset'), name).toHaveCount(0);
+    await expect
+      .soft(
+        pg.locator(
           '#simulation .ud .udtop #sim-compare, #simulation .ud .udtop #sim-roll, #simulation .ud .udtop #sim-add',
-        )
-        .count()) === 3,
-  );
+        ),
+        `${name}: the header's three`,
+      )
+      .toHaveCount(3);
+  }
   // an n/n veteran: Compare says step 1 of the goal is done (no odds verdict)
   for (let i = 0; i < 12; i++) {
     await pg.locator('#simulation .vskadd').click();
@@ -1364,21 +1423,23 @@ export default async function career(b) {
     null,
     { timeout: 180000 },
   );
-  check(
-    'career: an n/n veteran: Compare says step 1 of the goal is done (or, with n/n parents, a fully looped parent)',
-    /^((\d+)\/\2: step 1 done|Fully looped parent)/.test(await pg.textContent('#sim-verdict')),
-    await pg.textContent('#sim-verdict'),
-  );
+  await expect
+    .soft(
+      verdict,
+      'career: an n/n veteran: Compare says step 1 of the goal is done (or, with n/n parents, a fully looped parent)',
+    )
+    .toHaveText(/^((\d+)\/\2: step 1 done|Fully looped parent)/);
   await roll(0); // (no reset: a roll that lands nothing leaves her short of n/n)
   await simStars(3);
   await pg.click('#sim-compare');
   await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
   const nPolicy = await policyJobs();
   await simStars(1);
-  check(
-    'career: an edit after Compare marks the comparison out of date without running another',
-    /before your last edit/.test(await pg.textContent('#sim-result')) && (await policyJobs()) === nPolicy,
-  );
+  {
+    const name = 'career: an edit after Compare marks the comparison out of date without running another';
+    await expect.soft(simResult, name).toHaveText(/before your last edit/);
+    check(`${name}: none run`, (await policyJobs()) === nPolicy);
+  }
   const baselineRuns = () =>
     pg.evaluate(
       () =>
@@ -1417,15 +1478,12 @@ export default async function career(b) {
     null,
     { timeout: 180000 },
   );
-  check(
-    'career: with the trainee chosen no plan runs, and Compare pressed twice finishes',
-    (await aheadJobs()) === la0 &&
-      !/Planning|Planned in/.test(await note()) &&
-      /^(Saves \d+\.\d careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(
-        await pg.textContent('#sim-verdict'),
-      ),
-    await note(),
-  );
+  {
+    const name = 'career: with the trainee chosen no plan runs, and Compare pressed twice finishes';
+    check(name, (await aheadJobs()) === la0, await note());
+    await expect.soft(runNote, `${name}: no planning on the status line`).not.toHaveText(/Planning|Planned in/);
+    await expect.soft(verdict, `${name}: the verdict`).toHaveText(VERDICTS);
+  }
   check(
     "career: with the trainee fixed, Compare reuses today's best instead of searching it again",
     (await baselineRuns()) === cachedRuns,
@@ -1456,18 +1514,22 @@ export default async function career(b) {
   const recLine = await pg.textContent('#udpane-info .udrec'),
     racesShut = await pg.locator('#ud-races').isHidden();
   await pg.click('#udpane-info .udmore');
-  check(
-    'career: the Career Info tab shows her support cards, her two legacies with their parents, and her record (the races behind a button) matching the wins button',
-    (await pg.locator('#udpane-info .udcard').count()) >= 1 &&
-      (await pg.locator('#udpane-info .udleg').count()) === 2 &&
-      (await pg.locator('#udpane-info .udleggx').count()) === 4 &&
-      rec.length > 0 &&
-      rec.filter(Boolean).length === w0 &&
-      new RegExp(`Wins: ${w0}\\b`).test(recLine) &&
-      racesShut &&
-      !(await pg.locator('#ud-races').isHidden()),
-    `${rec.length} races, ${rec.filter(Boolean).length} won, button ${w0}, ${recLine}`,
-  );
+  {
+    const name =
+      'career: the Career Info tab shows her support cards, her two legacies with their parents, and her record (the races behind a button) matching the wins button';
+    check(
+      name,
+      (await pg.locator('#udpane-info .udcard').count()) >= 1 &&
+        rec.length > 0 &&
+        rec.filter(Boolean).length === w0 &&
+        new RegExp(`Wins: ${w0}\\b`).test(recLine) &&
+        racesShut,
+      `${rec.length} races, ${rec.filter(Boolean).length} won, button ${w0}, ${recLine}`,
+    );
+    await expect.soft(pg.locator('#udpane-info .udleg'), `${name}: her two legacies`).toHaveCount(2);
+    await expect.soft(pg.locator('#udpane-info .udleggx'), `${name}: … with their parents`).toHaveCount(4);
+    await expect.soft(pg.locator('#ud-races'), `${name}: the races shown by their button`).toBeVisible();
+  }
   // a borrowed card there wears the friend frame within its own card (`all: unset` on these cards once dropped the
   // container the frame's 100cqw is measured on, and the frame grew to the page's width)
   if (ART) {
@@ -1506,16 +1568,18 @@ export default async function career(b) {
   const freed = await pg.evaluate(
     () => document.activeElement.matches('#wins-dlg .ag-add') && document.activeElement.getAttribute('aria-label'),
   );
-  check(
-    "career: the entered veteran's G1 wins open on the calendar, one per slot; clicking one removes it, its slot offers to add one, the count follows",
-    nShown === w0 &&
-      (await pg.locator('#wins-dlg .agenda .ag-year').count()) === 3 &&
-      /G1 wins/.test(await pg.textContent('#wins-title')) &&
-      /: add a G1 win$/.test(freed || '') &&
-      (await winsN()) === w0 - 1 &&
-      (await pg.textContent('#wins-count')).startsWith(String(w0 - 1 || 'No')),
-    `wins ${w0} -> ${await winsN()}, ${freed}`,
-  );
+  {
+    const name =
+      "career: the entered veteran's G1 wins open on the calendar, one per slot; clicking one removes it, its slot offers to add one, the count follows";
+    check(
+      name,
+      nShown === w0 && /: add a G1 win$/.test(freed || '') && (await winsN()) === w0 - 1,
+      `wins ${w0} -> ${await winsN()}, ${freed}`,
+    );
+    await expect.soft(pg.locator('#wins-dlg .agenda .ag-year'), `${name}: the calendar's years`).toHaveCount(3);
+    await expect.soft(pg.locator('#wins-title'), `${name}: its title`).toHaveText(/G1 wins/);
+    await expect.soft(pg.locator('#wins-count'), `${name}: the count`).toHaveText(new RegExp(`^${w0 - 1 || 'No'}\\b`));
+  }
   await pg.keyboard.press('Enter');
   const picks = await pg.$$eval('#wins-dlg .wmenu:not([hidden]) .wpick', (l) => l.map((e) => e.textContent));
   await pg.locator('#wins-dlg .wpick', { hasText: wname }).click();
@@ -1527,25 +1591,23 @@ export default async function career(b) {
       (await pg.evaluate((n) => document.activeElement.getAttribute('aria-label') === n + ', won: remove', wname)),
     picks.join(' | '),
   );
-  check(
-    'career: … which marks the comparison out of date without running another, and saves nothing to your veterans',
-    /before your last edit/.test(await pg.textContent('#sim-result')) &&
+  {
+    const name =
+      'career: … which marks the comparison out of date without running another, and saves nothing to your veterans';
+    await expect.soft(simResult, name).toHaveText(/before your last edit/);
+    check(
+      `${name}: none run, none saved`,
       (await policyJobs()) === pj0 &&
-      (await pg.evaluate(
-        (old) => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old),
-        original,
-      )),
-  );
+        (await pg.evaluate(
+          (old) => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old),
+          original,
+        )),
+    );
+  }
   await pg.keyboard.press('Escape');
-  check(
-    'career: … closing it puts the focus back on the wins button',
-    await pg
-      .waitForFunction(() => document.activeElement?.id === 'sim-wins', null, { timeout: 2000 })
-      .then(
-        () => true,
-        () => false,
-      ),
-  );
+  await expect
+    .soft(pg.locator('#sim-wins'), 'career: … closing it puts the focus back on the wins button')
+    .toBeFocused({ timeout: 2000 });
   await pg.click('#udtab-insp');
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await ctx.close();

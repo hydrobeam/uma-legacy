@@ -161,84 +161,28 @@ async function profile(ctx, pg) {
 }
 
 // ---------- opening a page
-// The settings editors (Target skills, Umas, Support cards; on the career page also your veterans) are dialogs the setup
-// panel's buttons open. editorAware: an action on a control inside one of them opens its dialog first, and an action on
-// the page outside any open dialog shuts them, so the checks of the editors' behaviour read as on a page that shows them
-// (the buttons and dialogs themselves are checked on their own). Page actions and every locator's actions go through it.
-const ACTS = [
-  'click',
-  'fill',
-  'focus',
-  'press',
-  'hover',
-  'type',
-  'check',
-  'uncheck',
-  'dblclick',
-  'selectOption',
-  'tap',
-  'innerText',
-  'boundingBox',
-  'scrollIntoViewIfNeeded',
-];
-function ensureEditor(el) {
-  // (runs in the page)
-  const editor = el.closest('dialog.setdlg'),
-    openEditors = [...document.querySelectorAll('dialog.setdlg[open]')];
-  if (editor) {
-    if (!editor.open) {
-      openEditors.forEach((x) => {
-        x.close();
-      });
-      editor.showModal();
-    }
-  } else if (!el.closest('dialog[open]'))
-    openEditors.forEach((x) => {
-      x.close();
-    });
+// The settings editors are dialogs the page's buttons open: Umas and Support cards (the setup panel's, both pages), and
+// on the career page the Veteran Umamusume dialog. A group opens one by its button before it works the controls inside
+// (openEditor), and closes it by its Done before it works the page behind it (closeEditor), as a visitor does.
+const EDITORS = {
+  umas: { button: '#o-umas', id: 'set-umas' },
+  cards: { button: '#o-cards', id: 'set-cards' },
+  vets: { button: '#v-toggle', id: 'set-vets' },
+};
+/** Opens the editor `which` ('umas', 'cards' or 'vets') by its button, unless it is open. */
+export async function openEditor(pg, which) {
+  const { button, id } = EDITORS[which],
+    editor = pg.locator(`#${id}`);
+  if ((await editor.getAttribute('open')) !== null) return;
+  await pg.click(button);
+  await expect(editor).toHaveAttribute('open');
 }
-function editorAware(pg) {
-  // no budget of its own: a short one that ran out under load (a busy renderer answers slowly) left the dialog shut and
-  // the action then waited its 30 s for a tile it could never see. A locator that never appears fails in the action.
-  const before = (loc) =>
-    loc
-      .first()
-      .evaluate(ensureEditor)
-      .catch(() => {
-        // no editor to open: the action that follows fails with its own message
-      });
-  const wrap = (loc) =>
-    new Proxy(loc, {
-      get(t, k) {
-        const v = t[k];
-        if (typeof v !== 'function') return v;
-        if (ACTS.includes(k))
-          return async (...a) => {
-            await before(t);
-            return v.apply(t, a);
-          };
-        return (...a) => {
-          const r = v.apply(t, a);
-          return r?.constructor && /Locator$/.test(r.constructor.name) ? wrap(r) : r;
-        };
-      },
-    });
-  const locator = pg.locator.bind(pg);
-  pg.locator = (...a) => wrap(locator(...a));
-  for (const k of ['getByRole', 'getByText', 'getByLabel']) {
-    const f = pg[k].bind(pg);
-    pg[k] = (...a) => wrap(f(...a));
-  }
-  for (const k of ACTS) {
-    if (!pg[k]) continue;
-    const f = pg[k].bind(pg);
-    pg[k] = async (sel, ...a) => {
-      await before(locator(sel));
-      return f(sel, ...a);
-    };
-  }
-  pg.editor = (sel) => before(locator(sel)); // open the dialog holding sel (for a layout read)
-  return pg;
+/** Closes the editor `which` by its Done, if it is open. */
+export async function closeEditor(pg, which) {
+  const editor = pg.locator(`#${EDITORS[which].id}`);
+  if ((await editor.getAttribute('open')) === null) return;
+  await editor.locator('.dclose').click();
+  await expect(editor).not.toHaveAttribute('open');
 }
 // the page's errors and error-level console lines collect in pg.errors (web-font fetch aborts are network noise)
 function collectErrors(pg) {
@@ -288,7 +232,7 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
     });
   });
   if (init) await ctx.addInitScript(init);
-  const pg = editorAware(await ctx.newPage());
+  const pg = await ctx.newPage();
   collectErrors(pg);
   await profile(ctx, pg);
   if (before) await before(pg);
@@ -428,7 +372,7 @@ export const SIDEWAYS = () => {
  * The career page with its run hooks and the helpers the career groups share.
  * @typedef {object} CareerPage
  * @property {object} ctx  the browser context (close it at the end)
- * @property {object} pg  the page (editor-aware; its errors in pg.errors)
+ * @property {object} pg  the page (its errors in pg.errors)
  * @property {() => Promise<string>} note  the status line's text
  * @property {() => Promise<void>} done  the run an action started has ended (returns at once if none started)
  * @property {() => Promise<void>} planned  the status line says the plan is done ("Planned in")
@@ -555,7 +499,7 @@ export async function careerPage(b) {
               .join('|')
           : ''),
     );
-  const pg = editorAware(await ctx.newPage());
+  const pg = await ctx.newPage();
   collectErrors(pg);
   await profile(ctx, pg);
   const note = () => pg.textContent('#run-note');
@@ -586,16 +530,8 @@ export async function careerPage(b) {
   };
   // the tree is portraits; a portrait opens its node popup (sparks, G1 wins, choose or hand back the place)
   // your veterans live in the Veteran Umamusume dialog: open it to reach them, shut it to reach the page again
-  const vetsOpen = async () => {
-    if (!(await pg.locator('#set-vets[open]').count())) {
-      await pg.click('#v-toggle');
-      await dialog(pg, 'set-vets');
-    }
-  };
-  const vetsShut = async () => {
-    if (await pg.locator('#set-vets[open]').count())
-      await pg.evaluate(() => document.getElementById('set-vets').close());
-  };
+  const vetsOpen = () => openEditor(pg, 'vets');
+  const vetsShut = () => closeEditor(pg, 'vets');
   const vetsSeen = async () => {
     if (!(await pg.locator('#set-vets[open]').count())) {
       await vetsOpen();
