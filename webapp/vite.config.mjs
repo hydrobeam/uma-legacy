@@ -52,6 +52,7 @@ const test = {
   include: ['test/unit/*.test.mjs'],
   environmentOptions: { happyDOM: { width: 1440, height: 900 } },
   testTimeout: 60_000,
+  maxWorkers: 2, // at most two test files at once: the laptop's thermal limit, as the browser suite's two workers
 };
 
 export default defineConfig(({ mode }) => (mode === 'test' ? { ...shared, plugins: [pageDataIds()], test } : site()));
