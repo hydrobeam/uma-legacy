@@ -23,8 +23,7 @@ const BLOCKED: Record<string, string> = {
 function blockedFor(v: VetRecord, k: number) {
   const plan = places.value,
     otherId = plan.parents[1 - k];
-  // @ts-expect-error `otherId && ...` reads as '' to tsc (an id is never empty): the strict commit asks `otherId ?`
-  const why = pairBlock(plan.trainee, v, otherId && vetById(otherId), settings.value);
+  const why = pairBlock(plan.trainee, v, otherId ? vetById(otherId) : null, settings.value);
   return why === 'setting'
     ? `borrowed (Borrowed parent: ${BORROW_CHOICES[borrowChoice(settings.value)]})`
     : BLOCKED[why] || '';
