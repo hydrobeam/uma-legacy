@@ -18,9 +18,11 @@ interface UmaAvProps {
   /** a name read out for her (she becomes an image) */
   label?: string;
   title?: string;
+  /** in the first screenful (the roster's first rows): fetched at once, at high priority, not lazily */
+  eager?: boolean;
 }
 /** an uma's portrait (her outfit's, else her own, else a mob's), else her initials on her hue (images.js umaAv) */
-export function UmaAv({ uma, outfit, size, cls, label, title }: UmaAvProps) {
+export function UmaAv({ uma, outfit, size, cls, label, title, eager = false }: UmaAvProps) {
   const id = uma ?? 0;
   const tries = [outfit && srcFor('outfit', outfit), srcFor('uma', id), srcFor('mob', id)].filter(
     (src): src is string => !!src,
@@ -37,7 +39,13 @@ export function UmaAv({ uma, outfit, size, cls, label, title }: UmaAvProps) {
       style={{ '--s': `${size}px`, '--fs': `${Math.round(size * 0.38)}px`, '--h': String((id * 47) % 360) }}
     >
       {src ? (
-        <img alt="" loading="lazy" src={src} onError={() => setFailed(failed + 1)} />
+        <img
+          alt=""
+          loading={eager ? 'eager' : 'lazy'}
+          fetchpriority={eager ? 'high' : undefined}
+          src={src}
+          onError={() => setFailed(failed + 1)}
+        />
       ) : (
         initials(gameData().names.get(id) || '?')
       )}

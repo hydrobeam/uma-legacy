@@ -246,8 +246,18 @@ const cycles = [];
 // not walk down from one (TRAVERSAL: its children, a query from it, its content written), whether straight from the
 // lookup or from a variable that holds it; nor may it name what is under one in a selector ('#results > *'). A
 // lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
+// the shared setup's editors, drawn on both pages (ui/Setup.tsx mounts them)
+const SETUP_MOUNTS = [
+  [
+    'umas-panel',
+    'src/ui/Roster.tsx',
+    ['h-roster', 'r-all', 'r-none', 'r-file', 'r-count', 'r-filter', 'rs', 'rs-dd', 'rs-menu', 'r-msg', 'roster'],
+    ['ut', 'uol'],
+  ],
+];
 const MOUNTS = {
   'src/career/main.tsx': [
+    ...SETUP_MOUNTS,
     ['run-note', 'src/career/view/RunNote.tsx', ['run-act'], ['runprog']],
     ['lodds', 'src/career/view/Tree.tsx', ['odds-open', 'sim-try'], ['udodds']],
     [
@@ -302,6 +312,7 @@ const MOUNTS = {
     ],
   ],
   'src/loop/main.tsx': [
+    ...SETUP_MOUNTS,
     ['run-note', 'src/loop/RunNote.tsx', [], []],
     ['r-act', 'src/loop/RunNote.tsx', [], []],
     ['rtop', 'src/loop/Results.tsx', ['c-top', 'c-top-l'], []],
@@ -418,6 +429,13 @@ const MOUNT_READS = {
 // What runs: each bundle's import graph (esbuild's metafiles), so every import esbuild resolves counts (a dynamic
 // import(), either quote, a path without its extension). What esbuild erases before it resolves (an `import type`, a
 // JSDoc `@import` or `import('…')` type): any relative path written in the module that resolves to a .tsx file.
+// A module kept only to give a component's mount an old name another lane's code still imports is listed in
+// VIEW_IMPORTS_KEPT with why; one that no longer imports it fails too.
+const VIEW_IMPORTS_KEPT = {
+  'src/setup.js src/ui/Setup.tsx':
+    "career/main.tsx imports mountSetup as setup.js's initSetup; part 2 of step 11 imports it from ui/Setup.tsx and " +
+    'deletes setup.js',
+};
 {
   const isView = (file) => file.endsWith('.tsx');
   const viewImports = new Set();
@@ -434,7 +452,11 @@ const MOUNT_READS = {
       const view = resolvesToView(file, spec);
       if (view) viewImports.add(`${file} ${view}`);
     }
+  for (const pair of Object.keys(VIEW_IMPORTS_KEPT))
+    if (!viewImports.has(pair))
+      problems.push(`VIEW_IMPORTS_KEPT: ${pair.replace(' ', ' no longer imports ')}: drop it`);
   for (const pair of viewImports) {
+    if (VIEW_IMPORTS_KEPT[pair] !== undefined) continue;
     const [file, view] = pair.split(' ');
     problems.push(`${file}: imports the component module ${view}; logic takes values, components import logic`);
   }

@@ -1,15 +1,13 @@
-// ---------- roster: one tile per outfit ----------
-// Owned / not owned, per outfit (solver: exclude + exclude_outfits).
-import { $, $input } from './dom.js';
+// ---------- roster: what you own of the umas, per outfit (solver: exclude + exclude_outfits) ----------
+// Her ownership and a tile's, a tile's click, All / None owned and the counts; the outfit a result names for her. The
+// Umas panel that draws them is ui/Roster.tsx.
+import { computed } from '@preact/signals';
 import { gameData } from './data.js';
-import { settings, setOwned } from './settings.ts';
-import { umaAv } from './images.js';
-import { paintSort, sortMenu } from './sortmenu.js';
-import { must } from './must.ts';
+import { fields, settings, setOwned } from './settings.ts';
 import { isOwned } from './job.js';
-const STATE_LABEL = { own: 'owned', out: 'not owned' };
+/** @import { Uma, Outfit } from './data.js' */
 // her ownership: 'out' when marked not owned or every outfit of hers is, else her roster mark ('own' by default)
-/** @param {import('./data.js').Uma} u @returns {'own'|'out'} */
+/** @param {Uma} u @returns {'own'|'out'} */
 export function umaState(u) {
   const outfits = u.outfits || [],
     mark = settings.value.roster[u.id] || 'own';
@@ -18,10 +16,12 @@ export function umaState(u) {
     : mark;
 }
 // one tile's ownership: the uma's mark, else the outfit's (o null: an uma without outfits in the data)
-const tileState = (u, o) =>
+/** @param {Uma} u @param {Outfit | null} o @returns {'own'|'out'} */
+export const tileState = (u, o) =>
   settings.value.roster[u.id] === 'out' || (o && settings.value.outfits[o.id] === false) ? 'out' : 'own';
 // her tiles' outfits: one tile per outfit, or a single tile (null) when the data lists none
-const tileOutfits = (u) => (u.outfits?.length ? u.outfits : [null]);
+/** @param {Uma} u @returns {(Outfit | null)[]} */
+export const tileOutfits = (u) => (u.outfits?.length ? u.outfits : [null]);
 // The outfit a result names for uma `id`: one, never "any outfit". `offered`: the solver's outfits for her (each covers a
 // target the same way; empty when none of hers covers one). Among the offered, the first; with none offered, among your
 // owned outfits her original (<id>01), else the first.
@@ -48,40 +48,22 @@ export const outfitNote = (pick) =>
           .map((o) => o.label)
           .join(', ')}.`
       : '';
-function rosterCount() {
-  const umasOut = gameData().umas.filter((u) => !isOwned(u, settings.value)).length;
-  const outfits = gameData().umas.reduce((sum, u) => sum + Math.max(1, (u.outfits || []).length), 0);
-  const outfitsOut = gameData().umas.reduce(
-    (sum, u) => sum + tileOutfits(u).filter((o) => tileState(u, o) === 'out').length,
-    0,
-  );
-  $('r-count').textContent =
-    `${gameData().umas.length - umasOut} of ${gameData().umas.length} umas · ${outfits - outfitsOut} of ${outfits} outfits`;
-  // the count on the Umas button too: everything counts as owned until you say otherwise
-  const b = $('o-umas');
-  b.dataset.n = `${outfits - outfitsOut}/${outfits}`;
-  b.title = `${outfits - outfitsOut} of ${outfits} outfits owned`;
-}
-// after an ownership change: every tile's look (or her tiles only) and the count; the list itself stays (its order
-// doesn't depend on ownership)
-/** @param {number|null} [umaId] her tiles only */
-export function paintRoster(umaId = null) {
-  for (const tile of /** @type {HTMLCollectionOf<HTMLElement>} */ ($('roster').children))
-    if (umaId == null || +must(tile.dataset.uma, 'a roster tile names its uma') === umaId)
-      must(tile._paint, 'rosterTile gives each tile its _paint')();
-  rosterCount();
-}
-// the filter hides tiles (name or outfit containing the text) instead of rebuilding the list on every keystroke
-function filterRoster() {
-  const filter = $input('r-filter').value.trim().toLowerCase();
-  for (const tile of /** @type {HTMLCollectionOf<HTMLElement>} */ ($('roster').children))
-    tile.hidden =
-      !!filter &&
-      !must(tile._searchName, 'rosterTile names each tile').includes(filter) &&
-      !must(tile._outfitLabel, 'rosterTile labels each tile').includes(filter);
-}
+// what is owned, counted: umas and outfits (a tile each: an uma without outfits counts as one), owned and in all
+export const rosterCounts = computed(() => {
+  const s = { roster: fields.roster.value, outfits: fields.outfits.value },
+    umas = gameData().umas;
+  let outfits = 0,
+    outfitsOwned = 0;
+  for (const u of umas)
+    for (const o of tileOutfits(u)) {
+      outfits++;
+      if (s.roster[u.id] !== 'out' && !(o && s.outfits[o.id] === false)) outfitsOwned++;
+    }
+  return { umasOwned: umas.filter((u) => isOwned(u, s)).length, umas: umas.length, outfitsOwned, outfits };
+});
 // a click on a tile: owned <-> not owned, for its outfit (or the uma, on a tile without one); saved
-function toggleTile(u, o) {
+/** @param {Uma} u @param {Outfit | null} o */
+export function toggleTile(u, o) {
   const roster = { ...settings.value.roster },
     outfits = { ...settings.value.outfits };
   if (tileState(u, o) === 'own') {
@@ -98,82 +80,17 @@ function toggleTile(u, o) {
   }
   setOwned({ roster, outfits });
 }
-function rosterTile(box, u, o, eager) {
-  const tile = document.createElement('div');
-  tile.className = 'ut';
-  tile.dataset.uma = u.id;
-  tile._searchName = u.name.toLowerCase();
-  tile._outfitLabel = o ? o.label.toLowerCase() : '';
-  const portrait = document.createElement('button');
-  portrait.className = 'up';
-  portrait.type = 'button';
-  portrait.appendChild(umaAv(u.id, o ? o.id : null, 96, eager));
-  tile.appendChild(portrait);
-  const name = document.createElement('div');
-  name.className = 'un';
-  name.textContent = u.name;
-  tile.appendChild(name);
-  if (o) {
-    const label = document.createElement('div');
-    label.className = 'uol';
-    label.textContent = o.label;
-    label.title = o.label;
-    tile.appendChild(label);
-  } // two lines at most (CSS); the title has it whole
-  // hover: who she is (the tile's look shows owned / not owned; the screen reader hears it)
-  tile._paint = () => {
-    const tileMark = tileState(u, o),
-      who = u.name + (o ? ` ${o.label}` : '');
-    tile.dataset.s = tileMark;
-    portrait.setAttribute('aria-label', `${who}: ${STATE_LABEL[tileMark]}`);
-    portrait.title = who;
-  };
-  tile._paint();
-  portrait.onclick = () => {
-    toggleTile(u, o);
-    box.querySelectorAll(`.ut[data-uma="${u.id}"]`).forEach((x) => {
-      x._paint();
-    });
-    rosterCount();
-  };
-  return tile;
-}
-export function renderRoster() {
-  const box = $('roster');
-  box.textContent = '';
-  const tiles = [];
-  for (const u of gameData().umas)
-    for (const o of tileOutfits(u)) tiles.push({ u, o, rel: o ? o.rel : 0, key: `${u.name} ${o ? o.label : ''}` });
-  const dir = settings.value.rdir === 'desc' ? -1 : 1;
-  tiles.sort(
-    (a, b) =>
-      dir *
-      (settings.value.rsort === 'name'
-        ? a.key.localeCompare(b.key)
-        : a.rel - b.rel || (a.o ? a.o.id : 0) - (b.o ? b.o.id : 0)),
-  );
-  const EAGER = 8; // the first two rows are on screen at load (phone and desktop): their portraits load at once
-  tiles.forEach(({ u, o }, i) => {
-    box.appendChild(rosterTile(box, u, o, i < EAGER));
+export const ownAllUmas = () => setOwned({ roster: {}, outfits: {} });
+export const ownNoUmas = () =>
+  setOwned({
+    roster: {
+      ...settings.value.roster,
+      ...Object.fromEntries(gameData().umas.map((u) => [u.id, /** @type {const} */ ('out')])),
+    },
   });
-  filterRoster();
-  paintSort('rs', 'r');
-  rosterCount();
-}
-export function initRoster() {
-  sortMenu('rs', 'r', () => renderRoster());
-  $input('r-filter').oninput = filterRoster;
-  $('r-all').onclick = () => {
-    setOwned({ roster: {}, outfits: {} });
-    paintRoster();
-  };
-  $('r-none').onclick = () => {
-    setOwned({
-      roster: {
-        ...settings.value.roster,
-        ...Object.fromEntries(gameData().umas.map((u) => [u.id, /** @type {const} */ ('out')])),
-      },
-    });
-    paintRoster();
-  };
-}
+// Kept for callers that drew the roster before it followed the settings (part 2 of step 11 drops the calls): nothing
+// to do, the roster redraws itself. career/main.tsx calls initRoster and renderRoster, popover.js paintRoster.
+export const initRoster = () => undefined;
+export const renderRoster = () => undefined;
+/** @param {number} [_umaId] */
+export const paintRoster = (_umaId) => undefined;

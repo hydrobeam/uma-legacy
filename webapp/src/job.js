@@ -30,7 +30,7 @@ function ownedCards(s) {
 /** @type {(u: import('./data.js').Uma, outfits: SettingsView['outfits']) => boolean} every outfit of hers is marked
  *  not owned in `outfits` (the settings' marks) */
 const noOutfit = (u, outfits) => (u.outfits || []).length > 0 && u.outfits.every((o) => outfits[o.id] === false);
-/** @type {(u: import('./data.js').Uma, s: SettingsView) => boolean} she is owned under settings `s`: not marked out, and
+/** @type {(u: import('./data.js').Uma, s: Pick<SettingsView, 'roster' | 'outfits'>) => boolean} she is owned under settings `s`: not marked out, and
  *  an outfit of hers owned (or none in the data) */
 export const isOwned = (u, s) => s.roster[u.id] !== 'out' && !noOutfit(u, s.outfits);
 /** @param {SettingsView} s the lineage rank's chances of 1, 2 and 3 stars */

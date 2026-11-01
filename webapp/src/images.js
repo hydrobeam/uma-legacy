@@ -80,15 +80,15 @@ export function initials(name) {
   const first = words[0] || '';
   return ((first || '?')[0] + (words[1] ? words[1][0] : first[1] || '')).toUpperCase();
 }
-// twin: ui/Images.tsx UmaAv (the same markup, as a component): an edit here goes there too, until step 8c
-// eager: an image in the first screenful (the roster's first rows): fetched at once, at high priority, not lazily
+// twin: ui/Images.tsx UmaAv (the same markup, as a component; only the twin is ever eager, in the roster): an edit
+// here goes there too, while both exist
 /**
  * @param {number | null} uma her character id; null: an unknown uma (a parent nobody recorded, a damaged save), drawn as
  *   id 0 is: '?' on hue 0, no portrait
  * @param {number|null|undefined} outfitId her outfit's portrait, when known @param {number} size in px
- * @param {boolean} [eager] @returns {HTMLSpanElement}
+ * @returns {HTMLSpanElement}
  */
-export function umaAv(uma, outfitId, size, eager = false) {
+export function umaAv(uma, outfitId, size) {
   const charaId = uma ?? 0;
   const disc = document.createElement('span');
   disc.className = 'av';
@@ -111,8 +111,7 @@ export function umaAv(uma, outfitId, size, eager = false) {
     }
     const image = new Image();
     image.alt = '';
-    image.loading = eager ? 'eager' : 'lazy';
-    if (eager) image.fetchPriority = 'high';
+    image.loading = 'lazy';
     image.onerror = next;
     image.src = src;
     disc.appendChild(image);

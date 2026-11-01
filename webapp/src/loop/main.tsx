@@ -19,7 +19,6 @@ import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
-import { initRoster, renderRoster } from '../roster.js';
 import { initTargets, renderTargets } from '../targets.js';
 import { initScenario, eraScenario } from '../scenario.js';
 import { initCards } from '../cards.js';
@@ -29,7 +28,7 @@ import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
 import { initPopover } from '../popover.js';
 import { loadExample } from '../presets.js';
-import { initSetup } from '../setup.js';
+import { mountSetup } from '../ui/Setup.tsx';
 import '../gmtip.js'; // the game-style tooltips (both planner pages)
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
@@ -119,7 +118,6 @@ function start() {
   }; // the switch changes no result: switching it on searches only changes made while it was off
   initScenario(); // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
-  initRoster();
   initCards();
   render(
     <RenderGuard input={fields.decksTop} what="The Results switch">
@@ -133,7 +131,7 @@ function start() {
   render(<ExportDialog />, $('ex-root'));
   $('ex-open').onclick = openExport;
   initPopover({ drawn: true });
-  initSetup();
+  mountSetup({ fadeMore: true });
   // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
   // the setup the first search starts from); what the result on show no longer owns greys at once (Results.tsx)
   on([jobSetup], () => loop.scheduleSearch());
@@ -150,8 +148,8 @@ function start() {
     });
     column.focus({ preventScroll: true });
   };
-  // the roster and card boxes: .more while there is more to scroll to below (their bottom edge fades)
-  for (const id of ['roster', 'cards']) {
+  // the card box: .more while there is more to scroll to below (its bottom edge fades)
+  for (const id of ['cards']) {
     const box = $(id),
       update = () => box.classList.toggle('more', box.scrollTop + box.clientHeight < box.scrollHeight - 4); // 4 px: rounding slack
     box.addEventListener('scroll', update, { passive: true });
@@ -165,7 +163,6 @@ function start() {
   }
   backdropCloses($dialog('sched-dlg'));
 
-  renderRoster();
   renderTargets(); // renderTargets draws the card picker too (it lists the cards that give a target)
   render(
     <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>
