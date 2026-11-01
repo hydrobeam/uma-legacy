@@ -135,19 +135,24 @@ export default async function popups(b) {
   await pg.keyboard.press('Escape');
   // a deck card the search ends at a link: its panel names the skill IT needs prioritised to take the ending choice.
   // Seiun Sky [Foolproof Plan] ends at link 1 for Second Wind; Dodging Danger is on the continuing choice. The card is
-  // a copy of a deck card retagged (the example result ends no chain), opened and read in one step
-  const endPanel = () =>
-    pg.evaluate(() => {
+  // a copy of a deck card retagged (the example result ends no chain): opened, read once the panel has drawn, closed
+  const endPanel = async () => {
+    await pg.evaluate(() => {
       const chip = /** @type {HTMLElement} */ (document.querySelector('.deck .dc').cloneNode(true));
       Object.assign(chip.dataset, { cid: '30008', end: '1' });
       chip.classList.remove('bor', 'pal');
+      chip.id = 'end-chip';
       document.querySelector('.deck .dcards').appendChild(chip);
       chip.click();
-      const text = document.querySelector('.cpop').innerText;
+    });
+    const text = await pg.locator('.cpop:not([hidden])').innerText();
+    await pg.evaluate(() => {
+      const chip = document.getElementById('end-chip');
       chip.click();
       chip.remove();
-      return text;
     });
+    return text;
+  };
   const plain = await endPanel();
   check(
     'chain end: the panel names the skill to prioritise and when IT may not take it',
