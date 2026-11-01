@@ -16,85 +16,94 @@ data.json (run after export_rs.py) and writes career.json next to it:
            (its badge, atlas/statusrank utx_ico_statusrank_{id - 1}) is the last whose minimum her score reaches.
 usage: export_career.py global|jp"""
 
-import argparse, sqlite3, json, os
+import argparse, json, os
 
-parser = argparse.ArgumentParser(
-    description="Tables for reading a veteran export into the career planner -> the era's career.json.",
-    allow_abbrev=False,
-)
-parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
-parser.parse_args()  # parsed before era's import, which opens the era's database
+import era as eras
 
-from era import q, OUT, GLOBAL_MDB
 
-data_path, out_path = os.path.join(OUT, "data.json"), os.path.join(OUT, "career.json")
-races = json.load(open(data_path))["races"]
-race_indices = {race_id: index for index, race_id in enumerate(races)}
-factors = {}
-for factor_group, skill_id in q("""select distinct s.factor_group_id, e.value_1 from succession_factor s
-        join succession_factor_effect e on e.factor_group_id = s.factor_group_id where s.factor_type = 4"""):
-    skill_group_rows = q("select group_id from skill_data where id = ?", skill_id)
-    if skill_group_rows:
-        factors.setdefault(factor_group, skill_group_rows[0][0])
-rows = q("""select s.id, s.group_id, i.race_id from single_mode_wins_saddle s join race_instance i on i.id = s.race_instance_id_1
-        join race r on r.id = i.race_id where s.race_instance_id_2 = 0 and r.grade = 100""")
-saddle_groups = {}
-for saddle_id, group_id, race_id in rows:
-    if race_id in race_indices:
-        assert saddle_groups.setdefault(group_id, race_indices[race_id]) == race_indices[race_id], (saddle_id, group_id)
-saddles = {saddle_id: saddle_groups[group_id] for saddle_id, group_id, _ in rows if group_id in saddle_groups}
-unmapped = [saddle_id for saddle_id, group_id, _ in rows if group_id not in saddle_groups]
-# names from the Global master.mdb (the JP one has Japanese text; the groups are the same)
-global_query = sqlite3.connect(f"file:{GLOBAL_MDB}?mode=ro", uri=True).execute
-pinks = {
-    group_id: global_query(
-        'select text from text_data where category = 147 and "index" = ?', (group_id * 100 + 1,)
-    ).fetchone()[0]
-    for (group_id,) in q(
-        "select distinct factor_group_id from succession_factor where factor_type = 2 order by factor_group_id"
+def main():
+    parser = argparse.ArgumentParser(
+        description="Tables for reading a veteran export into the career planner -> the era's career.json.",
+        allow_abbrev=False,
     )
-}
-# blue (stat) spark groups 1..5 and unique (green) spark groups (an outfit's card id) -> name, the same way
-blues = {
-    group_id: global_query(
-        'select text from text_data where category = 147 and "index" = ?', (group_id * 100 + 1,)
-    ).fetchone()[0]
+    eras.add_argument(parser)
+    era = eras.Era(parser.parse_args().era)
+    q = era.q
+    data_path, out_path = os.path.join(era.out, "data.json"), os.path.join(era.out, "career.json")
+    races = json.load(open(data_path))["races"]
+    race_indices = {race_id: index for index, race_id in enumerate(races)}
+    factors = {}
+    for factor_group, skill_id in q("""select distinct s.factor_group_id, e.value_1 from succession_factor s
+            join succession_factor_effect e on e.factor_group_id = s.factor_group_id where s.factor_type = 4"""):
+        skill_group_rows = q("select group_id from skill_data where id = ?", skill_id)
+        if skill_group_rows:
+            factors.setdefault(factor_group, skill_group_rows[0][0])
+    rows = q("""select s.id, s.group_id, i.race_id from single_mode_wins_saddle s join race_instance i on i.id = s.race_instance_id_1
+            join race r on r.id = i.race_id where s.race_instance_id_2 = 0 and r.grade = 100""")
+    saddle_groups = {}
+    for saddle_id, group_id, race_id in rows:
+        if race_id in race_indices:
+            assert saddle_groups.setdefault(group_id, race_indices[race_id]) == race_indices[race_id], (
+                saddle_id,
+                group_id,
+            )
+    saddles = {saddle_id: saddle_groups[group_id] for saddle_id, group_id, _ in rows if group_id in saddle_groups}
+    unmapped = [saddle_id for saddle_id, group_id, _ in rows if group_id not in saddle_groups]
+    # names from the Global master.mdb (the JP one has Japanese text; the groups are the same)
+    global_query = era.global_connection.execute
+    pinks = {
+        group_id: global_query(
+            'select text from text_data where category = 147 and "index" = ?', (group_id * 100 + 1,)
+        ).fetchone()[0]
+        for (group_id,) in q(
+            "select distinct factor_group_id from succession_factor where factor_type = 2 order by factor_group_id"
+        )
+    }
+    # blue (stat) spark groups 1..5 and unique (green) spark groups (an outfit's card id) -> name, the same way
+    blues = {
+        group_id: global_query(
+            'select text from text_data where category = 147 and "index" = ?', (group_id * 100 + 1,)
+        ).fetchone()[0]
+        for (group_id,) in q(
+            "select distinct factor_group_id from succession_factor where factor_type = 1 order by factor_group_id"
+        )
+    }
+    uniques = {}
     for (group_id,) in q(
-        "select distinct factor_group_id from succession_factor where factor_type = 1 order by factor_group_id"
+        "select distinct factor_group_id from succession_factor where factor_type = 3 order by factor_group_id"
+    ):
+        row = global_query(
+            'select text from text_data where category = 147 and "index" = ?', (group_id * 100 + 1,)
+        ).fetchone()
+        if row:
+            uniques[group_id] = row[0]
+    mobs = []
+    for (mob_id,) in global_query("select mob_id from mob_data order by mob_id"):
+        row = global_query('select text from text_data where category = 59 and "index" = ?', (mob_id,)).fetchone()
+        if row and row[0]:
+            mobs.append([mob_id, row[0]])
+    ranks = [min_value for (min_value,) in q("select min_value from single_mode_rank order by id")]
+    json.dump(
+        {
+            "factors": factors,
+            "saddles": saddles,
+            "pinks": pinks,
+            "blues": blues,
+            "uniques": uniques,
+            "mobs": mobs,
+            "ranks": ranks,
+        },
+        open(out_path, "w"),
+        separators=(",", ":"),
     )
-}
-uniques = {}
-for (group_id,) in q(
-    "select distinct factor_group_id from succession_factor where factor_type = 3 order by factor_group_id"
-):
-    row = global_query(
-        'select text from text_data where category = 147 and "index" = ?', (group_id * 100 + 1,)
-    ).fetchone()
-    if row:
-        uniques[group_id] = row[0]
-mobs = []
-for (mob_id,) in global_query("select mob_id from mob_data order by mob_id"):
-    row = global_query('select text from text_data where category = 59 and "index" = ?', (mob_id,)).fetchone()
-    if row and row[0]:
-        mobs.append([mob_id, row[0]])
-ranks = [min_value for (min_value,) in q("select min_value from single_mode_rank order by id")]
-json.dump(
-    {
-        "factors": factors,
-        "saddles": saddles,
-        "pinks": pinks,
-        "blues": blues,
-        "uniques": uniques,
-        "mobs": mobs,
-        "ranks": ranks,
-    },
-    open(out_path, "w"),
-    separators=(",", ":"),
-)
-print(
-    len(factors),
-    "skill spark groups,",
-    len(saddles),
-    "G1 saddles",
-    f"({len(unmapped)} G1 saddles of races no trainee can run: {unmapped})" if unmapped else "",
-)
+    print(
+        len(factors),
+        "skill spark groups,",
+        len(saddles),
+        "G1 saddles",
+        f"({len(unmapped)} G1 saddles of races no trainee can run: {unmapped})" if unmapped else "",
+    )
+
+
+if __name__ == "__main__":
+    main()

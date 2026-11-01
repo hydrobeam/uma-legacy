@@ -11,63 +11,67 @@ entry); `stop_risk` [link, k, n] when IT's default choice there ends the chain o
 import argparse, json, os
 import gametora
 from event_choices import decode, fmt, manual_entry, apply_shares
+import era as eras
 
-parser = argparse.ArgumentParser(
-    description="The era's card_events.json from the cached GameTora training-event files and master.mdb.",
-    allow_abbrev=False,
-)
-parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
-parser.parse_args()  # parsed before era's import, which opens the era's database
 
-from era import q, names, OUT, released
-
-skill_names = names(47)
-card_names = names(75)
-story_links = dict(q("select story_id,show_progress_1 from single_mode_story_data where show_progress_1>0"))
-released_cards = {i for i, sd in q("select id, start_date from support_card_data") if released(sd)}
-out = {}
-for key in ["training_events_sr", "training_events_ssr"]:
-    for card_id, events in gametora.load(key):
-        if card_id not in released_cards:
-            continue
-        chain = []
-        chain_ends = []
-        stop_risks = []
-        alternatives = []
-        for event in events:
-            link_number = story_links.get(int(event[2]))
-            if not link_number:
+def main():
+    parser = argparse.ArgumentParser(
+        description="The era's card_events.json from the cached GameTora training-event files and master.mdb.",
+        allow_abbrev=False,
+    )
+    eras.add_argument(parser)
+    era = eras.Era(parser.parse_args().era)
+    skill_names = era.names(47)
+    card_names = era.names(75)
+    story_links = dict(era.q("select story_id,show_progress_1 from single_mode_story_data where show_progress_1>0"))
+    released_cards = {i for i, sd in era.q("select id, start_date from support_card_data") if era.released(sd)}
+    out = {}
+    for key in ["training_events_sr", "training_events_ssr"]:
+        for card_id, events in gametora.load(key):
+            if card_id not in released_cards:
                 continue
-            decoded = decode(event[1], skill_names)
-            if decoded.stop_risk:
-                stop_risks.append([link_number, *decoded.stop_risk])
-            if decoded.continuing:
-                chain.append([link_number, fmt(decoded.continuing)])
-            if decoded.has_ending:
-                chain_ends.append([link_number, fmt(decoded.ending)])
-            if decoded.alternatives:
-                alternatives.append([link_number, decoded.alternatives])
-        out[str(card_id)] = {
-            "name": card_names.get(card_id, str(card_id)),
-            "chain": sorted(chain),
-            **({"end": sorted(chain_ends)} if chain_ends else {}),
-            **({"stop_risk": sorted(stop_risks)} if stop_risks else {}),
-            **({"alts": sorted(alternatives)} if alternatives else {}),
-            "status": "complete",
-            "src": "gametora training_events",
-        }
-apply_shares(
-    out, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "event_shares.json")
-)  # measured outcome shares replace the equal-outcome convention
-# the hand-entered entries (pal and group cards, corrections): the era's manual.json
-MANUAL = os.path.join(OUT, "manual.json")
-DEST = os.path.join(OUT, "card_events.json")
-manual = json.load(open(MANUAL))["cards"]
-for k, v in manual.items():
-    if int(k) not in released_cards:
-        continue  # released after the cut
-    if any(x in v for x in ("always", "disabled", "chance")):
-        out[k] = {**out.get(k, {}), **manual_entry(k, v, skill_names)}
-doc = {"about": json.load(open(MANUAL))["about"], "cards": dict(sorted(out.items()))}
-json.dump(doc, open(DEST, "w"), ensure_ascii=False, indent=1)
-print(len(out), "cards written")
+            chain = []
+            chain_ends = []
+            stop_risks = []
+            alternatives = []
+            for event in events:
+                link_number = story_links.get(int(event[2]))
+                if not link_number:
+                    continue
+                decoded = decode(event[1], skill_names)
+                if decoded.stop_risk:
+                    stop_risks.append([link_number, *decoded.stop_risk])
+                if decoded.continuing:
+                    chain.append([link_number, fmt(decoded.continuing)])
+                if decoded.has_ending:
+                    chain_ends.append([link_number, fmt(decoded.ending)])
+                if decoded.alternatives:
+                    alternatives.append([link_number, decoded.alternatives])
+            out[str(card_id)] = {
+                "name": card_names.get(card_id, str(card_id)),
+                "chain": sorted(chain),
+                **({"end": sorted(chain_ends)} if chain_ends else {}),
+                **({"stop_risk": sorted(stop_risks)} if stop_risks else {}),
+                **({"alts": sorted(alternatives)} if alternatives else {}),
+                "status": "complete",
+                "src": "gametora training_events",
+            }
+    apply_shares(
+        out, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "event_shares.json")
+    )  # measured outcome shares replace the equal-outcome convention
+    # the hand-entered entries (pal and group cards, corrections): the era's manual.json
+    manual_path = os.path.join(era.out, "manual.json")
+    destination = os.path.join(era.out, "card_events.json")
+    manual = json.load(open(manual_path))["cards"]
+    for k, v in manual.items():
+        if int(k) not in released_cards:
+            continue  # released after the cut
+        if any(x in v for x in ("always", "disabled", "chance")):
+            out[k] = {**out.get(k, {}), **manual_entry(k, v, skill_names)}
+    doc = {"about": json.load(open(manual_path))["about"], "cards": dict(sorted(out.items()))}
+    json.dump(doc, open(destination, "w"), ensure_ascii=False, indent=1)
+    print(len(out), "cards written")
+
+
+if __name__ == "__main__":
+    main()
