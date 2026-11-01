@@ -27,7 +27,7 @@ import { borLast } from '../../cards.js';
 import { fmtN, tableRows } from '../view/parts.js';
 import { openNode } from '../view/dialogs.ts';
 import { DeckCard } from '../view/Sections.tsx';
-import { Details } from './Details.tsx';
+import { Details, legaciesOf } from './Details.tsx';
 import type { DetailsSpec } from './Details.tsx';
 import { simulation, draftJoins } from './state.ts';
 import type { SimulationView } from './state.ts';
@@ -369,10 +369,7 @@ export function Analysis({ comparison }: { comparison: Comparison }) {
     races: scheduledRaces(r, careerTables().races),
     raceName: (ix) => careerTables().races[ix] || `G1 ${ix}`,
     targets: settings.value.targets.map((t) => t.group),
-    legacies: r.parents.map((i) => {
-      const v = vets.value[i];
-      return { v, label: `#${i + 1}`, open: () => openNode({ kind: 'v', id: v.id }) };
-    }),
+    legacies: legaciesOf(r, vets.value, (id) => openNode({ kind: 'v', id })),
   };
   // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose answer
   // replaces the career on show)

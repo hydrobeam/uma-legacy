@@ -22,6 +22,7 @@ const built = await esbuild.build({
       export { on } from './src/store.ts';
       export { changeUma } from './src/veterans/pickers.js';
       export { InspView } from './src/ui/InspView.tsx';
+      export { Details, legaciesOf } from './src/career/analysis/Details.tsx';
       export { h, render } from 'preact';
       export { loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
@@ -40,7 +41,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-views-')),
 fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
-const { store: vs, on, changeUma, InspView, h, render, loadData } = page;
+const { store: vs, on, changeUma, InspView, Details, legaciesOf, h, render, loadData } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: { 30001: 'Her Own' }, races: [] };
 await loadData();
@@ -141,4 +142,21 @@ test('change uma: the uma is hers at the pick (saved, the page told); the prompt
     .click();
   assert.deepEqual([vs.vetById('a').chara, vs.vetById('a').sparks, woke], [1003, {}, 3]);
   stop();
+});
+
+test("Try a run's legacies: a place no veteran holds any more (the list changed under the answer) is left out (review-9 F6)", async () => {
+  const career = { parents: [0, 4], trainee: { id: 1001, outfits: [] }, targets: [], deck: null };
+  const list = [{ ...node(1002), id: 'a', borrowed: false, parents: [node(1), node(2)] }];
+  const legacies = legaciesOf(career, list, () => undefined);
+  assert.deepEqual(
+    legacies.map((x) => x.label),
+    ['#1'],
+    'the veteran at #5 is gone: her box goes',
+  );
+  vs.setDraft({ ...node(1001), borrowed: false, parents: [node(1002), node(1003)] });
+  const spec = { d: vs.draft.peek(), r: career, races: [], raceName: String, targets: [T], legacies };
+  const root = document.createElement('div');
+  render(h(Details, { spec, actions: null, winsButton: null }), root);
+  await settle();
+  assert.equal(root.querySelectorAll('div.udleg').length, 1, 'her card draws, with the one legacy');
 });

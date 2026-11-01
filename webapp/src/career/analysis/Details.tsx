@@ -133,6 +133,19 @@ export function Details({
   );
 }
 
+/** her two parents' legacy boxes for career `r` from the veterans `list` now (`open`: her node popup). A place no
+ *  veteran holds any more is left out: while a pool veteran's G1 wins window is open the answer on show waits, so the
+ *  list can change under it (an uma.moe listing landing) */
+export const legaciesOf = (
+  r: Career,
+  list: readonly VetRecord[],
+  open: (id: string) => void,
+): DetailsSpec['legacies'] =>
+  r.parents.flatMap((i) => {
+    const v = list[i];
+    return v ? [{ v, label: `#${i + 1}`, open: () => open(v.id) }] : [];
+  });
+
 const DEFS = [
   { key: 'skills', label: 'Skills' },
   { key: 'insp', label: 'Inspiration' },
