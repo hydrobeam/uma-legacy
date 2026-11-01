@@ -9,19 +9,19 @@ export const namesOf = (group) => gameData().skillNames.get(group) || { w: `Skil
 const SHOWN_MAX = 30; // suggestions listed at most
 /**
  * What the adder offers for the typed text (two characters at least): the catalog's skills whose white or gold name holds
- * it, those not yet targets first.
+ * it, those not yet among `targets` first.
  * @typedef {object} Suggestions
  * @property {{group: number, white: string, gold: string | null, viaGold: boolean}[]} hits up to SHOWN_MAX skills to
  *   add; `viaGold`: matched on the gold's name only (the button shows the gold with its white: the target is the white,
  *   its gold comes with it)
- * @property {string[]} have up to 3 matching skills that are targets already (their white names)
+ * @property {{group: number, white: string}[]} have up to 3 matching skills that are targets already
  * @property {boolean} none no skill matches
- * @param {string} typed @returns {Suggestions}
+ * @param {string} typed @param {readonly import('./settings.ts').Target[]} targets @returns {Suggestions}
  */
-export function suggest(typed) {
+export function suggest(typed, targets) {
   const filter = typed.trim().toLowerCase();
   if (filter.length < 2) return { hits: [], have: [], none: false };
-  const have = new Set(settings.value.targets.map((t) => t.group));
+  const have = new Set(targets.map((t) => t.group));
   const matches = (/** @type {string | null} */ name) => !!name && name.toLowerCase().includes(filter);
   const match = gameData().catalog.filter(([, white, gold]) => matches(white) || matches(gold));
   return {
@@ -32,7 +32,7 @@ export function suggest(typed) {
     have: match
       .filter(([group]) => have.has(group))
       .slice(0, 3)
-      .map(([, white]) => white),
+      .map(([group, white]) => ({ group, white })),
     none: !match.length,
   };
 }

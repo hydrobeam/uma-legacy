@@ -2,6 +2,7 @@
 // The checked pill is the group's one Tab stop; an arrow key picks the next pill (Right, Down) or the one before (Left,
 // Up), wrapping, and focuses it. Each pill is keyed by its value, so the focused one is the same element after the pick.
 import type { ComponentChildren } from 'preact';
+import { useRef } from 'preact/hooks';
 
 export interface Pill<V> {
   v: V;
@@ -36,13 +37,22 @@ const BACK = ['ArrowLeft', 'ArrowUp'],
   ON = ['ArrowRight', 'ArrowDown'];
 export function RadioPills<V extends string | number>(props: RadioPillsProps<V>) {
   const { tag: Tag = 'div', pills, value, onPick, pressed = true } = props;
+  // The value as last picked, ahead of the re-render: a second pick in the same task (a click and its undoing) compares
+  // with the first pick, not with the value this render drew (base's pickRank read the live setting)
+  const picked = useRef(value);
+  picked.current = value;
+  const pick = (v: V) => {
+    if (v === picked.current) return;
+    picked.current = v;
+    onPick(v);
+  };
   const step = (e: KeyboardEvent & { currentTarget: HTMLElement }) => {
     const back = BACK.includes(e.key);
     if (!back && !ON.includes(e.key)) return;
     e.preventDefault();
-    const at = pills.findIndex((p) => p.v === value),
+    const at = pills.findIndex((p) => p.v === picked.current),
       to = (at + (back ? pills.length - 1 : 1)) % pills.length;
-    onPick(pills[to].v);
+    pick(pills[to].v);
     // the pill is kept (keyed by its value): focus it now, before the re-render
     e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[to]?.focus();
   };
@@ -73,9 +83,7 @@ export function RadioPills<V extends string | number>(props: RadioPillsProps<V>)
             aria-checked={on}
             aria-pressed={pressed ? on : undefined}
             tabIndex={on ? 0 : -1}
-            onClick={() => {
-              if (!on) onPick(p.v);
-            }}
+            onClick={() => pick(p.v)}
           >
             {p.body}
           </button>

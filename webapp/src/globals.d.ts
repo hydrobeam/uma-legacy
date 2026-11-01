@@ -7,12 +7,6 @@ interface Window {
 }
 
 interface HTMLElement {
-  /** a roster or card tile: redraws it from the current state */
-  _paint?: () => void;
-  /** a roster, card or uma-picker tile: its name in lower case, which the search box matches */
-  _searchName?: string;
-  /** a roster tile: its outfit's label in lower case ('' for none), which the search box also matches */
-  _outfitLabel?: string;
   /** an uma-picker button: her name in lower case */
   _nm?: string;
 }

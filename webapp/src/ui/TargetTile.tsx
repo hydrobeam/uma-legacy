@@ -7,6 +7,16 @@ import { goldGiven } from '../job.js';
 import { namesOf } from '../targets.js';
 import { SkillIcon } from './Images.tsx';
 
+// A list key per tile of `groups`: the group, and its count before when it repeats (only a hand-edited import repeats
+// one), so each key is unique and a tile keeps its key when another is removed
+export function groupKeys(groups: readonly number[]) {
+  const seen = new Map<number, number>();
+  return groups.map((group) => {
+    const before = seen.get(group) ?? 0;
+    seen.set(group, before + 1);
+    return before ? `${group}:${before}` : String(group);
+  });
+}
 export function TargetTile({ group, id, children }: { group: number; id?: string; children?: ComponentChildren }) {
   const names = namesOf(group),
     given = goldGiven(fields.scen.value, group),

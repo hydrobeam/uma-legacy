@@ -19,7 +19,7 @@ import {
 } from '../presets.js';
 import { must } from '../must.ts';
 import { Dialog } from './Dialog.tsx';
-import { TargetTile } from './TargetTile.tsx';
+import { TargetTile, groupKeys } from './TargetTile.tsx';
 
 // the list dialog: open, and what its status line says (cleared each time it opens)
 const listOpen = signal(false),
@@ -218,7 +218,8 @@ function ViewDialog({ name, n, onRenamed, onClose }: ViewProps) {
   );
 }
 function ViewBody({ name, onRenamed, onClose }: Omit<ViewProps, 'n'>) {
-  const p = fields.presets.value.find((x) => x.name === name);
+  const p = fields.presets.value.find((x) => x.name === name),
+    tileKeys = groupKeys(p?.groups ?? []);
   const [renaming, setRenaming] = useState(false),
     [typed, setTyped] = useState(''),
     [said, setSaid] = useState(''),
@@ -252,8 +253,8 @@ function ViewBody({ name, onRenamed, onClose }: Omit<ViewProps, 'n'>) {
         <h3 id="prv-title">{p?.name}</h3>
       </div>
       <div class="targets prvtiles" id="prv-tiles">
-        {p?.groups.map((group) => (
-          <TargetTile key={group} group={group} />
+        {p?.groups.map((group, at) => (
+          <TargetTile key={tileKeys[at]} group={group} />
         ))}
         {p && !p.groups.length ? <p class="hint">No skills.</p> : null}
       </div>

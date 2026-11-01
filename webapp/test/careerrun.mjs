@@ -148,6 +148,7 @@ export default async function careerrun(b) {
       robust,
       workers: window.__workers,
       jobs: window.__checkJobs.length,
+      rank: document.getElementById('rank').dataset.value, // the edit undone: the rank as it was
       varies: alts ? [...alts.querySelectorAll('.otag')].filter((t) => t.textContent === 'pick varies').length : -1,
     };
   });
@@ -186,6 +187,7 @@ export default async function careerrun(b) {
   check(
     "career: the pick's check runs in the background after the plan, goes on through an edit and its undoing (no new worker), and ends with its report on the table",
     JSON.stringify(variantKinds) === JSON.stringify(expectedKinds) &&
+      checked.rank === '0.50,0.45,0.05' &&
       checked.workers === beforeEdit.workers &&
       checked.jobs >= 6 &&
       !checked.unavailable &&

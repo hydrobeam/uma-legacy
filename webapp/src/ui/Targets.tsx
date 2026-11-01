@@ -10,7 +10,7 @@ import { addTarget, namesOf, removeTargetAt, suggest } from '../targets.js';
 import { must } from '../must.ts';
 import { SkillIcon } from './Images.tsx';
 import { PresetDialogs, openPresets } from './Presets.tsx';
-import { TargetTile } from './TargetTile.tsx';
+import { TargetTile, groupKeys } from './TargetTile.tsx';
 
 // Add a target: typing two characters or more lists the skills that match. Enter adds the first; the arrows walk the
 // list (Up from the first goes back to the box); Escape or a click outside the box and the list closes it.
@@ -18,7 +18,7 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
   const [typed, setTyped] = useState(''),
     [shown, setShown] = useState(false),
     list = useRef<HTMLDivElement>(null);
-  const offer = suggest(typed);
+  const offer = suggest(typed, fields.targets.value);
   useLayoutEffect(() => {
     if (!shown) return;
     const onClick = (e: MouseEvent) => {
@@ -91,8 +91,8 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
             {hit.viaGold ? <span class="tg">{` → ${hit.gold}`}</span> : null}
           </button>
         ))}
-        {offer.have.map((white) => (
-          <p key={white} class="snote">{`${white} is already a target`}</p>
+        {offer.have.map(({ group, white }) => (
+          <p key={group} class="snote">{`${white} is already a target`}</p>
         ))}
         {offer.none ? <p class="snote">{`No skill matches “${typed.trim()}”`}</p> : null}
       </div>
@@ -104,6 +104,7 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
 /** `addBox`: the adder's box */
 function TargetList({ addBox }: { addBox: RefObject<HTMLInputElement | null> }) {
   const targets = fields.targets.value,
+    keys = groupKeys(targets.map((t) => t.group)),
     box = useRef<HTMLDivElement>(null),
     refocus = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -118,7 +119,7 @@ function TargetList({ addBox }: { addBox: RefObject<HTMLInputElement | null> }) 
       {targets.map((t, at) => {
         const white = namesOf(t.group).w;
         return (
-          <TargetTile key={t.group} group={t.group} id={`g-${t.group}`}>
+          <TargetTile key={keys[at]} group={t.group} id={`g-${t.group}`}>
             <button
               class="x"
               type="button"

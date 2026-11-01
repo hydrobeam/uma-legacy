@@ -1019,8 +1019,12 @@ export default async function career(b) {
       const sr = new Set(
         self.__LLP_DATA['data-cards'].filter((c) => c.rar === 2 && !inDeck.has(c.id)).map((c) => c.name.toLowerCase()),
       );
-      return [...document.querySelectorAll('#cards .ct .cav')].find((t) => sr.has(t.title.toLowerCase())).title;
+      const title = [...document.querySelectorAll('#cards .ct .cav')].find((t) => sr.has(t.title.toLowerCase())).title;
+      return { title, id: self.__LLP_DATA['data-cards'].find((c) => c.name === title).id };
     });
+    // the card's stored mark: false while it is marked not owned, else none
+    const storedMark = () =>
+      pg.evaluate((id) => JSON.parse(localStorage.getItem('llp:settings')).global.cardsOff?.[id], offCard.id);
     const toggleCard = async () => {
       await pg.evaluate(
         (name) =>
@@ -1028,20 +1032,29 @@ export default async function career(b) {
             .find((t) => t.title === name)
             .closest('.ct')
             .click(),
-        offCard,
+        offCard.title,
       );
       await done();
     };
     const entered = await showsNow();
     await toggleCard();
-    const afterSearch = await showsNow();
+    const afterSearch = await showsNow(),
+      markOff = await storedMark();
     await toggleCard();
-    const afterUndo = await showsNow();
+    const afterUndo = await showsNow(),
+      markOn = await storedMark();
+    // (each click is seen to write: done() returns at once when no search starts)
     check(
       'career: an answer for the same career (a card not in its deck unowned, then owned again) keeps the veteran being entered',
-      /Uma Stan[^|]*3 stars/.test(entered) && afterSearch === entered && afterUndo === entered,
+      /Uma Stan[^|]*3 stars/.test(entered) &&
+        markOff === false &&
+        markOn === undefined &&
+        afterSearch === entered &&
+        afterUndo === entered,
       JSON.stringify({
         offCard,
+        markOff,
+        markOn,
         entered: entered.slice(0, 80),
         afterSearch: afterSearch.slice(0, 80),
         afterUndo: afterUndo.slice(0, 80),

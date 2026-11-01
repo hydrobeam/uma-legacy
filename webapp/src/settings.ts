@@ -72,13 +72,19 @@ function dropRequired(settings: Record<string, unknown>) {
     Object.fromEntries(Object.entries(settings[key] || {}).filter(([, mark]) => mark !== 'req'));
   return { ...settings, roster: marked('roster'), outfits: marked('outfits') } as unknown as SettingsView;
 }
+// Presets are edited by name (presets.js): of two under one name, which only a hand-edited storage holds, the first
+// is kept
+const firstOfEachName = (presets: Preset[]) =>
+  presets.filter((p, at) => presets.findIndex((q) => q.name === p.name) === at);
 // the record from the stored object: each setting as saved (its era's part for the per-era ones), else a copy of its
 // default
 function fromSaved(saved: Saved) {
   const savedValue = (key: string) => ((PER_ERA as readonly string[]).includes(key) ? saved[ERA] : saved.common)?.[key];
   const value = (key: (typeof SETTINGS)[number]) =>
     savedValue(key) !== undefined ? savedValue(key) : structuredClone(DEFAULTS[key]);
-  return deepFreeze(dropRequired(Object.fromEntries(SETTINGS.map((key) => [key, value(key)]))));
+  const loaded = Object.fromEntries(SETTINGS.map((key) => [key, value(key)]));
+  if (Array.isArray(loaded.presets)) loaded.presets = firstOfEachName(loaded.presets);
+  return deepFreeze(dropRequired(loaded));
 }
 const pick = (record: SettingsView, keys: readonly string[]): SavedPart =>
   Object.fromEntries(keys.map((key) => [key, record[key as keyof SettingsView]]));

@@ -11,7 +11,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { WinsEditor } from '../ui/Agenda.tsx';
-import { useDropdown } from '../ui/SortMenu.tsx';
+import { useDropdown } from '../ui/dropdown.ts';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 import { skillName, targetGroups } from './names.js';
@@ -281,7 +281,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
 
 // ---------- "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink
 // and unique sparks have bars of their own). Drawn into #add-pop (`host`), which it places under its "+": inside the
-// "+"'s open dialog, placed against it. A dropdown (ui/SortMenu.tsx useDropdown): a press outside it and its "+"
+// "+"'s open dialog, placed against it. A dropdown (ui/dropdown.ts useDropdown): a press outside it and its "+"
 // closes it (another "+" moves it there); Escape closes it, not the dialog around it, back to the "+".
 export const AddList = ({ host }: { host: HTMLElement }) => <AddBody host={host} open={addOpen.value} />;
 // the "+" the list is open on, as the dropdown's button: read when a click lands, so a second "+" pressed has the list
