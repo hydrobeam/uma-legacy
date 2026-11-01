@@ -12,6 +12,7 @@ import type { SettingsView } from '../settings.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { LoopResult, ResultLoop, ShownResult } from './types.ts';
 import { loopMembers } from './members.ts';
+import { must } from '../must.ts';
 // a skill group's name at a level (2: its gold's, when it has one)
 const skillName = (group: number, level: number) => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: null };
@@ -51,9 +52,13 @@ const resultSummary = ({ loop, deck, decks }: DeepReadonly<LoopResult>) => ({
   deck: deck.cards,
   pals: deck.pals,
   borrowed: deck.borrowed,
-  // (each member's deck: her own, which the result has for every member when it has `decks`)
+  // (each member's deck: her own, which loopMembers gives every member when the result has `decks`)
   ...(decks
-    ? { deck_per_uma: Object.fromEntries(loopMembers(loop, decks).map((m) => [m.name, (m.deck ?? deck).cards])) }
+    ? {
+        deck_per_uma: Object.fromEntries(
+          loopMembers(loop, decks).map((m) => [m.name, must(m.deck, 'loopMembers gives each member her deck').cards]),
+        ),
+      }
     : {}),
   deck_odds: deck.odds
     .filter((o) => o.white > 0.005 || o.gold > 0.005)

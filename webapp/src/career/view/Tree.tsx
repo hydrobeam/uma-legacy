@@ -5,7 +5,7 @@
 // the answer and the veterans store (veterans/store.ts).
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
-import { vets, places } from '../../veterans/store.ts';
+import { vets, places, parentsPlaced } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
@@ -139,9 +139,8 @@ function Family({ k, r }: { k: number; r: CareerReport | null }) {
       {/* her own parents: the trainee's grandparents */}
       {v && (
         <div class="pgs">
-          {v.parents.map((g: { chara: number | null; outfit?: number }, j: number) => (
+          {parentsPlaced(v.parents).map(([g, j]) => (
             <Place
-              // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
               key={j}
               spec={{ kind: 'g', k, j }}
               cls="pn gp"

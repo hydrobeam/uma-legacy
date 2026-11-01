@@ -4,12 +4,13 @@
 // to do it.
 import { signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
+import type { ParentPlace } from '../../veterans/store.ts';
 
 /** a node of the tree or the pool: the trainee, parent place k, parent k's parent j, a veteran of the pool */
 export type NodeSpec =
   | { kind: 't' }
   | { kind: 'p'; k: number }
-  | { kind: 'g'; k: number; j: number }
+  | { kind: 'g'; k: number; j: ParentPlace }
   | { kind: 'v'; id: string };
 const node = signal<NodeSpec | null>(null),
   deck = signal(false),

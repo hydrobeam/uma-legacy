@@ -8,10 +8,20 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
 import { isOwned } from '../../job.ts';
 import { fitSparks } from '../../details.ts';
-import { vets, places, editVet, removeVet, setTrainee, setParent, vetRef, parentRef } from '../../veterans/store.ts';
+import {
+  vets,
+  places,
+  editVet,
+  removeVet,
+  setTrainee,
+  setParent,
+  vetRef,
+  parentRef,
+  parentsPlaced,
+} from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.ts';
-import type { NodeRecord, NodeRef, VetRecord } from '../../veterans/store.ts';
+import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans/store.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../ui/AffTable.tsx';
@@ -236,10 +246,9 @@ function VeteranView({ id }: { id: string }) {
         />
       </div>
       <div class="vpars">
-        {v.parents.map((g, j) => {
+        {parentsPlaced(v.parents).map(([g, j]) => {
           const lab = `Parent ${j + 1} of #${i + 1}`;
           return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
             <div key={j} class="twho">
               <Face nd={g} at={parentRef(id, j)} size={36} label={lab} change={edit} />
               <span class="nm">{g.chara ? umaName(g.chara) : 'Unknown parent'}</span>
@@ -379,7 +388,7 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
   };
 }
 // A grandparent (parent k's parent j): who she is, her sparks and G1 wins.
-function grandparentNode(k: number, j: number, r: CareerReport | null): NodeShown | null {
+function grandparentNode(k: number, j: ParentPlace, r: CareerReport | null): NodeShown | null {
   const at = parentAt(k, r),
     g: NodeRecord | undefined = at?.v.parents[j];
   if (!at || !g) return null;

@@ -3,7 +3,8 @@
 // row with her portrait). Her parents' sparks are editable when `parentKey` names their controls. It reads no store (as
 // Sparks): it draws again whenever its parent does.
 import { umaName } from '../veterans/names.ts';
-import type { NodeRecord, NodeRef } from '../veterans/store.ts';
+import { parentsPlaced } from '../veterans/store.ts';
+import type { NodeRecord, NodeRef, ParentPlace } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
 import { Sparks } from './Sparks.tsx';
 
@@ -19,9 +20,9 @@ interface InspViewProps {
   /** the target skills' groups */
   targets: readonly number[];
   /** parent j's sparks' control names (null: her parents' read-only) */
-  parentKey?: ((j: number) => string) | null;
+  parentKey?: ((j: ParentPlace) => string) | null;
   /** where parent j's edits go (with `parentKey`) */
-  parentAt?: ((j: number) => NodeRef) | null;
+  parentAt?: ((j: ParentPlace) => NodeRef) | null;
   /** nothing editable (a veteran listed on uma.moe: another player's) */
   readOnly?: boolean;
   /** the "Sparks" heading */
@@ -29,7 +30,7 @@ interface InspViewProps {
   /** a class beside her row's own */
   meClass?: string;
   /** parent j's place, read out with her portrait ("#3"; null: "Her parent") */
-  parentLabel?: ((j: number) => string) | null;
+  parentLabel?: ((j: ParentPlace) => string) | null;
 }
 export function InspView({
   nd,
@@ -60,8 +61,7 @@ export function InspView({
             <span>Legacy Origin</span>
           </div>
         )}
-        {parents.map((g, j) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
+        {parentsPlaced(parents).map(([g, j]) => (
           <div key={j} class="udrow par">
             <UmaAv
               key={`${g.chara}:${g.outfit}`}

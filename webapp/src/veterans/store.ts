@@ -419,14 +419,22 @@ function editAt(id: string, f: (v: VetRecord) => VetRecord) {
 export function editVet(id: string, f: (now: VetRecord) => NodePatch & { borrowed?: boolean }) {
   editAt(id, (v) => patched(v, f(v)));
 }
+/** a parent's place: a lineage node's parents are a pair (asNode checks a stored veteran's) */
+export type ParentPlace = 0 | 1;
+/** a node's parents with their places, in order (none for a node shown without her parents) */
+export const parentsPlaced = <T>(parents: readonly T[]): [T, ParentPlace][] =>
+  ([0, 1] as const).flatMap((j): [T, ParentPlace][] => {
+    const parent = parents[j];
+    return parent === undefined ? [] : [[parent, j]];
+  });
 /** her parent j's fields */
-function editParent(id: string, j: number, f: (now: NodeRecord) => NodePatch) {
+function editParent(id: string, j: ParentPlace, f: (now: NodeRecord) => NodePatch) {
   editAt(id, (v) => ({ ...v, parents: v.parents.map((p, i) => (i === j ? patched(p, f(p)) : p)) }));
 }
 /** a veteran of the pool, for an editor */
 export const vetRef = (id: string): NodeRef => ({ node: () => vetById(id), edit: (f) => editVet(id, f) });
 /** her parent j, for an editor */
-export const parentRef = (id: string, j: number): NodeRef => ({
+export const parentRef = (id: string, j: ParentPlace): NodeRef => ({
   node: () => vetById(id)?.parents[j],
   edit: (f) => editParent(id, j, f),
 });
@@ -484,7 +492,7 @@ export const draftRef = (): NodeRef =>
     (d, f) => patched(d, f(d)) as Draft,
   );
 /** her parent j, for an editor opened now */
-export const draftParentRef = (j: number): NodeRef =>
+export const draftParentRef = (j: ParentPlace): NodeRef =>
   draftAt(
     (d) => d.parents[j],
     (d, f) => ({ ...d, parents: d.parents.map((p, i) => (i === j ? patched(p, f(p)) : p)) }) as Draft,
