@@ -23,7 +23,13 @@ import { openWhy } from './Affinity.tsx';
 import type { JobTarget } from './job.ts';
 import { deckKey, loopKey, resultKeys } from './keys.ts';
 import { draw, loopDrawn } from './state.ts';
-import type { LoopReport, LoopResult, ResultDeck, ResultLoop } from './types.ts';
+import type * as Report from './types.ts';
+import type { DeepReadonly } from '../store.ts';
+
+// the result on show, as the store hands it (read-only)
+type LoopResult = DeepReadonly<Report.LoopResult>;
+type ResultDeck = DeepReadonly<Report.ResultDeck>;
+type ResultLoop = DeepReadonly<Report.ResultLoop>;
 
 const SHOWN = 0.005; // hint odds and their changes under half a percent are not shown
 type Odds = ResultDeck['odds'][number];
@@ -45,7 +51,7 @@ function useOpener() {
 /** draws a result (run.ts's `render`): the panel open on the old one closes, the runner becomes one of its umas. Focus
  *  inside the old result (an open panel's Owned switch, say) is noted in the drawn record (`refocus`), so that once the
  *  redraw is done focus that it removed goes to the results column, not the page top */
-export function drawResult(r: LoopReport, targets: readonly JobTarget[]) {
+export function drawResult(r: Report.LoopReport, targets: readonly JobTarget[]) {
   const refocus = popHasFocus() || $('results').contains(document.activeElement);
   batch(() => {
     closePop();
@@ -203,7 +209,7 @@ function FaceButton({ loop, k, size }: { loop: ResultLoop; k: number; size: numb
   );
 }
 // the deck(s) of a result: one deck for all, or the deck most members share and the swaps from it
-function Decks({ loop, shared, decks }: { loop: ResultLoop; shared: ResultDeck; decks: ResultDeck[] | null }) {
+function Decks({ loop, shared, decks }: { loop: ResultLoop; shared: ResultDeck; decks: readonly ResultDeck[] | null }) {
   const members = loop.members;
   if (!decks || decks.every((d) => deckKey(d) === deckKey(shared)))
     return (

@@ -51,7 +51,7 @@ const viewRecord = signal(freezeView(LOADING));
 const drawnRecord = signal<Readonly<Drawn> | null>(null);
 export const loopRun: ReadonlySignal<DeepReadonly<RunState>> = runRecord;
 export const loopView: ReadonlySignal<DeepReadonly<LoopView>> = viewRecord;
-export const loopDrawn: ReadonlySignal<Readonly<Drawn> | null> = drawnRecord;
+export const loopDrawn: ReadonlySignal<DeepReadonly<Drawn> | null> = drawnRecord;
 /** back to the page's first state (a test's start) */
 export function initLoopState() {
   batch(() => {

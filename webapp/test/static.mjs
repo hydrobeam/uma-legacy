@@ -15,6 +15,8 @@
 // - store reads: a logic module (the types, io and model layers of LAYERS) reaches no store's values through any chain
 //   of imports (esbuild's metafiles: static, dynamic and re-exports, either quote): it takes the settings and records
 //   as arguments (`import type` only), so nothing it reads can subscribe an effect.
+// - store exports: every signal a store module (the stores layer of LAYERS) exports is read-only all the way down: its
+//   `ReadonlySignal<T>` names `DeepReadonly<...>`, an alias of one, a primitive, or a read-only array of those.
 // - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
 //   untracked); anywhere else an effect would subscribe to whatever its body happens to read. A signal's `.subscribe()`
 //   counts as one, and so does importing or re-exporting `effect`.
@@ -718,6 +720,51 @@ const KNOWN_AGAINST = [];
           queue.push(next);
         }
     }
+  }
+}
+// store exports: a store's signal hands out a record nothing may write, nested parts included (frontend.md §2 Rules): the
+// type of each `export const x: ReadonlySignal<T>` in a store module, read as text, is `DeepReadonly<...>`, a primitive
+// or a string literal, a read-only array of those, a union of them, or a type alias of any of these (`type A = ...` in
+// src/)
+{
+  const aliases = new Map(
+    sources.flatMap(([, text]) => [...text.matchAll(/\btype\s+(\w+)\s*=\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()])),
+  );
+  // a union's members, split at the top level (not inside <...>, {...} or (...))
+  const members = (type) => {
+    const out = [];
+    let depth = 0,
+      at = 0;
+    for (let i = 0; i < type.length; i++) {
+      if ('<{(['.includes(type[i])) depth++;
+      else if ('>})]'.includes(type[i])) depth--;
+      else if (type[i] === '|' && depth === 0) {
+        out.push(type.slice(at, i).trim());
+        at = i + 1;
+      }
+    }
+    return [...out, type.slice(at).trim()].filter(Boolean);
+  };
+  const deep = (type) =>
+    members(type).every((t) => {
+      const array = t.match(/^readonly\s+(\w+)\[\]$/);
+      if (array) return deep(array[1]);
+      return (
+        /^DeepReadonly<.*>$/s.test(t) ||
+        (aliases.has(t) && deep(aliases.get(t))) ||
+        ['null', 'boolean', 'number', 'string', 'undefined'].includes(t) ||
+        /^'[^']*'$/.test(t)
+      );
+    });
+  const storeModules = LAYERS.find(([layer]) => layer === 'stores')[1];
+  for (const mod of storeModules) {
+    const file = ls('src', /\.(ts|tsx)$/, true).find((f) => f.replace(/^src\//, '').replace(/\.tsx?$/, '') === mod);
+    for (const m of read(file).matchAll(/^export const (\w+): ReadonlySignal<(.*)> =/gm))
+      if (!deep(m[2]))
+        problems.push(
+          `${file}: \`${m[1]}\` hands out ReadonlySignal<${m[2]}>, writable inside: a store's export is DeepReadonly ` +
+            '(or an alias of one) all the way down',
+        );
   }
 }
 // effects: only store.ts makes one (`on`); comments are dropped first (they name effects). A signal's `.subscribe()`

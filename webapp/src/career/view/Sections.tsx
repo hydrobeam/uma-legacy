@@ -58,7 +58,7 @@ export function SchedButton({ r }: { r: CareerReport }) {
       class="btn"
       id="sched-open"
       title={ran ? `She runs ${ran} G1s: ${(r.g1_wins ?? 0).toFixed(1)} wins expected` : 'No G1s'}
-      onClick={() => openSched(schedOf(r) as unknown as Parameters<typeof openSched>[0])}
+      onClick={() => openSched(schedOf(r))}
     >
       Race schedule
     </button>

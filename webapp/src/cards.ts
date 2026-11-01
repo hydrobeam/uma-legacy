@@ -10,7 +10,7 @@ const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 const BORROWED = /\(borrowed\)$/; // a deck names its borrowed card with this suffix
 // a deck's card indices with the borrowed card last: the sixth slot, as in the game
 // card names (a deck's `cards`) -> their indices
-export const borLast = (cards: string[]): number[] =>
+export const borLast = (cards: readonly string[]): number[] =>
   cards.map((_, i) => i).sort((a, b) => Number(BORROWED.test(cards[a])) - Number(BORROWED.test(cards[b])));
 // a card's name split as the game shows it: {nm: the character (with the rarity, "Daitaku Helios SSR", unless `rar` is
 // false: the card list leaves it out, its frame and section heading show it), ti: the card's title ('' when none)}

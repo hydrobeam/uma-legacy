@@ -15,7 +15,12 @@ import { AffHeart, AffTable } from '../ui/AffTable.tsx';
 import type { AffinityLeg } from '../ui/AffTable.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
-import type { Lineage, ResultLoop } from './types.ts';
+import type { DeepReadonly } from '../store.ts';
+import type * as Report from './types.ts';
+
+/** a result's loop and its careers, as the store hands them (read-only) */
+type ResultLoop = DeepReadonly<Report.ResultLoop>;
+type Lineage = DeepReadonly<Report.Lineage>;
 
 // the loop shown at the last opening (`n` counts them: each opening starts at the best career), and whether it is open
 const shown = signal<{ n: number; loop: ResultLoop | null; open: boolean }>({ n: 0, loop: null, open: false });

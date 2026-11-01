@@ -11,6 +11,7 @@ import { YEARS, TABLE_PAIRS, gradeCode, shownP, slotOf, tableFigure, turnLabel, 
 import type { ScheduleCell, ScheduleRow } from '../agenda.ts';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
+import type { DeepReadonly } from '../store.ts';
 import { AgendaGrid, RaceFace, WhenBar } from './Agenda.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 import { Grade, UmaAv } from './Images.tsx';
@@ -19,7 +20,7 @@ import { Grade, UmaAv } from './Images.tsx';
 export interface SchedSpec {
   members: readonly { id: number; name: string; short?: string }[];
   outfits: readonly { outfits: readonly { id: number; label: string }[] }[];
-  schedule: readonly ScheduleRow[];
+  schedule: DeepReadonly<ScheduleRow[]>;
 }
 // the schedule on show, and its opening (each opening draws it afresh)
 const shown = signal<{ spec: SchedSpec | null; n: number }>({ spec: null, n: 0 });
@@ -192,7 +193,7 @@ function RaceCell({
   members,
   single,
 }: {
-  row: ScheduleRow;
+  row: DeepReadonly<ScheduleRow>;
   k: number;
   members: SchedSpec['members'];
   single: boolean;
@@ -283,7 +284,7 @@ function SchedTable(props: {
     </thead>
   );
   // the rows, a year row before each year's first
-  const rows = (list: readonly ScheduleRow[]) =>
+  const rows = (list: DeepReadonly<ScheduleRow[]>) =>
     list.flatMap((r, i) => [
       ...(i === 0 || list[i - 1].year !== r.year
         ? [
