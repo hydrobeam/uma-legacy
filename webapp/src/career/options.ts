@@ -21,12 +21,19 @@ import {
   BORROW_CHOICES,
 } from './job.js';
 import { must } from '../must.ts';
-/** @import { OptionRow, PlanOption, PlanReport } from './job.js' */
-/** @import { DeepReadonly } from '../store.ts' */
+import type { OptionRow, PairSearch, PlanOption, PlanReport } from './job.js';
+import type { DeepReadonly } from '../store.ts';
+
+/** a row of the table, as the answer store hands it (read-only) */
+type Row = DeepReadonly<OptionRow>;
+/** the plan's report, as the answer store hands it */
+type Plan = DeepReadonly<PlanReport>;
+/** the pair search's entry for one trainee */
+type PairFound = DeepReadonly<PairSearch['trainees'][number]>;
 // an option's role, in plain words: one of the two parents of today's estimate (the route the (i) popup walks through)
 // or its last run, else what her run does for it: the side her veteran's routes lift most often where she lowers it,
 // with that chance per run, or her own n/n as a side (`lifts_side`); a loop member says so first
-export const roleText = (o) => {
+export const roleText = (o: Row): string => {
   const n = settings.value.targets.length;
   if (o.role === 'plan') return 'Makes one of the two parents your fully looped parent needs';
   if (o.role === 'finish') return 'The last run: both her parents are already full veterans';
@@ -43,13 +50,12 @@ export const roleText = (o) => {
 // it of the pick's is shown as about equal to the pick. Display only: the pick stays the strict top score
 export const TIE_CAREERS = 0.25;
 // a career's parents, by legacy index, from its id (`kept::career_id`: "trainee:first,second:deck")
-const careerParents = (id) => id.split(':')[1].split(',').map(Number);
+const careerParents = (id: string): number[] => id.split(':')[1].split(',').map(Number);
 // the first step of today's estimate (`members`, A then B, as planval's `route_first_step` reads them): the first side
 // without a real full veteran of hers, her builder's career where she builds (`builder`) or else her own (`parents`);
 // with both sides real, C's run on those two. Its parents by legacy index, and what it is; null without a route, or
 // where it builds and names no builder (her Cont given)
-/** @type {(planReport: DeepReadonly<PlanReport>) => {what: string, parents: readonly number[]}|null} */
-function routeFirstStep(planReport) {
+function routeFirstStep(planReport: Plan): { what: string; parents: readonly number[] } | null {
   const members = planReport.members || [];
   if (members.length < 2 || planReport.v0 == null) return null;
   for (const m of members) {
@@ -63,18 +69,20 @@ function routeFirstStep(planReport) {
   return route && real.length === 2 ? { what: `${route.c}'s run`, parents: real.map((m) => +m[1]) } : null;
 }
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
-export const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
+export const netText = (x: number): string => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
 // an option's Saves per run: the plan's `score` (her net saving; null when the plan scored nothing), else `index`
-const scoreOf = (o) => o.score ?? o.index;
+const scoreOf = (o: Row): number | null | undefined => o.score ?? o.index;
 
 // Use this: her trainee, and the career's parents in the places left open (in the career's order); one batch: the page
 // reacts once, to the places and the choice together. places: the places the table's careers fill
-/** @param {DeepReadonly<OptionRow> & {alternative?: boolean}} r a row (a builder's other career has `alternative`)
- *  @param {{trainee: number|null, parents: readonly (string|null)[]}} places */
-export function takeCareer(r, places) {
+/** `r`: a row (a builder's other career has `alternative`) */
+export function takeCareer(
+  r: Row & { alternative?: boolean },
+  places: { trainee: number | null; parents: readonly (string | null)[] },
+): void {
   const parents = places.parents.slice();
   const unplaced = r.parents.filter((i) => !parents.includes(vets.value[i].id));
-  for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets.value[/** @type {number} */ (unplaced.shift())].id;
+  for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets.value[unplaced.shift() as number].id;
   batch(() => {
     // (a change of setup hands the places back to the planner: main.tsx initSettings)
     usePlaces(r.trainee.id, parents);
@@ -96,7 +104,7 @@ const OPT_SHOW = 8;
 // where no row the plan lists (every one a career you can run now) saves more than its own run (top Saves per run
 // below 0): the line above the table, with the pick's net; under None left today, where the estimate's first step
 // (`routeFirstStep`) takes a borrowed parent, it says so. Null otherwise
-function negativeTopText(planReport, pick) {
+function negativeTopText(planReport: Plan | null, pick: Row | null): string | null {
   if (!planReport || !pick) return null;
   const top = Math.max(...planReport.options.map((o) => scoreOf(o) ?? Number.NEGATIVE_INFINITY));
   if (!(Number.isFinite(top) && top < 0)) return null;
@@ -124,8 +132,8 @@ export function optionsTable() {
   const planReport = planState.state === 'done' ? planState.r : mineOnly && ref ? ref.result : null,
     places = planState.state !== 'done' && mineOnly && ref ? ref.places : plan;
   const pick = planReport?.options.find((o) => o.chosen) || null;
-  /** @type {DeepReadonly<OptionRow>[]} the plan's rows, or the search's careers (no plan fields) */
-  const list = planReport
+  // the plan's rows, or the search's careers (no plan fields)
+  const list: Row[] = planReport
     ? planReport.options.filter(
         (o, i) =>
           i < OPT_SHOW ||
@@ -151,8 +159,8 @@ export function optionsTable() {
   }
   const mine = planReport && on && !list.some((o) => keyOf(o) === keyOf(on)) ? on : null;
   if (mine) list.unshift(mine);
-  const nameOf = (o) => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
-  const notes = [];
+  const nameOf = (o: Row): string => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
+  const notes: string[] = [];
   const negative = negativeTopText(planReport, pick);
   if (negative) notes.push(negative);
   // the robustness check found the rule's pick changes with the tested variants (`robust`): every career it selects is in
@@ -190,8 +198,7 @@ export function optionsTable() {
 }
 // the pair search's recommendation as a row of the table (`pairs.recommendation.report`, with its pair-search score and
 // `pair_search`, so Use this keeps its deck): where it is not the plan's pick, once the check of this pick is complete
-/** @type {(planReport: DeepReadonly<PlanReport>|null) => DeepReadonly<OptionRow>|null} */
-const pairSearchRow = (planReport) => {
+const pairSearchRow = (planReport: Plan | null): Row | null => {
   const recommendation = planReport && checkDone(planReport)?.pairs?.recommendation;
   if (!recommendation?.report || recommendation.source === 'plan_pick') return null;
   const score = recommendation.score ?? null;
@@ -199,11 +206,11 @@ const pairSearchRow = (planReport) => {
 };
 // the careers the tested variants score highest where they disagree (`robust.contenders`, `pick_varies`): none until
 // every variant is in, where they agree, or where the check is of another pick
-const checkDone = (planReport) => {
+const checkDone = (planReport: Plan) => {
   const check = planReport.robust;
   return check && check.pending === 0 && check.plan === planReport.outcomes?.career ? check : null;
 };
-export const unsettled = (planReport) => {
+export const unsettled = (planReport: Plan): Set<string> => {
   const check = checkDone(planReport);
   return new Set(check?.pick_varies ? check.contenders : []);
 };
@@ -214,16 +221,15 @@ export const unsettled = (planReport) => {
 // (the solver's `recommendation` then), with the per-uma scenarios that reverse that (`varies_under`) named as a
 // sensitivity, else not better. Nothing until the check is complete, or where it is of another pick. nameOf: an
 // option's trainee as the table names her
-/** @type {(planReport: DeepReadonly<PlanReport>|null, nameOf: (o: DeepReadonly<PlanOption>) => string) => string[]} */
-function pairSearchNotes(planReport, nameOf) {
+function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanOption>) => string): string[] {
   if (!planReport) return [];
   const check = checkDone(planReport);
   if (!check?.pairs) return [];
-  const vetName = (i) => (vets.value[i] ? `#${i + 1} ${umaName(vets.value[i].chara)}` : `#${i + 1}`);
-  const shownOf = (found) => planReport.options.find((o) => keyOf(o) === found.shown);
+  const vetName = (i: number): string => (vets.value[i] ? `#${i + 1} ${umaName(vets.value[i].chara)}` : `#${i + 1}`);
+  const shownOf = (found: PairFound) => planReport.options.find((o) => keyOf(o) === found.shown);
   // (a bound on the pairs scored per uma, `pair_bound`: past it, her pairs with the highest all-target ceilings)
   const bound = check.pairs.pair_bound;
-  const truncatedText = (found) =>
+  const truncatedText = (found: PairFound): string =>
     found.pairs_truncated
       ? `; of her ${found.pairs_runnable} pairs only the ${found.pairs_scored} with the highest all-target ceilings were checked`
       : '';
@@ -284,7 +290,7 @@ function pairSearchNotes(planReport, nameOf) {
 }
 // a row's extra careers against the pick (the pick's Saves per run minus the row's): "≈0" within the tie tolerance, "–"
 // for the pick itself or where a score is missing
-export function extraText(r, pick, planReport) {
+export function extraText(r: Row, pick: Row | null, planReport: Plan | null): string {
   if (!planReport || !pick || r === pick || keyOf(r) === keyOf(pick)) return '–';
   const a = scoreOf(pick),
     b = scoreOf(r);
