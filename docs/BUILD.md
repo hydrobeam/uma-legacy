@@ -95,7 +95,7 @@ it stops; the `art` step instead says what it skipped.
 | `page` | `webapp/dist/` (see *The page*) |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
-| `browsers` | Playwright's browsers into `cache/ms-playwright` (once) |
+| `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
 | `test` / `testq` | the page (`page`, 1.4 s), then the browser suite on it, full or its fast tier (see *Tests*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it: the certificate is self-signed (`cache/tls/`), so a browser warns once |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |

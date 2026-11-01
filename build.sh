@@ -31,7 +31,7 @@ STEPS=(
   "runners|||each uma's running mini model as a sprite strip into webapp/img/run (webapp/chibi/chibi.py)"
   "lint|||every formatter and linter, warnings denied: Rust, shell, Python, the page's JS"
   "hooks|||use the tracked git hooks (.githooks: the pre-commit check); once per clone"
-  "browsers|||Playwright's Chromium and Firefox into cache/ms-playwright"
+  "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
   "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
   "testq|||the page, then the suite's fast tier (Chromium, the @quick tests, about 30 s): after each page change"
   "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (PORT=...; a self-signed certificate)"
@@ -256,10 +256,11 @@ step_art() {   # in the default build: runs what the game files in game/ allow, 
   if have "${RUNNER_FILES[@]}"; then step_runners
   else echo "runners: skipped, missing $(missing_of "${RUNNER_FILES[@]}") (the page shows a spinner)"; fi
 }
+# the revisions the pinned playwright package wants: a no-op (0.6 s) when they are in cache/ms-playwright, a download
+# after a Playwright bump (a check for any browser folder passed with the old revisions there)
 step_browsers() {
   npm_deps
-  ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* "$PLAYWRIGHT_BROWSERS_PATH"/firefox-* >/dev/null 2>&1 \
-    || (cd "$W" && npx playwright install chromium firefox)
+  (cd "$W" && npx --no-install playwright install chromium firefox)
 }
 # test and testq build the page first (1.4 s), so they test this tree's webapp/src, never a dist left from before
 step_test() {
