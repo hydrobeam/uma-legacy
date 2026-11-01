@@ -50,6 +50,9 @@
 use crate::Instant;
 use crate::career::decks::{CfStats, DeckMemo, DeckSearchKey};
 use crate::career::outcomes::CornerKey;
+/// model constants the native `loopopt constants` prints (constants.rs)
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use crate::career::plan::{CEIL_SHARE, EXACT_BUILDERS_TARGETS, LAM_DECAY};
 use crate::career::pool::Pool;
 use crate::career::reply::{CareerAnswer, CareerReply, FollowUp, PlanFollowUp, SearchWork};
 use crate::career::run::{
@@ -516,6 +519,7 @@ pub(crate) fn forget_kept_decks() {
     KEPT.with(|cell| cell.borrow_mut().decks.clear());
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn run_career(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> CareerReply {
     KEPT.with(|kept| run_career_in(data, skills, cards, job, &mut kept.borrow_mut()))
 }

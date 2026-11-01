@@ -255,11 +255,13 @@ impl Data {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn load(path: &str) -> Data {
     load_str(&std::fs::read_to_string(path).unwrap())
 }
 /// Win chance of an attempt = clamp(bp - pen[k], 0, 100)%, where the exporter sets bp = 110 - grade costs
 /// (distance + surface; A 0, B 10, C 20, D 30, E 40, F 60, G 90) and pen = streak penalties from data.json.
+#[cfg(test)]
 pub(crate) fn load_str(json: &str) -> Data {
     load_raw(serde_json::from_str(json).unwrap())
 }

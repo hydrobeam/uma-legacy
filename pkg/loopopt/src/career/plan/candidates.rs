@@ -322,7 +322,7 @@ mod proxy_tests {
 
 /// The fewest targets at which builders are searched exactly (`exact_builders`): the measured case is p16_t10's 10
 /// targets (8 uncertain); gm16_nu8's 8 uncertain of 8 keeps its proxies within the band
-const EXACT_BUILDERS_TARGETS: usize = 10;
+pub(crate) const EXACT_BUILDERS_TARGETS: usize = 10;
 
 fn stage_candidates(
     env: &mut Env,

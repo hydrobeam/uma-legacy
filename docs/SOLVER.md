@@ -27,7 +27,8 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 |---|---|
 | `src/lib.rs` | Crate wiring, deterministic hashing (`Fx`), the native/wasm clock and the CLI entry point (`cli_main`) |
 | `src/main.rs` | The `loopopt` binary: calls `cli_main` |
-| `src/cli.rs` | CLI job loading, event enrichment, kept-state files, dispatch and bound diagnostics |
+| `src/cli.rs` | The native command line (clap): job loading, event enrichment, kept-state files, dispatch, bound diagnostics, `pbtable` and `constants` |
+| `src/constants.rs` | `SolverConstants`: the model constants `loopopt constants` prints, read from the solver's own |
 | `src/web.rs` | The wasm entry points and their `cmd` requests |
 | `src/refusal.rs` | `Refusal`: every command's answer when it does not do the job (`{"error": ...}`) |
 | `src/request.rs` | What the page sends the worker (`Request`: a job by its `cmd`, read as `Command`) and `init`'s answer |
@@ -191,8 +192,12 @@ uv run export/add_pb.py target/release/loopopt data/global/data.json
 (cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/pal_U.json) > /tmp/result.json
 ```
 
-The CLI runs `"mode":"deck"` and `"mode":"career"` job files (below), and `loopopt pbtable data.json`, which prints
-the pairwise-ceiling table `export/add_pb.py` merges in. The wasm interface (`src/web.rs`) loads an era's data
+The CLI (`src/cli.rs`, clap; `loopopt --help`) runs `"mode":"deck"` and `"mode":"career"` job files (below); `loopopt
+pbtable data.json` prints the pairwise-ceiling table `export/add_pb.py` merges in, and `loopopt constants` the model
+constants a script reads, as one JSON object read from the solver's own constants (`src/constants.rs`): `chain_n`,
+`chain_a`, `chain_b`, `chain_stop_share` ([k, n]), `exact_builders_targets`, `ceil_share`, `lam_decay` and
+`default_star_mix` (a job's default `star_dist`). A file it cannot read or parse, or a job file without a known
+`mode`, is an error naming the file (exit 2). The wasm interface (`src/web.rs`) loads an era's data
 through its `init` export and runs `cmd` requests through `call`: `deck`, `career`, `state_out`, `state_in`.
 
 ### Schedule chart

@@ -2,7 +2,7 @@
 //!
 //! The affinity core below optimizes race schedules for a loop's members by expected legacy affinity; the
 //! skill-target model (`skills`), the deck search and the career planner (`career`) build on it. The CLI runs "deck"
-//! and "career" jobs and `pbtable`; the page runs deck and career jobs through `web`.
+//! and "career" jobs, `pbtable` and `constants`; the page runs deck and career jobs through `web`.
 //!
 //! Objective, normalized to 4 runs:
 //!     E = base + 3 * C * sum_{i<j} <P_i, P_j>
@@ -32,11 +32,6 @@
 //! See docs/SOLVER.md for the data format, job fields, validation and benchmarks.
 
 mod uma;
-use crate::cli::{
-    CliBoundReport, Jobs, apply_cli_events, pb_table_json, print_cli_job, restore_cli_career_state,
-    save_cli_career_state,
-};
-use crate::data::load;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 /// wasm32-unknown-unknown has no clock (Instant::now panics); timings read as zero there.
@@ -114,7 +109,10 @@ mod web;
 
 mod chart;
 mod checks;
+#[cfg(not(target_arch = "wasm32"))]
 mod cli;
+#[cfg(not(target_arch = "wasm32"))]
+mod constants;
 mod data;
 mod hex;
 mod loop_planner;
@@ -126,50 +124,8 @@ mod tests;
 #[cfg(test)]
 mod ts_gen;
 
-pub fn cli_main() {
-    let _report = CliBoundReport;
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() == 3 && args[1] == "pbtable" {
-        // ./build.sh pb merges the printed pairwise-ceiling table into data.json.
-        println!("{}", pb_table_json(&std::fs::read_to_string(&args[2]).unwrap()));
-        return;
-    }
-
-    // Validate the first job's mode before loading data or any auxiliary files.
-    let job_text = std::fs::read_to_string(&args[2]).unwrap();
-    let jobs: Jobs = serde_json::from_str(&job_text).unwrap();
-    if jobs.mode != "deck" && jobs.mode != "career" {
-        eprintln!("error: \"mode\" must be \"deck\" or \"career\"");
-        std::process::exit(2);
-    }
-    let data = load(&args[1]);
-    let mut job: serde_json::Value = serde_json::from_str(&job_text).unwrap();
-    let skills: skills::SkillsRaw =
-        serde_json::from_str(&std::fs::read_to_string(job["skills_file"].as_str().expect("skills_file")).unwrap())
-            .unwrap();
-    apply_cli_events(&mut job, &skills);
-    let cards: crate::deck::CardsRaw =
-        serde_json::from_str(&std::fs::read_to_string(job["cards_file"].as_str().expect("cards_file")).unwrap())
-            .unwrap();
-
-    if jobs.mode == "career" {
-        restore_cli_career_state(&data, &skills, &cards);
-    }
-
-    // Several career jobs share the first job's loaded skills/cards and the worker's caches.
-    // Keep the initial enrichment above, then reread and enrich every job (including the first).
-    // This preserves file-loading order and which errors occur before state restoration.
-    if jobs.mode == "career" && args.len() > 3 {
-        for path in &args[2..] {
-            let mut job: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-            apply_cli_events(&mut job, &skills);
-            print_cli_job("career", &data, &skills, &cards, &job);
-        }
-    } else {
-        print_cli_job(&jobs.mode, &data, &skills, &cards, &job);
-    }
-
-    if jobs.mode == "career" {
-        save_cli_career_state(&data, &skills, &cards);
-    }
+/// The native command line (`cli.rs`): `loopopt DATA JOB...`, `loopopt pbtable DATA`, `loopopt constants`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn cli_main() -> std::process::ExitCode {
+    cli::main()
 }

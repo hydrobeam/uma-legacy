@@ -58,6 +58,12 @@ pub(crate) mod report;
 mod robust;
 mod sequenced;
 mod sweep;
+/// model constants the native `loopopt constants` prints (constants.rs)
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use self::{
+    candidates::EXACT_BUILDERS_TARGETS,
+    cont::{CEIL_SHARE, LAM_DECAY},
+};
 pub(crate) use robust::{CheckKeep, ScoringPool, check_before_plan};
 pub(super) mod roll;
 mod rows;

@@ -416,6 +416,7 @@ impl TargetSources {
 }
 
 /// Merge a card-event cache (card_events.json) into a deck job: skill names -> (group, level) via the skills table.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: &CardEventCache) {
     apply_event_lists(job, &event_lists(skills, event_cache));
 }

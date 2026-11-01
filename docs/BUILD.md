@@ -38,6 +38,7 @@ Everything a build reads lives inside the repository folder, apart from the tool
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
 | `pkg/loopopt/Cargo.toml` | `ts-rs` (pinned exactly; MIT): derives the TypeScript type of every report and job struct, so the page's types are generated from the solver's (*Generated types*); its derives are dead code in the wasm (none of the declarations' text is in it) | `types`, `lint` |
+| `pkg/loopopt/Cargo.toml` | `clap` (pinned exactly, its derive API; MIT or Apache-2.0): the native `loopopt` command line's arguments, subcommands and errors; a native-only dependency, not in the wasm | `native`, `val`, `pb` |
 | `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome`, `typescript`; `preact` and `@preact/signals` (pinned; bundled into the page, for its views as they become components) | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
 | `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset; the page budgets' transfer estimate); the exporters use the standard library |
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |

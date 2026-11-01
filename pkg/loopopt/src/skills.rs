@@ -124,7 +124,7 @@ pub(crate) struct SkillJob {
     #[ts(as = "Option<_>", optional)]
     pub sizes: Vec<usize>,
 }
-const fn dstar() -> [f64; 3] {
+pub(crate) const fn dstar() -> [f64; 3] {
     [0.50, 0.45, 0.05]
 }
 
