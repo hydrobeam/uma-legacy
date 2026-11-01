@@ -6,7 +6,7 @@
 // "Preset N+1", N the presets now). Starting from a preset is load, edit the targets, save under a new name.
 import { $, $dialog, $input, el, backdropCloses } from './dom.js';
 import { PRESET, settings, setPresets, setTargets } from './settings.ts';
-import { tileEl } from './targets.js';
+import { tileEl } from './tile.ts';
 import { must } from './must.ts';
 
 const NAME_MAX = 40;

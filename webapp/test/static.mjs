@@ -18,7 +18,7 @@
 // - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
 //   untracked); anywhere else an effect would subscribe to whatever its body happens to read. A signal's `.subscribe()`
 //   counts as one, and so does importing or re-exporting `effect`.
-// - import cycles: the page's modules import one another without a cycle beyond the two known ones (KNOWN_CYCLES,
+// - import cycles: the page's modules import one another without a cycle beyond the known one (KNOWN_CYCLES,
 //   reported): in a cycle a module can run before a declaration it reads at load.
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
 //   `loadOrder`, on the bundles as samecode builds them).
@@ -179,11 +179,8 @@ for (const [entry, template] of Object.entries(PAGES)) {
 // ---------- import cycles: none but the known ones
 // Without a cycle, a module's imports run before it, so a move between modules can't put a declaration after a
 // load-time reader; within one it can (samecode checks the order of such reads in the bundles, `loadOrder`). The
-// cycles that stand today are reported until career.js and the targets panel are split; any other fails.
-const KNOWN_CYCLES = [
-  ['src/career.js', 'src/career/options.js', 'src/career/analysis.js'],
-  ['src/presets.js', 'src/targets.js'],
-];
+// cycle that stands today is reported until career.js is split; any other fails.
+const KNOWN_CYCLES = [['src/career.js', 'src/career/options.js', 'src/career/analysis.js']];
 const cycles = [];
 {
   // the static imports among the page's modules, over the three bundles (a dynamic import runs later: no cycle)
