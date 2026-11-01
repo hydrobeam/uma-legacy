@@ -246,6 +246,9 @@ export interface RouteMember {
   careers: number;
 }
 /** The plan's report (the solver's `next`, career/plan/output.rs), or its refusal (`error`). */
+/** A route's A, B and C steps: the expected careers of each (plan/output.rs writes the three; an infinite cost, a step
+ *  that cannot land, is written as null) */
+export type RouteCareers = [number | null, number | null, number | null];
 export interface PlanReport {
   error?: string;
   /** the plan's pick */
@@ -261,8 +264,7 @@ export interface PlanReport {
     a: string | null;
     b: string | null;
     c: string | null;
-    /** A's, B's and C's steps (plan/output.rs writes the three) */
-    careers: [number, number, number];
+    careers: RouteCareers;
     sides?: string[];
   } | null;
   /** the cheapest routes, cheapest first; `near`: within 2% of V's (assumed), so about as cheap */
@@ -270,7 +272,7 @@ export interface PlanReport {
     a: string | null;
     b: string | null;
     c: string | null;
-    careers: [number, number, number];
+    careers: RouteCareers;
     sides?: string[];
     value: number;
     near: boolean;

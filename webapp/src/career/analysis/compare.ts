@@ -121,8 +121,11 @@ export function savedWhere({
   if (sameTrio && trioNow && trioWithHer) {
     const careersNow = new Map(steps(trioNow));
     for (const [trainee, careers] of steps(trioWithHer)) {
-      const fell = (careersNow.get(trainee) ?? careers) - careers;
-      if (trainee && fell > gain) {
+      const before = careersNow.get(trainee);
+      // (a step not in today's route, or one that cannot land, its careers null: nothing fell)
+      if (!trainee || before == null || careers == null) continue;
+      const fell = before - careers;
+      if (fell > gain) {
         gain = fell;
         best = trainee;
       }

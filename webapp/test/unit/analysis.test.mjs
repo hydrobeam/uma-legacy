@@ -572,4 +572,16 @@ test('savedWhere: her as a parent of the next career; a later step named only on
     'Improves a later career; the next career is Next Uma.',
     'another side: another route, no step named',
   );
+  // a step that cannot land is written as null (an infinite cost, serde's null): no step is named for it
+  assert.equal(
+    savedWhere({
+      planNow: now,
+      planWithHer: { v0_plan: route(['x', 'y'], [10, null, 5]) },
+      pickA: pick([0, 1]),
+      samePick: true,
+      herIndex: 2,
+    }),
+    'Improves a later career; the next career stays Next Uma.',
+    "a null step's careers: nothing fell",
+  );
 });
