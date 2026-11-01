@@ -8,6 +8,7 @@ import type { Card } from '../data.ts';
 import { GRADE_LETTER } from '../grades.ts';
 import type { Grade as GradeCode } from '../grades.ts';
 import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../images.ts';
+import { cx } from './variants.ts';
 
 interface UmaAvProps {
   uma: number | null;
@@ -86,15 +87,24 @@ export function CardAv({ c, size, titled = true }: { c: Card | null; size: numbe
 }
 /** a scenario's logo (the game's title art, img/scen/{id}, drawn whole inside its box), else, without it or when it
  *  fails, a badge with its name on a light shade of its colour (dark text on the light tint, in either theme) */
-export function ScenLogo({ sc, title }: { sc: { id: number; name: string; tint: string }; title?: string }) {
+export function ScenLogo({
+  sc,
+  title,
+  cls,
+}: {
+  sc: { id: number; name: string; tint: string };
+  title?: string;
+  /** its box's size, where its place sets it */
+  cls?: string;
+}) {
   const src = srcFor('scen', sc.id),
     [failed, setFailed] = useState(false);
   return src && !failed ? (
-    <span class="slogo art" aria-hidden="true" title={title}>
+    <span class={cx('slogo art', cls)} aria-hidden="true" title={title}>
       <img alt="" src={src} onError={() => setFailed(true)} />
     </span>
   ) : (
-    <span class="slogo" aria-hidden="true" title={title}>
+    <span class={cx('slogo', cls)} aria-hidden="true" title={title}>
       <b style={{ background: sc.tint, color: '#18202e' }}>{sc.name}</b>
     </span>
   );

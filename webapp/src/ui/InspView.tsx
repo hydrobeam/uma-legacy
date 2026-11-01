@@ -7,6 +7,7 @@ import { parentsPlaced } from '../veterans/store.ts';
 import type { NodeRecord, NodeRef, ParentPlace } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
 import { Sparks } from './Sparks.tsx';
+import { GameBar } from './GameBar.tsx';
 
 interface InspViewProps {
   /** the veteran shown */
@@ -47,7 +48,7 @@ export function InspView({
 }: InspViewProps) {
   return (
     <div class="udinsp">
-      {header && <div class="udhdr">Sparks</div>}
+      {header && <GameBar as="div">Sparks</GameBar>}
       <div class={`udlin${parents.length ? '' : ' solo'}`}>
         <div class={`udrow me${meClass ? ` ${meClass}` : ''}`}>
           <UmaAv key={`${nd.chara}:${nd.outfit}`} uma={nd.chara || 0} outfit={nd.outfit} size={64} cls="udface" />

@@ -6,6 +6,7 @@ import { must } from '../must.ts';
 import { SkillIcon } from './Images.tsx';
 import { PresetDialogs, openPresets } from './Presets.tsx';
 import { TargetTile, groupKeys } from './TargetTile.tsx';
+import { Button } from './Button.tsx';
 
 // Add a target: typing two characters or more lists the skills that match. Enter adds the first; the arrows walk the
 // list (Up from the first goes back to the box); Escape or a click outside the box and the list closes it.
@@ -141,9 +142,9 @@ export function TargetSkills() {
     <>
       <div class="row between">
         <h2 id="h-skills">Target skills</h2>
-        <button class="btn" id="t-preset" type="button" aria-haspopup="dialog" onClick={openPresets}>
+        <Button id="t-preset" aria-haspopup="dialog" onClick={openPresets}>
           Presets
-        </button>
+        </Button>
       </div>
       <TargetAdder input={addBox} />
       <TargetList addBox={addBox} />

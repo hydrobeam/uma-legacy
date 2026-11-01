@@ -31,6 +31,8 @@ import type { Member } from './members.ts';
 import { draw, loopDrawn } from './state.ts';
 import type * as Report from './types.ts';
 import type { DeepReadonly } from '../store.ts';
+import { Button } from '../ui/Button.tsx';
+import { GameBar } from '../ui/GameBar.tsx';
 
 // the result on show, as the store hands it (read-only)
 type LoopResult = DeepReadonly<Report.LoopResult>;
@@ -255,7 +257,9 @@ function Decks({ members, shared }: { members: readonly Member[]; shared: Result
         }
       />
       {/* a label where the other decks start: each row below is another uma's deck, by its changes to the deck above */}
-      <p class="swhead">Swaps</p>
+      <GameBar as="p" class="mt-1 min-w-2/5 justify-self-start">
+        Swaps
+      </GameBar>
       {[...swaps].map(([key, { deck, who }]) => (
         <SwapRow key={key} shared={shared} deck={deck} who={who} />
       ))}
@@ -480,9 +484,8 @@ function Actions({
   return (
     <div class="row lacts">
       {landed && (
-        <button
-          type="button"
-          class="btn sbtn"
+        <Button
+          class="justify-self-start"
           aria-haspopup="dialog"
           onClick={() =>
             openOdds({
@@ -495,15 +498,15 @@ function Actions({
           }
         >
           Odds
-        </button>
+        </Button>
       )}
-      <button type="button" class="btn sbtn" onClick={() => openSched({ members, schedule: loop.schedule })}>
+      <Button class="justify-self-start" onClick={() => openSched({ members, schedule: loop.schedule })}>
         Race schedule
-      </button>
+      </Button>
       {loop.detail && (
-        <button type="button" class="btn sbtn" onClick={() => openWhy(loop)}>
+        <Button class="justify-self-start" onClick={() => openWhy(loop)}>
           Affinity
-        </button>
+        </Button>
       )}
     </div>
   );

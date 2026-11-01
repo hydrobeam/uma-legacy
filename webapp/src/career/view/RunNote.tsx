@@ -6,6 +6,7 @@ import { signal } from '@preact/signals';
 import { Runner } from '../../ui/Images.tsx';
 import { planCaveat } from '../../proofs.ts';
 import { answer, runView } from '../state.ts';
+import { Button } from '../../ui/Button.tsx';
 
 const clock = signal(0);
 /** the status line's clock: now (the run machine calls it each second while a job runs, and after each change) */
@@ -56,14 +57,9 @@ export function RunNote() {
         return (
           <Fragment key={a.label}>
             {' '}
-            <button
-              type="button"
-              class={last ? 'btn primary' : 'btn'}
-              id={last ? 'run-act' : undefined}
-              onClick={a.run}
-            >
+            <Button variant={last ? 'primary' : 'plain'} id={last ? 'run-act' : undefined} onClick={a.run}>
               {a.label}
-            </button>
+            </Button>
           </Fragment>
         );
       })}

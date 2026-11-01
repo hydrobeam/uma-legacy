@@ -153,9 +153,6 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; background: var(--bg); }
 .seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-weight: 500; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
-.btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
-.btn:hover { border-color: var(--accent); }
-.btn:active { background: var(--accent-soft); border-color: var(--accent); }
 input[type="search"], input[type="text"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"], input[type="text"] { width: 100%; }
 /* the uma picker: a grid of portrait tiles */
@@ -191,17 +188,11 @@ input[type="search"], input[type="text"] { width: 100%; }
 .scenpick.five { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* five tiles: 2 + 2 + one centred, all the same size */
 .scenpick.five .stile { grid-column: span 2; }
 .scenpick.five .stile:last-child { grid-column: 2 / span 2; }
-.scenbtn { display: inline-grid; place-items: center; border: 1px solid var(--line); background: linear-gradient(var(--panel), var(--bg)); color: var(--ink);
-  border-radius: 10px; padding: 4px 10px; box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06), 0 2px 6px rgba(24, 32, 46, 0.12); transition: box-shadow .12s, border-color .12s, transform .12s; }
-.scenbtn:hover { border-color: var(--accent); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06), 0 4px 12px rgba(24, 32, 46, 0.18); transform: translateY(-1px); }
-.scenbtn:active { transform: translateY(0); box-shadow: inset 0 1px 3px rgba(24, 32, 46, 0.2); }
-.scenbtn[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); }
-@media (prefers-reduced-motion: reduce) { .scenbtn { transition: none; } .scenbtn:hover { transform: none; } }
+
 .slogo { display: grid; place-items: center; flex: none; }
 .slogo.art { display: block; position: relative; }
 .slogo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 .slogo b { font-weight: 700; font-size: 0.8rem; line-height: 1.15; text-align: center; color: var(--ink); border-radius: 6px; padding: 3px 7px; }
-.scenbtn .slogo { width: 92px; height: 42px; }
 .scenpick { container-type: inline-size; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); padding: 6px; }
 .stile { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; text-align: center; border: 1px solid var(--line); background: var(--panel);
@@ -312,7 +303,6 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .mem .memb:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .mem.off .av { filter: grayscale(1); opacity: 0.5; }
 .mem.off .nm { color: var(--muted); }
-.sbtn { justify-self: start; font-weight: 600; color: var(--accent); }
 .stabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .stab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px;
   padding: 3px 12px 3px 3px; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
@@ -320,7 +310,6 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .stab[aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .sview { display: grid; gap: 10px; }
 .lacts { gap: 8px; }
-#sched-dlg, #wins-dlg { width: min(1480px, calc(100vw - 24px)); }   /* the same calendar, the same size */
 .agenda { --ag-h: max(420px, calc(100dvh - 250px)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 900px) { .agenda { grid-template-columns: minmax(0, 1fr); } .agenda .ag-pre { display: none; } }   /* stacked: no blank Junior half-year */
 .ag-year { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
@@ -346,14 +335,8 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 /* the race's name: up to two lines before it is cut */
 .ag-nm { flex: none; font-size: 0.64rem; font-weight: 700; line-height: 1.15; text-align: center; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .ag-goal { position: absolute; top: 4px; right: 4px; font-size: 0.64rem; font-weight: 700; text-transform: uppercase; color: var(--panel); background: var(--gold); border-radius: 999px; padding: 0 5px; }
-dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 0; width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
-dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
-.dlg { display: grid; gap: 14px; padding: 18px; overflow: auto; max-height: calc(100vh - 50px); }
-.dlg h3 { margin: 0; font-size: 1.15rem; font-weight: 900; text-wrap: balance; }
 .dlg h4 { margin: 0; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .dlg p { margin: 0; max-width: 75ch; }
-/* the title and Close stay at the top of a tall dialog (the race schedule is three screens on a phone) */
-.dlg > .dhead { position: sticky; top: -18px; z-index: 6; margin: -18px -18px 0; padding: 12px 18px 10px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: nowrap; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .tbl th, .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
 .tbl th:first-child, .tbl td:first-child { text-align: left; }
@@ -469,7 +452,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .dtitle, .deck.swap .swrow { padding-right: 32px; }   /* room for the (i) */
 .dwho { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 4px; }
 .dwho .av { border-radius: 8px; }
-.swhead { margin: 2px 0 -6px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .swho { display: inline-flex; gap: 6px; }
 .swho .av { border-radius: 12px; }   /* square portraits, as in the uma picker */
 /* phone: the nested paddings (body, loop, deck) left 39 px per card and a 560 px table in a 306 px box */
@@ -487,7 +469,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   .sched th.mh .av { margin: 0 auto; } }
 /* phone: buttons, selects and search boxes at least 44 px high (touch); the portraits and cards are larger already */
 @media (max-width: 620px) {
-  .btn, .seg button, .stab, .scenbtn, select, input[type="search"], input[type="text"], .sugg button, .sortmenu button, .x { min-height: 44px; }
+  .seg button, .stab, select, input[type="search"], input[type="text"], .sugg button, .sortmenu button, .x { min-height: 44px; }
   .tgt .x { width: 44px; height: 44px; }
   .mem .memb { min-height: 44px; }
 }
@@ -551,10 +533,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rbbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; border-block: 3px solid var(--ink); padding: 12px 2px; }
 .setdlg .panel { border: 0; padding: 0; }
 .setdlg .panel > .row.between > h2 { display: none; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 700; }
-.btn.primary:hover { filter: brightness(1.12); }
-.btn.big { padding: 9px 18px; font-size: 0.95rem; }
-.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rbmain { display: grid; gap: 10px; min-width: 0; outline: none; }
 .rbtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .rbtitle h2 { font-size: 1.55rem; font-weight: 900; letter-spacing: -0.01em; text-transform: none; color: var(--ink); }
@@ -608,8 +586,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the career under the pedigree: the loop planner's odds line and deck, the targets, the schedule button */
 .rbsec { margin-top: 22px; min-width: 0; display: grid; gap: 8px; justify-items: start; }
 .rbsec > * { justify-self: stretch; }
-.rbsec > .btn { justify-self: start; }
-.rbsec > h3 { margin: 0; font-size: 1.1rem; font-weight: 900; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
 #results > .deck { margin-top: 18px; }
 #results > .lhead { margin-top: 12px; }
 .tc { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
@@ -663,18 +639,12 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .vptw { font-size: 0.8rem; font-weight: 700; color: var(--out); }
 .askrow { gap: 8px; }
 /* your veterans: a grid of small trees */
-.filebtn { position: relative; cursor: pointer; }
-.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
-.filebtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 10px; align-items: stretch; }
 .vet { border: 1px solid var(--line); border-radius: var(--r); padding: 10px; display: grid; gap: 8px; min-width: 0; }
 .vet.bor { box-shadow: inset 4px 0 0 var(--gold); }
-.btn.sm { padding: 2px 10px; font-size: 0.8rem; }
 .vpgh { grid-column: 1 / -1; margin: 8px 0 0; font-size: 0.9rem; color: var(--gm-ink); }
-.vdel { margin-left: auto; }
 .seg.sm button { padding: 2px 10px; font-size: 0.8rem; }
 .vhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.vwins { font-size: 0.75rem; padding: 2px 8px; }
 /* a spark: click cycles its stars; the corner x (on hover or keyboard focus) removes it */
 .vsparks { display: flex; flex-wrap: wrap; gap: 4px; }
 .vsk { position: relative; display: inline-flex; }
@@ -718,9 +688,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 @media (hover: none) { .ag-add span { opacity: 0.35; } }
 .wmenu { width: max-content; min-width: 180px; padding: 8px; gap: 4px; }
 .wmenu .hint { font-size: 0.78rem; }
-.wpick { display: grid; justify-items: start; text-align: left; gap: 0; width: 100%; }
-.wpick small { color: var(--muted); font-weight: 500; font-size: 0.74rem; }
-#wins-dlg .dhead .num { margin-left: auto; margin-right: 12px; white-space: nowrap; }
 /* a career as portraits: trainee, then her two parents */
 .cfaces { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .cface { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 0.88rem; }
@@ -761,18 +728,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   --gm-hero: linear-gradient(160deg, #2c323c 0%, #252a31 60%, #1f2328 100%);
   --gm-star0: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%232a2f36' stroke='%236f6a62' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-/* green header bars: the card's title, "Sparks" / "Race record", and the career page's section titles */
-#simulation > h3, .udhdr, .game .rbsec > h3, .lp .swhead { position: relative; margin: 0; border: 0; color: #fff; font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 900;
-  font-size: 1.05rem; line-height: 1.3; letter-spacing: .01em; text-shadow: var(--gm-outline); background-color: var(--gm-green);
-  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .12) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
-  background-size: 28% 100%, 100% 100%; background-repeat: no-repeat; }
-#simulation > h3 { text-align: center; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; font-size: 1.2rem; }
-.rb #simulation > h3 { clip-path: none; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; }
-.rb #simulation > h3::after { content: none; }
-.udhdr, .game .rbsec > h3, .lp .swhead { padding: 3px 40px 3px 12px; clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%); border-radius: 4px 0 0 4px; }
-.udhdr::after, .game .rbsec > h3::after, .lp .swhead::after { content: ''; position: absolute; top: 0; bottom: 0; right: 13px; width: 6px; background: var(--gm-green2); transform: skewX(-14deg); box-shadow: -9px 0 0 var(--gm-green2); opacity: .8; }
 #simulation { gap: 12px; }
-#simulation > h3, #simulation > .ud { width: 100%; max-width: 640px; box-sizing: border-box; }
+#simulation > .ud { width: 100%; max-width: 640px; box-sizing: border-box; }
 /* the card */
 .ud { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 1px solid var(--gm-edge); border-top: 0;
   border-radius: 0 0 14px 14px; margin-top: -12px; padding: 0 0 12px; display: grid; gap: 10px; min-width: 0; box-shadow: 0 2px 8px var(--gm-shadow); }
@@ -874,14 +831,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .rbtitle h2 { color: var(--gm-ink); display: flex; align-items: center; gap: 10px; }
 .game .rbtitle h2::before { content: ''; width: 8px; height: 1.1em; border-radius: 4px; background: linear-gradient(var(--gm-bright), var(--gm-bright2)); box-shadow: inset 0 -2px 0 var(--gm-green); }
 .game .hint, .game .sub, .game .tl { color: var(--gm-ink2); }
-.game .btn { font-family: inherit; font-weight: 700; color: var(--gm-ink); background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low));
-  border: 1px solid var(--gm-edge); border-radius: 999px; padding: 6px 16px; box-shadow: inset 0 -3px 0 var(--gm-tab-edge); }
-.game .btn:hover { border-color: var(--gm-green); }
-.game .btn:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 var(--gm-tab-edge); }
-.game .btn.primary { color: var(--gm-bright-ink); text-shadow: var(--gm-outline); background-color: var(--gm-bright); background-image: linear-gradient(#b4ec52, var(--gm-bright2));
-  border-color: #5aa300; box-shadow: inset 0 -3px 0 #5aa300; }
-.game .btn:disabled { opacity: 1; color: var(--gm-off-ink); background: var(--gm-off); box-shadow: none; }
-.game .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .game .rbbar { border-block: 0; background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; padding: 12px 14px; box-shadow: 0 2px 8px var(--gm-shadow); }
 .game .seg button[aria-pressed="true"] { color: #fff; background-color: var(--gm-bright2); text-shadow: var(--gm-outline); }
 .rb .pn { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); padding: 10px 12px; }
@@ -889,7 +838,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .pn .pnh { color: var(--gm-ink); }
 .rb .pn.trainee .tnm .nm, .rb .pn .nm { color: var(--gm-ink); }
 .game .deck, .rb .rbsec .tc, .rb .vet { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); }
-.game .rbsec > h3 { justify-self: stretch; }
 .rb .cartab { border-collapse: separate; border-spacing: 0 4px; }
 .rb .cartab th, .rb .cartab td { color: var(--gm-ink); }
 .rb .cartab thead th { color: var(--gm-ink2); font-weight: 700; }
@@ -923,12 +871,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .udsk:hover { filter: brightness(1.04); }
 .udsk .udskn { font-weight: 700; }
 /* the game-style popup (skill details) */
-.gmdlg { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 0; border-radius: 14px; padding: 0; width: min(420px, calc(100vw - 32px));
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .35); overflow: hidden; }
-.gmdlg::backdrop { background: rgba(20, 20, 30, .45); }
-.gmdhdr { margin: 0; text-align: center; color: #fff; font-weight: 900; font-size: 1.15rem; padding: 8px 12px; text-shadow: var(--gm-outline);
-  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, .14) 0 6px, transparent 6px 12px) left / 28% 100% no-repeat, linear-gradient(var(--gm-green), var(--gm-green2)); background-color: var(--gm-green); }
-.gmdbody { display: grid; gap: 10px; padding: 14px 16px; background: var(--gm-pane); }
 .gmdbody .udsk { cursor: default; }
 .gmdstat { margin: 0; font-weight: 700; color: var(--gm-ink2); } .gmdstat.on { color: var(--gm-ink); }
 .gmdsub { font-weight: 900; border-bottom: 2px solid var(--gm-line); padding-bottom: 2px; }
@@ -936,9 +878,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .gmdlist li, .gmdlist.two > div { display: flex; justify-content: space-between; gap: 10px; background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 8px; padding: 5px 10px; font-weight: 700; }
 .gmdlist.two { grid-template-columns: 1fr 1fr; }
 .gmdlist b { font-variant-numeric: tabular-nums; }
-.gmdfoot { display: flex; justify-content: center; padding: 12px; background: var(--gm-panel); }
-.gmclose { min-width: 160px; font-family: inherit; font-weight: 700; font-size: 1.05rem; color: var(--gm-ink); border-radius: 12px; padding: 8px 20px;
-  background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low)); border: 1px solid var(--gm-edge); box-shadow: inset 0 -4px 0 var(--gm-tab-edge); }
 /* Career Info */
 .udsub { font-weight: 900; font-size: 0.98rem; display: flex; align-items: center; gap: 8px; }
 .udsub::after { content: ''; flex: 1; height: 1px; background: var(--gm-line); }
@@ -962,7 +901,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .udrecl { font-size: 0.8rem; background: var(--gm-pane); border-radius: 999px; padding: 1px 10px; }
 .udrec .udstat { border: 0; background: none; padding: 0; }
 .udact { gap: 8px; flex-wrap: wrap; }
-.game .btn.udmore { margin-right: auto; }
 /* the main pedigree as the game's legacy boxes: Legacy 1 blue, Legacy 2 pink */
 .rb .pf { position: relative; border: 3px solid #3ab0f5; border-radius: 14px; background: color-mix(in srgb, #3ab0f5 7%, var(--gm-panel)); padding: 30px 10px 10px; }
 .rb .pk > .pf + .pf { border-color: #ff7ab3; background: color-mix(in srgb, #ff7ab3 7%, var(--gm-panel)); }
@@ -977,7 +915,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 #sim-top { container-type: inline-size; min-width: 0; }
 @container (min-width: 900px) {
   #simulation { grid-template-columns: minmax(0, 640px) minmax(0, 1fr); column-gap: 20px; align-items: start; }
-  #simulation > h3 { grid-column: 1; grid-row: 1; }
   #simulation > .ud { grid-column: 1; grid-row: 2; }
   #simulation > .simcol { grid-column: 2; grid-row: 1 / span 2; }
   .simcol .simodds { grid-template-columns: minmax(0, 1fr); }
@@ -987,27 +924,13 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 
 /* the Inspiration view inside the tree's node popups: the card's bars and stars without the card's frame */
 .ud.udbare { border: 0; box-shadow: none; margin: 0; padding: 0; background: none; border-radius: 0; display: block; }
-.nodedlg { width: min(600px, calc(100vw - 32px)); }
 .udinsp { display: grid; gap: 8px; }
 .udlin.solo::before { content: none; }
 
 .rb .pn.trainee { justify-items: center; }
 .rb .tdeck { justify-content: center; gap: 8px; margin-top: 2px; }
 /* the deck's popup: its six cards in two rows of three */
-.deckdlg { width: min(420px, calc(100vw - 24px)); }
 .deckdlg .deck .dcards { grid-template-columns: repeat(3, minmax(0, 104px)); justify-content: center; }
-/* a button at the right end of a section's bar (the deck's Race schedule) */
-.rbsec > h3 { display: flex; align-items: center; }
-/* the career page's dialogs, as the game's: a green title bar, a pale body, pill buttons */
-:root.game dialog:not(.gmdlg) { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-pane); border: 0; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
-:root.game dialog:not(.gmdlg) > .dlg > .dhead { top: -18px; background-color: var(--gm-green); border: 0;
-  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .14) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
-  background-size: 28% 100%, 100% 100%; background-repeat: no-repeat; }
-:root.game dialog:not(.gmdlg) > .dlg > .dhead h3 { color: #fff; text-shadow: var(--gm-outline); flex: 1; text-align: center; }
-/* (the button's face is the game's sprite, set with the other buttons below; a CSS pill here showed behind the sprite's
-   angled end, a second button behind the first) */
-:root.game dialog:not(.gmdlg) .btn { font-family: inherit; font-weight: 700; color: var(--gm-ink); }
-:root.game dialog:not(.gmdlg) .btn.primary { color: #fff; text-shadow: var(--gm-outline); }
 :root.game .cpop, :root.game #add-pop { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 2px solid var(--gm-bright2); border-radius: 12px; box-shadow: 0 6px 18px var(--gm-shadow); }
 /* tooltips: the game's balloon */
 .gmtip { position: fixed; z-index: 1000; max-width: 300px; pointer-events: none; font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; font-size: 0.82rem; line-height: 1.3;
@@ -1034,7 +957,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the card's header: Compare, Roll and Add between her portrait and her name */
 .udtop { grid-template-columns: auto minmax(0, 1fr) auto; }
 .udtop > .row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-content: center; }
-.udtop > .row .btn { font-size: 0.82rem; padding: 5px 12px; }
 @media (max-width: 520px) { .udtop { grid-template-columns: auto minmax(0, 1fr); } .udtop > .row { grid-column: 1 / -1; grid-row: 2; } }
 
 /* the tree as the game's legacy display: portraits only, details in the node popup */
@@ -1059,12 +981,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .pn.parent .ptile .tnm, .rb .pn.trainee .ptile .tnm { justify-items: start; }
 @media (min-width: 760px) { .rb .pn.trainee .ptile { grid-template-columns: 1fr; justify-items: center; text-align: center; } .rb .pn.trainee .ptile .tnm { justify-items: center; } }
 .rb .pn.gp { padding: 4px 6px 6px; }
-.nodedlg .gmdbody { gap: 12px; }
 .nodedlg .twho { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .nodedlg .nm { font-weight: 900; font-size: 1.05rem; }
-.nodedlg .btn { font-family: inherit; font-weight: 700; border-radius: 999px; color: var(--gm-ink); background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low)); border: 1px solid var(--gm-edge); box-shadow: inset 0 -3px 0 var(--gm-tab-edge); padding: 6px 16px; }
-.nodedlg .btn.primary { color: #fff; text-shadow: var(--gm-outline); background-color: var(--gm-bright); background-image: linear-gradient(#b4ec52, var(--gm-bright2)); border-color: #5aa300; box-shadow: inset 0 -3px 0 #5aa300; }
-.gmdlg { position: fixed; }
 @media (min-width: 1180px) {
   .rb .pf > .pn { min-width: 0; flex: 1 1 0; }
   .rb .pn.gp { min-width: 0; }
@@ -1073,7 +991,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the card's header: her odds (a click opens every count) above Compare, Roll and Add */
 .udmid { display: grid; gap: 8px; justify-items: center; align-content: center; min-width: 0; }
 .udmid > .row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.udmid > .row .btn { font-size: 0.82rem; padding: 5px 12px; }
 .udodds { all: unset; box-sizing: border-box; cursor: pointer; display: grid; justify-items: center; line-height: 1.15; padding: 4px 14px; border-radius: 12px;
   color: var(--gm-ink); background: var(--gm-cell); border: 1px solid var(--gm-line); box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
 .udodds b { font-size: 1.3rem; font-weight: 900; } .udodds > span:not(.sub) { font-size: 0.8rem; font-weight: 700; } .udodds .sub { font-size: 0.74rem; color: var(--gm-ink2); }
@@ -1113,12 +1030,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .simresult .nextdeck .deck .dcards { grid-template-columns: repeat(3, minmax(0, 72px)); }
 .simresult .runnote { margin: 0; }
 
-/* the career page's dialogs: one white body; green bars whose stripes fade out at the left, as the game's */
-:root.game dialog:not(.gmdlg) { background: var(--gm-panel); }
-:root.game dialog:not(.gmdlg) .dlg { background: var(--gm-panel); }
-#simulation > h3, .udhdr, .game .rbsec > h3, .gmdhdr, :root.game dialog:not(.gmdlg) > .dlg > .dhead {
-  background-image: linear-gradient(90deg, transparent 0, var(--gm-green) 32%), repeating-linear-gradient(45deg, rgba(255, 255, 255, .16) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
-  background-size: 100% 100%; background-repeat: no-repeat; background-color: var(--gm-green); }
 /* Career Info's support cards: buttons opening the card panel, without the deck box around them */
 .udcards.deck { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; background: none; box-shadow: none; border-radius: 0; }
 .udcard.dc { all: unset; position: relative; line-height: 0; border-radius: 6px; cursor: pointer; }
@@ -1133,10 +1044,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .alts > h3 > .savewhy::before, .rb .rtgt > h3 > .savewhy::before { content: ''; position: absolute; inset: -13px; }   /* a 44 px tap area */
 .savebody p { margin: 0; line-height: 1.45; }
 .savebody .oloop { color: var(--gm-ink); }   /* the route: body text like the rest of the popup */
-.gmdlg { width: min(520px, calc(100vw - 32px)); }
-.gmdlg[open] { display: flex; flex-direction: column; }   /* header, body, footer within the dialog's max-height: the body scrolls in what
-   the footer leaves, however many rows its buttons wrap to (a fixed 100vh - 160px cut a wrapped footer's last row off) */
-.gmdlg > * { flex: none; } .gmdlg > .gmdbody { flex: 1 1 auto; min-height: 0; overflow: auto; }
 
 .simhdr { font-weight: 900; font-size: 0.92rem; color: #fff; text-shadow: var(--gm-outline); padding: 3px 26px 3px 10px; margin: -10px -10px 0; border-radius: 12px 12px 0 0;
   background-color: var(--gm-green); background-image: linear-gradient(90deg, transparent 0, var(--gm-green) 32%), repeating-linear-gradient(45deg, rgba(255, 255, 255, .16) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2)); }
@@ -1219,18 +1126,18 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 
 /* the game's Enhance menu buttons: Umas, Support cards (square), Veteran Umamusume (wide); the art from the game, the label
    on its white lower band with a ▶ */
-.game .btn.enh { position: relative; display: inline-grid; padding: 0; width: 125px; height: 100px; border: 0; border-radius: 12px; overflow: visible; cursor: pointer;
+.game .enh { position: relative; display: inline-grid; padding: 0; width: 125px; height: 100px; border: 0; border-radius: 12px; overflow: visible; cursor: pointer;
   background: none; box-shadow: none; font-family: "Zen Maru Gothic", var(--font-ui); }
 /* the texture carries the game's frame and white band, the art spilling over its top edge: a drop shadow follows that shape */
-.game .btn.enh .enhimg { position: absolute; inset: 0; background: center / 100% 100% no-repeat; filter: drop-shadow(0 2px 3px var(--gm-shadow)); }
+.game .enh .enhimg { position: absolute; inset: 0; background: center / 100% 100% no-repeat; filter: drop-shadow(0 2px 3px var(--gm-shadow)); }
 #o-umas .enhimg { background-image: var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea)); }
 #o-cards .enhimg { background-image: var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea)); }
-.game .btn.enh .enhl { position: absolute; left: 6px; right: 20px; bottom: 8px; text-align: center; white-space: nowrap; font-weight: 900; font-size: 0.84rem; line-height: 1.15; color: #5b5470; }
-.game .btn.enh .enhl::after { content: ''; position: absolute; right: -13px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-left: 8px solid #5b5470; border-right: 0; }
-.game .btn.enh:hover .enhimg { filter: brightness(1.06) drop-shadow(0 0 4px var(--gm-bright2)); }
-.game .btn.enh:active { transform: translateY(2px); }
-.game .btn.enh:focus-visible { outline: 3px solid var(--gm-bright2); outline-offset: 2px; }
-.game .btn.enh.wide { width: 262px; height: 62px; }
+.game .enh .enhl { position: absolute; left: 6px; right: 20px; bottom: 8px; text-align: center; white-space: nowrap; font-weight: 900; font-size: 0.84rem; line-height: 1.15; color: #5b5470; }
+.game .enh .enhl::after { content: ''; position: absolute; right: -13px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-left: 8px solid #5b5470; border-right: 0; }
+.game .enh:hover .enhimg { filter: brightness(1.06) drop-shadow(0 0 4px var(--gm-bright2)); }
+.game .enh:active { transform: translateY(2px); }
+.game .enh:focus-visible { outline: 3px solid var(--gm-bright2); outline-offset: 2px; }
+.game .enh.wide { width: 262px; height: 62px; }
 #v-toggle .enhimg { background-image: var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea)); }
 #v-toggle .enhl { left: 44%; right: 30px; bottom: auto; top: 50%; transform: translateY(-50%); white-space: normal; font-size: 0.86rem; }
 #v-toggle .enhl > span { display: block; }
@@ -1249,18 +1156,16 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 10px; box-shadow: inset 0 -3px 0 var(--gm-tab-low); font-size: 0.95rem; }
 .game .setlist .glab, .game .setlist .gctl > span:first-child { align-self: stretch; justify-self: stretch; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; background: var(--gm-tile);
   color: var(--gm-tile-ink); font-weight: 700; line-height: 1.2; }
-.game .setlist .scenbtn { min-height: 44px; padding-block: 2px; }
 /* the career page's borrowed-parent choice: on phones the three choices share the tile's width under the label */
 @media (max-width: 520px) {
   .game .setlist .bpctl > .glab { grid-column: 1 / -1; justify-self: start; }
   .game .setlist .bpctl > .seg { grid-column: 1 / -1; justify-self: stretch; display: grid; grid-template-columns: repeat(3, auto); }
   .game .setlist .bpctl > .seg button { padding-inline: 8px; }
 }
-.game .setlist .scenbtn .slogo { height: 36px; }
 .game .setenh { grid-area: enh; align-self: center; padding-top: 18px; display: grid; grid-template-columns: auto auto; gap: 8px 12px; justify-content: start; }
-.game .setenh .btn.enh.wide { grid-column: 1 / -1; }
+.game .setenh .enh.wide { grid-column: 1 / -1; }
 /* how many are owned, under the Umas and Support cards labels */
-.btn.enh[data-n] .enhl::after { content: attr(data-n); display: block; font-size: 0.72rem; font-weight: 700; opacity: .85; font-variant-numeric: tabular-nums; }
+.enh[data-n] .enhl::after { content: attr(data-n); display: block; font-size: 0.72rem; font-weight: 700; opacity: .85; font-variant-numeric: tabular-nums; }
 /* the veterans dialog: its tools stay put and the list takes the room left and scrolls on its own (the dialog itself
    never scrolls, as the other editors) */
 .vetdlg > .dlg > * { flex: none; }
@@ -1287,8 +1192,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 :root[data-theme="dark"] #o-cards .enhimg { background-image: var(--enh-cards-dark, var(--enh-cards)); }
 :root[data-theme="dark"] #v-toggle .enhimg { background-image: var(--enh-vets-dark, var(--enh-vets)); }
 :root.game[data-theme="dark"] .setlist .glab, :root.game[data-theme="dark"] .setlist .gctl > span:first-child { background: #3a3f4a; color: var(--gm-ink); }
-:root.game[data-theme="dark"] .btn.enh .enhl { color: #e6e1f0; }
-:root.game[data-theme="dark"] .btn.enh .enhl::after { border-left-color: #e6e1f0; }
+:root.game[data-theme="dark"] .enh .enhl { color: #e6e1f0; }
+:root.game[data-theme="dark"] .enh .enhl::after { border-left-color: #e6e1f0; }
 .game .rbbar .seg { border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab); padding: 3px; box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
 .game .rbbar .seg button { border-radius: 999px; font-family: inherit; font-weight: 700; }
 .game .rbbar .seg button:not([aria-pressed="true"]) { color: var(--gm-ink); }
@@ -1297,25 +1202,14 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the game's own buttons (resources.assets, 9-slice across only): a white rectangle for actions, the green one for the main
    action, white pills for the toolbar, the green pill for the chosen option, the game's check box. Side widths are the
    sprite's borders scaled to the button's height (rectangle 96 px tall, pill 72 px) */
-.game .btn:not(.enh), :root.game dialog .btn { border: 0 solid transparent; border-radius: 0; background: none; box-shadow: none; text-shadow: none;
-  border-image: var(--btn-w, linear-gradient(#fff, #eceaf2)) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch; padding: 8px 20px 11px; min-height: 42px; color: var(--gm-ink); }
-.game .btn.primary, :root.game dialog .btn.primary { border-image: var(--btn-g, linear-gradient(#b4ec52, #7cc40d)) 0 116 0 40 fill / 0 51px 0 18px / 0 stretch;
-  color: #fff; text-shadow: var(--gm-outline); padding-right: 26px; }
-.game .btn:not(.enh):hover, :root.game dialog .btn:hover { filter: brightness(1.04); border-color: transparent; }
-.game .btn:not(.enh):active, :root.game dialog .btn:active { transform: translateY(1px); box-shadow: none; }
-.game .btn:not(.enh):disabled, :root.game dialog .btn:disabled { filter: grayscale(1); opacity: .55; background: none; }
 .game .seg button[aria-pressed="true"], :root.game dialog .seg button[aria-pressed="true"] { color: #fff; text-shadow: var(--gm-outline); background: none; box-shadow: none; border: 0 solid transparent;
   border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
 .game input[type="checkbox"]:not([role="switch"]), :root.game dialog input[type="checkbox"]:not([role="switch"]) { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0;
   border: 0; background: var(--chk-off, linear-gradient(#fff, #eee)) center / contain no-repeat; cursor: pointer; vertical-align: middle; }
 .game input[type="checkbox"]:not([role="switch"]):checked, :root.game dialog input[type="checkbox"]:not([role="switch"]):checked { background-image: var(--chk-on, linear-gradient(#b4ec52, #7cc40d)); }
 .game input[type="checkbox"]:focus-visible, :root.game dialog input[type="checkbox"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-:root.game[data-theme="dark"] .btn:not(.enh):not(.primary), :root.game[data-theme="dark"] dialog .btn:not(.primary) { border-image-source: var(--btn-w-dark, var(--btn-w)); }
 :root.game[data-theme="dark"] input[type="checkbox"]:not([role="switch"]):not(:checked), :root.game[data-theme="dark"] dialog input[type="checkbox"]:not([role="switch"]):not(:checked) { background-image: var(--chk-off-dark, var(--chk-off)); }
-/* the scenario: the game's scenario select art behind its logo, on the button and on each menu tile */
-.game .scenbtn { position: relative; overflow: hidden; width: 210px; justify-items: start; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--gm-edge);
-  background: var(--scen-art, none) right -6px top 18% / 104px auto no-repeat, linear-gradient(100deg, var(--gm-cell) 45%, var(--gm-tab-low)); }
-.game .scenbtn .slogo { width: 112px; }
+/* the scenario menu: the game's scenario select art behind each tile's logo (the button's: ui/Scenario.tsx) */
 .game .scenpick { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 12px; box-shadow: 0 8px 22px var(--gm-shadow); padding: 8px; }
 .game .stile { position: relative; overflow: hidden; align-items: flex-start; text-align: left; padding: 8px 12px; min-height: 112px; border-radius: 10px; border: 1px solid var(--gm-edge);
   background: linear-gradient(90deg, var(--gm-cell) 40%, transparent 78%), var(--scen-art, none) right -10px top 16% / 52% auto no-repeat, var(--gm-tab-low); color: var(--gm-ink); }
@@ -1331,26 +1225,10 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 :root.game .sw input:checked::after { transform: translateX(22px); }
 :root.game[data-theme="dark"] .sw input:not(:checked) { background-image: var(--tog-off-dark, var(--tog-off)); }
 :root.game[data-theme="dark"] .sw input::after { background: #e6e1f0; }
-/* a popup's actions sit in its footer beside Close */
-.gmdfoot { gap: 10px; flex-wrap: wrap; }
-/* the trainee popup's affinity breakdown: her six legacies, each parent then her two parents, and their sum */
-.afftab { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.86rem; color: var(--gm-ink); background: var(--gm-cell); border: 1px solid var(--gm-line);
-  border-radius: 10px; overflow: hidden; font-variant-numeric: tabular-nums; }
-.afftab caption { text-align: left; font-weight: 900; padding: 0 2px 6px; color: var(--gm-ink); }
-.afftab th, .afftab td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--gm-line); }
-.afftab thead th { font-size: 0.74rem; font-weight: 700; color: var(--gm-ink2); background: var(--gm-tab-low); }
-.afftab tbody th { text-align: left; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-.afftab tbody tr.gp th { padding-left: 26px; font-weight: 500; }
-.afftab .afk { margin-left: auto; font-size: 0.72rem; font-weight: 700; } .afftab tbody.leg0 .afk { color: #2f7fd6; } .afftab tbody.leg1 .afk { color: #d4407f; } .afftab tfoot .afk { margin: 0; font-size: inherit; color: inherit; }
-.afftab tbody.leg1 tr.par th, .afftab tbody.leg1 tr.par td { border-top: 2px solid var(--gm-line); }
-.afftab tfoot th, .afftab tfoot td { font-weight: 900; border-bottom: 0; }
-.afftab tfoot th { text-align: left; }
-.afftab .afv .aff { justify-content: flex-end; }
 /* the race schedule (and the G1 wins editor) on the career page: the game's Scheduled Races, the three years side by
    side, sized to the window (no scrolling on a desktop): each turn the game's white slot with the race's banner, its win
    odds in the game's pink Scheduled badge, the turn under it; Junior's April to June the game's grey cells; in the wins
    editor a turn to add a win shows the game's green plus, its menu the races as banners in the game's slots */
-:root.game #sched-dlg, :root.game #wins-dlg { width: min(1480px, calc(100vw - 24px)); }
 .agenda.game { --ag-h: max(360px, calc(100dvh - 262px)); gap: 10px; }
 .agenda.game .ag-year { border: 0; border-radius: 12px; background: var(--gm-pane); padding: 0 8px 8px; overflow: visible; }
 .dlg .agenda.game .ag-year h4 { margin: 0 -8px 8px; padding: 5px; border-radius: 12px 12px 0 0; font-size: 0.95rem; font-weight: 700; color: #fff; text-shadow: var(--gm-outline);
@@ -1390,12 +1268,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the wins editor's menu on the career page: the races held then, each its banner in the game's white slot */
 :root.game .wmenu { display: grid; grid-template-columns: repeat(auto-fill, 150px); width: min(492px, calc(100vw - 48px)); max-width: none; gap: 8px; padding: 10px; }
 :root.game .wmenu .hint { grid-column: 1 / -1; margin: 0; }
-:root.game .wmenu .wpick.art { display: grid; justify-items: center; gap: 2px; padding: 6px 6px 7px; min-height: 0; width: auto;
-  border-image: var(--slot-frame, linear-gradient(#fff, #f1f0f4)) 22 fill / 9px / 0 stretch; }
-:root.game .wmenu .wpick.art .banner { width: 100%; aspect-ratio: 2; object-fit: contain; display: block; }
-:root.game .wmenu .wpick.art .wpn { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-:root.game .wmenu .wpick.art small { font-size: 0.66rem; text-align: center; line-height: 1.2; }
-:root.game[data-theme="dark"] .wmenu .wpick.art { border-image-source: var(--slot-frame-dark, var(--slot-frame)); }
 /* the comparison: the verdict in one line, two figures (now -> with her), the best career with her */
 .simresult .simverdict { margin: 0; font-size: 0.82rem; color: var(--gm-ink2); line-height: 1.3; }
 .simresult .simverdict strong { display: block; font-size: 1.05rem; font-weight: 900; color: var(--gm-ink); }
@@ -1423,7 +1295,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .wrap.lp { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 18px; }
 @media (max-width: 960px) { .wrap.lp { grid-template-columns: minmax(0, 1fr); } }
 .lp .rcol { position: static; order: 0; }
-@media (max-width: 620px) { .game .btn:not(.enh) { min-height: 44px; } }
+
 @media (max-width: 900px) { .agenda.game .ag-slot.pre { display: none; } }   /* stacked: no grey Junior cells */
 .lp .rbtitle { margin-bottom: 2px; }
 .lp .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh"; align-self: start; }
@@ -1446,7 +1318,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   border-image: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch; }
 .lp .mem .sk .spark.g .sic { width: 24px; height: 24px; }
 .lp .deck { background: var(--gm-pane); border: 0; border-radius: 12px; }
-.lp .swhead { margin: 4px 0 0; justify-self: start; min-width: 40%; font-size: 1rem; text-transform: none; letter-spacing: .01em; }
 .lp .deck .dtitle { color: var(--gm-ink); font-weight: 900; }
 .lp .swrow > .swho { border-right-color: var(--gm-line); }
 .lp .swout :root.game[data-theme="dark"] .lp .mem .av { box-shadow: 0 0 0 3px #3a3f4a, 0 1px 4px var(--gm-shadow); }
@@ -1454,14 +1325,13 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .lp .setlist .glab, .lp .setlist .gctl > span:first-child { padding: 4px 8px; font-size: 0.86rem; }
 .lp .rbbar .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, auto); max-width: 100%; }
 .lp .rbbar .seg button { padding-inline: 10px; font-size: 0.84rem; line-height: 1.15; white-space: normal; }
-.lp .setlist .scenbtn { width: 100%; }
 /* the loop planner's left column: the setup panel, then Target skills in the open under a green bar */
 .lp .lpside { display: grid; gap: 14px; align-content: start; min-width: 0; }
 .game .lptgt .panel { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); padding: 0 12px 12px; overflow: hidden; }
 .game .lptgt .panel > .row.between { margin: 0 -12px 10px; }
 .game .lptgt .panel > .row.between > h2 { position: relative; margin: 0; padding: 4px 40px 4px 14px; color: #fff; font-size: 1.05rem; font-weight: 900; text-transform: none; letter-spacing: .01em;
   text-shadow: var(--gm-outline); background: linear-gradient(var(--gm-green), var(--gm-green2)); clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 100%, 0 100%); }
-.game .lptgt .panel > .row.between > .btn { margin: 6px 12px 0 0; }
+.game .lptgt .panel > .row.between > #t-preset { margin: 6px 12px 0 0; }
 .game .lptgt .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .game .rhead .seg { border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab); padding: 3px; box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
 .game .rhead .seg button { border-radius: 999px; font-family: inherit; font-weight: 700; min-width: 40px; }
@@ -1484,8 +1354,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .rbbar > .rhead .rtop { margin-left: auto; }
 @container (max-width: 360px) { .game .stile { padding: 6px 8px; } .game .stile .ssub { flex-wrap: nowrap; gap: 2px 4px; font-size: 0.72rem; } .game .stile .ssub .sic { width: 16px; height: 16px; } }
 
-.lp .setenh .btn.enh { width: 110px; height: 88px; }
-.lp .setenh .btn.enh .enhl { bottom: 6px; font-size: 0.78rem; }
+.lp .setenh .enh { width: 110px; height: 88px; }
+.lp .setenh .enh .enhl { bottom: 6px; font-size: 0.78rem; }
 .game .rbbar > .rhead { padding: 4px 10px; }
 .game .lptgt .panel > .row.between { margin-bottom: 8px; }
 /* the loop planner's left column fits a 900 px screen: compact rows (one-line labels where they fit), smaller tiles */
@@ -1493,15 +1363,13 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .lp .setlist .gctl { grid-template-columns: 8.4em minmax(0, 1fr); padding: 3px 8px 3px 3px; min-height: 0; }
 .lp .setlist .glab, .lp .setlist .gctl > span:first-child { padding: 3px 8px; font-size: 0.8rem; line-height: 1.15; }
 .lp .rbbar .seg button { min-height: 34px; padding-block: 2px; }
-.lp .setlist .scenbtn { min-height: 38px; }
-.lp .setlist .scenbtn .slogo { height: 30px; }
 .lp .rbbar label { font-size: 0.84rem; }
 .game .lptgt .tgt { min-height: 36px; padding-block: 2px 6px; }
 .game .lptgt .adder input { min-height: 36px; }
 /* Umas and Support cards at the game's size; the status row under them in small type, its switches and the Results pill
    on one line (the per-uma deck choice a switch there, not a row of its own) */
-.lp .setenh .btn.enh { width: 140px; height: 112px; }
-.lp .setenh .btn.enh .enhl { bottom: 9px; font-size: 0.9rem; }
+.lp .setenh .enh { width: 140px; height: 112px; }
+.lp .setenh .enh .enhl { bottom: 9px; font-size: 0.9rem; }
 .game .rbbar > .rhead { padding: 3px 8px; gap: 2px 10px; font-size: 0.74rem; min-height: 0; }
 .game .rbbar > .rhead .runnote { flex-basis: 100%; margin: 0; line-height: 1.3; }
 .game .rbbar > .rhead .sw { gap: 5px; font-size: 0.76rem; }
@@ -1522,8 +1390,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .rbbar > .rhead { padding: 8px 12px 9px; gap: 6px 14px; }
 /* the Umas and Support cards editors: the dialog never scrolls; its list takes the room left under the tools and scrolls
    on its own; their size is the full list's, whatever the filter leaves (the lists are taller than the screen) */
-.setdlg > .dlg { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); overflow: hidden; }
-#set-umas > .dlg, #set-cards > .dlg { height: calc(100dvh - 48px); }
 .setdlg .panel, .setdlg .panel > .cwrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .setdlg .panel > *, .setdlg .panel > .cwrap > * { flex: none; }
 .setdlg .panel > .roster, .setdlg .panel > .cwrap, .setdlg .cwrap > .cards { flex: 1 1 auto; min-height: 0; max-height: none; }
@@ -1545,8 +1411,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .afpar button { padding-left: 4px; gap: 3px; }
 .afpar .aflab { font-size: .8rem; font-weight: 700; color: var(--gm-ink2); margin-right: 2px; }
 .afpick button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.afftab .aft { font-size: 0.72rem; font-weight: 500; color: var(--gm-ink2); }
-:root.game #why-dlg { width: min(700px, calc(100vw - 24px)); }
 /* affinity: the game's heart and the number, no box around it */
 .game .aff, .rb .aff, .rb .pn .pnh .aff { border: 0; background: none; padding: 0; border-radius: 0; box-shadow: none; }
 /* a target's remove button: the game's plain brown x (the menu's close icon), small; a round hover behind it; on a dark
@@ -1557,7 +1421,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .tgt .x:active { transform: translateY(1px); }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"]) .x { filter: brightness(2.2) saturate(.5); }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"]) .x:hover { background-color: rgba(255, 255, 255, .08); }
-@media (max-width: 620px) { :root.game .seg > button, :root.game .lp .rbbar .seg > button, :root.game .scenbtn, :root.game .lp .setlist .scenbtn { min-height: 44px; } }   /* phone: 44 px tap targets */
+@media (max-width: 620px) { :root.game .seg > button, :root.game .lp .rbbar .seg > button { min-height: 44px; } }   /* phone: 44 px tap targets */
 /* the planner pages end at their footer: no blank band under it to scroll into */
 :root.game body { padding-bottom: 14px; }
 :root.game .foot { margin-top: 14px; }
@@ -1585,19 +1449,19 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the career setup panel: the Enhance column no taller than the ribbon and the two rows of settings beside it */
 .rb .rbbar { padding-bottom: 12px; row-gap: 8px; }
 .rb .setenh { padding-top: 10px; gap: 6px 8px; align-self: start; }
-.rb .setenh .btn.enh { width: 104px; height: 83px; }
-.rb .setenh .btn.enh .enhl { bottom: 6px; font-size: 0.76rem; }
-.rb .setenh .btn.enh.wide { width: 216px; height: 54px; }
+.rb .setenh .enh { width: 104px; height: 83px; }
+.rb .setenh .enh .enhl { bottom: 6px; font-size: 0.76rem; }
+.rb .setenh .enh.wide { width: 216px; height: 54px; }
 .rb #v-toggle .enhl { font-size: 0.78rem; right: 26px; }
 .rb #v-toggle .enhl::after { right: -16px; }
-.rb .setenh .btn.enh:not(.wide) .enhl { left: 4px; right: 16px; font-size: 0.72rem; letter-spacing: -.01em; }
-.rb .setenh .btn.enh:not(.wide) .enhl::after { right: -11px; border-width: 5px; border-left-width: 7px; margin-top: -5px; }
+.rb .setenh .enh:not(.wide) .enhl { left: 4px; right: 16px; font-size: 0.72rem; letter-spacing: -.01em; }
+.rb .setenh .enh:not(.wide) .enhl::after { right: -11px; border-width: 5px; border-left-width: 7px; margin-top: -5px; }
 /* the career setup's Enhance buttons sized to the two rows of settings beside them (the column about as tall as the
    ribbon and the rows) */
 .rb .setenh { padding-top: 6px; gap: 5px 6px; }
-.rb .setenh .btn.enh { width: 112px; height: 90px; }
-.rb .setenh .btn.enh:not(.wide) .enhl { bottom: 6px; left: 4px; right: 16px; font-size: 0.78rem; }
-.rb .setenh .btn.enh.wide { width: 230px; height: 58px; }
+.rb .setenh .enh { width: 112px; height: 90px; }
+.rb .setenh .enh:not(.wide) .enhl { bottom: 6px; left: 4px; right: 16px; font-size: 0.78rem; }
+.rb .setenh .enh.wide { width: 230px; height: 58px; }
 .rb #v-toggle .enhl { font-size: 0.8rem; right: 26px; }
 /* the inspiration stars at the game's ratio: about 0.43 of the spark bar's height (measured on its Umamusume Details) */
 .ud .vskb .stars, .ud .vsb .vskb .stars { bottom: -8px; height: 15px; }
@@ -1606,10 +1470,10 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    the block right after the settings (beside the ribbon too, so it sets no extra height) */
 .rb .rbbar { grid-template-columns: max-content max-content; grid-template-areas: "hdr enh" "list enh"; column-gap: 28px; }
 .rb .setenh { grid-template-columns: auto auto; justify-content: start; align-self: start; padding-top: 10px; gap: 6px; }
-.rb .setenh .btn.enh { width: 140px; height: 112px; }
-.rb .setenh .btn.enh:not(.wide) .enhl { bottom: 9px; left: 8px; right: 24px; font-size: 0.9rem; }
-.rb .setenh .btn.enh:not(.wide) .enhl::after { right: -13px; border-width: 6px; border-left-width: 8px; margin-top: -6px; }
-.rb .setenh .btn.enh.wide { grid-column: 1 / -1; width: 286px; height: 72px; }
+.rb .setenh .enh { width: 140px; height: 112px; }
+.rb .setenh .enh:not(.wide) .enhl { bottom: 9px; left: 8px; right: 24px; font-size: 0.9rem; }
+.rb .setenh .enh:not(.wide) .enhl::after { right: -13px; border-width: 6px; border-left-width: 8px; margin-top: -6px; }
+.rb .setenh .enh.wide { grid-column: 1 / -1; width: 286px; height: 72px; }
 .rb #v-toggle .enhl { font-size: 0.95rem; right: 34px; }
 .rb #v-toggle .enhl::after { right: -22px; border-width: 6px; border-left-width: 8px; margin-top: -6px; }
 @media (max-width: 1100px) { .rb .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh"; } }
@@ -1636,7 +1500,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   align-items: center; column-gap: 10px; row-gap: 10px; }
 .rb .lptgt .panel > .row.between { display: contents; }
 .rb .lptgt .panel > .row.between > h2 { grid-area: h; margin-left: -12px; }
-.rb .lptgt .panel > .row.between > .btn { grid-area: btn; margin: 6px 0 0; }
+.rb .lptgt .panel > .row.between > #t-preset { grid-area: btn; margin: 6px 0 0; }
 .rb .lptgt .adder { grid-area: add; margin: 6px 0 0; }
 .rb .lptgt .panel > .targets { grid-area: list; }
 .rb .lptgt .panel > .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1714,7 +1578,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .runnote > .runner { margin-top: -6px; }
 /* the career setup's rows fit the screen (they were max-content wide: 32 px past a 360 px screen) */
 @media (max-width: 640px) { .rb .setlist { grid-template-columns: minmax(0, 1fr); } }
-.game .setlist .scenbtn { max-width: 100%; }   /* (its 210 px reached past a 360 px screen's panel) */
 /* career Target skills on a phone: the add box on its own row (beside the title and Presets it was squeezed
    to a 20 px sliver) */
 @media (max-width: 620px) {
@@ -1754,14 +1617,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 }
 /* the affinity table on a phone: each uma's portrait beside her name, her tag and legacy under it, tighter cells (the
    name, the "her own earlier veteran" note and "Legacy 1" side by side made it wider than a 360 px dialog) */
-@media (max-width: 520px) {
-  .afftab th, .afftab td { padding: 4px 5px; }
-  .afftab thead th { font-size: 0.68rem; }
-  .afftab tbody th { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; row-gap: 0; align-items: center; justify-items: start; }
-  .afftab tbody th > :first-child { grid-row: span 3; }
-  .afftab tbody tr.gp th { padding-left: 14px; }
-  .afftab .afk { margin-left: 0; white-space: nowrap; }
-}
+
 /* the support cards editor: three cards a row on a phone (two made each card 145 px) */
 @media (max-width: 480px) { .setdlg .cgroup .ctiles { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); } }
 /* a spark name cut at its smallest size says so */
@@ -1812,9 +1668,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    skills; Load, Overwrite, the trash can), the one matching the targets now tinted as the Career choices pick row; Save current
    skills under them, opening a small popup for the name. The view popup: the preset's skills as the editor's tiles,
    Rename and Close at the bottom */
-dialog.prdlg { width: min(870px, calc(100vw - 32px)); }
-dialog.prsmall { width: min(420px, calc(100vw - 32px)); }
-dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .prlist { display: grid; gap: 8px; margin: 12px 0 6px; }
 .prow { display: flex; flex-wrap: wrap; align-items: stretch; border: 1px solid var(--gm-line, var(--line)); border-radius: 8px; background: var(--gm-cell, var(--panel)); overflow: hidden; }
 .prow.cur { background: var(--gm-tile, var(--accent-soft)); }
@@ -1828,8 +1681,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .pmeta { font-size: 0.82rem; color: var(--gm-ink2, var(--muted)); }
 .pcur { font-size: 0.75rem; font-weight: 700; color: var(--gm-bright-ink, #fff); background: var(--gm-green2, var(--req)); border-radius: 999px; padding: 0 8px; }
 .pbtns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px 8px 4px; }
-.pbtns .btn { padding-inline: 14px; font-size: 0.88rem; }   /* Load, Overwrite and the trash can fit one row at 375 px */
-.pbtns .ptrash { display: inline-flex; align-items: center; gap: 6px; padding-inline: 12px; }
 .ptrash svg { width: 20px; height: 20px; color: var(--gm-ink, var(--ink)); }
 .ptrash .slit { stroke: #fff; }
 :root[data-theme="dark"] .ptrash .slit { stroke: #2b2934; }   /* the slits in the dark button's face */
@@ -1930,8 +1781,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .gmdcards li > b { font-size: 0.8rem; white-space: nowrap; }
 /* popups whose body can run long (uma.moe's list, Try a run's card): the body scrolls inside the window */
 #um-root { display: contents; }   /* (its button is a flex item of the title row) */
-.umdlg, .simdlg { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
-.simdlg { width: min(960px, calc(100vw - 24px)); }
 .dlgscroll { max-height: calc(100dvh - 110px); overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 10px; padding-right: 4px; }
 .umline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .umline input { flex: 1 1 10rem; min-width: 0; }

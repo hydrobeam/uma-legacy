@@ -50,7 +50,7 @@ export default async function careerrun(b) {
     await drawn();
     document.getElementById('prn-save').click();
     await drawn();
-    document.querySelector('#preset-dlg .dclose').click();
+    [...document.querySelectorAll('#preset-dlg button')].find((b) => b.textContent === 'Done').click();
     return {
       was,
       now: plan(),

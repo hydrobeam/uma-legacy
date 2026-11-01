@@ -12,13 +12,15 @@ import { borrowedLast, deckCards } from '../../details.ts';
 import type { DeckSlot } from '../../details.ts';
 import { cardTitle, chainEndNote } from '../../cards.ts';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { legacyVet, shown } from '../current.ts';
 import { tName, tableRows } from './parts.ts';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { openSkill } from './SkillDetails.tsx';
 import { openSched } from '../../ui/Schedule.tsx';
+import { Button } from '../../ui/Button.tsx';
+import { GameBar } from '../../ui/GameBar.tsx';
 
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
@@ -39,9 +41,9 @@ export function Odds({ r }: { r: CareerReport }) {
 }
 /** her deck's button (the deck in its popup) */
 export const DeckButton = () => (
-  <button type="button" class="btn" id="deck-open" aria-haspopup="dialog" onClick={openDeck}>
+  <Button id="deck-open" aria-haspopup="dialog" onClick={openDeck}>
     Deck
-  </button>
+  </Button>
 );
 // her race schedule: the schedule window (the game's calendar), each race's figure the community table's on her own
 // grades (parts.ts tableRows); the G1s she could enter but doesn't aren't shown
@@ -52,15 +54,13 @@ const schedOf = (r: CareerReport) => ({
 export function SchedButton({ r }: { r: CareerReport }) {
   const ran = schedOf(r).schedule.length;
   return (
-    <button
-      type="button"
-      class="btn"
+    <Button
       id="sched-open"
       title={ran ? `She runs ${ran} G1s: ${(r.g1_wins ?? 0).toFixed(1)} wins expected` : 'No G1s'}
       onClick={() => openSched(schedOf(r))}
     >
       Race schedule
-    </button>
+    </Button>
   );
 }
 /** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.ts) */
@@ -107,13 +107,11 @@ export function DeckDialog() {
   const r = shown(),
     open = deckOpen.value && !!r;
   return (
-    <Dialog id="deck-dlg" cls="gmdlg deckdlg" labelledBy="deck-title" open={open} onClose={deckClosed}>
+    <Dialog id="deck-dlg" cls="deckdlg" skin="game" size="xs" labelledBy="deck-title" open={open} onClose={deckClosed}>
       {r && (
         <>
-          <h3 class="gmdhdr" id="deck-title">
-            Deck
-          </h3>
-          <div class="gmdbody">
+          <DialogTitle id="deck-title">Deck</DialogTitle>
+          <DialogBody>
             <div class="deck" id="tree-deck">
               <div class="dcards">
                 <Guard what="The deck popup">
@@ -123,12 +121,10 @@ export function DeckDialog() {
                 </Guard>
               </div>
             </div>
-          </div>
-          <div class="gmdfoot">
-            <button type="button" class="btn gmclose" onClick={deckClosed}>
-              Close
-            </button>
-          </div>
+          </DialogBody>
+          <DialogFoot>
+            <DialogClose onClick={deckClosed} />
+          </DialogFoot>
         </>
       )}
     </Dialog>
@@ -236,7 +232,7 @@ export function Targets({ r }: { r: CareerReport }) {
   const ico = srcFor('ui', 'ico_legacies');
   return (
     <section class="rbsec rtgt">
-      <h3>Targets</h3>
+      <GameBar>Targets</GameBar>
       <ul class="ctgs">
         {[...r.targets]
           .sort((a, b) => a.p - b.p)

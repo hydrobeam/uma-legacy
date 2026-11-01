@@ -8,7 +8,7 @@ import { createPortal } from 'preact';
 import type { Ref } from 'preact';
 import { gameData } from '../data.ts';
 import type { Uma } from '../data.ts';
-import { Dialog } from '../ui/Dialog.tsx';
+import { Dialog, DialogBody, DialogClose, DialogFoot, DialogHead, DialogPanel, DialogTitle } from '../ui/Dialog.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { WinsEditor } from '../ui/Agenda.tsx';
@@ -35,6 +35,7 @@ import {
   winsText,
 } from './pickers.ts';
 import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.ts';
+import { Button } from '../ui/Button.tsx';
 
 /** the editors' dialogs (their requests read here, so one render opens one and closes another in this order), each
  *  in a render guard of its own: one that throws is gone, says so on the status line, and gives up its request (a
@@ -67,16 +68,11 @@ function UmaPicker({ pick }: { pick: UmaPick | null }) {
   }, [pick]);
   return (
     <Dialog id="pick-dlg" labelledBy="pick-title" open={!!pick?.open} onClose={umaPickClosed}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="pick-title">{pick ? pick.title : 'Which uma?'}</h3>
-          <button type="button" class="btn dclose" onClick={umaPickClosed}>
-            Close
-          </button>
-        </div>
+      <DialogPanel>
+        <DialogHead id="pick-title" title={pick ? pick.title : 'Which uma?'} close="Close" onClose={umaPickClosed} />
         {/* (closed, no list: an editor closed draws nothing) */}
         {pick?.open && <PickBody key={pick.n} only={pick.only} filterRef={filter} />}
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -147,7 +143,7 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
   ];
   return (
     <Dialog id="ask-dlg" labelledBy="ask-title" open={!!asked?.open} onClose={askClosed}>
-      <div class="dlg">
+      <DialogPanel>
         <h3 id="ask-title">{shown ? `Add skills to ${shown.name}?` : 'Add skills?'}</h3>
         <p id="ask-text">
           {shown
@@ -157,18 +153,17 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
         <div class="row askrow" id="ask-btns">
           {shown &&
             choices.map(({ label, sparks, primary }) => (
-              <button
+              <Button
                 key={label}
                 ref={primary ? first : null}
-                type="button"
-                class={`btn${primary ? ' primary' : ''}`}
+                variant={primary ? 'primary' : 'plain'}
                 onClick={() => skillsChosen(sparks())}
               >
                 {label}
-              </button>
+              </Button>
             ))}
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -181,17 +176,18 @@ function WinsDialog({ edit }: { edit: WinsEdit | null }) {
     nd = edit?.open ? edit.at.node() : undefined,
     open = !!nd;
   return (
-    <Dialog id="wins-dlg" labelledBy="wins-title" open={open} onClose={winsClosed}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="wins-title">{nd && edit ? `G1 wins: ${edit.who}` : 'G1 wins'}</h3>
-          <span class="num" id="wins-count">
+    <Dialog id="wins-dlg" size="full" labelledBy="wins-title" open={open} onClose={winsClosed}>
+      <DialogPanel>
+        <DialogHead
+          id="wins-title"
+          title={nd && edit ? `G1 wins: ${edit.who}` : 'G1 wins'}
+          close="Done"
+          onClose={winsClosed}
+        >
+          <span class="num mr-3 ml-auto whitespace-nowrap" id="wins-count">
             {nd ? winsText(nd) : ''}
           </span>
-          <button type="button" class="btn dclose" onClick={winsClosed}>
-            Done
-          </button>
-        </div>
+        </DialogHead>
         <div id="wins-list">
           {edit && nd && (
             <WinsEditor
@@ -205,7 +201,7 @@ function WinsDialog({ edit }: { edit: WinsEdit | null }) {
             />
           )}
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -219,16 +215,12 @@ function ColourDialog({ edit }: { edit: ColourEdit | null }) {
     if (edit?.open) done.current?.focus();
   }, [edit]);
   return (
-    <Dialog id="col-dlg" cls="gmdlg coldlg" labelledBy="col-title" open={!!nd} onClose={colourClosed}>
-      <h3 class="gmdhdr" id="col-title">
-        {edit ? KIND[edit.kind].title : ''}
-      </h3>
+    <Dialog id="col-dlg" cls="coldlg" skin="game" labelledBy="col-title" open={!!nd} onClose={colourClosed}>
+      <DialogTitle id="col-title">{edit ? KIND[edit.kind].title : ''}</DialogTitle>
       {edit && nd && <Colours nd={nd} at={edit.at} kind={edit.kind} />}
-      <div class="gmdfoot">
-        <button ref={done} type="button" class="btn gmclose" onClick={colourClosed}>
-          Done
-        </button>
-      </div>
+      <DialogFoot>
+        <DialogClose ref={done} onClick={colourClosed} label="Done" />
+      </DialogFoot>
     </Dialog>
   );
 }
@@ -239,7 +231,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
     curGroup = cur ? +cur[0] : null,
     curStars = cur ? cur[1] : 0;
   return (
-    <div class="gmdbody">
+    <DialogBody>
       <div class="ud udbare">
         <div class="colgrid vsparks">
           {spec.groups(nd).map((g) => (
@@ -280,7 +272,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
             : "Her uma's aptitudes at A or S (a pink needs A or better)."}
         </p>
       )}
-    </div>
+    </DialogBody>
   );
 }
 

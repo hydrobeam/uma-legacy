@@ -33,13 +33,15 @@ import { fmtN, tableRows } from '../view/parts.ts';
 import { openNode } from '../view/dialogs.ts';
 import { sayVets } from '../view/poolState.ts';
 import { Guard } from '../view/Guard.tsx';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { DeckCard } from '../view/Sections.tsx';
 import { Details, legaciesOf } from './Details.tsx';
 import type { DetailsSpec } from './Details.tsx';
 import { simulation, draftJoins } from './state.ts';
 import type { SimulationView } from './state.ts';
 import type { Comparison } from './compare.ts';
+import { Button } from '../../ui/Button.tsx';
+import { GameBar } from '../../ui/GameBar.tsx';
 
 type Career = DeepReadonly<CareerReport>;
 /** her draft on show (the veterans store's) */
@@ -379,7 +381,9 @@ function Analysis({ comparison }: { comparison: Comparison }) {
   if (!d)
     return (
       <section class="rbsec simulation" id="simulation" ref={section}>
-        <h3>Veteran analysis</h3>
+        <GameBar shape="card" class="w-full max-w-160">
+          Veteran analysis
+        </GameBar>
       </section>
     );
   const spec: DetailsSpec = {
@@ -395,40 +399,34 @@ function Analysis({ comparison }: { comparison: Comparison }) {
   // replaces the career on show)
   const actions = (
     <div class="row">
-      <button
-        type="button"
-        class="btn primary"
-        id="sim-compare"
-        data-k="sim:compare"
-        disabled={searching}
-        onClick={comparison.compare}
-      >
+      <Button variant="primary" id="sim-compare" data-k="sim:compare" disabled={searching} onClick={comparison.compare}>
         Compare
-      </button>
-      <button type="button" class="btn" id="sim-roll" data-k="sim:roll" disabled={searching} onClick={comparison.roll}>
+      </Button>
+      <Button id="sim-roll" data-k="sim:roll" disabled={searching} onClick={comparison.roll}>
         Reroll
-      </button>
-      <button type="button" class="btn" id="sim-add" disabled={searching} onClick={addDraft}>
+      </Button>
+      <Button id="sim-add" disabled={searching} onClick={addDraft}>
         Add to veterans
-      </button>
+      </Button>
     </div>
   );
   const winsButton = (
-    <button
+    <Button
       ref={wins}
-      type="button"
-      class="btn vwins"
+      size="xs"
       id="sim-wins"
       data-k="sim:wins"
       aria-haspopup="dialog"
       onClick={() => openDraftWins(d, r, () => wins.current?.focus())}
     >
       {`${d.wins.length ? d.wins.length : 'No'} G1 win${d.wins.length === 1 ? '' : 's'} · edit`}
-    </button>
+    </Button>
   );
   return (
     <section class="rbsec simulation" id="simulation" ref={section}>
-      <h3>Veteran analysis</h3>
+      <GameBar shape="card" class="w-full max-w-160">
+        Veteran analysis
+      </GameBar>
       <Details spec={spec} actions={actions} winsButton={winsButton} />
       <div class="simcol">
         <ComparisonPanel sim={sim} d={d} r={r} />
@@ -456,20 +454,15 @@ export function TryRunDialog({ comparison }: { comparison: Comparison }) {
     if (open && body.current) fitSparks(body.current);
   }, [open]);
   return (
-    <Dialog id="sim-dlg" cls="simdlg" labelledBy="sim-title" open={open} onClose={closeTryRun}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="sim-title">Try a run</h3>
-          <button class="btn dclose" type="button" onClick={closeTryRun}>
-            Close
-          </button>
-        </div>
+    <Dialog id="sim-dlg" size="3xl" tall labelledBy="sim-title" open={open} onClose={closeTryRun}>
+      <DialogPanel>
+        <DialogHead id="sim-title" title="Try a run" close="Close" onClose={closeTryRun} />
         <div class="dlgscroll" id="sim-top" ref={body}>
           <Guard what="Try a run" also={simulationDrawn}>
             <Analysis comparison={comparison} />
           </Guard>
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }

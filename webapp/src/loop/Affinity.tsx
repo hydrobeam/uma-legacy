@@ -9,7 +9,7 @@ import { signal, untracked } from '@preact/signals';
 import { useState } from 'preact/hooks';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
-import { Dialog } from '../ui/Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
 import { RadioPills } from '../ui/RadioPills.tsx';
 import { AffHeart, AffTable } from '../ui/AffTable.tsx';
 import type { AffinityLeg } from '../ui/AffTable.tsx';
@@ -34,12 +34,12 @@ const close = () => {
 export function AffinityDialog() {
   const { n, loop, open } = shown.value;
   return (
-    <Dialog id="why-dlg" labelledBy="why-title" open={open} onClose={close}>
-      <div class="dlg" id="why-body">
+    <Dialog id="why-dlg" size="xl" labelledBy="why-title" open={open} onClose={close}>
+      <DialogPanel id="why-body">
         <RenderGuard input={shown} what="The affinity">
           {loop && <Careers key={n} loop={loop} />}
         </RenderGuard>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -87,12 +87,7 @@ function Careers({ loop }: { loop: ResultLoop }) {
     }));
   return (
     <>
-      <div class="row between dhead">
-        <h3 id="why-title">Affinity</h3>
-        <button type="button" class="btn" onClick={close}>
-          Close
-        </button>
-      </div>
+      <DialogHead id="why-title" title="Affinity" close="Close" onClose={close} />
       <RadioPills
         class="afpick"
         label="Trainee"

@@ -63,7 +63,7 @@ export default async function states(b) {
   const overwrite = await pg.$$eval('#pr-list .prow button', (l) =>
     l.filter((x) => x.textContent === 'Overwrite').map((x) => x.disabled),
   );
-  await pg.click('#preset-dlg .dclose');
+  await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   check(
     '… and Overwrite is off on every preset',
     overwrite.length > 0 && overwrite.every(Boolean),

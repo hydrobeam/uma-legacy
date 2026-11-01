@@ -32,7 +32,7 @@ export default async function contrast(b) {
     await dialog(pg, 'why-dlg');
     audits.push(await audit(pg));
     await pg.keyboard.press('Escape');
-    await pg.click('#results .loop .lacts button:has-text("Odds")'); // (a game-style popup, .gmdlg)
+    await pg.click('#results .loop .lacts button:has-text("Odds")'); // (a game-style popup)
     await dialog(pg, 'odds-dlg');
     audits.push(await audit(pg));
     await pg.keyboard.press('Escape');

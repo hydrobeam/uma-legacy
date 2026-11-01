@@ -29,11 +29,7 @@ export default async function careerphone(b) {
   if (await pg.locator('.rbbar.folded').count()) await pg.click('#set-fold');
   const inside = await pg.evaluate(() => {
     const p = document.querySelector('.rbbar').getBoundingClientRect();
-    return [
-      ...document.querySelectorAll(
-        '.rbbar .setlist > *, .rbbar .setlist .seg, .rbbar .setlist .scenbtn, .rbbar .lptgt .adder',
-      ),
-    ]
+    return [...document.querySelectorAll('.rbbar .setlist > *, .rbbar .setlist .seg, #x-scen, .rbbar .lptgt .adder')]
       .filter((e) => e.getBoundingClientRect().width)
       .filter((e) => {
         const r = e.getBoundingClientRect();
@@ -56,7 +52,7 @@ export default async function careerphone(b) {
       body = document.querySelector('#sim-dlg .dlgscroll');
     return d.left >= 0 && d.right <= 375 && d.bottom <= 812 && body.scrollHeight > body.clientHeight;
   });
-  await pg.locator('#sim-dlg .dclose').click();
+  await pg.locator('#sim-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   check(
     "career phone: the pill tracks (Game data, rank, her card's tabs) are filled flush by their segments; Try a run's popup fits the screen and scrolls",
     !pills.length && (await pg.locator('.udtabs').count()) === 1 && simFits,

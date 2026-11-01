@@ -206,7 +206,7 @@ export default async function load(b) {
   check(
     'a label marks where the swap rows start',
     await pg.evaluate(() => {
-      const h = document.querySelector('#results .loop .swhead'),
+      const h = [...document.querySelectorAll('#results .loop p')].find((p) => p.textContent === 'Swaps'),
         s = document.querySelector('#results .loop .deck.swap');
       return !!h && /swaps/i.test(h.textContent) && !!(h.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING);
     }),
@@ -317,7 +317,7 @@ export default async function load(b) {
   );
   await pg.evaluate(() => window.__release());
   check('a saved preset is the current one', (await pg.locator('#pr-list .prow.cur .pname').textContent()) === 'Seven');
-  await pg.click('#preset-dlg .dclose');
+  await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await pg.reload();
   await jobSent(pg, () => window.__runs.length > 0);
   check(
@@ -329,7 +329,7 @@ export default async function load(b) {
     'presets survive a reload',
     (await pg.locator('#pr-list .pname').allTextContents()).join('|') === '8/8 example|Seven',
   );
-  await pg.click('#preset-dlg .dclose');
+  await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await pg.click('#ex-open');
   const ex = JSON.parse(await pg.inputValue('#ex-text'));
   ex.settings.presets = [
@@ -344,7 +344,7 @@ export default async function load(b) {
     'an import merges presets',
     (await pg.locator('#pr-list .pname').allTextContents()).join('|') === '8/8 example|Seven|Seven (imported)|Other',
   );
-  await pg.click('#preset-dlg .dclose');
+  await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await pickScen(pg, 'unity');
   check(
     "Unity Cup marks No Stopping Me! and It's On! as guaranteed golds",

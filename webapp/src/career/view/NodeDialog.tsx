@@ -22,7 +22,7 @@ import {
 import { umaName } from '../../veterans/names.ts';
 import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.ts';
 import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans/store.ts';
-import { Dialog, anyDialogOpen } from '../../ui/Dialog.tsx';
+import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle, anyDialogOpen } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../ui/AffTable.tsx';
 import { InspView } from '../../ui/InspView.tsx';
@@ -33,13 +33,8 @@ import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts'
 import { focusChosen, sayVets } from './poolState.ts';
 import type { NodeSpec } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
+import { Button } from '../../ui/Button.tsx';
 
-/** a button of the page's look (parts.ts `btn`) */
-const Btn = ({ label, cls, onClick }: { label: string; cls?: string; onClick: () => void }) => (
-  <button type="button" class={cls ? `btn ${cls}` : 'btn'} onClick={onClick}>
-    {label}
-  </button>
-);
 // her affinity, legacy by legacy, from the report's six slots (career/inherit.rs `slots`)
 function Affinity({ r }: { r: CareerReport }) {
   const nm = (x: { name?: string; chara?: number | null }) => x.name || umaName(x.chara);
@@ -108,18 +103,17 @@ interface WinsProps {
   edit: boolean;
 }
 function Wins({ nd, at, who, k, edit }: WinsProps) {
-  if (!edit) return <span class="vwins">{winsText(nd)}</span>;
+  if (!edit) return <span class="px-2 py-0.5 text-xs">{winsText(nd)}</span>;
   return (
-    <button
-      type="button"
-      class="btn vwins"
+    <Button
+      size="xs"
       data-k={`${k}:wins`}
       title="G1 wins (race affinity): click to edit"
       aria-haspopup="dialog"
       onClick={() => openWins(at, who)}
     >
       {winsText(nd)}
-    </button>
+    </Button>
   );
 }
 /** the trainer to follow in the game for an uma.moe veteran: a Copy trainer ID button */
@@ -127,9 +121,8 @@ function CopyId({ v }: { v: VetRecord }) {
   const lender = v.lender as NonNullable<VetRecord['lender']>,
     [said, setSaid] = useState('Copy ID');
   return (
-    <button
-      type="button"
-      class="btn sm"
+    <Button
+      size="sm"
       title={`${lender.name}: ${lender.id}`}
       onClick={async () => {
         try {
@@ -141,7 +134,7 @@ function CopyId({ v }: { v: VetRecord }) {
       }}
     >
       {said}
-    </button>
+    </Button>
   );
 }
 /** her name with how many of the targets her own sparks carry, "6/8" (an n/n veteran carries all n) */
@@ -219,9 +212,8 @@ function VeteranView({ id }: { id: string }) {
               </button>
             ))}
           </div>
-          <Btn
-            label="Remove"
-            cls="vdel"
+          <Button
+            class="ml-auto"
             onClick={() => {
               batch(() => {
                 closeNode();
@@ -230,7 +222,9 @@ function VeteranView({ id }: { id: string }) {
               sayVets(`Removed ${name} from your veterans.`);
               focusChosen(); // (her card, which had the focus or opened this popup, is gone)
             }}
-          />
+          >
+            Remove
+          </Button>
         </div>
       )}
       <div class="ud udbare">
@@ -306,9 +300,8 @@ function traineeNode(r: CareerReport | null): NodeShown {
     ),
     acts: (
       <>
-        <Btn
-          label={plan.trainee ? 'Change trainee' : 'Choose trainee'}
-          cls="primary nact"
+        <Button
+          variant="primary"
           onClick={fromNode(() =>
             openUmaPicker(
               'Trainee: which uma?',
@@ -316,8 +309,10 @@ function traineeNode(r: CareerReport | null): NodeShown {
               (u: Parameters<typeof isOwned>[0]) => isOwned(u, settings.value),
             ),
           )}
-        />
-        {plan.trainee && <Btn label="Let the planner pick" cls="nact" onClick={() => setTrainee(null, false)} />}
+        >
+          {plan.trainee ? 'Change trainee' : 'Choose trainee'}
+        </Button>
+        {plan.trainee && <Button onClick={() => setTrainee(null, false)}>Let the planner pick</Button>}
       </>
     ),
   };
@@ -329,12 +324,10 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
     v: VetRecord | undefined = at?.v;
   const acts = (
     <>
-      <Btn
-        label={plan.parents[k] ? 'Change parent' : 'Choose parent'}
-        cls="primary big nact"
-        onClick={fromNode(() => openParentPicker(k))}
-      />
-      {plan.parents[k] && <Btn label="Let the planner pick" cls="nact" onClick={() => setParent(k, null, false)} />}
+      <Button variant="primary" size="base" onClick={fromNode(() => openParentPicker(k))}>
+        {plan.parents[k] ? 'Change parent' : 'Choose parent'}
+      </Button>
+      {plan.parents[k] && <Button onClick={() => setParent(k, null, false)}>Let the planner pick</Button>}
     </>
   );
   const title = `Legacy ${k + 1} · parent ${k + 1}${at?.pick ? " · planner's pick" : ''}`;
@@ -446,22 +439,28 @@ export function NodeDialog() {
       });
   };
   return (
-    <Dialog id="node-dlg" cls="gmdlg nodedlg" labelledBy="node-title" open={!!spec && !!on} onClose={closed}>
-      <h3 class="gmdhdr" id="node-title">
-        {on ? on.title : ''}
-      </h3>
+    <Dialog
+      id="node-dlg"
+      cls="nodedlg"
+      skin="game"
+      size="md"
+      labelledBy="node-title"
+      open={!!spec && !!on}
+      onClose={closed}
+    >
+      <DialogTitle id="node-title">{on ? on.title : ''}</DialogTitle>
       {/* (the guards inside the dialog: a throw leaves it open, and Close still closes it) */}
-      <div class="gmdbody" id="node-body" ref={body}>
+      <DialogBody id="node-body" ref={body}>
         <Guard what="The node popup" also={nodeOpen}>
           {on?.body}
         </Guard>
-      </div>
-      <div class="gmdfoot">
-        <Btn label="Close" cls="gmclose" onClick={closeNode} />
+      </DialogBody>
+      <DialogFoot>
+        <DialogClose onClick={closeNode} />
         <Guard what="The node popup's buttons" also={nodeOpen}>
           {on?.acts}
         </Guard>
-      </div>
+      </DialogFoot>
     </Dialog>
   );
 }

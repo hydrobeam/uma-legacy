@@ -111,7 +111,7 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
   await settle();
   const rows = () => [...root.querySelectorAll('div.prow')];
   const row = (name) => root.querySelector(`div.prow[aria-label="${name}"]`);
-  const button = (name, label) => [...row(name).querySelectorAll('button.btn')].find((b) => text(b) === label);
+  const button = (name, label) => [...row(name).querySelectorAll('button')].find((b) => text(b) === label);
   assert.deepEqual(
     rows().map((r) => r.getAttribute('aria-label')),
     ['A', 'B'],
@@ -151,7 +151,7 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
     { name: 'B', groups: [20046, 20166] },
   ]);
   // the view closed, C's row (keyed by its new name) overwrites C alone, then its trash deletes C alone
-  byId(root, 'pr-view').querySelector('button.dclose').click();
+  [...byId(root, 'pr-view').querySelectorAll('button')].find((b) => text(b) === 'Close').click();
   await settle();
   button('C', 'Overwrite').click();
   await settle();

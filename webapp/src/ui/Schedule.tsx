@@ -13,10 +13,11 @@ import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
 import type { DeepReadonly } from '../store.ts';
 import { AgendaGrid, RaceFace, WhenBar } from './Agenda.tsx';
-import { Dialog } from './Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { around } from './arrows.ts';
 import { RenderGuard } from './RenderGuard.tsx';
 import { Grade, UmaAv } from './Images.tsx';
+import { Button } from './Button.tsx';
 
 /** a member as the popup shows her: her place `k` (the index of her cell in each schedule row), her uma and her
  *  outfits that cover a target (her portrait's: loop/members.ts `Member`) */
@@ -58,23 +59,19 @@ function ScheduleBox() {
   const { spec, n } = shown.value;
   // (a schedule that fails to draw leaves its heading and Close: the dialog is open by then)
   return (
-    <Dialog id="sched-dlg" labelledBy="sched-title" open={isOpen.value} onClose={close}>
-      <div class="dlg" id="sched-body">
+    <Dialog id="sched-dlg" size="full" labelledBy="sched-title" open={isOpen.value} onClose={close}>
+      <DialogPanel id="sched-body">
         <RenderGuard input={schedOpened} what="The race schedule" fallback={<SchedHead close={close} />}>
           {spec && <Schedule key={n} spec={spec} close={close} />}
         </RenderGuard>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
 const SchedHead = ({ close, children }: { close: () => void; children?: ComponentChildren }) => (
-  <div class="row between dhead">
-    <h3 id="sched-title">Race schedule</h3>
+  <DialogHead id="sched-title" title="Race schedule" close="Close" onClose={close}>
     {children}
-    <button class="btn" type="button" onClick={close}>
-      Close
-    </button>
-  </div>
+  </DialogHead>
 );
 /** a tab: a member's, or the table of all */
 type Tab = SchedMember | 'all';
@@ -105,16 +102,15 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
     <>
       <SchedHead close={close}>
         {tabled && (
-          <button
-            class="btn sm"
-            type="button"
+          <Button
+            size="sm"
             title="How a race’s win chance is worked out"
             aria-expanded={tableOpen}
             aria-controls="sched-wintable"
             onClick={() => setTableOpen(!tableOpen)}
           >
             Win table
-          </button>
+          </Button>
         )}
       </SchedHead>
       <WinTable hidden={!tableOpen} />

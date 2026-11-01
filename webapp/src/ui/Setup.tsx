@@ -10,7 +10,7 @@ import { settings, switchEra } from '../settings.ts';
 import { rosterCounts } from '../roster.ts';
 import { cardsOwned } from '../cards.ts';
 import { eraScenario } from '../scenario.ts';
-import { Dialog } from './Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 import { RosterPanel } from './Roster.tsx';
 import { CardsPanel } from './Cards.tsx';
@@ -46,19 +46,14 @@ function SetupDialog({
 }) {
   return (
     <Dialog id={id} cls="setdlg" label={label} open={openOne.value === which} onClose={closeSetupDialog}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3>{heading}</h3>
-          <button class="btn dclose" type="button" onClick={closeSetupDialog}>
-            Done
-          </button>
-        </div>
+      <DialogPanel fit="full">
+        <DialogHead title={heading} close="Done" onClose={closeSetupDialog} />
         <section class="panel" id={panel.id} aria-labelledby={panel.labelledBy}>
           <RenderGuard input={settings} what={panel.what}>
             {children}
           </RenderGuard>
         </section>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -69,9 +64,10 @@ const guarded = (what: string, view: ComponentChildren) => (
   </RenderGuard>
 );
 /** The setup's editors and its two dialogs, for the page's layout; `fadeMore`: the roster's and the card list's bottom
- *  edge fades while there is more below (the loop page). */
-export const setupViews = ({ fadeMore = false } = {}) => ({
-  scenario: guarded('The scenario picker', <ScenarioPicker />),
+ *  edge fades while there is more below (the loop page); `compact`: the scenario button is its column's width and
+ *  shorter (the loop page). */
+export const setupViews = ({ fadeMore = false, compact = false } = {}) => ({
+  scenario: guarded('The scenario picker', <ScenarioPicker compact={compact} />),
   rank: guarded('The lineage rank', <RankControl />),
   targets: guarded('The target skills', <TargetSkills />),
   umasDialog: guarded(

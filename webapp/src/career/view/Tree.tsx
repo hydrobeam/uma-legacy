@@ -15,6 +15,8 @@ import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { openNode } from './dialogs.ts';
 import type { NodeSpec } from './dialogs.ts';
 import { Odds, DeckButton, SchedButton, Targets } from './Sections.tsx';
+import { Button } from '../../ui/Button.tsx';
+import { GameBar } from '../../ui/GameBar.tsx';
 
 interface PlaceProps {
   /** the node it opens */
@@ -162,11 +164,11 @@ export function Tree() {
   return (
     <>
       <section class="rbsec ltrainee">
-        <h3>Trainee</h3>
+        <GameBar>Trainee</GameBar>
         <Trainee r={r} />
       </section>
       <section class="rbsec llegacies">
-        <h3>Legacies</h3>
+        <GameBar>Legacies</GameBar>
         <div class="pk">
           <Family k={0} r={r} />
           <Family k={1} r={r} />
@@ -184,16 +186,14 @@ export function Verdict() {
   return (
     <>
       <Odds r={r} />
-      <button
-        type="button"
-        class="btn"
+      <Button
         id="sim-try"
         aria-haspopup="dialog"
         title="Roll a random result of this career and see whether the veteran it leaves helps your loop"
         onClick={openTryRun}
       >
         Try a run
-      </button>
+      </Button>
     </>
   );
 }

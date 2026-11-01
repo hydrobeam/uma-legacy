@@ -9,6 +9,7 @@ import { skillIconSrc, srcFor } from '../images.ts';
 import { RadioPills } from './RadioPills.tsx';
 import { ScenLogo } from './Images.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
+import { variants } from './variants.ts';
 
 // a guaranteed gold: its icon, named by its tooltip (the name as small text only when there is no icon), so every
 // tile stays logo + one line
@@ -65,8 +66,15 @@ function ScenarioTile({ sc, checked, onPick }: { sc: Scenario; checked: boolean;
     </button>
   );
 }
-/** the scenario picker */
-export function ScenarioPicker() {
+// The scenario button: the game's scenario select art behind its logo at the right, on a pale fade; it lifts under the
+// pointer. The loop page's is the setup column's width and shorter (its setup fits a 900 px screen).
+const scenButton = variants({
+  base: 'border-gm-edge art-scen text-ink shadow-raised hover:shadow-lifted active:inset-shadow-pressed relative inline-grid max-w-full items-center justify-items-start overflow-hidden rounded-lg border px-2 py-0.5 transition duration-120 hover:-translate-y-px active:translate-y-0 active:shadow-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 max-md:min-h-11',
+  variants: { page: { career: 'min-h-11 w-52.5', loop: 'min-h-9.5 w-full' } },
+  defaults: { page: 'career' },
+});
+/** the scenario picker (`compact`: the loop page's) */
+export function ScenarioPicker({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false),
     button = useRef<HTMLButtonElement>(null),
     menu = useRef<HTMLDivElement>(null);
@@ -99,7 +107,7 @@ export function ScenarioPicker() {
       <div class="gctl" onFocusOut={onFocusOut}>
         <span id="x-scen-l">Scenario</span>
         <button
-          class="scenbtn"
+          class={scenButton({ page: compact ? 'loop' : 'career' })}
           id="x-scen"
           ref={button}
           type="button"
@@ -113,7 +121,7 @@ export function ScenarioPicker() {
           onClick={() => setOpen(!open)}
           onKeyDown={opensOnArrow(open, setOpen)}
         >
-          <ScenLogo key={sc.v} sc={sc} />
+          <ScenLogo key={sc.v} sc={sc} cls={compact ? 'h-7.5 w-28' : 'h-9 w-28'} />
         </button>
       </div>
       <div

@@ -11,6 +11,7 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import { EnhButtons, EraRow, Footer } from '../ui/Shell.tsx';
 import type { Badge } from '../ui/Shell.tsx';
 import type { Era } from '../eras.ts';
+import { Button } from '../ui/Button.tsx';
 
 /** the dialogs' boxes at the end of the page, in order */
 const LOOP_DIALOGS = ['set-umas-root', 'set-cards-root', 'why-root', 'sched-root', 'ex-root', 'odds-root'] as const;
@@ -188,9 +189,9 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
         </div>
       ))}
       <Footer version={version}>
-        <button class="btn" type="button" id="ex-open" onClick={s.onExport}>
+        <Button id="ex-open" onClick={s.onExport}>
           Export / import settings
-        </button>
+        </Button>
       </Footer>
     </>
   );

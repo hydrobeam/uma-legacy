@@ -3,6 +3,7 @@
 // `onSaid` gets what the import says, for the panel's status (`useSaid`).
 import { useState } from 'preact/hooks';
 import { importFiles } from '../owned.ts';
+import { FileButton } from './Button.tsx';
 
 /** what the last import said; `n` counts the imports */
 export interface Said {
@@ -18,20 +19,16 @@ export function useSaid() {
 
 export function OwnedImport({ id, onSaid }: { id: string; onSaid: (said: string) => void }) {
   return (
-    <label
-      class="btn filebtn"
+    <FileButton
       title="Owned outfits (card_data.json) or support cards (support_card_data.json) from umadump: replaces the marks here"
+      id={id}
+      accept=".json,application/json"
+      multiple
+      onChange={(e) => {
+        void importFiles(e.currentTarget).then(onSaid);
+      }}
     >
       Import umadump
-      <input
-        type="file"
-        id={id}
-        accept=".json,application/json"
-        multiple
-        onChange={(e) => {
-          void importFiles(e.currentTarget).then(onSaid);
-        }}
-      />
-    </label>
+    </FileButton>
   );
 }

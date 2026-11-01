@@ -10,7 +10,7 @@ import { places as yourPlaces, backToPick } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { borrowedLast, deckCards } from '../../details.ts';
 import { must } from '../../must.ts';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { answer, searching } from '../state.ts';
 import { keyOf } from '../keys.ts';
@@ -22,6 +22,8 @@ import type { DeepReadonly } from '../../store.ts';
 import { fmtN } from './parts.ts';
 import { DeckCard } from './Sections.tsx';
 import { Guard } from './Guard.tsx';
+import { Button } from '../../ui/Button.tsx';
+import { GameBar } from '../../ui/GameBar.tsx';
 
 type Report = DeepReadonly<PlanReport>;
 type Places = { readonly trainee: number | null; readonly parents: readonly (string | null)[] };
@@ -43,7 +45,7 @@ function OptionsTable() {
     n = settings.value.targets.length;
   return (
     <section class="rbsec alts">
-      <h3>
+      <GameBar>
         Other careers
         {/* "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the
             numbers (the popup behind a small (i) right after the section's title, in its header bar) */}
@@ -61,7 +63,7 @@ function OptionsTable() {
             i
           </button>
         )}
-      </h3>
+      </GameBar>
       <div class="optwrap">
         <table class="cartab optab">
           <thead>
@@ -122,15 +124,13 @@ function OptionsTable() {
       )}
       {back && (
         <div class="optfoot">
-          <button
-            type="button"
-            class="btn"
+          <Button
             id="opt-back"
             disabled={searching.value}
             onClick={() => backToPick(back as Parameters<typeof backToPick>[0])}
           >
             Back to the planner's pick
-          </button>
+          </Button>
         </div>
       )}
     </section>
@@ -222,9 +222,9 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
           <span class="hint">shown above</span>
         ) : (
           // (an old answer's option, while a run works on the next)
-          <button type="button" class="btn" disabled={searching.value} onClick={() => takeCareer(r, places)}>
+          <Button disabled={searching.value} onClick={() => takeCareer(r, places)}>
             Use this
-          </button>
+          </Button>
         )}
       </td>
     </tr>
@@ -278,18 +278,14 @@ export function SavesPopup() {
     if (open) close.current?.focus();
   }, [open]);
   return (
-    <Dialog id="save-dlg" cls="gmdlg" labelledBy="save-title" open={open} onClose={closeSaves}>
-      <h3 class="gmdhdr" id="save-title">
-        What these mean
-      </h3>
+    <Dialog id="save-dlg" skin="game" labelledBy="save-title" open={open} onClose={closeSaves}>
+      <DialogTitle id="save-title">What these mean</DialogTitle>
       <Guard what="The Saves popup" also={savesSubject}>
         {subject && <SavesBody planReport={subject.planReport} notes={subject.notes} />}
       </Guard>
-      <div class="gmdfoot">
-        <button ref={close} type="button" class="btn gmclose" onClick={closeSaves}>
-          Close
-        </button>
-      </div>
+      <DialogFoot>
+        <DialogClose ref={close} onClick={closeSaves} />
+      </DialogFoot>
     </Dialog>
   );
 }
@@ -340,7 +336,7 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
   const example = routeMembers.find((m) => !m.real && (m.building_careers > 0 ? m.p_switch : m.p) > 0),
     exampleOdds = example && (example.building_careers > 0 ? example.p_switch : example.p);
   return (
-    <div class="gmdbody savebody">
+    <DialogBody cls="savebody">
       <p>
         <b>This career</b>
         {`: her chance of landing all ${n} targets in this one run.`}
@@ -417,6 +413,6 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
           {note.text}
         </p>
       ))}
-    </div>
+    </DialogBody>
   );
 }

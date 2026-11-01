@@ -70,7 +70,7 @@ const ACT = (
     <RunAct stop={loop.stopSearch} />
   </RenderGuard>
 );
-const setup = setupViews({ fadeMore: true });
+const setup = setupViews({ fadeMore: true, compact: true });
 const VIEWS: LoopViews = {
   scenario: setup.scenario,
   rank: setup.rank,

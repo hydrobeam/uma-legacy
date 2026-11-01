@@ -97,7 +97,7 @@ export default async function careervets(b) {
   }
   const gone = !(await arima.count()) && (await savedWins()).length === n0w - (had ? 1 : 0);
   await pg.locator('#wins-dlg .ag-add[aria-label="Senior Year, Late Dec: add a G1 win"]').click();
-  await pg.locator('#wins-dlg .wpick', { hasText: 'Arima Kinen' }).click();
+  await pg.locator('#wins-dlg .wmenu button', { hasText: 'Arima Kinen' }).click();
   check(
     "career: a veteran's G1 wins: a click removes Arima Kinen, the Senior Late Dec menu adds it back there, saved",
     gone &&
@@ -109,7 +109,7 @@ export default async function careervets(b) {
     `had ${had}`,
   );
   if (!had) await arima.click();
-  await pg.locator('#wins-dlg .dclose').click();
+  await pg.locator('#wins-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await done();
   await vetsShut();
   // parent 1: a new veteran, with the skills prompt
@@ -179,7 +179,7 @@ export default async function careervets(b) {
   await dialog(pg, 'vpick-dlg');
   const blocked = await pg.locator('#vp-list .vpt:disabled').count(),
     said = await pg.locator('#vp-list .vpt:disabled .vptw').count(); // (read while open: a closed picker holds no rows)
-  await pg.locator('#vpick-dlg .dclose').click();
+  await pg.locator('#vpick-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   check("career: veterans that can't be parent 2 are greyed out", blocked === 0 || said === blocked);
   // the trainee
   await node('node:t');
@@ -221,7 +221,7 @@ export default async function careervets(b) {
   const footIn = () =>
     pg.evaluate(() => {
       const d = document.getElementById('node-dlg').getBoundingClientRect();
-      return [...document.querySelectorAll('#node-dlg .gmdfoot button')].every((b) => {
+      return [...document.getElementById('node-dlg').lastElementChild.querySelectorAll('button')].every((b) => {
         const r = b.getBoundingClientRect();
         return r.top >= d.top && r.bottom <= d.bottom + 0.5 && r.bottom <= innerHeight;
       });
@@ -274,7 +274,7 @@ export default async function careervets(b) {
   const before = await umasNow(),
     searches = await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length);
   await pg.locator('#set-umas #roster .ut .up').nth(3).click();
-  await pg.locator('#set-umas .dclose').click();
+  await pg.locator('#set-umas').getByRole('button', { name: 'Done', exact: true }).click();
   await done();
   check(
     'career: the Umas dialog changes the owned umas and searches again',

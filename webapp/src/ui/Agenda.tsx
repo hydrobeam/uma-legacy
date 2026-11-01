@@ -8,6 +8,7 @@ import { MONTHS, YEARS, bannerSrc, shownP, slotLabel, turnName, why } from '../a
 import type { WinInfo } from '../agenda.ts';
 import type { ScheduleCell } from '../solver.ts';
 import { must } from '../must.ts';
+import { Button } from './Button.tsx';
 
 // April to June before the career, 4 cells a month (Early, Early, Late, Late)
 const PRE = Array.from({ length: 12 }, (_, i) => (i % 4 < 2 ? 'Early ' : 'Late ') + MONTHS[3 + (i >> 2)]);
@@ -157,7 +158,7 @@ export function WinsEditor({ races, wins, winAt, offer, info: infoOf, onWins }: 
     const below = slotRect.bottom - boxRect.top + 4,
       above = slotRect.top - boxRect.top - m.offsetHeight - 4;
     m.style.top = `${below + m.offsetHeight > b.clientHeight && above >= 0 ? above : below}px`;
-    m.querySelector<HTMLElement>('.wpick')?.focus();
+    m.querySelector<HTMLElement>('button')?.focus(); // (the first race: the menu holds its hint and the races)
   }, [menuFor]);
   // closed: a press outside the menu and its "+" closes it (the focus stays where the press puts it)
   useEffect(() => {
@@ -224,16 +225,14 @@ export function WinsEditor({ races, wins, winAt, offer, info: infoOf, onWins }: 
           {offCalendar.map((ix) => {
             const name = raceName.get(ix) || `Race ${ix}`;
             return (
-              <button
+              <Button
                 key={ix}
-                type="button"
-                class="btn"
                 data-k={`win:${ix}`}
                 aria-label={`${name}, won: remove`}
                 onClick={() => remove(ix, null)}
               >
                 {`${name} ×`}
-              </button>
+              </Button>
             );
           })}
         </p>
@@ -349,10 +348,21 @@ function WinsMenu({ menuRef, turn, offered, raceName, info, shownAt, onPick, onB
 function WinPick({ name, sub, onPick }: { name: string; sub: string; onPick: () => void }) {
   const src = bannerSrc(name);
   return (
-    <button type="button" class={`btn wpick${src ? ' art' : ''}`} title={name} onClick={onPick}>
-      {src && <img class="banner" alt="" loading="eager" src={src} />}
-      <span class="wpn">{name}</span>
-      {sub && <small>{sub}</small>}
-    </button>
+    <Button
+      variant={src ? 'slot' : 'plain'}
+      class={src ? undefined : 'grid w-full justify-items-start text-left'}
+      title={name}
+      onClick={onPick}
+    >
+      {src && <img class="block aspect-2/1 w-full object-contain" alt="" loading="eager" src={src} />}
+      <span class={src ? 'sr-only' : undefined}>{name}</span>
+      {sub && (
+        <small
+          class={src ? 'text-3xs text-muted text-center leading-tight font-medium' : 'text-muted text-xs font-medium'}
+        >
+          {sub}
+        </small>
+      )}
+    </Button>
   );
 }

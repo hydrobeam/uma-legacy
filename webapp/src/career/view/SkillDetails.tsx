@@ -6,7 +6,7 @@ import type { Card } from '../../data.ts';
 import type { CareerBuy } from '../job.ts';
 import { umaName } from '../../veterans/names.ts';
 import { CardAv, SkillIcon, UmaAv } from '../../ui/Images.tsx';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { Guard } from './Guard.tsx';
 
 /** the skill on show: `b` its buying report; `got` 'gold' | 'white' | null (not acquired), or undefined for a career
@@ -36,18 +36,14 @@ const close = () => {
 export function SkillDetails() {
   const { spec, open } = shown.value;
   return (
-    <Dialog id="sk-dlg" cls="gmdlg" labelledBy="sk-title" open={open} onClose={close}>
-      <h3 class="gmdhdr" id="sk-title">
-        Skill Details
-      </h3>
+    <Dialog id="sk-dlg" skin="game" labelledBy="sk-title" open={open} onClose={close}>
+      <DialogTitle id="sk-title">Skill Details</DialogTitle>
       <Guard what="Skill Details" also={shownSpec}>
         {spec && <Skill spec={spec} />}
       </Guard>
-      <div class="gmdfoot">
-        <button type="button" class="btn gmclose" onClick={close}>
-          Close
-        </button>
-      </div>
+      <DialogFoot>
+        <DialogClose onClick={close} />
+      </DialogFoot>
     </Dialog>
   );
 }
@@ -77,7 +73,7 @@ function Skill({
     { label: 'Lands as a spark', chance: b.land_gold + b.land_white },
   ];
   return (
-    <div class="gmdbody">
+    <DialogBody>
       <div class={`udsk${got === 'gold' || (ahead && gold) ? ' gold' : ''}${got || ahead ? '' : ' off'}`}>
         <SkillIcon group={group} gold={goldIcon} />
         <span class="udskn">{name}</span>
@@ -139,6 +135,6 @@ function Skill({
           </div>
         ))}
       </div>
-    </div>
+    </DialogBody>
   );
 }

@@ -52,7 +52,7 @@ export default async function careergen(b) {
     JSON.stringify(fromTree),
   );
   await pg.locator('#vets .umcell').last().click();
-  await pg.locator('#v-pane .vdel').click();
+  await pg.locator('#v-pane').getByRole('button', { name: 'Remove', exact: true }).click();
   await done();
   await vetsShut();
   // Save one generation, then another: a veteran's parents become the next one's grandparents.
@@ -150,7 +150,7 @@ export default async function careergen(b) {
   );
   await vetsOpen();
   await pg.locator(`#vet-${removalIndex}`).click();
-  await pg.locator('#v-pane .vdel').click();
+  await pg.locator('#v-pane').getByRole('button', { name: 'Remove', exact: true }).click();
   await saved();
   // her card had the focus and is gone: the card chosen now takes it (review-8c §6)
   const focusAfter = await pg
@@ -190,7 +190,7 @@ export default async function careergen(b) {
     const id = stored()[+card.id.slice(4)].id;
     card.click(); // beside the list, with Remove
     await new Promise((r) => setTimeout(r)); // (the pane is a component: it draws her after the click's task)
-    document.querySelector('#v-pane .vdel').click();
+    [...document.querySelectorAll('#v-pane button')].find((b) => b.textContent === 'Remove').click();
     const due = stored().some((v) => v.id === id);
     dispatchEvent(new PageTransitionEvent('pagehide'));
     return { id, due, flushed: !stored().some((v) => v.id === id) };
@@ -216,7 +216,7 @@ export default async function careergen(b) {
   await vetsOpen();
   while ((await pg.locator('#vets .umcell').count()) > 1) {
     await pg.locator('#vets .umcell').last().click();
-    await pg.locator('#v-pane .vdel').click();
+    await pg.locator('#v-pane').getByRole('button', { name: 'Remove', exact: true }).click();
   }
   await done();
   check(

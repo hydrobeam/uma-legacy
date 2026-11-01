@@ -295,8 +295,8 @@ export default async function career(b) {
     pv.cols === 1 && pv.wide && pv.below,
     JSON.stringify(pv),
   );
-  await pg.locator('#pr-view .dclose').click();
-  await pg.locator('#preset-dlg .dclose').click();
+  await pg.locator('#pr-view').getByRole('button', { name: 'Close', exact: true }).click();
+  await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   // the pink ribbon toggles it, its edge too (not the bare strip beside it); folded, the summary (the whole bar) opens it
   const hb = await pg.locator('#h-set').boundingBox(),
     bb = await pg.locator('.rbbar').boundingBox();
@@ -409,7 +409,7 @@ export default async function career(b) {
     (!chromium || (await pg.evaluate(() => navigator.clipboard.readText())) === exText);
   const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#vx-dl')]);
   const dlSame = fs.readFileSync(await dl.path(), 'utf8') === exText;
-  await pg.locator('#vx-dlg .dclose').click();
+  await pg.locator('#vx-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   // umadump's borrow list (rental_chara_data.json: the lender's viewer id as owner_viewer_id, trained_chara_ids that
   // can repeat yours) goes to the Borrowed tab beside your own veterans; a later borrow list replaces it; your own file
   // merges (a partial one removes nothing); Remove all takes only the open tab's
@@ -627,8 +627,14 @@ export default async function career(b) {
   );
   const affs = [+(await pg.textContent('#tree .pn.trainee .aff')).replace(/\D/g, '')];
   await node('node:t');
-  const affRows = await pg.$$eval('#node-dlg .afftab tbody tr', (l) => l.length),
-    affTot = +(await pg.textContent('#node-dlg .afftab tfoot .aff')).replace(/\D/g, '');
+  const aff = pg.locator('#node-dlg').getByRole('table', { name: 'Affinity' });
+  const affRows = await aff.locator('tbody tr').count(),
+    affTot = +(
+      await aff
+        .locator('tfoot')
+        .getByLabel(/^Affinity \d+$/)
+        .textContent()
+    ).replace(/\D/g, '');
   await closeNode();
   check(
     'career: … her popup breaks it down legacy by legacy, summing to the same',
@@ -722,11 +728,11 @@ export default async function career(b) {
     );
   }
   if (await pg.evaluate(() => document.getElementById('deck-dlg')?.open))
-    await pg.locator('#deck-dlg .gmclose').click();
+    await pg.locator('#deck-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   await pg.click('#o-cards');
   await dialog(pg, 'set-cards');
   await pg.click('#c-all');
-  await pg.locator('#set-cards .dclose').click();
+  await pg.locator('#set-cards').getByRole('button', { name: 'Done', exact: true }).click();
   await done();
   // the schedule and the deck: buttons under the trainee, the schedule window (the game's calendar) and the deck's popup
   check(
@@ -1540,8 +1546,8 @@ export default async function career(b) {
     `wins ${w0} -> ${await winsN()}, ${freed}`,
   );
   await pg.keyboard.press('Enter');
-  const picks = await pg.$$eval('#wins-dlg .wmenu:not([hidden]) .wpick', (l) => l.map((e) => e.textContent));
-  await pg.locator('#wins-dlg .wpick', { hasText: wname }).click();
+  const picks = await pg.$$eval('#wins-dlg .wmenu:not([hidden]) button[title]', (l) => l.map((e) => e.textContent));
+  await pg.locator('#wins-dlg .wmenu button', { hasText: wname }).click();
   check(
     "career: … the empty slot's menu lists the G1s held then (her schedule's first, with its odds); a pick puts the win back in that slot",
     picks[0]?.startsWith(wname) &&

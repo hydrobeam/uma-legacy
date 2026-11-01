@@ -50,8 +50,8 @@ export default async function fourloop(b) {
     afT.length === 4 &&
       new Set(afT).size === 4 &&
       (await pg.locator('#why-dlg .afpar button').count()) === 3 &&
-      (await pg.locator('#why-dlg .afftab tbody tr').count()) === 6 &&
-      !(await pg.locator('#why-dlg .afftab .aft').count()),
+      (await pg.locator('#why-dlg').getByRole('table', { name: 'Affinity' }).locator('tbody tr').count()) === 6 &&
+      !(await pg.locator('#why-dlg').getByText('her own earlier veteran').count()),
     afT.join(', '),
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));

@@ -1,0 +1,35 @@
+// ---------- the game's green header bar: white outlined text on green, stripes at its left fading out ----------
+// `section` (the default): a section's or a box's title bar, its right end cut on a slant with two slanted notches (the
+// career page's sections, "Sparks", the loop page's Swaps). `card`: the title on top of a card, its top corners round
+// (the veteran analysis). Exempt from the contrast audit as the game's art (data-art).
+import type { ComponentChildren } from 'preact';
+import { variants } from './variants.ts';
+
+const look = variants({
+  base: 'art-bar font-game leading-title tracking-title text-shadow-outline relative m-0 flex items-center border-0 font-black text-white',
+  variants: {
+    shape: {
+      section:
+        'clip-bar after:art-notch rounded-l-sm py-0.75 pr-10 pl-3 text-lg after:absolute after:inset-y-0 after:right-3.25 after:w-3.75 after:-skew-x-14 after:opacity-80',
+      card: 'rounded-t-xl px-3 pt-1.75 pb-2 text-center text-xl',
+    },
+  },
+  defaults: { shape: 'section' },
+});
+interface GameBarProps {
+  /** the element: a heading where it heads a section, else a div or p */
+  as?: 'h2' | 'h3' | 'div' | 'p';
+  shape?: 'section' | 'card';
+  id?: string;
+  /** where it sits: layout utilities only */
+  class?: string;
+  children: ComponentChildren;
+}
+/** a green header bar */
+export function GameBar({ as: Tag = 'h3', shape, id, class: place, children }: GameBarProps) {
+  return (
+    <Tag id={id} data-art="" class={look({ shape }, place)}>
+      {children}
+    </Tag>
+  );
+}

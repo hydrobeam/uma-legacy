@@ -23,7 +23,7 @@ export default async function careerborrow(b) {
     await pg.click('#v-export');
     await dialog(pg, 'vx-dlg');
     const x = JSON.parse(await pg.inputValue('#vx-text'));
-    await pg.locator('#vx-dlg .dclose').click();
+    await pg.locator('#vx-dlg').getByRole('button', { name: 'Close', exact: true }).click();
     await vetsShut();
     return x;
   };
@@ -132,7 +132,7 @@ export default async function careerborrow(b) {
     .locator('#vp-list .vpt')
     .nth(bj)
     .evaluate((b) => b.disabled && /Can't: borrowed/.test(b.textContent));
-  await pg.locator('#vpick-dlg .dclose').click();
+  await pg.locator('#vpick-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   check(
     'career: a borrowed parent you chose is blocked when borrowing is off, and the parent picker greys her out',
     blockedNote.test(n1) && greyed,

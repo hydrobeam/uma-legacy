@@ -7,6 +7,7 @@ import type { ComponentChildren } from 'preact';
 import { AddPop, EnhButtons, EraRow, Footer } from '../ui/Shell.tsx';
 import type { Badge } from '../ui/Shell.tsx';
 import type { Era } from '../eras.ts';
+import { Button } from '../ui/Button.tsx';
 
 /** the dialogs' and popups' boxes at the end of the page, in order */
 const CAREER_DIALOGS = [
@@ -119,7 +120,7 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
           <div class="setenh">
             <EnhButtons umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
             <button
-              class="btn enh wide"
+              class="enh wide"
               type="button"
               id="v-toggle"
               aria-haspopup="dialog"
@@ -174,15 +175,13 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
       {views ? views.addList : <AddPop />}
 
       <Footer version={version}>
-        <button
-          class="btn"
-          type="button"
+        <Button
           id="v-export"
           title="Your veterans, setup and the planner's search as text to copy or download (bring it back with Paste in Veteran Umamusume)"
           onClick={s.onExport}
         >
           Export
-        </button>
+        </Button>
       </Footer>
     </>
   );

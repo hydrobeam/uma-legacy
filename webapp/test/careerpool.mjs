@@ -10,7 +10,7 @@ export default async function careerpool(b) {
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
   const exText = await pg.inputValue('#vx-text');
-  await pg.locator('#vx-dlg .dclose').click();
+  await pg.locator('#vx-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   // the goal's steps: full veterans of two different umas -> step 3 in the note; the planner still picks (nothing fixed),
   // pricing them as real full-veteran sides of its trio
   const goalEx = JSON.parse(exText),

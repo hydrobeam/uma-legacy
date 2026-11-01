@@ -17,6 +17,7 @@ import { CardAv } from './Images.tsx';
 import { OwnedImport, useSaid } from './OwnedImport.tsx';
 import { SettingsSort } from './SortMenu.tsx';
 import { useMoreFade } from './moreFade.ts';
+import { Button } from './Button.tsx';
 
 // the filter's text, trimmed and lower-cased: a card shows when its name holds it
 const query = signal('');
@@ -141,12 +142,12 @@ export function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
       <div class="row between">
         <h2 id="h-deck">Support deck</h2>
         <div class="row">
-          <button class="btn" id="c-all" type="button" onClick={ownAllCards}>
+          <Button id="c-all" onClick={ownAllCards}>
             All owned
-          </button>
-          <button class="btn" id="c-none" type="button" onClick={ownNoCards}>
+          </Button>
+          <Button id="c-none" onClick={ownNoCards}>
             None owned
-          </button>
+          </Button>
           <OwnedImport id="c-file" onSaid={say} />
           <span class="hint cnt" id="c-count" role="status">
             {countText}

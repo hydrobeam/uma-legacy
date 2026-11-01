@@ -5,7 +5,7 @@
 import { computed, signal } from '@preact/signals';
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { Guard } from './Guard.tsx';
 import { vets } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
@@ -26,6 +26,7 @@ import {
 import { SortMenu } from '../../ui/SortMenu.tsx';
 import { VetCell } from '../../ui/VetCell.tsx';
 import { openNode } from './dialogs.ts';
+import { Button } from '../../ui/Button.tsx';
 
 const umOpen = signal(false);
 const closeUm = () => {
@@ -41,22 +42,21 @@ export function UmamoeDialog() {
     if (open && !hasKey.peek()) keyBox.current?.focus();
   }, [open]);
   return (
-    <Dialog id="um-dlg" cls="umdlg" labelledBy="um-title" open={open} onClose={closeUm}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="um-title" title="Veterans other players list on uma.moe join your pool as borrows">
-            uma.moe
-          </h3>
-          <button class="btn dclose" type="button" onClick={closeUm}>
-            Close
-          </button>
-        </div>
+    <Dialog id="um-dlg" size="lg" tall labelledBy="um-title" open={open} onClose={closeUm}>
+      <DialogPanel>
+        <DialogHead
+          id="um-title"
+          title="uma.moe"
+          tip="Veterans other players list on uma.moe join your pool as borrows"
+          close="Close"
+          onClose={closeUm}
+        />
         <div class="dlgscroll" id="um-body">
           <Guard what="uma.moe's popup">
             <UmamoePanel keyBox={keyBox} />
           </Guard>
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -66,9 +66,7 @@ export function UmButton() {
   const { text, short } = umStatus.value,
     has = hasKey.value;
   return (
-    <button
-      class="btn"
-      type="button"
+    <Button
       id="um-open"
       aria-haspopup="dialog"
       title="Veterans other players list on uma.moe join your pool as borrows"
@@ -78,7 +76,7 @@ export function UmButton() {
       }}
     >
       {has || short ? `uma.moe · ${short || text}` : 'Borrow from uma.moe'}
-    </button>
+    </Button>
   );
 }
 const SORT_ITEMS = UM_SORTS.map((k) => ({
@@ -121,9 +119,9 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
               if (e.key === 'Enter') save();
             }}
           />
-          <button class="btn" type="button" id="um-save" onClick={save}>
+          <Button id="um-save" onClick={save}>
             Save
-          </button>
+          </Button>
         </div>
         <span class="hint umerr" id="um-err" role="status" aria-live="polite">
           {has ? '' : text}
@@ -137,9 +135,9 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
           <b id="um-msg" role="status" aria-live="polite">
             {text}
           </b>
-          <button class="btn sm" type="button" id="um-again" disabled={umBusy.value} onClick={() => syncListings(true)}>
+          <Button size="sm" id="um-again" disabled={umBusy.value} onClick={() => syncListings(true)}>
             Refresh
-          </button>
+          </Button>
         </div>
         <p class="hint" id="um-what">
           {sig ? `Parents with ${min}+ of your ${n} targets${full ? '' : ', from trainers you can follow'}` : ''}
@@ -151,7 +149,7 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
           </label>
           <SortMenu
             id="um-sort"
-            cls="btn sm"
+            size="sm"
             what="order veterans"
             items={SORT_ITEMS}
             value={by}

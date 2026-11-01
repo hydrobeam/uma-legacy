@@ -498,11 +498,11 @@ export const AUDIT = () => {
       // the game's sprites (skill tiles), which the audit can't see behind it
       (game &&
         el.closest(
-          '.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lp .swhead, .lptgt h2, .afpick [aria-pressed="true"], .rankseg [aria-checked="true"], .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b',
+          '[data-art], .ud, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lptgt h2, .afpick [aria-pressed="true"], .rankseg [aria-checked="true"], .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b',
         )) ||
       el.closest('.ptabs [aria-current="page"]') || // every page's header: the game's green tab with white outlined text
       // the planner pages' game-style dialogs: their headers (white outlined text on the game's green) and primary buttons
-      (game && el.closest('dialog > .dlg > .dhead, dialog .btn.primary, .gmdlg > .gmdhdr'));
+      (game && el.closest('dialog [data-art]'));
     if (exempt) {
       skipped++;
       continue;
@@ -805,7 +805,7 @@ export async function careerPage(b) {
     await pg.waitForFunction(() => document.getElementById('sim-dlg').open);
   };
   const simShut = async () => {
-    if (await simIsOpen()) await pg.locator('#sim-dlg .dclose').click();
+    if (await simIsOpen()) await pg.locator('#sim-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   };
   const simStars = async (n) => {
     await simOpen();

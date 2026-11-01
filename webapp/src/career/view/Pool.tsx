@@ -20,7 +20,7 @@ import { VetPane } from './NodeDialog.tsx';
 import { Guard } from './Guard.tsx';
 import { openPaste } from './Io.tsx';
 import { importText } from '../io.ts';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { must } from '../../must.ts';
 import {
   VET_SORTS,
@@ -41,6 +41,7 @@ import {
   vetsNote,
 } from './poolState.ts';
 import type { Tab } from './poolState.ts';
+import { Button, FileButton } from '../../ui/Button.tsx';
 
 const wideVets = () => matchMedia('(min-width: 760px)').matches;
 
@@ -56,7 +57,7 @@ export function PoolHead() {
       </div>
       <SortMenu
         id="vs"
-        cls="btn sm"
+        size="sm"
         what="order veterans"
         items={SORT_ITEMS}
         value={by}
@@ -207,13 +208,8 @@ export function PoolBody() {
 export function VetsDialog() {
   return (
     <Dialog id="set-vets" cls="setdlg vetdlg" labelledBy="h-vets" open={poolOpen.value} onClose={poolClosed}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="h-vets">Veteran Umamusume</h3>
-          <button class="btn dclose" type="button" onClick={poolClosed}>
-            Done
-          </button>
-        </div>
+      <DialogPanel fit="fill">
+        <DialogHead id="h-vets" title="Veteran Umamusume" close="Done" onClose={poolClosed} />
         <div class="vhead" id="v-head">
           <Guard what="The veterans' tabs" also={tab}>
             <PoolHead />
@@ -225,24 +221,25 @@ export function VetsDialog() {
           </Guard>
         </div>
         <div class="row vtools">
-          <label
-            class="btn filebtn"
+          <FileButton
             title="umadump (github.com/Werseter/umadump) reads them from the game: trained_chara_data.json for yours, rental_chara_data.json for your borrow list"
+            id="v-file"
+            accept=".json,application/json"
+            onChange={importFile}
           >
             Import umadump file
-            <input type="file" id="v-file" accept=".json,application/json" onChange={importFile} />
-          </label>
-          <button class="btn" type="button" id="v-paste" onClick={openPaste}>
+          </FileButton>
+          <Button id="v-paste" onClick={openPaste}>
             Paste
-          </button>
-          <button class="btn" type="button" id="v-clear" onClick={removeAll}>
+          </Button>
+          <Button id="v-clear" onClick={removeAll}>
             Remove all
-          </button>
+          </Button>
           <span class="hint" id="v-msg" role="status">
             {vetsNote.value}
           </span>
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }

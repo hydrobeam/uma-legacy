@@ -74,7 +74,7 @@ export default async function popups(b) {
   await dialog(pg, 'why-dlg');
   // the career page's table: each parent, then her two parents (relation, points from shared G1s, affinity), a Total row
   const at = await pg.evaluate(() => {
-    const t = document.querySelector('#why-dlg .afftab'),
+    const t = document.querySelector('#why-dlg table'),
       rows = [...t.tBodies].flatMap((b) => [...b.rows]);
     const n = (x) => +x.replace(/\D/g, ''),
       aff = rows.map((r) => n(r.cells[3].textContent));

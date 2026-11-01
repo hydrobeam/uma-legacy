@@ -7,8 +7,6 @@ const BUILT = {
   y0: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
   y1: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
   y2: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
-  leg0: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
-  leg1: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
 };
 const [{ rejected }] = await new PurgeCSS().purge({
   content: ['src/**/*.{ts,tsx}', '*.html', 'partials/*.hbs', 'vite.config.mjs', 'vite/*.mjs'],

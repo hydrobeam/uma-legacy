@@ -6,6 +6,8 @@
 import { useRef, useState } from 'preact/hooks';
 import { must } from '../must.ts';
 import { fields, setSort } from '../settings.ts';
+import { Button } from './Button.tsx';
+import type { ButtonSize } from './Button.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
 
 export interface SortItem<K extends string = string> {
@@ -16,8 +18,8 @@ export interface SortItem<K extends string = string> {
 }
 interface SortMenuProps<K extends string> {
   id: string;
-  /** the button's class */
-  cls: string;
+  /** the button's type size */
+  size?: ButtonSize;
   /** what the menu orders, after the button's text in its name ('sort umas') */
   what: string;
   items: readonly SortItem<K>[];
@@ -29,7 +31,7 @@ interface SortMenuProps<K extends string> {
   title: string;
   onPick: (k: K) => void;
 }
-export function SortMenu<K extends string>({ id, cls, what, items, value, arrow, title, onPick }: SortMenuProps<K>) {
+export function SortMenu<K extends string>({ id, size, what, items, value, arrow, title, onPick }: SortMenuProps<K>) {
   const [open, setOpen] = useState(false),
     button = useRef<HTMLButtonElement>(null),
     area = useRef<HTMLDivElement>(null),
@@ -51,11 +53,10 @@ export function SortMenu<K extends string>({ id, cls, what, items, value, arrow,
         if (to && !e.currentTarget.contains(to)) setOpen(false);
       }}
     >
-      <button
-        class={cls}
+      <Button
+        size={size}
         id={id}
         ref={button}
-        type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${text}, ${what}`} // starts with the visible text (voice control)
@@ -64,7 +65,7 @@ export function SortMenu<K extends string>({ id, cls, what, items, value, arrow,
         onKeyDown={opensOnArrow(open, setOpen)}
       >
         {text}
-      </button>
+      </Button>
       <div class="sortmenu" id={`${id}-menu`} role="menu" ref={menu} hidden={!open} onKeyDown={(e) => menuKeys(e)}>
         {items.map(({ k, label, hint }) => {
           const on = k === value;
@@ -114,7 +115,6 @@ export function SettingsSort({ prefix, id, what }: { prefix: 'r' | 'c'; id: stri
   return (
     <SortMenu
       id={id}
-      cls="btn"
       what={what}
       items={RELEASE_NAME}
       value={sortBy}

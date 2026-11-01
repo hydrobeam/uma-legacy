@@ -192,7 +192,7 @@ export default async function phone(b) {
   });
   const closeVis = () =>
     pg.evaluate(() => {
-      const b = [...document.querySelectorAll('dialog[open] .dhead button')].find((x) => x.textContent === 'Close'),
+      const b = [...document.querySelectorAll('dialog[open] button')].find((x) => x.textContent === 'Close'),
         r = b.getBoundingClientRect();
       return r.top >= 0 && r.bottom <= innerHeight;
     });
@@ -216,7 +216,7 @@ export default async function phone(b) {
   await pg.click('#ex-open');
   check(
     "the export dialog's Close sits in the same header row as the others",
-    await pg.evaluate(() => document.getElementById('ex-close').closest('.dhead') !== null),
+    await pg.evaluate(() => document.getElementById('ex-close').parentElement.querySelector('h3') !== null),
   );
   await pg.keyboard.press('Escape');
   // the pill switches (Game data, lineage rank, Results): the chosen part fills its share of the track, flush

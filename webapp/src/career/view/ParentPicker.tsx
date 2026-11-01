@@ -8,11 +8,12 @@ import { starsOf, umaName } from '../../veterans/names.ts';
 import { askSkills } from '../../veterans/pickers.ts';
 import { UmaList } from '../../veterans/Editors.tsx';
 import type { VetRecord } from '../../veterans/store.ts';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.ts';
 import { pickerFor, pickerClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
+import { Button } from '../../ui/Button.tsx';
 
 // why veteran v can't go in place k (or '')
 const BLOCKED: Record<string, string> = {
@@ -118,13 +119,13 @@ export function ParentPicker() {
     <Dialog id="vpick-dlg" labelledBy="vpick-title" open={k !== null} onClose={close}>
       {/* (inside the dialog: a throw leaves it open, and Escape still closes it) */}
       <Guard what="The parent picker" also={pickerFor}>
-        <div class="dlg">
-          <div class="row between dhead">
-            <h3 id="vpick-title">{place === null ? 'Choose a parent' : `Choose parent ${place + 1}`}</h3>
-            <button type="button" class="btn dclose" onClick={close}>
-              Close
-            </button>
-          </div>
+        <DialogPanel>
+          <DialogHead
+            id="vpick-title"
+            title={place === null ? 'Choose a parent' : `Choose parent ${place + 1}`}
+            close="Close"
+            onClose={close}
+          />
           <div class="seg" role="tablist" aria-label="Where the parent comes from">
             {TABS.map(([key, label]) => (
               <button
@@ -181,9 +182,8 @@ export function ParentPicker() {
           </div>
           <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden={tab !== 'auto'}>
             <p>The planner tries every one of your veterans in this place and keeps the best.</p>
-            <button
-              class="btn primary"
-              type="button"
+            <Button
+              variant="primary"
               id="vp-auto-go"
               onClick={() => {
                 if (k === null) return;
@@ -194,9 +194,9 @@ export function ParentPicker() {
               }}
             >
               Let the planner pick this parent
-            </button>
+            </Button>
           </div>
-        </div>
+        </DialogPanel>
       </Guard>
     </Dialog>
   );

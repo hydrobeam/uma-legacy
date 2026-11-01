@@ -6,11 +6,12 @@ import { signal } from '@preact/signals';
 import { useRef, useState } from 'preact/hooks';
 import { ERA } from '../saved.ts';
 import { importSettings, importToEra, settings } from '../settings.ts';
-import { Dialog } from '../ui/Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
 import { must } from '../must.ts';
 import { exportText, readImport } from './io.ts';
 import { loopView, resultsStale } from './state.ts';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
+import { Button } from '../ui/Button.tsx';
 
 // the export made at the last opening (`n` counts them: each opening starts the box afresh), and whether it is open
 const opened = signal({ n: 0, text: '', open: false });
@@ -70,13 +71,8 @@ function ExportBody({ made }: { made: string }) {
     );
   };
   return (
-    <div class="dlg">
-      <div class="row between dhead">
-        <h3 id="ex-title">Export or import</h3>
-        <button type="button" class="btn" id="ex-close" onClick={close}>
-          Close
-        </button>
-      </div>
+    <DialogPanel>
+      <DialogHead id="ex-title" title="Export or import" closeId="ex-close" close="Close" onClose={close} />
       <p>
         The text below holds your settings and the results on screen. Copy it to share or to paste into a chat. To load
         someone else's settings, paste their text here and press Load settings.
@@ -91,16 +87,16 @@ function ExportBody({ made }: { made: string }) {
         onInput={(e) => setText(e.currentTarget.value)}
       />
       <div class="row">
-        <button type="button" class="btn" id="ex-copy" onClick={copy}>
+        <Button id="ex-copy" onClick={copy}>
           Copy
-        </button>
-        <button type="button" class="btn" id="ex-load" onClick={load}>
+        </Button>
+        <Button id="ex-load" onClick={load}>
           Load settings
-        </button>
+        </Button>
         <span class="hint" id="ex-msg">
           {message}
         </span>
       </div>
-    </div>
+    </DialogPanel>
   );
 }

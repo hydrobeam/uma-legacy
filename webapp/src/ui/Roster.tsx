@@ -13,6 +13,7 @@ import { UmaAv } from './Images.tsx';
 import { OwnedImport, useSaid } from './OwnedImport.tsx';
 import { SettingsSort } from './SortMenu.tsx';
 import { useMoreFade } from './moreFade.ts';
+import { Button } from './Button.tsx';
 
 const STATE_LABEL = { own: 'owned', out: 'not owned' };
 const EAGER = 8; // the first two rows are on screen when the dialog opens (phone and desktop): their portraits load at once
@@ -78,12 +79,12 @@ export function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
       <div class="row between">
         <h2 id="h-roster">Umas</h2>
         <div class="row">
-          <button class="btn" id="r-all" type="button" onClick={ownAllUmas}>
+          <Button id="r-all" onClick={ownAllUmas}>
             All owned
-          </button>
-          <button class="btn" id="r-none" type="button" onClick={ownNoUmas}>
+          </Button>
+          <Button id="r-none" onClick={ownNoUmas}>
             None owned
-          </button>
+          </Button>
           <OwnedImport id="r-file" onSaid={say} />
           <span class="hint cnt" id="r-count" role="status">
             {countText}

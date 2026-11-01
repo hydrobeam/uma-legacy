@@ -3,7 +3,7 @@
 // it, and the browser gives the focus back to the button that opened it.
 import { computed, signal } from '@preact/signals';
 import { pct } from '../odds.ts';
-import { Dialog } from './Dialog.tsx';
+import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from './Dialog.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 
 /** what the popup shows: `ex[k]` the chance of exactly k (k = 0 .. n); `pAll` the all-n figure shown (the solver's
@@ -28,7 +28,7 @@ const close = () => {
 export function OddsDialog() {
   const { spec, open } = shown.value;
   return (
-    <Dialog id="odds-dlg" cls="gmdlg" labelledBy="odds-title" open={open} onClose={close}>
+    <Dialog id="odds-dlg" skin="game" labelledBy="odds-title" open={open} onClose={close}>
       <RenderGuard input={shownSpec} what="The odds">
         {spec && <Odds spec={spec} />}
       </RenderGuard>
@@ -40,10 +40,8 @@ function Odds({ spec: { title, n, ex, pAll, expected } }: { spec: OddsSpec }) {
   const counts = Array.from({ length: n + 1 }, (_, i) => n - i);
   return (
     <>
-      <h3 class="gmdhdr" id="odds-title">
-        {title}
-      </h3>
-      <div class="gmdbody">
+      <DialogTitle id="odds-title">{title}</DialogTitle>
+      <DialogBody>
         <table class="oddtab">
           <thead>
             <tr>
@@ -61,12 +59,10 @@ function Odds({ spec: { title, n, ex, pAll, expected } }: { spec: OddsSpec }) {
           </tbody>
         </table>
         <p class="gmdstat">{`${expected.toFixed(2)} of ${n} expected.`}</p>
-      </div>
-      <div class="gmdfoot">
-        <button type="button" class="btn gmclose" onClick={close}>
-          Close
-        </button>
-      </div>
+      </DialogBody>
+      <DialogFoot>
+        <DialogClose onClick={close} />
+      </DialogFoot>
     </>
   );
 }

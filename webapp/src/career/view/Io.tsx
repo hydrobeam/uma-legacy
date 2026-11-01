@@ -4,8 +4,9 @@
 import { signal } from '@preact/signals';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { must } from '../../must.ts';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { copyExport, downloadExport, exportText, importText } from '../io.ts';
+import { Button } from '../../ui/Button.tsx';
 
 // ---------- Export
 const exported = signal({ open: false, text: '', msg: '' });
@@ -24,13 +25,8 @@ export function ExportDialog() {
     box = useRef<HTMLTextAreaElement>(null);
   return (
     <Dialog id="vx-dlg" labelledBy="vx-title" open={open} onClose={closeExport}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="vx-title">Export veterans</h3>
-          <button class="btn dclose" type="button" onClick={closeExport}>
-            Close
-          </button>
-        </div>
+      <DialogPanel>
+        <DialogHead id="vx-title" title="Export veterans" close="Close" onClose={closeExport} />
         <p>
           Your veterans, the plan and the solver job the planner sends for them. Copy the text to keep or share it;
           Paste brings it back.
@@ -45,17 +41,10 @@ export function ExportDialog() {
           value={text}
         />
         <div class="row">
-          <button
-            class="btn"
-            type="button"
-            id="vx-copy"
-            onClick={() => copyExport(must(box.current, 'the text box is drawn'), sayExport)}
-          >
+          <Button id="vx-copy" onClick={() => copyExport(must(box.current, 'the text box is drawn'), sayExport)}>
             Copy
-          </button>
-          <button
-            class="btn"
-            type="button"
+          </Button>
+          <Button
             id="vx-dl"
             onClick={() => {
               downloadExport(text);
@@ -63,12 +52,12 @@ export function ExportDialog() {
             }}
           >
             Download
-          </button>
+          </Button>
           <span class="hint" id="vx-msg" role="status">
             {msg}
           </span>
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -92,13 +81,8 @@ export function PasteDialog() {
   }, [open]);
   return (
     <Dialog id="paste-dlg" labelledBy="paste-title" open={open} onClose={closePaste}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="paste-title">Paste veterans</h3>
-          <button class="btn dclose" type="button" onClick={closePaste}>
-            Close
-          </button>
-        </div>
+      <DialogPanel>
+        <DialogHead id="paste-title" title="Paste veterans" close="Close" onClose={closePaste} />
         <p>
           The contents of umadump's <code>trained_chara_data.json</code> (yours) or <code>rental_chara_data.json</code>{' '}
           (the veterans you can borrow), the text from this page's Export, or an uma.moe lineage planner export (one
@@ -108,18 +92,16 @@ export function PasteDialog() {
         </p>
         <textarea ref={box} id="paste-text" rows={10} spellcheck={false} aria-label="umadump, Export or uma.moe text" />
         <div class="row">
-          <button
-            class="btn"
-            type="button"
+          <Button
             id="paste-load"
             onClick={() => {
               if (importText(must(box.current, 'the text box is drawn').value)) closePaste();
             }}
           >
             Import
-          </button>
+          </Button>
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }

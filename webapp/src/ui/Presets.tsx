@@ -18,8 +18,9 @@ import {
   suggestName,
 } from '../presets.ts';
 import { must } from '../must.ts';
-import { Dialog } from './Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { TargetTile, groupKeys } from './TargetTile.tsx';
+import { Button } from './Button.tsx';
 
 // the list dialog: open, and what its status line says (cleared each time it opens)
 const listOpen = signal(false),
@@ -60,20 +61,16 @@ function PresetRow({ p, current, onView }: RowProps) {
         {cur ? <span class="pcur">current</span> : null}
       </button>
       <div class="pbtns">
-        <button
-          class="btn"
-          type="button"
+        <Button
           onClick={() => {
             loadPreset(p.groups);
             closeList();
           }}
         >
           Load
-        </button>
+        </Button>
         {/* as Save: a preset is never emptied */}
-        <button
-          class="btn"
-          type="button"
+        <Button
           disabled={!current.length}
           title={current.length ? '' : 'Add target skills first'}
           onClick={() => {
@@ -81,10 +78,9 @@ function PresetRow({ p, current, onView }: RowProps) {
           }}
         >
           Overwrite
-        </button>
-        <button
-          class="btn ptrash"
-          type="button"
+        </Button>
+        <Button
+          class="ptrash inline-flex items-center"
           aria-label="Delete"
           title="Delete"
           onClick={() => {
@@ -92,7 +88,7 @@ function PresetRow({ p, current, onView }: RowProps) {
           }}
         >
           <TrashIcon />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -103,14 +99,9 @@ function PresetList({ onSave, onView }: { onSave: () => void; onView: (name: str
     presets = open ? fields.presets.value : [],
     current = fields.targets.value.map((t) => t.group);
   return (
-    <Dialog id="preset-dlg" cls="prdlg" labelledBy="pr-title" open={open} onClose={closeList}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="pr-title">Target skill presets</h3>
-          <button class="btn dclose" type="button" onClick={closeList}>
-            Done
-          </button>
-        </div>
+    <Dialog id="preset-dlg" size="2xl" labelledBy="pr-title" open={open} onClose={closeList}>
+      <DialogPanel>
+        <DialogHead id="pr-title" title="Target skill presets" close="Done" onClose={closeList} />
         <div class="prlist" id="pr-list">
           {open && !presets.length ? <p class="hint">No presets yet.</p> : null}
           {presets.map((p) => (
@@ -121,19 +112,18 @@ function PresetList({ onSave, onView }: { onSave: () => void; onView: (name: str
           {listSaid}
         </p>
         <div class="row prfoot">
-          <button
-            class="btn primary"
+          <Button
+            variant="primary"
             id="pr-save"
-            type="button"
             aria-haspopup="dialog"
             disabled={!current.length}
             title={current.length ? '' : 'Add target skills first'}
             onClick={onSave}
           >
             Save current skills
-          </button>
+          </Button>
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -162,11 +152,9 @@ function SaveDialog({ saving, onChange }: { saving: Saving; onChange: (next: Sav
     close();
   };
   return (
-    <Dialog id="pr-new" cls="prdlg prsmall" labelledBy="prn-title" open={saving.open} onClose={close}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="prn-title">Save the current skills</h3>
-        </div>
+    <Dialog id="pr-new" size="xs" labelledBy="prn-title" open={saving.open} onClose={close}>
+      <DialogPanel>
+        <DialogHead id="prn-title" title="Save the current skills" />
         <label class="prlab" for="prn-name">
           Preset name
         </label>
@@ -189,14 +177,12 @@ function SaveDialog({ saving, onChange }: { saving: Saving; onChange: (next: Sav
           {saving.said}
         </p>
         <div class="row prfoot">
-          <button class="btn primary" id="prn-save" type="button" onClick={save}>
+          <Button variant="primary" id="prn-save" onClick={save}>
             Save
-          </button>
-          <button class="btn dclose" type="button" onClick={close}>
-            Cancel
-          </button>
+          </Button>
+          <Button onClick={close}>Cancel</Button>
         </div>
-      </div>
+      </DialogPanel>
     </Dialog>
   );
 }
@@ -212,7 +198,7 @@ interface ViewProps {
 }
 function ViewDialog({ name, n, onRenamed, onClose }: ViewProps) {
   return (
-    <Dialog id="pr-view" cls="prdlg prview" labelledBy="prv-title" open={name !== null} onClose={onClose}>
+    <Dialog id="pr-view" size="md" labelledBy="prv-title" open={name !== null} onClose={onClose}>
       <ViewBody key={n} name={name} onRenamed={onRenamed} onClose={onClose} />
     </Dialog>
   );
@@ -248,10 +234,8 @@ function ViewBody({ name, onRenamed, onClose }: Omit<ViewProps, 'n'>) {
     setRenaming(false);
   };
   return (
-    <div class="dlg">
-      <div class="row between dhead">
-        <h3 id="prv-title">{p?.name}</h3>
-      </div>
+    <DialogPanel>
+      <DialogHead id="prv-title" title={p?.name} />
       <div class="targets prvtiles" id="prv-tiles">
         {p?.groups.map((group, at) => (
           <TargetTile key={tileKeys[at]} group={group} />
@@ -286,14 +270,12 @@ function ViewBody({ name, onRenamed, onClose }: Omit<ViewProps, 'n'>) {
         {said}
       </p>
       <div class="row prfoot">
-        <button class="btn" id="prv-rename" type="button" onClick={renaming ? commit : startRename}>
+        <Button id="prv-rename" onClick={renaming ? commit : startRename}>
           {renaming ? 'Save name' : 'Rename'}
-        </button>
-        <button class="btn dclose" type="button" onClick={onClose}>
-          Close
-        </button>
+        </Button>
+        <Button onClick={onClose}>Close</Button>
       </div>
-    </div>
+    </DialogPanel>
   );
 }
 // The three dialogs. Each opening of Save or of a view starts it afresh.

@@ -169,10 +169,12 @@ export default async function careerumamoe(b) {
   await pg.locator('#vets .umcell').nth(0).click();
   await pg.locator('#v-pane button', { hasText: 'Copy ID' }).click();
   // (the copy is a promise: its answer is drawn after it)
-  await pg.waitForFunction(() => document.querySelector('#v-pane .twho .btn.sm')?.textContent !== 'Copy ID');
-  const copied = await pg.locator('#v-pane .twho .btn.sm').textContent();
+  // (Copy ID, then what the copy said: Copied, or her trainer's ID)
+  const copy = pg.locator('#v-pane .twho').getByRole('button', { name: /^(Copy ID|Copied|\d+)$/ });
+  await copy.filter({ hasNotText: 'Copy ID' }).waitFor();
+  const copied = await copy.textContent();
   await pg.locator('#vets .umcell').nth(1).click();
-  const next = await pg.locator('#v-pane .twho .btn.sm').textContent();
+  const next = await copy.textContent();
   check(
     'career uma.moe: Copy ID in the pane, then another listing: hers reads Copy ID (no state carried to her)',
     copied !== 'Copy ID' && next === 'Copy ID',
@@ -183,7 +185,7 @@ export default async function careerumamoe(b) {
   await pg.click('#v-export');
   await dialog(pg, 'vx-dlg');
   const ex = JSON.parse(await pg.inputValue('#vx-text'));
-  await pg.locator('#vx-dlg .dclose').click();
+  await pg.locator('#vx-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   check(
     'career uma.moe: Export leaves the listings out',
     !ex.veterans.some((v) => v.src === 'umamoe') && !/Trainer [12]/.test(JSON.stringify(ex.veterans)),

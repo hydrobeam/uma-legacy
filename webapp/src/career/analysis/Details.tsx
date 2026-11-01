@@ -26,6 +26,7 @@ import { draftRef } from '../../veterans/store.ts';
 import type { Draft, VetRecord } from '../../veterans/store.ts';
 import { detailsTab as tab, racesShown, showTab, toggleRaces } from './state.ts';
 import type { DetailsTab } from './state.ts';
+import { Button } from '../../ui/Button.tsx';
 
 type Career = DeepReadonly<CareerReport>;
 
@@ -392,16 +393,15 @@ function InfoPane({
         <span class="udstat">{`Wins: ${d.wins.length}`}</span>
       </div>
       <div class="udact">
-        <button
-          type="button"
-          class="btn udmore"
+        <Button
+          class="mr-auto"
           aria-expanded={racesShown.value}
           data-k="sim:races"
           aria-controls="ud-races"
           onClick={toggleRaces}
         >
           {racesShown.value ? 'Hide the races' : 'Show the races'}
-        </button>
+        </Button>
         {winsButton}
       </div>
       <ol class="udraces" hidden={!racesShown.value} id="ud-races">

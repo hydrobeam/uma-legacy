@@ -12,6 +12,7 @@ import { loopDrawn, loopRun, loopView } from './state.ts';
 import type { RunState } from './state.ts';
 import type { Status } from './types.ts';
 import type { DeepReadonly } from '../store.ts';
+import { Button } from '../ui/Button.tsx';
 
 const seconds = (run: DeepReadonly<RunState>) => Math.floor((run.now - run.startedAt) / 1000);
 const doing = (run: DeepReadonly<RunState>) => (run.phase === 'check' ? 'Checking the exact odds…' : 'Searching…');
@@ -61,9 +62,9 @@ export function RunAct({ stop }: { stop: () => void }) {
       : null;
   return (
     act && (
-      <button key={act.key} type="button" class="btn" onClick={act.run}>
+      <Button key={act.key} onClick={act.run}>
         {act.label}
-      </button>
+      </Button>
     )
   );
 }

@@ -246,7 +246,8 @@ test('a win moved to another turn of its race ("moves here") is written once, at
   await settle();
   root.querySelector('button[data-k="add:71"]').click();
   await settle();
-  root.querySelectorAll('button.wpick')[0].click();
+  // (the menu's race: its button, named by its title)
+  root.querySelector('.wmenu button[title="Arima Kinen"]').click();
   assert.deepEqual(edits, [{ wins: [0], winAt: { 0: 71 } }]);
 });
 test('a colour bar picked keeps her spark of that colour at its stars (M6)', async () => {

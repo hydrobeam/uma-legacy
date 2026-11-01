@@ -91,7 +91,7 @@ function EnhButton({
 }) {
   return (
     <button
-      class="btn enh"
+      class="enh"
       type="button"
       id={id}
       aria-haspopup="dialog"

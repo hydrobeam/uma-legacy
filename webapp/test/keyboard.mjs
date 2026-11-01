@@ -244,7 +244,7 @@ export default async function keyboard(b) {
   await dialogKeys(pg, 'Affinity', pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first(), 'why-dlg');
   // affinity: the careers are a radio group of pills; the arrows move and show one
   const why = await clickOpens(pg, pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first(), 'why-dlg');
-  const cap0 = why ? await pg.locator('#why-dlg .afftab caption').innerText() : '';
+  const cap0 = why ? await pg.locator('#why-dlg table caption').innerText() : '';
   if (why) await pg.locator('#why-dlg .afpick:not(.afpar) [aria-checked="true"]').focus();
   await pg.keyboard.press('ArrowRight');
   check(
@@ -255,7 +255,7 @@ export default async function keyboard(b) {
           document.activeElement.getAttribute('aria-checked') === 'true' &&
           document.activeElement.closest('.afpick') !== null,
       )) &&
-      (await pg.locator('#why-dlg .afftab caption').innerText()) !== cap0,
+      (await pg.locator('#why-dlg table caption').innerText()) !== cap0,
   );
   await pg.keyboard.press('Escape');
   check('no page errors (the loop planner)', !pg.errors.length, pg.errors.join(' | '));
@@ -328,7 +328,7 @@ export default async function keyboard(b) {
   await place.focus();
   await cp.keyboard.press('Enter');
   const nodeIn = await opens(cp, 'node-dlg');
-  await cp.locator('#node-dlg .gmclose').click();
+  await cp.locator('#node-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   check(
     'focus: the node popup, closed by Close, gives the focus back to the tree place that opened it',
     nodeIn && (await shuts(cp, 'node-dlg')) && (await focusOn(cp, '#tree [data-k="node:p0"]')),

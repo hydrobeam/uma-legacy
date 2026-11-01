@@ -83,7 +83,11 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
   const dlg = root.querySelector('dialog');
   assert.ok(dlg !== null, 'the popup is still there');
   assert.equal(dlg.open, true, 'and open');
-  assert.equal(root.querySelectorAll('button.gmclose').length, 1, 'with its Close button');
+  assert.equal(
+    [...root.querySelectorAll('button')].filter((b) => b.textContent === 'Close').length,
+    1,
+    'with its Close button',
+  );
   assert.equal(reported.length, 1, 'the throw is reported');
   assert.match(said.join(' | '), /^The node popup could not be drawn: /, 'the status line says what');
   assert.equal(said.length, 1, 'once: the status write draws nothing again');
