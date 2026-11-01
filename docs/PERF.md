@@ -15,10 +15,9 @@ speed record: where it stands, what is open, what was tried and rejected.
      or the scan around it.
    - Wall time for slow jobs: the two binaries side by side, best of 3, at the same machine load.
 4. **Verify each item.** `cargo test --release --manifest-path pkg/loopopt/Cargo.toml`;
-   `./build.sh valq TAG` (every job but the slow ones in `val/slow.json`); the full `./build.sh val TAG`
-   when the change touches shared searches with `top_decks` > 1, and once at the end. Compare with
-   `uv run val/same.py TAG`. Career-planner changes also run `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG`,
-   `uv run val/same.py TAG --plan` and `uv run val/mono.py pkg/loopopt/target/release/loopopt`.
+   `./build.sh valq TAG` (every job but the slow ones in `val/slow.json` and `val/plan/slow.json`, each compared whole
+   by `val/same.py`, plan outputs included); the full `./build.sh val TAG` when the change touches shared searches
+   with `top_decks` > 1, and once at the end. Career-planner changes also run `./build.sh mono`.
 5. **Commit.** One item per commit, the measured gain in the message. Revert anything under about 3% unless it is
    trivially small.
 6. **Final.** Strip temporary instrumentation, rebuild, full validation, wasm timings on Node, `./build.sh page test`.

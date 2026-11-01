@@ -96,8 +96,8 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `browsers` | Playwright's browsers into `cache/ms-playwright` (once) |
 | `test` / `testq` | the browser suite, full or its fast tier (see *Tests*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it: the certificate is self-signed (`cache/tls/`), so a browser warns once |
-| `val TAG` / `valq TAG` | validation (see *Tests*) |
-| `tiera TAG` / `tierb TAG` / `tierc` | the validation tiers (see *Tests*) |
+| `val TAG` / `valq TAG` | validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
+| `mono` | the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 
@@ -183,31 +183,34 @@ IndexedDB.
   `webapp/test-results/report.json`. `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier
   (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its one-run answer; about 15 s): run it
   after each page change, and the full suite before a release.
-- **Validation:** `./build.sh val TAG` runs the 26 reference jobs in `val/jobs.json` (22 deck jobs, shared and per-uma
-  decks, one of them in Grand Masters, and 4 career jobs; every job leaves out the R cards that are not pals, as the page does) and compares them with `val/ref__*` / `val/refpu__*` twice, and fails if either comparison does; `valq TAG` skips the
-  three slow jobs in `val/slow.json`. `val/cmp2.py` says what moved: P(all) rounded to 14 decimals, rank by rank, and
+- **Validation:** `./build.sh val TAG` runs every validation check, each whatever the others found, and fails if any
+  does (about 7 CPU-min, summed from the recorded run times: `val/ref_times.txt`, `val/plan/*_times.txt` and the proxy
+  runs' `timing_s`):
+  - the 26 reference jobs in `val/jobs.json` (22 deck jobs, shared and per-uma decks, one of them in Grand Masters, and
+    4 career jobs; every job leaves out the R cards that are not pals, as the page does), compared with
+    `val/ref__*` / `val/refpu__*` by `val/cmp2.py` and `val/same.py`; a solver failure there stops the step before
+    any comparison;
+  - `val/joint_check.py TAG`, the deck odds recomputed independently, within 1e-3;
+  - the policy simulator's jobs (`val/simval.py`) and the career planner's (`val/planval.py` with its proxy gate, then
+    `val/same.py TAG --plan`), below.
+
+  `./build.sh valq TAG` is the same while iterating, and on every commit that touches the solver (about 2.5 CPU-min):
+  without the slow jobs (`val/slow.json`, `val/plan/slow.json`), `joint_check` and planval's proxy gate
+  (`planval.py --quick`). `val/cmp2.py` says what moved: P(all) rounded to 14 decimals, rank by rank, and
   each rank that names another deck or career, which passes only as a confirmed tie (P(all) and P(all but one) equal
   to the bit); `val/same.py TAG` then compares the whole outputs (every field but the timings: the byte identity speed
   work keeps, `docs/PERF.md`), so a confirmed tie still fails until its reference is re-taken. When results move on
   purpose, check the diff and copy the new outputs over the references in the same commit; when every value should
   scale by one factor, compare with `val/cmp_ratio.py`. Solver process failures and comparison failures exit nonzero. `uv run val/test_validation.py` checks these failure
   paths with synthetic outputs and a stub solver, without running any searches.
-- **Tiers.** Which tier a change runs is in AGENTS.md, *Results are pinned*. Each tier runs every check whatever the
-  others found and fails if any does. The CPU times are sums of the recorded run times (`val/ref_times.txt`,
-  `val/plan/*_times.txt`, the proxy runs' `timing_s`), not a timed tier:
-  - `./build.sh tiera TAG`, every solver commit, about 2.5 CPU-min: `valq TAG` (with `same.py`), `val/simval.py`,
-    `val/planval.py --quick` (the plan jobs but those in `val/plan/slow.json`, no proxy gate) and `val/same.py TAG --plan`;
-  - `./build.sh tierb TAG`, a change that can move results, about 6-7 CPU-min: `val TAG`, `val/joint_check.py TAG`,
-    `val/simval.py`, every plan job with the proxy gate, and `val/same.py TAG --plan`;
-  - `./build.sh tierc`, career-planner changes, about 10-20 CPU-min (estimated from the plan jobs' times; run it in
-    the background): `val/mono.py`.
 - **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the plan jobs in
   `val/plan/jobs.json` and compares each whole output with `val/plan/ref__*.out`. Two of them take the page's own
   settings: `p16_borrow_check` asks for the robustness check and the pair search (`next.robust: "all"`, every
   variant in one job, where the page sends `"next"`, one variant per job), `p16_borrow_never` sets `borrowed_parent:
   "never"`. An output without a reference fails (planval and `cmp2.py`) until its reference is taken. `val/mono.py BIN`
   checks that adding a veteran never raises the planner's estimate (on every plan job but the check's, whose plan
-  `p16_borrow` already is); `val/capaudit.py BIN` checks the exact caps.
+  `p16_borrow` already is; `./build.sh mono` runs it, about 10-20 CPU-min, estimated from the plan jobs' times);
+  `val/capaudit.py BIN` checks the exact caps.
 - **Policy simulator:** `uv run val/simval.py pkg/loopopt/target/release/loopopt TAG` runs the five short simulator
   jobs in `val/sim/jobs.json` (each policy on `val/sim/pools/pool4.json`, about 6 s) and compares each whole output,
   wall clocks aside, with `val/sim/ref__*.out` (`val/same.py TAG --sim`).
@@ -222,9 +225,8 @@ IndexedDB.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to main and every pull request, with the same `./build.sh` steps:
-- **solver:** `lint`, `native` (release build, clippy, tests), then `valq ci` with `val/same.py ci`, `val/planval.py`
-  with `val/same.py ci --plan` (every output byte-identical to the references, work counters included), `val/mono.py`
-  and `val/simval.py` (the policy simulator's five jobs against `val/sim/ref__*`).
+- **solver:** `lint`, `native` (release build, clippy, tests), then `val ci` (every output byte-identical to the
+  references, work counters included; *Tests*) and `mono`.
 - **page:** `wasm page` (no game art in a clone: the page shows initials) and `testq` (Chromium); the checks that need
   the art skip themselves.
 

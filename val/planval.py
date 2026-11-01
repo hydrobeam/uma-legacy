@@ -50,7 +50,7 @@ trainee's best by exact odds. A high-side error (a proxy that reads high only co
 on.
 
 usage: planval.py BIN TAG [REF] [-j N] [--quick]
-  --quick  leave out the jobs in val/plan/slow.json and run no proxy gate: tier A (docs/BUILD.md, *Tests*)
+  --quick  leave out the jobs in val/plan/slow.json and run no proxy gate: ./build.sh valq (docs/BUILD.md, *Tests*)
   writes val/plan/TAG__NAME.out, val/plan/TAG_proxy__NAME.out and val/plan/TAG_times.txt; compares with
   val/plan/REF__NAME.out (default REF: ref)
   -j N  jobs at a time (default 2; timings are only comparable at the same load)"""
@@ -98,7 +98,7 @@ parser.add_argument(
 parser.add_argument(
     "--quick",
     action="store_true",
-    help="leave out the jobs in val/plan/slow.json and run no proxy gate (tier A)",
+    help="leave out the jobs in val/plan/slow.json and run no proxy gate (./build.sh valq)",
 )
 arguments = parser.parse_intermixed_args()
 parallelism = arguments.parallelism

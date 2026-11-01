@@ -23,16 +23,16 @@
 #            self-signed, so the browser warns once); the page fetches its wasm and images, so open it there
 #   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
 #            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/
-#   val TAG  run the validation jobs (val/jobs.json: deck and career jobs; the deck jobs again with per-uma decks) in
-#            parallel with the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and
-#            val/refpu__* by val/cmp2.py (values; another pick passes only as a confirmed tie) and val/same.py (every field)
-#   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
-#   tiera TAG  tier A, every solver commit (about 2.5 CPU-min): valq, the policy simulator's jobs (val/simval.py), the
-#            planner's jobs but the slow ones (val/plan/slow.json) without the proxy gate (val/planval.py --quick), and
-#            the plan outputs whole against their references (val/same.py --plan)
-#   tierb TAG  tier B, a change that can move results (about 7 CPU-min): val, val/joint_check.py, val/simval.py, every
-#            planner job with the proxy gate, val/same.py --plan
-#   tierc    tier C, career-planner changes (10-20 CPU-min; run it in the background): val/mono.py
+#   val TAG  validation before landing a change that can move results (about 7 CPU-min): the deck and career jobs
+#            (val/jobs.json, the deck jobs again with per-uma decks) into val/TAG__*.out and val/TAGpu__*.out, compared
+#            with val/ref__* and val/refpu__* by val/cmp2.py (values; another pick passes only as a confirmed tie) and
+#            val/same.py (every field); val/joint_check.py (the deck odds recomputed); the policy simulator's jobs
+#            (val/simval.py); the career planner's jobs with the proxy gate (val/planval.py) and their outputs whole
+#            against their references (val/same.py --plan)
+#   valq TAG the same while iterating, on every solver commit (about 2.5 CPU-min): without the slow jobs (val/slow.json,
+#            val/plan/slow.json), joint_check and planval's proxy gate
+#   mono     the planner's monotonicity check (val/mono.py), for career-planner changes: 10-20 CPU-min, run it in the
+#            background
 #   research compute the research numbers (research/run_all.py -> research/results.json) and render docs/RESEARCH.md
 #            from docs/RESEARCH.template.md; without the run records (research/data/) the committed results are kept
 #   art      images and runners when their game files are in game/global/ (skipped, with a note, when not)
@@ -130,30 +130,21 @@ step_art() {   # in the default build: runs what the game files in game/ allow, 
   if have "${IMAGE_FILES[@]}"; then step_images; else echo "images: skipped, missing $(missing_of "${IMAGE_FILES[@]}") (the page shows initials)"; fi
   if have "${RUNNER_FILES[@]}"; then step_runners; else echo "runners: skipped, missing $(missing_of "${RUNNER_FILES[@]}") (the page shows a spinner)"; fi
 }
-# the deck and career jobs: cmp2.py (values, picks, confirmed ties, cap margins) and same.py (every field but the
-# timings), each run whatever the others found; fails if any of them does
-step_val() { local tag="${1:?val needs a tag}" rc=0; shift || true
+# val TAG [--quick] (docs/BUILD.md, Tests): each check runs whatever the others found, and the step fails if any does.
+# The deck and career jobs stop it before any comparison when one fails (their comparisons would read the tag's older
+# outputs); planval and simval stop on a solver failure before comparing, and fail the step.
+step_val() { local tag="${1:?val needs a tag}" quick=() rc=0 bin="$C/target/release/loopopt"
+  [ "${2:-}" = --quick ] && quick=(--quick)
   MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check val
-  "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@" || return 1   # (explicit: tiera/tierb call it under ||, where set -e is off)
+  "${PY[@]}" "$R/val/runval.py" "$bin" "$tag" "${quick[@]}" || return 1
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref || rc=1; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu || rc=1
   "${PY[@]}" "$R/val/same.py" "$tag" || rc=1
-  return $rc; }
-# the validation tiers (docs/BUILD.md, Tests): each check runs whatever the others found; the tier fails if any does.
-# planval and simval write their outputs before comparing, and stop on a solver failure, so no check reads a stale output
-step_tiera() { local tag="${1:?tiera needs a tag}" rc=0 bin="$C/target/release/loopopt"
-  step_val "$tag" --quick || rc=1
+  [ ${#quick[@]} -gt 0 ] || "${PY[@]}" "$R/val/joint_check.py" "$tag" || rc=1
   "${PY[@]}" "$R/val/simval.py" "$bin" "$tag" || rc=1
-  "${PY[@]}" "$R/val/planval.py" "$bin" "$tag" --quick || rc=1
+  "${PY[@]}" "$R/val/planval.py" "$bin" "$tag" "${quick[@]}" || rc=1
   "${PY[@]}" "$R/val/same.py" "$tag" --plan || rc=1
   return $rc; }
-step_tierb() { local tag="${1:?tierb needs a tag}" rc=0 bin="$C/target/release/loopopt"
-  step_val "$tag" || rc=1
-  "${PY[@]}" "$R/val/joint_check.py" "$tag" || rc=1
-  "${PY[@]}" "$R/val/simval.py" "$bin" "$tag" || rc=1
-  "${PY[@]}" "$R/val/planval.py" "$bin" "$tag" || rc=1
-  "${PY[@]}" "$R/val/same.py" "$tag" --plan || rc=1
-  return $rc; }
-step_tierc() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check tierc
+step_mono() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check mono
   "${PY[@]}" "$R/val/mono.py" "$C/target/release/loopopt"; }
 step_research() { uv run --quiet --project "$R" --group research python "$R/research/run_all.py" && uv run --quiet --project "$R" --group research python "$R/research/render.py"; }
 [ $# -eq 0 ] && set -- native wasm art page
@@ -162,9 +153,7 @@ while [ $# -gt 0 ]; do
     all) step_data; step_events; step_native; step_pb; step_wasm; step_art; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    tiera|tierb) "step_$1" "${2:-}"; shift ;;
-    tierc) step_tierc ;;
-    gametora|data|events|native|lint|hooks|pb|wasm|page|art|images|runners|browsers|test|testq|serve|deploy|research) "step_$1" ;;
+    gametora|data|events|native|lint|hooks|pb|wasm|page|art|images|runners|browsers|test|testq|serve|deploy|research|mono) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done
