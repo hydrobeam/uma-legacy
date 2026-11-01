@@ -3,9 +3,13 @@ use crate::career::Env;
 use crate::career::plan::ParentPool;
 use crate::career::search::{Found, Ref};
 use crate::career::sim::Sim;
+use crate::career::state::StoredFound;
 use crate::career::state::hash_text;
+use crate::hex::Key;
 use crate::uma::{UmaIndex, UmaTable};
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use ts_rs::TS;
 /// A cached result may be available from searching, certification or reuse. A known empty result is
 /// reusable too; an unsearched entry still needs work. Completeness is tracked separately.
 #[derive(Clone)]
@@ -29,13 +33,13 @@ impl CachedSearch {
 }
 
 /// Preserve the stored distinction: unsearched entries are absent, searched empty entries are explicit nulls.
-fn cached_searches_out(searches: &UmaTable<CachedSearch>) -> Vec<Value> {
+fn cached_searches_out(searches: &UmaTable<CachedSearch>) -> Vec<(usize, Option<StoredFound>)> {
     searches
         .iter()
         .enumerate()
         .filter_map(|(trainee, search)| match search {
             CachedSearch::Unsearched => None,
-            CachedSearch::Known(found) => Some(json!([trainee, found.as_ref().map(crate::career::state::found_out)])),
+            CachedSearch::Known(found) => Some((trainee, found.as_ref().map(crate::career::state::found_out))),
         })
         .collect()
 }
@@ -67,67 +71,73 @@ pub(crate) struct Bests {
     pub(crate) flags: Vec<(u64, crate::career::ClassFlags)>,
 }
 
-/// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
-/// not kept: nothing reads them back)
-pub(crate) fn bests_out(bests: &[Bests]) -> Value {
-    Value::Array(bests.iter().map(|plan| json!({"k": [crate::career::state::ux(plan.key.0), crate::career::state::ux(plan.key.1)], "n": plan.best_careers.len(),
-        "b": cached_searches_out(&plan.best_careers),
-        "l": cached_searches_out(&plan.looped_careers),
-        "u": plan.base_incomplete.indices().filter(|&uma| plan.base_incomplete[uma]).collect::<Vec<_>>(),
-        "lu": plan.looped_incomplete.indices().filter(|&uma| plan.looped_incomplete[uma]).collect::<Vec<_>>(),
-        "f": crate::career::state::keyed_flags_out(plan.flags.iter().map(|(key, flags)| (key, flags)))})).collect())
+/// A kept plan as stored (`Bests`): its key, the uma count, every uma's kept best and looped best (searched: an entry,
+/// a null where the search found none), the umas whose searches were not complete, and its class flags. Her decks'
+/// refs are not kept: nothing reads them back.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredBests {
+    pub(crate) key: [Key; 2],
+    pub(crate) umas: usize,
+    pub(crate) best: Vec<(usize, Option<StoredFound>)>,
+    pub(crate) looped: Vec<(usize, Option<StoredFound>)>,
+    pub(crate) incomplete: Vec<usize>,
+    pub(crate) looped_incomplete: Vec<usize>,
+    pub(crate) flags: Vec<(Key, u8)>,
 }
 
-pub(crate) fn bests_in(value: &Value) -> Option<Vec<Bests>> {
-    use crate::career::state::{found_in, len_in, usz, uxr};
-    value
-        .as_array()?
+/// the kept plans for the page to store (`state_out`)
+pub(crate) fn bests_out(bests: &[Bests]) -> Vec<StoredBests> {
+    let marked = |flags: &UmaTable<bool>| flags.indices().filter(|&uma| flags[uma]).map(|uma| uma.0).collect();
+    bests
+        .iter()
+        .map(|plan| StoredBests {
+            key: [Key(plan.key.0), Key(plan.key.1)],
+            umas: plan.best_careers.len(),
+            best: cached_searches_out(&plan.best_careers),
+            looped: cached_searches_out(&plan.looped_careers),
+            incomplete: marked(&plan.base_incomplete),
+            looped_incomplete: marked(&plan.looped_incomplete),
+            flags: crate::career::state::keyed_flags_out(plan.flags.iter().map(|(key, flags)| (key, flags))),
+        })
+        .collect()
+}
+
+/// Kept plans from their stored form (`bests_out`); None refuses the store: a count past `STATE_MAX_N`, an uma index
+/// past the count (an incomplete search's included: dropping one would make it read as complete)
+pub(crate) fn bests_in(stored: &[StoredBests]) -> Option<Vec<Bests>> {
+    use crate::career::state::{count, found_in};
+    stored
         .iter()
         .map(|stored| {
-            let key_pair = stored["k"].as_array()?;
-            // (checked conversions: on wasm32 usize is 32 bits, and a stored count or index must not wrap into range)
-            let n = len_in(&stored["n"])?;
-            let per_uma = |key: &str| -> Option<UmaTable<CachedSearch>> {
+            let n = count(stored.umas)?;
+            let per_uma = |entries: &[(usize, Option<StoredFound>)]| -> Option<UmaTable<CachedSearch>> {
                 let mut searches = UmaTable(vec![CachedSearch::Unsearched; n]);
-                for row in stored[key].as_array()? {
-                    let fields = row.as_array()?;
-                    let uma = usz(fields.first()?)?;
-                    if uma >= n {
+                for (uma, found) in entries {
+                    if *uma >= n {
                         return None;
                     }
-                    searches[UmaIndex(uma)] = CachedSearch::Known(if fields.get(1)?.is_null() {
-                        None
-                    } else {
-                        Some(found_in(fields.get(1)?)?)
+                    searches[UmaIndex(*uma)] = CachedSearch::Known(match found {
+                        None => None,
+                        Some(found) => Some(found_in(found)?),
                     });
                 }
                 Some(searches)
             };
-            // Older stored states omit these flags; those searches are treated as proven.
-            let flags = |key: &str| -> UmaTable<bool> {
+            let marked = |umas: &[usize]| -> Option<UmaTable<bool>> {
                 let mut flags = UmaTable(vec![false; n]);
-                for entry in stored[key].as_array().into_iter().flatten() {
-                    if let Some(trainee) = usz(entry)
-                        && trainee < n
-                    {
-                        flags[UmaIndex(trainee)] = true;
-                    }
+                for &uma in umas {
+                    *flags.0.get_mut(uma)? = true;
                 }
-                flags
+                Some(flags)
             };
             Some(Bests {
-                key: (uxr(key_pair.first()?)?, uxr(key_pair.get(1)?)?),
-                best_careers: per_uma("b")?,
+                key: (stored.key[0].0, stored.key[1].0),
+                best_careers: per_uma(&stored.best)?,
                 proof_refs: UmaTable(vec![UmaTable(vec![]); n]),
-                looped_careers: per_uma("l")?,
-                base_incomplete: flags("u"),
-                looped_incomplete: flags("lu"),
-                // (its class flags; a store without them carries none, the worker's `flags` still holding them)
-                flags: if stored["f"].is_null() {
-                    vec![]
-                } else {
-                    crate::career::state::keyed_flags_in(&stored["f"])?.into_iter().collect()
-                },
+                looped_careers: per_uma(&stored.looped)?,
+                base_incomplete: marked(&stored.incomplete)?,
+                looped_incomplete: marked(&stored.looped_incomplete)?,
+                flags: crate::career::state::keyed_flags_in(&stored.flags)?.into_iter().collect(),
             })
         })
         .collect()
@@ -372,6 +382,7 @@ pub(crate) fn same_deck(first: &crate::deck::space::SelectedDeck, second: &crate
 mod cached_search_tests {
     use super::*;
     use crate::deck::space::SelectedDeck;
+    use serde_json::json;
     #[test]
     fn stored_searches_distinguish_missing_empty_and_found() {
         let found = Found {
@@ -393,14 +404,17 @@ mod cached_search_tests {
             CachedSearch::Known(None),
             CachedSearch::Known(Some(found.clone())),
         ]);
-        let rows = json!(cached_searches_out(&searches));
+        let rows = serde_json::to_value(cached_searches_out(&searches)).unwrap();
         assert_eq!(rows, json!([[1, null], [2, crate::career::state::found_out(&found)]]));
-
+        let decode = |stored: Value| {
+            serde_json::from_value::<Vec<StoredBests>>(stored).ok().and_then(|stored| bests_in(&stored))
+        };
+        let key = json!(["0000000000000001", "0000000000000002"]);
         let stored = json!([{
-            "k": ["0000000000000001", "0000000000000002"], "n": 3,
-            "b": rows, "l": rows, "u": [2], "lu": [1],
+            "key": key, "umas": 3, "best": rows, "looped": rows, "incomplete": [2], "looped_incomplete": [1],
+            "flags": [],
         }]);
-        let decoded = bests_in(&stored).unwrap();
+        let decoded = decode(stored.clone()).unwrap();
         let cached = &decoded[0];
         assert!(cached.best_careers[UmaIndex(0)].is_unsearched());
         assert!(matches!(cached.best_careers[UmaIndex(1)], CachedSearch::Known(None)));
@@ -410,19 +424,24 @@ mod cached_search_tests {
             cached.best_careers[UmaIndex(2)].found().unwrap().deck.white_hint_chances[0].to_bits(),
             (-0.0f64).to_bits()
         );
-        assert_eq!(json!(cached_searches_out(&cached.best_careers)), stored[0]["b"]);
-        assert_eq!(json!(cached_searches_out(&cached.looped_careers)), stored[0]["l"]);
+        assert_eq!(serde_json::to_value(cached_searches_out(&cached.best_careers)).unwrap(), stored[0]["best"]);
+        assert_eq!(serde_json::to_value(cached_searches_out(&cached.looped_careers)).unwrap(), stored[0]["looped"]);
         assert_eq!(cached.base_incomplete.0, [false, false, true]);
         assert_eq!(cached.looped_incomplete.0, [false, true, false]);
 
-        // counts and indices are converted checked (usize is 32 bits on wasm32): an oversized count is refused, an
-        // index past u32::MAX is out of range (not wrapped into it), an unusable flag is skipped
+        // a count past STATE_MAX_N, an index past the count, and an incomplete search's uma past it are refused (that
+        // last one skipped would read as a complete search)
         let wide = u64::from(u32::MAX) + 2;
-        let refused =
-            |n: Value, b: Value| bests_in(&json!([{"k": stored[0]["k"], "n": n, "b": b, "l": [], "u": [], "lu": []}]));
-        assert!(refused(json!(u64::MAX), json!([])).is_none(), "a count beyond STATE_MAX_N is refused");
-        assert!(refused(json!(3), json!([[wide, null]])).is_none(), "an index past u32::MAX is refused");
-        let flagged = json!([{"k": stored[0]["k"], "n": 3, "b": [], "l": [], "u": [wide, 1], "lu": []}]);
-        assert_eq!(bests_in(&flagged).unwrap()[0].base_incomplete.0, [false, true, false]);
+        let with = |umas: Value, best: Value, incomplete: Value| {
+            decode(json!([{"key": key, "umas": umas, "best": best, "looped": [], "incomplete": incomplete,
+                "looped_incomplete": [], "flags": []}]))
+        };
+        assert!(with(json!(u64::MAX), json!([]), json!([])).is_none(), "a count beyond STATE_MAX_N is refused");
+        assert!(with(json!(3), json!([[wide, null]]), json!([])).is_none(), "an index past the count is refused");
+        assert!(
+            with(json!(3), json!([]), json!([wide, 1])).is_none(),
+            "an incomplete search past the count is refused"
+        );
+        assert_eq!(with(json!(3), json!([]), json!([1])).unwrap()[0].base_incomplete.0, [false, true, false]);
     }
 }

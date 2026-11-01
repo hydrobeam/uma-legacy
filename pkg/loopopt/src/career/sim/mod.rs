@@ -123,73 +123,95 @@ const fn d_aevery() -> usize {
     50
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, ts_rs::TS)]
 pub(super) struct SimJob {
     /// greedy | greedy_exact | loop | trace | index
     #[serde(default = "d_policy")]
+    #[ts(as = "Option<_>", optional)]
     policy: String,
     #[serde(default = "d_runs")]
+    #[ts(as = "Option<_>", optional)]
     runs: usize,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     first: usize,
     #[serde(default = "d_seed")]
+    #[ts(as = "Option<_>", optional)]
     seed: u32,
     #[serde(default = "d_eps")]
     #[serde(rename = "eps")]
+    #[ts(as = "Option<_>", optional)]
     survival_cutoff: f64,
     #[serde(default = "d_maxc")]
+    #[ts(as = "Option<_>", optional)]
     max_careers: usize,
     /// refresh margin m (module notes); 0 = refresh whenever a bound exceeds the table value
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     margin: f64,
     #[serde(default = "d_true")]
+    #[ts(as = "Option<_>", optional)]
     prune: bool,
     /// keep the deck cache across runs (faster; with m > 0 a pick can depend on what earlier runs cached)
     #[serde(default = "d_true")]
+    #[ts(as = "Option<_>", optional)]
     share_cache: bool,
     /// every `check` new veterans (and at the start), compare the surrogate with exact searches
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     check: usize,
     /// lineages checked per check (the newest veteran's candidates, ceiling at least `check_frac` x B, best first)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     check_lineages: usize,
     #[serde(default = "d_frac")]
+    #[ts(as = "Option<_>", optional)]
     check_frac: f64,
     /// loop: rotation members (chara ids) in order; trace: the trainee built for, then her builders
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     loop_members: Vec<u32>,
     /// fidelity audit (`audit_row`): at every pick change of greedy (the exact argmax, the pick and `audit_sample`
     /// random candidates with the newest veteran), and every `audit_every` careers of the loop (its career, and its
     /// keep-or-replace decision under exact values)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     audit: bool,
     #[serde(default = "d_asample")]
+    #[ts(as = "Option<_>", optional)]
     audit_sample: usize,
     #[serde(default = "d_aevery")]
+    #[ts(as = "Option<_>", optional)]
     audit_every: usize,
     /// log progress to stderr every this many careers (0: off)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     progress: usize,
     /// index: the plan job's `next` (docs/SOLVER.md "Next career"); the page sends `{}`
     #[serde(default = "d_next")]
+    #[ts(as = "Option<crate::career::plan::PlanJob>", optional)]
     next: Value,
     /// index: what each step runs (`IndexAction`)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     act_on: IndexAction,
     /// first (default) | looped: what a run ends at (module notes)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     goal: Goal,
     /// greedy, greedy_exact, index: every run's first career, the trainee (chara id) on the two parents (legacy
     /// indices) with her best deck, the policy taking over from the second (paired truncated rollouts,
     /// val/sim/rollouts.py)
     #[serde(default)]
+    #[ts(optional)]
     force: Option<ForcedCareer>,
     /// per run also the pool at the stop (`final_legacies`) and the survival there (`survival`)
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     keep_pool: bool,
 }
 /// A run's first career, fixed by the job (`SimJob::force`).
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, ts_rs::TS)]
 pub(super) struct ForcedCareer {
     pub(super) trainee: u32,
     pub(super) parents: [usize; 2],
@@ -198,7 +220,7 @@ fn d_next() -> Value {
     json!({})
 }
 /// What `index` runs each step (`SimJob::act_on`).
-#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum IndexAction {
     /// The plan's pick, `next.choice` (the table's first row).
@@ -209,7 +231,7 @@ pub(super) enum IndexAction {
     PairSearch,
 }
 /// What a run's path ends at (`SimJob::goal`; module notes).
-#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub(super) enum Goal {
     /// The first veteran that lands every target.

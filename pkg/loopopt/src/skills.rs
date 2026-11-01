@@ -66,52 +66,65 @@ pub(crate) struct SkillsRaw {
     pub names: std::collections::HashMap<String, (u32, u8)>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, ts_rs::TS)]
 pub(crate) struct SkillTarget {
     pub group: u32,
     /// 0 = none, 1 = white guaranteed, 2 = gold guaranteed
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub guaranteed: u8,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub deck_white: f64,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub deck_gold: f64,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, ts_rs::TS)]
 pub(crate) struct SkillJob {
     pub targets: Vec<SkillTarget>,
     /// Assumed 1/2/3-star shares of the lineage's sparks; defaults to the below-17,500-rank mix (`dstar`).
     /// The caller supplies the higher-rank mix when needed (docs/RESEARCH.md section 2). Checked as it is read
     /// (`star_shares`).
     #[serde(default = "dstar", deserialize_with = "star_shares")]
+    #[ts(as = "Option<_>", optional)]
     pub star_dist: [f64; 3],
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub owned: Vec<u32>,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub exclude: Vec<u32>,
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub require: Vec<u32>,
     /// outfits (card ids) not owned; an uma whose every outfit is listed counts as not owned
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub exclude_outfits: Vec<u32>,
     /// undocumented guarantees: (chara id, skill group, 1 white | 2 gold), applied to every outfit
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub extra: Vec<(u32, u32, u8)>,
     /// trainee events that hint a target: (chara id for every outfit, or outfit card id; skill group; chance per
     /// career). The hinted white counts like a deck white hint for that trainee only.
     #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
     pub trainee_hints: Vec<(u32, u32, f64)>,
     #[serde(default = "diters")]
     #[serde(rename = "iters")]
+    #[ts(as = "Option<_>", optional)]
     pub iterations: usize,
     #[serde(default = "dseed")]
+    #[ts(as = "Option<_>", optional)]
     pub seed: u64,
     /// structure sizes searched: 3 (three-uma rotations) and/or 4 (four-uma loops), ranked together on the mean over
     /// their lineages
     #[serde(default = "dsizes")]
+    #[ts(as = "Option<_>", optional)]
     pub sizes: Vec<usize>,
 }
-const fn dstar() -> [f64; 3] {
+pub(crate) const fn dstar() -> [f64; 3] {
     [0.50, 0.45, 0.05]
 }
 

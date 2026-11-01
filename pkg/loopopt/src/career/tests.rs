@@ -15,7 +15,7 @@ fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
     )
     .unwrap();
-    let db: Value = serde_json::from_str(&rd("card_events.json")).unwrap();
+    let db: crate::deck::sources::CardEventCache = serde_json::from_str(&rd("card_events.json")).unwrap();
     crate::deck::sources::apply_events_db(&mut v, &skills, &db);
     (data, skills, cards, v)
 }
@@ -203,7 +203,7 @@ fn state_round_trips_and_refuses_malformed() {
         r
     };
     let roll0 = roll();
-    let empty = json!({"v": STATE_VERSION, "bests": [], "seen": [], "solve": [], "flags": [], "rolls": []});
+    let empty = json!({"v": STATE_VERSION, "bests": [], "seen": [], "solve": [], "flags": [], "rolls": [], "caps": []});
     assert_eq!(state_in(&empty)["ok"], true);
     assert_eq!(state_in(&st)["ok"], true);
     assert_eq!(state_out(), out, "the state did not round-trip");
@@ -220,95 +220,121 @@ fn state_round_trips_and_refuses_malformed() {
         assert_eq!(state_out(), kept, "{what}: something was installed");
     };
     let big = json!(1u64 << 40);
-    refused("seen: a class count past STATE_MAX_N", &|s| s["seen"][0][1] = big.clone());
+    refused("seen: a class count past STATE_MAX_N", &|s| s["seen"][0]["refs"]["count"] = big.clone());
     refused("seen: a class index past its count", &|s| {
-        let n = s["seen"][0][1].clone();
-        s["seen"][0][2][0][0] = n;
+        let n = s["seen"][0]["refs"]["count"].clone();
+        s["seen"][0]["refs"]["lists"][0][0] = n;
     });
-    refused("seen: a NaN value", &|s| s["seen"][0][2][0][1][0][1] = hex(f64::NAN));
-    refused("seen: a chance above 1", &|s| s["seen"][0][2][0][1][0][0][0] = hex(1.5));
-    refused("seen: a deck hint chance below 0", &|s| s["seen"][0][2][0][1][0][2][3][0] = hex(-0.25));
-    refused("seen: seven cards", &|s| s["seen"][0][2][0][1][0][2][0] = json!([0, 1, 2, 3, 4, 5, 6]));
+    refused("seen: a NaN value", &|s| s["seen"][0]["refs"]["lists"][0][1][0]["value"] = hex(f64::NAN));
+    refused("seen: a chance above 1", &|s| s["seen"][0]["refs"]["lists"][0][1][0]["q"][0] = hex(1.5));
+    refused("seen: a deck hint chance below 0", &|s| {
+        s["seen"][0]["refs"]["lists"][0][1][0]["deck"]["white"][0] = hex(-0.25);
+    });
+    refused("seen: seven cards", &|s| {
+        s["seen"][0]["refs"]["lists"][0][1][0]["deck"]["entries"] = json!([0, 1, 2, 3, 4, 5, 6]);
+    });
     refused("seen: a deck truncated", &|s| {
-        s["seen"][0][2][0][1][0][2].as_array_mut().unwrap().pop();
+        s["seen"][0]["refs"]["lists"][0][1][0]["deck"].as_object_mut().unwrap().remove("gold");
     });
     refused("seen: white and gold chances of different lengths", &|s| {
-        s["seen"][0][2][0][1][0][2][4].as_array_mut().unwrap().pop();
+        s["seen"][0]["refs"]["lists"][0][1][0]["deck"]["gold"].as_array_mut().unwrap().pop();
     });
-    refused("bests: a uma count past STATE_MAX_N", &|s| s["bests"][0]["n"] = big.clone());
-    refused("solve: a list count past STATE_MAX_N", &|s| s["solve"][0][1]["refs"][0] = big.clone());
-    refused("solve: a NaN bound", &|s| s["solve"][0][1]["next_bound"] = hex(f64::NAN));
-    refused("seen: a fully checked value above 1", &|s| s["seen"][0][2][0][1][0][1] = hex(1.5));
-    assert!(st["solve"][0][2][1].as_array().is_some_and(|classes| !classes.is_empty()), "no product proof kept");
-    refused("solve: a negative product bound", &|s| s["solve"][0][2][1][0][1][0][1] = hex(-0.5));
-    refused("solve: an unknown unproven reason", &|s| s["solve"][0][1]["unproven"] = json!(["late"]));
+    refused("bests: a uma count past STATE_MAX_N", &|s| s["bests"][0]["umas"] = big.clone());
+    refused("solve: a list count past STATE_MAX_N", &|s| s["solve"][0]["refs"]["count"] = big.clone());
+    refused("solve: a NaN bound", &|s| s["solve"][0]["next_bound"] = hex(f64::NAN));
+    refused("seen: a fully checked value above 1", &|s| s["seen"][0]["refs"]["lists"][0][1][0]["value"] = hex(1.5));
+    assert!(
+        st["solve"][0]["ruled"]["lists"].as_array().is_some_and(|classes| !classes.is_empty()),
+        "no product proof kept"
+    );
+    refused("solve: a negative product bound", &|s| s["solve"][0]["ruled"]["lists"][0][1][0][1] = hex(-0.5));
+    refused("solve: an unknown unproven reason", &|s| s["solve"][0]["unproven"] = json!(["late"]));
     refused("solve: complete with a reason it is not", &|s| {
-        let complete = s["solve"][0][1]["complete"].as_bool().unwrap();
-        s["solve"][0][1]["unproven"] = if complete { json!(["work_cap"]) } else { json!([]) };
+        let complete = s["solve"][0]["complete"].as_bool().unwrap();
+        s["solve"][0]["unproven"] = if complete { json!(["work_cap"]) } else { json!([]) };
     });
-    refused("solve: a breached class past its count", &|s| s["solve"][0][3][1] = json!([1_000_000]));
-    refused("solve: a trainee's class past the count", &|s| s["solve"][0][4] = json!([1_000_000]));
-    assert!(st["solve"][0][4].as_array().is_some_and(|classes| !classes.is_empty()), "no trainee class kept");
+    refused("solve: a breached class past its count", &|s| {
+        s["solve"][0]["class_flags"]["breached"] = json!([1_000_000]);
+    });
+    refused("solve: a trainee's class past the count", &|s| s["solve"][0]["classes"] = json!([1_000_000]));
+    assert!(st["solve"][0]["classes"].as_array().is_some_and(|classes| !classes.is_empty()), "no trainee class kept");
     refused("solve: proven but not complete", &|s| {
-        let search = &mut s["solve"][0][1];
+        let search = &mut s["solve"][0];
         (search["proven"], search["complete"], search["unproven"]) = (json!(true), json!(false), json!(["work_cap"]));
     });
     refused("solve: proven with a class of its trainees breached", &|s| {
         let entry = &mut s["solve"][0];
-        (entry[1]["proven"], entry[1]["complete"], entry[1]["unproven"]) = (json!(true), json!(true), json!([]));
-        entry[3][1] = entry[4].clone();
+        (entry["proven"], entry["complete"], entry["unproven"]) = (json!(true), json!(true), json!([]));
+        entry["class_flags"]["breached"] = entry["classes"].clone();
     });
-    refused("solve: an unknown assumption", &|s| s["solve"][0][1]["assumes"] = json!(["late_cap"]));
+    refused("solve: an unknown assumption", &|s| s["solve"][0]["assumes"] = json!(["late_cap"]));
     refused("flags: an unknown flag bit", &|s| s["flags"][0][1] = json!(8));
-    refused("rolls: 64 targets", &|s| s["rolls"][0]["sd"]["n"][2] = json!(64));
-    refused("rolls: 11 uncertain targets", &|s| s["rolls"][0]["sd"]["n"][0] = json!(11));
-    refused("rolls: a guaranteed count that wraps the sum", &|s| s["rolls"][0]["sd"]["n"][1] = json!(u64::MAX));
+    refused("rolls: 64 targets", &|s| s["rolls"][0]["scored"]["target_count"] = json!(64));
+    refused("rolls: 11 uncertain targets", &|s| s["rolls"][0]["scored"]["uncertain_target_count"] = json!(11));
+    refused("rolls: a guaranteed count that wraps the sum", &|s| {
+        s["rolls"][0]["scored"]["fixed_target_count"] = json!(u64::MAX);
+    });
     refused("rolls: uncertain and guaranteed not the targets", &|s| {
-        let nf = s["rolls"][0]["sd"]["n"][1].as_u64().unwrap();
-        s["rolls"][0]["sd"]["n"][1] = json!(nf + 1);
+        let nf = s["rolls"][0]["scored"]["fixed_target_count"].as_u64().unwrap();
+        s["rolls"][0]["scored"]["fixed_target_count"] = json!(nf + 1);
     });
     refused("rolls: an uncertain target past the targets", &|s| {
-        let ntar = s["rolls"][0]["sd"]["n"][2].clone();
-        let u = s["rolls"][0]["sd"]["uncv"].as_array_mut().unwrap();
+        let ntar = s["rolls"][0]["scored"]["target_count"].clone();
+        let u = s["rolls"][0]["scored"]["uncertain_targets"].as_array_mut().unwrap();
         *u.last_mut().expect("an uncertain target") = ntar;
     });
-    refused("rolls: guaranteed masks that are not the targets'", &|s| s["rolls"][0]["sd"]["fmm"][0] = json!(12345));
-    refused("rolls: landed-set chances truncated", &|s| {
-        s["rolls"][0]["sd"]["os"].as_array_mut().unwrap().pop();
+    refused("rolls: guaranteed masks that are not the targets'", &|s| {
+        s["rolls"][0]["scored"]["fixed_landed_masks"][0] = json!(12345);
     });
-    refused("rolls: a NaN star share", &|s| s["rolls"][0]["sd"]["w"][0] = hex(f64::NAN));
+    refused("rolls: landed-set chances truncated", &|s| {
+        s["rolls"][0]["scored"]["landed_set_chances"].as_array_mut().unwrap().pop();
+    });
+    refused("rolls: a NaN star share", &|s| s["rolls"][0]["scored"]["star_mix"][0] = hex(f64::NAN));
     refused("rolls: a candidate's step costs not one per candidate", &|s| {
-        s["rolls"][0]["base"]["c1"].as_array_mut().unwrap().push(hex(1.0));
+        s["rolls"][0]["base"]["step_costs"].as_array_mut().unwrap().push(hex(1.0));
     });
     refused("rolls: a partner slot's candidate past the candidates", &|s| {
-        let slots = s["rolls"][0]["sd"]["sc"].as_array_mut().unwrap();
+        let slots = s["rolls"][0]["scored"]["slot_candidates"].as_array_mut().unwrap();
         *slots.first_mut().expect("a partner slot") = json!(1_000_000);
     });
     refused("rolls: a lift slot's candidate past the candidates", &|s| {
-        let slots = s["rolls"][0]["sd"]["lc"].as_array_mut().unwrap();
+        let slots = s["rolls"][0]["scored"]["lift_candidates"].as_array_mut().unwrap();
         *slots.first_mut().expect("a lift slot") = json!(1_000_000);
     });
     refused("rolls: a slot count other than the setups'", &|s| {
-        let slots = s["rolls"][0]["sd"]["n"][3].as_u64().unwrap();
-        s["rolls"][0]["sd"]["n"][3] = json!(slots + 1);
+        let slots = s["rolls"][0]["scored"]["slot_count"].as_u64().unwrap();
+        s["rolls"][0]["scored"]["slot_count"] = json!(slots + 1);
     });
     refused("rolls: two setups in one slot", &|s| {
-        let slots = s["rolls"][0]["sd"]["sslot"].as_array_mut().unwrap();
+        let slots = s["rolls"][0]["scored"]["slot_by_setup"].as_array_mut().unwrap();
         assert!(slots.len() >= 2, "two setups");
         slots[1] = slots[0].clone();
     });
     refused("rolls: setups not the partner, lift and finisher slots", &|s| {
-        s["rolls"][0]["sd"]["sc"].as_array_mut().unwrap().push(json!(0));
+        s["rolls"][0]["scored"]["slot_candidates"].as_array_mut().unwrap().push(json!(0));
     });
     refused("rolls: a route's finisher past the finisher slots", &|s| {
-        let routes = s["rolls"][0]["sd"]["rt"].as_array_mut().unwrap();
-        routes.first_mut().expect("a route")[4] = json!(1_000_000);
+        let routes = s["rolls"][0]["scored"]["routes"].as_array_mut().unwrap();
+        routes.first_mut().expect("a route")["finisher_slot"] = json!(1_000_000);
     });
     refused("rolls: a route's lift past the lift slots", &|s| {
-        let lift_slots = s["rolls"][0]["sd"]["lc"].as_array().unwrap().len();
-        let routes = s["rolls"][0]["sd"]["rt"].as_array_mut().unwrap();
-        routes.first_mut().expect("a route")[0] = json!(lift_slots);
+        let lift_slots = s["rolls"][0]["scored"]["lift_candidates"].as_array().unwrap().len();
+        let routes = s["rolls"][0]["scored"]["routes"].as_array_mut().unwrap();
+        routes.first_mut().expect("a route")["lifts"][0] = json!(lift_slots);
     });
+
+    // ---- a store in the encoding before this one (version 10: positional arrays, as a page saved it before): refused
+    // whole as another version, nothing installed, and the page drops it (engine.ts `restore`); the same shape under
+    // this version does not parse ----
+    let old = json!({"v": 10, "bests": [{"k": ["0000000000000001", "0000000000000002"], "n": 3, "b": [], "l": []}],
+        "seen": [["0000000000000001", 3, []]], "solve": [], "flags": [["0000000000000001", 1]], "rolls": [],
+        "caps": []});
+    assert_eq!(state_in(&old)["error"], "state: another version");
+    assert_eq!(state_out(), kept, "an old store installed something");
+    let mut old_shape = old;
+    old_shape["v"] = json!(STATE_VERSION);
+    assert_eq!(state_in(&old_shape)["error"], "state: does not parse");
+    assert_eq!(state_out(), kept, "an old store's shape installed something");
 
     // ---- stores that parse but do not fit the setup they meet: not used there ----
     let seen_used = |st: &Value| {
@@ -326,16 +352,16 @@ fn state_round_trips_and_refuses_malformed() {
     };
     assert!(seen_used(&st), "the stored proofs were not used");
     let mut bad = st.clone();
-    bad["seen"][0][2][0][1][0][2][0][0] = json!(1_000_000);
+    bad["seen"][0]["refs"]["lists"][0][1][0]["deck"]["entries"][0] = json!(1_000_000);
     assert!(!seen_used(&bad), "a deck entry past the deck space was used");
     let mut bad = st.clone();
-    bad["seen"][0][2][0][1][0][0].as_array_mut().unwrap().pop();
+    bad["seen"][0]["refs"]["lists"][0][1][0]["q"].as_array_mut().unwrap().pop();
     assert!(!seen_used(&bad), "chances for fewer targets were used");
     // a kept main search whose career names a trainee past the umas: searched again, the same plan
     let mut bad = st.clone();
     bad["solve"].as_array_mut().unwrap().iter_mut().for_each(|e| {
-        if let Some(f) = e[1]["found"].as_array_mut().and_then(|f| f.first_mut()) {
-            f[0] = json!(1_000_000);
+        if let Some(f) = e["found"].as_array_mut().and_then(|f| f.first_mut()) {
+            f["trainee"] = json!(1_000_000);
         }
     });
     assert_eq!(state_in(&bad)["ok"], true);
@@ -374,10 +400,10 @@ fn a_kept_plan_keeps_its_flags_through_flag_churn() {
     assert!(plan.get("error").is_none(), "{}", plan["error"]);
     assert_eq!(plan["proven_top"], json!(true), "the first plan is not proven: {}", plan["unproven"]);
     let mut st = run(&json!({"cmd": "state_out"}))["state"].clone();
-    let snapshot = st["bests"][0]["f"].as_array().cloned().unwrap_or_default();
+    let snapshot = st["bests"][0]["flags"].as_array().cloned().unwrap_or_default();
     assert!(!snapshot.is_empty(), "the kept plan carries no flags");
     for entry in st["bests"].as_array_mut().unwrap() {
-        for flag in entry["f"].as_array_mut().unwrap() {
+        for flag in entry["flags"].as_array_mut().unwrap() {
             flag[1] = json!(flag[1].as_u64().unwrap() | 1);
         }
     }
@@ -410,7 +436,7 @@ fn a_trainee_filter_that_changes_a_class_changes_the_plan_key() {
     )
     .unwrap();
     job["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
-    let db: Value = serde_json::from_str(&rd("card_events.json")).unwrap();
+    let db: crate::deck::sources::CardEventCache = serde_json::from_str(&rd("card_events.json")).unwrap();
     crate::deck::sources::apply_events_db(&mut job, &skills, &db);
     let her = UmaIndex(data.umas.iter().position(|uma| uma.id == 1004).unwrap());
     let keys = |trainees: Value| {

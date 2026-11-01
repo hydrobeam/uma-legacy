@@ -10,6 +10,10 @@ use std::sync::OnceLock;
 /// The diagnostic switches. Unset, each leaves the solver's results as they are; set, most only add checks or
 /// reports. `RULE_OFF`, `SBOUND`, `CAP_RERUN`, `CAPS_TEST`, `EXACT_BUDGET`, `CF_BUDGET` and the `PLAN_MEMO_*`
 /// switches change what the searches do (experiments and tests).
+#[cfg_attr(
+    target_arch = "wasm32",
+    expect(dead_code, reason = "the bound reports and the state files are the native command line's (cli.rs)")
+)]
 pub(crate) struct Checks {
     /// `RULE_OFF` set: the character rule is off, so `Card::blocks` never blocks a card (brute-force checks only:
     /// val/permcheck.py, val/owncheck.py).

@@ -25,8 +25,9 @@ impl TypeVisitor for Declarations<'_> {
         }
         let name = T::ident(self.cfg);
         let declaration = format!("{}export {}\n", T::docs().unwrap_or_default(), T::decl(self.cfg));
-        let earlier = self.by_name.insert(name, declaration);
-        assert!(earlier.is_none(), "two types are named {}", T::ident(self.cfg));
+        // (a generic type is visited once per argument, with one declaration; two types of one name are refused)
+        let earlier = self.by_name.insert(name, declaration.clone());
+        assert!(earlier.is_none_or(|earlier| earlier == declaration), "two types are named {}", T::ident(self.cfg));
         T::visit_dependencies(self);
     }
 }
@@ -35,6 +36,8 @@ impl TypeVisitor for Declarations<'_> {
 fn visit_roots(declarations: &mut Declarations) {
     declarations.visit::<crate::loop_planner::output::DeckReply>();
     declarations.visit::<crate::career::reply::CareerReply>();
+    declarations.visit::<crate::request::Request>();
+    declarations.visit::<crate::request::InitReply>();
 }
 
 /// The file's text, before formatting.

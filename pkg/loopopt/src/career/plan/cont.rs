@@ -480,7 +480,7 @@ const CONT_N: usize = 500;
 /// Calibration: docs/MODEL.md, "Next career" (`CEIL_SHARE`, `LAM_DECAY`).
 pub(crate) const CEIL_SHARE: f64 = 0.6;
 
-const LAM_DECAY: f64 = 1.5;
+pub(crate) const LAM_DECAY: f64 = 1.5;
 
 /// The continuation's assumed shape: pinf's share of her full-loop odds and the lift chance's decay exponent.
 #[derive(Clone, Copy, Debug, PartialEq)]

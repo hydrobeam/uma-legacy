@@ -6,6 +6,7 @@ use crate::deck::space::{MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, kinds_all};
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::refusal::Refusal;
 use crate::skills::SkillsRaw;
+use serde::Deserialize;
 use serde_json::{Value, json};
 /// Mutually exclusive outcomes of one event firing. Probabilities sum to at most 1; the remainder gives no hint.
 /// Each outcome's rewards occur together, using hint levels 1 (white) and 2 (gold).
@@ -415,8 +416,60 @@ impl TargetSources {
 }
 
 /// Merge a card-event cache (card_events.json) into a deck job: skill names -> (group, level) via the skills table.
-pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: &Value) {
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: &CardEventCache) {
     apply_event_lists(job, &event_lists(skills, event_cache));
+}
+
+/// A card-event cache (card_events.json, `build_card_events.py`): per card (its id as text, in that text's order), the
+/// events it hints a skill through. A field missing from an entry that has it is a parse error, never a default.
+#[derive(Deserialize, Default)]
+pub(crate) struct CardEventCache {
+    #[serde(default)]
+    cards: std::collections::BTreeMap<String, CardEvents>,
+}
+
+/// One card's events (the fields the solver reads; the file's notes on the card are not read).
+#[derive(Deserialize)]
+struct CardEvents {
+    /// per chain link: [link, its rewards]
+    #[serde(default)]
+    chain: Vec<(u64, Vec<EventReward>)>,
+    /// per choice that ends the chain: [link, its rewards]
+    #[serde(default)]
+    end: Vec<(u64, Vec<EventReward>)>,
+    /// [link, k, n]: IT's default choice there ends the chain on k of n outcomes
+    #[serde(default)]
+    stop_risk: Vec<(u8, u8, u8)>,
+    /// events naming two or more skills: [link, [choice][outcome] -> skill names]
+    #[serde(default)]
+    alts: Vec<(u8, Vec<Vec<Vec<String>>>)>,
+    /// measured outcome weights of `alts`' events: [link, [choice][outcome] -> share]
+    #[serde(default)]
+    alt_w: Vec<(u8, Vec<Vec<f64>>)>,
+    /// skills it hints whenever it is in the deck
+    #[serde(default)]
+    always: Vec<String>,
+    /// non-chain events with a chance per run: [skill name, chance]
+    #[serde(default)]
+    chance: Vec<(String, f64)>,
+}
+
+/// An event's reward: a skill by name, for certain or at a chance given the event fires.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum EventReward {
+    Certain(String),
+    Chance(String, f64),
+}
+
+impl EventReward {
+    fn name_and_chance(&self) -> (&str, f64) {
+        match self {
+            Self::Certain(name) => (name, 1.0),
+            Self::Chance(name, chance) => (name, *chance),
+        }
+    }
 }
 
 /// The job lists a card-event cache adds, in `EVENT_KEYS` order: the same for every job (the page's worker builds
@@ -435,16 +488,10 @@ pub(crate) fn apply_event_lists(job: &mut Value, lists: &EventLists) {
         job[*key] = Value::Array(list);
     }
 }
-/// Cached rewards are either a bare skill name (certain) or [name, chance]. Keep the cache reader's defaults
-/// here so chain and early-end rewards interpret the same representation in the same way.
-fn event_reward(value: &Value) -> (&str, f64) {
-    if let Some(reward) = value.as_array() {
-        (reward[0].as_str().unwrap_or(""), reward[1].as_f64().unwrap_or(0.0))
-    } else {
-        (value.as_str().unwrap_or(""), 1.0)
-    }
-}
-pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &Value) -> EventLists {
+/// The job lists of a card-event cache: its entries written as the job's own (`DeckJob`'s tuples), skill names read
+/// through the skills table (a name it does not know hints nothing). They go into the job itself, which the solver reads
+/// as `DeckJob` and keys its kept searches by.
+pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &CardEventCache) -> EventLists {
     let lookup_skill = |name: &str| skills.names.get(name).copied();
     let [
         mut events,
@@ -456,70 +503,55 @@ pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &Value) -> EventLists
         mut alternatives,
         mut alternative_weights,
     ]: [Vec<Value>; 8] = Default::default();
-    if let Some(cards) = event_cache["cards"].as_object() {
-        for (id, card) in cards {
-            let Ok(id) = id.parse::<u32>() else { continue };
-            for link in card["chain"].as_array().into_iter().flatten() {
-                let link_number = link[0].as_u64().unwrap_or(0);
-                for reward in link[1].as_array().into_iter().flatten() {
-                    let (name, probability) = event_reward(reward);
-                    if let Some((group, level)) = lookup_skill(name) {
-                        if probability >= 1.0 {
-                            events.push(json!([id, group, level, link_number]));
-                        } else {
-                            probabilistic_events.push(json!([id, group, level, link_number, probability]));
-                        }
+    for (id, card) in &event_cache.cards {
+        let Ok(id) = id.parse::<u32>() else { continue };
+        for (link_number, rewards) in &card.chain {
+            for reward in rewards {
+                let (name, probability) = reward.name_and_chance();
+                if let Some((group, level)) = lookup_skill(name) {
+                    if probability >= 1.0 {
+                        events.push(json!([id, group, level, link_number]));
+                    } else {
+                        probabilistic_events.push(json!([id, group, level, link_number, probability]));
                     }
                 }
             }
-            for link in card["end"].as_array().into_iter().flatten() {
-                let link_number = link[0].as_u64().unwrap_or(0);
-                end_links.push(json!([id, link_number]));
-                for reward in link[1].as_array().into_iter().flatten() {
-                    let (name, probability) = event_reward(reward);
-                    if let Some((group, level)) = lookup_skill(name) {
-                        end_rewards.push(json!([id, link_number, group, level, probability]));
-                    }
+        }
+        for (link_number, rewards) in &card.end {
+            end_links.push(json!([id, link_number]));
+            for reward in rewards {
+                let (name, probability) = reward.name_and_chance();
+                if let Some((group, level)) = lookup_skill(name) {
+                    end_rewards.push(json!([id, link_number, group, level, probability]));
                 }
             }
-            for risk in card["stop_risk"].as_array().into_iter().flatten() {
-                stop_risks.push(json!([id, risk[0], risk[1], risk[2]]));
+        }
+        for &(link, k, n) in &card.stop_risk {
+            stop_risks.push(json!([id, link, k, n]));
+        }
+        for (link, choices) in &card.alts {
+            let choices: Vec<Vec<Vec<(u32, u8)>>> = choices
+                .iter()
+                .map(|choice| {
+                    choice
+                        .iter()
+                        .map(|outcome| outcome.iter().filter_map(|name| lookup_skill(name)).collect())
+                        .collect()
+                })
+                .collect();
+            alternatives.push(json!([id, link, choices]));
+        }
+        for (link, weights) in &card.alt_w {
+            alternative_weights.push(json!([id, link, weights]));
+        }
+        for name in &card.always {
+            if let Some((group, level)) = lookup_skill(name) {
+                events.push(json!([id, group, level, 0]));
             }
-            for event in card["alts"].as_array().into_iter().flatten() {
-                let choices: Vec<Vec<Vec<(u32, u8)>>> = event[1]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .map(|choice| {
-                        choice
-                            .as_array()
-                            .into_iter()
-                            .flatten()
-                            .map(|outcome| {
-                                outcome
-                                    .as_array()
-                                    .into_iter()
-                                    .flatten()
-                                    .filter_map(|name| lookup_skill(name.as_str().unwrap_or("")))
-                                    .collect()
-                            })
-                            .collect()
-                    })
-                    .collect();
-                alternatives.push(json!([id, event[0], choices]));
-            }
-            for weights in card["alt_w"].as_array().into_iter().flatten() {
-                alternative_weights.push(json!([id, weights[0], weights[1]]));
-            }
-            for name in card["always"].as_array().into_iter().flatten() {
-                if let Some((group, level)) = lookup_skill(name.as_str().unwrap_or("")) {
-                    events.push(json!([id, group, level, 0]));
-                }
-            }
-            for event in card["chance"].as_array().into_iter().flatten() {
-                if let Some((group, level)) = lookup_skill(event[0].as_str().unwrap_or("")) {
-                    odds_events.push(json!([id, group, level, event[1].as_f64().unwrap_or(0.0)]));
-                }
+        }
+        for (name, chance) in &card.chance {
+            if let Some((group, level)) = lookup_skill(name) {
+                odds_events.push(json!([id, group, level, chance]));
             }
         }
     }

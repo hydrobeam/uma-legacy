@@ -382,7 +382,7 @@ export function createRun(deps: RunDeps) {
   async function planPhase(runId: number, job: CareerJob, found: string): Promise<PlanState | null> {
     store.planStarts(found, clock.now());
     view.paint();
-    const { rollout: _r, p_now: _p, ...plain } = job;
+    const plain = job;
     let planned: PlanState;
     try {
       // Compare may have run this very plan job already (`keptPlan`): take its answer instead of planning again
