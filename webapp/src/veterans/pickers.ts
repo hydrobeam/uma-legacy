@@ -6,34 +6,37 @@
 import { batch, computed, signal } from '@preact/signals-core';
 import { careerTables } from '../data.js';
 import { umaName } from './names.js';
-/** @import { ReadonlySignal } from '@preact/signals-core' */
-/** @import { NodeRef, Sparks } from './store.ts' */
-/** @import { Uma } from '../data.js' */
-/** @import { WinInfo } from '../agenda.js' */
+import type { ReadonlySignal } from '@preact/signals-core';
+import type { NodeRef, Sparks } from './store.ts';
+import type { Uma } from '../data.js';
+import type { WinInfo } from '../agenda.js';
 
 // ---------- the uma picker: every uma (or those `only` lets through), filterable; onPick(chara id)
-/**
- * @typedef {object} UmaPick
- * @property {string} title
- * @property {(chara: number) => void} onPick
- * @property {((u: Uma) => boolean) | null} only
- * @property {boolean} open
- * @property {number} n  its opening (each opening starts with an empty filter)
- */
-const umaPick = signal(/** @type {UmaPick | null} */ (null));
+export interface UmaPick {
+  title: string;
+  onPick: (chara: number) => void;
+  only: ((u: Uma) => boolean) | null;
+  open: boolean;
+  /** its opening (each opening starts with an empty filter) */
+  n: number;
+}
+const umaPick = signal<UmaPick | null>(null);
 /** the uma picker's request (null: never opened) */
-export const umaPicking = /** @type {ReadonlySignal<UmaPick | null>} */ (umaPick);
-/** @param {string} title @param {(chara: number) => void} onPick @param {((u: Uma) => boolean) | null} [only] */
-export function openUmaPicker(title, onPick, only = null) {
+export const umaPicking: ReadonlySignal<UmaPick | null> = umaPick;
+export function openUmaPicker(
+  title: string,
+  onPick: (chara: number) => void,
+  only: ((u: Uma) => boolean) | null = null,
+): void {
   umaPick.value = { title, onPick, only, open: true, n: (umaPick.peek()?.n ?? 0) + 1 };
 }
 /** the uma picker has closed (Escape, Close, the backdrop) */
-export function umaPickClosed() {
+export function umaPickClosed(): void {
   const pick = umaPick.peek();
   if (pick?.open) umaPick.value = { ...pick, open: false };
 }
-/** an uma picked: the picker closes, then her choice lands (it may open the skills prompt) @param {number} id */
-export function umaPicked(id) {
+/** an uma picked: the picker closes, then her choice lands (it may open the skills prompt) */
+export function umaPicked(id: number): void {
   const pick = umaPick.peek();
   batch(() => {
     umaPickClosed();
@@ -43,31 +46,36 @@ export function umaPicked(id) {
 
 // ---------- the skills prompt: after an uma is picked for a node that carries sparks, whether to give her the target
 // skills; onChoice(sparks | null: keep what she has). Dismissed (Escape), it chooses nothing
-/**
- * @typedef {object} SkillsAsk
- * @property {string} name  her uma's name
- * @property {boolean} hasSparks  she has sparks to keep ("Keep her current skills" is offered)
- * @property {(sparks: Sparks | null) => void} onChoice
- * @property {boolean} withParents  the same choice goes on her two parents
- * @property {boolean} open
- * @property {number} n
- */
-const ask = signal(/** @type {SkillsAsk | null} */ (null));
+export interface SkillsAsk {
+  /** her uma's name */
+  name: string;
+  /** she has sparks to keep ("Keep her current skills" is offered) */
+  hasSparks: boolean;
+  onChoice: (sparks: Sparks | null) => void;
+  /** the same choice goes on her two parents */
+  withParents: boolean;
+  open: boolean;
+  n: number;
+}
+const ask = signal<SkillsAsk | null>(null);
 /** the skills prompt's question (null: never asked) */
-export const skillsAsked = /** @type {ReadonlySignal<SkillsAsk | null>} */ (ask);
-/** @param {string} name @param {boolean} hasSparks @param {(sparks: Sparks|null) => void} onChoice @param {boolean} [withParents] */
-export function askSkills(name, hasSparks, onChoice, withParents = false) {
+export const skillsAsked: ReadonlySignal<SkillsAsk | null> = ask;
+export function askSkills(
+  name: string,
+  hasSparks: boolean,
+  onChoice: (sparks: Sparks | null) => void,
+  withParents = false,
+): void {
   ask.value = { name, hasSparks, onChoice, withParents, open: true, n: (ask.peek()?.n ?? 0) + 1 };
 }
 /** the prompt is dismissed (Escape): nothing chosen */
-export function askClosed() {
+export function askClosed(): void {
   const now = ask.peek();
   if (now?.open) ask.value = { ...now, open: false };
 }
 /** a choice: it lands while the prompt still holds the search, then the prompt closes and releases it (that order is what
- *  makes a held search run once, after both); the batch makes the two one notification
- *  @param {Sparks | null} sparks */
-export function skillsChosen(sparks) {
+ *  makes a held search run once, after both); the batch makes the two one notification */
+export function skillsChosen(sparks: Sparks | null): void {
   const now = ask.peek();
   batch(() => {
     now?.onChoice(sparks);
@@ -80,38 +88,36 @@ export function skillsChosen(sparks) {
 // as it is then (`at`). A pool veteran's wins are saved on each edit, and the page searches again when the window
 // closes. opts (the veteran analysis' draft): {offer, info, onClose} (see WinsEditor). winAt {race index: turn} is
 // where a win shows, for display only (the solver reads `wins`).
-/**
- * @typedef {object} WinsOpts
- * @property {((turn: number) => number[] | null) | null} [offer]
- * @property {((ix: number) => WinInfo | null) | null} [info]
- * @property {() => void} [onClose]  the window's own close (the draft's): the page holds no search for it
- *
- * @typedef {object} WinsEdit
- * @property {NodeRef} at
- * @property {string} who
- * @property {WinsOpts} opts
- * @property {boolean} open
- * @property {number} n
- */
-const wins = signal(/** @type {WinsEdit | null} */ (null));
+interface WinsOpts {
+  offer?: ((turn: number) => number[] | null) | null;
+  info?: ((ix: number) => WinInfo | null) | null;
+  /** the window's own close (the draft's): the page holds no search for it */
+  onClose?: () => void;
+}
+export interface WinsEdit {
+  at: NodeRef;
+  who: string;
+  opts: WinsOpts;
+  open: boolean;
+  n: number;
+}
+const wins = signal<WinsEdit | null>(null);
 /** the G1 wins window's node (null: never opened) */
-export const winsEditing = /** @type {ReadonlySignal<WinsEdit | null>} */ (wins);
+export const winsEditing: ReadonlySignal<WinsEdit | null> = wins;
 /** every G1: its race index, name and the turns it is held */
-export const allRaces = () =>
+export const allRaces = (): { ix: number; name: string; turns: number[] }[] =>
   careerTables().races.map((name, ix) => ({ ix, name, turns: (careerTables().race_turns || [])[ix] || [] }));
-/** @param {NodeRef} at @param {string} who @param {WinsOpts} [opts] */
-export function openWins(at, who, opts = {}) {
+export function openWins(at: NodeRef, who: string, opts: WinsOpts = {}): void {
   wins.value = { at, who, opts, open: true, n: (wins.peek()?.n ?? 0) + 1 };
 }
 /** the window has closed (Done, Escape, the backdrop) */
-export function winsClosed() {
+export function winsClosed(): void {
   const now = wins.peek();
   if (!now?.open) return;
   wins.value = { ...now, open: false };
   now.opts.onClose?.();
 }
-/** @type {(nd: {wins: readonly number[]}) => string} */
-export const winsText = (nd) =>
+export const winsText = (nd: { wins: readonly number[] }): string =>
   nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
 // a pool veteran's G1 wins window is open (the draft's has its own close)
 const poolWinsOpen = computed(() => !!wins.value?.open && !wins.value.opts.onClose);
@@ -119,23 +125,22 @@ const poolWinsOpen = computed(() => !!wins.value?.open && !wins.value.opts.onClo
 export const searchHeld = computed(() => poolWinsOpen.value || !!ask.value?.open);
 
 // ---------- "+" beside a node's sparks: the target skills she lacks (Editors.tsx AddList draws them)
-const add = signal(/** @type {{btn: HTMLElement, at: NodeRef} | null} */ (null));
+const add = signal<{ btn: HTMLElement; at: NodeRef } | null>(null);
 /** the "+" list's opener and node (null: closed) */
-export const addOpen = /** @type {ReadonlySignal<{btn: HTMLElement, at: NodeRef} | null>} */ (add);
+export const addOpen: ReadonlySignal<{ btn: HTMLElement; at: NodeRef } | null> = add;
 /** the "+" whose list is open (null: none): it draws its aria-expanded from this */
 export const addOpener = computed(() => add.value?.btn ?? null);
-/** "+" pressed: its list opens, or closes when it is open @param {HTMLElement} btn @param {NodeRef} at */
-export function openAdd(btn, at) {
+/** "+" pressed: its list opens, or closes when it is open */
+export function openAdd(btn: HTMLElement, at: NodeRef): void {
   add.value = add.peek()?.btn === btn ? null : { btn, at };
 }
-export function closeAdd() {
+export function closeAdd(): void {
   add.value = null;
 }
 
 // ---------- change who a node is: pick the uma (saved, and the page searches again once the prompt is gone), then
 // whether to add the target skills (none chosen, as Escape on the prompt: she keeps her sparks)
-/** @param {NodeRef} at @param {string} label */
-export function changeUma(at, label) {
+export function changeUma(at: NodeRef, label: string): void {
   openUmaPicker(`${label}: which uma?`, (id) => {
     at.edit(() => ({ chara: id, outfit: undefined }));
     const sparks = at.node()?.sparks || {};
