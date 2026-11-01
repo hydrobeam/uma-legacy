@@ -101,7 +101,7 @@ const when = (turn) =>
  * @property {() => void} onEdit  after an edit of her sparks
  * @property {HTMLElement} winsBtn  the G1 wins editor's button
  * @property {(j: number) => string} parentLabel  a parent's place ("#3")
- * @property {import('./career.js').CareerTarget[]} [targets]  the career's per-target report
+ * @property {import('./career/job.js').CareerTarget[]} [targets]  the career's per-target report
  * @property {import('./loop/types.ts').ResultDeck|null} [deck]  her deck
  * @property {{v: import('./vets.js').Veteran, label: string, open: () => void}[]} [legacies]  her two parents, each with
  *   her place and what opens her node
@@ -364,7 +364,7 @@ function inspPane({ d, onEdit, parentLabel }) {
   return p;
 }
 // The game's Inspiration view of a veteran: "Sparks", her sparks as the game's spark bars (stars on their edge), then
-// "Legacy Origin": her parents' (each a row with her portrait). Also the tree's node popups (career.js).
+// "Legacy Origin": her parents' (each a row with her portrait). Also the tree's node popups (career/view/NodeDialog.js).
 /**
  * @typedef {object} InspViewSpec
  * @property {LineageNode & {parents?: LineageNode[]}} d  the veteran shown (her parents: none, or her two)

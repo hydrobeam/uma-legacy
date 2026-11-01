@@ -172,11 +172,12 @@ export default async function careergen(b) {
   );
   // an edit and a reload before its save is due (it lands after the next frame): the page saves it as it goes
   await vetsOpen();
-  const quick = await pg.evaluate(() => {
+  const quick = await pg.evaluate(async () => {
     const card = [...document.querySelectorAll('#vets .umcell')].at(-1),
       stored = () => JSON.parse(localStorage.getItem('llp:career')).global.vets;
     const id = stored()[+card.id.slice(4)].id;
     card.click(); // beside the list, with Remove
+    await new Promise((r) => setTimeout(r)); // (the pane is a component: it draws her after the click's task)
     document.querySelector('#v-pane .vdel').click();
     const due = stored().some((v) => v.id === id);
     dispatchEvent(new PageTransitionEvent('pagehide'));

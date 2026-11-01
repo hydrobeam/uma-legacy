@@ -36,7 +36,7 @@ const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 // rename to .ts compares the bundle across it
 const ENTRIES = [
   ['src/loop/main.tsx', 'src/loop/main.js', 'src/main.js'],
-  ['src/career.js'],
+  ['src/career/main.tsx', 'src/career/main.js', 'src/career.js'],
   ['src/worker.ts', 'worker.template.js'],
 ];
 // what a bundle's build reads beside the sources: the tsconfig (JSX, import elision) and the package's module type; a

@@ -3,31 +3,9 @@ import { $, $input } from './dom.js';
 import { gameData } from './data.js';
 import { initPresets } from './presets.js';
 import { settings, setTargets } from './settings.ts';
-import { goldGiven } from './job.js';
 import { skillIcon } from './images.js';
 import { renderCards } from './cards.js';
-const namesOf = (group) => gameData().skillNames.get(group) || { w: `Skill ${group}`, gd: null };
-// a target as the game's skill tile: icon and name; a gold the scenario guarantees shows as that gold (It's On! for
-// Ramp Up), in gold (the editor below adds its remove button; the Presets view shows the tiles alone)
-/** @param {number} group @returns {HTMLDivElement} */
-export function tileEl(group) {
-  const names = namesOf(group);
-  const tile = document.createElement('div');
-  tile.className = 'tgt';
-  tile.dataset.g = goldGiven(settings.value.scen, group) ? '2' : '0';
-  const name = document.createElement('span');
-  name.className = 'name';
-  tile.appendChild(name);
-  const gold = goldGiven(settings.value.scen, group) && !!names.gd;
-  if (gold) tile.classList.add('gold');
-  const icon = skillIcon(group, gold);
-  if (icon) name.appendChild(icon);
-  const label = (gold && names.gd) || names.w; // (gold: it has a gold name)
-  name.append(label);
-  if (label.length > 18) tile.classList.add('long'); // (the game scales a long name down to fit)
-  if (gold) name.title = `Gold of ${names.w}, guaranteed by the scenario`; // a plain target's name is on the tile: no hover
-  return tile;
-}
+import { namesOf, tileEl } from './tile.ts';
 // one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
 // remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
 // row's, else the add box), so the keyboard doesn't fall back to the page top

@@ -27,16 +27,13 @@ import {
 } from '../../src/settings.ts';
 import { on } from '../../src/store.ts';
 import { FIXTURES } from './loopfixtures.mjs';
+import { fakeClock, flush, memory } from './fakes.mjs';
 
 await loadData();
 const GOLDEN = JSON.parse(fs.readFileSync(new URL('./loopgolden.json', import.meta.url), 'utf8'));
 const LAST = 'llp:last:global';
 
 // ---------- the fakes
-const memory = () => {
-  const map = new Map();
-  return { getItem: (key) => map.get(key) ?? null, setItem: (key, value) => void map.set(key, value), map };
-};
 const blocked = () => ({
   getItem: () => {
     throw new Error('blocked');
@@ -45,37 +42,6 @@ const blocked = () => ({
     throw new Error('blocked');
   },
 });
-// timers on a clock the test moves (advance runs what falls due, in order)
-function fakeClock() {
-  let now = 0,
-    last = 0;
-  const timers = new Map();
-  const add = (run, ms, every) => {
-    timers.set(++last, { at: now + ms, every, run });
-    return last;
-  };
-  return {
-    now: () => now,
-    /** the timers set and not cleared or fired: 'once' or 'every' each */
-    pending: () => [...timers.values()].map((t) => (t.every ? 'every' : 'once')),
-    setTimer: (run, ms) => add(run, ms, 0),
-    every: (run, ms) => add(run, ms, ms),
-    clearTimer: (id) => void timers.delete(id),
-    advance(ms) {
-      const end = now + ms;
-      for (;;) {
-        const due = [...timers].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
-        if (!due) break;
-        const [id, timer] = due;
-        now = timer.at;
-        if (timer.every) timer.at += timer.every;
-        else timers.delete(id);
-        timer.run();
-      }
-      now = end;
-    },
-  };
-}
 // the engine: each job's promise and interim callback, held for the test
 function fakeEngine() {
   const engine = { jobs: [], restarts: 0 };
@@ -83,7 +49,6 @@ function fakeEngine() {
   engine.restart = () => engine.restarts++;
   return engine;
 }
-const flush = () => new Promise((resolve) => setImmediate(resolve));
 // a loop report: its top loop's odds `p`
 const report = (p, more = {}) => ({
   top: [{ loop: { p_all: p, members: [] }, deck: { cards: [], card_ids: [], odds: [] } }],

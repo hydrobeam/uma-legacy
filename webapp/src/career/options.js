@@ -1,18 +1,17 @@
 // The options table ("Other careers") under the career on show: the plan's careers by Saves per run (or the search's,
 // with a place open), each with Use this, and the Saves popup that explains the plan's figures and its check. It reads
-// the answer and the run machine from career.js (an import cycle: this module's body only declares, so nothing of
-// career.js is read while the bundle loads); its one write there is `forgetDroppedChoice`.
+// the answer and the run from the answer store (career/state.ts) and the career's helpers from job.js, keys.js and
+// view/parts.js; its one write there is `forgetDroppedChoice`.
 import { $, el, esc, fmtIn, lazyDialog } from '../dom.js';
 import { settings } from '../settings.ts';
 import { umaAv } from '../images.js';
 import { pct } from '../odds.js';
 import { vets, plan, chosen, changed, umaName } from '../vets.js';
 import { whyText } from '../proofs.mjs';
+import { answer, runView } from './state.ts';
+import { keyOf } from './keys.js';
 import {
-  last,
-  planState,
   shown,
-  run,
   refFor,
   buildJob,
   Blocked,
@@ -20,15 +19,12 @@ import {
   placesKey,
   forgetDroppedChoice,
   BORROW_CHOICES,
-  keyOf,
   looped,
-  btn,
-  sectionEl,
-  deckEl,
-  fmtN,
-} from '../career.js';
+} from './job.js';
+import { btn, sectionEl, deckEl, fmtN } from './view/parts.js';
 import { must } from '../must.ts';
-/** @import { OptionRow, PlanOption, PlanReport } from '../career.js' */
+/** @import { OptionRow, PlanOption, PlanReport } from './job.js' */
+/** @import { DeepReadonly } from '../store.ts' */
 // an option's role, in plain words: one of the two parents of today's estimate (the route the (i) popup walks through)
 // or its last run, else what her run does for it: the side her veteran's routes lift most often where she lowers it,
 // with that chance per run, or her own n/n as a side (`lifts_side`); a loop member says so first
@@ -54,7 +50,7 @@ const careerParents = (id) => id.split(':')[1].split(',').map(Number);
 // without a real full veteran of hers, her builder's career where she builds (`builder`) or else her own (`parents`);
 // with both sides real, C's run on those two. Its parents by legacy index, and what it is; null without a route, or
 // where it builds and names no builder (her Cont given)
-/** @type {(planReport: PlanReport) => {what: string, parents: number[]}|null} */
+/** @type {(planReport: DeepReadonly<PlanReport>) => {what: string, parents: readonly number[]}|null} */
 function routeFirstStep(planReport) {
   const members = planReport.members || [];
   if (members.length < 2 || planReport.v0 == null) return null;
@@ -99,7 +95,7 @@ function useBtn(r, places = plan) {
     const unplaced = r.parents.filter((i) => !parents.includes(vets[i].id));
     for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets[unplaced.shift()].id;
     plan.parents = parents;
-    plan.fromTable = true; // (a change of setup hands the places back to the planner: career.js initSettings)
+    plan.fromTable = true; // (a change of setup hands the places back to the planner: main.js initSettings)
     // a builder's other career, or the pair search's recommendation, keeps its deck: the job then reports that career
     // (`career`) instead of searching, while the setup it was chosen on stands (`chosenApplies`)
     chosen.career = null;
@@ -114,7 +110,7 @@ function useBtn(r, places = plan) {
     }
     changed();
   });
-  b.disabled = run.searching; // (an old answer's option, while a run works on the next)
+  b.disabled = runView.value.searching; // (an old answer's option, while a run works on the next)
   return b;
 }
 const OPT_SHOW = 8;
@@ -126,7 +122,8 @@ function negativeTopText(planReport, pick) {
   const top = Math.max(...planReport.options.map((o) => scoreOf(o) ?? Number.NEGATIVE_INFINITY));
   if (!(Number.isFinite(top) && top < 0)) return null;
   const text = 'No career saves its own run today: the pick costs least.';
-  const job = planState.state === 'done' ? planState.job : last?.job,
+  const { last, planState } = answer.value,
+    job = planState.state === 'done' ? planState.job : last?.job,
     step = job?.borrowed_parent === 'later' ? routeFirstStep(planReport) : null,
     borrowed = step ? step.parents.filter((i) => vets[i]?.borrowed) : [];
   if (!borrowed.length) return text;
@@ -141,11 +138,12 @@ export function optionsEl() {
   // when the plan didn't list it: no saving), and a way back to the places it ran with
   const on = shown(),
     ref = refFor(),
-    mineOnly = !!plan.trainee && plan.parents.every(Boolean);
+    mineOnly = !!plan.trainee && plan.parents.every(Boolean),
+    { last, planState } = answer.value;
   const planReport = planState.state === 'done' ? planState.r : mineOnly && ref ? ref.result : null,
     places = planState.state !== 'done' && mineOnly && ref ? ref.places : plan;
   const pick = planReport?.options.find((o) => o.chosen) || null;
-  /** @type {OptionRow[]} the plan's rows, or the search's careers (no plan fields) */
+  /** @type {DeepReadonly<OptionRow>[]} the plan's rows, or the search's careers (no plan fields) */
   const list = planReport
     ? planReport.options.filter(
         (o, i) =>
@@ -248,7 +246,7 @@ export function optionsEl() {
       changed();
     });
     back.id = 'opt-back';
-    back.disabled = run.searching;
+    back.disabled = runView.value.searching;
     const f = el('div', 'optfoot');
     f.appendChild(back);
     box.appendChild(f);
@@ -257,7 +255,7 @@ export function optionsEl() {
 }
 // the pair search's recommendation as a row of the table (`pairs.recommendation.report`, with its pair-search score and
 // `pair_search`, so Use this keeps its deck): where it is not the plan's pick, once the check of this pick is complete
-/** @type {(planReport: PlanReport|null) => OptionRow|null} */
+/** @type {(planReport: DeepReadonly<PlanReport>|null) => DeepReadonly<OptionRow>|null} */
 const pairSearchRow = (planReport) => {
   const recommendation = planReport && checkDone(planReport)?.pairs?.recommendation;
   if (!recommendation?.report || recommendation.source === 'plan_pick') return null;
@@ -281,7 +279,7 @@ const unsettled = (planReport) => {
 // (the solver's `recommendation` then), with the per-uma scenarios that reverse that (`varies_under`) named as a
 // sensitivity, else not better. Nothing until the check is complete, or where it is of another pick. nameOf: an
 // option's trainee as the table names her
-/** @type {(planReport: PlanReport|null, nameOf: (o: PlanOption) => string) => string[]} */
+/** @type {(planReport: DeepReadonly<PlanReport>|null, nameOf: (o: DeepReadonly<PlanOption>) => string) => string[]} */
 function pairSearchNotes(planReport, nameOf) {
   if (!planReport) return [];
   const check = checkDone(planReport);

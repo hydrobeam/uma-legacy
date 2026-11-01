@@ -180,15 +180,25 @@ The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, minified to `as
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
 the loop page's run state (the search as the status line draws it, the status and the result on show) is a store too
 (`loop/state.ts`), changed only by the transitions its run machine (`loop/run.ts`, `createRun(deps)`: the engine, clock,
-timers, storage and settings passed in) makes. Views are Preact components that read the stores through @preact/signals:
-the loop page's so far, rendered by `loop/main.tsx` into the template's mount points; the rest
-still build their markup with `el()` and `innerHTML`. Dialogs' `showModal`/`close`, measured placement, the game
-tooltip (`gmtip.js`) and the run machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import
-no component, and only a component's own module looks into what it draws (`test/static.mjs`).
+timers, storage and settings passed in) makes. The career page's run and answer are a third store (`career/state.ts`):
+what the status line draws of the run, the answer on show and the last plan made, each a read-only signal that named
+transitions replace. Its run machine (`career/run.ts`, `createRun(deps)`: the search, the plan and the robustness check,
+with the store's transitions, the engine, clock, page and redraws passed in) imports no store, and node tests run it on
+fakes. A plan is known by an id given when it is made, so the check, whose writes replace the plan's record, writes its
+result wherever the plan is kept. Views are Preact components that read the stores through @preact/signals: the loop
+page's, and the career page's status line, tree, node popup, parent picker and deck popup, each rendered by its page's
+entry into the template's mount points; the rest (the career page's results column and veterans pool among them)
+still build their markup with `el()` and `innerHTML`, and the entry draws them again after a change. The veterans are
+edited in place until their store goes copy-on-write, so `vets.js` counts the edits (`vetsRev`, moved by `changed`)
+and every component that draws a veteran or a place reads it. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
+machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import no component, and only a
+component's own module looks into what it draws (`test/static.mjs`).
 
-In `src/`, `loop/main.tsx` and `career.js` are the two pages' entries (the loop page's own modules are in `loop/`); `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` holds the
-job fields both pages send (from the settings it is given; `loop/job.ts` and `career.js` build their jobs from them), and `statestore.js` keeps the solver's work in
-IndexedDB.
+In `src/`, `loop/main.tsx` and `career/main.tsx` are the two pages' entries (each page's own modules are in its folder,
+`loop/` and `career/`; `career/main.tsx`'s header maps its folder: the job, the run, the views in `career/view/`);
+`engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` holds the job fields both pages
+send (from the settings it is given; `loop/job.ts` and `career/job.js` build their jobs from them), and `statestore.js`
+keeps the solver's work in IndexedDB.
 
 ## Tests
 

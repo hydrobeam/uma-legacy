@@ -18,8 +18,12 @@
 // - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
 //   untracked); anywhere else an effect would subscribe to whatever its body happens to read. A signal's `.subscribe()`
 //   counts as one, and so does importing or re-exporting `effect`.
-// - import cycles: the page's modules import one another without a cycle beyond the two known ones (KNOWN_CYCLES,
-//   reported): in a cycle a module can run before a declaration it reads at load.
+// - import cycles: the page's modules import one another without a cycle (Biome's noImportCycles too): in a cycle a
+//   module can run before a declaration it reads at load.
+// - layers: an import points to its own layer or one below (LAYERS), and nothing outside a page imports into it;
+//   the imports that broke it when it became a failure are listed (KNOWN_AGAINST) until their module is split.
+// - wiring: the career run machine's deps that no browser group checks are named as they must be (engine.key,
+//   analysis.stop and outdate, view.drawCheck).
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
 //   `loadOrder`, on the bundles as samecode builds them).
 // - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
@@ -29,9 +33,8 @@
 // - components stay views: no .ts or .js module imports a .tsx one, by any import esbuild resolves (each bundle's
 //   import graph) or a type import it erases (a relative path in the module that resolves to a .tsx file).
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
-// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
-// against the layer order (LAYERS; a report while existing modules still break it), and the `@ts-expect-error` markers
-// left by renames to .ts.
+// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
+// imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
 import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
@@ -52,8 +55,8 @@ const BUILT = {
   y0: 'agenda.js, the year rows: ag-year y + the year',
   y1: 'agenda.js, the year rows: ag-year y + the year',
   y2: 'agenda.js, the year rows: ag-year y + the year',
-  leg0: 'afftable.js, the legacy columns: leg + the legacy index',
-  leg1: 'afftable.js, the legacy columns: leg + the legacy index',
+  leg0: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
+  leg1: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
 };
 
 const sources = [...ls('src', /\.(js|mjs|ts|tsx)$/, true), ...ls('.', /\.template\.(html|js)$/), 'build.py'].map(
@@ -117,13 +120,13 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // with why: an exemption on one page leaves the other page's lookup checked.
 const MAY_BE_MISSING = {
   'src/loop/main.tsx': {},
-  'src/career.js': {
+  'src/career/main.tsx': {
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
     'c-peruma':
       "cards.js: the loop page's Deck per uma switch; the career page has none (cards.js returns before using it)",
   },
 };
-const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career.js': 'career.template.html' };
+const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.tsx': 'career.template.html' };
 const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
@@ -182,14 +185,9 @@ for (const [entry, template] of Object.entries(PAGES)) {
   }
 }
 
-// ---------- import cycles: none but the known ones
+// ---------- import cycles: none
 // Without a cycle, a module's imports run before it, so a move between modules can't put a declaration after a
-// load-time reader; within one it can (samecode checks the order of such reads in the bundles, `loadOrder`). The
-// cycles that stand today are reported until career.js and the targets panel are split; any other fails.
-const KNOWN_CYCLES = [
-  ['src/career.js', 'src/career/options.js', 'src/career/analysis.js'],
-  ['src/presets.js', 'src/targets.js'],
-];
+// load-time reader; within one it can (samecode checks the order of such reads in the bundles, `loadOrder`).
 const cycles = [];
 {
   // the static imports among the page's modules, over the three bundles (a dynamic import runs later: no cycle)
@@ -233,11 +231,10 @@ const cycles = [];
   };
   for (const v of edges.keys()) if (!index.has(v)) connect(v);
   for (const component of cycles)
-    if (!KNOWN_CYCLES.some((known) => component.every((f) => known.includes(f))))
-      problems.push(
-        `import cycle: ${component.join(', ')} import each other (a module in a cycle can run before what it imports ` +
-          'has been declared): break it',
-      );
+    problems.push(
+      `import cycle: ${component.join(', ')} import each other (a module in a cycle can run before what it imports ` +
+        'has been declared): break it',
+    );
 }
 
 // ---------- mount roots: what a component draws is looked into by its own module only
@@ -250,6 +247,38 @@ const cycles = [];
 // lookup or from a variable that holds it; nor may it name what is under one in a selector ('#results > *'). A
 // lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
 const MOUNTS = {
+  'src/career/main.tsx': [
+    ['run-note', 'src/career/view/RunNote.tsx', ['run-act'], ['runprog']],
+    ['lodds', 'src/career/view/Tree.tsx', ['odds-open', 'sim-try'], ['udodds']],
+    [
+      'tree',
+      'src/career/view/Tree.tsx',
+      ['deck-open', 'sched-open'],
+      ['pn', 'pnh', 'pnl', 'pnclick', 'ptile', 'tnm', 'pf', 'pflab', 'pk', 'pgs', 'tdeck', 'rtgt', 'ctgs']
+        .concat(['ctg', 'tgp', 'tgbar', 'tgfill', 'tgfig', 'tgdk', 'tgico', 'tgchart', 'tgcounts', 'tgc'])
+        .concat(['tgcb', 'tgck', 'tgavg']),
+    ],
+    ['bp', 'src/career/view/Setup.tsx', [], []],
+    ['v-pane', 'src/career/view/NodeDialog.tsx', [], ['vptitle', 'vctl', 'vpars']],
+    [
+      'node-root',
+      'src/career/view/NodeDialog.tsx',
+      ['node-dlg', 'node-title', 'node-body'],
+      ['nodedlg', 'twho', 'vxy', 'srctag', 'simtag', 'vdel', 'tempty', 'onote', 'ctt', 'nact'],
+    ],
+    ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
+    [
+      'vpick-root',
+      'src/career/view/ParentPicker.tsx',
+      ['vpick-dlg', 'vpick-title', 'vp-tab-vets', 'vp-tab-new', 'vp-tab-auto', 'vp-vets', 'vp-new', 'vp-auto'].concat([
+        'vp-list',
+        'vp-filter',
+        'vp-umas',
+        'vp-auto-go',
+      ]),
+      ['vpt', 'vpth', 'vpts', 'vptg', 'vptw', 'vpgh', 'vpgrid'],
+    ],
+  ],
   'src/loop/main.tsx': [
     ['run-note', 'src/loop/RunNote.tsx', [], []],
     ['r-act', 'src/loop/RunNote.tsx', [], []],
@@ -342,6 +371,24 @@ const MOUNT_READS = {
         problems.push(`MOUNT_READS: ${file} no longer looks up '${selector}': drop it`);
 }
 
+// ---------- the career run machine's wiring (career/main.tsx `createRun`): the deps no browser group notices when
+// they are miswired (review-8ab finding 4), each named as it must be
+{
+  const WIRES = [
+    [/\bkey: stateKey,/, "engine.key is engine.ts's stateKey (a constant would take another release's saved answer)"],
+    [/\bstop: stopComparison,/, 'analysis.stop is stopComparison (a no-op leaves a comparison running across an edit)'],
+    [/\boutdate: outdateComparison,/, 'analysis.outdate is outdateComparison (a new run makes the comparison stale)'],
+    [
+      /drawCheck: \(\) => \{\s*renderResults\(\);\s*paint\(\);\s*\}/,
+      'view.drawCheck redraws the results column and the status line only (a redraw of the open veterans dialog under ' +
+        'a click would lose it: run.ts RunDeps)',
+    ],
+  ];
+  for (const [wire, what] of WIRES)
+    if (!wire.test(srcText['src/career/main.tsx']))
+      problems.push(`src/career/main.tsx: the run machine's wiring: ${what}`);
+}
+
 // ---------- components stay views: a module that is not one (.ts, .js) imports no .tsx module
 // What runs: each bundle's import graph (esbuild's metafiles), so every import esbuild resolves counts (a dynamic
 // import(), either quote, a path without its extension). What esbuild erases before it resolves (an `import type`, a
@@ -374,9 +421,6 @@ for (const entry of [...Object.keys(PAGES), WORKER])
 
 // ---------- reports (printed, never a failure)
 const reports = [];
-const knownCycles = cycles.filter((c) => KNOWN_CYCLES.some((known) => c.every((f) => known.includes(f))));
-if (knownCycles.length)
-  reports.push(`known import cycles (${knownCycles.length}): ${knownCycles.map((c) => c.join(' <-> ')).join('; ')}`);
 // ids in the templates that nothing names: no script, no style rule, no other markup (for=, aria-*, href="#")
 {
   const templates = ls('.', /\.template\.html$/).filter((f) => f !== 'about.template.html');
@@ -401,21 +445,25 @@ if (knownCycles.length)
   );
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
 }
-// layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page
-// (a report while existing modules still break it). A logic module (types, io, model) that reaches a store's values
+// layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page.
+// Any other import against them fails; the known ones (KNOWN_AGAINST) are reported. A logic module (types, io, model) that reaches a store's values
 // through any chain of imports, static, dynamic or re-exported, is a failure: a shared module may read a store, so a
 // logic module's call into one could read it for it.
 // The rule's other logic (frontend.md: run machines, uma.moe sync, io) lives today inside modules that are views too, so
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
 // the review of step 4 traced every such read): loop/run.ts (the loop page's run machine: it changes loop/state.ts
 // through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
-// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
-// (the career run machine, split in step 8).
+// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career/job.js
+// (the career job, built from the veterans and settings). career/run.ts, the career run machine, is a model module: the
+// answer store's transitions come in its deps.
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
-  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job', 'loop/keys']],
-  ['stores', ['settings', 'loop/state', 'vets']],
+  [
+    'model',
+    ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/keys', 'career/run', 'loop/job', 'loop/keys'],
+  ],
+  ['stores', ['settings', 'loop/state', 'vets', 'career/state']],
   ['shared', null], // every module not named elsewhere
   [
     'page:loop',
@@ -430,8 +478,29 @@ const LAYERS = [
       'loop/RenderGuard',
     ],
   ],
-  ['page:career', ['career', 'career/analysis', 'career/options']],
+  [
+    'page:career',
+    [
+      'career/main',
+      'career/analysis',
+      'career/options',
+      'career/job',
+      'career/io',
+      'career/view/parts',
+      'career/view/dialogs',
+      'career/view/RunNote',
+      'career/view/Tree',
+      'career/view/NodeDialog',
+      'career/view/ParentPicker',
+      'career/view/Sections',
+      'career/view/Results',
+      'career/view/Pool',
+      'career/view/Setup',
+    ],
+  ],
 ];
+// the imports against the layers that stand: vets.js is the veterans' store and their editors (split in step 10)
+const KNOWN_AGAINST = ['vets (stores) -> images (shared)', 'vets (stores) -> agenda (shared)'];
 {
   const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
   const layerOf = (mod) => {
@@ -441,23 +510,8 @@ const LAYERS = [
   const against = [];
   const logic = ['types', 'io', 'model'].map((name) => LAYERS.findIndex(([layer]) => layer === name)),
     stores = LAYERS.findIndex(([layer]) => layer === 'stores');
-  for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
-    const from = layerOf(moduleOf(file));
-    // (a type-only import or export is left out: types are erased, so they set no load order and read no store)
-    for (const [, spec] of text.matchAll(
-      /(?:^|\n)\s*(?:import|export)\b(?!\s+type\b)[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g,
-    )) {
-      const to = layerOf(moduleOf(path.join(path.dirname(file), spec)));
-      const pages = [from, to].map((k) => LAYERS[k][0]);
-      if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
-        against.push(
-          `${moduleOf(file)} (${pages[0]}) -> ${moduleOf(path.join(path.dirname(file), spec))} (${pages[1]})`,
-        );
-    }
-  }
-  if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
-  // the value imports among the page's modules (esbuild's metafiles, which leave out `import type`): every kind, a
-  // dynamic import() and a re-export included
+  // the value imports among the page's modules (esbuild's metafiles, which leave out `import type`: types are erased,
+  // so they set no load order and read no store): every kind, a dynamic import() and a re-export included
   const imports = new Map();
   for (const meta of Object.values(metafiles))
     for (const [file, input] of Object.entries(meta.inputs))
@@ -468,6 +522,21 @@ const LAYERS = [
             ...input.imports.map((i) => i.path).filter((f) => f.startsWith('src/')),
           ]),
         ]);
+  for (const [file, targets] of imports) {
+    const from = layerOf(moduleOf(file));
+    for (const target of targets) {
+      const to = layerOf(moduleOf(target));
+      const pages = [from, to].map((k) => LAYERS[k][0]);
+      if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
+        against.push(`${moduleOf(file)} (${pages[0]}) -> ${moduleOf(target)} (${pages[1]})`);
+    }
+  }
+  const known = against.filter((a) => KNOWN_AGAINST.includes(a));
+  for (const a of against.filter((x) => !KNOWN_AGAINST.includes(x)))
+    problems.push(`import against the layer order: ${a} (an import points to its own layer or one below)`);
+  for (const k of KNOWN_AGAINST.filter((x) => !against.includes(x)))
+    problems.push(`KNOWN_AGAINST: ${k} no longer stands: drop it`);
+  if (known.length) reports.push(`known imports against the layer order (${known.length}): ${known.join(', ')}`);
   for (const file of imports.keys()) {
     if (!logic.includes(layerOf(moduleOf(file)))) continue;
     // the shortest import chain from `file` to a store, breadth first

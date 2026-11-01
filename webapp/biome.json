@@ -36,7 +36,12 @@
       },
       "nursery": { "noFloatingPromises": "info" },
       "style": { "noNonNullAssertion": "error", "useImportType": "error" },
-      "suspicious": { "noArrayIndexKey": "error", "noDuplicateJsxProps": "error", "noEmptyBlockStatements": "error" }
+      "suspicious": {
+        "noArrayIndexKey": "error",
+        "noDuplicateJsxProps": "error",
+        "noEmptyBlockStatements": "error",
+        "noImportCycles": "error"
+      }
     }
   },
   "overrides": [

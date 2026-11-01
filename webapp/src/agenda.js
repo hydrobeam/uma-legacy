@@ -136,7 +136,7 @@ function winTable() {
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th or later'];
 const why = (/** @type {ScheduleCell} */ cell) => {
   if (cell.tbl !== undefined) {
-    // (career.js sets the table's figure with its cost and grades, on a cell the solver gave its row)
+    // (career/view/Sections.js sets the table's figure with its cost and grades, on a cell the solver gave its row)
     const row = must(cell.row, 'a scheduled race has its place in a row'),
       tapt = must(cell.tapt, 'a table figure comes with its cost on her grades');
     const pen = ROW_PEN[Math.min(row, 6) - 1],

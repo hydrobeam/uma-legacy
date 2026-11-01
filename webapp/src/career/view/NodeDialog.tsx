@@ -1,0 +1,448 @@
+// The tree's node popup: the trainee, a parent place, a veteran (also the veterans dialog's pane: VetPane), a
+// grandparent. It draws the node on show (dialogs.ts `nodeOpen`) from the answer and the veterans (`vetsRev`), so an
+// edit in it, or one behind it, redraws it in place; a node that is gone (a removed veteran, a grandparent whose parent
+// place emptied) closes it.
+import type { ComponentChildren } from 'preact';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { $ } from '../../dom.js';
+import { settings } from '../../settings.ts';
+import { isOwned } from '../../job.js';
+import { fitSparks } from '../../details.js';
+import {
+  vets,
+  vetsRev,
+  plan,
+  changed,
+  umaName,
+  openWins,
+  winsText,
+  changeUma,
+  removeVet,
+  openUmaPicker,
+} from '../../vets.js';
+import type { LineageNode, Veteran } from '../../vets.js';
+import { Dialog } from '../../ui/Dialog.tsx';
+import { UmaAv } from '../../ui/Images.tsx';
+import { AffTable } from '../../ui/AffTable.tsx';
+import { InspView } from '../../ui/InspView.tsx';
+import { idxOf, shown, parentAt, listed } from '../job.js';
+import type { ShownCareer as CareerReport } from './Sections.tsx';
+import { nodeOpen, nodeClosed, openParentPicker, closeNode, paneVet } from './dialogs.ts';
+import type { NodeSpec } from './dialogs.ts';
+
+/** a button of the page's look (parts.js `btn`) */
+const Btn = ({ label, cls, onClick }: { label: string; cls?: string; onClick: () => void }) => (
+  <button type="button" class={cls ? `btn ${cls}` : 'btn'} onClick={onClick}>
+    {label}
+  </button>
+);
+// her affinity, legacy by legacy, from the report's six slots (career/inherit.rs `slots`)
+function Affinity({ r }: { r: CareerReport }) {
+  const nm = (x: { name?: string; chara?: number | null }) => x.name || umaName(x.chara);
+  const legs = r.parents
+    .map((ix) => r.slots.find((x) => x.kind === 'parent' && x.legacy === ix))
+    .filter((p) => !!p)
+    .map((p) => ({
+      face: <UmaAv uma={p.chara || 0} outfit={null} size={30} />,
+      name: nm(p),
+      rel: p.rel,
+      race: p.race,
+      aff: p.aff,
+      gps: r.slots
+        .filter((x) => x.kind === 'grandparent' && x.legacy === p.legacy)
+        .sort((a, b) => (a.gp ?? 0) - (b.gp ?? 0))
+        .map((g) => ({
+          face: <UmaAv uma={g.chara || 0} outfit={null} size={24} />,
+          name: nm(g),
+          rel: g.rel,
+          race: g.race,
+          aff: g.aff,
+        })),
+    }));
+  return <AffTable legs={legs} />;
+}
+// a dialog of its own from the popup (the uma or parent picker): the popup closes first
+const fromNode = (fn: () => void) => () => {
+  closeNode();
+  fn();
+};
+/** her face: a button that changes who she is, or (a listed veteran) just her face */
+function Face({ nd, size, label, change }: { nd: LineageNode; size: number; label: string; change: boolean }) {
+  const face = <UmaAv uma={nd.chara || 0} outfit={nd.outfit} size={size} />;
+  if (!change) return face;
+  const title = `${label}: ${umaName(nd.chara)}. Change who she is`;
+  return (
+    <button
+      type="button"
+      class="facebtn"
+      title={title}
+      aria-label={title}
+      onClick={fromNode(() => changeUma(nd, label))}
+    >
+      {face}
+    </button>
+  );
+}
+/** her G1 wins: the button that edits them (vets.js winsBtn), or (a listed veteran) their count */
+function Wins({ nd, who, k, edit }: { nd: LineageNode; who: string; k: string; edit: boolean }) {
+  if (!edit) return <span class="vwins">{winsText(nd)}</span>;
+  return (
+    <button
+      type="button"
+      class="btn vwins"
+      data-k={`${k}:wins`}
+      title="G1 wins (race affinity): click to edit"
+      aria-haspopup="dialog"
+      onClick={() => openWins(nd, who)}
+    >
+      {winsText(nd)}
+    </button>
+  );
+}
+/** the trainer to follow in the game for an uma.moe veteran: a Copy trainer ID button */
+function CopyId({ v }: { v: Veteran }) {
+  const lender = v.lender as NonNullable<Veteran['lender']>,
+    [said, setSaid] = useState('Copy ID');
+  return (
+    <button
+      type="button"
+      class="btn sm"
+      title={`${lender.name}: ${lender.id}`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(lender.id);
+          setSaid('Copied');
+        } catch {
+          setSaid(lender.id);
+        }
+      }}
+    >
+      {said}
+    </button>
+  );
+}
+/** her name with how many of the targets her own sparks carry, "6/8" (an n/n veteran carries all n) */
+function NameCover({ v }: { v: LineageNode }) {
+  vetsRev.value; // (it reads a signal, so a parent's redraw with the same props skips it: the edits in place say when)
+  const groups = settings.value.targets.map((t) => t.group),
+    x = groups.filter((g) => ((v.sparks as Record<number, number>)?.[g] || 0) > 0).length;
+  return (
+    <div class="nm">
+      {umaName(v.chara)}{' '}
+      <span class="vxy" title={`Her sparks carry ${x} of your ${groups.length} targets`}>
+        {`${x}/${groups.length}`}
+      </span>
+    </div>
+  );
+}
+// (her trainer's followers too: at 1,000 the veteran can't be borrowed by following)
+const lenderText = (l: NonNullable<Veteran['lender']>) =>
+  `uma.moe · ${l.name || 'trainer'} · ${l.followers >= 1000 ? 'max followers' : `${l.followers} follower${l.followers === 1 ? '' : 's'}`}`;
+// where a veteran came from (entered from a career here, an uma.moe tree, an import, made here)
+const VET_SOURCE: Record<string, string> = {
+  entered: 'Entered here',
+  simulated: 'Entered here',
+  tree: 'From uma.moe',
+  umamoe: 'From uma.moe',
+  import: 'Imported',
+  hand: 'Made here',
+  sample: 'Sample',
+};
+/** a veteran's title in the popup and the pane ('' when she is gone) */
+function veteranTitle(id: string) {
+  const i = idxOf(id),
+    v = vets[i];
+  if (!v) return '';
+  return v.lender ? `uma.moe · ${v.lender.name || 'trainer'}` : `Veteran #${i + 1}${v.borrowed ? ' · guest' : ''}`;
+}
+/** A veteran of yours (the popup, the pane beside the pool's list): her face, name, targets carried, wins, where she
+ *  came from; Yours / Guest and Remove; her sparks and her parents'; her parents' faces and G1 wins. */
+export function VeteranView({ id }: { id: string }) {
+  vetsRev.value; // (her record is edited in place: this count says when)
+  const i = idxOf(id),
+    v: Veteran | undefined = vets[i];
+  if (!v) return null;
+  const edit = !listed(v),
+    src = VET_SOURCE[v.src],
+    name = umaName(v.chara);
+  return (
+    <>
+      <div class="twho">
+        <Face nd={v} size={56} label={`Veteran #${i + 1}`} change={edit} />
+        <NameCover v={v} />
+        <Wins nd={v} who={`Veteran #${i + 1}, ${name}`} k={`v${v.id}`} edit={edit} />
+        {src && (
+          <span class={v.src === 'tree' || v.src === 'umamoe' ? 'srctag' : 'simtag'}>
+            {v.lender ? lenderText(v.lender) : src}
+          </span>
+        )}
+        {v.lender && <CopyId v={v} />}
+      </div>
+      {edit && (
+        <div class="row vctl">
+          {/* biome-ignore lint/a11y/useSemanticElements: today's markup (the game's pill pair, .seg); a fieldset would need it restyled */}
+          <div class="seg sm" role="group" aria-label={`Veteran #${i + 1}: yours or a guest`}>
+            {([false, true] as const).map((b) => (
+              <button
+                key={String(b)}
+                type="button"
+                aria-pressed={v.borrowed === b}
+                data-k={`v${v.id}:own${b ? 'bor' : ''}`}
+                onClick={() => {
+                  if (v.borrowed === b) return;
+                  v.borrowed = b;
+                  changed();
+                }}
+              >
+                {b ? 'Guest' : 'Yours'}
+              </button>
+            ))}
+          </div>
+          <Btn
+            label="Remove"
+            cls="vdel"
+            onClick={() => {
+              const index = idxOf(v.id);
+              if (index < 0) return;
+              closeNode();
+              removeVet(index);
+              $('v-msg').textContent = `Removed ${name} from your veterans.`;
+            }}
+          />
+        </div>
+      )}
+      <div class="ud udbare">
+        <InspView
+          nd={v}
+          parents={v.parents}
+          k={`v${v.id}`}
+          onEdit={changed}
+          parentKey={(j) => `v${v.id}g${j}`}
+          readOnly={!edit}
+        />
+      </div>
+      <div class="vpars">
+        {v.parents.map((g, j) => {
+          const lab = `Parent ${j + 1} of #${i + 1}`;
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
+            <div key={j} class="twho">
+              <Face nd={g} size={36} label={lab} change={edit} />
+              <span class="nm">{g.chara ? umaName(g.chara) : 'Unknown parent'}</span>
+              <Wins nd={g} who={`${lab}, ${umaName(g.chara)}`} k={`v${v.id}g${j}`} edit={edit} />
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+/** the pane beside the pool's list (wide): the veteran chosen there (dialogs.ts `paneVet`) */
+export function VetPane() {
+  vetsRev.value;
+  const id = paneVet.value;
+  if (!id) return null;
+  return (
+    <>
+      <h4 class="vptitle">{veteranTitle(id)}</h4>
+      <VeteranView id={id} />
+    </>
+  );
+}
+/** a node's popup: its title, its body, its actions (in the footer beside Close); null: the node is gone */
+interface NodeShown {
+  title: string;
+  body: ComponentChildren;
+  acts?: ComponentChildren;
+}
+// The trainee: who she is, her outfit, her affinity's breakdown; choose her or hand her back to the planner.
+function traineeNode(r: CareerReport | null): NodeShown {
+  const id = plan.trainee || r?.trainee.id,
+    mine = !!r && r.trainee.id === id;
+  return {
+    title: plan.trainee ? 'Trainee' : "Trainee · planner's pick",
+    body: (
+      <>
+        {id ? (
+          <div class="twho">
+            <UmaAv uma={id} outfit={mine ? r?.trainee.outfits[0]?.id : null} size={72} />
+            <div>
+              <div class="nm">{umaName(id)}</div>
+              {mine && r?.trainee.outfits[0] && <div class="ctt">{r.trainee.outfits[0].label}</div>}
+              {mine && r?.trainee.outfitNote && <div class="onote">{r.trainee.outfitNote}</div>}
+            </div>
+          </div>
+        ) : (
+          <p class="tempty">The planner tries every uma you own.</p>
+        )}
+        {mine && r && <Affinity r={r} />}
+      </>
+    ),
+    acts: (
+      <>
+        <Btn
+          label={plan.trainee ? 'Change trainee' : 'Choose trainee'}
+          cls="primary nact"
+          onClick={fromNode(() =>
+            openUmaPicker(
+              'Trainee: which uma?',
+              (u: number) => {
+                plan.trainee = u;
+                plan.fromTable = false; // (chosen by hand: it stays)
+                changed();
+              },
+              (u: Parameters<typeof isOwned>[0]) => isOwned(u, settings.value),
+            ),
+          )}
+        />
+        {plan.trainee && (
+          <Btn
+            label="Let the planner pick"
+            cls="nact"
+            onClick={() => {
+              plan.trainee = null;
+              changed();
+            }}
+          />
+        )}
+      </>
+    ),
+  };
+}
+// A parent place: the veteran in it (chosen or the planner's pick) with her sparks and her parents', all editable.
+function parentNode(k: number, r: CareerReport | null): NodeShown {
+  const at = parentAt(k, r),
+    v: Veteran | undefined = at?.v;
+  const acts = (
+    <>
+      <Btn
+        label={plan.parents[k] ? 'Change parent' : 'Choose parent'}
+        cls="primary big nact"
+        onClick={fromNode(() => openParentPicker(k))}
+      />
+      {plan.parents[k] && (
+        <Btn
+          label="Let the planner pick"
+          cls="nact"
+          onClick={() => {
+            plan.parents[k] = null;
+            changed();
+          }}
+        />
+      )}
+    </>
+  );
+  const title = `Legacy ${k + 1} · parent ${k + 1}${at?.pick ? " · planner's pick" : ''}`;
+  if (!v)
+    return {
+      title,
+      body: <p class="tempty">{vets.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'}</p>,
+      acts,
+    };
+  const i = idxOf(v.id);
+  return {
+    title,
+    body: (
+      <>
+        <div class="twho">
+          <button
+            type="button"
+            class="facebtn"
+            title="Choose another parent"
+            aria-label={`Parent ${k + 1}: ${umaName(v.chara)}. Choose another parent`}
+            onClick={fromNode(() => openParentPicker(k))}
+          >
+            <UmaAv uma={v.chara} outfit={v.outfit} size={64} />
+          </button>
+          <div class="tnm">
+            <NameCover v={v} />
+            <div class="sub">
+              {v.lender
+                ? `uma.moe · ${v.lender.name || 'trainer'}`
+                : `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}${v.borrowed ? ', borrowed' : ''}`}
+            </div>
+          </div>
+          <Wins nd={v} who={umaName(v.chara)} k={`p${k}`} edit={!listed(v)} />
+          {v.lender && <CopyId v={v} />}
+        </div>
+        <div class="ud udbare">
+          <InspView
+            nd={v}
+            parents={v.parents}
+            k={`p${k}`}
+            onEdit={changed}
+            parentKey={(j) => `p${k}g${j}`}
+            readOnly={listed(v)}
+          />
+        </div>
+      </>
+    ),
+    acts,
+  };
+}
+// A grandparent (parent k's parent j): who she is, her sparks and G1 wins.
+function grandparentNode(k: number, j: number, r: CareerReport | null): NodeShown | null {
+  const at = parentAt(k, r),
+    g: LineageNode | undefined = at?.v.parents[j];
+  if (!at || !g) return null;
+  const edit = !listed(at.v);
+  return {
+    title: `Legacy ${k + 1} · grandparent`,
+    body: (
+      <>
+        <div class="twho">
+          <Face nd={g} size={56} label="Grandparent" change={edit} />
+          <div class="nm">{g.chara ? umaName(g.chara) : 'Unknown: pick her'}</div>
+          <Wins nd={g} who={umaName(g.chara)} k={`p${k}g${j}`} edit={edit} />
+        </div>
+        <div class="ud udbare">
+          <InspView nd={g} parents={[]} k={`p${k}g${j}`} onEdit={changed} readOnly={!edit} />
+        </div>
+      </>
+    ),
+  };
+}
+function nodeShown(spec: NodeSpec, r: CareerReport | null): NodeShown | null {
+  if (spec.kind === 't') return traineeNode(r);
+  if (spec.kind === 'p') return parentNode(spec.k, r);
+  if (spec.kind === 'g') return grandparentNode(spec.k, spec.j, r);
+  const title = veteranTitle(spec.id);
+  return title ? { title, body: <VeteranView id={spec.id} /> } : null;
+}
+/** the node popup (game style): one dialog, drawn again on every change while open */
+export function NodeDialog() {
+  vetsRev.value;
+  const spec = nodeOpen.value,
+    last = useRef<NodeSpec | null>(null), // (closed, it keeps the last node it showed, as a dialog keeps its content)
+    body = useRef<HTMLDivElement>(null);
+  if (spec) last.current = spec;
+  const on = last.current && nodeShown(last.current, shown());
+  // a node that is gone closes the popup; on show, her spark names shrink to fit (details.js fitSparks)
+  useLayoutEffect(() => {
+    if (spec && !on) closeNode();
+    if (on && body.current) fitSparks(body.current);
+  });
+  // closed: the focus goes back to the button that opened it, as the browser does; one drawn again since (a pool card)
+  // is found by its own view (`back`)
+  const closed = () => {
+    const back = nodeClosed();
+    if (back)
+      setTimeout(() => {
+        if (document.activeElement === document.body && !document.querySelector('dialog[open]')) back();
+      });
+  };
+  return (
+    <Dialog id="node-dlg" cls="gmdlg nodedlg" labelledBy="node-title" open={!!spec && !!on} onClose={closed}>
+      <h3 class="gmdhdr" id="node-title">
+        {on ? on.title : ''}
+      </h3>
+      <div class="gmdbody" id="node-body" ref={body}>
+        {on?.body}
+      </div>
+      <div class="gmdfoot">
+        <Btn label="Close" cls="gmclose" onClick={closeNode} />
+        {on?.acts}
+      </div>
+    </Dialog>
+  );
+}
