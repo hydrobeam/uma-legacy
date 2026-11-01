@@ -5,10 +5,10 @@ import { computed } from '@preact/signals';
 import { gameData } from './data.js';
 import { fields, settings, setOwned } from './settings.ts';
 import { isOwned } from './job.js';
-/** @import { Uma, Outfit } from './data.js' */
+import type { Uma, Outfit } from './data.js';
+import type { SettingsView } from './settings.ts';
 // her ownership: 'out' when marked not owned or every outfit of hers is, else her roster mark ('own' by default)
-/** @param {Uma} u @returns {'own'|'out'} */
-export function umaState(u) {
+export function umaState(u: Uma): 'own' | 'out' {
   const outfits = u.outfits || [],
     mark = settings.value.roster[u.id] || 'own';
   return mark === 'own' && outfits.length && outfits.every((o) => settings.value.outfits[o.id] === false)
@@ -17,24 +17,16 @@ export function umaState(u) {
 }
 // one tile's ownership under the marks `owned`: the uma's mark, else the outfit's (o null: an uma without outfits in
 // the data)
-/**
- * @param {Uma} u @param {Outfit | null} o @param {Pick<import('./settings.ts').SettingsView, 'roster' | 'outfits'>} owned
- * @returns {'own'|'out'}
- */
-export const tileState = (u, o, owned) =>
+export const tileState = (u: Uma, o: Outfit | null, owned: Pick<SettingsView, 'roster' | 'outfits'>): 'own' | 'out' =>
   owned.roster[u.id] === 'out' || (o && owned.outfits[o.id] === false) ? 'out' : 'own';
 // her tiles' outfits: one tile per outfit, or a single tile (null) when the data lists none
-/** @param {Uma} u @returns {(Outfit | null)[]} */
-export const tileOutfits = (u) => (u.outfits?.length ? u.outfits : [null]);
+export const tileOutfits = (u: Uma): (Outfit | null)[] => (u.outfits?.length ? u.outfits : [null]);
 // The outfit a result names for uma `id`: one, never "any outfit". `offered`: the solver's outfits for her (each covers a
 // target the same way; empty when none of hers covers one). Among the offered, the first; with none offered, among your
 // owned outfits her original (<id>01), else the first.
 // Returns { list: the chosen first, then the other offered ones (equally good), any: no outfit of hers covers a target }
-/**
- * @typedef {{list: {id: number, label: string}[], any: boolean}} OutfitPick
- * @param {number} id a character id @param {{id: number, label: string}[]} [offered] @returns {OutfitPick}
- */
-export function pickOutfit(id, offered = []) {
+export type OutfitPick = { list: { id: number; label: string }[]; any: boolean };
+export function pickOutfit(id: number, offered: { id: number; label: string }[] = []): OutfitPick {
   const u = gameData().umas.find((x) => x.id === id),
     mine = (u?.outfits || []).filter((o) => settings.value.outfits[o.id] !== false);
   if (offered.length) return { list: offered, any: false };
@@ -42,8 +34,7 @@ export function pickOutfit(id, offered = []) {
   return { list: chosen ? [{ id: chosen.id, label: chosen.label }] : [], any: true };
 }
 // what her popup says about the outfit chosen: that any of hers would do, or the equally good others
-/** @type {(pick: OutfitPick) => string} */
-export const outfitNote = (pick) =>
+export const outfitNote = (pick: OutfitPick): string =>
   pick.any
     ? 'Any outfit works: none of hers covers a target.'
     : pick.list.length > 1
@@ -66,8 +57,7 @@ export const rosterCounts = computed(() => {
   return { umasOwned: umas.filter((u) => isOwned(u, s)).length, umas: umas.length, outfitsOwned, outfits };
 });
 // a click on a tile: owned <-> not owned, for its outfit (or the uma, on a tile without one); saved
-/** @param {Uma} u @param {Outfit | null} o */
-export function toggleTile(u, o) {
+export function toggleTile(u: Uma, o: Outfit | null) {
   const roster = { ...settings.value.roster },
     outfits = { ...settings.value.outfits };
   if (tileState(u, o, settings.value) === 'own') {
@@ -89,6 +79,6 @@ export const ownNoUmas = () =>
   setOwned({
     roster: {
       ...settings.value.roster,
-      ...Object.fromEntries(gameData().umas.map((u) => [u.id, /** @type {const} */ ('out')])),
+      ...Object.fromEntries(gameData().umas.map((u) => [u.id, 'out' as const])),
     },
   });
