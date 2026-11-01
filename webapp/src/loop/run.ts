@@ -21,9 +21,11 @@ export const PAUSE_MS = 550;
 export type Timer = ReturnType<typeof setTimeout>;
 export type DeckAnswer = SolverAnswer<LoopReport>;
 export interface LoopDeps {
-  /** the engine (engine.ts `run`): the job's answer; `interim` gets its fast first pass. A killed job never answers */
+  /** the engine (engine.ts `run`): the job's answer; `interim` gets its fast first pass. A job killed while it runs never
+   *  answers; one killed while it waits for the worker to start rejects (`superseded`), so a caught error may be stale */
   run: (job: DeckJob, interim: (answer: DeckAnswer) => void) => Promise<DeckAnswer>;
-  /** kill the worker, so the job it runs never answers, and start a fresh one (engine.ts `restartEngine`) */
+  /** kill the worker (the job it runs never answers; one waiting for its start rejects) and start a fresh one
+   *  (engine.ts `restartEngine`) */
   restart: () => void;
   /** the clock (ms) */
   now: () => number;

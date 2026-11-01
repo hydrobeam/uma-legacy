@@ -200,6 +200,23 @@ test("an edit during a search kills it, and the old search's late answers change
   assert.equal(loopView.peek().lastResult.r.top[0].loop.p_all, 0.03);
 });
 
+test("a job rejected when its worker is killed during the start ('superseded') changes nothing: the newer search keeps the page", async () => {
+  const p = page();
+  const old = await searching(p); // waiting for the worker to start, say (engine.ts rejects it when that start is killed)
+  p.loop.scheduleSearch(); // an edit kills it
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.equal(p.engine.jobs.length, 2);
+  const before = snapshot();
+  old.reject(new Error('superseded'));
+  await flush();
+  assert.deepEqual(snapshot(), before);
+  // the newer search still runs in the engine: the next edit kills it
+  const restarts = p.engine.restarts;
+  p.loop.scheduleSearch();
+  assert.equal(p.engine.restarts, restarts + 1);
+});
+
 test('a burst of edits inside the pause sends one job; the clock starts at the job', async () => {
   const p = page();
   for (let k = 0; k < 5; k++) {
