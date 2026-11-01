@@ -283,7 +283,7 @@ export async function navClick(pg, sel) {
   await Promise.all([pg.waitForEvent('load'), pg.click(sel)]);
 } // a click that reloads the page
 export const note = (pg) => pg.locator('#run-note').innerText();
-export const odds = (pg) => pg.evaluate(() => document.querySelector('#results .loop .odds')?.textContent || '');
+export const odds = (pg) => pg.evaluate(() => document.querySelector('#results [data-odds]')?.textContent || '');
 // the page's Global-era data by its old element id ('data-cards', ...), read here from what the build reads
 // (vite/pagedata.mjs '#page-data': page.json's lists, the image catalog, the skill icons), which a test may hand to the
 // page as an argument

@@ -13,7 +13,7 @@ const endAtLink = () => {
 
 export default async function popups(b) {
   const pg = await open(b, { init: endAtLink });
-  await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click();
+  await pg.locator('#results').getByRole('button', { name: 'Race schedule', exact: true }).first().click();
   await dialog(pg, 'sched-dlg');
   check(
     'schedule: a tab per member of the rotation plus "All three"',
@@ -81,7 +81,7 @@ export default async function popups(b) {
     }),
   );
   await pg.keyboard.press('Escape');
-  await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click();
+  await pg.locator('#results').getByRole('button', { name: 'Affinity', exact: true }).first().click();
   await dialog(pg, 'why-dlg');
   // the career page's table: each parent, then her two parents (relation, points from shared G1s, affinity), a Total row
   const at = await pg.evaluate(() => {
@@ -149,7 +149,7 @@ export default async function popups(b) {
   // the first result's first deck card, retagged in each of the solver's replies (endAtLink; the searches here end no
   // chain): opened by its click, read once the panel has drawn, closed by a second click
   const endPanel = async () => {
-    const chip = pg.locator('#results .deck .dc[data-cid="30008"][data-end="1"]').first();
+    const chip = pg.locator('#results button[data-cid="30008"][data-end="1"]').first();
     await chip.click();
     const text = await pg.locator('[data-pop="card"]:not([hidden])').innerText();
     await chip.click();

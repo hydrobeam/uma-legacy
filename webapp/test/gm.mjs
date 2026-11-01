@@ -37,7 +37,7 @@ export default async function gm(b) {
       (await pg.getAttribute('#x-scen', 'aria-label')) === 'Scenario: Grand Masters' &&
       (await pg.getAttribute('#rank', 'data-value')) === 'ss_and_up' &&
       /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)) &&
-      (await pg.locator('#results .loop').count()) > 0 &&
+      (await pg.locator('#results article').count()) > 0 &&
       (await pg.evaluate(
         () =>
           window.__runs.at(-1).deck.scenario === 'grandmasters' &&

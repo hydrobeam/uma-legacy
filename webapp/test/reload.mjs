@@ -13,7 +13,7 @@ export default async function reload(b) {
   await ctx.addInitScript(() => {
     window.__seen = [];
     const snap = () => {
-      const o = document.querySelector('#results .loop .odds');
+      const o = document.querySelector('#results [data-odds]');
       window.__seen.push(o ? o.textContent : '');
       if (performance.now() < 6000) requestAnimationFrame(snap);
     };
@@ -39,7 +39,7 @@ export default async function reload(b) {
   // answers the result on show, which stays as drawn
   await pg.click('#x-auto');
   await pg.evaluate(() => {
-    window.__drawn = document.querySelector('#results .loop .odds');
+    window.__drawn = document.querySelector('#results [data-odds]');
   });
   const runs = await pg.evaluate(() => window.__runs.length);
   await openEditor(pg, 'cards');
@@ -51,14 +51,14 @@ export default async function reload(b) {
   check(
     'reload: … a fresh identical result is not redrawn',
     (await pg.evaluate(() => window.__runs.length)) === runs + 1 &&
-      (await pg.evaluate(() => document.querySelector('#results .loop .odds') === window.__drawn)),
+      (await pg.evaluate(() => document.querySelector('#results [data-odds]') === window.__drawn)),
   );
   await pg.click('#x-auto');
   const runsBefore = await pg.evaluate(() => window.__runs.length);
   await pg.click('#rank button[data-v="below_ss"]');
   await settle(pg);
   check('reload: … and the next edit searches', (await pg.evaluate(() => window.__runs.length)) > runsBefore);
-  await expect.soft(pg.locator('#results .loop .odds').first(), "reload: … the default's odds again").toHaveText(def);
+  await expect.soft(pg.locator('#results [data-odds]').first(), "reload: … the default's odds again").toHaveText(def);
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await ctx.close();
 }

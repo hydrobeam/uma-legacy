@@ -109,7 +109,7 @@ export default async function keyboard(b) {
   );
   await expect.soft(pg.locator('#rcol'), '… that moves the focus to the results').toBeFocused();
   // the deck card panel (a non-modal dialog): focus moves in on open; Tab past its end returns to the card
-  await pg.locator('.deck .dc').first().focus();
+  await pg.locator('#results button[data-cid]').first().focus();
   await pg.keyboard.press('Enter');
   const inPop = await pg.evaluate(
     () =>
@@ -120,14 +120,14 @@ export default async function keyboard(b) {
   await pg.keyboard.press('Tab');
   check('deck card panel: opening focuses its Owned switch', inPop);
   await expect.soft(pg.locator('[data-pop="card"]').first(), 'deck card panel: tabbing out closes it').toBeHidden();
-  await expect.soft(pg.locator('.dc:focus'), '… and returns to the card').toHaveCount(1);
-  await pg.locator('.mem .memb').first().focus();
+  await expect.soft(pg.locator('#results button[data-cid]:focus'), '… and returns to the card').toHaveCount(1);
+  await pg.locator('#results [data-member] button').first().focus();
   await pg.keyboard.press('Enter');
   const memIn = await pg.evaluate(() => document.activeElement.getAttribute('role') === 'switch');
   await pg.keyboard.press('Shift+Tab');
   check('member panel: the same (opening focuses its Owned switch)', memIn);
   await expect.soft(pg.locator('[data-pop="card"]').first(), 'member panel: Shift+Tab out closes it').toBeHidden();
-  await expect.soft(pg.locator('.memb:focus'), '… and returns to her name').toHaveCount(1);
+  await expect.soft(pg.locator('#results [data-member] button:focus'), '… and returns to her name').toHaveCount(1);
   // Tooltip (gmtip.ts): a control with a title shows it as the game's balloon on keyboard focus, and hides it when the
   // focus leaves it (APG: Escape would hide it too; the page does not). The focus leaves for nothing (a blur): moved to
   // another titled control, the balloon would show that one's title, and a check for this title gone would pass with
@@ -191,17 +191,22 @@ export default async function keyboard(b) {
   await isOpen(pg, 'preset-dlg', 'keyboard, dialog over a dialog: Escape left Presets open');
   await pg.keyboard.press('Escape');
   await dialogKeys(pg, 'Export / import settings', pg.locator('#ex-open'), 'ex-dlg');
-  await dialogKeys(pg, 'Odds', pg.locator('.loop .lacts button', { hasText: 'Odds' }).first(), 'odds-dlg');
+  await dialogKeys(
+    pg,
+    'Odds',
+    pg.locator('#results').getByRole('button', { name: 'Odds', exact: true }).first(),
+    'odds-dlg',
+  );
   await dialogKeys(
     pg,
     'Race schedule',
-    pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first(),
+    pg.locator('#results').getByRole('button', { name: 'Race schedule', exact: true }).first(),
     'sched-dlg',
   );
   // Tabs (the schedule's members): ArrowRight selects and focuses the next tab; only the selected one is a Tab stop
   const sched = await clickOpens(
     pg,
-    pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first(),
+    pg.locator('#results').getByRole('button', { name: 'Race schedule', exact: true }).first(),
     'sched-dlg',
   );
   if (sched) await pg.locator('#sched-dlg').getByRole('tab').first().focus();
@@ -218,9 +223,18 @@ export default async function keyboard(b) {
   );
   await expect.soft(pg.locator('#sched-dlg').getByRole('tab').nth(1), 'schedule tabs: … and focuses it').toBeFocused();
   await pg.keyboard.press('Escape');
-  await dialogKeys(pg, 'Affinity', pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first(), 'why-dlg');
+  await dialogKeys(
+    pg,
+    'Affinity',
+    pg.locator('#results').getByRole('button', { name: 'Affinity', exact: true }).first(),
+    'why-dlg',
+  );
   // affinity: the careers are a radio group of pills; the arrows move and show one
-  const why = await clickOpens(pg, pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first(), 'why-dlg');
+  const why = await clickOpens(
+    pg,
+    pg.locator('#results').getByRole('button', { name: 'Affinity', exact: true }).first(),
+    'why-dlg',
+  );
   const cap0 = why ? await pg.locator('#why-dlg table caption').innerText() : '';
   if (why) await pg.locator('#why-dlg [aria-label="Trainee"] [aria-checked="true"]').focus();
   await pg.keyboard.press('ArrowRight');

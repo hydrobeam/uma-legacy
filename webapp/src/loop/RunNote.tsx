@@ -27,7 +27,7 @@ export function RunNote() {
   // one line beside the runner: the exact check's caveat is its tooltip (and read to screen readers)
   const caveat =
     run.phase === 'check' ? (
-      <span class="vh"> The result below may still change.</span>
+      <span class="sr-only"> The result below may still change.</span>
     ) : seconds(run) >= 1 && loopDrawn.value ? (
       '. The results below are from before your change.'
     ) : null;

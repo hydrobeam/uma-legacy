@@ -33,7 +33,12 @@ import type * as Report from './types.ts';
 import type { DeepReadonly } from '../store.ts';
 import { Button } from '../ui/Button.tsx';
 import { GameBar } from '../ui/GameBar.tsx';
-import { cx } from 'tailwind-variants/lite';
+import { cx, tv } from 'tailwind-variants/lite';
+
+// The card's parts carry data-* marks the checks find them by: data-rank, data-odds, data-same, data-members,
+// data-member (with data-off while she is marked not owned), data-nm, data-own, data-spark ("gold", "white"), data-deck ("shared" or
+// "swap"), data-deck-cards, data-who (a swap row's umas), data-side ("out", "in"), data-delta, data-hint-odds, data-hint ("gold", "white"); a deck
+// card is a button with data-cid (data-tag "borrowed" or "pal", data-off), a face button one with data-uma.
 
 // the result on show, as the store hands it (read-only)
 type LoopResult = DeepReadonly<Report.LoopResult>;
@@ -128,15 +133,28 @@ function LoopCard({
     members = loopMembers(loop, result.decks || null),
     sameLoop = rank > 1 && loopKey(top.loop) === loopKey(loop);
   return (
-    <article class={cx('loop', rank <= 1 ? 'first' : '')}>
-      <div class="lhead">
-        {rank ? <span class="rank">#{rank}</span> : null}
-        <span class="odds">
-          <b>{fmtIn(loop.p_all)}</b> runs to land all {targetCount}
+    <article class="border-gm-edge bg-gm-panel shadow-panel grid min-w-0 grid-cols-1 gap-3 rounded-2xl border p-4 *:min-w-0 max-md:p-3">
+      {/* (room at the right for the Results switch, which sits in the first card's corner) */}
+      <div class="flex flex-wrap items-baseline gap-x-5 gap-y-1.5 pr-32.5 max-md:pr-21">
+        {rank ? (
+          <span
+            class={cx(
+              'text-ui text-panel self-center rounded-sm px-1.75 py-px font-bold tabular-nums',
+              rank === 1 ? 'bg-accent' : 'bg-ink',
+            )}
+            data-rank=""
+          >
+            #{rank}
+          </span>
+        ) : null}
+        <span class="text-title text-gm-ink tabular-nums" data-odds="">
+          <b class="text-headline mr-1 font-black">{fmtIn(loop.p_all)}</b> runs to land all {targetCount}
         </span>
       </div>
       {sameLoop ? (
-        <p class="same">Same loop as #1 (the same umas and outfits); only the deck differs.</p>
+        <p class="text-body text-muted" data-same="">
+          Same loop as #1 (the same umas and outfits); only the deck differs.
+        </p>
       ) : (
         <Members members={members} />
       )}
@@ -151,7 +169,13 @@ function LoopCard({
 // drawn (untracked: an outfit owned later changes the next result, not this one's names)
 function Members({ members }: { members: readonly Member[] }) {
   return (
-    <div class={cx('members', members.length === 3 ? 'n3' : '')}>
+    <div
+      class={cx(
+        'grid gap-2',
+        members.length === 3 ? 'grid-cols-3 max-md:grid-cols-1' : 'grid-cols-4 max-md:grid-cols-2',
+      )}
+      data-members=""
+    >
       {members.map((m) => (
         <MemberCard key={m.id} m={m} pick={untracked(() => pickOutfit(m.id, m.outfits))} />
       ))}
@@ -171,53 +195,85 @@ function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit
     off = !!u && (umaState(u) === 'out' || (outfitId !== null && fields.outfits.value[outfitId] === false));
   const opener = usePopOpener(false, () => memberSubject(m));
   return (
+    // (four rows shared across the members: name, outfit, her outfit's skills, as trainee, so they line up)
     <div
-      class={cx('mem', off ? 'off' : '')}
+      class="border-gm-line bg-gm-cell inset-shadow-well row-span-4 grid min-w-0 grid-rows-subgrid content-start gap-y-0.75 rounded-xl border px-2.5 pt-2 pb-2.5"
+      data-member=""
+      data-off={off ? '' : undefined}
       data-uma={String(m.id)}
       data-outfit={String(outfitId ?? '')}
       data-outfit-label={outfit}
       data-outfit-note={outfitNote(pick)}
     >
-      <button type="button" class="head memb" aria-haspopup="dialog" {...opener}>
-        <UmaAv key={`${m.id}:${face}`} uma={m.id} outfit={face} size={38} />
-        <span class="nm">{m.name}</span>
+      <button
+        type="button"
+        class="group focus-visible:outline-accent flex cursor-pointer items-center gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-3 max-md:min-h-11"
+        aria-haspopup="dialog"
+        {...opener}
+      >
+        <UmaAv
+          key={`${m.id}:${face}`}
+          uma={m.id}
+          outfit={face}
+          size={38}
+          ring="member"
+          dim={off ? 'always' : undefined}
+        />
+        <span class="text-gm-ink leading-tight font-black group-hover:underline" data-nm="">
+          {m.name}
+        </span>
       </button>
-      <span class="of">{outfit}</span>
-      <span class="sk">
+      <span class="text-note text-gm-ink2">{outfit}</span>
+      {/* (like a support card's hint boxes: one per line, full width, a little room under the outfit) */}
+      <span class="grid content-start gap-1 not-empty:mt-1 not-empty:mb-0.5">
         {m.covers.map((cover) => {
           const names = namesOf(cover.group),
             gold = cover.level === 2;
           return (
-            <span key={cover.group} class={cx('spark', gold ? 'g' : '')}>
-              <SkillIcon group={cover.group} gold={gold} />
+            <span key={cover.group} class={spark({ gold })} data-spark={gold ? 'gold' : 'white'}>
+              <SkillIcon group={cover.group} gold={gold} cls={gold ? 'mr-1.5 size-6' : 'mr-1.5 size-5'} />
               {gold ? names.gd || names.w : names.w}
             </span>
           );
         })}
       </span>
-      <span class="own" title="The odds that every target lands in a run with her as the trainee">
-        as trainee: <span class="num">{fmtIn(m.perTrainee)}</span>
+      <span
+        class="text-note text-gm-ink2 self-start"
+        title="The odds that every target lands in a run with her as the trainee"
+        data-own=""
+      >
+        as trainee: <span class="text-ink font-bold tabular-nums">{fmtIn(m.perTrainee)}</span>
       </span>
     </div>
   );
 }
+// a target on her outfit's skill list, as the game's skill tile: white in a thin edge, a gold on the game's gold tile
+const spark = tv({
+  base: 'text-caption leading-title flex items-center',
+  variants: {
+    gold: {
+      false: 'border-hint-edge bg-panel text-ink gap-1.25 border py-px pr-1.5 pl-0.5 font-semibold',
+      true: 'nine-skill-gold text-gm-gold-ink min-h-9.5 gap-1.5 pt-1 pr-2.5 pb-2 pl-1.5 font-bold',
+    },
+  },
+});
 // a member's portrait (her outfit's when the loop fixes one): a button opening her panel, as her name at the top does,
 // with her name as its tooltip
-function FaceButton({ member, size }: { member: Member; size: number }) {
+function FaceButton({ member, size, shape }: { member: Member; size: number; shape: 'card' | 'swap' }) {
   const one = onlyOutfit(member),
     name = member.name + (one ? ` ${one.label}` : '');
   const opener = usePopOpener(false, () => memberSubject(member));
   return (
     <button
       type="button"
-      class="facebtn"
+      class="group/face focus-visible:outline-accent cursor-pointer rounded-md leading-0 focus-visible:outline-2 focus-visible:outline-offset-2"
       data-uma={member.id}
       title={name}
       aria-label={name}
       aria-haspopup="dialog"
       {...opener}
     >
-      <UmaAv key={`${member.id}:${one?.id}`} uma={member.id} outfit={one?.id ?? null} size={size} />
+      <UmaAv key={`${member.id}:${one?.id}`} uma={member.id} outfit={one?.id ?? null} size={size} shape={shape} />
     </button>
   );
 }
@@ -249,12 +305,12 @@ function Decks({ members, shared }: { members: readonly Member[]; shared: Result
         title={
           <>
             Deck for{' '}
-            <span class="dwho">
+            <span class="ml-1 inline-flex gap-1 align-middle">
               {users.map((m) => (
-                <FaceButton key={m.k} member={m} size={42} />
+                <FaceButton key={m.k} member={m} size={42} shape="card" />
               ))}
             </span>
-            <span class="vh">{users.map((m) => m.name).join(', ')}</span>
+            <span class="sr-only">{users.map((m) => m.name).join(', ')}</span>
           </>
         }
       />
@@ -268,8 +324,34 @@ function Decks({ members, shared }: { members: readonly Member[]; shared: Result
     </>
   );
 }
-// one card of a deck as a button opening its panel: its art, name and title, and what to do with it in IT
-function CardChip({ deck, slot }: { deck: ResultDeck; slot: DeckSlot }) {
+// a deck card's button: its art alone (its name, hidden, for the screen reader), else its name in a box (a pal's in
+// green, a borrowed card's in blue); a borrowed card's art in the friend frame; `swap`, a swap row's smaller card
+const chip = tv({
+  base: 'group/chip text-caption focus-visible:outline-accent flex cursor-pointer flex-col items-stretch gap-1 rounded-md text-left not-has-data-[card=art]:border not-has-data-[card=art]:px-1.5 not-has-data-[card=art]:py-1 focus-visible:outline-2 focus-visible:outline-offset-3',
+  variants: {
+    tag: {
+      plain: 'not-has-data-[card=art]:border-line',
+      pal: 'not-has-data-[card=art]:border-req text-req',
+      // (the frame drawn over the art and 3 px round it; cqw: the card's width, the art's height)
+      borrowed:
+        'not-has-data-[card=art]:border-accent text-accent after:nine-friend @container relative after:pointer-events-none after:absolute after:-top-0.75 after:-left-0.75 after:hidden after:h-[calc(100cqw+15px)] after:w-[calc(100%+6px)] has-data-[card=art]:after:block',
+    },
+    swap: { true: 'w-16 max-md:w-13' },
+  },
+});
+// one card of a deck as a button opening its panel: its art, name and title, and what to do with it in IT; `swap`, in
+// a swap row (`out`: a card that goes, its art greyed)
+function CardChip({
+  deck,
+  slot,
+  swap = false,
+  out = false,
+}: {
+  deck: ResultDeck;
+  slot: DeckSlot;
+  swap?: boolean;
+  out?: boolean;
+}) {
   const { borrowed, base, card: c, endAt } = slot,
     pal = (deck.pal_cards || []).includes(base);
   // pick: the skill to prioritise in IT: the search's choice at a chain link ("link 1: Uma Stan"), or what a pal's
@@ -291,30 +373,41 @@ function CardChip({ deck, slot }: { deck: ResultDeck; slot: DeckSlot }) {
   return (
     <button
       type="button"
-      class={cx('dc', borrowed ? 'bor' : pal ? 'pal' : '', off ? 'off' : '')}
+      class={chip({ tag: borrowed ? 'borrowed' : pal ? 'pal' : 'plain', swap })}
       data-cid={c ? c.id : ''}
       data-name={title.nm}
       data-end={endAt || undefined}
+      data-tag={tag || undefined}
+      data-off={off ? '' : undefined}
       title={full}
       aria-label={full}
       aria-haspopup="dialog"
       {...opener}
     >
-      <CardAv c={c || null} size={96} titled={false} />
-      <span class="dn">{full}</span>
-      {pick ? <i>prioritise {pick}</i> : null}
-      {endAt ? <i>{chainEndNote(c, endAt)}</i> : null}
+      <CardAv
+        c={c || null}
+        size={22}
+        titled={false}
+        shape="deck"
+        friend={borrowed}
+        dim={off || out ? 'always' : undefined}
+      />
+      <span class="group-has-data-[card=art]/chip:hidden">{full}</span>
+      {pick ? <i class="text-caption text-muted not-italic">prioritise {pick}</i> : null}
+      {endAt ? <i class="text-caption text-muted not-italic">{chainEndNote(c, endAt)}</i> : null}
     </button>
   );
 }
-const chips = (deck: ResultDeck, slots: readonly DeckSlot[]) =>
-  borrowedLast(slots).map((slot) => <CardChip key={slot.named} deck={deck} slot={slot} />);
+const chips = (deck: ResultDeck, slots: readonly DeckSlot[], side?: 'out' | 'in') =>
+  borrowedLast(slots).map((slot) => (
+    <CardChip key={slot.named} deck={deck} slot={slot} swap={!!side} out={side === 'out'} />
+  ));
 // the (i) button by a deck's title, showing its hint odds
 function InfoButton({ open, toggle }: { open: boolean; toggle: () => void }) {
   return (
     <button
       type="button"
-      class="oinfo"
+      class="border-accent bg-panel font-glyph text-note text-accent aria-expanded:bg-accent aria-expanded:text-panel absolute top-2.5 right-2.5 inline-grid size-5.5 shrink-0 cursor-pointer place-items-center rounded-full border leading-none font-bold italic"
       aria-expanded={open}
       aria-label="Hint odds from this deck"
       title="Hint odds from this deck"
@@ -324,15 +417,23 @@ function InfoButton({ open, toggle }: { open: boolean; toggle: () => void }) {
     </button>
   );
 }
+// a deck's box, the shared one's and each swap row's: the game's pale pane, its (i) at the top right
+const DECK = 'bg-gm-pane shadow-panel relative grid gap-2 rounded-xl p-2.5 max-md:p-2';
 function DeckBlock({ deck, title }: { deck: ResultDeck; title: ComponentChildren }) {
   const [open, setOpen] = useState(false);
   return (
-    <div class="deck">
-      <div class="dtitle">
+    <div class={DECK} data-deck="shared">
+      {/* (room at the right for the (i)) */}
+      <div class="text-gm-ink pr-8 font-black">
         <b>{title}</b>
       </div>
       <InfoButton open={open} toggle={() => setOpen(!open)} />
-      <div class="dcards">{chips(deck, deckCards(deck))}</div>
+      <div
+        class="grid grid-cols-[repeat(6,minmax(0,84px))] items-start gap-2.5 max-md:grid-cols-3 max-md:gap-1.5"
+        data-deck-cards=""
+      >
+        {chips(deck, deckCards(deck))}
+      </div>
       <HintOdds deck={deck} open={open} />
     </div>
   );
@@ -342,13 +443,18 @@ function DeckBlock({ deck, title }: { deck: ResultDeck; title: ComponentChildren
 // percentage over a bar (the icons alone don't tell skills apart: the game draws one icon per effect type)
 function HintOdds({ deck, open }: { deck: ResultDeck; open: boolean }) {
   const tile = (group: number, gold: boolean, name: string, p: number, tip = '') => (
-    <span key={`${group}:${gold}`} class={cx('dsk', gold ? 'g' : '')} title={`${tip || name}: ${percent(p)}`}>
-      <SkillIcon group={group} gold={gold} />
-      <span class="dnm">{name}</span>
-      <span class="dbar" aria-hidden="true">
-        <span style={{ width: percent(p) }} />
+    <span
+      key={`${group}:${gold}`}
+      class="grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-0.5"
+      title={`${tip || name}: ${percent(p)}`}
+      data-hint={gold ? 'gold' : 'white'}
+    >
+      <SkillIcon group={group} gold={gold} cls="row-span-2 size-5" />
+      <span class="text-ink col-start-2 row-start-1 truncate">{name}</span>
+      <span class="bg-line col-span-2 col-start-2 row-start-2 h-1.25 overflow-hidden" aria-hidden="true">
+        <span class={cx('block h-full', gold ? 'bg-gold' : 'bg-accent')} style={{ width: percent(p) }} />
       </span>
-      <b>{percent(p)}</b>
+      <b class="text-ink col-start-3 row-start-1 text-right font-bold tabular-nums">{percent(p)}</b>
     </span>
   );
   const tiles = deck.odds
@@ -362,8 +468,14 @@ function HintOdds({ deck, open }: { deck: ResultDeck; open: boolean }) {
       ];
     });
   return (
-    <div class="dodds" hidden={!open}>
-      <span class="dlab">Hint odds from this deck</span>
+    <div
+      class="border-line bg-bg text-note text-muted grid grid-cols-[repeat(auto-fill,minmax(min(100%,190px),1fr))] gap-x-4 gap-y-2 border px-2.5 py-2"
+      hidden={!open}
+      data-hint-odds=""
+    >
+      <span class="text-caption text-muted col-span-full font-semibold tracking-wider uppercase">
+        Hint odds from this deck
+      </span>
       {tiles.some(Boolean) ? tiles : <span>This deck gives none of the targets.</span>}
     </div>
   );
@@ -394,17 +506,37 @@ function SwapDeltas({ shared, deck, who }: { shared: ResultDeck; deck: ResultDec
   changes.sort((x, y) => Math.abs(y.to - y.from) - Math.abs(x.to - x.from));
   if (!changes.length) return null;
   const one = (x: (typeof changes)[number], extra: boolean) => (
-    <span key={`${x.group}:${x.gold}`} class={cx('swd1', extra ? 'extra' : '', x.to < x.from ? 'down' : '')}>
-      <SkillIcon group={x.group} gold={x.gold} />
-      {x.name} <b>{`${percent(x.from)} → ${percent(x.to)}`}</b>
+    <span
+      key={`${x.group}:${x.gold}`}
+      class={cx(
+        'inline-flex items-center gap-1.25 whitespace-nowrap',
+        extra && 'group-aria-[expanded=false]/deltas:hidden',
+      )}
+      data-delta=""
+    >
+      <SkillIcon group={x.group} gold={x.gold} cls="size-4.5" />
+      {x.name}{' '}
+      <b class={cx('tabular-nums', x.to < x.from && 'text-muted')}>{`${percent(x.from)} → ${percent(x.to)}`}</b>
     </span>
   );
-  if (changes.length <= 2) return <span class="swd">{changes.map((x) => one(x, false))}</span>;
+  // (a fixed column in the row's free space, so every swap row's list starts at the same place; under the cards on a
+  // phone)
+  if (changes.length <= 2)
+    return (
+      <span class="text-note text-ink ml-auto grid min-h-0 w-[min(17rem,100%)] items-center gap-1 self-center border border-transparent px-1.5 py-1 max-md:ml-0 max-md:basis-full">
+        {changes.map((x) => one(x, false))}
+      </span>
+    );
   const hidden = changes.length - 2;
   return (
-    <button type="button" class="swd more" aria-expanded={more} onClick={() => setMore(!more)}>
+    <button
+      type="button"
+      class="group/deltas text-note text-ink hover:border-line hover:bg-bg focus-visible:outline-accent ml-auto grid min-h-0 w-[min(17rem,100%)] cursor-pointer items-center gap-1 self-center rounded-md border border-transparent px-1.5 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 max-md:ml-0 max-md:basis-full"
+      aria-expanded={more}
+      onClick={() => setMore(!more)}
+    >
       {changes.map((x, i) => one(x, i >= 2))}
-      <span class="swmore" data-n={hidden}>
+      <span class="text-caption text-accent font-semibold" data-n={hidden}>
         {more ? 'Show less' : `+${hidden} more`}
       </span>
     </button>
@@ -419,26 +551,34 @@ function SwapRow({ shared, deck, who }: { shared: ResultDeck; deck: ResultDeck; 
   const out = deckCards(shared).filter((slot) => !deck.cards.includes(slot.named));
   const comingIn = deckCards(deck).filter((slot) => !shared.cards.includes(slot.named));
   return (
-    <div class="deck swap">
-      <div class="swrow">
-        <span class="swho">
+    <div class={DECK} data-deck="swap">
+      {/* (everything lines up by the cards' art, a caption under one doesn't shift the row; room at the right for the
+          (i)) */}
+      <div class="flex flex-wrap items-start gap-x-3.5 gap-y-1.5 pr-8 max-md:gap-x-2">
+        {/* whose deck | its cards */}
+        <span
+          class="border-gm-line inline-flex min-h-16 items-center gap-1.5 border-r-2 pr-3.5 max-md:min-h-13 max-md:pr-2"
+          data-who=""
+        >
           {who.map((m) => (
-            <FaceButton key={m.k} member={m} size={64} />
+            <FaceButton key={m.k} member={m} size={64} shape="swap" />
           ))}
-          <span class="vh">{whose}:</span>
+          <span class="sr-only">{whose}:</span>
         </span>
-        <div class="swcards">
-          <span class="swc swout">
-            <span class="vh">out:</span>
-            {chips(shared, out)}
+        {/* (three cards out and in: on a phone the incoming ones wrap under) */}
+        <div class="flex items-start gap-2.5 max-md:flex-wrap max-md:gap-y-1.5">
+          <span class="inline-flex items-start gap-1.5" data-side="out">
+            <span class="sr-only">out:</span>
+            {chips(shared, out, 'out')}
           </span>
-          <span class="swto">
-            <span class="swa" aria-hidden="true">
+          {/* (the arrow and the cards that come in, kept together) */}
+          <span class="flex items-start gap-2.5">
+            <span class="flex h-16 items-center max-md:h-13" aria-hidden="true">
               <Arrow />
             </span>
-            <span class="swc swin">
-              <span class="vh">in:</span>
-              {chips(deck, comingIn)}
+            <span class="inline-flex items-start gap-1.5" data-side="in">
+              <span class="sr-only">in:</span>
+              {chips(deck, comingIn, 'in')}
             </span>
           </span>
         </div>
@@ -484,7 +624,7 @@ function Actions({
 }) {
   const landed = loop.landed;
   return (
-    <div class="row lacts">
+    <div class="flex flex-wrap items-center gap-2">
       {landed && (
         <Button
           class="justify-self-start"

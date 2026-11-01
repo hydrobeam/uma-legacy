@@ -12,16 +12,21 @@ import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSr
 import { cx, tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
 
-// An uma's portrait: a circle (`round`, --s across, set inline) or the roster's square tile (`tile`, its box's width),
-// her initials on her hue (--h, set inline) in the mono face while there is no picture, a faint edge just outside it;
-// `dim`, greyed out: `always`, or `unowned` while her roster tile is marked not owned (the theme's `unowned:`)
+// An uma's portrait: a circle (`round`, --s across, set inline), the roster's square tile (`tile`, its box's width), or
+// a result's face button (ui's `face/` group: loop/Results.tsx), brighter under the pointer: `card`, its corners
+// rounded (a deck's title), `swap`, rounder and 52 px on a phone (a swap row's); her initials on her hue (--h, set
+// inline) in the mono face while there is no picture, a faint edge just outside it; `ring`, a loop member's white
+// ring; `dim`, greyed out: `always`, or `unowned` while her roster tile is marked not owned (the theme's `unowned:`)
 const avLook = tv({
   base: 'bg-av font-data text-ink outline-img-edge inline-grid shrink-0 place-items-center overflow-hidden align-middle leading-none font-semibold outline',
   variants: {
     shape: {
       round: 'size-(--s) rounded-full text-(length:--fs)',
       tile: 'text-display aspect-square h-auto w-full rounded-xl',
+      card: 'size-(--s) rounded-md text-(length:--fs) group-hover/face:brightness-106',
+      swap: 'size-(--s) rounded-xl text-(length:--fs) group-hover/face:brightness-106 max-md:size-13',
     },
+    ring: { member: 'shadow-portrait' },
     dim: { always: 'opacity-45 grayscale', unowned: 'unowned:opacity-45 unowned:grayscale' },
   },
   defaultVariants: { shape: 'round' },
@@ -39,7 +44,7 @@ type UmaAvProps = VariantProps<typeof avLook> & {
   eager?: boolean;
 };
 /** an uma's portrait (her outfit's, else her own, else a mob's), else her initials on her hue */
-export function UmaAv({ uma, outfit, size, shape, dim, cls, label, title, eager = false }: UmaAvProps) {
+export function UmaAv({ uma, outfit, size, shape, ring, dim, cls, label, title, eager = false }: UmaAvProps) {
   const id = uma ?? 0;
   const tries = [outfit && srcFor('outfit', outfit), srcFor('uma', id), srcFor('mob', id)].filter(
     (src): src is string => !!src,
@@ -49,7 +54,7 @@ export function UmaAv({ uma, outfit, size, shape, dim, cls, label, title, eager 
   return (
     // biome-ignore lint/a11y/useAriaPropsSupportedByRole: the label comes with role="img" (a portrait read out as her name)
     <span
-      class={avLook({ shape, dim, class: cls })}
+      class={avLook({ shape, ring, dim, class: cls })}
       data-av=""
       role={label ? 'img' : undefined}
       aria-label={label}
@@ -72,9 +77,12 @@ export function UmaAv({ uma, outfit, size, shape, dim, cls, label, title, eager 
   );
 }
 // A card's tile: its art (its own frame drawn in), else its type's letters in white on its type's colour (--k, set
-// inline) in a ring of its rarity's (--rr); --s across (`fixed`) or its box's width (`fill`, the card list's); `dim`,
-// greyed out: `always` (a card the scenario bans), or `unpressed` while the toggle round it (a `group`) is not pressed
-// (a card not owned). data-card says which it shows, "art" or "letters".
+// inline) in a ring of its rarity's (--rr); --s across (`fixed`) or its box's width (`fill`, the card list's), or a
+// result's deck card (`deck`: its art the width of its button, brighter under the pointer (the button's `chip/`
+// group), its letters --s across; `friend`, a borrowed card's art square on the friend frame's pink, room under it for
+// the frame's band); `dim`, greyed out: `always` (a card the scenario bans, one not owned in a result), or `unpressed`
+// while the toggle round it (a `group`) is not pressed (a card not owned). data-card says which it shows, "art" or
+// "letters".
 const cardLook = tv({
   base: 'font-data inline-grid shrink-0 place-items-center overflow-hidden align-middle leading-none font-bold text-white',
   variants: {
@@ -82,14 +90,31 @@ const cardLook = tv({
     shape: {
       fixed: 'size-(--s) rounded-sm text-(length:--fs)',
       fill: 'text-title aspect-square h-auto w-full min-w-0 rounded-md',
+      deck: '',
     },
+    friend: { true: '' },
     dim: { always: 'opacity-45 grayscale', unpressed: 'group-not-on:opacity-45 group-not-on:grayscale' },
   },
-  defaultVariants: { shape: 'fixed' },
+  compoundVariants: [
+    { shape: 'deck', art: false, class: 'size-(--s) rounded-sm text-(length:--fs)' },
+    {
+      shape: 'deck',
+      art: true,
+      friend: false,
+      class: 'aspect-square h-auto w-full rounded-md group-hover/chip:brightness-107',
+    },
+    {
+      shape: 'deck',
+      art: true,
+      friend: true,
+      class: 'bg-friend mb-3 aspect-square h-auto w-full rounded-none group-hover/chip:brightness-107',
+    },
+  ],
+  defaultVariants: { shape: 'fixed', friend: false },
 });
 type CardAvProps = Omit<VariantProps<typeof cardLook>, 'art'> & { c: Card | null; size: number; titled?: boolean };
 /** a card's art with its type's icon, else its type in letters; `titled`: its own hover names */
-export function CardAv({ c, size, titled = true, shape, dim }: CardAvProps) {
+export function CardAv({ c, size, titled = true, shape, friend, dim }: CardAvProps) {
   const kind: string = c?.kind || 'other',
     src = c && srcFor('card', c.id),
     [failed, setFailed] = useState(false);
@@ -98,7 +123,7 @@ export function CardAv({ c, size, titled = true, shape, dim }: CardAvProps) {
     abbr = KIND_ABBR[kind as keyof typeof KIND_ABBR] || '·';
   return (
     <span
-      class={cardLook({ art, shape, dim })}
+      class={cardLook({ art, shape, friend, dim })}
       data-card={art ? 'art' : 'letters'}
       style={{
         '--s': `${size}px`,

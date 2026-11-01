@@ -13,13 +13,13 @@ export default async function states(b) {
     runNote = pg.locator('#run-note'),
     act = pg.locator('#r-act'),
     results = pg.locator('#results'),
-    loops = pg.locator('#results .loop');
+    loops = pg.locator('#results article');
   const head = () =>
     pg.evaluate(() => ({
       kind: document.getElementById('rhead').dataset.kind,
       note: document.getElementById('run-note').textContent,
       act: document.getElementById('r-act').innerText,
-      loops: document.querySelectorAll('#results .loop').length,
+      loops: document.querySelectorAll('#results article').length,
       stale: document.getElementById('results').hasAttribute('data-stale'),
     }));
   // a job that fails inside the worker: the search ends on the error (it used to spin for ever), the results stay, the
@@ -143,13 +143,14 @@ export default async function states(b) {
     .toHaveText(/^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/, { useInnerText: true });
   await expect.soft(loops, '… and "Search again" runs it: three results').toHaveCount(3);
   const r = await pg.evaluate(() => {
-    const L = [...document.querySelectorAll('#results .loop')],
-      key = (l) => [...l.querySelectorAll('.mem')].map((m) => m.dataset.uma + ':' + m.dataset.outfit).join(' ');
+    const L = [...document.querySelectorAll('#results article')],
+      key = (l) =>
+        [...l.querySelectorAll('[data-member]')].map((m) => m.dataset.uma + ':' + m.dataset.outfit).join(' ');
     return L.map((l, i) => ({
-      rank: l.querySelector('.rank')?.textContent,
-      same: !!l.querySelector('.same'),
-      mem: l.querySelectorAll('.mem').length,
-      sameAs1: i > 0 && !l.querySelector('.same') && key(l) === key(L[0]),
+      rank: l.querySelector('[data-rank]')?.textContent,
+      same: !!l.querySelector('[data-same]'),
+      mem: l.querySelectorAll('[data-member]').length,
+      sameAs1: i > 0 && !l.querySelector('[data-same]') && key(l) === key(L[0]),
     }));
   });
   check('three results: ranked #1, #2, #3', r.map((x) => x.rank).join() === '#1,#2,#3', JSON.stringify(r));

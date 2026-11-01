@@ -69,7 +69,7 @@ export default async function settings(b) {
   await pg.reload();
   await settle(pg);
   await expect.soft(pg.locator('#targets > [data-g]'), '… and the page loads after it: its targets').toHaveCount(8);
-  await expect.soft(pg.locator('#results .loop').first(), '… and its results').toBeAttached();
+  await expect.soft(pg.locator('#results article').first(), '… and its results').toBeAttached();
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
   const p3 = await open(b, {

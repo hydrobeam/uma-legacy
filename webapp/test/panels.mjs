@@ -7,7 +7,7 @@ export default async function panels(b) {
   await pg.evaluate(() => {
     window.__hold = true;
   });
-  const dc = pg.locator('.deck .dc').first();
+  const dc = pg.locator('#results button[data-cid]').first();
   await dc.click();
   const href = await pg
     .locator('[data-pop="card"]')
@@ -19,7 +19,7 @@ export default async function panels(b) {
     href,
   );
   const side = await pg.evaluate(() => {
-    const c = document.querySelector('.deck .dc').getBoundingClientRect(),
+    const c = document.querySelector('#results button[data-cid]').getBoundingClientRect(),
       p = document.querySelector('[data-pop="card"]').getBoundingClientRect();
     return { beside: p.left >= c.right || p.right <= c.left, top: Math.abs(p.top - c.top) };
   });
@@ -49,17 +49,17 @@ export default async function panels(b) {
     pressedBefore === 'true' && pressedAfter === 'false',
     `${cardName}: ${pressedBefore} → ${pressedAfter}`,
   );
-  check('… and greys the card in the result', (await pg.locator('.deck .dc.off').count()) > 0);
+  check('… and greys the card in the result', (await pg.locator('#results button[data-cid][data-off]').count()) > 0);
   await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   await pg.keyboard.press('Escape');
   check('Escape closes the panel', await pg.evaluate(() => document.querySelector('[data-pop="card"]').hidden));
   // an outfit skill under a member carries its skill icon
-  const sp = pg.locator('.loop').first().locator('.mem .spark').first();
+  const sp = pg.locator('#results article').first().locator('[data-spark]').first();
   check('outfit skill shows its skill icon', (await sp.locator('img[data-icon="skill"]').count()) === 1);
-  const mb = pg.locator('.loop').first().locator('.mem .memb').nth(1);
+  const mb = pg.locator('#results article').first().locator('[data-member] button').nth(1);
   await mb.click();
   await pg.keyboard.press('Escape');
-  const fb = pg.locator('.loop').first().locator('.swho .facebtn').first();
+  const fb = pg.locator('#results article').first().locator('[data-deck="swap"] button[data-uma]').first();
   if (await fb.count()) {
     const id = await fb.getAttribute('data-uma');
     await fb.click();
@@ -68,7 +68,7 @@ export default async function panels(b) {
       !(await pg.locator('[data-pop="card"]').isHidden()) &&
         (await pg.locator('[data-pop="card"] input[data-act="uma"]').count()) === 1 &&
         (await pg.locator('[data-pop="card"] b').first().innerText()) ===
-          (await pg.locator(`.loop .mem[data-uma="${id}"] .nm`).first().innerText()),
+          (await pg.locator(`#results [data-member][data-uma="${id}"] [data-nm]`).first().innerText()),
     );
     await pg.keyboard.press('Escape');
     await mb.click();
@@ -86,7 +86,8 @@ export default async function panels(b) {
   await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   check(
     'member Owned switch updates the roster and greys her',
-    (await pg.locator('#roster [data-uma][data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0,
+    (await pg.locator('#roster [data-uma][data-s="out"]').count()) === 1 &&
+      (await pg.locator('#results [data-member][data-off]').count()) > 0,
   );
   await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   await pg.keyboard.press('Escape');

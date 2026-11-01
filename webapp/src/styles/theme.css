@@ -119,11 +119,15 @@
   --color-gm-current: #dfdbeb;
   /* the Presets trash can's slits, in the button face's colour */
   --color-trash-slit: #ffffff;
+  /* behind a borrowed deck card's art: the friend frame's pink (loop/Results.tsx) */
+  --color-friend: #ff669f;
 
   --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* the game's rounded face: the planner pages' cards, bars and dialogs */
   --font-game: "Zen Maru Gothic", "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
+  /* the italic "i" of a deck's hint-odds button */
+  --font-glyph: Georgia, serif;
 
   /* the type scale, in place of the old sheet's 41 sizes (the body is 15 px). Named by role, not by Tailwind's
      xs..xl, whose values these are not: a legacy size snaps to the nearest step (listed as intended where it moves).
@@ -181,6 +185,8 @@
   --shadow-pop: 0 6px 18px var(--color-gm-shadow);
   --shadow-menu: 0 6px 20px rgba(0, 0, 0, 0.15);
   --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.3);
+  /* a loop member's portrait: a white ring, a soft shadow under it */
+  --shadow-portrait: 0 0 0 3px var(--color-white), 0 1px 4px var(--color-gm-shadow);
   /* the pill switches (ui/SegmentedControl.tsx): the track's darker foot, the line between two options, the chosen
      option's rim (a darker foot, a light top) */
   --inset-shadow-well: inset 0 -3px 0 var(--color-gm-tab-low);
@@ -240,6 +246,10 @@
   --nine-skill-white: var(--face-skill-white) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch;
   --nine-skill-gold: var(--skill-gold, linear-gradient(#fff0b0, #ffbf33)) 12 14 16 14 fill / 7px 8px 10px 8px / 0
     stretch;
+  /* the friend frame round a borrowed deck card's art (80 x 120: about 10 px of pink on top, 8 at the sides, 45 at the
+     foot round a rounded hole), drawn 3 px outside the art and a 12 px band under it: widths = slice x pink wanted /
+     pink in the slice (37 / 10 x 3, 37 / 8 x 3, 75 / 45 x 12) */
+  --nine-friend: var(--friend-frame, none) 37 37 75 37 / 11px 14px 20px / 0 stretch;
 
   /* the green header bar: diagonal stripes at its left, fading out by a third of the way across */
   --art-bar: linear-gradient(90deg, transparent 0, var(--color-gm-green) 32%),

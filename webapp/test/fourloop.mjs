@@ -7,7 +7,7 @@ export default async function fourloop(b) {
   await pg.click('#c-top [data-v="3"]');
   await settle(pg);
   const sizes = await pg.evaluate(() =>
-    [...document.querySelectorAll('#results .loop')].map((l) => l.querySelectorAll('.mem').length),
+    [...document.querySelectorAll('#results article')].map((l) => l.querySelectorAll('[data-member]').length),
   );
   check(
     'three results: a rotation first, then four-uma loops',
@@ -15,16 +15,16 @@ export default async function fourloop(b) {
     JSON.stringify(sizes),
   );
   const i = sizes.indexOf(4),
-    loop = pg.locator('#results .loop').nth(i);
+    loop = pg.locator('#results article').nth(i);
   check(
     'a four-uma loop: four members in four columns',
     i > 0 &&
       (await loop.evaluate((l) => {
-        const m = l.querySelector('.members');
+        const m = l.querySelector('[data-members]');
         return !m.classList.contains('n3') && getComputedStyle(m).gridTemplateColumns.split(' ').length === 4;
       })),
   );
-  await loop.locator('.lacts button', { hasText: 'Race schedule' }).click();
+  await loop.getByRole('button', { name: 'Race schedule', exact: true }).click();
   await dialog(pg, 'sched-dlg');
   check(
     'its schedule: a tab per member plus "All four"',
@@ -37,7 +37,7 @@ export default async function fourloop(b) {
     (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 4,
   );
   await pg.keyboard.press('Escape');
-  await loop.locator('.lacts button', { hasText: 'Affinity' }).click();
+  await loop.getByRole('button', { name: 'Affinity', exact: true }).click();
   await dialog(pg, 'why-dlg');
   // a four-uma loop's 12 careers: one pill per trainee (4), then her parents (3 pairs), never the same uma twice in a row
   const afT = await pg.evaluate(() =>

@@ -36,7 +36,9 @@ export default async function cards(b) {
   await expect
     .soft(sirius.locator('[data-ban]'), 'Team Sirius: "Not allowed in Unity Cup" in the card picker')
     .toHaveText('Not allowed in Unity Cup');
-  await expect.soft(pg.locator('#results .dc[data-cid="30081"]'), '… and in no Unity Cup result deck').toHaveCount(0);
+  await expect
+    .soft(pg.locator('#results button[data-cid="30081"]'), '… and in no Unity Cup result deck')
+    .toHaveCount(0);
   await pickScen(pg, 'ura'); // the picker follows at once; the search is not awaited
   await expect.soft(sirius.locator('[data-ban]'), 'Team Sirius allowed again in URA Finale').toHaveCount(0);
   await pickScen(pg, 'unity');

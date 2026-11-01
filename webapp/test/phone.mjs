@@ -18,7 +18,7 @@ export default async function phone(b) {
   const small = await pg.evaluate(() =>
     [
       ...document.querySelectorAll(
-        '[aria-labelledby="h-set"] button, [aria-labelledby="h-set"] select, #rhead button, #rhead select, .loop .lacts button, .mem .memb',
+        '[aria-labelledby="h-set"] button, [aria-labelledby="h-set"] select, #rhead button, #rhead select, #results article > div:last-child button, #results [data-member] button',
       ),
     ]
       .filter((e) => e.offsetParent && !e.closest('#roster, #cards'))
@@ -34,7 +34,7 @@ export default async function phone(b) {
   const order = await pg.evaluate(() => {
     const c = document.getElementById('rcol'),
       r = document.querySelector('[aria-labelledby="h-set"]'),
-      o = document.querySelector('#results .loop .odds').getBoundingClientRect();
+      o = document.querySelector('#results [data-odds]').getBoundingClientRect();
     return {
       above: c.getBoundingClientRect().top < r.getBoundingClientRect().top,
       dom: !!(c.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING),
@@ -50,18 +50,20 @@ export default async function phone(b) {
   // a swap row of three cards out and three in (5 of the 29 swap rows in the pinned val reports) still fits: the
   // example's 1/1 row with its chips cloned, then put back
   const swap33 = await pg.evaluate(() => {
-    const row = document.querySelector('#results .deck.swap');
+    const row = document.querySelector('#results [data-deck="swap"]');
     if (!row) return null;
     const clones = [];
-    for (const side of row.querySelectorAll('.swc'))
-      for (let k = side.querySelectorAll('.dc').length; k < 3; k++) {
-        const c = side.querySelector('.dc').cloneNode(true);
+    for (const side of row.querySelectorAll('[data-side]'))
+      for (let k = side.querySelectorAll('button[data-cid]').length; k < 3; k++) {
+        const c = side.querySelector('button[data-cid]').cloneNode(true);
         side.append(c);
         clones.push(c);
       }
     const fits = document.documentElement.scrollWidth <= document.documentElement.clientWidth,
       card = row.getBoundingClientRect().right,
-      cards = Math.round(Math.max(...[...row.querySelectorAll('.dc')].map((d) => d.getBoundingClientRect().right)));
+      cards = Math.round(
+        Math.max(...[...row.querySelectorAll('button[data-cid]')].map((d) => d.getBoundingClientRect().right)),
+      );
     for (const c of clones) c.remove();
     return { fits, inside: cards <= card, cards, card: Math.round(card) };
   });
@@ -190,7 +192,7 @@ export default async function phone(b) {
     }),
   );
   await pg.keyboard.press('Escape');
-  await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click();
+  await pg.locator('#results').getByRole('button', { name: 'Race schedule', exact: true }).first().click();
   await dialog(pg, 'sched-dlg');
   await expect
     .soft(pg.locator('#sched-dlg .ag-slot.pre:visible'), 'phone: agenda stacks without the grey Junior cells')
@@ -214,7 +216,7 @@ export default async function phone(b) {
     ),
   );
   await pg.keyboard.press('Escape');
-  await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click();
+  await pg.locator('#results').getByRole('button', { name: 'Affinity', exact: true }).first().click();
   await dialog(pg, 'why-dlg');
   await pg.evaluate(() => {
     const d = document.querySelector('#why-dlg .dlg');
@@ -249,7 +251,7 @@ export default async function phone(b) {
     ['why-dlg', 'Affinity'],
     ['odds-dlg', 'Odds'],
   ]) {
-    await pg.locator('.loop .lacts button', { hasText: text }).first().click();
+    await pg.locator('#results').getByRole('button', { name: text, exact: true }).first().click();
     await dialog(pg, id);
     side.push(...(await pg.evaluate(SIDEWAYS)).map((x) => id + ': ' + x));
     await pg.keyboard.press('Escape');

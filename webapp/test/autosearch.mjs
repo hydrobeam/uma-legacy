@@ -30,7 +30,7 @@ const liveRegion = (pg) =>
 export default async function autosearch(b) {
   const pg = await open(b, { init: watchLiveRegion });
   const runNote = pg.locator('#run-note'),
-    loops = pg.locator('#results .loop');
+    loops = pg.locator('#results article');
   // the status line's text as drawn
   const noteIs = (text, what, timeout) => expect.soft(runNote, what).toHaveText(text, { useInnerText: true, timeout });
   const done = /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/;
@@ -54,7 +54,7 @@ export default async function autosearch(b) {
   // P5: a card un-owned in the picker greys its card in the result on show at once, the same element (auto-search
   // off: that result stays); owned again, it is not greyed
   const tile = await pg.evaluate(() => {
-    const chip = document.querySelector('#results .deck .dc:not(.bor)'),
+    const chip = document.querySelector('#results button[data-cid]:not([data-tag="borrowed"])'),
       name = chip.dataset.name;
     window.__chip = chip;
     return [...document.querySelectorAll('#cards button[aria-pressed]')].findIndex((t) => {
@@ -158,7 +158,7 @@ export default async function autosearch(b) {
   await noteIs(done, 'the restarted search finishes');
   // the focus on a deck card panel's Owned switch when the card is un-owned: its search draws a new result, which
   // closes the panel, and the focus goes to the results column (not the page top)
-  await pg.locator('.deck .dc:not(.bor)').first().click();
+  await pg.locator('#results button[data-cid]:not([data-tag="borrowed"])').first().click();
   await pg.locator('[data-pop="card"] input[role=switch]').focus();
   await pg.keyboard.press('Space');
   await settle(pg);

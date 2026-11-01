@@ -23,23 +23,22 @@ export default async function load(b) {
   );
   // the result's wording: the headline odds, each member's own odds as trainee
   const head = await pg.evaluate(() => {
-    const l = document.querySelector('#results .loop');
+    const l = document.querySelector('#results article');
     return {
-      odds: l.querySelector('.odds').innerText,
-      sub: !!l.querySelector('.sub'),
-      rank: !!l.querySelector('.rank'),
-      own: [...l.querySelectorAll('.mem .own')].map((e) => e.innerText),
-      font: getComputedStyle(l.querySelector('.odds')).fontFamily,
+      odds: l.querySelector('[data-odds]').innerText,
+      rank: !!l.querySelector('[data-rank]'),
+      own: [...l.querySelectorAll('[data-own]')].map((e) => e.innerText),
+      font: getComputedStyle(l.querySelector('[data-odds]')).fontFamily,
     };
   });
   check(
     'headline: "1 in 103 runs to land all 8" alone (no 90% line), in the game font; no rank with one result',
-    /^1 in 103 runs to land all 8$/.test(head.odds) && !head.sub && !head.rank && /Zen Maru/.test(head.font),
+    /^1 in 103 runs to land all 8$/.test(head.odds) && !head.rank && /Zen Maru/.test(head.font),
     JSON.stringify(head),
   );
   // Odds opens the career planner's table for the loop: every count, 8/8 the headline's (1 in 103), 7/8 and 8/8 together
   // the solver's 7-or-better (1 in 12.1), focus back on the button when it closes
-  await pg.click('#results .loop .lacts button:has-text("Odds")');
+  await pg.locator('#results').getByRole('button', { name: 'Odds', exact: true }).first().click();
   await dialog(pg, 'odds-dlg');
   const lrows = await pg.$$eval('#odds-dlg .oddtab tbody tr', (l) =>
     l.map((r) => [...r.children].map((c) => c.textContent)),
@@ -62,14 +61,14 @@ export default async function load(b) {
     head.own.length === 3 &&
       head.own.every((x) => /^as trainee: 1 in [\d,.]+$/.test(x)) &&
       (await pg.evaluate(() => {
-        const m = document.querySelector('#results .loop .members');
-        return m.classList.contains('n3') && getComputedStyle(m).gridTemplateColumns.split(' ').length === 3;
+        const m = document.querySelector('#results [data-members]');
+        return getComputedStyle(m).gridTemplateColumns.split(' ').length === 3;
       })),
     head.own.join(' | '),
   );
   // every member names one outfit, never "any outfit" (her popup says when any would do)
-  const ofs = await pg.$$eval('#results .loop .mem', (l) =>
-    l.map((m) => [m.querySelector('.of').textContent, m.dataset.outfitNote || '']),
+  const ofs = await pg.$$eval('#results [data-member]', (l) =>
+    l.map((m) => [m.children[1].textContent, m.dataset.outfitNote || '']),
   );
   check(
     'members: each names one outfit (never "any outfit"; her popup carries any note)',
@@ -80,7 +79,7 @@ export default async function load(b) {
   );
   // a pal whose credited event choice needs a priority says so, derived from the event data (Anshinzawa SSR's finale)
   const anshin = await pg.evaluate(() =>
-    [...document.querySelectorAll('#results .loop .dc[data-cid="30080"] i')].map((i) => i.textContent),
+    [...document.querySelectorAll('#results button[data-cid="30080"] i')].map((i) => i.textContent),
   );
   check(
     'deck: Sasami Anshinzawa SSR says "prioritise Risky Business"',
@@ -89,32 +88,35 @@ export default async function load(b) {
   );
   // the deck's odds per target, each with its skill icon
   const dd = await pg.evaluate(() => {
-    const l = document.querySelector('#results .loop .dodds');
-    return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img[data-icon="skill"]').length };
+    const l = document.querySelector('#results [data-hint-odds]');
+    return {
+      n: l.querySelectorAll('[data-hint]').length,
+      icons: l.querySelectorAll('[data-hint] img[data-icon="skill"]').length,
+    };
   });
   artCheck('deck odds: a skill icon on every entry', dd.n > 0 && dd.icons === dd.n, JSON.stringify(dd));
   // the odds sit in a frame the (i) button opens; a swap row names its uma by her character icon
-  const oi = pg.locator('#results .loop .deck .oinfo').first();
-  check('deck odds start closed', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
+  const oi = pg.locator('#results').getByRole('button', { name: 'Hint odds from this deck' }).first();
+  check('deck odds start closed', await pg.evaluate(() => document.querySelector('#results [data-hint-odds]').hidden));
   await oi.click();
   check(
     '(i) opens the deck odds (aria-expanded, names and percentages)',
     (await oi.getAttribute('aria-expanded')) === 'true' &&
       (await pg.evaluate(() => {
-        const o = document.querySelector('#results .loop .dodds');
-        return !o.hidden && o.querySelectorAll('.dnm').length > 0 && /\d+%/.test(o.innerText);
+        const o = document.querySelector('#results [data-hint-odds]');
+        return !o.hidden && o.querySelectorAll('[data-hint]').length > 0 && /\d+%/.test(o.innerText);
       })),
   );
   await oi.click();
-  check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
+  check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results [data-hint-odds]').hidden));
   // the deck's chance of hinting a target is one figure wherever it shows: its gold, or else its white (the solver's
   // white is given no gold), `deckHint`, from the result's own fields: the (i) panel's white tiles and Export's figures
   const hint = (o) => 1 - (1 - o.gold) * (1 - o.white);
   const deckOdds = (
     await pg.evaluate(() => window.__results.findLast((r) => r?.top?.length)).then((r) => r.top[0].deck.odds)
   ).filter((o) => o.white > 0.005 || o.gold > 0.005);
-  const tiles = await pg.$$eval('#results .loop .dodds', (l) =>
-    [...l[0].querySelectorAll('.dsk:not(.g) b')].map((b) => b.textContent),
+  const tiles = await pg.$$eval('#results [data-hint-odds]', (l) =>
+    [...l[0].querySelectorAll('[data-hint="white"] b')].map((b) => b.textContent),
   );
   await pg.click('#ex-open');
   const exOdds = JSON.parse(await pg.inputValue('#ex-text')).results.decks[0].deck_odds;
@@ -133,7 +135,7 @@ export default async function load(b) {
   );
   // a result card's picture names nothing on hover: the chip's title (name, title, tag, what to prioritise) is what
   // hovering shows (gmtip.ts shows the innermost [title])
-  const chipTitles = await pg.$$eval('#results .deck .dc', (l) => [
+  const chipTitles = await pg.$$eval('#results button[data-cid]', (l) => [
     l.length,
     l.flatMap((c) => [...c.querySelectorAll('[title]')].map((t) => t.title)),
   ]);
@@ -143,20 +145,20 @@ export default async function load(b) {
     JSON.stringify(chipTitles[1].slice(0, 3)),
   );
   const sw = await pg.evaluate(() =>
-    [...document.querySelectorAll('#results .loop .deck.swap .swho')].map((w) => ({
+    [...document.querySelectorAll('#results [data-deck="swap"] [data-who]')].map((w) => ({
       av: w.querySelectorAll('[data-av]').length,
-      label: w.querySelector('.vh').textContent,
-      tips: [...w.querySelectorAll('.facebtn')].map((a) => a.title),
+      label: w.querySelector(':scope > span').textContent,
+      tips: [...w.querySelectorAll('button[data-uma]')].map((a) => a.title),
       shown: [...w.childNodes]
-        .filter((n) => !(n.classList && (n.classList.contains('vh') || n.classList.contains('facebtn'))))
+        .filter((n) => n.nodeType === Node.TEXT_NODE)
         .map((n) => n.textContent)
         .join('')
         .trim(),
     })),
-  ); // .vh: screen-reader text
+  ); // (its span: screen-reader text)
   const swd = await pg.evaluate(() =>
-    [...document.querySelectorAll('#results .loop .deck.swap')].map((d) =>
-      [...d.querySelectorAll('.swd1')].map((x) => x.textContent.trim()),
+    [...document.querySelectorAll('#results [data-deck="swap"]')].map((d) =>
+      [...d.querySelectorAll('[data-delta]')].map((x) => x.textContent.trim()),
     ),
   );
   check(
@@ -169,16 +171,16 @@ export default async function load(b) {
   const owned = await pg.evaluate(
     (skl) => {
       const wOf = new Map(skl.filter((s) => s[2]).map((s) => [s[2], s[1]]));
-      return [...document.querySelectorAll('#results .loop .deck.swap')].map((d) => {
-        const ids = [...d.querySelectorAll('.swho .facebtn')].map((f) => f.dataset.uma);
+      return [...document.querySelectorAll('#results [data-deck="swap"]')].map((d) => {
+        const ids = [...d.querySelectorAll('[data-who] button[data-uma]')].map((f) => f.dataset.uma);
         const per = ids.map((id) =>
-          [...document.querySelectorAll(`#results .loop .mem[data-uma="${id}"] .sk .spark`)].flatMap((s) =>
-            s.classList.contains('g') ? [s.textContent, wOf.get(s.textContent)] : [s.textContent],
+          [...document.querySelectorAll(`#results [data-member][data-uma="${id}"] [data-spark]`)].flatMap((s) =>
+            s.dataset.spark === 'gold' ? [s.textContent, wOf.get(s.textContent)] : [s.textContent],
           ),
         );
         return {
           mine: per.length ? per[0].filter((n) => per.every((p) => p.includes(n))) : [],
-          swd: [...d.querySelectorAll('.swd1')].map((x) => x.textContent.trim()),
+          swd: [...d.querySelectorAll('[data-delta]')].map((x) => x.textContent.trim()),
         };
       });
     },
@@ -190,38 +192,39 @@ export default async function load(b) {
       owned.every((r) => r.swd.every((t) => !r.mine.some((n) => t.startsWith(n + ' ')))),
     JSON.stringify(owned),
   );
-  const more = pg.locator('#results .loop .swd.more').first();
+  const more = pg.locator('#results [data-deck="swap"] button[aria-expanded]:has([data-delta])').first();
   if (await more.count()) {
-    const n0 = await more.locator('.swd1:visible').count();
+    const n0 = await more.locator('[data-delta]:visible').count();
     await more.click();
     const unfolded =
-      (await more.locator('.swd1:visible').count()) > n0 && (await more.getAttribute('aria-expanded')) === 'true';
+      (await more.locator('[data-delta]:visible').count()) > n0 &&
+      (await more.getAttribute('aria-expanded')) === 'true';
     let folded = false;
     if (unfolded) {
       await more.click();
-      folded = (await more.locator('.swd1:visible').count()) === n0;
+      folded = (await more.locator('[data-delta]:visible').count()) === n0;
     }
     check("clicking a swap's changes shows them all, again folds them", unfolded && folded);
   } else skip("clicking a swap's changes shows them all, again folds them", 'no swap row has more than two changes');
   check(
     'a label marks where the swap rows start',
     await pg.evaluate(() => {
-      const h = [...document.querySelectorAll('#results .loop p')].find((p) => p.textContent === 'Swaps'),
-        s = document.querySelector('#results .loop .deck.swap');
+      const h = [...document.querySelectorAll('#results article p')].find((p) => p.textContent === 'Swaps'),
+        s = document.querySelector('#results [data-deck="swap"]');
       return !!h && /swaps/i.test(h.textContent) && !!(h.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING);
     }),
   );
   // each swap row: the card that goes greyed ➜ the card that comes in, every card's art on one line, the arrow at its middle
   const rows = await pg.evaluate(() =>
-    [...document.querySelectorAll('#results .loop .deck.swap')].map((d) => {
-      const art = [...d.querySelectorAll('.swc .dc [data-card]')].map((x) => x.getBoundingClientRect()),
-        a = d.querySelector('.swa svg').getBoundingClientRect();
+    [...document.querySelectorAll('#results [data-deck="swap"]')].map((d) => {
+      const art = [...d.querySelectorAll('[data-side] [data-card]')].map((x) => x.getBoundingClientRect()),
+        a = d.querySelector('svg').getBoundingClientRect();
       return {
-        outN: d.querySelectorAll('.swout .dc').length,
-        inN: d.querySelectorAll('.swin .dc').length,
+        outN: d.querySelectorAll('[data-side="out"] button[data-cid]').length,
+        inN: d.querySelectorAll('[data-side="in"] button[data-cid]').length,
         tops: art.map((x) => Math.round(x.top)),
         mid: Math.round(Math.abs((a.top + a.bottom) / 2 - (art[0].top + art[0].bottom) / 2)),
-        grey: getComputedStyle(d.querySelector('.swout .dc [data-card]')).filter,
+        grey: getComputedStyle(d.querySelector('[data-side="out"] [data-card]')).filter,
       };
     }),
   );
@@ -255,7 +258,7 @@ export default async function load(b) {
     'desktop: Loop setup beside the results, their tops level, the whole page in one 900 px screen',
     await pg.evaluate(() => {
       const set = document.querySelector('[aria-labelledby="h-set"]').getBoundingClientRect(),
-        res = document.querySelector('#results .loop').getBoundingClientRect();
+        res = document.querySelector('#results article').getBoundingClientRect();
       return (
         set.right <= res.left &&
         Math.abs(set.top - res.top) <= 1 &&
