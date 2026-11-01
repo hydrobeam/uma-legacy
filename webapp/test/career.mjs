@@ -1443,6 +1443,18 @@ export default async function career(b) {
     w0 = await winsN();
   await simOpen();
   await pg.click('#udtab-info');
+  // (Try a run's dialog is outside the page's .rb: its deck keeps the six-column row, each card at most 64 px)
+  const deckCards = await pg.$$eval('#udpane-info .udcards.deck .udcard', (l) =>
+    l.map((c) => {
+      const r = c.getBoundingClientRect();
+      return [Math.round(r.width), Math.round(r.top)];
+    }),
+  );
+  check(
+    "career: Career Info's support cards sit in one row, each at most 64 px wide",
+    deckCards.length >= 1 && deckCards.every(([w]) => w <= 64) && new Set(deckCards.map(([, top]) => top)).size === 1,
+    JSON.stringify(deckCards),
+  );
   const rec = await pg.$$eval('#udpane-info .udrace', (l) => l.map((r) => r.classList.contains('won')));
   const recLine = await pg.textContent('#udpane-info .udrec'),
     racesShut = await pg.locator('#ud-races').isHidden();
