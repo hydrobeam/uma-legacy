@@ -3,8 +3,7 @@
   // webworker, which conflicts with the page's dom in one project): strict as tsconfig.json.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "lib": ["es2023", "webworker"],
-    "noUncheckedIndexedAccess": true
+    "lib": ["es2023", "webworker"]
   },
   "include": ["src/worker.ts"],
   "exclude": []
