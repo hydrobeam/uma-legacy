@@ -1,4 +1,17 @@
-import { check, open, settle, until, navClick, note, odds, scen, hintRates } from './helpers.mjs';
+import {
+  CONTEXT,
+  LOOP_URL,
+  PAGE_URL,
+  check,
+  open,
+  settle,
+  until,
+  navClick,
+  note,
+  odds,
+  scen,
+  hintRates,
+} from './helpers.mjs';
 
 export default async function gm(b) {
   // the era buttons: switching to the Grand Masters-era data (fetched, the status line says so meanwhile) opens on
@@ -90,4 +103,36 @@ export default async function gm(b) {
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
+  await stopsAtLoad(b);
+}
+// a page whose scripts stop while they load (here a scenario's hint base missing from the page's data, which build.py
+// refuses: data.ts reads it as it loads) says so on its status line, both pages, rather than stay blank (errorlog.ts)
+async function stopsAtLoad(b) {
+  const ctx = await b.newContext(CONTEXT),
+    pg = await ctx.newPage(),
+    errors = [];
+  pg.on('pageerror', (e) => errors.push(String(e)));
+  await pg.route('**/assets/data-global.*.js', async (r) => {
+    const response = await r.fetch();
+    await r.fulfill({ response, body: `${await response.text()}\nself.__LLP_DATA['data-hintbase']={};` });
+  });
+  const said = [];
+  for (const url of [PAGE_URL, LOOP_URL]) {
+    await pg.goto(url);
+    said.push(
+      await pg.evaluate(() => [
+        document.getElementById('run-note').textContent,
+        document.getElementById('rhead').dataset.kind,
+      ]),
+    );
+  }
+  check(
+    'a script that stops as the page loads: the status line says the page could not start, and why (both pages)',
+    said.every(
+      ([text, kind]) =>
+        text === "The page could not start: failed: build.py writes unity's hint base" && kind === 'error',
+    ) && errors.length === 2,
+    `${JSON.stringify(said)} | ${errors.join(' | ')}`,
+  );
+  await ctx.close();
 }

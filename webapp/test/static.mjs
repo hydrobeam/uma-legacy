@@ -31,7 +31,7 @@
 // - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
 //   the entry only at its mount points, a deliberate read listed with why (MOUNT_READS): by a selector or a class
 //   lookup naming what the component draws, or by walking down from a mount point (its children, a query from it, a
-//   write of its content), looked up or held in a variable.
+//   write of its content), looked up or held in a variable; a write before any component draws there (MOUNT_WRITES).
 // - components stay views: no .ts or .js module imports a .tsx one, by any import esbuild resolves (each bundle's
 //   import graph) or a type import it erases (a relative path in the module that resolves to a .tsx file).
 // - specifiers: every relative import in src/ and test/ names a file that exists (`./x.ts`, never `./x.js` for it:
@@ -268,7 +268,8 @@ const cycles = [];
 // renders into its mount points and marks them (attributes on the mount point itself), so it may look those up, but
 // not walk down from one (TRAVERSAL: its children, a query from it, its content written), whether straight from the
 // lookup or from a variable that holds it; nor may it name what is under one in a selector ('#results > *'). A
-// lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
+// lookup that stays on purpose is listed in MOUNT_READS with why, and a module that writes into a mount point before
+// any component draws there in MOUNT_WRITES; an exemption no module makes fails too.
 // the shared setup's editors, drawn on both pages (ui/Setup.tsx mounts them)
 const SETUP_MOUNTS = [
   ['pop-root', 'src/ui/CardPop.tsx', [], ['cpop', 'pgives', 'pfoot', 'gtl', 'inpopup']],
@@ -470,6 +471,11 @@ const MOUNTS = {
     ],
   ],
 };
+// 'file mount point' -> why the module may write into it
+const MOUNT_WRITES = {
+  'src/errorlog.ts run-note':
+    "the status line's text, only while the page's scripts first run: an error then stopped the entry before it mounted anything",
+};
 // (file, selector) -> why it may stay
 const MOUNT_READS = {
   'src/popover.ts': {
@@ -503,6 +509,10 @@ const MOUNT_READS = {
       ];
       for (const [root, owner, ownIds, ownClasses] of mounts) {
         if (file === owner) continue;
+        if (MOUNT_WRITES[`${file} ${root}`] !== undefined && ids.includes(root)) {
+          used.add(`${file} ${root}`);
+          continue;
+        }
         const named = (id) => (id === root ? file !== entry : ownIds.includes(id));
         for (const id of ids.filter(named))
           problems.push(`${file}: looks up #${id}, which ${owner} draws (mount point #${root})`);
@@ -528,6 +538,8 @@ const MOUNT_READS = {
       }
     }
   }
+  for (const write of Object.keys(MOUNT_WRITES))
+    if (!used.has(write)) problems.push(`MOUNT_WRITES: no longer made: '${write}': drop it`);
   for (const [file, reads] of Object.entries(MOUNT_READS))
     for (const selector of Object.keys(reads))
       if (!used.has(`${file} ${selector}`))

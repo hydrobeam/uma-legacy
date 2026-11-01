@@ -83,7 +83,9 @@ export interface RaceTrack {
   ground: 1 | 2;
 }
 const isDistance = (x: unknown): x is Distance => x === 0 || x === 1 || x === 2 || x === 3;
-// each G1's track by name, checked where the tables are loaded: build.py writes a distance and a ground per race
+// each G1's track by name. build.py stops on a race without a distance and a ground (`check_race_tracks`); the check here
+// repeats it for a data file the build did not make (stale or hand-edited), and fails the data load (the status line
+// says so) rather than give a race a wrong figure
 function tracksOf(career: CareerTables | null): Map<string, RaceTrack> {
   const cats = career?.race_cat;
   if (!career || !cats) return new Map();
@@ -92,7 +94,7 @@ function tracksOf(career: CareerTables | null): Map<string, RaceTrack> {
     career.races.map((name, ix): [string, RaceTrack] => {
       const cat = cats[ix],
         ground = grounds[ix];
-      assert(isDistance(cat) && (ground === 1 || ground === 2), `build.py writes race ${ix}'s distance and ground`);
+      assert(isDistance(cat) && (ground === 1 || ground === 2), `build.py checks race ${ix}'s distance and ground`);
       return [name, { cat, ground }];
     }),
   );
@@ -241,7 +243,9 @@ export const SCEN_GOLDS: Record<string, number[]> = { unity: [20049, 20046] };
 // each scenario's training-hint base by scenario key: research/results.json's fit rounded to 3 decimals, which build.py
 // reads with pkg/loopopt/build.rs's keys and rounding, so it is the solver's hint_base
 const HINT_BASE: Record<string, unknown> = parse('data-hintbase');
-// a scenario's hint base, checked where the page first reads it: build.py writes one per scenario key
+// a scenario's hint base, checked where the page first reads it: build.py writes one per scenario key (`hint_bases`,
+// which stops on a missing one). Read as this module loads, so a miss stops the page there (errorlog.ts says so on the
+// status line)
 const hintBase = (key: string): number => {
   const base = HINT_BASE[key];
   assert(typeof base === 'number', `build.py writes ${key}'s hint base`);

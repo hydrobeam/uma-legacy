@@ -178,6 +178,22 @@ def page_lists(data_dir):
     return page
 
 
+def check_race_tracks(career, era_name):
+    """Each G1's distance (0-3, sprint to long) and ground (1 turf, 2 dirt), one of each per race: the career page reads
+    them as these codes (src/data.ts `tracksOf`, which fails the page's data load on any other), so one out of range, or
+    lists of the wrong length, stops the build here, naming it."""
+    races, distances, grounds = career["races"], career.get("race_cat"), career.get("race_ground")
+    where = f"pkg/loopopt/data/{era_name}/page.json career"
+    if not isinstance(distances, list) or not isinstance(grounds, list):
+        raise SystemExit(f"{where}: race_cat and race_ground missing: run ./build.sh data")
+    if not len(distances) == len(grounds) == len(races):
+        raise SystemExit(f"{where}: {len(races)} races, {len(distances)} distances, {len(grounds)} grounds")
+    code_in = lambda value, codes: type(value) is int and value in codes  # (a bool or a float is no code)
+    for name, distance, ground in zip(races, distances, grounds, strict=True):
+        if not (code_in(distance, range(4)) and code_in(ground, (1, 2))):
+            raise SystemExit(f"{where}: {name}'s distance {distance!r} (0-3) or ground {ground!r} (1-2) is not one")
+
+
 def era(data_dir):
     page = page_lists(data_dir)
     export = lambda name: json.load(open(os.path.join(data_dir, name)))
@@ -191,6 +207,7 @@ def era(data_dir):
         }
     )
     career = page["career"]
+    check_race_tracks(career, os.path.basename(os.path.normpath(data_dir)))
     # only mobs with a portrait (the samples draw from them)
     career["mobs"] = [mob for mob in career["mobs"] if f"mob:{mob[0]}" in image_catalog.keys]
     return EraBundle(
