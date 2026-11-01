@@ -103,10 +103,8 @@ export function SortMenu({ id, cls, what, items, value, arrow, title, onPick }: 
     inside = useRef([area]).current;
   useDropdown(open, close, button, inside);
   useFocusChecked(open, menu);
-  const checked = must(
-    items.find((item) => item.k === value),
-    'the checked item is listed',
-  );
+  // (a value it doesn't list, as from a hand-edited storage: the first item)
+  const checked = items.find((item) => item.k === value) ?? items[0];
   const text = `${checked.label} ${arrow}`;
   return (
     <div
@@ -169,7 +167,11 @@ const HOW: Record<string, string> = {
 /** `prefix`: the settings' sort keys ('r': rsort, rdir; 'c': csort, cdir); a pick is saved, and starts no search */
 export function SettingsSort({ prefix, id, what }: { prefix: 'r' | 'c'; id: string; what: string }) {
   const s = settings.value,
-    [sortBy, direction] = prefix === 'r' ? [s.rsort, s.rdir] : [s.csort, s.cdir];
+    [savedSort, savedDir] = prefix === 'r' ? [s.rsort, s.rdir] : [s.csort, s.cdir];
+  // read as the lists order by them: by name only for 'name', descending only for 'desc' (a hand-edited stored value is
+  // neither)
+  const sortBy = savedSort === 'name' ? 'name' : 'rel',
+    direction = savedDir === 'desc' ? 'desc' : 'asc';
   const pick = (k: string) => {
     if (k === sortBy) setSort({ prefix, sort: sortBy, dir: direction === 'desc' ? 'asc' : 'desc' });
     else setSort({ prefix, sort: k, dir: k === 'rel' ? 'desc' : 'asc' });

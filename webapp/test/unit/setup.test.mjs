@@ -1,7 +1,7 @@
 // The shared setup editors (ui/Presets, ui/Targets) on a fake document (fakedom.mjs), bundled with esbuild as the page
 // bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
-// (F2).
+// (F2); a sort menu over a stored value it doesn't list (F3).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -22,6 +22,7 @@ const built = await esbuild.build({
       export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
       export { mountTargets } from './src/ui/Targets.tsx';
       export { mountRank } from './src/ui/Scenario.tsx';
+      export { SettingsSort, SortMenu } from './src/ui/SortMenu.tsx';
       export { h, render } from 'preact';
       export { loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
@@ -40,7 +41,18 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-setup-')),
 fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
-const { settings: S, PresetDialogs, openPresets, mountTargets, mountRank, h, render, loadData } = page;
+const {
+  settings: S,
+  PresetDialogs,
+  openPresets,
+  mountTargets,
+  mountRank,
+  SettingsSort,
+  SortMenu,
+  h,
+  render,
+  loadData,
+} = page;
 await loadData();
 
 const KEY = 'llp:settings';
@@ -190,4 +202,23 @@ test("the lineage rank's ? opens its note and stops its click there (other popup
   assert.equal(question.attributes['aria-expanded'], 'true', 'the note is open');
   assert.ok(stopped, 'the click went no further than the ?');
   render(null, box);
+});
+
+test('a sort menu given a value it does not list (a hand-edited storage) shows its first item instead of throwing', async () => {
+  fresh({ rsort: 'bogus', rdir: 'sideways' });
+  const root = document.createElement('div');
+  // the umas' menu: read as the roster orders by it (release, ascending)
+  render(h(SettingsSort, { prefix: 'r', id: 'rs', what: 'sort umas' }), root);
+  await settle();
+  assert.equal(text(byId(root, 'rs')), 'Release ↑');
+  assert.equal(byId(root, 'rs').attributes.title, 'Sorted oldest first');
+  const items = [
+    { k: 'a', label: 'First', hint: '' },
+    { k: 'b', label: 'Second', hint: '' },
+  ];
+  const props = { id: 'vs', cls: 'btn', what: 'order', items, value: 'gone', arrow: '↓', title: '', onPick: () => 0 };
+  render(h(SortMenu, props), root);
+  await settle();
+  assert.equal(text(byId(root, 'vs')), 'First ↓');
+  render(null, root);
 });
