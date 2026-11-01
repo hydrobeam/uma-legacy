@@ -431,10 +431,11 @@ const draftNow = signal<DeepReadonly<Draft> | null>(null);
 let draftGen = 0; // the draft on show's generation (a staleness token: a number, never her object)
 /** the draft on show (null: none) */
 export const draft: ReadonlySignal<DeepReadonly<Draft> | null> = draftNow;
-/** a new draft (a roll, a new career on show, Add), or none: editors opened on the last one go stale */
+/** a new draft (a roll, a new career on show, Add), or none: editors opened on the last one go stale. The store keeps
+ *  its own frozen copy (the caller's object stays the caller's, unfrozen) */
 export function setDraft(next: Draft | DeepReadonly<Draft> | null) {
   draftGen++;
-  draftNow.value = next && freezeFresh(next);
+  draftNow.value = next && freezeFresh(structuredClone(next) as Draft);
 }
 // the draft on show for an editor opened now: `at` reads her (or her parent), `next` her edited record
 function draftAt(
@@ -457,7 +458,7 @@ function draftAt(
 /** her parents' records as they are now (the same draft, the same editors: they edit her own fields) */
 export function setDraftParents(parents: readonly LineageNode[] | DeepReadonly<LineageNode[]>) {
   const d = draftNow.peek();
-  if (d) draftNow.value = freezeFresh({ ...d, parents } as Draft);
+  if (d) draftNow.value = freezeFresh({ ...d, parents: structuredClone(parents) } as Draft);
 }
 /** the draft on show, for an editor opened now (an edit after she is replaced, or with no draft, does nothing) */
 export const draftRef = (): NodeRef =>

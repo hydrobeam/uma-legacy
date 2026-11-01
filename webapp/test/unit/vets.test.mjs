@@ -288,3 +288,16 @@ test("the analysis' draft: her own signal, edits by path copy on write, the vete
   assert.equal(vs.draft.peek(), null, 'an edit with no draft does nothing');
   for (const stop of stops) stop();
 });
+
+test("a draft set, or her parents set, is the store's own copy: the caller's object stays its own (review-10 F6)", () => {
+  const mine = { ...node(5, { 7: 1 }), borrowed: false, parents: [node(1), node(2)] };
+  vs.setDraft(mine);
+  mine.sparks[7] = 3; // (frozen in place, this would throw)
+  assert.equal(vs.draft.peek().sparks[7], 1, 'her draft is not the caller object');
+  const parents = [node(3, { 8: 1 }), node(4)];
+  vs.setDraftParents(parents);
+  parents[0].sparks[8] = 2;
+  assert.equal(vs.draft.peek().parents[0].sparks[8], 1);
+  assert.ok(Object.isFrozen(vs.draft.peek().parents[0]));
+  vs.setDraft(null);
+});
