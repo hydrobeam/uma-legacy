@@ -28,6 +28,8 @@ import { VetCell } from '../../ui/VetCell.tsx';
 import { openNode } from './dialogs.ts';
 import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
+import { field } from '../../ui/Field.ts';
+import { cx } from 'tailwind-variants/lite';
 
 const umOpen = signal(false);
 const closeUm = () => {
@@ -52,7 +54,7 @@ export function UmamoeDialog() {
           close="Close"
           onClose={closeUm}
         />
-        <div class="dlgscroll" id="um-body">
+        <div class="grid max-h-[calc(100dvh-110px)] gap-2.5 overflow-y-auto overscroll-contain pr-1" id="um-body">
           <Guard what="uma.moe's popup">
             <UmamoePanel keyBox={keyBox} />
           </Guard>
@@ -85,6 +87,8 @@ const SORT_ITEMS = UM_SORTS.map((k) => ({
   label: SORTS[k][0],
   hint: SORTS[k][1],
 }));
+// a line of the popup: the key and Save, or the status and Refresh
+const LINE = 'flex flex-wrap items-center gap-2';
 /** the listings in the popup's order */
 const listings = computed(() => {
   const { by, reversed } = umSort.value,
@@ -107,11 +111,12 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
   return (
     <>
       <div id="um-keyrow" hidden={has}>
-        <div class="umline">
+        <div class={LINE}>
           <input
             ref={key}
             type="password"
             id="um-key"
+            class={cx(field.tap, 'flex-[1_1_10rem]')}
             autocomplete="off"
             spellcheck={false}
             placeholder="API key"
@@ -124,26 +129,26 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
             Save
           </Button>
         </div>
-        <span class="hint umerr" id="um-err" role="status" aria-live="polite">
+        <span class="text-note text-gm-ink2" id="um-err" role="status" aria-live="polite">
           {has ? '' : text}
         </span>
-        <a href="https://uma.moe/settings" target="_blank" rel="noopener">
+        <a class="text-accent underline" href="https://uma.moe/settings" target="_blank" rel="noopener">
           Get a key at uma.moe/settings
         </a>
       </div>
       <div id="um-on" hidden={!has}>
-        <div class="umline">
-          <b id="um-msg" role="status" aria-live="polite">
+        <div class={LINE}>
+          <b class="flex-auto" id="um-msg" role="status" aria-live="polite">
             {text}
           </b>
           <Button size="note" id="um-again" disabled={umBusy.value} onClick={() => syncListings(true)}>
             Refresh
           </Button>
         </div>
-        <p class="hint" id="um-what">
+        <p class="text-note text-gm-ink2 max-w-[75ch]" id="um-what">
           {sig ? `Parents with ${min}+ of your ${n} targets${full ? '' : ', from trainers you can follow'}` : ''}
         </p>
-        <div class="row between">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <label
             class="text-ui inline-flex items-center gap-1.5"
             title="Trainers at 1,000 followers: their veterans can't be borrowed by following them"
@@ -164,7 +169,7 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
         </div>
         {/* each listing as the game's legacy list draws a veteran, with her trainer's name; a card opens her veteran
             popup (her sparks, her parents, her trainer's followers, Copy ID) */}
-        <div class="umgrid" id="um-list">
+        <div class="mt-1 grid grid-cols-5 gap-x-1 gap-y-3 px-0.5 pt-3 pb-2" id="um-list">
           {listings.value.map((v) => (
             <VetCell
               key={v.id}
@@ -175,7 +180,12 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
             />
           ))}
         </div>
-        <button class="linkbtn" type="button" id="um-forget" onClick={forgetUmKey}>
+        <button
+          class="text-note text-gm-ink2 focus-visible:outline-accent cursor-pointer underline focus-visible:outline-3 focus-visible:outline-offset-2"
+          type="button"
+          id="um-forget"
+          onClick={forgetUmKey}
+        >
           Disconnect
         </button>
       </div>

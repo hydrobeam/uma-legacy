@@ -8,6 +8,9 @@ import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { copyExport, downloadExport, exportText, importText } from '../io.ts';
 import { Button } from '../../ui/Button.tsx';
 
+// the buttons under a text box (and Export's message), a wrapping row
+const ROW = 'flex flex-wrap items-center gap-2';
+
 // ---------- Export
 const exported = signal({ open: false, text: '', msg: '' });
 /** Export (the footer's button): the text of the stores now */
@@ -27,20 +30,21 @@ export function ExportDialog() {
     <Dialog size="xl" id="vx-dlg" labelledBy="vx-title" open={open} onClose={closeExport}>
       <DialogPanel>
         <DialogHead id="vx-title" title="Export veterans" close="Close" onClose={closeExport} />
-        <p>
+        <p class="max-w-[75ch]">
           Your veterans, the plan and the solver job the planner sends for them. Copy the text to keep or share it;
           Paste brings it back.
         </p>
         <textarea
           ref={box}
           id="vx-text"
+          class="border-line bg-bg font-data text-note text-ink w-full rounded-md border p-2"
           rows={12}
           spellcheck={false}
           readonly
           aria-label="Exported veterans, plan and solver job"
           value={text}
         />
-        <div class="row">
+        <div class={ROW}>
           <Button id="vx-copy" onClick={() => copyExport(must(box.current, 'the text box is drawn'), sayExport)}>
             Copy
           </Button>
@@ -53,7 +57,7 @@ export function ExportDialog() {
           >
             Download
           </Button>
-          <span class="hint" id="vx-msg" role="status">
+          <span class="text-note text-gm-ink2" id="vx-msg" role="status">
             {msg}
           </span>
         </div>
@@ -83,15 +87,22 @@ export function PasteDialog() {
     <Dialog size="xl" id="paste-dlg" labelledBy="paste-title" open={open} onClose={closePaste}>
       <DialogPanel>
         <DialogHead id="paste-title" title="Paste veterans" close="Close" onClose={closePaste} />
-        <p>
+        <p class="max-w-[75ch]">
           The contents of umadump's <code>trained_chara_data.json</code> (yours) or <code>rental_chara_data.json</code>{' '}
           (the veterans you can borrow), the text from this page's Export, or an uma.moe lineage planner export (one
           veteran with her parents, added after yours). Your veterans merge with those already here (the file's version
           replaces the same veteran, nothing is removed); a borrow list replaces the earlier one, since it is who lends
           today; an Export replaces every import. Veterans you made here stay.
         </p>
-        <textarea ref={box} id="paste-text" rows={10} spellcheck={false} aria-label="umadump, Export or uma.moe text" />
-        <div class="row">
+        <textarea
+          ref={box}
+          id="paste-text"
+          class="border-line bg-bg font-data text-note text-ink w-full rounded-md border p-2"
+          rows={10}
+          spellcheck={false}
+          aria-label="umadump, Export or uma.moe text"
+        />
+        <div class={ROW}>
           <Button
             id="paste-load"
             onClick={() => {

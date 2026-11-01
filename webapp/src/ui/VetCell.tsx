@@ -2,14 +2,16 @@
 // Her portrait in its ring (her outfit's portrait, her head over the top, else her icon), her career-rank badge (top
 // right, as in the game: the last rank whose minimum her score reaches), a label tab over her when she has a role ("Parent
 // 1"), her three main sparks under it as the list's tags with their stars (blue: her stat, pink: her aptitude, green:
-// her unique skill), her name and a line under it.
+// her unique skill), her name and a line under it. Every part is sized from the portrait's width, --p (76 px, 54 on a
+// narrow phone), at the game's measured proportions: the rank badge 0.36 P at the top right, the tags 0.36 P wide each
+// with their bottoms on the portrait's, each tag's star row 0.86 of the tag right under it. The button is data-vet
+// (data-sel while chosen); its parts data-part: tab, rank, tag, stars, name.
 import { useState } from 'preact/hooks';
 import { careerTables } from '../data.ts';
 import { srcFor } from '../images.ts';
 import { blueName, pinkName, uniqueName, umaName } from '../veterans/names.ts';
 import type { NodeRecord, VetRecord } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
-import { cx } from 'tailwind-variants/lite';
 
 // her main sparks' short tags, as the game's legacy list letters them
 const BLUE_TAG: Record<string, string> = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
@@ -28,7 +30,7 @@ const BLUE_TAG: Record<string, string> = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUT
 const first = (o: Readonly<Record<number, number>> | undefined) =>
   Object.entries(o || {}).find(([, stars]) => stars > 0);
 /** one main spark: the legacy list's tag image (its lettering in it) and its star row, the letters alone where the
- *  image isn't shipped */
+ *  image isn't shipped (the tags touch, as in the game) */
 function Tag({
   kind,
   label,
@@ -45,9 +47,20 @@ function Tag({
   const face = srcFor('ui', image),
     row = srcFor('ui', `fstar_${kind}_${Math.min(3, Math.max(1, stars))}`);
   return (
-    <span class={cx('umsp', kind)} title={`${full} ${stars}★`}>
-      {face ? <img class="umtagimg" src={face} alt={label} /> : <b>{label}</b>}
-      {row ? <img class="umst" src={row} alt={`${stars}★`} /> : <i>{'★'.repeat(stars)}</i>}
+    <span
+      class="mx-[calc(var(--p)*-0.012)] flex w-[calc(var(--p)*0.36)] flex-col items-center"
+      title={`${full} ${stars}★`}
+    >
+      {face ? (
+        <img class="block h-auto w-full" src={face} alt={label} data-part="tag" />
+      ) : (
+        <b class="text-caption px-0.75 py-0.5 leading-none font-black text-white">{label}</b>
+      )}
+      {row ? (
+        <img class="mt-[calc(var(--p)*-0.035)] block h-auto w-[85.7%]" src={row} alt={`${stars}★`} data-part="stars" />
+      ) : (
+        <i class="text-caption text-vet-star not-italic">{'★'.repeat(stars)}</i>
+      )}
     </span>
   );
 }
@@ -57,7 +70,7 @@ function MainSparks({ v }: { v: NodeRecord }) {
     pk = first(v.pinks),
     gr = first(v.greens);
   return (
-    <span class="umsps">
+    <span class="relative z-1 mt-[calc(var(--p)*-0.18)] flex justify-center">
       {bl && (
         <Tag
           kind="blue"
@@ -82,13 +95,22 @@ function MainSparks({ v }: { v: NodeRecord }) {
     </span>
   );
 }
-/** her outfit's portrait in its ring, her icon if it fails (or she has none) */
+/** her outfit's portrait in its ring (245 of the 256 px icon, centred at x 127.5, y 144, on the face's circle), her
+ *  icon if it fails (or she has none) */
 function Face({ v }: { v: VetRecord }) {
   const portrait = v.outfit && srcFor('vet', v.outfit),
     [failed, setFailed] = useState(false);
   if (portrait && !failed)
-    return <img class="umvet" src={portrait} alt="" loading="lazy" onError={() => setFailed(true)} />;
-  return <UmaAv uma={v.chara} outfit={v.outfit} size={88} />;
+    return (
+      <img
+        class="absolute top-[calc(var(--p)*-0.088)] left-[calc(var(--p)*-0.0225)] size-[calc(var(--p)*1.045)] max-w-none"
+        src={portrait}
+        alt=""
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    );
+  return <UmaAv uma={v.chara} outfit={v.outfit} size={88} shape="vet" />;
 }
 export interface VetCellProps {
   v: VetRecord;
@@ -117,8 +139,10 @@ export function VetCell({ v, name, label, onClick, tab, sub, id, k, sel, current
   return (
     <button
       type="button"
-      class={sel ? 'umcell sel' : 'umcell'}
+      class="hover:bg-gm-bright/16 data-sel:not-hover:bg-gm-bright/26 data-sel:inset-ring-gm-green2 focus-visible:outline-accent relative grid min-w-0 cursor-pointer justify-items-center gap-0.5 rounded-xl py-1 text-center [--p:76px] focus-visible:outline-3 focus-visible:outline-offset-2 data-sel:inset-ring-2 max-sm:[--p:54px]"
       id={id}
+      data-vet=""
+      data-sel={sel ? '' : undefined}
       data-k={k}
       aria-haspopup="dialog"
       aria-label={label}
@@ -126,14 +150,30 @@ export function VetCell({ v, name, label, onClick, tab, sub, id, k, sel, current
       title={`${umaName(v.chara)} · ${name}`}
       onClick={onClick}
     >
-      <span class="umface">
+      <span class="relative block size-(--p)">
         <Face key={`${v.chara}:${v.outfit}`} v={v} />
-        {badge && <img class="umrank" src={badge} alt="Rank" />}
-        {tab && <span class="umtab">{tab}</span>}
+        {badge && (
+          <img
+            class="pointer-events-none absolute top-[calc(var(--p)*-0.04)] right-[calc(var(--p)*-0.015)] size-[calc(var(--p)*0.36)]"
+            src={badge}
+            alt="Rank"
+            data-part="rank"
+          />
+        )}
+        {tab && (
+          <span
+            class="art-vet-tab text-caption shadow-vet-tab absolute top-[calc(var(--p)*-0.1)] left-1/2 z-2 -translate-x-1/2 rounded-md px-1.75 py-px font-black whitespace-nowrap text-white"
+            data-part="tab"
+          >
+            {tab}
+          </span>
+        )}
       </span>
       <MainSparks v={v} />
-      <span class="nm">{name}</span>
-      {sub && <span class="sub">{sub}</span>}
+      <span class="text-caption text-gm-ink max-w-full truncate font-black" data-part="name">
+        {name}
+      </span>
+      {sub && <span class="text-ui text-gm-ink2">{sub}</span>}
     </button>
   );
 }

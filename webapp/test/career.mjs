@@ -341,7 +341,7 @@ export default async function career(b) {
   await importDump();
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
   const vMsg = pg.locator('#v-msg'),
-    vCells = pg.locator('#vets .umcell');
+    vCells = pg.locator('#vets [data-vet]');
   {
     const name = 'career: the umadump file imports 12 veterans, and the sample veterans tried before it go';
     await expect.soft(vMsg, name).toHaveText(/Imported 12 veterans/);
@@ -364,7 +364,7 @@ export default async function career(b) {
     await expect.soft(vbtn, `${name}: … named as in the game`).toHaveText(/^\s*Veteran Umamusume\s*$/);
     await vbtn.click();
     await expect.soft(pg.locator('#set-vets'), `${name}: … opens the dialog`).toHaveAttribute('open');
-    await expect.soft(pg.locator('#set-vets #vets .umcell'), `${name}: … with the 12`).toHaveCount(12);
+    await expect.soft(pg.locator('#set-vets #vets [data-vet]'), `${name}: … with the 12`).toHaveCount(12);
     await expect
       .soft(pg.locator('#set-vets #v-paste, #set-vets #v-clear, #set-vets #v-file'), `${name}: … and its tools`)
       .toHaveCount(3);
@@ -440,7 +440,7 @@ export default async function career(b) {
     [
       await pg.textContent('#v-msg'),
       await pg.getAttribute('#v-tab-bor', 'aria-selected'),
-      await pg.locator('#vets .umcell').count(),
+      await pg.locator('#vets [data-vet]').count(),
       (await pg.textContent('#v-tab-own')).trim(),
       (await pg.textContent('#v-tab-bor')).trim(),
     ].join(' | ');

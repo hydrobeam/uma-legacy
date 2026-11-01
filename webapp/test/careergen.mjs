@@ -16,7 +16,7 @@ export default async function careergen(b) {
   await pg.reload();
   await done();
   const nVets = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
-  const cards = pg.locator('#vets .umcell'),
+  const cards = pg.locator('#vets [data-vet]'),
     runNote = pg.locator('#run-note');
   // an uma.moe lineage planner tree: one veteran with her parents, added after the others (factorId x 10 + level is the
   // game's factor id: Uma Stan 2, Racing Spirit: Stamina (factor group 21009, skill group 21010) 3, Dirt pink 1; saddle
@@ -54,7 +54,7 @@ export default async function careergen(b) {
   await expect
     .soft(pg.locator('#v-pane [data-src="umamoe"]'), `${treeAdds}: her popup says she came from uma.moe`)
     .toHaveText('From uma.moe');
-  await pg.locator('#vets .umcell').last().click();
+  await pg.locator('#vets [data-vet]').last().click();
   await pg.locator('#v-pane').getByRole('button', { name: 'Remove', exact: true }).click();
   await done();
   await vetsShut();
@@ -161,7 +161,10 @@ export default async function careergen(b) {
   await saved();
   // her card had the focus and is gone: the card chosen now takes it (review-8c §6)
   await expect
-    .soft(pg.locator('#vets .umcell.sel'), 'focus: after Remove, the card chosen now has the focus (not the page)')
+    .soft(
+      pg.locator('#vets [data-vet][data-sel]'),
+      'focus: after Remove, the card chosen now has the focus (not the page)',
+    )
     .toBeFocused();
   const removing = 'career: removing a selected veteran immediately redraws and clears the fixed parent';
   await expect.soft(cards, `${removing}: one card fewer`).toHaveCount(removal.count - 1);
@@ -185,7 +188,7 @@ export default async function careergen(b) {
   // an edit and a reload before its save is due (it lands after the next frame): the page saves it as it goes
   await vetsOpen();
   const quick = await pg.evaluate(async () => {
-    const card = [...document.querySelectorAll('#vets .umcell')].at(-1),
+    const card = [...document.querySelectorAll('#vets [data-vet]')].at(-1),
       stored = () => JSON.parse(localStorage.getItem('llp:career')).global.vets;
     const id = stored()[+card.id.slice(4)].id;
     card.click(); // beside the list, with Remove

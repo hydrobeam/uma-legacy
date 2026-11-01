@@ -11,13 +11,13 @@ export default async function careervets(b) {
   // a pool veteran: her card shows her beside the list, her sparks and her parents' as bars, editable in place; editing keeps the
   // result on screen while the search runs again
   const toteBefore = await pg.locator('#odds-open').count();
-  const cards = pg.locator('#vets .umcell'),
+  const cards = pg.locator('#vets [data-vet]'),
     runNote = pg.locator('#run-note'),
     ghosts = pg.locator('#tree [data-ghost]');
   await vetsOpen();
   // (every card marked: one built again loses the mark)
   await pg.evaluate(() => {
-    for (const c of document.querySelectorAll('#vets .umcell')) c.__kept = true;
+    for (const c of document.querySelectorAll('#vets [data-vet]')) c.__kept = true;
   });
   await pg.click('#vet-1');
   await pg.click('#vet-0'); // (a wide dialog: she shows beside the list)
@@ -36,7 +36,7 @@ export default async function careervets(b) {
   );
   await done();
   const rebuilt = await pg.evaluate(() =>
-    [...document.querySelectorAll('#vets .umcell')].filter((c) => c.id !== 'vet-0' && !c.__kept).map((c) => c.id),
+    [...document.querySelectorAll('#vets [data-vet]')].filter((c) => c.id !== 'vet-0' && !c.__kept).map((c) => c.id),
   );
   const noRebuild = 'career: choosing a veteran beside the list and editing her builds no other card again';
   await expect.soft(cards, `${noRebuild}: 12 cards`).toHaveCount(12);
@@ -160,7 +160,7 @@ export default async function careervets(b) {
     .toHaveCount(2);
   check(`${herParents}: their sparks`, (await sparksIn('node:p0g0', 2)) && (await sparksIn('node:p0g1', 2)));
   await expect.soft(cards, `${herParents}: 13 veterans`).toHaveCount(13);
-  await expect.soft(pg.locator('#vet-12 .umtab'), `${herParents}: her card`).toHaveText(/Parent 1/);
+  await expect.soft(pg.locator('#vet-12 [data-part="tab"]'), `${herParents}: her card`).toHaveText(/Parent 1/);
   await expect.soft(runNote, 'career: the planner fills the rest').toHaveText(/Weighed 804 careers/);
   // a grandparent: pick her uma, then her skills
   await node('node:p0g0');

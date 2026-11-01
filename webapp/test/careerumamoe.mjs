@@ -160,20 +160,20 @@ export default async function careerumamoe(b) {
   await pg.click('#v-tab-bor');
   check(
     "career uma.moe: Veteran Umamusume's Guests tab holds the listings under an uma.moe heading, counted",
-    (await pg.locator('#vets .umcell').count()) === 2 &&
-      (await pg.textContent('#vets .vsec')) === 'uma.moe' &&
+    (await pg.locator('#vets [data-vet]').count()) === 2 &&
+      (await pg.textContent('#vets h4')) === 'uma.moe' &&
       (await pg.textContent('#v-tab-bor')) === 'Guests · 2',
   );
   // the pane's Copy ID is the veteran's on show: another listing chosen after a copy reads Copy ID, never the first
   // one's "Copied" or (a failed copy) her trainer's ID
-  await pg.locator('#vets .umcell').nth(0).click();
+  await pg.locator('#vets [data-vet]').nth(0).click();
   await pg.locator('#v-pane button', { hasText: 'Copy ID' }).click();
   // (the copy is a promise: its answer is drawn after it)
   // (Copy ID, then what the copy said: Copied, or her trainer's ID)
   const copy = pg.locator('#v-pane [data-who]').getByRole('button', { name: /^(Copy ID|Copied|\d+)$/ });
   await copy.filter({ hasNotText: 'Copy ID' }).waitFor();
   const copied = await copy.textContent();
-  await pg.locator('#vets .umcell').nth(1).click();
+  await pg.locator('#vets [data-vet]').nth(1).click();
   const next = await copy.textContent();
   check(
     'career uma.moe: Copy ID in the pane, then another listing: hers reads Copy ID (no state carried to her)',
@@ -211,23 +211,27 @@ export default async function careerumamoe(b) {
   // the popup: the listings as the game's legacy list draws them (portrait, her three main sparks with stars, her
   // trainer), in uma.moe's order until another is chosen; one opens her veteran popup, with followers and Copy ID
   await pg.click('#um-open');
-  const cards = await pg.$$eval('#um-list .umcell', (l) =>
+  const cards = await pg.$$eval('#um-list [data-vet]', (l) =>
     l.map((c) => ({
-      nm: c.querySelector('.nm')?.textContent,
-      tags: [...c.querySelectorAll('.umsp img.umtagimg')].map((t) => t.alt),
-      tagArt: [...c.querySelectorAll('.umsp img.umtagimg')].every((t) => /ftag_(blue_\d|pink_\d+|green)\./.test(t.src)),
-      stars: [...c.querySelectorAll('img.umst')].every((st) => /fstar_(blue|pink|green)_[123]\./.test(st.src)),
-      rank: /vrank_\d+\./.test(c.querySelector('img.umrank')?.src || ''),
+      nm: c.querySelector('[data-part="name"]')?.textContent,
+      tags: [...c.querySelectorAll('img[data-part="tag"]')].map((t) => t.alt),
+      tagArt: [...c.querySelectorAll('img[data-part="tag"]')].every((t) =>
+        /ftag_(blue_\d|pink_\d+|green)\./.test(t.src),
+      ),
+      stars: [...c.querySelectorAll('img[data-part="stars"]')].every((st) =>
+        /fstar_(blue|pink|green)_[123]\./.test(st.src),
+      ),
+      rank: /vrank_\d+\./.test(c.querySelector('img[data-part="rank"]')?.src || ''),
     })),
   );
-  const names = () => pg.$$eval('#um-list .umcell .nm', (l) => l.map((x) => x.textContent).join());
+  const names = () => pg.$$eval('#um-list [data-vet] [data-part="name"]', (l) => l.map((x) => x.textContent).join());
   const matchOrder = await names();
   await pg.click('#um-sort');
   await pg.click('#um-sort-menu button[data-k="wins"]');
   const winsOrder = await names();
   await pg.click('#um-sort-menu button[data-k="match"]'); // (the menu stays open, as the umas' and cards' do)
   await pg.keyboard.press('Escape');
-  await pg.locator('#um-list .umcell').first().click();
+  await pg.locator('#um-list [data-vet]').first().click();
   await dialog(pg, 'node-dlg');
   const tag = await pg.locator('#node-dlg [data-src="umamoe"]').textContent(),
     sparks = await pg.$$eval('#node-dlg .udrow.me .vsk:not(.pink)', (l) => l.map((c) => c.classList.contains('off')));
@@ -321,7 +325,7 @@ export default async function careerumamoe(b) {
     const list = document.getElementById('um-list');
     for (let i = 0; i < 60; i++) list.appendChild(list.firstElementChild.cloneNode(true));
     const d = document.getElementById('um-dlg').getBoundingClientRect(),
-      body = document.querySelector('#um-dlg .dlgscroll');
+      body = document.getElementById('um-body');
     return {
       left: d.left,
       right: d.right,
@@ -395,7 +399,7 @@ export default async function careerumamoe(b) {
   // Remove all on Guests takes the borrow list only: uma.moe's listings stay (they are its answer for the targets)
   await vetsOpen();
   await pg.click('#v-tab-bor');
-  const listed = await pg.locator('#vets .umcell').count();
+  const listed = await pg.locator('#vets [data-vet]').count();
   await pg.click('#v-paste');
   await dialog(pg, 'paste-dlg');
   await pg.fill(
@@ -410,7 +414,7 @@ export default async function careerumamoe(b) {
     d.accept();
   });
   await pg.click('#v-clear');
-  const kept = await pg.locator('#vets .umcell').count();
+  const kept = await pg.locator('#vets [data-vet]').count();
   check(
     'career uma.moe: Remove all on Guests removes the borrow list, not the uma.moe listings',
     listed > 0 && confirmText === 'Remove all 1 borrowed veteran?' && kept === listed,

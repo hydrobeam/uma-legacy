@@ -44,7 +44,8 @@ import type { Tab } from './poolState.ts';
 import { Button, FileButton } from '../../ui/Button.tsx';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 
-const wideVets = () => matchMedia('(min-width: 760px)').matches;
+// a dialog wide enough for the pane beside the list (the theme's lg, where the pane shows)
+const wideVets = () => matchMedia('(min-width: 761px)').matches;
 
 // ---------- the views
 /** the dialog's head: the two tabs, each with its count, and the order menu */
@@ -159,7 +160,7 @@ function PoolList({ t }: { t: Tab }) {
   return (
     <div
       ref={grid}
-      class="umgrid vets"
+      class="grid min-h-0 grid-cols-5 content-start gap-x-1 gap-y-3 overflow-y-auto pt-1 pr-1 pb-2 pl-0.5"
       id={on ? 'vets' : `vets-${t}`}
       role="tabpanel"
       aria-labelledby={`v-tab-${t}`}
@@ -170,9 +171,12 @@ function PoolList({ t }: { t: Tab }) {
           rows.length
             ? [
                 head && (
-                  <p key={head} class="vsec">
+                  <h4
+                    key={head}
+                    class="text-note text-gm-ink2 border-gm-line col-span-full mt-1.5 border-b-2 pb-0.5 font-black"
+                  >
                     {head}
-                  </p>
+                  </h4>
                 ),
                 ...rows.map(([v, i]) => (
                   <PoolCard key={v.id} v={v} i={i} k={parents.indexOf(v.id)} targets={targets} grid={grid} />
@@ -181,7 +185,7 @@ function PoolList({ t }: { t: Tab }) {
             : [],
         )
       ) : (
-        <p class="hint">{NONE[t]}</p>
+        <p class="text-note text-gm-ink2 col-span-full">{NONE[t]}</p>
       )}
     </div>
   );
@@ -193,7 +197,11 @@ export function PoolBody() {
     <>
       <PoolList t="own" />
       <PoolList t="bor" />
-      <section class="vpane" id="v-pane" aria-label="The veteran chosen">
+      <section
+        class="bg-gm-panel inset-ring-gm-edge min-h-0 overflow-y-auto rounded-2xl px-3 py-2 inset-ring empty:hidden max-lg:hidden"
+        id="v-pane"
+        aria-label="The veteran chosen"
+      >
         {id && wideVets() && <VetPane id={id} />}
       </section>
     </>
@@ -201,23 +209,24 @@ export function PoolBody() {
 }
 /** The veterans dialog (Veteran Umamusume, ui/Dialog: its button opens it, `openPool`): the head and the body, each
  *  behind its guard, and the tools under them: Import umadump file, Paste, Remove all and what the last of them did
- *  (`vetsNote`). The career entry renders it into #vets-root. */
+ *  (`vetsNote`). Nothing scrolls but the list and the pane beside it (from 761 px; the list alone under that), each on
+ *  its own. The career entry renders it into #vets-root. */
 export function VetsDialog() {
   return (
     <Dialog size="xl" id="set-vets" labelledBy="h-vets" open={poolOpen.value} onClose={poolClosed}>
       <DialogPanel fit="fill">
         <DialogHead id="h-vets" title="Veteran Umamusume" close="Done" onClose={poolClosed} />
-        <div class="vhead" id="v-head">
+        <div class="mt-1 flex flex-none flex-wrap items-center gap-2.5" id="v-head">
           <Guard what="The veterans' tabs" also={tab}>
             <PoolHead />
           </Guard>
         </div>
-        <div class="vbody" id="v-body">
+        <div class="mt-2.5 grid min-h-0 flex-auto grid-cols-2 gap-3.5 max-lg:grid-cols-1" id="v-body">
           <Guard what="The veterans" also={selected}>
             <PoolBody />
           </Guard>
         </div>
-        <div class="row vtools">
+        <div class="mt-2.5 flex flex-none flex-wrap items-center gap-2">
           <FileButton
             title="umadump (github.com/Werseter/umadump) reads them from the game: trained_chara_data.json for yours, rental_chara_data.json for your borrow list"
             id="v-file"
@@ -232,7 +241,7 @@ export function VetsDialog() {
           <Button id="v-clear" onClick={removeAll}>
             Remove all
           </Button>
-          <span class="hint" id="v-msg" role="status">
+          <span class="text-note text-gm-ink2" id="v-msg" role="status">
             {vetsNote.value}
           </span>
         </div>
