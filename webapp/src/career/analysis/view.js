@@ -1,133 +1,33 @@
 // The veteran analysis (the veteran you got): the "Try a run" popup. The decision is per veteran: enter the one
 // you got (she starts as a random result, drawn as Reroll draws, career/roll.mjs) and Compare runs both choices,
 // running this career again or using her in the next one, on the plan's terms (expected careers to land).
-// This module owns the analysis' state (`simulation`, the comparison under way `simulationId`, the comparisons'
-// baseline `baselineCache`; the plan Compare kept is the answer store's, `keepComparisonPlan`); the run machine (main.js) changes it only through
-// the transitions below. It reads the answer from the answer store (career/state.ts), the job's helpers from job.js and
-// keys.js.
+// This module draws it from the analysis store (./state.ts `simulation`) and the answer store; Compare and Reroll are
+// the comparison's run machine's (./compare.ts, made by the entry and handed in, `initAnalysis`). It also makes her
+// draft from a career (`draftOf`, `rollOf`: the page's veterans and settings, for the machine's deps).
 import { $, $dialog, el, fmtIn } from '../../dom.js';
 import { careerTables } from '../../data.js';
 import { settings } from '../../settings.ts';
-import { restartEngine, engineSaveState } from '../../engine.ts';
 import { umaAv, runnerHTML } from '../../images.js';
 import { pct } from '../../odds.js';
 import { vets, plan, changed, newVet, umaName, openWins } from '../../vets.js';
 import { detailsEl, fitSparks } from '../../details.js';
 import { scheduledRaces, rolledOutcome } from '../roll.mjs';
-import { answer, keepComparisonPlan, runView } from '../state.ts';
-import { PLAN_NEXT } from '../run.ts';
+import { answer, runView } from '../state.ts';
 import { keyOf } from '../keys.js';
-import { shown, isFull, baseKey, ROLL_K, runJob } from '../job.js';
+import { shown, isFull } from '../job.js';
 import { btn, sectionEl, deckEl, fmtN, tableRows } from '../view/parts.js';
 import { openNode } from '../view/dialogs.ts';
 import { must } from '../../must.ts';
-/** @import { LineageNode } from '../../vets.js' */
-/** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from '../job.js' */
-/** @import { PlanDone } from '../state.ts' */
+import { simulation, draftEdited, draftAdded } from './state.ts';
+/** @import { CareerReport } from '../job.js' */
+/** @import { Draft } from './state.ts' */
 /** @import { DeepReadonly } from '../../store.ts' */
-/** @typedef {{results: CareerReport[], pending: true}} PendingSearch a stand-in while the quick comparison looks for the best career with her */
 
-/**
- * The veteran analysis: the veteran this career leaves (the draft) and her comparison.
- * @typedef {object} Simulation
- * @property {'none'|'ready'|'busy'|'done'|'error'} state  none: no career on show; ready: no comparison yet
- * @property {Draft|null} [draft]  the entered veteran
- * @property {CareerSearch|PendingSearch|null} [r]  the comparison's search: the best career with her as a parent (`pending` while the
- *   quick comparison looks for it)
- * @property {DeepReadonly<CareerReport>|null} [baseline]  today's best career, without her
- * @property {string|null} [error]
- * @property {string} [forKey]  `keyOf` the career she came from
- * @property {'quick'|null} [kind]  the running comparison is a roll's quick one
- * @property {boolean} [stale]  edited since the figures on show
- * @property {boolean} [refining]  an exact comparison runs behind a roll's quick figures
- * @property {boolean} [provisional]  the quick figures say no saving, but their bound allows one: checking
- * @property {boolean} [standing]  a roll's quick figures say it saves careers: the exact comparison starts once the
- *   roll has stood 0.8 s (shown as checking meanwhile)
- * @property {boolean} [quick]  the figures on show are the quick ones
- * @property {boolean} [full]  she lands every target
- * @property {{now: number|null, withHer: number|null}} [v0]  expected careers to a fully looped parent with your
- *   veterans now, and with her too
- * @property {boolean} [fixedFit]  with her is priced under today's plan's fit (Add to veterans then fits the plan to
- *   the pool with her, so its figures can differ); false: the refit itself (today's plan had no V or no fit)
- * @property {PlanOption|null} [pickA]  the planner's next career once she is added
- * @property {boolean} [samePick]  it is the same as without her
- * @property {boolean} [herParent]  she is one of its parents
- * @property {string} [where]  where her saving lands (`savedWhere`)
- *
- * The veteran a career leaves, as entered (a Veteran without id), with `apt` (her end grades) and `bought` (skill group
- * -> 'gold' | 'white') from her roll.
- * @typedef {LineageNode & {borrowed: boolean, parents: LineageNode[], apt?: number[] | null, bought?: Object<number, string>}} Draft
- */
-/** @type {Simulation} */
-let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
-// the comparison under way; a newer one makes it stale, and so does a run: the run machine calls `stopComparison` or
-// `outdateComparison` whenever a new run begins (career/run.ts, its node tests), so this one id covers both
-let simulationId = 0;
-/** @type {{key: string, result: DeepReadonly<CareerReport>} | null} key: baseKey(job); result: today's best career, the comparisons' baseline */
-let baselineCache = null;
-
-// ---------- the transitions the run machine (main.js) makes
-// a new run: the comparison under way, if any, is stale (its answer is ignored)
-export function outdateComparison() {
-  simulationId++;
-}
-// an edit: the comparison in flight stops, its panel back to idle, or a roll's quick figures stand unchecked (an answer
-// that stands keeps her)
-export function stopComparison() {
-  simulationId++;
-  if (simulation.state === 'busy') Object.assign(simulation, { state: 'ready', r: null, kind: null });
-  Object.assign(simulation, { refining: false, provisional: false, standing: false });
-}
-// an answer shows `r` (`simulationFor`)
-export function showAnalysis(r) {
-  simulation = simulationFor(r);
-}
-// no answer: no career to analyse
-export function clearAnalysis() {
-  simulation = { state: 'none' };
-}
-// a run searched today's best career (no place set): the comparisons' baseline (`baselineFor`), under `key` (`baseKey`)
-export function keepBaseline(key, result) {
-  baselineCache = { key, result };
-}
-
-// ---------- the analysis
-function comparisonJob() {
-  return JSON.parse(baseKey(must(answer.value.last, 'a comparison is of the career on show').job));
-}
-
-// the veteran analysis, ready for the career on show: she starts as a random result of it
-/** @type {(r: CareerReport) => Simulation} */
-const readySimulation = (r) => ({
-  state: 'ready',
-  draft: draftOf(r),
-  r: null,
-  baseline: null,
-  error: null,
-  forKey: keyOf(r),
-});
-// the veteran analysis once an answer shows `r`: a fresh one, except that the same career keeps the veteran entered for
-// it (an edit elsewhere, or its undoing, leaves what the player typed); her comparison starts over on the new pool
-/** @type {(r: CareerReport|null) => Simulation} */
-const simulationFor = (r) => {
-  if (!r) return { state: 'none' };
-  const fresh = readySimulation(r);
-  return simulation.draft && simulation.forKey === fresh.forKey ? { ...fresh, draft: simulation.draft } : fresh;
-};
-// today's best career without her, which a roll's figures and a comparison's both set hers against: the run's when it
-// searched without places (a fixed trainee or parent makes it the best of those), else cached or searched now
-/** @param {CareerJob} base `comparisonJob()` @returns {Promise<DeepReadonly<CareerReport>>} */
-async function baselineFor(base) {
-  const shownNow = must(answer.value.last, 'a comparison is of the career on show');
-  const key = JSON.stringify(base),
-    open = !shownNow.job.trainees.length && !shownNow.job.fix.length,
-    cached = baselineCache?.key === key ? baselineCache.result : null;
-  /** @type {{results: readonly DeepReadonly<CareerReport>[]} | import('../../solver.ts').SolverRefusal} */
-  const before = cached ? { results: [cached] } : open ? shownNow.r : (await runJob(base)).r;
-  if ('error' in before) throw new Error(before.error);
-  if (!before.results?.length) throw new Error('No career found in the current roster.');
-  baselineCache = { key, result: before.results[0] };
-  return before.results[0];
+/** @type {{compare: () => void, roll: () => void} | null} Compare and Reroll (the comparison's machine) */
+let comparison = null;
+/** @param {{compare: () => void, roll: () => void}} machine the comparison's machine (./compare.ts) */
+export function initAnalysis(machine) {
+  comparison = machine;
 }
 
 // the veteran analysis' G1 wins: the G1 wins editor of the pool (a win in its slot, click to remove; an empty slot lists the
@@ -194,330 +94,33 @@ const copyNode = (v) => ({
 // what a roll reads of the settings and data (career/roll.mjs)
 /** @type {() => import('../roll.mjs').RollSetup} */
 const rollSetup = () => ({ career: careerTables(), targets: settings.value.targets, rank: settings.value.rank });
-function rollDraft() {
-  const r = shown();
-  if (!r || runView.value.searching) return;
-  Object.assign(must(simulation.draft, 'a roll redraws the entered veteran'), rolledOutcome(r, rollSetup()), {
-    winAt: {},
-  });
-  simulation.r = null;
-  simulation.stale = false;
-  const request = rollReq(simulation.draft, r);
-  if (request == null) {
-    compare();
-    return;
-  }
-  cancelCompare();
-  quickCompare(request);
-}
-// A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target; the
-// solver evaluates the plan's pick at that one outcome from what it kept of the plan, career/plan/roll.rs `roll_kept`, so no
-// plan runs again unless the worker kept none): y, exact for her sparks, her G1 wins at their chances, over the plan's
-// routes. It is no verdict: a route the plan has not (another lineage of a candidate's
-// whose last career she improves as a grandparent, without lifting the candidate's odds) can save careers too, so
-// every roll is confirmed by the exact comparison, its quick figure shown meanwhile as provisional. null when the plan
-// isn't for this career (then Reroll compares exactly).
-function rollReq(d, r) {
-  const { planState } = answer.value;
-  if (planState.state !== 'done') return null;
-  const o = planState.r?.outcomes;
-  if (!o || !planState.job || (o.career ?? `${o.trainee}:${o.parents.join(',')}`) !== keyOf(r)) return null;
-  const sp = d.sparks || {};
-  return { job: planState.job, stars: settings.value.targets.map((t) => sp[t.group] || 0) };
-}
-// the reroll's comparison, in two solver calls: the roll's saving from the plan the worker keeps (`next.roll`, about a
-// millisecond), shown at once as Careers to loop; then the best career with her as a parent (one quick search, most of
-// a second), which fills in her odds and the verdict's "Better odds". A reroll meanwhile waits behind that search (the
-// worker keeps it and its caches; its answer is ignored)
-async function quickCompare(request) {
-  const id = ++simulationId,
-    gone = () => id !== simulationId;
-  simulation.state = 'busy';
-  simulation.kind = 'quick';
-  simulation.error = null;
-  simulation.stale = false;
-  simulation.provisional = false;
-  simulation.standing = false;
-  renderSimulation();
-  /** @type {number | null} the roll's saving (careers), from the plan's routes (`rollReq`) */
-  let y = null;
-  // her legacy index is after every veteran's
-  const base = comparisonJob(),
-    legaciesWithHer = [...base.legacies, draftJob(simulation.draft)],
-    herIndex = base.legacies.length;
-  try {
-    if (!simulation.baseline) {
-      const before = await baselineFor(base);
-      if (gone()) return;
-      simulation.baseline = before;
-    }
-    const m = await runJob({ ...request.job, next: { ...request.job.next, roll: request.stars } });
-    if (gone()) return;
-    // (no saving from the plan: the exact comparison answers instead)
-    const roll = 'error' in m.r ? undefined : m.r.next?.roll;
-    if (typeof roll?.y !== 'number') {
-      simulation.kind = null;
-      runComparison();
-      return;
-    }
-    y = roll.y;
-    const v0 = /** @type {DeepReadonly<PlanDone>} */ (answer.value.planState).r.v0; // done: `request` came from its `rollReq`
-    simulation.r = { results: [], pending: true };
-    simulation.full = isFull(simulation.draft);
-    simulation.v0 = { now: v0, withHer: v0 != null ? Math.max(0, v0 - y) : null }; // r: a stand-in, no search figures
-    simulation.fixedFit = true; // (y is the plan's own scoring, under its fit)
-    simulation.pickA = null;
-    simulation.samePick = false;
-    simulation.herParent = false;
-    simulation.where = '';
-    simulation.quick = true;
-    simulation.state = 'done';
-  } catch (e) {
-    if (gone()) return;
-    simulation.error = e.message;
-    simulation.state = 'error';
-  }
-  simulation.kind = null;
-  renderSimulation();
-  if (simulation.state !== 'done' || gone()) return;
-  // a roll that saves careers goes to the exact comparison (which finds the best career with her too) once it has stood
-  // 0.8 s, as a zero does (rolling on starts none, so no running check is stopped, the worker with it): the plan's
-  // saving can be off either way (it prices her in its own routes only: a few partners, one deck per lifted side, one C
-  // per route), so the exact count replaces it, shown as checking meanwhile; a zero is checked too, after the best
-  // career with her
-  if (must(y, "a roll's done figures have its saving") >= 0.5) {
-    simulation.standing = true;
-    renderSimulation();
-    setTimeout(() => {
-      if (id === simulationId && simulation.standing && !simulation.refining) {
-        simulation.standing = false;
-        runComparison(true);
-      }
-    }, 800);
-    return;
-  }
-  try {
-    const m = await runJob({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
-    if (gone()) return;
-    if ('error' in m.r) throw new Error(m.r.error);
-    if (!m.r.results?.length) throw new Error('No next career found.');
-    simulation.r = m.r;
-  } catch (e) {
-    if (gone()) return;
-    simulation.error = e.message;
-    simulation.state = 'error';
-  }
-  renderSimulation();
-  // a zero is checked by the exact comparison too (the plan's routes are not every route a replan can take), shown
-  // meanwhile as provisional
-  // (after the roll has stood a moment: rolling on starts none; a running check would be stopped, the worker with it)
-  if (simulation.state === 'done' && !gone()) {
-    simulation.provisional = true;
-    renderSimulation();
-    setTimeout(() => {
-      if (id === simulationId && simulation.provisional && !simulation.refining) runComparison(true);
-    }, 800);
-  }
-}
-// A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
-// can't be interrupted, so the worker goes (a fresh one starts loading at once). (No run is in flight: they wait for the answer.)
-function cancelCompare() {
-  if (simulation.refining) {
-    simulationId++;
-    simulation.refining = false;
-    simulation.provisional = false;
-    simulation.standing = false;
-    restartEngine();
-    return;
-  }
-  if (simulation.state !== 'busy') return;
-  simulationId++;
-  simulation.state = 'ready';
-  if (simulation.kind === 'quick') return; // one quick search: it finishes, its answer ignored (the worker and its caches stay)
-  restartEngine();
-}
-// where a comparison's saving lands: the next career when she is one of its parents; else a later career, named (the
-// step of V's route, A, B or C, whose careers fell most) only where both plans' cheapest routes are the same trio, on
-// the same sides (`sides`: her real veteran, or her best career now or another career of hers, each on its parents: a
-// side whose parents changed is another route). The
-// cheapest trios are often near-tied (`trios`, `near`), so between two different ones a per-uma step comparison names
-// an arbitrary uma; what falls then is V, which the panel shows. planNow / planWithHer: the plans' `next` reports;
-// pickA: the planner's next career with her; samePick: it is the one without her
-function savedWhere({ planNow, planWithHer, pickA, samePick, herIndex }) {
-  if (!pickA) return '';
-  if (pickA.parents.includes(herIndex)) return `Improves the next career (${pickA.trainee.name}).`;
-  const trioNow = planNow?.v0_plan,
-    trioWithHer = planWithHer?.v0_plan;
-  // (A and B are ordered by their careers, so the same trio may list them swapped; each side by its uma and its veteran,
-  // `sides`: the same names on other veterans, or on other parents, are another route, whose per-step careers are not
-  // comparable)
-  /** @type {(v: NonNullable<PlanReport['v0_plan']>) => string} */
-  const sidesOf = (v) =>
-    [v.a, v.b]
-      .map((trainee, i) => `${trainee}|${v.sides?.[i] ?? '?'}`)
-      .sort()
-      .join();
-  const sameTrio =
-    !!trioNow &&
-    !!trioWithHer &&
-    !!trioNow.sides &&
-    !!trioWithHer.sides &&
-    trioNow.c === trioWithHer.c &&
-    sidesOf(trioNow) === sidesOf(trioWithHer);
-  // the route's steps: [the uma of the step, its careers]
-  /** @type {(v: NonNullable<PlanReport['v0_plan']>) => [string|null, number][]} */
-  const steps = (v) => [v.a, v.b, v.c].map((trainee, i) => [trainee, v.careers[i]]);
-  /** @type {string | null} */
-  let best = null,
-    gain = 0;
-  if (sameTrio) {
-    const careersNow = new Map(steps(trioNow));
-    for (const [trainee, careers] of steps(trioWithHer)) {
-      const fell = (careersNow.get(trainee) ?? careers) - careers;
-      if (trainee && fell > gain) {
-        gain = fell;
-        best = trainee;
-      }
-    }
-  }
-  return `Improves a later ${best ? `${best} ` : ''}career; the next career ${samePick ? 'stays' : 'is'} ${pickA.trainee.name}.`;
-}
-function draftOf(r) {
-  return {
-    chara: r.trainee.id,
-    outfit: r.trainee.outfits[0]?.id,
-    borrowed: false,
-    ...rolledOutcome(r, rollSetup()),
-    winAt: {},
-    parents: r.parents.map((i) => copyNode(vets[i])),
-  };
-}
-function draftJob(v) {
-  const pairs = (o) => Object.entries(o).map(([g, s]) => [+g, s]);
-  const node = (v) => ({ chara: v.chara || 0, sparks: pairs(v.sparks), pinks: pairs(v.pinks), wins: [...v.wins] });
-  return { ...node(v), borrowed: false, parents: v.parents.map(node) };
-}
+// her draft for career `r`: a random result of it, on her two parents' records (the machine's `page.draftOf`)
+/** @type {(r: DeepReadonly<CareerReport>) => Draft} */
+export const draftOf = (r) => ({
+  chara: r.trainee.id,
+  outfit: r.trainee.outfits[0]?.id,
+  borrowed: false,
+  ...rolledOutcome(r, rollSetup()),
+  winAt: {},
+  parents: r.parents.map((i) => copyNode(vets[i])),
+});
+// a random result of career `r` (the machine's `page.roll`)
+/** @type {(r: DeepReadonly<CareerReport>) => import('../roll.mjs').Roll} */
+export const rollOf = (r) => rolledOutcome(r, rollSetup());
 // an edit to the entered veteran: the comparison on screen is for the old one
-function editDraft() {
-  if (simulation.r) simulation.stale = true;
-  renderSimulation();
-}
-// Compare (or a roll): a press while a comparison runs restarts it with the veteran as she is now
-function compare() {
-  if (runView.value.searching || !shown()) return;
-  cancelCompare();
-  runComparison();
-}
-// refine: a roll's quick result stays on screen (an improvement shown at once, its figures held) while this works out
-// the exact count; otherwise the panel waits on it
-async function runComparison(refine = false) {
-  const id = ++simulationId,
-    gone = () => id !== simulationId;
-  const base = comparisonJob();
-  if (refine) simulation.refining = true;
-  else {
-    simulation.state = 'busy';
-    simulation.refining = false;
-    simulation.provisional = false;
-    simulation.standing = false;
-  }
-  simulation.error = null;
-  simulation.stale = false;
-  renderSimulation();
-  try {
-    if (!simulation.baseline) {
-      const before = await baselineFor(base);
-      if (gone()) return;
-      simulation.baseline = before;
-    }
-    // the planner's question (exact odds, estimated careers): the best career with her as a parent, and the planner's
-    // expected careers to a fully looped parent (each plan's `v0`, V) from the veterans now, without and with her
-    const legaciesWithHer = [...base.legacies, draftJob(simulation.draft)],
-      herIndex = base.legacies.length;
-    const m = await runJob({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
-    if (gone()) return;
-    if ('error' in m.r) throw new Error(m.r.error);
-    if (!m.r.results?.length) throw new Error('No next career found.');
-    const full = isFull(simulation.draft);
-    const planOf = (legacies) => ({
-      ...base,
-      top: ROLL_K,
-      legacies,
-      next: { ...PLAN_NEXT },
-      compare: true,
-      no_reports: true,
-    }); // as a run's plan job, once she is added
-    const { last, planState } = answer.value;
-    let planNow =
-      planState.state === 'done' && !must(last, 'a comparison is of the career on show').job.fix.length
-        ? planState.r
-        : null;
-    if (!planNow) {
-      const mb = await runJob(planOf(base.legacies));
-      if (gone()) return;
-      planNow = ('error' in mb.r ? null : mb.r.next) || null;
-    }
-    // with her: her pool priced under today's plan's fit (`next.fit`, passed on as the plan wrote it), so the two Vs
-    // differ only by what she changes, not by Cont fitted again to the pool with her (a refit moves V by hundreds of
-    // careers on a weak pool, in either direction). The plan Add to veterans shows is that refit, run on Add. Only when
-    // today's plan has no V to compare with (no route: `v0` null, though its `fit` may still list candidates) or no fit
-    // is the refit run here, and kept so that Add takes it as it is
-    const fit = planNow && Number.isFinite(planNow.v0) && planNow.fit?.length ? planNow.fit : null,
-      jobWithHer = fit ? { ...planOf(legaciesWithHer), next: { fit } } : planOf(legaciesWithHer),
-      ma = await runJob(jobWithHer);
-    if (gone()) return;
-    const planWithHer = ('error' in ma.r ? null : ma.r.next) || null;
-    if (!fit && planWithHer && !planWithHer.error) keepComparisonPlan(jobWithHer, planWithHer, ma.ms);
-    engineSaveState();
-    const careersToLoop = (next) => (next && next.v0 != null ? next.v0 : null); // careers to a fully looped parent with the pool as it is
-    const careersNow = careersToLoop(planNow),
-      pickA = planWithHer?.options?.find((o) => o.chosen) || null,
-      pickB = planNow?.options?.find((o) => o.chosen) || null;
-    // not clamped: in the game a veteran never costs careers (you can leave her out), but V can rise with her even
-    // under the same fit: each fresh side of V's route comes from one of a candidate's `fresh_lineages` best careers
-    // now (her best and her next two by cached decks, each searched on its pair), so her arrival can push the lineage
-    // the route used out of them, and a pair's search that runs out of budget can stop below the pair's best. The panel
-    // shows such a rise as it is, with that said (`comparisonResult`)
-    const careersWithHer = careersToLoop(planWithHer);
-    // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
-    const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
-    simulation.r = m.r;
-    simulation.full = full;
-    simulation.v0 = { now: careersNow, withHer: careersWithHer };
-    simulation.fixedFit = !!fit;
-    simulation.pickA = pickA;
-    simulation.samePick = samePick;
-    simulation.herParent = !!pickA?.parents.includes(herIndex);
-    simulation.where = savedWhere({ planNow, planWithHer, pickA, samePick, herIndex });
-    simulation.quick = false;
-    simulation.refining = false;
-    simulation.provisional = false;
-    simulation.standing = false;
-    simulation.state = 'done';
-  } catch (e) {
-    if (gone()) return;
-    if (simulation.refining) {
-      simulation.refining = false;
-      simulation.provisional = false;
-      simulation.standing = false;
-    } else {
-      simulation.error = e.message;
-      simulation.state = 'error';
-    }
-  }
-  renderSimulation();
-}
+const editDraft = () => draftEdited();
 function addDraft() {
-  if (runView.value.searching || !simulation.draft) return;
+  const sim = simulation.peek();
+  if (runView.value.searching || !sim.draft) return;
   $dialog('sim-dlg').close(); // she joins your veterans: back to the next career
-  const d = structuredClone(simulation.draft);
+  const d = structuredClone(sim.draft);
   delete d.apt;
   delete d.bought;
   const v = newVet(d.chara, d.sparks);
   Object.assign(v, d, { src: 'entered', borrowed: false });
   plan.trainee = null;
   plan.parents = [null, null];
-  simulation.draft = null; // she is in the pool now: the next answer starts a new one even for the same career
+  draftAdded(); // she is in the pool now: the next answer starts a new one even for the same career
   $('v-msg').textContent =
     `Added ${umaName(v.chara)} to your veterans. The planner now picks the next career from all of them.`;
   changed();
@@ -525,9 +128,10 @@ function addDraft() {
 // The veteran analysis: her card (details.js; she starts as a random result of this career) with its actions, and the
 // comparison panel beside it.
 function simulationBody() {
+  const sim = simulation.peek();
   const box = sectionEl('simulation', 'Veteran analysis');
   box.id = 'simulation';
-  const d = simulation.draft,
+  const d = sim.draft,
     r = shown();
   if (!d || !r) return box;
   box.appendChild(analysisCard(d, r));
@@ -567,11 +171,11 @@ function analysisCard(d, r) {
   const actions = el('div', 'row');
   // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose
   // answer replaces the career on show)
-  const go = btn('Compare', 'primary', compare);
+  const go = btn('Compare', 'primary', () => must(comparison, 'the entry hands the machine in at load').compare());
   go.id = 'sim-compare';
   go.dataset.k = 'sim:compare';
   go.disabled = runView.value.searching;
-  const roll = btn('Reroll', '', rollDraft);
+  const roll = btn('Reroll', '', () => must(comparison, 'the entry hands the machine in at load').roll());
   roll.id = 'sim-roll';
   roll.dataset.k = 'sim:roll';
   roll.disabled = runView.value.searching;
@@ -587,8 +191,9 @@ function analysisCard(d, r) {
 // the panel beside her card: a mini header carrying the chance a roll of this career improves your loop (the plan's
 // `lift`: her outcomes that lower V), then the comparison (before any, a line saying what goes here)
 function comparisonPanel(d, r) {
-  const busy = simulation.state === 'busy';
-  const result = el('div', `simresult${simulation.stale ? ' stale' : ''}`);
+  const sim = simulation.peek();
+  const busy = sim.state === 'busy';
+  const result = el('div', `simresult${sim.stale ? ' stale' : ''}`);
   result.id = 'sim-result';
   result.setAttribute('role', 'status');
   const hdr = el('div', 'simhdr');
@@ -606,36 +211,35 @@ function comparisonPanel(d, r) {
     hdr.append(odds);
   }
   result.appendChild(hdr);
-  if (!busy && !simulation.error && !simulation.r)
+  if (!busy && !sim.error && !sim.r)
     result.appendChild(el('p', 'simidle', 'Compare or reroll to see if she improves your loop.'));
   if (busy) {
     const p = el('p', 'runnote');
     p.innerHTML = `${runnerHTML()}<span>Comparing…</span>`;
     result.appendChild(p);
-  } else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
-  else if (simulation.r) comparisonResult(result, d);
+  } else if (sim.error) result.appendChild(el('p', 'note', sim.error));
+  else if (sim.r) comparisonResult(result, d);
   return result;
 }
 // what she does for the loop if you enter her: one short line (`saves`: the careers she saves, null: not known). A
 // roll's quick zero is the plan's routes' only (`rollReq`), always provisional until the exact comparison answers: it
 // reads "no saving found yet"
 function verdictText(d, next, saves) {
+  const sim = simulation.peek();
   const n = settings.value.targets.length,
-    fullyLooped = simulation.full && d.parents.length === 2 && d.parents.every(isFull),
-    none = simulation.quick ? 'saving found yet' : 'careers saved';
+    fullyLooped = sim.full && d.parents.length === 2 && d.parents.every(isFull),
+    none = sim.quick ? 'saving found yet' : 'careers saved';
   return fullyLooped
     ? 'Fully looped parent'
-    : simulation.full
+    : sim.full
       ? `${n}/${n}: step 1 done`
-      : (simulation.refining || simulation.standing) && !simulation.provisional
+      : (sim.refining || sim.standing) && !sim.provisional
         ? 'Checking…'
         : saves != null && saves >= 0.5
           ? `Saves ${saves.toFixed(1)} careers`
-          : simulation.herParent
+          : sim.herParent
             ? 'Parent of the next career'
-            : next &&
-                next.p_all >
-                  must(simulation.baseline, 'figures with her best career have a baseline').p_all * (1 + 1e-9)
+            : next && next.p_all > must(sim.baseline, 'figures with her best career have a baseline').p_all * (1 + 1e-9)
               ? `Better odds, no ${none}`
               : `No ${none}`;
 }
@@ -655,39 +259,40 @@ function direction(now, withHer, lowerIsBetter) {
 // the comparison on show: the verdict in one line, then the two figures it rests on (now -> with her), then the best
 // career with her
 function comparisonResult(result, d) {
-  if (simulation.stale)
+  const sim = simulation.peek();
+  if (sim.stale)
     result.appendChild(
       el('p', 'note', 'These figures are for her result before your last edit. Compare to update them.'),
     );
-  const before = simulation.baseline,
+  const before = sim.baseline,
     n = settings.value.targets.length,
-    { now: careersNow, withHer: careersWithHer } = simulation.v0 || { now: null, withHer: null };
-  const next = must(simulation.r, 'a result is drawn for a comparison').results[0]; // (none yet while the quick search for the best career with her runs)
+    { now: careersNow, withHer: careersWithHer } = sim.v0 || { now: null, withHer: null };
+  const next = must(sim.r, 'a result is drawn for a comparison').results[0]; // (none yet while the quick search for the best career with her runs)
   const saves = careersNow != null && careersWithHer != null ? careersNow - careersWithHer : null;
   const verdict = el('p', 'simverdict');
   verdict.id = 'sim-verdict';
   const head = verdictText(d, next, saves),
     rose = saves != null && saves <= -0.5;
   verdict.append(el('strong', '', head));
-  if (/^Saves /.test(head) && simulation.where) verdict.append(simulation.where);
+  if (/^Saves /.test(head) && sim.where) verdict.append(sim.where);
   // a rise (never from a roll's quick figures, which can't rise): shown as it is, and said to be the planner's
   if (rose)
     verdict.append(
       `The planner's estimate rises by ${(-saves).toFixed(1)} careers with her, a limit of its route (it offers each uma's few best careers as sides, and she can push the one it used out of them); leaving her out costs nothing.`,
     );
   result.appendChild(verdict);
-  if (simulation.refining || simulation.standing || simulation.provisional) {
+  if (sim.refining || sim.standing || sim.provisional) {
     const p = el('p', 'runnote simrefine');
     p.innerHTML =
       runnerHTML() +
-      (simulation.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>');
+      (sim.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>');
     result.appendChild(p);
   }
-  const figs = el('div', `simodds${simulation.refining || simulation.standing ? ' held' : ''}`);
-  const nextWithHer = simulation.pickA
-    ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map((i) => `#${i + 1}`).join(' + ')}).`
+  const figs = el('div', `simodds${sim.refining || sim.standing ? ' held' : ''}`);
+  const nextWithHer = sim.pickA
+    ? `. With her the planner's next career is ${sim.pickA.trainee.name} (${sim.pickA.parents.map((i) => `#${i + 1}`).join(' + ')}).`
     : '.';
-  const fromTable = simulation.quick
+  const fromTable = sim.quick
     ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances; only the routes the plan kept); Compare checks this exact roll."
     : '';
   figs.appendChild(
@@ -702,7 +307,7 @@ function comparisonResult(result, d) {
   // with her priced under today's fit (`fixedFit`): the plan after Add is fitted to the pool with her, so it can show
   // other figures (more careers or fewer), which this one line says
   const fitNote =
-    simulation.fixedFit && careersNow != null
+    sim.fixedFit && careersNow != null
       ? el(
           'p',
           'simfit',

@@ -12,7 +12,8 @@
 //   keys.js            the keys a job, a plan job and a career are known by
 //   io.js              Export and Import of the veterans
 //   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
-//   analysis/view.js   the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
+//   analysis/          the veteran analysis ("Try a run"): state.ts its store (her draft, her comparison), compare.ts
+//                      the comparison's run machine, view.js the popup
 //   options.js         the options table ("Other careers": the plan's careers, Use this) and its Saves popup
 //   view/RunNote.tsx   the status line
 //   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
@@ -49,10 +50,23 @@ import { vets, vetsRev, plan, onVetsChange, persist, clearVets, dropMissing, han
 import { setRunner } from '../images.js';
 import { initUmamoe, syncListings } from '../umamoesetup.js';
 import { Boundary } from '../ui/Boundary.tsx';
-import { placesKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown, runJob } from './job.js';
-import { outdateComparison, stopComparison, showAnalysis, clearAnalysis, keepBaseline } from './analysis/view.js';
+import {
+  placesKey,
+  buildJob,
+  chosenDropped,
+  dropStaleChosen,
+  baseKey,
+  refBase,
+  shown,
+  runJob,
+  isFull,
+  ROLL_K,
+} from './job.js';
+import { initAnalysis, draftOf, rollOf, renderSimulation } from './analysis/view.js';
+import * as analysisStore from './analysis/state.ts';
+import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
-import { answer, dropAnswer, loadFails, runView } from './state.ts';
+import { answer, dropAnswer, keepComparisonPlan, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
 import { tName } from './view/parts.js';
 import { RunNote, tickNote } from './view/RunNote.tsx';
@@ -71,6 +85,24 @@ import type { Status } from './state.ts';
 import type { CareerSearch } from './job.js';
 
 // ---------- the run ----------
+// The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,
+// the analysis store, the career on show and her draft. The run machine below drives it through its hooks.
+const comparison = createComparison({
+  engine: { run: runJob, restart: restartEngine, saveState: engineSaveState },
+  clock: { setTimer: (f, ms) => setTimeout(f, ms) },
+  answers: { answer, keepComparisonPlan },
+  store: analysisStore,
+  page: {
+    shown,
+    searching: () => runView.peek().searching,
+    targets: () => settings.peek().targets,
+    baseKey,
+    isFull,
+    planTop: ROLL_K,
+    draftOf,
+    roll: rollOf,
+  },
+});
 // The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the
 // settings, veterans and places, the veteran analysis and the redraws. The views that are components draw from the
 // answer store's signals (career/state.ts) and the veterans' (`vetsRev`); the redraws here are the el() views'.
@@ -100,13 +132,7 @@ const run = createRun({
     loadAnswer: () => answerLoad(ERA),
     saveAnswer: (key, value) => answerSave(ERA, key, value),
   },
-  analysis: {
-    outdate: outdateComparison,
-    stop: stopComparison,
-    show: showAnalysis,
-    clear: clearAnalysis,
-    keepBaseline,
-  },
+  analysis: comparison,
   view: {
     shown,
     paint,
@@ -226,7 +252,9 @@ loadData().then(
     initUmamoe({ open: (v) => openNode({ kind: 'v', id: v.id }) });
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
-    // Try a run's popup: Close and a backdrop click shut it
+    // Try a run's popup: Close and a backdrop click shut it; drawn again on every change of her analysis
+    initAnalysis(comparison);
+    on([analysisStore.simulation], renderSimulation);
     const simDlg = $dialog('sim-dlg');
     for (const x of simDlg.querySelectorAll<HTMLElement>('.dclose')) x.onclick = () => simDlg.close();
     backdropCloses(simDlg);
@@ -239,7 +267,7 @@ loadData().then(
       if (vetsSig() !== sig) {
         sig = vetsSig();
         dropAnswer();
-        clearAnalysis();
+        comparison.clear();
       }
       run.schedule();
       drawUnported();

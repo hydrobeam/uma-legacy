@@ -1,4 +1,4 @@
-// The results column (#results): the options table (options.js) and Try a run (analysis.js), still built with el()
+// The results column (#results): the options table (options.js) and Try a run (analysis/view.js), still built with el()
 // (steps 9 and 11), so drawn again by the entry after each change.
 import { $ } from '../../dom.js';
 import { markOwn } from '../../popover.js';

@@ -231,7 +231,7 @@ export function showKeptAnswer(hit: AnswerView) {
 
 // ---------- the plan Compare kept
 // the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
-// (analysis.js `runComparison`): the same job a run sends once she is added (keys sorted, the comparison's flag aside),
+// (analysis/compare.ts `runComparison`): the same job a run sends once she is added (keys sorted, the comparison's flag aside),
 // so Add to veterans takes it as it is instead of planning again (the solver is deterministic for its job). A plan
 // under today's fit is never kept here: its job carries `next.fit`, which a run's does not. (Not a signal: nothing
 // draws it.)
