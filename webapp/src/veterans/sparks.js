@@ -3,10 +3,10 @@ import { lazyDialog } from '../dom.js';
 import { careerTables, gameData } from '../data.js';
 import { skillIcon } from '../images.js';
 import { must } from '../must.ts';
-import { NEW_STARS, changed, targetGroups } from './store.js';
-import { skillName, pinkName, blueName, uniqueName } from './names.js';
+import { NEW_STARS, inPlaceRef } from './store.ts';
+import { skillName, pinkName, blueName, uniqueName, targetGroups } from './names.js';
 import { openAdd } from './pickers.js';
-/** @import { LineageNode } from './store.js' */
+/** @import { LineageNode, NodeRecord, NodeRef } from './store.ts' */
 
 // A spark's stars: filled then empty, out of 3 (two spans: the career page's game-style card colours them apart), hidden
 // from the screen reader (the control's label says the count).
@@ -82,12 +82,17 @@ function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = fal
 // each a bar of its colour (a dashed one when she has none) that opens its picker; then her target skills' white sparks
 // (click: stars 1 -> 2 -> 3 -> 1, the corner x removes), then "+" (a target skill she lacks). Sparks of skills that are
 // not targets are kept but not shown (read-only: shown). key names the controls (data-k) for the focus after a redraw.
+const noEdit = () => {
+  // (read-only: nothing to follow)
+};
+// (Its one caller left is the veteran analysis' draft, edited in place: step 9 draws it with ui/InspView.)
 /** @param {LineageNode} nd @param {string} [key] @param {() => void} [onEdit] @param {boolean} [readOnly] @returns {HTMLDivElement} */
-export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
+export function sparksEl(nd, key = '', onEdit = noEdit, readOnly = false) {
+  const at = inPlaceRef(nd, onEdit);
   const sp = document.createElement('div');
   sp.className = 'vsparks';
   for (const kind of ['blue', 'pink', 'green']) {
-    const b = colourBar(nd, kind, key, onEdit, readOnly);
+    const b = colourBar(at, kind, key, onEdit, readOnly);
     if (b) sp.appendChild(b);
   }
   // her target sparks (all she shows when editable); read-only, all her white sparks, the targets first, the rest grey
@@ -129,7 +134,7 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
   add.title = 'Add a target skill spark';
   add.setAttribute('aria-haspopup', 'dialog');
   add.setAttribute('aria-expanded', 'false');
-  add.onclick = () => openAdd(add, nd, onEdit);
+  add.onclick = () => openAdd(add, at);
   add.dataset.k = `${key}:add`;
   sp.appendChild(add);
   return sp;
@@ -142,7 +147,7 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
  *   stars}, greens {outfit card id: stars}
  * @property {string} title  the picker's title
  * @property {(group: number|string) => string|null} name  a group's name
- * @property {(nd: LineageNode) => number[]} groups  the groups she can have one of
+ * @property {(nd: NodeRecord) => number[]} groups  the groups she can have one of
  */
 /** @type {{blue: SparkKind, pink: SparkKind, green: SparkKind}} */
 export const KIND = {
@@ -173,8 +178,9 @@ function pinkChoices(nd) {
 export const currentSpark = (nd, kind) => Object.entries(nd[KIND[kind].field] || {}).find(([, stars]) => stars > 0);
 // her spark of one kind as its coloured bar: a chip for a unique or a pink she has, else a bar that opens the picker (a
 // missing unique's bar adds it at NEW_STARS)
-function colourBar(nd, kind, key, onEdit, readOnly) {
-  const spec = KIND[kind],
+function colourBar(at, kind, key, onEdit, readOnly) {
+  const nd = must(at.node(), 'the draft is there while drawn'),
+    spec = KIND[kind],
     cur = currentSpark(nd, kind);
   if (!cur && (readOnly || !spec.groups(nd).length)) return null;
   const k = `${key}:${kind}`;
@@ -230,7 +236,7 @@ function colourBar(nd, kind, key, onEdit, readOnly) {
       pink: true,
       key: k,
       readOnly,
-      onCycle: () => openColour(nd, kind, k, onEdit),
+      onCycle: () => openColour(at, kind, k),
       onRemove: () => {
         delete nd.pinks[group];
         onEdit();
@@ -252,7 +258,7 @@ function colourBar(nd, kind, key, onEdit, readOnly) {
     /** @type {HTMLButtonElement} */ (b).type = 'button';
     b.dataset.k = k;
     b.setAttribute('aria-haspopup', 'dialog');
-    b.onclick = () => openColour(nd, kind, k, onEdit);
+    b.onclick = () => openColour(at, kind, k);
   }
   b.className = 'vskb';
   const label = cur ? spec.name(cur[0]) || spec.title : `${spec.title}: none`;
@@ -268,23 +274,24 @@ function colourBar(nd, kind, key, onEdit, readOnly) {
   return c;
 }
 // the picker (game style): the choices as bars of the spark's colour, its stars (click one), Done (no remove: every
-// veteran has one blue and one pink)
-// colKey: the data-k of the bar that opened it, focused again on close
-/** @type {string | null} */
-let colKey = null;
+// veteran has one blue and one pink). Each pick lands on her record as it is then (`at`). Closed, the focus goes back
+// to the bar that opened it; `back` finds it when it was drawn again meanwhile (the el() draft's card: its key).
+/** @type {(() => HTMLElement | null) | null} */
+let colBack = null;
 const colourDialog = lazyDialog('gmdlg coldlg', (dialog) => {
   dialog.id = 'col-dlg';
   dialog.setAttribute('aria-labelledby', 'col-title');
-  dialog.addEventListener('close', () => {
-    const e = colKey && document.querySelector(`[data-k="${CSS.escape(colKey)}"]`);
-    if (e) e.focus();
-  });
+  dialog.addEventListener('close', () => colBack?.()?.focus());
 });
-export function openColour(nd, kind, key, onEdit) {
+/** @param {NodeRef} at @param {'blue'|'pink'|'green'} kind @param {string} [key] the opener's data-k (el() only) */
+export function openColour(at, kind, key = '') {
   const spec = KIND[kind];
-  const colDlg = colourDialog.get();
-  colKey = key;
+  const colDlg = colourDialog.get(),
+    opener = /** @type {HTMLElement | null} */ (document.activeElement);
+  colBack = () => (opener?.isConnected ? opener : key ? document.querySelector(`[data-k="${CSS.escape(key)}"]`) : null);
   const draw = () => {
+    const nd = at.node();
+    if (!nd) return;
     colDlg.textContent = '';
     // her spark now: its group (null: none yet, so no stars to pick) and stars (0: none)
     const cur = currentSpark(nd, kind),
@@ -311,8 +318,7 @@ export function openColour(nd, kind, key, onEdit) {
       b.setAttribute('aria-pressed', String(g === curGroup));
       b.appendChild(Object.assign(document.createElement('span'), { className: 'vskn', textContent: spec.name(g) }));
       b.onclick = () => {
-        nd[spec.field] = { [g]: curStars || NEW_STARS };
-        onEdit();
+        at.edit(() => ({ [spec.field]: { [g]: curStars || NEW_STARS } }));
         draw();
       };
       c.appendChild(b);
@@ -331,8 +337,7 @@ export function openColour(nd, kind, key, onEdit) {
       st.setAttribute('aria-pressed', String(k === curStars));
       st.disabled = curGroup === null;
       st.onclick = () => {
-        nd[spec.field] = { [must(curGroup, 'a star is enabled once a colour is chosen')]: k };
-        onEdit();
+        at.edit(() => ({ [spec.field]: { [must(curGroup, 'a star is enabled once a colour is chosen')]: k } }));
         draw();
       };
       row.appendChild(st);

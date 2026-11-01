@@ -1,26 +1,40 @@
 // ---------- the component twin of details.js's inspView: the game's Inspiration view of a veteran ----------
 // "Sparks", her sparks as the game's spark bars, then "Legacy Origin": her parents' (each a row with her portrait). The
 // markup inspView draws; inspView stays for the veteran analysis (step 9). Her parents' sparks are editable when
-// `parentKey` names their controls.
+// `parentKey` names their controls. It reads no store (as Sparks): it draws again whenever its parent does.
 import { umaName } from '../veterans/names.js';
-import type { LineageNode } from '../veterans/store.js';
+import type { NodeRecord, NodeRef } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
 import { Sparks } from './Sparks.tsx';
 
 interface InspViewProps {
   /** the veteran shown */
-  nd: LineageNode;
+  nd: NodeRecord;
   /** her parents (none: her row alone) */
-  parents: LineageNode[];
+  parents: readonly NodeRecord[];
   /** her sparks' control names */
   k: string;
-  onEdit: () => void;
+  /** where her edits go */
+  at: NodeRef;
+  /** the target skills' groups */
+  targets: readonly number[];
   /** parent j's sparks' control names (null: her parents' read-only) */
   parentKey?: ((j: number) => string) | null;
+  /** where parent j's edits go (with `parentKey`) */
+  parentAt?: ((j: number) => NodeRef) | null;
   /** nothing editable (a veteran listed on uma.moe: another player's) */
   readOnly?: boolean;
 }
-export function InspView({ nd, parents, k, onEdit, parentKey = null, readOnly = false }: InspViewProps) {
+export function InspView({
+  nd,
+  parents,
+  k,
+  at,
+  targets,
+  parentKey = null,
+  parentAt = null,
+  readOnly = false,
+}: InspViewProps) {
   return (
     <div class="udinsp">
       <div class={`udlin${parents.length ? '' : ' solo'}`}>
@@ -28,7 +42,7 @@ export function InspView({ nd, parents, k, onEdit, parentKey = null, readOnly = 
           <UmaAv uma={nd.chara || 0} outfit={nd.outfit} size={64} cls="udface" />
           {/* biome-ignore lint/a11y/useSemanticElements: today's markup (details.js inspView); a fieldset's legend and border would need the spark grid restyled */}
           <div class="simskills" role="group" aria-label="Her sparks">
-            <Sparks nd={nd} k={k} onEdit={onEdit} readOnly={readOnly} />
+            <Sparks nd={nd} k={k} at={at} targets={targets} readOnly={readOnly} />
           </div>
         </div>
         {parents.length > 0 && (
@@ -47,10 +61,10 @@ export function InspView({ nd, parents, k, onEdit, parentKey = null, readOnly = 
               label={`Her parent: ${umaName(g.chara)}`}
             />
             <div class="udpsp">
-              {parentKey && !readOnly ? (
-                <Sparks nd={g} k={parentKey(j)} onEdit={onEdit} />
+              {parentKey && parentAt && !readOnly ? (
+                <Sparks nd={g} k={parentKey(j)} at={parentAt(j)} targets={targets} />
               ) : (
-                <Sparks nd={g} k={`simp${j}`} onEdit={onEdit} readOnly />
+                <Sparks nd={g} k={`simp${j}`} at={at} targets={targets} readOnly />
               )}
             </div>
           </div>

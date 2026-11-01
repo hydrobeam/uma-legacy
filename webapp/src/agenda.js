@@ -239,13 +239,13 @@ function agendaGrid(fill) {
 /**
  * @typedef {object} WinsEditorOptions
  * @property {{ix: number, name: string, turns: number[]}[]} races  every G1: its race index, name and the turns it is held
- * @property {() => number[]} get  the race indices she won
- * @property {(wins: number[]) => void} set  replaces them (sorted, no repeats)
- * @property {() => Object<number, number>} at  race index -> the turn its win shows at (created on demand, edited in place)
+ * @property {() => readonly number[]} get  the race indices she won
+ * @property {() => Readonly<Record<number, number>>} at  race index -> the turn its win shows at
  * @property {((turn: number) => number[]|null)|null} [offer]  the races the menu lists at a turn (null: every race held then)
  * @property {((ix: number) => {turn?: number, cell?: ScheduleCell, parent: boolean}|null)|null} [info]  the race in her
  *   schedule: its turn and its schedule cell with the win odds; `parent`: a parent won it too
- * @property {() => void} onEdit  after every change
+ * @property {(wins: number[], at: Record<number, number>) => void} onWins  an edit: her wins (sorted, no repeats) and
+ *   where each shows, both new
  */
 /** @type {{menu: HTMLElement, opener: HTMLElement} | null} */
 let menuOpen = null; // one menu at a time
@@ -306,13 +306,18 @@ export function winsAgenda(opts) {
     }
     return { byTurn, offCalendar };
   }
-  const edit = (wins) => {
-    opts.set([...new Set(wins)].sort((a, b) => a - b));
-    opts.onEdit();
-  };
+  /** @type {(wins: number[], at: Record<number, number>) => void} */
+  const edit = (wins, at) =>
+    opts.onWins(
+      [...new Set(wins)].sort((a, b) => a - b),
+      at,
+    );
   const remove = (ix) => {
-    delete opts.at()[ix];
-    edit(opts.get().filter((x) => x !== ix));
+    const { [ix]: _, ...at } = opts.at();
+    edit(
+      opts.get().filter((x) => x !== ix),
+      at,
+    );
   };
   // a win in its slot: a button that removes it
   function winButton(ix, turn) {
@@ -438,8 +443,7 @@ export function winsAgenda(opts) {
         b.appendChild(s);
       }
       b.onclick = () => {
-        opts.at()[ix] = turn;
-        edit([...opts.get(), ix]);
+        edit([...opts.get(), ix], { ...opts.at(), [ix]: turn });
         draw(`win:${ix}`);
       };
       menu.appendChild(b);

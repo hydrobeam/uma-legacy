@@ -55,7 +55,7 @@ function mainSparks(v) {
   return row;
 }
 /**
- * @param {import('./veterans/store.js').Veteran} v
+ * @param {import('./veterans/store.ts').VetRecord} v
  * @param {{name: string, label: string, onClick: () => void, tab?: string, sub?: string}} o  the name under her, the
  *   button's accessible label, what a click does, a role tab over her ("Parent 1"), a line under her name
  */

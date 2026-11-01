@@ -2,7 +2,7 @@
 // (steps 9 and 11), so drawn again by the entry after each change.
 import { $ } from '../../dom.js';
 import { markOwn } from '../../popover.js';
-import { plan } from '../../veterans/store.js';
+import { places } from '../../veterans/store.ts';
 import { optionsEl } from '../options.js';
 import { renderSimulation } from '../analysis.js';
 import { answer } from '../state.ts';
@@ -18,7 +18,8 @@ export function renderResults() {
     return;
   }
   // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
-  const open = !plan.trainee || plan.parents.some((p) => !p),
+  const plan = places.value,
+    open = !plan.trainee || plan.parents.some((p) => !p),
     { last, planState } = answer.value;
   if (
     (open &&

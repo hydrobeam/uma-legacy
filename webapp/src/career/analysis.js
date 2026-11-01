@@ -11,7 +11,8 @@ import { settings } from '../settings.ts';
 import { restartEngine, engineSaveState } from '../engine.ts';
 import { umaAv, runnerHTML } from '../images.js';
 import { pct } from '../odds.js';
-import { vets, plan, changed, newVet } from '../veterans/store.js';
+import { batch } from '@preact/signals-core';
+import { vets, newVet, clearPlaces, inPlaceRef } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.js';
 import { openWins } from '../veterans/pickers.js';
 import { detailsEl, fitSparks } from '../details.js';
@@ -23,7 +24,7 @@ import { shown, isFull, baseKey, ROLL_K, runJob } from './job.js';
 import { btn, sectionEl, deckEl, fmtN, tableRows } from './view/parts.js';
 import { openNode } from './view/dialogs.ts';
 import { must } from '../must.ts';
-/** @import { LineageNode } from '../veterans/store.js' */
+/** @import { LineageNode } from '../veterans/store.ts' */
 /** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from './job.js' */
 /** @import { PlanDone } from './state.ts' */
 /** @import { DeepReadonly } from '../store.ts' */
@@ -148,13 +149,12 @@ function openDraftWins(d, r) {
     if (w.run !== false && !runs.has(ix)) runs.set(ix, { turn: w.turn, cell: w.cells[0] });
   }
   const parentWon = (ix) => d.parents.some((p) => p.wins.includes(ix));
-  openWins(d, umaName(d.chara), {
+  openWins(inPlaceRef(d, editDraft), umaName(d.chara), {
     offer: rows.length ? (t) => heldAt.get(t) || [] : null,
     info: (ix) => {
       const x = runs.get(ix);
       return x || parentWon(ix) ? { ...(x || {}), parent: parentWon(ix) } : null;
     },
-    onEdit: editDraft,
     onClose: () => $('sim-wins')?.focus(),
   }); // the button was redrawn by the edits
 }
@@ -181,9 +181,9 @@ function facesEl(tid, outfit, parents, outfitLabel = null) {
 }
 // a parent of a future career by legacy index (index = vets.length: the veteran she leaves, `who`)
 const parentFace = (i, who) =>
-  i >= vets.length
+  i >= vets.value.length
     ? { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true }
-    : { chara: vets[i].chara, outfit: vets[i].outfit, label: `#${i + 1} ${umaName(vets[i].chara)}` };
+    : { chara: vets.value[i].chara, outfit: vets.value[i].outfit, label: `#${i + 1} ${umaName(vets.value[i].chara)}` };
 const copyNode = (v) => ({
   chara: v.chara,
   ...(v.outfit ? { outfit: v.outfit } : {}),
@@ -391,7 +391,7 @@ function draftOf(r) {
     borrowed: false,
     ...rolledOutcome(r, rollSetup()),
     winAt: {},
-    parents: r.parents.map((i) => copyNode(vets[i])),
+    parents: r.parents.map((i) => copyNode(vets.value[i])),
   };
 }
 function draftJob(v) {
@@ -515,14 +515,13 @@ function addDraft() {
   const d = structuredClone(simulation.draft);
   delete d.apt;
   delete d.bought;
-  const v = newVet(d.chara, d.sparks);
-  Object.assign(v, d, { src: 'entered', borrowed: false });
-  plan.trainee = null;
-  plan.parents = [null, null];
   simulation.draft = null; // she is in the pool now: the next answer starts a new one even for the same career
   $('v-msg').textContent =
-    `Added ${umaName(v.chara)} to your veterans. The planner now picks the next career from all of them.`;
-  changed();
+    `Added ${umaName(d.chara)} to your veterans. The planner now picks the next career from all of them.`;
+  batch(() => {
+    newVet(d.chara, d.sparks, { ...d, src: 'entered', borrowed: false });
+    clearPlaces();
+  });
 }
 // The veteran analysis: her card (details.js; she starts as a random result of this career) with its actions, and the
 // comparison panel beside it.
@@ -560,9 +559,9 @@ function analysisCard(d, r) {
     targets: r.targets,
     deck: r.deck,
     legacies: r.parents.map((i) => ({
-      v: vets[i],
+      v: vets.value[i],
       label: `#${i + 1}`,
-      open: () => openNode({ kind: 'v', id: vets[i].id }),
+      open: () => openNode({ kind: 'v', id: vets.value[i].id }),
     })),
     parentLabel: (j) => `#${r.parents[j] + 1}`,
   });

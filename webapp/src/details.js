@@ -10,7 +10,7 @@ import { gameData } from './data.js';
 import { umaAv, skillIcon, cardAv, gradeEl } from './images.js';
 import { umaName } from './veterans/names.js';
 import { sparksEl } from './veterans/sparks.js';
-/** @import { LineageNode } from './veterans/store.js' */
+/** @import { LineageNode } from './veterans/store.ts' */
 import { borLast } from './cards.js';
 
 let tab = 'insp'; // the tab on show, kept across redraws (Inspiration first: it is where her sparks are entered)
@@ -104,7 +104,7 @@ const when = (turn) =>
  * @property {(j: number) => string} parentLabel  a parent's place ("#3")
  * @property {import('./career/job.js').CareerTarget[]} [targets]  the career's per-target report
  * @property {import('./loop/types.ts').ResultDeck|null} [deck]  her deck
- * @property {{v: import('./veterans/store.js').Veteran, label: string, open: () => void}[]} [legacies]  her two parents, each with
+ * @property {{v: import('./veterans/store.ts').VetRecord, label: string, open: () => void}[]} [legacies]  her two parents, each with
  *   her place and what opens her node
  */
 /** @param {DetailsSpec} spec */

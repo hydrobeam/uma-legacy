@@ -1,17 +1,17 @@
 // The tree's node popup: the trainee, a parent place, a veteran (also the veterans dialog's pane: VetPane), a
-// grandparent. It draws the node on show (dialogs.ts `nodeOpen`) from the answer and the veterans (`vetsRev`), so an
-// edit in it, or one behind it, redraws it in place; a node that is gone (a removed veteran, a grandparent whose parent
-// place emptied) closes it.
+// grandparent. It draws the node on show (dialogs.ts `nodeOpen`) from the answer and the veterans store, so an edit in
+// it, or one behind it, redraws it in place; a node that is gone (a removed veteran, a grandparent whose parent place
+// emptied) closes it. Its edits address the node by where it is (veterans/store.ts `vetRef`, `parentRef`).
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { $ } from '../../dom.js';
 import { settings } from '../../settings.ts';
 import { isOwned } from '../../job.js';
 import { fitSparks } from '../../details.js';
-import { vets, vetsRev, plan, changed, removeVet } from '../../veterans/store.js';
+import { vets, places, editVet, removeVet, setTrainee, setParent, vetRef, parentRef } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.js';
 import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.js';
-import type { LineageNode, Veteran } from '../../veterans/store.js';
+import type { NodeRecord, NodeRef, VetRecord } from '../../veterans/store.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../ui/AffTable.tsx';
@@ -58,7 +58,15 @@ const fromNode = (fn: () => void) => () => {
   fn();
 };
 /** her face: a button that changes who she is, or (a listed veteran) just her face */
-function Face({ nd, size, label, change }: { nd: LineageNode; size: number; label: string; change: boolean }) {
+interface FaceProps {
+  nd: NodeRecord;
+  /** where a change of uma goes */
+  at: NodeRef;
+  size: number;
+  label: string;
+  change: boolean;
+}
+function Face({ nd, at, size, label, change }: FaceProps) {
   const face = <UmaAv uma={nd.chara || 0} outfit={nd.outfit} size={size} />;
   if (!change) return face;
   const title = `${label}: ${umaName(nd.chara)}. Change who she is`;
@@ -68,14 +76,22 @@ function Face({ nd, size, label, change }: { nd: LineageNode; size: number; labe
       class="facebtn"
       title={title}
       aria-label={title}
-      onClick={fromNode(() => changeUma(nd, label))}
+      onClick={fromNode(() => changeUma(at, label))}
     >
       {face}
     </button>
   );
 }
 /** her G1 wins: the button that edits them (veterans/pickers.js winsBtn), or (a listed veteran) their count */
-function Wins({ nd, who, k, edit }: { nd: LineageNode; who: string; k: string; edit: boolean }) {
+interface WinsProps {
+  nd: NodeRecord;
+  /** where her edits go */
+  at: NodeRef;
+  who: string;
+  k: string;
+  edit: boolean;
+}
+function Wins({ nd, at, who, k, edit }: WinsProps) {
   if (!edit) return <span class="vwins">{winsText(nd)}</span>;
   return (
     <button
@@ -84,15 +100,15 @@ function Wins({ nd, who, k, edit }: { nd: LineageNode; who: string; k: string; e
       data-k={`${k}:wins`}
       title="G1 wins (race affinity): click to edit"
       aria-haspopup="dialog"
-      onClick={() => openWins(nd, who)}
+      onClick={() => openWins(at, who)}
     >
       {winsText(nd)}
     </button>
   );
 }
 /** the trainer to follow in the game for an uma.moe veteran: a Copy trainer ID button */
-function CopyId({ v }: { v: Veteran }) {
-  const lender = v.lender as NonNullable<Veteran['lender']>,
+function CopyId({ v }: { v: VetRecord }) {
+  const lender = v.lender as NonNullable<VetRecord['lender']>,
     [said, setSaid] = useState('Copy ID');
   return (
     <button
@@ -113,8 +129,7 @@ function CopyId({ v }: { v: Veteran }) {
   );
 }
 /** her name with how many of the targets her own sparks carry, "6/8" (an n/n veteran carries all n) */
-function NameCover({ v }: { v: LineageNode }) {
-  vetsRev.value; // (it reads a signal, so a parent's redraw with the same props skips it: the edits in place say when)
+function NameCover({ v }: { v: NodeRecord }) {
   const groups = settings.value.targets.map((t) => t.group),
     x = groups.filter((g) => ((v.sparks as Record<number, number>)?.[g] || 0) > 0).length;
   return (
@@ -127,7 +142,7 @@ function NameCover({ v }: { v: LineageNode }) {
   );
 }
 // (her trainer's followers too: at 1,000 the veteran can't be borrowed by following)
-const lenderText = (l: NonNullable<Veteran['lender']>) =>
+const lenderText = (l: NonNullable<VetRecord['lender']>) =>
   `uma.moe · ${l.name || 'trainer'} · ${l.followers >= 1000 ? 'max followers' : `${l.followers} follower${l.followers === 1 ? '' : 's'}`}`;
 // where a veteran came from (entered from a career here, an uma.moe tree, an import, made here)
 const VET_SOURCE: Record<string, string> = {
@@ -142,26 +157,27 @@ const VET_SOURCE: Record<string, string> = {
 /** a veteran's title in the popup and the pane ('' when she is gone) */
 function veteranTitle(id: string) {
   const i = idxOf(id),
-    v = vets[i];
+    v = vets.value[i];
   if (!v) return '';
   return v.lender ? `uma.moe · ${v.lender.name || 'trainer'}` : `Veteran #${i + 1}${v.borrowed ? ' · guest' : ''}`;
 }
 /** A veteran of yours (the popup, the pane beside the pool's list): her face, name, targets carried, wins, where she
  *  came from; Yours / Guest and Remove; her sparks and her parents'; her parents' faces and G1 wins. */
 export function VeteranView({ id }: { id: string }) {
-  vetsRev.value; // (her record is edited in place: this count says when)
   const i = idxOf(id),
-    v: Veteran | undefined = vets[i];
+    v: VetRecord | undefined = vets.value[i];
   if (!v) return null;
-  const edit = !listed(v),
+  const at = vetRef(id),
+    targets = settings.value.targets.map((t) => t.group),
+    edit = !listed(v),
     src = VET_SOURCE[v.src],
     name = umaName(v.chara);
   return (
     <>
       <div class="twho">
-        <Face nd={v} size={56} label={`Veteran #${i + 1}`} change={edit} />
+        <Face nd={v} at={at} size={56} label={`Veteran #${i + 1}`} change={edit} />
         <NameCover v={v} />
-        <Wins nd={v} who={`Veteran #${i + 1}, ${name}`} k={`v${v.id}`} edit={edit} />
+        <Wins nd={v} at={at} who={`Veteran #${i + 1}, ${name}`} k={`v${v.id}`} edit={edit} />
         {src && (
           <span class={v.src === 'tree' || v.src === 'umamoe' ? 'srctag' : 'simtag'}>
             {v.lender ? lenderText(v.lender) : src}
@@ -180,9 +196,7 @@ export function VeteranView({ id }: { id: string }) {
                 aria-pressed={v.borrowed === b}
                 data-k={`v${v.id}:own${b ? 'bor' : ''}`}
                 onClick={() => {
-                  if (v.borrowed === b) return;
-                  v.borrowed = b;
-                  changed();
+                  if (v.borrowed !== b) editVet(id, () => ({ borrowed: b }));
                 }}
               >
                 {b ? 'Guest' : 'Yours'}
@@ -193,10 +207,8 @@ export function VeteranView({ id }: { id: string }) {
             label="Remove"
             cls="vdel"
             onClick={() => {
-              const index = idxOf(v.id);
-              if (index < 0) return;
               closeNode();
-              removeVet(index);
+              removeVet(id);
               $('v-msg').textContent = `Removed ${name} from your veterans.`;
             }}
           />
@@ -207,8 +219,10 @@ export function VeteranView({ id }: { id: string }) {
           nd={v}
           parents={v.parents}
           k={`v${v.id}`}
-          onEdit={changed}
+          at={at}
+          targets={targets}
           parentKey={(j) => `v${v.id}g${j}`}
+          parentAt={(j) => parentRef(id, j)}
           readOnly={!edit}
         />
       </div>
@@ -218,9 +232,9 @@ export function VeteranView({ id }: { id: string }) {
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
             <div key={j} class="twho">
-              <Face nd={g} size={36} label={lab} change={edit} />
+              <Face nd={g} at={parentRef(id, j)} size={36} label={lab} change={edit} />
               <span class="nm">{g.chara ? umaName(g.chara) : 'Unknown parent'}</span>
-              <Wins nd={g} who={`${lab}, ${umaName(g.chara)}`} k={`v${v.id}g${j}`} edit={edit} />
+              <Wins nd={g} at={parentRef(id, j)} who={`${lab}, ${umaName(g.chara)}`} k={`v${v.id}g${j}`} edit={edit} />
             </div>
           );
         })}
@@ -230,7 +244,6 @@ export function VeteranView({ id }: { id: string }) {
 }
 /** the pane beside the pool's list (wide): the veteran chosen there (dialogs.ts `paneVet`) */
 export function VetPane() {
-  vetsRev.value;
   const id = paneVet.value;
   if (!id) return null;
   return (
@@ -248,7 +261,8 @@ interface NodeShown {
 }
 // The trainee: who she is, her outfit, her affinity's breakdown; choose her or hand her back to the planner.
 function traineeNode(r: CareerReport | null): NodeShown {
-  const id = plan.trainee || r?.trainee.id,
+  const plan = places.value,
+    id = plan.trainee || r?.trainee.id,
     mine = !!r && r.trainee.id === id;
   return {
     title: plan.trainee ? 'Trainee' : "Trainee · planner's pick",
@@ -277,33 +291,21 @@ function traineeNode(r: CareerReport | null): NodeShown {
           onClick={fromNode(() =>
             openUmaPicker(
               'Trainee: which uma?',
-              (u: number) => {
-                plan.trainee = u;
-                plan.fromTable = false; // (chosen by hand: it stays)
-                changed();
-              },
+              (u: number) => setTrainee(u, true), // (chosen by hand: it stays)
               (u: Parameters<typeof isOwned>[0]) => isOwned(u, settings.value),
             ),
           )}
         />
-        {plan.trainee && (
-          <Btn
-            label="Let the planner pick"
-            cls="nact"
-            onClick={() => {
-              plan.trainee = null;
-              changed();
-            }}
-          />
-        )}
+        {plan.trainee && <Btn label="Let the planner pick" cls="nact" onClick={() => setTrainee(null, false)} />}
       </>
     ),
   };
 }
 // A parent place: the veteran in it (chosen or the planner's pick) with her sparks and her parents', all editable.
 function parentNode(k: number, r: CareerReport | null): NodeShown {
-  const at = parentAt(k, r),
-    v: Veteran | undefined = at?.v;
+  const plan = places.value,
+    at = parentAt(k, r),
+    v: VetRecord | undefined = at?.v;
   const acts = (
     <>
       <Btn
@@ -311,23 +313,14 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
         cls="primary big nact"
         onClick={fromNode(() => openParentPicker(k))}
       />
-      {plan.parents[k] && (
-        <Btn
-          label="Let the planner pick"
-          cls="nact"
-          onClick={() => {
-            plan.parents[k] = null;
-            changed();
-          }}
-        />
-      )}
+      {plan.parents[k] && <Btn label="Let the planner pick" cls="nact" onClick={() => setParent(k, null, false)} />}
     </>
   );
   const title = `Legacy ${k + 1} · parent ${k + 1}${at?.pick ? " · planner's pick" : ''}`;
   if (!v)
     return {
       title,
-      body: <p class="tempty">{vets.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'}</p>,
+      body: <p class="tempty">{vets.value.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'}</p>,
       acts,
     };
   const i = idxOf(v.id);
@@ -353,7 +346,7 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
                 : `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}${v.borrowed ? ', borrowed' : ''}`}
             </div>
           </div>
-          <Wins nd={v} who={umaName(v.chara)} k={`p${k}`} edit={!listed(v)} />
+          <Wins nd={v} at={vetRef(v.id)} who={umaName(v.chara)} k={`p${k}`} edit={!listed(v)} />
           {v.lender && <CopyId v={v} />}
         </div>
         <div class="ud udbare">
@@ -361,8 +354,10 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
             nd={v}
             parents={v.parents}
             k={`p${k}`}
-            onEdit={changed}
+            at={vetRef(v.id)}
+            targets={settings.value.targets.map((t) => t.group)}
             parentKey={(j) => `p${k}g${j}`}
+            parentAt={(j) => parentRef(v.id, j)}
             readOnly={listed(v)}
           />
         </div>
@@ -374,20 +369,28 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
 // A grandparent (parent k's parent j): who she is, her sparks and G1 wins.
 function grandparentNode(k: number, j: number, r: CareerReport | null): NodeShown | null {
   const at = parentAt(k, r),
-    g: LineageNode | undefined = at?.v.parents[j];
+    g: NodeRecord | undefined = at?.v.parents[j];
   if (!at || !g) return null;
-  const edit = !listed(at.v);
+  const edit = !listed(at.v),
+    gAt = parentRef(at.v.id, j);
   return {
     title: `Legacy ${k + 1} · grandparent`,
     body: (
       <>
         <div class="twho">
-          <Face nd={g} size={56} label="Grandparent" change={edit} />
+          <Face nd={g} at={gAt} size={56} label="Grandparent" change={edit} />
           <div class="nm">{g.chara ? umaName(g.chara) : 'Unknown: pick her'}</div>
-          <Wins nd={g} who={umaName(g.chara)} k={`p${k}g${j}`} edit={edit} />
+          <Wins nd={g} at={gAt} who={umaName(g.chara)} k={`p${k}g${j}`} edit={edit} />
         </div>
         <div class="ud udbare">
-          <InspView nd={g} parents={[]} k={`p${k}g${j}`} onEdit={changed} readOnly={!edit} />
+          <InspView
+            nd={g}
+            parents={[]}
+            k={`p${k}g${j}`}
+            at={gAt}
+            targets={settings.value.targets.map((t) => t.group)}
+            readOnly={!edit}
+          />
         </div>
       </>
     ),
@@ -402,7 +405,6 @@ function nodeShown(spec: NodeSpec, r: CareerReport | null): NodeShown | null {
 }
 /** the node popup (game style): one dialog, drawn again on every change while open */
 export function NodeDialog() {
-  vetsRev.value;
   const spec = nodeOpen.value,
     last = useRef<NodeSpec | null>(null), // (closed, it keeps the last node it showed, as a dialog keeps its content)
     body = useRef<HTMLDivElement>(null);

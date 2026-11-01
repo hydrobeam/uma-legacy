@@ -149,6 +149,24 @@ test("an edit during the search: the old run's late answer is dropped, the new r
   assert.equal(runView.peek().searching, false);
 });
 
+// a change of setup with places taken from the table: the setup's effect schedules, then the places' effect (its
+// hand-back) schedules again in the same task (career/main.tsx)
+test('two schedules in one task: one pause, one job, nothing killed', async () => {
+  const p = page();
+  p.run.schedule();
+  p.job.trainees.push(1002); // (the places handed back change the job)
+  p.run.schedule();
+  assert.equal(p.engine.restarts, 0);
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.equal(sent(p), 1, 'one job after the pause');
+  assert.equal(p.engine.jobs[0].job, p.job);
+  p.run.schedule(); // the same job in flight: it goes on
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.equal(sent(p), 1);
+  assert.equal(p.engine.restarts, 0);
+});
 test('an edit during the plan: its late progress and answer are dropped', async () => {
   const p = page();
   await edited(p);

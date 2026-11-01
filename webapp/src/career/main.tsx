@@ -27,6 +27,7 @@
 import '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
+import { batch } from '@preact/signals-core';
 import type { VNode } from 'preact';
 import { $, $dialog, $textarea, backdropCloses } from '../dom.js';
 import { ERA } from '../saved.ts';
@@ -45,18 +46,8 @@ import '../agenda.js'; // (its document listener is added before gmtip's)
 import { initSetup } from '../setup.js';
 import '../gmtip.js'; // the game-style tooltips (both planner pages)
 import { initTargets, renderTargets } from '../targets.js';
-import {
-  vets,
-  vetsRev,
-  plan,
-  onVetsChange,
-  persist,
-  clearVets,
-  dropMissing,
-  handBackPlaces,
-} from '../veterans/store.js';
-import '../veterans/pickers.js'; // (the editors' dialog and document listeners are added with the veterans' load)
-import '../veterans/sparks.js';
+import { vets, places, persist, flushPersist, clearVets, dropMissing, handBackPlaces } from '../veterans/store.ts';
+import { winsOpen } from '../veterans/pickers.js';
 import { setRunner } from '../images.js';
 import { initUmamoe, syncListings } from '../umamoesetup.js';
 import { Boundary } from '../ui/Boundary.tsx';
@@ -84,7 +75,8 @@ import type { CareerSearch } from './job.js';
 // ---------- the run ----------
 // The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the
 // settings, veterans and places, the veteran analysis and the redraws. The views that are components draw from the
-// answer store's signals (career/state.ts) and the veterans' (`vetsRev`); the redraws here are the el() views'.
+// answer store's signals (career/state.ts) and the veterans store's (veterans/store.ts); the redraws here are the el()
+// views'.
 const run = createRun({
   engine: {
     run: runJob,
@@ -103,8 +95,8 @@ const run = createRun({
   store: answerStore,
   page: {
     job: () => buildJob(settings.peek()),
-    places: () => placesKey(),
-    trainee: () => plan.trainee,
+    places: () => placesKey(places.peek()),
+    trainee: () => places.peek().trainee,
     refBase,
     baseKey,
     searched: searchStatus,
@@ -139,10 +131,13 @@ const run = createRun({
 /** @returns {Status} */
 function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status {
   const cert = searchCaveat(m.r),
-    dropped = chosenDropped?.places === placesKey() ? ` ${chosenDropped.text}` : '';
+    dropped = chosenDropped?.places === placesKey(places.peek()) ? ` ${chosenDropped.text}` : '';
   if (m.r.results.length) return { kind: 'done', text: found + cert + dropped };
   const carried = new Set(
-    vets.flatMap((v) => [v, ...v.parents]).flatMap((x) => Object.keys(x.sparks || {}).map(Number)),
+    vets
+      .peek()
+      .flatMap((v) => [v, ...v.parents])
+      .flatMap((x) => Object.keys(x.sparks || {}).map(Number)),
   );
   const none = settings.value.targets
     .filter((t) => !goldGiven(settings.value.scen, t.group) && !carried.has(t.group))
@@ -167,7 +162,7 @@ function marks() {
   const { searching, started } = runView.peek(),
     { status } = answer.peek(),
     r = shown();
-  setRunner(plan.trainee || r?.trainee?.id);
+  setRunner(places.peek().trainee || r?.trainee?.id);
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
   const dimmed = searching && started && !!r; // the previous answer, on screen until this run's
   $('results').classList.toggle('stale', dimmed || (!searching && ['error', 'empty'].includes(status.kind)));
@@ -179,7 +174,7 @@ function paint() {
   if (!noteShown) {
     noteShown = true;
     marks();
-    on([runView, answer, vetsRev], marks);
+    on([runView, answer, places], marks);
     mount('run-note', <RunNote />);
   }
   tickNote();
@@ -212,7 +207,7 @@ function initSettings() {
   // search runs again
   on([jobSetup], () => {
     // a career taken from the other careers' table was for that setup: the planner picks again for this one
-    if (plan.fromTable) handBackPlaces();
+    if (places.peek().fromTable) handBackPlaces();
     syncListings(); // a changed target set: its listings (kept, or one request)
     run.schedule();
     drawUnported();
@@ -226,6 +221,11 @@ try {
 } catch {
   // storage blocked: nothing was kept to remove
 }
+// a save of the veterans still due goes out when the page is hidden or left (a reload or close loses nothing)
+addEventListener('pagehide', flushPersist);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushPersist();
+});
 document.addEventListener('click', (e) => {
   if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close();
 }); // a backdrop click closes
@@ -243,14 +243,19 @@ loadData().then(
     backdropCloses(simDlg);
     dropStaleChosen();
     // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
-    // places, so the answer on screen goes; an edit to a veteran keeps it on screen, dimmed, until the new one is ready.
-    const vetsSig = () => vets.map((v) => v.id).join(',');
-    let sig = vetsSig();
-    onVetsChange(() => {
-      if (vetsSig() !== sig) {
-        sig = vetsSig();
-        dropAnswer();
-        clearAnalysis();
+    // places, so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new
+    // one is ready. While a pool veteran's G1 wins window is open its edits are saved, and the search waits for it to
+    // close.
+    const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
+    let ids = idsOf(vets.peek());
+    on([vets, places, winsOpen], (list, _places, editingWins) => {
+      if (editingWins) return;
+      if (idsOf(list) !== ids) {
+        ids = idsOf(list);
+        batch(() => {
+          dropAnswer();
+          clearAnalysis();
+        });
       }
       run.schedule();
       drawUnported();
@@ -282,8 +287,9 @@ loadData().then(
     $('v-clear').onclick = () => {
       // the open tab's veterans
       // (uma.moe's listings stay, unless one is a chosen parent: they are its answer for the targets, not yours)
-      const gone = (v: (typeof vets)[number]) => inTab(v) && (v.src !== 'umamoe' || plan.parents.includes(v.id)),
-        n = vets.filter(gone).length,
+      const parents = places.value.parents,
+        gone = (v: (typeof vets.value)[number]) => inTab(v) && (v.src !== 'umamoe' || parents.includes(v.id)),
+        n = vets.value.filter(gone).length,
         what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
       if (n && confirm(`Remove all ${what}?`)) {
         clearVets(gone);

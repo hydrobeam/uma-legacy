@@ -499,9 +499,8 @@ const LAYERS = [
     ],
   ],
 ];
-// the imports against the layers that stand: the veterans' store draws its sample veterans' portraits (step 10b moves
-// sampleVets to the career page)
-const KNOWN_AGAINST = ['veterans/store (stores) -> images (shared)'];
+// the imports against the layers that stand (none since the veterans' store was split, step 10)
+const KNOWN_AGAINST = [];
 {
   const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
   const layerOf = (mod) => {

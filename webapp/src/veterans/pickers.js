@@ -5,9 +5,9 @@ import { careerTables, gameData } from '../data.js';
 import { umaAv } from '../images.js';
 import { winsAgenda } from '../agenda.js';
 import { must } from '../must.ts';
-import { NEW_STARS, persistSoon, changed, targetGroups, countEdit } from './store.js';
-import { umaName, skillName } from './names.js';
-/** @import { LineageNode, Sparks } from './store.js' */
+import { NEW_STARS } from './store.ts';
+import { umaName, skillName, targetGroups } from './names.js';
+/** @import { NodeRef, NodeRecord, Sparks } from './store.ts' */
 
 const allTargetsAt = (stars) => Object.fromEntries(targetGroups().map((g) => [g, stars]));
 
@@ -102,48 +102,50 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
   must(box.querySelector('.primary'), 'the prompt is made with its first choice').focus();
 }
 // the G1 wins of one node, on the schedule window's calendar (the editor in agenda.js): each win in its slot, click it to
-// remove it; an empty slot where a G1 is held lists the races held then. A pool veteran's wins are saved on each edit, and
-// the page searches again when the dialog closes. opts (the veteran analysis' draft): {offer, info, onEdit, onClose}
-// (see winsAgenda). nd.winAt {race index: turn} is where a win shows, for display only (the solver reads nd.wins).
+// remove it; an empty slot where a G1 is held lists the races held then. Each edit lands on her record as it is then
+// (`at`). A pool veteran's wins are saved on each edit, and the page searches again when the dialog closes
+// (`winsOpen`). opts (the veteran analysis' draft): {offer, info, onClose} (see winsAgenda). winAt {race index: turn} is
+// where a win shows, for display only (the solver reads `wins`).
 const allRaces = () =>
   careerTables().races.map((name, ix) => ({ ix, name, turns: (careerTables().race_turns || [])[ix] || [] }));
 /** @type {(() => void) | null} */
 let winsClose = null;
-export function openWins(nd, who, opts = {}) {
+// a pool veteran's wins window is open: the page holds its search until it closes
+const editingWins = signal(false);
+export const winsOpen = /** @type {import('@preact/signals-core').ReadonlySignal<boolean>} */ (editingWins);
+/** @param {NodeRef} at @param {string} who @param {{offer?: any, info?: any, onClose?: () => void}} [opts] */
+export function openWins(at, who, opts = {}) {
   const opener = /** @type {HTMLElement} */ (document.activeElement);
   $('wins-title').textContent = `G1 wins: ${who}`;
+  const now = () => at.node() || { wins: [], winAt: {} };
   const count = () => {
-    $('wins-count').textContent = winsText(nd);
+    $('wins-count').textContent = winsText(now());
   };
   $('wins-list').replaceChildren(
     winsAgenda({
       races: allRaces(),
-      get: () => nd.wins,
-      set: (w) => {
-        nd.wins = w;
-      },
-      at: () => (nd.winAt ||= {}),
+      get: () => now().wins,
+      at: () => now().winAt || {},
       offer: opts.offer,
       info: opts.info,
-      onEdit: () => {
+      onWins: (wins, winAt) => {
+        at.edit(() => ({ wins, winAt }));
         count();
-        (opts.onEdit || persistSoon)();
       },
     }),
   );
   count();
-  // closing: the pool searches again; the focus goes back to the button that opened it (redrawn by then: found by its key)
+  // closing: the focus goes back to the button that opened it (the views keep it)
   winsClose =
     opts.onClose ||
     (() => {
-      const k = opener?.dataset?.k;
-      changed();
-      const b = k && document.querySelector(`[data-k="${CSS.escape(k)}"]`);
-      (b || (opener?.isConnected ? opener : null))?.focus();
+      editingWins.value = false;
+      if (opener?.isConnected) opener.focus();
     });
+  if (!opts.onClose) editingWins.value = true;
   $dialog('wins-dlg').showModal();
 }
-/** @type {(nd: LineageNode) => string} */
+/** @type {(nd: {wins: readonly number[]}) => string} */
 export const winsText = (nd) =>
   nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
 $dialog('wins-dlg').addEventListener('close', () => {
@@ -166,8 +168,8 @@ function closeAdd() {
   popFor = null;
   addFor.value = null;
 }
-/** @param {HTMLElement} btn @param {LineageNode} nd @param {() => void} [onEdit] @param {boolean} [drawn] btn is a component's */
-export function openAdd(btn, nd, onEdit = changed, drawn = false) {
+/** @param {HTMLElement} btn @param {NodeRef} at @param {boolean} [drawn] btn is a component's */
+export function openAdd(btn, at, drawn = false) {
   if (popFor === btn) {
     closeAdd();
     return;
@@ -184,7 +186,8 @@ export function openAdd(btn, nd, onEdit = changed, drawn = false) {
     h.textContent = t;
     pop.appendChild(h);
   };
-  const missing = targetGroups().filter((g) => !nd.sparks[g]);
+  const sparks = /** @type {Record<number, number>} */ (at.node()?.sparks || {}),
+    missing = targetGroups().filter((g) => !sparks[g]);
   head(missing.length ? 'Target skills she lacks' : 'She has every target skill.');
   const list = document.createElement('div');
   list.className = 'addlist';
@@ -194,9 +197,8 @@ export function openAdd(btn, nd, onEdit = changed, drawn = false) {
     b.className = 'addsk';
     b.append(Object.assign(document.createElement('span'), { className: 'addn', textContent: skillName(g) }));
     b.onclick = () => {
-      nd.sparks[g] = NEW_STARS;
       closeAdd();
-      onEdit();
+      at.edit((now) => ({ sparks: { ...now.sparks, [g]: NEW_STARS } }));
     };
     list.appendChild(b);
   }
@@ -226,28 +228,15 @@ document.addEventListener('keydown', (e) => {
     b?.focus();
   }
 });
-/** @param {LineageNode} nd @param {string} who her name in the editor's title @param {string} [key] @returns {HTMLButtonElement} */
-export function winsBtn(nd, who, key = '') {
-  const w = document.createElement('button');
-  w.type = 'button';
-  w.className = 'btn vwins';
-  if (key) w.dataset.k = `${key}:wins`;
-  w.textContent = winsText(nd);
-  w.title = 'G1 wins (race affinity): click to edit';
-  w.onclick = () => openWins(nd, who);
-  w.setAttribute('aria-haspopup', 'dialog');
-  return w;
-}
-// change who a node is: pick the uma, then whether to add the target skills
-/** @param {LineageNode} nd @param {string} label */
-export function changeUma(nd, label) {
+// change who a node is: pick the uma (saved, and the page searches again), then whether to add the target skills (none
+// chosen, as Escape on the prompt: she keeps her sparks)
+/** @param {NodeRef} at @param {string} label */
+export function changeUma(at, label) {
   openUmaPicker(`${label}: which uma?`, (id) => {
-    nd.chara = id;
-    delete nd.outfit;
-    countEdit();
-    askSkills(umaName(id), Object.keys(nd.sparks).length > 0, (sp) => {
-      if (sp) nd.sparks = sp;
-      changed();
+    at.edit(() => ({ chara: id, outfit: undefined }));
+    const sparks = at.node()?.sparks || {};
+    askSkills(umaName(id), Object.keys(sparks).length > 0, (sp) => {
+      if (sp) at.edit(() => ({ sparks: sp }));
     });
   });
 }

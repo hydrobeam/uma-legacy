@@ -3,7 +3,7 @@
 // is saved, then the status, what was searched, uma.moe's orders and every listing as a card (a card opens her in the
 // veteran popup, with her trainer's followers and Copy ID), Refresh and Disconnect.
 // With a key set, the veterans uma.moe lists for the target set (parent with at least n - 1 of the n targets herself,
-// followable trainers, best covered first: one request, kept 24 h) join the pool as borrowed veterans (veterans/store.js
+// followable trainers, best covered first: one request, kept 24 h) join the pool as borrowed veterans (veterans/store.ts
 // `setListings`), so every search and plan weighs them like any other borrow. A request goes out only when the target
 // set has no answer kept (on saving the key, after a target change) or on Refresh; edits to veterans or settings never
 // send one. uma.moe lists Global veterans: on the Grand Masters-era data it is asked only for the targets Global has
@@ -11,7 +11,7 @@
 import { $, $dialog, $input, el } from './dom.js';
 import { ERA } from './saved.ts';
 import { settings } from './settings.ts';
-import { vets, setListings } from './veterans/store.js';
+import { vets, setListings } from './veterans/store.ts';
 import { umaName } from './veterans/names.js';
 import { parseListing } from './umadump.js';
 import { vetCell } from './vetcell.js';
@@ -31,7 +31,7 @@ import { must } from './must.ts';
 /**
  * What the popup needs from the career page.
  * @typedef {object} UmamoeCtx
- * @property {(v: import('./veterans/store.js').Veteran) => void} open  her veteran popup (sparks, parents, her trainer's Copy ID)
+ * @property {(v: import('./veterans/store.ts').VetRecord) => void} open  her veteran popup (sparks, parents, her trainer's Copy ID)
  */
 /** @type {UmamoeCtx} */
 let ctx;
@@ -58,7 +58,7 @@ const ago = (at) => {
 // the popup's orders, uma.moe's own: its search's order (best covered first), then by her rank, her affinity score, her
 // race wins, her white sparks' stars, the latest updated; each starts best (or latest) first, and picking the chosen one
 // again reverses it, as the umas' and cards' sort menus do; the choice is kept in this browser
-/** @type {Record<string, [string, string, (v: import('./veterans/store.js').Veteran) => number]>} */
+/** @type {Record<string, [string, string, (v: import('./veterans/store.ts').VetRecord) => number]>} */
 const SORTS = {
   match: ['Best match', 'uma.moe’s order: the best covered first', (v) => -(order.get(v.id) ?? 1e9)],
   rank: ['Rank', 'Her career rank', (v) => v.rank || 0],
@@ -108,7 +108,7 @@ function take(a, q) {
 
 // the button shows once you have a veteran of your own (a career needs one of yours beside a borrow)
 export function umamoeButton() {
-  $('um-open').hidden = !vets.some((v) => !v.borrowed);
+  $('um-open').hidden = !vets.value.some((v) => !v.borrowed);
 }
 // the popup's contents and the button's label
 function paintUmamoe() {
@@ -128,7 +128,7 @@ function paintUmamoe() {
     sign = reversed ? -1 : 1,
     list = $('um-list');
   list.textContent = '';
-  for (const v of vets.filter((x) => x.src === 'umamoe').sort((x, y) => sign * (by(y) - by(x))))
+  for (const v of vets.value.filter((x) => x.src === 'umamoe').sort((x, y) => sign * (by(y) - by(x))))
     list.appendChild(card(v));
 }
 // a listing as the game's legacy list draws a veteran, with her trainer's name; a click opens her veteran popup (her

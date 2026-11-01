@@ -76,7 +76,7 @@ function records(json) {
 // a veteran per top position ("p1", "p2", ...) with her parents at "p1-1" and "p1-2". A spark's factorId x 10 + its level
 // is the game's factor_id (master.mdb succession_factor); saddle ids are the game's win saddles. null when the text is not
 // one; its veterans count as yours (the export doesn't say)
-/** @param {string} text @returns {import('./veterans/store.js').Veteran[]|null} */
+/** @param {string} text @returns {import('./veterans/store.ts').Veteran[]|null} */
 export function parseTree(text) {
   let json;
   try {
@@ -106,7 +106,7 @@ export function parseTree(text) {
     }));
 }
 // veterans from umadump's export text; throws an Error with a message for the page when it is not an export
-/** @param {string} text @returns {import('./veterans/store.js').Veteran[]} */
+/** @param {string} text @returns {import('./veterans/store.ts').Veteran[]} */
 export function parseExport(text) {
   let json;
   try {
@@ -135,7 +135,7 @@ export function parseExport(text) {
 // A lineage listed on uma.moe's search (api/v3/search, `inheritance`): the parent at main_*, her parents at left_* and
 // right_*, each with the game's factor ids (white as a list, blue, pink and unique one each) and win saddles. A borrowed
 // veteran keyed by the listing (`u` + inheritance_id), with its lender: the trainer to follow in the game
-/** @param {any} item a search result: {account_id, trainer_name, follower_num, last_updated, inheritance} @returns {import('./veterans/store.js').Veteran} */
+/** @param {any} item a search result: {account_id, trainer_name, follower_num, last_updated, inheritance} @returns {import('./veterans/store.ts').Veteran} */
 export function parseListing(item) {
   const h = item.inheritance;
   const side = (s, card) =>
