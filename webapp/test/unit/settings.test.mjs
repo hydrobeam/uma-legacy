@@ -135,6 +135,13 @@ test('an effect runs only when a signal it names changes, never on an unrelated 
   const stops = effects();
   setRank(settings.value.rank);
   assert.deepEqual(runs, {}, 'setRank to the same rank');
+  // once the body that reads the whole record has run, setters of other fields still don't wake it: what it read
+  // subscribed it to nothing (`on` runs it untracked)
+  setPresets([{ name: 'a', groups: [1, 2] }]);
+  setRank('0.20,0.70,0.10');
+  setSort('r', 'name', 'asc');
+  setAuto(!settings.value.auto);
+  assert.equal(runs['reads everything'], 1, 'reads everything: after other setters');
   for (const stop of stops) stop();
 });
 
