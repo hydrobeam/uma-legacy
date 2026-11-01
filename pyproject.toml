@@ -4,10 +4,7 @@ version = "0"
 description = "Python side of the Legacy Loop Planner: master.mdb exporters, event builders, validation, image extraction"
 requires-python = ">=3.14"
 license = "GPL-3.0-or-later"
-dependencies = [
-    "fonttools>=4.68.0",  # subsets /about's math font to the characters its formulas use (webapp/vite/mathfont.py)
-    "brotli>=1.2.0",  # fonttools' woff2 writer
-]
+dependencies = []  # the exporters and validation use the standard library; the other tools are in the groups below
 
 [tool.uv]
 package = false

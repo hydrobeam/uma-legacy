@@ -240,7 +240,7 @@ npm_deps() {
 }
 # Vite (webapp/vite.config.mjs), then each page's first-visit size against its budget (size-limit: webapp/.size-limit.mjs)
 step_page() {
-  need_uv; need_node; need "$NEED_OPT_WASM"; check page
+  need_node; need "$NEED_OPT_WASM"; check page
   npm_deps
   (cd "$W" && npx --no-install vite build --logLevel warn && npx --no-install size-limit)
 }
