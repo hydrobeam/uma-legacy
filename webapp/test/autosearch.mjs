@@ -1,7 +1,43 @@
 import { check, open, settle, note } from './helpers.mjs';
 
+// The status line's live region (#run-note, role status): the node the parser made, its text then (empty: the region
+// exists before its first message, so that message is a change a screen reader announces) and every text it shows after
+const watchLiveRegion = () => {
+  window.__live = null;
+  new MutationObserver((_, seen) => {
+    const note = document.getElementById('run-note');
+    if (!note) return;
+    seen.disconnect();
+    const live = {
+      node: note,
+      region: `${note.getAttribute('role')} ${note.getAttribute('aria-live')}`,
+      texts: [note.textContent],
+    };
+    window.__live = live;
+    new MutationObserver(() => {
+      if (live.texts.at(-1) !== note.textContent) live.texts.push(note.textContent);
+    }).observe(note, { childList: true, characterData: true, subtree: true });
+  }).observe(document, { childList: true, subtree: true });
+};
+const liveRegion = (pg) =>
+  pg.evaluate(() => ({
+    region: window.__live?.region,
+    same: window.__live?.node === document.getElementById('run-note'),
+    texts: window.__live?.texts.map((t) => t.slice(0, 40)),
+  }));
+
 export default async function autosearch(b) {
-  const pg = await open(b);
+  const pg = await open(b, { init: watchLiveRegion });
+  const first = await liveRegion(pg);
+  check(
+    'the status line is a live region from load: empty before the first search, whose "Searching…" and result are changes to it',
+    first.region === 'status polite' &&
+      first.same &&
+      first.texts[0] === '' &&
+      first.texts.some((t) => /^Searching…/.test(t)) &&
+      /^Checked [\d,]+ decks/.test(first.texts.at(-1)),
+    JSON.stringify(first),
+  );
   // auto-search off: a change waits for the Search button; back on, it searches
   check('auto-search is on by default', await pg.locator('#x-auto').isChecked());
   await pg.click('#x-auto');
@@ -114,6 +150,19 @@ export default async function autosearch(b) {
   await settle(pg);
   check('a change mid-search restarts the worker', (await pg.evaluate(() => window.__killed)) > k0);
   check('the restarted search finishes', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)));
+  // a reload shows the kept result as done at once: its line is a change to the region the page loaded with
+  await pg.reload();
+  await settle(pg);
+  const kept = await liveRegion(pg);
+  check(
+    "… and a reload's kept result is announced: its done line is a change to the live region, empty from load",
+    kept.region === 'status polite' &&
+      kept.same &&
+      kept.texts[0] === '' &&
+      /^Checked [\d,]+ decks/.test(kept.texts.at(-1)) &&
+      (await pg.evaluate(() => window.__runs.length)) === 0,
+    JSON.stringify(kept),
+  );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
 }

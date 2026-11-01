@@ -246,7 +246,8 @@ const cycles = [];
 // lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
 const MOUNTS = {
   'src/loop/main.tsx': [
-    ['run-root', 'src/loop/RunNote.tsx', ['run-note', 'r-act'], ['runnote', 'ract']],
+    ['run-note', 'src/loop/RunNote.tsx', [], []],
+    ['r-act', 'src/loop/RunNote.tsx', [], []],
     ['rtop', 'src/loop/Results.tsx', ['c-top', 'c-top-l'], []],
     [
       'results',

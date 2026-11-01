@@ -3,7 +3,7 @@
 // The page's own modules (loop/): types.ts the report's types, state.ts the run state (signals), run.ts the search's
 // run machine, job.ts its job, io.js the export's text; the views, components drawn from the state and the settings:
 // RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
-// dialogs. Each is rendered into its mount point here (#run-root, #results, #rtop, #why-root, #ex-root).
+// dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root).
 import '../errorlog.ts'; // first: it listens before any other module runs
 import { render } from 'preact';
 import { $, $dialog, $input, backdropCloses } from '../dom.js';
@@ -15,7 +15,7 @@ import { headline, loopRun, loopView, resultsStale, settle } from './state.ts';
 import type { LoopView, RunState } from './state.ts';
 import type { DeepReadonly } from '../store.ts';
 import { createRun } from './run.ts';
-import { RunNote, noteShown, pillText } from './RunNote.tsx';
+import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
 import { initRoster, renderRoster } from '../roster.js';
 import { initTargets, renderTargets } from '../targets.js';
@@ -66,11 +66,15 @@ const loop = createRun({
   example: ERA === 'global' && EXAMPLE ? { r: EXAMPLE, settings: DEFAULTS } : null,
 });
 // ---------- the status line (RunNote.tsx), and what it marks around it: the status bar's state (its colours), the
-// results' (busy or dimmed: from other settings than these) and the phone's floating button. Shown from the first
+// results' (busy or dimmed: from other settings than these), the status line's own (busy, its tooltip) and the phone's
+// floating button. The status line (the template's live region, empty from load) is drawn from the first
 // status worth showing on (the GM era's loading, a failed load, the first search or the kept result): the example's
 // status, between showFirst and the first search, is never shown.
 function marks(run: DeepReadonly<RunState>, view: DeepReadonly<LoopView>) {
   $('rhead').dataset.kind = run.searching ? 'busy' : view.status.kind;
+  const note = $('run-note');
+  note.classList.toggle('busy', run.searching);
+  note.title = noteTitle(run);
   const results = $('results');
   results.setAttribute('aria-busy', String(run.searching));
   results.classList.toggle('stale', resultsStale.peek() && !run.searching);
@@ -80,7 +84,8 @@ function marks(run: DeepReadonly<RunState>, view: DeepReadonly<LoopView>) {
 }
 let statusShown = false;
 function showStatus() {
-  render(<RunNote stop={loop.stopSearch} />, $('run-root'));
+  render(<RunNote />, $('run-note'));
+  render(<RunAct stop={loop.stopSearch} />, $('r-act'));
   marks(loopRun.peek(), loopView.peek());
   if (!statusShown) on([loopRun, loopView], marks);
   statusShown = true;
