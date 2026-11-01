@@ -324,3 +324,15 @@ test("reported: a call moved to another module's function of the same name", asy
   };
   assert.equal(await sameCode(before, after), false);
 });
+
+test('the same code: an .mjs module with a JSDoc cast renamed to .ts with `as`', async () => {
+  const before = {
+    'main.js': "import { g } from './p.mjs';\nwindow.go = () => g();",
+    'p.mjs': 'export const g = () => /** @type {number} */ (window.v).toFixed();',
+  };
+  const after = {
+    'main.js': "import { g } from './p.ts';\nwindow.go = () => g();",
+    'p.ts': 'export const g = () => (window.v as number).toFixed();',
+  };
+  assert.equal(await sameCode(before, after), true);
+});

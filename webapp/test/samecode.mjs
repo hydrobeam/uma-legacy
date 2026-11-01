@@ -48,10 +48,11 @@ export const dropCastComments = (source) => source.replace(CAST_COMMENT, '');
 const castsDropped = {
   name: 'casts-dropped',
   setup(build) {
-    build.onLoad({ filter: /\.[jt]sx?$/ }, (args) => {
+    build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, (args) => {
       if (args.path.includes(`${path.sep}node_modules${path.sep}`)) return undefined;
       const source = fs.readFileSync(args.path, 'utf8');
-      return { contents: dropCastComments(source), loader: path.extname(args.path).slice(1) };
+      // (esbuild's loader for .mjs and .cjs is js, for .mts and .cts ts)
+      return { contents: dropCastComments(source), loader: path.extname(args.path).slice(1).replace(/^[cm]/, '') };
     });
   },
 };
