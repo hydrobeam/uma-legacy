@@ -3,15 +3,15 @@
 // or a keystroke changes the attributes it moves and redraws no tile; the list redraws only when its order changes.
 // Drawn into the template's #umas-panel (`mountRoster`).
 import { computed, signal, useComputed } from '@preact/signals';
-import { render } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { Fragment, render } from 'preact';
+import { useRef } from 'preact/hooks';
 import { $ } from '../dom.js';
 import { gameData } from '../data.js';
 import type { Outfit, Uma } from '../data.js';
 import { fields } from '../settings.ts';
 import { ownAllUmas, ownNoUmas, rosterCounts, tileOutfits, tileState, toggleTile } from '../roster.js';
 import { UmaAv } from './Images.tsx';
-import { OwnedImport } from './OwnedImport.tsx';
+import { OwnedImport, useSaid } from './OwnedImport.tsx';
 import { SettingsSort } from './SortMenu.tsx';
 import { useMoreFade } from './moreFade.ts';
 
@@ -72,7 +72,7 @@ function RosterList({ fadeMore }: { fadeMore: boolean }) {
   );
 }
 function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
-  const [said, setSaid] = useState('');
+  const [said, say] = useSaid();
   return (
     <>
       <div class="row between">
@@ -84,7 +84,7 @@ function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
           <button class="btn" id="r-none" type="button" onClick={ownNoUmas}>
             None owned
           </button>
-          <OwnedImport id="r-file" onSaid={setSaid} />
+          <OwnedImport id="r-file" onSaid={say} />
           <span class="hint cnt" id="r-count" role="status">
             {countText}
           </span>
@@ -105,7 +105,7 @@ function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
       <p class="hint">
         {'Tap a portrait to mark it owned or not owned. '}
         <span id="r-msg" role="status">
-          {said}
+          <Fragment key={said.n}>{said.text}</Fragment>
         </span>
       </p>
       <RosterList fadeMore={fadeMore} />

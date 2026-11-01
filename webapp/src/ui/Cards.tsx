@@ -5,8 +5,8 @@
 // Its pressed state and the filter's verdict are each bound to a computed, so a click, All / None or a keystroke
 // redraws no tile. Drawn into the template's #cards-panel (`mountCards`).
 import { computed, signal, useComputed } from '@preact/signals';
-import { render } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { Fragment, render } from 'preact';
+import { useRef } from 'preact/hooks';
 import { $ } from '../dom.js';
 import { SCENARIOS, gameData } from '../data.js';
 import type { Card } from '../data.js';
@@ -15,7 +15,7 @@ import { goldGiven } from '../job.js';
 import { cardGives, cardTitle, ownAllCards, ownNoCards, toggleCard } from '../cards.js';
 import type { CardGift } from '../cards.js';
 import { CardAv } from './Images.tsx';
-import { OwnedImport } from './OwnedImport.tsx';
+import { OwnedImport, useSaid } from './OwnedImport.tsx';
 import { SettingsSort } from './SortMenu.tsx';
 import { useMoreFade } from './moreFade.ts';
 
@@ -134,7 +134,7 @@ function CardList({ fadeMore }: { fadeMore: boolean }) {
   );
 }
 function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
-  const [said, setSaid] = useState('');
+  const [said, say] = useSaid();
   return (
     <>
       <div class="row between">
@@ -146,7 +146,7 @@ function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
           <button class="btn" id="c-none" type="button" onClick={ownNoCards}>
             None owned
           </button>
-          <OwnedImport id="c-file" onSaid={setSaid} />
+          <OwnedImport id="c-file" onSaid={say} />
           <span class="hint cnt" id="c-count" role="status">
             {countText}
           </span>
@@ -155,7 +155,7 @@ function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
       <p class="hint">
         {'Only cards that provide relevant skills are shown. '}
         <span id="c-msg" role="status">
-          {said}
+          <Fragment key={said.n}>{said.text}</Fragment>
         </span>
       </p>
       <div class="cwrap">
