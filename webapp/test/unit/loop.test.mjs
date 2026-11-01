@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { loadData } from '../../src/data.ts';
 import { fmtIn } from '../../src/dom.ts';
 import { gameData } from '../../src/data.ts';
-import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.js';
+import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.ts';
 import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
 import { PAUSE_MS, createRun } from '../../src/loop/run.ts';
 import { resultKeys } from '../../src/loop/keys.ts';
