@@ -12,10 +12,12 @@
 //   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
 //   purpose is listed in MAY_BE_MISSING, per page, with why An exemption whose id the page has, or that no module of the page looks
 //   up, fails too.
-// - store reads: a logic module (the types, io and model layers of LAYERS) imports no store's values: it takes the
-//   settings and records as arguments (`import type` only), so nothing it reads can subscribe an effect.
+// - store reads: a logic module (the types, io and model layers of LAYERS) reaches no store's values through any chain
+//   of imports (esbuild's metafiles: static, dynamic and re-exports, either quote): it takes the settings and records
+//   as arguments (`import type` only), so nothing it reads can subscribe an effect.
 // - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
-//   untracked); anywhere else an effect would subscribe to whatever its body happens to read.
+//   untracked); anywhere else an effect would subscribe to whatever its body happens to read. A signal's `.subscribe()`
+//   counts as one, and so does importing or re-exporting `effect`.
 // - import cycles: the page's modules import one another without a cycle beyond the two known ones (KNOWN_CYCLES,
 //   reported): in a cycle a module can run before a declaration it reads at load.
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
@@ -270,8 +272,15 @@ if (knownCycles.length)
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
 }
 // layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page
-// (a report while existing modules still break it). A value import of a store by a logic module (types, io, model) is
-// a failure.
+// (a report while existing modules still break it). A logic module (types, io, model) that reaches a store's values
+// through any chain of imports, static, dynamic or re-exported, is a failure: a shared module may read a store, so a
+// logic module's call into one could read it for it.
+// The rule's other logic (frontend.md: run machines, uma.moe sync, io) lives today inside modules that are views too, so
+// they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
+// the review of step 4 traced every such read): search.js (the loop page's run machine with its status line, split into
+// a run record and a machine that takes values), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
+// read the targets), io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
+// (the career run machine, split in step 8).
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
@@ -292,15 +301,8 @@ const LAYERS = [
     stores = LAYERS.findIndex(([layer]) => layer === 'stores');
   for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
     const from = layerOf(moduleOf(file));
-    for (const [statement, spec] of text.matchAll(
-      /(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g,
-    )) {
+    for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g)) {
       const to = layerOf(moduleOf(path.join(path.dirname(file), spec)));
-      if (logic.includes(from) && to === stores && !/^\s*(?:import|export)\s+type\b/.test(statement))
-        problems.push(
-          `${file}: imports values of the store ${moduleOf(path.join(path.dirname(file), spec))}: a logic module takes ` +
-            'the values as arguments (import type only)',
-        );
       const pages = [from, to].map((k) => LAYERS[k][0]);
       if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
         against.push(
@@ -309,6 +311,40 @@ const LAYERS = [
     }
   }
   if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
+  // the value imports among the page's modules (esbuild's metafiles, which leave out `import type`): every kind, a
+  // dynamic import() and a re-export included
+  const imports = new Map();
+  for (const meta of Object.values(metafiles))
+    for (const [file, input] of Object.entries(meta.inputs))
+      if (file.startsWith('src/'))
+        imports.set(file, [
+          ...new Set([
+            ...(imports.get(file) || []),
+            ...input.imports.map((i) => i.path).filter((f) => f.startsWith('src/')),
+          ]),
+        ]);
+  for (const file of imports.keys()) {
+    if (!logic.includes(layerOf(moduleOf(file)))) continue;
+    // the shortest import chain from `file` to a store, breadth first
+    const via = new Map([[file, null]]);
+    for (const queue = [file]; queue.length; ) {
+      const at = queue.shift();
+      if (layerOf(moduleOf(at)) === stores) {
+        const chain = [];
+        for (let f = at; f; f = via.get(f)) chain.unshift(moduleOf(f));
+        problems.push(
+          `${file}: reaches the store ${moduleOf(at)} (${chain.join(' -> ')}): a logic module takes the store's values ` +
+            'as arguments (import type only)',
+        );
+        break;
+      }
+      for (const next of imports.get(at) || [])
+        if (!via.has(next)) {
+          via.set(next, at);
+          queue.push(next);
+        }
+    }
+  }
 }
 // effects: only store.ts makes one (`on`); comments are dropped first (they name effects). A signal's `.subscribe()`
 // is an effect too, and so is a module importing or re-exporting signals' `effect` (either quote)
@@ -318,7 +354,9 @@ const LAYERS = [
     TAKES_EFFECT = /\b(?:import|export)\b[^;]*\beffect\b[^;]*from\s*['"]@preact\/signals/;
   for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && f !== path.join('src', 'store.ts')))
     if (MAKES_EFFECT.test(code(text)) || TAKES_EFFECT.test(text))
-      problems.push(`${file}: makes an effect outside store.ts's \`on\` (name its signals: on([a, b], (a, b) => ...))`);
+      problems.push(
+        `${file}: makes or passes on an effect outside store.ts's \`on\` (name its signals: on([a, b], (a, b) => ...))`,
+      );
 }
 // the type checker's `@ts-expect-error` markers: each a line a module's rename to .ts left for its strict commit
 // (a count of what the strict commits have left to remove)
