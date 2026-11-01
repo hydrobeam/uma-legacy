@@ -1,61 +1,15 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
-import { $, esc, fmtIn } from './dom.js';
-import { gameData } from './data.js';
-import { ui } from './state.js';
-import { umaAv, cardAv, skillIcon, setRunnerFrom } from './images.js';
-import { cardTitle, borLast, chainEndNote } from './cards.js';
-import { closePop, markOwn, popHasFocus } from './popover.js';
-import { pickOutfit, outfitNote } from './roster.js';
-import { openSched } from './agenda.js';
+import { $, esc, fmtIn } from '../dom.js';
+import { gameData } from '../data.js';
+import { umaAv, cardAv, skillIcon, setRunnerFrom } from '../images.js';
+import { cardTitle, borLast, chainEndNote } from '../cards.js';
+import { closePop, markOwn, popHasFocus } from '../popover.js';
+import { pickOutfit, outfitNote } from '../roster.js';
+import { openSched } from '../agenda.js';
 import { openWhy } from './affinity.js';
-import { openOdds, deckHint } from './odds.js';
-import { must } from './must.ts';
-/**
- * A deck in a result (the solver's `PDeck::out`, deck/pdeck.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
- * ` (end chain at link N)` appended where that applies; `card_ids[i]` is its id (plain pals have a name but no entry).
- * @typedef {object} ResultDeck
- * @property {string[]} cards
- * @property {number[]} card_ids
- * @property {string[]} [pal_cards] the cards in it that are pals, by name
- * @property {number[]} [end_chain_at] per card: the chain link to end its story at (0: none)
- * @property {string[]} [choices] per card: the skill to prioritise at its chain link
- * @property {{group: number, white: number, gold: number}[]} odds per target: the chance the deck hints its white, its gold
- * @property {number[]} [plain_ids] the plain pals' ids
- * @property {number} [pals] how many pals it holds
- * @property {string|null} [borrowed] the borrowed card, by name (null: none)
- *
- * A member of a loop (chart.rs `member_json`).
- * @typedef {{id: number, name: string, short: string}} LoopMember
- *
- * A loop in a result (loop_planner/search/report.rs `loop_json`); member k is `members[k]`, with `outfits[k]` and `per_trainee[k]`.
- * @typedef {object} ResultLoop
- * @property {LoopMember[]} members
- * @property {number} p_all  the chance every member lands every target
- * @property {number} p_minus1  the chance each lands all but at most one
- * @property {number} rank_value  what the results are ranked by
- * @property {{outfits: {id: number, label: string}[], covers: {group: number, level: number}[]}[]} outfits  per member: her
- *   outfits that cover a target, and what they cover
- * @property {number[]} per_trainee  per member: her chance of landing every target
- * @property {number[]} [landed]  the chance of landing exactly k targets, k = 0 ..= n, averaged over the loop's careers
- * @property {import('./agenda.js').ScheduleRow[]} schedule  the race schedule (`chart_rows`)
- * @property {{lineages: import('./affinity.js').Lineage[]}} detail  the affinity detail
- *
- * One result of the loop search: the loop and its deck.
- * @typedef {object} LoopResult
- * @property {ResultLoop} loop
- * @property {ResultDeck} deck  the deck most members share (one deck for the loop: that deck)
- * @property {ResultDeck[]} [decks]  per member, when each has her own
- *
- * The loop search's report (loop_planner/search/report.rs); a refusal is a SolverRefusal (solver.ts).
- * @typedef {object} LoopReport
- * @property {LoopResult[]} top  the best loops, best first
- * @property {boolean} per_uma  a deck per member (false: one deck for the loop)
- * @property {number} decks_built  decks the search built
- * @property {number} foursomes  loop structures the job's sizes allow
- * @property {boolean} proven  the search ended by its stop rule: no unexamined loop can win
- * @property {{rho: number, rho_target: number, complete: boolean}} exact  what the answer rests on (`exact_json`): the
- *   highest cap certified, the one sought, and whether the search ended by its stop rule
- */
+import { openOdds, deckHint } from '../odds.js';
+import { must } from '../must.ts';
+/** @import { LoopReport, LoopResult, ResultDeck, ResultLoop } from './types.ts' */
 /** @param {ResultLoop} loop */
 const loopKey = (loop) =>
   loop.members.map((m, k) => `${m.id}:${loop.outfits[k].outfits.map((o) => o.id).join('/')}`).join(' ');
@@ -374,7 +328,6 @@ export function renderDeck(res, meta) {
     refocus = popHasFocus() || box.contains(document.activeElement);
   closePop();
   box.textContent = '';
-  ui.headline = fmtIn(res.top[0].loop.p_all); // only results with loops reach this (search.js keeps errors off the page)
   setRunnerFrom(res.top[0].loop.members.map((m) => m.id)); // the runner while the next search works: one of this loop's umas
   const many = res.top.length > 1;
   res.top.forEach((t, i) => {

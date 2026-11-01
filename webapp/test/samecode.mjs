@@ -34,7 +34,7 @@ import * as esbuild from 'esbuild';
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 // each bundle's entry by the names it has had, newest first: a tree's entry is the first name it holds, so a move or a
 // rename to .ts compares the bundle across it
-const ENTRIES = [['src/main.js'], ['src/career.js'], ['src/worker.ts', 'worker.template.js']];
+const ENTRIES = [['src/loop/main.js', 'src/main.js'], ['src/career.js'], ['src/worker.ts', 'worker.template.js']];
 // what a bundle's build reads beside the sources: the tsconfig (JSX, import elision) and the package's module type; a
 // path a revision lacks (an entry's older name) is left out of its tree
 const TREE = ['webapp/src', 'webapp/worker.template.js', 'webapp/tsconfig.json', 'webapp/package.json'];

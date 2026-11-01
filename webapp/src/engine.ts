@@ -244,7 +244,7 @@ const gate = (job: SolverJob): SolverJob =>
       };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: career/plan/mod.rs `index_rule`) while it runs
-// R: the report the job's command makes (results.js LoopReport for `deck`, career.js CareerSearch for `career`)
+// R: the report the job's command makes (loop/types.ts LoopReport for `deck`, career.js CareerSearch for `career`)
 export function run<R extends SolverReport = SolverReport>(
   job: SolverJob,
   interim?: (answer: SolverAnswer<R>) => void,

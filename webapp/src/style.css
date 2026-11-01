@@ -119,7 +119,7 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
 .rcol { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; outline: none; }
 /* desktop: the results stay in view while the rail is edited. No inner scroll box (the wheel always scrolls the page):
    the column sticks at the top when it fits the window, and when it is taller it scrolls with the page until its end
-   shows, then sticks by its bottom (--rtop, set by main.js from its height); the status row stays at the top */
+   shows, then sticks by its bottom (--rtop, set by loop/main.js from its height); the status row stays at the top */
 @media (min-width: 961px) { .rcol { position: sticky; top: var(--rtop, 12px); align-self: start; } }
 /* a theme switch repaints at once: transitions (the status box fades its colours, 0.6 s late while searching) wait out
    that frame, so nothing trails the rest of the page (the light / dark switch's knob still slides) */
@@ -180,7 +180,7 @@ input[type="search"], input[type="text"] { width: 100%; }
 .ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 .ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .rtools { gap: 6px; }
-/* the roster and card boxes scroll: their bottom edge fades while there is more below (main.js sets .more) */
+/* the roster and card boxes scroll: their bottom edge fades while there is more below (loop/main.js sets .more) */
 .roster.more, .cards.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
 .sortdd { position: relative; flex: none; }
 .sortmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; min-width: 140px; background: var(--panel); border: 1px solid var(--line);
@@ -563,13 +563,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 @media (max-width: 759px) { .rb > .rbmain { order: -1; } }   /* phones: the next career first, the setup under it */
 /* the settings: one ruled strip, the planner's editors behind its buttons */
 .rbbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; border-block: 3px solid var(--ink); padding: 12px 2px; }
-.rbbar .tbtn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px 6px 10px; border: 2px solid var(--ink); border-radius: 8px;
-  color: var(--ink); font-weight: 700; font-size: 0.88rem; box-shadow: 0 2px 0 var(--ink); }   /* each opens an editor: icon, name, chevron */
-.rbbar .tbtn:hover { border-color: var(--accent); box-shadow: 0 2px 0 var(--accent); }
-.rbbar .tbtn:active { transform: translateY(2px); box-shadow: none; }
-.rbbar .tbtn::after { content: ''; width: 6px; height: 6px; margin-left: 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
-.tico { width: 18px; height: 18px; flex: none; color: var(--accent); }
-.tbtn b { font-weight: 700; margin-left: -2px; font-variant-numeric: tabular-nums; }
 .setdlg .panel { border: 0; padding: 0; }
 .setdlg .panel > .row.between > h2 { display: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 700; }
@@ -912,8 +905,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .btn:disabled { opacity: 1; color: var(--gm-off-ink); background: var(--gm-off); box-shadow: none; }
 .game .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .game .rbbar { border-block: 0; background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; padding: 12px 14px; box-shadow: 0 2px 8px var(--gm-shadow); }
-.game .rbbar .tbtn { border: 1px solid var(--gm-edge); border-radius: 999px; background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low));
-  box-shadow: inset 0 -3px 0 var(--gm-tab-edge); color: var(--gm-ink); }
 .game .seg button[aria-pressed="true"] { color: #fff; background-color: var(--gm-bright2); text-shadow: var(--gm-outline); }
 .rb .pn { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); padding: 10px 12px; }
 .rb .pn.ghost { border: 2px dashed var(--gm-green); background: var(--gm-panel); }
@@ -1325,7 +1316,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .rbbar .seg button:not([aria-pressed="true"]) { color: var(--gm-ink); }
 .game .rbbar label { color: var(--gm-ink); font-weight: 700; }
 .game .rbbar input[type="checkbox"] { accent-color: var(--gm-bright2); width: 18px; height: 18px; }
-.game .rbbar .tbtn { min-height: 44px; }
 /* the game's own buttons (resources.assets, 9-slice across only): a white rectangle for actions, the green one for the main
    action, white pills for the toolbar, the green pill for the chosen option, the game's check box. Side widths are the
    sprite's borders scaled to the button's height (rectangle 96 px tall, pill 72 px) */
@@ -1336,8 +1326,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .btn:not(.enh):hover, :root.game dialog .btn:hover { filter: brightness(1.04); border-color: transparent; }
 .game .btn:not(.enh):active, :root.game dialog .btn:active { transform: translateY(1px); box-shadow: none; }
 .game .btn:not(.enh):disabled, :root.game dialog .btn:disabled { filter: grayscale(1); opacity: .55; background: none; }
-.game .rbbar .tbtn { border: 0 solid transparent; border-radius: 0; background: none; box-shadow: none;
-  border-image: var(--pill-w, linear-gradient(#fff, #eceaf2)) 0 100 0 32 fill / 0 61px 0 20px / 0 stretch; padding: 6px 28px 9px 18px; min-height: 44px; }
 .game .seg button[aria-pressed="true"], :root.game dialog .seg button[aria-pressed="true"] { color: #fff; text-shadow: var(--gm-outline); background: none; box-shadow: none; border: 0 solid transparent;
   border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
 .game input[type="checkbox"]:not([role="switch"]), :root.game dialog input[type="checkbox"]:not([role="switch"]) { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0;
@@ -1345,7 +1333,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game input[type="checkbox"]:not([role="switch"]):checked, :root.game dialog input[type="checkbox"]:not([role="switch"]):checked { background-image: var(--chk-on, linear-gradient(#b4ec52, #7cc40d)); }
 .game input[type="checkbox"]:focus-visible, :root.game dialog input[type="checkbox"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 :root.game[data-theme="dark"] .btn:not(.enh):not(.primary), :root.game[data-theme="dark"] dialog .btn:not(.primary) { border-image-source: var(--btn-w-dark, var(--btn-w)); }
-:root.game[data-theme="dark"] .rbbar .tbtn { border-image-source: var(--pill-w-dark, var(--pill-w)); }
 :root.game[data-theme="dark"] input[type="checkbox"]:not([role="switch"]):not(:checked), :root.game[data-theme="dark"] dialog input[type="checkbox"]:not([role="switch"]):not(:checked) { background-image: var(--chk-off-dark, var(--chk-off)); }
 /* the scenario: the game's scenario select art behind its logo, on the button and on each menu tile */
 .game .scenbtn { position: relative; overflow: hidden; width: 210px; justify-items: start; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--gm-edge);

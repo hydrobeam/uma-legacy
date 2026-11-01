@@ -109,19 +109,15 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // writes itself (the theme button) and what the bundle's modules make with an id. A lookup a module makes on purpose
 // where the element may be missing is listed in MAY_BE_MISSING, under each page (its bundle's entry) where it may be,
 // with why: an exemption on one page leaves the other page's lookup checked.
-const ON_EITHER_PAGE = {
-  'o-skills-n': 'targets.js: the Target skills button, in the targets panel, which neither page uses now',
-};
 const MAY_BE_MISSING = {
-  'src/main.js': ON_EITHER_PAGE,
+  'src/loop/main.js': {},
   'src/career.js': {
-    ...ON_EITHER_PAGE,
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
     'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
     'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
   },
 };
-const PAGES = { 'src/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
+const PAGES = { 'src/loop/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
 const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
@@ -277,17 +273,17 @@ if (knownCycles.length)
 // logic module's call into one could read it for it.
 // The rule's other logic (frontend.md: run machines, uma.moe sync, io) lives today inside modules that are views too, so
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
-// the review of step 4 traced every such read): search.js (the loop page's run machine with its status line, split into
-// a run record and a machine that takes values), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
-// read the targets), io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
+// the review of step 4 traced every such read): loop/run.ts (the loop page's run machine: it changes loop/state.ts
+// through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
+// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
 // (the career run machine, split in step 8).
 const LAYERS = [
-  ['types', ['globals.d', 'must', 'solver', 'store']],
+  ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
-  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll']],
-  ['stores', ['settings', 'state', 'vets', 'career/state']],
+  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job']],
+  ['stores', ['settings', 'loop/state', 'vets', 'career/state']],
   ['shared', null], // every module not named elsewhere
-  ['page:loop', ['main', 'search', 'results', 'io', 'affinity']],
+  ['page:loop', ['loop/main', 'loop/run', 'loop/runnote', 'loop/results', 'loop/io', 'loop/affinity']],
   ['page:career', ['career', 'career/analysis', 'career/options', 'career/run']],
 ];
 {
@@ -301,7 +297,10 @@ const LAYERS = [
     stores = LAYERS.findIndex(([layer]) => layer === 'stores');
   for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
     const from = layerOf(moduleOf(file));
-    for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g)) {
+    // (a type-only import or export is left out: types are erased, so they set no load order and read no store)
+    for (const [, spec] of text.matchAll(
+      /(?:^|\n)\s*(?:import|export)\b(?!\s+type\b)[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g,
+    )) {
       const to = layerOf(moduleOf(path.join(path.dirname(file), spec)));
       const pages = [from, to].map((k) => LAYERS[k][0]);
       if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))

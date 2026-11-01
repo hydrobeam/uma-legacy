@@ -1,0 +1,82 @@
+// ---------- the loop search's job, from the settings it is given (it reads no store: the caller passes their values) ----------
+// buildJob: the job for settings `s`, or why they can't be searched (blockedStatus says it); jobKey: the key a job's
+// result is kept and recognised by; doneText: the status line of a finished search.
+import { ASSETS, gameData } from '../data.js';
+import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.js';
+import { ERA } from '../saved.ts';
+import type { SettingsView } from '../settings.ts';
+import type { LoopReport, Status } from './types.ts';
+
+/** a target as the job sends it: its skill group, and 2 when the scenario hands out its gold */
+export type JobTarget = ReturnType<typeof jobTargets>[number];
+/** the loop search's job (the solver's `deck` command, pkg/loopopt/src/web.rs). Its field order is part of its key
+ *  (jobKey), which the kept result and the suite's recorded solver replies are found by: keep it. */
+export type DeckJob = {
+  cmd: 'deck';
+  targets: JobTarget[];
+  star_dist: number[];
+  exclude: number[];
+  exclude_outfits: number[];
+  extra: number[][];
+  owned_cards: number[];
+  borrow: boolean;
+  top_decks: number;
+  per_uma: boolean;
+  scenario: string;
+  exclude_cards?: number[];
+};
+/** settings the search cannot start from: no target, or fewer than 3 umas owned (`owned` of them) */
+export type Blocked = { blocked: 'targets' } | { blocked: 'umas'; owned: number };
+export type Built = { job: DeckJob; targets: JobTarget[] } | Blocked;
+
+/** the search job for settings `s`, or why there is none */
+export function buildJob(s: SettingsView): Built {
+  if (!s.targets.length) return { blocked: 'targets' };
+  const exclude = gameData()
+    .umas.filter((u) => !isOwned(u, s))
+    .map((u) => u.id);
+  const owned = gameData().umas.length - exclude.length;
+  if (owned < 3) return { blocked: 'umas', owned };
+  const targets = jobTargets(s);
+  const job: DeckJob = {
+    cmd: 'deck',
+    targets,
+    star_dist: starDist(s),
+    ...ownedFields(s, exclude),
+    top_decks: +s.decksTop,
+    per_uma: s.perUma !== false,
+    ...scenarioFields(s),
+  };
+  return { job, targets };
+}
+/** what the status line says of blocked settings, with the button that fixes it (`loadExample`: presets.js's) */
+export const blockedStatus = (blocked: Blocked, loadExample: () => void): Status =>
+  blocked.blocked === 'targets'
+    ? {
+        kind: 'empty',
+        text: 'Add a target skill to search.',
+        act: { label: 'Load the 8/8 example targets', click: 't-preset', run: loadExample },
+      }
+    : {
+        kind: 'empty',
+        text: `Mark at least 3 umas as owned to search (${blocked.owned} owned now).`,
+        act: { label: 'Mark all umas owned', click: 'r-all' },
+      };
+// A job's result is kept with its key: the solver's and the era data's fingerprints, what is still held back for a
+// later start (data.js gameData().later) and the job, so a reload with unchanged settings finds it
+export const jobKey = (job: DeckJob) =>
+  JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], gameData().later, job]);
+
+// What the result is checked against (the solver's `exact`: rho = the cap it is certified under, rho_target the cap
+// aimed for; see the model notes on /about): nothing when fully checked, else a short caveat
+function certText(exact: LoopReport['exact'] | null | undefined) {
+  if (!exact || exact.rho >= exact.rho_target) return '';
+  if (exact.rho > 1)
+    return ` · exact check: decks within ${Math.round((1 - 1 / exact.rho) * 100)}% of it (ran out of time)`;
+  return ' · not checked exactly (ran out of time)';
+}
+/** the status line of a finished search: what it checked, in how long, and what it could not prove */
+export const doneText = (r: LoopReport, ms: number): Status => ({
+  kind: 'done',
+  text: `Checked ${r.decks_built.toLocaleString()} decks / ${r.foursomes.toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s${r.proven === false ? ' · cut short: not proven best' : ''}${certText(r.exact)}`,
+});

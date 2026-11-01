@@ -1,17 +1,16 @@
 // ---------- export / import ----------
-import { $, $dialog, $input, $textarea, fmtIn } from './dom.js';
-import { paintTop } from './cards.js';
-import { SETTINGS, ERA } from './saved.ts';
-import { SCENARIOS, RANKS, gameData } from './data.js';
-import { settings, importSettings, importToEra } from './settings.ts';
-import { ui } from './state.js';
-import { goldGiven } from './job.js';
-import { noOutfit, renderRoster, pickOutfit } from './roster.js';
-import { renderTargets } from './targets.js';
-import { mergePresets } from './presets.js';
-import { resultsStale } from './search.js';
-import { deckHint } from './odds.js';
-import { paintScen, paintRank, scenarioOf } from './scenario.js';
+import { $, $dialog, $input, $textarea, fmtIn } from '../dom.js';
+import { paintTop } from '../cards.js';
+import { SETTINGS, ERA } from '../saved.ts';
+import { SCENARIOS, RANKS, gameData } from '../data.js';
+import { settings, importSettings, importToEra } from '../settings.ts';
+import { goldGiven, isOwned } from '../job.js';
+import { renderRoster, pickOutfit } from '../roster.js';
+import { renderTargets } from '../targets.js';
+import { mergePresets } from '../presets.js';
+import { loopView, resultsStale } from './state.ts';
+import { deckHint } from '../odds.js';
+import { paintScen, paintRank, scenarioOf } from '../scenario.js';
 // a skill group's name at a level (2: its gold's, when it has one)
 const skillName = (group, level) => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: null };
@@ -26,7 +25,7 @@ function readableSettings() {
       guaranteed: goldGiven(settings.value.scen, t.group) ? 'gold' : 'no',
     })),
     umas_not_owned: gameData()
-      .umas.filter((u) => settings.value.roster[u.id] === 'out' || noOutfit(u, settings.value.outfits))
+      .umas.filter((u) => !isOwned(u, settings.value))
       .map((u) => u.name),
     cards_not_owned: gameData()
       .cards.filter((c) => settings.value.cardsOff[c.id] === false)
@@ -67,14 +66,15 @@ function exportText() {
   const readable = readableSettings();
   /** @type {Record<string, unknown> | null} */
   let results = null;
-  if (ui.lastResult) {
-    const { r, meta } = ui.lastResult;
+  const shown = loopView.value.lastResult;
+  if (shown) {
+    const { r, meta } = shown;
     results = {
       example: !!meta.example,
       decks: (r.top || []).map(resultSummary),
       decks_searched: r.decks_built,
       proven: r.proven,
-      ...(resultsStale() && { stale: true }), // from other settings than these
+      ...(resultsStale.value && { stale: true }), // from other settings than these
     };
   }
   return JSON.stringify(

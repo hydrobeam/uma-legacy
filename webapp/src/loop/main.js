@@ -1,25 +1,28 @@
 // Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
-// dist/assets/main.<hash>.js, which dist/index.html loads after its data script.
-import './errorlog.ts'; // first: it listens before any other module runs
-import { $, $dialog, $input, backdropCloses } from './dom.js';
-import { ERA } from './saved.ts';
-import { loadData } from './data.js';
-import { PRESET, jobSetup, settings, setAuto, switchEra } from './settings.ts';
-import { on } from './store.ts';
-import { ui } from './state.js';
-import { doSearch, firstResult, paintRunNote, settingsChanged } from './search.js';
-import { warmEngine } from './engine.ts';
-import { initRoster, renderRoster } from './roster.js';
-import { initTargets, renderTargets } from './targets.js';
-import { initScenario, eraScenario } from './scenario.js';
-import { initCards } from './cards.js';
-import { initOwnedImport } from './owned.js';
+// dist/assets/main.<hash>.js, which dist/loop.html loads after its data script.
+// The page's own modules (loop/): state.ts the run state (signals), run.ts the search's run machine, job.ts its job,
+// runnote.js the status line, results.js the result cards, affinity.js the affinity dialog, io.js Export and Import.
+import '../errorlog.ts'; // first: it listens before any other module runs
+import { $, $dialog, $input, backdropCloses } from '../dom.js';
+import { ERA } from '../saved.ts';
+import { EXAMPLE, loadData } from '../data.js';
+import { DEFAULTS, jobSetup, settings, setAuto, switchEra } from '../settings.ts';
+import { on } from '../store.ts';
+import { loopRun, loopView, settle } from './state.ts';
+import { createRun } from './run.ts';
+import { paintRunNote } from './runnote.js';
+import { restartEngine, run, warmEngine } from '../engine.ts';
+import { initRoster, renderRoster } from '../roster.js';
+import { initTargets, renderTargets } from '../targets.js';
+import { initScenario, eraScenario } from '../scenario.js';
+import { initCards } from '../cards.js';
+import { initOwnedImport } from '../owned.js';
 import { renderDeck } from './results.js';
-import { initPopover } from './popover.js';
+import { initPopover, markOwn } from '../popover.js';
 import { initIO } from './io.js';
-import { initSetup } from './setup.js';
-import './gmtip.js'; // the game-style tooltips (both planner pages)
-import { must } from './must.ts';
+import { loadExample } from '../presets.js';
+import { initSetup } from '../setup.js';
+import '../gmtip.js'; // the game-style tooltips (both planner pages)
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
 {
@@ -42,20 +45,41 @@ const setEra = (era) => {
 };
 $('era-global').onclick = () => setEra('global');
 $('era-gm').onclick = () => setEra('gm');
+// ---------- the search (run.ts), with what it reaches outside itself
+const loop = createRun({
+  run: (job, interim) => run(job, interim),
+  restart: restartEngine,
+  now: () => performance.now(),
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  every: (fn, ms) => setInterval(fn, ms),
+  clearTimer: (timer) => clearTimeout(timer),
+  storage: () => localStorage,
+  settings: () => settings.peek(),
+  render: (r, targets) => renderDeck(r, { targets }),
+  loadExample,
+  example: ERA === 'global' && EXAMPLE ? { r: EXAMPLE, settings: DEFAULTS } : null,
+});
+const paint = () => paintRunNote(loop.stopSearch);
+// A change of setup (the effect on settings.ts jobSetup below, or Auto-search switched on with a change pending): it
+// greys what you no longer own in the result on show at once, before the search that replaces it, and searches again
+function settingsChanged() {
+  markOwn();
+  loop.scheduleSearch();
+}
 // everything below needs the era's data (Global's from the page's data script, the GM era's fetched)
 if (ERA === 'gm') {
-  ui.status = { kind: 'loading', text: 'Loading the JP Grand Masters-era data…' };
-  paintRunNote();
+  settle({ kind: 'loading', text: 'Loading the JP Grand Masters-era data…' });
+  paint();
 } // fetched: about a second
 loadData().then(start, (e) => {
-  ui.status = { kind: 'error', text: e.message };
-  paintRunNote();
+  settle({ kind: 'error', text: e.message });
+  paint();
 });
 function start() {
   $input('x-auto').checked = settings.value.auto !== false;
   $input('x-auto').onchange = (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
     setAuto(e.target.checked);
-    if (settings.value.auto && ui.status.kind === 'pending') settingsChanged();
+    if (settings.value.auto && loopView.value.status.kind === 'pending') settingsChanged();
   }; // the switch changes no result: switching it on searches only changes made while it was off
   initScenario(); // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
@@ -100,20 +124,14 @@ function start() {
   renderRoster();
   renderTargets(); // renderTargets draws the card picker too (it lists the cards that give a target)
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
-  // (the example under other settings would show a result that isn't theirs)
-  const first = firstResult();
-  if (first) {
-    ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets });
-    ui.lastRender();
-    ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} };
-    ui.status = first.example
-      ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' }
-      : must(first.status, 'a kept result comes with its status line');
-  }
+  const first = loop.showFirst();
+  // the status line redraws on each change of the run state from here on (made after the first result: the example's
+  // status is never drawn, the first search's "Searching…" replaces it)
+  on([loopRun, loopView], paint);
   // the first search, with the saved settings (also warms the engine); none when the result on show is these settings'
   // finished search from before (it shows as done; the engine still warms for the next edit)
-  if (first && !first.example) {
+  if (first === 'kept') {
     warmEngine();
-    paintRunNote();
-  } else setTimeout(doSearch, 0);
+    paint();
+  } else setTimeout(loop.doSearch, 0);
 }
