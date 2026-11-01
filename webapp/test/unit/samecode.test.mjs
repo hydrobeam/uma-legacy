@@ -1,11 +1,11 @@
 // samecode's parts (test/samecode.mjs): its readers on small bundles shaped as esbuild writes them, and whole
-// comparisons of snippets bundled as samecode bundles them: node --test test/unit/
+// comparisons of snippets bundled as samecode bundles them: node --test 'test/unit/*.test.*' (in webapp)
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { bundle, compare, effects, listDiff, units } from '../samecode.mjs';
+import { bundle, compare, effects, listDiff, loadOrder, units } from '../samecode.mjs';
 
 const iife = (...body) => ['(() => {', ...body, '})();', ''].join('\n');
 const unitTexts = (text) => units(text).map((unit) => unit.map((t) => t.text).join(' '));
@@ -201,4 +201,84 @@ test('the same code: a module renamed to .ts, its JSDoc annotations and casts ma
     ].join('\n'),
   };
   assert.equal(await sameCode(before, after), true);
+});
+
+// Declaration order (the review of the gate fixes ran each in a vm: every after-tree behaves differently). A read at
+// load of a variable declared later is a failure of the after-tree on its own (`loadOrder`); a snapshot moved past an
+// effect that changes what it reads changes the order of the load-time steps (`compare`).
+const one = (source) => ({ 'main.js': source });
+const LOAD_ORDER = {
+  'a declaration read by an earlier one': [
+    one('const B = 1;\nconst A = B;\nwindow.a = A;'),
+    one('const A = B;\nconst B = 1;\nwindow.a = A;'),
+  ],
+  'an arrow declared after the effect whose function calls it': [
+    one('const helper = () => 1;\ninit();\nfunction init() { window.x = helper(); }'),
+    one('init();\nconst helper = () => 1;\nfunction init() { window.x = helper(); }'),
+  ],
+  'a class declared after a load-time use (esbuild makes it a var: no TDZ error)': [
+    one('class K {}\nwindow.k = new K();'),
+    one('window.k = new K();\nclass K {}'),
+  ],
+  'a constant moved into a module that another module in a cycle with it reads at load': [
+    {
+      'main.js':
+        "import { opt } from './options.js';\nimport { ROLL_K } from './consts.js';\nexport { ROLL_K };\nwindow.o = opt;",
+      'options.js': "import { ROLL_K } from './consts.js';\nexport const opt = ROLL_K * 2;",
+      'consts.js': 'export const ROLL_K = 6;',
+    },
+    {
+      'main.js': "import { opt } from './options.js';\nexport const ROLL_K = 6;\nwindow.o = opt;",
+      'options.js': "import { ROLL_K } from './main.js';\nexport const opt = ROLL_K * 2;",
+    },
+  ],
+};
+for (const [name, [before, after]] of Object.entries(LOAD_ORDER))
+  test(`read before declared, a failure: ${name}`, async () => {
+    assert.deepEqual(loadOrder(await bundleOf(before)), []);
+    const problems = loadOrder(await bundleOf(after));
+    assert.equal(problems.length, 1, JSON.stringify(problems));
+  });
+const SNAPSHOTS = {
+  'a spread snapshot moved past an effect that changes its source': [
+    one('const state = { x: 0 };\nconst SNAP = { ...state };\nstate.x = 1;\nwindow.s = SNAP;'),
+    one('const state = { x: 0 };\nstate.x = 1;\nconst SNAP = { ...state };\nwindow.s = SNAP;'),
+  ],
+  'a getter read moved past the effect that sets it': [
+    one('const o = { _v: 0, get v() { return this._v; } };\nconst V = o.v;\no._v = 5;\nwindow.v = V;'),
+    one('const o = { _v: 0, get v() { return this._v; } };\no._v = 5;\nconst V = o.v;\nwindow.v = V;'),
+  ],
+};
+for (const [name, [before, after]] of Object.entries(SNAPSHOTS))
+  test(`reported: ${name}`, async () => {
+    const [a, b] = [await bundleOf(before), await bundleOf(after)];
+    assert.deepEqual([loadOrder(a), loadOrder(b)], [[], []]);
+    const result = compare(a, b);
+    assert.deepEqual([result.gone, result.added, result.sameOrder], [[], [], false]);
+  });
+
+test('a load-order problem names the binding, both lines and modules, and the calls that read it', async () => {
+  const [problem] = loadOrder(
+    await bundleOf({
+      'main.js': "import { start } from './start.js';\nstart();\nexport const LIMIT = 3;",
+      'start.js':
+        "import { LIMIT } from './main.js';\nexport function start() { check(); }\nfunction check() { window.n = LIMIT; }",
+    }),
+  );
+  assert.equal(problem.name, 'LIMIT');
+  assert.deepEqual(
+    [problem.readModule, problem.declaredModule, problem.via],
+    ['main.js', 'main.js', ['start', 'check']],
+  );
+  assert.ok(problem.readLine < problem.declaredLine);
+});
+
+test('not read at load: a function body nobody calls at load, a listener, a property named like a variable', async () => {
+  const text = await bundleOf(
+    one(
+      'document.addEventListener("click", () => { window.x = LATE; });\n' +
+        'function later() { return LATE; }\nwindow.f = later;\nwindow.o = { LATE: 1 }.LATE;\nconst LATE = 2;',
+    ),
+  );
+  assert.deepEqual(loadOrder(text), []);
 });

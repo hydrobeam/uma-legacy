@@ -7,13 +7,20 @@
 // - each bundle has the same multiset of units, possibly in another order. A move between modules or a rename to .ts
 //   with annotations keeps every unit's text; a change inside a function (statements reordered, a branch swapped, a
 //   statement moved into or out of a block or to another function) changes the unit that holds it.
-// - its load-time effects (the units that do something when the bundle loads: anything but a function declaration or
-//   a declaration whose value is made without a call) run in the same order. Modules run in import order, so a move
-//   that changes the order of storage reads or document listeners breaks it.
+// - its load-time steps run in the same order: the units that do something when the bundle loads (anything but a
+//   function declaration or a declaration whose value is made without a call), and the declarations that read another
+//   top-level variable at load (a snapshot: `var V = o.v`, `{...state}`). Modules run in import order, so a move that
+//   changes the order of storage reads or document listeners, or moves a snapshot past an effect, breaks it.
+// And, in the HEAD tree alone, no bundle reads a top-level variable at load before its declaration has run
+// (`loadOrder`). esbuild prints top-level `const`, `let` and `class` as `var`, so such a read finds undefined (NaN, a
+// "not a function" TypeError later), never a TDZ error; and with an import cycle a move between modules can put a
+// declaration after its reader. Read at load: in a top-level statement outside the functions it defines, or in a
+// function such a statement calls by name, as far as is visible without running it.
 // A module order change also swaps esbuild's collision suffixes (GAP, GAP2), which shows as changed units: evaluation
-// order did change, so it is reported. Not compared: a declaration's place among the effects (a value declared after
-// an effect that reads it at load reads undefined), the templates, the CSS and build.py's flags.
-// --effects lists each bundle's effects. Exits 1 on any difference.
+// order did change, so it is reported. Not compared: what a function called at load reads through a method, a
+// constructor or a callback; a getter's or a function's own reads against the effects (only declarations are
+// ordered); the templates, the CSS and build.py's flags.
+// --effects lists each bundle's load-time steps. Exits 1 on any difference or misordered read.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -80,46 +87,65 @@ const regexAfter = (prev) =>
   (prev.kind === 'punct' && !/^([)\]]|\+\+|--)$/.test(prev.text)) ||
   (prev.kind === 'word' && REGEX_AFTER_WORD.test(prev.text));
 
+// the end (exclusive) of the string, template or regular expression opening at `text[at]`
+function quoteEnd(text, at) {
+  const quote = text[at];
+  let j = at + 1;
+  let inClass = false; // in a regular expression's [...]
+  for (; j < text.length; j++) {
+    const ch = text[j];
+    if (ch === '\\') j++;
+    else if (quote === '/' && ch === '[') inClass = true;
+    else if (quote === '/' && ch === ']') inClass = false;
+    else if (ch === quote && !inClass) return j + 1;
+    else if (quote === '`' && ch === '$' && text[j + 1] === '{') j = codeEnd(text, j + 2) - 1;
+  }
+  return j;
+}
+// the end (exclusive, past its `}`) of a template's `${ ... }`, from just inside it
+function codeEnd(text, at) {
+  let open = 1;
+  let j = at;
+  for (; j < text.length && open > 0; j++) {
+    const ch = text[j];
+    if (ch === '"' || ch === "'" || ch === '`') j = quoteEnd(text, j) - 1;
+    else if (ch === '{') open++;
+    else if (ch === '}') open--;
+  }
+  return j;
+}
+// a template literal's text cut at its `${ }`s: [literal, code, literal, code, ..., literal]
+function templatePieces(text) {
+  const pieces = [];
+  let from = 0;
+  for (let j = 1; j < text.length - 1; j++) {
+    if (text[j] === '\\') j++;
+    else if (text[j] === '$' && text[j + 1] === '{') {
+      const end = codeEnd(text, j + 2);
+      pieces.push(text.slice(from, j + 2), text.slice(j + 2, end - 1));
+      from = end - 1;
+      j = end - 2;
+    }
+  }
+  pieces.push(text.slice(from));
+  return pieces;
+}
+
 // The tokens of esbuild's output: {text, kind (word, string, regex or punct), depth (open brackets before it; a closing
-// bracket has its opener's), lineStart (the first token of its line), indent (its line's leading spaces)}. Strings,
-// regular expressions and template literals (with what their `${}` hold) are one token each; comments and whitespace
-// are dropped.
+// bracket has its opener's), lineStart (the first token of its line), indent (its line's leading spaces), line (from
+// 1), at (its place in the list)}. Strings, regular expressions and template literals (with what their `${}` hold) are
+// one token each; comments and whitespace are dropped.
 export function tokenize(text) {
   const tokens = [];
   let depth = 0;
   let i = 0;
   let lineStart = true;
   let indent = 0;
-  // the end (exclusive) of the string, template or regular expression opening at `at`
-  const quoteEnd = (at) => {
-    const quote = text[at];
-    let j = at + 1;
-    let inClass = false; // in a regular expression's [...]
-    for (; j < text.length; j++) {
-      const ch = text[j];
-      if (ch === '\\') j++;
-      else if (quote === '/' && ch === '[') inClass = true;
-      else if (quote === '/' && ch === ']') inClass = false;
-      else if (ch === quote && !inClass) return j + 1;
-      else if (quote === '`' && ch === '$' && text[j + 1] === '{') j = codeEnd(j + 2) - 1;
-    }
-    return j;
-  };
-  // the end (exclusive) of a template's `${ ... }`, from just inside it
-  const codeEnd = (at) => {
-    let open = 1;
-    let j = at;
-    for (; j < text.length && open > 0; j++) {
-      const ch = text[j];
-      if (ch === '"' || ch === "'" || ch === '`') j = quoteEnd(j) - 1;
-      else if (ch === '{') open++;
-      else if (ch === '}') open--;
-    }
-    return j;
-  };
+  let line = 1;
   const push = (end, kind) => {
-    tokens.push({ text: text.slice(i, end), kind, depth, lineStart, indent });
+    tokens.push({ text: text.slice(i, end), kind, depth, lineStart, indent, line, at: tokens.length });
     lineStart = false;
+    for (let j = i; j < end; j++) if (text[j] === '\n') line++; // (a template's or a comment's lines)
     i = end;
   };
   while (i < text.length) {
@@ -127,15 +153,18 @@ export function tokenize(text) {
     if (ch === '\n') {
       lineStart = true;
       indent = text.slice(i + 1).match(/^ */)[0].length;
+      line++;
       i++;
     } else if (ch === ' ' || ch === '\t' || ch === '\r') i++;
     else if (ch === '/' && text[i + 1] === '/') while (i < text.length && text[i] !== '\n') i++;
     else if (ch === '/' && text[i + 1] === '*') {
       const close = text.indexOf('*/', i + 2);
-      i = close < 0 ? text.length : close + 2;
-    } else if (ch === '"' || ch === "'" || ch === '`') push(quoteEnd(i), 'string');
+      const end = close < 0 ? text.length : close + 2;
+      for (let j = i; j < end; j++) if (text[j] === '\n') line++;
+      i = end;
+    } else if (ch === '"' || ch === "'" || ch === '`') push(quoteEnd(text, i), 'string');
     else if (ch === '/' && regexAfter(tokens.at(-1))) {
-      let end = quoteEnd(i);
+      let end = quoteEnd(text, i);
       while (end < text.length && /[a-z]/.test(text[end])) end++; // its flags
       push(end, 'regex');
     } else if (WORD.test(ch)) {
@@ -245,12 +274,192 @@ const isDeclaration = (unit) => {
   return false;
 };
 
-// The load-time effects of a bundle, in order, as text: its top-level units that are not declarations
-export const effects = (text) =>
-  units(text)
-    .slice(0, -1)
-    .filter((unit) => !isDeclaration(unit))
-    .map(join);
+// ---------- what runs at load: the top-level bindings it reads
+
+// words before a `(` that open a statement's head (`if (x) {` is a block; `f(x) {` is a method)
+const CONTROL = /^(if|for|while|switch|catch|with)$/;
+// whether the `{` at tokens[open] opens an object literal or a destructuring pattern, not a block
+const objectBrace = (tokens, open) => !/^(\)|else|try|finally|do|=>|;|\{|\})$/.test(tokens[open - 1]?.text ?? ';');
+// the bracket that holds tokens[k]: its index, or -1 at the outside
+const holderOf = (tokens, k) => {
+  let j = k - 1;
+  while (j >= 0 && !(tokens[j].depth === tokens[k].depth - 1 && '([{'.includes(tokens[j].text))) j--;
+  return j;
+};
+// whether the word at tokens[k] names a property rather than a binding: after `.` or `?.`, an object literal's key
+// (`{ k: v }`) or a method's name (`k(x) { ... }`)
+function isPropertyName(tokens, k) {
+  const [prev, next] = [tokens[k - 1]?.text, tokens[k + 1]?.text];
+  if (prev === '.' || prev === '?.') return true;
+  if (next === ':' && (prev === '{' || prev === ',')) {
+    const open = holderOf(tokens, k);
+    return open >= 0 && tokens[open].text === '{' && objectBrace(tokens, open);
+  }
+  return next === '(' && prev !== 'function' && prev !== '*' && tokens[closeOf(tokens, k + 1)]?.text === '{';
+}
+// whether the function ending at tokens[end] (exclusive) is called where it stands: `(() => { ... })()`
+const calledAt = (tokens, end) =>
+  tokens[end]?.text === '(' || (tokens[end]?.text === ')' && tokens[end + 1]?.text === '(');
+
+// Walks tokens[from, to) as they run when reached: the bodies of the functions, arrows and methods they define are
+// skipped (they run when called), one called where it stands is walked, and so is the code in a template's `${}`.
+// `visit(tokens, k, site)` gets each word that names a binding (not a property); `site`: the token whose place in the
+// bundle the read has (the word itself, or the template, or the call that ran it, as the caller passes)
+function walkLoad(tokens, from, to, visit, site = null) {
+  for (let k = from; k < to; k++) {
+    const t = tokens[k];
+    if (t.text === '=>') {
+      const end = arrowBodyEnd(tokens, k);
+      if (!calledAt(tokens, end)) k = end - 1;
+    } else if (t.kind === 'word' && t.text === 'function') {
+      let open = k + 1;
+      while (open < to && !(tokens[open].text === '{' && tokens[open].depth === t.depth)) open++;
+      const end = closeOf(tokens, open);
+      k = calledAt(tokens, end) ? open : end - 1; // (its parameters' defaults run when it is called)
+    } else if (t.text === '(') {
+      const after = closeOf(tokens, k);
+      const prev = tokens[k - 1];
+      if (tokens[after]?.text === '=>')
+        k = after - 1; // an arrow's parameters
+      else if (tokens[after]?.text === '{' && prev?.kind === 'word' && !CONTROL.test(prev.text))
+        k = closeOf(tokens, after) - 1; // a method's parameters and body
+    } else if (t.kind === 'string' && t.text[0] === '`') {
+      const pieces = templatePieces(t.text);
+      for (let j = 1; j < pieces.length; j += 2) {
+        const inner = tokenize(pieces[j]);
+        walkLoad(inner, 0, inner.length, visit, site ?? t);
+      }
+    } else if (t.kind === 'word' && !isPropertyName(tokens, k)) visit(tokens, k, site ?? t);
+  }
+}
+
+// a destructuring pattern's or a declarator's names, from tokens[k] (its first token)
+function declaredNames(tokens, k) {
+  if (tokens[k]?.kind === 'word') return [tokens[k]];
+  if (!'{['.includes(tokens[k]?.text)) return [];
+  const names = [];
+  for (let j = k + 1; j < closeOf(tokens, k) - 1; j++)
+    if (tokens[j].kind === 'word' && /^[,}\]=]$/.test(tokens[j + 1]?.text) && tokens[j - 1]?.text !== '.')
+      names.push(tokens[j]);
+  return names;
+}
+// what calling the function made by tokens[k...] runs, as [tokens, from, to), or null when they make no function: a
+// `function` expression, or an arrow with a block or an expression for its body
+function functionBody(tokens, k) {
+  let v = k;
+  if (tokens[v]?.text === 'async') v++;
+  if (tokens[v]?.text === 'function') {
+    let open = v + 1;
+    while (open < tokens.length && !(tokens[open].text === '{' && tokens[open].depth === tokens[v].depth)) open++;
+    return [tokens, open + 1, closeOf(tokens, open) - 1];
+  }
+  let arrow = -1;
+  if (tokens[v]?.kind === 'word' && tokens[v + 1]?.text === '=>') arrow = v + 1;
+  else if (tokens[v]?.text === '(' && tokens[closeOf(tokens, v)]?.text === '=>') arrow = closeOf(tokens, v);
+  if (arrow < 0) return null;
+  if (tokens[arrow + 1]?.text === '{') return [tokens, arrow + 2, closeOf(tokens, arrow + 1) - 1];
+  return [tokens, arrow + 1, arrowBodyEnd(tokens, arrow)];
+}
+
+// The top-level bindings of a bundle's units: {bindings: name -> {at, line, body}, names}. `at`: the token from which
+// it holds its value (-1 for a function declaration, which is hoisted; for a variable or a class, the end of its
+// declarator: esbuild prints top-level `const`, `let` and `class` as `var`, so a read before that finds undefined, not
+// a TDZ error); `line`: where it is declared; `body`: what a call to it runs, for a function or a variable holding one.
+// `names`: the tokens that name a binding where it is declared (not reads).
+function bindingsOf(bodyUnits) {
+  const bindings = new Map();
+  const names = new Set();
+  for (const unit of bodyUnits) {
+    const [first, second] = unit;
+    if (first.text === 'function' || (first.text === 'async' && second?.text === 'function')) {
+      let k = first.text === 'async' ? 2 : 1;
+      if (unit[k]?.text === '*') k++;
+      const [, from, to] = functionBody(unit, first.text === 'async' ? 1 : 0);
+      bindings.set(unit[k].text, { at: -1, line: unit[k].line, body: [unit, from, to] });
+      names.add(unit[k]);
+    } else if (first.text === 'class') {
+      bindings.set(second.text, { at: unit.at(-1).at, line: second.line, body: null });
+      names.add(second);
+    } else if (/^(var|let|const)$/.test(first.text))
+      for (let k = 1; k < unit.length; ) {
+        let end = k; // the declarator's end: a `,` or `;` at the unit's depth, or the unit's end
+        while (end < unit.length && !(unit[end].depth === first.depth && ',;'.includes(unit[end].text))) end++;
+        const value = unit[k + 1]?.text === '=' ? functionBody(unit, k + 2) : null;
+        for (const name of declaredNames(unit, k)) {
+          bindings.set(name.text, { at: unit[Math.min(end, unit.length - 1)].at, line: name.line, body: value });
+          names.add(name);
+        }
+        k = end + 1;
+      }
+  }
+  return { bindings, names };
+}
+
+// the module of each line of a bundle (esbuild's `  // src/x.js` lines), indexed by line number
+function modulesByLine(text) {
+  let current = '(the bundle)';
+  return [current, ...text.split('\n')].map((line) => {
+    const m = line.match(/^ {2}\/\/ (\S+)$/);
+    if (m) current = m[1];
+    return current;
+  });
+}
+
+// Each top-level variable a bundle reads at load before its declarator has run: `{name, readLine, readModule,
+// declaredLine, declaredModule, via}`. Read at load: in a top-level statement outside the functions it defines, or in
+// the body of a function such a statement calls by name (`via`: the calls, outermost first), as far as that is visible
+// without running it (a function passed to another, a method or a constructor is not followed).
+export function loadOrder(text) {
+  const bodyUnits = units(text).slice(0, -1);
+  const { bindings, names } = bindingsOf(bodyUnits);
+  const moduleOf = modulesByLine(text);
+  const problems = [];
+  const followed = new Set(); // functions walked already, from an earlier site (a later one finds nothing new)
+  const visitor = (via) => (tokens, k, site) => {
+    const word = tokens[k];
+    const binding = bindings.get(word.text);
+    if (!binding || names.has(word)) return;
+    if (binding.at > site.at)
+      problems.push({
+        name: word.text,
+        readLine: site.line,
+        readModule: moduleOf[site.line],
+        declaredLine: binding.line,
+        declaredModule: moduleOf[binding.line],
+        via,
+      });
+    if (binding.body && tokens[k + 1]?.text === '(' && !followed.has(word.text)) {
+      followed.add(word.text);
+      const [body, from, to] = binding.body;
+      walkLoad(body, from, to, visitor([...via, word.text]), site);
+    }
+  };
+  for (const unit of bodyUnits) walkLoad(unit, 0, unit.length, visitor([]));
+  return problems;
+}
+
+// one load-order problem as a line of text
+export const loadOrderText = (p) =>
+  `${p.name} is read at load on line ${p.readLine} (${p.readModule}${p.via.length ? `, in ${p.via.join('() -> ')}()` : ''}) ` +
+  `before its declaration on line ${p.declaredLine} (${p.declaredModule}) has run`;
+
+// The load-time steps of a bundle's units, in order: the units that do something when the bundle loads (not
+// declarations), and the declarations that read another top-level variable at load (a snapshot, `var V = o.v` or
+// `{...state}`: an effect that changes what it reads may not move past it)
+function stepsOf(bodyUnits) {
+  const { bindings, names } = bindingsOf(bodyUnits);
+  const readsVariable = (unit) => {
+    let found = false;
+    walkLoad(unit, 0, unit.length, (tokens, k) => {
+      const binding = bindings.get(tokens[k].text);
+      if (binding && binding.at >= 0 && !names.has(tokens[k])) found = true;
+    });
+    return found;
+  };
+  return bodyUnits.filter((unit) => !isDeclaration(unit) || readsVariable(unit));
+}
+// The load-time steps of a bundle (`stepsOf`), in order, as text
+export const effects = (text) => stepsOf(units(text).slice(0, -1)).map(join);
 
 // The difference of two lists: [entries only in a, entries only in b] (each as often as it is in excess)
 export function listDiff(a, b) {
@@ -264,9 +473,10 @@ export function listDiff(a, b) {
 // Two bundles compared: {unitCount, gone, added (units' text only in one), effectsBefore, effectsAfter, sameOrder,
 // same}
 export function compare(before, after) {
-  const [ua, ub] = [units(before).map(join), units(after).map(join)];
+  const [unitsBefore, unitsAfter] = [units(before), units(after)];
+  const [ua, ub] = [unitsBefore.map(join), unitsAfter.map(join)];
   const [gone, added] = listDiff(ua, ub);
-  const [effectsBefore, effectsAfter] = [effects(before), effects(after)];
+  const [effectsBefore, effectsAfter] = [unitsBefore, unitsAfter].map((us) => stepsOf(us.slice(0, -1)).map(join));
   const sameOrder =
     effectsBefore.length === effectsAfter.length && effectsBefore.every((e, k) => e === effectsAfter[k]);
   return {
@@ -310,7 +520,7 @@ function report(entry, result, listEffects) {
   const changed = gone.length + added.length;
   console.log(
     `${entry}: ${unitCount} top-level units, ${changed ? `${gone.length} gone and ${added.length} new` : 'the same'}; ` +
-      `${effectsAfter.length} load-time effects, ${sameOrder ? 'in the same order' : `ORDER CHANGED (${effectsBefore.length} before)`}`,
+      `${effectsAfter.length} load-time steps, ${sameOrder ? 'in the same order' : `ORDER CHANGED (${effectsBefore.length} before)`}`,
   );
   const head = (unit) => unit.split(/[{;]/)[0];
   const unpaired = [...added];
@@ -330,7 +540,7 @@ function report(entry, result, listEffects) {
     const at = k < 0 ? effectsBefore.length : k;
     const show = (e) => (e === undefined ? '(none)' : e.slice(0, 150));
     console.log(
-      `  first divergence, effect ${at + 1}:\n    before: ${show(effectsBefore[at])}\n    after:  ${show(effectsAfter[at])}`,
+      `  first divergence, step ${at + 1}:\n    before: ${show(effectsBefore[at])}\n    after:  ${show(effectsAfter[at])}`,
     );
   }
   if (listEffects) for (const e of effectsAfter) console.log(`    ${e.slice(0, 150)}`);
@@ -343,6 +553,7 @@ if (import.meta.main) {
   const base = tree(baseRev);
   const head = tree(headRev);
   let same = true;
+  let readBeforeDeclared = 0;
   // the entry's name in the tree `dir`
   const entryIn = (dir, names) => {
     const name = names.find((n) => fs.existsSync(path.join(dir, n)));
@@ -352,11 +563,16 @@ if (import.meta.main) {
   for (const names of ENTRIES) {
     const [fromName, toName] = [entryIn(base, names), entryIn(head, names)];
     const entry = fromName === toName ? toName : `${fromName} -> ${toName}`;
-    const result = compare(await bundle(base, fromName), await bundle(head, toName));
+    const headText = await bundle(head, toName);
+    const result = compare(await bundle(base, fromName), headText);
     report(entry, result, listEffects);
     same &&= result.same;
+    const misordered = loadOrder(headText);
+    for (const problem of misordered) console.log(`  READ BEFORE DECLARED: ${loadOrderText(problem)}`);
+    readBeforeDeclared += misordered.length;
   }
   for (const dir of [base, head]) if (dir !== W) fs.rmSync(path.dirname(dir), { recursive: true });
   console.log(same ? 'samecode: the same code' : 'samecode: the code differs (above)');
-  process.exit(same ? 0 : 1);
+  if (readBeforeDeclared) console.log(`samecode: ${readBeforeDeclared} read(s) at load before the declaration (above)`);
+  process.exit(same && !readBeforeDeclared ? 0 : 1);
 }

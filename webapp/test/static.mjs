@@ -15,6 +15,10 @@
 //   settings and records as arguments (`import type` only), so nothing it reads can subscribe an effect.
 // - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
 //   untracked); anywhere else an effect would subscribe to whatever its body happens to read.
+// - import cycles: the page's modules import one another without a cycle beyond the two known ones (KNOWN_CYCLES,
+//   reported): in a cycle a module can run before a declaration it reads at load.
+// - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
+//   `loadOrder`, on the bundles as samecode builds them).
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
 // against the layer order (LAYERS; a report while existing modules still break it), and the `@ts-expect-error` markers
@@ -22,6 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
+import { bundle, loadOrder, loadOrderText } from './samecode.mjs';
 
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 const read = (f) => fs.readFileSync(path.join(W, f), 'utf8');
@@ -115,6 +120,7 @@ const MAY_BE_MISSING = {
   },
 };
 const PAGES = { 'src/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
+const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
 const SELECTOR_ID = /\.(?:querySelector(?:All)?|closest|matches)\(\s*(['"])#([A-Za-z][\w-]*)\1\s*\)/g;
@@ -130,18 +136,16 @@ const fillPanels = (page) => {
 };
 const idsIn = (text) => [...text.matchAll(MADE_ID)].map((m) => m[2] || m[3]);
 const srcText = Object.fromEntries(sources.filter(([f]) => f.startsWith('src')));
-// the modules of each page's bundle (esbuild's metafile; paths as in `sources`)
+// each page's and the worker's metafile (esbuild): its modules and their imports, paths as in `sources`
+const metafiles = Object.fromEntries(
+  [...Object.keys(PAGES), WORKER].map((entry) => [
+    entry,
+    esbuild.buildSync({ entryPoints: [entry], bundle: true, write: false, metafile: true, logLevel: 'error' }).metafile,
+  ]),
+);
+// the modules of each page's bundle
 const bundled = Object.fromEntries(
-  Object.keys(PAGES).map((entry) => {
-    const meta = esbuild.buildSync({
-      entryPoints: [entry],
-      bundle: true,
-      write: false,
-      metafile: true,
-      logLevel: 'error',
-    });
-    return [entry, Object.keys(meta.metafile.inputs).filter((f) => f.startsWith('src/'))];
-  }),
+  Object.keys(PAGES).map((entry) => [entry, Object.keys(metafiles[entry].inputs).filter((f) => f.startsWith('src/'))]),
 );
 const looked = new Set();
 const dynamic = Object.values(srcText).reduce((n, text) => n + [...text.matchAll(DYNAMIC_LOOKUP)].length, 0);
@@ -164,8 +168,73 @@ for (const [entry, template] of Object.entries(PAGES)) {
   }
 }
 
+// ---------- import cycles: none but the known ones
+// Without a cycle, a module's imports run before it, so a move between modules can't put a declaration after a
+// load-time reader; within one it can (samecode checks the order of such reads in the bundles, `loadOrder`). The
+// cycles that stand today are reported until career.js and the targets panel are split; any other fails.
+const KNOWN_CYCLES = [
+  ['src/career.js', 'src/career/options.js', 'src/career/analysis.js'],
+  ['src/presets.js', 'src/targets.js'],
+];
+const cycles = [];
+{
+  // the static imports among the page's modules, over the three bundles (a dynamic import runs later: no cycle)
+  const edges = new Map();
+  for (const meta of Object.values(metafiles))
+    for (const [file, input] of Object.entries(meta.inputs))
+      if (file.startsWith('src/'))
+        edges.set(file, [
+          ...new Set([
+            ...(edges.get(file) || []),
+            ...input.imports
+              .filter((i) => i.kind === 'import-statement' && i.path.startsWith('src/'))
+              .map((i) => i.path),
+          ]),
+        ]);
+  // the strongly connected components (Tarjan's algorithm) of more than one module, or a module importing itself
+  let counter = 0;
+  const index = new Map(),
+    low = new Map(),
+    stack = [],
+    onStack = new Set();
+  const connect = (v) => {
+    index.set(v, counter);
+    low.set(v, counter++);
+    stack.push(v);
+    onStack.add(v);
+    for (const w of edges.get(v) || []) {
+      if (!index.has(w)) {
+        connect(w);
+        low.set(v, Math.min(low.get(v), low.get(w)));
+      } else if (onStack.has(w)) low.set(v, Math.min(low.get(v), index.get(w)));
+    }
+    if (low.get(v) !== index.get(v)) return;
+    const component = [];
+    for (let w = stack.pop(); ; w = stack.pop()) {
+      onStack.delete(w);
+      component.push(w);
+      if (w === v) break;
+    }
+    if (component.length > 1 || (edges.get(v) || []).includes(v)) cycles.push(component.sort());
+  };
+  for (const v of edges.keys()) if (!index.has(v)) connect(v);
+  for (const component of cycles)
+    if (!KNOWN_CYCLES.some((known) => component.every((f) => known.includes(f))))
+      problems.push(
+        `import cycle: ${component.join(', ')} import each other (a module in a cycle can run before what it imports ` +
+          'has been declared): break it',
+      );
+}
+
+// ---------- read before declared: each bundle as samecode reads it (`loadOrder`)
+for (const entry of [...Object.keys(PAGES), WORKER])
+  for (const problem of loadOrder(await bundle(W, entry))) problems.push(`${entry} bundle: ${loadOrderText(problem)}`);
+
 // ---------- reports (printed, never a failure)
 const reports = [];
+const knownCycles = cycles.filter((c) => KNOWN_CYCLES.some((known) => c.every((f) => known.includes(f))));
+if (knownCycles.length)
+  reports.push(`known import cycles (${knownCycles.length}): ${knownCycles.map((c) => c.join(' <-> ')).join('; ')}`);
 // ids in the templates that nothing names: no script, no style rule, no other markup (for=, aria-*, href="#")
 {
   const templates = ls('.', /\.template\.html$/).filter((f) => f !== 'about.template.html');
