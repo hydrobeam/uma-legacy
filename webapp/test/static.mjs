@@ -109,13 +109,9 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // writes itself (the theme button) and what the bundle's modules make with an id. A lookup a module makes on purpose
 // where the element may be missing is listed in MAY_BE_MISSING, under each page (its bundle's entry) where it may be,
 // with why: an exemption on one page leaves the other page's lookup checked.
-const ON_EITHER_PAGE = {
-  'o-skills-n': 'targets.js: the Target skills button, in the targets panel, which neither page uses now',
-};
 const MAY_BE_MISSING = {
-  'src/loop/main.js': ON_EITHER_PAGE,
+  'src/loop/main.js': {},
   'src/career.js': {
-    ...ON_EITHER_PAGE,
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
     'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
     'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
