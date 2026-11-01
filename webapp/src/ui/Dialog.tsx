@@ -31,7 +31,10 @@ export function Dialog({ id, cls, labelledBy, open, onClose, children }: DialogP
       id={id}
       class={cls}
       aria-labelledby={labelledBy}
-      onClose={onClose}
+      onClose={(e) => {
+        // (a close event is queued: one that arrives after the dialog was opened again is stale)
+        if (!e.currentTarget.open) onClose();
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
