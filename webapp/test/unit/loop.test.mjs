@@ -7,7 +7,9 @@ import fs from 'node:fs';
 import { test } from 'node:test';
 import { loadData } from '../../src/data.js';
 import { fmtIn } from '../../src/dom.js';
-import { blockedStatus, buildJob } from '../../src/loop/job.ts';
+import { gameData } from '../../src/data.js';
+import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.js';
+import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
 import { PAUSE_MS, createRun } from '../../src/loop/run.ts';
 import { headline, initLoopState, loopRun, loopView, resultsStale } from '../../src/loop/state.ts';
 import {
@@ -508,6 +510,30 @@ test("golden jobs: each fixture's job byte-identical to 9307950's, the blocked o
       );
     }
     assert.equal(settings.peek(), record, 'buildJob writes no setting');
+  }
+});
+
+// the key a finished result is kept under (and the suite's replies are found by): the fingerprints, then the job; the
+// Grand Masters era's under its own data's fingerprint
+test("golden job keys: the defaults' job keyed as recorded, in both eras", () => {
+  page();
+  const { job } = buildJob(settings.peek());
+  assert.equal(jobKey(job), GOLDEN.defaults.key);
+  assert.equal(jobKey(job, 'gm'), GOLDEN.defaults.keyGm);
+});
+
+// the career page's job carries the same shared fields (job.js), in its own order: owned, then the rank, then the
+// scenario (career.js builds it; this pins what the helpers give it and that order, from 4ef2a4b)
+test("golden career fields: each fixture's shared career-job fields as recorded", () => {
+  for (const [name, saved] of Object.entries(FIXTURES)) {
+    if (!GOLDEN[name].career) continue;
+    page({ saved });
+    const s = settings.peek();
+    const exclude = gameData()
+      .umas.filter((u) => !isOwned(u, s))
+      .map((u) => u.id);
+    const fields = { ...ownedFields(s, exclude), star_dist: starDist(s), ...scenarioFields(s) };
+    assert.equal(JSON.stringify(fields), GOLDEN[name].career, name);
   }
 });
 
