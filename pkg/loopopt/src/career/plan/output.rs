@@ -10,7 +10,7 @@ use crate::career::plan::report::{
 };
 use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept, roll_key};
 use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, pick_of};
-use crate::career::plan::score::{KeptScoring, counter};
+use crate::career::plan::score::{KeptScoring, Truncation, replace_truncations};
 use crate::career::plan::{PlanCandidates, PlanContext, PlanProfile, PlanSearches};
 use crate::career::search::Assumes;
 use crate::career::search::Found;
@@ -207,14 +207,11 @@ pub(crate) fn assemble_plan_output<'data>(
         .map(|&uma| UmaName { id: data.umas[uma].id, name: data.umas[uma].name.clone() })
         .collect();
     let prof = PROF.with(|p| std::mem::take(&mut *p.borrow_mut()));
-    // (routes the scorings' memory budget left out, `OUTCOME_BUDGET`: each lowers that row's saving, never raises it)
-    let routes_dropped = prof.get(counter::ROUTES_DROPPED).copied().unwrap_or(0.0);
-    // (of the routes left out, those no check cleared, `ShadowRoute`: each could have lowered a row's V after her)
-    let uncertified = prof.get(counter::ROUTES_DROPPED_UNCERTIFIED).copied().unwrap_or(0.0);
-    // (false where the memory budget left out something that could move a score: a route no batch could hold, or a
-    // partner setup `fit_partner_setups` dropped; each only lowers a row's saving, so the savings are then lower bounds,
-    // not the model's. A route left out with its check cleared, `routes_dropped` less these, moves no score)
-    let partners_dropped = prof.get(counter::PARTNER_SETUPS_DROPPED).copied().unwrap_or(0.0);
+    // (what the plan's scorings' memory budget left out, `OUTCOME_BUDGET`: routes, each lowering that row's saving, never
+    // raising it, and of those the ones no check cleared, `ShadowRoute`, each of which could have lowered a row's V
+    // after her; the plan's scoring is complete where neither an uncertified route nor a partner setup was left out,
+    // `Truncation::is_complete`, else its savings are lower bounds, not the model's)
+    let truncation = replace_truncations(Truncation::default());
     let mut work = scores.work.clone();
     work.prof = prof;
     // a roll sent with the plan job (`next.roll`) when the worker kept no roll state for it: answered from the state just
@@ -257,9 +254,9 @@ pub(crate) fn assemble_plan_output<'data>(
         index_ms: scores.index_ms,
         total_ms: now_ms() - profile.started_ms,
         options,
-        routes_dropped,
-        routes_dropped_uncertified: uncertified,
-        scoring_complete: uncertified == 0.0 && partners_dropped == 0.0,
+        routes_dropped: truncation.routes_dropped as f64,
+        routes_dropped_uncertified: truncation.routes_dropped_uncertified as f64,
+        scoring_complete: truncation.is_complete(),
         roll,
         oracle: None,
         pair_sweep: None,

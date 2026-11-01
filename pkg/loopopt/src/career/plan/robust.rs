@@ -17,7 +17,7 @@ use crate::career::plan::report::{
 };
 use crate::career::plan::rows::{PickRows, PlanPick, PlanRow, pick_of, search_floor};
 use crate::career::plan::score::FinisherChoice;
-use crate::career::plan::score::{counter as score_counter, score_career};
+use crate::career::plan::score::{Truncation, counter as score_counter, replace_truncations, score_career};
 use crate::career::plan::search::{OPT_SHOW, sim_for};
 use crate::career::plan::sweep::deck_odds;
 use crate::career::plan::{CheckRequest, PlanCandidates, PlanContext, PlanJob, ScoringContext, found_career};
@@ -187,6 +187,9 @@ pub(crate) struct CheckKeep {
     /// Per variant done, its report (the plan's model first; its `pick` a place in the rows), and the rows the
     /// variants picked (the plan's first).
     entries: Vec<VariantReport>,
+    /// Whether every variant's scorings so far were complete (`VariantPick::truncations`; the plan's own entry has
+    /// none, `next.scoring_complete` reports it).
+    variants_complete: bool,
     contenders: Vec<usize>,
     /// The variants this check runs, in order (`fixed_variants`, then `differential_variants`).
     variants: Vec<CheckVariant>,
@@ -368,6 +371,7 @@ pub(crate) fn keep_check(
         row_ids,
         plan_place: draft.plan_place,
         entries: vec![plan_entry],
+        variants_complete: true,
         variants: fixed_variants().into_iter().chain(differential_variants(&draft, planned_pick.pick)).collect(),
         contenders: vec![planned_pick.pick],
         differential_picks: vec![],
@@ -396,20 +400,10 @@ struct VariantPick {
     margin: f64,
     /// Every shown row's score, in the plan's row order.
     scores: Vec<f64>,
-    /// The scorings' truncations (`build::score_career`'s `sc_routes_dropped` (and of those the uncertified ones),
-    /// and `sc_partner_setups_dropped`: routes and partner setups the memory budget left out, each lowering a row's saving, never raising it), summed over the
-    /// rows; None for the plan's own scores, made during the plan. A variant's pick that moves with them can be the
-    /// budget's, not the model's
-    truncations: Option<Truncations>,
-}
-
-/// The memory budget's truncations over a variant's scorings (`VariantPick::truncations`).
-#[derive(Clone, Copy)]
-struct Truncations {
-    routes_dropped: f64,
-    /// Of those, the ones no check cleared (`sc_routes_dropped_uncertified`, `ShadowRoute`).
-    routes_dropped_uncertified: f64,
-    partner_setups_dropped: f64,
+    /// The scorings' truncations (`score::Truncation`: routes and partner setups the memory budget left out, each
+    /// lowering a row's saving, never raising it), summed over the rows; None for the plan's own scores, made during
+    /// the plan. A variant's pick that moves with them can be the budget's, not the model's
+    truncations: Option<Truncation>,
 }
 
 /// The strict argmax (`PickRows::argmax`) over the shown rows at `scores`, in the plan's row order (every shown row can
@@ -462,9 +456,9 @@ fn variant_entry(
         score: pick.score,
         margin: pick.margin,
         scores: pick.scores.clone(),
-        routes_dropped: pick.truncations.map(|t| t.routes_dropped),
-        routes_dropped_uncertified: pick.truncations.map(|t| t.routes_dropped_uncertified),
-        partner_setups_dropped: pick.truncations.map(|t| t.partner_setups_dropped),
+        routes_dropped: pick.truncations.map(|truncation| truncation.routes_dropped as f64),
+        routes_dropped_uncertified: pick.truncations.map(|truncation| truncation.routes_dropped_uncertified as f64),
+        partner_setups_dropped: pick.truncations.map(|truncation| truncation.partner_setups_dropped as f64),
     }
 }
 
@@ -475,42 +469,23 @@ pub(crate) fn aside<T>(simulator: &mut Sim, run: impl FnOnce(&mut Sim) -> T) -> 
     aside_counted(simulator, run).0
 }
 
-/// `aside`, and the profile counters `run` added (`PROF`), which the plan's are not.
-fn aside_counted<T>(simulator: &mut Sim, run: impl FnOnce(&mut Sim) -> T) -> (T, ProfileCounters) {
+/// `aside`, and the truncations of the scorings `run` made (the thread's tally, `score::replace_truncations`), which the plan's are not;
+/// the plan's profile counters and truncations are put back after it.
+fn aside_counted<T>(simulator: &mut Sim, run: impl FnOnce(&mut Sim) -> T) -> (T, Truncation) {
     let plan_profile = PROF.with(|counters| std::mem::take(&mut *counters.borrow_mut()));
+    let plan_truncations = replace_truncations(Truncation::default());
     simulator.evaluator.frozen = true;
     let result = run(simulator);
     simulator.evaluator.frozen = false;
-    let run_profile = PROF.with(|counters| std::mem::replace(&mut *counters.borrow_mut(), plan_profile));
-    (result, run_profile)
+    PROF.with(|counters| *counters.borrow_mut() = plan_profile);
+    (result, replace_truncations(plan_truncations))
 }
 
-/// `aside`, and whether the scorings `run` made were complete (`scoring_complete_of` over the counters it added): what
-/// a diagnostic that scores beside the plan (the oracles, the pair sweep, the ascent) reports of its own scorings.
+/// `aside`, and whether the scorings `run` made were complete (`Truncation::is_complete`, over every one of them):
+/// what a diagnostic that scores beside the plan (the oracles, the pair sweep, the ascent) reports of its own scorings.
 pub(crate) fn aside_complete<T>(simulator: &mut Sim, run: impl FnOnce(&mut Sim) -> T) -> (T, bool) {
-    let (result, counters) = aside_counted(simulator, run);
-    (result, scoring_complete_of(&counters))
-}
-
-/// The two counters `scoring_complete_of` reads, summed, as this run's profile holds them so far: a scoring is complete
-/// where the sum does not move across it (`ascent::pair_decompose`, per row).
-pub(crate) fn incompleteness_so_far() -> f64 {
-    PROF.with(|counters| {
-        let counters = counters.borrow();
-        let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
-        counter(score_counter::ROUTES_DROPPED_UNCERTIFIED) + counter(score_counter::PARTNER_SETUPS_DROPPED)
-    })
-}
-
-/// A run's profile counters by name (`clock::PROF`'s map).
-type ProfileCounters = std::collections::BTreeMap<&'static str, f64>;
-
-/// Whether a run's scorings were complete (`ProfileCounters` of it): no route no batch could hold and no partner setup
-/// left out for memory (`sc_routes_dropped_uncertified`, `sc_partner_setups_dropped`; the plan's own: output.rs
-/// `scoring_complete`). Where false, its scores are lower bounds, not the model's
-fn scoring_complete_of(counters: &ProfileCounters) -> bool {
-    let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
-    counter(score_counter::ROUTES_DROPPED_UNCERTIFIED) == 0.0 && counter(score_counter::PARTNER_SETUPS_DROPPED) == 0.0
+    let (result, truncation) = aside_counted(simulator, run);
+    (result, truncation.is_complete())
 }
 
 impl CheckWork {
@@ -537,22 +512,19 @@ impl CheckWork {
         let score_base = variant.score_base(&self.candidates, self.fit.knobs);
         let scoring = ScoringContext { score_base: &score_base, legacies: pool.legacies, pool: pool.pool };
         let mut buf = vec![];
-        let (scores, counters): (Vec<f64>, _) = aside_counted(simulator, |simulator| {
+        let mut truncations = Truncation::default();
+        let scores: Vec<f64> = aside(simulator, |simulator| {
             self.draft
                 .rows
                 .iter()
                 .map(|row| {
                     let career = found_career(row.trainee, &row.career);
-                    score_career(simulator, &scoring, career, Want::Score, &mut buf).expected_saving - 1.0
+                    let scored = score_career(simulator, &scoring, career, Want::Score, &mut buf);
+                    truncations = truncations.plus(scored.truncation);
+                    scored.expected_saving - 1.0
                 })
                 .collect()
         });
-        let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
-        let truncations = Truncations {
-            routes_dropped: counter(score_counter::ROUTES_DROPPED),
-            routes_dropped_uncertified: counter(score_counter::ROUTES_DROPPED_UNCERTIFIED),
-            partner_setups_dropped: counter(score_counter::PARTNER_SETUPS_DROPPED),
-        };
         let pick = VariantPick { truncations: Some(truncations), ..pick_among(&self.draft, &scores) };
         (variant.current_value, pick)
     }
@@ -829,7 +801,7 @@ impl CheckWork {
         let fits = PairSearchFits { nominal: &nominal, corners: &corners, pool };
         let mut buf = vec![];
         let mut memo: crate::career::plan::combine::PairMemo = crate::FxMap::default();
-        let ((reports, shared, skipped, verdict), counters) = aside_counted(simulator, |simulator| {
+        let ((reports, shared, skipped, verdict), truncation) = aside_counted(simulator, |simulator| {
             // Phase 1: the trainees in order, a "top" one only where the estimated outcomes admitted stay within
             // PAIR_SEARCH_OUTCOMES (`admitted_trainees`: deterministic estimates, not time or the order work was done)
             let estimates: Vec<f64> = trainees
@@ -865,7 +837,7 @@ impl CheckWork {
             skipped_for_work: skipped,
             pair_bound: PAIR_SEARCH_PAIRS,
             pairs_ms: now_ms() - started_ms,
-            scoring_complete: scoring_complete_of(&counters),
+            scoring_complete: truncation.is_complete(),
         }
     }
     /// The pair search's verdict (`pair_search`, the page's `pairSearchNotes`). `best`: the best (trainee, pair) by score
@@ -1345,6 +1317,7 @@ impl CheckKeep {
         if matches!(variant.kind, VariantKind::Differential) && !self.differential_picks.contains(&pick.pick) {
             self.differential_picks.push(pick.pick);
         }
+        self.variants_complete &= pick.truncations.is_none_or(Truncation::is_complete);
         let setting = VariantSetting { shape: variant.shape, scales: variant.scales };
         self.entries.push(variant_entry(variant.kind.name(), setting, current_value, pick, &self.row_ids));
     }
@@ -1369,18 +1342,11 @@ impl CheckKeep {
             pairs_error: None,
         }
     }
-    /// Whether every scoring of the check so far was complete (`scoring_complete_of`): each variant's (its truncations;
-    /// the plan's own entry has none, `next.scoring_complete` reports it) and the pair search's where it ran. The
-    /// page and val/planval.py read it beside the plan's, since the check's recommendation and contenders rest on them
+    /// Whether every scoring of the check so far was complete (`Truncation::is_complete`): each variant's
+    /// (`variants_complete`) and the pair search's where it ran. The page and val/planval.py read it beside the plan's,
+    /// since the check's recommendation and contenders rest on them
     fn scoring_complete(&self) -> bool {
-        // (a count JSON could not hold, not finite, counts as none, as when the entries were read back as JSON)
-        let none_left = |count: Option<f64>| count.is_none_or(|count| !count.is_finite() || count == 0.0);
-        let variants_complete = self
-            .entries
-            .iter()
-            .all(|entry| none_left(entry.routes_dropped_uncertified) && none_left(entry.partner_setups_dropped));
-        let pairs_complete = self.pairs.as_ref().is_none_or(|pairs| pairs.scoring_complete);
-        variants_complete && pairs_complete
+        self.variants_complete && self.pairs.as_ref().is_none_or(|pairs| pairs.scoring_complete)
     }
 }
 
@@ -1512,6 +1478,7 @@ mod tests {
             row_ids: vec!["a".into(), "b".into(), "c".into()],
             plan_place: 0,
             entries: vec![],
+            variants_complete: true,
             contenders,
             variants: vec![],
             differential_picks: vec![],
