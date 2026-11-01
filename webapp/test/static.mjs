@@ -11,6 +11,10 @@
 //   template with the panels filled in, in build.py's own markup or made by one of the bundle's modules. A module that
 //   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
 //   purpose is listed in MAY_BE_MISSING, per page, with why.
+// - store reads: a logic module (the types, io and model layers of LAYERS) imports no store's values: it takes the
+//   settings and records as arguments (`import type` only), so nothing it reads can subscribe an effect.
+// - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
+//   untracked); anywhere else an effect would subscribe to whatever its body happens to read.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
 // against the layer order (LAYERS; a report while existing modules still break it), and the `@ts-expect-error` markers
@@ -187,12 +191,13 @@ const reports = [];
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
 }
 // layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page
-// (a report while existing modules still break it)
+// (a report while existing modules still break it). A value import of a store by a logic module (types, io, model) is
+// a failure.
 const LAYERS = [
-  ['types', ['globals.d', 'must', 'solver']],
-  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker']],
+  ['types', ['globals.d', 'must', 'solver', 'store']],
+  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
   ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll']],
-  ['stores', ['settings', 'state', 'save', 'vets']],
+  ['stores', ['settings', 'state', 'vets']],
   ['shared', null], // every module not named elsewhere
   ['page:loop', ['main', 'search', 'results', 'io', 'affinity']],
   ['page:career', ['career', 'career/analysis', 'career/options']],
@@ -204,10 +209,19 @@ const LAYERS = [
     return k < 0 ? LAYERS.findIndex(([, mods]) => mods === null) : k;
   };
   const against = [];
+  const logic = ['types', 'io', 'model'].map((name) => LAYERS.findIndex(([layer]) => layer === name)),
+    stores = LAYERS.findIndex(([layer]) => layer === 'stores');
   for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
     const from = layerOf(moduleOf(file));
-    for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g)) {
+    for (const [statement, spec] of text.matchAll(
+      /(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g,
+    )) {
       const to = layerOf(moduleOf(path.join(path.dirname(file), spec)));
+      if (logic.includes(from) && to === stores && !/^\s*(?:import|export)\s+type\b/.test(statement))
+        problems.push(
+          `${file}: imports values of the store ${moduleOf(path.join(path.dirname(file), spec))}: a logic module takes ` +
+            'the values as arguments (import type only)',
+        );
       const pages = [from, to].map((k) => LAYERS[k][0]);
       if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
         against.push(
@@ -216,6 +230,13 @@ const LAYERS = [
     }
   }
   if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
+}
+// effects: only store.ts makes one (`on`); comments are dropped first (they name effects)
+{
+  const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && f !== path.join('src', 'store.ts')))
+    if (/\beffect\s*\(/.test(code(text)) || /\bimport\b[^;]*\beffect\b[^;]*from\s*'@preact\/signals/.test(text))
+      problems.push(`${file}: makes an effect outside store.ts's \`on\` (name its signals: on([a, b], (a, b) => ...))`);
 }
 // the type checker's `@ts-expect-error` markers: each a line a module's rename to .ts left for its strict commit
 // (a count of what the strict commits have left to remove)
