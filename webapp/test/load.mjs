@@ -290,10 +290,10 @@ export default async function load(b) {
     (await pg.getAttribute('#g-20049', 'data-g')) === '0' && (await pg.getAttribute('#g-20046', 'data-g')) === '0',
   );
   await pg.click('#t-preset');
-  await pg.locator('#pr-list .prow').first().locator('button', { hasText: 'Load' }).click();
+  await pg.locator('#pr-list [role="group"]').first().locator('button', { hasText: 'Load' }).click();
   check(
     '8/8 example under URA: eight targets, no guaranteed golds',
-    (await pg.locator('#targets .tgt').count()) === 8 && (await pg.getAttribute('#g-20049', 'data-g')) === '0',
+    (await pg.locator('#targets > [data-g]').count()) === 8 && (await pg.getAttribute('#g-20049', 'data-g')) === '0',
   );
   // a saved preset: kept across a reload, and an import adds its presets to yours instead of replacing them. Saving it
   // starts no search and leaves the one under way running (its replies held, so it is under way: a search started anew
@@ -303,7 +303,11 @@ export default async function load(b) {
     window.__hold = true;
     return window.__runs.length;
   });
-  await pg.locator('#targets .tgt .x').first().click();
+  await pg
+    .locator('#targets')
+    .getByRole('button', { name: /^Remove / })
+    .first()
+    .click();
   await jobSent(pg, (n) => window.__runs.length > n, runs0);
   await pg.click('#t-preset');
   await pg.click('#pr-save');
@@ -317,7 +321,10 @@ export default async function load(b) {
     `jobs sent, workers killed: ${before} -> ${after}`,
   );
   await pg.evaluate(() => window.__release());
-  check('a saved preset is the current one', (await pg.locator('#pr-list .prow.cur .pname').textContent()) === 'Seven');
+  check(
+    'a saved preset is the current one',
+    (await pg.locator('#pr-list [role="group"]', { hasText: 'current' }).getAttribute('aria-label')) === 'Seven',
+  );
   await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await pg.reload();
   await jobSent(pg, () => window.__runs.length > 0);
@@ -328,7 +335,9 @@ export default async function load(b) {
   await pg.click('#t-preset');
   check(
     'presets survive a reload',
-    (await pg.locator('#pr-list .pname').allTextContents()).join('|') === '8/8 example|Seven',
+    (
+      await pg.locator('#pr-list [role="group"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('aria-label')))
+    ).join('|') === '8/8 example|Seven',
   );
   await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await pg.click('#ex-open');
@@ -343,7 +352,9 @@ export default async function load(b) {
   await pg.click('#t-preset');
   check(
     'an import merges presets',
-    (await pg.locator('#pr-list .pname').allTextContents()).join('|') === '8/8 example|Seven|Seven (imported)|Other',
+    (
+      await pg.locator('#pr-list [role="group"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('aria-label')))
+    ).join('|') === '8/8 example|Seven|Seven (imported)|Other',
   );
   await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await pickScen(pg, 'unity');

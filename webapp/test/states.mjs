@@ -43,7 +43,17 @@ export default async function states(b) {
   await settle(pg);
   await expect.soft(runNote, '… and the next search runs').toHaveText(/^Checked [\d,]+ decks/);
   await closeEditor(pg, 'cards');
-  while (await pg.locator('#targets .x').count()) await pg.locator('#targets .x').first().click();
+  while (
+    await pg
+      .locator('#targets')
+      .getByRole('button', { name: /^Remove / })
+      .count()
+  )
+    await pg
+      .locator('#targets')
+      .getByRole('button', { name: /^Remove / })
+      .first()
+      .click();
   await kind(pg, 'empty');
   const noTargets =
     'no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed';
@@ -53,7 +63,7 @@ export default async function states(b) {
   await expect.soft(results, `${noTargets}: … dimmed`).toContainClass('stale');
   // a preset is never emptied: with no targets, Overwrite is off on every preset
   await pg.click('#t-preset');
-  const overwrite = await pg.$$eval('#pr-list .prow button', (l) =>
+  const overwrite = await pg.$$eval('#pr-list [role="group"] button', (l) =>
     l.filter((x) => x.textContent === 'Overwrite').map((x) => x.disabled),
   );
   await pg.locator('#preset-dlg').getByRole('button', { name: 'Done', exact: true }).click();
@@ -65,7 +75,7 @@ export default async function states(b) {
   await pg.click('#r-act button');
   await settle(pg);
   const loaded = '… the button loads them and the search runs';
-  await expect.soft(pg.locator('#targets .tgt'), loaded).toHaveCount(8);
+  await expect.soft(pg.locator('#targets > [data-g]'), loaded).toHaveCount(8);
   await expect.soft(rhead, `${loaded}: done`).toHaveAttribute('data-kind', 'done');
   await expect.soft(runNote, `${loaded}: the status`).toHaveText(/^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/);
   await expect.soft(results, `${loaded}: not dimmed`).not.toContainClass('stale');

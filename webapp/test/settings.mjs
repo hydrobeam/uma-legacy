@@ -62,13 +62,13 @@ export default async function settings(b) {
   await expect
     .soft(pg.locator('#ex-msg'), 'import: a malformed setting is named')
     .toHaveText(/Not understood, so left as they were: targets\.$/);
-  await expect.soft(pg.locator('#targets .tgt'), '… and left as it was').toHaveCount(8);
+  await expect.soft(pg.locator('#targets > [data-g]'), '… and left as it was').toHaveCount(8);
   await expect.soft(pg.locator('#rank'), '… the others load').toHaveAttribute('data-value', '0.20,0.70,0.10');
   await pg.click('#ex-close');
   await settle(pg);
   await pg.reload();
   await settle(pg);
-  await expect.soft(pg.locator('#targets .tgt'), '… and the page loads after it: its targets').toHaveCount(8);
+  await expect.soft(pg.locator('#targets > [data-g]'), '… and the page loads after it: its targets').toHaveCount(8);
   await expect.soft(pg.locator('#results .loop').first(), '… and its results').toBeAttached();
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();

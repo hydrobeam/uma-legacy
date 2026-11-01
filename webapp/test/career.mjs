@@ -278,17 +278,17 @@ export default async function career(b) {
       "career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner's editor)";
     const setup = pg.getByRole('region', { name: 'Career setup' });
     await expect.soft(setup.locator('#o-umas, #o-cards'), `${name}: the Enhance buttons`).toHaveCount(2);
-    await expect.soft(setup.locator('#skills-panel #targets .tgt'), `${name}: the targets`).toHaveCount(8);
+    await expect.soft(setup.locator('#skills-panel #targets > [data-g]'), `${name}: the targets`).toHaveCount(8);
     await expect.soft(pg.locator('#o-skills, #set-skills'), `${name}: no Target skills dialog`).toHaveCount(0);
   }
   // the presets popup inside that panel lays out as on the planner: one column, its tiles the dialog's width, the buttons under them
   await pg.click('#t-preset');
-  await pg.locator('#pr-list .pview').first().click();
+  await pg.locator('#pr-list button[aria-haspopup="dialog"]').first().click();
   const pv = await pg.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect(),
       d = r('#pr-view .dlg'),
       t = r('#prv-tiles'),
-      f = r('#pr-view .prfoot');
+      f = document.getElementById('prv-rename').parentElement.getBoundingClientRect();
     return {
       cols: getComputedStyle(document.querySelector('#pr-view .dlg')).gridTemplateColumns.split(' ').length,
       wide: t.width > d.width - 60,

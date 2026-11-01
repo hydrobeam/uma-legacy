@@ -11,6 +11,7 @@ import { test, vi } from 'vitest';
 import 'preact/debug';
 import '@preact/signals';
 import { h, options, render } from 'preact';
+import { within } from '@testing-library/dom';
 import * as S from '../../src/settings.ts';
 import * as P from '../../src/presets.ts';
 import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
@@ -70,8 +71,8 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
   render(h(PresetDialogs, {}), root);
   openPresets();
   await settle();
-  const rows = () => [...root.querySelectorAll('div.prow')];
-  const row = (name) => root.querySelector(`div.prow[aria-label="${name}"]`);
+  const rows = () => [...root.querySelectorAll('#pr-list [role="group"]')];
+  const row = (name) => within(byId(root, 'pr-list')).getByRole('group', { name });
   const button = (name, label) => [...row(name).querySelectorAll('button')].find((b) => text(b) === label);
   assert.deepEqual(
     rows().map((r) => r.getAttribute('aria-label')),
@@ -88,7 +89,7 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
   // A's view: a rename onto B is refused and stores nothing; a rename to "  C " stores C (trimmed) in A's place
   openPresets();
   await settle();
-  row('A').querySelector('button.pview').click();
+  row('A').querySelector('button[aria-haspopup="dialog"]').click(); // its name and count: its view
   await settle();
   assert.equal(text(byId(root, 'prv-title')), 'A');
   byId(root, 'prv-rename').click();
@@ -121,7 +122,7 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
     { name: 'B', groups: [20046, 20166] },
   ]);
   assert.match(text(byId(root, 'pr-msg')), /Overwrote “C” with your 2 skills\./);
-  row('C').querySelector('button.ptrash').click();
+  within(row('C')).getByRole('button', { name: 'Delete' }).click();
   await settle();
   assert.deepEqual(stored().presets, [{ name: 'B', groups: [20046, 20166] }]);
   assert.match(text(byId(root, 'pr-msg')), /Deleted “C”\./);
@@ -133,7 +134,7 @@ test("a target's × removes its own place (one skill held twice too); the focus 
   mount('skills-panel');
   await settle();
   const box = document.getElementById('skills-panel');
-  const removes = () => [...box.querySelectorAll('button.x')];
+  const removes = () => within(box).getAllByRole('button', { name: /^Remove / });
   const groups = () => stored().targets.map((t) => t.group);
   const labels = () => removes().map((b) => b.getAttribute('aria-label'));
   assert.deepEqual(labels(), ['Remove Skill 20049', 'Remove Skill 20159', 'Remove Skill 20049', 'Remove Skill 20166']);
@@ -272,10 +273,10 @@ test("a list's keys are unique: a target held twice, in the list and in a preset
     const panel = document.getElementById('skills-panel');
     type(byId(panel, 't-add'), 'pressure'); // both are targets already: a note each
     await settle();
-    assert.equal(panel.querySelectorAll('p.snote').length, 2);
+    assert.equal(byId(panel, 't-sugg').querySelectorAll('p').length, 2);
     openPresets();
     await settle();
-    panel.querySelector('button.pview').click();
+    panel.querySelector('#pr-list button[aria-haspopup="dialog"]').click();
     await settle();
     assert.equal(byId(panel, 'prv-tiles').childNodes.length, 3);
     render(null, panel);

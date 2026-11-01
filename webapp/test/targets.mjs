@@ -8,7 +8,7 @@ export default async function targets(b) {
     gold = (g) => skl.find((x) => x[0] === g)[2];
   // the add box sits above the list, two targets per row
   const lay = await pg.evaluate(() => {
-    const t = [...document.querySelectorAll('#targets .tgt')].map((e) => e.getBoundingClientRect());
+    const t = [...document.querySelectorAll('#targets > [data-g]')].map((e) => e.getBoundingClientRect());
     return {
       rows: new Set(t.map((r) => Math.round(r.top))).size,
       n: t.length,
@@ -16,16 +16,28 @@ export default async function targets(b) {
     };
   });
   check('targets: add box first, two per row', lay.addFirst && lay.rows === Math.ceil(lay.n / 2), JSON.stringify(lay));
-  const tgts = pg.locator('#targets .tgt'),
+  const tgts = pg.locator('#targets > [data-g]'),
     addBox = pg.locator('#t-add'),
     golden = 'a gold the scenario guarantees shows as the gold itself, in gold';
-  await expect.soft(pg.locator('#g-20049 .name'), golden).toHaveText(gold(20049));
-  await expect.soft(pg.locator('#g-20049'), `${golden}: its class`).toHaveClass(/\bgold\b/);
-  await pg.locator('#targets .x').nth(2).focus();
+  await expect.soft(pg.locator('#g-20049 > span'), golden).toHaveText(gold(20049));
+  await expect.soft(pg.locator('#g-20049'), `${golden}: its tile`).toHaveAttribute('data-g', '2');
+  await pg
+    .locator('#targets')
+    .getByRole('button', { name: /^Remove / })
+    .nth(2)
+    .focus();
   await pg.keyboard.press('Enter');
   const removed = 'removing a target by keyboard moves the focus to the next remove button';
   await expect.soft(tgts, `${removed}: one fewer`).toHaveCount(7);
-  await expect.soft(pg.locator('#targets .x').nth(2), removed).toBeFocused();
+  await expect
+    .soft(
+      pg
+        .locator('#targets')
+        .getByRole('button', { name: /^Remove / })
+        .nth(2),
+      removed,
+    )
+    .toBeFocused();
   for (let i = 0; i < 7; i++) await pg.keyboard.press('Enter');
   await expect.soft(tgts, '… and to the add box after the last one: none left').toHaveCount(0);
   await expect.soft(addBox, '… and to the add box after the last one').toBeFocused();
@@ -55,7 +67,7 @@ export default async function targets(b) {
   await pg.fill('#t-add', white.slice(0, 8));
   await expect
     .soft(
-      pg.locator('#t-sugg .snote', { hasText: `${white} is already a target` }).first(),
+      pg.locator('#t-sugg p', { hasText: `${white} is already a target` }).first(),
       'a skill already listed: "… is already a target"',
     )
     .toHaveText(`${white} is already a target`);

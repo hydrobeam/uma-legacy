@@ -113,6 +113,12 @@
   --color-ribbon-glow: rgba(150, 20, 80, 0.35);
   /* the Enhance buttons' labels and their arrows */
   --color-enh-ink: #5b5470;
+  /* a target tile's remove button under the pointer (on the white skill tile; dark mode's tile is dark) */
+  --color-tile-hover: rgba(121, 64, 22, 0.12);
+  /* the Presets list's row holding the current targets */
+  --color-gm-current: #dfdbeb;
+  /* the Presets trash can's slits, in the button face's colour */
+  --color-trash-slit: #ffffff;
 
   --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -230,6 +236,10 @@
   --nine-tog-on: var(--tog-on, none) 0 30 fill / 0 12px / 0 stretch;
   --nine-tog-off-sm: var(--face-tog-off) 0 30 fill / 0 10px / 0 stretch;
   --nine-tog-on-sm: var(--tog-on, none) 0 30 fill / 0 10px / 0 stretch;
+  /* the game's skill tile (ui/TargetTile.tsx): white, or gold for a gold the scenario guarantees */
+  --nine-skill-white: var(--face-skill-white) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch;
+  --nine-skill-gold: var(--skill-gold, linear-gradient(#fff0b0, #ffbf33)) 12 14 16 14 fill / 7px 8px 10px 8px / 0
+    stretch;
 
   /* the green header bar: diagonal stripes at its left, fading out by a third of the way across */
   --art-bar: linear-gradient(90deg, transparent 0, var(--color-gm-green) 32%),
@@ -252,6 +262,8 @@
   --art-enh-umas: var(--face-enh-umas) center / 100% 100% no-repeat;
   --art-enh-cards: var(--face-enh-cards) center / 100% 100% no-repeat;
   --art-enh-vets: var(--face-enh-vets) center / 100% 100% no-repeat;
+  /* the game's close cross (a target tile's remove button) */
+  --art-close: var(--close, none) center / 10px 10px no-repeat;
   /* a section bar's outline: its right end cut on a slant; the setup ribbon's, at twice the slant */
   --clip-bar: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
   --clip-ribbon: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
@@ -326,6 +338,10 @@
     --color-brand-edge: #2a1a0c;
     --color-brand-shade: rgba(0, 0, 0, 0.5);
     --color-enh-ink: #e6e1f0;
+    --color-tile-hover: rgba(255, 255, 255, 0.08);
+    --color-gm-current: #37334b;
+    --color-trash-slit: #2b2934;
+    --face-skill-white: var(--skill-white-dark, var(--skill-white, linear-gradient(#dfdbeb, #cbc5de)));
     --face-enh-umas: var(--enh-umas-dark, var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea)));
     --face-enh-cards: var(--enh-cards-dark, var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea)));
     --face-enh-vets: var(--enh-vets-dark, var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea)));
@@ -361,6 +377,7 @@
   --face-enh-umas: var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea));
   --face-enh-cards: var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea));
   --face-enh-vets: var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea));
+  --face-skill-white: var(--skill-white, linear-gradient(#dfdbeb, #cbc5de));
   /* a portrait's initials' ground, its saturation and lightness (--color-av; the dark block darkens it) */
   --av-c: 40%;
   --av-l: 86%;
