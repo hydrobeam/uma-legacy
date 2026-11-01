@@ -113,7 +113,7 @@ const ON_EITHER_PAGE = {
   'o-skills-n': 'targets.js: the Target skills button, in the targets panel, which neither page uses now',
 };
 const MAY_BE_MISSING = {
-  'src/main.js': ON_EITHER_PAGE,
+  'src/loop/main.js': ON_EITHER_PAGE,
   'src/career.js': {
     ...ON_EITHER_PAGE,
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
@@ -121,7 +121,7 @@ const MAY_BE_MISSING = {
     'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
   },
 };
-const PAGES = { 'src/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
+const PAGES = { 'src/loop/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
 const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
@@ -277,9 +277,9 @@ if (knownCycles.length)
 // logic module's call into one could read it for it.
 // The rule's other logic (frontend.md: run machines, uma.moe sync, io) lives today inside modules that are views too, so
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
-// the review of step 4 traced every such read): search.js (the loop page's run machine with its status line, split into
+// the review of step 4 traced every such read): loop/search.js (the loop page's run machine with its status line, split into
 // a run record and a machine that takes values), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
-// read the targets), io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
+// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career.js
 // (the career run machine, split in step 8).
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store']],
@@ -287,7 +287,7 @@ const LAYERS = [
   ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll']],
   ['stores', ['settings', 'state', 'vets']],
   ['shared', null], // every module not named elsewhere
-  ['page:loop', ['main', 'search', 'results', 'io', 'affinity']],
+  ['page:loop', ['loop/main', 'loop/search', 'loop/results', 'loop/io', 'loop/affinity']],
   ['page:career', ['career', 'career/analysis', 'career/options']],
 ];
 {

@@ -119,7 +119,7 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
 .rcol { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; outline: none; }
 /* desktop: the results stay in view while the rail is edited. No inner scroll box (the wheel always scrolls the page):
    the column sticks at the top when it fits the window, and when it is taller it scrolls with the page until its end
-   shows, then sticks by its bottom (--rtop, set by main.js from its height); the status row stays at the top */
+   shows, then sticks by its bottom (--rtop, set by loop/main.js from its height); the status row stays at the top */
 @media (min-width: 961px) { .rcol { position: sticky; top: var(--rtop, 12px); align-self: start; } }
 /* a theme switch repaints at once: transitions (the status box fades its colours, 0.6 s late while searching) wait out
    that frame, so nothing trails the rest of the page (the light / dark switch's knob still slides) */
@@ -180,7 +180,7 @@ input[type="search"], input[type="text"] { width: 100%; }
 .ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 .ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .rtools { gap: 6px; }
-/* the roster and card boxes scroll: their bottom edge fades while there is more below (main.js sets .more) */
+/* the roster and card boxes scroll: their bottom edge fades while there is more below (loop/main.js sets .more) */
 .roster.more, .cards.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
 .sortdd { position: relative; flex: none; }
 .sortmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; min-width: 140px; background: var(--panel); border: 1px solid var(--line);

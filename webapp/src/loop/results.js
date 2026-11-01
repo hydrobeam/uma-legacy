@@ -1,15 +1,15 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
-import { $, esc, fmtIn } from './dom.js';
-import { gameData } from './data.js';
-import { ui } from './state.js';
-import { umaAv, cardAv, skillIcon, setRunnerFrom } from './images.js';
-import { cardTitle, borLast, chainEndNote } from './cards.js';
-import { closePop, markOwn, popHasFocus } from './popover.js';
-import { pickOutfit, outfitNote } from './roster.js';
-import { openSched } from './agenda.js';
+import { $, esc, fmtIn } from '../dom.js';
+import { gameData } from '../data.js';
+import { ui } from '../state.js';
+import { umaAv, cardAv, skillIcon, setRunnerFrom } from '../images.js';
+import { cardTitle, borLast, chainEndNote } from '../cards.js';
+import { closePop, markOwn, popHasFocus } from '../popover.js';
+import { pickOutfit, outfitNote } from '../roster.js';
+import { openSched } from '../agenda.js';
 import { openWhy } from './affinity.js';
-import { openOdds, deckHint } from './odds.js';
-import { must } from './must.ts';
+import { openOdds, deckHint } from '../odds.js';
+import { must } from '../must.ts';
 /**
  * A deck in a result (the solver's `PDeck::out`, deck/pdeck.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
  * ` (end chain at link N)` appended where that applies; `card_ids[i]` is its id (plain pals have a name but no entry).
@@ -37,7 +37,7 @@ import { must } from './must.ts';
  *   outfits that cover a target, and what they cover
  * @property {number[]} per_trainee  per member: her chance of landing every target
  * @property {number[]} [landed]  the chance of landing exactly k targets, k = 0 ..= n, averaged over the loop's careers
- * @property {import('./agenda.js').ScheduleRow[]} schedule  the race schedule (`chart_rows`)
+ * @property {import('../agenda.js').ScheduleRow[]} schedule  the race schedule (`chart_rows`)
  * @property {{lineages: import('./affinity.js').Lineage[]}} detail  the affinity detail
  *
  * One result of the loop search: the loop and its deck.

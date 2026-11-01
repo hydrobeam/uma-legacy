@@ -1,20 +1,20 @@
 // ---------- search: the planner's deck search, its scheduling and its status line (the solver's worker: engine.ts) ----------
 // The search runs by itself: any change to a setting schedules one (after a short pause, so a run of clicks is one
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
-import { $ } from './dom.js';
-import { runnerHTML } from './images.js';
-import { ERA } from './saved.ts';
-import { ASSETS, EXAMPLE, gameData } from './data.js';
-import { run, restartEngine } from './engine.ts';
-import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
-import { DEFAULTS, settings } from './settings.ts';
-import { ui } from './state.js';
-import { noOutfit } from './roster.js';
+import { $ } from '../dom.js';
+import { runnerHTML } from '../images.js';
+import { ERA } from '../saved.ts';
+import { ASSETS, EXAMPLE, gameData } from '../data.js';
+import { run, restartEngine } from '../engine.ts';
+import { EXTRA, jobTargets, ownedCards, rcardsOff } from '../job.js';
+import { DEFAULTS, settings } from '../settings.ts';
+import { ui } from '../state.js';
+import { noOutfit } from '../roster.js';
 import { renderDeck } from './results.js';
-import { markOwn } from './popover.js';
-import { loadExample } from './presets.js';
-import { must } from './must.ts';
-/** The solver's answer to a deck job, a loop search's report. @typedef {import('./solver.ts').SolverAnswer<import('./results.js').LoopReport>} DeckAnswer */
+import { markOwn } from '../popover.js';
+import { loadExample } from '../presets.js';
+import { must } from '../must.ts';
+/** The solver's answer to a deck job, a loop search's report. @typedef {import('../solver.ts').SolverAnswer<import('./results.js').LoopReport>} DeckAnswer */
 // The search's state. searching: a search runs or is about to (the status line shows it); searchT0: when it started
 // (performance.now); searchTick: the timer redrawing the status line each second; pauseTimer: the pause before an
 // automatic search; searchId: the newest search's number (an older one's answer is dropped); busy: a search is running
@@ -34,7 +34,7 @@ let shown = { key: null, r: null, example: false };
 // shows that again instead of running)
 /** @type {string | null} */
 let doneKey = null,
-  /** @type {import('./state.js').Status | null} */
+  /** @type {import('../state.js').Status | null} */
   doneStatus = null;
 // The status line heading the results (and its copy in the phone's floating button): while a search runs, its time and
 // a Stop button; otherwise ui.status (state.js Status). Whenever the results on screen are not those of the current
@@ -181,7 +181,7 @@ class Blocked extends Error {
   }
 }
 // The search job for settings `s` (throws Blocked when they can't be searched). Used by the search and by firstResult.
-/** @param {import('./settings.ts').SettingsView} s */
+/** @param {import('../settings.ts').SettingsView} s */
 function buildJob(s) {
   if (!s.targets.length)
     throw new Blocked('empty', 'Add a target skill to search.', {
@@ -268,7 +268,7 @@ function certText(exact) {
     return ` · exact check: decks within ${Math.round((1 - 1 / exact.rho) * 100)}% of it (ran out of time)`;
   return ' · not checked exactly (ran out of time)';
 }
-/** @type {(r: import('./results.js').LoopReport, ms: number) => import('./state.js').Status} */
+/** @type {(r: import('./results.js').LoopReport, ms: number) => import('../state.js').Status} */
 const doneText = (r, ms) => ({
   kind: 'done',
   text: `Checked ${r.decks_built.toLocaleString()} decks / ${r.foursomes.toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s${r.proven === false ? ' · cut short: not proven best' : ''}${certText(r.exact)}`,
@@ -309,7 +309,7 @@ export async function doSearch(auto = false) {
       shown = { key, r: loops, example: false };
     };
     /** a report with loops: not a refusal, not empty
-     * @param {import('./results.js').LoopReport | import('./solver.ts').SolverRefusal} r
+     * @param {import('./results.js').LoopReport | import('../solver.ts').SolverRefusal} r
      * @returns {r is import('./results.js').LoopReport} */
     const hasLoops = (r) => !('error' in r) && r.top?.length > 0;
     phase = 'search';

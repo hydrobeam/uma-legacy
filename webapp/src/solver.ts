@@ -1,6 +1,6 @@
 // Types only: the solver's jobs and reports as the worker and the page exchange them, and the worker protocol both
 // ways (src/worker.ts, the worker; engine.ts, the page's side). Each command's own fields and report are typed where
-// the page builds and reads them (search.js and results.js `LoopReport` for `deck`; career.js `CareerJob` and
+// the page builds and reads them (loop/search.js and loop/results.js `LoopReport` for `deck`; career.js `CareerJob` and
 // `CareerSearch` for `career`); here, what the worker and the engine read. The solver's side is
 // pkg/loopopt/src/web.rs (`handle`: the commands).
 

@@ -4,11 +4,11 @@
 // relation points, the G1 wins they share (expected: from the schedules' win chances, x3) and the affinity, and the
 // total. In a three-uma rotation the trainee is her own grandparent twice (her earlier veteran): no relation points
 // with her (a trio counts distinct umas), only the G1s it shares with its child.
-import { $, $dialog } from './dom.js';
-import { umaAv } from './images.js';
-import { affEl, affTable } from './afftable.js';
-import { pickOutfit } from './roster.js';
-import { must } from './must.ts';
+import { $, $dialog } from '../dom.js';
+import { umaAv } from '../images.js';
+import { affEl, affTable } from '../afftable.js';
+import { pickOutfit } from '../roster.js';
+import { must } from '../must.ts';
 /**
  * One career in the solver's affinity detail (`loop.detail.lineages`); uma numbers index the loop's members.
  * @typedef {object} Lineage

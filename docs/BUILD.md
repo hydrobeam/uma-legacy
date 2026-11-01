@@ -180,7 +180,7 @@ The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, minified to `as
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
 the loop page's on-screen state is `ui` (`state.js`). No framework.
 
-In `src/`, `main.js` and `career.js` are the two pages' entries; `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` builds the
+In `src/`, `loop/main.js` and `career.js` are the two pages' entries (the loop page's own modules are in `loop/`); `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` builds the
 job both pages send (from the settings it is given), and `statestore.js` keeps the solver's work in
 IndexedDB.
 

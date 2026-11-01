@@ -102,7 +102,7 @@ const when = (turn) =>
  * @property {HTMLElement} winsBtn  the G1 wins editor's button
  * @property {(j: number) => string} parentLabel  a parent's place ("#3")
  * @property {import('./career.js').CareerTarget[]} [targets]  the career's per-target report
- * @property {import('./results.js').ResultDeck|null} [deck]  her deck
+ * @property {import('./loop/results.js').ResultDeck|null} [deck]  her deck
  * @property {{v: import('./vets.js').Veteran, label: string, open: () => void}[]} [legacies]  her two parents, each with
  *   her place and what opens her node
  */
@@ -428,7 +428,7 @@ export function inspView({
 // A deck's i-th card, from the solver's deck report: its name with the report's notes taken off (base), whether it is the
 // borrowed card, and the card's data (null when unknown). The report lists the deck's cards with ids (card_ids) and
 // then the plain ones (plain_ids), in the order of `cards`.
-/** @param {import('./results.js').ResultDeck} deck @param {number} i @returns {{base: string, borrowed: boolean, card: import('./data.js').Card|undefined}} */
+/** @param {import('./loop/results.js').ResultDeck} deck @param {number} i @returns {{base: string, borrowed: boolean, card: import('./data.js').Card|undefined}} */
 export function deckCardAt(deck, i) {
   const name = deck.cards[i];
   const borrowed = /\(borrowed\)$/.test(name),

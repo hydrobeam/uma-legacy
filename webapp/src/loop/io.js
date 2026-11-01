@@ -1,17 +1,17 @@
 // ---------- export / import ----------
-import { $, $dialog, $input, $textarea, fmtIn } from './dom.js';
-import { paintTop } from './cards.js';
-import { SETTINGS, ERA } from './saved.ts';
-import { SCENARIOS, RANKS, gameData } from './data.js';
-import { settings, importSettings, importToEra } from './settings.ts';
-import { ui } from './state.js';
-import { goldGiven } from './job.js';
-import { noOutfit, renderRoster, pickOutfit } from './roster.js';
-import { renderTargets } from './targets.js';
-import { mergePresets } from './presets.js';
+import { $, $dialog, $input, $textarea, fmtIn } from '../dom.js';
+import { paintTop } from '../cards.js';
+import { SETTINGS, ERA } from '../saved.ts';
+import { SCENARIOS, RANKS, gameData } from '../data.js';
+import { settings, importSettings, importToEra } from '../settings.ts';
+import { ui } from '../state.js';
+import { goldGiven } from '../job.js';
+import { noOutfit, renderRoster, pickOutfit } from '../roster.js';
+import { renderTargets } from '../targets.js';
+import { mergePresets } from '../presets.js';
 import { resultsStale } from './search.js';
-import { deckHint } from './odds.js';
-import { paintScen, paintRank, scenarioOf } from './scenario.js';
+import { deckHint } from '../odds.js';
+import { paintScen, paintRank, scenarioOf } from '../scenario.js';
 // a skill group's name at a level (2: its gold's, when it has one)
 const skillName = (group, level) => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: null };

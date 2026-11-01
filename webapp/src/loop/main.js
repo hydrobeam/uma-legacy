@@ -1,25 +1,25 @@
 // Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
 // dist/assets/main.<hash>.js, which dist/index.html loads after its data script.
-import './errorlog.ts'; // first: it listens before any other module runs
-import { $, $dialog, $input, backdropCloses } from './dom.js';
-import { ERA } from './saved.ts';
-import { loadData } from './data.js';
-import { PRESET, jobSetup, settings, setAuto, switchEra } from './settings.ts';
-import { on } from './store.ts';
-import { ui } from './state.js';
+import '../errorlog.ts'; // first: it listens before any other module runs
+import { $, $dialog, $input, backdropCloses } from '../dom.js';
+import { ERA } from '../saved.ts';
+import { loadData } from '../data.js';
+import { PRESET, jobSetup, settings, setAuto, switchEra } from '../settings.ts';
+import { on } from '../store.ts';
+import { ui } from '../state.js';
 import { doSearch, firstResult, paintRunNote, settingsChanged } from './search.js';
-import { warmEngine } from './engine.ts';
-import { initRoster, renderRoster } from './roster.js';
-import { initTargets, renderTargets } from './targets.js';
-import { initScenario, eraScenario } from './scenario.js';
-import { initCards } from './cards.js';
-import { initOwnedImport } from './owned.js';
+import { warmEngine } from '../engine.ts';
+import { initRoster, renderRoster } from '../roster.js';
+import { initTargets, renderTargets } from '../targets.js';
+import { initScenario, eraScenario } from '../scenario.js';
+import { initCards } from '../cards.js';
+import { initOwnedImport } from '../owned.js';
 import { renderDeck } from './results.js';
-import { initPopover } from './popover.js';
+import { initPopover } from '../popover.js';
 import { initIO } from './io.js';
-import { initSetup } from './setup.js';
-import './gmtip.js'; // the game-style tooltips (both planner pages)
-import { must } from './must.ts';
+import { initSetup } from '../setup.js';
+import '../gmtip.js'; // the game-style tooltips (both planner pages)
+import { must } from '../must.ts';
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
 {

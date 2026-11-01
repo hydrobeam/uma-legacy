@@ -13,7 +13,7 @@
  * @property {Status} status
  * @property {string} headline the top result's odds ("1 in 139"), for the phone's floating button
  * @property {(() => void) | null} lastRender redraws the results on screen
- * @property {{kind: string, r: import('./results.js').LoopReport, meta: {example?: boolean}} | null} lastResult the result on
+ * @property {{kind: string, r: import('./loop/results.js').LoopReport, meta: {example?: boolean}} | null} lastResult the result on
  *   screen, for Export
  */
 /** @type {UiState} */
