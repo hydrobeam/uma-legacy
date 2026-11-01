@@ -12,19 +12,21 @@
 //   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
 //   analysis.js        the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
 //   options.js         the options table ("Other careers": the plan's careers, Use this) and its Saves popup
-//   view/RunNote.js    the status line
-//   view/Tree.js       the lineage tree
-//   view/NodeDialog.js the tree's node popup (and the veterans dialog's pane)
-//   view/ParentPicker.js  the parent picker
-//   view/Sections.js   the career's sections and the results column
-//   view/Pool.js       the veterans dialog, and the setup panel's fold
-//   view/Setup.js      the Borrowed parent choice
-//   view/parts.js      small parts the views share
-// (The import order below keeps the bundle's load-time steps in their order: the options table's dialog, then the
-// run's (run.ts), the node popup's, the deck popup's and the fold's. view/Sections.js imports options.js before
-// analysis.js for it.)
+//   view/RunNote.tsx   the status line
+//   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
+//   view/NodeDialog.tsx  the tree's node popup, and the veterans dialog's pane (VeteranView)
+//   view/ParentPicker.tsx  the parent picker
+//   view/Sections.tsx  the career's sections in the tree: odds, deck and its popup, schedule, targets, counts
+//   view/Setup.tsx     the Borrowed parent choice
+//   view/dialogs.ts    which popup is open, for what (the el() modules open them through it)
+//   view/Results.js    the results column (the options table, Try a run: el(), steps 9 and 11)
+//   view/Pool.js       the veterans dialog, and the setup panel's fold (el(), step 10)
+//   view/parts.js      small parts the el() views share
 import '../errorlog.ts'; // first: it listens before any other module runs
-import { $, $dialog, $input, $textarea, backdropCloses } from '../dom.js';
+import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
+import { render } from 'preact';
+import type { VNode } from 'preact';
+import { $, $dialog, $textarea, backdropCloses } from '../dom.js';
 import { ERA } from '../saved.ts';
 import { loadData } from '../data.js';
 import { jobSetup, settings, switchEra } from '../settings.ts';
@@ -37,35 +39,39 @@ import { initRoster, renderRoster } from '../roster.js';
 import { initCards } from '../cards.js';
 import { initOwnedImport } from '../owned.js';
 import { initPopover } from '../popover.js';
-import '../agenda.js'; // (load order: its document listener before gmtip's)
+import '../agenda.js'; // (its document listener is added before gmtip's)
 import { initSetup } from '../setup.js';
 import '../gmtip.js'; // the game-style tooltips (both planner pages)
-import '../odds.js'; // (load order: its dialog's step before the veterans load)
 import { initTargets, renderTargets } from '../targets.js';
-import { vets, plan, chosen, onVetsChange, changed, persist, clearVets, dropMissing, filterUmas } from '../vets.js';
+import { vets, vetsRev, plan, onVetsChange, persist, clearVets, dropMissing, handBackPlaces } from '../vets.js';
+import { setRunner } from '../images.js';
 import { initUmamoe, syncListings } from '../umamoesetup.js';
-import { renderResults } from './view/Sections.js';
+import { Boundary } from '../ui/Boundary.tsx';
 import { placesKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown, runJob } from './job.js';
 import { outdateComparison, stopComparison, showAnalysis, clearAnalysis, keepBaseline } from './analysis.js';
 import * as answerStore from './state.ts';
-import { dropAnswer, loadFails } from './state.ts';
+import { answer, dropAnswer, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
 import { tName } from './view/parts.js';
-import { paint } from './view/RunNote.js';
-import { renderTree } from './view/Tree.js';
-import { openNode } from './view/NodeDialog.js';
-import { pickK, vpTab } from './view/ParentPicker.js';
+import { RunNote, tickNote } from './view/RunNote.tsx';
+import { Tree, Verdict } from './view/Tree.tsx';
+import { NodeDialog, VetPane } from './view/NodeDialog.tsx';
+import { ParentPicker } from './view/ParentPicker.tsx';
+import { DeckDialog, drawnCard } from './view/Sections.tsx';
+import { BorrowChoice } from './view/Setup.tsx';
+import { openNode } from './view/dialogs.ts';
+import { renderResults } from './view/Results.js';
 import { vTab, poolStale, inTab, setVTab, initVSort, renderPool, drawPool, paintFold, initFold } from './view/Pool.js';
-import { initBorrow } from './view/Setup.js';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
 import { searchCaveat } from '../proofs.mjs';
 import { must } from '../must.ts';
-/** @import { Status } from './state.ts' */
+import type { Status } from './state.ts';
+import type { CareerSearch } from './job.js';
 
 // ---------- the run ----------
 // The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the
-// settings, veterans and places, the veteran analysis and the redraws. The status line and the answer are drawn from
-// the answer store's signals (career/state.ts) by these explicit redraws.
+// settings, veterans and places, the veteran analysis and the redraws. The views that are components draw from the
+// answer store's signals (career/state.ts) and the veterans' (`vetsRev`); the redraws here are the el() views'.
 const run = createRun({
   engine: {
     run: runJob,
@@ -103,11 +109,11 @@ const run = createRun({
     shown,
     paint,
     drawAll: () => {
-      renderAll();
+      drawUnported();
       paint();
     },
     drawCheck: () => {
-      keepFocus(renderResults);
+      renderResults();
       paint();
     },
   },
@@ -118,7 +124,7 @@ const run = createRun({
 // or, when no career can land every target, which targets nothing can give (no veteran or parent carries their spark;
 // no deck, outfit or event gives them either, or some career would have them)
 /** @returns {Status} */
-function searchStatus(m, found) {
+function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status {
   const cert = searchCaveat(m.r),
     dropped = chosenDropped?.places === placesKey() ? ` ${chosenDropped.text}` : '';
   if (m.r.results.length) return { kind: 'done', text: found + cert + dropped };
@@ -133,31 +139,44 @@ function searchStatus(m, found) {
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
 }
-// redraw everything, keeping the keyboard focus on the same control (every edit redraws)
-function renderAll() {
-  keepFocus(() => {
-    renderTree();
-    renderResults();
-    renderPool();
-  });
+// the views still built with el() after a change: the results column (steps 9, 11) and the pool (step 10); the
+// components follow their signals
+function drawUnported() {
+  renderResults();
+  renderPool();
 }
-// a redraw that keeps the focus on the element of the same key (`data-k`) where it is drawn again
-/** @param {() => void} draw */
-function keepFocus(draw) {
-  const ae = /** @type {HTMLElement} */ (document.activeElement),
-    k = ae?.dataset ? ae.dataset.k : null;
-  draw();
-  if (k) {
-    const e = document.querySelector(`[data-k="${CSS.escape(k)}"]`);
-    if (e) e.focus();
+// ---------- the views: each component into its mount point, behind an error boundary ----------
+const mount = (id: string, view: VNode) => render(<Boundary>{view}</Boundary>, $(id));
+// The status line (its live region is the template's, there from load) and what it marks around it: the status bar's
+// state (its colours), the results and the tree dimmed while a run replaces the answer on show, the runner (the trainee
+// you chose, else the career on show). Drawn from the first paint the run machine asks for; then `paint` moves its clock.
+function marks() {
+  const { searching, started } = runView.peek(),
+    { status } = answer.peek(),
+    r = shown();
+  setRunner(plan.trainee || r?.trainee?.id);
+  $('rhead').dataset.kind = searching ? 'busy' : status.kind;
+  const dimmed = searching && started && !!r; // the previous answer, on screen until this run's
+  $('results').classList.toggle('stale', dimmed || (!searching && ['error', 'empty'].includes(status.kind)));
+  $('tree').classList.toggle('stale', dimmed);
+  $('results').setAttribute('aria-busy', String(searching));
+}
+let noteShown = false;
+function paint() {
+  if (!noteShown) {
+    noteShown = true;
+    marks();
+    on([runView, answer, vetsRev], marks);
+    mount('run-note', <RunNote />);
   }
+  tickNote();
 }
 
 // ---------- settings ----------
 function initSettings() {
   $('era-global').setAttribute('aria-pressed', String(ERA === 'global'));
   $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
-  const setEra = (e) => {
+  const setEra = (e: 'global' | 'gm') => {
     if (e === ERA) return;
     switchEra(e, eraScenario(e));
     persist();
@@ -170,7 +189,7 @@ function initSettings() {
   initCards();
   initOwnedImport();
   initTargets();
-  initBorrow();
+  mount('bp', <BorrowChoice />);
   renderRoster();
   renderTargets();
   enginePersist(); // the solver's kept work survives a page reload
@@ -180,16 +199,10 @@ function initSettings() {
   // search runs again
   on([jobSetup], () => {
     // a career taken from the other careers' table was for that setup: the planner picks again for this one
-    if (plan.fromTable) {
-      plan.trainee = null;
-      plan.parents = [null, null];
-      plan.fromTable = false;
-      chosen.career = null;
-      persist();
-    }
+    if (plan.fromTable) handBackPlaces();
     syncListings(); // a changed target set: its listings (kept, or one request)
     run.schedule();
-    renderAll();
+    drawUnported();
     paintFold();
   });
 }
@@ -206,14 +219,14 @@ document.addEventListener('click', (e) => {
 loadData().then(
   async () => {
     initSettings();
-    initPopover();
+    initPopover({ drawn: drawnCard });
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
     initUmamoe({ open: (v) => openNode({ kind: 'v', id: v.id }) });
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
     // Try a run's popup: Close and a backdrop click shut it
     const simDlg = $dialog('sim-dlg');
-    for (const x of simDlg.querySelectorAll('.dclose')) /** @type {HTMLElement} */ (x).onclick = () => simDlg.close();
+    for (const x of simDlg.querySelectorAll<HTMLElement>('.dclose')) x.onclick = () => simDlg.close();
     backdropCloses(simDlg);
     dropStaleChosen();
     // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
@@ -227,19 +240,13 @@ loadData().then(
         clearAnalysis();
       }
       run.schedule();
-      renderAll();
+      drawUnported();
     });
-    for (const x of ['vets', 'new', 'auto']) $(`vp-tab-${x}`).onclick = () => vpTab(x);
-    $input('vp-filter').oninput = () => filterUmas($('vp-umas'), $input('vp-filter').value);
-    $('vp-auto-go').onclick = () => {
-      plan.parents[pickK] = null;
-      $dialog('vpick-dlg').close();
-      changed();
-    };
-    $('v-file').onchange = async (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
-      const f = must(e.target.files, 'a file input has its file list')[0];
+    $('v-file').onchange = async (e: Event) => {
+      const input = e.target as HTMLInputElement;
+      const f = must(input.files, 'a file input has its file list')[0];
       if (f) importText(await f.text());
-      e.target.value = '';
+      input.value = '';
     };
     $('v-paste').onclick = () => {
       $textarea('paste-text').value = '';
@@ -262,7 +269,7 @@ loadData().then(
     $('v-clear').onclick = () => {
       // the open tab's veterans
       // (uma.moe's listings stay, unless one is a chosen parent: they are its answer for the targets, not yours)
-      const gone = (v) => inTab(v) && (v.src !== 'umamoe' || plan.parents.includes(v.id)),
+      const gone = (v: (typeof vets)[number]) => inTab(v) && (v.src !== 'umamoe' || plan.parents.includes(v.id)),
         n = vets.filter(gone).length,
         what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
       if (n && confirm(`Remove all ${what}?`)) {
@@ -272,10 +279,16 @@ loadData().then(
     };
     for (const x of ['own', 'bor']) $(`v-tab-${x}`).onclick = () => setVTab(x);
     initVSort();
-    renderAll();
+    mount('tree', <Tree />);
+    mount('lodds', <Verdict />);
+    mount('v-pane', <VetPane />);
+    mount('node-root', <NodeDialog />);
+    mount('deck-root', <DeckDialog />);
+    mount('vpick-root', <ParentPicker />);
+    drawUnported();
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },
-  (e) => {
+  (e: Error) => {
     loadFails(e.message);
     paint();
   },

@@ -19,17 +19,18 @@ pop.tabIndex = -1;
 must(document.getElementById('rcol'), 'both planner pages have the results column').appendChild(pop);
 /** @type {HTMLElement | null} */
 let popFor = null; // the card or name button whose panel is open
-// A page whose result is drawn by components (the loop page, initPopover({drawn: true})): each opener draws its own
-// aria-expanded from `popOpener`, and each card and member its own greying (`off`) from the settings, so nothing here
-// writes into them. On the other page (its result built with el()) the panel writes both, as before.
-let drawn = false;
+// An opener drawn by a component (all of the loop page's, initPopover({drawn: true}); the career page's deck popup,
+// initPopover({drawn: predicate})) draws its own aria-expanded from `popOpener`, and its own greying (`off`) from the
+// settings, so nothing here writes into it. Openers built with el() get both written here, as before.
+let drawnAll = false,
+  drawn = /** @type {(button: HTMLElement) => boolean} */ (() => false);
 /** @type {import('@preact/signals-core').Signal<HTMLElement | null>} */
 const opener = signal(null);
 /** the button whose panel is open (null: none) */
 export const popOpener = /** @type {import('@preact/signals-core').ReadonlySignal<HTMLElement | null>} */ (opener);
 /** @param {HTMLElement} button @param {boolean} open */
 function expanded(button, open) {
-  if (!drawn) button.setAttribute('aria-expanded', String(open));
+  if (!drawn(button)) button.setAttribute('aria-expanded', String(open));
 }
 export const popHasFocus = () => !pop.hidden && pop.contains(document.activeElement);
 export function closePop() {
@@ -48,7 +49,7 @@ function openFor(button) {
 }
 // after an ownership change in the panel: the el()-drawn result greys what is no longer owned (a drawn one derives it)
 const ownChanged = () => {
-  if (!drawn) markOwn();
+  if (!drawnAll) markOwn();
 };
 const focusables = () => [...pop.querySelectorAll('input, a[href], button')];
 // close the panel and focus the button that opened it
@@ -68,11 +69,13 @@ pop.addEventListener('keydown', (e) => {
 });
 export function markOwn() {
   document.querySelectorAll('.deck .dc').forEach((chip) => {
+    if (drawn(/** @type {HTMLElement} */ (chip))) return;
     // a chip whose card the page data lacks has no id (data-cid empty or absent) and is never greyed
     const cid = chip.dataset.cid;
     chip.classList.toggle('off', !!cid && !chip.classList.contains('bor') && settings.value.cardsOff[+cid] === false);
   });
   document.querySelectorAll('.mem[data-uma]').forEach((member) => {
+    if (drawn(/** @type {HTMLElement} */ (member))) return;
     const u = gameData().umas.find((x) => x.id === +must(member.dataset.uma, 'a member block names her'));
     member.classList.toggle(
       'off',
@@ -231,9 +234,12 @@ const toggleFor = (button, open) => {
   if (popFor === button) closePop();
   else open();
 };
-/** @param {{drawn?: boolean}} [page] drawn: the page's result is components (see `drawn` above) */
+/** @param {{drawn?: boolean | ((button: HTMLElement) => boolean)}} [page] drawn: the page's result is components, all
+ *  of it (true) or the openers it names (see `drawn` above) */
 export function initPopover(page = {}) {
-  drawn = !!page.drawn;
+  const { drawn: d = false } = page;
+  drawnAll = d === true;
+  drawn = typeof d === 'function' ? d : () => d;
   document.addEventListener('click', (/** @type {TargetedEvent} */ e) => {
     const chip = e.target.closest('.deck .dc'),
       name = e.target.closest('.mem .memb');

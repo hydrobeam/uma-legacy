@@ -9,6 +9,7 @@ import { must } from '../must.ts';
 
 interface DialogProps {
   id: string;
+  cls?: string;
   /** the id of its heading */
   labelledBy: string;
   open: boolean;
@@ -16,7 +17,7 @@ interface DialogProps {
   onClose: () => void;
   children: ComponentChildren;
 }
-export function Dialog({ id, labelledBy, open, onClose, children }: DialogProps) {
+export function Dialog({ id, cls, labelledBy, open, onClose, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   useLayoutEffect(() => {
     const dialog = must(ref.current, 'the dialog is mounted');
@@ -28,6 +29,7 @@ export function Dialog({ id, labelledBy, open, onClose, children }: DialogProps)
     <dialog
       ref={ref}
       id={id}
+      class={cls}
       aria-labelledby={labelledBy}
       onClose={onClose}
       onClick={(e) => {

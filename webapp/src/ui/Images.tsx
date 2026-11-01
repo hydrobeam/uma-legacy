@@ -8,8 +8,18 @@ import { SKILLICON, SKILLICON_GOLD, gameData } from '../data.js';
 import type { Card } from '../data.js';
 import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, srcFor } from '../images.js';
 
+interface UmaAvProps {
+  uma: number | null;
+  outfit: number | null | undefined;
+  size: number;
+  /** a class beside `av` */
+  cls?: string;
+  /** a name read out for her (she becomes an image) */
+  label?: string;
+  title?: string;
+}
 /** an uma's portrait (her outfit's, else her own, else a mob's), else her initials on her hue (images.js umaAv) */
-export function UmaAv({ uma, outfit, size }: { uma: number | null; outfit: number | null | undefined; size: number }) {
+export function UmaAv({ uma, outfit, size, cls, label, title }: UmaAvProps) {
   const id = uma ?? 0;
   const tries = [outfit && srcFor('outfit', outfit), srcFor('uma', id), srcFor('mob', id)].filter(
     (src): src is string => !!src,
@@ -17,8 +27,12 @@ export function UmaAv({ uma, outfit, size }: { uma: number | null; outfit: numbe
   const [failed, setFailed] = useState(0); // how many of `tries` failed to load
   const src = tries[failed];
   return (
+    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: the label comes with role="img" (a portrait read out as her name)
     <span
-      class="av"
+      class={cls ? `av ${cls}` : 'av'}
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      title={title}
       style={{ '--s': `${size}px`, '--fs': `${Math.round(size * 0.38)}px`, '--h': String((id * 47) % 360) }}
     >
       {src ? (
@@ -58,6 +72,20 @@ export function CardAv({ c, size, titled = true }: { c: Card | null; size: numbe
       ) : (
         abbr
       )}
+    </span>
+  );
+}
+/** a scenario's logo, else its name on its tint (images.js scenLogo) */
+export function ScenLogo({ sc, title }: { sc: { id: number; name: string; tint: string }; title?: string }) {
+  const src = srcFor('scen', sc.id),
+    [failed, setFailed] = useState(false);
+  return src && !failed ? (
+    <span class="slogo art" aria-hidden="true" title={title}>
+      <img alt="" src={src} onError={() => setFailed(true)} />
+    </span>
+  ) : (
+    <span class="slogo" aria-hidden="true" title={title}>
+      <b style={{ background: sc.tint, color: '#18202e' }}>{sc.name}</b>
     </span>
   );
 }

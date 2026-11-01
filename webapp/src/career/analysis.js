@@ -19,7 +19,7 @@ import { PLAN_NEXT } from './run.ts';
 import { keyOf } from './keys.js';
 import { shown, isFull, baseKey, ROLL_K, runJob } from './job.js';
 import { btn, sectionEl, deckEl, fmtN, tableRows } from './view/parts.js';
-import { openNode } from './view/NodeDialog.js';
+import { openNode } from './view/dialogs.ts';
 import { must } from '../must.ts';
 /** @import { LineageNode } from '../vets.js' */
 /** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from './job.js' */

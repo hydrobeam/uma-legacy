@@ -4,12 +4,20 @@ import type { ComponentChildren } from 'preact';
 import { must } from '../must.ts';
 
 /** her affinity as the game's heart and the number (none without one) */
-export function AffHeart({ affinity }: { affinity: number | null | undefined }) {
+export function AffHeart({
+  affinity,
+  cls = 'aff',
+  title,
+}: {
+  affinity: number | null | undefined;
+  cls?: string;
+  title?: string;
+}) {
   if (affinity === null || affinity === undefined) return null;
   const shown = Math.round(affinity);
   return (
     // biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (afftable.js affEl): its name reads the heart as a number; a role for it is the AffinityTable port's (step 11)
-    <span class="aff" aria-label={`Affinity ${shown}`} title={`Affinity ${shown}`}>
+    <span class={cls} aria-label={`Affinity ${shown}`} title={title ?? `Affinity ${shown}`}>
       <i class="heart" />
       {String(shown)}
     </span>

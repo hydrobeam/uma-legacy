@@ -43,11 +43,7 @@ __CSS__
 __PANEL_ERA__
       __PANEL_RANK____PANEL_SCEN__
       <div class="gctl setrow bpctl"><span class="glab" id="bp-l">Borrowed parent</span>
-        <div class="seg" id="bp" role="group" aria-labelledby="bp-l">
-          <button type="button" data-v="allow" aria-pressed="true" title="This career may borrow one parent, and so may the careers after it">Allowed</button>
-          <button type="button" data-v="later" aria-pressed="false" title="Out of borrows for today: this career uses two of your veterans, and the plan still counts on borrowing in the careers after it">None left today</button>
-          <button type="button" data-v="never" aria-pressed="false" title="No borrowed parents, in this career or the plan's later ones">Never</button>
-        </div></div>
+        <div class="seg" id="bp" role="group" aria-labelledby="bp-l"></div></div>
     </div>
     <div class="setenh">
 __PANEL_ENH__
@@ -114,17 +110,9 @@ __PANEL_ENH__
 </div></dialog>
 __PANEL_DLGUMAS____PANEL_DLGCARDS__
 
-<dialog id="vpick-dlg" aria-labelledby="vpick-title"><div class="dlg">
-  <div class="row between dhead"><h3 id="vpick-title">Choose a parent</h3><button class="btn dclose">Close</button></div>
-  <div class="seg" role="tablist" aria-label="Where the parent comes from">
-    <button type="button" role="tab" id="vp-tab-vets" aria-selected="true" aria-controls="vp-vets">Your veterans</button>
-    <button type="button" role="tab" id="vp-tab-new" aria-selected="false" aria-controls="vp-new">A new one (any uma)</button>
-    <button type="button" role="tab" id="vp-tab-auto" aria-selected="false" aria-controls="vp-auto">Let the planner pick</button>
-  </div>
-  <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets"><div class="vpgrid" id="vp-list"></div></div>
-  <div id="vp-new" role="tabpanel" aria-labelledby="vp-tab-new" hidden><input type="search" id="vp-filter" placeholder="Filter by name" aria-label="Filter umas by name"><div class="umapick" id="vp-umas"></div></div>
-  <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden><p>The planner tries every one of your veterans in this place and keeps the best.</p><button class="btn primary" type="button" id="vp-auto-go">Let the planner pick this parent</button></div>
-</div></dialog>
+<div id="vpick-root"></div>
+<div id="node-root"></div>
+<div id="deck-root"></div>
 <dialog id="sched-dlg" aria-labelledby="sched-title"><div class="dlg" id="sched-body"></div></dialog>
 <dialog id="pick-dlg" aria-labelledby="pick-title"><div class="dlg">
   <div class="row between dhead"><h3 id="pick-title">Which uma?</h3><button class="btn dclose">Close</button></div>

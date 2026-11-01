@@ -21,19 +21,6 @@ export const btn = (label, cls, fn) => {
 };
 
 export const fmtN = (x) => Math.round(x).toLocaleString();
-// a node's portrait button: her face, name and a line under it (sub, optional); key: its data-k
-export function tile(key, face, name, sub) {
-  const b = el('button', 'ptile');
-  b.type = 'button';
-  b.dataset.k = key;
-  b.setAttribute('aria-haspopup', 'dialog');
-  b.appendChild(face);
-  const nm = el('span', 'tnm');
-  nm.appendChild(el('span', 'nm', name));
-  if (sub) nm.appendChild(el('span', 'sub', sub));
-  b.appendChild(nm);
-  return b;
-}
 // ---------- the career: odds, deck, targets, schedule, after this career, other picks ----------
 // a section of the results, headed by its title
 export const sectionEl = (cls, title) => {

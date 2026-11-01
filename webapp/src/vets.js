@@ -33,6 +33,7 @@
  *   back to the planner
  */
 // Saved per data era in localStorage['llp:career'] = {v: 2, global: {vets, plan}, gm: {vets, plan}}.
+import { signal } from '@preact/signals-core';
 import { $, $dialog, $input, lazyDialog } from './dom.js';
 import { ERA } from './saved.ts';
 import { careerTables, gameData } from './data.js';
@@ -46,7 +47,7 @@ const STORAGE_KEY = 'llp:career',
   STORAGE_VERSION = 2;
 // stars of a skill added by hand: 2, the most common star count of a white spark at SS rank (70% at rank score 17,500+,
 // 45% below it; hakuraku.moe)
-const NEW_STARS = 2;
+export const NEW_STARS = 2;
 function loadAll() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null'); // (nothing stored yet: null)
@@ -144,9 +145,23 @@ let onChange = () => {
 export function onVetsChange(fn) {
   onChange = fn;
 }
-// every edit: saved, then the page redraws and searches again
+// the views that draw the veterans and the places read this count: every change (`changed`) moves it, as the records
+// themselves are edited in place (copy-on-write in step 10)
+const edits = signal(0);
+export const vetsRev = /** @type {import('@preact/signals-core').ReadonlySignal<number>} */ (edits);
+// a change of setup with places taken from the other careers' table: they go back to the planner (saved, and drawn)
+export function handBackPlaces() {
+  plan.trainee = null;
+  plan.parents = [null, null];
+  plan.fromTable = false;
+  chosen.career = null;
+  persist();
+  edits.value++;
+}
+// every edit: saved, then the views redraw and the page searches again
 export function changed() {
   persistSoon();
+  edits.value++;
   onChange();
 }
 
@@ -310,20 +325,28 @@ $dialog('wins-dlg').addEventListener('close', () => {
 // sparks have bars of their own, each opening a picker)
 const pop = $('add-pop');
 /** @type {HTMLElement | null} */
-let popFor = null;
+let popFor = null,
+  popDrawn = false; // popFor is a component's: it draws its aria-expanded from `addOpener`, nothing here writes it
+const addFor = signal(/** @type {HTMLElement | null} */ (null));
+/** the "+" whose list is open (null: none) */
+export const addOpener = /** @type {import('@preact/signals-core').ReadonlySignal<HTMLElement | null>} */ (addFor);
 function closeAdd() {
   pop.hidden = true;
-  if (popFor) popFor.setAttribute('aria-expanded', 'false');
+  if (popFor && !popDrawn) popFor.setAttribute('aria-expanded', 'false');
   popFor = null;
+  addFor.value = null;
 }
-function openAdd(btn, nd, onEdit = changed) {
+/** @param {HTMLElement} btn @param {LineageNode} nd @param {() => void} [onEdit] @param {boolean} [drawn] btn is a component's */
+export function openAdd(btn, nd, onEdit = changed, drawn = false) {
   if (popFor === btn) {
     closeAdd();
     return;
   }
   closeAdd();
   popFor = btn;
-  btn.setAttribute('aria-expanded', 'true');
+  popDrawn = drawn;
+  if (!drawn) btn.setAttribute('aria-expanded', 'true');
+  addFor.value = btn;
   pop.textContent = '';
   const head = (t) => {
     const h = document.createElement('p');
@@ -512,7 +535,7 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
  * @property {(nd: LineageNode) => number[]} groups  the groups she can have one of
  */
 /** @type {{blue: SparkKind, pink: SparkKind, green: SparkKind}} */
-const KIND = {
+export const KIND = {
   blue: {
     field: 'blues',
     title: 'Blue spark',
@@ -537,7 +560,7 @@ function pinkChoices(nd) {
   return grades ? all.filter((g) => grades[APT_OF[g]] >= 7 || have.includes(g)) : all;
 }
 // her spark of one kind, as [group (an object key: a string), stars], or undefined (none)
-const currentSpark = (nd, kind) => Object.entries(nd[KIND[kind].field] || {}).find(([, stars]) => stars > 0);
+export const currentSpark = (nd, kind) => Object.entries(nd[KIND[kind].field] || {}).find(([, stars]) => stars > 0);
 // her spark of one kind as its coloured bar: a chip for a unique or a pink she has, else a bar that opens the picker (a
 // missing unique's bar adds it at NEW_STARS)
 function colourBar(nd, kind, key, onEdit, readOnly) {
@@ -647,7 +670,7 @@ const colourDialog = lazyDialog('gmdlg coldlg', (dialog) => {
     if (e) e.focus();
   });
 });
-function openColour(nd, kind, key, onEdit) {
+export function openColour(nd, kind, key, onEdit) {
   const spec = KIND[kind];
   const colDlg = colourDialog.get();
   colKey = key;

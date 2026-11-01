@@ -115,13 +115,13 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 // with why: an exemption on one page leaves the other page's lookup checked.
 const MAY_BE_MISSING = {
   'src/loop/main.tsx': {},
-  'src/career/main.js': {
+  'src/career/main.tsx': {
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
     'c-peruma':
       "cards.js: the loop page's Deck per uma switch; the career page has none (cards.js returns before using it)",
   },
 };
-const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.js': 'career.template.html' };
+const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.tsx': 'career.template.html' };
 const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
@@ -240,6 +240,38 @@ const cycles = [];
 // renders into its mount points and marks them (attributes on the mount point itself), so it may look those up. A
 // lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
 const MOUNTS = {
+  'src/career/main.tsx': [
+    ['run-note', 'src/career/view/RunNote.tsx', ['run-act'], ['runprog']],
+    ['lodds', 'src/career/view/Tree.tsx', ['odds-open', 'sim-try'], ['udodds']],
+    [
+      'tree',
+      'src/career/view/Tree.tsx',
+      ['deck-open', 'sched-open'],
+      ['pn', 'pnh', 'pnl', 'pnclick', 'ptile', 'tnm', 'pf', 'pflab', 'pk', 'pgs', 'tdeck', 'rtgt', 'ctgs']
+        .concat(['ctg', 'tgp', 'tgbar', 'tgfill', 'tgfig', 'tgdk', 'tgico', 'tgchart', 'tgcounts', 'tgc'])
+        .concat(['tgcb', 'tgck', 'tgavg']),
+    ],
+    ['bp', 'src/career/view/Setup.tsx', [], []],
+    ['v-pane', 'src/career/view/NodeDialog.tsx', [], ['vptitle', 'vctl', 'vpars']],
+    [
+      'node-root',
+      'src/career/view/NodeDialog.tsx',
+      ['node-dlg', 'node-title', 'node-body'],
+      ['nodedlg', 'twho', 'vxy', 'srctag', 'simtag', 'vdel', 'tempty', 'onote', 'ctt', 'nact'],
+    ],
+    ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
+    [
+      'vpick-root',
+      'src/career/view/ParentPicker.tsx',
+      ['vpick-dlg', 'vpick-title', 'vp-tab-vets', 'vp-tab-new', 'vp-tab-auto', 'vp-vets', 'vp-new', 'vp-auto'].concat([
+        'vp-list',
+        'vp-filter',
+        'vp-umas',
+        'vp-auto-go',
+      ]),
+      ['vpt', 'vpth', 'vpts', 'vptg', 'vptw', 'vpgh', 'vpgrid'],
+    ],
+  ],
   'src/loop/main.tsx': [
     ['run-root', 'src/loop/RunNote.tsx', ['run-note', 'r-act'], ['runnote', 'ract']],
     ['rtop', 'src/loop/Results.tsx', ['c-top', 'c-top-l'], []],
@@ -366,11 +398,13 @@ const LAYERS = [
       'career/job',
       'career/io',
       'career/view/parts',
+      'career/view/dialogs',
       'career/view/RunNote',
       'career/view/Tree',
       'career/view/NodeDialog',
       'career/view/ParentPicker',
       'career/view/Sections',
+      'career/view/Results',
       'career/view/Pool',
       'career/view/Setup',
     ],

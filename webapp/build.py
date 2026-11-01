@@ -200,7 +200,7 @@ def era(data_dir):
 
 global_era = era(GLOBAL_DATA)
 gm_era = era(JP_DATA)  # GM era: pal first-year date events left out of its card_events.json, as in Global
-# the page scripts: src/loop/main.tsx, src/career/main.js and the modules they import, each bundled into one minified IIFE (esbuild
+# the page scripts: src/loop/main.tsx, src/career/main.tsx and the modules they import, each bundled into one minified IIFE (esbuild
 # from node_modules: npm ci); also the solver's worker script, src/worker.ts, minified and wrapped the same way
 # (JSX compiles to Preact's jsx() calls, imported from preact/jsx-runtime)
 ESBUILD = os.path.join(HERE, "node_modules", ".bin", "esbuild")
@@ -444,7 +444,7 @@ DATA_JS = data_script(
     },
 )
 CAREER_DATA_JS = data_script("career-data.js", {"data-career": global_era.career})
-MAIN_JS, CAREER_JS = fingerprint("main.js", app), fingerprint("career.js", bundle("src/career/main.js"))
+MAIN_JS, CAREER_JS = fingerprint("main.js", app), fingerprint("career.js", bundle("src/career/main.tsx"))
 
 
 def script_preloads(*srcs):

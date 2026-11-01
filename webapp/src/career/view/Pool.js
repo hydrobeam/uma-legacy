@@ -1,4 +1,5 @@
-// The veterans dialog: its two tabs, sort menu, cards and the wide pane. With it, the setup panel's fold: the first
+// The veterans dialog: its two tabs, sort menu, cards and which one the wide pane shows (NodeDialog.tsx's VetPane
+// draws her). With it, the setup panel's fold: the first
 // veterans arriving fold the setup (`renderPool` writes `folded`, so the two share a module).
 import { $, $dialog, el } from '../../dom.js';
 import { ERA } from '../../saved.ts';
@@ -11,7 +12,7 @@ import { wireMenu } from '../../sortmenu.js';
 import { umamoeButton } from '../../umamoesetup.js';
 import { must } from '../../must.ts';
 import { idxOf, BORROW_CHOICES, borrowChoice } from '../job.js';
-import { openNode, veteranView } from './NodeDialog.js';
+import { openNode, showPane } from './dialogs.ts';
 
 // ---------- the veterans (pool) ----------
 // a veteran as the game's legacy list draws her, her number (an uma.moe one: her trainer) under her, a "Parent 1" tab
@@ -25,7 +26,7 @@ function vetCardEl(v, i) {
       name: v.lender ? v.lender.name || 'uma.moe' : `#${i + 1}`,
       label: `Veteran #${i + 1}: ${umaName(v.chara)}, ${have} of ${tg.length} target skills. Her sparks`,
       onClick: () => {
-        if (!wideVets()) openNode({ kind: 'v', id: v.id });
+        if (!wideVets()) openNode({ kind: 'v', id: v.id }, () => focusCard(v.id));
         else if (vSel !== v.id) {
           vSel = v.id;
           markSel();
@@ -144,15 +145,10 @@ function markSel() {
     c.setAttribute('aria-current', String(on && wideVets()));
   }
 }
-function drawPane() {
-  const pane = $('v-pane');
-  pane.textContent = '';
-  if (vSel && wideVets()) {
-    const h = el('h4', 'vptitle');
-    pane.appendChild(h);
-    h.textContent = veteranView(vSel, pane) || '';
-  }
-}
+// the one beside the list: NodeDialog.tsx's VetPane draws her
+const drawPane = () => showPane(vSel && wideVets() ? vSel : null);
+// her card, drawn again since her popup opened (an edit in it): the focus goes back to it
+const focusCard = (id) => document.getElementById(`vet-${idxOf(id)}`)?.focus();
 export function drawPool() {
   const box = $('vets');
   poolStale = false;
