@@ -8,6 +8,9 @@ p11_noagnes 3.25
 p16 1.22
 p16_88 2.04
 p16_borrow 1.99
+p16_borrow_check 6.17
+p16_borrow_never 1.31
 p16_ss 1.19
 p16_t10 51.14
 p16_ura 1.3
+p360_check 10.91

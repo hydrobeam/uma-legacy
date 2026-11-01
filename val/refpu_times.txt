@@ -14,6 +14,7 @@ global__pal_N 0.8
 global__pal_U 0.2
 global__pal_UF 4.4
 global__pal_Uk3 1.1
+jp__v_gm_k1 1.2
 jp__v_ng_k1 1.6
 jp__v_ng_k3 2.4
 jp__v_uc_k1 0.5
