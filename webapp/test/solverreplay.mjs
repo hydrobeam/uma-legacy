@@ -1,18 +1,19 @@
-// The solver's replies, recorded and replayed (docs/BUILD.md, *Tests*). Most groups use the
-// solver only to put the page in a state. In those (groups.spec.mjs REPLAY) a stand-in for the page's Worker answers
-// each job from the store (cache/solver-replies/, a directory per solver and data: replaystore.mjs), and the page's
-// wasm compile is handed an empty module, so the solver neither compiles nor runs. `LLP_SOLVER=live` runs every group
-// on the real solver and records its replies (./build.sh test and testq do so when the store has none for this solver
-// and data); a job the store lacks fails its group with the job named (no live fallback within a run).
+// The solver's replies, recorded and replayed (docs/BUILD.md, *Tests*). Most groups use the solver only to put the page
+// in a state. In those (groups.spec.mjs REPLAY) a stand-in for the page's Worker answers each job from the store
+// (cache/solver-replies/, a directory per solver and data, named by those files' bytes: replaystore.mjs), and the
+// page's wasm compile is handed an empty module, so the solver neither compiles nor runs. `LLP_SOLVER=live` runs every
+// group on the real solver and records its replies (./build.sh test and testq do so when the store has none for this
+// solver and data); a job the store lacks fails its group with the job named (no live fallback within a run).
 //
-// The key of a reply: SHA-256 over the wasm's fingerprinted name (ASSETS.wasm), the era data the worker was given (its
-// SHA-256, which its fingerprint ASSETS.engine[era] truncates), every job that worker ran before, in order, and the
-// job's own JSON (keys sorted; the message's per-call id left out). The solver keeps work between jobs (a plan's kept
-// state, its caches, what `state_in` restores), so a reply is a function of the worker's whole history, not of its job
-// alone. A replayed reply is therefore the one the real worker gave in the recording run, provided the solver is
-// deterministic given its jobs: its only clock reads are timings it reports, and a live run prints and counts any reply
-// that differs from the stored one (timings aside: `*_ms`, `ms`). A new wasm or new data changes every key, so a solver
-// change fails every replaying group until a live run records it, and that run checks the solver's own replies.
+// The key of a reply, within its solver's directory: SHA-256 over the era data the worker was given (its SHA-256),
+// every job that worker ran before, in order, and the job's own JSON (keys sorted; the message's per-call id left out).
+// No asset name is in it or in the directory's, so a page change that leaves the solver, its data and the jobs alone
+// replays. The solver keeps work between jobs (a plan's kept state, its caches, what `state_in` restores), so a reply
+// is a function of the worker's whole history, not of its job alone. A replayed reply is therefore the one the real
+// worker gave in the recording run, provided the solver is deterministic given its jobs: its only clock reads are
+// timings it reports, and a live run prints and counts any reply that differs from the stored one (timings aside:
+// `*_ms`, `ms`). A new wasm, worker script or data is a new directory, so a solver change fails every replaying group
+// until a live run records it, and that run checks the solver's own replies.
 //
 // Every context also gets a seeded Math.random (the sample veterans' draw and the career rolls use it), so a page makes
 // the same jobs in the recording run and in replay, and the stand-in in every group, live ones included, which carries
@@ -20,6 +21,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { STORE_ROOT, storeName } from './replaystore.mjs';
+
+// each solver's store directory, by the page's data-assets and worker script (their files are fixed for a run)
+const storeDirs = new Map();
+const storeDir = (solver) => {
+  if (!storeDirs.has(solver)) storeDirs.set(solver, storeName(JSON.parse(solver)));
+  return storeDirs.get(solver);
+};
 
 /** 'live' (every group on the real solver, its replies recorded) or 'replay' (the default: REPLAY groups from the store). */
 export const SOLVER = process.env.LLP_SOLVER || 'replay';
@@ -44,10 +52,10 @@ export async function installSolver(ctx, mode, tally) {
   const how = record ? 'record' : mode.replay ? 'replay' : 'live';
   await ctx.addInitScript(workerStandIn, how);
   if (how === 'live') return;
-  // assets: the page's data-assets JSON, which names the store's directory
-  await ctx.exposeBinding('__llpSolver', async (_, op, assets, key, text) => {
+  // solver: the page's data-assets and its worker script's path, as JSON, whose files name the store's directory
+  await ctx.exposeBinding('__llpSolver', async (_, op, solver, key, text) => {
     if (!/^[0-9a-f]{64}$/.test(key)) throw new Error(`bad solver reply key ${key}`);
-    const dir = path.join(STORE_ROOT, storeName(JSON.parse(assets)));
+    const dir = path.join(STORE_ROOT, await storeDir(solver));
     const file = path.join(dir, `${key}.json`);
     const stored = await fs.promises.readFile(file, 'utf8').catch(() => null);
     if (op === 'get') {
@@ -149,7 +157,6 @@ function workerStandIn(how) {
         : v,
     );
   const assets = () => JSON.parse(document.getElementById('data-assets').textContent);
-  const store = (op, key, text) => window.__llpSolver(op, JSON.stringify(assets()), key, text);
   const sleep = (ms) =>
     new Promise((resolve) => {
       setTimeout(resolve, ms);
@@ -165,7 +172,8 @@ function workerStandIn(how) {
   class SolverWorker extends EventTarget {
     #real;
     #dead = false;
-    #base = null; // promise of the wasm's name and the era data's digest
+    #script; // this worker's script, a path on the site: with the page's data-assets, it names the store's directory
+    #base = null; // promise of the era data's digest
     #key = Promise.resolve(''); // the last job's key, which stands for the worker's history
     #jobs = 0;
     #steps = new Map(); // a check job (canonical JSON) -> how many times this worker was sent it
@@ -177,6 +185,7 @@ function workerStandIn(how) {
 
     constructor(...args) {
       super();
+      this.#script = new URL(String(args[0]), location.href).pathname;
       this.#real = new Real(...args);
       flushes.push(() => {
         const held = this.#held;
@@ -219,6 +228,9 @@ function workerStandIn(how) {
       this.#real.terminate();
       for (const id of [...this.#open.keys()]) this.#ended(id);
     }
+    #store(op, key, text) {
+      return window.__llpSolver(op, JSON.stringify({ assets: assets(), worker: this.#script }), key, text);
+    }
     #ended(id) {
       const kind = this.#open.get(id);
       this.#open.delete(id);
@@ -243,7 +255,7 @@ function workerStandIn(how) {
         return;
       }
       if (message?.type === 'init') {
-        this.#base = sha256(String(message.data)).then((digest) => `${assets().wasm}|${digest}`);
+        this.#base = sha256(String(message.data));
         if (replay) this.#queue = this.#queue.then(() => this.#emit({ type: 'ready' }));
         else this.#real.postMessage(message, transfer);
         return;
@@ -289,12 +301,12 @@ function workerStandIn(how) {
       if (this.#dead) return;
       const job = message.job,
         what = `${job?.cmd}${job?.next ? '.next' : ''} (job ${n} of its worker, key ${key.slice(0, 12)}): ${canonical(job).slice(0, 160)}`;
-      const stored = await store('get', key);
+      const stored = await this.#store('get', key);
       if (stored === null && background(job)) {
         // a background job the recording run never sent: the page moved on before it there (the next check step goes
         // out only as the last one answers). It stays unanswered, as a job still running when the page moved on, whose
         // answer the page drops; a check that waits for it fails, with this named in the test's annotations
-        store('held', key, what);
+        this.#store('held', key, what);
         this.#ended(message.id);
         return;
       }
@@ -303,11 +315,11 @@ function workerStandIn(how) {
         // given a moment, the page stops it here too
         await sleep(STOP_GRACE_MS);
         if (this.#dead) {
-          store('stopped', key, what);
+          this.#store('stopped', key, what);
           return;
         }
         // the worker's answer to a failed job: the page drops the worker and shows the error
-        store('missing', key, what);
+        this.#store('missing', key, what);
         this.#emit({ type: 'error', id: message.id, message: `no stored reply for ${what}` });
         return;
       }
@@ -325,7 +337,7 @@ function workerStandIn(how) {
         job.messages.push(JSON.parse(JSON.stringify(d)));
         if (d.type === 'result' || d.type === 'error') {
           this.#recording.delete(id);
-          job.key.then((k) => store('put', k, JSON.stringify({ cmd: job.cmd, msgs: job.messages })));
+          job.key.then((k) => this.#store('put', k, JSON.stringify({ cmd: job.cmd, msgs: job.messages })));
         }
       }
       this.#emit(data);

@@ -295,11 +295,12 @@ infinite is written as null (serde_json), and such a field is typed `number | nu
   draws from its replies (`REPLAY` in `groups.spec.mjs`), answer every solver job from the recorded replies
   (`webapp/test/solverreplay.mjs`): the page's worker is a stand-in and its wasm compile gets an empty module, so they
   cost about a third of their live CPU. The other groups run the real solver: they check its worker's live behaviour
-  (kills, restarts, progress, races, the stored work), the wasm as served, or the deck solver's odds. A reply's key is
-  the wasm's and era data's fingerprints, the jobs that worker ran before and the job, so a solver, data or page change
-  that alters a job fails its group with the job named; nothing falls back to the live solver. The replies of one
-  solver and data are one directory, `cache/solver-replies/WASM-GLOBAL-GM` (the fingerprints in the asset names of the
-  wasm and the two eras' engine data: `webapp/test/replaystore.mjs`). `LLP_SOLVER=live ./build.sh test` runs every
+  (kills, restarts, progress, races, the stored work), the wasm as served, or the deck solver's odds. The replies of one
+  solver and data are one directory, `cache/solver-replies/WASM-GLOBAL-GM-WORKER`, named by the SHA-256 of those files'
+  bytes (the wasm, the two eras' engine data and the worker script: `webapp/test/replaystore.mjs`), never by an asset's
+  name, so a page change that leaves them alone (a view, the stylesheet, the bundler's file names) replays. Within it a
+  reply's key is the era data's digest, the jobs that worker ran before and the job, so a page change that alters a job
+  fails its group with the job named; nothing falls back to the live solver. `LLP_SOLVER=live ./build.sh test` runs every
   group on the real solver and records the replies (about 45 MB). `test` and `testq` do so by themselves, saying so in
   one line, when the current directory holds no passing live run of their tier (`.recorded-full`, written by a passing
   live `test`, serves both; `.recorded-quick` serves `testq`), so after a solver or data change the first run records.

@@ -15,8 +15,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 ROOT = REPO / "cache" / "solver-replies"
-# the wasm's and both engines' fingerprints: Vite's (8 characters, base64url), or build.py's before it (hex)
-STORE_DIR = re.compile(r"[\w-]{8}-[\w-]{8}-[\w-]{8}|[0-9a-f]+-[0-9a-f]+-[0-9a-f]+")
+# the SHA-256 prefixes of the wasm, both engines and the worker script (replaystore.mjs); or, from before, the
+# fingerprints in the asset names of the wasm and both engines: Vite's (8 characters, base64url) or build.py's (hex)
+STORE_DIR = re.compile(r"[0-9a-f]{16}(-[0-9a-f]{16}){3}|[\w-]{8}-[\w-]{8}-[\w-]{8}|[0-9a-f]+-[0-9a-f]+-[0-9a-f]+")
 REPLY_FILE = re.compile(r"[0-9a-f]{64}\.json(\.\d+\.part)?|\.recorded-(quick|full)")
 
 
