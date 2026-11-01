@@ -483,7 +483,7 @@ function schedule() {
 
 // ---------- the job ----------
 const idxOf = (id) => vets.findIndex((v) => v.id === id);
-class Blocked extends Error {
+export class Blocked extends Error {
   constructor(kind, text, act) {
     super(text);
     this.kind = kind;
@@ -597,8 +597,9 @@ function dropStaleChosen() {
   let applies = false;
   try {
     applies = buildJob().career === chosen.career.id;
-  } catch {
-    // settings that make no job (Blocked): the chosen career no longer applies
+  } catch (e) {
+    if (!(e instanceof Blocked)) throw e;
+    // settings that make no job: the chosen career no longer applies
   }
   if (applies) return;
   chosenDropped = {
@@ -2193,8 +2194,9 @@ function exportVets() {
   let job = null;
   try {
     job = buildJob();
-  } catch {
-    // settings that make no job (Blocked): the export carries none
+  } catch (e) {
+    if (!(e instanceof Blocked)) throw e;
+    // settings that make no job: the export carries none
   }
   // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
   const veterans = vets.filter((v) => v.src !== 'umamoe');

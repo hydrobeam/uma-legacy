@@ -15,6 +15,7 @@ import {
   run,
   refFor,
   buildJob,
+  Blocked,
   chosenSetup,
   placesKey,
   forgetDroppedChoice,
@@ -106,8 +107,9 @@ function useBtn(r, places = plan) {
     if ((r.alternative || r.pair_search) && r.career) {
       try {
         chosen.career = { places: placesKey(), id: r.career, setup: chosenSetup(buildJob()) };
-      } catch {
-        // settings that make no job (Blocked): nothing is chosen
+      } catch (e) {
+        if (!(e instanceof Blocked)) throw e;
+        // settings that make no job: nothing is chosen
       }
     }
     changed();

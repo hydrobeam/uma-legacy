@@ -42,11 +42,9 @@ pop.addEventListener('keydown', (e) => {
 });
 export function markOwn() {
   document.querySelectorAll('.deck .dc').forEach((chip) => {
-    chip.classList.toggle(
-      'off',
-      !chip.classList.contains('bor') &&
-        state.cardsOff[+must(chip.dataset.cid, 'a card chip names its card')] === false,
-    );
+    // a chip whose card the page data lacks has no id (data-cid empty or absent) and is never greyed
+    const cid = chip.dataset.cid;
+    chip.classList.toggle('off', !!cid && !chip.classList.contains('bor') && state.cardsOff[+cid] === false);
   });
   document.querySelectorAll('.mem[data-uma]').forEach((member) => {
     const u = gameData().umas.find((x) => x.id === +must(member.dataset.uma, 'a member block names her'));
