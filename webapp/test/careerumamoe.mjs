@@ -189,7 +189,7 @@ export default async function careerumamoe(b) {
     !ex.veterans.some((v) => v.src === 'umamoe') && !/Trainer [12]/.test(JSON.stringify(ex.veterans)),
   );
   // an uma.moe veteran as parent 1, from the picker's uma.moe heading
-  const bj = (await lastJob()).legacies.length - 1;
+  const bj = (await lastJob()).career.legacies.length - 1;
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
