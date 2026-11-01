@@ -63,8 +63,8 @@ export function SchedButton({ r }: { r: CareerReport }) {
     </button>
   );
 }
-/** one card of the deck (a click opens its panel: popover.js, which reads the data-* and leaves the markup to this) */
-function DeckCard({ r, i }: { r: CareerReport; i: number }) {
+/** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.js, which reads the data-* and leaves the markup to this) */
+export function DeckCard({ r, i }: { r: CareerReport; i: number }) {
   const d = r.deck,
     { base, borrowed: bor, card: c } = cardAt(d, i),
     endAt = (d.end_chain_at || [])[i] || 0,

@@ -185,12 +185,15 @@ what the status line draws of the run, the answer on show and the last plan made
 transitions replace. Its run machine (`career/run.ts`, `createRun(deps)`: the search, the plan and the robustness check,
 with the store's transitions, the engine, clock, page and redraws passed in) imports no store, and node tests run it on
 fakes. A plan is known by an id given when it is made, so the check, whose writes replace the plan's record, writes its
-result wherever the plan is kept. Views are Preact components that read the stores through @preact/signals: the loop
-page's, and the career page's status line, tree, node popup, parent picker and deck popup, each rendered by its page's
+result wherever the plan is kept. Try a run's veteran analysis is a fourth (`career/analysis/state.ts`: her draft and
+her comparison, one record replaced by a transition per phase), changed by its own run machine
+(`career/analysis/compare.ts`, `createComparison(deps)`), which the career run machine drives through its hooks. Views are Preact components that read the stores through @preact/signals: the loop
+page's, and the career page's status line, tree, node popup, parent picker, deck popup and Try a run, each rendered by its page's
 entry into the template's mount points; the rest (the career page's results column and veterans pool among them)
 still build their markup with `el()` and `innerHTML`, and the entry draws them again after a change. The veterans are
 edited in place until their store goes copy-on-write, so `vets.js` counts the edits (`vetsRev`, moved by `changed`)
-and every component that draws a veteran or a place reads it. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
+and every component that draws a veteran or a place reads it; Try a run's draft, edited in place too, is drawn again
+from her record's identity. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
 machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import no component, and only a
 component's own module looks into what it draws (`test/static.mjs`).
 

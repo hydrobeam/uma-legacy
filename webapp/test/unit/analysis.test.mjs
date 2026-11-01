@@ -360,6 +360,22 @@ test("F6: an answer showing the same career keeps the draft she was entered as; 
   p.stop();
 });
 
+test("her card's tab and the races' fold outlive her record: a new career, no career, her draft added", () => {
+  const p = page();
+  store.showTab('skills');
+  store.toggleRaces();
+  p.c.show(career('other'));
+  p.c.clear();
+  p.c.show(p.shown);
+  store.draftAdded();
+  assert.equal(store.detailsTab.peek(), 'skills');
+  assert.equal(store.racesShown.peek(), true);
+  store.toggleRaces();
+  store.showTab('insp');
+  assert.equal(store.racesShown.peek(), false);
+  p.stop();
+});
+
 test('an edit of her draft: a new record over the same draft, stale only with figures on show', async () => {
   const p = page();
   const draft = simulation.peek().draft;

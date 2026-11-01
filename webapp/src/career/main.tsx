@@ -13,7 +13,7 @@
 //   io.js              Export and Import of the veterans
 //   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
 //   analysis/          the veteran analysis ("Try a run"): state.ts its store (her draft, her comparison), compare.ts
-//                      the comparison's run machine, view.js the popup
+//                      the comparison's run machine, view.tsx Try a run's popup, Details.tsx her card
 //   options.js         the options table ("Other careers": the plan's careers, Use this) and its Saves popup
 //   view/RunNote.tsx   the status line
 //   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
@@ -22,7 +22,7 @@
 //   view/Sections.tsx  the career's sections in the tree: odds, deck and its popup, schedule, targets, counts
 //   view/Setup.tsx     the Borrowed parent choice
 //   view/dialogs.ts    which popup is open, for what (the el() modules open them through it)
-//   view/Results.js    the results column (the options table, Try a run: el(), steps 9 and 11)
+//   view/Results.js    the results column (the options table: el(), step 11)
 //   view/Pool.js       the veterans dialog, and the setup panel's fold (el(), step 10)
 //   view/parts.js      small parts the el() views share
 import '../errorlog.ts'; // first: it listens before any other module runs
@@ -62,7 +62,7 @@ import {
   isFull,
   ROLL_K,
 } from './job.js';
-import { initAnalysis, draftOf, rollOf, renderSimulation } from './analysis/view.js';
+import { Analysis, draftOf, drawnHere, rollOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
@@ -167,7 +167,7 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
 }
-// the views still built with el() after a change: the results column (steps 9, 11) and the pool (step 10); the
+// the views still built with el() after a change: the results column (step 11) and the pool (step 10); the
 // components follow their signals
 function drawUnported() {
   renderResults();
@@ -247,14 +247,12 @@ document.addEventListener('click', (e) => {
 loadData().then(
   async () => {
     initSettings();
-    initPopover({ drawn: drawnCard });
+    initPopover({ drawn: (chip) => drawnCard(chip) || drawnHere(chip) });
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
     initUmamoe({ open: (v) => openNode({ kind: 'v', id: v.id }) });
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
-    // Try a run's popup: Close and a backdrop click shut it; drawn again on every change of her analysis
-    initAnalysis(comparison);
-    on([analysisStore.simulation], renderSimulation);
+    // Try a run's popup: Close and a backdrop click shut it
     const simDlg = $dialog('sim-dlg');
     for (const x of simDlg.querySelectorAll<HTMLElement>('.dclose')) x.onclick = () => simDlg.close();
     backdropCloses(simDlg);
@@ -315,6 +313,7 @@ loadData().then(
     mount('node-root', <NodeDialog />);
     mount('deck-root', <DeckDialog />);
     mount('vpick-root', <ParentPicker />);
+    mount('sim-top', <Analysis comparison={comparison} />);
     drawUnported();
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },

@@ -268,6 +268,26 @@ const MOUNTS = {
     ],
     ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
     [
+      'sim-top',
+      'src/career/analysis/view.tsx',
+      [
+        'simulation',
+        'sim-compare',
+        'sim-roll',
+        'sim-add',
+        'sim-wins',
+        'sim-result',
+        'sim-chance',
+        'sim-verdict',
+      ].concat(['ud-races']),
+      ['simcol', 'simresult', 'simhdr', 'simchance', 'simidle', 'simverdict', 'simrefine', 'simodds', 'simbest']
+        .concat(['simfit', 'nextc', 'nextdeck', 'cfaces', 'cface', 'cwith', 'udtop', 'udpor', 'udmid', 'udname'])
+        .concat(['udout', 'udnm', 'udapt', 'udarow', 'udal', 'udac', 'udan', 'udtabs', 'udtab', 'udpanes', 'udpane'])
+        .concat(['udskills', 'udnone', 'udfoot', 'udcards', 'udcard', 'udfr', 'udlegs', 'udleg', 'udlegh', 'udlegt'])
+        .concat(['udlegp', 'udlegn', 'udguest', 'udleggp', 'udleggx', 'udsub', 'udrec', 'udrecl', 'udstat', 'udmore'])
+        .concat(['udraces', 'udrace', 'udrw', 'udgr', 'udrn', 'udres', 'udact']),
+    ],
+    [
       'vpick-root',
       'src/career/view/ParentPicker.tsx',
       ['vpick-dlg', 'vpick-title', 'vp-tab-vets', 'vp-tab-new', 'vp-tab-auto', 'vp-vets', 'vp-new', 'vp-auto'].concat([
@@ -498,6 +518,7 @@ const LAYERS = [
     [
       'career/main',
       'career/analysis/view',
+      'career/analysis/Details',
       'career/options',
       'career/job',
       'career/io',

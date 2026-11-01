@@ -1,18 +1,15 @@
-// ---------- the veteran card: the game's "Umamusume Details" screen ----------
-// Her portrait and outfit, her aptitude grades (Track / Distance / Style, the game's letters), then three tabs as in the
-// game: Skills (the target skills she learned), Inspiration (her sparks as the game's spark bars, stars under each, then
-// "Legacy Origin": her two parents' sparks) and Career Info (her support cards, her two legacies, the G1s she ran and
-// won). No stats (the model has none).
-// The game's own art where the build shipped it (images.py: grade letters, spark bars and bullets, skill tiles), the
-// same shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
+// ---------- the veteran card's parts the views share: the game's "Umamusume Details" screen ----------
+// What Try a run's card (career/analysis/Details.tsx) and the node popups share: the spark names' fit (`fitSparks`), the
+// game-style Skill Details popup (`openSkill`), a deck's card by its index (`deckCardAt`), and the game's Inspiration view
+// of a veteran built with el() (`inspView`: Try a run's Inspiration tab until the veterans store's draft setter lands,
+// step 10). The game's own art where the build shipped it (images.py: spark bars and bullets, skill tiles), the same
+// shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
 import { el, lazyDialog } from './dom.js';
 import { gameData } from './data.js';
-import { umaAv, skillIcon, cardAv, gradeEl } from './images.js';
+import { umaAv, cardAv } from './images.js';
 import { umaName, sparksEl } from './vets.js';
 /** @import { LineageNode } from './vets.js' */
-import { borLast } from './cards.js';
 
-let tab = 'insp'; // the tab on show, kept across redraws (Inspiration first: it is where her sparks are entered)
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only
 // Each name takes the largest size f0 - 0.5k that fits, or the first one at or under 9 px (a step-by-step shrink). All
 // names are sized together: every round writes each unsettled name's next size to try, then reads them all (one layout
@@ -56,203 +53,7 @@ export function fitSparks(root = document) {
   });
 }
 addEventListener('resize', () => fitSparks());
-const GRADES = 'GFEDCBAS';
-// aptitude rows; `at` indexes the solver's `apt` order: short, mile, middle, long, turf, dirt, front, pace, late, end
-const APT_ROWS = [
-  {
-    label: 'Track',
-    cells: [
-      { at: 4, name: 'Turf' },
-      { at: 5, name: 'Dirt' },
-    ],
-  },
-  {
-    label: 'Distance',
-    cells: [
-      { at: 0, name: 'Sprint' },
-      { at: 1, name: 'Mile' },
-      { at: 2, name: 'Medium' },
-      { at: 3, name: 'Long' },
-    ],
-  },
-  {
-    label: 'Style',
-    cells: [
-      { at: 6, name: 'Front' },
-      { at: 7, name: 'Pace' },
-      { at: 8, name: 'Late' },
-      { at: 9, name: 'End' },
-    ],
-  },
-];
-// a turn (0-71: 24 half-months a year) as "Classic Late Apr"
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const when = (turn) =>
-  `${['Junior', 'Classic', 'Senior'][Math.floor(turn / 24)]} ${turn % 2 ? 'Late ' : 'Early '}${MONTHS[Math.floor((turn % 24) / 2)]}`;
-
-/**
- * @typedef {object} DetailsSpec
- * @property {LineageNode & {parents: LineageNode[], bought?: Object<number, string>}} d  the veteran
- * @property {string|null} outfit  her outfit's label
- * @property {number[]|null} apt  her ten grades at the end of this career (codes 1..8 = G..S; null: unknown)
- * @property {{ix: number, name: string, p: number, turns: number[]}[]} races  the G1s her schedule runs, each with her
- *   chance of winning it at least once
- * @property {(ix: number) => string} raceName
- * @property {() => void} onEdit  after an edit of her sparks
- * @property {HTMLElement} winsBtn  the G1 wins editor's button
- * @property {(j: number) => string} parentLabel  a parent's place ("#3")
- * @property {import('./career/job.js').CareerTarget[]} [targets]  the career's per-target report
- * @property {import('./loop/types.ts').ResultDeck|null} [deck]  her deck
- * @property {{v: import('./vets.js').Veteran, label: string, open: () => void}[]} [legacies]  her two parents, each with
- *   her place and what opens her node
- */
-/** @param {DetailsSpec} spec */
-export function detailsEl({
-  d,
-  outfit,
-  apt,
-  races,
-  raceName,
-  onEdit,
-  winsBtn,
-  parentLabel,
-  targets = [],
-  deck = null,
-  legacies = [],
-}) {
-  const card = el('div', 'ud');
-  // her portrait, outfit and name
-  const top = el('div', 'udtop');
-  const por = el('div', 'udpor');
-  const face = umaAv(d.chara, d.outfit, 96);
-  face.setAttribute('role', 'img');
-  face.setAttribute('aria-label', outfit ? `${umaName(d.chara)} ${outfit}` : umaName(d.chara));
-  por.appendChild(face);
-  top.appendChild(por);
-  const nm = el('div', 'udname');
-  if (outfit) nm.appendChild(el('div', 'udout', /^\[.*\]$/.test(outfit) ? outfit : `[${outfit}]`));
-  nm.appendChild(el('div', 'udnm', umaName(d.chara)));
-  top.appendChild(nm);
-  card.appendChild(top);
-  // her aptitudes
-  if (apt) {
-    const g = el('div', 'udapt');
-    g.setAttribute('role', 'table');
-    g.setAttribute('aria-label', 'Her aptitudes');
-    for (const { label, cells } of APT_ROWS) {
-      const row = el('div', 'udarow');
-      row.setAttribute('role', 'row');
-      const h = el('span', 'udal', label);
-      h.setAttribute('role', 'rowheader');
-      row.appendChild(h);
-      for (const { at, name } of cells) {
-        const c = el('span', 'udac');
-        c.setAttribute('role', 'cell');
-        c.append(el('span', 'udan', name), gradeEl(apt[at]));
-        c.title = `${name} ${GRADES[apt[at] - 1]}`;
-        row.appendChild(c);
-      }
-      g.appendChild(row);
-    }
-    card.appendChild(g);
-  }
-  // the tabs: each pane is built from the card's inputs
-  const tabs = el('div', 'udtabs');
-  tabs.setAttribute('role', 'tablist');
-  tabs.setAttribute('aria-label', 'Her details');
-  const panes = el('div', 'udpanes');
-  const paneInput = { d, races, raceName, onEdit, winsBtn, parentLabel, targets, deck, legacies };
-  const defs = [
-    { key: 'skills', label: 'Skills', make: skillsPane },
-    { key: 'insp', label: 'Inspiration', make: inspPane },
-    { key: 'info', label: 'Career Info', make: infoPane },
-  ];
-  const shownTabs = []; // {key, button, pane} per tab, in order
-  for (const { key, label, make } of defs) {
-    const b = el('button', 'udtab', label);
-    b.type = 'button';
-    b.id = `udtab-${key}`;
-    b.setAttribute('role', 'tab');
-    b.dataset.k = `sim:tab:${key}`;
-    b.setAttribute('aria-selected', String(tab === key));
-    b.setAttribute('aria-controls', `udpane-${key}`);
-    b.tabIndex = tab === key ? 0 : -1;
-    const pane = make(paneInput);
-    pane.id = `udpane-${key}`;
-    pane.classList.add('udpane');
-    pane.setAttribute('role', 'tabpanel');
-    pane.setAttribute('aria-labelledby', b.id);
-    pane.hidden = tab !== key;
-    b.onclick = () => {
-      tab = key;
-      for (const other of shownTabs) {
-        const on = other.key === key;
-        other.button.setAttribute('aria-selected', String(on));
-        other.button.tabIndex = on ? 0 : -1;
-        other.pane.hidden = !on;
-      }
-      fitSparks(card);
-    };
-    b.onkeydown = (e) => {
-      const i = defs.findIndex((x) => x.key === key),
-        step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-      if (!step) return;
-      e.preventDefault();
-      const next = shownTabs[(i + step + shownTabs.length) % shownTabs.length].button;
-      next.click();
-      next.focus();
-    };
-    shownTabs.push({ key, button: b, pane });
-    tabs.appendChild(b);
-    panes.appendChild(pane);
-  }
-  card.append(tabs, panes);
-  return card;
-}
-
-// Skills: every target skill she could acquire this career, as the game's skill tiles (name only): acquired in this
-// result bright (gold tile for the gold version), the others greyed. A tile opens the game-style skill popup: acquired
-// or not, where it can come from (her outfit's own skill, a deck card's gold or white hint, her story events,
-// inspiration from the legacies, the scenario) with each chance, and how likely it is acquired and lands as a spark.
 const pctS = (p) => (p >= 0.995 ? 'always' : p < 0.005 ? '<1%' : `${Math.round(p * 100)}%`);
-function skillsPane({ d, targets }) {
-  const p = el('div'),
-    grid = el('div', 'udskills');
-  let acquired = 0,
-    acquirable = 0;
-  for (const t of targets) {
-    const b = t.buy;
-    if (!b || b.gold + b.white <= 0) continue;
-    acquirable++;
-    // how she got it: bought in this result, else landed as a spark (gold when gold lands more often), else not at all
-    const got =
-      d.bought?.[t.group] || ((d.sparks[t.group] || 0) > 0 ? (b.land_gold > b.land_white ? 'gold' : 'white') : null);
-    const gold = got === 'gold',
-      skill = gameData().skillNames.get(t.group) || { w: `Skill ${t.group}`, gd: null };
-    // the version shown: the one she got, else the one she would most likely get
-    const goldShown = got ? gold : b.gold > b.white;
-    const name = goldShown && skill.gd ? skill.gd : skill.w;
-    if (got) acquired++;
-    const tile = el('button', `udsk${gold ? ' gold' : ''}${got ? '' : ' off'}`);
-    tile.type = 'button';
-    tile.dataset.k = `sim:sk${t.group}`;
-    const ic = skillIcon(t.group, goldShown);
-    if (ic) tile.appendChild(ic);
-    tile.appendChild(el('span', 'udskn', name));
-    tile.setAttribute('aria-haspopup', 'dialog');
-    tile.setAttribute('aria-label', `${name}: ${got ? `acquired${gold ? ' (gold)' : ''}` : 'not acquired'}. Details`);
-    tile.onclick = () => openSkill({ b, name, got, icon: () => skillIcon(t.group, goldShown) }, tile);
-    grid.appendChild(tile);
-  }
-  if (!acquirable) p.appendChild(el('p', 'udnone', 'No target skill can be acquired in this career.'));
-  else {
-    p.appendChild(grid);
-    p.appendChild(
-      el('p', 'udfoot', `${acquired} of ${acquirable} target skills acquired. Tap a skill for where it comes from.`),
-    );
-  }
-  return p;
-}
 // the game-style skill popup (one dialog, refilled); skFrom: the tile that opened it, focused again on close
 /** @type {HTMLElement | null} */
 let skFrom = null;
@@ -357,14 +158,8 @@ export function openSkill({ b, name, got, icon, gold = false, legacies = [], car
   close.focus();
 }
 
-// Inspiration: "Sparks" (hers, editable), then "Legacy Origin" (her two parents')
-function inspPane({ d, onEdit, parentLabel }) {
-  const p = el('div');
-  p.appendChild(inspView({ d, key: 'sim', onEdit, meClass: 'simwho', parentLabel, parentKey: null }));
-  return p;
-}
 // The game's Inspiration view of a veteran: "Sparks", her sparks as the game's spark bars (stars on their edge), then
-// "Legacy Origin": her parents' (each a row with her portrait). Also the tree's node popups (career/view/NodeDialog.js).
+// "Legacy Origin": her parents' (each a row with her portrait). Its component twin, ui/InspView.tsx, draws the node popups'.
 /**
  * @typedef {object} InspViewSpec
  * @property {LineageNode & {parents?: LineageNode[]}} d  the veteran shown (her parents: none, or her two)
@@ -438,114 +233,4 @@ export function deckCardAt(deck, i) {
       .replace(/ \(link \d+: [^)]*\)$/, '');
   const id = deck.card_ids[i] ?? deck.plain_ids?.[i - deck.card_ids.length];
   return { base, borrowed, card: gameData().cardById.get(id) || gameData().cards.find((x) => x.name === base) };
-}
-let showRaces = false;
-// Career Info, as the game's: her support cards, her two legacies (each with her parents, the borrowed one a guest),
-// and her career record (G1 races entered and won; the race-by-race record behind a button, with the G1 wins editor)
-function infoPane({ d, races, raceName, winsBtn, deck, legacies }) {
-  const p = el('div');
-  if (deck) {
-    p.appendChild(el('div', 'udsub', 'Support Cards'));
-    const row = el('div', 'udcards deck');
-    borLast(deck.cards).forEach((i) => {
-      const { base, borrowed: bor, card: c } = deckCardAt(deck, i);
-      const cell = el('button', `udcard dc${bor ? ' bor' : ''}`);
-      cell.type = 'button';
-      cell.appendChild(cardAv(c || null, 64));
-      cell.title = base + (bor ? ' (borrowed)' : '');
-      if (c) cell.dataset.cid = String(c.id);
-      cell.dataset.name = base;
-      const endAt = (deck.end_chain_at || [])[i] || 0; // the popover's chain-end advice
-      if (endAt) cell.dataset.end = String(endAt);
-      cell.setAttribute('aria-label', `${base + (bor ? ' (borrowed)' : '')}. Card details`);
-      cell.setAttribute('aria-haspopup', 'dialog');
-      if (bor) cell.appendChild(el('span', 'udfr', 'Friends'));
-      row.appendChild(cell);
-    });
-    p.appendChild(row);
-  }
-  if (legacies.length) {
-    p.appendChild(el('div', 'udsub', 'Legacy Umamusume'));
-    const lg = el('div', 'udlegs');
-    legacies.forEach(({ v, label, open }, j) => {
-      const box = el('div', `udleg l${j + 1}`);
-      box.appendChild(el('span', 'udlegh', `Legacy ${j + 1}`));
-      const tree = el('div', 'udlegt');
-      const me = el('button', 'udlegp');
-      me.type = 'button';
-      me.setAttribute('aria-haspopup', 'dialog');
-      me.setAttribute('aria-label', `Legacy ${j + 1}: ${umaName(v.chara)} (${label}). Her sparks`);
-      if (open) me.onclick = open;
-      const f = umaAv(v.chara, v.outfit, 64);
-      me.appendChild(f);
-      me.appendChild(el('span', 'udlegn', `${label} ${umaName(v.chara)}`));
-      if (v.borrowed) me.appendChild(el('span', 'udguest', 'Guest'));
-      const gps = el('div', 'udleggp');
-      for (const g of v.parents) {
-        const x = el('div', 'udleggx');
-        const gf = umaAv(g.chara || 0, g.outfit, 40);
-        gf.setAttribute('role', 'img');
-        gf.setAttribute('aria-label', umaName(g.chara));
-        x.append(gf, el('span', '', umaName(g.chara)));
-        gps.appendChild(x);
-      }
-      tree.append(me, gps);
-      box.appendChild(tree);
-      lg.appendChild(box);
-      // the whole box opens her popup, as her portrait does
-      if (open) {
-        box.classList.add('pnclick');
-        box.addEventListener('click', (/** @type {TargetedEvent} */ e) => {
-          if (!e.target.closest('button')) me.click();
-        });
-      }
-    });
-    p.appendChild(lg);
-  }
-  p.appendChild(el('div', 'udsub', 'Career'));
-  const ran = races.length,
-    won = d.wins.length,
-    inSched = new Set(races.map((r) => r.ix));
-  const rec = el('div', 'udrec');
-  rec.append(
-    el('span', 'udrecl', 'Career Record'),
-    el('span', 'udstat', `G1 races: ${ran}`),
-    el('span', 'udstat', `Wins: ${won}`),
-  );
-  p.appendChild(rec);
-  const tg = el('button', 'btn udmore', showRaces ? 'Hide the races' : 'Show the races');
-  tg.type = 'button';
-  tg.setAttribute('aria-expanded', String(showRaces));
-  tg.dataset.k = 'sim:races';
-  const list = el('ol', 'udraces');
-  list.hidden = !showRaces;
-  list.id = 'ud-races';
-  tg.setAttribute('aria-controls', 'ud-races');
-  tg.onclick = () => {
-    showRaces = !showRaces;
-    list.hidden = !showRaces;
-    tg.textContent = showRaces ? 'Hide the races' : 'Show the races';
-    tg.setAttribute('aria-expanded', String(showRaces));
-  };
-  // her schedule's G1s at their first turn, then the wins outside it (no turn: entered on the page)
-  const entries = races
-    .map((r) => ({ turn: r.turns[0], name: r.name, won: d.wins.includes(r.ix), ix: r.ix }))
-    .concat(d.wins.filter((ix) => !inSched.has(ix)).map((ix) => ({ turn: null, name: raceName(ix), won: true, ix })));
-  entries.sort((a, b) => (a.turn ?? 99) - (b.turn ?? 99));
-  for (const r of entries) {
-    const li = el('li', `udrace${r.won ? ' won' : ''}`);
-    li.append(
-      el('span', 'udrw', r.turn == null ? 'Entered here' : when(r.turn)),
-      el('span', 'udgr', 'G1'),
-      el('span', 'udrn', r.name),
-      el('span', 'udres', r.won ? '1st' : '–'),
-    );
-    /** @type {HTMLElement} */ (li.lastChild).setAttribute('aria-label', r.won ? 'won' : 'not won');
-    list.appendChild(li);
-  }
-  const act = el('div', 'udact');
-  act.append(tg, winsBtn);
-  p.appendChild(act);
-  p.appendChild(list);
-  return p;
 }

@@ -1,0 +1,435 @@
+// ---------- Try a run: the veteran analysis' popup (the veteran you got) ----------
+// The decision is per veteran: enter the one you got (she starts as a random result, drawn as Reroll draws,
+// career/roll.mjs) and Compare runs both choices, running this career again or using her in the next one, on the plan's
+// terms (expected careers to land). `Analysis` draws it into the popup's mount point (#sim-top) from the analysis store
+// (./state.ts `simulation`) and the answer store; Compare and Reroll are the comparison's run machine's (./compare.ts,
+// made by the entry and handed in). Her card is ./Details.tsx. This module also makes her draft from a career
+// (`draftOf`, `rollOf`: the page's veterans and settings, for the machine's deps) and adds her to the veterans.
+import { useLayoutEffect, useRef } from 'preact/hooks';
+import { $, $dialog, fmtIn } from '../../dom.js';
+import { careerTables } from '../../data.js';
+import { settings } from '../../settings.ts';
+import { pct } from '../../odds.js';
+import { vets, vetsRev, plan, changed, newVet, umaName, openWins } from '../../vets.js';
+import type { LineageNode } from '../../vets.js';
+import { fitSparks } from '../../details.js';
+import { Runner, UmaAv } from '../../ui/Images.tsx';
+import type { DeepReadonly } from '../../store.ts';
+import { scheduledRaces, rolledOutcome } from '../roll.mjs';
+import type { Roll, RollSetup } from '../roll.mjs';
+import { answer, runView } from '../state.ts';
+import { keyOf } from '../keys.js';
+import { shown, isFull } from '../job.js';
+import type { CareerReport } from '../job.js';
+import { borLast } from '../../cards.js';
+import { fmtN, tableRows } from '../view/parts.js';
+import { openNode } from '../view/dialogs.ts';
+import { DeckCard } from '../view/Sections.tsx';
+import { Details } from './Details.tsx';
+import type { DetailsSpec } from './Details.tsx';
+import { simulation, draftEdited, draftAdded } from './state.ts';
+import type { Draft, SimulationView } from './state.ts';
+import type { Comparison } from './compare.ts';
+
+type Career = DeepReadonly<CareerReport>;
+
+// ---------- her draft (the machine's deps)
+const copyNode = (v: LineageNode): LineageNode => ({
+  chara: v.chara,
+  ...(v.outfit ? { outfit: v.outfit } : {}),
+  sparks: { ...v.sparks },
+  pinks: { ...v.pinks },
+  blues: { ...(v.blues || {}) },
+  greens: { ...(v.greens || {}) },
+  wins: [...v.wins],
+});
+// what a roll reads of the settings and data (career/roll.mjs)
+const rollSetup = (): RollSetup => ({
+  career: careerTables(),
+  targets: settings.peek().targets,
+  rank: settings.peek().rank,
+});
+/** a random result of career `r` (the machine's `page.roll`) */
+export const rollOf = (r: Career): Roll => rolledOutcome(r, rollSetup());
+/** her draft for career `r`: a random result of it, on her two parents' records (the machine's `page.draftOf`) */
+export const draftOf = (r: Career): Draft => ({
+  chara: r.trainee.id,
+  outfit: r.trainee.outfits[0]?.id,
+  borrowed: false,
+  ...rollOf(r),
+  winAt: {},
+  parents: r.parents.map((i) => copyNode(vets[i])),
+});
+
+// ---------- her edits and Add to veterans
+// an edit to the entered veteran: the comparison on screen is for the old one
+const editDraft = () => draftEdited();
+// the veteran analysis' G1 wins: the G1 wins editor of the pool (a win in its slot, click to remove; an empty slot lists
+// the G1s she could enter then). Her schedule's races keep their win odds in the turn bar; a win shows at the turn
+// picked for it, else the turn her schedule runs it. A race held in Classic and Senior is one win saddle (one race
+// index). `back`: the focus on close
+function openDraftWins(d: Draft, r: Career, back: () => void) {
+  // the G1s she could enter, by turn (heldAt), and those her schedule runs, by race (runs: the first turn and its cell)
+  const rows = tableRows(r),
+    runs = new Map<number, { turn: number; cell: unknown }>(),
+    heldAt = new Map<number, number[]>();
+  for (const w of rows) {
+    const ix = careerTables().races.indexOf(w.name || w.race);
+    if (ix < 0) continue;
+    if (!heldAt.has(w.turn)) heldAt.set(w.turn, []);
+    heldAt.get(w.turn)?.push(ix);
+    if (w.run !== false && !runs.has(ix)) runs.set(ix, { turn: w.turn, cell: w.cells[0] });
+  }
+  const parentWon = (ix: number) => d.parents.some((p) => p.wins.includes(ix));
+  openWins(d, umaName(d.chara), {
+    offer: rows.length ? (t: number) => heldAt.get(t) || [] : null,
+    info: (ix: number) => {
+      const x = runs.get(ix);
+      return x || parentWon(ix) ? { ...(x || {}), parent: parentWon(ix) } : null;
+    },
+    onEdit: editDraft,
+    onClose: back,
+  });
+}
+function addDraft() {
+  const { draft } = simulation.peek();
+  if (runView.peek().searching || !draft) return;
+  $dialog('sim-dlg').close(); // she joins your veterans: back to the next career
+  const d = structuredClone(draft);
+  delete d.apt;
+  delete d.bought;
+  const v = newVet(d.chara, d.sparks);
+  Object.assign(v, d, { src: 'entered', borrowed: false });
+  plan.trainee = null;
+  plan.parents = [null, null];
+  draftAdded(); // she is in the pool now: the next answer starts a new one even for the same career
+  $('v-msg').textContent =
+    `Added ${umaName(v.chara)} to your veterans. The planner now picks the next career from all of them.`;
+  changed();
+}
+
+// ---------- the comparison panel
+// a career as portraits: trainee (outfit), then her two parents
+function Faces({
+  tid,
+  outfit,
+  outfitLabel,
+  parents,
+}: {
+  tid: number;
+  outfit: number | undefined;
+  outfitLabel: string;
+  parents: { chara: number | null; outfit?: number; label: string; her?: boolean }[];
+}) {
+  return (
+    <span class="cfaces">
+      <span class="cface tr">
+        <UmaAv uma={tid} outfit={outfit} size={32} />
+        {umaName(tid) + (outfitLabel ? ` ${outfitLabel}` : '')}
+      </span>
+      <span class="cwith">with</span>
+      {parents.map((p, j) => [
+        // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
+        <span key={`f${j}`} class="cface">
+          <UmaAv uma={p.chara} outfit={p.outfit} size={26} />
+          {p.label}
+          {p.her && <span class="her">her</span>}
+        </span>,
+        !j && (
+          <span key="with" class="cwith">
+            +
+          </span>
+        ),
+      ])}
+    </span>
+  );
+}
+// a parent of a future career by legacy index (index = vets.length: the veteran she leaves, `who`)
+const parentFace = (i: number, who: Draft) =>
+  i >= vets.length
+    ? { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true }
+    : { chara: vets[i].chara, outfit: vets[i].outfit, label: `#${i + 1} ${umaName(vets[i].chara)}` };
+// a figure's direction: 'up' (better with her), 'down' (worse) or 'same' (within the estimate's noise, or unknown)
+function direction(now: number | null, withHer: number | null, lowerIsBetter: boolean) {
+  if (now == null || withHer == null) return 'same';
+  const gain = lowerIsBetter ? now - withHer : withHer - now;
+  return Math.abs(gain) < (lowerIsBetter ? 0.5 : 1e-9 * now) ? 'same' : gain > 0 ? 'up' : 'down';
+}
+/** one figure per row: its label, then now → with her, green when she makes it better, red when worse (`direction`) */
+function Figure({
+  label,
+  now,
+  withHer,
+  dir,
+  title,
+}: {
+  label: string;
+  now: string;
+  withHer: string;
+  dir: string;
+  title: string;
+}) {
+  return (
+    <div class="tc" title={title}>
+      <span class="tl">{label}</span>
+      <b class={`tv ${dir}`}>{`${now} → ${withHer}`}</b>
+    </div>
+  );
+}
+// what she does for the loop if you enter her: one short line (`saves`: the careers she saves, null: not known). A
+// roll's quick zero is the plan's routes' only (compare.ts `rollReq`), always provisional until the exact comparison
+// answers: it reads "no saving found yet"
+function verdictText(sim: SimulationView, d: Draft, next: Career | undefined, saves: number | null) {
+  const n = settings.value.targets.length,
+    fullyLooped = sim.full && d.parents.length === 2 && d.parents.every(isFull),
+    none = sim.quick ? 'saving found yet' : 'careers saved';
+  return fullyLooped
+    ? 'Fully looped parent'
+    : sim.full
+      ? `${n}/${n}: step 1 done`
+      : (sim.refining || sim.standing) && !sim.provisional
+        ? 'Checking…'
+        : saves != null && saves >= 0.5
+          ? `Saves ${saves.toFixed(1)} careers`
+          : sim.herParent
+            ? 'Parent of the next career'
+            : next && next.p_all > must(sim.baseline).p_all * (1 + 1e-9)
+              ? `Better odds, no ${none}`
+              : `No ${none}`;
+}
+const must = <T,>(x: T | null | undefined): T => {
+  if (x == null) throw new Error('figures with her best career have a baseline');
+  return x;
+};
+/** the comparison's verdict in one line: what she does for the loop, where her saving lands, or a rise said as such */
+function ComparisonVerdict({ sim, d, next }: { sim: SimulationView; d: Draft; next: Career | undefined }) {
+  const { now, withHer } = sim.v0 || { now: null, withHer: null },
+    saves = now != null && withHer != null ? now - withHer : null,
+    head = verdictText(sim, d, next, saves);
+  return (
+    <p class="simverdict" id="sim-verdict">
+      <strong>{head}</strong>
+      {/^Saves /.test(head) && sim.where ? sim.where : null}
+      {/* a rise (never from a roll's quick figures, which can't rise): shown as it is, and said to be the planner's */}
+      {saves != null && saves <= -0.5
+        ? `The planner's estimate rises by ${(-saves).toFixed(1)} careers with her, a limit of its route (it offers each uma's few best careers as sides, and she can push the one it used out of them); leaving her out costs nothing.`
+        : null}
+    </p>
+  );
+}
+// the comparison on show: the verdict in one line, then the two figures it rests on (now -> with her), then the best
+// career with her
+function ComparisonResult({ sim, d }: { sim: SimulationView; d: Draft }) {
+  const n = settings.value.targets.length,
+    { now: careersNow, withHer: careersWithHer } = sim.v0 || { now: null, withHer: null },
+    next = sim.r?.results[0] as Career | undefined, // (none yet while the quick search for the best career with her runs)
+    rose = careersNow != null && careersWithHer != null && careersNow - careersWithHer <= -0.5;
+  const nextWithHer = sim.pickA
+    ? `. With her the planner's next career is ${sim.pickA.trainee.name} (${sim.pickA.parents.map((i) => `#${i + 1}`).join(' + ')}).`
+    : '.';
+  const fromTable = sim.quick
+    ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances; only the routes the plan kept); Compare checks this exact roll."
+    : '';
+  const loop = (
+    <Figure
+      label="Careers to loop"
+      now={careersNow != null ? `about ${fmtN(careersNow)}` : '?'}
+      withHer={careersWithHer != null ? fmtN(careersWithHer) : '?'}
+      dir={rose ? 'same' : direction(careersNow, careersWithHer, true)}
+      title={`Expected careers to a fully looped parent: with your veterans now → with her too${nextWithHer}${fromTable}`}
+    />
+  );
+  // with her priced under today's fit (`fixedFit`): the plan after Add is fitted to the pool with her, so it can show
+  // other figures (more careers or fewer), which this one line says
+  const fitNote = sim.fixedFit && careersNow != null && (
+    <p class="simfit">
+      Counted with today's plan; after Add the planner refits it to your veterans with her, so its figures can differ.
+    </p>
+  );
+  const held = sim.refining || sim.standing ? ' held' : '';
+  const baseline = next && must(sim.baseline);
+  return (
+    <>
+      {sim.stale && <p class="note">These figures are for her result before your last edit. Compare to update them.</p>}
+      <ComparisonVerdict sim={sim} d={d} next={next} />
+      {(sim.refining || sim.standing || sim.provisional) && (
+        <p class="runnote simrefine">
+          <Runner />
+          <span>{sim.provisional ? 'Checking…' : 'Working out how many careers it saves…'}</span>
+        </p>
+      )}
+      {/* the best career with her as a parent: its odds against today's best, then folded its portraits and deck */}
+      {next && baseline ? (
+        <>
+          <div class={`simodds${held}`}>
+            {loop}
+            <Figure
+              label={`All ${n} odds`}
+              now={fmtIn(baseline.p_all)}
+              withHer={fmtIn(next.p_all)}
+              dir={direction(baseline.p_all, next.p_all, false)}
+              title={`All ${n}: today's best career → the best career with her as a parent (${pct(baseline.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(baseline.p_minus1)} → ${fmtIn(next.p_minus1)})`}
+            />
+          </div>
+          {fitNote}
+          <details class="nextdeck">
+            <summary>Best career with her</summary>
+            <div class="nextc">
+              <Faces
+                tid={next.trainee.id}
+                outfit={next.trainee.outfits[0]?.id}
+                outfitLabel={next.trainee.outfits[0]?.label || ''}
+                parents={next.parents.map((i) => parentFace(i, d))}
+              />
+            </div>
+            <div class="deck">
+              <div class="dtitle">
+                <b>Deck</b>
+              </div>
+              <div class="dcards">
+                {borLastOf(next).map((i) => (
+                  <DeckCard key={`${i}:${next.deck.cards[i]}`} r={next} i={i} />
+                ))}
+              </div>
+            </div>
+          </details>
+        </>
+      ) : (
+        <>
+          <div class={`simodds${held}`}>{loop}</div>
+          {fitNote}
+          <p class="runnote simbest">
+            <Runner />
+            <span>Finding the best career with her…</span>
+          </p>
+        </>
+      )}
+    </>
+  );
+}
+const borLastOf = (r: Career) => borLast([...r.deck.cards]) as number[];
+// the panel beside her card: a mini header carrying the chance a roll of this career improves your loop (the plan's
+// `lift`: her outcomes that lower V), then the comparison (before any, a line saying what goes here)
+function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: Draft; r: Career }) {
+  const busy = sim.state === 'busy',
+    { planState } = answer.value,
+    opt = planState.state === 'done' ? planState.r.options?.find((o) => keyOf(o) === keyOf(r)) : null;
+  return (
+    <div class={`simresult${sim.stale ? ' stale' : ''}`} id="sim-result" role="status">
+      <div class="simhdr">
+        <span>Comparison</span>
+        {opt && opt.lift != null && (
+          <span
+            class="simchance"
+            id="sim-chance"
+            title={`The planner's chance that a roll of this career lowers the careers to a fully looped parent (${pct(opt.lift)})`}
+          >
+            {opt.lift > 0 ? `1/${Math.max(1, Math.round(1 / opt.lift)).toLocaleString()} to improve` : 'none improve'}
+          </span>
+        )}
+      </div>
+      {!busy && !sim.error && !sim.r && <p class="simidle">Compare or reroll to see if she improves your loop.</p>}
+      {busy ? (
+        <p class="runnote">
+          <Runner />
+          <span>Comparing…</span>
+        </p>
+      ) : sim.error ? (
+        <p class="note">{sim.error}</p>
+      ) : sim.r ? (
+        <ComparisonResult sim={sim} d={d} />
+      ) : null}
+    </div>
+  );
+}
+
+// ---------- the popup
+/** The veteran analysis: her card (./Details.tsx; she starts as a random result of this career) with its actions, and
+ *  the comparison panel beside it. */
+export function Analysis({ comparison }: { comparison: Comparison }) {
+  // the career on show reads the places (vets.js `plan`), and her card her parents' records: both edited in place, so
+  // the veterans' count says when (step 10's store ends it); her own record redraws by its identity (`simulation`)
+  vetsRev.value;
+  const sim = simulation.value,
+    r = shown(),
+    searching = runView.value.searching,
+    section = useRef<HTMLElement>(null),
+    wins = useRef<HTMLButtonElement>(null);
+  // her spark names shrink to fit (details.js fitSparks: it waits a frame, measures the names on show, and skips a
+  // closed popup's; `openTryRun` asks again on show)
+  useLayoutEffect(() => {
+    if (section.current) fitSparks(section.current);
+  });
+  if (!r) return null;
+  const d = sim.draft;
+  if (!d)
+    return (
+      <section class="rbsec simulation" id="simulation" ref={section}>
+        <h3>Veteran analysis</h3>
+      </section>
+    );
+  const spec: DetailsSpec = {
+    record: sim,
+    d,
+    r,
+    races: scheduledRaces(r, careerTables().races),
+    raceName: (ix) => careerTables().races[ix] || `G1 ${ix}`,
+    onEdit: editDraft,
+    legacies: r.parents.map((i) => ({
+      v: vets[i],
+      label: `#${i + 1}`,
+      open: () => openNode({ kind: 'v', id: vets[i].id }),
+    })),
+  };
+  // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose answer
+  // replaces the career on show)
+  const actions = (
+    <div class="row">
+      <button
+        type="button"
+        class="btn primary"
+        id="sim-compare"
+        data-k="sim:compare"
+        disabled={searching}
+        onClick={comparison.compare}
+      >
+        Compare
+      </button>
+      <button type="button" class="btn" id="sim-roll" data-k="sim:roll" disabled={searching} onClick={comparison.roll}>
+        Reroll
+      </button>
+      <button type="button" class="btn" id="sim-add" disabled={searching} onClick={addDraft}>
+        Add to veterans
+      </button>
+    </div>
+  );
+  const winsButton = (
+    <button
+      ref={wins}
+      type="button"
+      class="btn vwins"
+      id="sim-wins"
+      data-k="sim:wins"
+      aria-haspopup="dialog"
+      onClick={() => openDraftWins(d, r, () => wins.current?.focus())}
+    >
+      {`${d.wins.length ? d.wins.length : 'No'} G1 win${d.wins.length === 1 ? '' : 's'} · edit`}
+    </button>
+  );
+  return (
+    <section class="rbsec simulation" id="simulation" ref={section}>
+      <h3>Veteran analysis</h3>
+      <Details spec={spec} actions={actions} winsButton={winsButton} />
+      <div class="simcol">
+        <ComparisonPanel sim={sim} d={d} r={r} />
+      </div>
+    </section>
+  );
+}
+/** Try a run's popup opens (the tree's button): her spark names are measured now they are on show */
+export function openTryRun() {
+  $dialog('sim-dlg').showModal();
+  fitSparks($('sim-top'));
+}
+/** whether a deck card is this module's (popover.js leaves its markup alone) */
+export const drawnHere = (chip: HTMLElement) => !!chip.closest('#sim-top');

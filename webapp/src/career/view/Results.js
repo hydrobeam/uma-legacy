@@ -1,10 +1,9 @@
-// The results column (#results): the options table (options.js) and Try a run (analysis/view.js), still built with el()
-// (steps 9 and 11), so drawn again by the entry after each change.
+// The results column (#results): the options table (options.js), still built with el() (step 11), so drawn again by
+// the entry after each change.
 import { $ } from '../../dom.js';
 import { markOwn } from '../../popover.js';
 import { plan } from '../../vets.js';
 import { optionsEl } from '../options.js';
-import { renderSimulation } from '../analysis/view.js';
 import { answer } from '../state.ts';
 import { must } from '../../must.ts';
 import { refFor, shown } from '../job.js';
@@ -13,10 +12,7 @@ export function renderResults() {
   const box = $('results');
   box.textContent = '';
   const r = shown();
-  if (!r) {
-    renderSimulation();
-    return;
-  }
+  if (!r) return;
   // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
   const open = !plan.trainee || plan.parents.some((p) => !p),
     { last, planState } = answer.value;
@@ -27,6 +23,5 @@ export function renderResults() {
     refFor()
   )
     box.appendChild(optionsEl());
-  renderSimulation();
   markOwn();
 }

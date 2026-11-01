@@ -189,3 +189,19 @@ export const comparisonFails = (error: string, quick = false) =>
 export const checkEnds = () => patch({ refining: false, provisional: false, standing: false });
 /** a comparison in flight is cancelled: the panel back to idle */
 export const comparisonCancelled = () => patch({ state: 'ready' });
+
+// ---------- her card's tabs (Details.tsx): apart from the record, so a new draft or career keeps them, as a card's
+// own state would not (it starts over whenever the card is drawn anew)
+export type DetailsTab = 'skills' | 'insp' | 'info';
+const tabOnShow = signal<DetailsTab>('insp'),
+  racesOnShow = signal(false);
+/** the tab on show (Inspiration first: it is where her sparks are entered) */
+export const detailsTab: ReadonlySignal<DetailsTab> = tabOnShow;
+/** Career Info's race-by-race record unfolded */
+export const racesShown: ReadonlySignal<boolean> = racesOnShow;
+export const showTab = (key: DetailsTab) => {
+  tabOnShow.value = key;
+};
+export const toggleRaces = () => {
+  racesOnShow.value = !racesOnShow.peek();
+};

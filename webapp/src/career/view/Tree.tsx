@@ -5,11 +5,10 @@
 // the answer and the veterans (`vetsRev`: their records and the places are edited in place until step 10).
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
-import { $dialog } from '../../dom.js';
 import { vets, vetsRev, plan, umaName } from '../../vets.js';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
-import { renderSimulation } from '../analysis/view.js';
+import { openTryRun } from '../analysis/view.tsx';
 import { idxOf, shown, parentAt } from '../job.js';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { openNode } from './dialogs.ts';
@@ -192,10 +191,7 @@ export function Verdict() {
         id="sim-try"
         aria-haspopup="dialog"
         title="Roll a random result of this career and see whether the veteran it leaves helps your loop"
-        onClick={() => {
-          renderSimulation();
-          $dialog('sim-dlg').showModal();
-        }}
+        onClick={openTryRun}
       >
         Try a run
       </button>
