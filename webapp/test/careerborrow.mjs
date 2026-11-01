@@ -119,7 +119,7 @@ export default async function careerborrow(b) {
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
-  await pg.locator('#vp-list .vpt').nth(bj).click();
+  await pg.locator('#vp-list button').nth(bj).click();
   await done();
   await pg.click('#bp button[data-v="never"]');
   await done();
@@ -131,7 +131,7 @@ export default async function careerborrow(b) {
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
   const greyed = await pg
-    .locator('#vp-list .vpt')
+    .locator('#vp-list button')
     .nth(bj)
     .evaluate((b) => b.disabled && /Can't: borrowed/.test(b.textContent));
   await pg.locator('#vpick-dlg').getByRole('button', { name: 'Close', exact: true }).click();

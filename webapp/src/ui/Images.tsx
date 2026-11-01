@@ -17,7 +17,8 @@ import type { VariantProps } from 'tailwind-variants/lite';
 // rounded (a deck's title), `swap`, rounder and 52 px on a phone (a swap row's); `trainee`, a circle 72 px on a phone
 // (the career tree's trainee); her initials on her hue (--h, set inline) in the mono face while there is no picture, a
 // faint edge just outside it; `ring`, a loop member's white ring (`member`) or a tree node's white and cream one
-// (`node`); `dim`, greyed out: `always`, or `unowned` while her roster tile is marked not owned (the theme's `unowned:`)
+// (`node`); `dim`, greyed out: `always`, `faint` (fainter: a legacy without the skill, in Skill Details), or `unowned`
+// while her roster tile is marked not owned (the theme's `unowned:`)
 const avLook = tv({
   base: 'bg-av font-data text-ink outline-img-edge inline-grid shrink-0 place-items-center overflow-hidden align-middle leading-none font-semibold outline',
   variants: {
@@ -29,7 +30,11 @@ const avLook = tv({
       trainee: 'size-(--s) rounded-full text-(length:--fs) max-md:size-18',
     },
     ring: { member: 'shadow-portrait', node: 'shadow-node-face' },
-    dim: { always: 'opacity-45 grayscale', unowned: 'unowned:opacity-45 unowned:grayscale' },
+    dim: {
+      always: 'opacity-45 grayscale',
+      unowned: 'unowned:opacity-45 unowned:grayscale',
+      faint: 'opacity-30 grayscale',
+    },
   },
   defaultVariants: { shape: 'round' },
 });
@@ -217,11 +222,22 @@ export function Grade({ g, size = 'row' }: { g: GradeCode; size?: keyof typeof G
 }
 /** a skill's icon (its gold's: `gold`), or nothing when the page has none. `cls` sets its size and margins (layout
  *  only) in place of the default: 20 px, in a line of text before its name. */
-export function SkillIcon({ group, gold = false, cls }: { group: number; gold?: boolean; cls?: string | undefined }) {
+export function SkillIcon({
+  group,
+  gold = false,
+  dim = false,
+  cls,
+}: {
+  group: number;
+  gold?: boolean;
+  /** greyed (a skill not acquired) */
+  dim?: boolean;
+  cls?: string | undefined;
+}) {
   const src = skillIconSrc(group, gold);
   return src ? (
     <img
-      class={cx('inline shrink-0', cls ?? 'mr-1.5 size-5 align-[-4px]')}
+      class={cx('inline shrink-0', dim && 'opacity-60 grayscale', cls ?? 'mr-1.5 size-5 align-[-4px]')}
       data-icon="skill"
       alt=""
       loading="lazy"

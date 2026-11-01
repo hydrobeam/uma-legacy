@@ -52,7 +52,7 @@ export default async function careergen(b) {
   await vetsOpen();
   await cards.last().click(); // (beside the list)
   await expect
-    .soft(pg.locator('#v-pane .srctag'), `${treeAdds}: her popup says she came from uma.moe`)
+    .soft(pg.locator('#v-pane [data-src="umamoe"]'), `${treeAdds}: her popup says she came from uma.moe`)
     .toHaveText('From uma.moe');
   await pg.locator('#vets .umcell').last().click();
   await pg.locator('#v-pane').getByRole('button', { name: 'Remove', exact: true }).click();
@@ -102,10 +102,12 @@ export default async function careergen(b) {
       );
     }, beforeSimulation),
   );
-  await expect.soft(pg.locator('#vets .simtag'), `${adding}: no tag on her card`).toHaveCount(0);
+  await expect.soft(pg.locator('#vets [data-src]'), `${adding}: no tag on her card`).toHaveCount(0);
   await vetsOpen();
   await cards.last().click(); // (beside the list)
-  await expect.soft(pg.locator('#v-pane .simtag'), `${adding}: her popup labels her`).toHaveText('Entered here');
+  await expect
+    .soft(pg.locator('#v-pane [data-src="here"]'), `${adding}: her popup labels her`)
+    .toHaveText('Entered here');
   const simulated = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
   // Force this simulated veteran as a parent and complete another hypothetical career.
   await pg.evaluate((v) => {
@@ -143,7 +145,7 @@ export default async function careergen(b) {
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
-  await pg.locator('#vp-list .vpt:not(:disabled)').last().click();
+  await pg.locator('#vp-list button:not(:disabled)').last().click();
   await done();
   const removal = await pg.evaluate(() => {
     const c = JSON.parse(localStorage.getItem('llp:career')).global;

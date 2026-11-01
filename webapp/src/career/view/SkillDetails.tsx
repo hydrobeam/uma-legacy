@@ -8,6 +8,8 @@ import { umaName } from '../../veterans/names.ts';
 import { CardAv, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { Guard } from './Guard.tsx';
+import { popupHeading } from './parts.ts';
+import { skillTile } from '../../ui/skillTile.ts';
 import { cx } from 'tailwind-variants/lite';
 
 /** the skill on show: `b` its buying report; `got` 'gold' | 'white' | null (not acquired), or undefined for a career
@@ -50,6 +52,8 @@ export function SkillDetails() {
 }
 // her legacies with their places (fixed: an uma can stand in two, so the place keys each portrait)
 const places = <T,>(list: readonly T[]) => list.map((x, place) => [place, x] as const);
+// a line of a list (a source, a card, a total): its label and its figure at the ends, on the game's white cell
+const LINE = 'bg-gm-cell border-gm-line flex justify-between gap-2.5 rounded-md border px-2.5 py-1.25 font-bold';
 const pctS = (p: number) => (p >= 0.995 ? 'always' : p < 0.005 ? '<1%' : `${Math.round(p * 100)}%`);
 function Skill({
   spec: { b, name, got, group, goldIcon, gold = false, legacies = [], cards = [] },
@@ -73,39 +77,41 @@ function Skill({
     { label: 'Acquired', chance: b.gold + b.white },
     { label: 'Lands as a spark', chance: b.land_gold + b.land_white },
   ];
+  const off = !(got || ahead);
   return (
     <DialogBody>
-      <div class={cx('udsk', (got === 'gold' || (ahead && gold)) && 'gold', !(got || ahead) && 'off')}>
-        <SkillIcon group={group} gold={goldIcon} />
-        <span class="udskn">{name}</span>
+      <div class={skillTile({ tone: got === 'gold' || (ahead && gold) ? 'gold' : off ? 'off' : 'white' })}>
+        <SkillIcon group={group} gold={goldIcon} dim={off} cls="size-7.5" />
+        <span class="text-body leading-tight wrap-anywhere">{name}</span>
       </div>
-      <p class={cx('gmdstat', got || ahead ? 'on' : '')}>
+      <p class={cx('font-bold', off ? 'text-gm-ink2' : 'text-gm-ink')}>
         {ahead
           ? `Lands as a spark: ${pctS(b.land_gold + b.land_white)}${gold ? ' (through its gold)' : ''}`
           : got
             ? `Acquired${got === 'gold' ? ' (gold)' : ''} in this result`
             : 'Not acquired in this result'}
       </p>
-      <div class="gmdsub">Where it comes from</div>
-      <ul class="gmdlist">
+      <div class={popupHeading}>Where it comes from</div>
+      <ul class="grid gap-1">
         {sources.map(({ label, chance }) => (
-          <li key={label}>
+          <li key={label} class={LINE}>
             <span>{label}</span>
-            <b>{pctS(chance)}</b>
+            <b class="tabular-nums">{pctS(chance)}</b>
           </li>
         ))}
       </ul>
       {legacies.length > 0 && (
         <>
-          <div class="gmdsub">Legacies carrying it</div>
-          <div class="gmdfaces">
+          <div class={popupHeading}>Legacies carrying it</div>
+          {/* (data-faces: the checks count them) */}
+          <div class="flex flex-wrap gap-1" data-faces="">
             {places(legacies).map(([place, l]) => (
               <UmaAv
                 key={`${place}:${l.chara}:${l.outfit}`}
                 uma={l.chara || 0}
                 outfit={l.outfit}
                 size={32}
-                cls={l.carries ? undefined : 'dim'}
+                dim={l.carries ? undefined : 'faint'}
                 title={`${umaName(l.chara)}${l.carries ? ': carries it' : ': no spark of it'}`}
               />
             ))}
@@ -114,25 +120,25 @@ function Skill({
       )}
       {cards.length > 0 && (
         <>
-          <div class="gmdsub">Cards that give it</div>
-          <ul class="gmdlist gmdcards">
+          <div class={popupHeading}>Cards that give it</div>
+          <ul class="grid gap-1">
             {cards.map(({ card, how }) => (
-              <li key={card.id}>
-                <span class="gmdcard">
+              <li key={card.id} class={LINE}>
+                <span class="inline-flex min-w-0 items-center gap-2">
                   <CardAv c={card} size={28} />
                   <span>{card.name.replace(/^\[[^\]]*\] /, '')}</span>
                 </span>
-                <b>{how}</b>
+                <b class="text-note whitespace-nowrap tabular-nums">{how}</b>
               </li>
             ))}
           </ul>
         </>
       )}
-      <div class="gmdlist two">
+      <div class="grid grid-cols-2 gap-1">
         {totals.map(({ label, chance }) => (
-          <div key={label}>
+          <div key={label} class={LINE}>
             <span>{label}</span>
-            <b>{pctS(chance)}</b>
+            <b class="tabular-nums">{pctS(chance)}</b>
           </div>
         ))}
       </div>

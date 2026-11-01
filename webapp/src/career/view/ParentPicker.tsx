@@ -15,6 +15,7 @@ import { pickerFor, pickerClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
+import { field } from '../../ui/Field.ts';
 import { cx } from 'tailwind-variants/lite';
 
 // why veteran v can't go in place k (or '')
@@ -31,6 +32,8 @@ function blockedFor(v: VetRecord, k: number) {
     ? `borrowed (Borrowed parent: ${BORROW_CHOICES[borrowChoice(settings.value)]})`
     : BLOCKED[why] || '';
 }
+// a veteran's lines under her name: the targets she carries, her parents
+const NOTE = 'text-note text-muted flex flex-wrap items-center gap-0.75';
 /** one veteran: her face, name, number, targets carried, parents; why she can't go here, if so */
 function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
   const why = blockedFor(v, k),
@@ -39,9 +42,14 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
     have = tg.filter((g) => starsOf(v.sparks, g) > 0),
     stars = have.reduce((a, g) => a + starsOf(v.sparks, g), 0);
   return (
+    // (the chosen one ringed in the accent; a borrowed one marked by a gold bar at its left)
     <button
       type="button"
-      class={cx('vpt', cur ? 'cur' : '', v.borrowed ? 'bor' : '')}
+      class={cx(
+        'bg-panel text-ink grid cursor-pointer gap-1 rounded-lg px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60',
+        cur ? 'border-accent border-2' : 'border-line enabled:hover:border-accent border',
+        v.borrowed && 'inset-shadow-borrowed',
+      )}
       disabled={!!why}
       onClick={() =>
         batch(() => {
@@ -50,19 +58,19 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
         })
       }
     >
-      <div class="vpth">
+      <div class="flex items-center gap-2.5">
         <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={48} />
         <div>
-          <div class="nm">{umaName(v.chara)}</div>
-          <div class="sub">
+          <div class="font-bold">{umaName(v.chara)}</div>
+          <div class="text-ui text-gm-ink2">
             {v.lender
               ? `${v.lender.name}${cur ? ', chosen' : ''}`
               : `#${i + 1}${v.borrowed ? ', borrowed' : ''}${cur ? ', chosen' : ''}`}
           </div>
         </div>
       </div>
-      <div class="vpts">{`${have.length} of ${tg.length} target skills, ${stars}★`}</div>
-      <div class="vptg">
+      <div class={NOTE}>{`${have.length} of ${tg.length} target skills, ${stars}★`}</div>
+      <div class={NOTE}>
         Parents:{' '}
         {v.parents.map((g, j) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places, each keyed by her uma too
@@ -70,7 +78,8 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
         ))}
         {` ${v.parents.map((g) => (g.chara ? umaName(g.chara) : 'unknown')).join(', ')}`}
       </div>
-      {why && <div class="vptw">{`Can't: ${why}`}</div>}
+      {/* (data-why: the checks find the reason by it) */}
+      {why && <div class="text-note text-out font-bold" data-why="">{`Can't: ${why}`}</div>}
     </button>
   );
 }
@@ -141,10 +150,12 @@ export function ParentPicker() {
             options={TABS.map(([key, label]) => ({ v: key, id: `vp-tab-${key}`, controls: `vp-${key}`, body: label }))}
           />
           <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
-            <div class="vpgrid" id="vp-list">
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2" id="vp-list">
               {/* (its rows only while open: a closed picker draws, and redraws, nothing) */}
               {k !== null && !vets.value.length && (
-                <p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>
+                <p class="text-note text-gm-ink2">
+                  No veterans yet: import them in the paddock below, or make a new one.
+                </p>
               )}
               {k !== null &&
                 vets.value.flatMap((v: VetRecord, i: number) => {
@@ -152,7 +163,7 @@ export function ParentPicker() {
                   if (head) headed = true;
                   return [
                     head && (
-                      <h4 key="umamoe" class="vpgh">
+                      <h4 key="umamoe" class="text-ui text-gm-ink col-span-full mt-2 font-bold">
                         uma.moe
                       </h4>
                     ),
@@ -166,12 +177,13 @@ export function ParentPicker() {
               ref={filter}
               type="search"
               id="vp-filter"
+              class={field.tap}
               placeholder="Filter by name"
               aria-label="Filter umas by name"
               value={newFilter}
               onInput={(e) => setTyped([e.currentTarget.value, opening.current])}
             />
-            <div class="umapick" id="vp-umas">
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-1.5" id="vp-umas">
               {k !== null && tab === 'new' && <UmaList filter={newFilter} onPick={pickNew} />}
             </div>
           </div>

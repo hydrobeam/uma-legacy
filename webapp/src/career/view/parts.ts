@@ -12,6 +12,8 @@ export const tName = (g: number): string => {
   return goldGiven(settings.value.scen, g) && s.gd ? s.gd : s.w;
 };
 export const fmtN = (x: number): string => Math.round(x).toLocaleString();
+/** a heading inside a popup's body (Skill Details, the Saves popup): bold, ruled off below */
+export const popupHeading = 'border-gm-line border-b-2 pb-0.5 font-black';
 // her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
 // G1s she could enter but doesn't aren't shown)
 // her schedule's rows, each race's figure the community table's on her own grades (agenda.ts `tableChance`; the

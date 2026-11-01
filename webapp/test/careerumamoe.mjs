@@ -170,7 +170,7 @@ export default async function careerumamoe(b) {
   await pg.locator('#v-pane button', { hasText: 'Copy ID' }).click();
   // (the copy is a promise: its answer is drawn after it)
   // (Copy ID, then what the copy said: Copied, or her trainer's ID)
-  const copy = pg.locator('#v-pane .twho').getByRole('button', { name: /^(Copy ID|Copied|\d+)$/ });
+  const copy = pg.locator('#v-pane [data-who]').getByRole('button', { name: /^(Copy ID|Copied|\d+)$/ });
   await copy.filter({ hasNotText: 'Copy ID' }).waitFor();
   const copied = await copy.textContent();
   await pg.locator('#vets .umcell').nth(1).click();
@@ -195,8 +195,8 @@ export default async function careerumamoe(b) {
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
-  const heads = await pg.locator('#vp-list .vpgh').allTextContents();
-  await pg.locator('#vp-list .vpt').nth(bj).click();
+  const heads = await pg.locator('#vp-list h4').allTextContents();
+  await pg.locator('#vp-list button').nth(bj).click();
   await done();
   const tileText = (await pg.locator('#tree [data-node="parent"]').first().innerText()).replace(/\s+/g, ' ');
   const boxButtons = await pg.locator('#tree [data-node="parent"]').first().locator('button:not([data-k])').count();
@@ -229,11 +229,11 @@ export default async function careerumamoe(b) {
   await pg.keyboard.press('Escape');
   await pg.locator('#um-list .umcell').first().click();
   await dialog(pg, 'node-dlg');
-  const tag = await pg.locator('#node-dlg .srctag').textContent(),
+  const tag = await pg.locator('#node-dlg [data-src="umamoe"]').textContent(),
     sparks = await pg.$$eval('#node-dlg .udrow.me .vsk:not(.pink)', (l) => l.map((c) => c.classList.contains('off')));
   const popupCopy = await pg.locator('#node-dlg button', { hasText: 'Copy ID' }).count(),
     editable = await pg
-      .locator('#node-dlg .facebtn, #node-dlg button.vwins, #node-dlg .vskadd, #node-dlg button.vskb')
+      .locator('#node-dlg [data-face], #node-dlg button[data-k$=":wins"], #node-dlg .vskadd, #node-dlg button.vskb')
       .count();
   await closeNode();
   check(

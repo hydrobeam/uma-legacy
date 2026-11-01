@@ -18,7 +18,7 @@ import type { OptionRow as Row, PlanReport } from '../job.ts';
 import type { Note } from '../options.ts';
 import { TIE_CAREERS, extraText, optionsTable, roleText, takeCareer, unsettled, netText } from '../options.ts';
 import type { DeepReadonly } from '../../store.ts';
-import { fmtN } from './parts.ts';
+import { fmtN, popupHeading } from './parts.ts';
 import { DeckCards } from './Sections.tsx';
 import { Guard } from './Guard.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -327,18 +327,17 @@ export function SavesPopup() {
     </Dialog>
   );
 }
+// the popup's paragraphs (a dropdown's set off from its summary), its dropdowns ruled off above, the route in the body's
+// brown (its headings: parts.ts popupHeading)
+const P = 'leading-normal';
+const MORE_P = 'mt-2 leading-normal';
+const ROUTE = 'text-gm-ink mt-2 leading-normal';
+const MORE = 'border-gm-line border-t pt-1.5';
+const SUMMARY = 'text-gm-ink cursor-pointer font-bold';
 // what the number is, the yardstick (the plan's route from today's veterans, step by step, with its careers) and how a
 // row is measured against it (run this career once first, then follow the route), with a worked example from the plan.
 // For anyone: the two columns in a sentence each, the key points in bold and italics, how the saving is worked out in
 // three plain sentences; today's estimate and a worked example behind dropdowns (no formula)
-// the popup's paragraphs (a dropdown's set off from its summary), its two headings ruled off below, its dropdowns ruled
-// off above, the route in the body's brown
-const P = 'leading-normal';
-const MORE_P = 'mt-2 leading-normal';
-const ROUTE = 'text-gm-ink mt-2 leading-normal';
-const SUB = 'border-gm-line border-b-2 pb-0.5 font-black';
-const MORE = 'border-gm-line border-t pt-1.5';
-const SUMMARY = 'text-gm-ink cursor-pointer font-bold';
 function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly Note[] }) {
   const n = settings.value.targets.length;
   const routePlan = planReport.v0_plan,
@@ -409,7 +408,7 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
         <b>most Saves per run</b>
         {". Better odds don't break a near-tie: the Saves per run already count the runs where she lands every target."}
       </p>
-      <div class={SUB}>How it is worked out</div>
+      <div class={popupHeading}>How it is worked out</div>
       <p class={P}>
         {'The planner makes a '}
         <b>rough estimate</b>
@@ -461,7 +460,7 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
         {'.'}
       </p>
       {/* the table's notes, where any (as the popup's other heading: no heading margins) */}
-      {notes.length > 0 && <div class={SUB}>Notes</div>}
+      {notes.length > 0 && <div class={popupHeading}>Notes</div>}
       {notes.map((note) => (
         <p key={note.id} class={P} data-note="">
           {note.text}

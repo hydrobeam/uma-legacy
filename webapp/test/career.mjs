@@ -285,12 +285,13 @@ export default async function career(b) {
   await pg.click('#t-preset');
   await pg.locator('#pr-list button[aria-haspopup="dialog"]').first().click();
   const pv = await pg.evaluate(() => {
-    const r = (s) => document.querySelector(s).getBoundingClientRect(),
-      d = r('#pr-view .dlg'),
-      t = r('#prv-tiles'),
+    // (the dialog's panel: the tiles' parent)
+    const panel = document.getElementById('prv-tiles').parentElement,
+      d = panel.getBoundingClientRect(),
+      t = document.getElementById('prv-tiles').getBoundingClientRect(),
       f = document.getElementById('prv-rename').parentElement.getBoundingClientRect();
     return {
-      cols: getComputedStyle(document.querySelector('#pr-view .dlg')).gridTemplateColumns.split(' ').length,
+      cols: getComputedStyle(panel).gridTemplateColumns.split(' ').length,
       wide: t.width > d.width - 60,
       below: f.top >= t.bottom,
     };
@@ -579,7 +580,7 @@ export default async function career(b) {
     await pg.locator('#tree [data-target] > button').first().click();
     await dialog(pg, 'sk-dlg');
     const sk = pg.locator('#sk-dlg');
-    await expect.soft(sk.locator('.gmdfaces [data-av]'), `${name}: Skill Details' six legacies`).toHaveCount(6);
+    await expect.soft(sk.locator('[data-faces] [data-av]'), `${name}: Skill Details' six legacies`).toHaveCount(6);
     await expect.soft(sk, `${name}: … its chance to land`).toHaveText(/Lands as a spark: [<\d.]+%/);
     await expect.soft(sk, `${name}: … the legacies carrying it`).toHaveText(/Legacies carrying it/);
     await pg.keyboard.press('Escape');
@@ -621,7 +622,7 @@ export default async function career(b) {
       .sort((a, c) => c.gw - a.gw)[0];
     await pg.locator('#tree [data-target] > button').nth(both.i).click();
     await dialog(pg, 'sk-dlg');
-    const lines = await pg.$$eval('#sk-dlg .gmdlist li', (l) =>
+    const lines = await pg.$$eval('#sk-dlg ul li', (l) =>
       l.map((x) => [x.querySelector('span')?.textContent, x.querySelector('b')?.textContent]),
     );
     await pg.keyboard.press('Escape');

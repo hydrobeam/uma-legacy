@@ -78,6 +78,13 @@ interface FaceProps {
   label: string;
   change: boolean;
 }
+// a face that is a button (data-face: the checks count them), brighter under the pointer
+const FACE =
+  'focus-visible:outline-accent cursor-pointer rounded-md leading-0 hover:brightness-106 focus-visible:outline-2 focus-visible:outline-offset-2';
+// who a node is: her face, name and the rest in a wrapping row
+const WHO = 'flex flex-wrap items-center gap-x-3 gap-y-2';
+// her name in the popup (in the pool's pane, plain)
+const NAME = 'text-title font-black';
 function Face({ nd, at, size, label, change }: FaceProps) {
   const face = <UmaAv key={`${nd.chara}:${nd.outfit}`} uma={nd.chara || 0} outfit={nd.outfit} size={size} />;
   if (!change) return face;
@@ -85,7 +92,8 @@ function Face({ nd, at, size, label, change }: FaceProps) {
   return (
     <button
       type="button"
-      class="facebtn"
+      class={FACE}
+      data-face=""
       title={title}
       aria-label={title}
       onClick={fromNode(() => changeUma(at, label))}
@@ -138,14 +146,18 @@ function CopyId({ v }: { v: VetRecord }) {
     </Button>
   );
 }
-/** her name with how many of the targets her own sparks carry, "6/8" (an n/n veteran carries all n) */
-function NameCover({ v }: { v: NodeRecord }) {
+/** her name with how many of the targets her own sparks carry, "6/8" (an n/n veteran carries all n); `look`, the
+ *  name's type */
+function NameCover({ v, look }: { v: NodeRecord; look: string }) {
   const groups = settings.value.targets.map((t) => t.group),
     x = groups.filter((g) => ((v.sparks as Record<number, number>)?.[g] || 0) > 0).length;
   return (
-    <div class="nm">
+    <div class={look}>
       {umaName(v.chara)}{' '}
-      <span class="vxy" title={`Her sparks carry ${x} of your ${groups.length} targets`}>
+      <span
+        class="bg-carried text-note ml-1 rounded-full px-1.5 align-[2px] font-black text-white tabular-nums"
+        title={`Her sparks carry ${x} of your ${groups.length} targets`}
+      >
         {`${x}/${groups.length}`}
       </span>
     </div>
@@ -171,9 +183,9 @@ function veteranTitle(id: string) {
   if (!v) return '';
   return v.lender ? `uma.moe · ${v.lender.name || 'trainer'}` : `Veteran #${i + 1}${v.borrowed ? ' · guest' : ''}`;
 }
-/** A veteran of yours (the popup, the pane beside the pool's list): her face, name, targets carried, wins, where she
- *  came from; Yours / Guest and Remove; her sparks and her parents'; her parents' faces and G1 wins. */
-function VeteranView({ id }: { id: string }) {
+/** A veteran of yours (the popup, the pane beside the pool's list: `pane`): her face, name, targets carried, wins,
+ *  where she came from; Yours / Guest and Remove; her sparks and her parents'; her parents' faces and G1 wins. */
+function VeteranView({ id, pane = false }: { id: string; pane?: boolean }) {
   const i = idxOf(id),
     v: VetRecord | undefined = vets.value[i];
   if (!v) return null;
@@ -181,22 +193,28 @@ function VeteranView({ id }: { id: string }) {
     targets = settings.value.targets.map((t) => t.group),
     edit = !listed(v),
     src = VET_SOURCE[v.src],
-    name = umaName(v.chara);
+    name = umaName(v.chara),
+    nameLook = pane ? '' : NAME;
   return (
     <>
-      <div class="twho">
+      {/* (data-who: the checks find her row by it) */}
+      <div class={WHO} data-who="">
         <Face nd={v} at={at} size={56} label={`Veteran #${i + 1}`} change={edit} />
-        <NameCover v={v} />
+        <NameCover v={v} look={nameLook} />
         <Wins nd={v} at={at} who={`Veteran #${i + 1}, ${name}`} k={`v${v.id}`} edit={edit} />
+        {/* where she came from (data-src: from uma.moe, or here) */}
         {src && (
-          <span class={v.src === 'tree' || v.src === 'umamoe' ? 'srctag' : 'simtag'}>
+          <span
+            class="border-line font-data text-caption rounded-xs border px-1.75 py-0.75"
+            data-src={v.src === 'tree' || v.src === 'umamoe' ? 'umamoe' : 'here'}
+          >
             {v.lender ? lenderText(v.lender) : src}
           </span>
         )}
         {v.lender && <CopyId v={v} />}
       </div>
       {edit && (
-        <div class="row vctl">
+        <div class="mt-0.5 mb-2 flex flex-wrap items-center gap-2.5">
           <SegmentedControl<boolean>
             kind="toggle"
             size="sm"
@@ -226,7 +244,8 @@ function VeteranView({ id }: { id: string }) {
           </Button>
         </div>
       )}
-      <div class="ud udbare">
+      {/* (`ud`: details.ts fitSparks finds her spark names by it) */}
+      <div class="ud">
         <InspView
           nd={v}
           parents={v.parents}
@@ -238,13 +257,13 @@ function VeteranView({ id }: { id: string }) {
           readOnly={!edit}
         />
       </div>
-      <div class="vpars">
+      <div class="grid gap-1.5">
         {parentsPlaced(v.parents).map(([g, j]) => {
           const lab = `Parent ${j + 1} of #${i + 1}`;
           return (
-            <div key={j} class="twho">
+            <div key={j} class="flex items-center gap-2">
               <Face nd={g} at={parentRef(id, j)} size={36} label={lab} change={edit} />
-              <span class="nm">{g.chara ? umaName(g.chara) : 'Unknown parent'}</span>
+              <span class={nameLook}>{g.chara ? umaName(g.chara) : 'Unknown parent'}</span>
               <Wins nd={g} at={parentRef(id, j)} who={`${lab}, ${umaName(g.chara)}`} k={`v${v.id}g${j}`} edit={edit} />
             </div>
           );
@@ -257,8 +276,8 @@ function VeteranView({ id }: { id: string }) {
 export function VetPane({ id }: { id: string }) {
   return (
     <>
-      <h4 class="vptitle">{veteranTitle(id)}</h4>
-      <VeteranView key={id} id={id} />
+      <h4 class="text-title text-gm-ink mb-2 font-black">{veteranTitle(id)}</h4>
+      <VeteranView key={id} id={id} pane />
     </>
   );
 }
@@ -278,7 +297,7 @@ function traineeNode(r: CareerReport | null): NodeShown {
     body: (
       <>
         {id ? (
-          <div class="twho">
+          <div class={WHO}>
             <UmaAv
               key={`${id}:${mine ? r?.trainee.outfits[0]?.id : null}`}
               uma={id}
@@ -286,13 +305,13 @@ function traineeNode(r: CareerReport | null): NodeShown {
               size={72}
             />
             <div>
-              <div class="nm">{umaName(id)}</div>
-              {mine && r?.trainee.outfits[0] && <div class="ctt">{r.trainee.outfits[0].label}</div>}
-              {mine && r?.trainee.outfitNote && <div class="onote">{r.trainee.outfitNote}</div>}
+              <div class={NAME}>{umaName(id)}</div>
+              {mine && r?.trainee.outfits[0] && <div class="text-ui text-muted">{r.trainee.outfits[0].label}</div>}
+              {mine && r?.trainee.outfitNote && <div class="text-note text-muted mt-0.5">{r.trainee.outfitNote}</div>}
             </div>
           </div>
         ) : (
-          <p class="tempty">The planner tries every uma you own.</p>
+          <p class="text-muted">The planner tries every uma you own.</p>
         )}
         {mine && r && <Affinity r={r} />}
       </>
@@ -333,7 +352,9 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
   if (!v)
     return {
       title,
-      body: <p class="tempty">{vets.value.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'}</p>,
+      body: (
+        <p class="text-muted">{vets.value.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'}</p>
+      ),
       acts,
     };
   const i = idxOf(v.id);
@@ -341,19 +362,20 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
     title,
     body: (
       <>
-        <div class="twho">
+        <div class={WHO}>
           <button
             type="button"
-            class="facebtn"
+            class={FACE}
+            data-face=""
             title="Choose another parent"
             aria-label={`Parent ${k + 1}: ${umaName(v.chara)}. Choose another parent`}
             onClick={fromNode(() => openParentPicker(k))}
           >
             <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={64} />
           </button>
-          <div class="tnm">
-            <NameCover v={v} />
-            <div class="sub">
+          <div>
+            <NameCover v={v} look="text-title leading-tight font-black" />
+            <div class="text-ui text-gm-ink2">
               {v.lender
                 ? `uma.moe · ${v.lender.name || 'trainer'}`
                 : `Veteran #${i + 1}${v.src === 'hand' ? ', made here' : ''}${v.borrowed ? ', borrowed' : ''}`}
@@ -362,7 +384,7 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
           <Wins nd={v} at={vetRef(v.id)} who={umaName(v.chara)} k={`p${k}`} edit={!listed(v)} />
           {v.lender && <CopyId key={v.id} v={v} />}
         </div>
-        <div class="ud udbare">
+        <div class="ud">
           <InspView
             nd={v}
             parents={v.parents}
@@ -390,12 +412,12 @@ function grandparentNode(k: number, j: ParentPlace, r: CareerReport | null): Nod
     title: `Legacy ${k + 1} · grandparent`,
     body: (
       <>
-        <div class="twho">
+        <div class={WHO}>
           <Face nd={g} at={gAt} size={56} label="Grandparent" change={edit} />
-          <div class="nm">{g.chara ? umaName(g.chara) : 'Unknown: pick her'}</div>
+          <div class={NAME}>{g.chara ? umaName(g.chara) : 'Unknown: pick her'}</div>
           <Wins nd={g} at={gAt} who={umaName(g.chara)} k={`p${k}g${j}`} edit={edit} />
         </div>
-        <div class="ud udbare">
+        <div class="ud">
           <InspView
             nd={g}
             parents={[]}

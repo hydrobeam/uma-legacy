@@ -85,7 +85,7 @@ export default async function careervets(b) {
     .toHaveAttribute('aria-label', /2 stars/);
   await done();
   // a pool veteran's G1 wins: the same editor, from her popup; Arima Kinen (Classic and Senior) is one race, moved from one turn to the other
-  await pg.locator('#v-pane .twho .vwins').first().click();
+  await pg.locator('#v-pane [data-who] button[data-k$=":wins"]').first().click();
   await dialog(pg, 'wins-dlg');
   const savedWins = async () => {
     await saved();
@@ -123,7 +123,7 @@ export default async function careervets(b) {
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
-  await expect.soft(pg.locator('#vp-list .vpt'), 'career: the parent picker lists your veterans').toHaveCount(12);
+  await expect.soft(pg.locator('#vp-list button'), 'career: the parent picker lists your veterans').toHaveCount(12);
   await pg.click('#vp-tab-new');
   await pg.fill('#vp-filter', 'Special Week');
   await pg.locator('#vp-umas .upick:visible').first().click();
@@ -164,7 +164,7 @@ export default async function careervets(b) {
   await expect.soft(runNote, 'career: the planner fills the rest').toHaveText(/Weighed 804 careers/);
   // a grandparent: pick her uma, then her skills
   await node('node:p0g0');
-  await pg.locator('#node-dlg .facebtn').click();
+  await pg.locator('#node-dlg [data-face]').click();
   await dialog(pg, 'pick-dlg');
   await pg.fill('#pick-filter', 'Gold Ship');
   await pg.locator('#pick-list .upick:visible').first().click();
@@ -177,8 +177,8 @@ export default async function careervets(b) {
   await node('node:p1');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
-  const blocked = await pg.locator('#vp-list .vpt:disabled').count(),
-    said = await pg.locator('#vp-list .vpt:disabled .vptw').count(); // (read while open: a closed picker holds no rows)
+  const blocked = await pg.locator('#vp-list button:disabled').count(),
+    said = await pg.locator('#vp-list button:disabled [data-why]').count(); // (read while open: a closed picker holds no rows)
   await pg.locator('#vpick-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   check("career: veterans that can't be parent 2 are greyed out", blocked === 0 || said === blocked);
   // the trainee
