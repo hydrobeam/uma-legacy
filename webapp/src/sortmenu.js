@@ -1,14 +1,17 @@
 // sort menus (umas, cards): pick Release or Name; picking the active one again reverses it (release starts newest
-// first, name A to Z). The menu stays open until a click outside it or Escape. key: state prefix ('r' or 'c').
+// first, name A to Z). The menu stays open until a click outside it or Escape. key: the settings' prefix ('r' or 'c').
 // (`wireMenu` is the button and menu alone; the uma.moe popup's orders use it too.)
 import { $ } from './dom.js';
-import { state, writeSaved } from './state.js';
+import { settings, setSort } from './settings.ts';
 import { must } from './must.ts';
 const HOW = { 'rel-desc': 'newest first', 'rel-asc': 'oldest first', 'name-asc': 'A to Z', 'name-desc': 'Z to A' };
-/** @param {string} id the sort button's id @param {string} key the state's sort keys' prefix ('r': rsort, rdir) */
+// a sort menu's choice and its direction ('r': rsort, rdir; 'c': csort, cdir)
+/** @type {(key: 'r' | 'c') => [string, string]} */
+const sortOf = (key) =>
+  key === 'r' ? [settings.value.rsort, settings.value.rdir] : [settings.value.csort, settings.value.cdir];
+/** @param {string} id the sort button's id @param {'r' | 'c'} key the settings' sort keys' prefix ('r': rsort, rdir) */
 export function paintSort(id, key) {
-  const sortBy = state[`${key}sort`],
-    direction = state[`${key}dir`],
+  const [sortBy, direction] = sortOf(key),
     arrow = direction === 'desc' ? '↓' : '↑';
   const btn = $(id);
   if (!btn.dataset.what)
@@ -26,17 +29,12 @@ export function paintSort(id, key) {
       b.title = on ? 'Click to reverse' : b.dataset.k === 'rel' ? 'Newest first' : 'A to Z';
     });
 }
-/** @param {string} id the sort button's id @param {string} key the state's sort keys' prefix @param {() => void} render */
+/** @param {string} id the sort button's id @param {'r' | 'c'} key the settings' sort keys' prefix @param {() => void} render */
 export function sortMenu(id, key, render) {
-  const sortKey = `${key}sort`,
-    dirKey = `${key}dir`;
   wireMenu(id, (k) => {
-    if (k === state[sortKey]) state[dirKey] = state[dirKey] === 'desc' ? 'asc' : 'desc';
-    else {
-      state[sortKey] = k;
-      state[dirKey] = k === 'rel' ? 'desc' : 'asc';
-    }
-    writeSaved();
+    const [sortBy, direction] = sortOf(key);
+    if (k === sortBy) setSort(key, sortBy, direction === 'desc' ? 'asc' : 'desc');
+    else setSort(key, k, k === 'rel' ? 'desc' : 'asc');
     render(); // ordering only: saved, no new search
   });
 }

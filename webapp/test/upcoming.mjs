@@ -46,7 +46,7 @@ export default async function upcoming(b) {
       has(now.job.exclude_cards, later.cards),
     JSON.stringify(later),
   );
-  // R cards stay out whatever their date (no setting turns them on: state.js `rcards`)
+  // R cards stay out whatever their date (no setting turns them on: settings.ts `rcards`)
   const rare = new Set(dataCards.filter((c) => c.rar > 1 || c.pal).map((c) => c.id));
   check(
     'upcoming: once started it is in the search',

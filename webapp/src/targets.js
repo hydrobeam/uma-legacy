@@ -2,9 +2,9 @@
 import { $, $input } from './dom.js';
 import { gameData } from './data.js';
 import { initPresets } from './presets.js';
-import { state, goldGiven } from './state.js';
+import { settings, setTargets } from './settings.ts';
+import { goldGiven } from './job.js';
 import { skillIcon } from './images.js';
-import { save } from './save.js';
 import { renderCards } from './cards.js';
 const namesOf = (group) => gameData().skillNames.get(group) || { w: `Skill ${group}`, gd: null };
 // a target as the game's skill tile: icon and name; a gold the scenario guarantees shows as that gold (It's On! for
@@ -14,11 +14,11 @@ export function tileEl(group) {
   const names = namesOf(group);
   const tile = document.createElement('div');
   tile.className = 'tgt';
-  tile.dataset.g = goldGiven(group) ? '2' : '0';
+  tile.dataset.g = goldGiven(settings.value.scen, group) ? '2' : '0';
   const name = document.createElement('span');
   name.className = 'name';
   tile.appendChild(name);
-  const gold = goldGiven(group) && !!names.gd;
+  const gold = goldGiven(settings.value.scen, group) && !!names.gd;
   if (gold) tile.classList.add('gold');
   const icon = skillIcon(group, gold);
   if (icon) name.appendChild(icon);
@@ -34,10 +34,10 @@ export function tileEl(group) {
 /** @param {number|null} [focus] */
 export function renderTargets(focus = null) {
   const count = document.getElementById('o-skills-n');
-  if (count) count.textContent = String(state.targets.length); // the Target skills button (o-skills: on neither page now)
+  if (count) count.textContent = String(settings.value.targets.length); // the Target skills button (o-skills: on neither page now)
   const box = $('targets');
   box.textContent = '';
-  state.targets.forEach((t, i) => {
+  settings.value.targets.forEach((t, i) => {
     const names = namesOf(t.group);
     const tile = tileEl(t.group);
     tile.id = `g-${t.group}`;
@@ -49,13 +49,12 @@ export function renderTargets(focus = null) {
     remove.setAttribute('aria-label', `Remove ${names.w}`);
     remove.title = `Remove ${names.w}`;
     remove.onclick = () => {
-      state.targets.splice(i, 1);
-      save();
+      setTargets(settings.value.targets.filter((_, j) => j !== i));
       renderTargets(i);
     };
     box.appendChild(tile);
   });
-  if (!state.targets.length) box.innerHTML = '<p class="hint">No target skills yet. Add one above.</p>';
+  if (!settings.value.targets.length) box.innerHTML = '<p class="hint">No target skills yet. Add one above.</p>';
   if (focus !== null) {
     const removes = box.querySelectorAll('.x');
     (removes[Math.min(focus, removes.length - 1)] || $('t-add')).focus();
@@ -68,10 +67,9 @@ export function initTargets() {
   const SHOWN_MAX = 30; // suggestions listed at most
   const items = () => [...suggestions.querySelectorAll('button')];
   const add = (group) => {
-    state.targets.push({ group });
     addIn.value = '';
     suggestions.hidden = true;
-    save();
+    setTargets([...settings.value.targets, { group }]);
     renderTargets();
     addIn.focus();
   };
@@ -88,7 +86,7 @@ export function initTargets() {
       suggestions.hidden = true;
       return;
     }
-    const have = new Set(state.targets.map((t) => t.group));
+    const have = new Set(settings.value.targets.map((t) => t.group));
     const matches = (name) => !!name && name.toLowerCase().includes(filter);
     const match = gameData().catalog.filter(([, white, gold]) => matches(white) || matches(gold));
     const hits = match.filter(([group]) => !have.has(group)).slice(0, SHOWN_MAX);

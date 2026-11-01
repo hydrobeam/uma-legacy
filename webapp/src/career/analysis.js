@@ -7,7 +7,7 @@
 // so nothing of career.js is read while the bundle loads).
 import { $, $dialog, el, fmtIn } from '../dom.js';
 import { careerTables } from '../data.js';
-import { state } from '../state.js';
+import { settings } from '../settings.ts';
 import { restartEngine, engineSaveState } from '../engine.ts';
 import { umaAv, runnerHTML } from '../images.js';
 import { pct } from '../odds.js';
@@ -212,7 +212,7 @@ const copyNode = (v) => ({
 });
 // what a roll reads of the settings and data (career/roll.mjs)
 /** @type {() => import('./roll.mjs').RollSetup} */
-const rollSetup = () => ({ career: careerTables(), targets: state.targets, rank: state.rank });
+const rollSetup = () => ({ career: careerTables(), targets: settings.value.targets, rank: settings.value.rank });
 function rollDraft() {
   const r = shown();
   if (!r || run.searching) return;
@@ -241,7 +241,7 @@ function rollReq(d, r) {
   const o = planState.r?.outcomes;
   if (!o || !planState.job || (o.career ?? `${o.trainee}:${o.parents.join(',')}`) !== keyOf(r)) return null;
   const sp = d.sparks || {};
-  return { job: planState.job, stars: state.targets.map((t) => sp[t.group] || 0) };
+  return { job: planState.job, stars: settings.value.targets.map((t) => sp[t.group] || 0) };
 }
 // the reroll's comparison, in two solver calls: the roll's saving from the plan the worker keeps (`next.roll`, about a
 // millisecond), shown at once as Careers to loop; then the best career with her as a parent (one quick search, most of
@@ -637,7 +637,7 @@ function comparisonPanel(d, r) {
 // roll's quick zero is the plan's routes' only (`rollReq`), always provisional until the exact comparison answers: it
 // reads "no saving found yet"
 function verdictText(d, next, saves) {
-  const n = state.targets.length,
+  const n = settings.value.targets.length,
     fullyLooped = simulation.full && d.parents.length === 2 && d.parents.every(isFull),
     none = simulation.quick ? 'saving found yet' : 'careers saved';
   return fullyLooped
@@ -677,7 +677,7 @@ function comparisonResult(result, d) {
       el('p', 'note', 'These figures are for her result before your last edit. Compare to update them.'),
     );
   const before = simulation.baseline,
-    n = state.targets.length,
+    n = settings.value.targets.length,
     { now: careersNow, withHer: careersWithHer } = simulation.v0 || { now: null, withHer: null };
   const next = must(simulation.r, 'a result is drawn for a comparison').results[0]; // (none yet while the quick search for the best career with her runs)
   const saves = careersNow != null && careersWithHer != null ? careersNow - careersWithHer : null;

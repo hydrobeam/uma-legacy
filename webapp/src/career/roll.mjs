@@ -8,7 +8,7 @@ import { drawPink } from '../pink.mjs';
  * @typedef {object} RollSetup
  * @property {{races: string[], uniques?: Object<number, unknown>}} career  the career tables (data.js `careerTables()`): the G1
  *   races by index, the outfits with a unique skill
- * @property {{group: number}[]} targets  the target skills, in the job's order (the outcome sets' bit order)
+ * @property {readonly {group: number}[]} targets  the target skills, in the job's order (the outcome sets' bit order)
  * @property {string} rank  the rank band's star mix: the chances of 1, 2 and 3 stars, comma-separated
  *
  * A roll: the sparks she landed (skill group -> stars), the skills she bought (group -> 'gold' | 'white'), the G1s she

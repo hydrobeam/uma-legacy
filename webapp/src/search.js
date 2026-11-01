@@ -3,12 +3,12 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { runnerHTML } from './images.js';
-import { ERA } from './settings.js';
+import { ERA } from './saved.ts';
 import { ASSETS, EXAMPLE, gameData } from './data.js';
 import { run, restartEngine } from './engine.ts';
-import { save, onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
-import { state, ui, DEFAULTS } from './state.js';
+import { DEFAULTS, settings } from './settings.ts';
+import { ui } from './state.js';
 import { noOutfit } from './roster.js';
 import { renderDeck } from './results.js';
 import { markOwn } from './popover.js';
@@ -140,7 +140,7 @@ const PAUSE_MS = 550; // the pause after a change before the automatic search
 // off: the results stay, marked out of date, until the Search button
 function scheduleSearch() {
   clearTimeout(pauseTimer);
-  if (state.auto === false) {
+  if (settings.value.auto === false) {
     if (searching) stopSearch();
     ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } };
     paintRunNote();
@@ -158,15 +158,14 @@ function scheduleSearch() {
   searchT0 = performance.now();
   paintRunNote();
 }
-// every setting change: save it and search again
 // the result on show is from other settings: a change not searched yet (or under way), a stopped or failed search
 export const resultsStale = () => searching || ['error', 'empty', 'stopped', 'pending'].includes(ui.status.kind);
-// a change greys what you no longer own in the result on show at once, before the search that replaces it
-onSave(() => {
+// A change of setup (main.js's effect on settings.ts jobSetup, or Auto-search switched on with a change pending): it
+// greys what you no longer own in the result on show at once, before the search that replaces it, and searches again
+export function settingsChanged() {
   markOwn();
   scheduleSearch();
-});
-export { save };
+}
 
 function stopEngine() {
   restartEngine();
@@ -181,18 +180,19 @@ class Blocked extends Error {
     this.status = { kind, text, act };
   }
 }
-// The search job for the current settings (throws Blocked when they can't be searched). Used by the search and by firstResult.
-function buildJob() {
-  if (!state.targets.length)
+// The search job for settings `s` (throws Blocked when they can't be searched). Used by the search and by firstResult.
+/** @param {import('./settings.ts').SettingsView} s */
+function buildJob(s) {
+  if (!s.targets.length)
     throw new Blocked('empty', 'Add a target skill to search.', {
       label: 'Load the 8/8 example targets',
       click: 't-preset',
       run: loadExample,
     });
   const exclude = gameData()
-    .umas.filter((u) => state.roster[u.id] === 'out' || noOutfit(u))
+    .umas.filter((u) => s.roster[u.id] === 'out' || noOutfit(u, s.outfits))
     .map((u) => u.id);
-  const exclude_outfits = Object.entries(state.outfits)
+  const exclude_outfits = Object.entries(s.outfits)
     .filter(([, owned]) => owned === false)
     .map(([id]) => +id);
   const owned = gameData().umas.length - exclude.length;
@@ -201,20 +201,20 @@ function buildJob() {
       label: 'Mark all umas owned',
       click: 'r-all',
     });
-  const targets = jobTargets();
+  const targets = jobTargets(s);
   const job = {
     cmd: 'deck',
     targets,
-    star_dist: state.rank.split(',').map(Number),
+    star_dist: s.rank.split(',').map(Number),
     exclude,
     exclude_outfits,
     extra: EXTRA,
-    owned_cards: ownedCards(),
+    owned_cards: ownedCards(s),
     borrow: true,
-    top_decks: +state.decksTop,
-    per_uma: state.perUma !== false,
-    scenario: state.scen || 'unity',
-    ...rcardsOff(),
+    top_decks: +s.decksTop,
+    per_uma: s.perUma !== false,
+    scenario: s.scen || 'unity',
+    ...rcardsOff(s),
   };
   return { job, targets };
 }
@@ -226,14 +226,10 @@ const jobKey = (job) =>
   JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], gameData().later, job]);
 function defaultKey() {
   // the job of the default settings (the precomputed example's)
-  const current = JSON.stringify(state);
-  Object.assign(state, JSON.parse(JSON.stringify(DEFAULTS)));
   try {
-    return jobKey(buildJob().job);
+    return jobKey(buildJob(DEFAULTS).job);
   } catch {
     return null;
-  } finally {
-    Object.assign(state, JSON.parse(current));
   }
 }
 // What to show before the first search finishes: the remembered result of these exact settings, else the precomputed
@@ -241,7 +237,7 @@ function defaultKey() {
 export function firstResult() {
   let built;
   try {
-    built = buildJob();
+    built = buildJob(settings.value);
   } catch {
     return null;
   }
@@ -285,7 +281,7 @@ export async function doSearch(auto = false) {
   clearTimeout(pauseTimer);
   let built;
   try {
-    built = buildJob();
+    built = buildJob(settings.value);
   } catch (e) {
     if (busy) stopEngine();
     endSearch(e.status || { kind: 'error', text: e.message });

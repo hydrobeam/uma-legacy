@@ -4,10 +4,9 @@
 // does focus leaving the picker. Picking a scenario also brings its guaranteed golds and sets its default lineage rank.
 import { $ } from './dom.js';
 import { SCENARIOS, SCEN_GOLDS, RANKS, gameData } from './data.js';
-import { ERA } from './settings.js';
-import { state, writeSaved } from './state.js';
+import { ERA } from './saved.ts';
+import { settings, setRank, setScenario } from './settings.ts';
 import { scenLogo, skillIcon, srcFor } from './images.js';
-import { save } from './save.js';
 import { renderTargets } from './targets.js';
 import { must } from './must.ts';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
@@ -18,30 +17,30 @@ export const scenarioOf = (v) => LIST.find((s) => s.v === v) || LIST[0];
 export function paintRank() {
   const rank = $('rank');
   if (!rank) return;
-  rank.dataset.value = state.rank;
+  rank.dataset.value = settings.value.rank;
   rank.querySelectorAll('button').forEach((b) => {
-    const on = b.dataset.v === state.rank;
+    const on = b.dataset.v === settings.value.rank;
     b.setAttribute('aria-checked', String(on));
     b.tabIndex = on ? 0 : -1;
   });
 }
 // the lineage rank a scenario starts from (its `ss`)
 const rankOf = (sc) => (sc.ss ? RANKS.ss : RANKS.below);
-// switch to scenario v (its guaranteed golds follow state.scen: state.js goldGiven) and its default lineage rank, which
-// can be changed by hand afterwards
-function setScenario(v) {
+// switch to scenario v (its guaranteed golds follow settings.scen: job.js goldGiven) and its default lineage rank, which
+// can be changed by hand afterwards; saved
+function chooseScenario(v) {
   const sc = scenarioOf(v);
-  state.scen = sc.v;
-  state.rank = rankOf(sc);
+  setScenario(sc.v, rankOf(sc));
   paintRank();
 }
 // Switching to the JP Grand Masters-era data opens on its newest scenario, Grand Masters (with its golds and rank
-// defaults); switching back to Global turns it into Unity Cup on load (initScenario).
+// defaults); switching back to Global turns it into Unity Cup on load (initScenario). The settings `era` opens with
+// that differ from these (settings.ts switchEra).
+/** @param {string} era @returns {{scen?: string, rank?: string}} */
 export function eraScenario(era) {
   const sc = SCENARIOS.find((s) => s.v === 'grandmasters');
-  if (era !== 'gm' || !sc || state.scen === sc.v) return;
-  state.scen = sc.v;
-  state.rank = rankOf(sc);
+  if (era !== 'gm' || !sc || settings.value.scen === sc.v) return {};
+  return { scen: sc.v, rank: rankOf(sc) };
 }
 // the golds a scenario hands out: [skill group, gold's name] (those with a name)
 const goldNames = (sc) =>
@@ -57,9 +56,9 @@ const artUrl = (sc) => {
   const art = srcFor('scenart', sc.id);
   return art ? `url(${new URL(art, document.baseURI).href})` : null;
 };
-// the button (the chosen scenario's logo) and the tiles' checked state follow state.scen (also after an import)
+// the button (the chosen scenario's logo) and the tiles' checked state follow settings.scen (also after an import)
 export function paintScen() {
-  const sc = scenarioOf(state.scen),
+  const sc = scenarioOf(settings.value.scen),
     btn = $('x-scen');
   btn.dataset.value = sc.v;
   btn.setAttribute('aria-label', `Scenario: ${sc.name}`);
@@ -98,10 +97,9 @@ function initRankNote() {
 function initRank() {
   const rank = $('rank') || document.createElement('div'),
     pickRank = (v) => {
-      if (v === state.rank) return;
-      state.rank = v;
+      if (v === settings.value.rank) return;
+      setRank(v);
       paintRank();
-      save();
     };
   rank.querySelectorAll('.rk').forEach((badge) => {
     const src = srcFor('ui', `rank_${badge.dataset.r}`);
@@ -122,7 +120,7 @@ function initRank() {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
     e.preventDefault();
     const buttons = [...rank.querySelectorAll('button')],
-      i = buttons.findIndex((b) => b.dataset.v === state.rank);
+      i = buttons.findIndex((b) => b.dataset.v === settings.value.rank);
     const back = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
     const next = buttons[(i + (back ? buttons.length - 1 : 1)) % buttons.length];
     pickRank(next.dataset.v);
@@ -188,10 +186,7 @@ export function initScenario() {
     dropdown = $('scen-dd');
   // a scenario this era does not offer (Grand Masters, saved while the GM-era data was active; the choice is shared by
   // both eras) becomes the first one offered, Unity Cup, as if picked
-  if (scenarioOf(state.scen).v !== state.scen) {
-    setScenario(scenarioOf(state.scen).v);
-    writeSaved();
-  }
+  if (scenarioOf(settings.value.scen).v !== settings.value.scen) chooseScenario(scenarioOf(settings.value.scen).v);
   initRank();
   menu.classList.toggle('five', LIST.length === 5);
   for (const sc of LIST) {
@@ -203,7 +198,7 @@ export function initScenario() {
   const open = (isOpen) => {
     menu.hidden = !isOpen;
     btn.setAttribute('aria-expanded', String(isOpen));
-    if (isOpen) (tiles().find((t) => t.dataset.v === state.scen) || tiles()[0]).focus();
+    if (isOpen) (tiles().find((t) => t.dataset.v === settings.value.scen) || tiles()[0]).focus();
   };
   const close = (refocus) => {
     if (menu.hidden) return;
@@ -211,9 +206,8 @@ export function initScenario() {
     if (refocus) btn.focus();
   };
   function pick(v) {
-    if (v !== state.scen) {
-      setScenario(v);
-      save();
+    if (v !== settings.value.scen) {
+      chooseScenario(v);
       renderTargets();
       paintScen();
     } // renderTargets redraws the card picker too (bans, what each card gives)

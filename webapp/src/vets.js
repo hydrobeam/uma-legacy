@@ -34,9 +34,10 @@
  */
 // Saved per data era in localStorage['llp:career'] = {v: 2, global: {vets, plan}, gm: {vets, plan}}.
 import { $, $dialog, $input, lazyDialog } from './dom.js';
-import { ERA } from './settings.js';
+import { ERA } from './saved.ts';
 import { careerTables, gameData } from './data.js';
-import { state, goldGiven } from './state.js';
+import { settings } from './settings.ts';
+import { goldGiven } from './job.js';
 import { umaAv, skillIcon, srcFor } from './images.js';
 import { winsAgenda } from './agenda.js';
 import { must } from './must.ts';
@@ -151,7 +152,7 @@ export function changed() {
 
 /** @type {(id: number|null|undefined) => string} */
 export const umaName = (id) => (id ? gameData().names.get(id) || `Uma ${id}` : 'Unknown');
-const targetGroups = () => state.targets.map((t) => t.group);
+const targetGroups = () => settings.value.targets.map((t) => t.group);
 /** @type {(g: number) => string} */
 export const skillName = (g) => (gameData().skillNames.get(g) || { w: `Skill ${g}` }).w;
 /** @type {(g: number|string) => string} */
@@ -849,7 +850,7 @@ export function sampleVets() {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   const sourced = new Set(careerTables().sourced || []),
-    inherit = targetGroups().filter((g) => !sourced.has(g) && !goldGiven(g));
+    inherit = targetGroups().filter((g) => !sourced.has(g) && !goldGiven(settings.value.scen, g));
   const node = (id, sparks) => ({ chara: id, sparks, pinks: {}, blues: {}, greens: {}, wins: [] });
   const out = [];
   for (let i = 0; i + 2 < pool.length && out.length < 6; i += 3)

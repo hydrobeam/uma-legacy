@@ -1,6 +1,6 @@
 // The data build.py embeds in the page, for the chosen era.
 import { $ } from './dom.js';
-import { ERA } from './settings.js';
+import { ERA } from './saved.ts';
 import { must } from './must.ts';
 // the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed 'data-cards', ...); what stays
 // in the page (the asset table, the example) from its JSON elements of the same ids
@@ -214,5 +214,3 @@ for (const scenario of SCENARIOS) {
   scenario.mult = `Hint rate ×${(scenario.base / URA_BASE).toFixed(2)}`;
   scenario.rate = scenario.mult + (scenario.est ? ' (estimate)' : '');
 }
-// the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them: state.js goldGiven)
-export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];

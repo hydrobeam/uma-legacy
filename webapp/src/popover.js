@@ -1,8 +1,8 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
 import { esc } from './dom.js';
 import { gameData } from './data.js';
-import { state, goldGiven } from './state.js';
-import { save } from './save.js';
+import { settings, setOwned } from './settings.ts';
+import { goldGiven } from './job.js';
 import { umaState, paintRoster } from './roster.js';
 import { cardTitle, cardGives, giftsHTML, paintCards, chainEndAt } from './cards.js';
 import { must } from './must.ts';
@@ -44,13 +44,15 @@ export function markOwn() {
   document.querySelectorAll('.deck .dc').forEach((chip) => {
     // a chip whose card the page data lacks has no id (data-cid empty or absent) and is never greyed
     const cid = chip.dataset.cid;
-    chip.classList.toggle('off', !!cid && !chip.classList.contains('bor') && state.cardsOff[+cid] === false);
+    chip.classList.toggle('off', !!cid && !chip.classList.contains('bor') && settings.value.cardsOff[+cid] === false);
   });
   document.querySelectorAll('.mem[data-uma]').forEach((member) => {
     const u = gameData().umas.find((x) => x.id === +must(member.dataset.uma, 'a member block names her'));
     member.classList.toggle(
       'off',
-      !!u && (umaState(u) === 'out' || (!!member.dataset.outfit && state.outfits[+member.dataset.outfit] === false)),
+      !!u &&
+        (umaState(u) === 'out' ||
+          (!!member.dataset.outfit && settings.value.outfits[+member.dataset.outfit] === false)),
     );
   });
 }
@@ -104,7 +106,8 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
       "a loop's member is an uma of the data",
     ),
     outfitId = member.dataset.outfit ? +member.dataset.outfit : null;
-  const owned = () => (outfitId ? umaState(u) !== 'out' && state.outfits[outfitId] !== false : umaState(u) !== 'out');
+  const owned = () =>
+    outfitId ? umaState(u) !== 'out' && settings.value.outfits[outfitId] !== false : umaState(u) !== 'out';
   const title = u.name + (outfitId ? ` ${member.dataset.outfitLabel}` : '');
   pop.setAttribute('aria-label', title);
   pop.innerHTML =
@@ -117,13 +120,15 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
   /** @type {HTMLInputElement} */
   const toggle = must(pop.querySelector('[data-act="uma"]'), 'the panel is made with its switch');
   toggle.onchange = () => {
+    const roster = { ...settings.value.roster },
+      outfits = { ...settings.value.outfits };
     if (toggle.checked) {
-      if (state.roster[u.id] === 'out') delete state.roster[u.id];
-      if (outfitId) delete state.outfits[outfitId];
-      else for (const o of u.outfits || []) delete state.outfits[o.id];
-    } else if (outfitId) state.outfits[outfitId] = false;
-    else state.roster[u.id] = 'out';
-    save();
+      if (roster[u.id] === 'out') delete roster[u.id];
+      if (outfitId) delete outfits[outfitId];
+      else for (const o of u.outfits || []) delete outfits[o.id];
+    } else if (outfitId) outfits[outfitId] = false;
+    else roster[u.id] = 'out';
+    setOwned({ roster, outfits });
     paintRoster(u.id);
     markOwn();
     toggle.checked = owned();
@@ -155,7 +160,7 @@ function gametoraUrl(c) {
 function chainEndHTML(c, link) {
   const { take, others } = chainEndAt(c, link);
   if (!take) return `<div>Take the chain-ending choice at link ${link}.</div>`;
-  const targets = new Set(state.targets.map((x) => x.group)),
+  const targets = new Set(settings.value.targets.map((x) => x.group)),
     rivals = others.filter((x) => targets.has(x.group)).map((x) => x.name),
     otherNames = others.map((x) => x.name).join(' or ');
   let caveat;
@@ -176,8 +181,10 @@ function openCardPop(chip) {
   const c = gameData().cardById.get(+chip.dataset.cid),
     title = c ? cardTitle(c) : { nm: chip.dataset.name, ti: '' };
   const borrowed = chip.classList.contains('bor'),
-    owned = c && state.cardsOff[c.id] !== false;
-  const groups = new Set(state.targets.filter((x) => !goldGiven(x.group)).map((x) => x.group)),
+    owned = c && settings.value.cardsOff[c.id] !== false;
+  const groups = new Set(
+      settings.value.targets.filter((x) => !goldGiven(settings.value.scen, x.group)).map((x) => x.group),
+    ),
     gifts = c ? cardGives(c, groups) : [];
   pop.setAttribute('aria-label', title.nm);
   pop.innerHTML =
@@ -191,9 +198,8 @@ function openCardPop(chip) {
   const toggle = pop.querySelector('[data-act="own"]');
   if (toggle && c)
     toggle.onchange = () => {
-      if (toggle.checked) delete state.cardsOff[c.id];
-      else state.cardsOff[c.id] = false;
-      save();
+      const { [c.id]: _, ...rest } = settings.value.cardsOff;
+      setOwned({ cardsOff: toggle.checked ? rest : { ...rest, [c.id]: false } });
       paintCards();
       markOwn();
     };

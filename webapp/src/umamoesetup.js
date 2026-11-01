@@ -9,8 +9,8 @@
 // send one. uma.moe lists Global veterans: on the Grand Masters-era data it is asked only for the targets Global has
 // (`targetFactors`).
 import { $, $dialog, $input, el } from './dom.js';
-import { ERA } from './settings.js';
-import { state } from './state.js';
+import { ERA } from './saved.ts';
+import { settings } from './settings.ts';
 import { vets, setListings, umaName } from './vets.js';
 import { parseListing } from './umadump.js';
 import { vetCell } from './vetcell.js';
@@ -43,10 +43,10 @@ const now = { sig: '', text: '', short: '', shownText: '', shownShort: '', min: 
 let asking = 0,
   pending = '';
 
-const sigOf = () => `${ERA}|${state.targets.map((t) => t.group).join(',')}|${fullTrainers() ? 'full' : ''}`;
+const sigOf = () => `${ERA}|${settings.value.targets.map((t) => t.group).join(',')}|${fullTrainers() ? 'full' : ''}`;
 // the query for the target set: parents carrying at least n - 1 of the n targets herself, the first 100
 function query() {
-  const factors = targetFactors(state.targets.map((t) => t.group));
+  const factors = targetFactors(settings.value.targets.map((t) => t.group));
   return factors.length ? { factors, min: Math.max(1, factors.length - 1), page: 0, full: fullTrainers() } : null;
 }
 // how long ago the answer was fetched: "just now", "12 min ago", "3 h ago" (a kept answer is reused for 24 h)

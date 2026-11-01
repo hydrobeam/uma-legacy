@@ -1,13 +1,11 @@
 // ---------- target skill presets: named sets of targets (the Target skills panel's Presets dialog) ----------
-// state.presets: [{name, groups: [skill group, ...]}], saved with the other shared settings (both pages, both data sets)
-// and carried by Export. The 8/8 example comes preloaded (state.js DEFAULTS) and is a preset like any other.
+// settings.presets: [{name, groups: [skill group, ...]}], saved with the other shared settings (both pages, both data sets)
+// and carried by Export. The 8/8 example comes preloaded (settings.ts DEFAULTS) and is a preset like any other.
 // The list: per preset its name and count (a click opens its skills as the editor's tiles, with Rename), Load, Overwrite
 // (with the targets now) and a trash can; under it, Save current skills opens a small popup for the name (offered as
 // "Preset N+1", N the presets now). Starting from a preset is load, edit the targets, save under a new name.
 import { $, $dialog, $input, el, backdropCloses } from './dom.js';
-import { PRESET } from './data.js';
-import { state, writeSaved } from './state.js';
-import { save } from './save.js';
+import { PRESET, settings, setPresets, setTargets } from './settings.ts';
 import { tileEl } from './targets.js';
 import { must } from './must.ts';
 
@@ -24,11 +22,13 @@ const TRASH =
 let rerender = () => {
   // replaced by initPresets
 };
-// an edit of the presets saves them (writeSaved) without searching again; loading one changes the targets (save)
+// an edit of the presets saves them without searching again; loading one changes the targets (a search)
+// (a preset is named by its place in the list: the list is drawn again after every edit, and the dialogs over it are
+// modal, so a place stays that preset's while its row or its view is open)
 
+/** @param {readonly number[]} groups */
 function apply(groups) {
-  state.targets = groups.map((group) => ({ group }));
-  save();
+  setTargets(groups.map((group) => ({ group })));
   rerender();
 }
 export const loadExample = () => apply(PRESET); // the planner's "no targets" status offers the default eight directly
@@ -36,8 +36,8 @@ export const loadExample = () => apply(PRESET); // the planner's "no targets" st
 // imported presets join the player's (an import never deletes one): an identical one is skipped, a different one under
 // a taken name comes in as "name (imported)"
 /**
- * @typedef {{name: string, groups: number[]}} Preset  a named set of target skill groups
- * @param {Preset[]|null|undefined} mine @param {Preset[]} theirs @returns {Preset[]}
+ * @typedef {import('./settings.ts').Preset} Preset
+ * @param {import('./settings.ts').SettingsView['presets']|null|undefined} mine @param {Preset[]} theirs @returns {Preset[]}
  */
 export function mergePresets(mine, theirs) {
   const out = (mine || []).map((p) => ({ name: p.name, groups: [...p.groups] }));
@@ -53,11 +53,11 @@ export function mergePresets(mine, theirs) {
   return out;
 }
 
-/** @type {(name: string, except?: {name: string} | null) => boolean} except: a preset whose own name doesn't count */
-const nameTaken = (name, except = null) => state.presets.some((p) => p !== except && p.name === name);
+/** @type {(name: string, except?: number) => boolean} except: the place of a preset whose own name doesn't count */
+const nameTaken = (name, except = -1) => settings.value.presets.some((p, at) => at !== except && p.name === name);
 // the name offered: "Preset N+1", N the presets now (counting on past a name already taken)
 function suggestName() {
-  let i = state.presets.length + 1;
+  let i = settings.value.presets.length + 1;
   while (nameTaken(`Preset ${i}`)) i++;
   return `Preset ${i}`;
 }
@@ -65,9 +65,9 @@ function suggestName() {
 function renderList(msg = '') {
   const box = $('pr-list');
   box.textContent = '';
-  const current = state.targets.map((t) => t.group);
-  if (!state.presets.length) box.append(el('p', 'hint', 'No presets yet.'));
-  for (const p of state.presets) {
+  const current = settings.value.targets.map((t) => t.group);
+  if (!settings.value.presets.length) box.append(el('p', 'hint', 'No presets yet.'));
+  for (const [at, p] of settings.value.presets.entries()) {
     const row = el('div', 'prow');
     row.setAttribute('role', 'group');
     row.setAttribute('aria-label', p.name);
@@ -80,7 +80,7 @@ function renderList(msg = '') {
       row.classList.add('cur');
       view.append(el('span', 'pcur', 'current'));
     }
-    view.onclick = () => openView(p);
+    view.onclick = () => openView(at);
     const buttons = el('div', 'pbtns'),
       button = (text) => {
         const b = el('button', 'btn', text);
@@ -96,8 +96,7 @@ function renderList(msg = '') {
     overwrite.disabled = !current.length; // as Save: a preset is never emptied
     overwrite.title = current.length ? '' : 'Add target skills first';
     overwrite.onclick = () => {
-      p.groups = [...current];
-      writeSaved();
+      setPresets(settings.value.presets.map((q, j) => (j === at ? { ...q, groups: [...current] } : q)));
       renderList(`Overwrote “${p.name}” with your ${skillCount(current.length)}.`);
     };
     const trash = button('');
@@ -106,23 +105,24 @@ function renderList(msg = '') {
     trash.setAttribute('aria-label', 'Delete');
     trash.title = 'Delete';
     trash.onclick = () => {
-      state.presets = state.presets.filter((q) => q !== p);
-      writeSaved();
+      setPresets(settings.value.presets.filter((_, j) => j !== at));
       renderList(`Deleted “${p.name}”.`);
     };
     row.append(view, buttons);
     box.append(row);
   }
   $('pr-msg').textContent = msg;
-  /** @type {HTMLButtonElement} */ ($('pr-save')).disabled = !state.targets.length;
-  $('pr-save').title = state.targets.length ? '' : 'Add target skills first';
+  /** @type {HTMLButtonElement} */ ($('pr-save')).disabled = !settings.value.targets.length;
+  $('pr-save').title = settings.value.targets.length ? '' : 'Add target skills first';
 }
 
 // a preset's skills as the editor's tiles; Rename opens its name for editing, Close
-/** @type {{name: string, groups: number[]} | null} */
+/** @type {number | null} the place of the preset on view */
 let viewing = null;
-function openView(p) {
-  viewing = p;
+/** @param {number} at */
+function openView(at) {
+  const p = settings.value.presets[at];
+  viewing = at;
   $('prv-title').textContent = p.name;
   $('prv-msg').textContent = '';
   const box = $('prv-tiles');
@@ -137,25 +137,25 @@ function renameMode(on) {
   $('prv-rename').textContent = on ? 'Save name' : 'Rename';
   if (on) {
     const input = $input('prv-name');
-    input.value = must(viewing, 'Rename is in the open preset').name;
+    input.value = settings.value.presets[must(viewing, 'Rename is in the open preset')].name;
     input.focus();
     input.select();
   }
 }
 function commitRename() {
-  const preset = must(viewing, 'Save name is in the open preset');
+  const at = must(viewing, 'Save name is in the open preset'),
+    preset = settings.value.presets[at];
   const name = $input('prv-name').value.trim();
   if (!name || name === preset.name) {
     renameMode(false);
     return;
   }
-  if (nameTaken(name, preset)) {
+  if (nameTaken(name, at)) {
     $('prv-msg').textContent = `“${name}” is taken: names are unique.`;
     return;
   }
   const old = preset.name;
-  preset.name = name;
-  writeSaved();
+  setPresets(settings.value.presets.map((q, j) => (j === at ? { ...q, name } : q)));
   $('prv-title').textContent = name;
   $('prv-msg').textContent = `Renamed “${old}” to “${name}”.`;
   renameMode(false);
@@ -172,8 +172,7 @@ function saveNew() {
     $('prn-msg').textContent = `“${name}” is taken: pick another name, or use that preset's Overwrite.`;
     return;
   }
-  state.presets = [...state.presets, { name, groups: state.targets.map((t) => t.group) }];
-  writeSaved();
+  setPresets([...settings.value.presets, { name, groups: settings.value.targets.map((t) => t.group) }]);
   $dialog('pr-new').close();
   renderList(`Saved “${name}”.`);
 }
@@ -193,7 +192,7 @@ export function initPresets(render) {
     });
   }
   $('pr-save').onclick = () => {
-    if (!state.targets.length) return;
+    if (!settings.value.targets.length) return;
     $input('prn-name').value = suggestName();
     $('prn-msg').textContent = '';
     $dialog('pr-new').showModal();

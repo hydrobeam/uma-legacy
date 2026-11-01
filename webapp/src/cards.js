@@ -1,9 +1,9 @@
 // ---------- support cards: the picker (owned or not, by rarity) and deck options ----------
 import { $, $input, esc } from './dom.js';
 import { SCENARIOS, gameData } from './data.js';
-import { state, goldGiven } from './state.js';
+import { settings, setDecksTop, setOwned, setPerUma } from './settings.ts';
+import { goldGiven } from './job.js';
 import { cardAv } from './images.js';
-import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
 import { must } from './must.ts';
 /** @import { Card } from './data.js' */
@@ -107,7 +107,7 @@ function cardTile(c, gifts) {
   tile.innerHTML = `<span class="cn">${esc(title.nm)}</span>${title.ti ? `<span class="cti">${esc(title.ti)}</span>` : ''}<span class="cg">${gifts.length ? giftsHTML(gifts) : ''}</span>`;
   tile.prepend(cardAv(c, 112));
   // a card the chosen scenario bans (Team Sirius in Unity Cup and Grand Concert): the search leaves it out
-  const scenario = state.scen || 'unity';
+  const scenario = settings.value.scen || 'unity';
   if ((c.ban || []).includes(scenario)) {
     tile.classList.add('ban');
     const note = document.createElement('span');
@@ -116,37 +116,41 @@ function cardTile(c, gifts) {
     tile.appendChild(note);
   }
   const paint = () => {
-    const owned = state.cardsOff[c.id] !== false;
+    const owned = settings.value.cardsOff[c.id] !== false;
     tile.setAttribute('aria-pressed', owned ? 'true' : 'false');
   };
   paint();
   tile._paint = paint;
   tile.onclick = () => {
-    if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id];
-    else state.cardsOff[c.id] = false;
-    save();
+    const { [c.id]: notOwned, ...rest } = settings.value.cardsOff;
+    setOwned({ cardsOff: notOwned === false ? rest : { ...rest, [c.id]: false } });
     paint();
     cardCount();
   };
   return tile;
 }
 export function renderCards() {
-  const groups = new Set(state.targets.filter((t) => !goldGiven(t.group)).map((t) => t.group)); // what the deck still has to give
+  const groups = new Set(
+    settings.value.targets.filter((t) => !goldGiven(settings.value.scen, t.group)).map((t) => t.group),
+  ); // what the deck still has to give
   const box = $('cards');
   box.textContent = '';
   /** @type {[string, (c: Card) => boolean][]} label and test of each rarity's section */
   const sections = [
     ['SSR', (c) => c.rar === 3],
     ['SR', (c) => c.rar === 2],
-    ['R', (c) => c.rar === 1 && (c.pal || state.rcards)],
+    ['R', (c) => c.rar === 1 && (c.pal || settings.value.rcards === true)],
   ]; // R pals stay usable without R cards
-  const dir = state.cdir === 'desc' ? -1 : 1,
+  const dir = settings.value.cdir === 'desc' ? -1 : 1,
     sortName = (c) => {
       const t = cardTitle(c);
       return `${t.nm} ${t.ti}`;
     };
   const order = (a, b) =>
-    dir * (state.csort === 'name' ? sortName(a.c).localeCompare(sortName(b.c)) : a.c.rel - b.c.rel || a.c.id - b.c.id);
+    dir *
+    (settings.value.csort === 'name'
+      ? sortName(a.c).localeCompare(sortName(b.c))
+      : a.c.rel - b.c.rel || a.c.id - b.c.id);
   for (const [label, inSection] of sections) {
     const list = gameData()
       .cards.filter(inSection)
@@ -191,7 +195,7 @@ function cardCount() {
 }
 // the count on the Support cards button: every card counts as owned until you say otherwise
 function ownedBadge() {
-  const owned = gameData().cards.filter((c) => state.cardsOff[c.id] !== false).length,
+  const owned = gameData().cards.filter((c) => settings.value.cardsOff[c.id] !== false).length,
     b = $('o-cards');
   b.dataset.n = `${owned}/${gameData().cards.length}`;
   b.title = `${owned} of ${gameData().cards.length} support cards owned`;
@@ -201,23 +205,22 @@ export function initCards() {
   sortMenu('cs', 'c', () => renderCards());
   $input('c-filter').oninput = filterCards;
   $('c-all').onclick = () => {
-    state.cardsOff = {};
-    save();
+    setOwned({ cardsOff: {} });
     paintCards();
   };
   $('c-none').onclick = () => {
-    for (const c of gameData().cards) state.cardsOff[c.id] = false;
-    save();
+    setOwned({
+      cardsOff: { ...settings.value.cardsOff, ...Object.fromEntries(gameData().cards.map((c) => [c.id, false])) },
+    });
     paintCards();
   };
   if (!$('c-top')) return; // the career page has neither: one career, one deck
   // Results: 1 or 3, the game's pill switch (a radio group: the arrows move and select)
   const top = $('c-top'),
     pickTop = (v) => {
-      if (v === state.decksTop) return;
-      state.decksTop = v;
+      if (v === settings.value.decksTop) return;
+      setDecksTop(v);
       paintTop();
-      save();
     };
   top.querySelectorAll('button').forEach((b) => {
     b.onclick = () => pickTop(b.dataset.v);
@@ -226,24 +229,23 @@ export function initCards() {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
     e.preventDefault();
     const other = must(
-      [...top.querySelectorAll('button')].find((b) => b.dataset.v !== state.decksTop),
+      [...top.querySelectorAll('button')].find((b) => b.dataset.v !== settings.value.decksTop),
       'the switch has two options',
     ); // two options: any arrow goes to the other
     pickTop(other.dataset.v);
     other.focus();
   });
   paintTop();
-  $input('c-peruma').checked = state.perUma;
+  $input('c-peruma').checked = settings.value.perUma;
   $input('c-peruma').onchange = (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
-    state.perUma = e.target.checked;
-    save();
+    setPerUma(e.target.checked);
   };
 }
 export function paintTop() {
   const top = document.getElementById('c-top');
   if (!top) return;
   top.querySelectorAll('button').forEach((b) => {
-    const on = b.dataset.v === state.decksTop;
+    const on = b.dataset.v === settings.value.decksTop;
     b.setAttribute('aria-checked', String(on));
     b.setAttribute('aria-pressed', String(on));
     b.tabIndex = on ? 0 : -1;

@@ -1,10 +1,11 @@
 // ---------- export / import ----------
 import { $, $dialog, $input, $textarea, fmtIn } from './dom.js';
 import { paintTop } from './cards.js';
-import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
+import { SETTINGS, ERA } from './saved.ts';
 import { SCENARIOS, RANKS, gameData } from './data.js';
-import { state, ui, goldGiven, dropRequired } from './state.js';
-import { save } from './save.js';
+import { settings, importSettings, importToEra } from './settings.ts';
+import { ui } from './state.js';
+import { goldGiven } from './job.js';
 import { noOutfit, renderRoster, pickOutfit } from './roster.js';
 import { renderTargets } from './targets.js';
 import { mergePresets } from './presets.js';
@@ -19,20 +20,20 @@ const skillName = (group, level) => {
 // the settings in words, for a reader of the export (an import reads `settings`)
 function readableSettings() {
   return {
-    targets: state.targets.map((t) => ({
+    targets: settings.value.targets.map((t) => ({
       skill: skillName(t.group, 1),
       gold: gameData().skillNames.get(t.group)?.gd || null,
-      guaranteed: goldGiven(t.group) ? 'gold' : 'no',
+      guaranteed: goldGiven(settings.value.scen, t.group) ? 'gold' : 'no',
     })),
     umas_not_owned: gameData()
-      .umas.filter((u) => state.roster[u.id] === 'out' || noOutfit(u))
+      .umas.filter((u) => settings.value.roster[u.id] === 'out' || noOutfit(u, settings.value.outfits))
       .map((u) => u.name),
     cards_not_owned: gameData()
-      .cards.filter((c) => state.cardsOff[c.id] === false)
+      .cards.filter((c) => settings.value.cardsOff[c.id] === false)
       .map((c) => c.name),
-    deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
+    deck: settings.value.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
     game_data: ERA === 'gm' ? 'JP, Grand Masters' : 'Global',
-    scenario: scenarioOf(state.scen).name,
+    scenario: scenarioOf(settings.value.scen).name,
   };
 }
 // a loop's odds and members, each with the outfit the result names
@@ -62,7 +63,7 @@ const resultSummary = (top) => ({
     })),
 });
 function exportText() {
-  const settings = Object.fromEntries(SETTINGS.map((k) => [k, state[k]]));
+  const saved = Object.fromEntries(SETTINGS.map((k) => [k, settings.value[k]]));
   const readable = readableSettings();
   /** @type {Record<string, unknown> | null} */
   let results = null;
@@ -77,7 +78,7 @@ function exportText() {
     };
   }
   return JSON.stringify(
-    { app: 'legacy-loop-planner', version: 1, readable, results, settings: { era: ERA, ...settings } },
+    { app: 'legacy-loop-planner', version: 1, readable, results, settings: { era: ERA, ...saved } },
     null,
     1,
   );
@@ -118,27 +119,24 @@ function loadSettings() {
   try {
     const parsed = JSON.parse($textarea('ex-text').value);
     if (!parsed?.settings) throw new Error('no settings');
-    const settings = parsed.settings,
-      era = settings.era === 'gm' ? 'gm' : 'global';
-    const keys = SETTINGS.filter((k) => k in settings),
-      use = keys.filter((k) => VALID[k](settings[k], era)),
+    const given = parsed.settings,
+      era = given.era === 'gm' ? 'gm' : 'global';
+    const keys = SETTINGS.filter((k) => k in given),
+      use = keys.filter((k) => VALID[k](given[k], era)),
       bad = keys.filter((k) => !use.includes(k));
     if (!use.length) throw new Error('nothing to load');
-    const imported = (k) => (k === 'presets' ? mergePresets(state.presets, settings.presets) : settings[k]); // presets join yours, never replace them
+    const imported = (k) => (k === 'presets' ? mergePresets(settings.value.presets, given.presets) : given[k]), // presets join yours, never replace them
+      loaded = Object.fromEntries(use.map((k) => [k, imported(k)]));
     if (era !== ERA) {
-      for (const k of use) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = imported(k);
-      SAVED.era = era;
-      persist([era]);
+      importToEra(era, loaded);
       location.reload();
       return;
     }
-    for (const k of use) state[k] = imported(k);
-    dropRequired(state);
-    save();
+    importSettings(loaded);
     paintRank();
     paintTop();
-    $input('c-peruma').checked = state.perUma !== false;
-    $input('x-auto').checked = state.auto !== false;
+    $input('c-peruma').checked = settings.value.perUma !== false;
+    $input('x-auto').checked = settings.value.auto !== false;
     paintScen();
     renderRoster();
     renderTargets();

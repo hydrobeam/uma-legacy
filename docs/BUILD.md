@@ -175,11 +175,13 @@ the career tables' mobs cut to those with a portrait in `webapp/img/`. It writes
   serves the pages uncached.
 
 The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, minified to `assets/worker.<hash>.js`; its messages both ways are typed in `src/solver.ts`). Saved settings are one versioned object,
-`localStorage['llp:settings']`, migrated in `settings.js`. Shared page state is two exported objects (`state`: the
-settings, `ui`: what is on screen). No framework.
+`localStorage['llp:settings']`, read and written in `saved.ts`. The settings are a store (`settings.ts`, on
+@preact/signals-core): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
+it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
+the loop page's on-screen state is `ui` (`state.js`). No framework.
 
 In `src/`, `main.js` and `career.js` are the two pages' entries; `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` builds the
-job both pages send, `save.js` decides what a settings change does, and `statestore.js` keeps the solver's work in
+job both pages send (from the settings it is given), and `statestore.js` keeps the solver's work in
 IndexedDB.
 
 ## Tests

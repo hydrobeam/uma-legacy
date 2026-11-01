@@ -5,17 +5,18 @@
 // era's) are skipped.
 import { $, $input } from './dom.js';
 import { gameData } from './data.js';
-import { state } from './state.js';
-import { save } from './save.js';
+import { setOwned } from './settings.ts';
 import { paintRoster } from './roster.js';
 import { paintCards } from './cards.js';
 import { parseOwned } from './umadump.js';
 import { must } from './must.ts';
 
+/** @typedef {Parameters<typeof setOwned>[0]} OwnedMarks the marks the files set, saved once they are all read */
 // Mark owned exactly the outfits in `owned` (outfit ids), and an uma the data lists without outfits when the file has an
-// outfit of hers (character id = outfit id / 100). Returns how many of the file's ids the data has; 0 changes nothing.
-/** @param {Set<number>} owned @returns {number} */
-function setOwnedOutfits(owned) {
+// outfit of hers (character id = outfit id / 100), in `marks`. Returns how many of the file's ids the data has; 0
+// changes nothing.
+/** @param {Set<number>} owned @param {OwnedMarks} marks @returns {number} */
+function markOutfits(owned, marks) {
   const outfitless = new Set(
       gameData()
         .umas.filter((u) => !u.outfits.length)
@@ -25,20 +26,24 @@ function setOwnedOutfits(owned) {
     known = [...owned].filter((id) => outfitIds.has(id) || outfitless.has(Math.floor(id / 100))).length;
   if (!known) return 0;
   const charas = new Set([...owned].map((id) => Math.floor(id / 100)));
-  state.roster = {};
-  state.outfits = {};
+  /** @type {Record<number, 'out'>} */
+  const roster = {};
+  /** @type {Record<number, false>} */
+  const outfits = {};
   for (const u of gameData().umas) {
-    if (!u.outfits.length && !charas.has(u.id)) state.roster[u.id] = 'out';
-    for (const o of u.outfits) if (!owned.has(o.id)) state.outfits[o.id] = false;
+    if (!u.outfits.length && !charas.has(u.id)) roster[u.id] = 'out';
+    for (const o of u.outfits) if (!owned.has(o.id)) outfits[o.id] = false;
   }
+  Object.assign(marks, { roster, outfits });
   return known;
 }
-// Mark owned exactly the support cards in `owned` (card ids). Returns how many of them the data has; 0 changes nothing.
-/** @param {Set<number>} owned @returns {number} */
-function setOwnedCards(owned) {
+// Mark owned exactly the support cards in `owned` (card ids), in `marks`. Returns how many of them the data has; 0
+// changes nothing.
+/** @param {Set<number>} owned @param {OwnedMarks} marks @returns {number} */
+function markCards(owned, marks) {
   const known = gameData().cards.filter((c) => owned.has(c.id)).length;
   if (known)
-    state.cardsOff = Object.fromEntries(
+    marks.cardsOff = Object.fromEntries(
       gameData()
         .cards.filter((c) => !owned.has(c.id))
         .map((c) => [c.id, false]),
@@ -47,11 +52,11 @@ function setOwnedCards(owned) {
 }
 // one file's import, as the dialog's status says it ("54 outfits owned (2 not in the data)."); throws when nothing in
 // it is in the data
-/** @param {string} text @returns {string} */
-function importOwned(text) {
+/** @param {string} text @param {OwnedMarks} marks @returns {string} */
+function importOwned(text, marks) {
   const list = parseOwned(text),
     owned = new Set(list.ids),
-    known = list.kind === 'cards' ? setOwnedCards(owned) : setOwnedOutfits(owned),
+    known = list.kind === 'cards' ? markCards(owned, marks) : markOutfits(owned, marks),
     noun = list.kind === 'cards' ? 'cards' : 'outfits';
   if (!known) throw new Error(`None of its ${noun} are in this data.`);
   return `${known} ${noun} owned${owned.size > known ? ` (${owned.size - known} not in the data)` : ''}.`;
@@ -60,10 +65,12 @@ function importOwned(text) {
 /** @param {HTMLInputElement} input @param {HTMLElement} status */
 async function importFiles(input, status) {
   const said = [];
+  /** @type {OwnedMarks} */
+  const marks = {};
   let changed = false;
   for (const file of must(input.files, 'a file input has its file list')) {
     try {
-      said.push(importOwned(await file.text()));
+      said.push(importOwned(await file.text(), marks));
       changed = true;
     } catch (e) {
       said.push(`${file.name}: ${e.message}`);
@@ -71,7 +78,7 @@ async function importFiles(input, status) {
   }
   input.value = '';
   if (changed) {
-    save();
+    setOwned(marks);
     paintRoster();
     paintCards();
   }

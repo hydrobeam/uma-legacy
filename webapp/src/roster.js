@@ -2,9 +2,8 @@
 // Owned / not owned, per outfit (solver: exclude + exclude_outfits).
 import { $, $input } from './dom.js';
 import { gameData } from './data.js';
-import { state } from './state.js';
+import { settings, setOwned } from './settings.ts';
 import { umaAv } from './images.js';
-import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
 import { must } from './must.ts';
 const STATE_LABEL = { own: 'owned', out: 'not owned' };
@@ -12,13 +11,17 @@ const STATE_LABEL = { own: 'owned', out: 'not owned' };
 /** @param {import('./data.js').Uma} u @returns {'own'|'out'} */
 export function umaState(u) {
   const outfits = u.outfits || [],
-    mark = state.roster[u.id] || 'own';
-  return mark === 'own' && outfits.length && outfits.every((o) => state.outfits[o.id] === false) ? 'out' : mark;
+    mark = settings.value.roster[u.id] || 'own';
+  return mark === 'own' && outfits.length && outfits.every((o) => settings.value.outfits[o.id] === false)
+    ? 'out'
+    : mark;
 }
-/** @type {(u: import('./data.js').Uma) => boolean} every outfit of hers is marked not owned */
-export const noOutfit = (u) => (u.outfits || []).length > 0 && u.outfits.every((o) => state.outfits[o.id] === false);
+/** @type {(u: import('./data.js').Uma, outfits: import('./settings.ts').SettingsView['outfits']) => boolean} every
+ *  outfit of hers is marked not owned in `outfits` (the settings' marks) */
+export const noOutfit = (u, outfits) => (u.outfits || []).length > 0 && u.outfits.every((o) => outfits[o.id] === false);
 // one tile's ownership: the uma's mark, else the outfit's (o null: an uma without outfits in the data)
-const tileState = (u, o) => (state.roster[u.id] === 'out' || (o && state.outfits[o.id] === false) ? 'out' : 'own');
+const tileState = (u, o) =>
+  settings.value.roster[u.id] === 'out' || (o && settings.value.outfits[o.id] === false) ? 'out' : 'own';
 // her tiles' outfits: one tile per outfit, or a single tile (null) when the data lists none
 const tileOutfits = (u) => (u.outfits?.length ? u.outfits : [null]);
 // The outfit a result names for uma `id`: one, never "any outfit". `offered`: the solver's outfits for her (each covers a
@@ -31,7 +34,7 @@ const tileOutfits = (u) => (u.outfits?.length ? u.outfits : [null]);
  */
 export function pickOutfit(id, offered = []) {
   const u = gameData().umas.find((x) => x.id === id),
-    mine = (u?.outfits || []).filter((o) => state.outfits[o.id] !== false);
+    mine = (u?.outfits || []).filter((o) => settings.value.outfits[o.id] !== false);
   if (offered.length) return { list: offered, any: false };
   const chosen = mine.find((o) => o.id === id * 100 + 1) || mine[0];
   return { list: chosen ? [{ id: chosen.id, label: chosen.label }] : [], any: true };
@@ -48,7 +51,9 @@ export const outfitNote = (pick) =>
           .join(', ')}.`
       : '';
 function rosterCount() {
-  const umasOut = gameData().umas.filter((u) => state.roster[u.id] === 'out' || noOutfit(u)).length;
+  const umasOut = gameData().umas.filter(
+    (u) => settings.value.roster[u.id] === 'out' || noOutfit(u, settings.value.outfits),
+  ).length;
   const outfits = gameData().umas.reduce((sum, u) => sum + Math.max(1, (u.outfits || []).length), 0);
   const outfitsOut = gameData().umas.reduce(
     (sum, u) => sum + tileOutfits(u).filter((o) => tileState(u, o) === 'out').length,
@@ -79,20 +84,23 @@ function filterRoster() {
       !must(tile._searchName, 'rosterTile names each tile').includes(filter) &&
       !must(tile._outfitLabel, 'rosterTile labels each tile').includes(filter);
 }
-// a click on a tile: owned <-> not owned, for its outfit (or the uma, on a tile without one)
+// a click on a tile: owned <-> not owned, for its outfit (or the uma, on a tile without one); saved
 function toggleTile(u, o) {
+  const roster = { ...settings.value.roster },
+    outfits = { ...settings.value.outfits };
   if (tileState(u, o) === 'own') {
-    if (o) state.outfits[o.id] = false;
-    else state.roster[u.id] = 'out';
-  } else if (!o) delete state.roster[u.id];
+    if (o) outfits[o.id] = false;
+    else roster[u.id] = 'out';
+  } else if (!o) delete roster[u.id];
   else {
     // a whole-uma 'not owned' becomes per outfit, so only this tile changes
-    if (state.roster[u.id] === 'out') {
-      delete state.roster[u.id];
-      for (const x of u.outfits) if (state.outfits[x.id] === undefined) state.outfits[x.id] = false;
+    if (roster[u.id] === 'out') {
+      delete roster[u.id];
+      for (const x of u.outfits) if (outfits[x.id] === undefined) outfits[x.id] = false;
     }
-    delete state.outfits[o.id];
+    delete outfits[o.id];
   }
+  setOwned({ roster, outfits });
 }
 function rosterTile(box, u, o, eager) {
   const tile = document.createElement('div');
@@ -127,7 +135,6 @@ function rosterTile(box, u, o, eager) {
   tile._paint();
   portrait.onclick = () => {
     toggleTile(u, o);
-    save();
     box.querySelectorAll(`.ut[data-uma="${u.id}"]`).forEach((x) => {
       x._paint();
     });
@@ -141,11 +148,13 @@ export function renderRoster() {
   const tiles = [];
   for (const u of gameData().umas)
     for (const o of tileOutfits(u)) tiles.push({ u, o, rel: o ? o.rel : 0, key: `${u.name} ${o ? o.label : ''}` });
-  const dir = state.rdir === 'desc' ? -1 : 1;
+  const dir = settings.value.rdir === 'desc' ? -1 : 1;
   tiles.sort(
     (a, b) =>
       dir *
-      (state.rsort === 'name' ? a.key.localeCompare(b.key) : a.rel - b.rel || (a.o ? a.o.id : 0) - (b.o ? b.o.id : 0)),
+      (settings.value.rsort === 'name'
+        ? a.key.localeCompare(b.key)
+        : a.rel - b.rel || (a.o ? a.o.id : 0) - (b.o ? b.o.id : 0)),
   );
   const EAGER = 8; // the first two rows are on screen at load (phone and desktop): their portraits load at once
   tiles.forEach(({ u, o }, i) => {
@@ -159,14 +168,16 @@ export function initRoster() {
   sortMenu('rs', 'r', () => renderRoster());
   $input('r-filter').oninput = filterRoster;
   $('r-all').onclick = () => {
-    state.roster = {};
-    state.outfits = {};
-    save();
+    setOwned({ roster: {}, outfits: {} });
     paintRoster();
   };
   $('r-none').onclick = () => {
-    for (const u of gameData().umas) state.roster[u.id] = 'out';
-    save();
+    setOwned({
+      roster: {
+        ...settings.value.roster,
+        ...Object.fromEntries(gameData().umas.map((u) => [u.id, /** @type {const} */ ('out')])),
+      },
+    });
     paintRoster();
   };
 }

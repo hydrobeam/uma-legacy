@@ -3,7 +3,7 @@
 // the answer and the run machine from career.js (an import cycle: this module's body only declares, so nothing of
 // career.js is read while the bundle loads); its one write there is `forgetDroppedChoice`.
 import { $, el, esc, fmtIn, lazyDialog } from '../dom.js';
-import { state } from '../state.js';
+import { settings } from '../settings.ts';
 import { umaAv } from '../images.js';
 import { pct } from '../odds.js';
 import { vets, plan, chosen, changed, umaName } from '../vets.js';
@@ -33,7 +33,7 @@ import { must } from '../must.ts';
 // or its last run, else what her run does for it: the side her veteran's routes lift most often where she lowers it,
 // with that chance per run, or her own n/n as a side (`lifts_side`); a loop member says so first
 const roleText = (o) => {
-  const n = state.targets.length;
+  const n = settings.value.targets.length;
   if (o.role === 'plan') return 'Makes one of the two parents your fully looped parent needs';
   if (o.role === 'finish') return 'The last run: both her parents are already full veterans';
   const loop = o.role === 'loop' ? 'Already in your loop. ' : '',
@@ -99,14 +99,14 @@ function useBtn(r, places = plan) {
     const unplaced = r.parents.filter((i) => !parents.includes(vets[i].id));
     for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets[unplaced.shift()].id;
     plan.parents = parents;
-    plan.fromTable = true; // (a change of setup hands the places back to the planner, `onSave`)
+    plan.fromTable = true; // (a change of setup hands the places back to the planner: career.js initSettings)
     // a builder's other career, or the pair search's recommendation, keeps its deck: the job then reports that career
     // (`career`) instead of searching, while the setup it was chosen on stands (`chosenApplies`)
     chosen.career = null;
     forgetDroppedChoice();
     if ((r.alternative || r.pair_search) && r.career) {
       try {
-        chosen.career = { places: placesKey(), id: r.career, setup: chosenSetup(buildJob()) };
+        chosen.career = { places: placesKey(), id: r.career, setup: chosenSetup(buildJob(settings.value)) };
       } catch (e) {
         if (!(e instanceof Blocked)) throw e;
         // settings that make no job: nothing is chosen
@@ -176,7 +176,7 @@ export function optionsEl() {
   tb.innerHTML =
     '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
   // both columns explain themselves on hover or keyboard focus (gmtip.js); the (i) popup says more about extra careers
-  const n = state.targets.length,
+  const n = settings.value.targets.length,
     ths = must(tb.tHead, 'the table is made with its head').rows[0].cells;
   const t = el('span', 'thtip', 'Odds');
   t.title = `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`;
@@ -363,7 +363,7 @@ function extraText(r, pick, planReport) {
 // show; mine: your career when the plan didn't list it; planReport: the plan's report (null: no Saves per run); places:
 // the places the table's careers fill; pick: the plan's pick (its extra careers are measured against it)
 function optionRow(r, { on, mine, planReport, places, pick }) {
-  const n = state.targets.length;
+  const n = settings.value.targets.length;
   const cur = on && keyOf(r) === keyOf(on),
     row = el('tr', cur ? 'on' : ''),
     c0 = el('th');
@@ -415,7 +415,7 @@ const saveDialog = lazyDialog('gmdlg', (dialog) => {
 function openSaveWhy(planReport, notes = []) {
   const saveDlg = saveDialog.get();
   saveDlg.textContent = '';
-  const n = state.targets.length;
+  const n = settings.value.targets.length;
   const h = el('h3', 'gmdhdr', 'What these mean');
   h.id = 'save-title';
   saveDlg.appendChild(h);

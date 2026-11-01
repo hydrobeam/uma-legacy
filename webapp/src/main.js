@@ -2,10 +2,12 @@
 // dist/assets/main.<hash>.js, which dist/index.html loads after its data script.
 import './errorlog.ts'; // first: it listens before any other module runs
 import { $, $dialog, $input, backdropCloses } from './dom.js';
-import { SAVED, ERA } from './settings.js';
-import { PRESET, loadData } from './data.js';
-import { state, ui, writeSaved } from './state.js';
-import { save, doSearch, firstResult, paintRunNote } from './search.js';
+import { ERA } from './saved.ts';
+import { loadData } from './data.js';
+import { PRESET, jobSetup, settings, setAuto, switchEra } from './settings.ts';
+import { on } from './store.ts';
+import { ui } from './state.js';
+import { doSearch, firstResult, paintRunNote, settingsChanged } from './search.js';
 import { warmEngine } from './engine.ts';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
@@ -35,9 +37,7 @@ $('era-global').setAttribute('aria-pressed', String(ERA === 'global'));
 $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
 const setEra = (era) => {
   if (era === ERA) return;
-  eraScenario(era);
-  SAVED.era = era;
-  writeSaved();
+  switchEra(era, eraScenario(era));
   location.reload();
 };
 $('era-global').onclick = () => setEra('global');
@@ -52,11 +52,10 @@ loadData().then(start, (e) => {
   paintRunNote();
 });
 function start() {
-  $input('x-auto').checked = state.auto !== false;
+  $input('x-auto').checked = settings.value.auto !== false;
   $input('x-auto').onchange = (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
-    state.auto = e.target.checked;
-    writeSaved();
-    if (state.auto && ui.status.kind === 'pending') save();
+    setAuto(e.target.checked);
+    if (settings.value.auto && ui.status.kind === 'pending') settingsChanged();
   }; // the switch changes no result: switching it on searches only changes made while it was off
   initScenario(); // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
@@ -67,6 +66,9 @@ function start() {
   initIO();
   initPopover();
   initSetup();
+  // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
+  // the setup the first search starts from)
+  on([jobSetup], settingsChanged);
   // phone: the floating status button shows while the results are out of view, and takes you back up to them
   if (window.IntersectionObserver)
     new IntersectionObserver((entries) =>

@@ -10,9 +10,10 @@
 //   options.js    the options table ("Other careers": the plan's careers, Use this) and its Saves popup
 import './errorlog.ts'; // first: it listens before any other module runs
 import { $, $dialog, $input, $textarea, backdropCloses, el, fmtIn, lazyDialog } from './dom.js';
-import { ERA, SAVED } from './settings.js';
+import { ERA } from './saved.ts';
 import { RANKS, loadData, careerTables, gameData } from './data.js';
-import { state, goldGiven, writeSaved } from './state.js';
+import { jobSetup, settings, setBorrowPar, switchEra } from './settings.ts';
+import { on } from './store.ts';
 import {
   run as engineRun,
   restartEngine,
@@ -23,8 +24,7 @@ import {
   stateKey,
 } from './engine.ts';
 import { answerLoad, answerSave } from './statestore.js';
-import { onSave, save } from './save.js';
-import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
+import { EXTRA, goldGiven, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner, scenLogo, srcFor } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
@@ -85,9 +85,10 @@ import { must } from './must.ts';
 
 const tName = (g) => {
   const s = gameData().skillNames.get(g) || { w: `Skill ${g}`, gd: null };
-  return goldGiven(g) && s.gd ? s.gd : s.w;
+  return goldGiven(settings.value.scen, g) && s.gd ? s.gd : s.w;
 };
-const owned = (u) => state.roster[u.id] !== 'out' && !noOutfit(u);
+/** @type {(u: import('./data.js').Uma, s: import('./settings.ts').SettingsView) => boolean} owned under settings `s` */
+const owned = (u, s) => s.roster[u.id] !== 'out' && !noOutfit(u, s.outfits);
 export const btn = (label, cls, fn) => {
   const b = el('button', `btn${cls ? ` ${cls}` : ''}`, label);
   b.type = 'button';
@@ -452,7 +453,7 @@ function schedule() {
   /** @type {string | null} */
   let key = null;
   try {
-    key = runKey(buildJob());
+    key = runKey(buildJob(settings.value));
   } catch {
     /* the search says why */
   }
@@ -493,9 +494,13 @@ export class Blocked extends Error {
 // the borrowed-parent choice (Career setup): 'allow' (one per career, now and later), 'later' (none in this career; the
 // plan's later careers still borrow), 'never'; the job's `borrowed_parent`, left out at 'allow' (the solver's default)
 export const BORROW_CHOICES = { allow: 'Allowed', later: 'None left today', never: 'Never' };
-const borrowChoice = () => (Object.hasOwn(BORROW_CHOICES, state.borrowPar) ? state.borrowPar : 'allow');
-export function buildJob() {
-  if (!state.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
+/** @type {(s: import('./settings.ts').SettingsView) => keyof typeof BORROW_CHOICES} */
+const borrowChoice = (s) =>
+  Object.hasOwn(BORROW_CHOICES, s.borrowPar) ? /** @type {keyof typeof BORROW_CHOICES} */ (s.borrowPar) : 'allow';
+// the career job for settings `s` and the veterans and places (throws Blocked when they make none)
+/** @param {import('./settings.ts').SettingsView} s */
+export function buildJob(s) {
+  if (!s.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
   const fixed = plan.parents.filter(Boolean).map(vetById);
   if (vets.length < 2 || !vets.some((v) => !v.borrowed)) {
     const importVets = { label: 'Import veterans', run: () => $('v-toggle').click() };
@@ -517,24 +522,24 @@ export function buildJob() {
   ];
   for (const { trainee, v, other } of checks) {
     if (!v) continue; // (no parent in that place: nothing to check)
-    const k = pairBlock(trainee, v, other);
+    const k = pairBlock(trainee, v, other, s);
     if (k === 'same')
       throw new Blocked('error', `Both parents are ${umaName(v.chara)}: a career takes two different umas.`);
     if (k === 'both') throw new Blocked('error', 'Both parents are borrowed: a career can borrow one.');
     if (k === 'setting')
       throw new Blocked(
         'error',
-        `${umaName(v.chara)} is borrowed, and Borrowed parent is set to ${BORROW_CHOICES[borrowChoice()]}: choose one of your veterans, or allow a borrowed parent.`,
+        `${umaName(v.chara)} is borrowed, and Borrowed parent is set to ${BORROW_CHOICES[borrowChoice(s)]}: choose one of your veterans, or allow a borrowed parent.`,
       );
     if (k === 'trainee')
       throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
   }
   const exclude = gameData()
-    .umas.filter((u) => !owned(u) && u.id !== plan.trainee)
+    .umas.filter((u) => !owned(u, s) && u.id !== plan.trainee)
     .map((u) => u.id);
   if (!plan.trainee && exclude.length >= gameData().umas.length)
     throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
-  const exclude_outfits = Object.entries(state.outfits)
+  const exclude_outfits = Object.entries(s.outfits)
     .filter(([, v]) => v === false)
     .map(([k]) => +k);
   const allPlaced = plan.trainee && fixed.length === 2;
@@ -543,22 +548,23 @@ export function buildJob() {
   /** @type {CareerJob} */
   const job = {
     cmd: 'career',
-    targets: jobTargets(),
+    targets: jobTargets(s),
     exclude,
     exclude_outfits,
     extra: EXTRA,
-    owned_cards: ownedCards(),
+    owned_cards: ownedCards(s),
     borrow: true,
-    star_dist: state.rank.split(',').map(Number),
-    scenario: state.scen || 'unity',
-    ...rcardsOff(),
+    star_dist: s.rank.split(',').map(Number),
+    scenario: s.scen || 'unity',
+    ...rcardsOff(s),
     legacies: legaciesJob(),
     trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf),
     per_trainee: false,
     top: allPlaced ? 1 : ROLL_K,
   };
-  if (borrowChoice() !== 'allow') job.borrowed_parent = borrowChoice();
+  const borrowed = borrowChoice(s);
+  if (borrowed !== 'allow') job.borrowed_parent = borrowed;
   if (allPlaced && chosenApplies(job)) job.career = must(chosen.career, 'chosenApplies: a choice is saved').id;
   return job;
 }
@@ -596,7 +602,7 @@ function dropStaleChosen() {
   if (!chosen.career) return;
   let applies = false;
   try {
-    applies = buildJob().career === chosen.career.id;
+    applies = buildJob(settings.value).career === chosen.career.id;
   } catch (e) {
     if (!(e instanceof Blocked)) throw e;
     // settings that make no job: the chosen career no longer applies
@@ -610,7 +616,8 @@ function dropStaleChosen() {
   persist();
 }
 // a full veteran: a spark of every target (with full veteran parents: a fully looped parent)
-export const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every((t) => nd.sparks?.[t.group] > 0);
+export const isFull = (nd) =>
+  !!nd && settings.value.targets.length > 0 && settings.value.targets.every((t) => nd.sparks?.[t.group] > 0);
 // a career on two full veteran parents: her own full veteran there is a fully looped parent (the plan says so; a search's row is read off the veterans)
 export const looped = (r) => r.looped ?? r.parents.every((i) => isFull(vets[i]));
 export const ROLL_K = 6; // careers a search returns with a place open (the plan's candidates; `buildJob`)
@@ -619,7 +626,7 @@ const baseOf = (job) => ({
   ...job,
   career: undefined,
   exclude: gameData()
-    .umas.filter((u) => !owned(u))
+    .umas.filter((u) => !owned(u, settings.value))
     .map((u) => u.id),
   trainees: [],
   fix: [],
@@ -645,7 +652,7 @@ const refBase = (job) =>
   planKey({
     ...job,
     exclude: gameData()
-      .umas.filter((u) => !owned(u))
+      .umas.filter((u) => !owned(u, settings.value))
       .map((u) => u.id),
     trainees: [],
     fix: [],
@@ -662,7 +669,7 @@ const answers = new Map(),
 async function preloadAnswer() {
   let job;
   try {
-    job = buildJob();
+    job = buildJob(settings.value);
   } catch {
     return;
   }
@@ -730,7 +737,7 @@ async function search() {
   outdateComparison();
   let job;
   try {
-    job = buildJob();
+    job = buildJob(settings.value);
   } catch (e) {
     endRun({
       status: { kind: e.kind || 'error', text: e.message, act: e.act },
@@ -908,11 +915,13 @@ function searchStatus(m, found) {
   const carried = new Set(
     vets.flatMap((v) => [v, ...v.parents]).flatMap((x) => Object.keys(x.sparks || {}).map(Number)),
   );
-  const none = state.targets.filter((t) => !goldGiven(t.group) && !carried.has(t.group)).map((t) => tName(t.group));
+  const none = settings.value.targets
+    .filter((t) => !goldGiven(settings.value.scen, t.group) && !carried.has(t.group))
+    .map((t) => tName(t.group));
   const why = none.length
     ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.`
     : ' with these veterans.';
-  return { kind: 'error', text: `No career can land all ${state.targets.length} targets${why}${dropped}` };
+  return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
 }
 // The plan (solver: career/plan/mod.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned uma's
 // best career scored by the careers it saves toward a fully looped parent (the cheapest trio). The page reads `next`
@@ -1205,7 +1214,7 @@ function fillTraineeNode(_sp, r, body, acts) {
             plan.fromTable = false; // (chosen by hand: it stays)
             changed();
           },
-          owned,
+          (u) => owned(u, settings.value),
         ),
       ),
     ),
@@ -1310,7 +1319,7 @@ function copyIdBtn(v, cls = '') {
 }
 // her name with how many of the targets her own sparks carry, "6/8" (an n/n veteran carries all n)
 function nameCover(v) {
-  const groups = state.targets.map((t) => t.group),
+  const groups = settings.value.targets.map((t) => t.group),
     x = groups.filter((g) => (v.sparks?.[g] || 0) > 0).length,
     n = el('div', 'nm', umaName(v.chara)),
     c = el('span', 'vxy', `${x}/${groups.length}`);
@@ -1510,11 +1519,12 @@ const drawNew = () =>
 // of the solver's `Pool::pair_ok` and the Borrowed parent setting: the first rule v breaks ('trainee': she is the
 // trainee's uma; 'same': the other parent's; 'both': both borrowed; 'setting': borrowed while the setting allows none),
 // or ''. The one place the parent picker (`blockedFor`) and the job (`buildJob`) read them
-function pairBlock(t, v, o) {
+/** @param {import('./settings.ts').SettingsView} s the settings (Borrowed parent) */
+function pairBlock(t, v, o, s) {
   if (t && v.chara === t) return 'trainee';
   if (o && o.chara === v.chara) return 'same';
   if (o?.borrowed && v.borrowed) return 'both';
-  if (v.borrowed && borrowChoice() !== 'allow') return 'setting';
+  if (v.borrowed && borrowChoice(s) !== 'allow') return 'setting';
   return '';
 }
 // why veteran v can't go in place k (or '')
@@ -1525,8 +1535,10 @@ const BLOCKED = {
 };
 function blockedFor(v, k) {
   const otherId = plan.parents[1 - k];
-  const why = pairBlock(plan.trainee, v, otherId && vetById(otherId));
-  return why === 'setting' ? `borrowed (Borrowed parent: ${BORROW_CHOICES[borrowChoice()]})` : BLOCKED[why] || '';
+  const why = pairBlock(plan.trainee, v, otherId && vetById(otherId), settings.value);
+  return why === 'setting'
+    ? `borrowed (Borrowed parent: ${BORROW_CHOICES[borrowChoice(settings.value)]})`
+    : BLOCKED[why] || '';
 }
 function openParentPicker(k) {
   pickK = k;
@@ -1559,7 +1571,7 @@ function openParentPicker(k) {
     );
     top.appendChild(nm);
     b.appendChild(top);
-    const tg = state.targets.map((t) => t.group),
+    const tg = settings.value.targets.map((t) => t.group),
       have = tg.filter((g) => v.sparks[g]),
       stars = have.reduce((a, g) => a + v.sparks[g], 0);
     b.appendChild(el('div', 'vpts', `${have.length} of ${tg.length} target skills, ${stars}★`));
@@ -1594,7 +1606,7 @@ export const sectionEl = (cls, title) => {
 };
 // the career's odds of landing all n (each count is under the targets: countsEl)
 function oddsBtn(r) {
-  const n = state.targets.length,
+  const n = settings.value.targets.length,
     b = el('span', 'udodds');
   b.id = 'odds-open';
   b.append(el('b', '', fmtIn(r.p_all)), el('span', '', ` to land all ${n}`));
@@ -1609,7 +1621,7 @@ const popCount = (mask) => {
   return c;
 };
 function landedCounts(r) {
-  const n = state.targets.length,
+  const n = settings.value.targets.length,
     exactly = new Array(n + 1).fill(0);
   if (Array.isArray(r.outcome_sets)) {
     // outcome_sets[mask]: the chance of landing exactly the targets in mask (bit i: target i)
@@ -1786,7 +1798,7 @@ function targetsEl(r) {
       deck.appendChild(o);
     }
     if (b.scenario) {
-      const sc = scenLogo(scenarioOf(state.scen));
+      const sc = scenLogo(scenarioOf(settings.value.scen));
       sc.title = 'The scenario gives it';
       deck.appendChild(sc);
     }
@@ -1800,7 +1812,7 @@ function targetsEl(r) {
 // as tall as its share (all n in gold), the count under it, "1 in X" on hover; under the axis, the game's limit arrow
 // where the average roll lands (the expected count, between the columns it falls between)
 function countsEl(r) {
-  const n = state.targets.length,
+  const n = settings.value.targets.length,
     ex = landedCounts(r),
     top = Math.max(...ex),
     chart = el('div', 'tgchart'),
@@ -1882,7 +1894,7 @@ function renderResults() {
 // sparks editable in place, Yours / Guest, Remove)
 function vetCardEl(v, i) {
   const k = plan.parents.indexOf(v.id),
-    tg = state.targets.map((t) => t.group),
+    tg = settings.value.targets.map((t) => t.group),
     have = tg.filter((g) => v.sparks?.[g]).length,
     c = vetCell(v, {
       name: v.lender ? v.lender.name || 'uma.moe' : `#${i + 1}`,
@@ -1926,7 +1938,7 @@ const VSORTS = {
   tg: [
     'Targets',
     'The most targets she carries first',
-    (v) => state.targets.filter((t) => v.sparks?.[t.group] > 0).length,
+    (v) => settings.value.targets.filter((t) => v.sparks?.[t.group] > 0).length,
   ],
   rank: ['Rank', 'The highest career rank first', (v) => v.rank || 0],
 };
@@ -1991,7 +2003,7 @@ function renderPool() {
 const poolCards = new Map();
 /** @param {import('./vets.js').Veteran} v @param {number} i */
 function poolCard(v, i) {
-  const sig = JSON.stringify([v, i, plan.parents.indexOf(v.id), state.targets]),
+  const sig = JSON.stringify([v, i, plan.parents.indexOf(v.id), settings.value.targets]),
     kept = poolCards.get(v.id);
   if (kept?.sig === sig) return kept.card;
   const card = vetCardEl(v, i);
@@ -2080,9 +2092,7 @@ function initSettings() {
   $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
   const setEra = (e) => {
     if (e === ERA) return;
-    eraScenario(e);
-    SAVED.era = e;
-    writeSaved();
+    switchEra(e, eraScenario(e));
     persist();
     location.reload();
   };
@@ -2099,8 +2109,9 @@ function initSettings() {
   enginePersist(); // the solver's kept work survives a page reload
   initSetup();
   initFold();
-  // a settings change (targets, umas, cards, scenario): the tree shows the new targets, and the search runs again
-  onSave(() => {
+  // a change of setup (targets, umas, cards, scenario, rank, Borrowed parent): the tree shows the new targets, and the
+  // search runs again
+  on([jobSetup], () => {
     // a career taken from the other careers' table was for that setup: the planner picks again for this one
     if (plan.fromTable) {
       plan.trainee = null;
@@ -2115,18 +2126,17 @@ function initSettings() {
     paintFold();
   });
 }
-// Borrowed parent: three choices, saved with the other settings (a change runs the planner again, `onSave`)
+// Borrowed parent: three choices, saved with the other settings (a change runs the planner again: initSettings)
 function paintBorrow() {
   for (const b of $('bp').querySelectorAll('button'))
-    b.setAttribute('aria-pressed', String(b.dataset.v === borrowChoice()));
+    b.setAttribute('aria-pressed', String(b.dataset.v === borrowChoice(settings.value)));
 }
 function initBorrow() {
   for (const b of $('bp').querySelectorAll('button'))
     b.onclick = () => {
-      if (b.dataset.v === borrowChoice()) return;
-      state.borrowPar = b.dataset.v;
+      if (b.dataset.v === borrowChoice(settings.value)) return;
+      setBorrowPar(must(b.dataset.v, 'each Borrowed parent choice names its value'));
       paintBorrow();
-      save();
     };
   paintBorrow();
 }
@@ -2148,25 +2158,36 @@ function paintFold() {
   b.setAttribute('aria-expanded', String(!folded));
   sum.hidden = !folded;
   b.title = folded ? 'Show the career setup' : 'Fold the career setup';
-  const rank = state.rank === RANKS.ss ? 'SS' : 'B–S+',
+  const rank = settings.value.rank === RANKS.ss ? 'SS' : 'B–S+',
     era = ERA === 'gm' ? 'JP, Grand Masters' : 'Global',
-    sc = scenarioOf(state.scen).name;
+    sc = scenarioOf(settings.value.scen).name;
   // each setting as its label, light, and its value, bold, as the panel's rows read (the whole line for the screen reader)
   // (the borrowed parent only when it isn't the default)
-  const bp = borrowChoice() === 'allow' ? [] : [['Borrowed parent', BORROW_CHOICES[borrowChoice()]]];
+  const bp =
+    borrowChoice(settings.value) === 'allow' ? [] : [['Borrowed parent', BORROW_CHOICES[borrowChoice(settings.value)]]];
   sum.setAttribute(
     'aria-label',
-    [era, sc, `rank ${rank}`, `${state.targets.length} target skills`, ...bp.map(([k, v]) => `${k}: ${v}`)].join(' · '),
+    [
+      era,
+      sc,
+      `rank ${rank}`,
+      `${settings.value.targets.length} target skills`,
+      ...bp.map(([k, v]) => `${k}: ${v}`),
+    ].join(' · '),
   );
   sum.replaceChildren(
-    ...[['Game data', era], ['Scenario', sc], ['Rank', rank], ['Targets', String(state.targets.length)], ...bp].map(
-      ([k, v]) => {
-        const p = el('span', 'sumkv');
-        p.setAttribute('aria-hidden', 'true');
-        p.append(el('span', 'sumk', k), el('b', '', v));
-        return p;
-      },
-    ),
+    ...[
+      ['Game data', era],
+      ['Scenario', sc],
+      ['Rank', rank],
+      ['Targets', String(settings.value.targets.length)],
+      ...bp,
+    ].map(([k, v]) => {
+      const p = el('span', 'sumkv');
+      p.setAttribute('aria-hidden', 'true');
+      p.append(el('span', 'sumk', k), el('b', '', v));
+      return p;
+    }),
   );
 }
 // the pink ribbon toggles it (all of it, its edges included); folded, the whole bar (its summary included)
@@ -2193,7 +2214,7 @@ function exportVets() {
   /** @type {CareerJob | null} */
   let job = null;
   try {
-    job = buildJob();
+    job = buildJob(settings.value);
   } catch (e) {
     if (!(e instanceof Blocked)) throw e;
     // settings that make no job: the export carries none
