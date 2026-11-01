@@ -2,8 +2,9 @@
 // assets/img.<hash>/<kind>/<id>.<ext>, the hash taken over every file's name and content, so any change gives the whole
 // set a new folder and the folder is cached a year like the other assets. The page gets the catalog (`catalog`: the
 // keys, each kind's extension, the folder). The UI sprites the stylesheet draws the game's buttons with are also set as
-// CSS variables (--btn-w, --spark-white, ...) at the end of src/style.css, so they show at the first paint; a sprite the
-// build lacks is left unset (its rules fall back to plain styles), and Vite fingerprints the ones it has.
+// CSS variables (--btn-w, --spark-white, ...) at the end of the stylesheet's entry (src/styles/app.css), so they show
+// at the first paint; a sprite the build lacks is left unset (its rules fall back to plain styles), and Vite
+// fingerprints the ones it has.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';

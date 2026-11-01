@@ -6,7 +6,7 @@
 // below what it sends on the planner pages (the wasm compresses further at 11) and 10% below on /about. A budget is
 // raised in the commit that needs it, saying why.
 const page = (name, files, limit) => ({ name, path: [`dist/${name}`, ...files.map((f) => `dist/assets/${f}`)], limit });
-const everyPage = ['style-*.css', 'zen-kaku-gothic-new-latin-{400,700}-normal-*.woff2'];
+const everyPage = ['app-*.css', 'zen-kaku-gothic-new-latin-{400,700}-normal-*.woff2'];
 // the planner pages': the scripts both share, and the solver
 const planner = ['shared-*.js', 'worker-*.js', 'loopopt.opt-*.wasm', 'engine-global-*.json'];
 

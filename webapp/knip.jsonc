@@ -17,8 +17,9 @@
     "wrangler",
     // dependency-cruiser's parser (.dependency-cruiser.mjs `parser: 'swc'`)
     "@swc/core",
-    // imported by src/style.css, which knip does not read
+    // imported by the stylesheets (src/styles/app.css, src/style.css), which knip does not read
     "@fontsource/.+",
+    "tailwindcss",
     // served to the runner pages from node_modules by chibi/render.mjs
     "three"
   ],

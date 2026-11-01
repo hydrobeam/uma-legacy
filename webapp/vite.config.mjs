@@ -1,14 +1,16 @@
 // The site in dist/ (./build.sh page): index.html (the career planner, the front page), loop.html (the loop planner)
 // and about.html, from the pages here; their scripts (src/career/main.tsx, src/loop/main.tsx and the solver's worker,
-// src/worker.ts), src/style.css with the fonts, the solver (loopopt.opt.wasm), the page data (vite/pagedata.mjs), the
-// game's images (vite/images.mjs) and /about's math font (vite/mathfont.mjs). Every file in assets/ carries a
-// fingerprint of its content in its name, so it is served with a one-year immutable cache and an update gets new
-// names; the pages keep a 5-minute cache and always point at the current names (public/_headers). public/ (favicons,
-// hosting rules) is copied to the root as it is. Served over http(s): the page fetches the wasm, data and images.
+// src/worker.ts), the stylesheet (src/styles/app.css: Tailwind's utilities, the theme, the legacy src/style.css and
+// the fonts), the solver (loopopt.opt.wasm), the page data (vite/pagedata.mjs), the game's images (vite/images.mjs)
+// and /about's math font (vite/mathfont.mjs). Every file in assets/ carries a fingerprint of its content in its name,
+// so it is served with a one-year immutable cache and an update gets new names; the pages keep a 5-minute cache and
+// always point at the current names (public/_headers). public/ (favicons, hosting rules) is copied to the root as it
+// is. Served over http(s): the page fetches the wasm, data and images.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import basicSsl from '@vitejs/plugin-basic-ssl';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import handlebars from 'vite-plugin-handlebars';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -73,7 +75,10 @@ export default defineConfig({
         'loop.html': { module: 'src/loop/Layout.tsx', layout: 'LoopLayout' },
       },
     }),
-    images(catalog, IMG, path.join(HERE, 'src', 'style.css')),
+    // (before Tailwind: the sprites' variables are appended to the stylesheet's entry before it compiles)
+    images(catalog, IMG, path.join(HERE, 'src', 'styles', 'app.css')),
+    // the utilities and the theme (src/styles/), compiled into the stylesheet with the legacy sheet beneath them
+    tailwindcss(),
     pageData({ catalog, imgDir: IMG, wasm: '/loopopt.opt.wasm', solverPages: ['index.html', 'loop.html'] }),
     mathFont('about.html'),
     // `vite preview` (./build.sh serve, the browser suite) over HTTP/2 with TLS, as the host serves the site: browsers

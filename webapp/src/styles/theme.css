@@ -1,0 +1,248 @@
+/* The design tokens, as Tailwind theme variables: each one a CSS variable on :root and, for the namespaces Tailwind
+   knows, its utilities (`--color-gm-ink` gives `text-gm-ink`, `bg-gm-ink`, `border-gm-ink`, ...). Tailwind's own
+   colours, fonts, type sizes, radii, shadows and breakpoints are cleared first: only these exist, so a colour, size or
+   shadow on the page is one of the game's (Biome's noTailwindRawColors and noTailwindArbitraryValue hold the rest).
+   Dark mode redefines the variables under [data-theme="dark"] (set on <html> by partials/theme.hbs); no utility carries
+   a dark: variant for the art. Tailwind writes out a variable only where a utility or a var() in the CSS reads it
+   (the legacy src/style.css reads them through its own names until it is gone). */
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+  --breakpoint-*: initial;
+
+  /* the site's own palette (/about and the planner pages' plain parts): every text pair 7:1 (AAA) */
+  --color-white: #ffffff;
+  --color-bg: #f3f5f8;
+  --color-panel: #ffffff;
+  --color-ink: #18202e;
+  --color-muted: #3f4756;
+  --color-line: #b9c1ce;
+  --color-accent: #1d3c9e;
+  --color-accent-soft: #e4eafb;
+  --color-gold: #614400;
+  --color-gold-soft: #fbf0d2;
+  --color-out: #952a20;
+  --color-out-soft: #f8e3e1;
+  --color-req: #135c3e;
+  --color-req-soft: #dcf1e7;
+  --color-opt: #6a2d8f; /* optional G1s: one runner, no affinity */
+  --color-opt-soft: #f1e7f8;
+  --color-pink-soft: #fde4f0; /* aptitude (pink) sparks */
+  --color-pink-edge: #e84898;
+  --color-shade: rgba(24, 32, 46, 0.22); /* the scroll-edge shadow */
+  --color-hint-edge: var(--color-line); /* white skill boxes (hints, outfit skills, target tiles) */
+  --color-first-edge: var(--color-accent); /* the first result's outline */
+  --color-img-edge: color-mix(in srgb, var(--color-line) 80%, var(--color-ink) 20%); /* the faint edge round portraits */
+
+  /* the game's colours, sampled from in-game screenshots (brown ink, title green, the selected tab's green, white text
+     outlined in dark green): faithful to the game over WCAG AAA on the planner pages, held to 3:1 by the suite */
+  --color-wt-head: #f2ebe6;
+  --color-gm-ink: #794016;
+  --color-gm-ink2: #9c6a43;
+  --color-gm-panel: #ffffff;
+  --color-gm-pane: #f2f3f2;
+  --color-gm-cell: #ffffff;
+  --color-gm-line: #e1d8cf;
+  --color-gm-edge: #d8d3dd;
+  --color-gm-shadow: rgba(80, 60, 40, 0.16);
+  --color-gm-green: #7ecf08;
+  --color-gm-green2: #66b800;
+  --color-gm-bright: #a6e03c;
+  --color-gm-bright2: #7cc40d;
+  --color-gm-bright-ink: #ffffff;
+  --color-gm-bar: #e6e6e6;
+  --color-gm-bar2: #d4d4d4;
+  --color-gm-bar-ink: #794016;
+  --color-gm-pink: #ff8fc0;
+  --color-gm-pink2: #ff6fa9;
+  --color-gm-pink-ink: #ffffff;
+  --color-gm-tile: #dfdbeb;
+  --color-gm-tile2: #cbc5de;
+  --color-gm-tile-edge: #a9a2c3;
+  --color-gm-tile-ink: #794016;
+  --color-gm-off: #ecebef;
+  --color-gm-off-ink: #8f857c;
+  --color-gm-gold: #ffd36b;
+  --color-gm-gold2: #ffbf33;
+  --color-gm-gold-edge: #d68a00;
+  --color-gm-gold-ink: #794016;
+  --color-gm-g1: #3c7fd8;
+  --color-gm-won: #f08a00;
+  --color-gm-lost: #b9b2a8;
+  --color-gm-tab: #ffffff;
+  --color-gm-tab-edge: #d8d6dc;
+  --color-gm-tab-low: #e6e3ec;
+  /* the outline round white text on the game's green */
+  --color-outline: #3c7a00;
+  --color-outline-glow: rgba(40, 80, 0, 0.45);
+  /* the legacy colours in the affinity table (Legacy 1 blue, Legacy 2 pink) */
+  --color-leg1: #2f7fd6;
+  --color-leg2: #d4407f;
+  /* the dimmed page behind a modal dialog */
+  --color-backdrop: rgba(20, 20, 30, 0.45);
+
+  --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* the game's rounded face: the planner pages' cards, bars and dialogs */
+  --font-game: "Zen Maru Gothic", "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
+
+  /* the type scale (the body is 15 px): each size the converted parts use, in place of the old sheet's 41 */
+  --text-3xs: 0.68rem;
+  --text-2xs: 0.72rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8rem;
+  --text-md: 0.86rem;
+  --text-base: 0.95rem;
+  --text-lg: 1.05rem;
+  --text-xl: 1.15rem;
+
+  /* the game's titles: a tight line, a hair of letter spacing */
+  --leading-title: 1.3;
+  --tracking-title: 0.01em;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+
+  /* the dialogs' widths (on a phone the browser's own cap, the screen less 2em and 6 px, is the narrower) */
+  --container-*: initial;
+  --container-dialog-xs: 420px;
+  --container-dialog-sm: 520px;
+  --container-dialog-md: 600px;
+  --container-dialog-lg: 640px;
+  --container-dialog-xl: 700px;
+  --container-dialog-2xl: 870px;
+  --container-dialog-3xl: 960px;
+  --container-dialog-4xl: 980px;
+  --container-dialog-full: 1480px;
+
+  /* the planner's widths: phones are designed at 375 px; `max-md:` is a phone (620 px and under) */
+  --breakpoint-sm: 521px;
+  --breakpoint-md: 621px;
+  --breakpoint-lg: 761px;
+  --breakpoint-xl: 961px;
+  --breakpoint-2xl: 1180px;
+
+  /* white text outlined in dark green, on the game's green bars and buttons */
+  /* (Tailwind writes a shadow token's value into its utility, so the colours dark mode changes are variables) */
+  --text-shadow-outline: 0 1px 0 var(--color-outline), 1px 0 0 var(--color-outline), -1px 0 0 var(--color-outline),
+    0 -1px 0 var(--color-outline), 0 2px 2px var(--color-outline-glow);
+  --shadow-dialog: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-raised: 0 1px 0 rgba(0, 0, 0, 0.06), 0 2px 6px rgba(24, 32, 46, 0.12);
+  --shadow-lifted: 0 1px 0 rgba(0, 0, 0, 0.06), 0 4px 12px rgba(24, 32, 46, 0.18);
+  --inset-shadow-pressed: inset 0 1px 3px rgba(24, 32, 46, 0.2);
+
+  /* the career runner's sprite strip: 18 frames, --s wide each */
+  --animate-runner: runner 0.6s steps(18) infinite;
+  @keyframes runner {
+    to {
+      background-position: calc(-18 * var(--s)) 0;
+    }
+  }
+
+  /* the game's 9-slice sprites (vite/images.mjs sets --btn-w, ... when the build has them; a CSS gradient stands in
+     where it does not), each as a whole border-image: the sprite, its slices (in the sprite's pixels) and the widths
+     the slices are drawn at (scaled to the button's height: the rectangle's sprite is 96 px tall, the pill's 72 px) */
+  --nine-btn-w: var(--btn-w, linear-gradient(#fff, #eceaf2)) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch;
+  --nine-btn-g: var(--btn-g, linear-gradient(#b4ec52, #7cc40d)) 0 116 0 40 fill / 0 51px 0 18px / 0 stretch;
+  --nine-slot-frame: var(--slot-frame, linear-gradient(#fff, #f1f0f4)) 22 fill / 9px / 0 stretch;
+
+  /* the green header bar: diagonal stripes at its left, fading out by a third of the way across */
+  --art-bar: linear-gradient(90deg, transparent 0, var(--color-gm-green) 32%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 6px, transparent 6px 12px),
+    linear-gradient(var(--color-gm-green), var(--color-gm-green2)) var(--color-gm-green);
+  /* the two slanted notches near a section bar's right end */
+  --art-notch: linear-gradient(90deg, var(--color-gm-green2) 6px, transparent 6px 9px, var(--color-gm-green2) 9px);
+  /* a section bar's outline: its right end cut on a slant */
+  --clip-bar: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
+}
+
+/* dark: every site text pair keeps 7:1 (AAA); the card-type, rarity and year colours and the brand stay as they are;
+   the game's greens toned down for a dark page, the same outlined white text */
+@layer theme {
+  :root[data-theme="dark"] {
+    --color-bg: #10141b;
+    --color-panel: #000000; /* black panels on a dimmed page, mirroring light mode's white on grey */
+    --color-ink: #f4f6f9;
+    --color-muted: #ccd4df;
+    --color-line: #5c687d; /* lines 3:1 on the panels */
+    --color-accent: #bdd0ff;
+    --color-accent-soft: #22305a;
+    --color-gold: #f6d684;
+    --color-gold-soft: #3d3113;
+    --color-out: #ffbcb3;
+    --color-out-soft: #4a2420;
+    --color-req: #9de8c3;
+    --color-req-soft: #163a2e;
+    --color-opt: #e2c6f8;
+    --color-opt-soft: #332444;
+    --color-pink-soft: #43182d;
+    --color-pink-edge: #f08cbd;
+    --color-shade: rgba(255, 255, 255, 0.18);
+    --color-hint-edge: #aeb9ca; /* white skill boxes: a lighter edge on the black panels */
+    --color-first-edge: #6b82bd; /* the first result's outline, dimmer than the accent */
+    --color-img-edge: #e3e8ef; /* a near-white edge round portraits (card art keeps only its own frame) */
+
+    --color-wt-head: #2f343b;
+    --color-gm-ink: #f3e6da;
+    --color-gm-ink2: #e8dccf;
+    --color-gm-panel: #1f2328;
+    --color-gm-pane: #16191d;
+    --color-gm-cell: #2a2f36;
+    --color-gm-line: #454b55;
+    --color-gm-edge: #4d535d;
+    --color-gm-shadow: rgba(0, 0, 0, 0.55); /* the game's spark bars and skill tiles keep their own (light) art */
+    --color-gm-green: #64ad12;
+    --color-gm-green2: #4f960b;
+    --color-gm-bright: #63ad16;
+    --color-gm-bright2: #4f960b;
+    --color-gm-off: #24272c;
+    --color-gm-off-ink: #8f877e;
+    --color-gm-won: #ffad3d;
+    --color-gm-lost: #7d766e;
+    --color-gm-tab: #2a2f36;
+    --color-gm-tab-edge: #4d535d;
+    --color-gm-tab-low: #20242a;
+
+    --color-outline: #24470a;
+    --color-outline-glow: rgba(0, 0, 0, 0.5);
+    --nine-btn-w: var(--btn-w-dark, var(--btn-w, linear-gradient(#fff, #eceaf2))) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch;
+    --nine-slot-frame: var(--slot-frame-dark, var(--slot-frame, linear-gradient(#fff, #f1f0f4))) 22 fill / 9px / 0 stretch;
+  }
+  /* the planner pages: one panel tone in dark mode, as in light mode, where the panel and the game's panel are both
+     white; /about keeps its black panels */
+  :root.game[data-theme="dark"] {
+    --color-panel: var(--color-gm-panel);
+  }
+}
+
+/* tokens whose value reads a variable set on the element itself (inline style), so the utility carries the value
+   (`inline`) rather than a :root variable, which would have read it on :root */
+@theme inline {
+  /* the scenario button: the game's scenario select art (--scen-art, set per button) at the right, on a pale fade */
+  --art-scen: var(--scen-art, none) right -6px top 18% / 104px auto no-repeat,
+    linear-gradient(100deg, var(--color-gm-cell) 45%, var(--color-gm-tab-low));
+}
+
+/* a 9-slice sprite frame: `nine-btn-w` draws the button's face from the --nine-btn-w token above */
+@utility nine-* {
+  border: 0 solid transparent;
+  border-image: --value(--nine-*);
+}
+/* a clip-path shape: `clip-bar` cuts to the --clip-bar token (Tailwind has no clip-path utilities) */
+@utility clip-* {
+  clip-path: --value(--clip-*);
+}
+/* a layered background (stripes, gradients, art): `art-bar` paints the --art-bar token */
+@utility art-* {
+  background: --value(--art-*);
+}

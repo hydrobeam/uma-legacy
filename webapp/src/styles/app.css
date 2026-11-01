@@ -1,0 +1,16 @@
+/* The pages' stylesheet: Tailwind's theme and utilities, the tokens (theme.css), and the legacy sheet (src/style.css)
+   while the components move off it. The legacy sheet sits in its own layer below the utilities, so a utility on a
+   converted component always wins over an old rule that still matches it (`button`, `dialog`, ...), and the old rules
+   keep their order and specificity among themselves. No Preflight yet: the unconverted parts are styled for the
+   browser's defaults. The sprite variables (--btn-w, ...) are appended to this file by vite/images.mjs. */
+@layer theme, base, legacy, components, utilities;
+@import "../style.css" layer(legacy);
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./theme.css";
+/* the class names Tailwind looks for: the page's code and pages, never the tests or docs */
+@source "../";
+@source "../../index.html";
+@source "../../loop.html";
+@source "../../about.html";
+@source "../../partials";

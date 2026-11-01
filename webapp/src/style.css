@@ -13,47 +13,22 @@
 @import '@fontsource/zen-maru-gothic/latin-700.css';
 @import '@fontsource/zen-maru-gothic/latin-900.css';
 :root {
-  --bg: #f3f5f8;
-  --panel: #ffffff;
-  --ink: #18202e;
-  --muted: #3f4756;
-  --line: #b9c1ce;
-  --accent: #1d3c9e;
-  --accent-soft: #e4eafb;
-  --gold: #614400;
-  --gold-soft: #fbf0d2;
-  --out: #952a20;
-  --out-soft: #f8e3e1;
-  --req: #135c3e;
-  --req-soft: #dcf1e7;
-  --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
-  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --r: 10px;
-  --av-l: 86%; --av-c: 40%;
-  --k-speed: #2f6fd6; --k-stamina: #d0453b; --k-power: #d97a1e; --k-guts: #cf4f8d; --k-wit: #2f9a62; --k-pal: #b88a12; --k-group: #8a6ad1; --k-other: #6b7385;
+  /* the colours live in styles/theme.css (--color-*); these are the legacy rules' names for them, until those go */
+  --bg: var(--color-bg); --panel: var(--color-panel); --ink: var(--color-ink); --muted: var(--color-muted);
+  --line: var(--color-line); --accent: var(--color-accent); --accent-soft: var(--color-accent-soft);
+  --gold: var(--color-gold); --gold-soft: var(--color-gold-soft); --out: var(--color-out);
+  --out-soft: var(--color-out-soft); --req: var(--color-req); --req-soft: var(--color-req-soft);
+  --opt: var(--color-opt); --opt-soft: var(--color-opt-soft); --pink-soft: var(--color-pink-soft);
+  --pink-edge: var(--color-pink-edge); --shade: var(--color-shade); --hint-edge: var(--color-hint-edge);
+  --first-edge: var(--color-first-edge); --img-edge: var(--color-img-edge);
+  --r: 10px; --av-l: 86%; --av-c: 40%;
+  --k-speed: #2f6fd6; --k-stamina: #d0453b; --k-power: #d97a1e; --k-guts: #cf4f8d; --k-wit: #2f9a62; --k-pal: #b88a12;
+  --k-group: #8a6ad1; --k-other: #6b7385;
   --r-ssr: #c99a1a; --r-sr: #8f9aa8; --r-r: #a8714a;
   --yr0: #0b5a4d; --yr1: #2f3f99; --yr2: #8a3c0c;
-  --opt: #6a2d8f; --opt-soft: #f1e7f8;   /* optional G1s: one runner, no affinity */
-  --pink-soft: #fde4f0; --pink-edge: #e84898;   /* aptitude (pink) sparks */
-  --shade: rgba(24, 32, 46, .22);   /* the scroll-edge shadow */
-  --hint-edge: var(--line);   /* white skill boxes (hints, outfit skills, target tiles) */
-  --first-edge: var(--accent);   /* the first result's outline */
-  --img-edge: color-mix(in srgb, var(--line) 80%, var(--ink) 20%);   /* the faint edge round portraits */
   color-scheme: light;
 }
-/* dark: set on <html> by the head script (the visitor's choice, else the system's preference); every text pair keeps
-   7:1 (WCAG AAA); the card-type, rarity and year colours and the brand stay as they are */
-:root[data-theme="dark"] {
-  --bg: #10141b; --panel: #000000;   /* black panels on a dimmed page, mirroring light mode's white on grey */
-   --ink: #f4f6f9; --muted: #ccd4df; --line: #5c687d;   /* lines 3:1 on the panels */
-  --accent: #bdd0ff; --accent-soft: #22305a; --gold: #f6d684; --gold-soft: #3d3113; --out: #ffbcb3; --out-soft: #4a2420;
-  --req: #9de8c3; --req-soft: #163a2e; --opt: #e2c6f8; --opt-soft: #332444; --pink-soft: #43182d; --pink-edge: #f08cbd;
-  --av-l: 30%; --av-c: 35%; --shade: rgba(255, 255, 255, .18);
-  --hint-edge: #aeb9ca;   /* white skill boxes: a lighter edge on the black panels */
-  --first-edge: #6b82bd;   /* the first result's outline, dimmer than the accent */
-  --img-edge: #e3e8ef;   /* a near-white edge round portraits (card art keeps only its own frame) */
-  color-scheme: dark;
-}
+:root[data-theme="dark"] { --av-l: 30%; --av-c: 35%; color-scheme: dark; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 20px 48px; }
@@ -764,30 +739,28 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    where shipped (--spark-*, --skill-*, --pill; grade letters as <img>) in light mode; dark mode (the game has none)
    draws the white bars, tiles and pill in CSS on dark panels and keeps the pink and gold art. */
 :root {
-  --wt-head: #f2ebe6; --gm-ink: #794016; --gm-ink2: #9c6a43; --gm-panel: #ffffff; --gm-pane: #f2f3f2; --gm-cell: #ffffff; --gm-line: #e1d8cf; --gm-edge: #d8d3dd;
-  --gm-shadow: rgba(80, 60, 40, .16); --gm-green: #7ecf08; --gm-green2: #66b800; --gm-bright: #a6e03c; --gm-bright2: #7cc40d; --gm-bright-ink: #ffffff;
-  --gm-outline: 0 1px 0 #3c7a00, 1px 0 0 #3c7a00, -1px 0 0 #3c7a00, 0 -1px 0 #3c7a00, 0 2px 2px rgba(40, 80, 0, .45);
-  --gm-bar: #e6e6e6; --gm-bar2: #d4d4d4; --gm-bar-ink: #794016; --gm-pink: #ff8fc0; --gm-pink2: #ff6fa9; --gm-pink-ink: #ffffff;
-  --gm-tile: #dfdbeb; --gm-tile2: #cbc5de; --gm-tile-edge: #a9a2c3; --gm-tile-ink: #794016; --gm-off: #ecebef; --gm-off-ink: #8f857c;
-  --gm-gold: #ffd36b; --gm-gold2: #ffbf33; --gm-gold-edge: #d68a00; --gm-gold-ink: #794016; --gm-g1: #3c7fd8; --gm-won: #f08a00; --gm-lost: #b9b2a8;
-  --gm-tab: #ffffff; --gm-tab-edge: #d8d6dc; --gm-tab-low: #e6e3ec; --gm-hero: linear-gradient(160deg, #eef1f8 0%, #f7f4f0 55%, #ffffff 100%);
+  --wt-head: var(--color-wt-head); --gm-ink: var(--color-gm-ink); --gm-ink2: var(--color-gm-ink2);
+  --gm-panel: var(--color-gm-panel); --gm-pane: var(--color-gm-pane); --gm-cell: var(--color-gm-cell);
+  --gm-line: var(--color-gm-line); --gm-edge: var(--color-gm-edge); --gm-shadow: var(--color-gm-shadow);
+  --gm-green: var(--color-gm-green); --gm-green2: var(--color-gm-green2); --gm-bright: var(--color-gm-bright);
+  --gm-bright2: var(--color-gm-bright2); --gm-bright-ink: var(--color-gm-bright-ink); --gm-bar: var(--color-gm-bar);
+  --gm-bar2: var(--color-gm-bar2); --gm-bar-ink: var(--color-gm-bar-ink); --gm-pink: var(--color-gm-pink);
+  --gm-pink2: var(--color-gm-pink2); --gm-pink-ink: var(--color-gm-pink-ink); --gm-tile: var(--color-gm-tile);
+  --gm-tile2: var(--color-gm-tile2); --gm-tile-edge: var(--color-gm-tile-edge);
+  --gm-tile-ink: var(--color-gm-tile-ink); --gm-off: var(--color-gm-off); --gm-off-ink: var(--color-gm-off-ink);
+  --gm-gold: var(--color-gm-gold); --gm-gold2: var(--color-gm-gold2); --gm-gold-edge: var(--color-gm-gold-edge);
+  --gm-gold-ink: var(--color-gm-gold-ink); --gm-g1: var(--color-gm-g1); --gm-won: var(--color-gm-won);
+  --gm-lost: var(--color-gm-lost); --gm-tab: var(--color-gm-tab); --gm-tab-edge: var(--color-gm-tab-edge);
+  --gm-tab-low: var(--color-gm-tab-low);
+  --gm-outline: var(--text-shadow-outline);
+  --gm-hero: linear-gradient(160deg, #eef1f8 0%, #f7f4f0 55%, #ffffff 100%);
   --gm-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%23ffd23a' stroke='%23e39a12' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
   --gm-star0: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%23ffffff' stroke='%23d3ccc1' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 :root[data-theme="dark"] {
-  --wt-head: #2f343b; --gm-ink: #f3e6da; --gm-ink2: #e8dccf; --gm-panel: #1f2328; --gm-pane: #16191d; --gm-cell: #2a2f36; --gm-line: #454b55; --gm-edge: #4d535d;
-  --gm-shadow: rgba(0, 0, 0, .55);   /* the game's spark bars and skill tiles keep their own (light) art and brown ink */
-  /* the game's greens toned down for a dark page (bars, the selected tab, primary buttons), the same outlined white text */
-  --gm-green: #64ad12; --gm-green2: #4f960b; --gm-bright: #63ad16; --gm-bright2: #4f960b;
-  --gm-outline: 0 1px 0 #24470a, 1px 0 0 #24470a, -1px 0 0 #24470a, 0 -1px 0 #24470a, 0 2px 2px rgba(0, 0, 0, .5);
-  --gm-off: #24272c; --gm-off-ink: #8f877e;
-  --gm-won: #ffad3d; --gm-lost: #7d766e; --gm-tab: #2a2f36; --gm-tab-edge: #4d535d; --gm-tab-low: #20242a;
   --gm-hero: linear-gradient(160deg, #2c323c 0%, #252a31 60%, #1f2328 100%);
   --gm-star0: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%232a2f36' stroke='%236f6a62' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-/* the planner pages: one panel tone in dark mode, as in light mode, where --panel and --gm-panel are both white (the black
-   --panel showed as black strips beside the grey panels); /about keeps its black panels */
-:root.game[data-theme="dark"] { --panel: var(--gm-panel); }
 /* green header bars: the card's title, "Sparks" / "Race record", and the career page's section titles */
 #simulation > h3, .udhdr, .game .rbsec > h3, .lp .swhead { position: relative; margin: 0; border: 0; color: #fff; font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 900;
   font-size: 1.05rem; line-height: 1.3; letter-spacing: .01em; text-shadow: var(--gm-outline); background-color: var(--gm-green);
