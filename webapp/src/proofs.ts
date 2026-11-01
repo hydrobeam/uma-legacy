@@ -8,29 +8,36 @@
 // `two_feeder_cap`, `multi_feeder_cap`) qualify a proof and are shown apart from the unproven causes: a proof under
 // them is still a proof. The browser suite's `career` group checks these texts on constructed reports.
 
-/**
- * @typedef {object} ProofFields
- * @property {boolean} [proven_top]  the best odds' order is certified
- * @property {boolean} [complete]  false: a search of the job was cut short, or certified at a lower deck cap only
- * @property {boolean} [given]  the career the job named, scored as it is (career/given.rs): no search ran
- * @property {readonly string[]} [unproven]  why the main search is not complete
- * @property {readonly string[]} [job_unproven]  why any search of the job is not complete
- * @property {readonly string[]} [assumes]  the named assumptions the main search's proof rests on
- * @property {readonly string[]} [job_assumes]  the named assumptions any search of the job rests on
- * @property {number} [band_overflows]
- * @property {readonly (readonly [number, number, number])[]} [cap_exceeded]  per deck class past its assumed cap:
- *   [class, ratio, cap]
- * @property {number} [cap_breaches]  capped deck searches of the job that scored a deck past its cap
- * @property {readonly number[]} [cap_breached]  trainees (chara ids) whose deck class breached its cap, in this job or
- *   before
- * @property {{readonly searches: number, readonly unproven: number, readonly unanswered: number}} [cap_rerun]
- */
+interface ProofFields {
+  /** the best odds' order is certified */
+  proven_top?: boolean;
+  /** false: a search of the job was cut short, or certified at a lower deck cap only */
+  complete?: boolean;
+  /** the career the job named, scored as it is (career/given.rs): no search ran */
+  given?: boolean;
+  /** why the main search is not complete */
+  unproven?: readonly string[];
+  /** why any search of the job is not complete */
+  job_unproven?: readonly string[];
+  /** the named assumptions the main search's proof rests on */
+  assumes?: readonly string[];
+  /** the named assumptions any search of the job rests on */
+  job_assumes?: readonly string[];
+  band_overflows?: number;
+  /** per deck class past its assumed cap: [class, ratio, cap] */
+  cap_exceeded?: readonly (readonly [number, number, number])[];
+  /** capped deck searches of the job that scored a deck past its cap */
+  cap_breaches?: number;
+  /** trainees (chara ids) whose deck class breached its cap, in this job or before */
+  cap_breached?: readonly number[];
+  cap_rerun?: { readonly searches: number; readonly unproven: number; readonly unanswered: number };
+}
 
-/** @type {(r: ProofFields) => Set<string>} the unproven reasons the main search and the job name */
-const reasons = (r) => new Set([...(r.unproven || []), ...(r.job_unproven || [])]);
+/** the unproven reasons the main search and the job name */
+const reasons = (r: ProofFields): Set<string> => new Set([...(r.unproven || []), ...(r.job_unproven || [])]);
 
-/** @type {(r: ProofFields) => string[]} the causes the job's report establishes */
-export const unprovenWhy = (r) => {
+/** the causes the job's report establishes */
+export const unprovenWhy = (r: ProofFields): string[] => {
   const named = reasons(r);
   // (a count a reply lacks, from a solver before it was reported, is none)
   const breachHere = !!r.cap_exceeded?.length || (r.cap_breaches ?? 0) > 0;
@@ -47,33 +54,31 @@ export const unprovenWhy = (r) => {
   ];
 };
 
-/** @type {(why: readonly string[]) => string} */
-export const whyText = (why) =>
+export const whyText = (why: readonly string[]): string =>
   why.length ? `reported: ${why.join('; ')}` : 'no cause reported; its work budget is one possibility';
 
-/** What each named assumption means, as the page states it
- * @type {Record<string, string>} */
-const ASSUMED = {
+/** What each named assumption means, as the page states it */
+const ASSUMED: Record<string, string> = {
   two_feeder_cap: 'the assumed class cap for two-feeder decks',
   multi_feeder_cap: 'the assumed bound for nested-chain decks beside other feeders',
 };
 
-/** @type {(names: readonly string[] | undefined) => string[]} the named assumptions, as text (unknown names as they are) */
-const assumedWhy = (names) => [...new Set(names || [])].map((name) => ASSUMED[name] || name);
+/** the named assumptions, as text (unknown names as they are) */
+const assumedWhy = (names: readonly string[] | undefined): string[] =>
+  [...new Set(names || [])].map((name) => ASSUMED[name] || name);
 
-/** @type {(names: readonly string[] | undefined) => string} '' without any */
-const assumedText = (names) => {
+/** '' without any */
+const assumedText = (names: readonly string[] | undefined): string => {
   const why = assumedWhy(names);
   return why.length ? `proven under ${why.join(' and ')}` : '';
 };
 
-/** @type {(r: ProofFields) => boolean} the search of the best odds proved its order and saw no breach */
-const proven = (r) => !!r.proven_top && r.complete !== false && !r.cap_exceeded?.length;
+/** the search of the best odds proved its order and saw no breach */
+const proven = (r: ProofFields): boolean => !!r.proven_top && r.complete !== false && !r.cap_exceeded?.length;
 
 /** The status line's caveat for the search of the best odds ('' when it proved its order under no named assumption
- * and saw no breach).
- * @type {(r: ProofFields) => string} */
-export function searchCaveat(r) {
+ * and saw no breach). */
+export function searchCaveat(r: ProofFields): string {
   if (r.given) return ' The career you chose, scored as it is: no search compared it with other careers or decks.';
   if (!(r.proven_top && r.complete !== false))
     return ` The exact check of the best odds could not finish (${whyText(unprovenWhy(r))}): their order may not be final.`;
@@ -90,9 +95,8 @@ export function searchCaveat(r) {
 
 /** The plan's caveat on the status line: the named assumptions the plan job's searches rest on (its `job_assumes`) that
  * the search's caveat (`searchCaveat` of `r`, the search job's report) does not state already ('' without any). The
- * plan table adds no note for them: a proof under a named assumption is still a proof.
- * @type {(planAssumes: readonly string[] | undefined, r: ProofFields) => string} */
-export function planCaveat(planAssumes, r) {
+ * plan table adds no note for them: a proof under a named assumption is still a proof. */
+export function planCaveat(planAssumes: readonly string[] | undefined, r: ProofFields): string {
   const stated = proven(r) ? assumedWhy([...(r.assumes || []), ...(r.job_assumes || [])]) : [];
   const extra = assumedWhy(planAssumes).filter((why) => !stated.includes(why));
   return extra.length ? ` The plan rests on ${extra.join(' and ')}.` : '';

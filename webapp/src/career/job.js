@@ -14,7 +14,7 @@ import { answer, answerCareer, reference } from './state.ts';
 import { must, orNull } from '../must.ts';
 import { planKey } from './keys.js';
 import { pickOutfit, outfitNote } from '../roster.js';
-import { unprovenWhy } from '../proofs.mjs';
+import { unprovenWhy } from '../proofs.ts';
 /** @import { PlacesRecord, Veteran, VetRecord } from '../veterans/store.ts' */
 /** @import { DeepReadonly } from '../store.ts' */
 

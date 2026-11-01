@@ -7,7 +7,7 @@ import { pct } from '../odds.js';
 import { batch } from '@preact/signals-core';
 import { vets, places as yourPlaces, usePlaces, setChosen } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.js';
-import { whyText } from '../proofs.mjs';
+import { whyText } from '../proofs.ts';
 import { answer } from './state.ts';
 import { keyOf } from './keys.js';
 import {
