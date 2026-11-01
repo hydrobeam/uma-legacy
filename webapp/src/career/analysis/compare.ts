@@ -23,8 +23,8 @@ import { PLAN_NEXT } from '../run.ts';
 // a plan job's plan, or null where it made none (the job refused, or the plan did: a plan's refusal reads as none, as
 // every reader below treats it)
 const planMade = (m: Answer): PlanReport | null => {
-  const plan = 'error' in m.r ? undefined : planIn(m.r);
-  return plan && !('error' in plan) ? plan : null;
+  const plan = m.r.kind === 'refusal' ? undefined : planIn(m.r);
+  return plan?.kind === 'plan' ? plan : null;
 };
 
 /** what the comparison needs of the page, built once by the entry (career/main.tsx) */
@@ -156,6 +156,11 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
     return last;
   };
   const comparisonJob = (): CareerJob => JSON.parse(page.baseKey(lastShown().job));
+  // the comparison's search: the best career with her (`legacies`, her at `herIndex`) as a parent
+  const withHer = (base: CareerJob, legacies: CareerJob['career']['legacies'], herIndex: number): CareerJob => ({
+    ...base,
+    career: { ...base.career, fix: [herIndex], legacies, top: 1, compare: true },
+  });
   const draftNow = () => {
     const draft = page.draft();
     if (!draft) throw new Error('a comparison is of the entered veteran');
@@ -167,10 +172,10 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
   async function baselineFor(base: CareerJob) {
     const shownNow = lastShown();
     const key = JSON.stringify(base),
-      open = !shownNow.job.trainees.length && !shownNow.job.fix.length,
+      open = !shownNow.job.career.trainees.length && !shownNow.job.career.fix.length,
       cached = baselineCache?.key === key ? baselineCache.result : null;
     const before = cached ? { results: [cached] } : open ? shownNow.r : (await engine.run(base)).r;
-    if ('error' in before) throw new Error(before.error);
+    if ('kind' in before && before.kind === 'refusal') throw new Error(before.error);
     const [best] = ('results' in before ? before.results : undefined) ?? [];
     if (!best) throw new Error('No career found in the current roster.');
     baselineCache = { key, result: best };
@@ -205,19 +210,23 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
     let y: number | null = null;
     // her legacy index is after every veteran's
     const base = comparisonJob(),
-      legaciesWithHer = [...base.legacies, draftJob(draftNow())],
-      herIndex = base.legacies.length;
+      legaciesWithHer = [...base.career.legacies, draftJob(draftNow())],
+      herIndex = base.career.legacies.length;
     try {
       if (!now().baseline) {
         const before = await baselineFor(base);
         if (gone()) return;
         store.baselineFound(before);
       }
-      const m = await engine.run({ ...request.job, next: { ...request.job.next, roll: request.stars } } as CareerJob);
+      const { career } = request.job;
+      const m = await engine.run({
+        ...request.job,
+        career: { ...career, next: { ...career.next, roll: request.stars } },
+      } as CareerJob);
       if (gone()) return;
       // (no saving from the plan: the exact comparison answers instead)
-      const roll = 'error' in m.r ? undefined : rollIn(m.r),
-        saving = roll && 'y' in roll ? roll.y : undefined;
+      const roll = m.r.kind === 'refusal' ? undefined : rollIn(m.r),
+        saving = roll?.kind === 'answer' && roll.outcome.kind === 'saving' ? roll.outcome.y : undefined;
       if (typeof saving !== 'number') {
         batch(() => {
           store.quickHandsOver();
@@ -248,9 +257,9 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
       return;
     }
     try {
-      const m = await engine.run({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
+      const m = await engine.run(withHer(base, legaciesWithHer, herIndex));
       if (gone()) return;
-      if ('error' in m.r) throw new Error(m.r.error);
+      if (m.r.kind === 'refusal') throw new Error(m.r.error);
       const search = searchIn(m.r);
       if (!search?.results?.length) throw new Error('No next career found.');
       // a zero is checked by the exact comparison too (the plan's routes are not every route a replan can take), shown
@@ -300,27 +309,30 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
       }
       // the planner's question (exact odds, estimated careers): the best career with her as a parent, and the planner's
       // expected careers to a fully looped parent (each plan's `v0`, V) from the veterans now, without and with her
-      const legaciesWithHer = [...base.legacies, draftJob(draftNow())],
-        herIndex = base.legacies.length;
-      const m = await engine.run({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
+      const legaciesWithHer = [...base.career.legacies, draftJob(draftNow())],
+        herIndex = base.career.legacies.length;
+      const m = await engine.run(withHer(base, legaciesWithHer, herIndex));
       if (gone()) return;
-      if ('error' in m.r) throw new Error(m.r.error);
+      if (m.r.kind === 'refusal') throw new Error(m.r.error);
       const search = searchIn(m.r);
       if (!search?.results?.length) throw new Error('No next career found.');
       const full = page.isFull(draftNow());
-      const planOf = (legacies: CareerJob['legacies']): CareerJob => ({
+      const planOf = (legacies: CareerJob['career']['legacies']): CareerJob => ({
         ...base,
-        top: page.planTop,
-        legacies,
-        next: { ...PLAN_NEXT },
-        compare: true,
-        no_reports: true,
+        career: {
+          ...base.career,
+          top: page.planTop,
+          legacies,
+          next: { ...PLAN_NEXT },
+          compare: true,
+          no_reports: true,
+        },
       }); // as a run's plan job, once she is added
       const { planState } = answers.answer.peek();
       let planNow: DeepReadonly<PlanReport> | null =
-        planState.state === 'done' && !lastShown().job.fix.length ? planState.r : null;
+        planState.state === 'done' && !lastShown().job.career.fix.length ? planState.r : null;
       if (!planNow) {
-        const mb = await engine.run(planOf(base.legacies));
+        const mb = await engine.run(planOf(base.career.legacies));
         if (gone()) return;
         planNow = planMade(mb);
       }
@@ -330,7 +342,8 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
       // when today's plan has no V to compare with (no route: `v0` null, though its `fit` may still list candidates) or
       // no fit is the refit run here, and kept so that Add takes it as it is
       const fit = planNow && Number.isFinite(planNow.v0) && planNow.fit?.length ? planNow.fit : null,
-        jobWithHer = fit ? { ...planOf(legaciesWithHer), next: { fit } } : planOf(legaciesWithHer),
+        planWith = planOf(legaciesWithHer),
+        jobWithHer = fit ? { ...planWith, career: { ...planWith.career, next: { fit } } } : planWith,
         ma = await engine.run(jobWithHer as CareerJob);
       if (gone()) return;
       const planWithHer = planMade(ma);

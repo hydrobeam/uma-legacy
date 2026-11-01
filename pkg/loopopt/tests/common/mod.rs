@@ -108,10 +108,21 @@ pub fn run_job(tag: &str, job: &Value) -> Value {
     outputs.into_iter().next().expect("one output")
 }
 
-/// The job at `path` under the repository's val/ folder ("plan/p16.json", "jobs/pal_U.json").
+/// The job file at `path` under the repository's val/ folder ("plan/p16.json", "jobs/pal_U.json"): `files` and the
+/// `job` (`cmd`, `skills`, `deck`, `career`).
 pub fn val_job(path: &str) -> Value {
     let full = format!("{}/../../val/{path}", env!("CARGO_MANIFEST_DIR"));
     serde_json::from_str(&std::fs::read_to_string(&full).expect("a val job")).expect("a JSON job")
+}
+
+/// A plan job's roll: answered from the plan the worker keeps (`kind` "roll"), else the plan's own (`next.roll`).
+pub fn roll_of(output: &Value) -> &Value {
+    if output["kind"] == "roll" { &output["roll"] } else { &output["next"]["roll"] }
+}
+
+/// A plan job's check, likewise (`kind` "check", else `next.robust`).
+pub fn check_of(output: &Value) -> &Value {
+    if output["kind"] == "check" { &output["robust"] } else { &output["next"]["robust"] }
 }
 
 /// `value` without the keys `drop` names, at any depth.

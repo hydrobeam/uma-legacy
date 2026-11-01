@@ -54,17 +54,22 @@ function page({ fix = [], planFor = 'shown' } = {}) {
     engine = fakeEngine(),
     kept = [],
     shown = career('shown');
-  const job = { cmd: 'career', targets: [{ group: 1 }], legacies: [{ v: 0 }, { v: 1 }], trainees: [], fix };
+  const job = {
+    cmd: 'career',
+    skills: { targets: [{ group: 1 }] },
+    deck: {},
+    career: { legacies: [{ v: 0 }, { v: 1 }], trainees: [], fix },
+  };
   const plan = {
     state: 'done',
     id: 1,
     ms: 10,
-    job: { ...job, next: {} },
+    job: { ...job, career: { ...job.career, next: {} } },
     r: { v0: 20, fit: [[1]], outcomes: { career: planFor }, options: [{ ...career('next'), chosen: true }] },
   };
   const answer = signal({
     status: { kind: 'done', text: '' },
-    last: { job, r: { results: [shown] } },
+    last: { job, r: { kind: 'search', results: [shown] } },
     planState: plan,
   });
   const deps = {
@@ -75,8 +80,8 @@ function page({ fix = [], planFor = 'shown' } = {}) {
     page: {
       shown: () => shown,
       searching: () => deps.searching,
-      targets: () => job.targets,
-      baseKey: (j) => JSON.stringify({ ...j, fix: [] }),
+      targets: () => job.skills.targets,
+      baseKey: (j) => JSON.stringify({ ...j, career: { ...j.career, fix: [] } }),
       isFull: (nd) => (nd.sparks[1] || 0) > 0,
       planTop: 6,
       // her first result lands target 1 at 1 star, every later one (a roll) at 3
@@ -106,11 +111,12 @@ const states = (p) => p.writes.map((w) => w.state);
 // the exact comparison's three jobs after the baseline: the best career with her, the plan with her (the plan on
 // show is today's), answered
 async function exactAnswers(p, from, { v0WithHer = 15 } = {}) {
-  p.engine.answer(from, { results: [career('withHer', [0, 2], 0.02)] });
+  p.engine.answer(from, { kind: 'search', results: [career('withHer', [0, 2], 0.02)] });
   await flush();
   p.engine.answer(from + 1, {
+    kind: 'search',
     results: [],
-    next: { v0: v0WithHer, options: [{ ...career('next2', [0, 2]), chosen: true }] },
+    next: { kind: 'plan', v0: v0WithHer, options: [{ ...career('next2', [0, 2]), chosen: true }] },
   });
   await flush();
 }
@@ -124,13 +130,13 @@ test('Compare: one write per phase, the baseline from the run (no places), the f
   assert.equal(p.writes.length, 2, 'the baseline is known: one write');
   assert.equal(simulation.peek().baseline.career, 'shown', "the run's own best (no places set): no job");
   assert.equal(sent(p), 1, 'the best career with her');
-  assert.deepEqual(p.engine.jobs[0].job.fix, [2], 'her legacy index is after every veteran');
+  assert.deepEqual(p.engine.jobs[0].job.career.fix, [2], 'her legacy index is after every veteran');
   await exactAnswers(p, 0);
   assert.deepEqual(states(p), ['busy', 'busy', 'done'], 'the end: one write');
   const done = simulation.peek();
   assert.deepEqual(done.v0, { now: 20, withHer: 15 });
   assert.equal(done.fixedFit, true, "priced under today's plan's fit");
-  assert.equal(p.engine.jobs[1].job.next.fit[0][0], 1, "the plan's fit passed on");
+  assert.equal(p.engine.jobs[1].job.career.next.fit[0][0], 1, "the plan's fit passed on");
   assert.equal(p.kept.length, 0, 'a plan under today’s fit is not kept for Add');
   assert.equal(p.engine.saves, 1);
   assert.ok(Object.isFrozen(done), 'the record frozen');
@@ -147,7 +153,7 @@ test('Compare with no fit on show: the refit with her is kept, so Add takes it a
   await flush();
   await exactAnswers(p, 0);
   assert.equal(p.kept.length, 1, 'the refit kept');
-  assert.equal(p.engine.jobs[1].job.next.fit, undefined);
+  assert.equal(p.engine.jobs[1].job.career.next.fit, undefined);
   assert.equal(simulation.peek().fixedFit, false);
   p.stop();
 });
@@ -165,7 +171,7 @@ test("the run machine's hooks and a comparison never interleave: a stale chain's
     } else p.c[hook]();
     const before = p.writes.length,
       shownNow = simulation.peek();
-    p.engine.answer(0, { results: [career('base')] });
+    p.engine.answer(0, { kind: 'search', results: [career('base')] });
     await flush();
     assert.equal(sent(p), 1, `${hook}: no job after the baseline`);
     assert.equal(p.writes.length, before, `${hook}: the late baseline writes nothing`);
@@ -180,7 +186,7 @@ test("the run machine's hooks and a comparison never interleave: a stale chain's
     p.c.outdate();
     p.c.show(career('other'));
     const before = p.writes.length;
-    p.engine.answer(0, { results: [career('x', [0, 2])] });
+    p.engine.answer(0, { kind: 'search', results: [career('x', [0, 2])] });
     await flush();
     assert.equal(sent(p), 1, `${start}: nothing sent after the stale reply`);
     assert.equal(p.writes.length, before, `${start}: and nothing written`);
@@ -190,12 +196,12 @@ test("the run machine's hooks and a comparison never interleave: a stale chain's
   const p = page();
   p.c.compare();
   await flush();
-  p.engine.answer(0, { results: [career('withHer', [0, 2], 0.02)] });
+  p.engine.answer(0, { kind: 'search', results: [career('withHer', [0, 2], 0.02)] });
   await flush();
   p.c.outdate();
   p.c.show(career('other'));
   const before = p.writes.length;
-  p.engine.answer(1, { results: [], next: { v0: 1, options: [] } });
+  p.engine.answer(1, { kind: 'search', results: [], next: { kind: 'plan', v0: 1, options: [] } });
   await flush();
   assert.equal(p.writes.length, before, "the old comparison's figures land nowhere");
   assert.equal(simulation.peek().state, 'ready');
@@ -211,8 +217,8 @@ test('a roll: quick figures, the 0.8 s stand, then the exact check behind them; 
     assert.deepEqual(states(p), ['busy'], 'the roll and the quick start: one write');
     await flush(); // (the baseline: the run's own)
     assert.equal(sent(p), 1, "the roll's saving asked of the plan");
-    assert.deepEqual(p.engine.jobs[0].job.next.roll, [3]);
-    p.engine.answer(0, { results: [], next: { roll: { y: 2 } } });
+    assert.deepEqual(p.engine.jobs[0].job.career.next.roll, [3]);
+    p.engine.answer(0, { kind: 'roll', roll: { kind: 'answer', outcome: { kind: 'saving', y: 2 } } });
     await flush();
     const quick = simulation.peek();
     assert.equal(quick.state, 'done');
@@ -245,11 +251,11 @@ test("a roll's zero: the best career with her, provisional, then checked after 0
   const p = page();
   p.c.roll();
   await flush();
-  p.engine.answer(0, { results: [], next: { roll: { y: 0 } } });
+  p.engine.answer(0, { kind: 'roll', roll: { kind: 'answer', outcome: { kind: 'saving', y: 0 } } });
   await flush();
   assert.equal(simulation.peek().standing, false);
   assert.equal(sent(p), 2, 'the best career with her');
-  p.engine.answer(1, { results: [career('withHer', [0, 2])] });
+  p.engine.answer(1, { kind: 'search', results: [career('withHer', [0, 2])] });
   await flush();
   assert.equal(simulation.peek().provisional, true);
   assert.equal(simulation.peek().r.results[0].career, 'withHer');
@@ -265,9 +271,9 @@ test("a roll's zero: the best career with her, provisional, then checked after 0
   const q = page();
   q.c.roll();
   await flush();
-  q.engine.answer(0, { results: [], next: { roll: { y: 0 } } });
+  q.engine.answer(0, { kind: 'roll', roll: { kind: 'answer', outcome: { kind: 'saving', y: 0 } } });
   await flush();
-  q.engine.answer(1, { results: [career('withHer', [0, 2])] });
+  q.engine.answer(1, { kind: 'search', results: [career('withHer', [0, 2])] });
   await flush();
   q.clock.advance(STAND_MS);
   assert.equal(simulation.peek().refining, true);
@@ -281,10 +287,10 @@ test("a timer of a roll rolled over: the next roll's figures are not checked bef
     const quick = async (n) => {
       p.c.roll();
       await flush();
-      p.engine.answer(n, { results: [], next: { roll: { y } } });
+      p.engine.answer(n, { kind: 'roll', roll: { kind: 'answer', outcome: { kind: 'saving', y } } });
       await flush();
       if (y === 0) {
-        p.engine.answer(n + 1, { results: [career('withHer', [0, 2])] });
+        p.engine.answer(n + 1, { kind: 'search', results: [career('withHer', [0, 2])] });
         await flush();
       }
     };
@@ -317,7 +323,7 @@ test('cancel: Compare again kills an exact comparison in flight, never a quick s
   const r = page();
   r.c.roll();
   await flush();
-  r.engine.answer(0, { results: [], next: { roll: { y: 2 } } });
+  r.engine.answer(0, { kind: 'roll', roll: { kind: 'answer', outcome: { kind: 'saving', y: 2 } } });
   await flush();
   r.clock.advance(STAND_MS);
   assert.equal(simulation.peek().refining, true);
@@ -342,8 +348,8 @@ test("F5: with a parent fixed, the roll's baseline and Compare's are one job's (
   p.c.roll();
   await flush();
   assert.equal(sent(p), 1, 'the baseline first');
-  assert.deepEqual(p.engine.jobs[0].job.fix, [], 'the best over everything, no place fixed');
-  p.engine.answer(0, { results: [career('everything', [3, 4], 0.05)] });
+  assert.deepEqual(p.engine.jobs[0].job.career.fix, [], 'the best over everything, no place fixed');
+  p.engine.answer(0, { kind: 'search', results: [career('everything', [3, 4], 0.05)] });
   await flush();
   assert.equal(simulation.peek().baseline.career, 'everything');
   // a new answer for the same career, then Compare: the baseline cached under the same job, no job for it
@@ -354,7 +360,7 @@ test("F5: with a parent fixed, the roll's baseline and Compare's are one job's (
   await flush();
   const jobs = p.engine.jobs.slice(2).map((j) => j.job);
   assert.ok(
-    jobs.every((j) => j.fix.length === 1),
+    jobs.every((j) => j.career.fix.length === 1),
     'no second baseline job',
   );
   assert.equal(simulation.peek().baseline.career, 'everything');
@@ -480,7 +486,7 @@ test('an exact comparison after a quick one (cancelled or failed) is killed by t
   const q = page({ fix: [0] });
   q.c.roll();
   await flush();
-  q.engine.answer(0, { error: 'bad' });
+  q.engine.answer(0, { kind: 'refusal', error: 'bad' });
   await flush();
   assert.equal(simulation.peek().state, 'error');
   q.c.compare();
@@ -516,7 +522,7 @@ test('an edit during the stand: the exact check behind the quick figures clears 
   const marks = on([vs.draft], store.draftChanged);
   p.c.roll();
   await flush();
-  p.engine.answer(0, { results: [], next: { roll: { y: 2 } } });
+  p.engine.answer(0, { kind: 'roll', roll: { kind: 'answer', outcome: { kind: 'saving', y: 2 } } });
   await flush();
   vs.draftRef().edit((d) => ({ sparks: { ...d.sparks, 9: 1 } }));
   assert.equal(simulation.peek().stale, true, 'edited under the quick figures');

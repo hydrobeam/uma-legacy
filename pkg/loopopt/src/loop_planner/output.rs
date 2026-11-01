@@ -8,9 +8,9 @@ use crate::skills::AffinityDetail;
 use serde::Serialize;
 use ts_rs::TS;
 
-/// A deck job's answer.
+/// A deck job's answer, by its `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum DeckReply {
     Refusal(Refusal),
     /// `deck_only`: the nondominated decks, before any loop search
@@ -44,7 +44,7 @@ pub(crate) struct DeckStats {
 /// The loop search's report: the best loops with their decks, the search's counts, and what the answer rests on.
 #[derive(Serialize, TS)]
 pub(crate) struct LoopReport {
-    #[serde(flatten)]
+    /// the deck enumeration's counts
     pub(crate) stats: DeckStats,
     /// the best loops, best first
     pub(crate) top: Vec<LoopResult>,

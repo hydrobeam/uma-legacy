@@ -17,10 +17,15 @@ interface ProofFields {
   given?: boolean;
   /** why the main search is not complete */
   unproven?: readonly string[];
-  /** why any search of the job is not complete */
-  job_unproven?: readonly string[];
   /** the named assumptions the main search's proof rests on */
   assumes?: readonly string[];
+  /** what every search of the job certified */
+  certificates?: Certificates;
+}
+/** What every search of the job certified (career/reply.rs `JobCertificates`), each field only where it applies */
+interface Certificates {
+  /** why any search of the job is not complete */
+  job_unproven?: readonly string[];
   /** the named assumptions any search of the job rests on */
   job_assumes?: readonly string[];
   band_overflows?: number;
@@ -34,23 +39,25 @@ interface ProofFields {
 }
 
 /** the unproven reasons the main search and the job name */
-const reasons = (r: ProofFields): Set<string> => new Set([...(r.unproven || []), ...(r.job_unproven || [])]);
+const reasons = (r: ProofFields): Set<string> =>
+  new Set([...(r.unproven || []), ...(r.certificates?.job_unproven || [])]);
 
 /** the causes the job's report establishes */
 export const unprovenWhy = (r: ProofFields): string[] => {
-  const named = reasons(r);
+  const named = reasons(r),
+    c = r.certificates || {};
   // (a count a reply lacks, from a solver before it was reported, is none)
-  const breachHere = !!r.cap_exceeded?.length || (r.cap_breaches ?? 0) > 0;
-  const breachBefore = !breachHere && (named.has('cap_breach') || !!r.cap_breached?.length);
+  const breachHere = !!c.cap_exceeded?.length || (c.cap_breaches ?? 0) > 0;
+  const breachBefore = !breachHere && (named.has('cap_breach') || !!c.cap_breached?.length);
   return [
     ...(named.has('work_cap') ? ['a search ran out of its work budget'] : []),
-    ...((r.band_overflows ?? 0) > 0 || named.has('band_overflow')
+    ...((c.band_overflows ?? 0) > 0 || named.has('band_overflow')
       ? ['a deck band was too large to check in full']
       : []),
     ...(breachHere ? ["a deck beat its class's assumed cap"] : []),
     ...(breachBefore ? ["a deck beat its class's assumed cap in an earlier search for these umas"] : []),
-    ...((r.cap_rerun?.unanswered ?? 0) > 0 ? ['a breach of a cap was not checked without the cap'] : []),
-    ...((r.cap_rerun?.unproven ?? 0) > 0 ? ['the check without the cap did not finish'] : []),
+    ...((c.cap_rerun?.unanswered ?? 0) > 0 ? ['a breach of a cap was not checked without the cap'] : []),
+    ...((c.cap_rerun?.unproven ?? 0) > 0 ? ['the check without the cap did not finish'] : []),
   ];
 };
 
@@ -74,7 +81,8 @@ const assumedText = (names: readonly string[] | undefined): string => {
 };
 
 /** the search of the best odds proved its order and saw no breach */
-const proven = (r: ProofFields): boolean => !!r.proven_top && r.complete !== false && !r.cap_exceeded?.length;
+const proven = (r: ProofFields): boolean =>
+  !!r.proven_top && r.complete !== false && !r.certificates?.cap_exceeded?.length;
 
 /** The status line's caveat for the search of the best odds ('' when it proved its order under no named assumption
  * and saw no breach). */
@@ -82,11 +90,11 @@ export function searchCaveat(r: ProofFields): string {
   if (r.given) return ' The career you chose, scored as it is: no search compared it with other careers or decks.';
   if (!(r.proven_top && r.complete !== false))
     return ` The exact check of the best odds could not finish (${whyText(unprovenWhy(r))}): their order may not be final.`;
-  if (r.cap_exceeded?.length)
+  if (r.certificates?.cap_exceeded?.length)
     return " A deck beat its class's assumed cap, which the exact check relies on: the best odds' order may not be final.";
   const assumed = assumedText(r.assumes);
   // (the job's other searches may rest on assumptions the main search's does not)
-  const jobOnly = assumedWhy(r.job_assumes).filter((why) => !assumedWhy(r.assumes).includes(why));
+  const jobOnly = assumedWhy(r.certificates?.job_assumes).filter((why) => !assumedWhy(r.assumes).includes(why));
   return (
     (assumed ? ` Their order is ${assumed}.` : '') +
     (jobOnly.length ? ` The job's answer rests on ${jobOnly.join(' and ')}.` : '')
@@ -97,7 +105,7 @@ export function searchCaveat(r: ProofFields): string {
  * the search's caveat (`searchCaveat` of `r`, the search job's report) does not state already ('' without any). The
  * plan table adds no note for them: a proof under a named assumption is still a proof. */
 export function planCaveat(planAssumes: readonly string[] | undefined, r: ProofFields): string {
-  const stated = proven(r) ? assumedWhy([...(r.assumes || []), ...(r.job_assumes || [])]) : [];
+  const stated = proven(r) ? assumedWhy([...(r.assumes || []), ...(r.certificates?.job_assumes || [])]) : [];
   const extra = assumedWhy(planAssumes).filter((why) => !stated.includes(why));
   return extra.length ? ` The plan rests on ${extra.join(' and ')}.` : '';
 }

@@ -3,6 +3,7 @@ import { ERA } from './saved.ts';
 import { ASSETS, loadFail, gameData } from './data.ts';
 import { stateLoad, stateSave, stateDrop } from './statestore.ts';
 import { must } from './must.ts';
+import type { StoredState } from './gen/solver.ts';
 import type {
   FromWorker,
   PlanProgress,
@@ -122,7 +123,7 @@ function onWorkerMessage(message: FromWorker, start: Start) {
     const waiting = [...pending.values()];
     killEngine();
     for (const job of waiting)
-      job.done({ r: { error: `the solver stopped with an error (${message.message})` }, ms: 0 });
+      job.done({ r: { kind: 'refusal', error: `the solver stopped with an error (${message.message})` }, ms: 0 });
   } else if (message.type === 'interim') pending.get(message.id)?.interim?.(message);
   else if (message.type === 'progress') pending.get(message.id)?.progress?.(message);
   else if (message.type === 'result') {
@@ -205,8 +206,9 @@ async function restore() {
       Object.values(ASSETS.engine).map((engine) => `${ASSETS.wasm}|${engine}`),
     );
   if (!stored || !worker) return;
-  const answer = await post({ cmd: 'state_in', state: stored });
-  if (!answer.r || 'error' in answer.r) stateDrop(key);
+  // (the solver checks what comes back: a state of another shape or version is refused, and dropped here)
+  const answer = await post({ cmd: 'state_in', state: stored as StoredState });
+  if (!answer.r || answer.r.kind === 'refusal') stateDrop(key);
 }
 // after a plan: store what the worker holds as soon as it is idle (a job in flight comes first, a background one
 // excepted: the store waits behind it in the worker; a killed worker saves nothing). The store is a background job
@@ -225,7 +227,7 @@ export function engineSaveState() {
     try {
       await ready;
       const answer = await post<StateOutReply>({ cmd: 'state_out' }, undefined, undefined, true);
-      if (!('error' in answer.r) && answer.r.state) stateSave(stateKey(), answer.r.state);
+      if (answer.r.kind === 'state_out') stateSave(stateKey(), answer.r.state);
     } catch {
       /* the worker went: nothing to save */
     }
@@ -238,9 +240,12 @@ const gate = (job: SolverJob): SolverJob =>
     ? job
     : {
         ...job,
-        exclude: [...(job.exclude || []), ...gameData().later.umas],
-        exclude_outfits: [...(job.exclude_outfits || []), ...gameData().later.outfits],
-        exclude_cards: [...(job.exclude_cards || []), ...gameData().later.cards],
+        skills: {
+          ...job.skills,
+          exclude: [...(job.skills.exclude || []), ...gameData().later.umas],
+          exclude_outfits: [...(job.skills.exclude_outfits || []), ...gameData().later.outfits],
+        },
+        deck: { ...job.deck, exclude_cards: [...(job.deck.exclude_cards || []), ...gameData().later.cards] },
       };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: career/plan/mod.rs `index_rule`) while it runs

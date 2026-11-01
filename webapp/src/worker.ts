@@ -61,17 +61,17 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
         );
       }
       const r = callRaw('init', message.data);
-      if (r.error) throw new Error(r.error);
+      if (r.kind === 'refusal') throw new Error(r.error);
       self.postMessage({ type: 'ready' } satisfies FromWorker);
     } else if (message.type === 'run') {
       const t0 = performance.now(),
         job = message.job;
       runId = message.id;
       // a deck search runs twice: first by the product of per-target odds (fast, posted at once), then by exact odds
-      if (job.cmd === 'deck' && job.exact !== false) {
-        const quick = callRaw('call', JSON.stringify(Object.assign({}, job, { exact: false })));
+      if (job.cmd === 'deck' && job.deck.exact !== false) {
+        const quick = callRaw('call', JSON.stringify({ ...job, deck: { ...job.deck, exact: false } }));
         post('interim', message.id, quick, t0);
-        if (quick.error) {
+        if (quick.kind === 'refusal') {
           post('result', message.id, quick, t0);
           return;
         }

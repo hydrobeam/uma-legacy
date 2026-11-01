@@ -4,13 +4,13 @@ use crate::career::decks::DeckSearchCache;
 use crate::career::plan::kept::Bests;
 use crate::career::plan::roll::RollKeep;
 use crate::career::pool::Pool;
+use crate::career::reply::CareerReply;
 use crate::career::search::{Assumes, CareerSearchResult, Found, Ref, Unproven};
 use crate::career::{CareerSetup, ClassFlags};
 use crate::deck::space::{MAX_DECK, SelectedDeck};
 use crate::hex::{Bits, Key, bits};
 use crate::refusal::Refusal;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use ts_rs::TS;
 
 /// Work retained between jobs. The worker owns it; career and planner operations borrow it explicitly.
@@ -53,62 +53,7 @@ pub(crate) const fn kept_swap(kept: &mut KeptState, replacement: KeptState) -> K
     std::mem::replace(kept, replacement)
 }
 
-/// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
-/// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
-pub(crate) fn setup_fp(value: &Value) -> u64 {
-    // (also the page's flags that change no deck value: `compare`, the plan's own fields, so the plan and compare
-    // jobs share what the search jobs proved, and `borrowed_parent`, a rule on the pairs as `fix` is)
-    hash_text(&json_without(
-        value,
-        &[
-            "legacies",
-            "trainees",
-            "fix",
-            "top",
-            "per_trainee",
-            "cmd",
-            "mode",
-            "compare",
-            "next",
-            "no_reports",
-            "borrowed_parent",
-        ],
-        &[],
-    ))
-}
-
-/// The JSON text of `value` with its top-level keys `drop` left out, and of its `next` object's keys `next_drop`: the text of a
-/// clone with those keys removed, byte for byte, without the clone. serde_json's `Map` is a `BTreeMap` here (no
-/// `preserve_order`), so the kept keys are written in the same order, by the same serializer (`Value`'s `Display` is
-/// `to_writer`'s compact form), and an object left empty is "{}" either way
-pub(crate) fn json_without(value: &Value, drop: &[&str], next_drop: &[&str]) -> String {
-    struct Strip<'val> {
-        value: &'val Value,
-        drop: &'val [&'val str],
-        next_drop: &'val [&'val str],
-    }
-    impl serde::Serialize for Strip<'_> {
-        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            match self.value {
-                Value::Object(map) => serializer.collect_map(
-                    map.iter().filter(|(key, _)| !self.drop.contains(&key.as_str())).map(|(key, field_value)| {
-                        (
-                            key,
-                            Strip {
-                                value: field_value,
-                                drop: if key == "next" { self.next_drop } else { &[] },
-                                next_drop: &[],
-                            },
-                        )
-                    }),
-                ),
-                field_value => field_value.serialize(serializer),
-            }
-        }
-    }
-    serde_json::to_string(&Strip { value, drop, next_drop }).unwrap()
-}
-
+/// The hash of a text (a legacy's identity, `Legacy::identity`).
 pub(crate) fn hash_text(text: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -166,11 +111,11 @@ pub(crate) const SEEN_KEEP: usize = 256;
 // hex (`crate::hex`): the state passes through the page's JavaScript, whose JSON writes an infinite float (a search's
 // `next_bound` or `cert`) as null and whose numbers cannot hold a 64-bit key, and what comes back is what left, bit for
 // bit, as the kept bounds and proofs prune later searches by it. The page keys what it stores by the solver and data
-// fingerprints, so a release starts afresh (the keys inside, `setup_fp` and `bests_key`, hash with std's DefaultHasher,
+// fingerprints, so a release starts afresh (the keys inside, `career::keys` and `bests_key`, hash with std's DefaultHasher,
 // fixed within a build). A store of another version, or one that does not parse, is refused whole (the page then
 // drops it and plans cold).
-// (11: plain serde records with named fields; every earlier store is refused)
-pub(crate) const STATE_VERSION: u64 = 11;
+// (12: keys are the jobs' typed content, `crate::key`, no longer their JSON text; every earlier store is refused)
+pub(crate) const STATE_VERSION: u64 = 12;
 
 /// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
 /// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated
@@ -512,7 +457,6 @@ fn solve_in(stored: &[StoredSolve]) -> Option<Vec<KeptSolve>> {
 
 pub(crate) fn state_out(kept: &KeptState) -> StateOut {
     StateOut {
-        ok: true,
         state: StoredState {
             v: STATE_VERSION,
             bests: crate::career::plan::kept::bests_out(&kept.bests),
@@ -527,14 +471,11 @@ pub(crate) fn state_out(kept: &KeptState) -> StateOut {
 
 /// replaces the kept plans, proofs, main searches, plans' roll states and step caps with the page's stored ones and unions its
 /// class flags into the worker's (all or nothing: a store of another version, or that does not parse, is refused)
-pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> StateIn {
-    if value["v"].as_u64() != Some(STATE_VERSION) {
-        return StateIn::Refusal(Refusal::new("state: another version"));
+pub(crate) fn state_in(kept: &mut KeptState, stored: &StoredState) -> CareerReply {
+    if stored.v != STATE_VERSION {
+        return CareerReply::Refusal(Refusal::new("state: another version"));
     }
     // Decode every store before replacing any live state.
-    let Ok(stored) = StoredState::deserialize(value) else {
-        return StateIn::Refusal(Refusal::new("state: does not parse"));
-    };
     let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls), Some(step_caps)) = (
         crate::career::plan::kept::bests_in(&stored.bests),
         seen_in(&stored.seen),
@@ -543,10 +484,9 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> StateIn {
         crate::career::plan::roll::rolls_in(&stored.rolls),
         crate::career::plan::caps::caps_in(&stored.caps),
     ) else {
-        return StateIn::Refusal(Refusal::new("state: does not parse"));
+        return CareerReply::Refusal(Refusal::new("state: does not parse"));
     };
     let counts = StateCounts {
-        ok: true,
         bests: bests.len(),
         seen: seen.len(),
         solve: searches.len(),
@@ -570,7 +510,7 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> StateIn {
         checks: std::mem::take(&mut kept.checks),
         decks: std::mem::take(&mut kept.decks),
     };
-    StateIn::Restored(counts)
+    CareerReply::StateIn(counts)
 }
 
 impl CareerSetup<'_> {
@@ -616,24 +556,13 @@ impl CareerSetup<'_> {
 /// `state_out`'s answer: the kept work to store.
 #[derive(Serialize, TS)]
 pub(crate) struct StateOut {
-    /// always true
-    pub(crate) ok: bool,
     pub(crate) state: StoredState,
 }
 
-/// `state_in`'s answer: what it restored, or why it refused the store (the page then drops it).
-#[derive(Serialize, TS)]
-#[serde(untagged)]
-pub(crate) enum StateIn {
-    Restored(StateCounts),
-    Refusal(Refusal),
-}
-
-/// What a store restored: the kept plans, proofs' keys, main searches, roll states and step caps.
+/// What a store restored (`state_in`; a store it refuses is a refusal, which the page drops): the kept plans, proofs'
+/// keys, main searches, roll states and step caps.
 #[derive(Serialize, TS)]
 pub(crate) struct StateCounts {
-    /// always true
-    pub(crate) ok: bool,
     pub(crate) bests: usize,
     pub(crate) seen: usize,
     pub(crate) solve: usize,

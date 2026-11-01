@@ -61,7 +61,7 @@ def templates(base_targets):
     """the `Templates` from the hand-built pools only"""
     seen, veterans = set(), []
     for path in template_jobs():
-        pool = json.load(open(path))["legacies"]
+        pool = json.load(open(path))["job"]["career"]["legacies"]
         if len(pool) > HAND_BUILT:
             continue
         for veteran in pool:
@@ -112,7 +112,7 @@ def main():
     parser.add_argument("--plain", action="store_true", help="no robustness check or pair search in `next`")
     arguments = parser.parse_args()
     base = json.load(open(arguments.base))
-    base_targets = {target["group"] for target in base["targets"]}
+    base_targets = {target["group"] for target in base["job"]["skills"]["targets"]}
     records = templates(base_targets)
     roster = json.load(open(os.path.join(REPO, "pkg", "loopopt", "data", "global", "base.json")))["roster"]
     rng = random.Random(arguments.seed)
@@ -131,7 +131,8 @@ def main():
         for i in range(arguments.size)
     ]
     plan = {} if arguments.plain else {"robust": "all", "pair_search": True}
-    json.dump({**base, "legacies": legacies, "next": plan}, open(arguments.out, "w"))
+    career = {**base["job"]["career"], "legacies": legacies, "next": plan}
+    json.dump({**base, "job": {**base["job"], "career": career}}, open(arguments.out, "w"))
     print(
         f"{arguments.out}: {len(legacies)} veterans ({len(borrowed)} borrowed, {len(full)} full) from "
         f"{len(records.every)} templates ({len(records.full)} full, {len(records.strong)} strong of the rest), "

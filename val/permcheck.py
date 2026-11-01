@@ -38,7 +38,8 @@ OWN = [
 ]
 assert not any(str(c) in ends for c in OWN), "pick cards without chain-ending choices"
 base = json.load(open(os.path.dirname(os.path.abspath(__file__)) + "/jobs/pal_U.json"))
-base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN)
+base["job"]["skills"]["owned"] = [uid[n] for n in UMAS]
+base["job"]["deck"]["owned_cards"] = OWN
 env = dict(os.environ, RULE_OFF="1")
 
 
@@ -60,7 +61,8 @@ fours = list(itertools.combinations(UMAS, 4)) + list(itertools.combinations(UMAS
 
 def lin_vals(args):
     F, D = args
-    o = run(dict(base, require=[uid[n] for n in F], sizes=[len(F)], lock_cards=list(D), top_decks=1), env)
+    job = solver.with_part(base, "skills", require=[uid[n] for n in F], sizes=[len(F)])
+    o = run(solver.with_part(job, "deck", lock_cards=list(D), top_decks=1), env)
     t = o["top"][0]
     L = t["loop"]["detail"]["lineages"]
     mem = [m["id"] for m in t["loop"]["members"]]
@@ -85,7 +87,7 @@ vals = sorted(
     ((sum(best[(F, t)][0] for t in range(len(F))), F) for F in fours if all((F, t) in best for t in range(len(F)))),
     reverse=True,
 )
-fast = run(dict(base, per_uma=True, top_decks=K))
+fast = run(solver.with_part(base, "deck", per_uma=True, top_decks=K))
 print(
     "structures",
     len(fours),

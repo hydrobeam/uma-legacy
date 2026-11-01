@@ -17,10 +17,13 @@ test('drawPink draws a several-outcome start by its chances first', () => {
   const ap = {
     base: grades(1),
     pink_gen: pinkGen,
-    outcomes: [
-      { p: 0.25, start: grades(1), fire: [] },
-      { p: 0.75, start: grades(8), fire: [] },
-    ],
+    start: {
+      kind: 'outcomes',
+      outcomes: [
+        { p: 0.25, outcome: { start: grades(1), fire: [] } },
+        { p: 0.75, outcome: { start: grades(8), fire: [] } },
+      ],
+    },
   };
   // 0.5 passes the first outcome's 0.25: the second, which starts at S on the first aptitude (its pink then drawn
   // from the A-or-S aptitudes, the first alone)
@@ -32,6 +35,6 @@ test('drawPink draws a several-outcome start by its chances first', () => {
 });
 
 test('drawPink on one known start reads no outcome number', () => {
-  const ap = { base: grades(1), pink_gen: pinkGen, start: grades(8), fire: [] };
+  const ap = { base: grades(1), pink_gen: pinkGen, start: { kind: 'known', start: grades(8), fire: [] } };
   assert.deepEqual(drawPink(ap, sequence([0.1, 0.5])), { pinks: { 100: 2 }, apt: grades(8) });
 });

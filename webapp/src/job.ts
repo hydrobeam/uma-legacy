@@ -2,8 +2,8 @@
 // Each takes the settings it reads (settings.ts: `settings.value`, or the defaults for the example's job).
 import { gameData, SCEN_GOLDS } from './data.ts';
 import type { Uma } from './data.ts';
+import type { Scenario } from './gen/solver.ts';
 import type { SettingsView } from './settings.ts';
-import { assert } from './must.ts';
 
 export type { SettingsView };
 // skills a career always gives an uma outside her outfit and the deck: Tokai Teio's Head-On (her Triple Crown event;
@@ -34,27 +34,25 @@ const noOutfit = (u: Uma, outfits: SettingsView['outfits']): boolean =>
 // she is owned under settings `s`: not marked out, and an outfit of hers owned (or none in the data)
 export const isOwned = (u: Uma, s: Pick<SettingsView, 'roster' | 'outfits'>): boolean =>
   s.roster[u.id] !== 'out' && !noOutfit(u, s.outfits);
-// the lineage rank's chances of 1, 2 and 3 stars
-export const starDist = (s: SettingsView): [number, number, number] => {
-  const [one, two, three, ...rest] = s.rank.split(',').map(Number);
-  assert(one !== undefined && two !== undefined && three !== undefined && !rest.length, 'a rank is three star shares');
-  return [one, two, three];
-};
-// The fields both pages' jobs carry, in two runs, each spread into both jobs (which order them differently: a job's
-// field order is part of its key, the kept result's and the suite's recorded replies', so each keeps its own):
-// what is owned: the umas left out (`exclude`, which each page decides), the outfits not owned, the skills a career
-// always gives, the cards owned, a borrowed card allowed
-export const ownedFields = (s: SettingsView, exclude: number[]) => ({
+// The parts both pages' jobs share (each page adds its own fields): the targets and roster (the solver's `SkillJob`): the
+// targets, the lineage's rank band, the umas left out (`exclude`, which each page decides), the outfits not owned, the
+// skills a career always gives
+export const skillsPart = (s: SettingsView, exclude: number[]) => ({
+  targets: jobTargets(s),
+  rank_class: s.rank,
   exclude,
   exclude_outfits: Object.entries(s.outfits)
     .filter(([, owned]) => owned === false)
     .map(([id]) => +id),
   extra: EXTRA,
+});
+// and the deck space (`DeckJob`): the cards owned, a borrowed card allowed, the scenario, the R cards left out
+export const deckPart = (s: SettingsView) => ({
   owned_cards: ownedCards(s),
   borrow: true,
+  scenario: (s.scen || 'unity') as Scenario,
+  ...rcardsOff(s),
 });
-// and the scenario, with the R cards left out
-export const scenarioFields = (s: SettingsView) => ({ scenario: s.scen || 'unity', ...rcardsOff(s) });
 // R cards (not pals) stay out of every search: settings.ts `rcards`, which no setting turns on
 const rcardsOff = (s: SettingsView) =>
   s.rcards

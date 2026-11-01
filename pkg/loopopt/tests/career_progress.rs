@@ -7,11 +7,11 @@ use serde_json::json;
 #[test]
 fn weak_pool_outcomes_and_schedule() {
     let mut job = val_job("jobs/career_U5.json");
-    job["trainees"] = json!([1034]); // Inari One
-    job["fix"] = json!([2, 3]);
-    job["per_trainee"] = json!(false);
-    job["top"] = json!(1);
-    job["star_dist"] = json!([0.0, 0.0, 1.0]);
+    job["job"]["career"]["trainees"] = json!([1034]); // Inari One
+    job["job"]["career"]["fix"] = json!([2, 3]);
+    job["job"]["career"]["per_trainee"] = json!(false);
+    job["job"]["career"]["top"] = json!(1);
+    job["job"]["skills"]["rank_class"] = json!("ss_and_up");
     let result = run_job("career-progress", &job);
     let career = &result["results"][0];
     let p: Vec<f64> = career["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();

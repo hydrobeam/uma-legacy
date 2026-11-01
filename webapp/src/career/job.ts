@@ -3,7 +3,7 @@
 // reports, typed here. A model module: it reads no store (.dependency-cruiser.mjs checks it).
 import { gameData } from '../data.ts';
 import { stateKey } from '../engine.ts';
-import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
+import { deckPart, isOwned, skillsPart } from '../job.ts';
 import { starsOf, umaName } from '../veterans/names.ts';
 import { must } from '../must.ts';
 import type { SolverAnswer } from '../solver.ts';
@@ -14,25 +14,17 @@ import type { DeepReadonly } from '../store.ts';
 
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
 export const placesKey = (p: PlacesRecord): string => JSON.stringify({ trainee: p.trainee, parents: p.parents });
-/** The career job (`buildJob`): the solver's `Request` for `career` (its `SkillJob`, `DeckJob` and `CareerJob` parts;
+/** The career job (`buildJob`): the solver's `Request` for `career` (its `skills`, `deck` and `career` parts;
  *  generated), its veterans as the veterans store holds them, one array that every job made from the same veterans
- *  shares (read-only); a plan job adds `next` and `no_reports`, a comparison `compare`. */
-export type CareerJob = Omit<SolverCareerJob, 'legacies'> &
-  Required<Pick<SolverCareerJob, CareerJobFields>> & { legacies: readonly JobLegacy[] };
+ *  shares (read-only); a plan job adds `career.next` and `career.no_reports`, a comparison `career.compare`. Each part
+ *  has the fields `buildJob` always writes (the solver has a default for each). */
+export type CareerJob = Omit<SolverCareerJob, 'skills' | 'deck' | 'career'> & {
+  skills: Gen.SkillJob & Required<Pick<Gen.SkillJob, 'rank_class' | 'exclude' | 'exclude_outfits' | 'extra'>>;
+  deck: Gen.DeckJob & Required<Pick<Gen.DeckJob, 'owned_cards' | 'borrow' | 'scenario'>>;
+  career: Omit<Gen.CareerJob, 'legacies'> &
+    Required<Pick<Gen.CareerJob, 'trainees' | 'fix' | 'per_trainee' | 'top'>> & { legacies: readonly JobLegacy[] };
+};
 type SolverCareerJob = Extract<Gen.Request, { cmd: 'career' }>;
-/** the fields `buildJob` always writes (the solver has a default for each) */
-type CareerJobFields =
-  | 'trainees'
-  | 'fix'
-  | 'per_trainee'
-  | 'top'
-  | 'exclude'
-  | 'exclude_outfits'
-  | 'extra'
-  | 'owned_cards'
-  | 'borrow'
-  | 'star_dist'
-  | 'scenario';
 // ---------- the solver's reports, generated from its Rust structs (src/gen/solver.ts), with what the page adds ----------
 /** A career's trainee as the page shows her: the solver's, and what the page sets on her (`oneOutfit`) */
 export type CareerTrainee = Omit<Gen.CareerTrainee, 'outfits'> & {
@@ -52,29 +44,30 @@ export type CareerReport = Omit<Gen.CareerReport, 'trainee' | 'targets'> & {
 export type { CareerScheduleRow, CareerSlot, PairSearch } from '../gen/solver.ts';
 /** A target of a career, its buying read as one record */
 export type CareerTarget = Omit<Gen.CareerTarget, 'buy'> & { buy: CareerBuy };
-/** How she buys a target and lands it, as the page reads it: either of the solver's `TargetBuy`s (an uncertain
- *  target's, with its sources; a scenario gold's, with `scenario`) as one record, each field absent where it does not
- *  apply (either is assignable to it) */
-export type CareerBuy = Pick<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'> &
-  Partial<Omit<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'>> &
-  Partial<Pick<Gen.ScenarioBuy, 'scenario'>>;
-/** A plan option's own fields (career/plan/output.rs), and the pair search's recommendation's, which the page sets on
- *  the row it makes of it (`pairSearchRow`) */
-export type PlanOptionFields = Omit<Gen.PlanOption, keyof Gen.CareerReport> & {
+/** How she buys a target and lands it, as the page reads it: either of the solver's `TargetBuy`s (`kind` "sourced", an
+ *  uncertain target's, with its sources; "scenario", a scenario gold's) as one record, each field absent where it does
+ *  not apply (either is assignable to it) */
+export type CareerBuy = Pick<Gen.TargetBuy, 'kind' | 'gold' | 'white' | 'land_gold' | 'land_white'> &
+  Partial<Omit<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'>>;
+/** A plan option's own fields (career/plan/output.rs: its place in the plan, beside its career, `report`), and the
+ *  pair search's recommendation's, which the page sets on the row it makes of it (`pairSearchRow`) */
+export type PlanOptionFields = Omit<Gen.PlanOption, 'report'> & {
   /** the pair search's recommendation (`pairSearchRow`): run as it is, its deck kept */
   pair_search?: boolean;
   /** its Saves per run in the pair search */
   pair_search_score?: number | null | undefined;
 };
-/** One career of the plan's table: a career report with its place in the plan. */
+/** One career of the plan's table, as the table reads it: its career report's fields beside its place in the plan
+ *  (`current.ts` `runJob` makes these rows of the solver's options) */
 export type PlanOption = CareerReport & PlanOptionFields;
 /** A row of the Career choices table: a plan option, or a career of the search (without the plan's fields). */
 export type OptionRow = CareerReport & Partial<PlanOptionFields>;
 /** The robustness check's report on the pick (plan/robust.rs), as the page keeps it from its follow-up jobs */
-export type PlanCheck = Gen.CheckReport;
+export type PlanCheck = Extract<Gen.CheckReply, { kind: 'report' }>;
 /** The plan (the solver's `next`, career/plan/output.rs), with what the page sets on it: its check (`checkPhase`), that
  *  the check could not finish, why its searches proved nothing (`unprovenWhy`), the plan job's named assumptions */
 export type PlanReport = Omit<Gen.Plan, 'choice' | 'options' | 'robust'> & {
+  kind: 'plan';
   /** the plan's pick */
   choice: CareerReport | null;
   /** by score, best first */
@@ -97,14 +90,17 @@ export type PlanFit = Gen.Plan['fit'];
 /** The career search's report (career/run.rs `search_output`), its careers as the page shows them, its plan (`next`)
  *  or the plan's refusal; `pending`: set by the page, a quick comparison's stand-in while the search runs */
 export type CareerSearch = Omit<Gen.CareerSearch, 'results' | 'next'> & {
+  kind: 'search';
   results: CareerReport[];
-  next?: PlanReport | Gen.Refusal;
+  next?: PlanReport | PlanRefusal;
   pending?: boolean;
 };
-/** What a career job the page sends is answered with: its search (with its plan when it asked for one), or, for a plan
- *  job's roll or check that the worker answers from the plan it keeps, that alone (career/reply.rs `PlanFollowUp`); a
- *  refusal is a SolverRefusal */
-export type CareerReply = CareerSearch | Gen.PlanFollowUp;
+/** Why the plan job made no plan (`next` of kind "refusal") */
+export type PlanRefusal = Extract<Gen.PlanReply, { kind: 'refusal' }>;
+/** What a career job the page sends is answered with, by `kind`: its search (with its plan when it asked for one), or,
+ *  for a plan job's roll or check that the worker answers from the plan it keeps, that alone (career/reply.rs
+ *  `CareerReply`); a refusal is a SolverRefusal */
+export type CareerReply = CareerSearch | Extract<Gen.CareerReply, { kind: 'roll' | 'check' }>;
 // ---------- the job ----------
 /** A status line's button: its label and what it does. */
 export interface StatusAct {
@@ -187,20 +183,20 @@ export function buildJob(from: JobFrom, acts: PoolActs): CareerJob {
   // scores every owned uma, `planPhase`)
   const job: CareerJob = {
     cmd: 'career',
-    targets: jobTargets(s),
-    ...ownedFields(s, exclude),
-    star_dist: starDist(s),
-    ...scenarioFields(s),
-    legacies: from.legacies,
-    trainees: plan.trainee ? [plan.trainee] : [],
-    fix: plan.parents.filter(Boolean).map((id) => pool.findIndex((v) => v.id === id)),
-    per_trainee: false,
-    top: allPlaced ? 1 : ROLL_K,
+    skills: skillsPart(s, exclude),
+    deck: deckPart(s),
+    career: {
+      legacies: from.legacies,
+      trainees: plan.trainee ? [plan.trainee] : [],
+      fix: plan.parents.filter(Boolean).map((id) => pool.findIndex((v) => v.id === id)),
+      per_trainee: false,
+      top: allPlaced ? 1 : ROLL_K,
+    },
   };
   const borrowed = borrowChoice(s);
-  if (borrowed !== 'allow') job.borrowed_parent = borrowed;
+  if (borrowed !== 'allow') job.career.borrowed_parent = borrowed;
   if (allPlaced && chosenApplies(job, from.chosen, plan))
-    job.career = must(from.chosen, 'chosenApplies: a choice is saved').id;
+    job.career.given = must(from.chosen, 'chosenApplies: a choice is saved').id;
   return job;
 }
 // the career Use this chose with its deck (veterans/store.ts `chosen`, saved with the plan): a builder's other career (an
@@ -215,9 +211,12 @@ export const chosenSetup = (job: DeepReadonly<CareerJob>): string =>
   JSON.stringify({
     engine: stateKey(),
     ...job,
-    legacies: job.fix.map((i) => job.legacies[i]),
-    career: undefined,
-    top: undefined,
+    career: {
+      ...job.career,
+      legacies: job.career.fix.map((i) => job.career.legacies[i]),
+      given: undefined,
+      top: undefined,
+    },
   });
 const chosenApplies = (
   job: DeepReadonly<CareerJob>,
@@ -226,7 +225,7 @@ const chosenApplies = (
 ): boolean => {
   if (!c || c.places !== placesKey(places) || c.setup !== chosenSetup(job)) return false;
   const named = (c.id.split(':')[1] || '').split(',').map(Number),
-    fixed = job.fix;
+    fixed = job.career.fix;
   return named.length === 2 && fixed.length === 2 && named.every((i) => fixed.includes(i));
 };
 // a full veteran: a spark of every target (with full veteran parents: a fully looped parent)
@@ -257,5 +256,5 @@ export function pairBlock(
   if (v.borrowed && borrowChoice(s) !== 'allow') return 'setting';
   return '';
 }
-/** The solver's answer to a career job: its CareerReply, or a refusal (`'error' in m.r`). */
+/** The solver's answer to a career job: its CareerReply, or a refusal (`m.r.kind`). */
 export type CareerAnswer = SolverAnswer<CareerReply>;

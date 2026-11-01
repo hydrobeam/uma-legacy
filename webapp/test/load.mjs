@@ -277,11 +277,12 @@ export default async function load(b) {
   );
   check(
     'no Loop size control: the solver picks 3-uma rotations or 4-uma loops',
-    !(await pg.locator('#c-size').count()) && (await pg.evaluate(() => window.__runs.at(-1).sizes === undefined)),
+    !(await pg.locator('#c-size').count()) &&
+      (await pg.evaluate(() => window.__runs.at(-1).skills.sizes === undefined)),
   );
   // the scenario sets the training-hint rate: switching it searches again with the scenario in the job, and the
   // choice is kept (the default setup's odds barely move: its decks get the targets from events, not training hints)
-  check('the first search is a Unity Cup job', await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
+  check('the first search is a Unity Cup job', await pg.evaluate(() => window.__runs.at(-1).deck.scenario === 'unity'));
   await pickScen(pg, 'ura');
   await lastJob(pg, 'ura'); // the check reads the job: its (slow) search is not awaited
   // Unity Cup's golds follow the scenario: off under URA, back on under Unity, and the 8/8 example takes them too

@@ -12,7 +12,7 @@ use serde_json::Value;
 /// P(all)'s bits
 fn results(name: &str, job: &Value) -> Vec<(String, Vec<String>, String, u64)> {
     let out = run_job(&format!("career-order-{name}"), job);
-    let legacies = job["legacies"].as_array().unwrap();
+    let legacies = job["job"]["career"]["legacies"].as_array().unwrap();
     out["results"]
         .as_array()
         .unwrap()
@@ -33,7 +33,7 @@ fn results(name: &str, job: &Value) -> Vec<(String, Vec<String>, String, u64)> {
 fn the_veterans_order_changes_no_career() {
     let in_order = val_job("jobs/career_U2.json");
     let mut reversed = in_order.clone();
-    reversed["legacies"].as_array_mut().unwrap().reverse();
+    reversed["job"]["career"]["legacies"].as_array_mut().unwrap().reverse();
     let (first, second) = (results("in-order", &in_order), results("reversed", &reversed));
     assert!(first.len() >= 5, "{} results", first.len());
     assert_eq!(first, second);

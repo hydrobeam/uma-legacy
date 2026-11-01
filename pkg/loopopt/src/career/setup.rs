@@ -1,40 +1,20 @@
 //! A career job read three ways (`CareerJobs`) and its `Env` built (`career_setup`): the model, the deck space, each
 //! owned uma's deck-odds ceilings, the deck classes and what earlier jobs of the setup and pool proved (`restore_seen`).
 use crate::career::decks::{CfStats, DECK_KEEP_CAP, JOB_NO};
-use crate::career::state::{KeptState, setup_fp};
+use crate::career::state::KeptState;
 use crate::career::{
-    BorrowedParent, CAREER_BUDGET, CareerJob, CareerSetup, ClassFlags, DeckSearchAudit, DeckSearchMemo, Env, JobInputs,
+    BorrowedParent, CAREER_BUDGET, CareerSetup, ClassFlags, DeckSearchAudit, DeckSearchMemo, Env, JobInputs,
     SearchState,
 };
 use crate::data::Data;
+use crate::deck::Card;
 use crate::deck::sources::deck_entries;
 use crate::deck::space::{DeckSpace, deck_space};
-use crate::deck::{Card, DeckJob};
+use crate::key::content_key;
 use crate::refusal::Refusal;
-use crate::skills::{Model, SkillJob};
+use crate::skills::Model;
 use crate::uma::{UmaIndex, UmaTable};
-use serde::Deserialize;
-use serde_json::Value;
 use std::collections::HashMap;
-/// The three readings of one career job's JSON.
-pub(super) struct CareerJobs {
-    /// Targets, owned umas and the rank's star mix.
-    pub(super) skills: SkillJob,
-    /// The deck space: cards, deck size, locks, chain events.
-    deck: DeckJob,
-    /// Legacies, trainees, places and the planner's settings.
-    pub(super) career: CareerJob,
-}
-
-impl CareerJobs {
-    /// The job read three ways, in this order; the first error is the answer.
-    pub(super) fn parse(job: &Value) -> Result<Self, Refusal> {
-        let skills = SkillJob::deserialize(job).map_err(|e| Refusal::new(e.to_string()))?;
-        let deck = DeckJob::deserialize(job).map_err(|e| Refusal::new(e.to_string()))?;
-        let career = CareerJob::deserialize(job).map_err(|e| Refusal::new(e.to_string()))?;
-        Ok(Self { skills, deck, career })
-    }
-}
 
 /// A job's solver environment and what it was built for.
 pub(super) struct CareerBuild<'data> {
@@ -50,12 +30,11 @@ pub(super) struct CareerBuild<'data> {
 /// anything kept is touched.
 pub(super) fn career_setup<'data>(
     input: &JobInputs<'data>,
-    jobs: &'data CareerJobs,
     model: &'data Model<'data>,
     worker: &mut KeptState,
 ) -> Result<CareerBuild<'data>, Refusal> {
-    let (data, skills, cards, job_json) = (input.data, input.skills, input.cards, input.job);
-    let (skill_job, deck_job, career_job) = (&jobs.skills, &jobs.deck, &jobs.career);
+    let (data, skills, cards, job) = (input.data, input.skills, input.cards, input.job);
+    let (skill_job, deck_job, career_job) = (&job.skills, &job.deck, &job.career);
     let folded_events = UmaTable(
         model
             .event_chances
@@ -103,7 +82,7 @@ pub(super) fn career_setup<'data>(
         .collect();
     let budget = crate::checks::get().exact_budget.unwrap_or(CAREER_BUDGET);
     // the kept `best_deck` memo of this setup (`KeptState::decks`), and this job's number
-    let setup_fingerprint = setup_fp(job_json);
+    let setup_fingerprint = job.setup_key();
     let memo_fingerprint = {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -119,8 +98,7 @@ pub(super) fn career_setup<'data>(
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         memo_fingerprint.hash(&mut hasher);
-        job_json["legacies"].to_string().hash(&mut hasher);
-        job_json["borrowed_parent"].to_string().hash(&mut hasher);
+        content_key(&(&career_job.legacies, career_job.borrowed_parent)).hash(&mut hasher);
         hasher.finish()
     };
     let job_number = JOB_NO.with(|counter| {

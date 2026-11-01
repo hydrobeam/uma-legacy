@@ -72,7 +72,7 @@ pub(crate) fn audit_lifts(
         );
         let setup = &simulator.env.setup;
         let (uncertain_targets, fixed_targets) = (setup.uncertain_targets.clone(), setup.fixed_targets.clone());
-        let star_mix = setup.skill_job.star_dist;
+        let star_mix = setup.skill_job.star_mix();
         let target_groups: Vec<u32> = setup.skill_job.targets.iter().map(|target| target.group).collect();
         // (leaf, fixed targets landed, chance), the likeliest landing a target, ties in cell order
         let mut outcomes: Vec<(usize, usize, f64)> = vec![];

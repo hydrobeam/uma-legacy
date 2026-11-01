@@ -1,13 +1,12 @@
 //! Target sources of a deck entry: outcome groups, training hints and chain links per card, the event data merged into
 //! a job, and the deck entries of a job.
 use crate::deck::chains::{ChainKind, stop_risk_code};
-use crate::deck::hints::{hint_base, hint_miss, hint_spec, scenario_name};
+use crate::deck::hints::{hint_base, hint_miss, hint_spec};
 use crate::deck::space::{MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, kinds_all};
-use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::deck::{Card, CardsRaw, ChoiceEvent, DeckJob};
 use crate::refusal::Refusal;
 use crate::skills::SkillsRaw;
 use serde::Deserialize;
-use serde_json::{Value, json};
 /// Mutually exclusive outcomes of one event firing. Probabilities sum to at most 1; the remainder gives no hint.
 /// Each outcome's rewards occur together, using hint levels 1 (white) and 2 (gold).
 pub(super) type Group = Vec<EventOutcome>;
@@ -418,12 +417,6 @@ impl TargetSources {
     }
 }
 
-/// Merge a card-event cache (card_events.json) into a deck job: skill names -> (group, level) via the skills table.
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: &CardEventCache) {
-    apply_event_lists(job, &event_lists(skills, event_cache));
-}
-
 /// A card-event cache (card_events.json, `build_card_events.py`): per card (its id as text, in that text's order), the
 /// events it hints a skill through. A field missing from an entry that has it is a parse error, never a default.
 #[derive(Deserialize, Default)]
@@ -437,10 +430,10 @@ pub(crate) struct CardEventCache {
 struct CardEvents {
     /// per chain link: [link, its rewards]
     #[serde(default)]
-    chain: Vec<(u64, Vec<EventReward>)>,
+    chain: Vec<(u8, Vec<EventReward>)>,
     /// per choice that ends the chain: [link, its rewards]
     #[serde(default)]
-    end: Vec<(u64, Vec<EventReward>)>,
+    end: Vec<(u8, Vec<EventReward>)>,
     /// [link, k, n]: IT's default choice there ends the chain on k of n outcomes
     #[serde(default)]
     stop_risk: Vec<(u8, u8, u8)>,
@@ -475,62 +468,65 @@ impl EventReward {
     }
 }
 
-/// The job lists a card-event cache adds, in `EVENT_KEYS` order: the same for every job (the page's worker builds
-/// them once, at init).
-pub(crate) struct EventLists([Vec<Value>; 8]);
-const EVENT_KEYS: [&str; 8] =
-    ["events", "events_p", "odds_events", "end_links", "ends", "event_stop_risk", "alts", "alt_w"];
-/// Each list after the job's own entries of it, in their order.
-pub(crate) fn apply_event_lists(job: &mut Value, lists: &EventLists) {
-    for (key, add) in EVENT_KEYS.iter().zip(&lists.0) {
-        let mut list: Vec<Value> = match job[*key].take() {
-            Value::Array(list) => list,
-            _ => vec![],
-        };
-        list.extend(add.iter().cloned());
-        job[*key] = Value::Array(list);
+/// The event lists a card-event cache adds to a job, each entry as the job's own (`DeckJob`'s field of the same name):
+/// the same for every job (the page's worker builds them once, at init).
+#[derive(Default)]
+pub(crate) struct EventLists {
+    events: Vec<(u32, u32, u8, u8)>,
+    events_p: Vec<(u32, u32, u8, u8, f64)>,
+    odds_events: Vec<(u32, u32, u8, f64)>,
+    end_links: Vec<(u32, u8)>,
+    ends: Vec<(u32, u8, u32, u8, f64)>,
+    event_stop_risk: Vec<(u32, u8, u8, u8)>,
+    choice_events: Vec<ChoiceEvent>,
+    choice_weights: Vec<(u32, u8, Vec<Vec<f64>>)>,
+}
+
+impl EventLists {
+    /// The lists added to `deck_job`'s, each after the job's own entries, in their order. The job then holds them: the
+    /// solver reads them from it and keys its kept searches by it.
+    pub(crate) fn add_to(&self, deck_job: &mut DeckJob) {
+        deck_job.events.extend_from_slice(&self.events);
+        deck_job.events_p.extend_from_slice(&self.events_p);
+        deck_job.odds_events.extend_from_slice(&self.odds_events);
+        deck_job.end_links.extend_from_slice(&self.end_links);
+        deck_job.ends.extend_from_slice(&self.ends);
+        deck_job.event_stop_risk.extend_from_slice(&self.event_stop_risk);
+        deck_job.choice_events.extend_from_slice(&self.choice_events);
+        deck_job.choice_weights.extend_from_slice(&self.choice_weights);
     }
 }
-/// The job lists of a card-event cache: its entries written as the job's own (`DeckJob`'s tuples), skill names read
-/// through the skills table (a name it does not know hints nothing). They go into the job itself, which the solver reads
-/// as `DeckJob` and keys its kept searches by.
-pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &CardEventCache) -> EventLists {
+
+/// The event lists of a card-event cache: skill names read through the skills table (a name it does not know hints
+/// nothing).
+pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: CardEventCache) -> EventLists {
     let lookup_skill = |name: &str| skills.names.get(name).copied();
-    let [
-        mut events,
-        mut probabilistic_events,
-        mut odds_events,
-        mut end_links,
-        mut end_rewards,
-        mut stop_risks,
-        mut alternatives,
-        mut alternative_weights,
-    ]: [Vec<Value>; 8] = Default::default();
-    for (id, card) in &event_cache.cards {
+    let mut lists = EventLists::default();
+    for (id, card) in event_cache.cards {
         let Ok(id) = id.parse::<u32>() else { continue };
-        for (link_number, rewards) in &card.chain {
+        for &(link, ref rewards) in &card.chain {
             for reward in rewards {
                 let (name, probability) = reward.name_and_chance();
                 if let Some((group, level)) = lookup_skill(name) {
                     if probability >= 1.0 {
-                        events.push(json!([id, group, level, link_number]));
+                        lists.events.push((id, group, level, link));
                     } else {
-                        probabilistic_events.push(json!([id, group, level, link_number, probability]));
+                        lists.events_p.push((id, group, level, link, probability));
                     }
                 }
             }
         }
-        for (link_number, rewards) in &card.end {
-            end_links.push(json!([id, link_number]));
+        for &(link, ref rewards) in &card.end {
+            lists.end_links.push((id, link));
             for reward in rewards {
                 let (name, probability) = reward.name_and_chance();
                 if let Some((group, level)) = lookup_skill(name) {
-                    end_rewards.push(json!([id, link_number, group, level, probability]));
+                    lists.ends.push((id, link, group, level, probability));
                 }
             }
         }
         for &(link, k, n) in &card.stop_risk {
-            stop_risks.push(json!([id, link, k, n]));
+            lists.event_stop_risk.push((id, link, k, n));
         }
         for (link, choices) in &card.alts {
             let choices: Vec<Vec<Vec<(u32, u8)>>> = choices
@@ -542,32 +538,23 @@ pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &CardEventCache) -> E
                         .collect()
                 })
                 .collect();
-            alternatives.push(json!([id, link, choices]));
+            lists.choice_events.push(ChoiceEvent { card: id, link: *link, choices });
         }
-        for (link, weights) in &card.alt_w {
-            alternative_weights.push(json!([id, link, weights]));
+        for (link, weights) in card.alt_w {
+            lists.choice_weights.push((id, link, weights));
         }
         for name in &card.always {
             if let Some((group, level)) = lookup_skill(name) {
-                events.push(json!([id, group, level, 0]));
+                lists.events.push((id, group, level, 0));
             }
         }
-        for (name, chance) in &card.chance {
+        for &(ref name, chance) in &card.chance {
             if let Some((group, level)) = lookup_skill(name) {
-                odds_events.push(json!([id, group, level, chance]));
+                lists.odds_events.push((id, group, level, chance));
             }
         }
     }
-    EventLists([
-        events,
-        probabilistic_events,
-        odds_events,
-        end_links,
-        end_rewards,
-        stop_risks,
-        alternatives,
-        alternative_weights,
-    ])
+    lists
 }
 
 /// A target reward supplied with a fixed chance.
@@ -650,7 +637,7 @@ impl Sources<'_> {
     /// Training-hint draws per run: base(scenario) x (1 + hint frequency / 100) x (1 + d(scenario) x specialty / 100),
     /// each uniform over the card's skill options still below Lv 5. Per target in the pool: P(hinted) = 1 - hint_miss(1).
     pub(super) fn draws(&self, card: &Card) -> f64 {
-        let scenario = &self.deck_job.scenario;
+        let scenario = self.deck_job.scenario;
         hint_base(scenario)
             * (1.0 + card.hint_frequency / 100.0)
             * (1.0 + hint_spec(scenario) * card.specialty_priority / 100.0)
@@ -992,14 +979,11 @@ pub(crate) fn deck_entries<'data>(
     if deck_job.chain_events.is_some() && deck_job.chain_budget.is_some() {
         return Err(Refusal::new("chain_events and chain_budget both set: give one chain-event law, not both."));
     }
-    if let Some(rule) = deck_job.chain_rule.as_deref().filter(|rule| !["card", "slots"].contains(rule)) {
-        return Err(Refusal::new(format!("chain_rule: \"card\" or \"slots\", not \"{rule}\".")));
-    }
     let is_owned = |id: u32| {
         deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
     };
     // a card the scenario bans can't be in the deck, owned, borrowed or locked
-    let banned: &[u32] = cards.restrict.get(&deck_job.scenario).map_or(&[], |banned_ids| banned_ids.as_slice());
+    let banned: &[u32] = cards.restrict.get(deck_job.scenario.key()).map_or(&[], |banned_ids| banned_ids.as_slice());
     if let Some(card) = deck_job
         .lock_cards
         .iter()
@@ -1009,7 +993,7 @@ pub(crate) fn deck_entries<'data>(
         return Err(Refusal::new(format!(
             "{} can't be used in {}: the game bans it from that scenario's deck.",
             card.name,
-            scenario_name(&deck_job.scenario)
+            deck_job.scenario.label()
         )));
     }
     let usable =

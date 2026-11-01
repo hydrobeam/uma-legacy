@@ -1,98 +1,97 @@
-//! Career-job tests: `json_without`, inheritance copies against their lineage, and the kept state's round trip.
+//! Career-job tests: the jobs' keys, inheritance copies against their lineage, and the kept state's round trip.
 use super::*;
 use crate::career::inherit::{aff_factor, inherit, insp_miss2, spark_scale};
-use crate::career::state::{STATE_VERSION, json_without};
+use crate::career::state::STATE_VERSION;
+use crate::request::Request;
+use serde_json::{Value, json};
 pub(super) type Hook = Box<dyn for<'env> FnOnce(&mut Env<'env>, &Pool)>;
 thread_local! { pub(super) static ENV_HOOK: std::cell::RefCell<Option<Hook>> = const { std::cell::RefCell::new(None) }; }
-/// val/plan's p16 plan job with its events, and the Global data it runs on
+/// The Global era's data file `name`.
+fn global(name: &str) -> String {
+    std::fs::read_to_string(format!("{}/data/global/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+}
+/// val/plan's p16 plan job (a `Request`, as the page sends it), and the Global data it runs on
 fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
-    let r = concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/");
-    let rd = |f: &str| std::fs::read_to_string(format!("{r}{f}")).unwrap();
-    let data = crate::data::load_str(&rd("data.json"));
-    let skills: SkillsRaw = serde_json::from_str(&rd("web_skills.json")).unwrap();
-    let cards: CardsRaw = serde_json::from_str(&rd("web_cards.json")).unwrap();
-    let mut v: Value = serde_json::from_str(
+    let data = crate::data::load_str(&global("data.json"));
+    let skills: SkillsRaw = serde_json::from_str(&global("web_skills.json")).unwrap();
+    let cards: CardsRaw = serde_json::from_str(&global("web_cards.json")).unwrap();
+    let file: Value = serde_json::from_str(
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
     )
     .unwrap();
-    let db: crate::deck::sources::CardEventCache = serde_json::from_str(&rd("card_events.json")).unwrap();
-    crate::deck::sources::apply_events_db(&mut v, &skills, &db);
-    (data, skills, cards, v)
+    (data, skills, cards, file["job"].clone())
+}
+/// A job as the page's worker takes it (`Request`, as JSON: web.rs `handle`) on the worker's kept work: a career job
+/// with the Global card events added, the kept work out or in; its reply as JSON (a refusal where it does not parse)
+fn call(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> Value {
+    let reply = match serde_json::from_value::<Request>(job.clone()) {
+        Ok(Request::Career(mut job)) => {
+            let events =
+                crate::deck::sources::event_lists(skills, serde_json::from_str(&global("card_events.json")).unwrap());
+            events.add_to(&mut job.deck);
+            run_career(data, skills, cards, &job)
+        }
+        Ok(Request::StateOut) => kept_state_out(),
+        Ok(Request::StateIn { state }) => kept_state_in(&state),
+        Ok(Request::Deck(_)) => panic!("a deck job"),
+        Err(e) => return json!({"error": format!("bad request: {e}")}),
+    };
+    serde_json::to_value(reply).unwrap()
 }
 /// `run_career` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `hook` given its Env and
 /// pool
 pub(super) fn with_env(hook: Hook) {
     let (data, skills, cards, mut job) = p16();
-    job.as_object_mut().unwrap().remove("next");
-    for (i, legacy) in job["legacies"].as_array_mut().unwrap().iter_mut().enumerate() {
+    job["career"].as_object_mut().unwrap().remove("next");
+    for (i, legacy) in job["career"]["legacies"].as_array_mut().unwrap().iter_mut().enumerate() {
         legacy["wins"] = json!([(i % 5) as u64, 7 + (i % 3) as u64, 20]);
         for (j, grandparent) in legacy["parents"].as_array_mut().unwrap().iter_mut().enumerate() {
             grandparent["wins"] = json!([(i + j) % 5]);
         }
     }
     ENV_HOOK.with(|cell| *cell.borrow_mut() = Some(hook));
-    run_career(&data, &skills, &cards, &job);
+    call(&data, &skills, &cards, &job);
     assert!(ENV_HOOK.with(|cell| cell.borrow().is_none()), "the hook did not run");
 }
-/// `json_without` writes the text of a clone with those keys removed, byte for byte (the keys `setup_fp`, the plan's
-/// `roll_key` and the main search's key hash: stored in the page's state)
+/// Each key the worker keeps work under (`career::keys`) reads its parts of the job and no others: a change to a part
+/// it reads gives another key, a change to any other part the same key; a field sent at its default is the field left
+/// out.
 #[test]
-fn json_without_matches_clone() {
-    let p16: Value = serde_json::from_str(
-        &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
-    )
-    .unwrap();
-    let mut rolled = p16.clone();
-    rolled["roll"] = json!({"stars": [1, 2]});
-    rolled["next"]["roll"] = json!([0, 3]);
-    rolled["compare"] = json!(true);
-    let cases = [
-        p16,
-        rolled,
-        json!({}),
-        json!({"a": 1}),
-        json!({"next": {"roll": 1}}),
-        json!([1, {"b": 2.5e-300}]),
-        json!(-0.0),
-        json!({"x": {"y": {}}, "z": []}),
+fn job_keys_read_their_parts() {
+    let (_, _, _, v) = p16();
+    let keys = |job: &Value| {
+        let Ok(Request::Career(job)) = serde_json::from_value::<Request>(job.clone()) else { panic!("{job}") };
+        [job.setup_key(), job.search_key(), job.borrowing_search_key(), job.plan_key()]
+    };
+    let base = keys(&v);
+    let two_veterans = json!(v["career"]["legacies"].as_array().unwrap()[..2]);
+    // (part, value, read by: setup, search, borrowing search, plan)
+    let cases: [(&[&str], Value, [bool; 4]); 12] = [
+        (&["skills", "targets"], json!([{"group": 20159}]), [true; 4]),
+        (&["skills", "rank_class"], json!("ss_and_up"), [true; 4]),
+        (&["deck", "scenario"], json!("ura"), [true; 4]),
+        (&["career", "legacies"], two_veterans, [false, true, true, true]),
+        (&["career", "top"], json!(2), [false, true, true, true]),
+        (&["career", "compare"], json!(true), [false, true, true, false]),
+        (&["career", "no_reports"], json!(true), [false; 4]),
+        (&["career", "borrowed_parent"], json!("never"), [false, true, false, true]),
+        (&["career", "given"], json!("1001:0,1"), [true; 4]),
+        (&["career", "next", "roll"], json!([1, 1]), [false; 4]),
+        (&["career", "next", "robust"], json!("all"), [false; 4]),
+        (&["career", "next", "margin"], json!(0.5), [false, false, false, true]),
     ];
-    let drops: [(&[&str], &[&str]); 4] = [
-        (
-            &[
-                "legacies",
-                "trainees",
-                "fix",
-                "top",
-                "per_trainee",
-                "cmd",
-                "mode",
-                "compare",
-                "next",
-                "no_reports",
-                "borrowed_parent",
-            ],
-            &[],
-        ),
-        (&["next", "no_reports"], &[]),
-        (&["no_reports", "compare", "roll"], &["roll"]),
-        (&["a", "x"], &["roll"]),
-    ];
-    for v in &cases {
-        for (dropped_keys, next_dropped) in drops {
-            let mut k = v.clone();
-            if let Some(o) = k.as_object_mut() {
-                for x in dropped_keys {
-                    o.remove(*x);
-                }
-                if let Some(n) = o.get_mut("next").and_then(|n| n.as_object_mut()) {
-                    for x in next_dropped {
-                        n.remove(*x);
-                    }
-                }
-            }
-            assert_eq!(json_without(v, dropped_keys, next_dropped), k.to_string());
-        }
+    for (path, value, read) in cases {
+        let mut job = v.clone();
+        let (last, parents) = path.split_last().unwrap();
+        parents.iter().fold(&mut job, |at, key| &mut at[*key])[*last] = value;
+        let changed = keys(&job);
+        assert_eq!(std::array::from_fn(|i| changed[i] != base[i]), read, "{path:?}");
     }
+    let mut defaults = v;
+    defaults["career"]["borrowed_parent"] = json!("allow");
+    defaults["skills"]["rank_class"] = json!("below_ss");
+    defaults["career"]["next"]["sur"] = json!("search");
+    assert_eq!(keys(&defaults), base, "fields at their defaults");
 }
 /// The copies of the inheritance chance agree to the bit with `lineage` (slots, `inherit`, `scale`): `gen_cands`'
 /// ceilings (against `ceiling` at `lineage`'s chances, as `solve` takes them) and `her_slot` (against
@@ -167,7 +166,7 @@ fn inheritance_copies_match_lineage() {
 #[test]
 fn state_round_trips_and_refuses_malformed() {
     let (data, skills, cards, v) = p16();
-    let run = |job: &Value| serde_json::to_value(run_career(&data, &skills, &cards, job)).unwrap();
+    let run = |job: &Value| call(&data, &skills, &cards, job);
     let state_out = || run(&json!({"cmd": "state_out"}));
     let state_in = |st: &Value| run(&json!({"cmd": "state_in", "state": st}));
     let plan = run(&v);
@@ -183,8 +182,8 @@ fn state_round_trips_and_refuses_malformed() {
         assert!(worker.rolls.is_empty() && worker.decks.is_empty(), "simulation must isolate rolls and decks");
         state::kept_swap(&mut worker, saved);
         assert_eq!(
-            serde_json::to_value(state::state_out(&worker)).unwrap(),
-            out,
+            serde_json::to_value(state::state_out(&worker)).unwrap()["state"],
+            out["state"],
             "simulation must restore every serialized collection"
         );
         assert_eq!(worker.decks.len(), deck_setups);
@@ -193,19 +192,21 @@ fn state_round_trips_and_refuses_malformed() {
         assert!(st[k].as_array().is_some_and(|a| !a.is_empty()), "{k}: nothing kept");
     }
     let mut rolled = v.clone();
-    rolled["next"]["roll"] = json!(vec![1u8; v["targets"].as_array().unwrap().len()]);
+    rolled["career"]["next"]["roll"] = json!(vec![1u8; v["skills"]["targets"].as_array().unwrap().len()]);
+    // (a roll of the plan the worker keeps: answered from it, `kind` "roll"; without one, the plan's own)
     let roll = || {
-        let mut r = run(&rolled);
-        assert!(r["next"]["roll"].get("error").is_none() && r["next"]["roll"]["y"].is_number(), "{r}");
+        let r = run(&rolled);
+        let mut roll = if r["kind"] == "roll" { r["roll"].clone() } else { r["next"]["roll"].clone() };
+        assert!(roll["outcome"]["y"].is_number(), "{r}");
         for k in ["ms", "prof"] {
-            r["next"]["roll"].as_object_mut().unwrap().remove(k);
+            roll.as_object_mut().unwrap().remove(k);
         }
-        r
+        roll
     };
     let roll0 = roll();
     let empty = json!({"v": STATE_VERSION, "bests": [], "seen": [], "solve": [], "flags": [], "rolls": [], "caps": []});
-    assert_eq!(state_in(&empty)["ok"], true);
-    assert_eq!(state_in(&st)["ok"], true);
+    assert_eq!(state_in(&empty)["kind"], "state_in");
+    assert_eq!(state_in(&st)["kind"], "state_in");
     assert_eq!(state_out(), out, "the state did not round-trip");
     assert_eq!(roll(), roll0, "a roll after the round trip");
 
@@ -323,22 +324,21 @@ fn state_round_trips_and_refuses_malformed() {
         routes.first_mut().expect("a route")["lifts"][0] = json!(lift_slots);
     });
 
-    // ---- a store in the encoding before this one (version 10: positional arrays, as a page saved it before): refused
-    // whole as another version, nothing installed, and the page drops it (engine.ts `restore`); the same shape under
-    // this version does not parse ----
+    // ---- a store of another version: refused whole, nothing installed, and the page drops it (engine.ts `restore`);
+    // one in an older encoding (version 10: positional arrays, as a page saved it before) does not parse ----
+    let mut other_version = st.clone();
+    other_version["v"] = json!(STATE_VERSION - 1);
+    assert_eq!(state_in(&other_version)["error"], "state: another version");
+    assert_eq!(state_out(), kept, "a store of another version installed something");
     let old = json!({"v": 10, "bests": [{"k": ["0000000000000001", "0000000000000002"], "n": 3, "b": [], "l": []}],
         "seen": [["0000000000000001", 3, []]], "solve": [], "flags": [["0000000000000001", 1]], "rolls": [],
         "caps": []});
-    assert_eq!(state_in(&old)["error"], "state: another version");
+    assert!(state_in(&old)["error"].as_str().is_some_and(|error| error.starts_with("bad request")));
     assert_eq!(state_out(), kept, "an old store installed something");
-    let mut old_shape = old;
-    old_shape["v"] = json!(STATE_VERSION);
-    assert_eq!(state_in(&old_shape)["error"], "state: does not parse");
-    assert_eq!(state_out(), kept, "an old store's shape installed something");
 
     // ---- stores that parse but do not fit the setup they meet: not used there ----
     let seen_used = |st: &Value| {
-        assert_eq!(state_in(st)["ok"], true);
+        assert_eq!(state_in(st)["kind"], "state_in");
         let used = std::rc::Rc::new(std::cell::Cell::new(false));
         let u = std::rc::Rc::clone(&used);
         ENV_HOOK.with(|c| {
@@ -346,7 +346,7 @@ fn state_round_trips_and_refuses_malformed() {
                 Some(Box::new(move |env: &mut Env, _: &Pool| u.set(env.state.seen.iter().any(|r| !r.is_empty()))));
         });
         let mut job = v.clone();
-        job.as_object_mut().unwrap().remove("next");
+        job["career"].as_object_mut().unwrap().remove("next");
         run(&job);
         used.get()
     };
@@ -364,7 +364,7 @@ fn state_round_trips_and_refuses_malformed() {
             f["trainee"] = json!(1_000_000);
         }
     });
-    assert_eq!(state_in(&bad)["ok"], true);
+    assert_eq!(state_in(&bad)["kind"], "state_in");
     let again = run(&v);
     assert!(again.get("error").is_none(), "{}", again["error"]);
     assert_eq!((&again["next"]["choice"], &again["results"]), (&plan["next"]["choice"], &plan["results"]));
@@ -375,15 +375,15 @@ fn state_round_trips_and_refuses_malformed() {
     for entry in flagged["flags"].as_array_mut().unwrap() {
         entry[1] = json!(entry[1].as_u64().unwrap() | 1);
     }
-    assert_eq!(state_in(&flagged)["ok"], true);
-    assert_eq!(state_in(&st)["ok"], true);
+    assert_eq!(state_in(&flagged)["kind"], "state_in");
+    assert_eq!(state_in(&st)["kind"], "state_in");
     let flags = state_out()["state"]["flags"].clone();
     assert!(
         flags.as_array().unwrap().iter().all(|entry| entry[1].as_u64().unwrap() & 1 == 1),
         "a store cleared a flag: {flags}"
     );
     let mut search_job = v.clone();
-    search_job.as_object_mut().unwrap().remove("next");
+    search_job["career"].as_object_mut().unwrap().remove("next");
     let reused = run(&search_job);
     assert_eq!((&reused["complete"], &reused["proven_top"]), (&json!(false), &json!(false)), "{reused}");
     assert!(reused["unproven"].as_array().is_some_and(|reasons| reasons.contains(&json!("cap_breach"))), "{reused}");
@@ -395,7 +395,7 @@ fn state_round_trips_and_refuses_malformed() {
 #[test]
 fn a_kept_plan_keeps_its_flags_through_flag_churn() {
     let (data, skills, cards, v) = p16();
-    let run = |job: &Value| serde_json::to_value(run_career(&data, &skills, &cards, job)).unwrap();
+    let run = |job: &Value| call(&data, &skills, &cards, job);
     let plan = run(&v);
     assert!(plan.get("error").is_none(), "{}", plan["error"]);
     assert_eq!(plan["proven_top"], json!(true), "the first plan is not proven: {}", plan["unproven"]);
@@ -411,7 +411,7 @@ fn a_kept_plan_keeps_its_flags_through_flag_churn() {
     KEPT.with(|worker| {
         state::kept_swap(&mut worker.borrow_mut(), KeptState::default());
     });
-    assert_eq!(run(&json!({"cmd": "state_in", "state": st}))["ok"], true);
+    assert_eq!(run(&json!({"cmd": "state_in", "state": st}))["kind"], "state_in");
     let again = run(&v);
     assert_eq!((&again["complete"], &again["proven_top"]), (&json!(false), &json!(false)), "{}", again["unproven"]);
     assert!(again["unproven"].as_array().is_some_and(|reasons| reasons.contains(&json!("cap_breach"))));
@@ -426,22 +426,17 @@ fn a_kept_plan_keeps_its_flags_through_flag_churn() {
 /// [1003, 1004] plan is never reused by a [1004] one. The same filter twice gives the same keys.
 #[test]
 fn a_trainee_filter_that_changes_a_class_changes_the_plan_key() {
-    let r = concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/");
-    let rd = |f: &str| std::fs::read_to_string(format!("{r}{f}")).unwrap();
-    let data = crate::data::load_str(&rd("data.json"));
-    let skills: SkillsRaw = serde_json::from_str(&rd("web_skills.json")).unwrap();
-    let cards: CardsRaw = serde_json::from_str(&rd("web_cards.json")).unwrap();
-    let mut job: Value = serde_json::from_str(
+    let (data, skills, cards, _) = p16();
+    let file: Value = serde_json::from_str(
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nested_nopal.json")).unwrap(),
     )
     .unwrap();
-    job["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
-    let db: crate::deck::sources::CardEventCache = serde_json::from_str(&rd("card_events.json")).unwrap();
-    crate::deck::sources::apply_events_db(&mut job, &skills, &db);
+    let mut job = file["job"].clone();
+    job["deck"]["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
     let her = UmaIndex(data.umas.iter().position(|uma| uma.id == 1004).unwrap());
     let keys = |trainees: Value| {
         let mut filtered = job.clone();
-        filtered["trainees"] = trainees;
+        filtered["career"]["trainees"] = trainees;
         let seen = std::rc::Rc::new(std::cell::Cell::new((0u64, 0u64, 0usize)));
         let sink = std::rc::Rc::clone(&seen);
         ENV_HOOK.with(|cell| {
@@ -450,7 +445,7 @@ fn a_trainee_filter_that_changes_a_class_changes_the_plan_key() {
                 sink.set((env.setup.class_key[her], env.setup.plan_space_key, plain_pals));
             }));
         });
-        run_career(&data, &skills, &cards, &filtered);
+        call(&data, &skills, &cards, &filtered);
         seen.get()
     };
     let (wide, narrow) = (keys(json!([1003, 1004])), keys(json!([1004])));

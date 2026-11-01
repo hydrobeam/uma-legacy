@@ -366,7 +366,7 @@ def schedule_bound(tags: tuple[str, ...] = ("ref", "refpu")) -> ScheduleBound:
     bound = ScheduleBound([], MaxErrors(), set(), {}, {})
     for era, j in json.load(open(os.path.join(VAL, "jobs.json"))):
         job = json.load(open(os.path.join(VAL, "jobs", j + ".json")))
-        if job.get("mode") != "deck":
+        if job["job"]["cmd"] != "deck":
             continue
         dd = os.path.join(common.ROOT, "pkg", "loopopt", "data", era)
         data = json.load(open(os.path.join(dd, "data.json")))

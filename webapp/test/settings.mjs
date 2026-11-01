@@ -14,7 +14,7 @@ export default async function settings(b) {
           JSON.stringify({
             v: 2,
             era: 'global',
-            common: { rank: '0.20,0.70,0.10' },
+            common: { rank: 'ss_and_up' },
             global: { roster: { 1001: 'out' }, cardsOff: { 30052: false } },
             gm: { roster: { 1002: 'out' } },
           }),
@@ -31,7 +31,7 @@ export default async function settings(b) {
     ),
   );
   await expect.soft(pg.locator('#cards button[aria-pressed="false"]'), '… card ownership too').toHaveCount(1);
-  await expect.soft(pg.locator('#rank'), '… and rank').toHaveAttribute('data-value', '0.20,0.70,0.10');
+  await expect.soft(pg.locator('#rank'), '… and rank').toHaveAttribute('data-value', 'ss_and_up');
   // changes persist across a reload
   await openEditor(pg, 'umas');
   await pg.locator('#roster [data-uma] button').nth(3).click();
@@ -47,12 +47,12 @@ export default async function settings(b) {
   await pg.click('#ex-open');
   const text = await pg.inputValue('#ex-text');
   const other = JSON.parse(text);
-  other.settings.rank = '0.50,0.45,0.05';
+  other.settings.rank = 'below_ss';
   await pg.fill('#ex-text', JSON.stringify(other));
   await pg.click('#ex-load');
-  check('export: the rank as set', JSON.parse(text).settings.rank === '0.20,0.70,0.10');
+  check('export: the rank as set', JSON.parse(text).settings.rank === 'ss_and_up');
   await expect.soft(pg.locator('#ex-msg'), 'export then import: settings load').toHaveText('Settings loaded.');
-  await expect.soft(pg.locator('#rank'), '… the rank imported').toHaveAttribute('data-value', '0.50,0.45,0.05');
+  await expect.soft(pg.locator('#rank'), '… the rank imported').toHaveAttribute('data-value', 'below_ss');
   // a setting of the wrong shape (a hand edit) is left out and named; the rest loads, and the page still loads after it
   // (the wrong value used to be saved first, and every later load failed on it)
   const bad = JSON.parse(text);
@@ -63,7 +63,7 @@ export default async function settings(b) {
     .soft(pg.locator('#ex-msg'), 'import: a malformed setting is named')
     .toHaveText(/Not understood, so left as they were: targets\.$/);
   await expect.soft(pg.locator('#targets > [data-g]'), '… and left as it was').toHaveCount(8);
-  await expect.soft(pg.locator('#rank'), '… the others load').toHaveAttribute('data-value', '0.20,0.70,0.10');
+  await expect.soft(pg.locator('#rank'), '… the others load').toHaveAttribute('data-value', 'ss_and_up');
   await pg.click('#ex-close');
   await settle(pg);
   await pg.reload();
@@ -85,7 +85,7 @@ export default async function settings(b) {
             era: 'global',
             common: {
               scen: 'grandmasters',
-              rank: '0.20,0.70,0.10',
+              rank: 'ss_and_up',
               targets: [{ group: 20049 }, { group: 20046 }, { group: 20159 }],
             },
             global: {},
@@ -99,8 +99,8 @@ export default async function settings(b) {
   });
   const gm = 'Grand Masters saved, Global data active: Unity Cup is used';
   await expect.soft(p3.locator('#x-scen'), gm).toHaveAttribute('data-value', 'unity');
-  check(`${gm}: in the search`, await p3.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
-  await expect.soft(p3.locator('#rank'), `${gm}: its rank`).toHaveAttribute('data-value', '0.50,0.45,0.05');
+  check(`${gm}: in the search`, await p3.evaluate(() => window.__runs.at(-1).deck.scenario === 'unity'));
+  await expect.soft(p3.locator('#rank'), `${gm}: its rank`).toHaveAttribute('data-value', 'below_ss');
   await expect.soft(p3.locator('#g-20049'), `${gm}: its golds`).toHaveAttribute('data-g', '2');
   await p3.context().close();
 }

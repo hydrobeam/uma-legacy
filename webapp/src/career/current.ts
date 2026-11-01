@@ -22,7 +22,8 @@ import { openPool } from './view/poolState.ts';
 import { Blocked, buildJob, isFull, placesKey, umasNotOwned } from './job.ts';
 import { searchIn } from './reply.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerTrainee, OptionRow, PoolActs } from './job.ts';
-import type { PlanProgress } from '../solver.ts';
+import type { PlanProgress, SolverAnswer } from '../solver.ts';
+import type * as Gen from '../gen/solver.ts';
 import type { LineageNode, Sparks, Veteran, VetRecord } from '../veterans/store.ts';
 import type { DeepReadonly } from '../store.ts';
 
@@ -70,7 +71,7 @@ export function dropStaleChosen(): void {
   const c = chosen.peek();
   if (!c) return;
   // (settings that make no job: the chosen career no longer applies; a bug building it is reported, and the start goes on)
-  if (orNull(currentJob, Blocked)?.career === c.id) return;
+  if (orNull(currentJob, Blocked)?.career.given === c.id) return;
   choiceDropped({
     places: c.places,
     text: 'The deck you chose with Use this before the reload no longer fits (its trainee, parents, their records, the targets or the card settings changed), so this is the deck the search finds.',
@@ -175,21 +176,30 @@ export const runJob = async (
   background = false,
 ): Promise<CareerAnswer> => {
   // (a career job: its report is a CareerReply, a CareerSearch but for a kept plan's roll or check)
-  const m = (await engineRun(job, undefined, progress, background)) as CareerAnswer;
-  if ('error' in m.r) return m; // (a refusal: nothing to fill in)
+  const m = asTableRows((await engineRun(job, undefined, progress, background)) as SolverAnswer<Gen.CareerReply>);
+  if (m.r.kind === 'refusal') return m; // (a refusal: nothing to fill in)
   const r = searchIn(m.r);
   if (!r) return m; // (a kept plan's roll or check: no career in it)
-  const plan = r.next && !('error' in r.next) ? r.next : undefined;
+  const plan = r.next?.kind === 'plan' ? r.next : undefined;
   for (const x of [...(r.results || []), plan?.choice, ...(plan?.options || [])]) oneOutfit(x?.trainee);
   // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
   // taken again from `planKept` or `answers` says the same)
   if (plan?.options) {
     plan.unproven_why = unprovenWhy(r);
     // (and the named assumptions any search of the job rests on: the status line's plan caveat, `planNote`)
-    plan.job_assumes = r.job_assumes || [];
+    plan.job_assumes = r.certificates.job_assumes || [];
   }
   return m;
 };
+// The answer with its plan's options as the plan table's rows: each option's career report (`report`) with its place in
+// the plan beside its fields, the shape every row of the table (a search's career or a plan's) shares (job.ts
+// `PlanOption`)
+function asTableRows(m: SolverAnswer<Gen.CareerReply>): CareerAnswer {
+  const { r } = m;
+  if (r.kind !== 'search' || r.next?.kind !== 'plan') return m as CareerAnswer;
+  const options = r.next.options.map(({ report, ...place }) => ({ ...report, ...place }));
+  return { ...m, r: { ...r, next: { ...r.next, options } } } as CareerAnswer;
+}
 
 // ---------- the veterans and places, followed
 // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the places,

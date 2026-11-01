@@ -10,7 +10,7 @@
 //! P(all), each equal to the page's career's to the bit (the `career` job the page's Use this sends for it, or the plan's
 //! pick).
 mod common;
-use common::{run_jobs, val_job};
+use common::{check_of, run_jobs, val_job};
 use serde_json::{Value, json};
 
 /// The check jobs the page sends after the plan, at most: one per variant (7 fixed, up to 3 per-uma scenarios), then
@@ -20,8 +20,8 @@ const CHECK_JOBS: usize = 12;
 /// The val/plan pool's job as the page's plan job sends it (`no_reports`; the pools already set `top` 6, no places).
 fn plan_job(pool: &str) -> Value {
     let mut job = val_job(&format!("plan/{pool}.json"));
-    job["next"] = json!({});
-    job["no_reports"] = json!(true);
+    job["job"]["career"]["next"] = json!({});
+    job["job"]["career"]["no_reports"] = json!(true);
     job
 }
 
@@ -54,11 +54,11 @@ impl LandedSets {
 fn page_recommendation(pool: &str) -> PageRecommendation {
     let job = plan_job(pool);
     let mut check_job = job.clone();
-    check_job["next"] = json!({"robust": "next", "pair_search": true});
+    check_job["job"]["career"]["next"] = json!({"robust": "next", "pair_search": true});
     let jobs: Vec<Value> = std::iter::once(job).chain(std::iter::repeat_n(check_job, CHECK_JOBS)).collect();
     let outputs = run_jobs(pool, &jobs);
     let plan = &outputs[0]["next"];
-    let check = &outputs[CHECK_JOBS]["next"]["robust"];
+    let check = check_of(&outputs[CHECK_JOBS]);
     assert_eq!(check["pending"], json!(0), "{pool}: the check is complete");
     assert_eq!(check["plan"], plan["outcomes"]["career"], "{pool}: the check is of the plan's pick");
     let pairs = &check["pairs"];
@@ -89,7 +89,7 @@ struct SimulatedCareer {
 
 fn simulated_first_career(pool: &str) -> SimulatedCareer {
     let mut job = plan_job(pool);
-    job["simulate"] = json!({"policy": "index", "act_on": "pair_search", "runs": 1, "max_careers": 1});
+    job["job"]["career"]["simulate"] = json!({"policy": "index", "act_on": "pair_search", "runs": 1, "max_careers": 1});
     let output = &run_jobs(&format!("{pool}-sim"), &[job])[0];
     let run = &output["runs"][0];
     let text = |value: &Value| value.as_str().unwrap_or_else(|| panic!("{pool}: not recorded: {run}")).to_string();
@@ -116,11 +116,11 @@ fn named_career(pool: &str, id: &str) -> LandedSets {
     let (first, rest) = rest.split_once(',').unwrap();
     let second = rest.split_once(':').unwrap().0;
     let mut job = plan_job(pool);
-    job.as_object_mut().unwrap().remove("next");
-    job["trainees"] = json!([trainee.parse::<u32>().unwrap()]);
-    job["fix"] = json!([first.parse::<usize>().unwrap(), second.parse::<usize>().unwrap()]);
-    job["career"] = json!(id);
-    job["top"] = json!(1);
+    job["job"]["career"].as_object_mut().unwrap().remove("next");
+    job["job"]["career"]["trainees"] = json!([trainee.parse::<u32>().unwrap()]);
+    job["job"]["career"]["fix"] = json!([first.parse::<usize>().unwrap(), second.parse::<usize>().unwrap()]);
+    job["job"]["career"]["given"] = json!(id);
+    job["job"]["career"]["top"] = json!(1);
     let output = &run_jobs(&format!("{pool}-named"), &[job])[0];
     assert_eq!(output["results"][0]["career"], json!(id), "{pool}: the career job reports the career named");
     LandedSets::of(&output["results"][0])

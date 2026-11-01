@@ -131,7 +131,10 @@ export default async function autosearch(b) {
   await pg.click('#c-top [data-v="3"]');
   await pg.click('#c-peruma');
   await pg.waitForFunction(
-    (n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false,
+    (n) =>
+      window.__runs.length > n &&
+      window.__runs.at(-1).deck.top_decks === 3 &&
+      window.__runs.at(-1).deck.per_uma === false,
     r0,
   ); // the slow search itself is running (not a quick job from the first change alone)
   const k0 = await pg.evaluate(() => window.__killed);

@@ -9,9 +9,10 @@ use common::{run_job, val_job};
 #[test]
 fn looped_career_is_offered() {
     let mut job = val_job("plan/p16.json");
-    let targets: Vec<u64> = job["targets"].as_array().unwrap().iter().map(|t| t["group"].as_u64().unwrap()).collect();
+    let targets: Vec<u64> =
+        job["job"]["skills"]["targets"].as_array().unwrap().iter().map(|t| t["group"].as_u64().unwrap()).collect();
     for i in [5, 15] {
-        let sp = job["legacies"][i]["sparks"].as_array_mut().unwrap();
+        let sp = job["job"]["career"]["legacies"][i]["sparks"].as_array_mut().unwrap();
         let have: Vec<u64> = sp.iter().map(|s| s[0].as_u64().unwrap()).collect();
         for &g in &targets {
             if !have.contains(&g) {
@@ -31,8 +32,8 @@ fn looped_career_is_offered() {
     assert!(
         pick["looped"] == true && pick["role"] == "finish",
         "pick {} on {}: role {}, looped {}",
-        pick["trainee"]["name"],
-        pick["parents"],
+        pick["report"]["trainee"]["name"],
+        pick["report"]["parents"],
         pick["role"],
         pick["looped"]
     );

@@ -12,7 +12,6 @@
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
     "allowImportingTsExtensions": true,
-    "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "jsx": "react-jsx",
     "jsxImportSource": "preact",

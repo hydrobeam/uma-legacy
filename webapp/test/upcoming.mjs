@@ -12,7 +12,7 @@ export default async function upcoming(b) {
     });
     const tiles = await pg.locator('#roster > [data-uma]').count(),
       cards = await pg.locator('#cards button[aria-pressed]').count();
-    await pg.click('#rank button[data-v="0.20,0.70,0.10"]');
+    await pg.click('#rank button[data-v="ss_and_up"]');
     await settle(pg);
     const job = await pg.evaluate(() => window.__runs.filter((j) => j.cmd === 'deck').at(-1));
     const data = { cards: await json(pg, 'data-cards'), umas: await json(pg, 'data-umas') };
@@ -41,9 +41,9 @@ export default async function upcoming(b) {
     'upcoming: what starts later is left out of the search',
     later.outfits.length + later.cards.length > 0 &&
       now.job &&
-      has(now.job.exclude, later.umas) &&
-      has(now.job.exclude_outfits, later.outfits) &&
-      has(now.job.exclude_cards, later.cards),
+      has(now.job.skills.exclude, later.umas) &&
+      has(now.job.skills.exclude_outfits, later.outfits) &&
+      has(now.job.deck.exclude_cards, later.cards),
     JSON.stringify(later),
   );
   // R cards stay out whatever their date (no setting turns them on: settings.ts `rcards`)
@@ -51,14 +51,14 @@ export default async function upcoming(b) {
   check(
     'upcoming: once started it is in the search',
     then.job &&
-      none(then.job.exclude, later.umas) &&
-      none(then.job.exclude_outfits, later.outfits) &&
+      none(then.job.skills.exclude, later.umas) &&
+      none(then.job.skills.exclude_outfits, later.outfits) &&
       none(
-        then.job.exclude_cards,
+        then.job.deck.exclude_cards,
         later.cards.filter((id) => rare.has(id)),
       ),
     // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
-    JSON.stringify(then.job && then.job.exclude_cards.filter((id) => later.cards.includes(id))),
+    JSON.stringify(then.job && then.job.deck.exclude_cards.filter((id) => later.cards.includes(id))),
   );
   check(
     'upcoming: once started its outfits and cards are on the page',

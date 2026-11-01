@@ -38,11 +38,11 @@
 //! - `nested`: proven bounds for decks with a card whose chain feeds two targets, which the class caps miss.
 //! - `pdeck`: the decks a search returns (`PDeck`), their shared names and identity key.
 //! - `tests`: the deck model's tests.
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 /// An event that names two or more skills (`DeckJob::choice_events`), read from the job's array
 /// `[card, link, choices]`.
-#[derive(Deserialize, ts_rs::TS)]
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
 #[ts(type = "[number, number, Array<Array<Array<[number, number]>>>]")]
 pub(crate) struct ChoiceEvent {
     pub(crate) card: u32,
@@ -104,7 +104,11 @@ pub(crate) struct CardsRaw {
     pub restrict: HashMap<String, Vec<u32>>,
 }
 
-#[derive(Deserialize, ts_rs::TS)]
+/// A job's deck search: the deck space (cards, size, scenario), the event lists (the job's own, then the card-event
+/// cache's: `sources::EventLists`), the chain law and the search's settings; the deck half of a deck or career job
+/// (`request::DeckRequest`, `CareerRequest`).
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DeckJob {
     /// experiments: chain events per run Binomial(n, p) for every deck, in place of the pal-count rate
     #[serde(default)]
@@ -114,17 +118,17 @@ pub(crate) struct DeckJob {
     #[serde(default)]
     #[ts(optional)]
     pub chain_budget: Option<(f64, f64)>,
-    /// experiments: "slots" picks the card a chain event advances in proportion to its links left and stops each
-    /// card-event stop risk on its own k of n (the model before the card rule), with either law; default "card", each
-    /// running card equally and every card-event stop at `CHAIN_STOP_SHARE`
+    /// how a chain event picks the card it advances (`chains::PickRule`): "card" (default), each running card equally,
+    /// every card-event stop at `CHAIN_STOP_SHARE`; experiments: "slots", in proportion to its links left, each
+    /// card-event stop risk on its own k of n (the model before the card rule), with either law
     #[serde(default)]
-    #[ts(optional)]
-    pub chain_rule: Option<String>,
-    /// Independent Training scenario: "unity" (default), "gc" (Grand Concert), "ura", "trackblazer", "grandmasters" (JP); sets how many
-    /// training-hint draws a card gives (`hint_base`)
-    #[serde(default = "d_scenario")]
     #[ts(as = "Option<_>", optional)]
-    pub scenario: String,
+    pub chain_rule: chains::PickRule,
+    /// the Independent Training scenario (`hints::Scenario`; Unity Cup unless sent): how many training-hint draws a card
+    /// gives (`Scenario::hint_base`), and the cards the game bans from its deck (`CardsRaw::restrict`)
+    #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
+    pub scenario: hints::Scenario,
     #[serde(default = "d_size")]
     #[ts(as = "Option<_>", optional)]
     pub deck_size: usize,
@@ -195,11 +199,10 @@ pub(crate) struct DeckJob {
     #[serde(default = "d_one")]
     #[ts(as = "Option<_>", optional)]
     pub top_decks: usize,
-    /// experiment: fixed per-uma race schedules instead of loop-optimised ones. "solo" = each uma maximises her
-    /// own expected race wins; "goals" = career objectives only; "none" = shared wins count for nothing.
+    /// experiment: fixed per-uma race schedules instead of loop-optimised ones (`FixedSchedule`)
     #[serde(default)]
     #[ts(optional)]
-    pub schedule: Option<String>,
+    pub schedule: Option<FixedSchedule>,
     /// one deck per uma instead of one shared deck: each trainee runs her own best legal deck across her lineages
     /// (three in a four-uma loop, one in a rotation); `top_decks` then counts structures
     #[serde(default)]
@@ -238,14 +241,14 @@ impl DeckJob {
             chains::ChainModel::pal_rate(intercept, slope, rule)
         }
     }
-    /// The job's pick rule: `chain_rule` "slots", else the card rule.
-    pub(crate) fn chain_pick_rule(&self) -> chains::PickRule {
-        if self.chain_rule.as_deref() == Some("slots") { chains::PickRule::Slots } else { chains::PickRule::Card }
+    /// The job's pick rule (`chain_rule`).
+    pub(crate) const fn chain_pick_rule(&self) -> chains::PickRule {
+        self.chain_rule
     }
     /// The share (k of n) of its firings on which every card-event (default-choice) stop risk (`event_stop_risk`) ends
     /// its chain: `CHAIN_STOP_SHARE` under the card rule; None under the slots rule, the model before it, where each stop
     /// takes its own k of n outcomes. The job's pinned stops (`stop_risk`) keep their own k of n under either rule.
-    pub(crate) fn chain_stop_share(&self) -> Option<(u8, u8)> {
+    pub(crate) const fn chain_stop_share(&self) -> Option<(u8, u8)> {
         match self.chain_pick_rule() {
             chains::PickRule::Card => Some(chains::CHAIN_STOP_SHARE),
             chains::PickRule::Slots => None,
@@ -253,14 +256,23 @@ impl DeckJob {
     }
 }
 
+/// A deck job's fixed race schedules (`DeckJob::schedule`), an experiment.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, ts_rs::TS)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum FixedSchedule {
+    /// each uma maximises her own expected race wins
+    Solo,
+    /// career objectives only
+    Goals,
+    /// each uma's solo schedule, and shared wins count for nothing
+    None,
+}
+
 const fn d_one() -> usize {
     1
 }
 pub(crate) const fn d_true() -> bool {
     true
-}
-fn d_scenario() -> String {
-    "unity".into()
 }
 const fn d_hinc() -> u32 {
     1
@@ -275,7 +287,7 @@ const fn d_rar() -> u8 {
 pub(crate) mod caps;
 pub(crate) mod chains;
 pub(crate) mod enumerate;
-mod hints;
+pub(crate) mod hints;
 pub(crate) mod joint;
 pub(crate) mod nested;
 pub(crate) mod pdeck;

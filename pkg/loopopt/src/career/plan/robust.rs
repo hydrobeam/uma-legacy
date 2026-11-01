@@ -24,10 +24,9 @@ use crate::career::plan::{CheckRequest, PlanCandidates, PlanContext, PlanJob, Sc
 use crate::career::pool::Pool;
 use crate::career::search::Found;
 use crate::career::sim::Sim;
-use crate::career::state::{KeptState, hash_text, json_without};
+use crate::career::state::KeptState;
 use crate::career::{Env, JobInputs, Legacy};
 use crate::refusal::Refusal;
-use serde_json::Value;
 
 include!(concat!(env!("OUT_DIR"), "/plan_constants.rs"));
 
@@ -208,12 +207,6 @@ struct CheckWork {
     candidates: CheckCandidates,
     fit: CheckFit,
     cache: Cache,
-}
-
-/// A plan job's check key: the whole job but its roll, its check and oracle requests and the page's flags that change
-/// no plan (`roll_key`'s, with `next.robust` and `next.oracle`)
-pub(crate) fn check_key(job: &Value) -> u64 {
-    hash_text(&json_without(job, &["no_reports", "compare", "roll"], &["roll", "robust", "oracle", "pair_search"]))
 }
 
 /// A variant's base: the plan's trios and sides (the same careers, veterans and C's) priced under the variant's
@@ -1396,11 +1389,11 @@ pub(crate) fn check_kept<'data>(
     plan_job: &PlanJob,
 ) -> Option<CheckReply> {
     let request = plan_job.robust?;
-    let key = check_key(input.job);
+    let key = input.job.plan_key();
     let Some(index) = worker.checks.iter().position(|check| check.key == key) else {
         // (the page's one-variant job never runs the plan behind the player's next job)
         return (request == CheckRequest::Next)
-            .then(|| CheckReply::Unavailable { error: "no kept plan to check".to_owned(), unavailable: true });
+            .then(|| CheckReply::Unavailable { error: "no kept plan to check".to_owned() });
     };
     let kept_check = &worker.checks[index];
     let pairs_lost = plan_job.pair_search && kept_check.pairs.is_none() && kept_check.work.is_none();

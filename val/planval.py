@@ -253,16 +253,17 @@ def builders_searched_exactly(job):
     check (None where it may read proxies): candidates.rs `builders_use_proxies`, from the job's fields. Sufficient
     conditions only: a borrowed veteran under `borrowed_parent` "later" may count there or not, so such a job keeps
     its proxy run, which reports where the plan read no proxy after all."""
-    plan = job.get("next") or {}
-    targets = len(job.get("targets") or [])
+    career = solver.part(job, "career")
+    plan = career.get("next") or {}
+    targets = len(solver.part(job, "skills").get("targets") or [])
     if plan.get("exact_all"):
         return "next.exact_all"
-    if plan.get("sur", 0):
+    if plan.get("sur", "search") != "search":
         return f"next.sur {plan['sur']}: builders through the surrogate"
     if targets >= exact_builders_targets():
         return f"{targets} targets: exact_builders"
-    if job.get("borrowed_parent", "allow") == "allow" and any(
-        legacy.get("borrowed") for legacy in job.get("legacies") or []
+    if career.get("borrowed_parent", "allow") == "allow" and any(
+        legacy.get("borrowed") for legacy in career.get("legacies") or []
     ):
         return "a borrowed veteran a career may use: exact_builders"
     return None
@@ -272,8 +273,9 @@ def proxy_gate(job_entry, job_dir):
     era, name = job_entry
     job = json.loads(json.dumps(job_files[name]))
     # (the robustness check and its pair search change no pick, V or row: left out of the all-exact run)
-    plan = {key: value for key, value in job.get("next", {}).items() if key not in ("robust", "pair_search")}
-    job["next"] = {**plan, "proxy_check": True}
+    career = job["job"]["career"]
+    plan = {key: value for key, value in career.get("next", {}).items() if key not in ("robust", "pair_search")}
+    career["next"] = {**plan, "proxy_check": True}
     path = os.path.join(job_dir, name + ".json")
     json.dump(job, open(path, "w"))
     stdout = solver.run(binary, era, path, name=f"{name} (proxy_check)")
@@ -288,8 +290,9 @@ def proxy_gate(job_entry, job_dir):
 def plan_view(plan):
     """what a player sees of a plan: the pick's career, V, and the top OPT_SHOW rows by score"""
     career = lambda o: o.get("career") or [o["trainee"]["name"], o.get("parents")]
-    chosen = next((o for o in plan["options"] if o.get("chosen")), None)
-    scored = sorted((o for o in plan["options"] if o.get("score") is not None), key=lambda o: -o["score"])
+    rows = solver.plan_rows(plan)
+    chosen = next((o for o in rows if o.get("chosen")), None)
+    scored = sorted((o for o in rows if o.get("score") is not None), key=lambda o: -o["score"])
     return (
         json.dumps(career(chosen)) if chosen else None,
         plan.get("v0"),
@@ -316,7 +319,7 @@ ODDS_MATCH = 1e-9
 
 def trainee_ids(plan):
     """{trainee name: uma id} from the plan's rows and its choice"""
-    rows = [*(plan.get("options") or []), *([plan["choice"]] if plan.get("choice") else [])]
+    rows = [*solver.plan_rows(plan), *([plan["choice"]] if plan.get("choice") else [])]
     return {row["trainee"]["name"]: row["trainee"]["id"] for row in rows if "id" in row.get("trainee", {})}
 
 
@@ -328,9 +331,10 @@ def career_parents(career_id):
 
 def borrowing_excludes(job, parents):
     """a career on these parents is no runnable option under the job's `borrowed_parent` rule"""
-    legacies = job.get("legacies") or []
+    career = solver.part(job, "career")
+    legacies = career.get("legacies") or []
     borrowed = sum(bool(legacies[i].get("borrowed")) for i in parents if 0 <= i < len(legacies))
-    return borrowed > BORROW_LIMIT.get(job.get("borrowed_parent", "allow"), 1)
+    return borrowed > BORROW_LIMIT.get(career.get("borrowed_parent", "allow"), 1)
 
 
 def only_row(what, rows, missing):
@@ -350,8 +354,8 @@ def route_first_step(plan, job):
     the job's `next.fit` gave her Cont (output.rs: no builder then), and a builder career missing from the rows is
     documented when the job's borrowing rule keeps one of its parents from running now; every other missing or
     ambiguous match fails"""
-    options, ids = plan.get("options") or [], trainee_ids(plan)
-    given_fit = {entry[0] for entry in (job.get("next") or {}).get("fit") or []}
+    options, ids = solver.plan_rows(plan), trainee_ids(plan)
+    given_fit = {entry[0] for entry in (solver.part(job, "career").get("next") or {}).get("fit") or []}
     for member in plan.get("members") or []:
         if member.get("real"):
             continue
@@ -381,7 +385,7 @@ def route_first_step(plan, job):
         return only_row(f"{name}'s own career {parents}", rows, "no row of hers on the side's parents at its odds")
     finisher = (plan.get("v0_plan") or {}).get("c")
     members = sorted(ids.get(m["trainee"], -1) for m in plan.get("members") or [])
-    legacies = job.get("legacies") or []
+    legacies = solver.part(job, "career").get("legacies") or []
 
     def parent_charas(row):
         """the row's parents' umas, sorted; None where a parent is no legacy of the job (no match)"""

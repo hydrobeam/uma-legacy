@@ -1,9 +1,11 @@
-//! What a career job answers (`CareerReply`): the career search with its reports and certificates, a plan's follow-up
-//! from the worker's kept state, the simulator's report, the kept state out and back in, or a refusal. The page's
-//! types are generated from these (`crate::ts_gen`). A reply owns what it holds: it outlives the job's search.
-use crate::career::plan::report::{PlanReply, RollReply};
+//! What a career job answers (`CareerReply`, told apart by its `kind`): the career search with its reports and
+//! certificates, a plan's roll or check from the worker's kept state, the simulator's report, the kept state out and
+//! back in, a job's answer with the roll it carried, or a refusal. The page's types are generated from these
+//! (`crate::ts_gen`): a union the page narrows by `kind`. A reply owns what it holds: it outlives the job's search.
+use crate::career::plan::report::{CheckReply, PlanReply, RollReply};
 use crate::career::search::{Assumes, Unproven};
 use crate::chart::ScheduleRow;
+use crate::codes::Grade;
 use crate::deck::pdeck::ResultDeck;
 use crate::loop_planner::output::{OutfitLabel, TargetCover};
 use crate::refusal::Refusal;
@@ -11,26 +13,31 @@ use crate::skills::LegacyKind;
 use serde::Serialize;
 use ts_rs::TS;
 
-/// A career job's answer: the job's own, or, for a job that carried a roll of a kept plan (`roll`), its own with the
-/// roll's beside it.
+/// A career job's answer, by its `kind`.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum CareerReply {
-    Answer(CareerAnswer),
-    Carried(Box<CarriedRoll>),
-}
-
-/// A career job's own answer.
-#[derive(Serialize, TS)]
-#[serde(untagged)]
-pub(crate) enum CareerAnswer {
     Refusal(Refusal),
+    /// the career search, with its plan (`next`) when asked
     Search(Box<CareerSearch>),
-    /// a plan's roll or check answered from the worker's kept state, no search (`next.roll`, `next.robust`)
-    FollowUp(PlanFollowUp),
-    Simulation(Box<crate::career::sim::report::SimReply>),
+    /// a plan's roll answered from the worker's kept state, no search (`next.roll`)
+    Roll {
+        roll: RollReply,
+    },
+    /// a plan's check answered from the worker's kept state, no search (`next.robust`)
+    Check {
+        robust: CheckReply,
+    },
+    /// the simulator's runs (`simulate`; native only)
+    Simulation(Box<crate::career::sim::report::SimReport>),
+    /// the simulator's `trace` policy
+    Trace(Box<crate::career::sim::report::TraceReport>),
+    /// the kept work out (`state_out`)
     StateOut(crate::career::state::StateOut),
-    StateIn(crate::career::state::StateIn),
+    /// what a stored state put back (`state_in`)
+    StateIn(crate::career::state::StateCounts),
+    /// a job's own answer with the roll of a kept plan it carried (`roll`, `run_carried_roll`)
+    Carried(Box<CarriedRoll>),
     /// (tests: a job whose `Env` went to a check instead of the search; not in the page's types)
     #[cfg(test)]
     #[ts(skip)]
@@ -40,23 +47,9 @@ pub(crate) enum CareerAnswer {
 /// A job's answer with the roll it carried (`run_carried_roll`).
 #[derive(Serialize, TS)]
 pub(crate) struct CarriedRoll {
-    #[serde(flatten)]
-    pub(crate) reply: CareerAnswer,
+    /// the job's own answer (never a carried one)
+    pub(crate) reply: CareerReply,
     pub(crate) roll: RollReply,
-}
-
-/// A plan's roll or check answered from the worker's kept state.
-#[derive(Serialize, TS)]
-pub(crate) struct PlanFollowUp {
-    pub(crate) next: FollowUp,
-}
-
-/// What a follow-up answers.
-#[derive(Serialize, TS)]
-#[serde(untagged)]
-pub(crate) enum FollowUp {
-    Roll { roll: RollReply },
-    Robust { robust: crate::career::plan::report::CheckReply },
 }
 
 /// The career search's answer (career/run.rs `search_output`, or one career as it is, `given`): its careers, its counts,
@@ -103,7 +96,7 @@ pub(crate) struct CareerSearch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub(crate) next: Option<PlanReply>,
-    #[serde(flatten)]
+    /// what every search of the job certified
     pub(crate) certificates: JobCertificates,
     /// the solver's time in seconds (0 in the browser build, which has no clock here)
     pub(crate) timing_s: f64,
@@ -251,9 +244,10 @@ pub(crate) struct CareerTarget {
     pub(crate) buy: TargetBuy,
 }
 
-/// How she buys a target and lands it as a spark: the chance she buys it as gold and as white, and lands each.
+/// How she buys a target and lands it as a spark, by `kind`: the chance she buys it as gold and as white, and lands
+/// each.
 #[derive(Clone, Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum TargetBuy {
     /// an uncertain target, with its sources
     Sourced(SourcedBuy),
@@ -287,8 +281,6 @@ pub(crate) struct ScenarioBuy {
     pub(crate) white: f64,
     pub(crate) land_gold: f64,
     pub(crate) land_white: f64,
-    /// always true
-    pub(crate) scenario: bool,
 }
 
 /// A pink (aptitude) spark the legacies carry.
@@ -301,21 +293,21 @@ pub(crate) struct PinkInheritance {
     pub(crate) carriers: usize,
 }
 
-/// Her aptitude grades (data.json `apt` order, codes 1..8 = G..S) and her veteran's pink spark.
+/// Her aptitude grades (data.json `apt` order) and her veteran's pink spark.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct Aptitudes {
     /// her grades before any pink spark fires
-    pub(crate) base: [u8; 10],
+    pub(crate) base: [Grade; 10],
     /// the chance of each pink type on her veteran
     pub(crate) pink_gen: Vec<PinkTypeChance>,
-    #[serde(flatten)]
+    /// where her grades start
     pub(crate) start: AptitudeStart,
 }
 
-/// Her starting grades: known (one outcome), or one per outcome of a veteran among her legacies whose result is not
-/// known yet.
+/// Her starting grades, by `kind`: known (one outcome), or one per outcome of a veteran among her legacies whose result
+/// is not known yet.
 #[derive(Clone, Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum AptitudeStart {
     Known(PinkOutcomeReport),
     /// each possible start, with its chance
@@ -327,7 +319,7 @@ pub(crate) enum AptitudeStart {
 /// A start's grades and the legacy pinks that can fire at an April inspiration.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct PinkOutcomeReport {
-    pub(crate) start: [u8; 10],
+    pub(crate) start: [Grade; 10],
     pub(crate) fire: Vec<PinkFireReport>,
 }
 
@@ -335,7 +327,6 @@ pub(crate) struct PinkOutcomeReport {
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct WeightedPinkOutcome {
     pub(crate) p: f64,
-    #[serde(flatten)]
     pub(crate) outcome: PinkOutcomeReport,
 }
 
@@ -360,7 +351,7 @@ pub(crate) struct PinkTypeChance {
 /// turn and what she does.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct CareerScheduleRow {
-    #[serde(flatten)]
+    /// the loop schedule's row
     pub(crate) chart: ScheduleRow,
     /// 0..71
     pub(crate) turn: usize,
@@ -380,46 +371,28 @@ pub(crate) struct CareerScheduleRow {
     pub(crate) parents: [bool; 2],
 }
 
-impl CareerAnswer {
+impl CareerReply {
     /// The roll a plan job answered (`run_carried_roll`): its `next.roll`, else why there is none (the job's refusal,
     /// its plan's, or that the plan has no roll).
-    fn into_roll(self) -> RollReply {
+    pub(crate) fn into_roll(self) -> RollReply {
         let no_roll = || RollReply::Refusal(Refusal::new("the plan has no roll"));
         match self {
-            Self::FollowUp(PlanFollowUp { next: FollowUp::Roll { roll } }) => roll,
+            Self::Roll { roll } => roll,
             Self::Search(search) => match search.next {
                 Some(PlanReply::Plan(plan)) => plan.roll.unwrap_or_else(no_roll),
                 Some(PlanReply::Refusal(refusal)) => RollReply::Refusal(refusal),
                 None => no_roll(),
             },
             Self::Refusal(refusal) => RollReply::Refusal(refusal),
+            Self::Carried(carried) => carried.reply.into_roll(),
             _ => no_roll(),
         }
     }
-}
-
-impl CareerReply {
-    /// The roll a plan job answered: its own answer's (`CareerAnswer::into_roll`).
-    pub(crate) fn into_roll(self) -> RollReply {
-        match self {
-            Self::Answer(answer) => answer.into_roll(),
-            Self::Carried(carried) => carried.reply.into_roll(),
-        }
-    }
-    /// The job's own answer.
-    const fn answer(&self) -> &CareerAnswer {
-        match self {
-            Self::Answer(answer) => answer,
-            Self::Carried(carried) => &carried.reply,
-        }
-    }
-}
-
-impl CareerReply {
     /// The career search's answer, if this is one (a job that carried a roll: its own answer's).
     pub(crate) fn search(&self) -> Option<&CareerSearch> {
-        match self.answer() {
-            CareerAnswer::Search(search) => Some(search),
+        match self {
+            Self::Search(search) => Some(search),
+            Self::Carried(carried) => carried.reply.search(),
             _ => None,
         }
     }

@@ -1143,14 +1143,10 @@ mod lifted_tests {
         let data = crate::data::load_str(&read("data.json"));
         let skills: crate::skills::SkillsRaw = serde_json::from_str(&read("web_skills.json")).unwrap();
         let cards: crate::deck::CardsRaw = serde_json::from_str(&read("web_cards.json")).unwrap();
-        let mut job: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p10.json")).unwrap(),
-        )
-        .unwrap();
-        let events: crate::deck::sources::CardEventCache = serde_json::from_str(&read("card_events.json")).unwrap();
-        crate::deck::sources::apply_events_db(&mut job, &skills, &events);
-        job["no_reports"] = serde_json::json!(true);
-        let legacy_count = job["legacies"].as_array().unwrap().len();
+        let job = crate::request::testing::val_career("plan/p10.json", "global", &skills, |job| {
+            job["career"]["no_reports"] = serde_json::json!(true);
+        });
+        let legacy_count = job.career.legacies.len();
         let agnes = data.umas.iter().position(|uma| uma.name == "Agnes Digital").map(crate::uma::UmaIndex).unwrap();
         LIFTED.with(|lifted| *lifted.borrow_mut() = Some(vec![]));
         let mut kept = crate::career::state::KeptState::default();

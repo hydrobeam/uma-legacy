@@ -142,7 +142,7 @@ export default async function careerumamoe(b) {
       !requests[1].cookie &&
       !url.search.includes('test-key') &&
       url.searchParams.get('max_follower_num') === '999' &&
-      url.searchParams.getAll('main_white_factors').length === job.targets.length - 1,
+      url.searchParams.getAll('main_white_factors').length === job.skills.targets.length - 1,
     url.search.slice(0, 120),
   );
   check(
@@ -151,10 +151,10 @@ export default async function careerumamoe(b) {
   );
   check(
     "career uma.moe: the listings join the planner's pool as borrowed veterans, after yours, and are not saved",
-    job.legacies.length === 14 &&
-      job.legacies.slice(12).every((l) => l.borrowed) &&
+    job.career.legacies.length === 14 &&
+      job.career.legacies.slice(12).every((l) => l.borrowed) &&
       JSON.parse(store.career).global.vets.length === 12,
-    String(job.legacies.length),
+    String(job.career.legacies.length),
   );
   await vetsOpen();
   await pg.click('#v-tab-bor');
@@ -383,7 +383,7 @@ export default async function careerumamoe(b) {
   const tabsBefore = await stored();
   await globalTab.click('#v-toggle');
   await globalTab.locator('#v-pane .udrow.me .vsk:not(.pink) .vskb').first().click();
-  await globalTab.evaluate(() => document.querySelector('#rank button[data-v="0.20,0.70,0.10"]').click());
+  await globalTab.evaluate(() => document.querySelector('#rank button[data-v="ss_and_up"]').click());
   await globalTab.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r))));
   await globalTab.close();
   const tabsAfter = await stored();

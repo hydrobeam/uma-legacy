@@ -24,7 +24,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # val/, for the shared solver module
-from solver import PLAN_DIR, REPO, read_output
+from solver import PLAN_DIR, REPO, plan_rows, read_output
 
 CAREER_POOL = f"{REPO}/val/jobs/career_U5.json"
 FOUR_VETERAN_POOL = f"{REPO}/val/sim/pools/pool4.json"
@@ -41,7 +41,7 @@ def main(out):
 
     def write_job(source, name, **sim):
         job = json.load(open(source))
-        job["simulate"] = sim
+        job["job"]["career"]["simulate"] = sim
         json.dump(job, open(f"{out}/{name}.json", "w"))
         jobs.append(name)
 
@@ -104,7 +104,7 @@ def looped(out, pools, runs):
             print(f"{pool}: no reference plan ({reference_path}), skipped")
             continue
         plan = read_output(reference_path)["next"]
-        ids = {row["trainee"]["name"]: row["trainee"]["id"] for row in [plan["choice"], *plan["options"]]}
+        ids = {row["trainee"]["name"]: row["trainee"]["id"] for row in [plan["choice"], *plan_rows(plan)]}
         trio = [plan["v0_plan"][role] for role in "abc"]
         if any(name not in ids for name in trio):
             print(f"{pool}: the trio {trio} is not all among the plan's rows, skipped")
@@ -117,7 +117,7 @@ def looped(out, pools, runs):
         }
         for label, simulate in policies.items():
             job = json.load(open(f"{PLAN_DIR}/{pool}.json"))
-            job["simulate"] = {**common, **simulate}
+            job["job"]["career"]["simulate"] = {**common, **simulate}
             json.dump(job, open(f"{out}/lp_{pool}_{label}.json", "w"))
             jobs.append(f"lp_{pool}_{label}")
     open(f"{out}/queue_looped.txt", "w").write("\n".join(jobs) + "\n")

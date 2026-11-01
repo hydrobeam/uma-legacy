@@ -279,8 +279,6 @@ export const SCENARIOS: readonly [Scenario, ...Scenario[]] = [
     tint: '#f3e1d2',
   },
 ];
-// lineage rank: the star mix of the legacies' sparks (state.rank), below SS (rank score 6,500-17,499) or SS (17,500+)
-export const RANKS = { below: '0.50,0.45,0.05', ss: '0.20,0.70,0.10' };
 const URA_BASE = must(
   SCENARIOS.find((s) => s.v === 'ura'),
   'SCENARIOS lists URA',

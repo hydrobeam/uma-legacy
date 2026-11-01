@@ -8,7 +8,7 @@ use crate::career::plan::report::{
     LiftsSide, OptionRole, Plan, PlanMode, PlanOption, PlanRule, RankedRoute, RollCareer, RollReply, Route,
     RouteMember, StepCap, UmaName,
 };
-use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept, roll_key};
+use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept};
 use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, pick_of};
 use crate::career::plan::score::{KeptScoring, Truncation, replace_truncations};
 use crate::career::plan::{PlanCandidates, PlanContext, PlanProfile, PlanSearches};
@@ -279,7 +279,7 @@ fn pick_roll_state(context: &PlanContext, runs: &mut [PlanRow], scores: &PlanSco
         runs[pick].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
     let row = &runs[pick];
     RollKeep {
-        key: roll_key(input.resources.job),
+        key: input.resources.job.plan_key(),
         scored,
         later,
         base: KeptBase::of(&base),

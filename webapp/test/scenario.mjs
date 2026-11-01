@@ -19,7 +19,7 @@ export default async function scenario(b) {
     await expect.soft(button, `${what}: named`).toHaveAttribute('aria-label', `Scenario: ${name}`);
   };
   // the job last sent asks for this lineage rank
-  const jobRank = (dist) => pg.evaluate((d) => window.__runs.at(-1).star_dist.join() === d, dist);
+  const jobRank = (rank) => pg.evaluate((r) => window.__runs.at(-1).skills.rank_class === r, rank);
   const first = 'picker closed at first; the button is Unity Cup (logo only, named for assistive tech)';
   await expect.soft(menu, first).toBeHidden();
   await chosen('unity', 'Unity Cup', first);
@@ -184,24 +184,24 @@ export default async function scenario(b) {
     String(sirius),
   );
   const gc = 'picking Grand Concert sets the rank to SS';
-  await expect.soft(rank, gc).toHaveAttribute('data-value', '0.20,0.70,0.10');
-  check(`${gc}: the job`, await jobRank('0.2,0.7,0.1'));
+  await expect.soft(rank, gc).toHaveAttribute('data-value', 'ss_and_up');
+  check(`${gc}: the job`, await jobRank('ss_and_up'));
   await pickScen(pg, 'unity');
   await settle(pg);
-  await expect.soft(rank, 'picking Unity Cup sets it back to below SS').toHaveAttribute('data-value', '0.50,0.45,0.05');
-  await pg.click('#rank button[data-v="0.20,0.70,0.10"]');
+  await expect.soft(rank, 'picking Unity Cup sets it back to below SS').toHaveAttribute('data-value', 'below_ss');
+  await pg.click('#rank button[data-v="ss_and_up"]');
   await settle(pg);
   await pickScen(pg, 'unity');
   const sticks = 'a rank changed by hand sticks (re-picking the scenario leaves it)';
-  await expect.soft(rank, sticks).toHaveAttribute('data-value', '0.20,0.70,0.10');
-  check(`${sticks}: the job`, await jobRank('0.2,0.7,0.1'));
+  await expect.soft(rank, sticks).toHaveAttribute('data-value', 'ss_and_up');
+  check(`${sticks}: the job`, await jobRank('ss_and_up'));
   // the rank toggle is a radio group: game badges, arrow keys move the choice
   await pg.focus('#rank button[aria-checked="true"]');
   await pg.keyboard.press('ArrowLeft');
   const arrows = 'lineage rank: arrow keys switch it, aria-checked follows, badges shown';
-  await expect.soft(rank, arrows).toHaveAttribute('data-value', '0.50,0.45,0.05');
+  await expect.soft(rank, arrows).toHaveAttribute('data-value', 'below_ss');
   await expect
-    .soft(rank.locator('button[data-v="0.50,0.45,0.05"]'), `${arrows}: aria-checked`)
+    .soft(rank.locator('button[data-v="below_ss"]'), `${arrows}: aria-checked`)
     .toHaveAttribute('aria-checked', 'true');
   await expect.soft(rank.locator('[data-r] img'), `${arrows}: badges`).toHaveCount(3);
   await pg.keyboard.press('ArrowRight');

@@ -10,9 +10,8 @@ use crate::career::reply::CareerReport;
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::play::PathState;
 use crate::career::sim::report::{ExecutedCareer, RotationAudit, SurrogateAudit, TraceReport, TraceRun};
-use crate::career::sim::{ForcedCareer, Goal, IndexAction, PAGE_TOP, Sim, legacy_job_value};
+use crate::career::sim::{ForcedCareer, Goal, IndexAction, PAGE_TOP, Sim};
 use crate::career::{Career, Lineage, run_career_in};
-use serde_json::{Value, json};
 use std::rc::Rc;
 
 /// Loop rotation: the next member's position and each member's latest rotation veteran
@@ -403,17 +402,7 @@ impl Sim<'_, '_> {
         if legacies.len() < 2 {
             return None;
         }
-        let mut job = self.job.clone();
-        let job_fields = job.as_object_mut()?;
-        job_fields.remove("simulate");
-        job_fields.insert(
-            "legacies".into(),
-            Value::Array(legacies.iter().map(|&legacy| legacy_job_value(&state.legacies[legacy])).collect()),
-        );
-        // (the job's `fix` indexes its own legacies, not these: the simulator ignores it)
-        job_fields.insert("fix".into(), json!([]));
-        job_fields.insert("top".into(), json!(1));
-        job_fields.insert("per_trainee".into(), json!(false));
+        let job = self.own_job(legacies.iter().map(|&legacy| &state.legacies[legacy]), |_| {});
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
         let pick = report.search()?.results.first()?;
         // (the search's parents index `legacies`; the path's pool indexes every legacy)
@@ -423,14 +412,10 @@ impl Sim<'_, '_> {
     /// `force`: the forced first career, the trainee on the two parents with her best deck (the career search with
     /// both parents fixed, in process)
     pub(super) fn forced_cur(&mut self, state: &PathState, forced: ForcedCareer) -> Cur {
-        let mut job = self.job.clone();
-        let job_fields = job.as_object_mut().unwrap();
-        job_fields.remove("simulate");
-        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(legacy_job_value).collect()));
-        job_fields.insert("trainees".into(), json!([forced.trainee]));
-        job_fields.insert("fix".into(), json!(forced.parents));
-        job_fields.insert("top".into(), json!(1));
-        job_fields.insert("per_trainee".into(), json!(false));
+        let job = self.own_job(state.legacies.iter(), |career| {
+            career.trainees = vec![forced.trainee];
+            career.fixed_parents = forced.parents.to_vec();
+        });
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
         let pick = report.search().and_then(|search| search.results.first());
         let Some(pick) = pick.filter(|pick| pick.trainee.id == forced.trainee) else {
@@ -442,22 +427,17 @@ impl Sim<'_, '_> {
     /// `next`, `no_reports`: the plan job the page sends, docs/SOLVER.md "Next career"), in process; its `choice` runs.
     /// The job's `trainees` stay (the page sends none: every owned uma)
     pub(super) fn index_cur(&mut self, state: &PathState) -> Cur {
-        let mut job = self.job.clone();
-        let job_fields = job.as_object_mut().unwrap();
-        job_fields.remove("simulate");
-        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(legacy_job_value).collect()));
-        job_fields.insert("fix".into(), json!([]));
-        job_fields.insert("top".into(), json!(PAGE_TOP));
-        job_fields.insert("per_trainee".into(), json!(false));
-        let mut next = self.settings.next.clone();
-        if self.settings.act_on == IndexAction::PairSearch {
-            // (the page's check, every variant then the pair search, answered in the plan's own job: `check_kept`
-            // runs it on the plan's kept state after the plan)
-            next["robust"] = json!("all");
-            next["pair_search"] = json!(true);
-        }
-        job_fields.insert("next".into(), next);
-        job_fields.insert("no_reports".into(), json!(true));
+        let job = self.own_job(state.legacies.iter(), |career| {
+            career.top = PAGE_TOP;
+            let mut next = self.settings.next.clone();
+            if self.settings.act_on == IndexAction::PairSearch {
+                // (the page's check, every variant then the pair search, answered in the plan's own job: `check_kept`
+                // runs it on the plan's kept state after the plan)
+                next.ask_check_and_pair_search();
+            }
+            career.next = Some(next);
+            career.no_reports = true;
+        });
         let started = std::time::Instant::now();
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
         let plan = report.plan();
@@ -502,16 +482,12 @@ impl Sim<'_, '_> {
     /// career: a `career` job (docs/SOLVER.md) with her the one trainee and both parents fixed, its deck as named, no
     /// deck search; its report gives the career's exact P(all) and landed-set chances
     fn named_cur(&mut self, state: &PathState, recommendation: &Recommendation) -> Cur {
-        let mut job = self.job.clone();
-        let job_fields = job.as_object_mut().unwrap();
-        job_fields.remove("simulate");
-        job_fields.remove("next");
-        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(legacy_job_value).collect()));
-        job_fields.insert("trainees".into(), json!([recommendation.trainee_id]));
-        job_fields.insert("fix".into(), json!(recommendation.parents));
-        job_fields.insert("career".into(), json!(recommendation.career));
-        job_fields.insert("top".into(), json!(1));
-        job_fields.insert("per_trainee".into(), json!(false));
+        let job = self.own_job(state.legacies.iter(), |career| {
+            career.next = None;
+            career.trainees = vec![recommendation.trainee_id];
+            career.fixed_parents = recommendation.parents.to_vec();
+            career.given = Some(recommendation.career.clone());
+        });
         let started = std::time::Instant::now();
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
         let named = report.search().and_then(|search| search.results.first());

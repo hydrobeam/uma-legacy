@@ -4,11 +4,11 @@ use crate::career::plan::ParentPool;
 use crate::career::search::{Found, Ref};
 use crate::career::sim::Sim;
 use crate::career::state::StoredFound;
-use crate::career::state::hash_text;
 use crate::hex::Key;
+use crate::key::content_key;
+use crate::request::CareerRequest;
 use crate::uma::{UmaIndex, UmaTable};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use ts_rs::TS;
 /// A cached result may be available from searching, certification or reuse. A known empty result is
 /// reusable too; an unsearched entry still needs work. Completeness is tracked separately.
@@ -150,30 +150,29 @@ pub(crate) fn take_kept_plan(kept: &mut crate::career::state::KeptState, key: (u
 }
 
 /// A kept plan's key: (setup, places and deck space, the first `legacy_count` legacies). The borrowed-parent rule is in
-/// the first unless "allow": `setup_fp` leaves it out, and a plan under "later" or "never" keeps other looped careers,
+/// the first unless "allow": the setup key leaves it out, and a plan under "later" or "never" keeps other looped careers,
 /// under "never" other best careers too. The deck space (`space_key`, `CareerSetup::plan_space_key`: every uma's deck
 /// class content and the plain pals' order) is in it too: a trainee filter that changes a class's plain-pal rate prefix
 /// changes that class's deck problem and its careers' values, so its kept careers are not reused there
-pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usize, space_key: u64) -> (u64, u64) {
-    // (the slice's text as the array's: the same serializer, no copy)
-    let legacies_text = job
-        .get("legacies")
-        .and_then(|legacy_value| legacy_value.as_array())
-        .map(|legacies| serde_json::to_string(&legacies[..legacy_count.min(legacies.len())]).unwrap())
-        .unwrap_or_default();
-    (plan_scope(job, space_key) ^ hash_text(&format!("{fixed_parents:?}")).rotate_left(1), hash_text(&legacies_text))
+pub(crate) fn bests_key(
+    job: &CareerRequest,
+    fixed_parents: &[usize],
+    legacy_count: usize,
+    space_key: u64,
+) -> (u64, u64) {
+    let (legacies, _) = job.veterans_and_trainees();
+    (
+        plan_scope(job, space_key) ^ content_key(fixed_parents).rotate_left(1),
+        content_key(&legacies[..legacy_count.min(legacies.len())]),
+    )
 }
 
 /// `bests_key`'s first half less its fixed parents: the setup, the borrowed-parent rule unless "allow", and the deck
-/// space. The fixed parents are positions in the job's legacies, which the kept plans' second half (the legacies' text in
+/// space. The fixed parents are positions in the job's legacies, which the kept plans' second half (the legacies in
 /// order) pins; a key that does not pin the order names them by their veterans instead (`caps::CapPool`)
-pub(crate) fn plan_scope(job: &Value, space_key: u64) -> u64 {
-    let borrowing_rule = job
-        .get("borrowed_parent")
-        .and_then(|rule| rule.as_str())
-        .filter(|&rule| rule != "allow")
-        .map_or(0, |rule| hash_text(rule).rotate_left(2));
-    crate::career::state::setup_fp(job) ^ borrowing_rule ^ space_key.rotate_left(3)
+pub(crate) fn plan_scope(job: &CareerRequest, space_key: u64) -> u64 {
+    let borrowing_rule = job.restricted_borrowing().map_or(0, |rule| content_key(&rule).rotate_left(2));
+    job.setup_key() ^ borrowing_rule ^ space_key.rotate_left(3)
 }
 
 /// The kept plans a career search may reuse (`Bests`), taken out of `KeptState::bests` while the plan runs.
@@ -382,7 +381,7 @@ pub(crate) fn same_deck(first: &crate::deck::space::SelectedDeck, second: &crate
 mod cached_search_tests {
     use super::*;
     use crate::deck::space::SelectedDeck;
-    use serde_json::json;
+    use serde_json::{Value, json};
     #[test]
     fn stored_searches_distinguish_missing_empty_and_found() {
         let found = Found {

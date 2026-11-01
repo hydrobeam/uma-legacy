@@ -40,7 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 from scipy.stats import t as student_t
 
 from rollouts import era_of
-from solver import PLAN_DIR, solve
+from solver import PLAN_DIR, solve, with_next, with_part
 
 DEFAULT_POOLS = ["p16_borrow"]
 SEED = 1
@@ -48,7 +48,8 @@ EPS = 0.5
 
 
 def looped_job(job, v, simulate):
-    return dict(job, simulate={"goal": "looped", "seed": SEED, "max_careers": math.ceil(3 * v), "eps": EPS, **simulate})
+    looped = {"goal": "looped", "seed": SEED, "max_careers": math.ceil(3 * v), "eps": EPS, **simulate}
+    return with_part(job, "career", simulate=looped)
 
 
 def run_ranges(runs, parts):
@@ -67,7 +68,7 @@ def pool_job(pool):
 def measure(binary, out_dir, pool, settings, executor):
     """(the pool's name, V, greedy's runs by run index, index's runs by run index); a run is the simulator's record"""
     name, era, job = pool_job(pool)
-    plan = solve(binary, era, dict(job, next={**job.get("next", {})}), os.path.join(out_dir, f"{name}_plan"))["next"]
+    plan = solve(binary, era, with_next(job), os.path.join(out_dir, f"{name}_plan"))["next"]
     v = plan["v0"]
     greedy_jobs = [
         (looped_job(job, v, {"policy": "greedy", "margin": 0, "first": first, "runs": runs}), f"{name}_greedy_{first}")

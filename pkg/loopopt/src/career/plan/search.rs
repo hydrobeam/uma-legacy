@@ -9,7 +9,6 @@ use crate::career::{Ancestor, CareerSetup, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
 use crate::refusal::Refusal;
 use crate::skills::SkillJob;
-use serde_json::json;
 pub(crate) const fn p_margin() -> f64 {
     1e9
 }
@@ -44,8 +43,7 @@ pub(crate) fn sim_for<'env, 'data>(
             "next.partners: too many partners for the scoring's memory at this many uncertain targets.",
         ));
     }
-    let sim_job: SimJob = serde_json::from_value(json!({"margin": settings.margin}))
-        .map_err(|error| Refusal::new(format!("The plan's margin does not make a simulator setting: {error}")))?;
+    let sim_job = SimJob::with_margin(settings.margin);
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
     let trainees = env.setup.owned.clone();
     Ok(Sim::new(
@@ -443,7 +441,7 @@ pub(crate) fn loop_ceiling(
     let FullLoop { trainee, first_builder, second_builder } = full_loop;
     let data = simulator.data;
     let skill_job = simulator.env.setup.skill_job;
-    let star_mix = simulator.env.setup.skill_job.star_dist;
+    let star_mix = simulator.env.setup.skill_job.star_mix();
     let full: Vec<(u32, u8)> = skill_job.targets.iter().map(|target| (target.group, 2)).collect();
     let hypothetical = |uma: crate::uma::UmaIndex| HypotheticalVeteran {
         character_id: data.umas[uma].id,
@@ -495,7 +493,7 @@ pub(crate) fn hint_umas(
 ) -> Vec<HintUma> {
     let data = setup.data;
     let skill_job = setup.skill_job;
-    let star = skill_job.star_dist;
+    let star = skill_job.star_mix();
     let full: Vec<(u32, u8)> = skill_job.targets.iter().map(|target| (target.group, 2)).collect();
     let mut sides: Vec<u32> = vec![];
     for &candidate in candidates {

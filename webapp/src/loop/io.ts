@@ -2,7 +2,7 @@
 // Values in, values out (the settings, the result on show): Export.tsx shows them and applies an import.
 import { fmtIn } from '../dom.ts';
 import { SETTINGS, ERA } from '../saved.ts';
-import { SCENARIOS, RANKS, gameData } from '../data.ts';
+import { SCENARIOS, gameData } from '../data.ts';
 import { goldGiven, isOwned } from '../job.ts';
 import { pickOutfit } from '../roster.ts';
 import { mergePresets } from '../presets.ts';
@@ -78,7 +78,7 @@ export function exportText(s: SettingsView, shown: DeepReadonly<ShownResult> | n
     results = {
       example: !!meta.example,
       decks: (r.top || []).map(resultSummary),
-      decks_searched: r.decks_built,
+      decks_searched: r.stats.decks_built,
       proven: r.proven,
       ...(stale && { stale: true }), // from other settings than these
     };
@@ -105,7 +105,8 @@ const VALID: Record<(typeof SETTINGS)[number], (v: unknown, era: string) => bool
         Array.isArray(p.groups) &&
         p.groups.every(Number.isInteger),
     ),
-  rank: (v) => Object.values(RANKS).includes(v as string), // (includes compares with ===: any value may be asked)
+  // a rank class, or the star mix an older file kept for it (settings.ts `rankClassOf` reads both)
+  rank: (v) => ['below_ss', 'ss_and_up', '0.50,0.45,0.05', '0.20,0.70,0.10'].includes(v as string),
   auto: (v) => typeof v === 'boolean',
   perUma: (v) => typeof v === 'boolean',
   decksTop: (v) => v === '1' || v === '3',

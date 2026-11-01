@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 /// The simulation's output for pool4 with this `simulate` block.
 fn simulate(block: &Value, tag: &str) -> Value {
     let mut job = val_job("sim/pools/pool4.json");
-    job["simulate"] = block.clone();
+    job["job"]["career"]["simulate"] = block.clone();
     run_job(&format!("sim-determinism-{tag}"), &job)
 }
 

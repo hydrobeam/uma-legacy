@@ -13,7 +13,7 @@
 // Swc parses (dependency-cruiser reads TypeScript through TypeScript's JavaScript API, which TypeScript 7 no longer has).
 // (biome.json's overrides name the stores layer's modules: they make their records with store.ts's store())
 export const LAYERS = [
-  ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types', 'eras']],
+  ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types', 'eras', 'gen/solver', 'gen/constants']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved', 'storage']],
   [
     'model',

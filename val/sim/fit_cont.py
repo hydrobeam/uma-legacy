@@ -91,14 +91,15 @@ class Trace(NamedTuple):
 def pool_job(entry):
     job = json.load(open(os.path.join(REPO, entry["pool"])))
     if "legacies" in entry:
-        job["legacies"] = job["legacies"][: entry["legacies"]]
+        career = job["job"]["career"]
+        career["legacies"] = career["legacies"][: entry["legacies"]]
     return job
 
 
 def trainees_built_for(plan):
     """(A's id, her name, her builders' ids) for each stage candidate of the cheapest trio without a full veteran"""
     ids = {}
-    for row in plan["options"] + [plan["choice"]]:
+    for row in [*solver.plan_rows(plan), plan["choice"]]:
         ids[row["trainee"]["name"]] = row["trainee"]["id"]
     members = {member["trainee"]: member for member in plan.get("members", [])}
     out = []
@@ -107,7 +108,7 @@ def trainees_built_for(plan):
         if members.get(name, {}).get("real") or name not in ids:
             continue
         builders = []
-        for row in sorted(plan["options"], key=lambda row: -row["score"]):
+        for row in sorted(solver.plan_rows(plan), key=lambda row: -row["score"]):
             builder = row["trainee"]["id"]
             if row["role"] == "builder" and builder != ids[name] and builder not in builders:
                 builders.append(builder)
@@ -128,7 +129,7 @@ def measure(binary, out_dir, entry, settings):
     if settings["fit_only"]:
         plan = solver.read_output(plan_path + ".out").get("next") or {}
     else:
-        plan = solver.solve(binary, era, dict(job, next={**job.get("next", {})}), plan_path).get("next") or {}
+        plan = solver.solve(binary, era, solver.with_next(job), plan_path).get("next") or {}
     if not plan.get("v0_plan") or not plan.get("choice"):
         print(f"{name}: no plan with a trio ({plan.get('error', 'no next')}), skipped")
         return []
@@ -145,7 +146,7 @@ def measure(binary, out_dir, entry, settings):
         if settings["fit_only"]:
             output = solver.read_output(trace_path + ".out")
         else:
-            output = solver.solve(binary, era, dict(job, simulate=simulate), trace_path)
+            output = solver.solve(binary, era, solver.with_part(job, "career", simulate=simulate), trace_path)
         traces.append(trace_of(name, trainee_name, fit_entry(plan, trainee_id), output, settings["careers"]))
     return [trace for trace in traces if trace]
 

@@ -1,6 +1,7 @@
 //! Race and schedule records, relation and ceiling tables, and the win-probability model.
 //! Schedule search belongs to `schedule`; loop optimization belongs to `loop_planner::schedules`.
 use crate::Fx;
+use crate::codes::{Distance, Grade, Surface};
 use crate::uma::{UmaIndex, UmaPairTable, UmaTable};
 use serde::{Deserialize, Serialize};
 
@@ -30,11 +31,11 @@ struct UmaRaw {
     /// aptitude codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer
     #[serde(default)]
     #[serde(rename = "apt")]
-    aptitudes: Vec<u8>,
+    aptitudes: Vec<Grade>,
     /// (outfit card id, its aptitude codes) of each outfit whose own aptitudes differ from `apt` (the first outfit's)
     #[serde(default)]
     #[serde(rename = "outfit_apt")]
-    outfit_aptitudes: Vec<(u32, Vec<u8>)>,
+    outfit_aptitudes: Vec<(u32, Vec<Grade>)>,
 }
 #[derive(Deserialize)]
 pub(crate) struct DataRaw {
@@ -57,10 +58,14 @@ pub(crate) struct DataRaw {
     /// per race: distance class (0 short .. 3 long) and surface (1 turf, 2 dirt)
     #[serde(default)]
     #[serde(rename = "race_cat")]
-    race_distance: Vec<u8>,
+    race_distance: Vec<Distance>,
     #[serde(default)]
     #[serde(rename = "race_ground")]
-    race_surface: Vec<u8>,
+    race_surface: Vec<Surface>,
+}
+/// Grades as the codes the schedule's arithmetic reads (G = 1 .. S = 8).
+fn grade_codes(grades: &[Grade]) -> Vec<u8> {
+    grades.iter().map(|&grade| grade as u8).collect()
 }
 /// pair[a][b] / tri[a][b][c]: summed points of the relation groups holding every one of the (distinct) umas.
 pub(crate) fn rel_tables(
@@ -170,8 +175,8 @@ pub(crate) struct Data {
     pub(crate) pair_ceilings: Option<UmaPairTable<f64>>,
     /// Win-chance penalty for the k-th race in a row (index k - 1), for the schedule's explanations.
     streak_penalties: Vec<i32>,
-    pub(crate) race_distance: Vec<u8>,
-    pub(crate) race_surface: Vec<u8>,
+    pub(crate) race_distance: Vec<Distance>,
+    pub(crate) race_surface: Vec<Surface>,
 }
 
 /// Bump when best_response / pair_ceilings change in a way that could move a ceiling's bits: stored tables then
@@ -425,8 +430,8 @@ impl Uma {
             choices,
             repeated_races: vec![],
             choice_codes,
-            aptitudes: raw.aptitudes,
-            outfit_aptitudes: raw.outfit_aptitudes,
+            aptitudes: grade_codes(&raw.aptitudes),
+            outfit_aptitudes: raw.outfit_aptitudes.iter().map(|(card, grades)| (*card, grade_codes(grades))).collect(),
         }
     }
 

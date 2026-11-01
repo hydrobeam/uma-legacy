@@ -14,6 +14,7 @@ import { browserStorage } from './storage.ts';
 import type { Backing } from './storage.ts';
 import { deepFreeze, store } from './store.ts';
 import type { DeepReadonly } from './store.ts';
+import type { RankClass } from './gen/solver.ts';
 
 export interface Target {
   group: number;
@@ -27,8 +28,8 @@ export interface Preset {
 export interface Settings {
   targets: Target[];
   presets: Preset[];
-  /** the lineage's star mix, data.ts RANKS */
-  rank: string;
+  /** the lineage's rank band, whose star mix the solver has (gen/constants.ts `SOLVER.star_mix`) */
+  rank: RankClass;
   auto: boolean;
   decksTop: string;
   perUma: boolean;
@@ -53,7 +54,7 @@ export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];
 export const DEFAULTS: SettingsView = deepFreeze({
   targets: PRESET.map((group) => ({ group })),
   presets: [{ name: '8/8 example', groups: [...PRESET] }],
-  rank: '0.50,0.45,0.05',
+  rank: 'below_ss',
   auto: true,
   decksTop: '1',
   perUma: true,
@@ -78,6 +79,10 @@ function dropRequired(settings: Record<string, unknown>) {
 // is kept
 const firstOfEachName = (presets: Preset[]) =>
   presets.filter((p, at) => presets.findIndex((q) => q.name === p.name) === at);
+// a stored rank as a rank class: a class, or a store from before them, which kept the star mix (SS's was 0.20, 0.70,
+// 0.10); anything else is below SS
+const rankClassOf = (stored: unknown): RankClass =>
+  stored === 'ss_and_up' || stored === '0.20,0.70,0.10' ? 'ss_and_up' : 'below_ss';
 // the record from the stored object: each setting as saved (its era's part for the per-era ones), else a copy of its
 // default
 function fromSaved(saved: Saved) {
@@ -86,6 +91,7 @@ function fromSaved(saved: Saved) {
     savedValue(key) !== undefined ? savedValue(key) : structuredClone(DEFAULTS[key]);
   const loaded = Object.fromEntries(SETTINGS.map((key) => [key, value(key)]));
   if (Array.isArray(loaded.presets)) loaded.presets = firstOfEachName(loaded.presets);
+  loaded.rank = rankClassOf(loaded.rank);
   return deepFreeze(dropRequired(loaded));
 }
 const pick = (record: SettingsView, keys: readonly string[]): SavedPart =>
@@ -119,9 +125,10 @@ function commit(patch: Partial<SettingsView>) {
 }
 export const setTargets = (targets: readonly Target[]) => commit({ targets });
 export const setPresets = (presets: readonly DeepReadonly<Preset>[]) => commit({ presets });
-export const setRank = (rank: string) => commit({ rank });
-/** a scenario with its lineage rank (named: two strings in a row would swap unseen) */
-export const setScenario = (choice: { scen: string; rank: string }) => commit({ scen: choice.scen, rank: choice.rank });
+export const setRank = (rank: RankClass) => commit({ rank });
+/** a scenario with its lineage rank (named: two values in a row would swap unseen) */
+export const setScenario = (choice: { scen: string; rank: RankClass }) =>
+  commit({ scen: choice.scen, rank: choice.rank });
 export const setAuto = (auto: boolean) => commit({ auto });
 export const setDecksTop = (decksTop: string) => commit({ decksTop });
 export const setPerUma = (perUma: boolean) => commit({ perUma });

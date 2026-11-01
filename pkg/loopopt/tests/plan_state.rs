@@ -3,7 +3,7 @@
 //! worker keeps with what its product searches proved, so its plan does the work of one combined job and gives its
 //! output; after a reload the stored main search is taken as it is (no search nodes) and both jobs answer as before.
 mod common;
-use common::{Ran, State, TempFile, loopopt, run_with, val_job, without_work};
+use common::{Ran, State, TempFile, check_of, loopopt, run_with, val_job, without_work};
 use serde_json::{Value, json};
 
 /// one process running `jobs` in turn (one output line each), with `state`'s files
@@ -15,9 +15,9 @@ fn run(tag: &str, jobs: &[&Value], state: State) -> Ran {
 fn two_jobs_and_a_reload_plan_as_one_job() {
     let job = val_job("plan/p16.json");
     let mut search = job.clone();
-    search.as_object_mut().unwrap().remove("next");
+    search["job"]["career"].as_object_mut().unwrap().remove("next");
     let mut plan = job.clone();
-    plan["no_reports"] = json!(true);
+    plan["job"]["career"]["no_reports"] = json!(true);
     let state = TempFile::new("plan-state");
     let one = run("one", &[&job], State::NONE).outputs;
     let two = run("two", &[&search, &plan], State { load: None, save: Some(state.path()) }).outputs;
@@ -47,7 +47,10 @@ fn two_jobs_and_a_reload_plan_as_one_job() {
 #[test]
 fn a_job_after_another_pool_answers_as_alone() {
     let (other, job) = (val_job("plan/p16_88.json"), val_job("plan/p16.json"));
-    assert_ne!(other["legacies"], job["legacies"], "the two jobs must differ in their pools");
+    assert_ne!(
+        other["job"]["career"]["legacies"], job["job"]["career"]["legacies"],
+        "the two jobs must differ in their pools"
+    );
     let after = run("cross-pool-after", &[&other, &job], State::NONE).outputs;
     let alone = run("cross-pool-alone", &[&job], State::NONE).outputs;
     assert!(without_work(&after[1]) == without_work(&alone[0]), "p16 after p16_88 differs from p16 alone");
@@ -61,11 +64,11 @@ fn a_job_after_another_pool_answers_as_alone() {
 fn a_plan_on_another_trainee_filter_reuses_none_of_its_careers() {
     let path = format!("{}/tests/fixtures/nested_nopal.json", env!("CARGO_MANIFEST_DIR"));
     let mut job: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    job["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
-    job["next"] = json!({});
-    job["trainees"] = json!([1003, 1004]);
+    job["job"]["deck"]["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30067 && card != 30080);
+    job["job"]["career"]["next"] = json!({});
+    job["job"]["career"]["trainees"] = json!([1003, 1004]);
     let wide = job.clone();
-    job["trainees"] = json!([1004]);
+    job["job"]["career"]["trainees"] = json!([1004]);
     let narrow = job;
     let after = run("filter-after", &[&wide, &narrow], State::NONE).outputs;
     let alone = run("filter-alone", &[&narrow], State::NONE).outputs;
@@ -88,7 +91,7 @@ fn a_pair_search_asked_after_its_check_finished_says_why_or_runs_again() {
     let job = val_job("plan/p16.json");
     let with_next = |next: Value| {
         let mut follow_up = job.clone();
-        follow_up["next"] = next;
+        follow_up["job"]["career"]["next"] = next;
         follow_up
     };
     let jobs = [
@@ -98,7 +101,7 @@ fn a_pair_search_asked_after_its_check_finished_says_why_or_runs_again() {
         with_next(json!({"robust": "all", "pair_search": true})),
     ];
     let outputs = run_with(loopopt("global", State::NONE), "late-pairs", &jobs).outputs;
-    let check = |k: usize| &outputs[k]["next"]["robust"];
+    let check = |k: usize| check_of(&outputs[k]);
     assert_eq!(check(1)["pending"], json!(0));
     assert!(check(1)["pairs"].is_null() && check(1)["pairs_error"].is_null(), "no pair search asked yet");
     assert!(check(2)["pairs"].is_null());

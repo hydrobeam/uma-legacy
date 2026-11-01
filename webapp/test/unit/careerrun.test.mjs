@@ -52,14 +52,18 @@ function fakeEngine() {
 }
 
 // the reports: a search's best careers, a plan (a plan job's search: no career reports, its plan in `next`), a check
-// step (a kept plan's follow-up: its `next` alone)
+// step (a kept plan's follow-up, `kind` "check": the check alone)
 const career = (name) => ({ trainee: { id: 1001, name }, parents: [0, 1], career: name, p_all: 0.01 });
-const searched = (...names) => ({ results: names.map(career), candidates: 120 });
+const searched = (...names) => ({ kind: 'search', results: names.map(career), candidates: 120 });
 const planned = (pick) => ({
+  kind: 'search',
   results: [],
-  next: { choice: career(pick), options: [career(pick)], v0: 9, outcomes: { career: pick } },
+  next: { kind: 'plan', choice: career(pick), options: [career(pick)], v0: 9, outcomes: { career: pick } },
 });
-const check = (pending, pairs = null, plan = 'pick') => ({ next: { robust: { plan, pending, stable: true, pairs } } });
+const check = (pending, pairs = null, plan = 'pick') => ({
+  kind: 'check',
+  robust: { kind: 'report', plan, pending, stable: true, pairs },
+});
 
 let pages = 0;
 // a page: its own job (a target no other page's has, so no answer kept by an earlier test is taken), the machine on
@@ -71,10 +75,9 @@ function page({ trainee = null } = {}) {
     seen = { paints: 0, stops: 0, outdates: 0, shown: [], cleared: 0, saved: [] };
   const job = {
     cmd: 'career',
-    targets: [{ group: target }],
-    legacies: [],
-    trainees: trainee ? [trainee] : [],
-    fix: [],
+    skills: { targets: [{ group: target }] },
+    deck: {},
+    career: { legacies: [], trainees: trainee ? [trainee] : [], fix: [] },
   };
   const deps = {
     engine,
@@ -135,7 +138,7 @@ test("an edit during the search: the old run's late answer is dropped, the new r
   assert.equal(sent(p), 1);
   p.run.schedule(); // an edit: the job is the same, so the run under way goes on
   assert.equal(p.engine.restarts, 0, 'an edit that leaves the job as it is kills nothing');
-  p.job.targets.push({ group: 900 }); // a real edit
+  p.job.skills.targets.push({ group: 900 }); // a real edit
   p.run.schedule();
   assert.equal(p.engine.restarts, 1, 'a job in flight is cut short');
   const shownBefore = answer.peek();
@@ -157,7 +160,7 @@ test("an edit during the search: the old run's late answer is dropped, the new r
 test('two schedules in one task: one pause, one job, nothing killed', async () => {
   const p = page();
   p.run.schedule();
-  p.job.trainees.push(1002); // (the places handed back change the job)
+  p.job.career.trainees.push(1002); // (the places handed back change the job)
   p.run.schedule();
   assert.equal(p.engine.restarts, 0);
   p.clock.advance(PAUSE_MS);
@@ -175,9 +178,9 @@ test('an edit during the plan: its late progress and answer are dropped', async 
   await edited(p);
   await answered(p, 0, ['best']);
   assert.equal(runView.peek().phase, 'plan');
-  assert.deepEqual(p.engine.jobs[1].job.next, {}, "the plan job's next");
-  assert.equal(p.engine.jobs[1].job.no_reports, true);
-  p.job.targets.push({ group: 901 });
+  assert.deepEqual(p.engine.jobs[1].job.career.next, {}, "the plan job's next");
+  assert.equal(p.engine.jobs[1].job.career.no_reports, true);
+  p.job.skills.targets.push({ group: 901 });
   p.run.schedule();
   const before = runView.peek();
   p.engine.jobs[1].progress({ ph: 2, k: 0, n: 3 });
@@ -194,7 +197,7 @@ test('a restart rejects a job waiting on the start: no error is shown, and the n
   const p = page();
   p.engine.cold = true; // the first search waits on the wasm compiling
   await edited(p);
-  p.job.targets.push({ group: 902 });
+  p.job.skills.targets.push({ group: 902 });
   p.run.schedule(); // kills: the waiting job rejects with 'superseded'
   await flush();
   assert.notEqual(answer.peek().status.kind, 'error', "the superseded job's rejection is not shown");
@@ -204,7 +207,7 @@ test('a restart rejects a job waiting on the start: no error is shown, and the n
   await flush();
   assert.equal(sent(p), 2);
   assert.equal(p.engine.busy(), true, 'the new run is under way');
-  p.job.targets.push({ group: 903 });
+  p.job.skills.targets.push({ group: 903 });
   p.run.schedule();
   assert.equal(p.engine.restarts, 2, 'so the next edit stops it');
 });
@@ -228,10 +231,10 @@ test('a Blocked job ends the run unsearched, with its message; a thrown job erro
 test('a failure clears the analysis; a Blocked edit under a live ticker ends it', async () => {
   const p = page();
   await edited(p);
-  p.engine.answer(0, { error: 'bad' });
+  p.engine.answer(0, { kind: 'refusal', error: 'bad' });
   await flush();
   assert.equal(p.seen.cleared, 1);
-  p.job.targets.push({ group: 990 });
+  p.job.skills.targets.push({ group: 990 });
   await edited(p);
   assert.equal(p.clock.pending().length, 1, 'ticker live');
   p.deps.blocked = true;
@@ -243,7 +246,7 @@ test('a failed plan: not kept, not saved, and the same job runs again', async ()
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
-  p.engine.answer(1, { results: [], next: { error: 'no option' } });
+  p.engine.answer(1, { kind: 'search', results: [], next: { kind: 'refusal', error: 'no option' } });
   await flush();
   assert.equal(answer.peek().planState.state, 'error');
   assert.equal(p.seen.saved.length, 0, 'not saved');
@@ -261,11 +264,11 @@ test('an undo onto a kept answer shows it at once, with her analysis; one whose 
   const searches = () => p.engine.jobs.filter((j) => !j.background).length,
     shown = p.seen.shown.length,
     jobs = searches();
-  p.job.targets.push({ group: 991 });
+  p.job.skills.targets.push({ group: 991 });
   await edited(p);
   assert.equal(searches(), jobs + 1, 'the edit searches');
   await answered(p, sent(p) - 1, ['other'], 'pick2'); // (its answer on show)
-  p.job.targets.pop(); // its undo: the kept answer
+  p.job.skills.targets.pop(); // its undo: the kept answer
   await edited(p);
   assert.equal(searches(), jobs + 2, 'no search for the undo (the edit made two: its search and its plan)');
   assert.equal(answer.peek().planState.state, 'done');
@@ -276,11 +279,11 @@ test('an undo onto a kept answer shows it at once, with her analysis; one whose 
   await edited(q);
   q.engine.answer(0, searched('best'));
   await flush();
-  q.engine.answer(1, { results: [], next: { error: 'no option' } });
+  q.engine.answer(1, { kind: 'search', results: [], next: { kind: 'refusal', error: 'no option' } });
   await flush();
-  q.job.targets.push({ group: 992 });
+  q.job.skills.targets.push({ group: 992 });
   await edited(q);
-  q.job.targets.pop();
+  q.job.skills.targets.pop();
   await edited(q);
   assert.equal(sent(q), 4, 'the undone job searches again');
 });
@@ -293,9 +296,9 @@ test('the engine failing or refusing: the error is shown and the run ends', asyn
   await flush();
   assert.equal(answer.peek().status.text, 'the solver failed to start');
   assert.equal(runView.peek().searching, false);
-  p.job.targets.push({ group: 904 });
+  p.job.skills.targets.push({ group: 904 });
   await edited(p);
-  p.engine.answer(1, { error: 'bad job' });
+  p.engine.answer(1, { kind: 'refusal', error: 'bad job' });
   await flush();
   assert.equal(answer.peek().status.text, 'Not searched: bad job');
   // the same job again (Search, or an edit and its undoing): a failed answer does not stand, so it runs again
@@ -312,7 +315,7 @@ test('the status line ticks each second while a job runs, and every timer ends w
   p.run.schedule();
   assert.equal(p.clock.pending().length, 1, 'the pause');
   p.run.schedule(); // the same job: nothing new
-  p.job.targets.push({ group: 905 });
+  p.job.skills.targets.push({ group: 905 });
   p.run.schedule(); // a new edit replaces the pause
   assert.equal(p.clock.pending().length, 1);
   p.clock.advance(PAUSE_MS);
@@ -331,9 +334,9 @@ test('the status line ticks each second while a job runs, and every timer ends w
   p.clock.advance(5000);
   assert.equal(p.seen.paints, done, 'no repaint after');
   // an edit during a search, then the search: one ticker at a time
-  p.job.targets.push({ group: 906 });
+  p.job.skills.targets.push({ group: 906 });
   await edited(p);
-  p.job.targets.push({ group: 907 });
+  p.job.skills.targets.push({ group: 907 });
   await edited(p);
   assert.equal(p.clock.pending().length, 1, 'the killed run left no ticker');
 });
@@ -362,7 +365,7 @@ test("a run's check sends every variant through its own writes, and a new plan s
   assert.equal(plan.state, 'done');
   assert.equal(p.engine.saves, 1, "a plan made: the worker's work is kept");
   assert.equal(sent(p), 3, 'the first check job');
-  assert.deepEqual(p.engine.jobs[2].job.next, { robust: 'next', pair_search: true });
+  assert.deepEqual(p.engine.jobs[2].job.career.next, { robust: 'next', pair_search: true });
   assert.equal(p.engine.jobs[2].background, true);
   for (const [n, reply] of [check(2), check(1), check(0)].entries()) {
     p.engine.answer(2 + n, reply);
@@ -371,7 +374,7 @@ test("a run's check sends every variant through its own writes, and a new plan s
   assert.equal(answer.peek().planState.id, plan.id, 'the same plan, its record replaced by each step');
   assert.equal(sent(p), 6, 'the pair search after the last variant');
   // an edit, and its run ends on a new plan: the check's late reply writes nothing
-  p.job.targets.push({ group: 908 });
+  p.job.skills.targets.push({ group: 908 });
   await edited(p);
   await answered(p, 6, ['best'], 'pick');
   const fresh = answer.peek().planState;
@@ -397,7 +400,7 @@ test("the engine restarted under a check: the check's race ends with the kill, a
   await edited(p);
   await answered(p, 0, ['best'], 'pick');
   assert.equal(sent(p), 3);
-  p.job.targets.push({ group: 909 });
+  p.job.skills.targets.push({ group: 909 });
   p.run.schedule(); // the check's job is background: the engine is not busy, so nothing is killed
   assert.equal(p.engine.restarts, 0);
   p.engine.restart(); // (a stopped comparison kills the worker)
@@ -413,14 +416,14 @@ test('an edit and its undoing: the kept answer is drawn again with no job, and i
   p.engine.answer(2, check(1));
   await flush();
   // another job, answered (its answer on show), then a third under way (its ticker running)
-  p.job.targets.push({ group: 910 });
+  p.job.skills.targets.push({ group: 910 });
   await edited(p);
   await answered(p, sent(p) - 1, ['other'], 'pick');
-  p.job.targets.push({ group: 911 });
+  p.job.skills.targets.push({ group: 911 });
   await edited(p);
   const jobs = sent(p);
   // back to the first job: drawn from the answers kept
-  p.job.targets.splice(1);
+  p.job.skills.targets.splice(1);
   p.run.schedule();
   p.clock.advance(PAUSE_MS);
   await flush();
@@ -462,7 +465,7 @@ test('a reload: the answer kept for this setup and these fingerprints is drawn a
 
 test("Compare's kept plan: the plan phase takes it and sends no plan job", async () => {
   const p = page();
-  const jp = { ...p.job, next: {}, no_reports: true };
+  const jp = { ...p.job, career: { ...p.job.career, next: {}, no_reports: true } };
   store.keepComparisonPlan(jp, planned('kept').next, 7);
   await edited(p);
   p.engine.answer(0, searched('best'));
@@ -473,7 +476,7 @@ test("Compare's kept plan: the plan phase takes it and sends no plan job", async
   // its check runs, and each step reaches the kept plan too: a run that takes it again finds the check as far as it ran
   p.engine.answer(1, check(1, null, 'kept'));
   await flush();
-  assert.deepEqual(store.keptPlan(planKey(jp)).r.robust, check(1, null, 'kept').next.robust);
+  assert.deepEqual(store.keptPlan(planKey(jp)).r.robust, check(1, null, 'kept').robust);
 });
 
 test('a trainee chosen by hand: no plan phase, the best odds shown', async () => {
@@ -490,9 +493,9 @@ test('a trainee chosen by hand: no plan phase, the best odds shown', async () =>
 // takes it resumes the check, as a kept answer's does; one whose check is done, or unavailable, sends none
 test("Compare's kept plan with its check cut short: the run that takes it resumes the check", async () => {
   const p = page();
-  const jp = { ...p.job, next: {}, no_reports: true },
+  const jp = { ...p.job, career: { ...p.job.career, next: {}, no_reports: true } },
     plan = planned('kept').next;
-  store.keepComparisonPlan(jp, { ...plan, robust: check(1, null, 'kept').next.robust }, 7);
+  store.keepComparisonPlan(jp, { ...plan, robust: check(1, null, 'kept').robust }, 7);
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
@@ -501,11 +504,11 @@ test("Compare's kept plan with its check cut short: the run that takes it resume
   assert.equal(p.engine.jobs[1].background, true);
   // its check done, or unavailable: nothing more is sent
   for (const r of [
-    { ...plan, robust: check(0, { trainees: [] }, 'kept').next.robust },
+    { ...plan, robust: check(0, { trainees: [] }, 'kept').robust },
     { ...plan, check_unavailable: true },
   ]) {
     const q = page();
-    store.keepComparisonPlan({ ...q.job, next: {}, no_reports: true }, r, 7);
+    store.keepComparisonPlan({ ...q.job, career: { ...q.job.career, next: {}, no_reports: true } }, r, 7);
     await edited(q);
     q.engine.answer(0, searched('best'));
     await flush();

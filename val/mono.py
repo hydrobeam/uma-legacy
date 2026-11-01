@@ -5,7 +5,7 @@ without her is still there), so a rise in the planner's V is the planner's error
 - **rolled veterans:** plan the full pool, then the pool with each of N veterans of its pick added, drawn as the page's
   Compare and Reroll draw them (analysis `draftOf` / `draftJob`: the landed set from the pick's `outcome_sets`, every
   set including the all-landed one, or each target on its own odds past 12 targets; each landed spark's stars from the
-  job's `star_dist`; each scheduled G1 won with its chance; her pink drawn as pink.ts `drawPink` draws it; her parents
+  job's rank class's star mix; each scheduled G1 won with its chance; her pink drawn as pink.ts `drawPink` draws it; her parents
   copied without their own parents; seeded per pool), each under the full pool's fit and refitted.
 
 The fixed fit takes the continuation's refit out (`Cont` is refitted per pool); what remains is the plan's own
@@ -94,23 +94,22 @@ def plan_summary(plan):
 def her_stars(her, job):
     """her stars per job target (0 where she has no spark of it): a roll as the page's Reroll sends it"""
     return [
-        max([stars for group, stars in her["sparks"] if group == target["group"]] or [0]) for target in job["targets"]
+        max([stars for group, stars in her["sparks"] if group == target["group"]] or [0])
+        for target in solver.part(job, "skills")["targets"]
     ]
 
 
 def quick_saves(era, job, name, veterans):
     """the plan's quick answer for each rolled veteran (`next.roll` at her stars, answered from the plan this process
     keeps: the plan job first, then one roll job per veteran), as each roll's `y`"""
-    jobs = [dict(job, next={**job.get("next", {})})] + [
-        dict(job, next={**job.get("next", {}), "roll": her_stars(her, job)}) for her in veterans
-    ]
+    jobs = [solver.with_next(job)] + [solver.with_next(job, roll=her_stars(her, job)) for her in veterans]
     paths = []
     for i, roll_job in enumerate(jobs):
         paths.append(os.path.join(temporary_dir, f"{name}_quick{i}.json"))
         json.dump(roll_job, open(paths[-1], "w"))
     stdout = solver.run(binary, era, *paths, name=f"{name} (quick rolls)")
     open(os.path.join(temporary_dir, f"{name}_quick.out"), "w").write(stdout)
-    return [((output.get("next") or {}).get("roll") or {}).get("y") for output in solver.outputs(stdout)[1:]]
+    return [solver.roll_saving(solver.roll_of(output)) for output in solver.outputs(stdout)[1:]]
 
 
 def route_steps(plan):
@@ -142,7 +141,9 @@ want = set(arguments.jobs)
 def checks_only(name):
     """a job that asks for the robustness check (`next.robust`): the plan of a pool another job plans, which the check
     leaves as it is, so the default list leaves it out"""
-    return "robust" in (json.load(open(os.path.join(PLAN_DIR, name + ".json"))).get("next") or {})
+    return "robust" in (
+        solver.part(json.load(open(os.path.join(PLAN_DIR, name + ".json"))), "career").get("next") or {}
+    )
 
 
 jobs = [
@@ -170,15 +171,14 @@ def finite(value):
 def last_veteran(job_entry):
     era, name = job_entry
     job = json.load(open(os.path.join(PLAN_DIR, name + ".json")))
-    if len(job.get("legacies", [])) < 3:
+    legacies = solver.part(job, "career").get("legacies", [])
+    if len(legacies) < 3:
         return PoolComparison(name=name)
-    less = dict(job, legacies=job["legacies"][:-1], next={**job.get("next", {})})
+    less = solver.with_next(solver.with_part(job, "career", legacies=legacies[:-1]))
     without = plan(era=era, job=less, name=name + "_less")
     if not finite(without.get("v0")) or not without.get("fit"):
         return PoolComparison(name=name, unavailable=True, error=without.get("error"))
-    with_veteran = plan(
-        era=era, job=dict(job, next={**job.get("next", {}), "fit": without["fit"]}), name=name + "_with"
-    )
+    with_veteran = plan(era=era, job=solver.with_next(job, fit=without["fit"]), name=name + "_with")
     return PoolComparison(name=name, without=without, with_veteran=with_veteran)
 
 
@@ -189,7 +189,7 @@ def scheduled_races(report, race_names):
     for row in report.get("schedule") or []:
         if row.get("run") is False:
             continue
-        race = row.get("name") or row.get("race")
+        race = row.get("name") or row["chart"].get("race")
         if race not in race_names:
             continue
         index = race_names.index(race)
@@ -201,9 +201,10 @@ def drawn_pink(aptitudes, rng):
     """pink.ts drawPink: {group: stars}, its draws in the same order (fires per inspiration, aptitude, stars)"""
     if not aptitudes:
         return {}
-    grades = list(aptitudes["start"])
+    start = aptitudes["start"]  # (kind "known": a job's own veterans always have their pinks on record)
+    grades = list(start["start"])
     for _ in range(INSPIRATIONS):
-        for fire in aptitudes["fire"]:
+        for fire in start["fire"]:
             if rng.random() < fire["p"]:
                 grades[fire["apt"]] = min(GRADE_S, grades[fire["apt"]] + 1)
     at_least_a = [k for k, grade in enumerate(grades) if grade >= GRADE_A]
@@ -216,9 +217,11 @@ def drawn_pink(aptitudes, rng):
 
 def drawn_veteran(report, job, race_names, rng):
     """(landed count, the veteran's job entry): draftOf's rolled outcome, then draftJob's shape"""
-    star_dist = job.get("star_dist", solver.constants(binary)["default_star_mix"])  # the solver's default mix
-    star = lambda: rng.choices([1, 2, 3], star_dist)[0]
-    targets = job["targets"]
+    skills = solver.part(job, "skills")
+    # the job's rank class's star mix, as the solver has it (below SS unless the job says)
+    star_mix = solver.constants(binary)["star_mix"][skills.get("rank_class", "below_ss")]
+    star = lambda: rng.choices([1, 2, 3], star_mix)[0]
+    targets = skills["targets"]
     if isinstance(report.get("outcome_sets"), list):
         u, cumulative, mask = rng.random(), 0.0, len(report["outcome_sets"]) - 1
         for landed_set, chance in enumerate(report["outcome_sets"]):
@@ -244,7 +247,7 @@ def drawn_veteran(report, job, race_names, rng):
         "pinks": [[group, stars] for group, stars in pinks.items()],
         "wins": wins,
         "borrowed": False,
-        "parents": [node(job["legacies"][parent]) for parent in report["parents"]],
+        "parents": [node(solver.part(job, "career")["legacies"][parent]) for parent in report["parents"]],
     }
     return len(landed), her
 
@@ -261,14 +264,14 @@ def rolled_veterans(job_entry):
 def rolled_veterans_of(job_entry):
     era, name = job_entry
     job = json.load(open(os.path.join(PLAN_DIR, name + ".json")))
-    base = plan(era=era, job=dict(job, next={**job.get("next", {})}), name=name + "_base")
+    base = plan(era=era, job=solver.with_next(job), name=name + "_base")
     pick = base.get("outcomes")
     if not finite(base.get("v0")) or not base.get("fit") or not pick:
         return base, [], base.get("error") or "no plan"
     # her career's report (schedule, landed sets, aptitudes): the pick's trainee on its parents, as the page shows it
     search = copy.deepcopy(job)
-    search.pop("next", None)
-    search.update(trainees=[pick["trainee"]], fix=pick["parents"], top=1, no_reports=False)
+    search["job"]["career"].pop("next", None)
+    search["job"]["career"].update(trainees=[pick["trainee"]], fix=pick["parents"], top=1, no_reports=False)
     report = solve(era, search, name + "_pick")["results"][0]
     if sorted(report["parents"]) != sorted(pick["parents"]):
         return base, [], f"the pick's search gave parents {report['parents']}, not {pick['parents']}"
@@ -278,9 +281,9 @@ def rolled_veterans_of(job_entry):
     quick = quick_saves(era, job, name, [her for _landed, her in draws])
     comparisons = []
     for roll, (landed, her) in enumerate(draws):
-        with_her = dict(job, legacies=job["legacies"] + [her])
-        fixed = plan(era, dict(with_her, next={**job.get("next", {}), "fit": base["fit"]}), f"{name}_r{roll}_fixed")
-        refit = plan(era, dict(with_her, next={**job.get("next", {})}), f"{name}_r{roll}_refit")
+        with_her = solver.with_part(job, "career", legacies=solver.part(job, "career")["legacies"] + [her])
+        fixed = plan(era, solver.with_next(with_her, fit=base["fit"]), f"{name}_r{roll}_fixed")
+        refit = plan(era, solver.with_next(with_her), f"{name}_r{roll}_refit")
         truncated = rises(fixed.get("v0"), base["v0"]) and truncation_only(
             era, f"{name}_r{roll}", job, base["fit"], her
         )
@@ -289,7 +292,7 @@ def rolled_veterans_of(job_entry):
                 name=name,
                 roll=roll,
                 landed=landed,
-                target_count=len(job["targets"]),
+                target_count=len(solver.part(job, "skills")["targets"]),
                 fixed_fit_v=fixed.get("v0"),
                 refit_v=refit.get("v0"),
                 truncated=truncated,
@@ -306,9 +309,13 @@ WIDE_LINEAGES = 8
 
 def truncation_only(era, name, job, fit, her):
     """whether a fixed-fit rise is gone with WIDE_LINEAGES fresh lineages (both plans under the same fit)"""
-    wide = {**job.get("next", {}), "fit": fit, "fresh_lineages": WIDE_LINEAGES}
-    without = plan(era, dict(job, next=wide), f"{name}_wide_without")
-    with_her = plan(era, dict(job, legacies=job["legacies"] + [her], next=wide), f"{name}_wide_with")
+    wide = solver.with_next(job, fit=fit, fresh_lineages=WIDE_LINEAGES)
+    without = plan(era, wide, f"{name}_wide_without")
+    with_her = plan(
+        era,
+        solver.with_part(wide, "career", legacies=solver.part(job, "career")["legacies"] + [her]),
+        f"{name}_wide_with",
+    )
     return finite(without.get("v0")) and finite(with_her.get("v0")) and not rises(with_her["v0"], without["v0"])
 
 

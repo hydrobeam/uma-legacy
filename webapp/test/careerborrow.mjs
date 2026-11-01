@@ -11,13 +11,13 @@ export default async function careerborrow(b) {
   await planned();
   const lastPlan = () =>
     pg.evaluate(() => ({
-      job: window.__careerJobs.filter((j) => j.cmd === 'career' && j.next && !j.compare).at(-1),
+      job: window.__careerJobs.filter((j) => j.cmd === 'career' && j.career.next && !j.career.compare).at(-1),
       r: window.__careerResults.filter((r) => r.next).at(-1),
       s: window.__careerResults.filter((r) => !r.next && r.results?.length).at(-1),
     }));
   const withBor = (p) =>
-    [p.r.next.choice, ...p.r.next.options, ...p.s.results].filter((r) =>
-      r?.parents.some((i) => p.job.legacies[i].borrowed),
+    [p.r.next.choice, ...p.r.next.options.map((o) => o.report), ...p.s.results].filter((r) =>
+      r?.parents.some((i) => p.job.career.legacies[i].borrowed),
     ).length;
   const exported = async () => {
     await vetsShut(); // (Export is on the page, under the dialog)
@@ -50,11 +50,11 @@ export default async function careerborrow(b) {
   check(
     "career: Borrowed parent starts at Allowed, its job without borrowed_parent, and the planner's careers may borrow (the premise)",
     (await pressed()) === 'allow' && !('borrowed_parent' in a.job) && withBor(a) > 0,
-    `${await pressed()} ${a.job.borrowed_parent} ${withBor(a)}`,
+    `${await pressed()} ${a.job.career.borrowed_parent} ${withBor(a)}`,
   );
   // the "later" plan's report edited once (`__planEdit`): every score moved so the top is -0.4, and the estimate's first
   // step (its A side, her own career, no building) put on the borrowed veteran and another
-  const borrowedAt = a.job.legacies.findIndex((l) => l.borrowed);
+  const borrowedAt = a.job.career.legacies.findIndex((l) => l.borrowed);
   await pg.evaluate((borrowedAt) => {
     window.__planEdit = (next) => {
       window.__planEdit = null;
@@ -91,12 +91,12 @@ export default async function careerborrow(b) {
   );
   check(
     'career: None left today sends borrowed_parent "later", is saved, and no career the planner offers has a borrowed parent',
-    l.job.borrowed_parent === 'later' &&
+    l.job.career.borrowed_parent === 'later' &&
       (await pressed()) === 'later' &&
       (await saved()) === 'later' &&
       withBor(l) === 0 &&
       l.r.next.options.length > 0,
-    `${l.job.borrowed_parent} ${await saved()} ${withBor(l)}`,
+    `${l.job.career.borrowed_parent} ${await saved()} ${withBor(l)}`,
   );
   await pg.click('#bp button[data-v="never"]');
   await done();
@@ -104,8 +104,8 @@ export default async function careerborrow(b) {
   const n = await lastPlan();
   check(
     'career: Never sends borrowed_parent "never", and no career the planner offers has a borrowed parent',
-    n.job.borrowed_parent === 'never' && (await saved()) === 'never' && withBor(n) === 0,
-    `${n.job.borrowed_parent} ${withBor(n)}`,
+    n.job.career.borrowed_parent === 'never' && (await saved()) === 'never' && withBor(n) === 0,
+    `${n.job.career.borrowed_parent} ${withBor(n)}`,
   );
   await pg.click('#bp button[data-v="allow"]');
   await done();
@@ -115,7 +115,7 @@ export default async function careerborrow(b) {
   );
   // the borrowed veteran chosen as parent 1, then borrowing turned off: blocked, and the picker greys her out (her place
   // in the list as the job has it: the paste may have moved her)
-  const bj = a.job.legacies.findIndex((l) => l.borrowed);
+  const bj = a.job.career.legacies.findIndex((l) => l.borrowed);
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');

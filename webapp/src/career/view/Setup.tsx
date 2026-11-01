@@ -3,7 +3,6 @@
 import { computed, signal } from '@preact/signals';
 import { ERA } from '../../saved.ts';
 import { read, update } from '../../storage.ts';
-import { RANKS } from '../../data.ts';
 import { settings, setBorrowPar } from '../../settings.ts';
 import { scenarioOf } from '../../scenario.ts';
 import { ERA_NAMES } from '../../eras.ts';
@@ -61,7 +60,7 @@ export function foldClick(e: MouseEvent) {
 // each setting as its label and its value, as the panel's rows read (the borrowed parent only when it isn't the default)
 const summaryItems = computed((): [string, string][] => {
   const s = settings.value,
-    rank = s.rank === RANKS.ss ? 'SS' : 'B–S+',
+    rank = s.rank === 'ss_and_up' ? 'SS' : 'B–S+',
     bp: [string, string][] = borrowChoice(s) === 'allow' ? [] : [['Borrowed parent', BORROW_CHOICES[borrowChoice(s)]]];
   return [
     ['Game data', ERA_NAMES[ERA]],

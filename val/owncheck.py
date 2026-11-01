@@ -47,7 +47,8 @@ OWN = [
     cid("[Tracen Academy] Gold Ship"),
 ]
 base = json.load(open(os.path.dirname(os.path.abspath(__file__)) + "/jobs/pal_U.json"))
-base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN, top_decks=K, require=[uid[n] for n in REQ])
+base["job"]["skills"].update(owned=[uid[n] for n in UMAS], require=[uid[n] for n in REQ])
+base["job"]["deck"].update(owned_cards=OWN, top_decks=K)
 
 
 job_dir = tempfile.TemporaryDirectory(prefix="owncheck_")
@@ -70,7 +71,9 @@ def blocked(deck):
 
 
 def one(deck):
-    job = dict(base, lock_cards=list(deck), top_decks=1, exclude=blocked(deck))
+    job = solver.with_part(
+        solver.with_part(base, "deck", lock_cards=list(deck), top_decks=1), "skills", exclude=blocked(deck)
+    )
     o = run(job)
     if "error" in o or not o["top"]:
         return (0.0, deck, None)

@@ -8,11 +8,11 @@ import type { CareerJob } from './job.ts';
 type Job = DeepReadonly<CareerJob>;
 
 // a job's key: its JSON with the legacies' apart, kept with the array `legaciesJob` returns (the same until an edit)
-let legaciesJson: { legacies: Job['legacies'] | null; json: string } = { legacies: null, json: '' };
+let legaciesJson: { legacies: Job['career']['legacies'] | null; json: string } = { legacies: null, json: '' };
 export const jobKey = (job: Job): string => {
-  if (legaciesJson.legacies !== job.legacies)
-    legaciesJson = { legacies: job.legacies, json: JSON.stringify(job.legacies) };
-  return `${JSON.stringify([ERA, { ...job, legacies: 0 }])}\n${legaciesJson.json}`;
+  const legacies = job.career.legacies;
+  if (legaciesJson.legacies !== legacies) legaciesJson = { legacies, json: JSON.stringify(legacies) };
+  return `${JSON.stringify([ERA, { ...job, career: { ...job.career, legacies: 0 } }])}\n${legaciesJson.json}`;
 };
 // a career's identity: the solver's `career` (her uma, her parents in order and her deck: two decks on the same parents
 // are two careers), else (an answer from before it) her uma and parents
@@ -36,20 +36,28 @@ const canon = (x: unknown): unknown =>
 // a plan job's key (Compare's kept plan, the reference's base): its canonical JSON, the comparison's flag aside (run.ts
 // `PLAN_NEXT`)
 export const planKey = (job: Job): string => {
-  const { compare: _c, ...j } = job;
-  return JSON.stringify(canon(j));
+  const { compare: _c, ...career } = job.career;
+  return JSON.stringify(canon({ ...job, career }));
 };
 // the job of today's best career over everything (no place set, one result): the comparison's baseline. `notOwned`:
 // the umas not owned (job.ts `umasNotOwned`; the job's own `exclude` leaves out the trainee)
 const baseOf = (job: Job, notOwned: readonly number[]): Job => {
-  const { career: _career, ...search } = job;
-  return { ...search, exclude: notOwned, trainees: [], fix: [], per_trainee: false, top: 1 };
+  const { given: _given, ...search } = job.career;
+  return {
+    ...job,
+    skills: { ...job.skills, exclude: notOwned },
+    career: { ...search, trainees: [], fix: [], per_trainee: false, top: 1 },
+  };
 };
 /** the key of `job`'s baseline (`baseOf`) */
 export const baseKey = (job: Job, notOwned: readonly number[]): string => JSON.stringify(baseOf(job, notOwned));
 // the last plan made (career/state.ts `reference`): while the career on show is one you chose on the same setup and
 // veterans (its job without the places), its table stays, so you can weigh the plan's other careers or go back to its pick
 export const refBase = (job: Job, notOwned: readonly number[]): string => {
-  const { career: _career, ...search } = job;
-  return planKey({ ...search, exclude: notOwned, trainees: [], fix: [], top: 0 });
+  const { given: _given, ...search } = job.career;
+  return planKey({
+    ...job,
+    skills: { ...job.skills, exclude: notOwned },
+    career: { ...search, trainees: [], fix: [], top: 0 },
+  });
 };

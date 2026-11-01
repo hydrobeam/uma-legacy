@@ -1,19 +1,8 @@
 //! The simulator's report (`simulate` on a career job: native only; val/simval.py and the research read it), and a
 //! veteran as a job records her (`LegacyRecord`).
-use crate::refusal::Refusal;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use ts_rs::TS;
-
-/// The simulator's answer.
-#[derive(Serialize, TS)]
-#[serde(untagged)]
-pub(crate) enum SimReply {
-    Refusal(Refusal),
-    Report(Box<SimReport>),
-    /// the `trace` policy's
-    Trace(TraceReport),
-}
 
 /// The `trace` policy: per run, each career a builder of the finisher's (A's) loop ran.
 #[derive(Serialize, TS)]
@@ -35,10 +24,9 @@ pub(crate) struct TraceRun {
 /// Every run of a policy on the job's pool, and the expected careers over them.
 #[derive(Serialize, TS)]
 pub(crate) struct SimReport {
-    /// the job's `simulate` object, as sent
-    #[ts(type = "unknown")]
-    pub(crate) simulate: serde_json::Value,
-    pub(crate) policy: String,
+    /// the job's `simulate` settings, each as the job set it or at its default
+    pub(crate) simulate: crate::career::sim::SimJob,
+    pub(crate) policy: crate::career::sim::Policy,
     pub(crate) runs: Vec<SimRun>,
     /// the expected careers over the runs (null: no run)
     #[serde(rename = "E")]
@@ -163,10 +151,10 @@ pub(crate) struct ExecutedCareer {
     pub(crate) outcome_sets: Vec<f64>,
 }
 
-/// A surrogate audit: at a greedy pick change, the exact career search's pick against the surrogate's with rows for
-/// sampled careers; or, on a loop, one row every `audit_every` careers.
+/// A surrogate audit, by `kind`: at a greedy pick change, the exact career search's pick against the surrogate's with
+/// rows for sampled careers; or, on a loop, one row every `audit_every` careers.
 #[derive(Serialize, TS)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum SurrogateAudit {
     Greedy(GreedyAudit),
     Loop(LoopAudit),

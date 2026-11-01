@@ -33,7 +33,7 @@ export default async function careerrun(b) {
     };
   });
   await importDump();
-  await pg.waitForFunction(() => window.__careerJobs.some((j) => j.next)); // the plan job is in the worker
+  await pg.waitForFunction(() => window.__careerJobs.some((j) => j.career.next)); // the plan job is in the worker
   // a preset saved (a settings save that leaves the job as it is), all at once while the plan runs
   const edit = await pg.evaluate(async () => {
     const plan = () => /Planning your next career/.test(document.getElementById('run-note').textContent),
@@ -121,12 +121,12 @@ export default async function careerrun(b) {
   await pg.focus('#save-why');
   const beforeEdit = await pg.evaluate(() => ({ workers: window.__workers, jobs: window.__checkJobs.length }));
   await pg.evaluate(() => {
-    document.querySelector('#rank button[data-v="0.20,0.70,0.10"]').click();
-    document.querySelector('#rank button[data-v="0.50,0.45,0.05"]').click();
+    document.querySelector('#rank button[data-v="ss_and_up"]').click();
+    document.querySelector('#rank button[data-v="below_ss"]').click();
   });
   // (or until a variant finds no kept plan: a new worker took the old one's place, which this check fails)
   await pg.waitForFunction(
-    () => window.__checkResults.some((r) => r.next.robust.pending === 0 || r.next.robust.unavailable),
+    () => window.__checkResults.some((r) => r.robust.pending === 0 || r.robust.kind === 'unavailable'),
     null,
     { timeout: 180000 },
   );
@@ -138,9 +138,9 @@ export default async function careerrun(b) {
     )
     .toBeFocused();
   const checked = await pg.evaluate(() => {
-    const robust = window.__checkResults.findLast((r) => r.next.robust.pending === 0)?.next.robust || {
+    const robust = window.__checkResults.findLast((r) => r.robust.pending === 0)?.robust || {
       variants: [],
-      gone: window.__checkResults.find((r) => r.next.robust.unavailable)?.next.robust.error,
+      gone: window.__checkResults.find((r) => r.robust.kind === 'unavailable')?.robust.error,
     };
     const alts = document.querySelector('section.alts');
     return {
@@ -186,7 +186,7 @@ export default async function careerrun(b) {
   check(
     "career: the pick's check runs in the background after the plan, goes on through an edit and its undoing (no new worker), and ends with its report on the table",
     JSON.stringify(variantKinds) === JSON.stringify(expectedKinds) &&
-      checked.rank === '0.50,0.45,0.05' &&
+      checked.rank === 'below_ss' &&
       checked.workers === beforeEdit.workers &&
       checked.jobs >= 6 &&
       !checked.unavailable &&
@@ -289,18 +289,18 @@ export default async function careerrun(b) {
     document.getElementById('sim-roll').click();
     Math.random = r;
   });
-  await pg.waitForFunction(() => window.__careerResults.some((r) => r.next?.roll), null, { timeout: 180000 });
-  const ro = await pg.evaluate(() => window.__careerResults.find((r) => r.next?.roll).next.roll),
+  await pg.waitForFunction(() => window.__careerResults.some((r) => r.kind === 'roll'), null, { timeout: 180000 });
+  const ro = await pg.evaluate(() => window.__careerResults.find((r) => r.kind === 'roll').roll),
     restoredNow = await pg.evaluate(() => window.__careerResults.find((r) => r.solve !== undefined));
   check(
     'career: after a reload a roll is answered from the stored roll state (no plan runs again)',
-    restoredNow?.rolls > 0 && typeof ro?.y === 'number' && !ro.planned,
+    restoredNow?.rolls > 0 && typeof ro?.outcome?.y === 'number' && !ro.planned,
     JSON.stringify({ rolls: restoredNow?.rolls, ro }),
   );
   // a new plan (another rank): a roll asks that plan; back on the first answer (no run), a roll asks the first plan
   // again, which the worker still keeps
   const rollNow = async () => {
-    const n = await pg.evaluate(() => window.__careerResults.filter((r) => r.next?.roll).length);
+    const n = await pg.evaluate(() => window.__careerResults.filter((r) => r.kind === 'roll').length);
     await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup, shut)
     await pg.evaluate(() => {
       const r = Math.random;
@@ -308,23 +308,23 @@ export default async function careerrun(b) {
       document.getElementById('sim-roll').click();
       Math.random = r;
     });
-    await pg.waitForFunction((n) => window.__careerResults.filter((r) => r.next?.roll).length > n, n, {
+    await pg.waitForFunction((n) => window.__careerResults.filter((r) => r.kind === 'roll').length > n, n, {
       timeout: 180000,
     });
     return pg.evaluate(() => {
-      const j = window.__careerJobs.filter((j) => j.next?.roll).at(-1),
-        p = window.__careerJobs.filter((j) => j.next && !j.next.roll && !j.compare).at(-1);
+      const j = window.__careerJobs.filter((j) => j.career.next?.roll).at(-1),
+        p = window.__careerJobs.filter((j) => j.career.next && !j.career.next.roll && !j.career.compare).at(-1);
       const plan = JSON.parse(JSON.stringify(j));
-      delete plan.next.roll;
+      delete plan.career.next.roll;
       return {
         same: JSON.stringify(plan) === JSON.stringify(p),
-        dist: j.star_dist.join(),
-        roll: window.__careerResults.filter((r) => r.next?.roll).at(-1).next.roll,
+        dist: j.skills.rank_class,
+        roll: window.__careerResults.filter((r) => r.kind === 'roll').at(-1).roll,
       };
     });
   };
   const so0 = await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'state_out').length);
-  await pg.click('#rank button[data-v="0.20,0.70,0.10"]');
+  await pg.click('#rank button[data-v="ss_and_up"]');
   await done();
   // the plan's kept work is stored as soon as the worker is idle (a reroll that kills it soon after loses nothing)
   check(
@@ -332,17 +332,17 @@ export default async function careerrun(b) {
     await until(pg, (n) => window.__careerJobs.filter((j) => j.cmd === 'state_out').length > n, so0, 1300),
   );
   const lrNew = await rollNow();
-  await pg.click('#rank button[data-v="0.50,0.45,0.05"]');
+  await pg.click('#rank button[data-v="below_ss"]');
   await done();
   const lrBack = await rollNow();
   check(
     'career: … a roll after a new plan asks the new plan; back on the first answer it asks the first plan, still kept',
     lrNew.same &&
-      lrNew.dist === '0.2,0.7,0.1' &&
-      typeof lrNew.roll?.y === 'number' &&
+      lrNew.dist === 'ss_and_up' &&
+      typeof lrNew.roll?.outcome?.y === 'number' &&
       !lrNew.roll.planned &&
-      lrBack.dist === '0.5,0.45,0.05' &&
-      typeof lrBack.roll?.y === 'number' &&
+      lrBack.dist === 'below_ss' &&
+      typeof lrBack.roll?.outcome?.y === 'number' &&
       !lrBack.roll.planned,
     JSON.stringify({ lrNew, lrBack }),
   );

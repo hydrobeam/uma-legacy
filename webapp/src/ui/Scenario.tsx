@@ -1,13 +1,13 @@
 import type { RefObject } from 'preact';
 import { batch } from '@preact/signals';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { RANKS } from '../data.ts';
 import type { Scenario } from '../data.ts';
 import { fields, setRank } from '../settings.ts';
 import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../scenario.ts';
 import { skillIconSrc, srcFor } from '../images.ts';
 import { SegmentedControl } from './SegmentedControl.tsx';
 import type { Segment } from './SegmentedControl.tsx';
+import type { RankClass } from '../gen/solver.ts';
 import { popover } from './Popover.tsx';
 import { ScenLogo } from './Images.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
@@ -261,10 +261,10 @@ function RankNote({ open, at }: { open: boolean; at: RefObject<HTMLSpanElement |
     </span>
   );
 }
-const RANK_OPTIONS: Segment<string>[] = [
+const RANK_OPTIONS: Segment<RankClass>[] = [
   {
-    v: RANKS.below,
-    dataV: RANKS.below,
+    v: 'below_ss' as const,
+    dataV: 'below_ss',
     label: 'B to S+',
     title: 'Rank score 6,500–17,499',
     body: (
@@ -275,9 +275,15 @@ const RANK_OPTIONS: Segment<string>[] = [
       </>
     ),
   },
-  { v: RANKS.ss, dataV: RANKS.ss, label: 'SS', title: 'Rank score 17,500+', body: <RankBadge rank="ss" text="SS" /> },
+  {
+    v: 'ss_and_up' as const,
+    dataV: 'ss_and_up',
+    label: 'SS',
+    title: 'Rank score 17,500+',
+    body: <RankBadge rank="ss" text="SS" />,
+  },
 ];
-// The rank control: data-value carries the chosen star mix, each option's tooltip its rank score range. The ?'s note
+// The rank control: data-value carries the chosen rank class, each option's tooltip its rank score range. The ?'s note
 // closes on Escape (the focus back on the ?) or a click elsewhere.
 /** the lineage rank control (its row is the page's layout's, #rank-ctl) */
 export function RankControl({ page }: { page: Page }) {

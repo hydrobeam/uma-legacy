@@ -55,7 +55,7 @@ export interface LoopDeps {
 export type First = 'kept' | 'example' | null;
 
 /** a report with loops: not a refusal, not empty */
-const hasLoops = (r: LoopReport | SolverRefusal): r is DrawnReport => !('error' in r) && r.top?.length > 0;
+const hasLoops = (r: LoopReport | SolverRefusal): r is DrawnReport => r.kind === 'loops' && r.top?.length > 0;
 // the last finished result, per era (its key holds the era's data fingerprint)
 const lastResultKey = () => `llp:last:${ERA}`;
 
@@ -165,7 +165,8 @@ export function createRun(deps: LoopDeps) {
       if (!hasLoops(answer.r))
         status = {
           kind: 'error',
-          text: 'error' in answer.r ? `Not searched: ${answer.r.error}` : 'No result: no loop fits these settings.',
+          text:
+            answer.r.kind === 'refusal' ? `Not searched: ${answer.r.error}` : 'No result: no loop fits these settings.',
         };
       else {
         result = draw(answer.r);

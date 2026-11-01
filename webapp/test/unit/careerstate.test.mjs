@@ -45,20 +45,32 @@ const made = (pick = 'pick') => {
   const choice = career(pick);
   return {
     status: { kind: 'done', text: 'Weighed 2 careers in 0.1 s.' },
-    last: { r: { results: [career('best'), choice], candidates: 2 }, job: { legacies: [] }, key: 'job', plan: PLACES },
+    last: {
+      r: { kind: 'search', results: [career('best'), choice], candidates: 2 },
+      job: { career: { legacies: [] } },
+      key: 'job',
+      plan: PLACES,
+    },
     planState: {
       state: 'done',
       id: newPlanId(),
       r: { choice, options: [choice], v0: 9, outcomes: { career: pick } },
       ms: 5,
-      job: { cmd: 'career', next: {}, legacies: [] },
+      job: { cmd: 'career', skills: { targets: [] }, deck: {}, career: { next: {}, legacies: [] } },
     },
   };
 };
 const WHERE = { base: 'base', places: { trainee: null, parents: [null, null] } };
 // the veterans the answers' jobs were built on (their ids by legacy index)
 const POOL = ['a', 'b'];
-const check = (pending, pairs = null) => ({ plan: 'pick', pending, stable: true, contenders: [], pairs });
+const check = (pending, pairs = null) => ({
+  kind: 'report',
+  plan: 'pick',
+  pending,
+  stable: true,
+  contenders: [],
+  pairs,
+});
 
 // each transition: what it does to the record, and the fields it replaces (the rest stay the same objects)
 const RUN_STEPS = [
@@ -218,7 +230,7 @@ const fakes = (replies, during = () => undefined) => {
       runCheck: async (job) => {
         seen.jobs.push(job);
         during(seen.jobs.length);
-        return { r: { next: { robust: replies.shift() } } };
+        return { r: { kind: 'check', robust: replies.shift() } };
       },
       redraw: () => seen.redraws++,
       checked: (plan) => seen.checked.push(plan),
@@ -234,7 +246,7 @@ test("the check runs every variant: its own writes replace the plan's record, an
   const { seen, deps } = fakes(REPLIES());
   await checkPhase(deps, answer.value.planState);
   assert.equal(seen.jobs.length, 4, 'one job per variant, then the pair search');
-  assert.deepEqual(seen.jobs[0].next, { robust: 'next', pair_search: true });
+  assert.deepEqual(seen.jobs[0].career.next, { robust: 'next', pair_search: true });
   assert.equal(seen.jobs[0].cmd, 'career');
   assert.deepEqual(answer.value.planState.r.robust, check(0, { trainees: [] }));
   assert.equal(answer.value.planState.id, mine.planState.id);
@@ -259,7 +271,7 @@ test('a new plan stops the check, even one like it; so do a new run and a worker
   assert.equal(run.seen.jobs.length, 1);
   assert.equal(answer.value.planState.r.robust, undefined);
   // the worker lost the plan: the check is unavailable, drawn, and stops
-  run = fakes([{ ...check(0), unavailable: true }]);
+  run = fakes([{ kind: 'unavailable', error: 'no kept plan to check' }]);
   await checkPhase(run.deps, answer.value.planState);
   assert.equal(answer.value.planState.r.check_unavailable, true);
   assert.equal(run.seen.redraws, 1);
@@ -345,10 +357,15 @@ test('a check whose pair search brings nothing stops after one more job, not in 
 });
 
 test("Compare's kept plan: found by its plan job's key, and a check of that job's plan reaches it, another job's not", () => {
-  const job = { cmd: 'career', targets: [{ group: 1 }], next: {}, no_reports: true },
+  const job = {
+      cmd: 'career',
+      skills: { targets: [{ group: 1 }] },
+      deck: {},
+      career: { next: {}, no_reports: true },
+    },
     other = { ...job, targets: [{ group: 2 }] },
     plan = made().planState.r;
-  keepComparisonPlan({ ...job, compare: true }, plan, 12);
+  keepComparisonPlan({ ...job, career: { ...job.career, compare: true } }, plan, 12);
   const key = planKey(job);
   assert.equal(keptPlan(key).r, plan, "found by the run's plan job (the comparison's flag aside)");
   assert.equal(keptPlan(planKey(other)), null);

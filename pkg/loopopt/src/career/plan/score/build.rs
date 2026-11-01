@@ -299,7 +299,7 @@ pub(super) fn evaluate_career(
     let candidate_count = context.score_base.candidates.len();
     let target_count = simulator.env.setup.target_count;
     let uncertain_target_count = simulator.env.setup.uncertain_targets.len();
-    let star_mix = simulator.env.setup.skill_job.star_dist;
+    let star_mix = simulator.env.setup.skill_job.star_mix();
     let completes_goal = completes_goal(simulator, context.legacies, career.lineage);
     let current_started = now_ms();
     let current =
@@ -1114,13 +1114,9 @@ mod tests {
         let data = crate::data::load_str(&read("data.json"));
         let skills: crate::skills::SkillsRaw = serde_json::from_str(&read("web_skills.json")).unwrap();
         let cards: crate::deck::CardsRaw = serde_json::from_str(&read("web_cards.json")).unwrap();
-        let mut job: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
-        )
-        .unwrap();
-        let events: crate::deck::sources::CardEventCache = serde_json::from_str(&read("card_events.json")).unwrap();
-        crate::deck::sources::apply_events_db(&mut job, &skills, &events);
-        job["no_reports"] = serde_json::json!(true);
+        let job = crate::request::testing::val_career("plan/p16.json", "global", &skills, |job| {
+            job["career"]["no_reports"] = serde_json::json!(true);
+        });
         let plan = |kept: &mut crate::career::state::KeptState| {
             serde_json::to_value(crate::career::run_career_in(&data, &skills, &cards, &job, kept)).unwrap()
         };
@@ -1138,7 +1134,9 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .filter_map(|row| Some((row["career"].as_str()?.to_owned(), row["score"].as_f64()?.to_bits())))
+                .filter_map(|row| {
+                    Some((row["report"]["career"].as_str()?.to_owned(), row["score"].as_f64()?.to_bits()))
+                })
                 .collect()
         };
         assert_eq!(scores(full), scores(cut), "every row's score");
@@ -1279,13 +1277,9 @@ mod tests {
         let data = crate::data::load_str(&read("data.json"));
         let skills: crate::skills::SkillsRaw = serde_json::from_str(&read("web_skills.json")).unwrap();
         let cards: crate::deck::CardsRaw = serde_json::from_str(&read("web_cards.json")).unwrap();
-        let mut job: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
-        )
-        .unwrap();
-        let events: crate::deck::sources::CardEventCache = serde_json::from_str(&read("card_events.json")).unwrap();
-        crate::deck::sources::apply_events_db(&mut job, &skills, &events);
-        job["no_reports"] = serde_json::json!(true);
+        let job = crate::request::testing::val_career("plan/p16.json", "global", &skills, |job| {
+            job["career"]["no_reports"] = serde_json::json!(true);
+        });
         let mut kept = crate::career::state::KeptState::default();
         let out = serde_json::to_value(crate::career::run_career_in(&data, &skills, &cards, &job, &mut kept)).unwrap();
         assert!(out["next"]["v0"].is_number(), "the plan ran: {}", out["next"]["error"]);
