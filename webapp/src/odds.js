@@ -1,5 +1,5 @@
 // ---------- the odds popup (both planner pages): the chance of landing exactly k of the n targets ----------
-import { el, backdropCloses } from './dom.js';
+import { el, backdropCloses, lazyDialog } from './dom.js';
 // under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
 /** @type {(p: number) => string} */
 export const pct = (p) => {
@@ -13,23 +13,22 @@ export const pct = (p) => {
 // white chance is given no gold hint, so it is gold + (1 - gold) x white
 /** @type {(gold: number, white: number) => number} */
 export const deckHint = (gold, white) => 1 - (1 - gold) * (1 - white);
-// the dialog, made on first use; `opener`: the element focused before it opened, focused again when it closes
-let dialog = null,
-  opener = null;
+// `opener`: the element focused before the dialog opened, focused again when it closes
+/** @type {HTMLElement | null} */
+let opener = null;
+const oddsDialog = lazyDialog('gmdlg', (dialog) => {
+  dialog.id = 'odds-dlg';
+  dialog.setAttribute('aria-labelledby', 'odds-title');
+  dialog.addEventListener('close', () => {
+    if (opener?.isConnected) opener.focus();
+  });
+  backdropCloses(dialog);
+});
 // ex[k]: the chance of exactly k (k = 0 .. n); pAll: the all-n figure shown (the solver's exact one); expected: the mean count
 /** @param {{title: string, n: number, ex: number[], pAll: number, expected: number}} spec */
 export function openOdds({ title, n, ex, pAll, expected }) {
-  opener = document.activeElement;
-  if (!dialog) {
-    dialog = el('dialog', 'gmdlg');
-    dialog.id = 'odds-dlg';
-    dialog.setAttribute('aria-labelledby', 'odds-title');
-    dialog.addEventListener('close', () => {
-      if (opener?.isConnected) opener.focus();
-    });
-    backdropCloses(dialog);
-    document.body.appendChild(dialog);
-  }
+  opener = /** @type {HTMLElement | null} the focused element: one that has focus() */ (document.activeElement);
+  const dialog = oddsDialog.get();
   dialog.textContent = '';
   const heading = el('h3', 'gmdhdr', title);
   heading.id = 'odds-title';

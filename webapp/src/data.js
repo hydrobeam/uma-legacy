@@ -49,45 +49,79 @@ export const ASSETS = parse('data-assets');
  * @property {Outfit[]} outfits
  */
 /** @typedef {{w: string, gd: string | null}} SkillNames a skill group's white name and its gold's (null: none) */
-// The active era's data, set by loadData() before the page starts. Global's comes with the page's data scripts; the GM
-// era's is fetched (ASSETS.dataGm) only when that era is selected (switching era reloads the page).
-/** @type {Card[]} */
-export let CARDS;
-/** @type {Uma[]} */
-export let UMAS;
-/** @type {[number, string, string | null][]} the skill catalog: [skill group, white name, gold name or null] */
-export let CAT;
-/** @type {Map<number, Card>} every card in the data, those not started yet included */
-export let CARD_BY_ID;
-/** @type {Map<number, SkillNames>} skill group -> its names */
-export let SK;
-/** @type {Map<number, string>} character id -> name (the career page's sample veterans included) */
-export let NAME;
-// the career page's tables (build.py `career`: factors, saddles, races, mobs, ...); null on the planner page in the Global era
-export let CAREER = null;
-// what the data holds ahead of its start (a build from a master.mdb fetched ahead of its update holds the next week's
-// umas, outfits and cards, pkg/loopopt/export/upcoming.py): hidden here and left out of every search until its start,
-// so a banner turns on by itself. An uma counts from her first outfit's start. Fixed at page load.
-export let LATER = { umas: [], outfits: [], cards: [] };
+/**
+ * The career page's tables (build.py `era()`, `career`; the planner page has them only in the GM era).
+ * @typedef {object} CareerTables
+ * @property {Record<number, number>} factors  a white spark's factor group -> its skill group
+ * @property {Record<number, number>} saddles  a saddle (a won title) -> its G1 race's index; titles of several races
+ *   have none
+ * @property {Record<number, string>} pinks  an aptitude spark's group -> its name
+ * @property {Record<number, string>} [blues]  a stat spark's group -> its name
+ * @property {Record<number, string>} [uniques]  an outfit with a unique skill -> the skill's name
+ * @property {string[]} races  the G1 races by index
+ * @property {number[]} [race_cat]  each race's distance (0-3, sprint to long)
+ * @property {number[]} [race_ground]  each race's ground (1 turf, 2 dirt)
+ * @property {number[][]} [race_turns]  each race's turns
+ * @property {[number, string][]} [mobs]  the sample veterans: character id, name
+ * @property {number[]} [sourced]  the skill groups a card hints or gives
+ * @property {number[]} [ranks]  the rank scores at which each badge starts
+ * @property {number[]} [moe]  GM era: the factors Global has (uma.moe lists only those)
+ */
+/**
+ * The active era's data, loaded once by loadData() before the page starts (Global's comes with the page's data scripts;
+ * the GM era's is fetched, ASSETS.dataGm, only when that era is selected: switching era reloads the page).
+ * @typedef {object} GameData
+ * @property {Card[]} cards  the cards started by now
+ * @property {Uma[]} umas  the umas started by now (an uma counts from her first outfit's start)
+ * @property {[number, string, string | null][]} catalog  the skill catalog: [skill group, white name, gold name or null]
+ * @property {Map<number, Card>} cardById  every card in the data, those not started yet included
+ * @property {Map<number, SkillNames>} skillNames  skill group -> its names
+ * @property {Map<number, string>} names  character id -> name (the career page's sample veterans included)
+ * @property {CareerTables | null} career  the career page's tables (null on the planner page in the Global era)
+ * @property {{umas: number[], outfits: number[], cards: number[]}} later  what the data holds ahead of its start (a
+ *   build from a master.mdb fetched ahead of its update holds the next week's umas, outfits and cards,
+ *   pkg/loopopt/export/upcoming.py): hidden here and left out of every search until its start, so a banner turns on by
+ *   itself. Fixed at page load.
+ */
+/** @type {GameData | null} */
+let loaded = null;
+/** The active era's data (once loaded: Rust's OnceLock); read before loadData() has run, it throws. */
+export function gameData() {
+  if (!loaded) throw new Error('the game data was read before loadData() ran');
+  return loaded;
+}
+/** The career tables, on a page that has them (the career page; the planner page in the GM era); elsewhere it throws. */
+export function careerTables() {
+  const { career } = gameData();
+  if (!career) throw new Error("the career tables were read on a page that doesn't load them");
+  return career;
+}
 function setData(data) {
   const now = Date.now() / 1000;
-  LATER = { umas: [], outfits: [], cards: data.cards.filter((c) => c.rel > now).map((c) => c.id) };
+  /** @type {GameData['later']} */
+  const later = { umas: [], outfits: [], cards: data.cards.filter((c) => c.rel > now).map((c) => c.id) };
   const umas = data.umas.map((u) => {
-    const later = (u.outfits || []).filter((o) => o.rel > now);
-    if (!later.length) return u;
-    LATER.outfits.push(...later.map((o) => o.id));
+    const laterOutfits = (u.outfits || []).filter((o) => o.rel > now);
+    if (!laterOutfits.length) return u;
+    later.outfits.push(...laterOutfits.map((o) => o.id));
     const outfits = u.outfits.filter((o) => o.rel <= now);
-    if (!outfits.length) LATER.umas.push(u.id);
+    if (!outfits.length) later.umas.push(u.id);
     return { ...u, outfits };
   });
-  CARDS = data.cards.filter((c) => c.rel <= now);
-  UMAS = umas.filter((u) => !LATER.umas.includes(u.id));
-  CAT = data.skills;
-  CAREER = data.career || null;
-  CARD_BY_ID = new Map(data.cards.map((c) => [c.id, c]));
-  SK = new Map(CAT.map(([group, white, gold]) => [group, { w: white, gd: gold }]));
-  NAME = new Map(data.umas.map((u) => [u.id, u.name]));
-  for (const [id, name] of CAREER?.mobs || []) NAME.set(id, name); // the career page's sample (mob) veterans
+  /** @type {CareerTables | null} */
+  const career = data.career || null;
+  const names = new Map(data.umas.map((u) => [u.id, u.name]));
+  for (const [id, name] of career?.mobs || []) names.set(id, name); // the career page's sample (mob) veterans
+  loaded = {
+    cards: data.cards.filter((c) => c.rel <= now),
+    umas: umas.filter((u) => !later.umas.includes(u.id)),
+    catalog: data.skills,
+    cardById: new Map(data.cards.map((c) => [c.id, c])),
+    skillNames: new Map(data.skills.map(([group, white, gold]) => [group, { w: white, gd: gold }])),
+    names,
+    career,
+    later,
+  };
 }
 // a download that failed: for visitors a connection problem; opened as a file (the page must be served), the fix for that
 export const loadFail = (what) => {

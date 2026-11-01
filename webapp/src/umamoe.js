@@ -10,7 +10,7 @@
 // have two factor groups (Racing Spirit: Stamina, 21009 and 21015), so every factor group of a target is asked for.
 // `max_follower_num` 999: trainers at 1,000 followers can't be followed (left out unless the player asks for full
 // trainers too). Pages count from 0, 100 results each.
-import { CAREER } from './data.js';
+import { careerTables } from './data.js';
 
 const KEY_STORE = 'llp:umamoe-key',
   CACHE_STORE = 'llp:umamoe',
@@ -54,13 +54,13 @@ export function saveKey(key) {
   }
 }
 
-// the factor groups of each target skill group (CAREER.factors: factor group -> skill group); a target no white spark
+// the factor groups of each target skill group (careerTables().factors: factor group -> skill group); a target no white spark
 // carries (none in the data) is left out of the filters
 /** @param {number[]} groups @returns {number[][]} */
 export function targetFactors(groups) {
   const of = new Map(),
-    listed = CAREER.moe && new Set(CAREER.moe); // GM era: only the factors Global has
-  for (const [factor, group] of Object.entries(CAREER.factors)) {
+    listed = careerTables().moe && new Set(careerTables().moe); // GM era: only the factors Global has
+  for (const [factor, group] of Object.entries(careerTables().factors)) {
     if (listed && !listed.has(+factor)) continue;
     if (!of.has(group)) of.set(group, []);
     of.get(group).push(+factor);

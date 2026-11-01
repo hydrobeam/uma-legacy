@@ -11,7 +11,7 @@
  * @property {Sparks} pinks  pink sparks: aptitude group -> stars
  * @property {Sparks} [blues]  blue sparks: stat group (1 Speed .. 5 Wit) -> stars
  * @property {Sparks} [greens]  unique spark: outfit card id -> stars
- * @property {number[]} wins  G1 wins, as race indices into CAREER.races
+ * @property {number[]} wins  G1 wins, as race indices into careerTables().races
  * @property {Object<number, number>} [winAt]  race index -> the turn its win shows at (display only; the solver reads `wins`)
  *
  * A veteran of the pool: a lineage node with an identity, her source and her two parents.
@@ -33,9 +33,9 @@
  *   back to the planner
  */
 // Saved per data era in localStorage['llp:career'] = {v: 2, global: {vets, plan}, gm: {vets, plan}}.
-import { $, $dialog, $input } from './dom.js';
+import { $, $dialog, $input, lazyDialog } from './dom.js';
 import { ERA } from './settings.js';
-import { UMAS, NAME, SK, CAREER } from './data.js';
+import { careerTables, gameData } from './data.js';
 import { state, goldGiven } from './state.js';
 import { umaAv, skillIcon, srcFor } from './images.js';
 import { winsAgenda } from './agenda.js';
@@ -149,16 +149,17 @@ export function changed() {
 }
 
 /** @type {(id: number|null|undefined) => string} */
-export const umaName = (id) => (id ? NAME.get(id) || `Uma ${id}` : 'Unknown');
+export const umaName = (id) => (id ? gameData().names.get(id) || `Uma ${id}` : 'Unknown');
 const targetGroups = () => state.targets.map((t) => t.group);
 /** @type {(g: number) => string} */
-export const skillName = (g) => (SK.get(g) || { w: `Skill ${g}` }).w;
+export const skillName = (g) => (gameData().skillNames.get(g) || { w: `Skill ${g}` }).w;
 /** @type {(g: number|string) => string} */
-export const pinkName = (g) => CAREER.pinks[g] || `Aptitude ${g}`;
+export const pinkName = (g) => careerTables().pinks[g] || `Aptitude ${g}`;
 /** @type {(g: number|string) => string} */
-export const blueName = (g) => CAREER.blues?.[g] || ['', 'Speed', 'Stamina', 'Power', 'Guts', 'Wit'][g] || `Stat ${g}`;
+export const blueName = (g) =>
+  careerTables().blues?.[g] || ['', 'Speed', 'Stamina', 'Power', 'Guts', 'Wit'][g] || `Stat ${g}`;
 /** @type {(g: number|string) => string|null} */
-export const uniqueName = (g) => CAREER.uniques?.[g] || null;
+export const uniqueName = (g) => careerTables().uniques?.[g] || null;
 /** @type {(id: string) => Veteran|undefined} */
 export const vetById = (id) => vets.find((v) => v.id === id);
 const allTargetsAt = (stars) => Object.fromEntries(targetGroups().map((g) => [g, stars]));
@@ -190,7 +191,7 @@ $input('pick-filter').oninput = () => filterUmas($('pick-list'), $input('pick-fi
 /** @param {HTMLElement} box @param {string} filter @param {(chara: number) => void} onPick @param {((u: import('./data.js').Uma) => boolean)|null} [only] */
 export function drawUmas(box, filter, onPick, only = null) {
   box.textContent = '';
-  for (const u of [...UMAS].sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const u of [...gameData().umas].sort((a, b) => a.name.localeCompare(b.name))) {
     if (only && !only(u)) continue;
     const b = document.createElement('button');
     b.type = 'button';
@@ -257,7 +258,8 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
 // remove it; an empty slot where a G1 is held lists the races held then. A pool veteran's wins are saved on each edit, and
 // the page searches again when the dialog closes. opts (the veteran analysis' draft): {offer, info, onEdit, onClose}
 // (see winsAgenda). nd.winAt {race index: turn} is where a win shows, for display only (the solver reads nd.wins).
-const allRaces = () => CAREER.races.map((name, ix) => ({ ix, name, turns: (CAREER.race_turns || [])[ix] || [] }));
+const allRaces = () =>
+  careerTables().races.map((name, ix) => ({ ix, name, turns: (careerTables().race_turns || [])[ix] || [] }));
 /** @type {(() => void) | null} */
 let winsClose = null;
 export function openWins(nd, who, opts = {}) {
@@ -513,7 +515,7 @@ const KIND = {
     field: 'blues',
     title: 'Blue spark',
     name: blueName,
-    groups: () => Object.keys(CAREER.blues || { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }).map(Number),
+    groups: () => Object.keys(careerTables().blues || { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }).map(Number),
   },
   pink: { field: 'pinks', title: 'Pink spark', name: pinkName, groups: (nd) => pinkChoices(nd) },
   green: {
@@ -527,8 +529,8 @@ const KIND = {
 // grades when known (the veteran analysis), else her uma's base grades; the pink she has always stays a choice
 const APT_OF = { 31: 0, 32: 1, 33: 2, 34: 3, 11: 4, 12: 5, 21: 6, 22: 7, 23: 8, 24: 9 };
 function pinkChoices(nd) {
-  const grades = nd.apt || UMAS.find((u) => u.id === nd.chara)?.apt;
-  const all = Object.keys(CAREER.pinks).map(Number),
+  const grades = nd.apt || gameData().umas.find((u) => u.id === nd.chara)?.apt;
+  const all = Object.keys(careerTables().pinks).map(Number),
     have = Object.keys(nd.pinks || {}).map(Number);
   return grades ? all.filter((g) => grades[APT_OF[g]] >= 7 || have.includes(g)) : all;
 }
@@ -629,21 +631,21 @@ function colourBar(nd, kind, key, onEdit, readOnly) {
 }
 // the picker (game style): the choices as bars of the spark's colour, its stars (click one), Done (no remove: every
 // veteran has one blue and one pink)
-let colDlg = null;
+// colKey: the data-k of the bar that opened it, focused again on close
+/** @type {string | null} */
+let colKey = null;
+const colourDialog = lazyDialog('gmdlg coldlg', (dialog) => {
+  dialog.id = 'col-dlg';
+  dialog.setAttribute('aria-labelledby', 'col-title');
+  dialog.addEventListener('close', () => {
+    const e = colKey && document.querySelector(`[data-k="${CSS.escape(colKey)}"]`);
+    if (e) e.focus();
+  });
+});
 function openColour(nd, kind, key, onEdit) {
   const spec = KIND[kind];
-  if (!colDlg) {
-    colDlg = document.createElement('dialog');
-    colDlg.className = 'gmdlg coldlg';
-    colDlg.id = 'col-dlg';
-    colDlg.setAttribute('aria-labelledby', 'col-title');
-    colDlg.addEventListener('close', () => {
-      const e = colDlg._key && document.querySelector(`[data-k="${CSS.escape(colDlg._key)}"]`);
-      if (e) e.focus();
-    });
-    document.body.appendChild(colDlg);
-  }
-  colDlg._key = key;
+  const colDlg = colourDialog.get();
+  colKey = key;
   const draw = () => {
     colDlg.textContent = '';
     // her spark now: its group (null: none yet, so no stars to pick) and stars (0: none)
@@ -835,14 +837,14 @@ export function importVets(list, all = false) {
 // wins. Marked as samples; Remove all clears them.
 /** @returns {Veteran[]} */
 export function sampleVets() {
-  const all = CAREER.mobs || [],
+  const all = careerTables().mobs || [],
     withArt = all.filter(([id]) => srcFor('mob', id)),
     pool = (withArt.length >= 18 ? withArt : all).slice();
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  const sourced = new Set(CAREER.sourced || []),
+  const sourced = new Set(careerTables().sourced || []),
     inherit = targetGroups().filter((g) => !sourced.has(g) && !goldGiven(g));
   const node = (id, sparks) => ({ chara: id, sparks, pinks: {}, blues: {}, greens: {}, wins: [] });
   const out = [];

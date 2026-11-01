@@ -2,7 +2,7 @@
 import { $, $dialog, $input, $textarea, fmtIn } from './dom.js';
 import { paintTop } from './cards.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
-import { CARDS, UMAS, SK, SCENARIOS, RANKS } from './data.js';
+import { SCENARIOS, RANKS, gameData } from './data.js';
 import { state, ui, goldGiven, dropRequired } from './state.js';
 import { save } from './save.js';
 import { noOutfit, renderRoster, pickOutfit } from './roster.js';
@@ -13,7 +13,7 @@ import { deckHint } from './odds.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
 // a skill group's name at a level (2: its gold's, when it has one)
 const skillName = (group, level) => {
-  const names = SK.get(group) || { w: String(group), gd: null };
+  const names = gameData().skillNames.get(group) || { w: String(group), gd: null };
   return level === 2 ? names.gd || names.w : names.w;
 };
 // the settings in words, for a reader of the export (an import reads `settings`)
@@ -21,11 +21,15 @@ function readableSettings() {
   return {
     targets: state.targets.map((t) => ({
       skill: skillName(t.group, 1),
-      gold: SK.get(t.group)?.gd || null,
+      gold: gameData().skillNames.get(t.group)?.gd || null,
       guaranteed: goldGiven(t.group) ? 'gold' : 'no',
     })),
-    umas_not_owned: UMAS.filter((u) => state.roster[u.id] === 'out' || noOutfit(u)).map((u) => u.name),
-    cards_not_owned: CARDS.filter((c) => state.cardsOff[c.id] === false).map((c) => c.name),
+    umas_not_owned: gameData()
+      .umas.filter((u) => state.roster[u.id] === 'out' || noOutfit(u))
+      .map((u) => u.name),
+    cards_not_owned: gameData()
+      .cards.filter((c) => state.cardsOff[c.id] === false)
+      .map((c) => c.name),
     deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
     game_data: ERA === 'gm' ? 'JP, Grand Masters' : 'Global',
     scenario: scenarioOf(state.scen).name,

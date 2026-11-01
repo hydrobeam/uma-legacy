@@ -47,3 +47,25 @@ export const backdropCloses = (dialog) =>
   dialog.addEventListener('click', (e) => {
     if (e.target === dialog) dialog.close();
   });
+/**
+ * A dialog made on its first use and kept (a bridge until each becomes a <Dialog> component, frontend.md §2): `get()`
+ * makes it the first time (an element of class `className` that `setup` gives its id, fixed content and listeners,
+ * then added to the body) and returns it; `made()` returns it if it is made, else null, making nothing.
+ * @param {string} className @param {(dialog: HTMLDialogElement) => void} setup
+ * @returns {{get: () => HTMLDialogElement, made: () => HTMLDialogElement | null}}
+ */
+export function lazyDialog(className, setup) {
+  /** @type {HTMLDialogElement | null} */
+  let dialog = null;
+  return {
+    get() {
+      if (!dialog) {
+        dialog = el('dialog', className);
+        setup(dialog);
+        document.body.appendChild(dialog);
+      }
+      return dialog;
+    },
+    made: () => dialog,
+  };
+}

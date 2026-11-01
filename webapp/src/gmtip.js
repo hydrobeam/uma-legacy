@@ -9,8 +9,9 @@ const GAP = 10,
   EDGE = 8; // px: between the element and the balloon; the least between the balloon and the window's sides
 /** @type {HTMLElement | null} */
 let tipFor = null,
-  tipTimer = null,
   lifted = []; // lifted: the elements whose title is held while the balloon shows
+/** @type {number | undefined} */
+let tipTimer;
 function tipShow(target) {
   if (!target.isConnected || !target.title) return;
   // her title and every title round her (a card tile's own, round its picture's): with any left the browser would show it

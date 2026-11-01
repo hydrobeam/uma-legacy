@@ -4,7 +4,7 @@
 // lists is owned, everything else in the data not owned. Ids the data doesn't have (R cards it leaves out, another
 // era's) are skipped.
 import { $, $input } from './dom.js';
-import { UMAS, CARDS } from './data.js';
+import { gameData } from './data.js';
 import { state } from './state.js';
 import { save } from './save.js';
 import { paintRoster } from './roster.js';
@@ -15,14 +15,18 @@ import { parseOwned } from './umadump.js';
 // outfit of hers (character id = outfit id / 100). Returns how many of the file's ids the data has; 0 changes nothing.
 /** @param {Set<number>} owned @returns {number} */
 function setOwnedOutfits(owned) {
-  const outfitless = new Set(UMAS.filter((u) => !u.outfits.length).map((u) => u.id)),
-    outfitIds = new Set(UMAS.flatMap((u) => u.outfits.map((o) => o.id))),
+  const outfitless = new Set(
+      gameData()
+        .umas.filter((u) => !u.outfits.length)
+        .map((u) => u.id),
+    ),
+    outfitIds = new Set(gameData().umas.flatMap((u) => u.outfits.map((o) => o.id))),
     known = [...owned].filter((id) => outfitIds.has(id) || outfitless.has(Math.floor(id / 100))).length;
   if (!known) return 0;
   const charas = new Set([...owned].map((id) => Math.floor(id / 100)));
   state.roster = {};
   state.outfits = {};
-  for (const u of UMAS) {
+  for (const u of gameData().umas) {
     if (!u.outfits.length && !charas.has(u.id)) state.roster[u.id] = 'out';
     for (const o of u.outfits) if (!owned.has(o.id)) state.outfits[o.id] = false;
   }
@@ -31,8 +35,13 @@ function setOwnedOutfits(owned) {
 // Mark owned exactly the support cards in `owned` (card ids). Returns how many of them the data has; 0 changes nothing.
 /** @param {Set<number>} owned @returns {number} */
 function setOwnedCards(owned) {
-  const known = CARDS.filter((c) => owned.has(c.id)).length;
-  if (known) state.cardsOff = Object.fromEntries(CARDS.filter((c) => !owned.has(c.id)).map((c) => [c.id, false]));
+  const known = gameData().cards.filter((c) => owned.has(c.id)).length;
+  if (known)
+    state.cardsOff = Object.fromEntries(
+      gameData()
+        .cards.filter((c) => !owned.has(c.id))
+        .map((c) => [c.id, false]),
+    );
   return known;
 }
 // one file's import, as the dialog's status says it ("54 outfits owned (2 not in the data)."); throws when nothing in

@@ -4,7 +4,7 @@
 import { $ } from './dom.js';
 import { runnerHTML } from './images.js';
 import { ERA } from './settings.js';
-import { UMAS, ASSETS, EXAMPLE, LATER } from './data.js';
+import { ASSETS, EXAMPLE, gameData } from './data.js';
 import { run, restartEngine } from './engine.js';
 import { save, onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
@@ -19,10 +19,10 @@ import { loadExample } from './presets.js';
 // in the engine (a kill would cut it short).
 let searching = false,
   searchT0 = 0,
-  searchTick = null,
-  pauseTimer = null,
   searchId = 0,
   busy = false;
+/** @type {number | undefined} */
+let searchTick, pauseTimer;
 // 'check': the fast result is on screen and the exact check is running
 let phase = 'search';
 // the result on screen: its job's key, its loops and decks (JSON), whether it is the precomputed example
@@ -186,11 +186,13 @@ function buildJob() {
       click: 't-preset',
       run: loadExample,
     });
-  const exclude = UMAS.filter((u) => state.roster[u.id] === 'out' || noOutfit(u)).map((u) => u.id);
+  const exclude = gameData()
+    .umas.filter((u) => state.roster[u.id] === 'out' || noOutfit(u))
+    .map((u) => u.id);
   const exclude_outfits = Object.entries(state.outfits)
     .filter(([, owned]) => owned === false)
     .map(([id]) => +id);
-  const owned = UMAS.length - exclude.length;
+  const owned = gameData().umas.length - exclude.length;
   if (owned < 3)
     throw new Blocked('empty', `Mark at least 3 umas as owned to search (${owned} owned now).`, {
       label: 'Mark all umas owned',
@@ -214,10 +216,11 @@ function buildJob() {
   return { job, targets };
 }
 // The last result per era is kept in localStorage with the job that produced it (plus the solver's and data's
-// fingerprints and what is still held back for a later start, data.js LATER), so a reload with unchanged settings shows
+// fingerprints and what is still held back for a later start, data.js gameData().later), so a reload with unchanged settings shows
 // it as done, without searching again, instead of the default example.
 const lastResultKey = () => `llp:last:${ERA}`;
-const jobKey = (job) => JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], LATER, job]);
+const jobKey = (job) =>
+  JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], gameData().later, job]);
 function defaultKey() {
   // the job of the default settings (the precomputed example's)
   const current = JSON.stringify(state);

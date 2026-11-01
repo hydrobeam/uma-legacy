@@ -3,7 +3,7 @@
 // tile; arrows move between tiles (two columns), Escape or a click outside the button and the grid closes it, and so
 // does focus leaving the picker. Picking a scenario also brings its guaranteed golds and sets its default lineage rank.
 import { $ } from './dom.js';
-import { SCENARIOS, SCEN_GOLDS, SK, RANKS } from './data.js';
+import { SCENARIOS, SCEN_GOLDS, RANKS, gameData } from './data.js';
 import { ERA } from './settings.js';
 import { state, writeSaved } from './state.js';
 import { scenLogo, skillIcon, srcFor } from './images.js';
@@ -44,7 +44,7 @@ export function eraScenario(era) {
 }
 // the golds a scenario hands out: [skill group, gold's name] (those with a name)
 const goldNames = (sc) =>
-  (SCEN_GOLDS[sc.v] || []).map((group) => [group, SK.get(group)?.gd]).filter(([, name]) => name);
+  (SCEN_GOLDS[sc.v] || []).map((group) => [group, gameData().skillNames.get(group)?.gd]).filter(([, name]) => name);
 // the tile's (and button's) accessible name: the logo is the only visible name
 const label = (sc) => {
   const golds = goldNames(sc).map(([, name]) => name);

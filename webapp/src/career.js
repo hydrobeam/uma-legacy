@@ -9,9 +9,9 @@
 //   analysis.js   the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
 //   options.js    the options table ("Other careers": the plan's careers, Use this) and its Saves popup
 import './errorlog.ts'; // first: it listens before any other module runs
-import { $, $dialog, $input, $textarea, backdropCloses, el, fmtIn } from './dom.js';
+import { $, $dialog, $input, $textarea, backdropCloses, el, fmtIn, lazyDialog } from './dom.js';
 import { ERA, SAVED } from './settings.js';
-import { UMAS, SK, CAREER, RANKS, loadData } from './data.js';
+import { RANKS, loadData, careerTables, gameData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
 import {
   run as engineRun,
@@ -83,7 +83,7 @@ import { optionsEl } from './career/options.js';
 import { unprovenWhy, searchCaveat, planCaveat } from './proofs.mjs';
 
 const tName = (g) => {
-  const s = SK.get(g) || { w: `Skill ${g}`, gd: null };
+  const s = gameData().skillNames.get(g) || { w: `Skill ${g}`, gd: null };
   return goldGiven(g) && s.gd ? s.gd : s.w;
 };
 const owned = (u) => state.roster[u.id] !== 'out' && !noOutfit(u);
@@ -102,7 +102,7 @@ export const btn = (label, cls, fn) => {
 // the functions that drive a run (`schedule`, `search`, `planPhase`, `endRun`); everything else reads it.
 /**
  * @type {{id: number, searching: boolean, started: boolean, phase: 'search' | 'plan', phaseStart: number, lead: string,
- *   progress: string, inflight: string | null, tick: number | null, timer: number | null}}
+ *   progress: string, inflight: string | null, tick: number | undefined, timer: number | undefined}}
  */
 export const run = {
   id: 0, // the run under way or last made; a newer edit's run makes an older one's work stale
@@ -113,8 +113,8 @@ export const run = {
   lead: '', // the plan phase's lead: what the search found ("Weighed N careers in X s.")
   progress: '', // the plan's progress, as the solver reports it from inside the plan (`progText`)
   inflight: null, // the run under way: its job and places (`runKey`); null when none is
-  tick: null, // the status line's one-second redraw while a job runs (setInterval)
-  timer: null, // the pause between an edit and its search (setTimeout)
+  tick: undefined, // the status line's one-second redraw while a job runs (setInterval)
+  timer: undefined, // the pause between an edit and its search (setTimeout)
 };
 // a job's key: its JSON with the legacies' apart, kept with the array `legaciesJob` returns (the same until an edit)
 let legaciesJson = { legacies: null, json: '' };
@@ -527,8 +527,10 @@ export function buildJob() {
     if (k === 'trainee')
       throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
   }
-  const exclude = UMAS.filter((u) => !owned(u) && u.id !== plan.trainee).map((u) => u.id);
-  if (!plan.trainee && exclude.length >= UMAS.length)
+  const exclude = gameData()
+    .umas.filter((u) => !owned(u) && u.id !== plan.trainee)
+    .map((u) => u.id);
+  if (!plan.trainee && exclude.length >= gameData().umas.length)
     throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
   const exclude_outfits = Object.entries(state.outfits)
     .filter(([, v]) => v === false)
@@ -613,7 +615,9 @@ export const ROLL_K = 6; // careers a search returns with a place open (the plan
 const baseOf = (job) => ({
   ...job,
   career: undefined,
-  exclude: UMAS.filter((u) => !owned(u)).map((u) => u.id),
+  exclude: gameData()
+    .umas.filter((u) => !owned(u))
+    .map((u) => u.id),
   trainees: [],
   fix: [],
   per_trainee: false,
@@ -637,7 +641,9 @@ let refPlan = null;
 const refBase = (job) =>
   planKey({
     ...job,
-    exclude: UMAS.filter((u) => !owned(u)).map((u) => u.id),
+    exclude: gameData()
+      .umas.filter((u) => !owned(u))
+      .map((u) => u.id),
     trainees: [],
     fix: [],
     top: 0,
@@ -1092,9 +1098,8 @@ function familyEl(k, r) {
 // nodeOpen, the node on show: {kind: 't'} the trainee, {kind: 'p', k} parent place k, {kind: 'g', k, j} parent k's
 // parent j, {kind: 'v', id} a veteran of the pool
 /** @typedef {{kind: 't' | 'p' | 'g' | 'v', k?: number, j?: number, id?: string}} NodeSpec */
-let nodeDlg = null,
-  /** @type {NodeSpec | null} */
-  nodeOpen = null;
+/** @type {NodeSpec | null} */
+let nodeOpen = null;
 // the data-k of the tree's (or the pool's) button for a node
 const nodeKey = (spec) =>
   spec.kind === 't'
@@ -1104,42 +1109,47 @@ const nodeKey = (spec) =>
       : spec.kind === 'v'
         ? `node:v${spec.id}`
         : `node:p${spec.k}g${spec.j}`;
+const nodeDialog = lazyDialog('gmdlg nodedlg', (dialog) => {
+  dialog.id = 'node-dlg';
+  dialog.setAttribute('aria-labelledby', 'node-title');
+  const h = el('h3', 'gmdhdr');
+  h.id = 'node-title';
+  const body = el('div', 'gmdbody');
+  body.id = 'node-body';
+  const f = el('div', 'gmdfoot');
+  const c = el('button', 'btn gmclose', 'Close');
+  c.type = 'button';
+  c.onclick = () => dialog.close();
+  f.appendChild(c);
+  dialog.append(h, body, f);
+  dialog.addEventListener('close', () => {
+    const sp = nodeOpen;
+    nodeOpen = null;
+    const key = sp && nodeKey(sp);
+    const e = key && document.querySelector(`[data-k="${key}"]`);
+    if (e && !document.querySelector('dialog[open]')) e.focus();
+  });
+});
+// the node popup, closed if it is open
+const closeNode = () => {
+  const nodeDlg = nodeDialog.made();
+  if (nodeDlg?.open) nodeDlg.close();
+};
 export function openNode(spec) {
-  if (!nodeDlg) {
-    nodeDlg = el('dialog', 'gmdlg nodedlg');
-    nodeDlg.id = 'node-dlg';
-    nodeDlg.setAttribute('aria-labelledby', 'node-title');
-    const h = el('h3', 'gmdhdr');
-    h.id = 'node-title';
-    const body = el('div', 'gmdbody');
-    body.id = 'node-body';
-    const f = el('div', 'gmdfoot');
-    const c = el('button', 'btn gmclose', 'Close');
-    c.type = 'button';
-    c.onclick = () => nodeDlg.close();
-    f.appendChild(c);
-    nodeDlg.append(h, body, f);
-    nodeDlg.addEventListener('close', () => {
-      const sp = nodeOpen;
-      nodeOpen = null;
-      const key = sp && nodeKey(sp);
-      const e = key && document.querySelector(`[data-k="${key}"]`);
-      if (e && !document.querySelector('dialog[open]')) e.focus();
-    });
-    document.body.appendChild(nodeDlg);
-  }
+  const nodeDlg = nodeDialog.get();
   nodeOpen = spec;
   fillNode();
   if (!nodeDlg.open) nodeDlg.showModal();
 }
 // a dialog of its own from the popup (the uma or parent picker): the popup closes first
 const fromNode = (fn) => () => {
-  if (nodeDlg?.open) nodeDlg.close();
+  closeNode();
   fn();
 };
 // Refill the popup for the node on show (`nodeOpen`): its title and body, and its actions in the footer. A node that is
 // gone (a removed veteran, a grandparent whose parent place emptied) closes it instead.
 function fillNode() {
+  const nodeDlg = nodeDialog.made();
   if (!nodeOpen || !nodeDlg) return;
   const r = shown(),
     body = $('node-body');
@@ -1366,7 +1376,7 @@ function veteranView(id, body) {
       btn('Remove', 'vdel', () => {
         const index = idxOf(v.id);
         if (index < 0) return;
-        if (nodeDlg?.open) nodeDlg.close();
+        closeNode();
         removeVet(index);
         $('v-msg').textContent = `Removed ${umaName(v.chara)} from your veterans.`;
       }),
@@ -1440,9 +1450,9 @@ function renderTree() {
   box.appendChild(lg);
   if (r && r.trainee.id === (plan.trainee || r.trainee.id)) {
     box.append(targetsEl(r));
-    if (deckDlg?.open) fillDeck(r);
+    if (deckDialog.made()?.open) fillDeck(r);
   }
-  if (nodeDlg?.open) fillNode();
+  if (nodeDialog.made()?.open) fillNode();
 }
 // the career's odds of landing every target and Try a run, beside the title
 function verdictEl(r) {
@@ -1648,25 +1658,27 @@ export function deckEl(r, title = '') {
   return dk;
 }
 // her deck in its popup (the game's dialog): the six cards with their priority and chain notes
-let deckDlg = null;
+// deckKey: the answer and deck it holds (`fillDeck`)
+/** @type {string | null} */
+let deckKey = null;
+const deckDialog = lazyDialog('gmdlg deckdlg', (dialog) => {
+  dialog.id = 'deck-dlg';
+  dialog.setAttribute('aria-labelledby', 'deck-title');
+  dialog.addEventListener('close', () => $('deck-open')?.focus());
+  backdropCloses(dialog);
+});
 function openDeck(r) {
   fillDeck(r);
-  deckDlg.showModal();
+  deckDialog.get().showModal();
 }
 // (refilled while open when a new answer comes: a card marked not owned there searches again)
 function fillDeck(r) {
   // (only when the deck changed: a redraw with the same deck keeps a card's open panel)
   const key = `${keyOf(r)}|${JSON.stringify(r.deck.cards)}`;
-  if (deckDlg && deckDlg._key === key && deckDlg.childElementCount) return;
-  if (!deckDlg) {
-    deckDlg = el('dialog', 'gmdlg deckdlg');
-    deckDlg.id = 'deck-dlg';
-    deckDlg.setAttribute('aria-labelledby', 'deck-title');
-    deckDlg.addEventListener('close', () => $('deck-open')?.focus());
-    backdropCloses(deckDlg);
-    document.body.appendChild(deckDlg);
-  }
-  deckDlg._key = key;
+  const made = deckDialog.made();
+  if (made && deckKey === key && made.childElementCount) return;
+  const deckDlg = deckDialog.get();
+  deckKey = key;
   deckDlg.textContent = '';
   const h = el('h3', 'gmdhdr', 'Deck');
   h.id = 'deck-title';
@@ -1812,10 +1824,10 @@ function countsEl(r) {
 export const tableRows = (r) =>
   (r.schedule || []).map((row) => {
     const c = row.cells[0],
-      ix = CAREER.races.indexOf(row.name),
+      ix = careerTables().races.indexOf(row.name),
       apt = r.aptitudes?.base;
-    if (!c || ix < 0 || !apt || !CAREER.race_cat) return row;
-    const { cost, grades } = tableCost(apt, CAREER.race_cat[ix], CAREER.race_ground[ix]);
+    if (!c || ix < 0 || !apt || !careerTables().race_cat) return row;
+    const { cost, grades } = tableCost(apt, careerTables().race_cat[ix], careerTables().race_ground[ix]);
     return { ...row, cells: [{ ...c, tbl: tableChance(cost, c.row), tapt: cost, grades }] };
   });
 const schedOf = (r) => ({

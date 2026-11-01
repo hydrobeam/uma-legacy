@@ -3,7 +3,7 @@
 // tags with their stars, a name under them; a label tab over her when she has a role (the game's "Trainee"). Used by
 // the uma.moe popup's listings and by Veteran Umamusume.
 import { el } from './dom.js';
-import { CAREER } from './data.js';
+import { careerTables } from './data.js';
 import { umaAv, srcFor } from './images.js';
 import { umaName, blueName, pinkName, uniqueName } from './vets.js';
 
@@ -77,7 +77,7 @@ export function vetCell(v, { name, label, onClick, tab, sub }) {
     face.appendChild(p);
   } else face.appendChild(umaAv(v.chara, v.outfit, 88));
   // her career-rank badge, top right of her portrait, as in the game (the last rank whose minimum her score reaches)
-  const rankId = v.rank ? (CAREER.ranks || []).reduce((at, min, i) => (v.rank >= min ? i + 1 : at), 0) : 0,
+  const rankId = v.rank ? (careerTables().ranks || []).reduce((at, min, i) => (v.rank >= min ? i + 1 : at), 0) : 0,
     badge = rankId && srcFor('ui', `vrank_${rankId}`);
   if (badge) {
     const b = el('img', 'umrank');

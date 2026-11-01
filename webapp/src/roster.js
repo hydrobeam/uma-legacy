@@ -1,7 +1,7 @@
 // ---------- roster: one tile per outfit ----------
 // Owned / not owned, per outfit (solver: exclude + exclude_outfits).
 import { $, $input } from './dom.js';
-import { UMAS } from './data.js';
+import { gameData } from './data.js';
 import { state } from './state.js';
 import { umaAv } from './images.js';
 import { save } from './save.js';
@@ -29,7 +29,7 @@ const tileOutfits = (u) => (u.outfits?.length ? u.outfits : [null]);
  * @param {number} id a character id @param {{id: number, label: string}[]} [offered] @returns {OutfitPick}
  */
 export function pickOutfit(id, offered = []) {
-  const u = UMAS.find((x) => x.id === id),
+  const u = gameData().umas.find((x) => x.id === id),
     mine = (u?.outfits || []).filter((o) => state.outfits[o.id] !== false);
   if (offered.length) return { list: offered, any: false };
   const chosen = mine.find((o) => o.id === id * 100 + 1) || mine[0];
@@ -47,11 +47,14 @@ export const outfitNote = (pick) =>
           .join(', ')}.`
       : '';
 function rosterCount() {
-  const umasOut = UMAS.filter((u) => state.roster[u.id] === 'out' || noOutfit(u)).length;
-  const outfits = UMAS.reduce((sum, u) => sum + Math.max(1, (u.outfits || []).length), 0);
-  const outfitsOut = UMAS.reduce((sum, u) => sum + tileOutfits(u).filter((o) => tileState(u, o) === 'out').length, 0);
+  const umasOut = gameData().umas.filter((u) => state.roster[u.id] === 'out' || noOutfit(u)).length;
+  const outfits = gameData().umas.reduce((sum, u) => sum + Math.max(1, (u.outfits || []).length), 0);
+  const outfitsOut = gameData().umas.reduce(
+    (sum, u) => sum + tileOutfits(u).filter((o) => tileState(u, o) === 'out').length,
+    0,
+  );
   $('r-count').textContent =
-    `${UMAS.length - umasOut} of ${UMAS.length} umas · ${outfits - outfitsOut} of ${outfits} outfits`;
+    `${gameData().umas.length - umasOut} of ${gameData().umas.length} umas · ${outfits - outfitsOut} of ${outfits} outfits`;
   // the count on the Umas button too: everything counts as owned until you say otherwise
   const b = $('o-umas');
   b.dataset.n = `${outfits - outfitsOut}/${outfits}`;
@@ -131,7 +134,7 @@ export function renderRoster() {
   const box = $('roster');
   box.textContent = '';
   const tiles = [];
-  for (const u of UMAS)
+  for (const u of gameData().umas)
     for (const o of tileOutfits(u)) tiles.push({ u, o, rel: o ? o.rel : 0, key: `${u.name} ${o ? o.label : ''}` });
   const dir = state.rdir === 'desc' ? -1 : 1;
   tiles.sort(
@@ -157,7 +160,7 @@ export function initRoster() {
     paintRoster();
   };
   $('r-none').onclick = () => {
-    for (const u of UMAS) state.roster[u.id] = 'out';
+    for (const u of gameData().umas) state.roster[u.id] = 'out';
     save();
     paintRoster();
   };

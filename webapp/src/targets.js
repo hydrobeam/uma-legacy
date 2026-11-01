@@ -1,12 +1,12 @@
 // ---------- target skills ----------
 import { $, $input } from './dom.js';
-import { CAT, SK } from './data.js';
+import { gameData } from './data.js';
 import { initPresets } from './presets.js';
 import { state, goldGiven } from './state.js';
 import { skillIcon } from './images.js';
 import { save } from './save.js';
 import { renderCards } from './cards.js';
-const namesOf = (group) => SK.get(group) || { w: `Skill ${group}`, gd: null };
+const namesOf = (group) => gameData().skillNames.get(group) || { w: `Skill ${group}`, gd: null };
 // a target as the game's skill tile: icon and name; a gold the scenario guarantees shows as that gold (It's On! for
 // Ramp Up), in gold (the editor below adds its remove button; the Presets view shows the tiles alone)
 /** @param {number} group @returns {HTMLDivElement} */
@@ -89,7 +89,7 @@ export function initTargets() {
     }
     const have = new Set(state.targets.map((t) => t.group));
     const matches = (name) => !!name && name.toLowerCase().includes(filter);
-    const match = CAT.filter(([, white, gold]) => matches(white) || matches(gold));
+    const match = gameData().catalog.filter(([, white, gold]) => matches(white) || matches(gold));
     const hits = match.filter(([group]) => !have.has(group)).slice(0, SHOWN_MAX);
     for (const [group, white, gold] of hits) {
       // matched on the gold's name only: show the gold with its white (the target is the white; its gold comes with it)

@@ -2,7 +2,7 @@
 // with a place open), each with Use this, and the Saves popup that explains the plan's figures and its check. It reads
 // the answer and the run machine from career.js (an import cycle: this module's body only declares, so nothing of
 // career.js is read while the bundle loads); its one write there is `forgetDroppedChoice`.
-import { $, el, esc, fmtIn } from '../dom.js';
+import { $, el, esc, fmtIn, lazyDialog } from '../dom.js';
 import { state } from '../state.js';
 import { umaAv } from '../images.js';
 import { pct } from '../odds.js';
@@ -402,15 +402,13 @@ function optionRow(r, { on, mine, planReport, places, pick }) {
   return row;
 }
 // "Saves per run" explained, in plain words, with the plan the numbers come from
-let saveDlg = null;
+const saveDialog = lazyDialog('gmdlg', (dialog) => {
+  dialog.id = 'save-dlg';
+  dialog.setAttribute('aria-labelledby', 'save-title');
+  dialog.addEventListener('close', () => $('save-why')?.focus());
+});
 function openSaveWhy(planReport, notes = []) {
-  if (!saveDlg) {
-    saveDlg = el('dialog', 'gmdlg');
-    saveDlg.id = 'save-dlg';
-    saveDlg.setAttribute('aria-labelledby', 'save-title');
-    saveDlg.addEventListener('close', () => $('save-why')?.focus());
-    document.body.appendChild(saveDlg);
-  }
+  const saveDlg = saveDialog.get();
   saveDlg.textContent = '';
   const n = state.targets.length;
   const h = el('h3', 'gmdhdr', 'What these mean');

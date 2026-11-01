@@ -1,6 +1,6 @@
 // ---------- the engine: a Web Worker running the WebAssembly solver (shared by the planner and the career page) ----------
 import { ERA } from './settings.js';
-import { ASSETS, LATER, loadFail } from './data.js';
+import { ASSETS, loadFail, gameData } from './data.js';
 import { stateLoad, stateSave, stateDrop } from './statestore.js';
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 /**
@@ -221,16 +221,16 @@ export function engineSaveState() {
     }
   }, 100);
 }
-// what has not started yet (data.js LATER) is left out of every search (a roll's plan job, `next.roll`, alike: the
+// what has not started yet (data.js gameData().later) is left out of every search (a roll's plan job, `next.roll`, alike: the
 // solver finds the plan's kept state by the job as it ran)
 const gate = (job) =>
   !['deck', 'career'].includes(job.cmd)
     ? job
     : {
         ...job,
-        exclude: [...(job.exclude || []), ...LATER.umas],
-        exclude_outfits: [...(job.exclude_outfits || []), ...LATER.outfits],
-        exclude_cards: [...(job.exclude_cards || []), ...LATER.cards],
+        exclude: [...(job.exclude || []), ...gameData().later.umas],
+        exclude_outfits: [...(job.exclude_outfits || []), ...gameData().later.outfits],
+        exclude_cards: [...(job.exclude_cards || []), ...gameData().later.cards],
       };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: career/plan/mod.rs `index_rule`) while it runs

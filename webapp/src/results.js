@@ -1,6 +1,6 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
 import { $, esc, fmtIn } from './dom.js';
-import { CARDS, CARD_BY_ID, SK } from './data.js';
+import { gameData } from './data.js';
 import { ui } from './state.js';
 import { umaAv, cardAv, skillIcon, setRunnerFrom } from './images.js';
 import { cardTitle, borLast, chainEndNote } from './cards.js';
@@ -64,7 +64,7 @@ const deckKey = (deck) => deck.cards.join('|');
 const SHOWN = 0.005; // hint odds and their changes under half a percent are not shown
 // the chance of at least the white: a gold hint counts for the white too
 const atLeastWhite = (odds) => (odds ? deckHint(odds.gold, odds.white) : 0);
-const namesOf = (group) => SK.get(group) || { w: group, gd: null };
+const namesOf = (group) => gameData().skillNames.get(group) || { w: group, gd: null };
 const iconHTML = (group, gold) => {
   const icon = skillIcon(group, gold);
   return icon ? icon.outerHTML : '';
@@ -79,7 +79,7 @@ function cardChip(deck, i) {
     pals = new Set(deck.pal_cards || []);
   const borrowed = /\(borrowed\)$/.test(named),
     base = named.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
-  const c = CARD_BY_ID.get(deck.card_ids[i]) || CARDS.find((x) => x.name === base); // plain pals have a name but no entry in card_ids
+  const c = gameData().cardById.get(deck.card_ids[i]) || gameData().cards.find((x) => x.name === base); // plain pals have a name but no entry in card_ids
   // pick: the skill to prioritise in IT: the search's choice at a chain link ("link 1: Uma Stan"), or what a pal's
   // credited event choice needs (derived from the event data: c.pri)
   const endAt = (deck.end_chain_at || [])[i] || 0,
@@ -250,7 +250,7 @@ function appendDecks(card, loop, shared, decks) {
     };
   });
   card.querySelectorAll('.deck .dc').forEach((chip) => {
-    const c = CARD_BY_ID.get(+chip.dataset.cid);
+    const c = gameData().cardById.get(+chip.dataset.cid);
     chip.prepend(cardAv(c || null, 96, false));
   });
 }

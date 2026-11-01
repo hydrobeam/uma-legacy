@@ -1,6 +1,6 @@
 // ---------- support cards: the picker (owned or not, by rarity) and deck options ----------
 import { $, $input, esc } from './dom.js';
-import { CARDS, SK, SCENARIOS } from './data.js';
+import { SCENARIOS, gameData } from './data.js';
 import { state, goldGiven } from './state.js';
 import { cardAv } from './images.js';
 import { save } from './save.js';
@@ -39,14 +39,14 @@ export function cardGives(c, groups) {
   for (const group of c.whites)
     if (groups.has(group))
       out.push({
-        skill: (SK.get(group) || { w: group }).w,
+        skill: (gameData().skillNames.get(group) || { w: group }).w,
         note: 'hint',
         tip: 'Hinted when training with this card',
         gold: false,
       });
   for (const [group, level, link, p] of c.ev) {
     if (!groups.has(group)) continue;
-    const names = SK.get(group) || { w: group, gd: group },
+    const names = gameData().skillNames.get(group) || { w: group, gd: group },
       part = share(p);
     const note = (link ? `${ordinal(link)} event` : 'event') + (part ? ` · ${part}` : '');
     const tip =
@@ -77,7 +77,7 @@ export function chainEndAt(c, link) {
   };
 }
 const skillName = (group, level) => {
-  const names = SK.get(group) || { w: String(group), gd: String(group) };
+  const names = gameData().skillNames.get(group) || { w: String(group), gd: String(group) };
   return level === 2 ? names.gd : names.w;
 };
 // a chain-ending deck card's caption: the skill that makes IT take the ending choice
@@ -147,7 +147,8 @@ export function renderCards() {
   const order = (a, b) =>
     dir * (state.csort === 'name' ? sortName(a.c).localeCompare(sortName(b.c)) : a.c.rel - b.c.rel || a.c.id - b.c.id);
   for (const [label, inSection] of sections) {
-    const list = CARDS.filter(inSection)
+    const list = gameData()
+      .cards.filter(inSection)
       .map((c) => ({ c, gifts: cardGives(c, groups) }))
       .filter((x) => x.c.pal || x.gifts.length)
       .sort(order);
@@ -189,10 +190,10 @@ function cardCount() {
 }
 // the count on the Support cards button: every card counts as owned until you say otherwise
 function ownedBadge() {
-  const owned = CARDS.filter((c) => state.cardsOff[c.id] !== false).length,
+  const owned = gameData().cards.filter((c) => state.cardsOff[c.id] !== false).length,
     b = $('o-cards');
-  b.dataset.n = `${owned}/${CARDS.length}`;
-  b.title = `${owned} of ${CARDS.length} support cards owned`;
+  b.dataset.n = `${owned}/${gameData().cards.length}`;
+  b.title = `${owned} of ${gameData().cards.length} support cards owned`;
 }
 export function initCards() {
   ownedBadge();
@@ -204,7 +205,7 @@ export function initCards() {
     paintCards();
   };
   $('c-none').onclick = () => {
-    for (const c of CARDS) state.cardsOff[c.id] = false;
+    for (const c of gameData().cards) state.cardsOff[c.id] = false;
     save();
     paintCards();
   };

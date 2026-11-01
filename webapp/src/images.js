@@ -1,7 +1,7 @@
 // ---------- character icons, card art and skill icons: files in the page's image folder (data.js IMG_BASE; from the game's own files) ----------
 // Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near the
 // view (loading is set before src).
-import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, NAME } from './data.js';
+import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, gameData } from './data.js';
 import { el, spinHTML } from './dom.js';
 /** @param {string} kind the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...) @param {number|string} id @returns {string|null} */
 export function srcFor(kind, id) {
@@ -80,7 +80,7 @@ export function umaAv(charaId, outfitId, size, eager = false) {
   disc.style.setProperty('--s', `${size}px`);
   disc.style.setProperty('--fs', `${Math.round(size * 0.38)}px`);
   disc.style.setProperty('--h', String((charaId * 47) % 360)); // her disc's hue, fixed per character
-  disc.textContent = initials(NAME.get(charaId) || '?');
+  disc.textContent = initials(gameData().names.get(charaId) || '?');
   const tries = [outfitId && srcFor('outfit', outfitId), srcFor('uma', charaId), srcFor('mob', charaId)].filter(
     Boolean,
   ); // a mob (sample veteran) has her own portrait
@@ -90,7 +90,7 @@ export function umaAv(charaId, outfitId, size, eager = false) {
     const src = tries.shift();
     disc.textContent = '';
     if (!src) {
-      disc.textContent = initials(NAME.get(charaId) || '?');
+      disc.textContent = initials(gameData().names.get(charaId) || '?');
       return;
     }
     const image = new Image();

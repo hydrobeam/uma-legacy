@@ -1,11 +1,11 @@
 // ---------- veteran import: umadump's trained_chara_data.json and rental_chara_data.json (github.com/Werseter/umadump) ----------
 // Per veteran: card_id (outfit; character = card_id / 100), factor_info_array (sparks: factor_id = factor group * 100 +
-// stars; white skill sparks map to a skill group through CAREER.factors), win_saddle_id_array (single-race G1 saddles
-// map to a race index through CAREER.saddles; titles are left out) and succession_chara_array (her parents at
+// stars; white skill sparks map to a skill group through careerTables().factors), win_saddle_id_array (single-race G1 saddles
+// map to a race index through careerTables().saddles; titles are left out) and succession_chara_array (her parents at
 // position_id 10 and 20, same fields). A veteran counts as borrowed when owner_viewer_id is set: it is 0 on your own
 // veterans and the lender's viewer_id (= viewer_id) on the ones offered for borrowing (rental_chara_data.json, the
 // career start screen's borrow list); use_type is 0 on both.
-import { CAREER } from './data.js';
+import { careerTables } from './data.js';
 
 // factor_id = factor group * 100 + stars
 const factorGroup = (factor) => Math.floor(factor.factor_id / 100),
@@ -21,20 +21,20 @@ function bestStars(factors, keyOf) {
 }
 const kept = (keep) => (group) => (keep(group) ? group : undefined);
 // white skill sparks, by skill group
-const sparksOf = (factors) => bestStars(factors, (group) => CAREER.factors[group]);
-// aptitude (pink) sparks: the groups in CAREER.pinks
+const sparksOf = (factors) => bestStars(factors, (group) => careerTables().factors[group]);
+// aptitude (pink) sparks: the groups in careerTables().pinks
 const pinksOf = (factors) =>
   bestStars(
     factors,
-    kept((group) => CAREER.pinks[group] !== undefined),
+    kept((group) => careerTables().pinks[group] !== undefined),
   );
 // blue (stat) sparks: factor groups 1..5; unique (green) sparks: the outfit's card id as the factor group
 const isBlue = (group) => group >= 1 && group <= 5,
-  isGreen = (group) => group >= 100000 && CAREER.uniques?.[group] !== undefined;
+  isGreen = (group) => group >= 100000 && careerTables().uniques?.[group] !== undefined;
 // single-race G1 wins as race indices, ascending (titles have no index and are left out)
 function winsOf(saddles) {
   return [
-    ...new Set((saddles || []).map((saddle) => CAREER.saddles[saddle]).filter((race) => race !== undefined)),
+    ...new Set((saddles || []).map((saddle) => careerTables().saddles[saddle]).filter((race) => race !== undefined)),
   ].sort((a, b) => a - b);
 }
 /**
@@ -121,7 +121,7 @@ export function parseExport(text) {
     ...node(r),
     src: 'import',
     borrowed: !!r.owner_viewer_id,
-    rank: +r.rank_score || undefined, // her rank score (the badge, CAREER.ranks)
+    rank: +r.rank_score || undefined, // her rank score (the badge, careerTables().ranks)
     // trained_chara_id counts per player: a lender's id is kept apart from yours by her viewer id
     id:
       (r.owner_viewer_id ? `tr${r.owner_viewer_id}-` : 'tc') +
@@ -166,7 +166,7 @@ export function parseListing(item) {
       wins: +h.win_count || 0,
       sparkStars: +h.white_stars_sum || 0,
     },
-    rank: +h.parent_rank || 0, // her rank score (the badge, CAREER.ranks)
+    rank: +h.parent_rank || 0, // her rank score (the badge, careerTables().ranks)
     parents: [side('left', h.parent_left_id), side('right', h.parent_right_id)],
   };
 }

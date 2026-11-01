@@ -6,7 +6,7 @@
 // below. It reads the answer and the run machine from career.js (an import cycle: this module's body only declares,
 // so nothing of career.js is read while the bundle loads).
 import { $, $dialog, el, fmtIn } from '../dom.js';
-import { CAREER } from '../data.js';
+import { careerTables } from '../data.js';
 import { state } from '../state.js';
 import { restartEngine, engineSaveState } from '../engine.js';
 import { umaAv, runnerHTML } from '../images.js';
@@ -155,7 +155,7 @@ function openDraftWins(d, r) {
     runs = new Map(),
     heldAt = new Map();
   for (const w of rows) {
-    const ix = CAREER.races.indexOf(w.name || w.race);
+    const ix = careerTables().races.indexOf(w.name || w.race);
     if (ix < 0) continue;
     if (!heldAt.has(w.turn)) heldAt.set(w.turn, []);
     heldAt.get(w.turn).push(ix);
@@ -209,7 +209,7 @@ const copyNode = (v) => ({
 });
 // what a roll reads of the settings and data (career/roll.mjs)
 /** @type {() => import('./roll.mjs').RollSetup} */
-const rollSetup = () => ({ career: CAREER, targets: state.targets, rank: state.rank });
+const rollSetup = () => ({ career: careerTables(), targets: state.targets, rank: state.rank });
 function rollDraft() {
   const r = shown();
   if (!r || run.searching) return;
@@ -562,8 +562,8 @@ function analysisCard(d, r) {
     d,
     outfit: r.trainee.outfits[0]?.label || null,
     apt: d.apt || r.aptitudes?.start || null,
-    races: scheduledRaces(r, CAREER.races),
-    raceName: (ix) => CAREER.races[ix] || `G1 ${ix}`,
+    races: scheduledRaces(r, careerTables().races),
+    raceName: (ix) => careerTables().races[ix] || `G1 ${ix}`,
     onEdit: editDraft,
     winsBtn: wb,
     targets: r.targets,

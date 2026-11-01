@@ -5,8 +5,8 @@
 // won). No stats (the model has none).
 // The game's own art where the build shipped it (images.py: grade letters, spark bars and bullets, skill tiles), the
 // same shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
-import { el } from './dom.js';
-import { SK, CARD_BY_ID, CARDS } from './data.js';
+import { el, lazyDialog } from './dom.js';
+import { gameData } from './data.js';
 import { umaAv, skillIcon, cardAv, gradeEl } from './images.js';
 import { umaName, sparksEl } from './vets.js';
 /** @import { LineageNode } from './vets.js' */
@@ -228,7 +228,7 @@ function skillsPane({ d, targets }) {
     const got =
       d.bought?.[t.group] || ((d.sparks[t.group] || 0) > 0 ? (b.land_gold > b.land_white ? 'gold' : 'white') : null);
     const gold = got === 'gold',
-      skill = SK.get(t.group) || { w: `Skill ${t.group}`, gd: null };
+      skill = gameData().skillNames.get(t.group) || { w: `Skill ${t.group}`, gd: null };
     // the version shown: the one she got, else the one she would most likely get
     const goldShown = got ? gold : b.gold > b.white;
     const name = goldShown && skill.gd ? skill.gd : skill.w;
@@ -253,8 +253,14 @@ function skillsPane({ d, targets }) {
   }
   return p;
 }
-// the game-style skill popup (one dialog, refilled)
-let skDlg = null;
+// the game-style skill popup (one dialog, refilled); skFrom: the tile that opened it, focused again on close
+/** @type {HTMLElement | null} */
+let skFrom = null;
+const skillDialog = lazyDialog('gmdlg', (dialog) => {
+  dialog.id = 'sk-dlg';
+  dialog.setAttribute('aria-labelledby', 'sk-title');
+  dialog.addEventListener('close', () => skFrom?.focus());
+});
 // b: the target's buying report; got: 'gold' | 'white' | null (not acquired), or undefined for a career not run yet (the
 // popup then gives her chance to land it); icon() makes her skill icon; from: the tile that opened it (focused again on
 // close). legacies: her six legacies, each {chara, outfit, carries}, shown as faces lit where one carries it; cards: the
@@ -265,14 +271,8 @@ let skDlg = null;
  * @param {HTMLElement} from
  */
 export function openSkill({ b, name, got, icon, gold = false, legacies = [], cards = [] }, from) {
-  if (!skDlg) {
-    skDlg = el('dialog', 'gmdlg');
-    skDlg.id = 'sk-dlg';
-    skDlg.setAttribute('aria-labelledby', 'sk-title');
-    skDlg.addEventListener('close', () => skDlg._from?.focus());
-    document.body.appendChild(skDlg);
-  }
-  skDlg._from = from;
+  const skDlg = skillDialog.get();
+  skFrom = from;
   skDlg.textContent = '';
   const h = el('h3', 'gmdhdr', 'Skill Details');
   h.id = 'sk-title';
@@ -437,7 +437,7 @@ export function deckCardAt(deck, i) {
       .replace(/ \(end chain at link \d\)$/, '')
       .replace(/ \(link \d+: [^)]*\)$/, '');
   const id = deck.card_ids[i] ?? deck.plain_ids?.[i - deck.card_ids.length];
-  return { base, borrowed, card: CARD_BY_ID.get(id) || CARDS.find((x) => x.name === base) };
+  return { base, borrowed, card: gameData().cardById.get(id) || gameData().cards.find((x) => x.name === base) };
 }
 let showRaces = false;
 // Career Info, as the game's: her support cards, her two legacies (each with her parents, the borrowed one a guest),

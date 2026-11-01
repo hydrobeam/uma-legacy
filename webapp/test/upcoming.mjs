@@ -29,7 +29,7 @@ export default async function upcoming(b) {
     other = await look(newest + (ahead ? 60000 : -60000) - Date.now()),
     [now, then] = ahead ? [first, other] : [other, first],
     from = (ahead ? Date.now() : newest - 60000) / 1000; // the "now" look's clock, s
-  // what starts after the "now" look's clock: an uma counts from her first outfit's start (data.js `LATER`)
+  // what starts after the "now" look's clock: an uma counts from her first outfit's start (data.js `gameData().later`)
   const later = {
     outfits: outfits.filter((o) => o.rel > from).map((o) => o.id),
     cards: dataCards.filter((c) => c.rel > from).map((c) => c.id),

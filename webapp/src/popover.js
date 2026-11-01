@@ -1,6 +1,6 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
 import { esc } from './dom.js';
-import { UMAS, CARD_BY_ID } from './data.js';
+import { gameData } from './data.js';
 import { state, goldGiven } from './state.js';
 import { save } from './save.js';
 import { umaState, paintRoster } from './roster.js';
@@ -44,7 +44,7 @@ export function markOwn() {
     chip.classList.toggle('off', !chip.classList.contains('bor') && state.cardsOff[+chip.dataset.cid] === false);
   });
   document.querySelectorAll('.mem[data-uma]').forEach((member) => {
-    const u = UMAS.find((x) => x.id === +member.dataset.uma);
+    const u = gameData().umas.find((x) => x.id === +member.dataset.uma);
     member.classList.toggle(
       'off',
       !!u && (umaState(u) === 'out' || (member.dataset.outfit && state.outfits[+member.dataset.outfit] === false)),
@@ -95,7 +95,7 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
   closePop();
   popFor = btn;
   btn.setAttribute('aria-expanded', 'true');
-  const u = UMAS.find((x) => x.id === +member.dataset.uma),
+  const u = gameData().umas.find((x) => x.id === +member.dataset.uma),
     outfitId = member.dataset.outfit ? +member.dataset.outfit : null;
   const owned = () => (outfitId ? umaState(u) !== 'out' && state.outfits[outfitId] !== false : umaState(u) !== 'out');
   const title = u.name + (outfitId ? ` ${member.dataset.outfitLabel}` : '');
@@ -166,7 +166,7 @@ function openCardPop(chip) {
   closePop();
   popFor = chip;
   chip.setAttribute('aria-expanded', 'true');
-  const c = CARD_BY_ID.get(+chip.dataset.cid),
+  const c = gameData().cardById.get(+chip.dataset.cid),
     title = c ? cardTitle(c) : { nm: chip.dataset.name, ti: '' };
   const borrowed = chip.classList.contains('bor'),
     owned = c && state.cardsOff[c.id] !== false;
