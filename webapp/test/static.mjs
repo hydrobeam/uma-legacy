@@ -325,6 +325,7 @@ const MOUNTS = {
       ['ex-dlg', 'ex-title', 'ex-close', 'ex-text', 'ex-copy', 'ex-load', 'ex-msg'],
       [],
     ],
+    ['odds-root', 'src/ui/OddsDialog.tsx', ['odds-dlg', 'odds-title'], ['oddtab']],
   ],
 };
 // (file, selector) -> why it may stay

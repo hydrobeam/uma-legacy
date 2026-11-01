@@ -27,6 +27,7 @@ import { initOwnedImport } from '../owned.js';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
+import { OddsDialog } from '../ui/OddsDialog.tsx';
 import { initPopover } from '../popover.js';
 import { loadExample } from '../presets.js';
 import { initSetup } from '../setup.js';
@@ -133,6 +134,8 @@ function start() {
   initTargets();
   render(<AffinityDialog />, $('why-root'));
   render(<ExportDialog />, $('ex-root'));
+  // the odds popup: its own mount point at the end of <body> (the template has none)
+  render(<OddsDialog />, document.body.appendChild(Object.assign(document.createElement('div'), { id: 'odds-root' })));
   $('ex-open').onclick = openExport;
   initPopover({ drawn: true });
   initSetup();
