@@ -21,9 +21,11 @@ import argparse
 import json
 import math
 import os
+import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-PLAN_DIR = f"{REPO}/val/plan"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # val/, for the shared solver module
+from solver import PLAN_DIR, REPO, read_output
+
 CAREER_POOL = f"{REPO}/val/jobs/career_U5.json"
 FOUR_VETERAN_POOL = f"{REPO}/val/sim/pools/pool4.json"
 FOURTEEN_VETERAN_POOL = f"{REPO}/val/sim/pools/pool14.json"
@@ -101,8 +103,7 @@ def looped(out, pools, runs):
         if not os.path.exists(reference_path):
             print(f"{pool}: no reference plan ({reference_path}), skipped")
             continue
-        lines = [line for line in open(reference_path).read().splitlines() if line.strip()]
-        plan = json.loads(lines[-1])["next"]
+        plan = read_output(reference_path)["next"]
         ids = {row["trainee"]["name"]: row["trainee"]["id"] for row in [plan["choice"], *plan["options"]]}
         trio = [plan["v0_plan"][role] for role in "abc"]
         if any(name not in ids for name in trio):

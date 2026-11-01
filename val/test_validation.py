@@ -23,7 +23,7 @@ class ValidationExitTests(unittest.TestCase):
         (self.root / "pkg/loopopt/src/career/plan/candidates.rs").write_text(
             "const EXACT_BUILDERS_TARGETS: usize = 10;\n"
         )
-        for name in ("cmp2.py", "runval.py", "planval.py", "same.py"):
+        for name in ("solver.py", "cmp2.py", "runval.py", "planval.py", "same.py", "capaudit.py"):
             shutil.copyfile(Path(__file__).with_name(name), self.val / name)
         self.solver = self.root / "solver"
         self.output = {
@@ -285,9 +285,13 @@ class ValidationExitTests(unittest.TestCase):
         (self.val / "jobs").mkdir()
         self.write(self.val / "jobs.json", [["global", "tiny"]])
         self.write(self.val / "jobs/tiny.json", {"mode": "career"})
-        for name in ("runval.py", "planval.py"):
+        for name, args in (
+            ("runval.py", ("trial", "-j", "1")),
+            ("planval.py", ("trial", "-j", "1")),
+            ("capaudit.py", ("tiny",)),
+        ):
             with self.subTest(script=name):
-                result = self.run_script(name, self.solver, "trial", "-j", "1")
+                result = self.run_script(name, self.solver, *args)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("solver exited 3", result.stderr)
                 self.assertIn("solver diagnostic", result.stderr)

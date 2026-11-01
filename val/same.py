@@ -7,9 +7,10 @@ difference or when nothing was compared. Stricter than cmp2.py, which checks rou
 
 import argparse
 import glob
-import json
 import os
 import sys
+
+from solver import read_output
 
 # the mode flags and the subdirectory each one compares in
 MODE_DIRECTORIES = {"--plan": "plan", "--sim": "sim"}
@@ -42,11 +43,6 @@ def is_timing(key):
     return key in TIMING_KEYS or key.endswith("_ms")
 
 
-def load(path):
-    text = open(path).read()
-    return json.loads(text[text.index("{") :])
-
-
 def paths(reference, candidate, at=""):
     """Paths whose values differ, excluding only timings."""
     if isinstance(reference, dict) and isinstance(candidate, dict):
@@ -74,7 +70,7 @@ for candidate_tag, reference_tag in ((tag, ref),) + (() if mode else ((tag + "pu
         if not os.path.exists(reference_path):
             continue
         compared += 1
-        differences = paths(load(reference_path), load(candidate_path))
+        differences = paths(read_output(reference_path), read_output(candidate_path))
         if differences:
             mismatches += 1
             print(

@@ -2,15 +2,17 @@
 Brute-force check of the character rule: every 6-card deck from a small owned set, each with its best legal
 loop (deck locked, blocked umas excluded), against the search's answer (exact odds; the character rule as a legality filter)."""
 
-import argparse, tempfile, json, itertools, subprocess, os, concurrent.futures as cf
+import argparse, tempfile, json, itertools, os, concurrent.futures as cf
 
-S = os.path.dirname(os.path.abspath(__file__)) + "/../pkg/loopopt/data/global/"
+import solver
+
+S = solver.era_dir("global") + "/"
 parser = argparse.ArgumentParser(description="Brute-force check of the character rule.", allow_abbrev=False)
 parser.add_argument("binary", metavar="BIN")
 parser.add_argument("k", nargs="?", type=int, default=3, metavar="K")
 parser.add_argument("required", nargs="?", metavar="Required Uma,Other Uma", help="umas every loop must hold")
 arguments = parser.parse_args()
-BIN, K = arguments.binary, arguments.k
+BIN, K = os.path.abspath(arguments.binary), arguments.k
 REQ = arguments.required.split(",") if arguments.required is not None else []
 data = json.load(open(S + "data.json"))
 cards = {c["id"]: c for c in json.load(open(S + "web_cards.json"))["cards"]}
@@ -48,12 +50,12 @@ base = json.load(open(os.path.dirname(os.path.abspath(__file__)) + "/jobs/pal_U.
 base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN, top_decks=K, require=[uid[n] for n in REQ])
 
 
+job_dir = tempfile.TemporaryDirectory(prefix="owncheck_")
+
+
 def run(job):
-    p = os.path.join(tempfile.gettempdir(), f"_oc_{os.getpid()}_{abs(hash(json.dumps(job, sort_keys=True)))}.json")
-    json.dump(job, open(p, "w"))
-    out = subprocess.run([BIN, "data.json", p], cwd=S, capture_output=True, text=True).stdout
-    os.remove(p)
-    return json.loads(out[out.index("{") :])
+    name = f"job_{abs(hash(json.dumps(job, sort_keys=True)))}"
+    return solver.solve(BIN, "global", job, os.path.join(job_dir.name, name))
 
 
 def blocked(deck):

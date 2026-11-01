@@ -452,7 +452,8 @@ pkg/loopopt/data/    the solver's and the page's data: global/ and jp/ (the Gran
                      lists, export_page.py), plus upcoming.json for Global; and the files both eras share,
                      event_shares.json, gametora.json (GameTora's pinned versions), gametora_slugs.json (the page's
                      links to GameTora) and page_raceids.json
-val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks;
+val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks
+                     (solver.py: what they share, running the solver and reading and comparing its outputs);
                      plan/ and sim/ (the career planner's and the policy simulator's jobs and references)
 research/            scripts computing RESEARCH.md's numbers; RESEARCH.md is rendered from docs/RESEARCH.template.md (`./build.sh research`; research/README.md)
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file

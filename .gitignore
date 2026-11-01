@@ -54,6 +54,7 @@
 !/val/
 /val/*
 !/val/runval.py
+!/val/solver.py
 !/val/test_validation.py
 !/val/same.py
 !/val/simval.py

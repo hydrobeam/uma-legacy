@@ -12,11 +12,13 @@ usage: capaudit.py BIN [JOB ...]
 import argparse
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import time
 from typing import NamedTuple
+
+import solver
+from solver import CAP_CLASSES, PLAN_DIR, VALIDATION_DIR
 
 
 class SolverRun(NamedTuple):
@@ -29,10 +31,6 @@ class Certification(NamedTuple):
     target: float | None
 
 
-VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(VALIDATION_DIR)
-PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
-CLS = ["0-1", "2", "3", "4+"]
 parser = argparse.ArgumentParser(description="Audit of the exact caps per deck structure class.", allow_abbrev=False)
 parser.add_argument("binary", metavar="BIN")
 parser.add_argument(
@@ -50,18 +48,9 @@ temporary_dir = tempfile.mkdtemp(prefix="capaudit_")
 
 
 def run(era, job, name, env=None):
-    path = os.path.join(temporary_dir, name + ".json")
-    json.dump(job, open(path, "w"))
     started = time.time()
-    r = subprocess.run(
-        [binary, "data.json", path],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    t = r.stdout
-    return SolverRun(output=json.loads(t[t.index("{") :]), seconds=time.time() - started)
+    output = solver.solve(binary, era, job, os.path.join(temporary_dir, name), env=env)
+    return SolverRun(output=output, seconds=time.time() - started)
 
 
 # what the answer is: everything but timings, search-work counters, the cap fields and the ceilings that scale with the
@@ -94,30 +83,6 @@ SKIP = {
 }
 
 
-def walk(normal, audited, path, differences):
-    if len(differences) >= 6:
-        return
-    if type(normal) != type(audited):
-        differences.append(f"{path}: type")
-        return
-    if isinstance(normal, dict):
-        for k in sorted(set(normal) | set(audited)):
-            if k in SKIP or k.endswith("_ms"):
-                continue
-            if k not in normal or k not in audited:
-                differences.append(f"{path}.{k}: only in one")
-                continue
-            walk(normal[k], audited[k], f"{path}.{k}", differences)
-    elif isinstance(normal, list):
-        if len(normal) != len(audited):
-            differences.append(f"{path}: length {len(normal)} vs {len(audited)}")
-            return
-        for i, (x, y) in enumerate(zip(normal, audited)):
-            walk(x, y, f"{path}[{i}]", differences)
-    elif normal != audited:
-        differences.append(f"{path}: {str(normal)[:50]} vs {str(audited)[:50]}")
-
-
 problems = 0
 started_all = time.time()
 for requested in want:
@@ -134,8 +99,7 @@ for requested in want:
     # Validation jobs get a larger exact-search budget to reduce fallback down the cap ladder.
     env = None if requested in plan_dirs else dict(os.environ, EXACT_BUDGET=str(300_000_000))
     audited, audit_seconds = run(era=era, job=dict(job, cap_audit=True), name=name + "_audit", env=env)
-    differences = []
-    walk(normal, audited, "", differences)
+    differences = solver.differences(normal, audited, SKIP, limit=6)
     # the certificate and the per-class ratios: per-uma jobs in `exact`, plan jobs in `next.work`
     audit_certificate = audited.get("exact") or ((audited.get("next") or {}).get("work")) or {}
     normal_certificate = normal.get("exact") or ((normal.get("next") or {}).get("work")) or {}
@@ -165,7 +129,7 @@ for requested in want:
         who = f"  {deck['trainee']}: {', '.join(deck['cards'])}" if deck and (over or r > 1.0) else ""
         unchecked = rho.reached is not None and caps[k] is not None and rho.reached <= caps[k]
         print(
-            f"    class {CLS[k]:>3}: max exact/product {r:.4f}, normal cap {caps[k]}{' (not checked)' if unchecked else ''}{'  OVER THE CAP' if over else ''}{who}"
+            f"    class {CAP_CLASSES[k]:>3}: max exact/product {r:.4f}, normal cap {caps[k]}{' (not checked)' if unchecked else ''}{'  OVER THE CAP' if over else ''}{who}"
         )
 print(f"{len(want)} jobs in {time.time() - started_all:.0f} s, {problems} problems")
 sys.exit(1 if problems else 0)

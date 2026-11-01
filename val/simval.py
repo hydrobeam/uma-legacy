@@ -20,8 +20,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
-VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(VALIDATION_DIR)
+import solver
+from solver import REPO, VALIDATION_DIR
+
 SIM_DIR = os.path.join(VALIDATION_DIR, "sim")
 
 
@@ -39,15 +40,8 @@ def run_job(binary, tag, job_dir, job):
     job_path = os.path.join(job_dir, job.name + ".json")
     json.dump(career_job, open(job_path, "w"))
     started = time.time()
-    result = subprocess.run(
-        [binary, "data.json", job_path],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", job.era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{job.name}: solver exited {result.returncode}\n{result.stderr}")
-    open(os.path.join(SIM_DIR, f"{tag}__{job.name}.out"), "w").write(result.stdout)
+    stdout = solver.run(binary, job.era, job_path, name=job.name)
+    open(os.path.join(SIM_DIR, f"{tag}__{job.name}.out"), "w").write(stdout)
     return round(time.time() - started, 2)
 
 

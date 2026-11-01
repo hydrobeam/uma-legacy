@@ -53,13 +53,15 @@ import math
 import os
 import random
 import re
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 SIM_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(SIM_DIR))
+sys.path.insert(0, os.path.dirname(SIM_DIR))  # val/, for the shared solver module
+import solver
+from solver import REPO
+
 CHECKPOINTS = (10, 25, 50, 100, 200, 400)
 BUILDERS = 5
 CONT_N = 500  # cont.rs: successes before grinding, at most
@@ -88,24 +90,6 @@ class Trace(NamedTuple):
     lam_after_lift: float | None  # lam at the first row after her odds first rose, mean over runs
     odds: list  # per run, A's odds after n careers (n = 0..careers)
     plan_cont: tuple | None  # the plan's fit entry for her as (lam, phi, pinf, p0), None without one
-
-
-def last_line(path):
-    return json.loads([line for line in open(path).read().splitlines() if line.strip()][-1])
-
-
-def run_solver(binary, era, job, path):
-    json.dump(job, open(path + ".json", "w"))
-    result = subprocess.run(
-        [binary, "data.json", path + ".json"],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{path}: solver exited {result.returncode}\n{result.stderr}")
-    open(path + ".out", "w").write(result.stdout)
-    return last_line(path + ".out")
 
 
 def pool_job(entry):
@@ -146,9 +130,9 @@ def measure(binary, out_dir, entry, settings):
     job = pool_job(entry)
     plan_path = os.path.join(out_dir, f"{name}_plan")
     if settings["fit_only"]:
-        plan = last_line(plan_path + ".out").get("next") or {}
+        plan = solver.read_output(plan_path + ".out").get("next") or {}
     else:
-        plan = run_solver(binary, era, dict(job, next={**job.get("next", {})}), plan_path).get("next") or {}
+        plan = solver.solve(binary, era, dict(job, next={**job.get("next", {})}), plan_path).get("next") or {}
     if not plan.get("v0_plan") or not plan.get("choice"):
         print(f"{name}: no plan with a trio ({plan.get('error', 'no next')}), skipped")
         return []
@@ -163,9 +147,9 @@ def measure(binary, out_dir, entry, settings):
             "loop_members": [trainee_id, *builders],
         }
         if settings["fit_only"]:
-            output = last_line(trace_path + ".out")
+            output = solver.read_output(trace_path + ".out")
         else:
-            output = run_solver(binary, era, dict(job, simulate=simulate), trace_path)
+            output = solver.solve(binary, era, dict(job, simulate=simulate), trace_path)
         traces.append(trace_of(name, trainee_name, fit_entry(plan, trainee_id), output, settings["careers"]))
     return [trace for trace in traces if trace]
 

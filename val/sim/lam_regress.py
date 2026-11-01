@@ -14,14 +14,14 @@ usage: uv run val/sim/lam_regress.py MONO_DIR    (the folder val/mono.py prints 
 
 import argparse
 import glob
-import json
 import math
 import os
 import re
 import statistics
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # val/, for the shared solver module
+from solver import REPO, read_output
 
 
 def lam_decay():
@@ -30,8 +30,7 @@ def lam_decay():
 
 
 def fit_of(path):
-    lines = [line for line in open(path).read().splitlines() if line.strip()]
-    plan = json.loads(lines[-1]).get("next") or {}
+    plan = read_output(path).get("next") or {}
     return {entry[0]: entry for entry in plan.get("fit") or [] if len(entry) >= 5}
 
 
