@@ -136,11 +136,14 @@ function sampleVets(): Veteran[] {
   return out;
 }
 // `list` in a random order: Fisher-Yates, its draws as they always were (the browser suite's seeded samples rest on them)
-function shuffled<T>(list: readonly T[]): T[] {
+function shuffled<T extends {}>(list: readonly T[]): T[] {
   const out = list.slice();
   for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    out.splice(j, 1, ...out.splice(i, 1, ...out.slice(j, j + 1))); // (places i and j swapped)
+    const last = must(out[i], 'i < out.length'),
+      drawn = must(out[j], '0 <= j <= i');
+    out[i] = drawn;
+    out[j] = last;
   }
   return out;
 }
