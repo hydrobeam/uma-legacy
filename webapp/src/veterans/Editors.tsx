@@ -36,6 +36,7 @@ import {
 } from './pickers.ts';
 import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.ts';
 import { Button } from '../ui/Button.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 /** the editors' dialogs (their requests read here, so one render opens one and closes another in this order), each
  *  in a render guard of its own: one that throws is gone, says so on the status line, and gives up its request (a
@@ -67,7 +68,7 @@ function UmaPicker({ pick }: { pick: UmaPick | null }) {
     if (pick?.open) filter.current?.focus();
   }, [pick]);
   return (
-    <Dialog id="pick-dlg" labelledBy="pick-title" open={!!pick?.open} onClose={umaPickClosed}>
+    <Dialog size="xl" id="pick-dlg" labelledBy="pick-title" open={!!pick?.open} onClose={umaPickClosed}>
       <DialogPanel>
         <DialogHead id="pick-title" title={pick ? pick.title : 'Which uma?'} close="Close" onClose={umaPickClosed} />
         {/* (closed, no list: an editor closed draws nothing) */}
@@ -142,7 +143,7 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
     ...(shown?.hasSparks ? [{ label: 'Keep her current skills', sparks: () => null }] : []),
   ];
   return (
-    <Dialog id="ask-dlg" labelledBy="ask-title" open={!!asked?.open} onClose={askClosed}>
+    <Dialog size="xl" id="ask-dlg" labelledBy="ask-title" open={!!asked?.open} onClose={askClosed}>
       <DialogPanel>
         <h3 id="ask-title">{shown ? `Add skills to ${shown.name}?` : 'Add skills?'}</h3>
         <p id="ask-text">
@@ -176,7 +177,7 @@ function WinsDialog({ edit }: { edit: WinsEdit | null }) {
     nd = edit?.open ? edit.at.node() : undefined,
     open = !!nd;
   return (
-    <Dialog id="wins-dlg" size="full" labelledBy="wins-title" open={open} onClose={winsClosed}>
+    <Dialog size="full" id="wins-dlg" labelledBy="wins-title" open={open} onClose={winsClosed}>
       <DialogPanel>
         <DialogHead
           id="wins-title"
@@ -215,7 +216,7 @@ function ColourDialog({ edit }: { edit: ColourEdit | null }) {
     if (edit?.open) done.current?.focus();
   }, [edit]);
   return (
-    <Dialog id="col-dlg" cls="coldlg" skin="game" labelledBy="col-title" open={!!nd} onClose={colourClosed}>
+    <Dialog size="md" id="col-dlg" skin="game" labelledBy="col-title" open={!!nd} onClose={colourClosed}>
       <DialogTitle id="col-title">{edit ? KIND[edit.kind].title : ''}</DialogTitle>
       {edit && nd && <Colours nd={nd} at={edit.at} kind={edit.kind} />}
       <DialogFoot>
@@ -235,7 +236,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
       <div class="ud udbare">
         <div class="colgrid vsparks">
           {spec.groups(nd).map((g) => (
-            <span key={g} class={kind === 'pink' ? 'vsk pink' : `vsb ${kind}`}>
+            <span key={g} class={kind === 'pink' ? 'vsk pink' : cx('vsb', kind)}>
               <button
                 type="button"
                 class="vskb"
@@ -254,7 +255,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
           <button
             key={k}
             type="button"
-            class={`spstar${k <= curStars ? ' on' : ''}`}
+            class={cx('spstar', k <= curStars ? 'on' : '')}
             aria-label={`${k} star${k > 1 ? 's' : ''}`}
             aria-pressed={k === curStars}
             disabled={curGroup === null}

@@ -14,6 +14,7 @@ import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.ts';
 import { pickerFor, pickerClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 // why veteran v can't go in place k (or '')
 const BLOCKED: Record<string, string> = {
@@ -39,7 +40,7 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
   return (
     <button
       type="button"
-      class={`vpt${cur ? ' cur' : ''}${v.borrowed ? ' bor' : ''}`}
+      class={cx('vpt', cur ? 'cur' : '', v.borrowed ? 'bor' : '')}
       disabled={!!why}
       onClick={() =>
         batch(() => {
@@ -116,7 +117,7 @@ export function ParentPicker() {
   });
   let headed = false;
   return (
-    <Dialog id="vpick-dlg" labelledBy="vpick-title" open={k !== null} onClose={close}>
+    <Dialog size="xl" id="vpick-dlg" labelledBy="vpick-title" open={k !== null} onClose={close}>
       {/* (inside the dialog: a throw leaves it open, and Escape still closes it) */}
       <Guard what="The parent picker" also={pickerFor}>
         <DialogPanel>

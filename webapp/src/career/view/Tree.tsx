@@ -17,6 +17,7 @@ import type { NodeSpec } from './dialogs.ts';
 import { Odds, DeckButton, SchedButton, Targets } from './Sections.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 interface PlaceProps {
   /** the node it opens */
@@ -43,7 +44,7 @@ function Place({ spec, cls, k, face, name, sub, label, head, children }: PlacePr
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: the box widens the portrait's target for the pointer; the portrait is the keyboard's button
     <div
-      class={`${cls} pnclick`}
+      class={cx(cls, 'pnclick')}
       onClick={(e) => {
         if (!(e.target as HTMLElement).closest('button, a, .deck, input')) open();
       }}

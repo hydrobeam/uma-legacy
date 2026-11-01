@@ -6,6 +6,7 @@ import { fields } from '../settings.ts';
 import { goldGiven } from '../job.ts';
 import { namesOf } from '../targets.ts';
 import { SkillIcon } from './Images.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 // A list key per tile of `groups`: the group, and its count before when it repeats (only a hand-edited import repeats
 // one), so each key is unique and a tile keeps its key when another is removed
@@ -24,7 +25,7 @@ export function TargetTile({ group, id, children }: { group: number; id?: string
     label = (gold && names.gd) || names.w;
   return (
     // (the game scales a long name down to fit: `long`)
-    <div class={`tgt${gold ? ' gold' : ''}${label.length > 18 ? ' long' : ''}`} id={id} data-g={given ? '2' : '0'}>
+    <div class={cx('tgt', gold ? 'gold' : '', label.length > 18 ? 'long' : '')} id={id} data-g={given ? '2' : '0'}>
       {/* a plain target's name is on the tile: no hover. Keyed by gold: Preact sets `title` as a property, so a title
           taken away would stay as title="" */}
       <span

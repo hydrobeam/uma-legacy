@@ -42,6 +42,7 @@ import type { SimulationView } from './state.ts';
 import type { Comparison } from './compare.ts';
 import { Button } from '../../ui/Button.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 type Career = DeepReadonly<CareerReport>;
 /** her draft on show (the veterans store's) */
@@ -191,7 +192,7 @@ function Figure({
   return (
     <div class="tc" title={title}>
       <span class="tl">{label}</span>
-      <b class={`tv ${dir}`}>{`${now} → ${withHer}`}</b>
+      <b class={cx('tv', dir)}>{`${now} → ${withHer}`}</b>
     </div>
   );
 }
@@ -264,7 +265,7 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
       Counted with today's plan; after Add the planner refits it to your veterans with her, so its figures can differ.
     </p>
   );
-  const held = sim.refining || sim.standing ? ' held' : '';
+  const held = !!(sim.refining || sim.standing);
   const baseline = next && must(sim.baseline, 'figures with her best career have a baseline');
   return (
     <>
@@ -279,7 +280,7 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
       {/* the best career with her as a parent: its odds against today's best, then folded its portraits and deck */}
       {next && baseline ? (
         <>
-          <div class={`simodds${held}`}>
+          <div class={cx('simodds', held && 'held')}>
             {loop}
             <Figure
               label={`All ${n} odds`}
@@ -314,7 +315,7 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
         </>
       ) : (
         <>
-          <div class={`simodds${held}`}>{loop}</div>
+          <div class={cx('simodds', held && 'held')}>{loop}</div>
           {fitNote}
           <p class="runnote simbest">
             <Runner />
@@ -332,7 +333,7 @@ function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: DraftView; r: 
     { planState } = answer.value,
     opt = planState.state === 'done' ? planState.r.options?.find((o) => keyOf(o) === keyOf(r)) : null;
   return (
-    <div class={`simresult${sim.stale ? ' stale' : ''}`} id="sim-result" role="status">
+    <div class={cx('simresult', sim.stale ? 'stale' : '')} id="sim-result" role="status">
       <div class="simhdr">
         <span>Comparison</span>
         {opt && opt.lift != null && (
@@ -401,7 +402,7 @@ function Analysis({ comparison }: { comparison: Comparison }) {
     <div class="row">
       <Button
         variant="primary"
-        size="sm"
+        size="note"
         id="sim-compare"
         data-k="sim:compare"
         disabled={searching}
@@ -409,10 +410,10 @@ function Analysis({ comparison }: { comparison: Comparison }) {
       >
         Compare
       </Button>
-      <Button size="sm" id="sim-roll" data-k="sim:roll" disabled={searching} onClick={comparison.roll}>
+      <Button size="note" id="sim-roll" data-k="sim:roll" disabled={searching} onClick={comparison.roll}>
         Reroll
       </Button>
-      <Button size="sm" id="sim-add" disabled={searching} onClick={addDraft}>
+      <Button size="note" id="sim-add" disabled={searching} onClick={addDraft}>
         Add to veterans
       </Button>
     </div>
@@ -420,7 +421,7 @@ function Analysis({ comparison }: { comparison: Comparison }) {
   const winsButton = (
     <Button
       ref={wins}
-      size="xs"
+      size="caption"
       id="sim-wins"
       data-k="sim:wins"
       aria-haspopup="dialog"
@@ -461,7 +462,7 @@ export function TryRunDialog({ comparison }: { comparison: Comparison }) {
     if (open && body.current) fitSparks(body.current);
   }, [open]);
   return (
-    <Dialog id="sim-dlg" size="3xl" tall labelledBy="sim-title" open={open} onClose={closeTryRun}>
+    <Dialog size="xl" id="sim-dlg" tall labelledBy="sim-title" open={open} onClose={closeTryRun}>
       <DialogPanel>
         <DialogHead id="sim-title" title="Try a run" close="Close" onClose={closeTryRun} />
         <div class="dlgscroll" id="sim-top" ref={body}>

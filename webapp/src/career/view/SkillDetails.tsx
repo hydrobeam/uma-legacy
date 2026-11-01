@@ -8,6 +8,7 @@ import { umaName } from '../../veterans/names.ts';
 import { CardAv, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { Guard } from './Guard.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 /** the skill on show: `b` its buying report; `got` 'gold' | 'white' | null (not acquired), or undefined for a career
  *  not run yet (the popup then gives her chance to land it); `group` and `goldIcon` its icon; `gold` (a career not run)
@@ -36,7 +37,7 @@ const close = () => {
 export function SkillDetails() {
   const { spec, open } = shown.value;
   return (
-    <Dialog id="sk-dlg" skin="game" labelledBy="sk-title" open={open} onClose={close}>
+    <Dialog size="md" id="sk-dlg" skin="game" labelledBy="sk-title" open={open} onClose={close}>
       <DialogTitle id="sk-title">Skill Details</DialogTitle>
       <Guard what="Skill Details" also={shownSpec}>
         {spec && <Skill spec={spec} />}
@@ -74,11 +75,11 @@ function Skill({
   ];
   return (
     <DialogBody>
-      <div class={`udsk${got === 'gold' || (ahead && gold) ? ' gold' : ''}${got || ahead ? '' : ' off'}`}>
+      <div class={cx('udsk', (got === 'gold' || (ahead && gold)) && 'gold', !(got || ahead) && 'off')}>
         <SkillIcon group={group} gold={goldIcon} />
         <span class="udskn">{name}</span>
       </div>
-      <p class={`gmdstat${got || ahead ? ' on' : ''}`}>
+      <p class={cx('gmdstat', got || ahead ? 'on' : '')}>
         {ahead
           ? `Lands as a spark: ${pctS(b.land_gold + b.land_white)}${gold ? ' (through its gold)' : ''}`
           : got

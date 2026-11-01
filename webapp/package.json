@@ -11,7 +11,8 @@
   "dependencies": {
     "@preact/signals": "2.11.4",
     "binaryen": "^132.0.0",
-    "preact": "11.1.1"
+    "preact": "11.1.1",
+    "tailwind-variants": "4.0.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.2",
@@ -27,7 +28,6 @@
     "knip": "6.44.1",
     "playwright": "1.63.0",
     "preact-render-to-string": "6.8.2",
-    "purgecss": "8.0.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.5",

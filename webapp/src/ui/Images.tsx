@@ -8,7 +8,7 @@ import type { Card } from '../data.ts';
 import { GRADE_LETTER } from '../grades.ts';
 import type { Grade as GradeCode } from '../grades.ts';
 import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../images.ts';
-import { cx } from './variants.ts';
+import { cx } from 'tailwind-variants/lite';
 
 interface UmaAvProps {
   uma: number | null;
@@ -33,7 +33,7 @@ export function UmaAv({ uma, outfit, size, cls, label, title, eager = false }: U
   return (
     // biome-ignore lint/a11y/useAriaPropsSupportedByRole: the label comes with role="img" (a portrait read out as her name)
     <span
-      class={cls ? `av ${cls}` : 'av'}
+      class={cx('av', cls)}
       role={label ? 'img' : undefined}
       aria-label={label}
       title={title}
@@ -67,8 +67,8 @@ export function CardAv({ c, size, titled = true }: { c: Card | null; size: numbe
       style={{
         '--s': `${size}px`,
         '--fs': `${Math.max(7, Math.round(size * 0.3))}px`,
-        '--k': `var(--k-${kind})`,
-        '--rr': c ? `var(--r-${RARITY_CLASS[c.rar as keyof typeof RARITY_CLASS] || 'r'})` : 'transparent',
+        '--k': `var(--color-k-${kind})`,
+        '--rr': c ? `var(--color-r-${RARITY_CLASS[c.rar as keyof typeof RARITY_CLASS] || 'r'})` : 'transparent',
       }}
       title={titled ? (c ? c.name : '') : undefined}
     >
@@ -113,7 +113,13 @@ export function ScenLogo({
 export function Grade({ g }: { g: GradeCode }) {
   const src = srcFor('ui', `grade_${g - 1}`),
     letter = GRADE_LETTER[g];
-  return src ? <img class="udg" src={src} alt={letter} /> : <b class={`udg txt g${letter}`}>{letter}</b>;
+  return src ? (
+    <img class="udg" src={src} alt={letter} />
+  ) : (
+    <b class="udg txt" data-grade={letter}>
+      {letter}
+    </b>
+  );
 }
 /** a skill's icon (its gold's: `gold`), or nothing when the page has none */
 export function SkillIcon({ group, gold = false }: { group: number; gold?: boolean }) {

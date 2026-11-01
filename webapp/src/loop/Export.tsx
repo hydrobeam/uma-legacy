@@ -28,7 +28,7 @@ const close = () => {
 export function ExportDialog() {
   const { n, text, open } = opened.value;
   return (
-    <Dialog id="ex-dlg" labelledBy="ex-title" open={open} onClose={close}>
+    <Dialog size="xl" id="ex-dlg" labelledBy="ex-title" open={open} onClose={close}>
       <RenderGuard input={opened} what="Export">
         <ExportBody key={n} made={text} />
       </RenderGuard>

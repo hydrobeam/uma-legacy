@@ -24,7 +24,7 @@ export function ExportDialog() {
   const { open, text, msg } = exported.value,
     box = useRef<HTMLTextAreaElement>(null);
   return (
-    <Dialog id="vx-dlg" labelledBy="vx-title" open={open} onClose={closeExport}>
+    <Dialog size="xl" id="vx-dlg" labelledBy="vx-title" open={open} onClose={closeExport}>
       <DialogPanel>
         <DialogHead id="vx-title" title="Export veterans" close="Close" onClose={closeExport} />
         <p>
@@ -80,7 +80,7 @@ export function PasteDialog() {
     if (open && box.current) box.current.value = '';
   }, [open]);
   return (
-    <Dialog id="paste-dlg" labelledBy="paste-title" open={open} onClose={closePaste}>
+    <Dialog size="xl" id="paste-dlg" labelledBy="paste-title" open={open} onClose={closePaste}>
       <DialogPanel>
         <DialogHead id="paste-title" title="Paste veterans" close="Close" onClose={closePaste} />
         <p>

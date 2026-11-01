@@ -65,7 +65,7 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
   // another subject draws (and closing still works)
   openNode({ kind: 'v', id: 'good' });
   await settle();
-  assert.match(root.querySelector('div.gmdbody').textContent, /Uma C/, 'the next veteran draws');
+  assert.match(root.querySelector('#node-body').textContent, /Uma C/, 'the next veteran draws');
   closeNode();
   await settle();
   assert.equal(dlg.open, false, 'Close closes it');

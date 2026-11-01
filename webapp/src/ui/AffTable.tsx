@@ -1,7 +1,7 @@
 // ---------- an affinity heart, and a career's affinity table legacy by legacy (it says what the table holds) ----------
 import type { ComponentChildren } from 'preact';
 import { must } from '../must.ts';
-import { cx, variants } from './variants.ts';
+import { cx, tv } from 'tailwind-variants/lite';
 
 /** her affinity as the game's heart and the number (none without one) */
 export function AffHeart({
@@ -45,7 +45,7 @@ type Kind = 'parent' | 'second' | 'grandparent' | 'total';
 // stacked: side by side they made the table wider than a 360 px dialog)
 const stack =
   'flex items-center gap-2 max-sm:grid max-sm:grid-cols-[auto_minmax(0,1fr)] max-sm:justify-items-start max-sm:gap-x-1.5 max-sm:gap-y-0 max-sm:*:first:row-span-3';
-const who = variants({
+const who = tv({
   base: 'text-left',
   variants: {
     kind: {
@@ -57,10 +57,10 @@ const who = variants({
       total: 'px-2 py-1 font-black max-sm:px-1.25',
     },
   },
-  defaults: { kind: 'parent' },
+  defaultVariants: { kind: 'parent' },
 });
 // the number cells
-const num = variants({
+const num = tv({
   base: 'px-2 py-1 text-right max-sm:px-1.25',
   variants: {
     kind: {
@@ -70,7 +70,7 @@ const num = variants({
       total: 'font-black',
     },
   },
-  defaults: { kind: 'parent' },
+  defaultVariants: { kind: 'parent' },
 });
 // one row: who (her face, name, tag, legacy number), then the legacy's relation, shared G1s and affinity
 function Row({
@@ -100,11 +100,11 @@ const Who = ({ legacy, legacyIndex }: { legacy: AffinityLeg; legacyIndex?: numbe
   <>
     {legacy.face}
     <span>{legacy.name}</span>
-    {legacy.tag && <span class="text-2xs text-gm-ink2 font-medium">{legacy.tag}</span>}
+    {legacy.tag && <span class="text-caption text-gm-ink2 font-medium">{legacy.tag}</span>}
     {legacyIndex != null && (
       <span
         class={cx(
-          'text-2xs ml-auto font-bold max-sm:ml-0 max-sm:whitespace-nowrap',
+          'text-caption ml-auto font-bold max-sm:ml-0 max-sm:whitespace-nowrap',
           legacyIndex === 0 ? 'text-leg1' : 'text-leg2',
         )}
       >
@@ -114,14 +114,14 @@ const Who = ({ legacy, legacyIndex }: { legacy: AffinityLeg; legacyIndex?: numbe
   </>
 );
 const head =
-  'border-gm-line border-b bg-gm-tab-low px-2 py-1 text-right font-bold text-gm-ink2 text-xs max-sm:px-1.25 max-sm:text-3xs';
+  'border-gm-line border-b bg-gm-tab-low px-2 py-1 text-right font-bold text-gm-ink2 text-caption max-sm:px-1.25 max-sm:text-caption';
 /** the parents' rows (Legacy 1 first), each with her parents', and the total */
 export function AffTable({ legs, caption = 'Affinity' }: { legs: AffinityLeg[]; caption?: string }) {
   const gps = (parent: AffinityLeg) => must(parent.gps, "a parent's row carries her parents");
   const everyone = legs.flatMap((parent) => [parent, ...gps(parent)]),
     sum = (field: (x: AffinityLeg) => number) => everyone.reduce((total, x) => total + field(x), 0);
   return (
-    <table class="border-gm-line bg-gm-cell text-gm-ink text-md w-full border-separate border-spacing-0 overflow-hidden rounded-lg border tabular-nums">
+    <table class="border-gm-line bg-gm-cell text-gm-ink text-ui w-full border-separate border-spacing-0 overflow-hidden rounded-lg border tabular-nums">
       {caption && <caption class="text-gm-ink px-0.5 pb-1.5 text-left font-black">{caption}</caption>}
       <thead>
         <tr>

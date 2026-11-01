@@ -33,6 +33,7 @@ import type * as Report from './types.ts';
 import type { DeepReadonly } from '../store.ts';
 import { Button } from '../ui/Button.tsx';
 import { GameBar } from '../ui/GameBar.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 // the result on show, as the store hands it (read-only)
 type LoopResult = DeepReadonly<Report.LoopResult>;
@@ -126,7 +127,7 @@ function LoopCard({
     members = loopMembers(loop, result.decks || null),
     sameLoop = rank > 1 && loopKey(top.loop) === loopKey(loop);
   return (
-    <article class={`loop${rank <= 1 ? ' first' : ''}`}>
+    <article class={cx('loop', rank <= 1 ? 'first' : '')}>
       <div class="lhead">
         {rank ? <span class="rank">#{rank}</span> : null}
         <span class="odds">
@@ -149,7 +150,7 @@ function LoopCard({
 // drawn (untracked: an outfit owned later changes the next result, not this one's names)
 function Members({ members }: { members: readonly Member[] }) {
   return (
-    <div class={`members${members.length === 3 ? ' n3' : ''}`}>
+    <div class={cx('members', members.length === 3 ? 'n3' : '')}>
       {members.map((m) => (
         <MemberCard key={m.id} m={m} pick={untracked(() => pickOutfit(m.id, m.outfits))} />
       ))}
@@ -170,7 +171,7 @@ function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit
   const opener = usePopOpener(false, () => memberSubject(m));
   return (
     <div
-      class={`mem${off ? ' off' : ''}`}
+      class={cx('mem', off ? 'off' : '')}
       data-uma={String(m.id)}
       data-outfit={String(outfitId ?? '')}
       data-outfit-label={outfit}
@@ -186,7 +187,7 @@ function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit
           const names = namesOf(cover.group),
             gold = cover.level === 2;
           return (
-            <span key={cover.group} class={`spark${gold ? ' g' : ''}`}>
+            <span key={cover.group} class={cx('spark', gold ? 'g' : '')}>
               <SkillIcon group={cover.group} gold={gold} />
               {gold ? names.gd || names.w : names.w}
             </span>
@@ -289,7 +290,7 @@ function CardChip({ deck, slot }: { deck: ResultDeck; slot: DeckSlot }) {
   return (
     <button
       type="button"
-      class={`dc${borrowed ? ' bor' : pal ? ' pal' : ''}${off ? ' off' : ''}`}
+      class={cx('dc', borrowed ? 'bor' : pal ? 'pal' : '', off ? 'off' : '')}
       data-cid={c ? c.id : ''}
       data-name={title.nm}
       data-end={endAt || undefined}
@@ -340,7 +341,7 @@ function DeckBlock({ deck, title }: { deck: ResultDeck; title: ComponentChildren
 // percentage over a bar (the icons alone don't tell skills apart: the game draws one icon per effect type)
 function HintOdds({ deck, open }: { deck: ResultDeck; open: boolean }) {
   const tile = (group: number, gold: boolean, name: string, p: number, tip = '') => (
-    <span key={`${group}:${gold}`} class={`dsk${gold ? ' g' : ''}`} title={`${tip || name}: ${percent(p)}`}>
+    <span key={`${group}:${gold}`} class={cx('dsk', gold ? 'g' : '')} title={`${tip || name}: ${percent(p)}`}>
       <SkillIcon group={group} gold={gold} />
       <span class="dnm">{name}</span>
       <span class="dbar" aria-hidden="true">
@@ -392,7 +393,7 @@ function SwapDeltas({ shared, deck, who }: { shared: ResultDeck; deck: ResultDec
   changes.sort((x, y) => Math.abs(y.to - y.from) - Math.abs(x.to - x.from));
   if (!changes.length) return null;
   const one = (x: (typeof changes)[number], extra: boolean) => (
-    <span key={`${x.group}:${x.gold}`} class={`swd1${extra ? ' extra' : ''}${x.to < x.from ? ' down' : ''}`}>
+    <span key={`${x.group}:${x.gold}`} class={cx('swd1', extra ? 'extra' : '', x.to < x.from ? 'down' : '')}>
       <SkillIcon group={x.group} gold={x.gold} />
       {x.name} <b>{`${percent(x.from)} → ${percent(x.to)}`}</b>
     </span>

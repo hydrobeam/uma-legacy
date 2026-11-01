@@ -45,7 +45,7 @@ function SetupDialog({
   children: ComponentChildren;
 }) {
   return (
-    <Dialog id={id} cls="setdlg" label={label} open={openOne.value === which} onClose={closeSetupDialog}>
+    <Dialog size="xl" id={id} label={label} open={openOne.value === which} onClose={closeSetupDialog}>
       <DialogPanel fit="full">
         <DialogHead title={heading} close="Done" onClose={closeSetupDialog} />
         <section class="panel" id={panel.id} aria-labelledby={panel.labelledBy}>

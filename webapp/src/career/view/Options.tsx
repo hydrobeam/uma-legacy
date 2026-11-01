@@ -278,7 +278,7 @@ export function SavesPopup() {
     if (open) close.current?.focus();
   }, [open]);
   return (
-    <Dialog id="save-dlg" skin="game" labelledBy="save-title" open={open} onClose={closeSaves}>
+    <Dialog size="md" id="save-dlg" skin="game" labelledBy="save-title" open={open} onClose={closeSaves}>
       <DialogTitle id="save-title">What these mean</DialogTitle>
       <Guard what="The Saves popup" also={savesSubject}>
         {subject && <SavesBody planReport={subject.planReport} notes={subject.notes} />}
@@ -336,7 +336,7 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
   const example = routeMembers.find((m) => !m.real && (m.building_careers > 0 ? m.p_switch : m.p) > 0),
     exampleOdds = example && (example.building_careers > 0 ? example.p_switch : example.p);
   return (
-    <DialogBody cls="savebody">
+    <DialogBody>
       <p>
         <b>This career</b>
         {`: her chance of landing all ${n} targets in this one run.`}

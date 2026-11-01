@@ -18,6 +18,7 @@ import { around } from './arrows.ts';
 import { RenderGuard } from './RenderGuard.tsx';
 import { Grade, UmaAv } from './Images.tsx';
 import { Button } from './Button.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 /** a member as the popup shows her: her place `k` (the index of her cell in each schedule row), her uma and her
  *  outfits that cover a target (her portrait's: loop/members.ts `Member`) */
@@ -59,7 +60,7 @@ function ScheduleBox() {
   const { spec, n } = shown.value;
   // (a schedule that fails to draw leaves its heading and Close: the dialog is open by then)
   return (
-    <Dialog id="sched-dlg" size="full" labelledBy="sched-title" open={isOpen.value} onClose={close}>
+    <Dialog size="full" id="sched-dlg" labelledBy="sched-title" open={isOpen.value} onClose={close}>
       <DialogPanel id="sched-body">
         <RenderGuard input={schedOpened} what="The race schedule" fallback={<SchedHead close={close} />}>
           {spec && <Schedule key={n} spec={spec} close={close} />}
@@ -103,7 +104,7 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
       <SchedHead close={close}>
         {tabled && (
           <Button
-            size="sm"
+            size="note"
             title="How a race’s win chance is worked out"
             aria-expanded={tableOpen}
             aria-controls="sched-wintable"
@@ -187,7 +188,7 @@ function MemberAgenda({
         const row = schedule.find((x) => x.year === y && cellAt(x, m.k) && slotOf(x.when) === slotIndex),
           c = row ? cellAt(row, m.k) : null;
         return (
-          <div key={turn} class={`ag-slot${row ? ' on' : ''}${row && !row.shared ? ' opt' : ''}`}>
+          <div key={turn} class={cx('ag-slot', row ? 'on' : '', row && !row.shared ? 'opt' : '')}>
             {row && c && <RaceCell row={row} c={c} m={m} members={members} single={single} />}
             <WhenBar slotIndex={slotIndex} cell={c} />
           </div>
@@ -223,7 +224,7 @@ function RaceCell({
       : ' · alone (no affinity, optional)';
   return (
     <div
-      class={`ag-race${row.shared ? '' : ' opt'}`}
+      class={cx('ag-race', row.shared ? '' : 'opt')}
       title={`${names.join(' or ')} · ${why(c) || `win ${shownP(c)}%`}${c.goal ? ' · goal' : ''}${company}`}
     >
       {/* (an "A/B" pair shows A's banner) */}

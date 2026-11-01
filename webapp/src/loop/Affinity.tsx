@@ -34,7 +34,7 @@ const close = () => {
 export function AffinityDialog() {
   const { n, loop, open } = shown.value;
   return (
-    <Dialog id="why-dlg" size="xl" labelledBy="why-title" open={open} onClose={close}>
+    <Dialog size="lg" id="why-dlg" labelledBy="why-title" open={open} onClose={close}>
       <DialogPanel id="why-body">
         <RenderGuard input={shown} what="The affinity">
           {loop && <Careers key={n} loop={loop} />}

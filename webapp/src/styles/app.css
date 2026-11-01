@@ -1,11 +1,21 @@
-/* The pages' stylesheet: Tailwind's theme and utilities, the tokens (theme.css), and the legacy sheet (src/style.css)
-   while the components move off it. The legacy sheet sits in its own layer below the utilities, so a utility on a
-   converted component always wins over an old rule that still matches it (`button`, `dialog`, ...), and the old rules
-   keep their order and specificity among themselves. No Preflight yet: the unconverted parts are styled for the
-   browser's defaults. The sprite variables (--btn-w, ...) are appended to this file by vite/images.mjs. */
-@layer theme, base, legacy, components, utilities;
-@import "../style.css" layer(legacy);
+/* The pages' stylesheet: Tailwind's Preflight, theme and utilities, the tokens (theme.css), the fonts and the few
+   element rules every page shares. Components carry their look as utilities; nothing here names a component. The
+   sprite variables (--btn-w, ...) are appended to this file by vite/images.mjs. */
+@layer theme, base, components, utilities;
+/* Fonts: the Fontsource packages (package.json), self-hosted, each weight's Latin subset; anything else (symbols, the JP
+   era's untranslated names) falls back to the system font per glyph. Zen Maru Gothic is the planner pages' game face. */
+@import "@fontsource/zen-kaku-gothic-new/latin-400.css";
+@import "@fontsource/zen-kaku-gothic-new/latin-500.css";
+@import "@fontsource/zen-kaku-gothic-new/latin-700.css";
+@import "@fontsource/zen-kaku-gothic-new/latin-900.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "@fontsource/ibm-plex-mono/latin-600.css";
+@import "@fontsource/zen-maru-gothic/latin-500.css";
+@import "@fontsource/zen-maru-gothic/latin-700.css";
+@import "@fontsource/zen-maru-gothic/latin-900.css";
 @import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./theme.css";
 /* the class names Tailwind looks for: the page's code and pages, never the tests or docs */
@@ -14,3 +24,28 @@
 @source "../../loop.html";
 @source "../../about.html";
 @source "../../partials";
+/* `dark:` follows the site's own switch (data-theme on <html>, set by partials/theme.hbs), not the system's setting */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@layer base {
+  /* (layered !important inverts the layer order: hidden stays hidden whatever a utility sets) */
+  [hidden] {
+    display: none !important;
+  }
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-inline: 16px;
+    padding-block: 20px 48px;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}

@@ -56,7 +56,7 @@ export function PoolHead() {
       </div>
       <SortMenu
         id="vs"
-        size="sm"
+        size="note"
         what="order veterans"
         items={SORT_ITEMS}
         value={by}
@@ -205,7 +205,7 @@ export function PoolBody() {
  *  (`vetsNote`). The career entry renders it into #vets-root. */
 export function VetsDialog() {
   return (
-    <Dialog id="set-vets" cls="setdlg vetdlg" labelledBy="h-vets" open={poolOpen.value} onClose={poolClosed}>
+    <Dialog size="xl" id="set-vets" labelledBy="h-vets" open={poolOpen.value} onClose={poolClosed}>
       <DialogPanel fit="fill">
         <DialogHead id="h-vets" title="Veteran Umamusume" close="Done" onClose={poolClosed} />
         <div class="vhead" id="v-head">

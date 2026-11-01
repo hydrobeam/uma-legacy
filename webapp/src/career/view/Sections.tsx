@@ -21,6 +21,7 @@ import { openSkill } from './SkillDetails.tsx';
 import { openSched } from '../../ui/Schedule.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
@@ -86,7 +87,7 @@ export function DeckCard({ slot }: { slot: DeckSlot }) {
   return (
     <button
       type="button"
-      class={`dc${bor ? ' bor' : c?.pal ? ' pal' : ''}${off ? ' off' : ''}`}
+      class={cx('dc', bor ? 'bor' : c?.pal ? 'pal' : '', off ? 'off' : '')}
       data-cid={c ? String(c.id) : undefined}
       data-name={t.nm}
       data-end={endAt ? String(endAt) : undefined}
@@ -107,7 +108,7 @@ export function DeckDialog() {
   const r = shown(),
     open = deckOpen.value && !!r;
   return (
-    <Dialog id="deck-dlg" cls="deckdlg" skin="game" labelledBy="deck-title" open={open} onClose={deckClosed}>
+    <Dialog size="md" id="deck-dlg" skin="game" labelledBy="deck-title" open={open} onClose={deckClosed}>
       {r && (
         <>
           <DialogTitle id="deck-title">Deck</DialogTitle>
@@ -290,7 +291,11 @@ function Counts({ r }: { r: CareerReport }) {
           .map((p, k) => ({ k, p }))
           .reverse()
           .map(({ k, p }) => (
-            <span key={k} class={`tgc${k === n ? ' all' : ''}`} title={`Exactly ${k} of ${n}: ${fmtIn(p)} (${pct(p)})`}>
+            <span
+              key={k}
+              class={cx('tgc', k === n ? 'all' : '')}
+              title={`Exactly ${k} of ${n}: ${fmtIn(p)} (${pct(p)})`}
+            >
               <b>{pct(p)}</b>
               <span class="tgcb">
                 <i style={{ height: `${top > 0 ? Math.max(2, Math.round((p / top) * 100)) : 0}%` }} />

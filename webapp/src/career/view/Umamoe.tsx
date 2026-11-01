@@ -42,7 +42,7 @@ export function UmamoeDialog() {
     if (open && !hasKey.peek()) keyBox.current?.focus();
   }, [open]);
   return (
-    <Dialog id="um-dlg" size="lg" tall labelledBy="um-title" open={open} onClose={closeUm}>
+    <Dialog size="lg" id="um-dlg" tall labelledBy="um-title" open={open} onClose={closeUm}>
       <DialogPanel>
         <DialogHead
           id="um-title"
@@ -135,7 +135,7 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
           <b id="um-msg" role="status" aria-live="polite">
             {text}
           </b>
-          <Button size="sm" id="um-again" disabled={umBusy.value} onClick={() => syncListings(true)}>
+          <Button size="note" id="um-again" disabled={umBusy.value} onClick={() => syncListings(true)}>
             Refresh
           </Button>
         </div>
@@ -149,7 +149,7 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
           </label>
           <SortMenu
             id="um-sort"
-            size="sm"
+            size="note"
             what="order veterans"
             items={SORT_ITEMS}
             value={by}

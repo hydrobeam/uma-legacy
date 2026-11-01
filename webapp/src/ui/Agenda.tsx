@@ -9,6 +9,9 @@ import type { WinInfo } from '../agenda.ts';
 import type { ScheduleCell } from '../solver.ts';
 import { must } from '../must.ts';
 import { Button } from './Button.tsx';
+import { cx } from 'tailwind-variants/lite';
+// the three years' columns (y0, y1, y2: their colours)
+const YEAR_CLASS = ['y0', 'y1', 'y2'];
 
 // April to June before the career, 4 cells a month (Early, Early, Late, Late)
 const PRE = Array.from({ length: 12 }, (_, i) => (i % 4 < 2 ? 'Early ' : 'Late ') + MONTHS[3 + (i >> 2)]);
@@ -17,9 +20,9 @@ const SLOTS = Array.from({ length: 24 }, (_, i) => i);
 export function AgendaGrid({ slot }: { slot: (year: number, slotIndex: number, turn: number) => VNode }) {
   const game = document.documentElement.classList.contains('game');
   return (
-    <div class={`agenda${game ? ' game' : ''}`}>
+    <div class={cx('agenda', game ? 'game' : '')}>
       {YEARS.map((year, y) => (
-        <section key={year} class={`ag-year y${y}`}>
+        <section key={year} class={cx('ag-year', YEAR_CLASS[y])}>
           <h4>{`${year} Year`}</h4>
           <div class="ag-grid">
             {game &&
@@ -187,7 +190,12 @@ export function WinsEditor({ races, wins, winAt, offer, info: infoOf, onWins }: 
           return (
             <div
               key={turn}
-              class={`ag-slot${here.length ? ' on' : ''}${here.length > 1 ? ' many' : ''}${offered.length ? ' free' : ''}`}
+              class={cx(
+                'ag-slot',
+                here.length ? 'on' : '',
+                here.length > 1 ? 'many' : '',
+                offered.length ? 'free' : '',
+              )}
             >
               {here.map((ix) => (
                 <WinButton
@@ -358,7 +366,11 @@ function WinPick({ name, sub, onPick }: { name: string; sub: string; onPick: () 
       <span class={src ? 'sr-only' : undefined}>{name}</span>
       {sub && (
         <small
-          class={src ? 'text-3xs text-muted text-center leading-tight font-medium' : 'text-muted text-xs font-medium'}
+          class={
+            src
+              ? 'text-caption text-muted text-center leading-tight font-medium'
+              : 'text-muted text-caption font-medium'
+          }
         >
           {sub}
         </small>

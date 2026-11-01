@@ -13,6 +13,7 @@ import type { CardGift } from '../cards.ts';
 import { must } from '../must.ts';
 import { popBack, popOpen, popOpener, setPanel, togglePop } from '../popover.ts';
 import type { PopOpen, PopSubject } from '../popover.ts';
+import { cx } from 'tailwind-variants/lite';
 
 const GAP = 8; // px between the panel and the element it belongs to (beside it); below it, 6
 const focusables = (pop: HTMLElement) => [...pop.querySelectorAll<HTMLElement>('input, a[href], button')];
@@ -76,7 +77,7 @@ export function CardPop({ home }: { home: string | null }) {
   return (
     <div
       ref={ref}
-      class={`cpop${home !== null ? ' inpopup' : ''}`}
+      class={cx('cpop', home !== null ? 'inpopup' : '')}
       hidden={!here}
       role="dialog"
       tabIndex={-1}
@@ -204,7 +205,7 @@ function Gifts({ gifts }: { gifts: CardGift[] }) {
   return (
     <>
       {gifts.map((x) => (
-        <span key={`${x.skill}:${x.note}:${x.tip}`} class={`gv${x.gold ? ' g' : ''}`} title={x.tip}>
+        <span key={`${x.skill}:${x.note}:${x.tip}`} class={cx('gv', x.gold ? 'g' : '')} title={x.tip}>
           {x.skill} <small>{x.note}</small>
         </span>
       ))}

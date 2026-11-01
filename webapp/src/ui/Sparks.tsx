@@ -15,6 +15,7 @@ import { addOpener, openAdd } from '../veterans/pickers.ts';
 import { KIND, currentSpark, openColour } from '../veterans/sparks.ts';
 import type { NodeRecord, NodeRef } from '../veterans/store.ts';
 import { SkillIcon } from './Images.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 type Kind = 'blue' | 'pink' | 'green';
 /** a spark's stars, filled then empty, out of 3 */
@@ -71,7 +72,7 @@ function Chip(props: ChipProps) {
   const inner = (
     <>
       {group !== undefined && <SkillIcon group={group} />}
-      <span class={`vskn${label.length > 18 ? ' long' : ''}`}>{label}</span>
+      <span class={cx('vskn', label.length > 18 ? 'long' : '')}>{label}</span>
       <Stars n={stars} />
     </>
   );
@@ -184,7 +185,7 @@ function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
       </>
     );
   return (
-    <span class={`vsb ${kind}${cur ? '' : ' none'}`}>
+    <span class={cx('vsb', kind, cur ? '' : 'none')}>
       {readOnly ? (
         // biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the el() bar's before it): a read-only bar's label; its role is step 10's
         <span class="vskb" aria-label={aria}>

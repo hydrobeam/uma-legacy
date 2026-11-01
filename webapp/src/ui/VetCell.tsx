@@ -9,6 +9,7 @@ import { srcFor } from '../images.ts';
 import { blueName, pinkName, uniqueName, umaName } from '../veterans/names.ts';
 import type { NodeRecord, VetRecord } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 // her main sparks' short tags, as the game's legacy list letters them
 const BLUE_TAG: Record<string, string> = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
@@ -44,7 +45,7 @@ function Tag({
   const face = srcFor('ui', image),
     row = srcFor('ui', `fstar_${kind}_${Math.min(3, Math.max(1, stars))}`);
   return (
-    <span class={`umsp ${kind}`} title={`${full} ${stars}★`}>
+    <span class={cx('umsp', kind)} title={`${full} ${stars}★`}>
       {face ? <img class="umtagimg" src={face} alt={label} /> : <b>{label}</b>}
       {row ? <img class="umst" src={row} alt={`${stars}★`} /> : <i>{'★'.repeat(stars)}</i>}
     </span>

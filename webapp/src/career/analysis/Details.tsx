@@ -27,6 +27,7 @@ import type { Draft, VetRecord } from '../../veterans/store.ts';
 import { detailsTab as tab, racesShown, showTab, toggleRaces } from './state.ts';
 import type { DetailsTab } from './state.ts';
 import { Button } from '../../ui/Button.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 type Career = DeepReadonly<CareerReport>;
 
@@ -259,7 +260,7 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
       <button
         key={t.group}
         type="button"
-        class={`udsk${gold ? ' gold' : ''}${got ? '' : ' off'}`}
+        class={cx('udsk', gold ? 'gold' : '', got ? '' : 'off')}
         data-k={`sim:sk${t.group}`}
         aria-haspopup="dialog"
         aria-label={`${name}: ${got ? `acquired${gold ? ' (gold)' : ''}` : 'not acquired'}. Details`}
@@ -291,7 +292,7 @@ function DeckCell({ slot }: { slot: DeckSlot }) {
     <button
       ref={ref}
       type="button"
-      class={`udcard dc${bor ? ' bor' : ''}${off ? ' off' : ''}`}
+      class={cx('udcard', 'dc', bor ? 'bor' : '', off ? 'off' : '')}
       title={named}
       data-cid={c ? String(c.id) : undefined}
       data-name={base}
@@ -311,7 +312,7 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: the box is the pointer's larger target; her portrait is the keyboard's button
     <div
-      class={`udleg l${j + 1} pnclick`}
+      class={cx('udleg', j ? 'l2' : 'l1', 'pnclick')}
       onClick={(e) => {
         if (!(e.target as HTMLElement).closest('button')) open();
       }}
@@ -406,7 +407,7 @@ function InfoPane({
       </div>
       <ol class="udraces" hidden={!racesShown.value} id="ud-races">
         {entries.map((x) => (
-          <li key={x.ix} class={`udrace${x.won ? ' won' : ''}`}>
+          <li key={x.ix} class={cx('udrace', x.won ? 'won' : '')}>
             <span class="udrw">{x.turn == null ? 'Entered here' : when(x.turn)}</span>
             <span class="udgr">G1</span>
             <span class="udrn">{x.name}</span>

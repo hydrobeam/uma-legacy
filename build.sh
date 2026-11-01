@@ -218,7 +218,6 @@ step_lint() {
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
   lint knip in_dir "$W" npx --no-install knip
   lint dependency-cruiser in_dir "$W" npx --no-install depcruise --config .dependency-cruiser.mjs src
-  lint "dead CSS" in_dir "$W" node test/deadcss.mjs
   lint "@ts-expect-error" no_ts_expect_error
   # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the
   # terminal, and a hung one at 5 minutes (each test's own limit, 60 s: vite.config.mjs)

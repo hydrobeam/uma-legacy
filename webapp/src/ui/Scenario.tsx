@@ -9,7 +9,8 @@ import { skillIconSrc, srcFor } from '../images.ts';
 import { RadioPills } from './RadioPills.tsx';
 import { ScenLogo } from './Images.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
-import { variants } from './variants.ts';
+import { tv } from 'tailwind-variants/lite';
+import { cx } from 'tailwind-variants/lite';
 
 // a guaranteed gold: its icon, named by its tooltip (the name as small text only when there is no icon), so every
 // tile stays logo + one line
@@ -68,10 +69,10 @@ function ScenarioTile({ sc, checked, onPick }: { sc: Scenario; checked: boolean;
 }
 // The scenario button: the game's scenario select art behind its logo at the right, on a pale fade; it lifts under the
 // pointer. The loop page's is the setup column's width and shorter (its setup fits a 900 px screen).
-const scenButton = variants({
+const scenButton = tv({
   base: 'border-gm-edge art-scen text-ink shadow-raised hover:shadow-lifted active:inset-shadow-pressed relative inline-grid max-w-full items-center justify-items-start overflow-hidden rounded-lg border px-2 py-0.5 transition duration-120 hover:-translate-y-px active:translate-y-0 active:shadow-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 max-md:min-h-11',
   variants: { page: { career: 'min-h-11 w-52.5', loop: 'min-h-9.5 w-full' } },
-  defaults: { page: 'career' },
+  defaultVariants: { page: 'career' },
 });
 /** the scenario picker (`compact`: the loop page's) */
 export function ScenarioPicker({ compact = false }: { compact?: boolean }) {
@@ -172,7 +173,7 @@ function Spark({
   stroke: string;
 }) {
   return (
-    <svg class={`spk ${cls}`} viewBox="0 0 24 24" aria-hidden="true">
+    <svg class={cx('spk', cls)} viewBox="0 0 24 24" aria-hidden="true">
       <title>{name}</title>
       <path d={SPARK} fill="none" stroke={rim} stroke-width="3.6" stroke-linejoin="round" />
       <path d={SPARK} fill={fill} stroke={stroke} stroke-width="1.4" stroke-linejoin="round" />

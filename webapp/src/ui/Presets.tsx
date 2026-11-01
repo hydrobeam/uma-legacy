@@ -99,7 +99,7 @@ function PresetList({ onSave, onView }: { onSave: () => void; onView: (name: str
     presets = open ? fields.presets.value : [],
     current = fields.targets.value.map((t) => t.group);
   return (
-    <Dialog id="preset-dlg" size="2xl" labelledBy="pr-title" open={open} onClose={closeList}>
+    <Dialog size="xl" id="preset-dlg" labelledBy="pr-title" open={open} onClose={closeList}>
       <DialogPanel>
         <DialogHead id="pr-title" title="Target skill presets" close="Done" onClose={closeList} />
         <div class="prlist" id="pr-list">
@@ -152,7 +152,7 @@ function SaveDialog({ saving, onChange }: { saving: Saving; onChange: (next: Sav
     close();
   };
   return (
-    <Dialog id="pr-new" size="xs" labelledBy="prn-title" open={saving.open} onClose={close}>
+    <Dialog size="sm" id="pr-new" labelledBy="prn-title" open={saving.open} onClose={close}>
       <DialogPanel>
         <DialogHead id="prn-title" title="Save the current skills" />
         <label class="prlab" for="prn-name">
@@ -198,7 +198,7 @@ interface ViewProps {
 }
 function ViewDialog({ name, n, onRenamed, onClose }: ViewProps) {
   return (
-    <Dialog id="pr-view" size="md" labelledBy="prv-title" open={name !== null} onClose={onClose}>
+    <Dialog size="lg" id="pr-view" labelledBy="prv-title" open={name !== null} onClose={onClose}>
       <ViewBody key={n} name={name} onRenamed={onRenamed} onClose={onClose} />
     </Dialog>
   );

@@ -3,8 +3,9 @@
    colours, fonts, type sizes, radii, shadows and breakpoints are cleared first: only these exist, so a colour, size or
    shadow on the page is one of the game's (Biome's noTailwindRawColors and noTailwindArbitraryValue hold the rest).
    Dark mode redefines the variables under [data-theme="dark"] (set on <html> by partials/theme.hbs); no utility carries
-   a dark: variant for the art. Tailwind writes out a variable only where a utility or a var() in the CSS reads it
-   (the legacy src/style.css reads them through its own names until it is gone). */
+   a dark: variant for the art. Tailwind writes out a variable only where a utility or a var() in the CSS reads it.
+   The sprites' faces (--face-*) change with the mode; their 9-slice geometry (--nine-*) is written once. Never put an
+   art-* (a background shorthand) and a bg-* on one element: their order is Tailwind's, not the attribute's. */
 @theme {
   --color-*: initial;
   --font-*: initial;
@@ -84,6 +85,10 @@
   /* the legacy colours in the affinity table (Legacy 1 blue, Legacy 2 pink) */
   --color-leg1: #2f7fd6;
   --color-leg2: #d4407f;
+  /* the race schedule's three years */
+  --color-yr0: #0b5a4d;
+  --color-yr1: #2f3f99;
+  --color-yr2: #8a3c0c;
   /* the dimmed page behind a modal dialog */
   --color-backdrop: rgba(20, 20, 30, 0.45);
 
@@ -92,15 +97,16 @@
   /* the game's rounded face: the planner pages' cards, bars and dialogs */
   --font-game: "Zen Maru Gothic", "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
 
-  /* the type scale (the body is 15 px): each size the converted parts use, in place of the old sheet's 41 */
-  --text-3xs: 0.68rem;
-  --text-2xs: 0.72rem;
-  --text-xs: 0.75rem;
-  --text-sm: 0.8rem;
-  --text-md: 0.86rem;
-  --text-base: 0.95rem;
-  --text-lg: 1.05rem;
-  --text-xl: 1.15rem;
+  /* the type scale, in place of the old sheet's 41 sizes (the body is 15 px). Named by role, not by Tailwind's
+     xs..xl, whose values these are not: a legacy size snaps to the nearest step (listed as intended where it moves).
+     No --text-*--line-height companions: each utility sets the size only and the line height is inherited. */
+  --text-caption: 0.72rem; /* 11.5 px: tags, table heads, counts (0.66-0.75 rem before) */
+  --text-note: 0.8rem; /* 12.8 px: small buttons, hints (0.78-0.82) */
+  --text-ui: 0.86rem; /* 13.8 px: buttons, tables (0.84-0.88) */
+  --text-body: 0.95rem; /* 15.2 px: body-size text in components (0.9-0.95) */
+  --text-title: 1.05rem; /* 16.8 px: section bars, close buttons (1-1.1) */
+  --text-heading: 1.15rem; /* 18.4 px: dialog titles, card titles (1.15-1.2) */
+  --text-display: 1.3rem; /* 20.8 px: the setup's pink header (1.3) */
 
   /* the game's titles: a tight line, a hair of letter spacing */
   --leading-title: 1.3;
@@ -113,19 +119,17 @@
   --radius-xl: 12px;
   --radius-2xl: 14px;
 
-  /* the dialogs' widths (on a phone the browser's own cap, the screen less 2em and 6 px, is the narrower) */
+  /* the dialogs' widths, five (on a phone the browser's own cap, the screen less 2em and 6 px, is the narrower) */
   --container-*: initial;
-  --container-dialog-xs: 420px;
-  --container-dialog-sm: 520px;
-  --container-dialog-md: 600px;
+  --container-dialog-sm: 420px;
+  --container-dialog-md: 520px;
   --container-dialog-lg: 640px;
-  --container-dialog-xl: 700px;
-  --container-dialog-2xl: 870px;
-  --container-dialog-3xl: 960px;
-  --container-dialog-4xl: 980px;
+  --container-dialog-xl: 980px;
   --container-dialog-full: 1480px;
 
-  /* the planner's widths: phones are designed at 375 px; `max-md:` is a phone (620 px and under) */
+  /* the planner's widths, five: the legacy sheet's 17 snap to them (400-560 -> sm, 620-640 -> md, 759-760 -> lg,
+     860-960 -> xl, 1080-1180 -> 2xl). Components are written desktop-first with max-* (max-md: is a phone, 620 px and
+     under), as the legacy rules were; one direction per component. */
   --breakpoint-sm: 521px;
   --breakpoint-md: 621px;
   --breakpoint-lg: 761px;
@@ -152,14 +156,16 @@
   /* the game's 9-slice sprites (vite/images.mjs sets --btn-w, ... when the build has them; a CSS gradient stands in
      where it does not), each as a whole border-image: the sprite, its slices (in the sprite's pixels) and the widths
      the slices are drawn at (scaled to the button's height: the rectangle's sprite is 96 px tall, the pill's 72 px) */
-  --nine-btn-w: var(--btn-w, linear-gradient(#fff, #eceaf2)) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch;
+  --nine-btn-w: var(--face-btn-w) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch;
   --nine-btn-g: var(--btn-g, linear-gradient(#b4ec52, #7cc40d)) 0 116 0 40 fill / 0 51px 0 18px / 0 stretch;
-  --nine-slot-frame: var(--slot-frame, linear-gradient(#fff, #f1f0f4)) 22 fill / 9px / 0 stretch;
+  --nine-slot-frame: var(--face-slot-frame) 22 fill / 9px / 0 stretch;
 
   /* the green header bar: diagonal stripes at its left, fading out by a third of the way across */
   --art-bar: linear-gradient(90deg, transparent 0, var(--color-gm-green) 32%),
     repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 6px, transparent 6px 12px),
     linear-gradient(var(--color-gm-green), var(--color-gm-green2)) var(--color-gm-green);
+  /* the career card's pale hero gradient */
+  --art-hero: linear-gradient(160deg, #eef1f8 0%, #f7f4f0 55%, #ffffff 100%);
   /* the two slanted notches near a section bar's right end */
   --art-notch: linear-gradient(90deg, var(--color-gm-green2) 6px, transparent 6px 9px, var(--color-gm-green2) 9px);
   /* a section bar's outline: its right end cut on a slant */
@@ -213,16 +219,36 @@
     --color-gm-tab-edge: #4d535d;
     --color-gm-tab-low: #20242a;
 
+    --art-hero: linear-gradient(160deg, #2c323c 0%, #252a31 60%, #1f2328 100%);
     --color-outline: #24470a;
     --color-outline-glow: rgba(0, 0, 0, 0.5);
-    --nine-btn-w: var(--btn-w-dark, var(--btn-w, linear-gradient(#fff, #eceaf2))) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch;
-    --nine-slot-frame: var(--slot-frame-dark, var(--slot-frame, linear-gradient(#fff, #f1f0f4))) 22 fill / 9px / 0 stretch;
+    --face-btn-w: var(--btn-w-dark, var(--btn-w, linear-gradient(#fff, #eceaf2)));
+    --face-slot-frame: var(--slot-frame-dark, var(--slot-frame, linear-gradient(#fff, #f1f0f4)));
   }
   /* the planner pages: one panel tone in dark mode, as in light mode, where the panel and the game's panel are both
      white; /about keeps its black panels */
   :root.game[data-theme="dark"] {
     --color-panel: var(--color-gm-panel);
   }
+}
+
+/* tokens read only through names the page builds at runtime (ui/Images.tsx: `var(--color-k-${kind})`, the card
+   types; `var(--color-r-${rarity})`), so Tailwind can't see them read: written out always */
+@theme static {
+  --color-k-speed: #2f6fd6;
+  --color-k-stamina: #d0453b;
+  --color-k-power: #d97a1e;
+  --color-k-guts: #cf4f8d;
+  --color-k-wit: #2f9a62;
+  --color-k-pal: #b88a12;
+  --color-k-group: #8a6ad1;
+  --color-k-other: #6b7385;
+  --color-r-ssr: #c99a1a;
+  --color-r-sr: #8f9aa8;
+  --color-r-r: #a8714a;
+  /* the sprites' faces in light mode (the dark block swaps them); read by the --nine-* tokens */
+  --face-btn-w: var(--btn-w, linear-gradient(#fff, #eceaf2));
+  --face-slot-frame: var(--slot-frame, linear-gradient(#fff, #f1f0f4));
 }
 
 /* tokens whose value reads a variable set on the element itself (inline style), so the utility carries the value

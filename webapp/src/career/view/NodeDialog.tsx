@@ -103,10 +103,10 @@ interface WinsProps {
   edit: boolean;
 }
 function Wins({ nd, at, who, k, edit }: WinsProps) {
-  if (!edit) return <span class="px-2 py-0.5 text-xs">{winsText(nd)}</span>;
+  if (!edit) return <span class="text-caption px-2 py-0.5">{winsText(nd)}</span>;
   return (
     <Button
-      size="xs"
+      size="caption"
       data-k={`${k}:wins`}
       title="G1 wins (race affinity): click to edit"
       aria-haspopup="dialog"
@@ -122,7 +122,7 @@ function CopyId({ v }: { v: VetRecord }) {
     [said, setSaid] = useState('Copy ID');
   return (
     <Button
-      size="sm"
+      size="note"
       title={`${lender.name}: ${lender.id}`}
       onClick={async () => {
         try {
@@ -324,7 +324,7 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
     v: VetRecord | undefined = at?.v;
   const acts = (
     <>
-      <Button variant="primary" size="base" onClick={fromNode(() => openParentPicker(k))}>
+      <Button variant="primary" size="body" onClick={fromNode(() => openParentPicker(k))}>
         {plan.parents[k] ? 'Change parent' : 'Choose parent'}
       </Button>
       {plan.parents[k] && <Button onClick={() => setParent(k, null, false)}>Let the planner pick</Button>}
@@ -439,7 +439,7 @@ export function NodeDialog() {
       });
   };
   return (
-    <Dialog id="node-dlg" cls="nodedlg" skin="game" labelledBy="node-title" open={!!spec && !!on} onClose={closed}>
+    <Dialog size="md" id="node-dlg" skin="game" labelledBy="node-title" open={!!spec && !!on} onClose={closed}>
       <DialogTitle id="node-title">{on ? on.title : ''}</DialogTitle>
       {/* (the guards inside the dialog: a throw leaves it open, and Close still closes it) */}
       <DialogBody id="node-body" ref={body}>
