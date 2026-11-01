@@ -79,6 +79,7 @@ function page({ trainee = null } = {}) {
     page: {
       job: () => {
         if (deps.blocked) throw Object.assign(new Error('No target skills.'), { kind: 'empty' });
+        if (deps.broken) throw new Error('the job could not be built');
         return job;
       },
       places: () => (trainee ? `{"trainee":${trainee}}` : '{"trainee":null}'),
@@ -103,6 +104,7 @@ function page({ trainee = null } = {}) {
       drawCheck: () => seen.checkDraws++,
     },
     blocked: false,
+    broken: false,
   };
   return { run: createRun(deps), deps, clock, engine, seen, job };
 }
@@ -186,7 +188,7 @@ test('a restart rejects a job waiting on the start: no error is shown, and the n
   assert.equal(p.engine.restarts, 2, 'so the next edit stops it');
 });
 
-test('a Blocked job ends the run unsearched, with its message; a thrown job error the same', async () => {
+test('a Blocked job ends the run unsearched, with its message; a thrown job error the same, as an error', async () => {
   const p = page();
   p.deps.blocked = true;
   await edited(p);
@@ -195,7 +197,71 @@ test('a Blocked job ends the run unsearched, with its message; a thrown job erro
   assert.equal(answer.peek().status.text, 'No target skills.');
   assert.equal(runView.peek().searching, false);
   assert.equal(p.seen.cleared, 1, 'the analysis is cleared');
-  assert.equal(p.clock.pending().length, 0);
+  p.deps.blocked = false;
+  p.deps.broken = true;
+  await edited(p);
+  assert.equal(sent(p), 0);
+  assert.deepEqual(answer.peek().status, { kind: 'error', text: 'the job could not be built', act: undefined });
+  assert.equal(p.seen.cleared, 2);
+});
+test('a failure clears the analysis; a Blocked edit under a live ticker ends it', async () => {
+  const p = page();
+  await edited(p);
+  p.engine.answer(0, { error: 'bad' });
+  await flush();
+  assert.equal(p.seen.cleared, 1);
+  p.job.targets.push({ group: 990 });
+  await edited(p);
+  assert.equal(p.clock.pending().length, 1, 'ticker live');
+  p.deps.blocked = true;
+  await edited(p);
+  assert.equal(p.clock.pending().length, 0, 'no ticker after Blocked');
+});
+test('a failed plan: not kept, not saved, and the same job runs again', async () => {
+  const p = page();
+  await edited(p);
+  p.engine.answer(0, searched('best'));
+  await flush();
+  p.engine.answer(1, { next: { error: 'no option' } });
+  await flush();
+  assert.equal(answer.peek().planState.state, 'error');
+  assert.equal(p.seen.saved.length, 0, 'not saved');
+  p.run.schedule();
+  assert.equal(runView.peek().searching, true, 'the same job runs again');
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.equal(sent(p), 3, 'a new search');
+});
+test('an undo onto a kept answer shows it at once, with her analysis; one whose plan failed was never kept', async () => {
+  const p = page();
+  await edited(p);
+  await answered(p, 0, ['best'], 'pick');
+  // (the plan's robustness check runs in the background, and resumes on the undo: the searches are the foreground jobs)
+  const searches = () => p.engine.jobs.filter((j) => !j.background).length,
+    shown = p.seen.shown.length,
+    jobs = searches();
+  p.job.targets.push({ group: 991 });
+  await edited(p);
+  assert.equal(searches(), jobs + 1, 'the edit searches');
+  await answered(p, sent(p) - 1, ['other'], 'pick2'); // (its answer on show)
+  p.job.targets.pop(); // its undo: the kept answer
+  await edited(p);
+  assert.equal(searches(), jobs + 2, 'no search for the undo (the edit made two: its search and its plan)');
+  assert.equal(answer.peek().planState.state, 'done');
+  assert.equal(answer.peek().last.r.results[0].career, 'best');
+  assert.equal(p.seen.shown.length, shown + 2, 'her analysis is shown with it');
+  // a failed plan's answer: an edit away and back runs the job again
+  const q = page();
+  await edited(q);
+  q.engine.answer(0, searched('best'));
+  await flush();
+  q.engine.answer(1, { next: { error: 'no option' } });
+  await flush();
+  q.job.targets.push({ group: 992 });
+  await edited(q);
+  q.job.targets.pop();
+  await edited(q);
+  assert.equal(sent(q), 4, 'the undone job searches again');
 });
 
 test('the engine failing or refusing: the error is shown and the run ends', async () => {
@@ -258,10 +324,12 @@ test('every new run makes the comparison stale before anything awaits (analysis.
   assert.deepEqual([p.seen.stops, p.seen.outdates], [1, 0], 'an edit stops it');
   p.clock.advance(PAUSE_MS);
   assert.deepEqual([p.seen.stops, p.seen.outdates], [1, 1], 'the search outdates it, synchronously');
-  p.run.search(); // the Search path: a run without an edit
-  assert.equal(p.seen.outdates, 2);
   p.run.schedule(); // the same job: no new run, nothing goes stale
-  assert.deepEqual([p.seen.stops, p.seen.outdates], [1, 2]);
+  assert.deepEqual([p.seen.stops, p.seen.outdates], [1, 1]);
+  // a run without an edit, the page load's first: it outdates the comparison too
+  const q = page();
+  await q.run.start();
+  assert.deepEqual([q.seen.stops, q.seen.outdates], [0, 1]);
 });
 
 // ---------- the check through the machine

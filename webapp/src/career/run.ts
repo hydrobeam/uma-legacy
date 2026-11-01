@@ -407,5 +407,5 @@ export function createRun(deps: RunDeps) {
     await preloadAnswer();
     search();
   }
-  return { schedule, search, start };
+  return { schedule, start };
 }
