@@ -10,7 +10,7 @@
 // picker and the "+" list are veterans/sparks.ts's and pickers.ts's (openColour, openAdd).
 import { useRef } from 'preact/hooks';
 import { NEW_STARS } from '../veterans/store.ts';
-import { pinkName, skillName, uniqueName } from '../veterans/names.ts';
+import { pinkName, skillName, starsOf, uniqueName } from '../veterans/names.ts';
 import { addOpener, openAdd } from '../veterans/pickers.ts';
 import { KIND, currentSpark, openColour } from '../veterans/sparks.ts';
 import type { NodeRecord, NodeRef } from '../veterans/store.ts';
@@ -240,9 +240,8 @@ interface SparksProps {
  *  white sparks, the targets first, the rest grey */
 export function Sparks({ nd, k, at, targets: tg, readOnly = false }: SparksProps) {
   const targets = new Set(tg),
-    sparks = nd.sparks as Record<number, number>,
     groups = readOnly
-      ? Object.keys(sparks)
+      ? Object.keys(nd.sparks)
           .map(Number)
           .sort((a, b) => Number(targets.has(b)) - Number(targets.has(a)))
       : tg;
@@ -255,9 +254,9 @@ export function Sparks({ nd, k, at, targets: tg, readOnly = false }: SparksProps
         <ColourBar key={kind} nd={nd} kind={kind} k={`${k}:${kind}`} at={at} readOnly={readOnly} />
       ))}
       {groups
-        .filter((g) => sparks[g])
-        .map((g) => {
-          const stars = sparks[g];
+        .map((g) => [g, starsOf(nd.sparks, g)] as const)
+        .filter(([, stars]) => stars > 0)
+        .map(([g, stars]) => {
           return (
             <Chip
               key={g}

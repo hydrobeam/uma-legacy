@@ -2,17 +2,19 @@
 // targets with what gives each, and the chance of each count of them.
 import { useRef } from 'preact/hooks';
 import { fmtIn } from '../../dom.ts';
+import { assert } from '../../must.ts';
 import { settings } from '../../settings.ts';
 import { srcFor } from '../../images.ts';
 import { scenarioOf } from '../../scenario.ts';
 import { popOpener } from '../../popover.ts';
 import { pct, deckHint } from '../../odds.ts';
-import { vets } from '../../veterans/store.ts';
-import { deckCardAt } from '../../details.ts';
-import { cardTitle, borLast, chainEndNote } from '../../cards.ts';
+import { starsOf } from '../../veterans/names.ts';
+import { borrowedLast, deckCards } from '../../details.ts';
+import type { DeckSlot } from '../../details.ts';
+import { cardTitle, chainEndNote } from '../../cards.ts';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
-import { shown } from '../current.ts';
+import { legacyVet, shown } from '../current.ts';
 import { tName, tableRows } from './parts.ts';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
@@ -22,9 +24,9 @@ import { openSched } from '../../ui/Schedule.tsx';
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
 type CareerReport = ShownCareer;
-/** the career's odds of landing all n (each count is under the targets: Counts) */
+/** the career's odds of landing all n of its targets (each count is under the targets: Counts) */
 export function Odds({ r }: { r: CareerReport }) {
-  const n = settings.value.targets.length;
+  const n = r.targets.length;
   return (
     <span
       class="udodds"
@@ -45,8 +47,7 @@ export const DeckButton = () => (
 // her race schedule: the schedule window (the game's calendar), each race's figure the community table's on her own
 // grades (parts.ts tableRows); the G1s she could enter but doesn't aren't shown
 const schedOf = (r: CareerReport) => ({
-  members: [{ id: r.trainee.id, name: r.trainee.name, short: r.trainee.name }],
-  outfits: [{ outfits: r.trainee.outfits }],
+  members: [{ k: 0, id: r.trainee.id, name: r.trainee.name, short: r.trainee.name, outfits: r.trainee.outfits }],
   schedule: tableRows(r).filter((x: { run?: boolean }) => x.run !== false),
 });
 export function SchedButton({ r }: { r: CareerReport }) {
@@ -64,11 +65,9 @@ export function SchedButton({ r }: { r: CareerReport }) {
   );
 }
 /** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.ts, which reads the data-* and leaves the markup to this) */
-export function DeckCard({ r, i }: { r: CareerReport; i: number }) {
-  const d = r.deck,
-    { base, borrowed: bor, card: c } = deckCardAt(d, i),
-    endAt = (d.end_chain_at || [])[i] || 0,
-    pick = (d.choices || [])[i] || (c?.pri ? c.pri.join(', ') : ''),
+export function DeckCard({ slot }: { slot: DeckSlot }) {
+  const { base, borrowed: bor, card: c, endAt } = slot,
+    pick = slot.choice || (c?.pri ? c.pri.join(', ') : ''),
     t = c ? cardTitle(c) : { nm: base, ti: '' },
     tag = bor ? 'borrowed' : c?.pal ? 'pal' : '',
     full =
@@ -115,8 +114,8 @@ export function DeckDialog() {
             <div class="deck" id="tree-deck">
               <div class="dcards">
                 <Guard what="The deck popup">
-                  {borLast([...r.deck.cards]).map((i: number) => (
-                    <DeckCard key={`${i}:${r.deck.cards[i]}`} r={r} i={i} />
+                  {borrowedLast(deckCards(r.deck)).map((slot) => (
+                    <DeckCard key={`${slot.i}:${slot.named}`} slot={slot} />
                   ))}
                 </Guard>
               </div>
@@ -137,9 +136,8 @@ export function DeckDialog() {
 // the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
 function cardsGiving(r: CareerReport, g: number) {
   const out = [];
-  for (let i = 0; i < r.deck.cards.length; i++) {
-    const c = deckCardAt(r.deck, i).card;
-    if (!c) continue;
+  for (const { card: c } of deckCards(r.deck)) {
+    if (!c) continue; // (a card the page doesn't know: nothing to say it gives)
     const ways: string[] = [];
     if ((c.whites || []).includes(g)) ways.push('hint');
     for (const [group, rarity, link] of c.ev || [])
@@ -152,10 +150,10 @@ function cardsGiving(r: CareerReport, g: number) {
 function legaciesCarrying(r: CareerReport, g: number) {
   const out = [];
   for (const ix of r.parents) {
-    const v = vets.value[ix];
-    if (!v) continue;
-    out.push({ chara: v.chara || 0, outfit: v.outfit, carries: v.sparks?.[g] > 0 });
-    for (const p of v.parents) out.push({ chara: p.chara || 0, outfit: p.outfit, carries: p.sparks?.[g] > 0 });
+    const v = legacyVet(ix);
+    if (!v) continue; // (she has left the pool under the answer on show)
+    out.push({ chara: v.chara || 0, outfit: v.outfit, carries: starsOf(v.sparks, g) > 0 });
+    for (const p of v.parents) out.push({ chara: p.chara || 0, outfit: p.outfit, carries: starsOf(p.sparks, g) > 0 });
   }
   return out;
 }
@@ -247,43 +245,42 @@ export function Targets({ r }: { r: CareerReport }) {
     </section>
   );
 }
-// the chance of landing exactly k of the n targets: exact over the landed sets (outcome_sets), else each target on its
-// own odds (over 12 targets); the all-n and n-1-or-better figures are the solver's exact ones
+// the chance of landing exactly k of the report's n targets, k = 0 ..= n (the report's: the settings can have changed
+// under the answer on show, dimmed until the next one): exact over the landed sets (outcome_sets), else each target on
+// its own odds (over 12 targets); the all-n and n-1-or-better figures are the solver's exact ones
 const popCount = (mask: number) => {
   let c = 0;
   for (let x = mask; x; x &= x - 1) c++;
   return c;
 };
-function landedCounts(r: CareerReport) {
-  const n = settings.value.targets.length,
-    exactly: number[] = new Array(n + 1).fill(0);
-  if (Array.isArray(r.outcome_sets)) {
-    // outcome_sets[mask]: the chance of landing exactly the targets in mask (bit i: target i)
-    r.outcome_sets.forEach((p: number, mask: number) => {
-      exactly[popCount(mask)] += p;
-    });
-    return exactly;
+function landedCounts(r: CareerReport): number[] {
+  const sets = r.outcome_sets;
+  if (Array.isArray(sets)) {
+    // sets[mask]: the chance of landing exactly the targets in mask (bit i: target i), one per mask of the n
+    assert(sets.length === 2 ** r.targets.length, 'the landed sets are every mask of the targets');
+    return Array.from({ length: r.targets.length + 1 }, (_, k) =>
+      sets.reduce((sum, p, mask) => (popCount(mask) === k ? sum + p : sum), 0),
+    );
   }
-  // each target on its own odds: the count's distribution built one target at a time (dist[c]: c landed so far)
+  // each target on its own odds: the count's distribution built one target at a time (dist[c]: c landed so far);
+  // c landed after this target is c - 1 before it and landing it (`carried`), or c before it and missing it
   let dist = [1];
   for (const t of r.targets) {
-    const next: number[] = new Array(dist.length + 1).fill(0);
-    dist.forEach((x, c) => {
-      next[c] += x * (1 - t.p);
-      next[c + 1] += x * t.p;
+    let carried = 0;
+    const next = dist.map((x) => {
+      const here = carried + x * (1 - t.p);
+      carried = x * t.p;
+      return here;
     });
-    dist = next;
+    dist = [...next, carried];
   }
-  dist.forEach((x, c) => {
-    exactly[c] = x;
-  });
-  return exactly;
+  return dist;
 }
 // the chance of each count of targets (all n first), as columns in the game's gauge colours: the chance over a column
 // as tall as its share (all n in gold), the count under it, "1 in X" on hover; under the axis, the game's limit arrow
 // where the average roll lands (the expected count, between the columns it falls between)
 function Counts({ r }: { r: CareerReport }) {
-  const n = settings.value.targets.length,
+  const n = r.targets.length,
     ex = landedCounts(r),
     top = Math.max(...ex),
     arrow = srcFor('ui', 'arrow_avg');
@@ -291,16 +288,13 @@ function Counts({ r }: { r: CareerReport }) {
     <div class="tgchart">
       <div class="tgcounts">
         {ex
-          .map((_, k) => n - k)
-          .map((k) => (
-            <span
-              key={k}
-              class={`tgc${k === n ? ' all' : ''}`}
-              title={`Exactly ${k} of ${n}: ${fmtIn(ex[k])} (${pct(ex[k])})`}
-            >
-              <b>{pct(ex[k])}</b>
+          .map((p, k) => ({ k, p }))
+          .reverse()
+          .map(({ k, p }) => (
+            <span key={k} class={`tgc${k === n ? ' all' : ''}`} title={`Exactly ${k} of ${n}: ${fmtIn(p)} (${pct(p)})`}>
+              <b>{pct(p)}</b>
               <span class="tgcb">
-                <i style={{ height: `${top > 0 ? Math.max(2, Math.round((ex[k] / top) * 100)) : 0}%` }} />
+                <i style={{ height: `${top > 0 ? Math.max(2, Math.round((p / top) * 100)) : 0}%` }} />
               </span>
               <span class="tgck">{`${k}/${n}`}</span>
             </span>

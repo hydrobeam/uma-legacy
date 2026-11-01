@@ -219,8 +219,8 @@ test('the race schedule, after it failed to draw, draws on its next opening (rev
   // into its mount point (the career entry's guard, with the schedule's openings as its subject)
   const root = document.createElement('div');
   render(h(Guard, { what: 'The race schedule', also: schedOpened }, h(ScheduleDialog, null)), root);
-  const member = { id: 1001, name: 'Uma A' };
-  openSched({ members: [member], outfits: [], schedule: [] }); // (malformed: no outfits for her)
+  const member = { k: 0, id: 1001, name: 'Uma A', outfits: [] };
+  openSched({ members: [member], schedule: null }); // (malformed: no schedule)
   await settle();
   const dialog = root.querySelector('dialog');
   assert.equal(reported.length, 1, 'the throw reported');
@@ -229,7 +229,7 @@ test('the race schedule, after it failed to draw, draws on its next opening (rev
   close.click();
   await settle();
   assert.equal(dialog.open, false, 'closed');
-  openSched({ members: [member], outfits: [{ outfits: [] }], schedule: [] });
+  openSched({ members: [member], schedule: [] });
   await settle();
   assert.equal(dialog.open, true, 'opened again: open');
   assert.equal(dialog.querySelectorAll('button.stab').length, 1, 'and drawn (her tab)');

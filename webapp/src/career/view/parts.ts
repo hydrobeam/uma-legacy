@@ -1,5 +1,5 @@
 // Small parts the career page's views share: a target's name, numbers, her schedule's rows.
-import { careerTables, gameData } from '../../data.ts';
+import { gameData } from '../../data.ts';
 import { settings } from '../../settings.ts';
 import { goldGiven } from '../../job.ts';
 import { tableCost, tableChance } from '../../agenda.ts';
@@ -18,13 +18,11 @@ export const fmtN = (x: number): string => Math.round(x).toLocaleString();
 // planner's, which counts the pink sparks she may get, on hover)
 export const tableRows = (r: DeepReadonly<CareerReport>) =>
   (r.schedule || []).map((row) => {
-    const tables = careerTables(),
-      c = row.cells[0],
-      ix = tables.races.indexOf(row.name),
+    const [c] = row.cells,
+      track = gameData().tracks.get(row.name),
       apt = r.aptitudes?.base;
-    if (!c || ix < 0 || !apt || !tables.race_cat) return row;
-    const ground = must(tables.race_ground, 'build.py writes race_ground with race_cat')[ix];
-    const { cost, grades } = tableCost(apt, tables.race_cat[ix], ground);
+    if (!c || !track || !apt) return row;
+    const { cost, grades } = tableCost(apt, track);
     const tbl = tableChance(cost, must(c.row, 'a scheduled race has its place in a row'));
     return { ...row, cells: [{ ...c, tbl, tapt: cost, grades }] };
   });

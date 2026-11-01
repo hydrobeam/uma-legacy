@@ -138,6 +138,7 @@ const run = createRun({
   store: answerStore,
   page: {
     job: currentJob,
+    pool: () => vets.peek().map((v) => v.id),
     places: () => placesKey(places.peek()),
     trainee: () => places.peek().trainee,
     refBase: (job) => refBase(job, umasNotOwned(settings.peek())),

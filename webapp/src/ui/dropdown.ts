@@ -4,6 +4,7 @@
 import type { RefObject } from 'preact';
 import { useLayoutEffect } from 'preact/hooks';
 import { must } from '../must.ts';
+import { around, clamped } from './arrows.ts';
 
 // While `open`: a click outside every element of `inside` closes it, and so does Escape, which also returns the focus
 // to `button`. Escape is taken in the capture phase (before a dialog the menu sits in takes it) and goes no further.
@@ -59,7 +60,7 @@ export function menuKeys(e: KeyboardEvent & { currentTarget: HTMLElement }, colu
   }[e.key];
   if (to === undefined) return;
   e.preventDefault();
-  all[grid ? Math.max(0, Math.min(all.length - 1, to)) : (to + all.length) % all.length].focus();
+  (grid ? clamped(all, to) : around(all, to)).focus();
 }
 // ArrowDown or ArrowUp on a closed menu's button opens it
 export const opensOnArrow = (open: boolean, setOpen: (open: boolean) => void) => (e: KeyboardEvent) => {

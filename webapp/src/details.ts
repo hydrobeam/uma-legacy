@@ -1,6 +1,7 @@
 // ---------- the veteran card's parts the views share: the game's "Umamusume Details" screen ----------
 // What Try a run's card (career/analysis/Details.tsx), the node popups and the decks share: the spark names' fit
-// (`fitSparks`) and a deck's card by its index (`deckCardAt`). (Its Skill Details popup is career/view/SkillDetails.tsx.)
+// (`fitSparks`) and a deck's cards as they are drawn (`deckCards`). (Its Skill Details popup is
+// career/view/SkillDetails.tsx.)
 import { gameData } from './data.ts';
 import type { Card } from './data.ts';
 import type { ResultDeck } from './loop/types.ts';
@@ -42,24 +43,47 @@ export function fitSparks(root: ParentNode): void {
   }
   for (const x of shrinking) if (x.hi > 0) x.e.style.fontSize = `${x.f0 - 0.5 * x.hi}px`;
 }
-// A deck's i-th card, from the solver's deck report: its name with the report's notes taken off (base), whether it is the
-// borrowed card, and the card's data (null when unknown). The report lists the deck's cards with ids (card_ids) and
-// then the plain ones (plain_ids), in the order of `cards`.
-export function deckCardAt(
-  deck: DeepReadonly<ResultDeck>,
-  i: number,
-): { base: string; borrowed: boolean; card: Card | undefined } {
-  const name = deck.cards[i];
-  const borrowed = /\(borrowed\)$/.test(name),
-    base = name
+/** One card of a deck report, as the views draw it (`deckCards`). */
+export interface DeckSlot {
+  /** its place in the report's `cards` */
+  i: number;
+  /** its name as the report writes it, with its notes (" (end chain at link N)", " (borrowed)") */
+  named: string;
+  /** its name without them */
+  base: string;
+  borrowed: boolean;
+  /** its data (undefined when the page has no such card) */
+  card: Card | undefined;
+  /** the chain link to end its story at (0: none) */
+  endAt: number;
+  /** the skill the search chose to prioritise at its chain link ('': none) */
+  choice: string;
+}
+// A deck report's cards (the solver's `PDeck::out`), in its order. The report lists the deck's cards with ids
+// (card_ids) and then the plain ones (plain_ids), in the order of `cards`; it leaves out the per-card advice lists
+// (`end_chain_at`, `choices`) where no card has any.
+export function deckCards(deck: DeepReadonly<ResultDeck>): DeckSlot[] {
+  const ids = [...deck.card_ids, ...(deck.plain_ids || [])];
+  const slots = deck.cards.map((named, i): DeckSlot => {
+    const base = named
       .replace(/ \(borrowed\)$/, '')
       .replace(/ \(end chain at link \d\)$/, '')
       .replace(/ \(link \d+: [^)]*\)$/, '');
-  const id = deck.card_ids[i] ?? deck.plain_ids?.[i - deck.card_ids.length];
-  // (an id the report lacks finds no card: the name finds it then)
-  return {
-    base,
-    borrowed,
-    card: gameData().cardById.get(id as number) || gameData().cards.find((x) => x.name === base),
-  };
+    const id = ids[i]; // (an id the report lacks finds no card: the name finds it then)
+    return {
+      i,
+      named,
+      base,
+      borrowed: /\(borrowed\)$/.test(named),
+      card: (id !== undefined && gameData().cardById.get(id)) || gameData().cards.find((x) => x.name === base),
+      endAt: deck.end_chain_at?.[i] ?? 0,
+      choice: deck.choices?.[i] ?? '',
+    };
+  });
+  return slots;
 }
+/** `slots` with the borrowed card last (the sixth slot, as in the game), the others in their order */
+export const borrowedLast = (slots: readonly DeckSlot[]): DeckSlot[] => [
+  ...slots.filter((s) => !s.borrowed),
+  ...slots.filter((s) => s.borrowed),
+];

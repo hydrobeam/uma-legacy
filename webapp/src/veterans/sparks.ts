@@ -3,6 +3,7 @@
 import { signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { careerTables, gameData } from '../data.ts';
+import { gradeAt } from '../grades.ts';
 import { pinkName, blueName, uniqueName } from './names.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 
@@ -42,7 +43,12 @@ function pinkChoices(nd: NodeRecord): number[] {
   const grades = nd.apt || gameData().umas.find((u) => u.id === nd.chara)?.apt;
   const all = Object.keys(careerTables().pinks).map(Number),
     have = Object.keys(nd.pinks || {}).map(Number);
-  return grades ? all.filter((g) => grades[APT_OF[g]] >= 7 || have.includes(g)) : all;
+  // (a pink of an aptitude the page doesn't map is no choice, unless she has it)
+  const endsAtA = (g: number) => {
+    const k = APT_OF[g];
+    return k !== undefined && !!grades && gradeAt(grades, k) >= 7;
+  };
+  return grades ? all.filter((g) => endsAtA(g) || have.includes(g)) : all;
 }
 // her spark of one kind, as [group (an object key: a string), stars], or undefined (none)
 export const currentSpark = (nd: NodeRecord, kind: Colour): [string, number] | undefined =>

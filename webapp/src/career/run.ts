@@ -66,6 +66,9 @@ export interface RunDeps {
   page: {
     /** the career job of the settings, veterans and places now (throws job.ts `Blocked` when they make none) */
     job: () => CareerJob;
+    /** the veterans' ids in the pool's order: the legacy indices of the job built with them (career/state.ts
+     *  `answerPool`) */
+    pool: () => readonly string[];
     /** the places as a key (job.ts `placesKey`) */
     places: () => string;
     /** the trainee chosen by hand (null: the planner picks, so a plan runs) */
@@ -266,6 +269,8 @@ export function createRun(deps: RunDeps) {
       });
       return;
     }
+    // the veterans the job's legacy indices name, read with it (the answer reads its parents by these ids)
+    const pool = page.pool();
     // edits that end where they started (a setting changed and back, a star clicked twice): the job is the one whose
     // answer is on show (era, settings, veterans as the job carries them, and the same places), so it stands and
     // nothing runs (her comparison, if the edits cut one short, is hers to start again); a failed plan makes it run
@@ -283,7 +288,7 @@ export function createRun(deps: RunDeps) {
     }
     const hit = store.recallAnswer(answerKey);
     if (hit) {
-      store.showKeptAnswer(hit);
+      store.showKeptAnswer(hit, pool);
       analysis.show(view.shown());
       clock.clearTimer(tick);
       view.drawAll();
@@ -317,6 +322,7 @@ export function createRun(deps: RunDeps) {
         store.showAnswer(
           { status, last: { r: m.r, job, key, plan: places }, planState: planned },
           planned.state === 'done' ? { base: page.refBase(job), places: JSON.parse(places) } : null,
+          pool,
         );
         // (a plan Compare kept may hold a check an edit cut short: it resumes, as a kept answer's does)
         if (planned.state === 'done' && checkPending(planned)) checkFor = planned;

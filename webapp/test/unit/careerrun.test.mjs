@@ -82,6 +82,7 @@ function page({ trainee = null } = {}) {
         if (deps.broken) throw new Error('the job could not be built');
         return job;
       },
+      pool: () => ['a', 'b'],
       places: () => (trainee ? `{"trainee":${trainee}}` : '{"trainee":null}'),
       trainee: () => trainee,
       refBase: () => 'base',

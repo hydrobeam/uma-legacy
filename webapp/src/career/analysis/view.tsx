@@ -11,7 +11,7 @@ import { fmtIn } from '../../dom.ts';
 import { careerTables } from '../../data.ts';
 import { settings } from '../../settings.ts';
 import { pct } from '../../odds.ts';
-import { vets, draft, draftRef } from '../../veterans/store.ts';
+import { draft, draftRef } from '../../veterans/store.ts';
 import type { Draft, LineageNode, NodeRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { openWins } from '../../veterans/pickers.ts';
@@ -20,14 +20,15 @@ import { must } from '../../must.ts';
 import { Runner, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import type { ScheduleCell } from '../../solver.ts';
+import { cellAt } from '../../agenda.ts';
 import { scheduledRaces, rolledOutcome } from '../roll.ts';
 import type { Roll, RollSetup } from '../roll.ts';
-import { answer, runView, searching as runSearching } from '../state.ts';
+import { answer, answerPool, runView, searching as runSearching } from '../state.ts';
 import { keyOf } from '../keys.ts';
 import { isFull } from '../job.ts';
-import { shown } from '../current.ts';
+import { legacyVet, legacyVetNow, shown } from '../current.ts';
 import type { CareerReport } from '../job.ts';
-import { borLast } from '../../cards.ts';
+import { borrowedLast, deckCards } from '../../details.ts';
 import { fmtN, tableRows } from '../view/parts.ts';
 import { openNode } from '../view/dialogs.ts';
 import { sayVets } from '../view/poolState.ts';
@@ -62,15 +63,26 @@ const rollSetup = (): RollSetup => ({
 });
 /** a random result of career `r` */
 const rollOf = (r: Career): Roll => rolledOutcome(r, rollSetup());
-/** her draft for career `r`: a random result of it, on her two parents' records (the machine's `page.draftOf`) */
-export const draftOf = (r: Career): Draft => ({
-  chara: r.trainee.id,
-  outfit: r.trainee.outfits[0]?.id,
-  borrowed: false,
-  ...rollOf(r),
-  winAt: {},
-  parents: r.parents.map((i) => copyNode(vets.peek()[i])),
-});
+/** her draft for career `r`: a random result of it, on her two parents' records (the machine's `page.draftOf`); null
+ *  when one of them has left the pool under the answer on show (career/current.ts `legacyVet`) */
+export function draftOf(r: Career): Draft | null {
+  const parents: LineageNode[] = [];
+  for (const i of r.parents) {
+    const v = legacyVetNow(i);
+    if (!v) return null;
+    parents.push(copyNode(v));
+  }
+  // (her outfit: the one the career names, where it names one)
+  const [outfit] = r.trainee.outfits;
+  return {
+    chara: r.trainee.id,
+    ...(outfit ? { outfit: outfit.id } : {}),
+    borrowed: false,
+    ...rollOf(r),
+    winAt: {},
+    parents,
+  };
+}
 
 // ---------- her G1 wins and Add to veterans
 // the veteran analysis' G1 wins: the G1 wins editor of the pool (a win in its slot, click to remove; an empty slot lists
@@ -88,7 +100,7 @@ function openDraftWins(d: DraftView, r: Career, back: () => void) {
     if (ix < 0) continue;
     if (!heldAt.has(w.turn)) heldAt.set(w.turn, []);
     heldAt.get(w.turn)?.push(ix);
-    if (w.run !== false && !runs.has(ix)) runs.set(ix, { turn: w.turn, cell: w.cells[0] });
+    if (w.run !== false && !runs.has(ix)) runs.set(ix, { turn: w.turn, cell: cellAt(w, 0) });
   }
   const parentWon = (ix: number) => d.parents.some((p) => p.wins.includes(ix));
   openWins(draftRef(), umaName(d.chara), {
@@ -144,12 +156,15 @@ function Faces({
     </span>
   );
 }
-// a parent of a future career by legacy index (index = the veterans' count: the veteran she leaves, `who`)
+// a parent of a future career by legacy index: the index past the answer's pool is the veteran she leaves (`who`: the
+// comparison's jobs add her last, compare.ts); one who has left the pool under the answer (`legacyVet`), her number alone
 const parentFace = (i: number, who: DraftView) => {
-  const v = vets.value[i];
+  if (i === answerPool.value.length)
+    return { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true };
+  const v = legacyVet(i);
   return v
     ? { chara: v.chara, outfit: v.outfit, label: `#${i + 1} ${umaName(v.chara)}` }
-    : { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true };
+    : { chara: null, label: `#${i + 1}` };
 };
 // a figure's direction: 'up' (better with her), 'down' (worse) or 'same' (within the estimate's noise, or unknown)
 function direction(now: number | null, withHer: number | null, lowerIsBetter: boolean) {
@@ -285,8 +300,8 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
                 <b>Deck</b>
               </div>
               <div class="dcards">
-                {borLastOf(next).map((i) => (
-                  <DeckCard key={`${i}:${next.deck.cards[i]}`} r={next} i={i} />
+                {borrowedLast(deckCards(next.deck)).map((slot) => (
+                  <DeckCard key={`${slot.i}:${slot.named}`} slot={slot} />
                 ))}
               </div>
             </div>
@@ -305,7 +320,6 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
     </>
   );
 }
-const borLastOf = (r: Career) => borLast([...r.deck.cards]) as number[];
 // the panel beside her card: a mini header carrying the chance a roll of this career improves your loop (the plan's
 // `lift`: her outcomes that lower V), then the comparison (before any, a line saying what goes here)
 function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: DraftView; r: Career }) {
@@ -371,7 +385,7 @@ function Analysis({ comparison }: { comparison: Comparison }) {
     races: scheduledRaces(r, careerTables().races),
     raceName: (ix) => careerTables().races[ix] || `G1 ${ix}`,
     targets: settings.value.targets.map((t) => t.group),
-    legacies: legaciesOf(r, vets.value, (id) => openNode({ kind: 'v', id })),
+    legacies: legaciesOf(r, legacyVet, (id) => openNode({ kind: 'v', id })),
   };
   // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose answer
   // replaces the career on show)

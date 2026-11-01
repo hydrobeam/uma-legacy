@@ -1,10 +1,15 @@
 // ---------- character icons, card art and skill icons: files in the page's image folder (data.ts IMG_BASE; from the game's own files) ----------
 // Their paths, the runner's pick and what a portrait or a card tile shows without art; ui/Images.tsx draws them.
-import { SHIPPED, IMG_EXT, IMG_BASE } from './data.ts';
+import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD } from './data.ts';
 import { must } from './must.ts';
 // kind: the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...)
 export function srcFor(kind: string, id: number | string): string | null {
   return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null;
+}
+/** a skill's icon (its gold's: `gold`), or null: the data has none for it, or the page doesn't ship it */
+export function skillIconSrc(group: number, gold: boolean): string | null {
+  const icon = (gold ? SKILLICON_GOLD : SKILLICON)[group];
+  return icon === undefined ? null : srcFor('skill', icon);
 }
 // the runner in place of a spinner: an uma's mini model running (img/run/<chara>: a strip of 18 frames of the game's
 // mini run, stepped by CSS, webapp/chibi/chibi.py). Who runs: the uma being planned (setRunner: the career page's
@@ -39,8 +44,8 @@ export function initials(name: string) {
     .replace(/[^A-Za-z .]/g, '')
     .split(/[ .]+/)
     .filter(Boolean);
-  const first = words[0] || '';
-  return ((first || '?')[0] + (words[1] ? words[1][0] : first[1] || '')).toUpperCase();
+  const [first = '', second = ''] = words;
+  return ((first || '?').slice(0, 1) + (second ? second.slice(0, 1) : first.slice(1, 2))).toUpperCase();
 }
 // a card's type as the text shown without its art (Card `kind`)
 export const KIND_ABBR: Record<string, string> = {

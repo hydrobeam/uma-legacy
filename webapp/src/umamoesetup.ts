@@ -102,7 +102,8 @@ const ago = (at: number): string => {
 // the popup's orders, uma.moe's own: its search's order (best covered first), then by her rank, her affinity score, her
 // race wins, her white sparks' stars, the latest updated; each starts best (or latest) first, and picking the chosen one
 // again reverses it, as the umas' and cards' sort menus do; the choice is kept in this browser
-export const SORTS: Record<string, [string, string, (v: VetRecord) => number]> = {
+export type UmSort = 'match' | 'rank' | 'affinity' | 'wins' | 'sparks' | 'updated';
+export const SORTS: Record<UmSort, [string, string, (v: VetRecord) => number]> = {
   match: ['Best match', 'uma.moe’s order: the best covered first', (v) => -(order.get(v.id) ?? 1e9)],
   rank: ['Rank', 'Her career rank', (v) => v.rank || 0],
   affinity: ['Affinity', 'Her affinity with her parents, as uma.moe scores it', (v) => v.lender?.affinity || 0],
@@ -110,21 +111,22 @@ export const SORTS: Record<string, [string, string, (v: VetRecord) => number]> =
   sparks: ['Sparks', 'Her white sparks’ stars, summed', (v) => v.lender?.sparkStars || 0],
   updated: ['Updated', 'The latest updated first', (v) => Date.parse(v.lender?.updated || '') || 0],
 };
+const isUmSort = (k: string | undefined): k is UmSort => k !== undefined && Object.hasOwn(SORTS, k);
 const SORT_KEY = 'llp:umamoe-sort';
-const sort = signal(
+const sort = signal<{ by: UmSort; reversed: boolean }>(
   (() => {
     try {
       const [k, dir] = (localStorage.getItem(SORT_KEY) || '').split(':');
-      return k in SORTS ? { by: k, reversed: dir === 'rev' } : { by: 'match', reversed: false };
+      return isUmSort(k) ? { by: k, reversed: dir === 'rev' } : { by: 'match', reversed: false };
     } catch {
       return { by: 'match', reversed: false };
     }
   })(),
 );
 /** the popup's order */
-export const umSort: ReadonlySignal<{ by: string; reversed: boolean }> = sort;
+export const umSort: ReadonlySignal<{ by: UmSort; reversed: boolean }> = sort;
 /** an order picked: the one in use again reverses it; kept in this browser */
-export function pickUmSort(k: string): void {
+export function pickUmSort(k: UmSort): void {
   const now = sort.peek(),
     next = { by: k, reversed: k === now.by && !now.reversed };
   try {

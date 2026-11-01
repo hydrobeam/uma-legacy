@@ -15,7 +15,7 @@ import type { SolverAnswer, SolverRefusal } from '../solver.ts';
 import { blockedStatus, buildJob, doneText, jobKey } from './job.ts';
 import type { Built, DeckJob, JobTarget } from './job.ts';
 import type * as LoopState from './state.ts';
-import type { LoopReport, ShownResult, Status } from './types.ts';
+import type { DrawnReport, LoopReport, ShownResult, Status } from './types.ts';
 
 /** the run store's transitions and the run state the machine reads (state.ts) */
 export type LoopStore = Pick<typeof LoopState, 'loopRun' | 'beginSearch' | 'interim' | 'settle' | 'tick'>;
@@ -43,7 +43,7 @@ export interface LoopDeps {
   /** the settings now (read when a search or its pause starts) */
   settings: () => SettingsView;
   /** draws a result (Results.tsx `drawResult`) */
-  render: (r: LoopReport, targets: JobTarget[]) => void;
+  render: (r: DrawnReport, targets: JobTarget[]) => void;
   /** the "no targets" status's button (presets.ts `loadExample`) */
   loadExample: () => void;
   /** the precomputed example and the settings it is the result of (the defaults); none in the Grand Masters era */
@@ -53,7 +53,7 @@ export interface LoopDeps {
 export type First = 'kept' | 'example' | null;
 
 /** a report with loops: not a refusal, not empty */
-const hasLoops = (r: LoopReport | SolverRefusal): r is LoopReport => !('error' in r) && r.top?.length > 0;
+const hasLoops = (r: LoopReport | SolverRefusal): r is DrawnReport => !('error' in r) && r.top?.length > 0;
 // the last finished result, per era (its key holds the era's data fingerprint)
 const lastResultKey = () => `llp:last:${ERA}`;
 
@@ -144,7 +144,7 @@ export function createRun(deps: LoopDeps) {
     deps.clearTimer(ticker);
     ticker = deps.every(() => tick(deps.now()), 1000);
     // a result is drawn unless the same loops and decks are already on screen
-    const draw = (r: LoopReport) => {
+    const draw = (r: DrawnReport) => {
       const loops = JSON.stringify(r.top);
       if (shown.example || shown.key !== key || shown.r !== loops) deps.render(r, targets);
       shown = { key, r: loops, example: false };
@@ -195,13 +195,13 @@ export function createRun(deps: LoopDeps) {
     }
     if (!('job' in built)) return null;
     const key = jobKey(built.job);
-    let kept: { key?: string; ms: number; r: LoopReport } | null = null;
+    let kept: { key?: string; ms: number; r?: LoopReport | null } | null = null;
     try {
       kept = JSON.parse(deps.storage().getItem(lastResultKey()) || 'null');
     } catch {
       // storage blocked or the kept result unreadable: none to show
     }
-    if (kept && kept.key === key && kept.r?.top?.length) {
+    if (kept?.key === key && kept.r?.top && hasLoops(kept.r)) {
       shown = { key, r: JSON.stringify(kept.r.top), example: false };
       done = { key, status: doneText(kept.r, kept.ms) };
       deps.render(kept.r, built.targets);
@@ -209,7 +209,7 @@ export function createRun(deps: LoopDeps) {
       return 'kept';
     }
     const { example } = deps;
-    if (!example) return null;
+    if (!example || !hasLoops(example.r)) return null;
     const exampleJob = buildJob(example.settings);
     if (!('job' in exampleJob) || jobKey(exampleJob.job) !== key) return null;
     shown = { key, r: null, example: true };

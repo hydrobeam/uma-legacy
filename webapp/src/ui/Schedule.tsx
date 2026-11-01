@@ -6,20 +6,30 @@ import { batch, signal, untracked } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
-import { YEARS, TABLE_PAIRS, gradeCode, shownP, slotOf, tableFigure, turnLabel, why } from '../agenda.ts';
+import { YEARS, ROW_PLACES, TABLE_PAIRS, cellAt, shownP, slotOf, tableFigure, turnLabel, why } from '../agenda.ts';
+import { GRADE_LETTER } from '../grades.ts';
 import type { ScheduleCell, ScheduleRow } from '../solver.ts';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
 import type { DeepReadonly } from '../store.ts';
 import { AgendaGrid, RaceFace, WhenBar } from './Agenda.tsx';
 import { Dialog } from './Dialog.tsx';
+import { around } from './arrows.ts';
 import { RenderGuard } from './RenderGuard.tsx';
 import { Grade, UmaAv } from './Images.tsx';
 
-/** what the popup shows: the members (the career page: her alone), their outfits, their schedule */
+/** a member as the popup shows her: her place `k` (the index of her cell in each schedule row), her uma and her
+ *  outfits that cover a target (her portrait's: loop/members.ts `Member`) */
+export interface SchedMember {
+  k: number;
+  id: number;
+  name: string;
+  short?: string;
+  outfits: readonly { id: number; label: string }[];
+}
+/** what the popup shows: the members (the career page: her alone) and their schedule */
 export interface SchedSpec {
-  members: readonly { id: number; name: string; short?: string }[];
-  outfits: readonly { outfits: readonly { id: number; label: string }[] }[];
+  members: readonly SchedMember[];
   schedule: DeepReadonly<ScheduleRow[]>;
 }
 // the schedule on show and its opening (each opening draws it afresh), and whether it is open
@@ -61,26 +71,24 @@ const SchedHead = ({ close, children }: { close: () => void; children?: Componen
     </button>
   </div>
 );
-type TabKey = number | 'all';
-function Schedule({ spec: { members, outfits, schedule }, close }: { spec: SchedSpec; close: () => void }) {
-  const [tab, setTab] = useState<TabKey>(0),
+/** a tab: a member's, or the table of all */
+type Tab = SchedMember | 'all';
+const tabKey = (tab: Tab) => (tab === 'all' ? 'all' : String(tab.k));
+function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; close: () => void }) {
+  const [tab, setTab] = useState<Tab>(() => must(members[0], 'a schedule is of one member or more')),
     [tableOpen, setTableOpen] = useState(false);
   // her outfit's portrait, picked as her result card picks it, from the settings as they are when the popup opens
-  const outfitOf = (k: number) => untracked(() => pickOutfit(members[k].id, outfits[k].outfits).list[0]?.id ?? null);
+  const outfitOf = (m: SchedMember) => untracked(() => pickOutfit(m.id, m.outfits).list[0]?.id ?? null);
   const single = members.length === 1,
-    keys: TabKey[] = [...members.map((_, k) => k), ...(single ? [] : ['all' as const])];
+    tabs: Tab[] = [...members, ...(single ? [] : ['all' as const])];
   // the arrows (and Home/End) move between the tabs and select; one tab is in the Tab order (the selected)
   const tabKeys = (e: KeyboardEvent, i: number) => {
-    const to = {
-      ArrowRight: (i + 1) % keys.length,
-      ArrowLeft: (i - 1 + keys.length) % keys.length,
-      Home: 0,
-      End: keys.length - 1,
-    }[e.key];
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
     if (to === undefined) return;
     e.preventDefault();
-    setTab(keys[to]);
-    must(document.getElementById(`stab-${keys[to]}`), 'each tab is drawn').focus();
+    const next = around(tabs, to);
+    setTab(next);
+    must(document.getElementById(`stab-${tabKey(next)}`), 'each tab is drawn').focus();
   };
   // the career page's figures are the community table's: its contents behind a button
   const tabled = schedule.some((row) => row.cells.some((c) => c?.tbl !== undefined));
@@ -102,27 +110,21 @@ function Schedule({ spec: { members, outfits, schedule }, close }: { spec: Sched
       </SchedHead>
       <WinTable hidden={!tableOpen} />
       <div class="stabs" role="tablist">
-        {keys.map((key, i) => (
+        {tabs.map((t, i) => (
           <button
-            key={key}
+            key={tabKey(t)}
             type="button"
             class="stab"
             role="tab"
-            id={`stab-${key}`}
+            id={`stab-${tabKey(t)}`}
             aria-controls="sched-view"
-            aria-selected={tab === key ? 'true' : 'false'}
-            tabIndex={tab === key ? 0 : -1}
-            onClick={() => setTab(key)}
+            aria-selected={tab === t ? 'true' : 'false'}
+            tabIndex={tab === t ? 0 : -1}
+            onClick={() => setTab(t)}
             onKeyDown={(e) => tabKeys(e, i)}
           >
-            {key === 'all' ? null : (
-              <UmaAv key={`${members[key].id}`} uma={members[key].id} outfit={outfitOf(key)} size={28} />
-            )}
-            {key === 'all'
-              ? members.length === 3
-                ? 'All three'
-                : 'All four'
-              : members[key].short || members[key].name}
+            {t === 'all' ? null : <UmaAv key={`${t.id}`} uma={t.id} outfit={outfitOf(t)} size={28} />}
+            {t === 'all' ? (members.length === 3 ? 'All three' : 'All four') : t.short || t.name}
           </button>
         ))}
         {/* (the "All" table says shared and optional in its own captions) */}
@@ -151,57 +153,60 @@ function Schedule({ spec: { members, outfits, schedule }, close }: { spec: Sched
           )}
         </span>
       </div>
-      <div class="sview" id="sched-view" role="tabpanel" aria-labelledby={`stab-${tab}`}>
+      <div class="sview" id="sched-view" role="tabpanel" aria-labelledby={`stab-${tabKey(tab)}`}>
         {tab === 'all' ? (
           <SchedTable members={members} schedule={schedule} outfitOf={outfitOf} />
         ) : (
-          <MemberAgenda members={members} schedule={schedule} k={tab} />
+          <MemberAgenda members={members} schedule={schedule} m={tab} />
         )}
       </div>
     </>
   );
 }
-// member k's races on the calendar: the turn, and the win odds of the race run there (in the bar, not over the
+// member m's races on the calendar: the turn, and the win odds of the race run there (in the bar, not over the
 // banner's lettering)
 function MemberAgenda({
   members,
   schedule,
-  k,
+  m,
 }: {
   members: SchedSpec['members'];
   schedule: SchedSpec['schedule'];
-  k: number;
+  m: SchedMember;
 }) {
   const single = members.length === 1;
   return (
     <AgendaGrid
       slot={(y, slotIndex, turn) => {
-        const row = schedule.find((x) => x.year === y && x.cells[k] && slotOf(x.when) === slotIndex);
+        // (the race she runs then, and her cell in its row)
+        const row = schedule.find((x) => x.year === y && cellAt(x, m.k) && slotOf(x.when) === slotIndex),
+          c = row ? cellAt(row, m.k) : null;
         return (
           <div key={turn} class={`ag-slot${row ? ' on' : ''}${row && !row.shared ? ' opt' : ''}`}>
-            {row && <RaceCell row={row} k={k} members={members} single={single} />}
-            <WhenBar slotIndex={slotIndex} cell={row ? row.cells[k] : null} />
+            {row && c && <RaceCell row={row} c={c} m={m} members={members} single={single} />}
+            <WhenBar slotIndex={slotIndex} cell={c} />
           </div>
         );
       }}
     />
   );
 }
-// one scheduled race in member k's slot, with whom she runs it (one member: which parent won it)
+// one scheduled race in member m's slot (`c`: her cell), with whom she runs it (one member: which parent won it)
 function RaceCell({
   row,
-  k,
+  c,
+  m,
   members,
   single,
 }: {
   row: DeepReadonly<ScheduleRow>;
-  k: number;
+  c: DeepReadonly<ScheduleCell>;
+  m: SchedMember;
   members: SchedSpec['members'];
   single: boolean;
 }) {
-  const c = must(row.cells[k], 'a member who runs the race has its cell'),
-    names = row.race.split('/');
-  const others = members.map((_, j) => j).filter((j) => j !== k && row.cells[j]);
+  const names = row.race.split('/');
+  const others = members.filter((o) => o !== m && row.cells[o.k]);
   const wonBy =
     single && row.parents ? row.parents.map((won, j) => (won ? `parent ${j + 1}` : '')).filter(Boolean) : [];
   const company = single
@@ -209,14 +214,15 @@ function RaceCell({
       ? ` · won by ${wonBy.join(' and ')}`
       : ' · no parent won it'
     : others.length
-      ? ` · with ${others.map((j) => members[j].name).join(', ')}`
+      ? ` · with ${others.map((o) => o.name).join(', ')}`
       : ' · alone (no affinity, optional)';
   return (
     <div
       class={`ag-race${row.shared ? '' : ' opt'}`}
       title={`${names.join(' or ')} · ${why(c) || `win ${shownP(c)}%`}${c.goal ? ' · goal' : ''}${company}`}
     >
-      <RaceFace bannerName={names[0]} label={names.join(' or ')} goal={c.goal} />
+      {/* (an "A/B" pair shows A's banner) */}
+      <RaceFace bannerName={row.race.replace(/\/.*$/, '')} label={names.join(' or ')} goal={c.goal} />
     </div>
   );
 }
@@ -235,20 +241,20 @@ function WinTable({ hidden }: { hidden: boolean }) {
                 Aptitude Combination
                 <br />/ Consecutive Races
               </th>
-              {TABLE_PAIRS.map((pair) => (
-                <th key={pair} scope="col" title={`${pair[0]} and ${pair[1]}`}>
-                  <Grade g={gradeCode(pair[0])} />
-                  <Grade g={gradeCode(pair[1])} />
+              {TABLE_PAIRS.map(([a, b]) => (
+                <th key={`${a}${b}`} scope="col" title={`${GRADE_LETTER[a]} and ${GRADE_LETTER[b]}`}>
+                  <Grade g={a} />
+                  <Grade g={b} />
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {[1, 2, 3, 4, 5, 6].map((k) => (
+            {ROW_PLACES.map((k) => (
               <tr key={k}>
                 <th scope="row">{k === 6 ? '6 or more Races' : `${k} Race${k > 1 ? 's' : ''}`}</th>
                 {TABLE_PAIRS.map((pair) => (
-                  <td key={pair}>{`${tableFigure(pair, k)}%`}</td>
+                  <td key={pair.join('')}>{`${tableFigure(pair, k)}%`}</td>
                 ))}
               </tr>
             ))}
@@ -264,7 +270,7 @@ function WinTable({ hidden }: { hidden: boolean }) {
 function SchedTable(props: {
   members: SchedSpec['members'];
   schedule: SchedSpec['schedule'];
-  outfitOf: (k: number) => number | null;
+  outfitOf: (m: SchedMember) => number | null;
 }) {
   const { members, schedule, outfitOf } = props,
     shared = schedule.filter((r) => r.shared),
@@ -274,9 +280,9 @@ function SchedTable(props: {
       <tr>
         <th>G1</th>
         <th class="when">When</th>
-        {members.map((x, k) => (
-          <th key={x.id} class="mh" data-k={k}>
-            <UmaAv key={`${x.id}`} uma={x.id} outfit={outfitOf(k)} size={22} />
+        {members.map((x) => (
+          <th key={x.id} class="mh" data-k={x.k}>
+            <UmaAv key={`${x.id}`} uma={x.id} outfit={outfitOf(x)} size={22} />
             <span class="hn">{x.short || x.name}</span>
           </th>
         ))}
@@ -285,25 +291,31 @@ function SchedTable(props: {
     </thead>
   );
   // the rows, a year row before each year's first
-  const rows = (list: DeepReadonly<ScheduleRow[]>) =>
-    list.flatMap((r, i) => [
-      ...(i === 0 || list[i - 1].year !== r.year
-        ? [
-            <tr key={`y${r.year}`} class="year">
-              <td colSpan={members.length + 3}>{YEARS[r.year]}</td>
-            </tr>,
-          ]
-        : []),
-      <tr key={`${r.when}:${r.race}`}>
-        <td>{r.race}</td>
-        <td class="when">{turnLabel(r.when)}</td>
-        {r.cells.map((c, k) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: one cell per member, in the members' order
-          <MemberCell key={k} c={c} />
-        ))}
-        <td>{`${r.runners}/${members.length}`}</td>
-      </tr>,
-    ]);
+  const rows = (list: DeepReadonly<ScheduleRow[]>) => {
+    let year: number | null = null; // the year of the row before
+    return list.flatMap((r) => {
+      const opensYear = r.year !== year;
+      year = r.year;
+      return [
+        ...(opensYear
+          ? [
+              <tr key={`y${r.year}`} class="year">
+                <td colSpan={members.length + 3}>{YEARS[r.year]}</td>
+              </tr>,
+            ]
+          : []),
+        <tr key={`${r.when}:${r.race}`}>
+          <td>{r.race}</td>
+          <td class="when">{turnLabel(r.when)}</td>
+          {r.cells.map((c, k) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: one cell per member, in the members' order
+            <MemberCell key={k} c={c} />
+          ))}
+          <td>{`${r.runners}/${members.length}`}</td>
+        </tr>,
+      ];
+    });
+  };
   return (
     <div class="tablewrap">
       <table class="sched">

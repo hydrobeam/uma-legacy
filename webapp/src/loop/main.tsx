@@ -149,9 +149,10 @@ function start() {
   on([jobSetup], () => loop.scheduleSearch());
   // phone: the floating status button shows while the results are out of view, and takes you back up to them
   if (window.IntersectionObserver)
-    new IntersectionObserver((entries) =>
-      document.documentElement.classList.toggle('rin', entries[0].isIntersecting),
-    ).observe($('rcol'));
+    new IntersectionObserver((entries) => {
+      // (#rcol's changes since the last call, the newest last)
+      for (const entry of entries) document.documentElement.classList.toggle('rin', entry.isIntersecting);
+    }).observe($('rcol'));
   $('run-pill').onclick = () => {
     const column = $('rcol');
     column.scrollIntoView({

@@ -11,6 +11,7 @@ import { scenarioOf } from '../scenario.ts';
 import type { SettingsView } from '../settings.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { LoopResult, ResultLoop, ShownResult } from './types.ts';
+import { loopMembers } from './members.ts';
 // a skill group's name at a level (2: its gold's, when it has one)
 const skillName = (group: number, level: number) => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: null };
@@ -39,8 +40,8 @@ function readableSettings(s: SettingsView) {
 const loopSummary = (loop: DeepReadonly<ResultLoop>) => ({
   all_land: fmtIn(loop.p_all),
   at_least_n_minus_1: fmtIn(loop.p_minus1),
-  umas: loop.members.map((m, k) => {
-    const outfit = pickOutfit(m.id, loop.outfits[k].outfits).list[0];
+  umas: loopMembers(loop).map((m) => {
+    const outfit = pickOutfit(m.id, m.outfits).list[0];
     return m.name + (outfit ? ` ${outfit.label}` : '');
   }),
 });
@@ -50,7 +51,10 @@ const resultSummary = ({ loop, deck, decks }: DeepReadonly<LoopResult>) => ({
   deck: deck.cards,
   pals: deck.pals,
   borrowed: deck.borrowed,
-  ...(decks ? { deck_per_uma: Object.fromEntries(loop.members.map((m, k) => [m.name, decks[k].cards])) } : {}),
+  // (each member's deck: her own, which the result has for every member when it has `decks`)
+  ...(decks
+    ? { deck_per_uma: Object.fromEntries(loopMembers(loop, decks).map((m) => [m.name, (m.deck ?? deck).cards])) }
+    : {}),
   deck_odds: deck.odds
     .filter((o) => o.white > 0.005 || o.gold > 0.005)
     .map((o) => ({

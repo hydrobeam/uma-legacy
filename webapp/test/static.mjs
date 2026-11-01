@@ -708,7 +708,7 @@ const reports = [];
 // settings as values, but it imports shared modules that read them, roster.ts, presets.ts and scenario.ts, and
 // pickOutfit reads the outfits).
 const LAYERS = [
-  ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
+  ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
   [
     'model',
@@ -725,6 +725,7 @@ const LAYERS = [
       'career/analysis/compare',
       'loop/job',
       'loop/keys',
+      'loop/members',
       'loop/run',
       'umamoesetup',
       'veterans/names',

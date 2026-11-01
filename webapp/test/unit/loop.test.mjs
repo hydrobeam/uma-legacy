@@ -546,6 +546,7 @@ test('result keys: one per result drawn together, a repeated loop and decks told
   const loop = (p) => ({
       members: [1001, 1002, 1003].map((id) => ({ id, name: `Uma ${id}`, short: '' })),
       outfits: [100101, 100201, 100301].map((id) => ({ outfits: [{ id, label: '' }], covers: [] })),
+      per_trainee: [p, p, p],
       p_all: p,
     }),
     deck = (cards) => ({ cards, card_ids: [], odds: [] });

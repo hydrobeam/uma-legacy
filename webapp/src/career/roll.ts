@@ -1,7 +1,7 @@
 // A roll: a random result of a career (the veteran it leaves), drawn from the solver's report of it. No page state:
 // each function takes the report, what it reads of the settings and data (`RollSetup`) and the random source (`rnd`,
 // Math.random on the page; the browser suite's `career` group passes a seeded one and runs these in node).
-import { must } from '../must.ts';
+import { assert, must } from '../must.ts';
 import { drawPink } from '../pink.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerReport } from './job.ts';
@@ -82,10 +82,11 @@ export function rolledBought(
 }
 // a spark's stars, drawn from the rank band's star mix (`rank`: the chances of 1, 2 and 3 stars)
 export function starDraw(rank: string, rnd: () => number = Math.random): () => number {
-  const mix = rank.split(',').map(Number);
+  const [one, two] = rank.split(',').map(Number);
+  assert(one !== undefined && two !== undefined, 'a lineage rank is its chances of 1, 2 and 3 stars (data.ts RANKS)');
   return () => {
     const u = rnd();
-    return u < mix[0] ? 1 : u < mix[0] + mix[1] ? 2 : 3;
+    return u < one ? 1 : u < one + two ? 2 : 3;
   };
 }
 // a random result of this career: the set of landed targets drawn from its exact odds, each spark's stars from the rank,

@@ -1,11 +1,11 @@
 import type { RefObject } from 'preact';
 import { batch } from '@preact/signals';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { RANKS, SKILLICON_GOLD } from '../data.ts';
+import { RANKS } from '../data.ts';
 import type { Scenario } from '../data.ts';
 import { fields, setRank } from '../settings.ts';
 import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../scenario.ts';
-import { srcFor } from '../images.ts';
+import { skillIconSrc, srcFor } from '../images.ts';
 import { RadioPills } from './RadioPills.tsx';
 import { ScenLogo } from './Images.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
@@ -13,7 +13,7 @@ import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown
 // a guaranteed gold: its icon, named by its tooltip (the name as small text only when there is no icon), so every
 // tile stays logo + one line
 function GoldIcon({ group, name }: { group: number; name: string }) {
-  const src = srcFor('skill', SKILLICON_GOLD[group]);
+  const src = skillIconSrc(group, true);
   return src ? (
     <img class="sic" alt={name} loading="eager" src={src} title={name} />
   ) : (

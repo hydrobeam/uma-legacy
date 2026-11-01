@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
 import { batch } from '@preact/signals-core';
 import { vets, places, vetById, newVet, setParent } from '../../veterans/store.ts';
-import { umaName } from '../../veterans/names.ts';
+import { starsOf, umaName } from '../../veterans/names.ts';
 import { askSkills } from '../../veterans/pickers.ts';
 import { UmaList } from '../../veterans/Editors.tsx';
 import type { VetRecord } from '../../veterans/store.ts';
@@ -33,9 +33,8 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
   const why = blockedFor(v, k),
     cur = places.value.parents[k] === v.id,
     tg = settings.value.targets.map((t) => t.group),
-    sparks = v.sparks as Record<number, number>,
-    have = tg.filter((g) => sparks[g]),
-    stars = have.reduce((a, g) => a + sparks[g], 0);
+    have = tg.filter((g) => starsOf(v.sparks, g) > 0),
+    stars = have.reduce((a, g) => a + starsOf(v.sparks, g), 0);
   return (
     <button
       type="button"

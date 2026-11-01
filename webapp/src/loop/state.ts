@@ -12,7 +12,7 @@ import { fmtIn } from '../dom.ts';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { JobTarget } from './job.ts';
-import type { LoopReport, ShownResult, Status } from './types.ts';
+import type { DrawnReport, ShownResult, Status } from './types.ts';
 
 /** 'check': the fast result is on screen and the exact check is running */
 export type Phase = 'search' | 'check';
@@ -29,7 +29,7 @@ export interface LoopView {
   lastResult: ShownResult | null;
 }
 export interface Drawn {
-  r: LoopReport;
+  r: DrawnReport;
   targets: readonly JobTarget[];
   /** the focus was inside the result it replaces (an open panel's Owned switch, say): focus the redraw removes goes to
    *  the results column, not the page top */
@@ -92,6 +92,6 @@ export const settle = (status: Status, result?: ShownResult) =>
     runRecord.value = Object.freeze({ ...runRecord.peek(), searching: false, phase: 'search' });
   });
 /** the results column draws `r` (searched for `targets`); `refocus`: Drawn's */
-export const draw = (r: LoopReport, targets: readonly JobTarget[], refocus: boolean) => {
+export const draw = (r: DrawnReport, targets: readonly JobTarget[], refocus: boolean) => {
   drawnRecord.value = Object.freeze({ r, targets, refocus });
 };

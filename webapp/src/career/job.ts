@@ -4,7 +4,7 @@
 import { gameData } from '../data.ts';
 import { stateKey } from '../engine.ts';
 import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
-import { umaName } from '../veterans/names.ts';
+import { starsOf, umaName } from '../veterans/names.ts';
 import { must } from '../must.ts';
 import type { ScheduleRow, SolverAnswer } from '../solver.ts';
 import type { ResultDeck } from '../loop/types.ts';
@@ -257,13 +257,20 @@ export interface PlanReport {
   /** today's cheapest route: its steps' trainees by name, their careers, and A's and B's sides (`side_key` in
    *  career/plan/output.rs: "real:i" her veteran i, "current:i,j" her best career now, on veterans i and j, "alt:i,j"
    *  another career of hers, on veterans i and j) */
-  v0_plan: { a: string | null; b: string | null; c: string | null; careers: number[]; sides?: string[] } | null;
+  v0_plan: {
+    a: string | null;
+    b: string | null;
+    c: string | null;
+    /** A's, B's and C's steps (plan/output.rs writes the three) */
+    careers: [number, number, number];
+    sides?: string[];
+  } | null;
   /** the cheapest routes, cheapest first; `near`: within 2% of V's (assumed), so about as cheap */
   trios?: {
     a: string | null;
     b: string | null;
     c: string | null;
-    careers: number[];
+    careers: [number, number, number];
     sides?: string[];
     value: number;
     near: boolean;
@@ -517,7 +524,7 @@ const chosenApplies = (
 };
 // a full veteran: a spark of every target (with full veteran parents: a fully looped parent)
 export const isFull = (nd: DeepReadonly<LineageNode> | null | undefined, targets: SettingsView['targets']): boolean =>
-  !!nd && targets.length > 0 && targets.every((t) => nd.sparks?.[t.group] > 0);
+  !!nd && targets.length > 0 && targets.every((t) => starsOf(nd.sparks, t.group) > 0);
 export const ROLL_K = 6; // careers a search returns with a place open (the plan's candidates; `buildJob`)
 /** the umas not owned under settings `s`, by id (a baseline's or the last plan's `exclude`: keys.ts `baseKey`) */
 export const umasNotOwned = (s: SettingsView): number[] =>

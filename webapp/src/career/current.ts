@@ -11,8 +11,8 @@ import { goldGiven } from '../job.ts';
 import { srcFor } from '../images.ts';
 import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob } from '../veterans/store.ts';
 import { targetGroups } from '../veterans/names.ts';
-import { answer, answerCareer, choiceDropped, reference } from './state.ts';
-import { orNull } from '../must.ts';
+import { answer, answerCareer, answerPool, choiceDropped, reference } from './state.ts';
+import { must, orNull } from '../must.ts';
 import { pickOutfit, outfitNote } from '../roster.ts';
 import { unprovenWhy } from '../proofs.ts';
 import { refBase } from './keys.ts';
@@ -26,6 +26,19 @@ import type { DeepReadonly } from '../store.ts';
 // ---------- the job
 /** her place in the pool (-1: none) */
 export const idxOf = (id: string | null): number => vets.value.findIndex((v) => v.id === id);
+/** the veteran at legacy index `i` of the answer on show (a career's parent, a plan's side): the one whose id held that
+ *  place when the answer's job was built (career/state.ts `answerPool`), wherever she is now; undefined when she has
+ *  left the pool since (the page holds an answer while a pool veteran's G1 wins window is open, and drops it when the
+ *  window closes on a changed pool: career/main.tsx) */
+export const legacyVet = (i: number): VetRecord | undefined => legacyIn(answerPool.value, vets.value, i);
+/** the same, read without subscribing (the run machine's) */
+export const legacyVetNow = (i: number): VetRecord | undefined => legacyIn(answerPool.peek(), vets.peek(), i);
+const legacyIn = (pool: readonly string[], list: readonly VetRecord[], i: number) => {
+  const id = must(pool[i], "a career's legacy index is a place in its job's pool");
+  return list.find((v) => v.id === id);
+};
+/** the legacy index of veteran `id` in the answer on show (-1: none: she joined the pool since) */
+const legacyOf = (id: string): number => answerPool.value.indexOf(id);
 // the status line's buttons when the veterans make no job: the veterans dialog, the sample veterans
 const POOL_ACTS: PoolActs = { importVets: openPool, trySamples: () => addVets(sampleVets()) };
 /** the career job of the settings, veterans and places now (throws job.ts `Blocked` when they make none) */
@@ -56,7 +69,7 @@ export function dropStaleChosen(): void {
 // a career on two full veteran parents: her own full veteran there is a fully looped parent (the plan says so; a
 // search's row is read off the veterans)
 export const looped = (r: DeepReadonly<OptionRow>): boolean =>
-  r.looped ?? r.parents.every((i) => isFull(vets.value[i], settings.value.targets));
+  r.looped ?? r.parents.every((i) => isFull(legacyVet(i), settings.value.targets));
 /** the last plan made, while it stands for the career on show (keys.ts `refBase`) */
 export const refFor = () => {
   const ref = reference.value,
@@ -70,7 +83,8 @@ export const refFor = () => {
 // odds) while it belongs to the places on screen
 const shownCareer = computed(() => (answer.value.last?.plan === placesKey(places.value) ? answerCareer.value : null));
 export const shown = () => shownCareer.value;
-// which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
+// which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show (null: none, or
+// the pick has left the pool under the answer on show, `legacyVet`)
 export function parentAt(
   k: number,
   r: DeepReadonly<CareerReport> | null | undefined,
@@ -79,10 +93,12 @@ export function parentAt(
     mine = plan.parents[k] && vetById(plan.parents[k]);
   if (mine) return { v: mine, pick: false };
   if (!r) return null;
-  // the other place's chosen veteran (-1: none): the result's parent that isn't her fills this one
-  const other = plan.parents[1 - k] ? idxOf(plan.parents[1 - k]) : -1;
-  const i = other >= 0 ? r.parents.filter((x) => x !== other)[0] : r.parents[k];
-  return i === undefined ? null : { v: vets.value[i], pick: true };
+  // the other place's chosen veteran, by legacy index (-1: none): the result's parent that isn't her fills this one
+  const otherId = plan.parents[1 - k],
+    other = otherId ? legacyOf(otherId) : -1,
+    [first, second] = r.parents;
+  const v = legacyVet(other >= 0 ? (first !== other ? first : second) : k === 0 ? first : second);
+  return v ? { v, pick: true } : null;
 }
 // sample veterans to try the planner with (no veterans yet): 18 mob umas drawn at random from the game's (those with a
 // portrait), six veterans with two mob parents each, the bare minimum to start a loop: each veteran carries, at 1 star,
@@ -92,11 +108,7 @@ export function parentAt(
 function sampleVets(): Veteran[] {
   const all = careerTables().mobs || [],
     withArt = all.filter(([id]) => srcFor('mob', id)),
-    pool = (withArt.length >= 18 ? withArt : all).slice();
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
+    pool = shuffled(withArt.length >= 18 ? withArt : all);
   const sourced = new Set(careerTables().sourced || []),
     inherit = targetGroups(settings.peek().targets).filter(
       (g) => !sourced.has(g) && !goldGiven(settings.peek().scen, g),
@@ -110,14 +122,23 @@ function sampleVets(): Veteran[] {
     wins: [],
   });
   const out: Veteran[] = [];
-  for (let i = 0; i + 2 < pool.length && out.length < 6; i += 3)
+  for (let i = 0; out.length < 6; i += 3) {
+    const [her, first, second] = pool.slice(i, i + 3);
+    if (!her || !first || !second) break; // (fewer than three mobs left)
     out.push({
-      id: `m${pool[i][0]}${Date.now().toString(36)}`,
+      id: `m${her[0]}${Date.now().toString(36)}`,
       src: 'sample',
       borrowed: false,
-      ...node(pool[i][0], Object.fromEntries(inherit.map((g) => [g, 1]))),
-      parents: [node(pool[i + 1][0], {}), node(pool[i + 2][0], {})],
+      ...node(her[0], Object.fromEntries(inherit.map((g) => [g, 1]))),
+      parents: [node(first[0], {}), node(second[0], {})],
     });
+  }
+  return out;
+}
+// `list` in a random order: each entry put in at a place drawn uniformly among the places so far (a uniform shuffle)
+function shuffled<T>(list: readonly T[]): T[] {
+  const out: T[] = [];
+  for (const x of list) out.splice(Math.floor(Math.random() * (out.length + 1)), 0, x);
   return out;
 }
 

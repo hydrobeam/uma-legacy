@@ -13,10 +13,12 @@ import { gameData } from '../../data.ts';
 import { settings } from '../../settings.ts';
 import { popOpener } from '../../popover.ts';
 import { umaName } from '../../veterans/names.ts';
-import { deckCardAt, fitSparks } from '../../details.ts';
+import { borrowedLast, deckCards, fitSparks } from '../../details.ts';
+import type { DeckSlot } from '../../details.ts';
 import { openSkill } from '../view/SkillDetails.tsx';
 import { InspView } from '../../ui/InspView.tsx';
-import { borLast } from '../../cards.ts';
+import { around } from '../../ui/arrows.ts';
+import { GRADE_LETTER, gradeAt } from '../../grades.ts';
 import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import type { CareerReport } from '../job.ts';
@@ -27,7 +29,6 @@ import type { DetailsTab } from './state.ts';
 
 type Career = DeepReadonly<CareerReport>;
 
-const GRADES = 'GFEDCBAS';
 // aptitude rows; `at` indexes the solver's `apt` order: short, mile, middle, long, turf, dirt, front, pace, late, end
 const APT_ROWS = [
   {
@@ -116,13 +117,16 @@ export function Details({
               <span class="udal" role="rowheader">
                 {label}
               </span>
-              {cells.map(({ at, name }) => (
-                // biome-ignore lint/a11y/useSemanticElements: (its cells)
-                <span key={at} class="udac" role="cell" title={`${name} ${GRADES[apt[at] - 1]}`}>
-                  <span class="udan">{name}</span>
-                  <Grade g={apt[at]} />
-                </span>
-              ))}
+              {cells.map(({ at, name }) => {
+                const grade = gradeAt(apt, at);
+                return (
+                  // biome-ignore lint/a11y/useSemanticElements: (its cells)
+                  <span key={at} class="udac" role="cell" title={`${name} ${GRADE_LETTER[grade]}`}>
+                    <span class="udan">{name}</span>
+                    <Grade g={grade} />
+                  </span>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -132,16 +136,17 @@ export function Details({
   );
 }
 
-/** her two parents' legacy boxes for career `r` from the veterans `list` now (`open`: her node popup). A place no
- *  veteran holds any more is left out: while a pool veteran's G1 wins window is open the answer on show waits, so the
- *  list can change under it (an uma.moe listing landing) */
+/** her two parents' legacy boxes for career `r`, each veteran found by `vetAt` from her legacy index
+ *  (career/current.ts `legacyVet`; `open`: her node popup). One who has left the pool is left out: while a pool
+ *  veteran's G1 wins window is open the answer on show waits, so the pool can change under it (an uma.moe listing
+ *  landing) */
 export const legaciesOf = (
   r: Career,
-  list: readonly VetRecord[],
+  vetAt: (i: number) => VetRecord | undefined,
   open: (id: string) => void,
 ): DetailsSpec['legacies'] =>
   r.parents.flatMap((i) => {
-    const v = list[i];
+    const v = vetAt(i);
     return v ? [{ v, label: `#${i + 1}`, open: () => open(v.id) }] : [];
   });
 
@@ -165,10 +170,12 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!step) return;
     e.preventDefault();
-    const next = DEFS[(i + step + DEFS.length) % DEFS.length].key;
+    const next = around(DEFS, i + step).key;
     show(next);
     list.current?.querySelector<HTMLElement>(`#udtab-${next}`)?.focus(); // (every tab is always drawn)
   };
+  // (her draft's parents are the career's, in its order: draftOf)
+  const [first, second] = spec.r.parents;
   const pane = (key: DetailsTab) =>
     key === 'skills' ? (
       <SkillsPane spec={spec} />
@@ -182,7 +189,7 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
         targets={spec.targets}
         header
         meClass="simwho"
-        parentLabel={(j) => `#${spec.r.parents[j] + 1}`}
+        parentLabel={(j) => `#${(j === 0 ? first : second) + 1}`}
       />
     ) : (
       <InfoPane spec={spec} winsButton={winsButton} />
@@ -269,9 +276,8 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
 
 /** one support card of her deck (a click opens its panel: popover.ts, which reads the data-* and leaves the markup to
  *  this: its greying and aria-expanded are drawn here) */
-function DeckCell({ deck, i }: { deck: Career['deck']; i: number }) {
-  const { base, borrowed: bor, card: c } = deckCardAt(deck, i),
-    endAt = (deck.end_chain_at || [])[i] || 0, // the popover's chain-end advice
+function DeckCell({ slot }: { slot: DeckSlot }) {
+  const { base, borrowed: bor, card: c, endAt } = slot, // (endAt: the popover's chain-end advice)
     off = !!c && !bor && settings.value.cardsOff[c.id] === false,
     ref = useRef<HTMLButtonElement>(null),
     open = popOpener.value !== null && popOpener.value === ref.current,
@@ -359,8 +365,8 @@ function InfoPane({
         <>
           <div class="udsub">Support Cards</div>
           <div class="udcards deck">
-            {borLast([...deck.cards]).map((i: number) => (
-              <DeckCell key={`${i}:${deck.cards[i]}`} deck={deck} i={i} />
+            {borrowedLast(deckCards(deck)).map((slot) => (
+              <DeckCell key={`${slot.i}:${slot.named}`} slot={slot} />
             ))}
           </div>
         </>

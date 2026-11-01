@@ -3,9 +3,11 @@
 // the view. One that keeps state (an image that fails) is keyed by its subject at the call site, so a reused one never
 // shows the last subject's state.
 import { useState } from 'preact/hooks';
-import { SKILLICON, SKILLICON_GOLD, gameData } from '../data.ts';
+import { gameData } from '../data.ts';
 import type { Card } from '../data.ts';
-import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, srcFor } from '../images.ts';
+import { GRADE_LETTER } from '../grades.ts';
+import type { Grade as GradeCode } from '../grades.ts';
+import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../images.ts';
 
 interface UmaAvProps {
   uma: number | null;
@@ -98,14 +100,14 @@ export function ScenLogo({ sc, title }: { sc: { id: number; name: string; tint: 
   );
 }
 /** a grade letter (code 1..8 = G..S): the game's sprite, or the letter */
-export function Grade({ g }: { g: number }) {
+export function Grade({ g }: { g: GradeCode }) {
   const src = srcFor('ui', `grade_${g - 1}`),
-    letter = 'GFEDCBAS'[g - 1] || '?';
+    letter = GRADE_LETTER[g];
   return src ? <img class="udg" src={src} alt={letter} /> : <b class={`udg txt g${letter}`}>{letter}</b>;
 }
 /** a skill's icon (its gold's: `gold`), or nothing when the page has none */
 export function SkillIcon({ group, gold = false }: { group: number; gold?: boolean }) {
-  const src = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]);
+  const src = skillIconSrc(group, gold);
   return src ? <img class="sic" alt="" loading="lazy" src={src} /> : null;
 }
 /** the runner while a search works, else a spinner; its stride starts in phase with the clock

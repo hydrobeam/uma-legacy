@@ -54,6 +54,8 @@ const made = (pick = 'pick') => {
   };
 };
 const WHERE = { base: 'base', places: { trainee: null, parents: [null, null] } };
+// the veterans the answers' jobs were built on (their ids by legacy index)
+const POOL = ['a', 'b'];
 const check = (pending, pairs = null) => ({ plan: 'pick', pending, stable: true, contenders: [], pairs });
 
 // each transition: what it does to the record, and the fields it replaces (the rest stay the same objects)
@@ -90,9 +92,9 @@ test('each answer transition copies on write and freezes what it brings in, the 
   // [name, step, what the answer is after it]
   const first = made(),
     second = made('other');
-  showAnswer(first, WHERE);
+  showAnswer(first, WHERE, POOL);
   const STEPS = [
-    ['showAnswer', () => showAnswer(second, WHERE), () => assert.equal(answer.value, second)],
+    ['showAnswer', () => showAnswer(second, WHERE, POOL), () => assert.equal(answer.value, second)],
     [
       'setPlanCheck',
       () => setPlanCheck(second.planState.id, check(2)),
@@ -155,15 +157,15 @@ test('each answer transition copies on write and freezes what it brings in, the 
 
 test('a kept answer comes back as it was kept, with the run over in the same batch; a saved one gets a new plan id', () => {
   const kept = made();
-  showAnswer(kept, WHERE);
+  showAnswer(kept, WHERE, POOL);
   keepAnswer('back');
-  showAnswer(made('other'), WHERE);
+  showAnswer(made('other'), WHERE, POOL);
   runWaits(1);
   let runs = 0;
   const stop = on([answer, runView], () => runs++);
   const hit = recallAnswer('back');
   assert.equal(hit, kept);
-  showKeptAnswer(hit);
+  showKeptAnswer(hit, POOL);
   assert.equal(answer.value, kept);
   assert.equal(runView.value.searching, false);
   assert.equal(runs, 1, 'one effect run for the answer and the run view together (batch)');
@@ -181,9 +183,9 @@ test('a kept answer comes back as it was kept, with the run over in the same bat
 test('the check writes its result into the answer on show, the answers kept and the reference: wherever the plan is', () => {
   const kept = made(),
     other = made('other');
-  showAnswer(other, WHERE);
+  showAnswer(other, WHERE, POOL);
   keepAnswer('other');
-  showAnswer(kept, WHERE);
+  showAnswer(kept, WHERE, POOL);
   keepAnswer('mine');
   assert.equal(reference.value.planId, kept.planState.id);
   setPlanCheck(kept.planState.id, check(0, { trainees: [] }));
@@ -192,8 +194,8 @@ test('the check writes its result into the answer on show, the answers kept and 
   assert.equal(reference.value.result, answer.value.planState.r);
   assert.equal(recallAnswer('other'), other, "another plan's answer is untouched");
   // the kept answer comes back checked: nothing left to resume
-  showAnswer(made('third'), WHERE);
-  showKeptAnswer(recallAnswer('mine'));
+  showAnswer(made('third'), WHERE, POOL);
+  showKeptAnswer(recallAnswer('mine'), POOL);
   assert.deepEqual(answer.value.planState.r.robust, check(0, { trainees: [] }));
   checkUnavailable(kept.planState.id);
   assert.equal(recallAnswer('mine').planState.r.check_unavailable, true);
@@ -226,7 +228,7 @@ const REPLIES = () => [check(2), check(1), check(0), check(0, { trainees: [] })]
 
 test("the check runs every variant: its own writes replace the plan's record, and the plan's id keeps it current", async () => {
   const mine = made();
-  showAnswer(mine, WHERE);
+  showAnswer(mine, WHERE, POOL);
   const { seen, deps } = fakes(REPLIES());
   await checkPhase(deps, answer.value.planState);
   assert.equal(seen.jobs.length, 4, 'one job per variant, then the pair search');
@@ -241,10 +243,10 @@ test("the check runs every variant: its own writes replace the plan's record, an
 
 test('a new plan stops the check, even one like it; so do a new run and a worker that no longer keeps the plan', async () => {
   // a new plan (the same content, a new id) while the second variant runs: nothing more is written or run
-  showAnswer(made(), WHERE);
+  showAnswer(made(), WHERE, POOL);
   const first = answer.value.planState,
     next = made();
-  let run = fakes(REPLIES(), (n) => n === 2 && showAnswer(next, WHERE));
+  let run = fakes(REPLIES(), (n) => n === 2 && showAnswer(next, WHERE, POOL));
   await checkPhase(run.deps, first);
   assert.equal(run.seen.jobs.length, 2);
   assert.equal(answer.value.planState.r.robust, undefined, 'the new plan has no check of the old one');
@@ -261,7 +263,7 @@ test('a new plan stops the check, even one like it; so do a new run and a worker
   assert.equal(run.seen.redraws, 1);
   assert.equal(run.seen.checked.length, 1);
   // a check of another pick (the plan changed under it in the worker) writes nothing
-  showAnswer(made(), WHERE);
+  showAnswer(made(), WHERE, POOL);
   run = fakes([{ ...check(0), plan: 'else' }]);
   await checkPhase(run.deps, answer.value.planState);
   assert.equal(answer.value.planState.r.robust, undefined);
@@ -269,7 +271,7 @@ test('a new plan stops the check, even one like it; so do a new run and a worker
 });
 
 test('an effect wakes only for the signals it names: a check wakes the answer and the reference, not the career', () => {
-  showAnswer(made(), WHERE);
+  showAnswer(made(), WHERE, POOL);
   const counts = { view: 0, answer: 0, career: 0, reference: 0 };
   const stops = [
     on([runView], () => counts.view++),
@@ -295,7 +297,7 @@ test('an effect wakes only for the signals it names: a check wakes the answer an
   expect('a progress report', () => planProgresses('scoring 2 of 3 umas'), 1, 0, 0, 0);
   expect('an edit', () => runWaits(5), 1, 0, 0, 0);
   expect("the check's step (the pick unchanged)", () => setPlanCheck(id, check(1)), 0, 1, 0, 1);
-  expect('a new answer with a plan', () => showAnswer(made('new'), WHERE), 0, 1, 1, 1);
+  expect('a new answer with a plan', () => showAnswer(made('new'), WHERE, POOL), 0, 1, 1, 1);
   expect('the answer dropped', () => dropAnswer(), 0, 1, 1, 0);
   expect('the run over, with an answer (its batch: the one-batch test)', () => runEndsUnsearched(made()), 1, 1, 1, 0);
   expect('a load failure (status only)', () => loadFails('x'), 0, 1, 0, 0);
@@ -305,7 +307,7 @@ test('an effect wakes only for the signals it names: a check wakes the answer an
 // a transition that writes two signals writes them in one batch: an effect naming both runs once (one per signal would
 // run once each, batch or not)
 test('each two-signal transition is one batch: an effect on both signals runs once', () => {
-  showAnswer(made(), WHERE);
+  showAnswer(made(), WHERE, POOL);
   const once = (what, signals, step) => {
     let runs = 0;
     const stop = on(signals, () => runs++);
@@ -315,7 +317,9 @@ test('each two-signal transition is one batch: an effect on both signals runs on
     assert.equal(runs, 1, what);
   };
   once('the run ends unsearched: the run view and the answer', [answer, runView], () => runEndsUnsearched(made()));
-  once('an answer with a plan: the answer and the reference', [answer, reference], () => showAnswer(made(), WHERE));
+  once('an answer with a plan: the answer and the reference', [answer, reference], () =>
+    showAnswer(made(), WHERE, POOL),
+  );
   const id = answer.value.planState.id;
   once("a check step: the answer and the reference (the plan's)", [answer, reference], () =>
     setPlanCheck(id, check(1)),
@@ -323,13 +327,13 @@ test('each two-signal transition is one batch: an effect on both signals runs on
   once('the check unavailable: the answer and the reference', [answer, reference], () => checkUnavailable(id));
   runWaits(1);
   const kept = made();
-  once('a kept answer drawn again: the answer and the run view', [answer, runView], () => showKeptAnswer(kept));
+  once('a kept answer drawn again: the answer and the run view', [answer, runView], () => showKeptAnswer(kept, POOL));
 });
 
 // the step after the last variant brings no pair search (`pairs: null`, the solver's lost-pairs case): the check stops
 // there, judged from the plan's current record (its own write replaced the one it started from)
 test('a check whose pair search brings nothing stops after one more job, not in a loop', async () => {
-  showAnswer(made(), WHERE);
+  showAnswer(made(), WHERE, POOL);
   const replies = Array.from({ length: 10 }, () => check(0));
   const { seen, deps } = fakes(replies);
   await checkPhase(deps, answer.value.planState);
@@ -356,7 +360,7 @@ test("Compare's kept plan: found by its plan job's key, and a check of that job'
 
 test('the answers kept: the most recent four, a recalled one counting as recent', () => {
   const kept = (key) => {
-    showAnswer(made(key), WHERE);
+    showAnswer(made(key), WHERE, POOL);
     keepAnswer(key);
   };
   for (const key of ['a', 'b', 'c', 'd']) kept(key);

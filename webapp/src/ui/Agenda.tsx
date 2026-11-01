@@ -95,8 +95,12 @@ export function WinsEditor({ races, wins, winAt, offer, info: infoOf, onWins }: 
     offCalendar: number[] = [],
     shownAt = new Map<number, number>();
   // wins placed by the page first, then those her schedule runs, then the rest (each in race order)
-  const rank = (ix: number) =>
-    (raceTurns.get(ix) || []).includes(winAt[ix]) ? 0 : info(ix)?.turn !== undefined ? 1 : 2;
+  // (a race the page placed no win of has no `winAt`)
+  const placed = (ix: number) => {
+    const at = winAt[ix];
+    return at !== undefined && (raceTurns.get(ix) || []).includes(at);
+  };
+  const rank = (ix: number) => (placed(ix) ? 0 : info(ix)?.turn !== undefined ? 1 : 2);
   for (const ix of [...wins].sort((a, b) => rank(a) - rank(b) || a - b)) {
     const turns = raceTurns.get(ix) || [];
     if (!turns.length) {
@@ -107,7 +111,7 @@ export function WinsEditor({ races, wins, winAt, offer, info: infoOf, onWins }: 
     const preferred = [winAt[ix], info(ix)?.turn, ...turns].flatMap((t) =>
       t !== undefined && turns.includes(t) ? [t] : [],
     );
-    const t = preferred.find((at) => !byTurn.has(at)) ?? preferred[0];
+    const t = preferred.find((at) => !byTurn.has(at)) ?? must(preferred[0], 'a race held on turns prefers one of them');
     byTurn.set(t, [...(byTurn.get(t) || []), ix]);
     shownAt.set(ix, t);
   }
@@ -177,7 +181,8 @@ export function WinsEditor({ races, wins, winAt, offer, info: infoOf, onWins }: 
         slot={(_y, slotIndex, turn) => {
           const here = byTurn.get(turn) || [],
             offered = here.length ? [] : (offer ? offer(turn) : heldAt.get(turn)) || [],
-            only = here.length === 1 ? info(here[0]) : null;
+            [first, ...more] = here,
+            only = first !== undefined && !more.length ? info(first) : null;
           return (
             <div
               key={turn}

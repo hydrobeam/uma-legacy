@@ -11,6 +11,7 @@
 import { computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { ERA } from '../saved.ts';
+import { isGrades } from '../grades.ts';
 import type { DeepReadonly } from '../store.ts';
 
 /** a spark map: group -> stars (1-3); keys are object keys, so strings once read back with Object.keys / entries */
@@ -138,6 +139,7 @@ const isMap = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x);
  *  older save, a hand-edited or cut export) */
 const asNode = (n: Raw): LineageNode => ({
   ...n,
+  ...(n.apt == null || isGrades(n.apt) ? {} : { apt: null }), // (damaged grades read as none: grades.ts gradeAt)
   chara: Number.isInteger(n.chara) ? (n.chara as number) : null,
   sparks: isMap(n.sparks) ? (n.sparks as Sparks) : {},
   pinks: isMap(n.pinks) ? (n.pinks as Sparks) : {},
@@ -340,9 +342,8 @@ export function importVets(list: readonly Veteran[], all = false) {
   let updated = 0;
   // a veteran already here takes the file's version in her place, on the tab the player keeps her on (true when she is)
   const update = (v: Veteran) => {
-    const at = next.findIndex((old) => old.id === v.id);
-    if (at < 0) return false;
-    next = replaced(next, at, { ...next[at], ...v, borrowed: next[at].borrowed });
+    if (!next.some((old) => old.id === v.id)) return false;
+    next = next.map((old) => (old.id === v.id ? { ...old, ...v, borrowed: old.borrowed } : old));
     return true;
   };
   for (const v of own) {
@@ -411,9 +412,8 @@ function patched<T extends object>(node: T, patch: object): T {
   return next as T;
 }
 function editAt(id: string, f: (v: VetRecord) => VetRecord) {
-  const list = record.peek().vets,
-    at = list.findIndex((v) => v.id === id);
-  if (at >= 0) commit({ vets: replaced(list, at, f(list[at])) });
+  const list = record.peek().vets;
+  if (list.some((v) => v.id === id)) commit({ vets: list.map((v) => (v.id === id ? f(v) : v)) });
 }
 /** a veteran's own fields (an edit of one no longer here does nothing) */
 export function editVet(id: string, f: (now: VetRecord) => NodePatch & { borrowed?: boolean }) {
@@ -421,7 +421,7 @@ export function editVet(id: string, f: (now: VetRecord) => NodePatch & { borrowe
 }
 /** her parent j's fields */
 function editParent(id: string, j: number, f: (now: NodeRecord) => NodePatch) {
-  editAt(id, (v) => ({ ...v, parents: replaced(v.parents, j, patched(v.parents[j], f(v.parents[j]))) }));
+  editAt(id, (v) => ({ ...v, parents: v.parents.map((p, i) => (i === j ? patched(p, f(p)) : p)) }));
 }
 /** a veteran of the pool, for an editor */
 export const vetRef = (id: string): NodeRef => ({ node: () => vetById(id), edit: (f) => editVet(id, f) });
@@ -456,7 +456,7 @@ export function setDraft(next: Draft | DeepReadonly<Draft> | null) {
 }
 // the draft on show for an editor opened now: `at` reads her (or her parent), `next` her edited record
 function draftAt(
-  at: (d: DeepReadonly<Draft>) => NodeRecord,
+  at: (d: DeepReadonly<Draft>) => NodeRecord | undefined,
   next: (d: DeepReadonly<Draft>, f: Parameters<NodeEdit>[0]) => Draft,
 ): NodeRef {
   const gen = draftGen,
@@ -487,7 +487,7 @@ export const draftRef = (): NodeRef =>
 export const draftParentRef = (j: number): NodeRef =>
   draftAt(
     (d) => d.parents[j],
-    (d, f) => ({ ...d, parents: replaced(d.parents, j, patched(d.parents[j], f(d.parents[j]))) }) as Draft,
+    (d, f) => ({ ...d, parents: d.parents.map((p, i) => (i === j ? patched(p, f(p)) : p)) }) as Draft,
   );
 
 // ---------- the places

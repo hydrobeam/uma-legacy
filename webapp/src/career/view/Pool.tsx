@@ -64,7 +64,7 @@ export function PoolHead() {
     </>
   );
 }
-const SORT_ITEMS = Object.entries(VSORTS).map(([k, [label, hint]]) => ({ k, label, hint }));
+const SORT_ITEMS = (['no', 'tg', 'rank'] as const).map((k) => ({ k, label: VSORTS[k][0], hint: VSORTS[k][1] }));
 /** the two tabs, each with its count */
 function PoolTabs() {
   const all = vets.value,

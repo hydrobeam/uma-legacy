@@ -168,7 +168,11 @@ test('change uma: the uma is hers at the pick (saved, the page told once the pro
 test("Try a run's legacies: a place no veteran holds any more (the list changed under the answer) is left out (review-9 F6)", async () => {
   const career = { parents: [0, 4], trainee: { id: 1001, outfits: [] }, targets: [], deck: null };
   const list = [{ ...node(1002), id: 'a', borrowed: false, parents: [node(1), node(2)] }];
-  const legacies = legaciesOf(career, list, () => undefined);
+  const legacies = legaciesOf(
+    career,
+    (i) => list[i],
+    () => undefined,
+  );
   assert.deepEqual(
     legacies.map((x) => x.label),
     ['#1'],

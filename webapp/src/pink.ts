@@ -4,6 +4,9 @@
 // (`aptitudes.pink_gen`, `Env::pink_gen`); the browser suite's `career` group pins this draw against those chances on the
 // reference outputs (val/ref__global__career_*.out). `rnd`: the random source (tests pass a seeded one).
 // Grades are the solver's aptitude codes, 1..8 = G..S, one per aptitude in data.json's `apt` order; stars are 1 to 3.
+import { gradeAt } from './grades.ts';
+import { assert, must } from './must.ts';
+
 const GRADE_A = 7,
   GRADE_S = 8;
 // April inspirations in a career: each legacy pink gets a chance to fire at each
@@ -27,12 +30,14 @@ export function drawPink(ap: PinkAptitudes | null | undefined, rnd: () => number
   // `ap.fire` order, then the aptitude, then her stars
   const grades = ap.start.slice();
   for (let inspiration = 0; inspiration < INSPIRATIONS; inspiration++) {
-    for (const fire of ap.fire) if (rnd() < fire.p) grades[fire.apt] = Math.min(GRADE_S, grades[fire.apt] + 1);
+    for (const fire of ap.fire) if (rnd() < fire.p) grades[fire.apt] = Math.min(GRADE_S, gradeAt(grades, fire.apt) + 1);
   }
-  const atLeastA = grades.map((grade, k) => (grade >= GRADE_A ? k : -1)).filter((k) => k >= 0);
+  // the pinks of the aptitudes she ends at A or S (`pink_gen`: the solver's pink per aptitude, in their order)
+  assert(ap.pink_gen.length === grades.length, 'the solver names a pink spark per aptitude');
+  const atLeastA = ap.pink_gen.filter((_, k) => gradeAt(grades, k) >= GRADE_A);
   if (!atLeastA.length) return { pinks: {}, apt: grades };
-  const k = atLeastA[Math.floor(rnd() * atLeastA.length)],
+  const pink = must(atLeastA[Math.floor(rnd() * atLeastA.length)], 'a uniform draw from a list lands in it'),
     u = rnd();
   const stars = u < 0.2 ? 1 : u < 0.9 ? 2 : 3;
-  return { pinks: { [ap.pink_gen[k].group]: stars }, apt: grades };
+  return { pinks: { [pink.group]: stars }, apt: grades };
 }

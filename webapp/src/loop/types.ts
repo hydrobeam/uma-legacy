@@ -95,6 +95,8 @@ export interface LoopReport {
    *  its stop rule */
   exact: { rho: number; rho_target: number; complete: boolean };
 }
+/** a report with loops: the only kind the page draws, keeps and exports (run.ts `hasLoops` checks it) */
+export type DrawnReport = LoopReport & { top: [LoopResult, ...LoopResult[]] };
 
 /** the button beside the status line: `run` called, else the button whose id is `click` pressed (`click` also names
  *  the button, so a status that offers the same one keeps it, and its focus) */
@@ -112,6 +114,6 @@ export interface Status {
 /** the result on show, for Export: the solver's report, and whether it is the precomputed example */
 export interface ShownResult {
   kind: 'deck';
-  r: LoopReport;
+  r: DrawnReport;
   meta: { example?: boolean };
 }

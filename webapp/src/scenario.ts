@@ -7,7 +7,8 @@ import { srcFor } from './images.ts';
 import type { Scenario } from './data.ts';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 export const LIST = SCENARIOS.filter((s) => !s.era || s.era === ERA);
-export const scenarioOf = (v: string): Scenario => LIST.find((s) => s.v === v) || LIST[0];
+// (a key it doesn't offer, as from a hand-edited storage: the first scenario, which every era offers)
+export const scenarioOf = (v: string): Scenario => LIST.find((s) => s.v === v) || SCENARIOS[0];
 // the lineage rank a scenario starts from (its `ss`)
 const rankOf = (sc: Scenario) => (sc.ss ? RANKS.ss : RANKS.below);
 // switch to scenario v (its guaranteed golds follow settings.scen: job.ts goldGiven) and its default lineage rank, which

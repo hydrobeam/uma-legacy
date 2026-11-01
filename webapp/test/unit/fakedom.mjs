@@ -1,5 +1,5 @@
 // A small document for node tests that render components (Preact) or run the el() editors: elements with children,
-// attributes, properties, listeners and the simple selectors the editors use ('tag', '.cls', 'tag.cls'). Every id
+// attributes, properties, listeners and the simple selectors the views use ('tag', '.cls', 'tag.cls', '[attr="v"]'). Every id
 // the page looks up is an element made on first use (a 'data-*' id is none: data.ts reads the fake page's data), so a
 // module's load-time lookups find something. Import fakepage.mjs first, then this.
 class Node {
@@ -101,6 +101,9 @@ class Element extends Node {
     return `${this.className || ''} ${this.attributes.class || ''}`.split(/\s+/).filter(Boolean);
   }
   matches(sel) {
+    // (one attribute test after them: '[role="radio"]')
+    const attr = /\[([\w-]+)="([^"]*)"\]$/.exec(sel);
+    if (attr) return this.attributes[attr[1]] === attr[2] && (!attr.index || this.matches(sel.slice(0, attr.index)));
     const [tag, ...cls] = sel.split('.');
     return (!tag || tag === this.localName) && cls.every((c) => this.classes.includes(c));
   }

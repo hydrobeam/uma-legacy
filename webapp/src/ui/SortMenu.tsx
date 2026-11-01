@@ -4,31 +4,32 @@
 // leaving it; its keys and closing are dropdown.ts's, which the scenario picker shares.
 // `SettingsSort` is the umas' and the cards' menu, Release or Name, kept in the settings.
 import { useRef, useState } from 'preact/hooks';
+import { must } from '../must.ts';
 import { fields, setSort } from '../settings.ts';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
 
-export interface SortItem {
-  k: string;
+export interface SortItem<K extends string = string> {
+  k: K;
   label: string;
   /** the item's tooltip while it is not the checked one */
   hint: string;
 }
-interface SortMenuProps {
+interface SortMenuProps<K extends string> {
   id: string;
   /** the button's class */
   cls: string;
   /** what the menu orders, after the button's text in its name ('sort umas') */
   what: string;
-  items: SortItem[];
+  items: readonly SortItem<K>[];
   /** the checked item's k */
-  value: string;
+  value: K;
   /** the direction, shown after the checked item's label */
   arrow: '↑' | '↓';
   /** the button's tooltip */
   title: string;
-  onPick: (k: string) => void;
+  onPick: (k: K) => void;
 }
-export function SortMenu({ id, cls, what, items, value, arrow, title, onPick }: SortMenuProps) {
+export function SortMenu<K extends string>({ id, cls, what, items, value, arrow, title, onPick }: SortMenuProps<K>) {
   const [open, setOpen] = useState(false),
     button = useRef<HTMLButtonElement>(null),
     area = useRef<HTMLDivElement>(null),
@@ -38,7 +39,7 @@ export function SortMenu({ id, cls, what, items, value, arrow, title, onPick }: 
   useDropdown(open, close, button, inside);
   useFocusChecked(open, menu);
   // (a value it doesn't list, as from a hand-edited storage: the first item)
-  const checked = items.find((item) => item.k === value) ?? items[0];
+  const checked = must(items.find((item) => item.k === value) ?? items[0], 'a sort menu has items');
   const text = `${checked.label} ${arrow}`;
   return (
     <div

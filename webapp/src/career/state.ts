@@ -100,6 +100,13 @@ const shownAnswer = signal<AnswerView>(
   deepFreeze({ status: { kind: 'loading', text: 'Loading…' }, last: null, planState: NO_PLAN }),
 );
 export const answer: ReadonlySignal<AnswerView> = shownAnswer;
+// The veterans' ids by legacy index in the pool the answer's job was built from (the run machine's, given with the
+// answer; a kept answer drawn again takes those of the job that recalled it, which has the same legacies). A career
+// names its parents by legacy index, and the pool can change under an answer the page holds (career/main.tsx: while a
+// pool veteran's G1 wins window is open), so a parent is read by her id here (career/current.ts `legacyVet`), never by
+// her place in the pool now. Empty without an answer; not saved with it (statestore.ts keeps the answer alone).
+const shownPool = signal<readonly string[]>(Object.freeze([]));
+export const answerPool: ReadonlySignal<readonly string[]> = shownPool;
 const lastPlan = signal<DeepReadonly<Reference> | null>(null);
 export const reference: ReadonlySignal<DeepReadonly<Reference> | null> = lastPlan;
 // the last few answers, by job and places (career/run.ts's `runKey`), the most recent last (not a signal: nothing draws
@@ -144,13 +151,18 @@ export const planProgresses = (progress: string) => runPatch({ progress });
 export const runEnds = () => runPatch({ searching: false });
 
 // ---------- the answer's transitions
-/** the search's answer; a plan it made becomes the `reference`, with `where` it was made (`base`, `places`: given
- *  with a plan, null without) */
-export function showAnswer(next: AnswerView, where: Pick<Reference, 'base' | 'places'> | null) {
+/** the search's answer, its job built on the veterans `pool` (their ids by legacy index: `answerPool`); a plan it made
+ *  becomes the `reference`, with `where` it was made (`base`, `places`: given with a plan, null without) */
+export function showAnswer(
+  next: AnswerView,
+  where: Pick<Reference, 'base' | 'places'> | null,
+  pool: readonly string[],
+) {
   const shownNext = freezeInPlace(next),
     plan = shownNext.planState;
   batch(() => {
     shownAnswer.value = shownNext;
+    shownPool.value = Object.freeze([...pool]);
     if (plan.state === 'done' && where)
       lastPlan.value = Object.freeze({ ...where, places: deepFreeze(where.places), result: plan.r, planId: plan.id });
   });
@@ -161,15 +173,22 @@ export function runEndsUnsearched(next: AnswerView) {
   batch(() => {
     runEnds();
     shownAnswer.value = shownNext;
+    shownPool.value = Object.freeze([]);
   });
 }
 /** a run's search failed: `text` says why */
 export function answerFails(text: string) {
-  shownAnswer.value = freezeInPlace({ status: { kind: 'error', text }, last: null, planState: NO_PLAN });
+  batch(() => {
+    shownAnswer.value = freezeInPlace({ status: { kind: 'error', text }, last: null, planState: NO_PLAN });
+    shownPool.value = Object.freeze([]);
+  });
 }
 /** veterans were added or removed: a result names parents by their place in the list, so it goes (the status stays) */
 export function dropAnswer() {
-  shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), last: null, planState: NO_PLAN });
+  batch(() => {
+    shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), last: null, planState: NO_PLAN });
+    shownPool.value = Object.freeze([]);
+  });
 }
 /** the page could not load, or a view could not be drawn (ui/RenderGuard.tsx): `text` says why (the rest stays) */
 export function loadFails(text: string) {
@@ -225,10 +244,11 @@ export function keepSavedAnswer(key: string, saved: AnswerView) {
   const planState = saved.planState.state === 'done' ? { ...saved.planState, id: newPlanId() } : saved.planState;
   answers.set(key, freezeInPlace({ ...saved, planState }));
 }
-/** a kept answer drawn again: it is shown, and the run is over */
-export function showKeptAnswer(hit: AnswerView) {
+/** a kept answer drawn again, for a job built on the veterans `pool` (`answerPool`): it is shown, and the run is over */
+export function showKeptAnswer(hit: AnswerView, pool: readonly string[]) {
   batch(() => {
     shownAnswer.value = hit;
+    shownPool.value = Object.freeze([...pool]);
     runEnds();
   });
 }

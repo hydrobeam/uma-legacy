@@ -1,6 +1,11 @@
-// ---------- the names the career page shows (umas, skills, sparks), and the target skills' groups ----------
+// ---------- the names the career page shows (umas, skills, sparks), a spark's stars, the target skills' groups ----------
 import { careerTables, gameData } from '../data.ts';
 import type { SettingsView } from '../settings.ts';
+import type { DeepReadonly } from '../store.ts';
+import type { Sparks } from './store.ts';
+
+/** a spark's stars in `sparks` (0: she has none of it) */
+export const starsOf = (sparks: DeepReadonly<Sparks>, group: number): number => sparks[group] ?? 0;
 
 export const umaName = (id: number | null | undefined): string =>
   id ? gameData().names.get(id) || `Uma ${id}` : 'Unknown';

@@ -6,14 +6,14 @@
 import { settings } from '../settings.ts';
 import { pct } from '../odds.ts';
 import { batch } from '@preact/signals-core';
-import { vets, places as yourPlaces, usePlaces, setChosen } from '../veterans/store.ts';
+import { places as yourPlaces, usePlaces, setChosen } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
 import { whyText } from '../proofs.ts';
 import { answer, forgetDroppedChoice } from './state.ts';
 import { keyOf } from './keys.ts';
 import { Blocked, chosenSetup, placesKey, BORROW_CHOICES } from './job.ts';
-import { currentJob, refFor, shown } from './current.ts';
-import { must } from '../must.ts';
+import { currentJob, legacyVet, refFor, shown } from './current.ts';
+import { assert, must } from '../must.ts';
 import type { OptionRow, PairSearch, PlanOption, PlanReport } from './job.ts';
 import type { DeepReadonly } from '../store.ts';
 
@@ -48,7 +48,11 @@ export const roleText = (o: Row): string => {
 // it of the pick's is shown as about equal to the pick. Display only: the pick stays the strict top score
 export const TIE_CAREERS = 0.25;
 // a career's parents, by legacy index, from its id (`kept::career_id`: "trainee:first,second:deck")
-const careerParents = (id: string): number[] => id.split(':')[1].split(',').map(Number);
+const careerParents = (id: string): number[] => {
+  const [, first, second] = /^\d+:(\d+),(\d+)/.exec(id) ?? [];
+  assert(first !== undefined && second !== undefined, 'a career id names its two parents (kept::career_id)');
+  return [Number(first), Number(second)];
+};
 // the first step of today's estimate (`members`, A then B, as planval's `route_first_step` reads them): the first side
 // without a real full veteran of hers, her builder's career where she builds (`builder`) or else her own (`parents`);
 // with both sides real, C's run on those two. Its parents by legacy index, and what it is; null without a route, or
@@ -63,8 +67,12 @@ function routeFirstStep(planReport: Plan): { what: string; parents: readonly num
     return m.parents ? { what: `${m.trainee}'s run`, parents: m.parents } : null;
   }
   const route = planReport.v0_plan;
-  const real = (route?.sides || []).map((side) => /^real:(\d+)$/.exec(side)).filter((m) => m !== null);
-  return route && real.length === 2 ? { what: `${route.c}'s run`, parents: real.map((m) => +m[1]) } : null;
+  // (her real veteran's side, "real:i": veteran i; the others are careers to run)
+  const real = (route?.sides || []).flatMap((side) => {
+    const [, i] = /^real:(\d+)$/.exec(side) ?? [];
+    return i === undefined ? [] : [Number(i)];
+  });
+  return route && real.length === 2 ? { what: `${route.c}'s run`, parents: real } : null;
 }
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
 export const netText = (x: number): string => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
@@ -78,9 +86,18 @@ export function takeCareer(
   r: Row & { alternative?: boolean },
   places: { trainee: number | null; parents: readonly (string | null)[] },
 ): void {
+  // the career's parents by id (`legacyVet`); one who has left the pool under the answer on show: the row names a
+  // veteran that is gone, so nothing is placed (the answer goes once the pool's window closes: career/main.tsx)
+  const ids: string[] = [];
+  for (const i of r.parents) {
+    const v = legacyVet(i);
+    if (!v) return;
+    ids.push(v.id);
+  }
   const parents = places.parents.slice();
-  const unplaced = r.parents.filter((i) => !parents.includes(vets.value[i].id));
-  for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets.value[unplaced.shift() as number].id;
+  const unplaced = ids.filter((id) => !parents.includes(id));
+  for (let j = 0; j < 2; j++)
+    if (!parents[j]) parents[j] = must(unplaced.shift(), "a place left open has one of the career's parents left");
   batch(() => {
     // (a change of setup hands the places back to the planner: main.tsx initSettings)
     usePlaces(r.trainee.id, parents);
@@ -109,10 +126,15 @@ function negativeTopText(planReport: Plan | null, pick: Row | null): string | nu
   const text = 'No career saves its own run today: the pick costs least.';
   const { last, planState } = answer.value,
     job = planState.state === 'done' ? planState.job : last?.job,
-    step = job?.borrowed_parent === 'later' ? routeFirstStep(planReport) : null,
-    borrowed = step ? step.parents.filter((i) => vets.value[i]?.borrowed) : [];
+    step = job?.borrowed_parent === 'later' ? routeFirstStep(planReport) : null;
+  // the step's borrowed parents (one who has left the pool under the answer, `legacyVet`, is none of them)
+  const borrowed: string[] = [];
+  for (const i of step ? step.parents : []) {
+    const v = legacyVet(i);
+    if (v?.borrowed) borrowed.push(`#${i + 1} ${umaName(v.chara)}`);
+  }
   if (!borrowed.length) return text;
-  const who = borrowed.map((i) => `#${i + 1} ${umaName(vets.value[i].chara)}`).join(' and ');
+  const who = borrowed.join(' and ');
   return `${text} Its next step needs a borrowed parent (${who}), kept out by ${BORROW_CHOICES.later}.`;
 }
 // The table's rows and what goes with them. With the plan: the 8 highest savings (every uma is scored), the best odds,
@@ -145,11 +167,12 @@ export function optionsTable() {
   // (a row the table already has gets its flag, pair-search score and id merged in, as a copy: the plan's own rows stay)
   const recommended = pairSearchRow(planReport);
   if (recommended) {
-    const at = list.findIndex((o) => keyOf(o) === keyOf(recommended));
-    if (at < 0) list.push(recommended);
+    const at = list.findIndex((o) => keyOf(o) === keyOf(recommended)),
+      listed = list[at]; // (none: the table doesn't hold it)
+    if (!listed) list.push(recommended);
     else
       list[at] = {
-        ...list[at],
+        ...listed,
         pair_search: true,
         pair_search_score: recommended.pair_search_score,
         career: recommended.career,
@@ -227,7 +250,11 @@ function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanO
   if (!planReport) return [];
   const check = checkDone(planReport);
   if (!check?.pairs) return [];
-  const vetName = (i: number): string => (vets.value[i] ? `#${i + 1} ${umaName(vets.value[i].chara)}` : `#${i + 1}`);
+  // (one who has left the pool under the answer, `legacyVet`: her number alone)
+  const vetName = (i: number): string => {
+    const v = legacyVet(i);
+    return v ? `#${i + 1} ${umaName(v.chara)}` : `#${i + 1}`;
+  };
   const shownOf = (found: PairFound) => planReport.options.find((o) => keyOf(o) === found.shown);
   // (a bound on the pairs scored per uma, `pair_bound`: past it, her pairs with the highest all-target ceilings)
   const bound = check.pairs.pair_bound;

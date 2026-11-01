@@ -3,6 +3,7 @@
 // Up), wrapping, and focuses it. Each pill is keyed by its value, so the focused one is the same element after the pick.
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
+import { around } from './arrows.ts';
 
 export interface Pill<V> {
   v: V;
@@ -50,11 +51,10 @@ export function RadioPills<V extends string | number>(props: RadioPillsProps<V>)
     const back = BACK.includes(e.key);
     if (!back && !ON.includes(e.key)) return;
     e.preventDefault();
-    const at = pills.findIndex((p) => p.v === picked.current),
-      to = (at + (back ? pills.length - 1 : 1)) % pills.length;
-    pick(pills[to].v);
-    // the pill is kept (keyed by its value): focus it now, before the re-render
-    e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[to]?.focus();
+    const to = pills.findIndex((p) => p.v === picked.current) + (back ? -1 : 1);
+    pick(around(pills, to).v);
+    // the pill is kept (keyed by its value): focus it now, before the re-render (a radio per pill, in their order)
+    around([...e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')], to).focus();
   };
   return (
     <Tag

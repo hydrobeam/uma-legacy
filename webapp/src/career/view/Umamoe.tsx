@@ -81,7 +81,11 @@ export function UmButton() {
     </button>
   );
 }
-const SORT_ITEMS = Object.entries(SORTS).map(([k, [label, hint]]) => ({ k, label, hint }));
+const SORT_ITEMS = (['match', 'rank', 'affinity', 'wins', 'sparks', 'updated'] as const).map((k) => ({
+  k,
+  label: SORTS[k][0],
+  hint: SORTS[k][1],
+}));
 /** the listings in the popup's order */
 const listings = computed(() => {
   const { by, reversed } = umSort.value,

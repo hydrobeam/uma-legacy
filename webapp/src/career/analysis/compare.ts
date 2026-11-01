@@ -47,8 +47,9 @@ export interface ComparisonDeps {
     isFull: (nd: NodeRecord) => boolean;
     /** a run's plan job's `top` (career/job.ts `ROLL_K`) */
     planTop: number;
-    /** a fresh draft of career `r`: a random result of it, on her parents' records now (a new career, a roll) */
-    draftOf: (r: DeepReadonly<CareerReport>) => Draft;
+    /** a fresh draft of career `r`: a random result of it, on her parents' records now (a new career, a roll); null
+     *  when a parent has left the pool under the answer on show */
+    draftOf: (r: DeepReadonly<CareerReport>) => Draft | null;
     /** her draft on show (veterans/store.ts `draft`; null: none) */
     draft: () => DeepReadonly<Draft> | null;
   };
@@ -111,7 +112,10 @@ export function savedWhere({
     trioNow.c === trioWithHer.c &&
     sidesOf(trioNow) === sidesOf(trioWithHer);
   // the route's steps: [the uma of the step, its careers]
-  const steps = (v: Trio) => [v.a, v.b, v.c].map((trainee, i) => [trainee, v.careers[i]] as const);
+  const steps = (v: Trio) => {
+    const [a, b, c] = v.careers;
+    return [[v.a, a] as const, [v.b, b] as const, [v.c, c] as const];
+  };
   let best: string | null = null,
     gain = 0;
   if (sameTrio && trioNow && trioWithHer) {
@@ -155,9 +159,10 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
       cached = baselineCache?.key === key ? baselineCache.result : null;
     const before = cached ? { results: [cached] } : open ? shownNow.r : (await engine.run(base)).r;
     if ('error' in before) throw new Error(before.error);
-    if (!before.results?.length) throw new Error('No career found in the current roster.');
-    baselineCache = { key, result: before.results[0] };
-    return before.results[0];
+    const [best] = before.results ?? [];
+    if (!best) throw new Error('No career found in the current roster.');
+    baselineCache = { key, result: best };
+    return best;
   }
 
   // A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target;
@@ -359,8 +364,10 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
   function roll() {
     const r = page.shown();
     if (!r || page.searching()) return;
+    const next = page.draftOf(r);
+    if (!next) return; // (a parent has left the pool under the answer on show: it goes once the pool's window closes)
     batch(() => {
-      store.draftRolled(page.draftOf(r));
+      store.draftRolled(next);
       const request = rollReq(draftNow(), r);
       if (request == null) {
         compare();
@@ -385,7 +392,9 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
     },
     /** an answer shows `r`: her analysis, ready (a fresh draft, or the one entered for the same career) */
     show(r: DeepReadonly<CareerReport> | null) {
-      store.analysisShows(r ? { draft: page.draftOf(r), forKey: keyOf(r) } : null);
+      // (a parent who has left the pool under the answer on show: no draft, so nothing to analyse)
+      const next = r && page.draftOf(r);
+      store.analysisShows(r && next ? { draft: next, forKey: keyOf(r) } : null);
     },
     /** no answer: no career to analyse */
     clear: store.analysisClears,

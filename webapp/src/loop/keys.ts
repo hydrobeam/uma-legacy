@@ -3,6 +3,7 @@
 // focus); a key must be unique among the results drawn together.
 import type { DeepReadonly } from '../store.ts';
 import type * as Report from './types.ts';
+import { loopMembers } from './members.ts';
 
 type LoopResult = DeepReadonly<Report.LoopResult>;
 type ResultDeck = DeepReadonly<Report.ResultDeck>;
@@ -10,7 +11,9 @@ type ResultLoop = DeepReadonly<Report.ResultLoop>;
 
 /** a loop: its members in order, each with the outfits it offers */
 export const loopKey = (loop: ResultLoop) =>
-  loop.members.map((m, k) => `${m.id}:${loop.outfits[k].outfits.map((o) => o.id).join('/')}`).join(' ');
+  loopMembers(loop)
+    .map((m) => `${m.id}:${m.outfits.map((o) => o.id).join('/')}`)
+    .join(' ');
 /** a deck: its cards' names (each carries its borrowed and chain-end marks) */
 export const deckKey = (deck: ResultDeck) => deck.cards.join('|');
 /** each result's key: its loop and decks. Two results can share both: the solver keeps one result per deck and tells

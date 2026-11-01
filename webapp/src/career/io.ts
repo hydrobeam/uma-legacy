@@ -105,12 +105,13 @@ export function importText(text: string): boolean {
   }
   const tree = parseTree(text);
   if (tree) {
-    if (!tree.length) {
+    const [head] = tree;
+    if (!head) {
       sayVets('No veteran in that uma.moe tree.');
       return false;
     }
     addVets(tree);
-    const first = vets.value.indexOf(tree[0]) + 1;
+    const first = vets.value.findIndex((v) => v.id === head.id) + 1;
     sayVets(
       `Added ${tree.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${first}${tree.length > 1 ? `-#${first + tree.length - 1}` : ''} (marked yours: switch to Borrowed if she is a friend's).`,
     );

@@ -1,7 +1,7 @@
 // The data build.py embeds in the page, for the chosen era.
 import { $ } from './dom.ts';
 import { ERA } from './saved.ts';
-import { must } from './must.ts';
+import { assert, must } from './must.ts';
 import type { LoopReport } from './loop/types.ts';
 // the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed 'data-cards', ...); what stays
 // in the page (the asset table, the example) from its JSON elements of the same ids
@@ -75,6 +75,28 @@ export interface Uma {
   apt?: number[];
   outfits: Outfit[];
 }
+/** a race's distance: 0-3, sprint to long */
+export type Distance = 0 | 1 | 2 | 3;
+/** a G1's distance and ground (1 turf, 2 dirt), from the career tables' `race_cat` and `race_ground` */
+export interface RaceTrack {
+  cat: Distance;
+  ground: 1 | 2;
+}
+const isDistance = (x: unknown): x is Distance => x === 0 || x === 1 || x === 2 || x === 3;
+// each G1's track by name, checked where the tables are loaded: build.py writes a distance and a ground per race
+function tracksOf(career: CareerTables | null): Map<string, RaceTrack> {
+  const cats = career?.race_cat;
+  if (!career || !cats) return new Map();
+  const grounds = must(career.race_ground, 'build.py writes race_ground with race_cat');
+  return new Map(
+    career.races.map((name, ix): [string, RaceTrack] => {
+      const cat = cats[ix],
+        ground = grounds[ix];
+      assert(isDistance(cat) && (ground === 1 || ground === 2), `build.py writes race ${ix}'s distance and ground`);
+      return [name, { cat, ground }];
+    }),
+  );
+}
 /** a skill group's white name and its gold's (null: none) */
 export type SkillNames = { w: string; gd: string | null };
 /** The career page's tables (export_page.py `career`, its mobs cut to those with a portrait by build.py; the planner
@@ -124,6 +146,8 @@ export interface GameData {
   names: Map<number, string>;
   /** the career page's tables (null on the planner page in the Global era) */
   career: CareerTables | null;
+  /** each G1's distance and ground, by its name in the career tables (none without them, or where they lack them) */
+  tracks: Map<string, RaceTrack>;
   /** what the data holds ahead of its start (a build from a master.mdb fetched ahead of its update holds the next week's
    * umas, outfits and cards, pkg/loopopt/export/upcoming.py): hidden here and left out of every search until its
    * start, so a banner turns on by itself. Fixed at page load. */
@@ -174,6 +198,7 @@ function setData(data: PageData) {
     skillNames: new Map(data.skills.map(([group, white, gold]) => [group, { w: white, gd: gold }])),
     names,
     career,
+    tracks: tracksOf(career),
     later,
   };
 }
@@ -215,7 +240,13 @@ export const RACEIDS: Record<string, number> = parse('data-raceids'); // race na
 export const SCEN_GOLDS: Record<string, number[]> = { unity: [20049, 20046] };
 // each scenario's training-hint base by scenario key: research/results.json's fit rounded to 3 decimals, which build.py
 // reads with pkg/loopopt/build.rs's keys and rounding, so it is the solver's hint_base
-const HINT_BASE: Record<string, number> = parse('data-hintbase');
+const HINT_BASE: Record<string, unknown> = parse('data-hintbase');
+// a scenario's hint base, checked where the page first reads it: build.py writes one per scenario key
+const hintBase = (key: string): number => {
+  const base = HINT_BASE[key];
+  assert(typeof base === 'number', `build.py writes ${key}'s hint base`);
+  return base;
+};
 // the scenario picker's tiles, in its order. id: Global single_mode_scenario id (logo img/scen/{id}); base: training
 // hints per card per run at hint frequency 0 and specialty 0 (HINT_BASE), shown as a multiple of URA Finale's (the
 // original scenario); est: no measured base (Grand Masters: one base fitted over the other scenarios);
@@ -240,16 +271,16 @@ export interface Scenario {
   /** set below */
   rate?: string;
 }
-export const SCENARIOS: Scenario[] = [
-  { v: 'unity', id: 2, name: 'Unity Cup', base: HINT_BASE.unity, ss: false, tint: '#c5ecff' },
-  { v: 'gc', id: 3, name: 'Grand Concert', base: HINT_BASE.gc, ss: true, tint: '#ebe3ff' },
-  { v: 'ura', id: 1, name: 'URA Finale', base: HINT_BASE.ura, ss: false, tint: '#e6f4c9' },
-  { v: 'trackblazer', id: 4, name: 'Trackblazer', base: HINT_BASE.trackblazer, ss: false, tint: '#faeebf' },
+export const SCENARIOS: readonly [Scenario, ...Scenario[]] = [
+  { v: 'unity', id: 2, name: 'Unity Cup', base: hintBase('unity'), ss: false, tint: '#c5ecff' },
+  { v: 'gc', id: 3, name: 'Grand Concert', base: hintBase('gc'), ss: true, tint: '#ebe3ff' },
+  { v: 'ura', id: 1, name: 'URA Finale', base: hintBase('ura'), ss: false, tint: '#e6f4c9' },
+  { v: 'trackblazer', id: 4, name: 'Trackblazer', base: hintBase('trackblazer'), ss: false, tint: '#faeebf' },
   {
     v: 'grandmasters',
     id: 5,
     name: 'Grand Masters',
-    base: HINT_BASE.grandmasters,
+    base: hintBase('grandmasters'),
     est: true,
     ss: true,
     era: 'gm',

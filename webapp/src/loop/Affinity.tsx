@@ -17,10 +17,11 @@ import { UmaAv } from '../ui/Images.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 import type { DeepReadonly } from '../store.ts';
 import type * as Report from './types.ts';
+import { loopCareers, loopMembers } from './members.ts';
+import type { Career, Member } from './members.ts';
 
-/** a result's loop and its careers, as the store hands them (read-only) */
+/** a result's loop, as the store hands it (read-only) */
 type ResultLoop = DeepReadonly<Report.ResultLoop>;
-type Lineage = DeepReadonly<Report.Lineage>;
 
 // the loop shown at the last opening (`n` counts them: each opening starts at the best career), and whether it is open
 const shown = signal<{ n: number; loop: ResultLoop | null; open: boolean }>({ n: 0, loop: null, open: false });
@@ -42,50 +43,48 @@ export function AffinityDialog() {
     </Dialog>
   );
 }
-const careerTotal = (lineage: Lineage) => lineage.slots.reduce((sum, slot) => sum + slot.aff, 0);
+// the loop's careers, the most affinity first, each with its place in that order (`n`: the pills' value)
+type Ranked = Career & { n: number };
 function Careers({ loop }: { loop: ResultLoop }) {
-  const lineages = loop.detail.lineages,
-    members = loop.members;
-  // trainee -> her careers (lineage indices), the most affinity first; the career shown first is the best of all
-  const byAffinity = lineages.map((_, i) => i).sort((a, b) => careerTotal(lineages[b]) - careerTotal(lineages[a]));
-  const careersOf = new Map<number, number[]>();
-  for (const i of byAffinity) careersOf.set(lineages[i].t, [...(careersOf.get(lineages[i].t) || []), i]);
+  const members = loopMembers(loop),
+    ranked: Ranked[] = loopCareers(loop, members)
+      .sort((a, b) => b.affinity - a.affinity)
+      .map((career, n) => ({ ...career, n }));
+  // trainee (her place k) -> her careers, the most affinity first; the career shown first is the best of all
+  const careersOf = new Map<number, [Ranked, ...Ranked[]]>();
+  for (const career of ranked) {
+    const hers = careersOf.get(career.trainee.k);
+    if (hers) hers.push(career);
+    else careersOf.set(career.trainee.k, [career]);
+  }
   const careersFor = (trainee: number) => must(careersOf.get(trainee), 'each trainee heads a career');
-  const [at, setAt] = useState(byAffinity[0]);
-  const lineage = lineages[at],
-    careers = careersFor(lineage.t);
+  const careerAt = (n: number) => must(ranked[n], 'a pill names one of the careers drawn');
+  const [at, setAt] = useState(0);
+  const career = careerAt(at),
+    careers = careersFor(career.trainee.k);
   // her outfit's portrait, picked as her result card picks it, from the settings as they are when the dialog opens (the
   // card's is from when the result was drawn: an outfit owned since can differ)
-  const face = (i: number, size: number) => {
-    const outfit = untracked(() => pickOutfit(members[i].id, loop.outfits[i].outfits).list[0]?.id ?? null);
-    return <UmaAv key={`${members[i].id}:${outfit}`} uma={members[i].id} outfit={outfit} size={size} />;
+  const face = (m: Member, size: number) => {
+    const outfit = untracked(() => pickOutfit(m.id, m.outfits).list[0]?.id ?? null);
+    return <UmaAv key={`${m.id}:${outfit}`} uma={m.id} outfit={outfit} size={size} />;
   };
-  const shortName = (i: number) => members[i].short || members[i].name;
   // a career's table rows: each parent, then her two parents, with their relation points, shared G1s and affinity
-  const legacies = (career: Lineage): AffinityLeg[] =>
-    career.p.map((parent) => {
-      const slot = must(
-        career.slots.find((s) => s.kind === 'parent' && s.who[0] === parent),
-        'a parent has her legacy',
-      );
-      return {
-        face: face(parent, 30),
-        name: members[parent].name,
-        rel: slot.rel,
-        race: slot.race,
-        aff: slot.aff,
-        gps: career.slots
-          .filter((s) => s.kind === 'grandparent' && s.who[0] === parent)
-          .map((g) => ({
-            face: face(g.who[1], 24),
-            name: members[g.who[1]].name,
-            tag: g.who[1] === career.t ? 'her own earlier veteran' : null,
-            rel: g.rel,
-            race: g.race,
-            aff: g.aff,
-          })),
-      };
-    });
+  const legacies = (c: Career): AffinityLeg[] =>
+    c.legacies.map((leg) => ({
+      face: face(leg.member, 30),
+      name: leg.member.name,
+      rel: leg.rel,
+      race: leg.race,
+      aff: leg.aff,
+      gps: leg.grandparents.map((g) => ({
+        face: face(g.member, 24),
+        name: g.member.name,
+        tag: g.member.k === c.trainee.k ? 'her own earlier veteran' : null,
+        rel: g.rel,
+        race: g.race,
+        aff: g.aff,
+      })),
+    }));
   return (
     <>
       <div class="row between dhead">
@@ -97,23 +96,21 @@ function Careers({ loop }: { loop: ResultLoop }) {
       <RadioPills
         class="afpick"
         label="Trainee"
-        value={lineage.t}
-        onPick={(trainee) => setAt(careersFor(trainee)[0])}
-        pills={[...careersOf].map(([trainee, its]) => {
-          const [p0, p1] = lineages[its[0]].p;
-          const name =
-            its.length > 1
-              ? `${members[trainee].name} as the trainee`
-              : `${members[trainee].name}, parents ${members[p0].name} and ${members[p1].name}`;
+        value={career.trainee.k}
+        onPick={(trainee) => setAt(careersFor(trainee)[0].n)}
+        pills={[...careersOf.values()].map(([best, ...others]) => {
+          const [p0, p1] = best.parents,
+            her = best.trainee;
+          const name = others.length ? `${her.name} as the trainee` : `${her.name}, parents ${p0.name} and ${p1.name}`;
           return {
-            v: trainee,
+            v: her.k,
             label: name,
             title: name,
             body: (
               <>
-                {face(trainee, 28)}
-                <span class="afpn">{shortName(trainee)}</span>
-                <AffHeart affinity={careerTotal(lineages[its[0]])} />
+                {face(her, 28)}
+                <span class="afpn">{her.short || her.name}</span>
+                <AffHeart affinity={best.affinity} />
               </>
             ),
           };
@@ -129,18 +126,18 @@ function Careers({ loop }: { loop: ResultLoop }) {
         pills={
           careers.length < 2
             ? []
-            : careers.map((j) => {
-                const [p0, p1] = lineages[j].p,
-                  name = `parents ${members[p0].name} and ${members[p1].name}`;
+            : careers.map((c) => {
+                const [p0, p1] = c.parents,
+                  name = `parents ${p0.name} and ${p1.name}`;
                 return {
-                  v: j,
+                  v: c.n,
                   label: name,
-                  title: `${members[lineages[j].t].name}: ${name}`,
+                  title: `${c.trainee.name}: ${name}`,
                   body: (
                     <>
                       {face(p0, 24)}
                       {face(p1, 24)}
-                      <AffHeart affinity={careerTotal(lineages[j])} />
+                      <AffHeart affinity={c.affinity} />
                     </>
                   ),
                 };
@@ -148,7 +145,7 @@ function Careers({ loop }: { loop: ResultLoop }) {
         }
       />
       <div class="afview">
-        <AffTable legs={legacies(lineage)} caption={`${members[lineage.t].name}: her six legacies`} />
+        <AffTable legs={legacies(career)} caption={`${career.trainee.name}: her six legacies`} />
       </div>
     </>
   );

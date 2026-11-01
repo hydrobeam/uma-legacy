@@ -10,7 +10,9 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { $, fmtIn } from '../dom.ts';
 import { gameData } from '../data.ts';
 import { setRunnerFrom } from '../images.ts';
-import { borLast, cardTitle, chainEndNote } from '../cards.ts';
+import { cardTitle, chainEndNote } from '../cards.ts';
+import { borrowedLast, deckCards } from '../details.ts';
+import type { DeckSlot } from '../details.ts';
 import { closePop, popHasFocus, popOpener } from '../popover.ts';
 import { outfitNote, pickOutfit, umaState } from '../roster.ts';
 import { openSched } from '../ui/Schedule.tsx';
@@ -22,6 +24,8 @@ import { CardAv, SkillIcon, UmaAv } from '../ui/Images.tsx';
 import { openWhy } from './Affinity.tsx';
 import type { JobTarget } from './job.ts';
 import { deckKey, loopKey, resultKeys } from './keys.ts';
+import { loopMembers } from './members.ts';
+import type { Member } from './members.ts';
 import { draw, loopDrawn } from './state.ts';
 import type * as Report from './types.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -36,10 +40,6 @@ type Odds = ResultDeck['odds'][number];
 // the chance of at least the white: a gold hint counts for the white too
 const atLeastWhite = (odds: Odds | undefined) => (odds ? deckHint(odds.gold, odds.white) : 0);
 const namesOf = (group: number) => gameData().skillNames.get(group) || { w: String(group), gd: null };
-// the deck's card indices among `indices`, the borrowed card last (the sixth slot, as in the game)
-const borrowedLast = (deck: ResultDeck, indices: number[]) =>
-  borLast(deck.cards).filter((i: number) => indices.includes(i));
-const allIndices = (list: readonly unknown[]) => list.map((_, i) => i);
 const percent = (p: number) => `${Math.round(p * 100)}%`;
 
 // a button that opens a popover.ts panel: its aria-expanded says whether the panel is open from it
@@ -51,7 +51,7 @@ function useOpener() {
 /** draws a result (run.ts's `render`): the panel open on the old one closes, the runner becomes one of its umas. Focus
  *  inside the old result (an open panel's Owned switch, say) is noted in the drawn record (`refocus`), so that once the
  *  redraw is done focus that it removed goes to the results column, not the page top */
-export function drawResult(r: Report.LoopReport, targets: readonly JobTarget[]) {
+export function drawResult(r: Report.DrawnReport, targets: readonly JobTarget[]) {
   const refocus = popHasFocus() || $('results').contains(document.activeElement);
   batch(() => {
     closePop();
@@ -113,6 +113,7 @@ function LoopCard({
   top: LoopResult;
 }) {
   const loop = result.loop,
+    members = loopMembers(loop, result.decks || null),
     sameLoop = rank > 1 && loopKey(top.loop) === loopKey(loop);
   return (
     <article class={`loop${rank <= 1 ? ' first' : ''}`}>
@@ -125,10 +126,10 @@ function LoopCard({
       {sameLoop ? (
         <p class="same">Same loop as #1 (the same umas and outfits); only the deck differs.</p>
       ) : (
-        <Members loop={loop} />
+        <Members members={members} />
       )}
-      {result.deck && <Decks loop={loop} shared={result.deck} decks={result.decks || null} />}
-      <Actions loop={loop} targetCount={targetCount} />
+      {result.deck && <Decks members={members} shared={result.deck} />}
+      <Actions loop={loop} members={members} targetCount={targetCount} />
     </article>
   );
 }
@@ -136,20 +137,22 @@ function LoopCard({
 // skill list (she has them when she is the trainee) and the odds with her as the trainee. One outfit named, never "any
 // outfit" (her popup says when any would do, or which others are as good), as the settings were when the result was
 // drawn (untracked: an outfit owned later changes the next result, not this one's names)
-function Members({ loop }: { loop: ResultLoop }) {
-  const picks = untracked(() => loop.members.map((m, k) => pickOutfit(m.id, loop.outfits[k].outfits)));
+function Members({ members }: { members: readonly Member[] }) {
   return (
-    <div class={`members${loop.members.length === 3 ? ' n3' : ''}`}>
-      {loop.members.map((m, k) => (
-        <Member key={m.id} loop={loop} k={k} pick={picks[k]} />
+    <div class={`members${members.length === 3 ? ' n3' : ''}`}>
+      {members.map((m) => (
+        <MemberCard key={m.id} m={m} pick={untracked(() => pickOutfit(m.id, m.outfits))} />
       ))}
     </div>
   );
 }
-function Member({ loop, k, pick }: { loop: ResultLoop; k: number; pick: ReturnType<typeof pickOutfit> }) {
-  const m = loop.members[k],
-    offered = loop.outfits[k],
-    outfitId = offered.outfits.length === 1 ? offered.outfits[0].id : null,
+// her one outfit, where the loop fixes one (null: any of several, or none covers a target)
+const onlyOutfit = (m: Member) => {
+  const [only, ...more] = m.outfits;
+  return only && !more.length ? only : null;
+};
+function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit> }) {
+  const outfitId = onlyOutfit(m)?.id ?? null,
     outfit = pick.list[0]?.label || '',
     face = pick.list[0]?.id ?? null;
   const u = gameData().umas.find((x) => x.id === m.id),
@@ -169,7 +172,7 @@ function Member({ loop, k, pick }: { loop: ResultLoop; k: number; pick: ReturnTy
       </button>
       <span class="of">{outfit}</span>
       <span class="sk">
-        {offered.covers.map((cover) => {
+        {m.covers.map((cover) => {
           const names = namesOf(cover.group),
             gold = cover.level === 2;
           return (
@@ -181,17 +184,15 @@ function Member({ loop, k, pick }: { loop: ResultLoop; k: number; pick: ReturnTy
         })}
       </span>
       <span class="own" title="The odds that every target lands in a run with her as the trainee">
-        as trainee: <span class="num">{fmtIn(loop.per_trainee[k])}</span>
+        as trainee: <span class="num">{fmtIn(m.perTrainee)}</span>
       </span>
     </div>
   );
 }
 // a member's portrait (her outfit's when the loop fixes one): a button opening her panel, as her name at the top does,
 // with her name as its tooltip
-function FaceButton({ loop, k, size }: { loop: ResultLoop; k: number; size: number }) {
-  const member = loop.members[k],
-    outfits = loop.outfits[k].outfits,
-    one = outfits.length === 1 ? outfits[0] : null,
+function FaceButton({ member, size }: { member: Member; size: number }) {
+  const one = onlyOutfit(member),
     name = member.name + (one ? ` ${one.label}` : '');
   const opener = useOpener();
   return (
@@ -209,15 +210,26 @@ function FaceButton({ loop, k, size }: { loop: ResultLoop; k: number; size: numb
   );
 }
 // the deck(s) of a result: one deck for all, or the deck most members share and the swaps from it
-function Decks({ loop, shared, decks }: { loop: ResultLoop; shared: ResultDeck; decks: readonly ResultDeck[] | null }) {
-  const members = loop.members;
-  if (!decks || decks.every((d) => deckKey(d) === deckKey(shared)))
+function Decks({ members, shared }: { members: readonly Member[]; shared: ResultDeck }) {
+  const sharedKey = deckKey(shared),
+    // (a member's deck: her own where the result has one per member, else the loop's)
+    deckOf = (m: Member) => m.deck ?? shared,
+    perMember = members.some((m) => m.deck);
+  if (members.every((m) => deckKey(deckOf(m)) === sharedKey))
     return (
-      <DeckBlock deck={shared} title={decks ? `Deck for all ${members.length === 3 ? 'three' : 'four'}` : 'Deck'} />
+      <DeckBlock deck={shared} title={perMember ? `Deck for all ${members.length === 3 ? 'three' : 'four'}` : 'Deck'} />
     );
-  const users = allIndices(members).filter((k) => deckKey(decks[k]) === deckKey(shared));
-  // each other deck once, with the members on it
-  const others = [...new Set(decks.map(deckKey))].filter((key) => key !== deckKey(shared));
+  const users = members.filter((m) => deckKey(deckOf(m)) === sharedKey);
+  // each other deck once, with the members on it, in the members' order
+  const swaps = new Map<string, { deck: ResultDeck; who: Member[] }>();
+  for (const m of members) {
+    const deck = deckOf(m),
+      key = deckKey(deck);
+    if (key === sharedKey) continue;
+    const group = swaps.get(key);
+    if (group) group.who.push(m);
+    else swaps.set(key, { deck, who: [m] });
+  }
   return (
     <>
       <DeckBlock
@@ -226,34 +238,29 @@ function Decks({ loop, shared, decks }: { loop: ResultLoop; shared: ResultDeck; 
           <>
             Deck for{' '}
             <span class="dwho">
-              {users.map((k) => (
-                <FaceButton key={k} loop={loop} k={k} size={42} />
+              {users.map((m) => (
+                <FaceButton key={m.k} member={m} size={42} />
               ))}
             </span>
-            <span class="vh">{users.map((k) => members[k].name).join(', ')}</span>
+            <span class="vh">{users.map((m) => m.name).join(', ')}</span>
           </>
         }
       />
       {/* a label where the other decks start: each row below is another uma's deck, by its changes to the deck above */}
       <p class="swhead">Swaps</p>
-      {others.map((key) => {
-        const who = allIndices(members).filter((j) => deckKey(decks[j]) === key);
-        return <SwapRow key={key} loop={loop} shared={shared} deck={decks[who[0]]} who={who} />;
-      })}
+      {[...swaps].map(([key, { deck, who }]) => (
+        <SwapRow key={key} shared={shared} deck={deck} who={who} />
+      ))}
     </>
   );
 }
 // one card of a deck as a button opening its panel: its art, name and title, and what to do with it in IT
-function CardChip({ deck, i }: { deck: ResultDeck; i: number }) {
-  const named = deck.cards[i],
-    borrowed = /\(borrowed\)$/.test(named),
-    base = named.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, ''),
+function CardChip({ deck, slot }: { deck: ResultDeck; slot: DeckSlot }) {
+  const { borrowed, base, card: c, endAt } = slot,
     pal = (deck.pal_cards || []).includes(base);
-  const c = gameData().cardById.get(deck.card_ids[i]) || gameData().cards.find((x) => x.name === base); // plain pals have a name but no entry in card_ids
   // pick: the skill to prioritise in IT: the search's choice at a chain link ("link 1: Uma Stan"), or what a pal's
   // credited event choice needs (derived from the event data: c.pri)
-  const endAt = (deck.end_chain_at || [])[i] || 0,
-    pick = (deck.choices || [])[i] || (c?.pri ? c.pri.join(', ') : '');
+  const pick = slot.choice || (c?.pri ? c.pri.join(', ') : '');
   const pickNote = (pick ? ` · prioritise ${pick}` : '') + (endAt ? ` · ${chainEndNote(c, endAt)}` : '');
   const title = c ? cardTitle(c) : { nm: base, ti: '' };
   const tag = borrowed ? 'borrowed' : pal ? 'pal' : '',
@@ -280,8 +287,8 @@ function CardChip({ deck, i }: { deck: ResultDeck; i: number }) {
     </button>
   );
 }
-const chips = (deck: ResultDeck, indices: number[]) =>
-  borrowedLast(deck, indices).map((i: number) => <CardChip key={deck.cards[i]} deck={deck} i={i} />);
+const chips = (deck: ResultDeck, slots: readonly DeckSlot[]) =>
+  borrowedLast(slots).map((slot) => <CardChip key={slot.named} deck={deck} slot={slot} />);
 // the (i) button by a deck's title, showing its hint odds
 function InfoButton({ open, toggle }: { open: boolean; toggle: () => void }) {
   return (
@@ -305,7 +312,7 @@ function DeckBlock({ deck, title }: { deck: ResultDeck; title: ComponentChildren
         <b>{title}</b>
       </div>
       <InfoButton open={open} toggle={() => setOpen(!open)} />
-      <div class="dcards">{chips(deck, allIndices(deck.cards))}</div>
+      <div class="dcards">{chips(deck, deckCards(deck))}</div>
       <HintOdds deck={deck} open={open} />
     </div>
   );
@@ -345,22 +352,12 @@ function HintOdds({ deck, open }: { deck: ResultDeck; open: boolean }) {
 // largest change first; two shown, a click on the list shows them all (and again folds it). who: the members on
 // that deck; a hint all of them have on their own outfit's skill list is no change for them (its gold: they have the
 // gold; the white: they have at least the white), so it isn't listed (her deck drops it because she doesn't need it)
-function SwapDeltas({
-  loop,
-  shared,
-  deck,
-  who,
-}: {
-  loop: ResultLoop;
-  shared: ResultDeck;
-  deck: ResultDeck;
-  who: number[];
-}) {
+function SwapDeltas({ shared, deck, who }: { shared: ResultDeck; deck: ResultDeck; who: readonly Member[] }) {
   const [more, setMore] = useState(false);
   const before = new Map(shared.odds.map((o) => [o.group, o])),
     changes: { group: number; gold: boolean; name: string; from: number; to: number }[] = [];
   const ownLevel = (group: number) =>
-    Math.min(...who.map((k) => (loop.outfits[k].covers.find((c) => c.group === group) || { level: 0 }).level));
+    Math.min(...who.map((m) => (m.covers.find((c) => c.group === group) || { level: 0 }).level));
   for (const o of deck.odds) {
     const b = before.get(o.group),
       names = namesOf(o.group),
@@ -395,28 +392,18 @@ function SwapDeltas({
 }
 // another member's deck by its changes to the shared one, one row: her face (each with her name as its tooltip), the
 // cards that go (greyed) ➜ the cards that come in, and what it does to the odds. `who`: the members on this deck
-function SwapRow({
-  loop,
-  shared,
-  deck,
-  who,
-}: {
-  loop: ResultLoop;
-  shared: ResultDeck;
-  deck: ResultDeck;
-  who: number[];
-}) {
+function SwapRow({ shared, deck, who }: { shared: ResultDeck; deck: ResultDeck; who: readonly Member[] }) {
   const [open, setOpen] = useState(false);
-  const names = who.map((k) => loop.members[k].name);
+  const names = who.map((m) => m.name);
   const whose = `${names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`}’s deck`; // "X’s deck", "X and Y’s deck"
-  const out = allIndices(shared.cards).filter((i) => !deck.cards.includes(shared.cards[i]));
-  const comingIn = allIndices(deck.cards).filter((i) => !shared.cards.includes(deck.cards[i]));
+  const out = deckCards(shared).filter((slot) => !deck.cards.includes(slot.named));
+  const comingIn = deckCards(deck).filter((slot) => !shared.cards.includes(slot.named));
   return (
     <div class="deck swap">
       <div class="swrow">
         <span class="swho">
-          {who.map((k) => (
-            <FaceButton key={k} loop={loop} k={k} size={64} />
+          {who.map((m) => (
+            <FaceButton key={m.k} member={m} size={64} />
           ))}
           <span class="vh">{whose}:</span>
         </span>
@@ -435,7 +422,7 @@ function SwapRow({
             </span>
           </span>
         </div>
-        <SwapDeltas loop={loop} shared={shared} deck={deck} who={who} />
+        <SwapDeltas shared={shared} deck={deck} who={who} />
       </div>
       <InfoButton open={open} toggle={() => setOpen(!open)} />
       <HintOdds deck={deck} open={open} />
@@ -466,7 +453,15 @@ const Arrow = () => (
 );
 // the result's dialogs: the odds of each count landed (the solver's, exact over the landed sets, as the career
 // planner's), the race schedule and the affinity
-function Actions({ loop, targetCount }: { loop: ResultLoop; targetCount: number }) {
+function Actions({
+  loop,
+  members,
+  targetCount,
+}: {
+  loop: ResultLoop;
+  members: readonly Member[];
+  targetCount: number;
+}) {
   const landed = loop.landed;
   return (
     <div class="row lacts">
@@ -488,7 +483,7 @@ function Actions({ loop, targetCount }: { loop: ResultLoop; targetCount: number 
           Odds
         </button>
       )}
-      <button type="button" class="btn sbtn" onClick={() => openSched(loop)}>
+      <button type="button" class="btn sbtn" onClick={() => openSched({ members, schedule: loop.schedule })}>
         Race schedule
       </button>
       {loop.detail && (

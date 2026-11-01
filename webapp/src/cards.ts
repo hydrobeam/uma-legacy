@@ -6,16 +6,14 @@ import { fields, settings, setOwned } from './settings.ts';
 import { must } from './must.ts';
 import type { Card } from './data.ts';
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
-const BORROWED = /\(borrowed\)$/; // a deck names its borrowed card with this suffix
-// a deck's card indices with the borrowed card last: the sixth slot, as in the game
-// card names (a deck's `cards`) -> their indices
-export const borLast = (cards: readonly string[]): number[] =>
-  cards.map((_, i) => i).sort((a, b) => Number(BORROWED.test(cards[a])) - Number(BORROWED.test(cards[b])));
 // a card's name split as the game shows it: {nm: the character (with the rarity, "Daitaku Helios SSR", unless `rar` is
 // false: the card list leaves it out, its frame and section heading show it), ti: the card's title ('' when none)}
 export const cardTitle = (c: Card, rar = true): { nm: string; ti: string } => {
-  const parts = /^\[(.*)\] (.*)$/.exec(c.name);
-  return parts ? { nm: parts[2] + (rar ? ` ${RARITY[c.rar]}` : ''), ti: parts[1] } : { nm: c.name, ti: '' };
+  const [, title, character] = /^\[(.*)\] (.*)$/.exec(c.name) ?? [];
+  // (a name without "[title] ": no title)
+  return title !== undefined && character !== undefined
+    ? { nm: character + (rar ? ` ${RARITY[c.rar]}` : ''), ti: title }
+    : { nm: c.name, ti: '' };
 };
 // how a card gives a target, as a short note and a one-line tooltip: from training with it, from an event, or from its
 // n-th story event (they come in order, so a later one needs the earlier ones first); "50%": the event gives it on

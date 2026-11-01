@@ -6,22 +6,21 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import { fmtIn } from '../../dom.ts';
 import { settings } from '../../settings.ts';
 import { pct } from '../../odds.ts';
-import { vets, places as yourPlaces, backToPick } from '../../veterans/store.ts';
+import { places as yourPlaces, backToPick } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
-import { borLast } from '../../cards.ts';
+import { borrowedLast, deckCards } from '../../details.ts';
 import { must } from '../../must.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { answer, searching } from '../state.ts';
 import { keyOf } from '../keys.ts';
-import { looped, refFor, shown } from '../current.ts';
+import { legacyVet, looped, refFor, shown } from '../current.ts';
 import type { OptionRow as Row, PlanReport } from '../job.ts';
 import type { Note } from '../options.ts';
 import { TIE_CAREERS, extraText, optionsTable, roleText, takeCareer, unsettled, netText } from '../options.ts';
 import type { DeepReadonly } from '../../store.ts';
 import { fmtN } from './parts.ts';
 import { DeckCard } from './Sections.tsx';
-import type { ShownCareer } from './Sections.tsx';
 import { Guard } from './Guard.tsx';
 
 type Report = DeepReadonly<PlanReport>;
@@ -115,8 +114,8 @@ function OptionsTable() {
             <b>{`Deck of the pair search's career: ${nameOf(recommended)}`}</b>
           </div>
           <div class="dcards">
-            {borLast([...recommended.deck.cards]).map((i: number) => (
-              <DeckCard key={`${i}:${recommended.deck.cards[i]}`} r={recommended as unknown as ShownCareer} i={i} />
+            {borrowedLast(deckCards(recommended.deck)).map((slot) => (
+              <DeckCard key={`${slot.i}:${slot.named}`} slot={slot} />
             ))}
           </div>
         </div>
@@ -233,8 +232,11 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
 }
 // who an option places: only the places left open, the trainee and the parents
 function PickWhat({ r, places }: { r: DeepReadonly<Row>; places: Places }) {
-  const all = vets.value,
-    open = r.parents.filter((i) => !places.parents.includes(all[i].id));
+  // the career's parents not in a place (one who has left the pool under the answer on show, `legacyVet`: none to show)
+  const open = r.parents.flatMap((i) => {
+    const v = legacyVet(i);
+    return v && !places.parents.includes(v.id) ? [{ i, v }] : [];
+  });
   return (
     <div class="altw">
       {!places.trainee && (
@@ -244,11 +246,11 @@ function PickWhat({ r, places }: { r: DeepReadonly<Row>; places: Places }) {
         </>
       )}
       {open.length > 0 && (places.trainee ? 'Parents ' : ', parents ')}
-      {open.map((i, j) => (
+      {open.map(({ i, v }, j) => (
         <Fragment key={i}>
           {j > 0 && ' + '}
-          <UmaAv key={`${all[i].chara}:${all[i].outfit}`} uma={all[i].chara} outfit={all[i].outfit} size={24} />
-          {` #${i + 1} ${umaName(all[i].chara)}`}
+          <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={24} />
+          {` #${i + 1} ${umaName(v.chara)}`}
         </Fragment>
       ))}
     </div>
@@ -300,8 +302,8 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
   const routePlan = planReport.v0_plan,
     routeMembers = planReport.members || [],
     careersToday = planReport.v0 != null ? fmtN(planReport.v0) : null;
-  const routeStep = (m: (typeof routeMembers)[number], i: number) => {
-    const careers = routePlan?.careers?.[i];
+  // a step of the route: its member (A or B) and its careers (the plan's `v0_plan`)
+  const routeStep = (m: (typeof routeMembers)[number], careers: number | null | undefined) => {
     const c = careers != null ? ` (about ${fmtN(careers)} careers)` : '';
     if (m.real) return `your ${n}/${n} of ${m.trainee} (no careers)`;
     const who = m.has_full_veteran ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
@@ -315,9 +317,11 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
       ? `${who}lift ${m.trainee}'s odds from ${career} (${fmtIn(m.p)} now) with about ${fmtN(m.building_careers)} building careers, to about ${fmtIn(m.p_switch)}, then rerun her until she lands ${n}/${n}${c}`
       : `${who}rerun ${career} (${fmtIn(m.p)}) until she lands ${n}/${n}${c}`;
   };
+  const [a, b] = routeMembers,
+    [aCareers, bCareers, cCareers] = routePlan?.careers ?? [];
   const route =
-    routePlan && routeMembers.length >= 2 && careersToday
-      ? `First ${routeStep(routeMembers[0], 0)}; then ${routeStep(routeMembers[1], 1)}; then ${routePlan.c} with those two ${n}/${n}s as parents${routePlan.careers?.[2] != null ? ` (about ${fmtN(routePlan.careers[2])} careers)` : ''}. About ${careersToday} careers in all.`
+    routePlan && a && b && careersToday
+      ? `First ${routeStep(a, aCareers)}; then ${routeStep(b, bCareers)}; then ${routePlan.c} with those two ${n}/${n}s as parents${cCareers != null ? ` (about ${fmtN(cCareers)} careers)` : ''}. About ${careersToday} careers in all.`
       : 'No estimate: no route from the veterans you have now.';
   // the cheapest routes (`trios`, at most three, today's first) and how many are within the assumed 2% band of it
   // (`near`): too close for the estimate to say which is cheapest

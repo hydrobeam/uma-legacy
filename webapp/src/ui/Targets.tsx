@@ -35,13 +35,14 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
       e.preventDefault();
       setShown(false);
     } else if (e.key === 'Enter') {
-      if (shown && offer.hits.length) {
+      const [best] = offer.hits; // (none: nothing to add)
+      if (shown && best) {
         e.preventDefault();
-        add(offer.hits[0].group);
+        add(best.group);
       }
     } else if (e.key === 'ArrowDown' && shown && offer.hits.length) {
       e.preventDefault();
-      items()[0].focus();
+      must(items()[0], 'the list draws its hits').focus();
     }
   };
   // a suggestion's keys: the arrows walk the list, Escape closes it back to the box
@@ -55,7 +56,7 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
       input.current?.focus();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (at < all.length - 1) all[at + 1].focus();
+      all[at + 1]?.focus(); // (from the last: none below)
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       (at > 0 ? all[at - 1] : input.current)?.focus();

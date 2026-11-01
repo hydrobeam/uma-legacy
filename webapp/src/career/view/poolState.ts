@@ -5,6 +5,7 @@ import { batch, computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { settings } from '../../settings.ts';
 import { vets } from '../../veterans/store.ts';
+import { starsOf } from '../../veterans/names.ts';
 import type { VetRecord } from '../../veterans/store.ts';
 
 export type Tab = 'own' | 'bor';
@@ -12,7 +13,7 @@ const tab = signal<Tab>('own'),
   chosen = signal<string | null>(null),
   dialogOpened = signal(false),
   dialogOpen = signal(false),
-  ordered = signal({ by: 'tg', reversed: false });
+  ordered = signal<{ by: VetSort; reversed: boolean }>({ by: 'tg', reversed: false });
 /** the tab on show */
 export const poolTab: ReadonlySignal<Tab> = tab;
 /** the dialog has opened (its cards are drawn from then on) */
@@ -20,18 +21,19 @@ export const opened: ReadonlySignal<boolean> = dialogOpened;
 /** the dialog is open (the pane beside the lists is drawn only then) */
 export const poolOpen: ReadonlySignal<boolean> = dialogOpen;
 /** the list's order: VSORTS' key, reversed or not */
-export const order: ReadonlySignal<{ by: string; reversed: boolean }> = ordered;
+export const order: ReadonlySignal<{ by: VetSort; reversed: boolean }> = ordered;
 /** her tab: Guests (borrowed) or yours */
 export const inTab = (v: VetRecord, t: Tab = tab.peek()) => !!v.borrowed === (t === 'bor');
 // the list's orders: the order added (uma.moe's listings in uma.moe's order), how many targets she carries (the
 // default; ties in the order added), her rank; each starts as the menu says and picking the chosen one again reverses
 // it (as the umas' and cards' sort menus)
-export const VSORTS: Record<string, [string, string, (v: VetRecord, i: number) => number]> = {
+export type VetSort = 'no' | 'tg' | 'rank';
+export const VSORTS: Record<VetSort, [string, string, (v: VetRecord, i: number) => number]> = {
   no: ['Added', 'In the order they were added to this page (uma.moe’s: in its own order)', (_v, i) => -i],
   tg: [
     'Targets',
     'The most targets she carries first',
-    (v) => settings.value.targets.filter((t) => (v.sparks as Record<number, number>)?.[t.group] > 0).length,
+    (v) => settings.value.targets.filter((t) => starsOf(v.sparks, t.group) > 0).length,
   ],
   rank: ['Rank', 'The highest career rank first', (v) => v.rank || 0],
 };
@@ -86,7 +88,7 @@ export function choose(id: string) {
   chosen.value = id;
 }
 /** an order of the menu: the one in use again reverses it; the one chosen stays, while on show */
-export function setOrder(by: string) {
+export function setOrder(by: VetSort) {
   const now = ordered.peek();
   ordered.value = { by, reversed: by === now.by && !now.reversed };
   chosen.value = selected.peek();
