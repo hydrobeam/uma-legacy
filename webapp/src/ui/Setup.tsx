@@ -9,9 +9,12 @@ import { cardsOwned } from '../cards.js';
 import { mountRoster } from './Roster.tsx';
 import { mountCards } from './Cards.tsx';
 import { mountTargets } from './Targets.tsx';
+import { mountRank, mountScenario } from './Scenario.tsx';
 
 /** `fadeMore`: the roster's and the card list's bottom edge fades while there is more below (the loop page) */
 export function mountSetup({ fadeMore = false } = {}) {
+  mountScenario();
+  mountRank();
   mountRoster(fadeMore);
   mountCards(fadeMore);
   mountTargets();

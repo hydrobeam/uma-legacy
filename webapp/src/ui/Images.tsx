@@ -84,7 +84,8 @@ export function CardAv({ c, size, titled = true }: { c: Card | null; size: numbe
     </span>
   );
 }
-/** a scenario's logo, else its name on its tint (images.js scenLogo) */
+/** a scenario's logo (the game's title art, img/scen/{id}, drawn whole inside its box), else, without it or when it
+ *  fails, a badge with its name on a light shade of its colour (dark text on the light tint, in either theme) */
 export function ScenLogo({ sc, title }: { sc: { id: number; name: string; tint: string }; title?: string }) {
   const src = srcFor('scen', sc.id),
     [failed, setFailed] = useState(false);

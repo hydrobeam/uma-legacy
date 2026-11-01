@@ -21,6 +21,11 @@ interface RadioPillsProps<V> {
   labelledBy?: string;
   label?: string;
   hidden?: boolean;
+  /** a `data-value` attribute on the group (a check reads the chosen value by it) */
+  dataValue?: string;
+  /** whether the checked pill is also aria-pressed (style.css and the suite's contrast audit select the pills of
+   *  Results and Affinity by it; the lineage rank's, styled by aria-checked, are not) */
+  pressed?: boolean;
   /** shown before the pills, inside the group (a visible label) */
   lead?: ComponentChildren;
   pills: Pill<V>[];
@@ -30,7 +35,7 @@ interface RadioPillsProps<V> {
 const BACK = ['ArrowLeft', 'ArrowUp'],
   ON = ['ArrowRight', 'ArrowDown'];
 export function RadioPills<V extends string | number>(props: RadioPillsProps<V>) {
-  const { tag: Tag = 'div', pills, value, onPick } = props;
+  const { tag: Tag = 'div', pills, value, onPick, pressed = true } = props;
   const step = (e: KeyboardEvent & { currentTarget: HTMLElement }) => {
     const back = BACK.includes(e.key);
     if (!back && !ON.includes(e.key)) return;
@@ -49,6 +54,7 @@ export function RadioPills<V extends string | number>(props: RadioPillsProps<V>)
       aria-labelledby={props.labelledBy}
       aria-label={props.label}
       hidden={props.hidden}
+      data-value={props.dataValue}
       onKeyDown={step}
     >
       {props.lead}
@@ -65,7 +71,7 @@ export function RadioPills<V extends string | number>(props: RadioPillsProps<V>)
             aria-label={p.label}
             title={p.title}
             aria-checked={on}
-            aria-pressed={on}
+            aria-pressed={pressed ? on : undefined}
             tabIndex={on ? 0 : -1}
             onClick={() => {
               if (!on) onPick(p.v);

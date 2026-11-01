@@ -247,6 +247,18 @@ const cycles = [];
 // the shared setup's editors, drawn on both pages (ui/Setup.tsx mounts them)
 const SETUP_MOUNTS = [
   [
+    'scen-dd',
+    'src/ui/Scenario.tsx',
+    ['x-scen-l', 'x-scen', 'scen-menu'],
+    ['scenpick', 'stile', 'ssub', 'sgolds', 'sgold'],
+  ],
+  [
+    'rank-ctl',
+    'src/ui/Scenario.tsx',
+    ['rank-l', 'rank-q', 'rank-note', 'rank'],
+    ['rankseg', 'rk', 'rkdash', 'rtab', 'rfoot'],
+  ],
+  [
     'umas-panel',
     'src/ui/Roster.tsx',
     ['h-roster', 'r-all', 'r-none', 'r-file', 'r-count', 'r-filter', 'rs', 'rs-dd', 'rs-menu', 'r-msg', 'roster'],

@@ -169,32 +169,3 @@ export function cardAv(c, size, titled = true) {
   }
   return tile;
 }
-// scenario logo (game title art, img/scen/{id}; drawn whole inside its box, aspect kept); without it, or if it fails
-// to load, a badge with the scenario's name on a light shade of its colour
-/** @param {import('./data.js').Scenario} sc @returns {HTMLSpanElement} */
-export function scenLogo(sc) {
-  const logo = document.createElement('span');
-  logo.className = 'slogo';
-  logo.setAttribute('aria-hidden', 'true');
-  const badge = () => {
-    logo.classList.remove('art');
-    logo.textContent = '';
-    const name = document.createElement('b');
-    name.textContent = sc.name;
-    name.style.background = sc.tint;
-    name.style.color = '#18202e'; // dark text on the light tint, in either theme
-    logo.appendChild(name);
-  };
-  const src = srcFor('scen', sc.id);
-  if (!src) {
-    badge();
-    return logo;
-  }
-  const image = new Image();
-  image.alt = '';
-  image.onerror = badge;
-  image.src = src;
-  logo.classList.add('art');
-  logo.appendChild(image);
-  return logo;
-}

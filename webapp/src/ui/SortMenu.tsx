@@ -13,7 +13,7 @@ import { must } from '../must.ts';
 // to `button`. Escape is taken in the capture phase (before a dialog the menu sits in takes it) and goes no further.
 // (The listeners exist only while open. The opening click is on the button, which counts as inside, so attaching them
 // in a layout effect, inside that click's dispatch, cannot close the menu at once.)
-function useDropdown(
+export function useDropdown(
   open: boolean,
   close: () => void,
   button: RefObject<HTMLElement | null>,
@@ -41,7 +41,7 @@ function useDropdown(
   }, [open, close, button, inside]);
 }
 // on open: the focus to the checked item, else the first
-function useFocusChecked(open: boolean, menu: RefObject<HTMLElement | null>) {
+export function useFocusChecked(open: boolean, menu: RefObject<HTMLElement | null>) {
   useLayoutEffect(() => {
     if (!open) return;
     const items = must(menu.current, 'the menu is mounted');
@@ -66,7 +66,7 @@ export function menuKeys(e: KeyboardEvent & { currentTarget: HTMLElement }, colu
   all[grid ? Math.max(0, Math.min(all.length - 1, to)) : (to + all.length) % all.length].focus();
 }
 // ArrowDown or ArrowUp on a closed menu's button opens it
-const opensOnArrow = (open: boolean, setOpen: (open: boolean) => void) => (e: KeyboardEvent) => {
+export const opensOnArrow = (open: boolean, setOpen: (open: boolean) => void) => (e: KeyboardEvent) => {
   if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
     e.preventDefault();
     setOpen(true);
