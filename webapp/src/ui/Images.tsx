@@ -1,9 +1,7 @@
-// ---------- the component twins of images.ts's element builders: portraits, card art, skill icons, the runner ----------
-// Each draws the markup its element builder draws (images.ts says what each is), for the views that are components.
-// The builders stay for the views that are not yet: images.ts is shared with the career page, whose bundle has no
-// Preact, so a builder can't render its twin. Each twin names its builder and each builder its twin: an edit to one
-// goes to the other, until step 8c drops the builders. A twin that keeps state (an image that fails) is keyed by its
-// subject at the call site, so a reused one never shows the last subject's state.
+// ---------- portraits, card art, skill icons, the runner (their files: images.ts) ----------
+// Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near
+// the view. One that keeps state (an image that fails) is keyed by its subject at the call site, so a reused one never
+// shows the last subject's state.
 import { useState } from 'preact/hooks';
 import { SKILLICON, SKILLICON_GOLD, gameData } from '../data.ts';
 import type { Card } from '../data.ts';
@@ -21,7 +19,7 @@ interface UmaAvProps {
   /** in the first screenful (the roster's first rows): fetched at once, at high priority, not lazily */
   eager?: boolean;
 }
-/** an uma's portrait (her outfit's, else her own, else a mob's), else her initials on her hue (images.ts umaAv) */
+/** an uma's portrait (her outfit's, else her own, else a mob's), else her initials on her hue */
 export function UmaAv({ uma, outfit, size, cls, label, title, eager = false }: UmaAvProps) {
   const id = uma ?? 0;
   const tries = [outfit && srcFor('outfit', outfit), srcFor('uma', id), srcFor('mob', id)].filter(
@@ -52,7 +50,7 @@ export function UmaAv({ uma, outfit, size, cls, label, title, eager = false }: U
     </span>
   );
 }
-/** a card's art with its type's icon, else its type in letters (images.ts cardAv); `titled`: its own hover names */
+/** a card's art with its type's icon, else its type in letters; `titled`: its own hover names */
 export function CardAv({ c, size, titled = true }: { c: Card | null; size: number; titled?: boolean }) {
   const kind: string = c?.kind || 'other',
     src = c && srcFor('card', c.id),
@@ -105,12 +103,12 @@ export function Grade({ g }: { g: number }) {
     letter = 'GFEDCBAS'[g - 1] || '?';
   return src ? <img class="udg" src={src} alt={letter} /> : <b class={`udg txt g${letter}`}>{letter}</b>;
 }
-/** a skill's icon (its gold's: `gold`), or nothing when the page has none (images.ts skillIcon) */
+/** a skill's icon (its gold's: `gold`), or nothing when the page has none */
 export function SkillIcon({ group, gold = false }: { group: number; gold?: boolean }) {
   const src = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]);
   return src ? <img class="sic" alt="" loading="lazy" src={src} /> : null;
 }
-/** the runner while a search works, else a spinner (images.ts runnerHTML); its stride starts in phase with the clock
+/** the runner while a search works, else a spinner; its stride starts in phase with the clock
  *  when it appears, and it stays the same element while the status line around it changes */
 export function Runner() {
   const [at] = useState(() => performance.now()),

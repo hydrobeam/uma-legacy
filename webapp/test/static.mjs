@@ -2,7 +2,7 @@
 // going stale.
 // - dead CSS: a class or id in style.css's selectors that no page script, template or build.py names (as a whole word,
 //   HTML entities aside). A name the code builds from parts is listed in BUILT with where it is built.
-// - dead exports: an export of src/ that no other file (src/, test/ and its folders) names.
+// - dead exports: an export of src/ that no other file (src/, test/ and its folders) names outside a comment.
 // - stale storage writes: `localStorage.setItem(key, JSON.stringify(x))` where `x` was not read or built in the same
 //   function after its last await. A copy read earlier (at load, or before a request) overwrites what another tab or
 //   call stored meanwhile; read what is stored, change your part, write it.
@@ -84,12 +84,15 @@ const problems = [];
 }
 
 // ---------- dead exports
+// (a name in a comment is no use: `// ...` to the line's end, unless it follows a quote, a colon or a word character as in
+// a URL, and `/* ... */`)
+const uncommented = (text) => text.replace(/\/\*[\s\S]*?\*\/|(?<![:'"`\w])\/\/.*$/gm, '');
 {
   const others = [...sources, ...ls('test', /\.(mjs|ts)$/, true).map((f) => [f, read(f)])];
   for (const [file, text] of sources.filter(([f]) => f.startsWith('src')))
     for (const [, name] of text.matchAll(/^export (?:async )?(?:const|let|function\*?|class) ([A-Za-z_$][\w$]*)/gm)) {
       const re = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`);
-      if (!others.some(([f, t]) => f !== file && re.test(t)))
+      if (!others.some(([f, t]) => f !== file && re.test(uncommented(t))))
         problems.push(`${file}: export ${name} is used by no other file (unexport it, or delete it)`);
     }
 }

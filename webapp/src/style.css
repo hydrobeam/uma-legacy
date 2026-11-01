@@ -302,20 +302,18 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; display: inline-block; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
-/* the runner in place of the spinner (images.ts runnerHTML): her strip of 18 frames stepped by CSS, 0.6 s a loop as in
-   the game; 30 px in a status line (overhanging its row a little), 96 px in the analysis frame; held on her first
-   frame for reduced motion */
+/* the runner in place of the spinner (ui/Images.tsx Runner): her strip of 18 frames stepped by CSS, 0.6 s a loop as in
+   the game; 30 px in a status line (overhanging its row a little); held on her first frame for reduced motion */
 .runner { --s: 30px; display: inline-block; flex: none; width: var(--s); height: var(--s); margin: -7px 0 -5px; vertical-align: middle;
   background: 0 0 / auto 100% no-repeat; animation: runner .6s steps(18) infinite; }   /* the strip: background-image, set on the element (a url() in a custom property resolves against the stylesheet) */
-.runner.big { --s: 96px; margin: 0; }
 @keyframes runner { to { background-position: calc(-18 * var(--s)) 0; } }
 @media (prefers-reduced-motion: reduce) { .runner { animation: none; } }
-/* a portrait's size and its initials' font size: images.ts sets --s and --fs inline (umaAv); a context resizes it with an
+/* a portrait's size and its initials' font size: ui/Images.tsx sets --s and --fs inline (UmaAv); a context resizes it with an
    ordinary rule */
 .av { width: var(--s); height: var(--s); font-size: var(--fs); display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle;
   outline: 1px solid var(--img-edge); outline-offset: 0;   /* a faint edge just outside the portrait */ }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
-/* a card tile's size and its type label's font size, likewise (cardAv) */
+/* a card tile's size and its type label's font size, likewise (CardAv) */
 .cav { width: var(--s); height: var(--s); font-size: var(--fs); display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cav .ctype { position: absolute; top: 0; right: 3%; width: 26.4%; aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; }

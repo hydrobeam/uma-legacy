@@ -17,7 +17,7 @@
 //   options.ts         the options table's figures and words ("Other careers": the plan's careers, Use this)
 //   view/RunNote.tsx   the status line
 //   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
-//   view/NodeDialog.tsx  the tree's node popup, and the veterans dialog's pane (VeteranView)
+//   view/NodeDialog.tsx  the tree's node popup, and the veterans dialog's pane (VetPane)
 //   view/ParentPicker.tsx  the parent picker
 //   view/Sections.tsx  the career's sections in the tree: odds, deck and its popup, schedule, targets, counts
 //   view/Setup.tsx     the Borrowed parent choice, and the setup panel's fold and summary

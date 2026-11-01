@@ -164,7 +164,7 @@ function veteranTitle(id: string) {
 }
 /** A veteran of yours (the popup, the pane beside the pool's list): her face, name, targets carried, wins, where she
  *  came from; Yours / Guest and Remove; her sparks and her parents'; her parents' faces and G1 wins. */
-export function VeteranView({ id }: { id: string }) {
+function VeteranView({ id }: { id: string }) {
   const i = idxOf(id),
     v: VetRecord | undefined = vets.value[i];
   if (!v) return null;
