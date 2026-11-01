@@ -23,8 +23,9 @@ recomputed from the job and data.json alone, beside the solver's Rust:
   then the expectation over the deck by inclusion-exclusion; within 1e-3 of the reported P(all), as joint_check holds
   the loop planner's (within 1e-12 where the report says 0).
 
-The constants are typed in from the solver (src/skills.rs GEN_GOLD, GEN_WHITE and INSP_PER_STAR, src/skills.rs
-GP_RATE 1), not read from its outputs; the own-event chances and outfit levels come from the report.
+The constants are the solver's own (`loopopt constants`: gen_gold, gen_white and insp_per_star, src/skills.rs), not read
+from its outputs, and grandparents count at the full rate (src/skills.rs GP_RATE 1, typed in); the own-event chances
+and outfit levels come from the report.
 
 usage: uv run val/career_check.py [TAG]   (default TAG ref: val/TAG__ERA__NAME.out for val/jobs.json's career jobs,
   val/plan/TAG__NAME.out for val/plan/jobs.json); exits 1 on a disagreement"""
@@ -38,12 +39,14 @@ import sys
 from typing import NamedTuple
 
 import joint_check
+import solver
 from solver import read_output
 
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(VALIDATION_DIR)
-GEN_GOLD, GEN_WHITE = 0.4 * 1.771561, 0.2 * 1.771561
-INSPIRATION_PER_STAR = 0.03
+GEN_GOLD, GEN_WHITE, INSPIRATION_PER_STAR = (
+    solver.constants()[key] for key in ("gen_gold", "gen_white", "insp_per_star")
+)
 EXACT = 1e-9  # identities: equal up to rounding (relative)
 ABSOLUTE = 1e-12  # ... and at zero
 JOINT = 1e-3  # the joint recomputation, as val/joint_check.py holds the loop planner's

@@ -4,6 +4,8 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": ["src/worker.ts", "test/**/*.{mjs,ts}", "*.mjs", "chibi/*.mjs"],
   "project": ["src/**/*.{ts,tsx}", "test/**/*.{mjs,ts}", "vite/**/*.mjs", "*.mjs", "chibi/*.mjs"],
+  // the model constants generated for the page (pkg/loopopt/src/ts_gen.rs), whether or not a module reads them yet
+  "ignore": ["src/gen/constants.ts"],
   "rules": {
     // exported types and interfaces stay unchecked, as before knip (24 are used only in their own module)
     "types": "off"

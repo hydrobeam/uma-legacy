@@ -15,6 +15,7 @@
   },
   "formatter": {
     "enabled": true,
+    "includes": ["**", "!src/gen/**"],
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 120,

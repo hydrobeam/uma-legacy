@@ -40,7 +40,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/chart.rs` | Race/member labels and structured schedule charts (`chart_rows`) |
 | `src/skills.rs` | The skill-target model (`Model`), outfit choices and lineage inheritance probabilities (`lins`) |
 | `src/tests.rs` | Affinity-core tests against independent fixtures and model invariants |
-| `src/ts_gen.rs` | The page's TypeScript types of every reply and job, generated from the structs below (`./build.sh types`; docs/BUILD.md, *Generated types*) |
+| `src/ts_gen.rs` | The page's TypeScript types of every reply and job, generated from the structs below, and its copy of the model constants (a test: `BLESS=1 cargo test --lib ts_gen` writes them; docs/BUILD.md, *Generated types*) |
 | `src/loop_planner/mod.rs` | The loop planner: a deck job's path through its children |
 | `src/loop_planner/dominance.rs` | Dominance signatures, `DominanceIndex`, `k_filter`, candidate decks (`DeckEval`) and odds clusters |
 | `src/loop_planner/job.rs` | Deck-job setup and the nondominated deck frontier (`run_deck`) |
@@ -195,8 +195,8 @@ uv run export/add_pb.py target/release/loopopt data/global/data.json
 The CLI (`src/cli.rs`, clap; `loopopt --help`) runs `"mode":"deck"` and `"mode":"career"` job files (below); `loopopt
 pbtable data.json` prints the pairwise-ceiling table `export/add_pb.py` merges in, and `loopopt constants` the model
 constants a script reads, as one JSON object read from the solver's own constants (`src/constants.rs`): `chain_n`,
-`chain_a`, `chain_b`, `chain_stop_share` ([k, n]), `exact_builders_targets`, `ceil_share`, `lam_decay` and
-`default_star_mix` (a job's default `star_dist`). A file it cannot read or parse, or a job file without a known
+`chain_a`, `chain_b`, `chain_stop_share` ([k, n]), `exact_builders_targets`, `ceil_share`, `lam_decay`,
+`default_star_mix` (a job's default `star_dist`), `gen_gold`, `gen_white` and `insp_per_star`. A file it cannot read or parse, or a job file without a known
 `mode`, is an error naming the file (exit 2). The wasm interface (`src/web.rs`) loads an era's data
 through its `init` export and runs `cmd` requests through `call`: `deck`, `career`, `state_out`, `state_in`.
 

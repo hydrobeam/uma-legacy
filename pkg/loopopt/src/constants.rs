@@ -1,10 +1,10 @@
 //! The model constants scripts read, printed as JSON by the native `loopopt constants`: each field is the constant the
 //! solver itself uses (read here, never a copy), so a script that takes them from this command cannot drift from the
-//! build. Native only; the page reads none of them.
+//! build. Native only; the page's copy is generated from it (`webapp/src/gen/constants.ts`, `crate::ts_gen`).
 use serde::Serialize;
 
 /// The model constants `loopopt constants` prints.
-#[derive(Serialize)]
+#[derive(Serialize, ts_rs::TS)]
 pub(crate) struct SolverConstants {
     /// chain events per run: Binomial(`chain_n`, p) with logit p = `chain_a` + `chain_b` x pals (deck/chains.rs)
     chain_n: u32,
@@ -21,6 +21,11 @@ pub(crate) struct SolverConstants {
     /// a job's default 1/2/3-star shares of its lineage's sparks (`SkillJob::star_dist`, skills.rs `dstar`): the
     /// page's below-17,500-rank mix
     default_star_mix: [f64; 3],
+    /// a gold / white skill's chance to become a spark on the veteran when all six ancestors carry it (skills.rs)
+    gen_gold: f64,
+    gen_white: f64,
+    /// one inspiration's base chance per spark star (skills.rs)
+    insp_per_star: f64,
 }
 
 impl SolverConstants {
@@ -36,6 +41,9 @@ impl SolverConstants {
             ceil_share: crate::career::CEIL_SHARE,
             lam_decay: crate::career::LAM_DECAY,
             default_star_mix: crate::skills::dstar(),
+            gen_gold: crate::skills::GEN_GOLD,
+            gen_white: crate::skills::GEN_WHITE,
+            insp_per_star: crate::skills::INSP_PER_STAR,
         }
     }
 }
