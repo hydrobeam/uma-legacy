@@ -14,6 +14,11 @@
       "test/**/*.ts"
     ]
   },
+  "tailwind": {
+    "stylesheet": "./src/styles/app.css",
+    "mergeFunctions": ["cx"],
+    "variantFunctions": ["variants"]
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -42,7 +47,14 @@
         "useJsxKeyInIterable": "error"
       },
       "nursery": {
-        "noFloatingPromises": "info"
+        "noFloatingPromises": "info",
+        "useTailwindSortedClasses": "error",
+        "useTailwindShorthandClasses": "error",
+        "useTailwindStaticClassStrings": "error",
+        "noTailwindRawColors": "error",
+        "noTailwindArbitraryValue": { "level": "error", "options": { "allowedCategories": ["layout"] } },
+        "noTailwindLegacyUtilities": "error",
+        "noTailwindRestyledComponents": "error"
       },
       "style": {
         "noNonNullAssertion": "error",
@@ -220,6 +232,35 @@
         "rules": {
           "performance": {
             "useDomNodeTextContent": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/career/analysis/Details.tsx",
+        "src/career/analysis/view.tsx",
+        "src/career/view/ParentPicker.tsx",
+        "src/career/view/Sections.tsx",
+        "src/career/view/SkillDetails.tsx",
+        "src/career/view/Tree.tsx",
+        "src/loop/Results.tsx",
+        "src/ui/Agenda.tsx",
+        "src/ui/CardPop.tsx",
+        "src/ui/Images.tsx",
+        "src/ui/InspView.tsx",
+        "src/ui/Scenario.tsx",
+        "src/ui/Schedule.tsx",
+        "src/ui/Sparks.tsx",
+        "src/ui/TargetTile.tsx",
+        "src/ui/VetCell.tsx",
+        "src/veterans/Editors.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "useTailwindStaticClassStrings": "off",
+            "useTailwindSortedClasses": "off"
           }
         }
       }
