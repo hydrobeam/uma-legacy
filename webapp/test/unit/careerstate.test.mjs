@@ -320,3 +320,15 @@ test('each two-signal transition is one batch: an effect on both signals runs on
   const kept = made();
   once('a kept answer drawn again: the answer and the run view', [answer, runView], () => showKeptAnswer(kept));
 });
+
+// the step after the last variant brings no pair search (`pairs: null`, the solver's lost-pairs case): the check stops
+// there, judged from the plan's current record (its own write replaced the one it started from)
+test('a check whose pair search brings nothing stops after one more job, not in a loop', async () => {
+  showAnswer(made(), WHERE);
+  const replies = Array.from({ length: 10 }, () => check(0));
+  const { seen, deps } = fakes(replies);
+  await checkPhase(deps, answer.value.planState);
+  assert.equal(seen.jobs.length, 2, 'the last variant, then one step that brought no pairs');
+  assert.deepEqual(answer.value.planState.r.robust, check(0));
+  assert.equal(answer.value.planState.r.check_unavailable, undefined);
+});
