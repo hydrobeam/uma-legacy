@@ -8,7 +8,7 @@ import type { ReadonlySignal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { YEARS, TABLE_PAIRS, gradeCode, shownP, slotOf, tableFigure, turnLabel, why } from '../agenda.ts';
-import type { ScheduleCell, ScheduleRow } from '../agenda.ts';
+import type { ScheduleCell, ScheduleRow } from '../solver.ts';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
 import type { DeepReadonly } from '../store.ts';

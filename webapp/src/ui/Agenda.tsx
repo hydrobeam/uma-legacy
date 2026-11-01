@@ -5,7 +5,8 @@
 import type { Ref, VNode } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { MONTHS, YEARS, bannerSrc, shownP, slotLabel, turnName, why } from '../agenda.ts';
-import type { ScheduleCell, WinInfo } from '../agenda.ts';
+import type { WinInfo } from '../agenda.ts';
+import type { ScheduleCell } from '../solver.ts';
 import { must } from '../must.ts';
 
 // April to June before the career, 4 cells a month (Early, Early, Late, Late)

@@ -1,7 +1,7 @@
 // ---------- the loop page's types: the solver's loop report as the page reads it, and the status line's record ----------
 // Types only (no values), shared by the page's model, store, run machine and views; the report's fields are the
 // solver's (loop_planner/search/report.rs, deck/pdeck.rs).
-import type { ScheduleRow } from '../agenda.ts';
+import type { ScheduleRow } from '../solver.ts';
 
 /**
  * A deck in a result (the solver's `PDeck::out`, deck/pdeck.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or

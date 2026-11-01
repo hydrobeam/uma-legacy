@@ -18,7 +18,7 @@ import { fitSparks } from '../../details.ts';
 import { must } from '../../must.ts';
 import { Runner, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
-import type { ScheduleCell } from '../../agenda.ts';
+import type { ScheduleCell } from '../../solver.ts';
 import { scheduledRaces, rolledOutcome } from '../roll.ts';
 import type { Roll, RollSetup } from '../roll.ts';
 import { answer, runView, searching as runSearching } from '../state.ts';
