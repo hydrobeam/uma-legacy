@@ -976,13 +976,8 @@ mod tests {
             }
             p
         };
-        let mut s = 0x9e37_79b9_7f4a_7c15_u64;
-        let mut rnd = || {
-            s ^= s << 13;
-            s ^= s >> 7;
-            s ^= s << 17;
-            (s >> 11) as f64 / (1u64 << 53) as f64
-        };
+        let mut rng = crate::rng::XorShift64(0x9e37_79b9_7f4a_7c15);
+        let mut rnd = || rng.unif();
         let odd = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.0, 0.0, 1.0, 1e-300];
         for it in 0..20000 {
             let n = (rnd() * 40.0) as usize;

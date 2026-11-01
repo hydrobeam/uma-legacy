@@ -133,6 +133,7 @@ mod hex;
 mod loop_planner;
 mod refusal;
 mod request;
+mod rng;
 mod schedule;
 #[cfg(test)]
 mod tests;
