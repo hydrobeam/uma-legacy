@@ -35,7 +35,6 @@
 !/webapp/panels.template.html
 !/webapp/src/
 !/webapp/test/
-!/webapp/worker.template.js
 !/webapp/example.mjs
 !/webapp/example.json
 !/webapp/nodebench.mjs
@@ -52,6 +51,7 @@
 !/webapp/biome.json
 !/webapp/tsconfig.json
 !/webapp/tsconfig.js.json
+!/webapp/tsconfig.worker.json
 !/val/
 /val/*
 !/val/runval.py

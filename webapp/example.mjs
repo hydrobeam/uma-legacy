@@ -14,7 +14,7 @@ const solver = instance.exports;
 const encoder = new TextEncoder(),
   decoder = new TextDecoder();
 // one solver call (`entry`: init or call): the request's JSON copied into the solver's memory, its JSON answer read back
-// (worker.template.js)
+// (src/worker.ts)
 function call(request, entry = solver.call) {
   const bytes = encoder.encode(JSON.stringify(request));
   const at = solver.alloc(bytes.length);

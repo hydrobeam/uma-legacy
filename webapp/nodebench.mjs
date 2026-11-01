@@ -18,7 +18,7 @@ const { instance } = await WebAssembly.instantiate(fs.readFileSync(wasmPath), {
 });
 const solver = instance.exports;
 // one solver call (`entry`: init or call): the request's JSON copied into the solver's memory, its JSON answer read back
-// (worker.template.js)
+// (src/worker.ts)
 function call(request, entry = solver.call) {
   const bytes = encoder.encode(JSON.stringify(request));
   const at = solver.alloc(bytes.length);

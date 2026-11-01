@@ -361,7 +361,7 @@ global_factors = json.load(open(os.path.join(GLOBAL_DATA, "career.json")))["fact
 global_era = era(GLOBAL_DATA, "card_events.json")
 gm_era = era(JP_DATA, "card_events.json")  # GM era: pal first-year date events left out, as in Global
 # the page scripts: src/main.js, src/career.js and the modules they import, each bundled into one minified IIFE (esbuild
-# from node_modules: npm ci); also the solver's worker script, worker.template.js, minified and wrapped the same way
+# from node_modules: npm ci); also the solver's worker script, src/worker.ts, minified and wrapped the same way
 # (JSX compiles to Preact's jsx() calls, imported from preact/jsx-runtime)
 ESBUILD = os.path.join(HERE, "node_modules", ".bin", "esbuild")
 if not os.path.exists(ESBUILD):
@@ -453,7 +453,7 @@ ASSETS = {
     "dataGm": fingerprint("data-gm.json", gm_ui),
     "img": image_catalog.base,
     # the solver's worker (engine.js `new Worker(ASSETS.worker)`)
-    "worker": fingerprint("worker.js", bundle("worker.template.js")),
+    "worker": fingerprint("worker.js", bundle("src/worker.ts")),
 }
 # fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
 # it (its own @font-face rule; the woff2 only, fingerprinted); anything else (symbols, the JP era's untranslated names)

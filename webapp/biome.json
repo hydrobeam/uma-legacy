@@ -8,7 +8,6 @@
       "src/**/*.tsx",
       "*.mjs",
       "chibi/*.mjs",
-      "worker.template.js",
       "test/**/*.mjs",
       "test/**/*.ts"
     ]

@@ -182,8 +182,8 @@ const reports = [];
 // layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page
 // (frontend.md §2: an error from the career split on; a report until then)
 const LAYERS = [
-  ['types', ['globals.d', 'must']],
-  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog']],
+  ['types', ['globals.d', 'must', 'solver']],
+  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker']],
   ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll']],
   ['stores', ['settings', 'state', 'save', 'vets']],
   ['shared', null], // every module not named elsewhere

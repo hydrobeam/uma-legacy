@@ -26,7 +26,8 @@ js=$(staged 'webapp/*.js' 'webapp/*.mjs' 'webapp/*.ts' 'webapp/*.tsx' | sed 's#^
 if [ -n "$js" ]; then
   # shellcheck disable=SC2086 # as above
   (cd "$root/webapp" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn --no-errors-on-unmatched $js \
-    && npx --no-install tsc -p . && npx --no-install tsc -p tsconfig.js.json) || fail 'Biome or tsc (above; npx biome format --write in webapp fixes formatting)'
+    && npx --no-install tsc -p . && npx --no-install tsc -p tsconfig.js.json \
+    && npx --no-install tsc -p tsconfig.worker.json) || fail 'Biome or tsc (above; npx biome format --write in webapp fixes formatting)'
 fi
 
 if [ -n "$(staged 'webapp/src/*' 'webapp/*.template.*' 'webapp/build.py')" ]; then
