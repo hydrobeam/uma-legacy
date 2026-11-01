@@ -3,12 +3,13 @@
 // or a keystroke changes the attributes it moves and redraws no tile; the list redraws only when its order changes.
 // Drawn into the template's #umas-panel (`mountRoster`).
 import { computed, signal, useComputed } from '@preact/signals';
-import { Fragment, render } from 'preact';
+import { Fragment } from 'preact';
+import { renderGuarded } from './RenderGuard.tsx';
 import { useRef } from 'preact/hooks';
 import { $ } from '../dom.js';
 import { gameData } from '../data.js';
 import type { Outfit, Uma } from '../data.js';
-import { fields } from '../settings.ts';
+import { fields, settings } from '../settings.ts';
 import { ownAllUmas, ownNoUmas, rosterCounts, tileOutfits, tileState, toggleTile } from '../roster.js';
 import { UmaAv } from './Images.tsx';
 import { OwnedImport, useSaid } from './OwnedImport.tsx';
@@ -115,5 +116,5 @@ function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
 }
 /** the Umas panel into its mount point; `fadeMore`: the list's bottom edge fades while there is more below */
 export function mountRoster(fadeMore: boolean) {
-  render(<RosterPanel fadeMore={fadeMore} />, $('umas-panel'));
+  renderGuarded(<RosterPanel fadeMore={fadeMore} />, $('umas-panel'), 'The Umas panel', settings);
 }

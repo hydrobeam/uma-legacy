@@ -301,3 +301,57 @@ test("a draft set, or her parents set, is the store's own copy: the caller's obj
   assert.ok(Object.isFrozen(vs.draft.peek().parents[0]));
   vs.setDraft(null);
 });
+
+// review-10 2's surviving sabotages: each of these fails when its store line is undone
+test('saves: a chosen uma.moe listing is saved; the hidden page saves at once; an at-once save writes the choice it makes', () => {
+  // a listing chosen as a parent is saved with the places (the place keeps her); the others are not
+  const page = fresh();
+  vs.setListings([vet('u1', { src: 'umamoe', borrowed: true }), vet('u2', { src: 'umamoe', borrowed: true })]);
+  vs.setParent(1, 'u1', true);
+  page.frame();
+  assert.deepEqual(
+    page.saved()[ERA].vets.map((v) => v.id),
+    ['a', 'b', 'c', 'u1'],
+    'the chosen listing saved, the other not',
+  );
+  // hidden (the tab in the background, a close coming): saved before any frame
+  const hidden = fresh();
+  hidden.host.isHidden = true;
+  vs.editVet('b', () => ({ sparks: { 7: 3 } }));
+  assert.deepEqual(hidden.saved()[ERA].vets[1].sparks, { 7: 3 }, 'hidden: saved at once, no frame');
+  // an at-once save (the places handed back) writes the record it makes: the choice cleared, not the one before
+  const chosen = fresh();
+  vs.setChosen({ places: '{}', id: 'x', setup: '' });
+  chosen.frame();
+  assert.equal(chosen.saved()[ERA].chosen?.id, 'x', 'the choice saved');
+  vs.handBackPlaces();
+  assert.equal(chosen.saved()[ERA].chosen, null, 'handed back: the choice cleared in the save, at once');
+});
+
+test('ids given twice (a malformed file or save): the first kept, so an edit and Remove find one record (review-10 5)', () => {
+  const warned = [],
+    warn = console.warn;
+  console.warn = (text) => warned.push(text);
+  try {
+    fresh({
+      vets: [vet('a'), vet('a', { sparks: { 7: 3 } }), vet('b')],
+      plan: { trainee: null, parents: [null, null] },
+    });
+    assert.deepEqual(ids(), ['a', 'b'], 'loaded once each');
+    assert.equal(vs.vetById('a').sparks[7], 1, 'the first kept');
+    vs.importVets([vet('n'), vet('n', { sparks: { 7: 2 } })]);
+    assert.deepEqual(ids(), ['a', 'b', 'n'], 'an import holding one twice adds her once');
+    vs.editVet('n', () => ({ sparks: { 7: 3 } }));
+    vs.removeVet('a');
+    assert.deepEqual(
+      vs.vets.peek().map((v) => [v.id, v.sparks[7]]),
+      [
+        ['b', 1],
+        ['n', 3],
+      ],
+    );
+    assert.equal(warned.length, 2, 'each logged');
+  } finally {
+    console.warn = warn;
+  }
+});

@@ -3,19 +3,21 @@
 import { useRef } from 'preact/hooks';
 import { fmtIn } from '../../dom.js';
 import { settings } from '../../settings.ts';
-import { srcFor, skillIcon as skillIconEl } from '../../images.js'; // (Skill Details' icon: its dialog is el()-built)
+import { srcFor } from '../../images.js';
 import { scenarioOf } from '../../scenario.js';
 import { popOpener } from '../../popover.js';
-import { openSched } from '../../agenda.js';
 import { pct, deckHint } from '../../odds.js';
 import { vets } from '../../veterans/store.ts';
-import { deckCardAt, openSkill } from '../../details.js';
+import { deckCardAt } from '../../details.js';
 import { cardTitle, borLast, chainEndNote } from '../../cards.js';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { shown } from '../job.js';
 import { tName, tableRows } from './parts.js';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
+import { Guard } from './Guard.tsx';
+import { openSkill } from './SkillDetails.tsx';
+import { openSched } from '../../ui/Schedule.tsx';
 
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
@@ -114,9 +116,11 @@ export function DeckDialog() {
           <div class="gmdbody">
             <div class="deck" id="tree-deck">
               <div class="dcards">
-                {borLast([...r.deck.cards]).map((i: number) => (
-                  <DeckCard key={`${i}:${r.deck.cards[i]}`} r={r} i={i} />
-                ))}
+                <Guard what="The deck popup">
+                  {borLast([...r.deck.cards]).map((i: number) => (
+                    <DeckCard key={`${i}:${r.deck.cards[i]}`} r={r} i={i} />
+                  ))}
+                </Guard>
               </div>
             </div>
           </div>
@@ -131,7 +135,6 @@ export function DeckDialog() {
   );
 }
 /** whether a deck card is this module's (popover.js leaves its markup alone) */
-export const drawnCard = (chip: HTMLElement) => !!chip.closest('#deck-dlg');
 
 // the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
 function cardsGiving(r: CareerReport, g: number) {
@@ -179,12 +182,7 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
         class="udsk"
         aria-haspopup="dialog"
         aria-label={`${tName(t.group)}: lands ${pct(t.p)}. Where it comes from`}
-        onClick={(e) =>
-          openSkill(
-            { b, name: tName(t.group), icon: () => skillIconEl(t.group, gold), gold, legacies, cards },
-            e.currentTarget,
-          )
-        }
+        onClick={() => openSkill({ b, name: tName(t.group), group: t.group, goldIcon: gold, gold, legacies, cards })}
       >
         <SkillIcon group={t.group} />
         <span class="udskn">{tName(t.group)}</span>

@@ -1,60 +1,61 @@
-// The veterans dialog (Veteran Umamusume): its two tabs (PoolTabs, into #v-tabs), the two tab lists and the pane beside
-// them (PoolBody, into #v-body). Both lists stay mounted once the dialog has opened, the one not on show `hidden`, so a
-// tab switch builds nothing; the list on show is `#vets` (its id moves with the tab). A card is drawn again only when
-// her record, her number, her parent place or the targets change (her card reads the chosen one through a computed of
-// its own, so a selection draws two cards). The order menu (#vs) stays el(): sortmenu.js `wireMenu`.
+// The veterans dialog (Veteran Umamusume): its head (PoolHead, into #v-head: the two tabs and the order menu,
+// ui/SortMenu.tsx), the two tab lists and the pane beside them (PoolBody, into #v-body). Both lists stay mounted once the
+// dialog has opened, the one not on show `hidden`, so a tab switch builds nothing; the list on show is `#vets` (its id
+// moves with the tab); the pane is drawn only while the dialog is open (closed, an edit elsewhere redraws no pane). A
+// card is drawn again only when her record, her number, her parent place or the targets change (her card reads the
+// chosen one through a computed of its own, so a selection draws two cards).
 import { useComputed } from '@preact/signals';
-import { $, el } from '../../dom.js';
 import { settings } from '../../settings.ts';
 import type { Target } from '../../settings.ts';
 import { vets, places } from '../../veterans/store.ts';
 import type { VetRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.js';
-import { wireMenu } from '../../sortmenu.js';
-import { must } from '../../must.ts';
+import { SortMenu } from '../../ui/SortMenu.tsx';
 import { VetCell } from '../../ui/VetCell.tsx';
 import { idxOf } from '../job.js';
 import { openNode } from './dialogs.ts';
 import { VetPane } from './NodeDialog.tsx';
-import { VSORTS, choose, lists, opened, order, poolTab as tab, selected, setOrder, setVTab } from './poolState.ts';
+import {
+  VSORTS,
+  choose,
+  lists,
+  opened,
+  order,
+  poolOpen,
+  poolTab as tab,
+  selected,
+  setOrder,
+  setVTab,
+} from './poolState.ts';
 import type { Tab } from './poolState.ts';
 
 const wideVets = () => matchMedia('(min-width: 760px)').matches;
 
-// ---------- the order menu (el(): the template's #vs and #vs-menu)
-function paintVSort() {
-  const { by, reversed } = order.peek(),
-    arrow = reversed ? '↑' : '↓',
-    b = $('vs');
-  b.textContent = `${VSORTS[by][0]} ${arrow}`;
-  b.title = VSORTS[by][1] + (reversed ? ', reversed' : '');
-  b.setAttribute('aria-label', `${b.textContent}, order veterans`);
-  for (const x of $('vs-menu').querySelectorAll('button')) {
-    const on = x.dataset.k === by;
-    x.setAttribute('aria-checked', String(on));
-    const [name, hint] = VSORTS[must(x.dataset.k, 'a menu item names its key')];
-    x.textContent = name + (on ? ` ${arrow}` : '');
-    x.title = on ? 'Click to reverse' : hint;
-  }
-}
-export function initVSort() {
-  for (const k of Object.keys(VSORTS)) {
-    const x = el('button', '', VSORTS[k][0]);
-    x.type = 'button';
-    x.setAttribute('role', 'menuitemradio');
-    x.dataset.k = k;
-    $('vs-menu').appendChild(x);
-  }
-  wireMenu('vs', (k: string) => {
-    setOrder(k);
-    paintVSort();
-  });
-  paintVSort();
-}
-
 // ---------- the views
+/** the dialog's head: the two tabs, each with its count, and the order menu */
+export function PoolHead() {
+  const { by, reversed } = order.value;
+  return (
+    <>
+      <div class="seg" role="tablist" aria-label="Whose veterans" id="v-tabs">
+        <PoolTabs />
+      </div>
+      <SortMenu
+        id="vs"
+        cls="btn sm"
+        what="order veterans"
+        items={SORT_ITEMS}
+        value={by}
+        arrow={reversed ? '↑' : '↓'}
+        title={VSORTS[by][1] + (reversed ? ', reversed' : '')}
+        onPick={setOrder}
+      />
+    </>
+  );
+}
+const SORT_ITEMS = Object.entries(VSORTS).map(([k, [label, hint]]) => ({ k, label, hint }));
 /** the two tabs, each with its count */
-export function PoolTabs() {
+function PoolTabs() {
   const all = vets.value,
     guests = all.filter((v) => v.borrowed).length;
   const tabs = [
@@ -70,7 +71,7 @@ export function PoolTabs() {
           role="tab"
           id={`v-tab-${t}`}
           aria-selected={tab.value === t}
-          aria-controls="vets"
+          aria-controls={tab.value === t ? 'vets' : `vets-${t}`}
           title={title}
           onClick={() => setVTab(t)}
         >
@@ -154,9 +155,9 @@ function PoolList({ t }: { t: Tab }) {
     </div>
   );
 }
-/** the lists and the pane beside them (a wide dialog: the one chosen) */
+/** the lists and the pane beside them (a wide dialog: the one chosen; nothing while the dialog is closed) */
 export function PoolBody() {
-  const id = opened.value ? selected.value : null;
+  const id = poolOpen.value ? selected.value : null;
   return (
     <>
       <PoolList t="own" />

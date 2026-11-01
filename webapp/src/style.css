@@ -1952,6 +1952,7 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .gmdcard { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .gmdcards li > b { font-size: 0.8rem; white-space: nowrap; }
 /* popups whose body can run long (uma.moe's list, Try a run's card): the body scrolls inside the window */
+#um-root { display: contents; }   /* (its button is a flex item of the title row) */
 .umdlg, .simdlg { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
 .simdlg { width: min(960px, calc(100vw - 24px)); }
 .dlgscroll { max-height: calc(100dvh - 110px); overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 10px; padding-right: 4px; }

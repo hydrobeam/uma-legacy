@@ -168,6 +168,8 @@ export default async function careerumamoe(b) {
   // one's "Copied" or (a failed copy) her trainer's ID
   await pg.locator('#vets .umcell').nth(0).click();
   await pg.locator('#v-pane button', { hasText: 'Copy ID' }).click();
+  // (the copy is a promise: its answer is drawn after it)
+  await pg.waitForFunction(() => document.querySelector('#v-pane .twho .btn.sm')?.textContent !== 'Copy ID');
   const copied = await pg.locator('#v-pane .twho .btn.sm').textContent();
   await pg.locator('#vets .umcell').nth(1).click();
   const next = await pg.locator('#v-pane .twho .btn.sm').textContent();

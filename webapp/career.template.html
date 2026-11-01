@@ -56,7 +56,7 @@ __PANEL_ENH__
     <div class="rbtitle">
       <h2 id="h-lin">Next career</h2>
       <div class="lodds" id="lodds"></div>
-      <button class="btn" type="button" id="um-open" aria-haspopup="dialog" title="Veterans other players list on uma.moe join your pool as borrows" hidden>Borrow from uma.moe</button>
+      <span id="um-root"></span>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
     </div>
     <div class="lineup" id="tree"></div>
@@ -66,11 +66,7 @@ __PANEL_ENH__
 </div>
 
 <dialog id="set-vets" class="setdlg vetdlg" aria-labelledby="h-vets"><div class="dlg"><div class="row between dhead"><h3 id="h-vets">Veteran Umamusume</h3><button class="btn dclose">Done</button></div>
-  <div class="vhead">
-    <div class="seg" role="tablist" aria-label="Whose veterans" id="v-tabs"></div>
-    <div class="sortdd" id="vs-dd"><button class="btn sm" id="vs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Order veterans"></button>
-      <div class="sortmenu" id="vs-menu" role="menu" hidden></div></div>
-  </div>
+  <div class="vhead" id="v-head"></div>
   <div class="vbody" id="v-body"></div>
   <div class="row vtools">
     <label class="btn filebtn" title="umadump (github.com/Werseter/umadump) reads them from the game: trained_chara_data.json for yours, rental_chara_data.json for your borrow list">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
@@ -81,22 +77,7 @@ __PANEL_ENH__
 </div></dialog>
 <dialog id="um-dlg" class="umdlg" aria-labelledby="um-title"><div class="dlg">
   <div class="row between dhead"><h3 id="um-title" title="Veterans other players list on uma.moe join your pool as borrows">uma.moe</h3><button class="btn dclose" type="button">Close</button></div>
-  <div class="dlgscroll">
-    <div id="um-keyrow">
-      <div class="umline"><input type="password" id="um-key" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="uma.moe API key"><button class="btn" type="button" id="um-save">Save</button></div>
-      <span class="hint umerr" id="um-err" role="status" aria-live="polite"></span>
-      <a href="https://uma.moe/settings" target="_blank" rel="noopener">Get a key at uma.moe/settings</a>
-    </div>
-    <div id="um-on" hidden>
-      <div class="umline"><b id="um-msg" role="status" aria-live="polite"></b><button class="btn sm" type="button" id="um-again">Refresh</button></div>
-      <p class="hint" id="um-what"></p>
-      <div class="row between"><label class="umtog" title="Trainers at 1,000 followers: their veterans can't be borrowed by following them"><input type="checkbox" id="um-full"> Include max borrows</label>
-        <div class="sortdd" id="um-sort-dd"><button class="btn sm" id="um-sort" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Order veterans"></button>
-          <div class="sortmenu" id="um-sort-menu" role="menu" hidden></div></div></div>
-      <div class="umgrid" id="um-list"></div>
-      <button class="linkbtn" type="button" id="um-forget">Disconnect</button>
-    </div>
-  </div>
+  <div class="dlgscroll" id="um-body"></div>
 </div></dialog>
 <dialog id="sim-dlg" class="simdlg" aria-labelledby="sim-title"><div class="dlg">
   <div class="row between dhead"><h3 id="sim-title">Try a run</h3><button class="btn dclose" type="button">Close</button></div>
@@ -107,21 +88,10 @@ __PANEL_DLGUMAS____PANEL_DLGCARDS__
 <div id="vpick-root"></div>
 <div id="node-root"></div>
 <div id="deck-root"></div>
-<dialog id="sched-dlg" aria-labelledby="sched-title"><div class="dlg" id="sched-body"></div></dialog>
-<dialog id="pick-dlg" aria-labelledby="pick-title"><div class="dlg">
-  <div class="row between dhead"><h3 id="pick-title">Which uma?</h3><button class="btn dclose">Close</button></div>
-  <input type="search" id="pick-filter" placeholder="Filter by name" aria-label="Filter umas by name">
-  <div class="umapick" id="pick-list"></div>
-</div></dialog>
-<dialog id="ask-dlg" aria-labelledby="ask-title"><div class="dlg">
-  <h3 id="ask-title">Add skills?</h3>
-  <p id="ask-text"></p>
-  <div class="row askrow" id="ask-btns"></div>
-</div></dialog>
-<dialog id="wins-dlg" aria-labelledby="wins-title"><div class="dlg">
-  <div class="row between dhead"><h3 id="wins-title">G1 wins</h3><span class="num" id="wins-count"></span><button class="btn dclose">Done</button></div>
-  <div id="wins-list"></div>
-</div></dialog>
+<div id="skill-root"></div>
+<div id="save-root"></div>
+<dialog id="sched-dlg" aria-labelledby="sched-title"></dialog>
+<div id="vet-editors"></div>
 <dialog id="paste-dlg" aria-labelledby="paste-title"><div class="dlg">
   <div class="row between dhead"><h3 id="paste-title">Paste veterans</h3><button class="btn dclose">Close</button></div>
   <p>The contents of umadump's <code>trained_chara_data.json</code> (yours) or <code>rental_chara_data.json</code> (the veterans you can borrow), the text from this page's Export, or an uma.moe lineage planner export (one veteran with her parents, added after yours). Your veterans merge with those already here (the file's version replaces the same veteran, nothing is removed); a borrow list replaces the earlier one, since it is who lends today; an Export replaces every import. Veterans you made here stay.</p>

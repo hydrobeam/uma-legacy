@@ -11,6 +11,13 @@ class Node {
   get firstChild() {
     return this.childNodes[0] || null;
   }
+  contains(n) {
+    for (let e = n; e; e = e.parentNode) if (e === this) return true;
+    return false;
+  }
+  get parentElement() {
+    return this.parentNode?.nodeType === 1 ? this.parentNode : null;
+  }
   get nextSibling() {
     const p = this.parentNode;
     return p ? p.childNodes[p.childNodes.indexOf(this) + 1] || null : null;
@@ -87,6 +94,9 @@ class Element extends Node {
   removeEventListener(type, f) {
     this.listeners[type] = (this.listeners[type] || []).filter((x) => x !== f);
   }
+  get classList() {
+    return { contains: (c) => this.classes.includes(c) };
+  }
   get classes() {
     return `${this.className || ''} ${this.attributes.class || ''}`.split(/\s+/).filter(Boolean);
   }
@@ -109,7 +119,8 @@ class Element extends Node {
   querySelector(sel) {
     return this.querySelectorAll(sel)[0] || null;
   }
-  closest() {
+  closest(sel) {
+    for (let e = this; e; e = e.parentElement) if (e.matches(sel)) return e;
     return null;
   }
   getBoundingClientRect() {
@@ -118,8 +129,12 @@ class Element extends Node {
   showModal() {
     this.open = true;
   }
+  // as a real dialog: closing an open one fires `close` (at once here; a browser queues it)
   close() {
+    if (!this.open) return;
     this.open = false;
+    const e = { type: 'close', target: this, currentTarget: this };
+    for (const f of this.listeners.close || []) f.call(this, e);
   }
   focus() {
     globalThis.document.activeElement = this;
@@ -141,6 +156,7 @@ const ids = new Map();
 const body = new Element('body');
 globalThis.document = {
   body,
+  documentElement: Object.assign(new Element('html'), { className: 'game' }), // (the planner pages' class)
   activeElement: body,
   visibilityState: 'visible',
   createElement: (name) => new Element(name),
@@ -153,9 +169,20 @@ globalThis.document = {
   },
   querySelectorAll: () => [],
   querySelector: () => null,
-  addEventListener: () => undefined,
-  removeEventListener: () => undefined,
+  // the document's listeners: a test delivers an event to them with `dispatchToDocument` (a click bubbling up, say)
+  listeners: {},
+  addEventListener(type, f) {
+    this.listeners[type] = [...(this.listeners[type] || []), f];
+  },
+  removeEventListener(type, f) {
+    this.listeners[type] = (this.listeners[type] || []).filter((x) => x !== f);
+  },
 };
+/** an event reaching the document's listeners (after the target's own, as a bubbling one does) */
+export function dispatchToDocument(type, fields) {
+  const e = { type, preventDefault: () => undefined, stopPropagation: () => undefined, ...fields };
+  for (const f of globalThis.document.listeners[type] || []) f(e);
+}
 globalThis.Image = class extends Element {
   constructor() {
     super('img');
@@ -163,6 +190,8 @@ globalThis.Image = class extends Element {
 };
 globalThis.CSS = { escape: (s) => s };
 globalThis.requestAnimationFrame = (f) => setTimeout(f, 0);
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
+Object.assign(globalThis, { scrollX: 0, scrollY: 0, innerWidth: 1440, innerHeight: 900 });
 globalThis.matchMedia = () => ({ matches: true, addEventListener: () => undefined });
 globalThis.addEventListener = () => undefined;
 export { Element };

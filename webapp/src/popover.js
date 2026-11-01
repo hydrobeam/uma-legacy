@@ -4,8 +4,8 @@ import { esc } from './dom.js';
 import { gameData } from './data.js';
 import { settings, setOwned } from './settings.ts';
 import { goldGiven } from './job.js';
-import { umaState, paintRoster } from './roster.js';
-import { cardTitle, cardGives, giftsHTML, paintCards, chainEndAt } from './cards.js';
+import { umaState } from './roster.js';
+import { cardTitle, cardGives, giftsHTML, chainEndAt } from './cards.js';
 import { must } from './must.ts';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
@@ -19,23 +19,15 @@ pop.tabIndex = -1;
 must(document.getElementById('rcol'), 'both planner pages have the results column').appendChild(pop);
 /** @type {HTMLElement | null} */
 let popFor = null; // the card or name button whose panel is open
-// An opener drawn by a component (all of the loop page's, initPopover({drawn: true}); the career page's deck popup,
-// initPopover({drawn: predicate})) draws its own aria-expanded from `popOpener`, and its own greying (`off`) from the
-// settings, so nothing here writes into it. Openers built with el() get both written here, as before.
-let drawnAll = false,
-  drawn = /** @type {(button: HTMLElement) => boolean} */ (() => false);
+// Every opener is a component's: it draws its own aria-expanded from `popOpener`, and its own greying (`off`) from the
+// settings, so nothing here writes into it.
 /** @type {import('@preact/signals-core').Signal<HTMLElement | null>} */
 const opener = signal(null);
 /** the button whose panel is open (null: none) */
 export const popOpener = /** @type {import('@preact/signals-core').ReadonlySignal<HTMLElement | null>} */ (opener);
-/** @param {HTMLElement} button @param {boolean} open */
-function expanded(button, open) {
-  if (!drawn(button)) button.setAttribute('aria-expanded', String(open));
-}
 export const popHasFocus = () => !pop.hidden && pop.contains(document.activeElement);
 export function closePop() {
   pop.hidden = true;
-  if (popFor) expanded(popFor, false);
   popFor = null;
   opener.value = null;
 }
@@ -45,14 +37,9 @@ function openFor(button) {
   batch(() => {
     closePop();
     popFor = button;
-    expanded(button, true);
     opener.value = button;
   });
 }
-// after an ownership change in the panel: the el()-drawn result greys what is no longer owned (a drawn one derives it)
-const ownChanged = () => {
-  if (!drawnAll) markOwn();
-};
 const focusables = () => [...pop.querySelectorAll('input, a[href], button')];
 // close the panel and focus the button that opened it
 function back() {
@@ -69,24 +56,6 @@ pop.addEventListener('keydown', (e) => {
     back();
   }
 });
-export function markOwn() {
-  document.querySelectorAll('.deck .dc').forEach((chip) => {
-    if (drawn(/** @type {HTMLElement} */ (chip))) return;
-    // a chip whose card the page data lacks has no id (data-cid empty or absent) and is never greyed
-    const cid = chip.dataset.cid;
-    chip.classList.toggle('off', !!cid && !chip.classList.contains('bor') && settings.value.cardsOff[+cid] === false);
-  });
-  document.querySelectorAll('.mem[data-uma]').forEach((member) => {
-    if (drawn(/** @type {HTMLElement} */ (member))) return;
-    const u = gameData().umas.find((x) => x.id === +must(member.dataset.uma, 'a member block names her'));
-    member.classList.toggle(
-      'off',
-      !!u &&
-        (umaState(u) === 'out' ||
-          (!!member.dataset.outfit && settings.value.outfits[+member.dataset.outfit] === false)),
-    );
-  });
-}
 const GAP = 8; // px between the panel and the element it belongs to (beside it); below it, 6
 // beside: a deck card's panel opens to its right (else its left) at its top, so it never covers the hint odds under the
 // deck; without room on either side (phones), below it like the others. Positions are in the host's scrolled box.
@@ -158,8 +127,6 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
     } else if (outfitId) outfits[outfitId] = false;
     else roster[u.id] = 'out';
     setOwned({ roster, outfits });
-    paintRoster(u.id);
-    ownChanged();
     toggle.checked = owned();
   };
 }
@@ -227,8 +194,6 @@ function openCardPop(chip) {
     toggle.onchange = () => {
       const { [c.id]: _, ...rest } = settings.value.cardsOff;
       setOwned({ cardsOff: toggle.checked ? rest : { ...rest, [c.id]: false } });
-      paintCards();
-      ownChanged();
     };
 }
 // a click on what is already open closes it; on another card or name, its panel opens instead
@@ -236,12 +201,7 @@ const toggleFor = (button, open) => {
   if (popFor === button) closePop();
   else open();
 };
-/** @param {{drawn?: boolean | ((button: HTMLElement) => boolean)}} [page] drawn: the page's result is components, all
- *  of it (true) or the openers it names (see `drawn` above) */
-export function initPopover(page = {}) {
-  const { drawn: d = false } = page;
-  drawnAll = d === true;
-  drawn = typeof d === 'function' ? d : () => d;
+export function initPopover() {
   document.addEventListener('click', (/** @type {TargetedEvent} */ e) => {
     const chip = e.target.closest('.deck .dc'),
       name = e.target.closest('.mem .memb');

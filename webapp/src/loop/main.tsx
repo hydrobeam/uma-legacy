@@ -4,7 +4,7 @@
 // run machine, job.ts its job, io.js the export's text; the views, components drawn from the state and the settings:
 // RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
 // dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root), inside a
-// RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
+// ui/RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
 import '../errorlog.ts'; // first: it listens before any other module runs
 import { render } from 'preact';
 import { $, $dialog, $input, backdropCloses } from '../dom.js';
@@ -17,12 +17,14 @@ import type { LoopView, RunState } from './state.ts';
 import type { DeepReadonly } from '../store.ts';
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
-import { RenderGuard } from './RenderGuard.tsx';
+import { RenderGuard, renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
 import { initScenario, eraScenario } from '../scenario.js';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
+import { OddsDialog } from '../ui/OddsDialog.tsx';
+import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.js';
 import { loadExample } from '../presets.js';
 import { mountSetup } from '../ui/Setup.tsx';
@@ -68,6 +70,8 @@ const loop = createRun({
 // floating button. The status line (the template's live region, empty from load) is drawn from the first
 // status worth showing on (the GM era's loading, a failed load, the first search or the kept result): the example's
 // status, between showFirst and the first search, is never shown.
+// a view that could not be drawn says so as a failed search does
+sayRenderErrors((text) => settle({ kind: 'error', text }));
 function marks(run: DeepReadonly<RunState>, view: DeepReadonly<LoopView>) {
   $('rhead').dataset.kind = run.searching ? 'busy' : view.status.kind;
   const note = $('run-note');
@@ -125,8 +129,10 @@ function start() {
   );
   render(<AffinityDialog />, $('why-root'));
   render(<ExportDialog />, $('ex-root'));
+  // the odds popup: its own mount point at the end of <body> (the template has none)
+  render(<OddsDialog />, document.body.appendChild(Object.assign(document.createElement('div'), { id: 'odds-root' })));
   $('ex-open').onclick = openExport;
-  initPopover({ drawn: true });
+  initPopover();
   mountSetup({ fadeMore: true });
   // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
   // the setup the first search starts from); what the result on show no longer owns greys at once (Results.tsx)
@@ -144,6 +150,8 @@ function start() {
     });
     column.focus({ preventScroll: true });
   };
+  // the race schedule: drawn into the template's dialog (its mount point), which a backdrop click closes
+  renderGuarded(<ScheduleDialog />, $('sched-dlg'), 'The race schedule', schedOpened);
   backdropCloses($dialog('sched-dlg'));
 
   render(

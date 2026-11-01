@@ -20,6 +20,7 @@ import { idxOf, shown, parentAt, listed } from '../job.js';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts';
 import type { NodeSpec } from './dialogs.ts';
+import { Guard } from './Guard.tsx';
 
 /** a button of the page's look (parts.js `btn`) */
 const Btn = ({ label, cls, onClick }: { label: string; cls?: string; onClick: () => void }) => (
@@ -82,7 +83,7 @@ function Face({ nd, at, size, label, change }: FaceProps) {
     </button>
   );
 }
-/** her G1 wins: the button that edits them (veterans/pickers.js winsBtn), or (a listed veteran) their count */
+/** her G1 wins: the button that opens their window (veterans/pickers.js openWins), or (a listed veteran) their count */
 interface WinsProps {
   nd: NodeRecord;
   /** where her edits go */
@@ -431,12 +432,17 @@ export function NodeDialog() {
       <h3 class="gmdhdr" id="node-title">
         {on ? on.title : ''}
       </h3>
+      {/* (the guards inside the dialog: a throw leaves it open, and Close still closes it) */}
       <div class="gmdbody" id="node-body" ref={body}>
-        {on?.body}
+        <Guard what="The node popup" also={nodeOpen}>
+          {on?.body}
+        </Guard>
       </div>
       <div class="gmdfoot">
         <Btn label="Close" cls="gmclose" onClick={closeNode} />
-        {on?.acts}
+        <Guard what="The node popup's buttons" also={nodeOpen}>
+          {on?.acts}
+        </Guard>
       </div>
     </Dialog>
   );

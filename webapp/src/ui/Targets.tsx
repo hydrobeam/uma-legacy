@@ -1,11 +1,11 @@
 // ---------- the Target skills panel: the Presets button, the adder, one tile per target, the Presets dialogs ----------
 // The tiles follow the targets (and the scenario: a guaranteed gold shows as that gold). Drawn into the template's
 // #skills-panel (`mountTargets`).
-import { render } from 'preact';
+import { renderGuarded } from './RenderGuard.tsx';
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { $ } from '../dom.js';
-import { fields } from '../settings.ts';
+import { fields, settings } from '../settings.ts';
 import { addTarget, namesOf, removeTargetAt, suggest } from '../targets.js';
 import { must } from '../must.ts';
 import { SkillIcon } from './Images.tsx';
@@ -155,5 +155,5 @@ function TargetSkills() {
   );
 }
 export function mountTargets() {
-  render(<TargetSkills />, $('skills-panel'));
+  renderGuarded(<TargetSkills />, $('skills-panel'), 'The target skills', settings);
 }

@@ -161,10 +161,26 @@ function freezeFresh<T>(value: T): T {
   }
   return value;
 }
+// the list with each id once, the first kept (logged): an id is how every edit and Remove finds her, and a malformed
+// file or save can hold one twice
+function onceEach<T extends { id: string }>(list: readonly T[]): T[] {
+  const seen = new Set<string>(),
+    twice: string[] = [];
+  const once = list.filter((v) => {
+    if (seen.has(v.id)) {
+      twice.push(v.id);
+      return false;
+    }
+    seen.add(v.id);
+    return true;
+  });
+  if (twice.length) console.warn(`veterans: ids given twice, the first kept: ${twice.join(', ')}`);
+  return once;
+}
 function loaded(): VetsState {
   const mine = loadAll()[ERA] || {};
   return freezeFresh({
-    vets: (mine.vets || []).filter(isVeteran).map(asVeteran),
+    vets: onceEach((mine.vets || []).filter(isVeteran).map(asVeteran)),
     plan: mine.plan || { trainee: null, parents: [null, null] },
     chosen: isChosen(mine.chosen) ? mine.chosen : null,
   });
@@ -276,7 +292,8 @@ function appended(list: readonly VetRecord[], added: readonly DeepReadonly<Veter
 }
 // the list replaced, and the places that named a veteran no longer in it handed back
 function commitList(list: readonly VetRecord[], plan = record.peek().plan) {
-  commit({ vets: list, plan: placesFor(list, plan) });
+  const vets = onceEach(list);
+  commit({ vets, plan: placesFor(vets, plan) });
 }
 /** veterans from an uma.moe tree, or the samples: added after the others (the numbers you have keep) */
 export function addVets(list: readonly Veteran[]) {

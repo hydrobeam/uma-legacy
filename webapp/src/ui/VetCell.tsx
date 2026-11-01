@@ -1,15 +1,29 @@
-// ---------- a veteran as the game's legacy list draws her: the component twin of vetcell.js's vetCell ----------
-// The markup vetCell draws (vetcell.js says what each part is): her portrait in its ring (her outfit's, else her icon),
-// her career-rank badge, a role tab, her three main sparks as the list's tags, her name and a line under it. vetCell
-// stays for the uma.moe popup's listings (step 11); an edit to one goes to the other.
+// ---------- a veteran as the game's legacy list draws her (the pool's cards, uma.moe's listings) ----------
+// Her portrait in its ring (her outfit's portrait, her head over the top, else her icon), her career-rank badge (top
+// right, as in the game: the last rank whose minimum her score reaches), a label tab over her when she has a role ("Parent
+// 1"), her three main sparks under it as the list's tags with their stars (blue: her stat, pink: her aptitude, green:
+// her unique skill), her name and a line under it.
 import { useState } from 'preact/hooks';
 import { careerTables } from '../data.js';
 import { srcFor } from '../images.js';
-import { BLUE_TAG, PINK_TAG } from '../vetcell.js';
 import { blueName, pinkName, uniqueName, umaName } from '../veterans/names.js';
 import type { NodeRecord, VetRecord } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
 
+// her main sparks' short tags, as the game's legacy list letters them
+const BLUE_TAG: Record<string, string> = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
+  PINK_TAG: Record<string, string> = {
+    11: 'TURF',
+    12: 'DIRT',
+    21: 'FRONT',
+    22: 'PACE',
+    23: 'LATE',
+    24: 'END',
+    31: 'SPRT',
+    32: 'MILE',
+    33: 'MED',
+    34: 'LONG',
+  };
 const first = (o: Readonly<Record<number, number>> | undefined) =>
   Object.entries(o || {}).find(([, stars]) => stars > 0);
 /** one main spark: the legacy list's tag image (its lettering in it) and its star row, the letters alone where the
@@ -46,7 +60,7 @@ function MainSparks({ v }: { v: NodeRecord }) {
       {bl && (
         <Tag
           kind="blue"
-          label={BLUE_TAG[+bl[0] as keyof typeof BLUE_TAG] || '?'}
+          label={BLUE_TAG[bl[0]] || '?'}
           full={blueName(+bl[0])}
           stars={bl[1]}
           image={`ftag_blue_${bl[0]}`}
@@ -55,7 +69,7 @@ function MainSparks({ v }: { v: NodeRecord }) {
       {pk && (
         <Tag
           kind="pink"
-          label={PINK_TAG[+pk[0] as keyof typeof PINK_TAG] || '?'}
+          label={PINK_TAG[pk[0]] || '?'}
           full={pinkName(+pk[0])}
           stars={pk[1]}
           image={`ftag_pink_${pk[0]}`}

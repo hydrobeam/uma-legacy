@@ -36,7 +36,7 @@ export type RunStore = Pick<
   | 'reviseKeptPlan'
 >;
 
-/** what the run machine needs of the page, built once by the entry (main.js) */
+/** what the run machine needs of the page, built once by the entry (main.tsx) */
 export interface RunDeps {
   /** the solver (engine.ts, through job.js `runJob`) */
   engine: {
@@ -73,7 +73,7 @@ export interface RunDeps {
     /** job.js `refBase` and `baseKey` of a job */
     refBase: (job: CareerJob) => string;
     baseKey: (job: CareerJob) => string;
-    /** the search's status line (main.js `searchStatus`): done with its caveats, or why no career lands every target */
+    /** the search's status line (main.tsx `searchStatus`): done with its caveats, or why no career lands every target */
     searched: (m: { r: CareerSearch; ms: number }, found: string) => Status;
     /** the answer the last visit kept, and keeping this one (statestore.js) */
     loadAnswer: () => Promise<{ key: string; value: AnswerView } | null>;

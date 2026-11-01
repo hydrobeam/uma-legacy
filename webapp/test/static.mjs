@@ -52,9 +52,9 @@ const words = (text) => new Set(text.replace(/&#?\w+;/g, ' ').match(/[A-Za-z_][\
 
 // class names the code builds from parts (a whole-word search can't find them): name -> where
 const BUILT = {
-  y0: 'agenda.js, the year rows: ag-year y + the year',
-  y1: 'agenda.js, the year rows: ag-year y + the year',
-  y2: 'agenda.js, the year rows: ag-year y + the year',
+  y0: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
+  y1: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
+  y2: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
   leg0: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
   leg1: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
 };
@@ -283,6 +283,36 @@ const MOUNTS = {
   'src/career/main.tsx': [
     ...SETUP_MOUNTS,
     ['run-note', 'src/career/view/RunNote.tsx', ['run-act'], ['runprog']],
+    [
+      'results',
+      'src/career/view/Options.tsx',
+      ['save-why', 'opt-back'],
+      ['optwrap', 'optab', 'otags', 'otag', 'onum', 'orole', 'altw', 'thtip'],
+    ],
+    [
+      'save-root',
+      'src/career/view/Options.tsx',
+      ['save-dlg', 'save-title'],
+      ['savebody', 'savemore', 'oloop', 'optnote'],
+    ],
+    ['um-root', 'src/career/view/Umamoe.tsx', ['um-open'], []],
+    [
+      'um-body',
+      'src/career/view/Umamoe.tsx',
+      [
+        'um-keyrow',
+        'um-key',
+        'um-save',
+        'um-err',
+        'um-on',
+        'um-msg',
+        'um-again',
+        'um-what',
+        'um-full',
+        'um-list',
+      ].concat(['um-forget', 'um-sort', 'um-sort-menu', 'um-sort-dd']),
+      ['umline', 'umtog', 'umerr'],
+    ],
     ['lodds', 'src/career/view/Tree.tsx', ['odds-open', 'sim-try'], ['udodds']],
     [
       'tree',
@@ -294,7 +324,7 @@ const MOUNTS = {
     ],
     ['bp', 'src/career/view/Setup.tsx', [], []],
     ['set-sum', 'src/career/view/Setup.tsx', [], ['sumkv', 'sumk']],
-    ['v-tabs', 'src/career/view/Pool.tsx', ['v-tab-own', 'v-tab-bor'], []],
+    ['v-head', 'src/career/view/Pool.tsx', ['v-tabs', 'v-tab-own', 'v-tab-bor', 'vs', 'vs-menu', 'vs-dd'], []],
     ['v-body', 'src/career/view/Pool.tsx', ['vets', 'v-pane'], ['umcell', 'vsec', 'vptitle', 'vctl', 'vpars']],
     [
       'node-root',
@@ -303,6 +333,27 @@ const MOUNTS = {
       ['nodedlg', 'twho', 'vxy', 'srctag', 'simtag', 'vdel', 'tempty', 'onote', 'ctt', 'nact'],
     ],
     ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
+    [
+      'sched-dlg',
+      'src/ui/Schedule.tsx',
+      ['sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
+      ['wintable', 'wtscroll', 'stabs', 'stab', 'agkey', 'sview', 'tablewrap'],
+    ],
+    [
+      'vet-editors',
+      'src/veterans/Editors.tsx',
+      ['pick-dlg', 'pick-title', 'pick-filter', 'pick-list', 'ask-dlg', 'ask-title', 'ask-text', 'ask-btns'].concat([
+        'wins-dlg',
+        'wins-title',
+        'wins-count',
+        'wins-list',
+        'col-dlg',
+        'col-title',
+      ]),
+      ['askrow', 'coldlg', 'colgrid', 'spstars', 'spstar', 'upick'],
+    ],
+    ['add-pop', 'src/veterans/Editors.tsx', [], ['addlist', 'addsk', 'addn']],
+    ['skill-root', 'src/career/view/SkillDetails.tsx', ['sk-dlg', 'sk-title'], ['gmdfaces', 'gmdcard', 'gmdcards']],
     [
       'sim-top',
       'src/career/analysis/view.tsx',
@@ -360,20 +411,26 @@ const MOUNTS = {
       ['ex-dlg', 'ex-title', 'ex-close', 'ex-text', 'ex-copy', 'ex-load', 'ex-msg'],
       [],
     ],
+    ['odds-root', 'src/ui/OddsDialog.tsx', ['odds-dlg', 'odds-title'], ['oddtab']],
+    [
+      'sched-dlg',
+      'src/ui/Schedule.tsx',
+      ['sched-body', 'sched-title', 'sched-wintable', 'sched-view'],
+      ['wintable', 'wtscroll', 'stabs', 'stab', 'agkey', 'sview', 'tablewrap'],
+    ],
   ],
 };
 // (file, selector) -> why it may stay
 const MOUNT_READS = {
   'src/popover.js': {
     '.deck .dc':
-      "markOwn: the career page's el()-built decks; on the loop page it never runs (initPopover({drawn: true})); " +
-      'and the click delegation, which reads the opener it was clicked on (the Popover port, step 11)',
-    '.mem[data-uma]': "markOwn: the career page's member blocks (it has none); never run on the loop page",
-    '.mem': 'reads the clicked member block’s data-* for her panel (the Popover port, step 11)',
-    '.mem .memb': 'the click delegation, reading the opener (the Popover port, step 11)',
-    '.loop .facebtn': 'the click delegation, reading the opener (the Popover port, step 11)',
-    '.loop': "reads a portrait's result card for her member block (the Popover port, step 11)",
-    '.loop.first ${mem}': 'reads #1\'s member block for a "Same loop as #1" portrait (the Popover port, step 11)',
+      'the click delegation, which reads the opener it was clicked on (the panel stays el(): step 11 left it)',
+    '.mem': 'reads the clicked member block’s data-* for her panel (the panel stays el(): step 11 left it)',
+    '.mem .memb': 'the click delegation, reading the opener (the panel stays el(): step 11 left it)',
+    '.loop .facebtn': 'the click delegation, reading the opener (the panel stays el(): step 11 left it)',
+    '.loop': "reads a portrait's result card for her member block (the panel stays el(): step 11 left it)",
+    '.loop.first ${mem}':
+      'reads #1\'s member block for a "Same loop as #1" portrait (the panel stays el(): step 11 left it)',
   },
 };
 {
@@ -439,14 +496,29 @@ const MOUNT_READS = {
         'leaves it fresh across a new run)',
     ],
     [
-      /drawCheck: \(\) => \{\s*renderResults\(\);\s*paint\(\);\s*\}/,
-      'view.drawCheck redraws the results column and the status line only (a redraw of the open veterans dialog under ' +
-        'a click would lose it: run.ts RunDeps)',
+      /on\(\[vets, places, searchHeld\], \(list, _places, held\) => \{\s*if \(held\) return;/,
+      "the veterans effect holds the search while a pool veteran's G1 wins window or a skills prompt is open " +
+        '(pickers.js searchHeld; review-10 1, 2)',
+    ],
+    [
+      /mount\('sched-dlg', <ScheduleDialog \/>, 'The race schedule', schedOpened\);/,
+      "the race schedule's guard draws it again for a new opening (Schedule.tsx schedOpened: review-11b 5)",
+    ],
+    [
+      /drawCheck: paint,/,
+      'view.drawCheck redraws the status line only (the results column follows the answer store; a redraw of the open ' +
+        'veterans dialog under a click would lose it: run.ts RunDeps)',
     ],
   ];
   for (const [wire, what] of WIRES)
     if (!wire.test(srcText['src/career/main.tsx']))
       problems.push(`src/career/main.tsx: the run machine's wiring: ${what}`);
+  if (
+    !/renderGuarded\(<ScheduleDialog \/>, \$\('sched-dlg'\), 'The race schedule', schedOpened\);/.test(
+      srcText['src/loop/main.tsx'],
+    )
+  )
+    problems.push('src/loop/main.tsx: the race schedule draws inside a guard that draws it again for a new opening');
 }
 
 // ---------- components stay views: a module that is not one (.ts, .js) imports no .tsx module
@@ -455,11 +527,7 @@ const MOUNT_READS = {
 // JSDoc `@import` or `import('…')` type): any relative path written in the module that resolves to a .tsx file.
 // A module kept only to give a component's mount an old name another lane's code still imports is listed in
 // VIEW_IMPORTS_KEPT with why; one that no longer imports it fails too.
-const VIEW_IMPORTS_KEPT = {
-  'src/setup.js src/ui/Setup.tsx':
-    "career/main.tsx imports mountSetup as setup.js's initSetup; part 2 of step 11 imports it from ui/Setup.tsx and " +
-    'deletes setup.js',
-};
+const VIEW_IMPORTS_KEPT = {};
 {
   const isView = (file) => file.endsWith('.tsx');
   const viewImports = new Set();
@@ -548,19 +616,7 @@ const LAYERS = [
   ],
   ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
   ['shared', null], // every module not named elsewhere
-  [
-    'page:loop',
-    [
-      'loop/main',
-      'loop/run',
-      'loop/io',
-      'loop/RunNote',
-      'loop/Results',
-      'loop/Affinity',
-      'loop/Export',
-      'loop/RenderGuard',
-    ],
-  ],
+  ['page:loop', ['loop/main', 'loop/run', 'loop/io', 'loop/RunNote', 'loop/Results', 'loop/Affinity', 'loop/Export']],
   [
     'page:career',
     [
@@ -572,6 +628,10 @@ const LAYERS = [
       'career/io',
       'career/view/parts',
       'career/view/dialogs',
+      'career/view/Guard',
+      'career/view/SkillDetails',
+      'career/view/Options',
+      'career/view/Umamoe',
       'career/view/RunNote',
       'career/view/Tree',
       'career/view/NodeDialog',

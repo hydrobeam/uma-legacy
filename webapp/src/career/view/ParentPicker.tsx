@@ -5,12 +5,14 @@ import { settings } from '../../settings.ts';
 import { batch } from '@preact/signals-core';
 import { vets, places, vetById, newVet, setParent } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.js';
-import { askSkills, drawUmas, filterUmas } from '../../veterans/pickers.js';
+import { askSkills } from '../../veterans/pickers.js';
+import { UmaList } from '../../veterans/Editors.tsx';
 import type { VetRecord } from '../../veterans/store.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.js';
 import { pickerFor, pickerClosed } from './dialogs.ts';
+import { Guard } from './Guard.tsx';
 
 // why veteran v can't go in place k (or '')
 const BLOCKED: Record<string, string> = {
@@ -81,7 +83,7 @@ export function ParentPicker() {
     lastK = useRef<number | null>(null), // the place its title names (closed: the last)
     opening = useRef(0), // its openings so far: a tab chosen holds for the opening it was chosen in
     [chosenTab, setTab] = useState<[Tab, number] | null>(null),
-    umas = useRef<HTMLDivElement>(null),
+    [typed, setTyped] = useState<[string, number]>(['', 0]), // A new one's filter, and the opening it was typed in
     filter = useRef<HTMLInputElement>(null),
     focusFilter = useRef(false),
     shownFor = useRef<number | null>(null); // the place it was opened for (null: closed)
@@ -90,108 +92,113 @@ export function ParentPicker() {
   const place = lastK.current,
     tab: Tab = chosenTab && chosenTab[1] === opening.current ? chosenTab[0] : vets.value.length ? 'vets' : 'new';
   const close = pickerClosed;
-  // A new one: every uma, filterable (veterans/pickers.js drawUmas builds the list into its box; the filter hides, never rebuilds)
+  // A new one: every uma, filterable (Editors.tsx UmaList; the filter hides, never rebuilds), drawn while on show; each
+  // opening, and each click on its tab, starts with an empty filter
+  const newFilter = typed[1] === opening.current ? typed[0] : '';
+  const pickNew = (id: number) => {
+    if (k === null) return;
+    close();
+    askSkills(
+      umaName(id),
+      false,
+      (sp: Record<number, number> | null) =>
+        batch(() => {
+          const v = newVet(id, sp || {});
+          setParent(k, v.id, false);
+        }),
+      true,
+    );
+  };
   useLayoutEffect(() => {
-    const opened = shownFor.current !== k;
     shownFor.current = k;
-    if (k === null || tab !== 'new' || !umas.current || !filter.current) return;
-    if (opened || focusFilter.current) {
-      filter.current.value = '';
-      drawUmas(umas.current, '', (id: number) => {
-        close();
-        askSkills(
-          umaName(id),
-          false,
-          (sp: Record<number, number> | null) =>
-            batch(() => {
-              const v = newVet(id, sp || {});
-              setParent(k, v.id, false);
-            }),
-          true,
-        );
-      });
-    }
-    if (focusFilter.current) filter.current.focus();
+    if (focusFilter.current) filter.current?.focus();
     focusFilter.current = false;
   });
   let headed = false;
   return (
     <Dialog id="vpick-dlg" labelledBy="vpick-title" open={k !== null} onClose={close}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="vpick-title">{place === null ? 'Choose a parent' : `Choose parent ${place + 1}`}</h3>
-          <button type="button" class="btn dclose" onClick={close}>
-            Close
-          </button>
-        </div>
-        <div class="seg" role="tablist" aria-label="Where the parent comes from">
-          {TABS.map(([key, label]) => (
+      {/* (inside the dialog: a throw leaves it open, and Escape still closes it) */}
+      <Guard what="The parent picker" also={pickerFor}>
+        <div class="dlg">
+          <div class="row between dhead">
+            <h3 id="vpick-title">{place === null ? 'Choose a parent' : `Choose parent ${place + 1}`}</h3>
+            <button type="button" class="btn dclose" onClick={close}>
+              Close
+            </button>
+          </div>
+          <div class="seg" role="tablist" aria-label="Where the parent comes from">
+            {TABS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`vp-tab-${key}`}
+                aria-selected={tab === key}
+                aria-controls={`vp-${key}`}
+                onClick={() => {
+                  focusFilter.current = key === 'new';
+                  if (key === 'new') setTyped(['', opening.current]);
+                  setTab([key, opening.current]);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
+            <div class="vpgrid" id="vp-list">
+              {/* (its rows only while open: a closed picker draws, and redraws, nothing) */}
+              {k !== null && !vets.value.length && (
+                <p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>
+              )}
+              {k !== null &&
+                vets.value.flatMap((v: VetRecord, i: number) => {
+                  const head = v.src === 'umamoe' && !headed;
+                  if (head) headed = true;
+                  return [
+                    head && (
+                      <h4 key="umamoe" class="vpgh">
+                        uma.moe
+                      </h4>
+                    ),
+                    <VetChoice key={v.id} v={v} i={i} k={k} />,
+                  ];
+                })}
+            </div>
+          </div>
+          <div id="vp-new" role="tabpanel" aria-labelledby="vp-tab-new" hidden={tab !== 'new'}>
+            <input
+              ref={filter}
+              type="search"
+              id="vp-filter"
+              placeholder="Filter by name"
+              aria-label="Filter umas by name"
+              value={newFilter}
+              onInput={(e) => setTyped([e.currentTarget.value, opening.current])}
+            />
+            <div class="umapick" id="vp-umas">
+              {k !== null && tab === 'new' && <UmaList filter={newFilter} onPick={pickNew} />}
+            </div>
+          </div>
+          <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden={tab !== 'auto'}>
+            <p>The planner tries every one of your veterans in this place and keeps the best.</p>
             <button
-              key={key}
+              class="btn primary"
               type="button"
-              role="tab"
-              id={`vp-tab-${key}`}
-              aria-selected={tab === key}
-              aria-controls={`vp-${key}`}
+              id="vp-auto-go"
               onClick={() => {
-                focusFilter.current = key === 'new';
-                setTab([key, opening.current]);
+                if (k === null) return;
+                batch(() => {
+                  close();
+                  setParent(k, null, false);
+                });
               }}
             >
-              {label}
+              Let the planner pick this parent
             </button>
-          ))}
-        </div>
-        <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
-          <div class="vpgrid" id="vp-list">
-            {/* (its rows only while open: a closed picker draws, and redraws, nothing) */}
-            {k !== null && !vets.value.length && (
-              <p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>
-            )}
-            {k !== null &&
-              vets.value.flatMap((v: VetRecord, i: number) => {
-                const head = v.src === 'umamoe' && !headed;
-                if (head) headed = true;
-                return [
-                  head && (
-                    <h4 key="umamoe" class="vpgh">
-                      uma.moe
-                    </h4>
-                  ),
-                  <VetChoice key={v.id} v={v} i={i} k={k} />,
-                ];
-              })}
           </div>
         </div>
-        <div id="vp-new" role="tabpanel" aria-labelledby="vp-tab-new" hidden={tab !== 'new'}>
-          <input
-            ref={filter}
-            type="search"
-            id="vp-filter"
-            placeholder="Filter by name"
-            aria-label="Filter umas by name"
-            onInput={(e) => umas.current && filterUmas(umas.current, e.currentTarget.value)}
-          />
-          <div class="umapick" id="vp-umas" ref={umas} />
-        </div>
-        <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden={tab !== 'auto'}>
-          <p>The planner tries every one of your veterans in this place and keeps the best.</p>
-          <button
-            class="btn primary"
-            type="button"
-            id="vp-auto-go"
-            onClick={() => {
-              if (k === null) return;
-              batch(() => {
-                close();
-                setParent(k, null, false);
-              });
-            }}
-          >
-            Let the planner pick this parent
-          </button>
-        </div>
-      </div>
+      </Guard>
     </Dialog>
   );
 }

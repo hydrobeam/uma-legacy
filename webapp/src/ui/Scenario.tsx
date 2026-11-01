@@ -5,14 +5,14 @@
 // its guaranteed golds (the targets and the card picker follow the scenario) and sets its default lineage rank.
 // The rank control: a two-option toggle (B to S+ / SS and up) with the game's rank badges, and a ? that explains it.
 // Drawn into the template's #scen-dd and #rank-ctl (`mountScenario`, `mountRank`).
-import { render } from 'preact';
+import { renderGuarded } from './RenderGuard.tsx';
 import type { RefObject } from 'preact';
 import { batch } from '@preact/signals';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { $ } from '../dom.js';
 import { RANKS, SKILLICON_GOLD } from '../data.js';
 import type { Scenario } from '../data.js';
-import { fields, setRank } from '../settings.ts';
+import { fields, setRank, settings } from '../settings.ts';
 import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../scenario.js';
 import { srcFor } from '../images.js';
 import { RadioPills } from './RadioPills.tsx';
@@ -285,5 +285,5 @@ function RankControl() {
     </>
   );
 }
-export const mountScenario = () => render(<ScenarioPicker />, $('scen-dd'));
-export const mountRank = () => render(<RankControl />, $('rank-ctl'));
+export const mountScenario = () => renderGuarded(<ScenarioPicker />, $('scen-dd'), 'The scenario picker', settings);
+export const mountRank = () => renderGuarded(<RankControl />, $('rank-ctl'), 'The lineage rank', settings);

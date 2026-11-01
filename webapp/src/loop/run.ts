@@ -7,7 +7,7 @@
 // runs in the engine: a kill cuts it short), the pause timer and the clock's ticker, what is on show (`shown`, so an
 // answer with the same loops is not drawn again) and the finished search of it (`done`: an automatic search of the same
 // job shows that again instead of running). Everything outside, the engine, the clock, the timers, storage, the
-// settings and what draws a result, comes in `deps`, made once by main.js.
+// settings and what draws a result, comes in `deps`, made once by main.tsx.
 import { ERA } from '../saved.ts';
 import type { SettingsView } from '../settings.ts';
 import type { SolverAnswer, SolverRefusal } from '../solver.ts';

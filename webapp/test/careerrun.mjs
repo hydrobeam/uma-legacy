@@ -119,6 +119,8 @@ export default async function careerrun(b) {
   await pg.evaluate(() => {
     window.__checkPatch = { scoring_complete: false };
   });
+  // the keyboard on the table's (i) while the check writes its report into the table (review-8c 5)
+  await pg.focus('#save-why');
   const beforeEdit = await pg.evaluate(() => ({ workers: window.__workers, jobs: window.__checkJobs.length }));
   await pg.evaluate(() => {
     document.querySelector('#rank button[data-v="0.20,0.70,0.10"]').click();
@@ -131,6 +133,11 @@ export default async function careerrun(b) {
     { timeout: 180000 },
   );
   await pg.waitForTimeout(700); // (past the pause: the edit's undoing ran its search, the answer on show)
+  check(
+    "career: the focus stays on the careers table's (i) while the check writes its report",
+    await pg.evaluate(() => document.activeElement?.id === 'save-why'),
+    await pg.evaluate(() => document.activeElement?.outerHTML.slice(0, 80) ?? 'none'),
+  );
   const checked = await pg.evaluate(() => {
     const robust = window.__checkResults.findLast((r) => r.next.robust.pending === 0)?.next.robust || {
       variants: [],

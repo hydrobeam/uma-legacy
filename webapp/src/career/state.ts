@@ -7,8 +7,9 @@
 // nothing draws them.
 // A plan is known by its id (`PlanDone.id`, given when it is made or loaded), never by its object: its check's writes
 // replace the record (`setPlanCheck`), and reach every place that keeps the plan (the answers cache, `reference`).
-// Records are frozen as they come in, except the jobs: a job holds the veterans' own arrays (veterans/store.ts `legaciesJob`)
-// until the veterans store copies on write. Nothing here subscribes: the entry makes the effects (store.ts `on`).
+// Records are frozen as they come in, except the jobs: a job holds the veterans store's legacies (veterans/store.ts
+// `legaciesJob`), one array every job made from the same veterans shares, and the veterans store's to keep. Nothing
+// here subscribes: the entry makes the effects (store.ts `on`).
 import { batch, computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { must } from '../must.ts';
@@ -170,7 +171,7 @@ export function answerFails(text: string) {
 export function dropAnswer() {
   shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), last: null, planState: NO_PLAN });
 }
-/** the page could not load: `text` says why */
+/** the page could not load, or a view could not be drawn (ui/RenderGuard.tsx): `text` says why (the rest stays) */
 export function loadFails(text: string) {
   shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), status: { kind: 'error', text } });
 }

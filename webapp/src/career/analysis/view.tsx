@@ -18,6 +18,7 @@ import { fitSparks } from '../../details.js';
 import { must } from '../../must.ts';
 import { Runner, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
+import type { ScheduleCell } from '../../agenda.js';
 import { scheduledRaces, rolledOutcome } from '../roll.mjs';
 import type { Roll, RollSetup } from '../roll.mjs';
 import { answer, runView, searching as runSearching } from '../state.ts';
@@ -75,7 +76,7 @@ export const draftOf = (r: Career): Draft => ({
 function openDraftWins(d: DraftView, r: Career, back: () => void) {
   // the G1s she could enter, by turn (heldAt), and those her schedule runs, by race (runs: the first turn and its cell)
   const rows = tableRows(r),
-    runs = new Map<number, { turn: number; cell: unknown }>(),
+    runs = new Map<number, { turn: number; cell: ScheduleCell | null }>(),
     heldAt = new Map<number, number[]>();
   for (const w of rows) {
     const ix = careerTables().races.indexOf(w.name || w.race);
@@ -418,5 +419,3 @@ export function openTryRun() {
   $dialog('sim-dlg').showModal();
   fitSparks($('sim-top'));
 }
-/** whether a deck card is this module's (popover.js leaves its markup alone) */
-export const drawnHere = (chip: HTMLElement) => !!chip.closest('#sim-top');

@@ -79,7 +79,7 @@ function Chip(props: ChipProps) {
   if (readOnly)
     return (
       <span class={c}>
-        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the el() chip's before it): the label names a read-only spark; a role for it is the SparkChips port's (step 10) */}
+        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the el() chip's before it): the label names a read-only spark; recorded, not changed: a role (img) would read it as a picture */}
         <span class="vskb" aria-label={`${named}, ${stars} stars${other ? ', not a target' : ''}`}>
           {inner}
         </span>
@@ -219,7 +219,7 @@ function AddSpark({ k, at }: { k: string; at: NodeRef }) {
       aria-haspopup="dialog"
       aria-expanded={open}
       data-k={`${k}:add`}
-      onClick={(e) => openAdd(e.currentTarget, at, true)}
+      onClick={(e) => openAdd(e.currentTarget, at)}
     >
       +
     </button>
