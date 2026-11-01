@@ -4,15 +4,13 @@
 // (career/state.ts), changed only through the transitions `deps.store` hands in; everything else of the page (the
 // solver, the clock, the job its settings and veterans make, the analysis, the redraws) comes in `deps` too, so the
 // node tests run the machine on fakes. It reads no store itself (a model module: static.mjs checks it).
-import type { PlanProgress, SolverAnswer } from '../solver.ts';
-import type { CareerJob, CareerReport, CareerSearch, PlanReport } from './job.js';
+import type { PlanProgress } from '../solver.ts';
+import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } from './job.js';
 import type { DeepReadonly } from '../store.ts';
 import type * as AnswerStore from './state.ts';
 import type { Answer, AnswerView, PlanDone, PlanState, Status } from './state.ts';
 import { jobKey, planKey } from './keys.js';
 
-/** The solver's answer to a career job: its CareerSearch, or a refusal (`'error' in m.r`). */
-export type CareerAnswer = SolverAnswer<CareerSearch>;
 /** the answer store's transitions and reads the machine uses (career/state.ts) */
 export type RunStore = Pick<
   typeof AnswerStore,
@@ -129,7 +127,7 @@ export const PAUSE_MS = 600;
 // out of the key it finds the kept check by (`check_key`)
 export const PLAN_NEXT = Object.freeze({});
 // the plan's phase reports (career/plan/mod.rs `index_rule`: phase, k of n) in words
-export const progText = ({ ph, k, n }: PlanProgress) =>
+const progText = ({ ph, k, n }: PlanProgress) =>
   ph === 1
     ? 'searching the candidates'
     : ph === 2
@@ -308,9 +306,9 @@ export function createRun(deps: RunDeps) {
       if (runId !== id) return;
       if ('error' in m.r) fail(`Not searched: ${m.r.error}`);
       else {
-        const searched = { r: m.r, ms: m.ms },
-          found = searchedText(searched),
-          status = page.searched(searched, found);
+        const result = { r: m.r, ms: m.ms },
+          found = searchedText(result),
+          status = page.searched(result, found);
         const best = m.r.results[0];
         const planned = best && !page.trainee() ? await planPhase(runId, job, found) : { state: 'none' as const };
         if (planned === null) return; // a newer edit took over

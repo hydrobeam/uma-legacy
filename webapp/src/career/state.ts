@@ -3,7 +3,8 @@
 // show (the search's status, its result, the plan); `reference` is the last plan made, whose table stays while you weigh
 // a career you chose. Each is handed out read-only; the transitions below build the next record copy-on-write and
 // assign it (nothing here is saved: statestore.js keeps the answer, the run machine calls it). The run machine's
-// tokens, timers and the job in flight are the run machine's (career/run.ts `run`), not here: nothing draws them.
+// tokens, timers and the job in flight are the run machine's closure state (career/run.ts `createRun`), not here:
+// nothing draws them.
 // A plan is known by its id (`PlanDone.id`, given when it is made or loaded), never by its object: its check's writes
 // replace the record (`setPlanCheck`), and reach every place that keeps the plan (the answers cache, `reference`).
 // Records are frozen as they come in, except the jobs: a job holds the veterans' own arrays (vets.js `legaciesJob`)
@@ -97,7 +98,8 @@ const shownAnswer = signal<AnswerView>(
 export const answer: ReadonlySignal<AnswerView> = shownAnswer;
 const lastPlan = signal<DeepReadonly<Reference> | null>(null);
 export const reference: ReadonlySignal<DeepReadonly<Reference> | null> = lastPlan;
-// the last few answers, by job and places (career/job.js `runKey`), the most recent last (not a signal: nothing draws it)
+// the last few answers, by job and places (career/run.ts's `runKey`), the most recent last (not a signal: nothing draws
+// it)
 const answers = new Map<string, AnswerView>(),
   ANSWERS = 4;
 /** the career the answer shows, the places it ran with aside (career/job.js `shown` holds it to the places on screen): the

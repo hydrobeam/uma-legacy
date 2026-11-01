@@ -9,7 +9,7 @@ import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../j
 import { vets, plan, chosen, persist, vetById, umaName, sampleVets, addVets, legaciesJob } from '../vets.js';
 import { answer, answerCareer, reference } from './state.ts';
 import { must, orNull } from '../must.ts';
-import { jobKey, planKey } from './keys.js';
+import { planKey } from './keys.js';
 import { pickOutfit, outfitNote } from '../roster.js';
 import { unprovenWhy } from '../proofs.mjs';
 /** @import { LineagePlan } from '../vets.js' */
@@ -18,7 +18,6 @@ import { unprovenWhy } from '../proofs.mjs';
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
 /** @type {(p?: DeepReadonly<LineagePlan>) => string} */
 export const placesKey = (p = plan) => JSON.stringify({ trainee: p.trainee, parents: p.parents });
-export const runKey = (job) => `${jobKey(job)}\n${placesKey()}`;
 /**
  * The career job (`buildJob`; the solver reads it as `SkillJob` + `DeckJob` + `CareerJob`, web.rs); a plan job adds
  * `next` and `no_reports`, a comparison `compare`.
@@ -443,6 +442,7 @@ function oneOutfit(t) {
   t.outfitNote = outfitNote(f);
 }
 /** The solver's answer to a career job: its CareerSearch, or a refusal (`'error' in m.r`).
+ * The solver's answer to a career job: its CareerSearch, or a refusal (`'error' in m.r`).
  * @typedef {import('../solver.ts').SolverAnswer<CareerSearch>} CareerAnswer */
 /** @type {(job: CareerJob, progress?: (p: import('../solver.ts').PlanProgress) => void, background?: boolean) => Promise<CareerAnswer>} */
 export const runJob = async (job, progress, background = false) => {

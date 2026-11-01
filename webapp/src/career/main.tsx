@@ -3,10 +3,12 @@
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
-// Here: the run machine (an edit's search and plan, drawn once as the answer), settings and start. The rest of career/:
+// Here: the run machine's wiring (run.ts `createRun` on this page's solver, clock, store, job and views), the views'
+// mount points, settings and start. The rest of career/:
 //   state.ts           the answer store: the run on show, the answer, the last plan made, the answers kept
-//   run.ts             the run's record, the solver call, the plan job's `next`, the robustness check on the plan on show
-//   job.js             the career job from the settings, veterans and places; the career on show; the solver's types
+//   run.ts             the run machine: an edit's pause, the search, the plan job's `next`, the robustness check
+//   job.js             the career job from the settings, veterans and places; the solver call (runJob); the career on
+//                      show; the solver's types
 //   keys.js            the keys a job, a plan job and a career are known by
 //   io.js              Export and Import of the veterans
 //   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
