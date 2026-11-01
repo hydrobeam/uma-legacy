@@ -37,16 +37,43 @@
         "useJsxKeyInIterable": "error"
       },
       "nursery": { "noFloatingPromises": "info" },
-      "style": { "noNonNullAssertion": "error", "useImportType": "error" },
+      "style": {
+        "noNonNullAssertion": "error",
+        "useImportType": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "@preact/signals": {
+                "importNames": ["effect"],
+                "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
+              },
+              "@preact/signals-core": {
+                "importNames": ["effect"],
+                "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
+              }
+            }
+          }
+        }
+      },
       "suspicious": {
         "noArrayIndexKey": "error",
         "noDuplicateJsxProps": "error",
         "noEmptyBlockStatements": "error",
-        "noImportCycles": "error"
+        "noImportCycles": "error",
+        "noTsIgnore": "error"
       }
     }
   },
+  "plugins": [
+    { "path": "./lint/effects.grit", "includes": ["src/**", "!src/store.ts"] },
+    { "path": "./lint/mutable-export.grit", "includes": ["src/**"] }
+  ],
   "overrides": [
+    {
+      "includes": ["src/store.ts", "test/**"],
+      "linter": { "rules": { "style": { "noRestrictedImports": "off" } } }
+    },
     {
       "includes": ["**/*.js", "**/*.mjs"],
       "linter": {

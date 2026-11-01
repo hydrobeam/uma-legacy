@@ -7,7 +7,7 @@
 // `stop`; a newer comparison). What the popup draws is the analysis store's (career/analysis/state.ts), written only
 // through its transitions, one per phase. Everything else of the page (the solver, the clock, the answer store, the
 // career on show, the roll) comes in `deps`, so the node tests run the machine on fakes. It reads no store itself (a
-// model module: static.mjs checks it).
+// model module: .dependency-cruiser.mjs checks it).
 import { batch } from '@preact/signals-core';
 import type { DeepReadonly } from '../../store.ts';
 import type * as AnswerStore from '../state.ts';

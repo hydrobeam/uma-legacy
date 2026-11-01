@@ -1,0 +1,15 @@
+// Only store.ts makes an effect (its `on`, which names an effect's signals and runs its body untracked); anywhere else
+// an effect subscribes to whatever its body happens to read. A signal's .subscribe() is one, and so is `effect` called
+// through a namespace import, which noRestrictedImports (biome.json) does not see (its plugins, src/ but store.ts)
+language js
+
+or {
+  `$signal.subscribe($callback)`,
+  `$signals.effect($body)`
+} as $call where {
+  register_diagnostic(
+    span = $call,
+    message = "This makes an effect: only store.ts makes one (on([a, b], (a, b) => ...))",
+    severity = "error"
+  )
+}

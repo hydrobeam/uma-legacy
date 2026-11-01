@@ -1,29 +1,21 @@
-// Static checks on the page's source, run by `./build.sh lint` (no browser, no build): what the browser suite can't see
-// going stale.
-// - dead CSS: a class or id in style.css's selectors that no page script, page, partial or build plugin names (a word,
-//   HTML entities aside). A name the code builds from parts is listed in BUILT with where it is built.
-// - dead exports: an export of src/ that no other file (src/, test/ and its folders) names outside a comment.
+// Static checks on the page's source that no standard tool expresses, run by `./build.sh lint` (no browser, no build):
+// what the browser suite can't see going stale. The rest of what the page's source must keep is checked by standard
+// tools in lint: dead CSS by PurgeCSS (test/deadcss.mjs), dead exports, files and dependencies and imports of no file by
+// knip (knip.jsonc) and tsc, import cycles by Biome (noImportCycles), the module layers, the logic that reaches no
+// store and the components that stay views by dependency-cruiser (.dependency-cruiser.mjs), effects outside store.ts
+// and exported mutable bindings by Biome (noRestrictedImports, lint/*.grit), `@ts-ignore` by Biome (noTsIgnore).
 // - stale storage writes: `localStorage.setItem(key, JSON.stringify(x))` where `x` was not read or built in the same
 //   function after its last await. A copy read earlier (at load, or before a request) overwrites what another tab or
 //   call stored meanwhile; read what is stored, change your part, write it.
-// - template ids: every id a module looks up by a literal name ($, $dialog, $input, $textarea, getElementById, a
-//   querySelector/closest of '#id') exists on each page whose bundle holds the module (esbuild's metafile), in its
-//   page with its partials filled in, in the build plugins' own markup or made by one of the bundle's modules. A module that
-//   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
-//   purpose is listed in MAY_BE_MISSING, per page, with why An exemption whose id the page has, or that no module of the page looks
-//   up, fails too.
-// - store reads: a logic module (the types, io and model layers of LAYERS) reaches no store's values through any chain
-//   of imports (esbuild's metafiles: static, dynamic and re-exports, either quote): it takes the settings and records
-//   as arguments (`import type` only), so nothing it reads can subscribe an effect.
-// - store exports: every signal a store module (the stores layer of LAYERS) exports is read-only all the way down: its
-//   `ReadonlySignal<T>` names `DeepReadonly<...>`, an alias of one, a primitive, or a read-only array of those.
-// - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
-//   untracked); anywhere else an effect would subscribe to whatever its body happens to read. A signal's `.subscribe()`
-//   counts as one, and so does importing or re-exporting `effect`.
-// - import cycles: the page's modules import one another without a cycle (Biome's noImportCycles too): in a cycle a
-//   module can run before a declaration it reads at load.
-// - layers: an import points to its own layer or one below (LAYERS), and nothing outside a page imports into it;
-//   the imports that broke it when it became a failure are listed (KNOWN_AGAINST) until their module is split.
+// - template ids: every id a module looks up by a literal name ($, $input, getElementById, a querySelector/closest of
+//   '#id') exists on each page whose bundle holds the module (esbuild's metafile), in its page with its partials filled
+//   in, in the build plugins' own markup or made by one of the bundle's modules. A module that moves into the other
+//   page's bundle, or a page edit, would otherwise crash at load. A lookup that may miss on purpose is listed in
+//   MAY_BE_MISSING, per page, with why. An exemption whose id the page has, or that no module of the page looks up,
+//   fails too.
+// - store exports: every signal a store module (the stores layer of .dependency-cruiser.mjs's LAYERS) exports is
+//   read-only all the way down: its `ReadonlySignal<T>` names `DeepReadonly<...>`, an alias of one, a primitive, or a
+//   read-only array of those.
 // - wiring: the career run machine's deps that no browser group checks are named as they must be (engine.key,
 //   analysis.stop and outdate, view.drawCheck).
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
@@ -32,25 +24,20 @@
 //   the entry only at its mount points, a deliberate read listed with why (MOUNT_READS): by a selector or a class
 //   lookup naming what the component draws, or by walking down from a mount point (its children, a query from it, a
 //   write of its content), looked up or held in a variable; a write before any component draws there (MOUNT_WRITES).
-// - components stay views: no .ts or .js module imports a .tsx one, by any import esbuild resolves (each bundle's
-//   import graph) or a type import it erases (a relative path in the module that resolves to a .tsx file).
-// - specifiers: every relative import in src/ and test/ names a file that exists (`./x.ts`, never `./x.js` for it:
-//   esbuild and tsc would map that to x.ts, Node would not). test/unit's esbuild bundles resolve `./src/...` from
-//   webapp/; samecode.test.mjs's specifiers are fixtures of its own trees.
-// - dialogs and mounts: every modal dialog is ui/Dialog.tsx's (no `<dialog>` in a template, no showModal() anywhere
+// - dialogs and mounts: every modal dialog is ui/Dialog.tsx's (no `<dialog>` in a page, no showModal() anywhere
 //   else; the ones not yet ported are listed, TEMPLATE_DIALOGS, until each goes), and only the two entries render into
 //   a mount point (preact's render, RenderGuard's renderGuarded).
 // - deferred writes and listeners at import: no requestAnimationFrame but the ones listed (RAF_KEPT: a measured DOM
 //   write runs from the layout effect of the component that draws what it measures), and no listener added at a
 //   module's top level outside the entries but the load-time effects listed (LOAD_LISTENERS); no view built from a
-//   markup string (innerHTML, outerHTML, insertAdjacentHTML): every view is a component; no exported mutable binding
-//   (`export let`/`var`): state another module reads is a store's signal.
-// Exits 1 with the list when any finds one; delete the dead code, or list a built name.
-// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
-// imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
+//   markup string (innerHTML, outerHTML, insertAdjacentHTML): every view is a component.
+// Exits 1 with the list when any finds one.
+// Reports, printed and never a failure: ids in the planner pages nothing names, partials no page uses, and the
+// `@ts-expect-error` markers (tsc accepts them; the page has none).
 import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
+import { LAYERS } from '../.dependency-cruiser.mjs';
 import { bundle, loadOrder, loadOrderText } from './samecode.mjs';
 
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -61,17 +48,6 @@ const ls = (dir, re, recursive = false) =>
     .readdirSync(path.join(W, dir), { recursive })
     .filter((f) => re.test(f))
     .map((f) => path.join(dir, f));
-const words = (text) => new Set(text.replace(/&#?\w+;/g, ' ').match(/[A-Za-z_][\w-]*/g));
-
-// class names the code builds from parts (a whole-word search can't find them): name -> where
-const BUILT = {
-  y0: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
-  y1: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
-  y2: 'ui/Agenda.tsx, the year columns: ag-year y + the year',
-  leg0: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
-  leg1: 'ui/AffTable.tsx, the legacy columns: leg + the legacy index',
-};
-
 // the pages, their partials and the build's plugins (vite/), which write markup of their own
 const PAGE_FILES = ['index.html', 'loop.html', 'about.html'];
 const BUILD_FILES = ['vite.config.mjs', ...ls('vite', /\.mjs$/)];
@@ -82,50 +58,6 @@ const sources = [
   ...BUILD_FILES,
 ].map((f) => [f, read(f)]);
 const problems = [];
-
-// ---------- dead CSS
-{
-  const css = read('src/style.css').replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '));
-  const used = words(sources.map(([, t]) => t).join('\n'));
-  const dead = new Map();
-  // selector text: what stands before a '{' that opens a rule (not a declaration block's values)
-  for (const m of css.matchAll(/([^{};]*)\{/g)) {
-    const selector = m[1];
-    if (/^\s*@/.test(selector)) continue;
-    for (const [, name] of selector.matchAll(/[.#]([A-Za-z_][\w-]*)/g))
-      if (!used.has(name) && !(name in BUILT)) {
-        const line = css.slice(0, m.index + m[0].length).split('\n').length;
-        dead.set(name, [...(dead.get(name) || []), line]);
-      }
-  }
-  for (const [name, lines] of dead)
-    problems.push(
-      `style.css: .${name} (lines ${lines.join(', ')}) is named by no script, page, partial or build plugin`,
-    );
-}
-
-// ---------- dead exports
-// (a name in a comment is no use: `// ...` to the line's end, unless it follows a quote, a colon or a word character as in
-// a URL, and `/* ... */`)
-const uncommented = (text) => text.replace(/\/\*[\s\S]*?\*\/|(?<![:'"`\w])\/\/.*$/gm, '');
-{
-  const others = [...sources, ...ls('test', /\.(mjs|ts)$/, true).map((f) => [f, read(f)])];
-  for (const [file, text] of sources.filter(([f]) => f.startsWith('src')))
-    for (const [, name] of text.matchAll(/^export (?:async )?(?:const|let|function\*?|class) ([A-Za-z_$][\w$]*)/gm)) {
-      const re = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`);
-      if (!others.some(([f, t]) => f !== file && re.test(uncommented(t))))
-        problems.push(`${file}: export ${name} is used by no other file (unexport it, or delete it)`);
-    }
-}
-
-// ---------- specifiers
-for (const f of [...ls('src', /\.(ts|tsx)$/, true), ...ls('test', /\.(mjs|ts)$/, true)]) {
-  if (f === path.join('test', 'unit', 'samecode.test.mjs')) continue;
-  for (const [, spec] of read(f).matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)['"](\.\.?\/[^'"]+)['"]/g)) {
-    const base = spec.startsWith('./src/') && f.startsWith(path.join('test', 'unit')) ? '' : path.dirname(f);
-    if (!fs.existsSync(path.join(W, base, spec))) problems.push(`${f}: imports ${spec}, which is no file`);
-  }
-}
 
 // ---------- stale storage writes
 for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
@@ -157,8 +89,8 @@ const MAY_BE_MISSING = {
 };
 const PAGES = { 'src/loop/main.tsx': 'loop.html', 'src/career/main.tsx': 'index.html' };
 const WORKER = 'src/worker.ts';
-const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
-const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
+const LOOKUP = /(?<![\w$.])(?:\$|\$input|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
+const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$input|document\.getElementById)\(\s*(?!['"])[^)]/g;
 const SELECTOR_ID = /\.(?:querySelector(?:All)?|closest|matches)\(\s*(['"])#([A-Za-z][\w-]*)\1\s*\)/g;
 const MADE_ID = /(?:\.id\s*=\s*|\bid:\s*|setAttribute\(\s*'id',\s*)(['"`])([A-Za-z][\w-]*)\1|\bid="([A-Za-z][\w-]*)"/g;
 // the partials (partials/*.hbs), each `{{> name ...}}` of a page filled with its file (vite.config.mjs, handlebars)
@@ -171,9 +103,9 @@ const fillPanels = (page) => {
 };
 const idsIn = (text) => [...text.matchAll(MADE_ID)].map((m) => m[2] || m[3]);
 const srcText = Object.fromEntries(sources.filter(([f]) => f.startsWith('src')));
-// each page's and the worker's metafile (esbuild): its modules and their imports, paths as in `sources`
+// each page's metafile (esbuild): its modules and their imports, paths as in `sources`
 const metafiles = Object.fromEntries(
-  [...Object.keys(PAGES), WORKER].map((entry) => [
+  Object.keys(PAGES).map((entry) => [
     entry,
     esbuild.buildSync({ entryPoints: [entry], bundle: true, write: false, metafile: true, logLevel: 'error' }).metafile,
   ]),
@@ -211,58 +143,6 @@ for (const [entry, template] of Object.entries(PAGES)) {
     if (!lookedHere.has(id))
       problems.push(`MAY_BE_MISSING: #${id} is exempt on ${entry}'s page, where no module looks it up: drop it`);
   }
-}
-
-// ---------- import cycles: none
-// Without a cycle, a module's imports run before it, so a move between modules can't put a declaration after a
-// load-time reader; within one it can (samecode checks the order of such reads in the bundles, `loadOrder`).
-const cycles = [];
-{
-  // the static imports among the page's modules, over the three bundles (a dynamic import runs later: no cycle)
-  const edges = new Map();
-  for (const meta of Object.values(metafiles))
-    for (const [file, input] of Object.entries(meta.inputs))
-      if (file.startsWith('src/'))
-        edges.set(file, [
-          ...new Set([
-            ...(edges.get(file) || []),
-            ...input.imports
-              .filter((i) => i.kind === 'import-statement' && i.path.startsWith('src/'))
-              .map((i) => i.path),
-          ]),
-        ]);
-  // the strongly connected components (Tarjan's algorithm) of more than one module, or a module importing itself
-  let counter = 0;
-  const index = new Map(),
-    low = new Map(),
-    stack = [],
-    onStack = new Set();
-  const connect = (v) => {
-    index.set(v, counter);
-    low.set(v, counter++);
-    stack.push(v);
-    onStack.add(v);
-    for (const w of edges.get(v) || []) {
-      if (!index.has(w)) {
-        connect(w);
-        low.set(v, Math.min(low.get(v), low.get(w)));
-      } else if (onStack.has(w)) low.set(v, Math.min(low.get(v), index.get(w)));
-    }
-    if (low.get(v) !== index.get(v)) return;
-    const component = [];
-    for (let w = stack.pop(); ; w = stack.pop()) {
-      onStack.delete(w);
-      component.push(w);
-      if (w === v) break;
-    }
-    if (component.length > 1 || (edges.get(v) || []).includes(v)) cycles.push(component.sort());
-  };
-  for (const v of edges.keys()) if (!index.has(v)) connect(v);
-  for (const component of cycles)
-    problems.push(
-      `import cycle: ${component.join(', ')} import each other (a module in a cycle can run before what it imports ` +
-        'has been declared): break it',
-    );
 }
 
 // ---------- mount roots: what a component draws is looked into by its own module only
@@ -587,39 +467,6 @@ const MOUNT_READS = {
     problems.push('src/loop/main.tsx: the race schedule draws inside a guard that draws it again for a new opening');
 }
 
-// ---------- components stay views: a module that is not one (.ts, .js) imports no .tsx module
-// What runs: each bundle's import graph (esbuild's metafiles), so every import esbuild resolves counts (a dynamic
-// import(), either quote, a path without its extension). What esbuild erases before it resolves (an `import type`, a
-// JSDoc `@import` or `import('…')` type): any relative path written in the module that resolves to a .tsx file.
-// A module kept only to give a component's mount an old name another lane's code still imports is listed in
-// VIEW_IMPORTS_KEPT with why; one that no longer imports it fails too.
-const VIEW_IMPORTS_KEPT = {};
-{
-  const isView = (file) => file.endsWith('.tsx');
-  const viewImports = new Set();
-  for (const meta of Object.values(metafiles))
-    for (const [file, input] of Object.entries(meta.inputs))
-      if (file.startsWith('src/') && !isView(file))
-        for (const imported of input.imports) if (isView(imported.path)) viewImports.add(`${file} ${imported.path}`);
-  const resolvesToView = (file, spec) => {
-    const base = path.join(path.dirname(file), spec);
-    return [base, `${base}.tsx`, path.join(base, 'index.tsx')].find((f) => isView(f) && fs.existsSync(path.join(W, f)));
-  };
-  for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && !isView(f)))
-    for (const [, , spec] of text.matchAll(/(['"`])(\.{1,2}\/[^'"`\s]*)\1/g)) {
-      const view = resolvesToView(file, spec);
-      if (view) viewImports.add(`${file} ${view}`);
-    }
-  for (const pair of Object.keys(VIEW_IMPORTS_KEPT))
-    if (!viewImports.has(pair))
-      problems.push(`VIEW_IMPORTS_KEPT: ${pair.replace(' ', ' no longer imports ')}: drop it`);
-  for (const pair of viewImports) {
-    if (VIEW_IMPORTS_KEPT[pair] !== undefined) continue;
-    const [file, view] = pair.split(' ');
-    problems.push(`${file}: imports the component module ${view}; logic takes values, components import logic`);
-  }
-}
-
 // ---------- dialogs and mounts: ui/Dialog.tsx is every modal dialog (it calls showModal() and close() from its `open`,
 // restores the focus, closes on the backdrop); a render into a mount point starts a view's effects, which the entries
 // alone decide (frontend.md §2 Rules). The template dialogs a module still opens by hand, until each is ported:
@@ -670,8 +517,6 @@ const LOAD_LISTENERS = {
       problems.push(
         `${file}: requestAnimationFrame: a DOM write runs from the layout effect of the component it measures`,
       );
-    if (/^export (let|var)\b/m.test(body))
-      problems.push(`${file}: exports a mutable binding; state another module reads is a store's signal`);
     if (/\.(innerHTML|outerHTML)\s*=|\.insertAdjacentHTML\(/.test(body))
       problems.push(`${file}: builds a view from a markup string; draw it as a component`);
     if (/^[\w.]*addEventListener\(/m.test(body) && !LOAD_LISTENERS[file] && !ENTRIES.includes(file))
@@ -712,133 +557,6 @@ const reports = [];
     (name) => ![...templates, ...ls('partials', /\.hbs$/)].some((f) => read(f).includes(`{{> ${name}`)),
   );
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
-}
-// layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page.
-// Any other import against them fails; the known ones (KNOWN_AGAINST) are reported. A logic module (types, io, model) that reaches a store's values
-// through any chain of imports, static, dynamic or re-exported, is a failure: a shared module may read a store, so a
-// logic module's call into one could read it for it.
-// The rule's logic (frontend.md: run machines, buildJob, uma.moe sync, io) is in the model layer: both run machines
-// (career/run.ts, loop/run.ts: their store's transitions and the settings come in their deps), career/job.ts (its
-// buildJob takes the settings and the veterans store's record as values; career/current.ts, a page module, passes the
-// stores' own) and umamoesetup.ts (uma.moe's sync: the targets and the pool's setListings come in through
-// connectUmamoe). Outside it: loop/io.ts (the loop page's Export and Import, an editor: its own code takes the
-// settings as values, but it imports shared modules that read them, roster.ts, presets.ts and scenario.ts, and
-// pickOutfit reads the outfits).
-const LAYERS = [
-  ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types']],
-  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
-  [
-    'model',
-    [
-      'job',
-      'pink',
-      'proofs',
-      'umadump',
-      'umamoe',
-      'career/roll',
-      'career/job',
-      'career/keys',
-      'career/run',
-      'career/analysis/compare',
-      'loop/job',
-      'loop/keys',
-      'loop/members',
-      'loop/run',
-      'umamoesetup',
-      'veterans/names',
-    ],
-  ],
-  ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
-  ['shared', null], // every module not named elsewhere
-  ['page:loop', ['loop/main', 'loop/io', 'loop/RunNote', 'loop/Results', 'loop/Affinity', 'loop/Export']],
-  [
-    'page:career',
-    [
-      'career/main',
-      'career/analysis/view',
-      'career/analysis/Details',
-      'career/options',
-      'career/current',
-      'career/io',
-      'career/view/parts',
-      'career/view/dialogs',
-      'career/view/Guard',
-      'career/view/SkillDetails',
-      'career/view/Options',
-      'career/view/Umamoe',
-      'career/view/RunNote',
-      'career/view/Tree',
-      'career/view/NodeDialog',
-      'career/view/ParentPicker',
-      'career/view/Sections',
-      'career/view/Results',
-      'career/view/Pool',
-      'career/view/Io',
-      'career/view/poolState',
-      'career/view/Setup',
-    ],
-  ],
-];
-// the imports against the layers that stand (none since the veterans' store was split, step 10)
-const KNOWN_AGAINST = [];
-{
-  const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
-  const layerOf = (mod) => {
-    const k = LAYERS.findIndex(([, mods]) => mods?.includes(mod));
-    return k < 0 ? LAYERS.findIndex(([, mods]) => mods === null) : k;
-  };
-  const against = [];
-  const logic = ['types', 'io', 'model'].map((name) => LAYERS.findIndex(([layer]) => layer === name)),
-    stores = LAYERS.findIndex(([layer]) => layer === 'stores');
-  // the value imports among the page's modules (esbuild's metafiles, which leave out `import type`: types are erased,
-  // so they set no load order and read no store): every kind, a dynamic import() and a re-export included
-  const imports = new Map();
-  for (const meta of Object.values(metafiles))
-    for (const [file, input] of Object.entries(meta.inputs))
-      if (file.startsWith('src/'))
-        imports.set(file, [
-          ...new Set([
-            ...(imports.get(file) || []),
-            ...input.imports.map((i) => i.path).filter((f) => f.startsWith('src/')),
-          ]),
-        ]);
-  for (const [file, targets] of imports) {
-    const from = layerOf(moduleOf(file));
-    for (const target of targets) {
-      const to = layerOf(moduleOf(target));
-      const pages = [from, to].map((k) => LAYERS[k][0]);
-      if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
-        against.push(`${moduleOf(file)} (${pages[0]}) -> ${moduleOf(target)} (${pages[1]})`);
-    }
-  }
-  const known = against.filter((a) => KNOWN_AGAINST.includes(a));
-  for (const a of against.filter((x) => !KNOWN_AGAINST.includes(x)))
-    problems.push(`import against the layer order: ${a} (an import points to its own layer or one below)`);
-  for (const k of KNOWN_AGAINST.filter((x) => !against.includes(x)))
-    problems.push(`KNOWN_AGAINST: ${k} no longer stands: drop it`);
-  if (known.length) reports.push(`known imports against the layer order (${known.length}): ${known.join(', ')}`);
-  for (const file of imports.keys()) {
-    if (!logic.includes(layerOf(moduleOf(file)))) continue;
-    // the shortest import chain from `file` to a store, breadth first
-    const via = new Map([[file, null]]);
-    for (const queue = [file]; queue.length; ) {
-      const at = queue.shift();
-      if (layerOf(moduleOf(at)) === stores) {
-        const chain = [];
-        for (let f = at; f; f = via.get(f)) chain.unshift(moduleOf(f));
-        problems.push(
-          `${file}: reaches the store ${moduleOf(at)} (${chain.join(' -> ')}): a logic module takes the store's values ` +
-            'as arguments (import type only)',
-        );
-        break;
-      }
-      for (const next of imports.get(at) || [])
-        if (!via.has(next)) {
-          via.set(next, at);
-          queue.push(next);
-        }
-    }
-  }
 }
 // store exports: a store's signal hands out a record nothing may write, nested parts included (frontend.md §2 Rules): the
 // type of each `export const x: ReadonlySignal<T>` in a store module, read as text, is `DeepReadonly<...>`, a primitive
@@ -885,18 +603,6 @@ const KNOWN_AGAINST = [];
         );
   }
 }
-// effects: only store.ts makes one (`on`); comments are dropped first (they name effects). A signal's `.subscribe()`
-// is an effect too, and so is a module importing or re-exporting signals' `effect` (either quote)
-{
-  const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
-  const MAKES_EFFECT = /\beffect\s*\(|\.subscribe\s*\(/,
-    TAKES_EFFECT = /\b(?:import|export)\b[^;]*\beffect\b[^;]*from\s*['"]@preact\/signals/;
-  for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && f !== path.join('src', 'store.ts')))
-    if (MAKES_EFFECT.test(code(text)) || TAKES_EFFECT.test(text))
-      problems.push(
-        `${file}: makes or passes on an effect outside store.ts's \`on\` (name its signals: on([a, b], (a, b) => ...))`,
-      );
-}
 // the type checker's `@ts-expect-error` markers: each a line a module's rename to .ts left for its strict commit
 // (a count of what the strict commits have left to remove)
 {
@@ -915,6 +621,6 @@ if (problems.length) {
 }
 for (const report of reports) console.log(`report: ${report}`);
 console.log(
-  `static checks: no dead CSS, no dead exports, no stale storage writes; ${looked.size} ids looked up, each on its pages ` +
+  `static checks: no stale storage writes; ${looked.size} ids looked up, each on its pages ` +
     `(${dynamic} lookups by a computed id unchecked)`,
 );

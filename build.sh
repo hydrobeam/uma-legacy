@@ -183,6 +183,9 @@ step_lint() {
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
+  lint knip in_dir "$W" npx --no-install knip
+  lint dependency-cruiser in_dir "$W" npx --no-install depcruise --config .dependency-cruiser.mjs src
+  lint "dead CSS" in_dir "$W" node test/deadcss.mjs
   lint static.mjs in_dir "$W" node test/static.mjs
   # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the terminal
   lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*'

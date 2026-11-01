@@ -10,7 +10,7 @@
 // send one. uma.moe lists Global veterans: on the Grand Masters-era data it is asked only for the targets Global has
 // (`targetFactors`). `syncListings` runs inside the career page's settings effect: it reads every signal with peek(),
 // so that effect subscribes to none of them. What it reads and writes of the page, the targets and the veterans store's
-// listings, comes in through `connectUmamoe`, called once by the entry: it reads no store itself (static.mjs checks it).
+// listings, comes in through `connectUmamoe`, called once by the entry: it reads no store itself (.dependency-cruiser.mjs checks it).
 import { batch, computed, signal } from '@preact/signals-core';
 import { ERA } from './saved.ts';
 import { must } from './must.ts';

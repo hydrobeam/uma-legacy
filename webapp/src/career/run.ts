@@ -3,7 +3,7 @@
 // are closure state: nothing draws them. What the page draws of the run and its answer is the answer store's
 // (career/state.ts), changed only through the transitions `deps.store` hands in; everything else of the page (the
 // solver, the clock, the job its settings and veterans make, the analysis, the redraws) comes in `deps` too, so the
-// node tests run the machine on fakes. It reads no store itself (a model module: static.mjs checks it).
+// node tests run the machine on fakes. It reads no store itself (a model module: .dependency-cruiser.mjs checks it).
 import type { PlanProgress } from '../solver.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } from './job.ts';
 import type { DeepReadonly } from '../store.ts';

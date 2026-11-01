@@ -650,11 +650,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .simresult.stale > :not(.note) { opacity: 0.5; }
 @media (max-width: 620px) { .simodds { grid-template-columns: minmax(0, 1fr); } }
 .note { margin: 0; border-left: 5px solid var(--gold); background: var(--gold-soft); color: var(--ink); padding: 8px 12px; }
-.verdict { display: inline-block; font-family: var(--font-data); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 3px; color: var(--ink); border-left: 4px solid; }
-.verdict.mo { background: var(--req-soft); border-color: var(--req); }
-.verdict.rr { background: var(--out-soft); border-color: var(--out); }
-.verdict.mix { background: var(--gold-soft); border-color: var(--gold); }
-.verdict.done { background: var(--ink); color: var(--panel); border-color: var(--ink); }
 .optab td, .optab th { vertical-align: middle; padding-top: 6px; padding-bottom: 6px; }
 .optab td { white-space: nowrap; }
 .optab tbody tr.on .altw { color: var(--accent); }

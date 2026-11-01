@@ -35,6 +35,10 @@
 !/webapp/vite.config.mjs
 !/webapp/vite/
 !/webapp/.size-limit.mjs
+# the lint tools' configs: knip, dependency-cruiser, Biome's GritQL plugins
+!/webapp/knip.jsonc
+!/webapp/.dependency-cruiser.mjs
+!/webapp/lint/
 !/webapp/src/
 !/webapp/test/
 !/webapp/example.mjs

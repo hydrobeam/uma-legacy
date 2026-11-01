@@ -18,7 +18,7 @@ import { SkillIcon } from './Images.tsx';
 
 type Kind = 'blue' | 'pink' | 'green';
 /** a spark's stars, filled then empty, out of 3 */
-export function Stars({ n }: { n: number }) {
+function Stars({ n }: { n: number }) {
   return (
     <span class="stars" aria-hidden="true">
       <span class="sf" style={{ '--n': String(n) }}>

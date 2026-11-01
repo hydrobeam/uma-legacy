@@ -1,0 +1,12 @@
+// No exported mutable binding (`export let`, `export var`): state another module reads is a store's signal (biome.json's
+// plugins, src/). An exported declaration is a JsVariableDeclarationClause; one that is not exported is a statement.
+language js
+
+JsVariableDeclarationClause() as $clause where {
+  $clause <: r"(?s)(?:let|var) .*",
+  register_diagnostic(
+    span = $clause,
+    message = "An exported mutable binding: state another module reads is a store's signal",
+    severity = "error"
+  )
+}
