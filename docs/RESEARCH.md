@@ -794,6 +794,13 @@ level 5 and leaves the pool after $c = \lceil 5 / \iota \rceil$ hints. The runs 
 $\iota$ of 2 or more, where a level could fail the check, 33,494 of
 33,505 levels that one card gave alone are multiples of $\iota$, or 5.
 
+A card's effects at its level are master.mdb's, linear between the levels its table gives, rounded down. The increment
+shows the rounding: where a card's hint-level bonus at its level falls between integers,
+2,706 of 2,706 levels
+below 5 that the card gave alone are multiples of $\iota$ with the bonus rounded down, against
+937 with it rounded to nearest and
+0 with it rounded up.
+
 The chance that none of $k$ targets in a pool of $n$ skills is hinted is computed jointly, not target by target:
 
 $$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfloor + 1), \qquad
@@ -1747,10 +1754,10 @@ fitted beside $K$ in a logistic model.
 |---|---|---|---|
 | The rate falls as more events are on offer | $K$ form: 0.21 at $K$ = 4, 0.13 at 14 | run-clustered Wald $\lvert z \rvert$ = 5.13 | detectable |
 | The $K$ form predicts unseen runs better than a constant | constant 0.152 | held out +8.8 ± 5.1 nats, $z$ = +1.72 | not shown |
-| Across characters, the initial friendship gauge goes with a higher rate | +0.127 [+0.074, +0.180] logit per 10 points | Holm-adjusted run-clustered $p$ = 0.0000 | detectable across characters |
-| Friendship bonus moves it | −0.039 logit per 10 points | Holm-adjusted $p$ = 0.77 | not detectable |
-| Specialty priority moves it | +0.007 logit per 10 points | Holm-adjusted $p$ = 0.77 | not detectable |
-| The rate differs between characters (character intercepts next to $K$ and the card effects) | | run-clustered Wald $\chi^2$ = 853, 26 df | known miss |
+| Across characters, the initial friendship gauge goes with a higher rate | +0.128 [+0.074, +0.181] logit per 10 points | Holm-adjusted run-clustered $p$ = 0.0000 | detectable across characters |
+| Friendship bonus moves it | −0.038 logit per 10 points | Holm-adjusted $p$ = 0.79 | not detectable |
+| Specialty priority moves it | +0.007 logit per 10 points | Holm-adjusted $p$ = 0.79 | not detectable |
+| The rate differs between characters (character intercepts next to $K$ and the card effects) | | run-clustered Wald $\chi^2$ = 777, 26 df | known miss |
 | Within a character, the initial friendship gauge moves it | +0.045 [−0.044, +0.133] logit per 10 points | Holm-adjusted $p$ = 0.97 | not detectable; underpowered (the interval holds the effect across characters) |
 | Within a character, the rate falls as more events are on offer | | run-clustered $z$ = −2.92 | detectable |
 | Scenario moves it | Unity Cup +0.22, Trackblazer +0.24 logit against URA Finale | run-clustered $p$ = 0.008; next to the card effects 0.001 | known miss |
