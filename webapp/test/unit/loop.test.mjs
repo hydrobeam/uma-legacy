@@ -11,6 +11,7 @@ import { gameData } from '../../src/data.js';
 import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.js';
 import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
 import { PAUSE_MS, createRun } from '../../src/loop/run.ts';
+import { resultKeys } from '../../src/loop/keys.ts';
 import { headline, initLoopState, loopRun, loopView, resultsStale } from '../../src/loop/state.ts';
 import {
   DEFAULTS,
@@ -571,4 +572,23 @@ test('effects: the setup effect wakes for job settings only, once per setter; th
   assert.equal(runs.setup, 2);
   stopSetup();
   stopPaint();
+});
+
+// ---------- the results' keys (loop/keys.ts)
+test('result keys: one per result drawn together, a repeated loop and decks told apart by its place; others plain', () => {
+  const loop = (p) => ({
+      members: [1001, 1002, 1003].map((id) => ({ id, name: `Uma ${id}`, short: '' })),
+      outfits: [100101, 100201, 100301].map((id) => ({ outfits: [{ id, label: '' }], covers: [] })),
+      p_all: p,
+    }),
+    deck = (cards) => ({ cards, card_ids: [], odds: [] });
+  // #2 and #3: the same loop and cards, told apart in the solver only by a chain choice whose label prints the same
+  const top = [
+    { loop: loop(0.3), deck: deck(['A', 'B']) },
+    { loop: loop(0.2), deck: deck(['A', 'C (end chain at link 1)']) },
+    { loop: loop(0.1), deck: deck(['A', 'C (end chain at link 1)']) },
+  ];
+  const keys = resultKeys(top);
+  assert.equal(new Set(keys).size, 3);
+  assert.deepEqual(keys.slice(0, 2), resultKeys([top[0], top[1]])); // the first of each keeps its plain key
 });

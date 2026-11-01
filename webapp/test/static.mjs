@@ -414,7 +414,7 @@ if (knownCycles.length)
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
-  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job']],
+  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'loop/job', 'loop/keys']],
   ['stores', ['settings', 'loop/state', 'vets']],
   ['shared', null], // every module not named elsewhere
   [

@@ -1,5 +1,5 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
-// `Results` draws state.ts's `loopDrawn` into #results: each result keyed by its loop and decks, so a redraw with the same
+// `Results` draws state.ts's `loopDrawn` into #results: each result keyed by its loop and decks (keys.ts), so a redraw with the same
 // loops (an interim answer, then the final) keeps every element, an open (i) panel and the focus. A card or a member no
 // longer owned is greyed (`off`) from the settings as they change. Their panels are popover.js's: it reads what it
 // shows from the buttons (data-*), and each button draws its aria-expanded from popover.js's `popOpener`.
@@ -20,14 +20,10 @@ import { RadioPills } from '../ui/RadioPills.tsx';
 import { CardAv, SkillIcon, UmaAv } from '../ui/Images.tsx';
 import { openWhy } from './Affinity.tsx';
 import type { JobTarget } from './job.ts';
+import { deckKey, loopKey, resultKeys } from './keys.ts';
 import { draw, loopDrawn } from './state.ts';
 import type { LoopReport, LoopResult, ResultDeck, ResultLoop } from './types.ts';
 
-const loopKey = (loop: ResultLoop) =>
-  loop.members.map((m, k) => `${m.id}:${loop.outfits[k].outfits.map((o) => o.id).join('/')}`).join(' ');
-const deckKey = (deck: ResultDeck) => deck.cards.join('|');
-const resultKey = (t: LoopResult) =>
-  [loopKey(t.loop), t.deck ? deckKey(t.deck) : '', ...(t.decks || []).map(deckKey)].join('#');
 const SHOWN = 0.005; // hint odds and their changes under half a percent are not shown
 type Odds = ResultDeck['odds'][number];
 // the chance of at least the white: a gold hint counts for the white too
@@ -66,11 +62,12 @@ export function Results() {
   }); // (it renders only when the drawn result changes)
   if (!drawn) return null;
   const { r, targets } = drawn,
-    many = r.top.length > 1;
+    many = r.top.length > 1,
+    keys = resultKeys(r.top);
   return (
     <>
       {r.top.map((t, i) => (
-        <LoopCard key={resultKey(t)} t={t} n={targets.length} rank={many ? i + 1 : 0} top={r.top[0]} />
+        <LoopCard key={keys[i]} t={t} n={targets.length} rank={many ? i + 1 : 0} top={r.top[0]} />
       ))}
     </>
   );
