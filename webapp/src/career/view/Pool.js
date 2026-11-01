@@ -6,7 +6,8 @@ import { ERA } from '../../saved.ts';
 import { RANKS } from '../../data.js';
 import { settings } from '../../settings.ts';
 import { scenarioOf } from '../../scenario.js';
-import { vets, plan, umaName } from '../../vets.js';
+import { vets, places } from '../../veterans/store.ts';
+import { umaName } from '../../veterans/names.js';
 import { vetCell } from '../../vetcell.js';
 import { wireMenu } from '../../sortmenu.js';
 import { umamoeButton } from '../../umamoesetup.js';
@@ -19,7 +20,7 @@ import { openNode, showPane } from './dialogs.ts';
 // when she is one of the next career's parents; a click shows her beside the list (a wide dialog) or in her popup (her
 // sparks editable in place, Yours / Guest, Remove)
 function vetCardEl(v, i) {
-  const k = plan.parents.indexOf(v.id),
+  const k = places.value.parents.indexOf(v.id),
     tg = settings.value.targets.map((t) => t.group),
     have = tg.filter((g) => v.sparks?.[g]).length,
     c = vetCell(v, {
@@ -58,7 +59,7 @@ export function setVTab(t) {
 // the list's orders: the order added (uma.moe's listings in uma.moe's order), how many targets she carries (the
 // default; ties in the order added), her rank; each starts as the menu says and picking the chosen one again reverses
 // it (as the umas' and cards' sort menus)
-/** @type {Record<string, [string, string, (v: import('../../vets.js').Veteran, i: number) => number]>} */
+/** @type {Record<string, [string, string, (v: import('../../veterans/store.ts').VetRecord, i: number) => number]>} */
 const VSORTS = {
   no: ['Added', 'In the order they were added to this page (uma.moe’s: in its own order)', (_v, i) => -i],
   tg: [
@@ -100,7 +101,7 @@ export function initVSort() {
 }
 export function renderPool() {
   // the first veterans arriving fold the setup (as a reload with veterans does), unless you folded or opened it
-  if (!folded && vets.length) {
+  if (!folded && vets.value.length) {
     /** @type {string | null} */
     let chosen = null;
     try {
@@ -114,8 +115,8 @@ export function renderPool() {
     }
   }
   umamoeButton();
-  const guests = vets.filter((v) => v.borrowed).length;
-  $('v-tab-own').textContent = `Veteran Umamusume · ${vets.length - guests}`;
+  const guests = vets.value.filter((v) => v.borrowed).length;
+  $('v-tab-own').textContent = `Veteran Umamusume · ${vets.value.length - guests}`;
   $('v-tab-bor').textContent = `Guests · ${guests}`;
   if (!$dialog('set-vets').open) {
     poolStale = true;
@@ -127,9 +128,9 @@ export function renderPool() {
 // edit or a tab switch builds only the cards that changed (300 veterans are about 1,900 elements)
 /** @type {Map<string, {sig: string, card: HTMLElement}>} */
 const poolCards = new Map();
-/** @param {import('../../vets.js').Veteran} v @param {number} i */
+/** @param {import('../../veterans/store.ts').VetRecord} v @param {number} i */
 function poolCard(v, i) {
-  const sig = JSON.stringify([v, i, plan.parents.indexOf(v.id), settings.value.targets]),
+  const sig = JSON.stringify([v, i, places.value.parents.indexOf(v.id), settings.value.targets]),
     kept = poolCards.get(v.id);
   if (kept?.sig === sig) return kept.card;
   const card = vetCardEl(v, i);
@@ -155,12 +156,12 @@ export function drawPool() {
   paintVSort();
   const by = VSORTS[vSort][2],
     sign = vRev ? -1 : 1,
-    shown = vets
-      .map((v, i) => /** @type {[import('../../vets.js').Veteran, number]} */ ([v, i]))
+    shown = vets.value
+      .map((v, i) => /** @type {[import('../../veterans/store.ts').VetRecord, number]} */ ([v, i]))
       .filter(([v]) => inTab(v))
       .sort(([a, i], [b, j]) => sign * (by(b, j) - by(a, i)));
   // Guests: your borrow list, then uma.moe's listings, each under its heading
-  /** @type {[string, [import('../../vets.js').Veteran, number][]][]} */
+  /** @type {[string, [import('../../veterans/store.ts').VetRecord, number][]][]} */
   const groups =
     vTab === 'own'
       ? [['', shown]]
@@ -175,7 +176,7 @@ export function drawPool() {
     for (const [v, i] of list) nodes.push(poolCard(v, i));
   }
   box.replaceChildren(...nodes);
-  const ids = new Set(vets.map((v) => v.id));
+  const ids = new Set(vets.value.map((v) => v.id));
   for (const id of poolCards.keys()) if (!ids.has(id)) poolCards.delete(id);
   if (!shown.length)
     box.innerHTML =
@@ -192,9 +193,9 @@ export function drawPool() {
 let folded = (() => {
   try {
     const f = localStorage.getItem('llp:setup-folded');
-    return f === null ? vets.length > 0 : f === '1';
+    return f === null ? vets.value.length > 0 : f === '1';
   } catch {
-    return vets.length > 0;
+    return vets.value.length > 0;
   }
 })();
 export function paintFold() {

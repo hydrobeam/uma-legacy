@@ -614,7 +614,7 @@ export const SIDEWAYS = () => {
  * @property {() => Promise<void>} closeNode  shuts that popup if it is open
  * @property {(stars: number) => Promise<void>} simStars  the veteran you got's Uma Stan at so many stars (added first)
  * @property {() => Promise<void>} importDump  imports the umadump test file's 12 veterans
- * @property {() => Promise<void>} saved  an edit's save has landed (vets.js persistSoon saves after the next frame)
+ * @property {() => Promise<void>} saved  an edit's save has landed (veterans/store.ts saves after the next frame)
  * @property {() => Promise<void>} simOpen  opens Try a run's popup (the veteran card) if it is shut
  * @property {() => Promise<void>} simShut  shuts it if it is open
  */
@@ -811,7 +811,7 @@ export async function careerPage(b) {
       await loc.click();
     }
   };
-  // an edit's save lands after the next frame (vets.js persistSoon): what a check reads from storage straight after one
+  // an edit's save lands after the next frame (veterans/store.ts): what a check reads from storage straight after one
   const saved = () => pg.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r))));
   // the umadump test file's 12 veterans
   const importDump = async () => {

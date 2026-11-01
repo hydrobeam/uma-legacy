@@ -349,8 +349,7 @@ test("F5: with a parent fixed, the roll's baseline and Compare's are one job's (
 test("F6: an answer showing the same career keeps the draft she was entered as; another career's resets it", () => {
   const p = page();
   const draft = simulation.peek().draft;
-  draft.sparks[9] = 2; // entered by hand (the editors write in place until step 10)
-  store.draftEdited();
+  store.draftRef.edit((now) => ({ sparks: { ...now.sparks, 9: 2 } })); // entered by hand
   p.c.show(p.shown);
   assert.equal(simulation.peek().draft, draft, 'the same career: the same draft');
   assert.equal(simulation.peek().state, 'ready', 'her comparison starts over');
@@ -379,19 +378,35 @@ test("her card's tab and the races' fold outlive her record: a new career, no ca
 test('an edit of her draft: a new record over the same draft, stale only with figures on show', async () => {
   const p = page();
   const draft = simulation.peek().draft;
-  store.draftEdited();
+  store.draftRef.edit(() => ({ wins: [3] }));
+  assert.deepEqual(draft.wins, [3], 'written into her draft');
   assert.equal(simulation.peek().stale, false, 'no figures: nothing stale');
   assert.equal(simulation.peek().draft, draft);
   assert.equal(p.writes.length, 1, 'a write: the views draw her again');
   p.c.compare();
   await flush();
   await exactAnswers(p, 0);
-  store.draftEdited();
+  store.draftRef.edit(() => ({}));
   assert.equal(simulation.peek().stale, true);
   p.c.stop();
   assert.equal(simulation.peek().stale, true, 'a stop leaves the figures, marked stale');
   const n = p.writes.length;
   p.c.stop();
   assert.equal(p.writes.length, n, 'a stop with nothing to stop writes nothing');
+  p.stop();
+});
+
+test('an editor opened on her draft edits the draft on show when the edit lands, never one it captured', () => {
+  const p = page();
+  const at = store.draftRef; // (an editor holds the ref, as the G1 wins window does while open)
+  p.c.show(career('other')); // another career: a new draft
+  const now = simulation.peek().draft;
+  at.edit((d) => ({ sparks: { ...d.sparks, 5: 1 } }));
+  assert.equal(at.node(), now);
+  assert.equal(now.sparks[5], 1);
+  store.draftAdded();
+  const n = p.writes.length;
+  at.edit(() => ({ wins: [1] }));
+  assert.equal(p.writes.length, n, 'no draft: an edit lands nowhere');
   p.stop();
 });

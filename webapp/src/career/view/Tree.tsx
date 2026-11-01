@@ -2,10 +2,11 @@
 // Try a run beside the title (Verdict, into #lodds). The game's legacy display: portraits only (the trainee; Legacy 1
 // blue and Legacy 2 pink, each the parent with her own two parents), each with its legacy number and affinity; a
 // portrait opens the node popup (her sparks, G1 wins, choose or hand back the place, change who she is). Both draw from
-// the answer and the veterans (`vetsRev`: their records and the places are edited in place until step 10).
+// the answer and the veterans store (veterans/store.ts).
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
-import { vets, vetsRev, plan, umaName } from '../../vets.js';
+import { vets, places } from '../../veterans/store.ts';
+import { umaName } from '../../veterans/names.js';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
 import { openTryRun } from '../analysis/view.tsx';
@@ -69,7 +70,8 @@ const empty = <span class="av empty" />;
 // her affinity, in all, from the report's six slots (career/inherit.rs `slots`)
 const legacyAff = (r: CareerReport) => r.slots.reduce((a, x) => a + x.aff, 0);
 function Trainee({ r }: { r: CareerReport | null }) {
-  const id = plan.trainee || r?.trainee.id,
+  const plan = places.value,
+    id = plan.trainee || r?.trainee.id,
     mine = !!r && r.trainee.id === id,
     outfit = mine ? r?.trainee.outfits[0] : undefined,
     tot = r && mine ? legacyAff(r) : null;
@@ -130,7 +132,7 @@ function Family({ k, r }: { k: number; r: CareerReport | null }) {
           cls="pn parent"
           k={`node:p${k}`}
           face={empty}
-          name={vets.length >= 2 ? 'The planner picks' : 'No parent yet'}
+          name={vets.value.length >= 2 ? 'The planner picks' : 'No parent yet'}
           label={`Parent ${k + 1}: none yet. Details`}
         />
       )}
@@ -157,7 +159,6 @@ function Family({ k, r }: { k: number; r: CareerReport | null }) {
 /** The next career as the player sets it up in the game, in the game's order: the trainee, her two legacies, and each
  *  target's chance to land */
 export function Tree() {
-  vetsRev.value;
   const r = shown();
   return (
     <>
@@ -172,14 +173,13 @@ export function Tree() {
           <Family k={1} r={r} />
         </div>
       </section>
-      {r && r.trainee.id === (plan.trainee || r.trainee.id) && <Targets r={r} />}
+      {r && r.trainee.id === (places.value.trainee || r.trainee.id) && <Targets r={r} />}
     </>
   );
 }
 /** the career's odds of landing every target, and Try a run (a roll of the veteran this career leaves and her
  *  comparison, in a popup) */
 export function Verdict() {
-  vetsRev.value;
   const r = shown();
   if (!r) return null;
   return (

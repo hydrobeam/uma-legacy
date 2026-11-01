@@ -8,7 +8,7 @@ import { scenarioOf } from '../../scenario.js';
 import { popOpener } from '../../popover.js';
 import { openSched } from '../../agenda.js';
 import { pct, deckHint } from '../../odds.js';
-import { vets, vetsRev } from '../../vets.js';
+import { vets } from '../../veterans/store.ts';
 import { deckCardAt, openSkill } from '../../details.js';
 import { cardTitle, borLast, chainEndNote } from '../../cards.js';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
@@ -151,7 +151,7 @@ function cardsGiving(r: CareerReport, g: number) {
 function legaciesCarrying(r: CareerReport, g: number) {
   const out = [];
   for (const ix of r.parents) {
-    const v = vets[ix];
+    const v = vets.value[ix];
     if (!v) continue;
     out.push({ chara: v.chara || 0, outfit: v.outfit, carries: v.sparks?.[g] > 0 });
     for (const p of v.parents) out.push({ chara: p.chara || 0, outfit: p.outfit, carries: p.sparks?.[g] > 0 });
@@ -164,7 +164,6 @@ type Target = CareerReport['targets'][number];
 // white alone; the chance her legacies pass it on; what else gives it (the deck's cards with their chance, her outfit,
 // her own events, the scenario)
 function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | null }) {
-  vetsRev.value; // (it reads a signal, so a parent's redraw with the same props skips it: the edits in place say when)
   const b = t.buy || {},
     gold = t.gold || (b.land_gold || 0) > (b.land_white || 0),
     legacies = legaciesCarrying(r, t.group),

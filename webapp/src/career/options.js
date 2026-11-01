@@ -6,7 +6,9 @@ import { $, el, esc, fmtIn, lazyDialog } from '../dom.js';
 import { settings } from '../settings.ts';
 import { umaAv } from '../images.js';
 import { pct } from '../odds.js';
-import { vets, plan, chosen, changed, umaName } from '../vets.js';
+import { batch } from '@preact/signals-core';
+import { vets, places as yourPlaces, usePlaces, backToPick, setChosen } from '../veterans/store.ts';
+import { umaName } from '../veterans/names.js';
 import { whyText } from '../proofs.mjs';
 import { answer, runView } from './state.ts';
 import { keyOf } from './keys.js';
@@ -71,44 +73,45 @@ const scoreOf = (o) => o.score ?? o.index;
 
 // who an option places: only the places left open, the trainee and the parents (places: the places the table's careers
 // fill: yours, or the plan's when the table is the last plan's)
-function pickWhat(r, places = plan) {
+function pickWhat(r, places = yourPlaces.value) {
   const what = el('div', 'altw');
   if (!places.trainee) {
     what.append(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 32), ` ${r.trainee.name}`);
   }
-  const open = r.parents.filter((i) => !places.parents.includes(vets[i].id));
+  const open = r.parents.filter((i) => !places.parents.includes(vets.value[i].id));
   if (open.length) {
     if (!places.trainee) what.append(', parents ');
     else what.append('Parents ');
     open.forEach((i, j) => {
       if (j) what.append(' + ');
-      what.append(umaAv(vets[i].chara, vets[i].outfit, 24), ` #${i + 1} ${umaName(vets[i].chara)}`);
+      what.append(umaAv(vets.value[i].chara, vets.value[i].outfit, 24), ` #${i + 1} ${umaName(vets.value[i].chara)}`);
     });
   }
   return what;
 }
-function useBtn(r, places = plan) {
+function useBtn(r, places = yourPlaces.value) {
   const b = btn('Use this', '', () => {
-    // her trainee, and the career's parents in the places left open (in the career's order)
-    plan.trainee = r.trainee.id;
+    // her trainee, and the career's parents in the places left open (in the career's order); one batch: the page
+    // reacts once, to the places and the choice together
     const parents = places.parents.slice();
-    const unplaced = r.parents.filter((i) => !parents.includes(vets[i].id));
-    for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets[unplaced.shift()].id;
-    plan.parents = parents;
-    plan.fromTable = true; // (a change of setup hands the places back to the planner: main.js initSettings)
-    // a builder's other career, or the pair search's recommendation, keeps its deck: the job then reports that career
-    // (`career`) instead of searching, while the setup it was chosen on stands (`chosenApplies`)
-    chosen.career = null;
-    forgetDroppedChoice();
-    if ((r.alternative || r.pair_search) && r.career) {
-      try {
-        chosen.career = { places: placesKey(), id: r.career, setup: chosenSetup(buildJob(settings.value)) };
-      } catch (e) {
-        if (!(e instanceof Blocked)) throw e;
-        // settings that make no job: nothing is chosen
+    const unplaced = r.parents.filter((i) => !parents.includes(vets.value[i].id));
+    for (let j = 0; j < 2; j++) if (!parents[j]) parents[j] = vets.value[unplaced.shift()].id;
+    batch(() => {
+      // (a change of setup hands the places back to the planner: main.tsx initSettings)
+      usePlaces(r.trainee.id, parents);
+      // a builder's other career, or the pair search's recommendation, keeps its deck: the job then reports that
+      // career (`career`) instead of searching, while the setup it was chosen on stands (`chosenApplies`); the job is
+      // built on the places just written
+      forgetDroppedChoice();
+      if ((r.alternative || r.pair_search) && r.career) {
+        try {
+          setChosen({ places: placesKey(), id: r.career, setup: chosenSetup(buildJob(settings.value)) });
+        } catch (e) {
+          if (!(e instanceof Blocked)) throw e;
+          // settings that make no job: nothing is chosen
+        }
       }
-    }
-    changed();
+    });
   });
   b.disabled = runView.value.searching; // (an old answer's option, while a run works on the next)
   return b;
@@ -125,9 +128,9 @@ function negativeTopText(planReport, pick) {
   const { last, planState } = answer.value,
     job = planState.state === 'done' ? planState.job : last?.job,
     step = job?.borrowed_parent === 'later' ? routeFirstStep(planReport) : null,
-    borrowed = step ? step.parents.filter((i) => vets[i]?.borrowed) : [];
+    borrowed = step ? step.parents.filter((i) => vets.value[i]?.borrowed) : [];
   if (!borrowed.length) return text;
-  const who = borrowed.map((i) => `#${i + 1} ${umaName(vets[i].chara)}`).join(' and ');
+  const who = borrowed.map((i) => `#${i + 1} ${umaName(vets.value[i].chara)}`).join(' and ');
   return `${text} Its next step needs a borrowed parent (${who}), kept out by ${BORROW_CHOICES.later}.`;
 }
 export function optionsEl() {
@@ -138,6 +141,7 @@ export function optionsEl() {
   // when the plan didn't list it: no saving), and a way back to the places it ran with
   const on = shown(),
     ref = refFor(),
+    plan = yourPlaces.value,
     mineOnly = !!plan.trainee && plan.parents.every(Boolean),
     { last, planState } = answer.value;
   const planReport = planState.state === 'done' ? planState.r : mineOnly && ref ? ref.result : null,
@@ -240,11 +244,7 @@ export function optionsEl() {
   // (a row proven under a named assumption is proven: the run note names the job's assumptions, the plan's searches
   // included, `searchCaveat`, so the table adds no note for them)
   if (ref && placesKey(ref.places) !== placesKey()) {
-    const back = btn("Back to the planner's pick", '', () => {
-      plan.trainee = ref.places.trainee;
-      plan.parents = ref.places.parents.slice();
-      changed();
-    });
+    const back = btn("Back to the planner's pick", '', () => backToPick(ref.places));
     back.id = 'opt-back';
     back.disabled = runView.value.searching;
     const f = el('div', 'optfoot');
@@ -284,7 +284,7 @@ function pairSearchNotes(planReport, nameOf) {
   if (!planReport) return [];
   const check = checkDone(planReport);
   if (!check?.pairs) return [];
-  const vetName = (i) => (vets[i] ? `#${i + 1} ${umaName(vets[i].chara)}` : `#${i + 1}`);
+  const vetName = (i) => (vets.value[i] ? `#${i + 1} ${umaName(vets.value[i].chara)}` : `#${i + 1}`);
   const shownOf = (found) => planReport.options.find((o) => keyOf(o) === found.shown);
   // (a bound on the pairs scored per uma, `pair_bound`: past it, her pairs with the highest all-target ceilings)
   const bound = check.pairs.pair_bound;

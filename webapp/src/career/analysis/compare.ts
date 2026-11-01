@@ -16,7 +16,7 @@ import type * as AnalysisStore from './state.ts';
 import type { Draft } from './state.ts';
 import type { Roll } from '../roll.mjs';
 import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.js';
-import type { LineageNode } from '../../vets.js';
+import type { LineageNode } from '../../veterans/store.ts';
 import { keyOf } from '../keys.js';
 import { PLAN_NEXT } from '../run.ts';
 

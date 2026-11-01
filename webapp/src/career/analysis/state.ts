@@ -4,17 +4,17 @@
 // edit of the draft replaces the record through a transition below, in one write, so a view never draws a phase half
 // written. The comparison's staleness token and the baseline it caches are the machine's closure state: nothing draws
 // them. Nothing here subscribes: the views read the signal, the machine reads it with peek().
-// The draft is the one part not copied on write and not frozen: the editors of step 10's veterans store (the spark
-// chips, the "+" list, the colour picker, the G1 wins editor) still write into the node they were opened on, across
-// several edits, so she keeps one identity from her roll until she is added or another career replaces her; an edit
-// (`draftEdited`) publishes a new record over the same draft.
+// The draft is the one part not copied on write and not frozen: she keeps one identity from her roll until she is added
+// or another career replaces her. The editors reach her through `draftRef` (the veterans' editors' `NodeRef`), whose
+// edits land in her through `draftEdited`, which publishes a new record over the same draft: the views draw her again
+// from the record's identity.
 // The folder: state.ts (this store), compare.ts (the comparison's run machine), view.tsx (Try a run's popup: her card's
 // actions and the comparison panel), Details.tsx (her card, the game's Umamusume Details screen).
 import { signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { deepFreeze } from '../../store.ts';
 import type { DeepReadonly } from '../../store.ts';
-import type { LineageNode } from '../../vets.js';
+import type { LineageNode, NodePatch, NodeRef } from '../../veterans/store.ts';
 import type { Roll } from '../roll.mjs';
 import type { CareerReport, CareerSearch, PlanOption } from '../job.js';
 
@@ -127,13 +127,21 @@ export function draftRolled(outcome: Roll) {
   Object.assign(draft, outcome, { winAt: {} });
   patch({ r: null, stale: false });
 }
-/** an edit of her (`fields` written into the draft; the editors write it themselves until step 10): the comparison on
- *  show is for the old one */
-export function draftEdited(fields: Partial<Draft> = {}) {
+/** an edit of her: `fields` written into the draft (`draftRef`'s editors), the comparison on show for the old one */
+function draftEdited(fields: Partial<Draft>) {
   const { draft, r, stale } = record.peek();
   if (draft) Object.assign(draft, fields);
   patch({ stale: !!r || !!stale });
 }
+/** her draft for an editor (veterans/store.ts `NodeRef`: the spark chips, the colour picker, the "+" list, the G1 wins
+ *  editor): each edit lands on the draft on show as it is then, through `draftEdited` */
+export const draftRef: NodeRef = {
+  node: () => record.peek().draft ?? undefined,
+  edit: (f: (now: LineageNode) => NodePatch) => {
+    const { draft } = record.peek();
+    if (draft) draftEdited(f(draft) as Partial<Draft>);
+  },
+};
 /** she joins the veterans: the next answer starts a new draft even for the same career */
 export const draftAdded = () => patch({ draft: null });
 

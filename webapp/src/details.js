@@ -1,14 +1,10 @@
 // ---------- the veteran card's parts the views share: the game's "Umamusume Details" screen ----------
 // What Try a run's card (career/analysis/Details.tsx) and the node popups share: the spark names' fit (`fitSparks`), the
-// game-style Skill Details popup (`openSkill`), a deck's card by its index (`deckCardAt`), and the game's Inspiration view
-// of a veteran built with el() (`inspView`: Try a run's Inspiration tab until the veterans store's draft setter lands,
-// step 10). The game's own art where the build shipped it (images.py: spark bars and bullets, skill tiles), the same
-// shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
+// game-style Skill Details popup (`openSkill`) and a deck's card by its index (`deckCardAt`).
 import { el, lazyDialog } from './dom.js';
 import { gameData } from './data.js';
 import { umaAv, cardAv } from './images.js';
-import { umaName, sparksEl } from './vets.js';
-/** @import { LineageNode } from './vets.js' */
+import { umaName } from './veterans/names.js';
 
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only
 // Each name takes the largest size f0 - 0.5k that fits, or the first one at or under 9 px (a step-by-step shrink). All
@@ -156,68 +152,6 @@ export function openSkill({ b, name, got, icon, gold = false, legacies = [], car
   skDlg.appendChild(f);
   skDlg.showModal();
   close.focus();
-}
-
-// The game's Inspiration view of a veteran: "Sparks", her sparks as the game's spark bars (stars on their edge), then
-// "Legacy Origin": her parents' (each a row with her portrait). Its component twin, ui/InspView.tsx, draws the node popups'.
-/**
- * @typedef {object} InspViewSpec
- * @property {LineageNode & {parents?: LineageNode[]}} d  the veteran shown (her parents: none, or her two)
- * @property {string} key  her sparks' control names
- * @property {() => void} onEdit  after an edit of her sparks
- * @property {string} [meClass]  an extra class on her row
- * @property {((j: number) => string)|null} [parentLabel]  parent j's label (null: "Her parent")
- * @property {((j: number) => string)|null} [parentKey]  parent j's sparks' control names (null: her parents' read-only)
- * @property {() => void} [onEditParent]  after an edit of a parent's sparks
- * @property {boolean} [header]  the "Sparks" heading
- * @property {boolean} [readOnly]  nothing editable (a veteran listed on uma.moe: another player's)
- */
-/** @param {InspViewSpec} spec */
-export function inspView({
-  d,
-  key,
-  onEdit,
-  meClass = '',
-  parentLabel = null,
-  parentKey = null,
-  onEditParent,
-  header = true,
-  readOnly = false,
-}) {
-  const p = el('div', 'udinsp');
-  if (header) p.appendChild(el('div', 'udhdr', 'Sparks'));
-  const lin = el('div', `udlin${d.parents?.length ? '' : ' solo'}`);
-  const mine = el('div', `udrow me${meClass ? ` ${meClass}` : ''}`);
-  const face = umaAv(d.chara || 0, d.outfit, 64);
-  face.classList.add('udface');
-  mine.appendChild(face);
-  const sp = el('div', 'simskills');
-  sp.setAttribute('role', 'group');
-  sp.setAttribute('aria-label', 'Her sparks');
-  sp.appendChild(sparksEl(d, key, onEdit, readOnly));
-  mine.appendChild(sp);
-  lin.appendChild(mine);
-  if (d.parents?.length) {
-    const lo = el('div', 'udorigin');
-    lo.appendChild(el('span', '', 'Legacy Origin'));
-    lin.appendChild(lo);
-    d.parents.forEach((g, j) => {
-      const row = el('div', 'udrow par');
-      const f = umaAv(g.chara || 0, g.outfit, 64);
-      f.classList.add('udface');
-      f.setAttribute('role', 'img');
-      f.setAttribute('aria-label', `${parentLabel ? `Parent ${parentLabel(j)}` : 'Her parent'}: ${umaName(g.chara)}`);
-      row.appendChild(f);
-      const s = el('div', 'udpsp');
-      s.appendChild(
-        parentKey && !readOnly ? sparksEl(g, parentKey(j), onEditParent) : sparksEl(g, `simp${j}`, undefined, true),
-      );
-      row.appendChild(s);
-      lin.appendChild(row);
-    });
-  }
-  p.appendChild(lin);
-  return p;
 }
 
 // A deck's i-th card, from the solver's deck report: its name with the report's notes taken off (base), whether it is the

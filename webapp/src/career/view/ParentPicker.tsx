@@ -2,8 +2,11 @@
 // dialogs.ts `pickerFor` names a place.
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
-import { vets, vetsRev, plan, changed, vetById, umaName, askSkills, newVet, drawUmas, filterUmas } from '../../vets.js';
-import type { Veteran } from '../../vets.js';
+import { batch } from '@preact/signals-core';
+import { vets, places, vetById, newVet, setParent } from '../../veterans/store.ts';
+import { umaName } from '../../veterans/names.js';
+import { askSkills, drawUmas, filterUmas } from '../../veterans/pickers.js';
+import type { VetRecord } from '../../veterans/store.ts';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.js';
@@ -15,18 +18,18 @@ const BLOCKED: Record<string, string> = {
   same: 'same uma as the other parent',
   both: 'the other parent is borrowed',
 };
-function blockedFor(v: Veteran, k: number) {
-  const otherId = plan.parents[1 - k];
+function blockedFor(v: VetRecord, k: number) {
+  const plan = places.value,
+    otherId = plan.parents[1 - k];
   const why = pairBlock(plan.trainee, v, otherId && vetById(otherId), settings.value);
   return why === 'setting'
     ? `borrowed (Borrowed parent: ${BORROW_CHOICES[borrowChoice(settings.value)]})`
     : BLOCKED[why] || '';
 }
 /** one veteran: her face, name, number, targets carried, parents; why she can't go here, if so */
-function VetChoice({ v, i, k }: { v: Veteran; i: number; k: number }) {
-  vetsRev.value; // (it reads a signal, so a parent's redraw with the same props skips it: the edits in place say when)
+function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
   const why = blockedFor(v, k),
-    cur = plan.parents[k] === v.id,
+    cur = places.value.parents[k] === v.id,
     tg = settings.value.targets.map((t) => t.group),
     sparks = v.sparks as Record<number, number>,
     have = tg.filter((g) => sparks[g]),
@@ -36,12 +39,12 @@ function VetChoice({ v, i, k }: { v: Veteran; i: number; k: number }) {
       type="button"
       class={`vpt${cur ? ' cur' : ''}${v.borrowed ? ' bor' : ''}`}
       disabled={!!why}
-      onClick={() => {
-        plan.parents[k] = v.id;
-        plan.fromTable = false; // (chosen by hand: it stays)
-        pickerClosed();
-        changed();
-      }}
+      onClick={() =>
+        batch(() => {
+          pickerClosed();
+          setParent(k, v.id, true); // (chosen by hand: it stays)
+        })
+      }
     >
       <div class="vpth">
         <UmaAv uma={v.chara} outfit={v.outfit} size={48} />
@@ -74,7 +77,6 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number][0];
 export function ParentPicker() {
-  vetsRev.value;
   const k = pickerFor.value,
     lastK = useRef<number | null>(null), // the place it shows (closed: the last, as a dialog keeps its content)
     opening = useRef(0), // its openings so far: a tab chosen holds for the opening it was chosen in
@@ -86,9 +88,9 @@ export function ParentPicker() {
   if (k !== null && shownFor.current !== k) opening.current++;
   if (k !== null) lastK.current = k;
   const place = lastK.current,
-    tab: Tab = chosenTab && chosenTab[1] === opening.current ? chosenTab[0] : vets.length ? 'vets' : 'new';
+    tab: Tab = chosenTab && chosenTab[1] === opening.current ? chosenTab[0] : vets.value.length ? 'vets' : 'new';
   const close = pickerClosed;
-  // A new one: every uma, filterable (vets.js drawUmas builds the list into its box; the filter hides, never rebuilds)
+  // A new one: every uma, filterable (veterans/pickers.js drawUmas builds the list into its box; the filter hides, never rebuilds)
   useLayoutEffect(() => {
     const opened = shownFor.current !== k;
     shownFor.current = k;
@@ -100,11 +102,11 @@ export function ParentPicker() {
         askSkills(
           umaName(id),
           false,
-          (sp: Record<number, number> | null) => {
-            const v = newVet(id, sp || {});
-            plan.parents[k] = v.id;
-            changed();
-          },
+          (sp: Record<number, number> | null) =>
+            batch(() => {
+              const v = newVet(id, sp || {});
+              setParent(k, v.id, false);
+            }),
           true,
         );
       });
@@ -142,11 +144,11 @@ export function ParentPicker() {
         </div>
         <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
           <div class="vpgrid" id="vp-list">
-            {place !== null && !vets.length && (
+            {place !== null && !vets.value.length && (
               <p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>
             )}
             {place !== null &&
-              vets.flatMap((v: Veteran, i: number) => {
+              vets.value.flatMap((v: VetRecord, i: number) => {
                 const head = v.src === 'umamoe' && !headed;
                 if (head) headed = true;
                 return [
@@ -179,9 +181,10 @@ export function ParentPicker() {
             id="vp-auto-go"
             onClick={() => {
               if (k === null) return;
-              plan.parents[k] = null;
-              close();
-              changed();
+              batch(() => {
+                close();
+                setParent(k, null, false);
+              });
             }}
           >
             Let the planner pick this parent

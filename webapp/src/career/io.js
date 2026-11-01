@@ -2,7 +2,8 @@
 import { $, $dialog, $textarea } from '../dom.js';
 import { ERA } from '../saved.ts';
 import { settings } from '../settings.ts';
-import { vets, plan, umaName, importVets, isVeteran, asVeteran, addVets } from '../vets.js';
+import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
+import { umaName } from '../veterans/names.js';
 import { parseExport, parseTree } from '../umadump.js';
 import { orNull } from '../must.ts';
 import { Blocked, buildJob } from './job.js';
@@ -15,8 +16,16 @@ export function exportVets() {
   // (settings that make no job: the export carries none; a bug building it is reported, and the veterans still export)
   const job = orNull(() => buildJob(settings.value), Blocked);
   // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
-  const veterans = vets.filter((v) => v.src !== 'umamoe');
-  const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans, plan, job };
+  const veterans = vets.value.filter((v) => v.src !== 'umamoe');
+  const data = {
+    app: EXPORT_APP,
+    version: 1,
+    era: ERA,
+    exported: new Date().toISOString(),
+    veterans,
+    plan: places.value,
+    job,
+  };
   $textarea('vx-text').value = JSON.stringify(data);
   $('vx-msg').textContent = '';
   $dialog('vx-dlg').showModal();
@@ -96,7 +105,7 @@ export function importText(text) {
       return false;
     }
     addVets(tree);
-    const first = vets.indexOf(tree[0]) + 1;
+    const first = vets.value.indexOf(tree[0]) + 1;
     $('v-msg').textContent =
       `Added ${tree.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${first}${tree.length > 1 ? `-#${first + tree.length - 1}` : ''} (marked yours: switch to Borrowed if she is a friend's).`;
     return true;

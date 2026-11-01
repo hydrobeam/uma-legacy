@@ -3,25 +3,26 @@
 // game's letters), then three tabs as in the game: Skills (the target skills she learned), Inspiration (her sparks as
 // the game's spark bars, stars under each, then "Legacy Origin": her two parents' sparks) and Career Info (her support
 // cards, her two legacies, the G1s she ran and won). No stats (the model has none).
-// The tab on show and the races' fold are the analysis store's (they outlive the card). Her draft is edited in place (career/analysis/state.ts says why), so the card takes the analysis record as well
-// (`record`): a new one comes with every edit, and the parts that read a signal (the tabs, the races' fold) draw her
-// again from it. Inspiration stays el()-built (details.js inspView, vets.js sparksEl) until the veterans store's draft
-// setter lands (step 10): ui/Sparks draws again only when the veterans' count moves, which an edit of the draft does not.
+// The tab on show and the races' fold are the analysis store's (they outlive the card). Her draft keeps one identity
+// (career/analysis/state.ts says why), so her card's `spec` is made anew with every record (every edit), and the parts
+// that read a signal (the tabs, the races' fold) draw her again from it rather than skip her as
+// unchanged. Her sparks are edited through the store (`draftRef`).
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import { gameData } from '../../data.js';
 import { settings } from '../../settings.ts';
 import { skillIcon as skillIconEl } from '../../images.js'; // (Skill Details' icon: its dialog is el()-built)
 import { popOpener } from '../../popover.js';
-import { umaName } from '../../vets.js';
-import type { Veteran } from '../../vets.js';
-import { deckCardAt, fitSparks, inspView, openSkill } from '../../details.js';
+import { umaName } from '../../veterans/names.js';
+import type { VetRecord } from '../../veterans/store.ts';
+import { deckCardAt, fitSparks, openSkill } from '../../details.js';
+import { InspView } from '../../ui/InspView.tsx';
 import { borLast } from '../../cards.js';
 import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import type { CareerReport } from '../job.js';
-import { detailsTab as tab, racesShown, showTab, toggleRaces } from './state.ts';
-import type { DetailsTab, Draft, SimulationView } from './state.ts';
+import { detailsTab as tab, draftRef, racesShown, showTab, toggleRaces } from './state.ts';
+import type { DetailsTab, Draft } from './state.ts';
 
 type Career = DeepReadonly<CareerReport>;
 
@@ -61,8 +62,6 @@ const when = (turn: number) =>
 
 /** what the card shows of her and her career */
 export interface DetailsSpec {
-  /** the analysis record on show (a new one with every edit of her draft) */
-  record: SimulationView;
   /** her draft */
   d: Draft;
   /** the career she came from */
@@ -71,9 +70,10 @@ export interface DetailsSpec {
   races: { ix: number; name: string; p: number; turns: number[] }[];
   raceName: (ix: number) => string;
   /** after an edit of her sparks */
-  onEdit: () => void;
+  /** the target skills' groups, in the job's order */
+  targets: readonly number[];
   /** her two parents' records, each with her place and what opens her node */
-  legacies: { v: Veteran; label: string; open: () => void }[];
+  legacies: { v: VetRecord; label: string; open: () => void }[];
 }
 /** her card: `actions` beside her portrait, `winsButton` (the G1 wins editor's) in Career Info */
 export function Details({
@@ -139,9 +139,7 @@ const DEFS = [
 // the tabs and their panes, all three built up front as in the game; a switch shrinks the spark names now on show to
 // fit (details.js fitSparks waits a frame itself, so the render has landed by then)
 function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: ComponentChildren }) {
-  const list = useRef<HTMLDivElement>(null),
-    insp = useRef<HTMLDivElement>(null);
-  useInspiration(insp, spec);
+  const list = useRef<HTMLDivElement>(null);
   const show = (key: DetailsTab) => {
     showTab(key);
     const card = list.current?.closest<HTMLElement>('.ud');
@@ -158,7 +156,19 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
   const pane = (key: DetailsTab) =>
     key === 'skills' ? (
       <SkillsPane spec={spec} />
-    ) : key === 'insp' ? null : (
+    ) : key === 'insp' ? (
+      // Inspiration: "Sparks" (hers, editable), then "Legacy Origin" (her two parents', read-only)
+      <InspView
+        nd={spec.d}
+        parents={spec.d.parents}
+        k="sim"
+        at={draftRef}
+        targets={spec.targets}
+        header
+        meClass="simwho"
+        parentLabel={(j) => `#${spec.r.parents[j] + 1}`}
+      />
+    ) : (
       <InfoPane spec={spec} winsButton={winsButton} />
     );
   return (
@@ -191,7 +201,6 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
             role="tabpanel"
             aria-labelledby={`udtab-${key}`}
             hidden={tab.value !== key}
-            ref={key === 'insp' ? insp : undefined}
           >
             {pane(key)}
           </div>
@@ -250,30 +259,6 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
       <p class="udfoot">{`${acquired} of ${tiles.length} target skills acquired. Tap a skill for where it comes from.`}</p>
     </>
   );
-}
-
-// Inspiration: "Sparks" (hers, editable), then "Legacy Origin" (her two parents'). el()-built into its pane (`pane`,
-// which the component draws empty) until step 10 (the header says why), again with each new record; the control that
-// had the focus gets it back by its name.
-function useInspiration(pane: { current: HTMLDivElement | null }, { record, d, r, onEdit }: DetailsSpec) {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new record is an edit of her draft, made in place (the header)
-  useLayoutEffect(() => {
-    const host = pane.current;
-    if (!host) return;
-    const focused = document.activeElement as HTMLElement | null,
-      k = focused && host.contains(focused) ? focused.dataset.k : undefined;
-    host.replaceChildren(
-      inspView({
-        d,
-        key: 'sim',
-        onEdit,
-        meClass: 'simwho',
-        parentLabel: (j) => `#${r.parents[j] + 1}`,
-        parentKey: null,
-      }),
-    );
-    if (k) host.querySelector<HTMLElement>(`[data-k="${CSS.escape(k)}"]`)?.focus();
-  }, [record, r]);
 }
 
 /** one support card of her deck (a click opens its panel: popover.js, which reads the data-* and leaves the markup to

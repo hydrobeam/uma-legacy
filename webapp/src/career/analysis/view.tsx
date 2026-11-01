@@ -10,8 +10,11 @@ import { $, $dialog, fmtIn } from '../../dom.js';
 import { careerTables } from '../../data.js';
 import { settings } from '../../settings.ts';
 import { pct } from '../../odds.js';
-import { vets, vetsRev, plan, changed, newVet, umaName, openWins } from '../../vets.js';
-import type { LineageNode } from '../../vets.js';
+import { batch } from '@preact/signals-core';
+import { vets, newVet, clearPlaces } from '../../veterans/store.ts';
+import type { LineageNode, NodeRecord } from '../../veterans/store.ts';
+import { umaName } from '../../veterans/names.js';
+import { openWins } from '../../veterans/pickers.js';
 import { fitSparks } from '../../details.js';
 import { Runner, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
@@ -27,14 +30,14 @@ import { openNode } from '../view/dialogs.ts';
 import { DeckCard } from '../view/Sections.tsx';
 import { Details } from './Details.tsx';
 import type { DetailsSpec } from './Details.tsx';
-import { simulation, draftEdited, draftAdded } from './state.ts';
+import { simulation, draftAdded, draftRef } from './state.ts';
 import type { Draft, SimulationView } from './state.ts';
 import type { Comparison } from './compare.ts';
 
 type Career = DeepReadonly<CareerReport>;
 
 // ---------- her draft (the machine's deps)
-const copyNode = (v: LineageNode): LineageNode => ({
+const copyNode = (v: NodeRecord): LineageNode => ({
   chara: v.chara,
   ...(v.outfit ? { outfit: v.outfit } : {}),
   sparks: { ...v.sparks },
@@ -58,16 +61,14 @@ export const draftOf = (r: Career): Draft => ({
   borrowed: false,
   ...rollOf(r),
   winAt: {},
-  parents: r.parents.map((i) => copyNode(vets[i])),
+  parents: r.parents.map((i) => copyNode(vets.peek()[i])),
 });
 
-// ---------- her edits and Add to veterans
-// an edit to the entered veteran: the comparison on screen is for the old one
-const editDraft = () => draftEdited();
+// ---------- her G1 wins and Add to veterans
 // the veteran analysis' G1 wins: the G1 wins editor of the pool (a win in its slot, click to remove; an empty slot lists
 // the G1s she could enter then). Her schedule's races keep their win odds in the turn bar; a win shows at the turn
 // picked for it, else the turn her schedule runs it. A race held in Classic and Senior is one win saddle (one race
-// index). `back`: the focus on close
+// index). Its edits land on her through the store (`draftRef`). `back`: the focus on close
 function openDraftWins(d: Draft, r: Career, back: () => void) {
   // the G1s she could enter, by turn (heldAt), and those her schedule runs, by race (runs: the first turn and its cell)
   const rows = tableRows(r),
@@ -81,13 +82,12 @@ function openDraftWins(d: Draft, r: Career, back: () => void) {
     if (w.run !== false && !runs.has(ix)) runs.set(ix, { turn: w.turn, cell: w.cells[0] });
   }
   const parentWon = (ix: number) => d.parents.some((p) => p.wins.includes(ix));
-  openWins(d, umaName(d.chara), {
+  openWins(draftRef, umaName(d.chara), {
     offer: rows.length ? (t: number) => heldAt.get(t) || [] : null,
     info: (ix: number) => {
       const x = runs.get(ix);
       return x || parentWon(ix) ? { ...(x || {}), parent: parentWon(ix) } : null;
     },
-    onEdit: editDraft,
     onClose: back,
   });
 }
@@ -98,14 +98,13 @@ function addDraft() {
   const d = structuredClone(draft);
   delete d.apt;
   delete d.bought;
-  const v = newVet(d.chara, d.sparks);
-  Object.assign(v, d, { src: 'entered', borrowed: false });
-  plan.trainee = null;
-  plan.parents = [null, null];
   draftAdded(); // she is in the pool now: the next answer starts a new one even for the same career
   $('v-msg').textContent =
-    `Added ${umaName(v.chara)} to your veterans. The planner now picks the next career from all of them.`;
-  changed();
+    `Added ${umaName(d.chara)} to your veterans. The planner now picks the next career from all of them.`;
+  batch(() => {
+    newVet(d.chara, d.sparks, { ...d, src: 'entered', borrowed: false });
+    clearPlaces();
+  });
 }
 
 // ---------- the comparison panel
@@ -144,11 +143,13 @@ function Faces({
     </span>
   );
 }
-// a parent of a future career by legacy index (index = vets.length: the veteran she leaves, `who`)
-const parentFace = (i: number, who: Draft) =>
-  i >= vets.length
-    ? { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true }
-    : { chara: vets[i].chara, outfit: vets[i].outfit, label: `#${i + 1} ${umaName(vets[i].chara)}` };
+// a parent of a future career by legacy index (index = the veterans' count: the veteran she leaves, `who`)
+const parentFace = (i: number, who: Draft) => {
+  const v = vets.value[i];
+  return v
+    ? { chara: v.chara, outfit: v.outfit, label: `#${i + 1} ${umaName(v.chara)}` }
+    : { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true };
+};
 // a figure's direction: 'up' (better with her), 'down' (worse) or 'same' (within the estimate's noise, or unknown)
 function direction(now: number | null, withHer: number | null, lowerIsBetter: boolean) {
   if (now == null || withHer == null) return 'same';
@@ -347,9 +348,8 @@ function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: Draft; r: Care
 /** The veteran analysis: her card (./Details.tsx; she starts as a random result of this career) with its actions, and
  *  the comparison panel beside it. */
 export function Analysis({ comparison }: { comparison: Comparison }) {
-  // the career on show reads the places (vets.js `plan`), and her card her parents' records: both edited in place, so
-  // the veterans' count says when (step 10's store ends it); her own record redraws by its identity (`simulation`)
-  vetsRev.value;
+  // (the career on show reads the places, and her card her parents' records: the veterans store's signals; her own
+  // record redraws by its identity, `simulation`)
   const sim = simulation.value,
     r = shown(),
     searching = runView.value.searching,
@@ -369,17 +369,15 @@ export function Analysis({ comparison }: { comparison: Comparison }) {
       </section>
     );
   const spec: DetailsSpec = {
-    record: sim,
     d,
     r,
     races: scheduledRaces(r, careerTables().races),
     raceName: (ix) => careerTables().races[ix] || `G1 ${ix}`,
-    onEdit: editDraft,
-    legacies: r.parents.map((i) => ({
-      v: vets[i],
-      label: `#${i + 1}`,
-      open: () => openNode({ kind: 'v', id: vets[i].id }),
-    })),
+    targets: settings.value.targets.map((t) => t.group),
+    legacies: r.parents.map((i) => {
+      const v = vets.value[i];
+      return { v, label: `#${i + 1}`, open: () => openNode({ kind: 'v', id: v.id }) };
+    }),
   };
   // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose answer
   // replaces the career on show)

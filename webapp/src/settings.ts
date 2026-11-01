@@ -96,7 +96,7 @@ export const fields = Object.fromEntries(SETTINGS.map((key) => [key, computed(()
   readonly [K in (typeof SETTINGS)[number]]: ReadonlySignal<SettingsView[K]>;
 };
 // What a job reads, the loop search's or the career planner's (each page edits only its own; the career job's
-// veterans and places are vets.js's): a change of any is a change of setup, and the page searches again
+// veterans and places are veterans/store.ts's): a change of any is a change of setup, and the page searches again
 export const jobSetup = computed(() =>
   (['targets', 'rank', 'scen', 'roster', 'outfits', 'cardsOff', 'decksTop', 'perUma', 'borrowPar'] as const).map(
     (key) => fields[key].value,

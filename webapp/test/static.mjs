@@ -498,7 +498,7 @@ const LAYERS = [
       'loop/keys',
     ],
   ],
-  ['stores', ['settings', 'loop/state', 'vets', 'career/state', 'career/analysis/state']],
+  ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
   ['shared', null], // every module not named elsewhere
   [
     'page:loop',
@@ -535,8 +535,8 @@ const LAYERS = [
     ],
   ],
 ];
-// the imports against the layers that stand: vets.js is the veterans' store and their editors (split in step 10)
-const KNOWN_AGAINST = ['vets (stores) -> images (shared)', 'vets (stores) -> agenda (shared)'];
+// the imports against the layers that stand (none since the veterans' store was split, step 10)
+const KNOWN_AGAINST = [];
 {
   const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
   const layerOf = (mod) => {

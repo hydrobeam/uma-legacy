@@ -1,28 +1,23 @@
-// ---------- the component twin of vets.js's spark editor (sparksEl): a node's sparks as the game's Inspiration cells ----------
-// The markup sparksEl draws (vets.js says what each part is). A chip is keyed by its group, so a click that changes its
-// stars patches the chip and the focus stays on it. The record is edited in place, as vets.js does (copy-on-write and
-// its setters come with the veterans store, step 10); `onEdit` follows every edit. The colour picker and the "+" list
-// stay vets.js's (openColour, openAdd). sparksEl stays for the views not yet components (the pool's cards, the
-// veteran analysis).
+// ---------- a node's sparks as the game's Inspiration cells ----------
+// Her blue (stat), pink (aptitude) and unique (green) sparks first, each a bar of its colour (a dashed one when she has
+// none) that opens its picker; then her target skills' white sparks (click: stars 1 -> 2 -> 3 -> 1, the corner x
+// removes), then "+" (a target skill she lacks). Sparks of skills that are not targets are kept but not shown
+// (read-only: shown, after the targets, greyed). A spark's stars are two spans (the game-style card colours them
+// apart), hidden from the screen reader (the control's label says the count). A chip is keyed by its group, so a click that
+// changes its stars patches the chip and the focus stays on it. Sparks draws `nd` and reads no store: it draws again
+// whenever its parent does (a new record from the veterans store, or a draft edited in place whose card draws again).
+// Every edit goes through `at` (the node by where it is), from her record as it is when the edit lands. The colour
+// picker and the "+" list are veterans/sparks.js's and pickers.js's (openColour, openAdd).
 import { useRef } from 'preact/hooks';
-import { settings } from '../settings.ts';
-import {
-  KIND,
-  NEW_STARS,
-  addOpener,
-  vetsRev,
-  currentSpark,
-  openAdd,
-  openColour,
-  pinkName,
-  skillName,
-  uniqueName,
-} from '../vets.js';
-import type { LineageNode } from '../vets.js';
+import { NEW_STARS } from '../veterans/store.ts';
+import { pinkName, skillName, uniqueName } from '../veterans/names.js';
+import { addOpener, openAdd } from '../veterans/pickers.js';
+import { KIND, currentSpark, openColour } from '../veterans/sparks.js';
+import type { NodeRecord, NodeRef } from '../veterans/store.ts';
 import { SkillIcon } from './Images.tsx';
 
 type Kind = 'blue' | 'pink' | 'green';
-/** a spark's stars, filled then empty, out of 3 (vets.js starsEl) */
+/** a spark's stars, filled then empty, out of 3 */
 export function Stars({ n }: { n: number }) {
   return (
     <span class="stars" aria-hidden="true">
@@ -40,7 +35,7 @@ interface ChipProps {
   group?: number;
   stars: number;
   pink?: boolean;
-  /** the control's name (data-k: the tests and the colour picker's return find it by it) */
+  /** the control's name (data-k: the tests find it by it) */
   k: string;
   readOnly?: boolean;
   other?: boolean;
@@ -55,7 +50,7 @@ interface ChipProps {
   /** its corner x (none without) */
   onRemove?: () => void;
 }
-/** one spark as a chip (vets.js chip): click for the next star count, the corner x removes */
+/** one spark as a chip: click for the next star count, the corner x removes */
 function Chip(props: ChipProps) {
   const {
       label,
@@ -84,7 +79,7 @@ function Chip(props: ChipProps) {
   if (readOnly)
     return (
       <span class={c}>
-        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (vets.js chip): the label names a read-only spark; a role for it is the SparkChips port's (step 10) */}
+        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the el() chip's before it): the label names a read-only spark; a role for it is the SparkChips port's (step 10) */}
         <span class="vskb" aria-label={`${named}, ${stars} stars${other ? ', not a target' : ''}`}>
           {inner}
         </span>
@@ -118,22 +113,21 @@ function Chip(props: ChipProps) {
   );
 }
 interface BarProps {
-  nd: LineageNode;
+  nd: NodeRecord;
   kind: Kind;
   k: string;
-  onEdit: () => void;
+  at: NodeRef;
   readOnly: boolean;
 }
-/** her blue, pink or unique spark as its coloured bar (vets.js colourBar): a chip for a unique or a pink she has, else
+/** her blue, pink or unique spark as its coloured bar: a chip for a unique or a pink she has, else
  *  a bar that opens the picker (a missing unique's adds it) */
-function ColourBar({ nd, kind, k, onEdit, readOnly }: BarProps) {
+function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
   const spec = KIND[kind],
     cur = currentSpark(nd, kind);
   if (kind === 'green') {
     if (cur) {
       const [group, stars] = cur,
-        label = uniqueName(group) || 'Unique spark',
-        greens = nd.greens as Record<string, number>;
+        label = uniqueName(group) || 'Unique spark';
       return (
         <Chip
           label={label}
@@ -142,14 +136,13 @@ function ColourBar({ nd, kind, k, onEdit, readOnly }: BarProps) {
           readOnly={readOnly}
           cls="vsb green"
           tag=" (unique)"
-          onCycle={() => {
-            greens[group] = (stars % 3) + 1;
-            onEdit();
-          }}
-          onRemove={() => {
-            delete greens[group];
-            onEdit();
-          }}
+          onCycle={() => at.edit((now) => ({ greens: { ...now.greens, [group]: (stars % 3) + 1 } }))}
+          onRemove={() =>
+            at.edit((now) => {
+              const { [group]: _, ...rest } = (now.greens || {}) as Record<string, number>;
+              return { greens: rest };
+            })
+          }
         />
       );
     }
@@ -160,10 +153,7 @@ function ColourBar({ nd, kind, k, onEdit, readOnly }: BarProps) {
           class="vskb"
           data-k={k}
           aria-label="Unique spark: none. Add it at 2 stars"
-          onClick={() => {
-            nd.greens = { [nd.outfit as number]: NEW_STARS };
-            onEdit();
-          }}
+          onClick={() => at.edit((now) => ({ greens: { [now.outfit as number]: NEW_STARS } }))}
         >
           <span class="vskn">+ Unique spark</span>
         </button>
@@ -181,7 +171,7 @@ function ColourBar({ nd, kind, k, onEdit, readOnly }: BarProps) {
         readOnly={readOnly}
         popup
         aria={`${pinkName(group)} (aptitude), ${stars} star${stars > 1 ? 's' : ''}. Change`}
-        onCycle={() => openColour(nd, kind, k, onEdit)}
+        onCycle={() => openColour(at, kind)}
       />
     );
   }
@@ -199,7 +189,7 @@ function ColourBar({ nd, kind, k, onEdit, readOnly }: BarProps) {
   return (
     <span class={`vsb ${kind}${cur ? '' : ' none'}`}>
       {readOnly ? (
-        // biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (vets.js colourBar): a read-only bar's label; its role is step 10's
+        // biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the el() bar's before it): a read-only bar's label; its role is step 10's
         <span class="vskb" aria-label={aria}>
           {inner}
         </span>
@@ -210,7 +200,7 @@ function ColourBar({ nd, kind, k, onEdit, readOnly }: BarProps) {
           data-k={k}
           aria-haspopup="dialog"
           aria-label={aria}
-          onClick={() => openColour(nd, kind, k, onEdit)}
+          onClick={() => openColour(at, kind)}
         >
           {inner}
         </button>
@@ -218,8 +208,8 @@ function ColourBar({ nd, kind, k, onEdit, readOnly }: BarProps) {
     </span>
   );
 }
-/** "+": the target skills she lacks, in vets.js's list; its aria-expanded drawn from `addOpener` */
-function AddSpark({ nd, k, onEdit }: { nd: LineageNode; k: string; onEdit: () => void }) {
+/** "+": the target skills she lacks, in pickers.js's list; its aria-expanded drawn from `addOpener` */
+function AddSpark({ k, at }: { k: string; at: NodeRef }) {
   const ref = useRef<HTMLButtonElement>(null),
     open = addOpener.value !== null && addOpener.value === ref.current;
   return (
@@ -232,25 +222,27 @@ function AddSpark({ nd, k, onEdit }: { nd: LineageNode; k: string; onEdit: () =>
       aria-haspopup="dialog"
       aria-expanded={open}
       data-k={`${k}:add`}
-      onClick={(e) => openAdd(e.currentTarget, nd, onEdit, true)}
+      onClick={(e) => openAdd(e.currentTarget, at, true)}
     >
       +
     </button>
   );
 }
 interface SparksProps {
-  nd: LineageNode;
+  /** the node drawn */
+  nd: NodeRecord;
   /** names the controls (data-k) */
   k: string;
-  onEdit: () => void;
+  /** where her edits go */
+  at: NodeRef;
+  /** the target skills' groups */
+  targets: readonly number[];
   readOnly?: boolean;
 }
-/** her sparks (vets.js sparksEl): her blue, pink and unique bars, her target skills' chips, then "+"; read-only, all her
+/** her sparks: her blue, pink and unique bars, her target skills' chips, then "+"; read-only, all her
  *  white sparks, the targets first, the rest grey */
-export function Sparks({ nd, k, onEdit, readOnly = false }: SparksProps) {
-  vetsRev.value; // (it reads a signal, so a parent's redraw with the same props skips it: the edits in place say when)
-  const tg = settings.value.targets.map((t) => t.group),
-    targets = new Set(tg),
+export function Sparks({ nd, k, at, targets: tg, readOnly = false }: SparksProps) {
+  const targets = new Set(tg),
     sparks = nd.sparks as Record<number, number>,
     groups = readOnly
       ? Object.keys(sparks)
@@ -263,7 +255,7 @@ export function Sparks({ nd, k, onEdit, readOnly = false }: SparksProps) {
   return (
     <div class="vsparks">
       {bars.map((kind) => (
-        <ColourBar key={kind} nd={nd} kind={kind} k={`${k}:${kind}`} onEdit={onEdit} readOnly={readOnly} />
+        <ColourBar key={kind} nd={nd} kind={kind} k={`${k}:${kind}`} at={at} readOnly={readOnly} />
       ))}
       {groups
         .filter((g) => sparks[g])
@@ -278,18 +270,17 @@ export function Sparks({ nd, k, onEdit, readOnly = false }: SparksProps) {
               k={`${k}:s${g}`}
               readOnly={readOnly}
               other={readOnly && !targets.has(g)}
-              onCycle={() => {
-                sparks[g] = (stars % 3) + 1;
-                onEdit();
-              }}
-              onRemove={() => {
-                delete sparks[g];
-                onEdit();
-              }}
+              onCycle={() => at.edit((now) => ({ sparks: { ...now.sparks, [g]: (stars % 3) + 1 } }))}
+              onRemove={() =>
+                at.edit((now) => {
+                  const { [g]: _, ...rest } = now.sparks as Record<number, number>;
+                  return { sparks: rest };
+                })
+              }
             />
           );
         })}
-      {!readOnly && <AddSpark nd={nd} k={k} onEdit={onEdit} />}
+      {!readOnly && <AddSpark k={k} at={at} />}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 // the entry after each change.
 import { $ } from '../../dom.js';
 import { markOwn } from '../../popover.js';
-import { plan } from '../../vets.js';
+import { places } from '../../veterans/store.ts';
 import { optionsEl } from '../options.js';
 import { answer } from '../state.ts';
 import { must } from '../../must.ts';
@@ -14,7 +14,8 @@ export function renderResults() {
   const r = shown();
   if (!r) return;
   // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
-  const open = !plan.trainee || plan.parents.some((p) => !p),
+  const plan = places.value,
+    open = !plan.trainee || plan.parents.some((p) => !p),
     { last, planState } = answer.value;
   if (
     (open &&
