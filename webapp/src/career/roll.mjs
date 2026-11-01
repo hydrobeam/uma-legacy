@@ -1,7 +1,7 @@
 // A roll: a random result of a career (the veteran it leaves), drawn from the solver's report of it. No page state:
 // each function takes the report, what it reads of the settings and data (`RollSetup`) and the random source (`rnd`,
 // Math.random on the page; the browser suite's `career` group passes a seeded one and runs these in node).
-import { drawPink } from '../pink.mjs';
+import { drawPink } from '../pink.ts';
 
 /**
  * What a roll reads besides the career's report.

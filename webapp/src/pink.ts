@@ -8,7 +8,20 @@ const GRADE_A = 7,
   GRADE_S = 8;
 // April inspirations in a career: each legacy pink gets a chance to fire at each
 const INSPIRATIONS = 2;
-export function drawPink(ap, rnd = Math.random) {
+/** What the draw reads of the report's `aptitudes` (career/job.js `CareerReport`). */
+export interface PinkAptitudes {
+  start: readonly number[];
+  /** each legacy pink: the aptitude it raises and its chance of firing at one inspiration */
+  fire: readonly { apt: number; p: number }[];
+  /** per aptitude, the pink spark's group */
+  pink_gen: readonly { group: number }[];
+}
+/** The pink she draws (group -> stars; empty when none) and her end grades (null without `aptitudes`). */
+export interface PinkDraw {
+  pinks: Record<number, number>;
+  apt: number[] | null;
+}
+export function drawPink(ap: PinkAptitudes | null | undefined, rnd: () => number = Math.random): PinkDraw {
   if (!ap) return { pinks: {}, apt: null };
   // the random draws keep this order (the suite's seeded check replays it): every fire chance per inspiration in
   // `ap.fire` order, then the aptitude, then her stars

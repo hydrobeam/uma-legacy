@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { drawPink } from '../src/pink.mjs';
+import { drawPink } from '../src/pink.ts';
 import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.mjs';
 import { searchCaveat, planCaveat } from '../src/proofs.mjs';
 import { QUICK, check, ART, dialog, audit, contrastCheck, still, careerPage, repoUrl } from './helpers.mjs';
