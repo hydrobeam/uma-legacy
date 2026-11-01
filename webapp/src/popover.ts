@@ -61,8 +61,7 @@ const GAP = 8; // px between the panel and the element it belongs to (beside it)
 function placePop(anchor: HTMLElement, beside = false) {
   // (inside a popup, the panel goes into it: the page behind a modal popup is out of reach)
   const dlg = anchor.closest('dialog'),
-    home = dlg || document.getElementById('rcol');
-  // @ts-expect-error getElementById('rcol') is null on a page without the results column (strict commit: must)
+    home = dlg || must(document.getElementById('rcol'), 'both planner pages have the results column');
   if (pop.parentElement !== home) home.appendChild(pop);
   pop.hidden = false;
   // (in a popup: placed against the screen, under the card, so the popup's edges don't clip it)
@@ -95,8 +94,7 @@ function placePop(anchor: HTMLElement, beside = false) {
 }
 // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
 // (another outfit would be a different trainee); with "any outfit" it is the uma.
-// @ts-expect-error a name button outside a member block would leave `member` null (strict commit: must)
-function openUmaPop(btn: HTMLElement, member: HTMLElement = btn.closest('.mem')) {
+function openUmaPop(btn: HTMLElement, member = must(btn.closest('.mem'), 'a name button is in its member block')) {
   // member: her member block (a portrait elsewhere in the result passes it)
   openFor(btn);
   const uma = +must(member.dataset.uma, 'a member block names her'),
@@ -172,16 +170,15 @@ function chainEndHTML(c: Card | undefined, link: number) {
 }
 function openCardPop(chip: HTMLElement) {
   openFor(chip);
-  // @ts-expect-error a chip without a data entry has no data-cid: + reads it as NaN, no card (strict commit: Number)
-  const c = gameData().cardById.get(+chip.dataset.cid),
-    title = c ? cardTitle(c) : { nm: chip.dataset.name, ti: '' };
+  // (a chip without a card entry has no data-cid: NaN, no card)
+  const c = gameData().cardById.get(Number(chip.dataset.cid)),
+    title = c ? cardTitle(c) : { nm: must(chip.dataset.name, 'a deck chip names its card'), ti: '' };
   const borrowed = chip.classList.contains('bor'),
     owned = c && settings.value.cardsOff[c.id] !== false;
   const groups = new Set(
       settings.value.targets.filter((x) => !goldGiven(settings.value.scen, x.group)).map((x) => x.group),
     ),
     gifts = c ? cardGives(c, groups) : [];
-  // @ts-expect-error every chip names its card (data-name); the type allows none (strict commit: must)
   pop.setAttribute('aria-label', title.nm);
   pop.innerHTML =
     `<div><b>${esc(title.nm)}</b>${title.ti ? `<div class="ctt">${esc(title.ti)}</div>` : ''}</div>${borrowed ? '<div>Borrowed.</div>' : ''}` +
@@ -223,9 +220,11 @@ export function initPopover() {
       toggleFor(face, () =>
         openUmaPop(
           face,
-          // @ts-expect-error #1's member block stands in when this card has none; null if neither (strict commit: must)
-          must(face.closest('.loop'), 'a portrait button is in a loop card').querySelector(mem) ||
-            document.querySelector(`.loop.first ${mem}`),
+          must(
+            must(face.closest('.loop'), 'a portrait button is in a loop card').querySelector(mem) ||
+              document.querySelector(`.loop.first ${mem}`),
+            "#1's loop has a member block for each of its umas",
+          ),
         ),
       );
       return;
