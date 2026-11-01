@@ -8,3 +8,48 @@ cddc544d0fe49330276c79394b15fde5486d59c6
 2bcb34add152577abbdf56a65da94cf9c6a0b22b
 # engine.js -> engine.ts, annotated (samecode: the same code)
 d633ec575d5ef72de56f7af06981697d402d8156
+# Loop page's five modules into src/loop/ (pure move)
+98ab319cfacf383b3850d9a846bdc835461f7939
+# tileEl and namesOf into tile.ts (a move, annotated; samecode: the same code)
+c63d0f73468b79fb3123744ce66b4a626d73a1fa
+# Step 8a: career.js split into career/ by pure moves
+5f6a8e5b689577e6c81cae322ea2850418381226
+# Step 9a: career/analysis.js moved to career/analysis/view.js (pure move)
+51dce47b6e96fc3eea68e7429ca00c5911ab713c
+# Step 10a: vets.js split into veterans/ (pure moves; one line: changeUma's rev++ became countEdit())
+728f98ef0e983cdc2cffbab3500e2a72ed535f4c
+# Step 12 lane A: core and loop modules renamed to .ts, annotated (each samecode: the same code)
+6064346e5447a37b6526728f4f4933e54d5a2b09
+86eaa20e17331a8980138563a3a9aad0ea8bfa08
+39ae0c4313ad3fcdba91a932d552faf51c1e2a47
+daa102bf638ea79a2392ccc7b623ebd0221d9688
+56fa3232bf3d039a25e43a8ca1625d2a035ca724
+51035bd2f23d73b26fcd058765b2bb8ba298e37f
+0b787cf03afb354011c43ec0292f0a64755bd8b4
+4d733129afbdfabaf2186a8a656eebea49865026
+96f9bb23b0ace78cc72658fff5cd8510dea5af57
+85b847c6b65852324fad45118440afe42782f49a
+0e2b9723c816064de7c66b4c1bfc616895162564
+99e9357b9586c18e6dcfb0f9e9d25d68b2b50a0a
+da1d8e91b0f9c26dbc390f0251932a584e58f152
+8553780520226cca4e9be012e71fa647db5598d2
+# Step 12 lane B: career and veterans modules renamed to .ts, annotated (each samecode: the same code)
+afb1f6e762ecb78ee32a4245259545bf8ee6029b
+40bf6c908a49fb67667b8b74b440db620db5dc52
+196a5f8d87b080866d47e81840ff0c2d1c35d34c
+f71e891abb2ca68224cc6f4a9a8ce4a30c5e4b31
+cfa7cc006cf36b059eaeb76fc1562335913f32be
+37a89c1c1882b26f07f891317de210927f0a61cd
+cdade3682e937b265ebfb22c2cfa51513452b21a
+c16360f833e2ee0cd551d1a10aee540f6c00b09b
+f8cc66a02b5f85de7878b1dba44727368ab373d7
+8700c90f20e37e5d0360e774062ac9297481d500
+12a5717e0858da5b2e73a55a2a326f5a235b458d
+c9a0e382bf04e782b0b81175c3ccd915d5bc6b3e
+152b66ca6cf48a7c31c1c30840a6fe7524d59006
+033e2cc30133aa64a82c0433ce9853e9c7fc2735
+a7de263483bff13426cfef275e1126409c00e531
+f096bcdca0d72a1421061698cbbf86a02381c754
+9d6dbfad433afc048b84a385e16072654808e394
+# Step 12 sweep: relative specifiers name the .ts/.tsx files (samecode: the same code)
+50b1c9072a3c3e5a1310305a6b328a90c978c3ae

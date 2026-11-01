@@ -47,7 +47,7 @@ fn parse_id(id: &str) -> Option<CareerId<'_>> {
 /// named entry in this job's deck space (by card, choice variant and early-end link), none of her own card, one per
 /// character, every locked card held and at most the borrowed cards the job allows, the plain pals the first she may
 /// take, the job's deck size. Its search fields say one career was scored, and none other weighed: `given`, and neither
-/// `complete` nor `proven_top` (no search compared it with any other career or deck; the page says so, proofs.mjs
+/// `complete` nor `proven_top` (no search compared it with any other career or deck; the page says so, proofs.ts
 /// `searchCaveat`).
 pub(super) fn given_career_output(env: &mut Env, run: &CareerRun, id: &str) -> Value {
     let error = |why: &str| json!({"error": format!("career: {why}")});

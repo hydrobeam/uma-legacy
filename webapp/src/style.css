@@ -119,7 +119,7 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
 .rcol { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; outline: none; }
 /* desktop: the results stay in view while the rail is edited. No inner scroll box (the wheel always scrolls the page):
    the column sticks at the top when it fits the window, and when it is taller it scrolls with the page until its end
-   shows, then sticks by its bottom (--rtop, set by loop/main.js from its height); the status row stays at the top */
+   shows, then sticks by its bottom (--rtop, set by loop/main.tsx from its height); the status row stays at the top */
 @media (min-width: 961px) { .rcol { position: sticky; top: var(--rtop, 12px); align-self: start; } }
 /* a theme switch repaints at once: transitions (the status box fades its colours, 0.6 s late while searching) wait out
    that frame, so nothing trails the rest of the page (the light / dark switch's knob still slides) */
@@ -302,7 +302,7 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; display: inline-block; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
-/* the runner in place of the spinner (images.js runnerHTML): her strip of 18 frames stepped by CSS, 0.6 s a loop as in
+/* the runner in place of the spinner (images.ts runnerHTML): her strip of 18 frames stepped by CSS, 0.6 s a loop as in
    the game; 30 px in a status line (overhanging its row a little), 96 px in the analysis frame; held on her first
    frame for reduced motion */
 .runner { --s: 30px; display: inline-block; flex: none; width: var(--s); height: var(--s); margin: -7px 0 -5px; vertical-align: middle;
@@ -310,7 +310,7 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .runner.big { --s: 96px; margin: 0; }
 @keyframes runner { to { background-position: calc(-18 * var(--s)) 0; } }
 @media (prefers-reduced-motion: reduce) { .runner { animation: none; } }
-/* a portrait's size and its initials' font size: images.js sets --s and --fs inline (umaAv); a context resizes it with an
+/* a portrait's size and its initials' font size: images.ts sets --s and --fs inline (umaAv); a context resizes it with an
    ordinary rule */
 .av { width: var(--s); height: var(--s); font-size: var(--fs); display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle;
   outline: 1px solid var(--img-edge); outline-offset: 0;   /* a faint edge just outside the portrait */ }
@@ -750,7 +750,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 #sim-top { min-width: 0; }
 #sim-wins { justify-self: start; }
 
-/* ---------- the game's style (career page): the veteran card (details.js, the game's "Umamusume Details") and the
+/* ---------- the game's style (career page): the veteran card (details.ts, the game's "Umamusume Details") and the
    surrounding career page (.rb) ----------
    The game's colours, sampled from in-game screenshots (brown ink #794016, title green #7ecf08, selected tab #9dd934,
    white text outlined in dark green, white on the pink spark bar, gold stars): faithful to the game rather than WCAG AAA
@@ -1863,8 +1863,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .game .lptgt .prvtiles .tgt .sic { width: 30px; height: 30px; }
 .prvren input, #prn-name { width: 100%; }
 @media (max-width: 620px) { .pbtns { padding-left: 10px; } }
-/* the career page before its first answer: the Veteran analysis frame with a spinner beside the tree (career.js waitEl),
-   at full strength (the results' busy dimming is for an old answer on screen) */
 /* a column header with a tooltip (the career's Career choices: This career): dotted, as a hint that it explains */
 .thtip { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .thtip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }

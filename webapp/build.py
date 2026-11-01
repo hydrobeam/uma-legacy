@@ -292,7 +292,7 @@ ASSETS = {
     },
     "dataGm": fingerprint("data-gm.json", gm_ui),
     "img": image_catalog.base,
-    # the solver's worker (engine.js `new Worker(ASSETS.worker)`)
+    # the solver's worker (engine.ts `new Worker(ASSETS.worker)`)
     "worker": fingerprint("worker.js", bundle("src/worker.ts")),
 }
 # fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
@@ -420,7 +420,7 @@ def math_face(page):
 
 # the planner pages' shared data (the Global era's lists, image keys, skill icons, race ids, the scenarios' hint bases),
 # the career page's tables and each page's script: fingerprinted classic scripts at the end of the body, data first.
-# data.js reads the data from self.__LLP_DATA ('data-cards', ...).
+# data.ts reads the data from self.__LLP_DATA ('data-cards', ...).
 def data_script(name, d):
     payload = "{" + ",".join(f'"{k}":{v}' for k, v in d.items()) + "}"
     return fingerprint(

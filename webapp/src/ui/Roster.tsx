@@ -1,5 +1,5 @@
 // ---------- the Umas panel: All / None owned, Import, the count; the filter and the order; one tile per outfit ----------
-// A tile's look follows her ownership (roster.js tileState) and the filter, each bound to its own computed, so a click
+// A tile's look follows her ownership (roster.ts tileState) and the filter, each bound to its own computed, so a click
 // or a keystroke changes the attributes it moves and redraws no tile; the list redraws only when its order changes.
 // Drawn into the template's #umas-panel (`mountRoster`).
 import { computed, signal, useComputed } from '@preact/signals';

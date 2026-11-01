@@ -1,6 +1,6 @@
 // ---------- Try a run: the veteran analysis' popup (the veteran you got) ----------
 // The decision is per veteran: enter the one you got (she starts as a random result, drawn as Reroll draws,
-// career/roll.mjs) and Compare runs both choices, running this career again or using her in the next one, on the plan's
+// career/roll.ts) and Compare runs both choices, running this career again or using her in the next one, on the plan's
 // terms (expected careers to land). `Analysis` draws it into the popup's mount point (#sim-top) from the analysis store
 // (./state.ts `simulation`) and the answer store; Compare and Reroll are the comparison's run machine's (./compare.ts,
 // made by the entry and handed in). Her card is ./Details.tsx. This module also makes her draft from a career
@@ -49,7 +49,7 @@ const copyNode = (v: NodeRecord): LineageNode => ({
   greens: { ...(v.greens || {}) },
   wins: [...v.wins],
 });
-// what a roll reads of the settings and data (career/roll.mjs)
+// what a roll reads of the settings and data (career/roll.ts)
 const rollSetup = (): RollSetup => ({
   career: careerTables(),
   targets: settings.peek().targets,
@@ -349,7 +349,7 @@ export function Analysis({ comparison }: { comparison: Comparison }) {
     searching = runSearching.value, // (not runView: a plan's progress would draw her card again each time)
     section = useRef<HTMLElement>(null),
     wins = useRef<HTMLButtonElement>(null);
-  // her spark names shrink to fit (details.js fitSparks: it waits a frame, measures the names on show, and skips a
+  // her spark names shrink to fit (details.ts fitSparks: it waits a frame, measures the names on show, and skips a
   // closed popup's; `openTryRun` asks again on show)
   useLayoutEffect(() => {
     if (section.current) fitSparks(section.current);

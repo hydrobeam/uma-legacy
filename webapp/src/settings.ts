@@ -25,7 +25,7 @@ export interface Preset {
 export interface Settings {
   targets: Target[];
   presets: Preset[];
-  /** the lineage's star mix, data.js RANKS */
+  /** the lineage's star mix, data.ts RANKS */
   rank: string;
   auto: boolean;
   decksTop: string;
@@ -45,7 +45,7 @@ export interface Settings {
 }
 export type SettingsView = DeepReadonly<Settings>;
 
-// the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them: job.js
+// the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them: job.ts
 // goldGiven)
 export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];
 export const DEFAULTS: SettingsView = deepFreeze({
@@ -72,7 +72,7 @@ function dropRequired(settings: Record<string, unknown>) {
     Object.fromEntries(Object.entries(settings[key] || {}).filter(([, mark]) => mark !== 'req'));
   return { ...settings, roster: marked('roster'), outfits: marked('outfits') } as unknown as SettingsView;
 }
-// Presets are edited by name (presets.js): of two under one name, which only a hand-edited storage holds, the first
+// Presets are edited by name (presets.ts): of two under one name, which only a hand-edited storage holds, the first
 // is kept
 const firstOfEachName = (presets: Preset[]) =>
   presets.filter((p, at) => presets.findIndex((q) => q.name === p.name) === at);
@@ -134,7 +134,7 @@ export const setSort = ({ prefix, sort, dir }: SortChoice) =>
   commit(prefix === 'r' ? { rsort: sort, rdir: dir } : { csort: sort, cdir: dir });
 /** what is owned: the umas' marks, the outfits', the cards' (each one given replaces that one) */
 export const setOwned = (owned: Partial<Pick<Settings, 'roster' | 'outfits' | 'cardsOff'>>) => commit(owned);
-/** the settings an import carries (checked by io.js), over these */
+/** the settings an import carries (checked by io.ts), over these */
 export const importSettings = (imported: Partial<Settings>) => commit(dropRequired({ ...record.peek(), ...imported }));
 
 // The page reloads into `era`: what is stored is what it loads. These write storage only: the record on show goes with

@@ -22,7 +22,7 @@ import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts'
 import type { NodeSpec } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 
-/** a button of the page's look (parts.js `btn`) */
+/** a button of the page's look (parts.ts `btn`) */
 const Btn = ({ label, cls, onClick }: { label: string; cls?: string; onClick: () => void }) => (
   <button type="button" class={cls ? `btn ${cls}` : 'btn'} onClick={onClick}>
     {label}
@@ -83,7 +83,7 @@ function Face({ nd, at, size, label, change }: FaceProps) {
     </button>
   );
 }
-/** her G1 wins: the button that opens their window (veterans/pickers.js openWins), or (a listed veteran) their count */
+/** her G1 wins: the button that opens their window (veterans/pickers.ts openWins), or (a listed veteran) their count */
 interface WinsProps {
   nd: NodeRecord;
   /** where her edits go */
@@ -413,7 +413,7 @@ export function NodeDialog() {
     body = useRef<HTMLDivElement>(null);
   // (closed, it draws nothing: an edit elsewhere redraws no closed popup)
   const on = spec && nodeShown(spec, shown());
-  // a node that is gone closes the popup; on show, her spark names shrink to fit (details.js fitSparks)
+  // a node that is gone closes the popup; on show, her spark names shrink to fit (details.ts fitSparks)
   useLayoutEffect(() => {
     if (spec && !on) closeNode();
     if (on && body.current) fitSparks(body.current);

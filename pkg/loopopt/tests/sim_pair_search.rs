@@ -3,7 +3,7 @@
 //! p10_pink: another trainee's career that scores above the pick as fitted; p11: the pick), a simulated run's first
 //! career is, by its id (trainee, parents and
 //! deck), the career the page's own job sequence recommends: the plan job, then the check one variant per job and the
-//! pair search (webapp/src/career.js `checkPhase`), read as the page's lines read it (`pairSearchNotes`). What it runs is
+//! pair search (career/run.ts `checkPhase`), read as the page's lines read it (`pairSearchNotes`). What it runs is
 //! observed apart from what it was asked to run: the lineage its first segment ran (`segs`: trainee and both parents),
 //! the career the report it built that career from names (`index.executed`: the `career` job's result for a named
 //! career, its deck as named, no deck search; the plan's `choice` otherwise), and that career's landed-set chances and

@@ -39,7 +39,7 @@ export interface LoopDeps {
   settings: () => SettingsView;
   /** draws a result (Results.tsx `drawResult`) */
   render: (r: LoopReport, targets: JobTarget[]) => void;
-  /** the "no targets" status's button (presets.js `loadExample`) */
+  /** the "no targets" status's button (presets.ts `loadExample`) */
   loadExample: () => void;
   /** the precomputed example and the settings it is the result of (the defaults); none in the Grand Masters era */
   example: { r: LoopReport; settings: SettingsView } | null;

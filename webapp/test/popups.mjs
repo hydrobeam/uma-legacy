@@ -97,7 +97,7 @@ export default async function popups(b) {
     at.own.length === 2 && at.own.every((x) => x === 0),
     JSON.stringify(at.own),
   );
-  // gmtip.js over a modal dialog: the balloon is its own element in the top layer (never put inside the dialog, which a
+  // gmtip.ts over a modal dialog: the balloon is its own element in the top layer (never put inside the dialog, which a
   // component draws), the title held while it shows; a title drawn again meanwhile (as a render that changes it does)
   // is kept when the balloon goes, not overwritten by the one held
   const pill = pg.locator('#why-dlg .afpick:not(.afpar) button').first();

@@ -381,7 +381,7 @@ pub(crate) const PROXY_EFF: f64 = 0.06;
 
 pub(crate) const PROXY_SAVE: f64 = 0.06;
 
-/// the rows the page shows (career.js `OPT_SHOW`): their careers are searched exactly
+/// the rows the page shows (career/options.ts `OPT_SHOW`): their careers are searched exactly
 pub(crate) const OPT_SHOW: usize = 8;
 
 /// A full loop lineage for `loop_ceiling`, as uma indices (`Data::umas`): the trainee, and the two umas whose

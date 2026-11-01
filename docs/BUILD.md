@@ -119,7 +119,7 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
 - `data` keeps every uma, outfit and support card that `master.mdb` dates up to 60 days past the build
   (`AHEAD` in `pkg/loopopt/export/era.py`; an outfit starts with its first gacha, else with its uma; content the game has
   not dated carries a 2050 placeholder and stays out). `pkg/loopopt/data/global/upcoming.json` lists what starts after the build.
-  The page hides each entry until its start time and leaves it out of every search (`webapp/src/data.js` `gameData().later`,
+  The page hides each entry until its start time and leaves it out of every search (`webapp/src/data.ts` `gameData().later`,
   `engine.ts`), so a banner turns on by itself; the precomputed example leaves the same entries out
   (`webapp/example.mjs`). Validation runs on everything in the data, upcoming included.
 - Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): each era's
@@ -198,14 +198,14 @@ lists both kept mounted, a card drawn again only when her record changes), setup
 editors both pages share (`ui/`: the scenario picker, the lineage rank, the Umas and Support cards panels, the target
 skills and their presets, drawn by `ui/Setup.tsx`'s `mountSetup`), and the career page's results column, popups and
 veteran editors, each rendered by its page's entry into the template's mount points. The card and uma panel
-(`popover.js`) still builds its markup as a string. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
-machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import no component, and only a
+(`popover.ts`) still builds its markup as a string. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.ts`) and the run
+machines stay imperative by design. Logic modules (`.ts`) take values and import no component, and only a
 component's own module looks into what it draws (`test/static.mjs`).
 
 In `src/`, `loop/main.tsx` and `career/main.tsx` are the two pages' entries (each page's own modules are in its folder,
 `loop/` and `career/`; `career/main.tsx`'s header maps its folder: the job, the run, the views in `career/view/`);
-`engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` holds the job fields both pages
-send (from the settings it is given; `loop/job.ts` and `career/job.js` build their jobs from them), and `statestore.js`
+`engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.ts` holds the job fields both pages
+send (from the settings it is given; `loop/job.ts` and `career/job.ts` build their jobs from them), and `statestore.ts`
 keeps the solver's work in IndexedDB.
 
 ## Tests

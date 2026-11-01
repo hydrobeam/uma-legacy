@@ -1,8 +1,8 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
 // `Results` draws state.ts's `loopDrawn` into #results: each result keyed by its loop and decks (keys.ts), so a redraw with the same
 // loops (an interim answer, then the final) keeps every element, an open (i) panel and the focus. A card or a member no
-// longer owned is greyed (`off`) from the settings as they change. Their panels are popover.js's: it reads what it
-// shows from the buttons (data-*), and each button draws its aria-expanded from popover.js's `popOpener`.
+// longer owned is greyed (`off`) from the settings as they change. Their panels are popover.ts's: it reads what it
+// shows from the buttons (data-*), and each button draws its aria-expanded from popover.ts's `popOpener`.
 // `ResultsCount` is the Results 1 or 3 switch above them.
 import { batch, untracked } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
@@ -36,7 +36,7 @@ const borrowedLast = (deck: ResultDeck, indices: number[]) =>
 const allIndices = (list: readonly unknown[]) => list.map((_, i) => i);
 const percent = (p: number) => `${Math.round(p * 100)}%`;
 
-// a button that opens a popover.js panel: its aria-expanded says whether the panel is open from it
+// a button that opens a popover.ts panel: its aria-expanded says whether the panel is open from it
 function useOpener() {
   const self = useRef<HTMLButtonElement>(null),
     open = popOpener.value;

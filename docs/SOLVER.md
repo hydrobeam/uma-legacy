@@ -1201,7 +1201,7 @@ A finishing career's success stays analytic in S: the path goes on through its f
 all-landed one last. Both are inverse CDFs over the sets ordered fewest-landed first. This is unbiased: the path is drawn
 from the process with the finishing careers forced to fail, and S_t is the chance the real process is still running at
 t given the rest of the path. The stars come from `star_dist`, each race is won with the schedule's chance of at least
-one win, and her pink is drawn as the page's roll draws it (`webapp/src/pink.mjs`; the April inspirations fire from
+one win, and her pink is drawn as the page's roll draws it (`webapp/src/pink.ts`; the April inspirations fire from
 her start grades, then one aptitude among those at A or S, stars 20/70/10). Her parents are the career's.
 
 A run stops when S_t < eps or at `max_careers`, and a tail is added there. The tail is S_t / p_t when career t
@@ -1258,7 +1258,7 @@ exact P(all) from the pool with the existing ones fixed. No pruning. Each career
 model's); the loop planner coordinates schedules across members, this does not.
 
 `index`: each career is the page's pick for the pool as it stands. The simulator runs the plan job the page sends
-(`webapp/src/career.js`: the job with the pool as `legacies`, no places, `top` 6, `per_trainee` false, `next`,
+(`webapp/src/career/job.ts`: the job with the pool as `legacies`, no places, `top` 6, `per_trainee` false, `next`,
 `no_reports`; the job's `trainees` kept) through `run_career_in` in process, and runs `next.choice` (its exact P(all) and
 landed-set chances from the report) until the pool changes; a pruned veteran (as for `greedy`) leaves the pool, and so
 the pick, as it was. Each step's pool is the last one plus one veteran at the end, so each plan takes the kept plan of

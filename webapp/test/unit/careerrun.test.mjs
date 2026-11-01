@@ -336,7 +336,7 @@ test('the status line ticks each second while a job runs, and every timer ends w
 });
 
 // ---------- the comparison follows the runs
-test('every new run makes the comparison stale before anything awaits (analysis.js keeps no run id of its own)', async () => {
+test('every new run makes the comparison stale before anything awaits (the analysis keeps no run id of its own)', async () => {
   const p = page();
   p.run.schedule();
   assert.deepEqual([p.seen.stops, p.seen.outdates], [1, 0], 'an edit stops it');

@@ -20,7 +20,7 @@ import { PLAN_NEXT } from '../run.ts';
 
 /** what the comparison needs of the page, built once by the entry (career/main.tsx) */
 export interface ComparisonDeps {
-  /** the solver (career/job.js `runJob`, engine.ts) */
+  /** the solver (career/job.ts `runJob`, engine.ts) */
   engine: {
     run: (job: CareerJob) => Promise<CareerAnswer>;
     /** kill the worker (a job in flight then never answers) and start a fresh one */
@@ -35,17 +35,17 @@ export interface ComparisonDeps {
   store: typeof AnalysisStore;
   /** the page's state as a comparison reads it */
   page: {
-    /** the career on show (career/job.js `shown`) */
+    /** the career on show (career/job.ts `shown`) */
     shown: () => DeepReadonly<CareerReport> | null;
     /** a run is at work (its answer replaces the career on show) */
     searching: () => boolean;
-    /** career/job.js `baseKey`: the job of today's best career over everything */
+    /** career/job.ts `baseKey`: the job of today's best career over everything */
     baseKey: (job: DeepReadonly<CareerJob>) => string;
     /** the target skills, in the job's order */
     targets: () => readonly { group: number }[];
-    /** she lands every target (career/job.js `isFull`) */
+    /** she lands every target (career/job.ts `isFull`) */
     isFull: (nd: NodeRecord) => boolean;
-    /** a run's plan job's `top` (career/job.js `ROLL_K`) */
+    /** a run's plan job's `top` (career/job.ts `ROLL_K`) */
     planTop: number;
     /** a fresh draft of career `r`: a random result of it, on her parents' records now (a new career, a roll) */
     draftOf: (r: DeepReadonly<CareerReport>) => Draft;
@@ -57,7 +57,7 @@ export interface ComparisonDeps {
 /** how long a roll's quick figures stand before the exact comparison checks them, ms */
 export const STAND_MS = 800;
 
-// the draft as a legacy of the comparison's jobs (a veteran's job record: career/job.js `jobNode`)
+// the draft as a legacy of the comparison's jobs (a veteran's job record: career/job.ts `jobNode`)
 function draftJob(v: DeepReadonly<Draft>) {
   const pairs = (o: DeepReadonly<Record<number, number>>) =>
     Object.entries(o).map(([g, s]): [number, number] => [+g, s]);

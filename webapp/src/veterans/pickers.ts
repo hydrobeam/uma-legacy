@@ -1,5 +1,5 @@
 // ---------- the veterans' editors: which is open, and for what (veterans/Editors.tsx draws them) ----------
-// The uma picker, the skills prompt, the G1 wins window and the "+" list (the colour picker is sparks.js's). An opener
+// The uma picker, the skills prompt, the G1 wins window and the "+" list (the colour picker is sparks.ts's). An opener
 // writes what its editor shows; a choice lands on the record as it is then (`at`, a NodeRef). While a pool veteran's
 // G1 wins window or a skills prompt is open the page holds its search (`searchHeld`): the edits made meanwhile reach
 // one search when it closes.

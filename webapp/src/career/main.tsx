@@ -7,14 +7,14 @@
 // mount points, settings and start. The rest of career/:
 //   state.ts           the answer store: the run on show, the answer, the last plan made, the answers kept
 //   run.ts             the run machine: an edit's pause, the search, the plan job's `next`, the robustness check
-//   job.js             the career job from the settings, veterans and places; the solver call (runJob); the career on
+//   job.ts             the career job from the settings, veterans and places; the solver call (runJob); the career on
 //                      show; the solver's types
-//   keys.js            the keys a job, a plan job and a career are known by
-//   io.js              Export and Import of the veterans
-//   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
+//   keys.ts            the keys a job, a plan job and a career are known by
+//   io.ts              Export and Import of the veterans
+//   roll.ts           a roll: a random result of a career (no page state; the suite runs it in node)
 //   analysis/          the veteran analysis ("Try a run"): state.ts its store (her draft, her comparison), compare.ts
 //                      the comparison's run machine, view.tsx Try a run's popup, Details.tsx her card
-//   options.js         the options table's figures and words ("Other careers": the plan's careers, Use this)
+//   options.ts         the options table's figures and words ("Other careers": the plan's careers, Use this)
 //   view/RunNote.tsx   the status line
 //   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
 //   view/NodeDialog.tsx  the tree's node popup, and the veterans dialog's pane (VeteranView)
@@ -24,10 +24,10 @@
 //   view/dialogs.ts    which popup is open, for what (modules that are not views open them through it)
 //   view/Options.tsx   the results column (the options table) and its Saves popup
 //   view/Pool.tsx      the veterans dialog: its tabs and order menu, lists and the pane beside them
-//   view/Umamoe.tsx    uma.moe's button and popup (umamoesetup.js keeps its listings)
+//   view/Umamoe.tsx    uma.moe's button and popup (umamoesetup.ts keeps its listings)
 //   view/SkillDetails.tsx  the Skill Details popup
 //   view/Guard.tsx     the render guard each view draws inside
-//   view/parts.js      small parts the views share
+//   view/parts.ts      small parts the views share
 import '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
@@ -162,7 +162,7 @@ const run = createRun({
     drawCheck: paint,
   },
 });
-// the search's status: done, with a caveat (proofs.mjs `searchCaveat`) when the search could not prove the best odds'
+// the search's status: done, with a caveat (proofs.ts `searchCaveat`) when the search could not prove the best odds'
 // order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report establishes
 // of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the proofs rest on);
 // or, when no career can land every target, which targets nothing can give (no veteran or parent carries their spark;
@@ -287,7 +287,7 @@ loadData().then(
     // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
     // places, so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new
     // one is ready. While a pool veteran's G1 wins window or a skills prompt is open its edits are saved, and the search
-    // waits for it to close (veterans/pickers.js `searchHeld`).
+    // waits for it to close (veterans/pickers.ts `searchHeld`).
     const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
     let ids = idsOf(vets.peek());
     on([vets, places, searchHeld], (list, _places, held) => {

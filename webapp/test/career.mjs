@@ -50,7 +50,7 @@ function pinkPin() {
   }
   return { ok: aptitudes > 0 && !bad, detail: bad || `${aptitudes} aptitudes, worst ${worst.toFixed(2)} sigma` };
 }
-// A roll (career/roll.mjs) against the report it is drawn from, on every reference career: over 20,000 seeded rolls each,
+// A roll (career/roll.ts) against the report it is drawn from, on every reference career: over 20,000 seeded rolls each,
 // every target lands as often as the report's odds give (its outcome sets' marginal, or its own `p` without them), is
 // bought as often as `buy.gold + buy.white` and gold as often as `buy.gold` (the bought draw, conditional on the landing,
 // keeps the report's marginals), each G1 is won as often as `scheduledRaces` says, and the stars of the sparks, the
@@ -184,7 +184,7 @@ export default async function career(b) {
     );
     const rolls = rollPin();
     check(
-      "career: a roll (career/roll.mjs) keeps its career's report: targets land, are bought and gold, and G1s are won as often as the report says; stars, blue stat and unique as the model draws them",
+      "career: a roll (career/roll.ts) keeps its career's report: targets land, are bought and gold, and G1s are won as often as the report says; stars, blue stat and unique as the model draws them",
       rolls.ok,
       rolls.detail,
     );

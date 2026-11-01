@@ -10,7 +10,7 @@ export const LIST = SCENARIOS.filter((s) => !s.era || s.era === ERA);
 export const scenarioOf = (v: string): Scenario => LIST.find((s) => s.v === v) || LIST[0];
 // the lineage rank a scenario starts from (its `ss`)
 const rankOf = (sc: Scenario) => (sc.ss ? RANKS.ss : RANKS.below);
-// switch to scenario v (its guaranteed golds follow settings.scen: job.js goldGiven) and its default lineage rank, which
+// switch to scenario v (its guaranteed golds follow settings.scen: job.ts goldGiven) and its default lineage rank, which
 // can be changed by hand afterwards; saved
 export function chooseScenario(v: string) {
   const sc = scenarioOf(v);

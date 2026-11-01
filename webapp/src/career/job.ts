@@ -93,7 +93,7 @@ export interface CareerReport {
   /** per pink the six legacies carry: the chance at least one of the two inheritance events passes it on, and its
    *  carriers */
   pinks: { group: number; q: number; carriers: number }[];
-  /** her aptitude grades (codes 1..8 = G..S) and her veteran's pink spark (pink.mjs); `fire`: each legacy pink that can
+  /** her aptitude grades (codes 1..8 = G..S) and her veteran's pink spark (pink.ts); `fire`: each legacy pink that can
    *  fire at an April inspiration, its aptitude and chance (outcomes.rs `fire_json`) */
   aptitudes: {
     base: number[];
@@ -390,7 +390,7 @@ export interface CareerSearch {
   /** why any search of the job is not complete */
   job_unproven?: string[];
   /** the named assumptions the main search's proof rests on (`two_feeder_cap`, `multi_feeder_cap`): still a proof
-   *  (proofs.mjs `assumedText`) */
+   *  (proofs.ts `assumedText`) */
   assumes?: string[];
   /** the named assumptions any search of the job rests on */
   job_assumes?: string[];

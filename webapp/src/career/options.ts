@@ -1,7 +1,7 @@
 // The options table ("Other careers") under the career on show, as figures and words: the plan's careers by Saves per
 // run (or the search's, with a place open), what each row's tags and numbers say, the table's notes, and Use this
 // (`takeCareer`). view/Options.tsx draws it and its Saves popup. It reads the answer from the answer store
-// (career/state.ts) and the career's helpers from job.js and keys.js; its one write there is `forgetDroppedChoice`.
+// (career/state.ts) and the career's helpers from job.ts and keys.ts; its one write there is `forgetDroppedChoice`.
 import { settings } from '../settings.ts';
 import { pct } from '../odds.ts';
 import { batch } from '@preact/signals-core';

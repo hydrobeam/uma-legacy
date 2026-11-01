@@ -14,7 +14,7 @@ export const tName = (g: number): string => {
 export const fmtN = (x: number): string => Math.round(x).toLocaleString();
 // her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
 // G1s she could enter but doesn't aren't shown)
-// her schedule's rows, each race's figure the community table's on her own grades (agenda.js `tableChance`; the
+// her schedule's rows, each race's figure the community table's on her own grades (agenda.ts `tableChance`; the
 // planner's, which counts the pink sparks she may get, on hover)
 export const tableRows = (r: DeepReadonly<CareerReport>) =>
   (r.schedule || []).map((row) => {

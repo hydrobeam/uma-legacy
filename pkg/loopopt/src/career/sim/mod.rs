@@ -218,7 +218,7 @@ pub(super) enum Goal {
     /// goal).
     Looped,
 }
-/// index: the page's `top` for its plan job (`ROLL_K` in webapp/src/career.js)
+/// index: the page's `top` for its plan job (`ROLL_K` in webapp/src/career/job.ts)
 const PAGE_TOP: usize = 6;
 /// Owned roster tables moved into a simulator.
 pub(super) struct SimulationRoster {

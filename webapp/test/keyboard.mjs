@@ -29,7 +29,7 @@ const clickOpens = async (pg, button, id) => {
 // Dialog (modal): Enter on its button opens it with the focus inside; Escape closes it and the focus returns to the
 // button (`back`: the element it returns to, when another stands in for the button). For a dialog opened by
 // showModal() both of the last two are the browser's: Escape fails when the dialog is not modal (Odds opened by show()
-// failed it) or a page key handler takes the Escape first (sortmenu.js's capture-phase keydown, say), and the focus returns to the button with the page's own close handler removed (Odds,
+// failed it) or a page key handler takes the Escape first (a capture-phase keydown, say), and the focus returns to the button with the page's own close handler removed (Odds,
 // Deck and the trainee's popup passed without theirs in Chromium), so that clause fails when a page handler moves the
 // focus away (Deck's close focusing another button failed it), not when one is missing.
 async function dialogKeys(pg, name, button, id, back = button) {
@@ -145,7 +145,7 @@ export default async function keyboard(b) {
         () => document.querySelector('.cpop').hidden && document.activeElement.classList.contains('memb'),
       )),
   );
-  // Tooltip (gmtip.js): a control with a title shows it as the game's balloon on keyboard focus, and hides it when the
+  // Tooltip (gmtip.ts): a control with a title shows it as the game's balloon on keyboard focus, and hides it when the
   // focus leaves it (APG: Escape would hide it too; the page does not). The focus leaves for nothing (a blur): moved to
   // another titled control, the balloon would show that one's title, and a check for this title gone would pass with
   // the hiding removed

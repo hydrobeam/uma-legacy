@@ -8,7 +8,7 @@ const GRADE_A = 7,
   GRADE_S = 8;
 // April inspirations in a career: each legacy pink gets a chance to fire at each
 const INSPIRATIONS = 2;
-/** What the draw reads of the report's `aptitudes` (career/job.js `CareerReport`). */
+/** What the draw reads of the report's `aptitudes` (career/job.ts `CareerReport`). */
 export interface PinkAptitudes {
   start: readonly number[];
   /** each legacy pink: the aptitude it raises and its chance of firing at one inspiration */

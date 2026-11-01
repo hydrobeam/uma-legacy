@@ -1,7 +1,7 @@
 // uma.moe's button beside Next career (UmButton, into #um-root) and its popup's contents (UmamoePanel, into #um-body):
 // the key until one is saved, then the status, what was searched, Include max borrows, the order menu
 // (ui/SortMenu.tsx), every listing as a card (ui/VetCell.tsx: a card opens her veteran popup), Refresh and Disconnect.
-// What they show is umamoesetup.js's (its signals and its sync).
+// What they show is umamoesetup.ts's (its signals and its sync).
 import { useRef } from 'preact/hooks';
 import { $dialog } from '../../dom.ts';
 import { vets } from '../../veterans/store.ts';

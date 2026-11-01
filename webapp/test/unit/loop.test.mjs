@@ -488,8 +488,8 @@ test("golden job keys: the defaults' job keyed as recorded, in both eras", () =>
   assert.equal(jobKey(job, 'gm'), GOLDEN.defaults.keyGm);
 });
 
-// the career page's job carries the same shared fields (job.js), in its own order: owned, then the rank, then the
-// scenario (career.js builds it; this pins what the helpers give it and that order, from 4ef2a4b)
+// the career page's job carries the same shared fields (job.ts), in its own order: owned, then the rank, then the
+// scenario (career/job.ts builds it; this pins what the helpers give it and that order, from 4ef2a4b)
 test("golden career fields: each fixture's shared career-job fields as recorded", () => {
   for (const [name, saved] of Object.entries(FIXTURES)) {
     if (!GOLDEN[name].career) continue;
@@ -503,7 +503,7 @@ test("golden career fields: each fixture's shared career-job fields as recorded"
   }
 });
 
-// ---------- effects (main.js's two, made the same way)
+// ---------- effects (loop/main.tsx's two, made the same way)
 test('effects: the setup effect wakes for job settings only, once per setter; the status line once per transition', async () => {
   const p = page();
   const runs = { setup: 0, paint: 0 };

@@ -54,7 +54,7 @@ export interface Simulation extends Partial<Omit<ExactFigures, 'r'>> {
   /** today's best career, without her */
   baseline?: DeepReadonly<CareerReport> | null;
   error?: string | null;
-  /** keys.js `keyOf` the career she came from */
+  /** keys.ts `keyOf` the career she came from */
   forKey?: string;
   /** the running comparison is a roll's quick one */
   kind?: 'quick' | null;

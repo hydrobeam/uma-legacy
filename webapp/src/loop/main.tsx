@@ -1,7 +1,7 @@
 // Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
 // dist/assets/main.<hash>.js, which dist/loop.html loads after its data script.
 // The page's own modules (loop/): types.ts the report's types, state.ts the run state (signals), run.ts the search's
-// run machine, job.ts its job, io.js the export's text; the views, components drawn from the state and the settings:
+// run machine, job.ts its job, io.ts the export's text; the views, components drawn from the state and the settings:
 // RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
 // dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root), inside a
 // ui/RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.

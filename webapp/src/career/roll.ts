@@ -8,7 +8,7 @@ import type { CareerReport } from './job.ts';
 
 /** What a roll reads besides the career's report. */
 export interface RollSetup {
-  /** the career tables (data.js `careerTables()`): the G1 races by index, the outfits with a unique skill */
+  /** the career tables (data.ts `careerTables()`): the G1 races by index, the outfits with a unique skill */
   career: { races: readonly string[]; uniques?: Readonly<Record<number, unknown>> };
   /** the target skills, in the job's order (the outcome sets' bit order) */
   targets: readonly { group: number }[];
@@ -16,7 +16,7 @@ export interface RollSetup {
   rank: string;
 }
 /** A roll: the sparks she landed (skill group -> stars), the skills she bought (group -> 'gold' | 'white'), the G1s she
- * won (race indices, ascending), her pink spark and end grades (pink.mjs), her blue (stat -> stars) and unique (outfit
+ * won (race indices, ascending), her pink spark and end grades (pink.ts), her blue (stat -> stars) and unique (outfit
  * -> stars) sparks. */
 export interface Roll {
   sparks: Record<number, number>;
@@ -27,7 +27,7 @@ export interface Roll {
   blues: Record<number, number>;
   greens: Record<number, number>;
 }
-/** `r`, below: the career's report (career/job.js `CareerReport`), read only */
+/** `r`, below: the career's report (career/job.ts `CareerReport`), read only */
 type Report = DeepReadonly<CareerReport>;
 /** a G1 she runs: its index in the career tables' races, its name, the chance she wins it at least once, her turns */
 export interface RaceChance {

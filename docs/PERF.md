@@ -257,7 +257,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
   (the plan job with `next.roll`, after the plan): y >= 0.5 0.1 ms of solver (7 ms the whole job), y < 0.5 208 ms the
   first (`hi_anc_ms` 199: every pair's anchors' chances, 531,166 `lineage_qc`) and 7-9 ms after (the anchors kept per
   pair, now `RollKeep::partner_anchors`: 18,895). The page sends `next.roll` in its own call before the quick
-  search; a saving roll goes straight to the exact comparison (`webapp/src/career.js`, `quickCompare`).
+  search; a saving roll goes straight to the exact comparison (`webapp/src/career/analysis/compare.ts`, `quickCompare`).
 - In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
   work persisted). Since 4689795 the stored work includes the main search (`KeptState::searches`), so a reload can reuse a
   matching stored search (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state

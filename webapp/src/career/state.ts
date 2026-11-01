@@ -2,7 +2,7 @@
 // `runView` is what the page draws of the run under way (the status line, the dimmed answer); `answer` is the answer on
 // show (the search's status, its result, the plan); `reference` is the last plan made, whose table stays while you weigh
 // a career you chose. Each is handed out read-only; the transitions below build the next record copy-on-write and
-// assign it (nothing here is saved: statestore.js keeps the answer, the run machine calls it). The run machine's
+// assign it (nothing here is saved: statestore.ts keeps the answer, the run machine calls it). The run machine's
 // tokens, timers and the job in flight are the run machine's closure state (career/run.ts `createRun`), not here:
 // nothing draws them.
 // A plan is known by its id (`PlanDone.id`, given when it is made or loaded), never by its object: its check's writes
@@ -47,7 +47,7 @@ export interface Searched {
   r: CareerSearch;
   /** the job it answers */
   job: CareerJob;
-  /** career/keys.js `jobKey(job)` */
+  /** career/keys.ts `jobKey(job)` */
   key: string;
   /** the places, as JSON (`plan` when it ran) */
   plan: string;
@@ -76,7 +76,7 @@ export interface Answer {
   last: Searched | null;
   planState: PlanState;
 }
-/** the last plan made: `base`, career/job.js `refBase` of its job; `places`, as it ran with; `result`, its `next` report;
+/** the last plan made: `base`, career/job.ts `refBase` of its job; `places`, as it ran with; `result`, its `next` report;
  *  `planId`, its plan's */
 export interface Reference {
   base: string;
@@ -106,7 +106,7 @@ export const reference: ReadonlySignal<DeepReadonly<Reference> | null> = lastPla
 // it)
 const answers = new Map<string, AnswerView>(),
   ANSWERS = 4;
-/** the career the answer shows, the places it ran with aside (career/job.js `shown` holds it to the places on screen): the
+/** the career the answer shows, the places it ran with aside (career/job.ts `shown` holds it to the places on screen): the
  *  plan's pick once it is made, else the highest odds; null without a result */
 export const answerCareer = computed(() => {
   const { last, planState } = shownAnswer.value,
@@ -220,7 +220,7 @@ export function recallAnswer(key: string) {
   answers.set(key, hit);
   return hit;
 }
-/** an answer kept since the last visit (statestore.js), under `key`: its plan gets an id of this page's */
+/** an answer kept since the last visit (statestore.ts), under `key`: its plan gets an id of this page's */
 export function keepSavedAnswer(key: string, saved: AnswerView) {
   const planState = saved.planState.state === 'done' ? { ...saved.planState, id: newPlanId() } : saved.planState;
   answers.set(key, freezeInPlace({ ...saved, planState }));
@@ -244,7 +244,7 @@ let comparisonPlan: { key: string; r: DeepReadonly<PlanReport>; ms: number } | n
 export function keepComparisonPlan(job: DeepReadonly<CareerJob>, r: DeepReadonly<PlanReport>, ms: number) {
   comparisonPlan = { key: planKey(job), r, ms };
 }
-/** the plan Compare ran for plan job key `key` (keys.js `planKey`), else null */
+/** the plan Compare ran for plan job key `key` (keys.ts `planKey`), else null */
 export const keptPlan = (key: string) => (comparisonPlan && comparisonPlan.key === key ? comparisonPlan : null);
 /** the plan of job `job` (a run's) has had its check (career/run.ts) write `r`: where it is the plan Compare kept (the
  *  run took it as it was, `keptPlan`), the two are one report, so the kept plan is `r` from now on (a run that takes

@@ -121,7 +121,7 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
 const MAY_BE_MISSING = {
   'src/loop/main.tsx': {},
   'src/career/main.tsx': {
-    'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
+    'data-example': "data.ts probes it: the loop page's precomputed example result; the career page has none",
   },
 };
 const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.tsx': 'career.template.html' };
@@ -174,7 +174,7 @@ for (const [entry, template] of Object.entries(PAGES)) {
     }
   }
   // an exemption holds only while its id is missing from the page and a module of the page looks it up: one whose id
-  // the page now has would hide the lookups the code guards with it (cards.js's c-peruma guard)
+  // the page now has would hide the lookups the code guards with it (cards.ts's c-peruma guard)
   for (const id of Object.keys(MAY_BE_MISSING[entry])) {
     if (ids.has(id))
       problems.push(`MAY_BE_MISSING: #${id} is exempt on ${entry}'s page, which has it: drop the exemption`);
@@ -498,7 +498,7 @@ const MOUNT_READS = {
     [
       /on\(\[vets, places, searchHeld\], \(list, _places, held\) => \{\s*if \(held\) return;/,
       "the veterans effect holds the search while a pool veteran's G1 wins window or a skills prompt is open " +
-        '(pickers.js searchHeld; review-10 1, 2)',
+        '(pickers.ts searchHeld; review-10 1, 2)',
     ],
     [
       /mount\('sched-dlg', <ScheduleDialog \/>, 'The race schedule', schedOpened\);/,
@@ -591,8 +591,8 @@ const reports = [];
 // The rule's other logic (frontend.md: run machines, uma.moe sync, io) lives today inside modules that are views too, so
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
 // the review of step 4 traced every such read): loop/run.ts (the loop page's run machine: it changes loop/state.ts
-// through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
-// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career/job.js
+// through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.ts (the uma.moe panel with its sync: `sigOf` and `query`
+// read the targets), loop/io.ts (the loop page's Export and Import: it writes the store by design, an editor), career/job.ts
 // (the career job, built from the veterans and settings). career/run.ts, the career run machine, is a model module: the
 // answer store's transitions come in its deps.
 const LAYERS = [

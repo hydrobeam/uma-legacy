@@ -38,7 +38,7 @@ export type RunStore = Pick<
 
 /** what the run machine needs of the page, built once by the entry (main.tsx) */
 export interface RunDeps {
-  /** the solver (engine.ts, through job.js `runJob`) */
+  /** the solver (engine.ts, through job.ts `runJob`) */
   engine: {
     /** a career job: its answer (rejects when the job waited on a start the engine's restart superseded) */
     run: (job: CareerJob, progress?: (p: PlanProgress) => void, background?: boolean) => Promise<CareerAnswer>;
@@ -64,18 +64,18 @@ export interface RunDeps {
   store: RunStore;
   /** the page's state as a run reads it */
   page: {
-    /** the career job of the settings, veterans and places now (throws job.js `Blocked` when they make none) */
+    /** the career job of the settings, veterans and places now (throws job.ts `Blocked` when they make none) */
     job: () => CareerJob;
-    /** the places as a key (job.js `placesKey`) */
+    /** the places as a key (job.ts `placesKey`) */
     places: () => string;
     /** the trainee chosen by hand (null: the planner picks, so a plan runs) */
     trainee: () => number | null;
-    /** job.js `refBase` and `baseKey` of a job */
+    /** job.ts `refBase` and `baseKey` of a job */
     refBase: (job: CareerJob) => string;
     baseKey: (job: CareerJob) => string;
     /** the search's status line (main.tsx `searchStatus`): done with its caveats, or why no career lands every target */
     searched: (m: { r: CareerSearch; ms: number }, found: string) => Status;
-    /** the answer the last visit kept, and keeping this one (statestore.js) */
+    /** the answer the last visit kept, and keeping this one (statestore.ts) */
     loadAnswer: () => Promise<{ key: string; value: AnswerView } | null>;
     saveAnswer: (key: string, value: AnswerView) => void;
   };
@@ -94,7 +94,7 @@ export interface RunDeps {
   };
   /** the redraws */
   view: {
-    /** the career on show (job.js `shown`) */
+    /** the career on show (job.ts `shown`) */
     shown: () => DeepReadonly<CareerReport> | null;
     /** the status line */
     paint: () => void;

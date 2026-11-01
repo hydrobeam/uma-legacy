@@ -1,7 +1,7 @@
 // ---------- the game's race calendar (Scheduled Races): the schedule window's and the G1 wins editor's ----------
 // Three year columns of half-month slots, Junior's from July (the career starts in Junior Year, early July). On the
 // planner pages (html.game) all three years side by side, each 4 x 6 slots, Junior's first three rows the game's grey
-// cells for April to June (labelled as the game labels them, each half-month twice). agenda.js holds the logic.
+// cells for April to June (labelled as the game labels them, each half-month twice). agenda.ts holds the logic.
 import type { Ref, VNode } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { MONTHS, YEARS, bannerSrc, shownP, slotLabel, turnName, why } from '../agenda.ts';

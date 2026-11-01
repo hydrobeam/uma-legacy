@@ -131,7 +131,7 @@ export default async function load(b) {
     JSON.stringify({ tiles, ex: exOdds.slice(0, 3), result: deckOdds.slice(0, 3) }),
   );
   // a result card's picture names nothing on hover: the chip's title (name, title, tag, what to prioritise) is what
-  // hovering shows (gmtip.js shows the innermost [title])
+  // hovering shows (gmtip.ts shows the innermost [title])
   const chipTitles = await pg.$$eval('#results .deck .dc', (l) => [
     l.length,
     l.flatMap((c) => [...c.querySelectorAll('[title]')].map((t) => t.title)),

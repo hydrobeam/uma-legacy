@@ -1,4 +1,4 @@
-// ---------- the scenario picker and the lineage rank control (scenario.js holds the scenarios and the pick) ----------
+// ---------- the scenario picker and the lineage rank control (scenario.ts holds the scenarios and the pick) ----------
 // The picker: a button showing the chosen scenario, opening a grid of the scenarios (role=menu, the tiles menuitemradio
 // buttons, as the sort menus: ui/SortMenu.tsx, dropdown.ts). Opening focuses the chosen tile; the arrows move between tiles (two
 // columns); Escape, a click outside the button and the grid, or the focus leaving the picker closes it. A pick brings

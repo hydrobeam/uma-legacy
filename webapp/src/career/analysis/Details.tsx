@@ -151,7 +151,7 @@ const DEFS = [
   { key: 'info', label: 'Career Info' },
 ] as const;
 // the tabs and their panes, all three built up front as in the game; a switch shrinks the spark names now on show to
-// fit (details.js fitSparks waits a frame itself, so the render has landed by then)
+// fit (details.ts fitSparks waits a frame itself, so the render has landed by then)
 function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: ComponentChildren }) {
   const list = useRef<HTMLDivElement>(null);
   const show = (key: DetailsTab) => {
@@ -265,7 +265,7 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
   );
 }
 
-/** one support card of her deck (a click opens its panel: popover.js, which reads the data-* and leaves the markup to
+/** one support card of her deck (a click opens its panel: popover.ts, which reads the data-* and leaves the markup to
  *  this: its greying and aria-expanded are drawn here) */
 function DeckCell({ deck, i }: { deck: Career['deck']; i: number }) {
   const { base, borrowed: bor, card: c } = deckCardAt(deck, i),
@@ -398,7 +398,7 @@ function InfoPane({
             <span class="udrw">{x.turn == null ? 'Entered here' : when(x.turn)}</span>
             <span class="udgr">G1</span>
             <span class="udrn">{x.name}</span>
-            {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (details.js infoPane): the label reads the result; a role for it is recorded, not changed here */}
+            {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (details.ts infoPane): the label reads the result; a role for it is recorded, not changed here */}
             <span class="udres" aria-label={x.won ? 'won' : 'not won'}>
               {x.won ? '1st' : '–'}
             </span>

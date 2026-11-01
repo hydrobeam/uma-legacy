@@ -1,4 +1,4 @@
-// ---------- character icons, card art and skill icons: files in the page's image folder (data.js IMG_BASE; from the game's own files) ----------
+// ---------- character icons, card art and skill icons: files in the page's image folder (data.ts IMG_BASE; from the game's own files) ----------
 // Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near the
 // view (loading is set before src).
 import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, gameData } from './data.ts';

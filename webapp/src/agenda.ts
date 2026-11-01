@@ -116,7 +116,7 @@ export const tableFigure = (pair: string, k: number): number =>
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th or later'];
 export const why = (cell: ScheduleCell): string => {
   if (cell.tbl !== undefined) {
-    // (career/view/parts.js tableRows sets the table's figure with its cost and grades, on a cell the solver gave its row)
+    // (career/view/parts.ts tableRows sets the table's figure with its cost and grades, on a cell the solver gave its row)
     const row = must(cell.row, 'a scheduled race has its place in a row'),
       tapt = must(cell.tapt, 'a table figure comes with its cost on her grades');
     const pen = ROW_PEN[Math.min(row, 6) - 1],

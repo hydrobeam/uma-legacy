@@ -1,6 +1,6 @@
 // ---------- owned umas and cards from umadump: Import in the Umas and Support cards dialogs (ui/OwnedImport.tsx) ----------
 // Either dialog's Import takes card_data.json (owned outfits) or support_card_data.json (owned support cards), or both
-// (umadump.js parseOwned). A file is the game's whole list of what you own, so it replaces this era's marks: what it
+// (umadump.ts parseOwned). A file is the game's whole list of what you own, so it replaces this era's marks: what it
 // lists is owned, everything else in the data not owned. Ids the data doesn't have (R cards it leaves out, another
 // era's) are skipped.
 import { gameData } from './data.ts';

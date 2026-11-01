@@ -5,14 +5,14 @@ assumed inputs: the run records show only the legacies players chose, which are 
 an unselected veteran cannot be read from them. What is computed here:
 - the band each scenario's careers reach: the run list's rank-score estimate with every skill point spent
   (research/data/summary.jsonl, not included; Independent Training runs from uma-it), share at 17,500 or more per
-  scenario, against the band the page picks for the scenario (webapp/src/data.js, `ss`). That estimate is an upper
+  scenario, against the band the page picks for the scenario (webapp/src/data.ts, `ss`). That estimate is an upper
   bound on the score a career ends with, so the shares are also given with the career's score taken SLACK points below
   it, and on the run list's floor (no skill point spent), with each scenario's median ceiling and the expected base of
   the run-weighted mixture of the two mixes;
 - the star mix of the runs' legacies per scenario (the six ancestors' skill-white sparks in the run records, one count
   per spark per run): a selected reference, not the unselected mix, and it keys each legacy to the scenario of the
   career she is a legacy in, not the one she was bred in;
-- that the solver's default mix (pkg/loopopt/src/skills.rs) is the page's below-17,500 mix (webapp/src/data.js RANKS);
+- that the solver's default mix (pkg/loopopt/src/skills.rs) is the page's below-17,500 mix (webapp/src/data.ts RANKS);
 - what replacing a legacy's stars by the expected base per roll b = 0.03 (pi_1 + 2 pi_2 + 3 pi_3) costs: per run of
   the records (research/data/runs.jsonl), with its six real affinities (common.six_affinities), q with b in each of the two
   rolls against the exact 1 - prod_l E_s[(1 - min(1, b(s)(1 + A_l / 100)))^2] (a legacy's stars are the same in both
@@ -38,8 +38,8 @@ Mix = tuple[float, ...]
 class StarMixes(NamedTuple):
     """the star mixes the page and the solver use"""
 
-    page: dict[str, Mix]  # webapp/src/data.js RANKS: 'below' and 'ss'
-    scenario_ss: dict[int, bool]  # scenario id -> the page puts its careers at 17,500 and up (data.js `ss`)
+    page: dict[str, Mix]  # webapp/src/data.ts RANKS: 'below' and 'ss'
+    scenario_ss: dict[int, bool]  # scenario id -> the page puts its careers at 17,500 and up (data.ts `ss`)
     solver_default: Mix  # pkg/loopopt/src/skills.rs dstar() (a `const fn`, its array on the next line)
 
 

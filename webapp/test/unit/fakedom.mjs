@@ -1,6 +1,6 @@
 // A small document for node tests that render components (Preact) or run the el() editors: elements with children,
 // attributes, properties, listeners and the simple selectors the editors use ('tag', '.cls', 'tag.cls'). Every id
-// the page looks up is an element made on first use (a 'data-*' id is none: data.js reads the fake page's data), so a
+// the page looks up is an element made on first use (a 'data-*' id is none: data.ts reads the fake page's data), so a
 // module's load-time lookups find something. Import fakepage.mjs first, then this.
 class Node {
   constructor(type) {

@@ -44,7 +44,7 @@ export const DeckButton = () => (
   </button>
 );
 // her race schedule: the schedule window (the game's calendar), each race's figure the community table's on her own
-// grades (parts.js tableRows); the G1s she could enter but doesn't aren't shown
+// grades (parts.ts tableRows); the G1s she could enter but doesn't aren't shown
 const schedOf = (r: CareerReport) => ({
   members: [{ id: r.trainee.id, name: r.trainee.name, short: r.trainee.name }],
   outfits: [{ outfits: r.trainee.outfits }],
@@ -64,7 +64,7 @@ export function SchedButton({ r }: { r: CareerReport }) {
     </button>
   );
 }
-/** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.js, which reads the data-* and leaves the markup to this) */
+/** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.ts, which reads the data-* and leaves the markup to this) */
 export function DeckCard({ r, i }: { r: CareerReport; i: number }) {
   const d = r.deck,
     { base, borrowed: bor, card: c } = deckCardAt(d, i),
@@ -133,7 +133,7 @@ export function DeckDialog() {
     </Dialog>
   );
 }
-/** whether a deck card is this module's (popover.js leaves its markup alone) */
+/** whether a deck card is this module's (popover.ts leaves its markup alone) */
 
 // the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
 function cardsGiving(r: CareerReport, g: number) {

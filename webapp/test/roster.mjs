@@ -2,7 +2,7 @@ import { check, open, json, repoUrl } from './helpers.mjs';
 
 export default async function roster(b) {
   const pg = await open(b);
-  // as the page shows them: outfits dated after now hidden, an uma whose every outfit is (data.js `gameData().later`)
+  // as the page shows them: outfits dated after now hidden, an uma whose every outfit is (data.ts `gameData().later`)
   const umas = (await json(pg, 'data-umas'))
     .map((u) => ({ ...u, outfits: u.outfits.filter((o) => o.rel <= Date.now() / 1000), had: u.outfits.length }))
     .filter((u) => u.outfits.length || !u.had);

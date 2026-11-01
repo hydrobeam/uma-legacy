@@ -7,7 +7,7 @@
 // changes its stars patches the chip and the focus stays on it. Sparks draws `nd` and reads no store: it draws again
 // whenever its parent does (a new record from the veterans store, or a draft edited in place whose card draws again).
 // Every edit goes through `at` (the node by where it is), from her record as it is when the edit lands. The colour
-// picker and the "+" list are veterans/sparks.js's and pickers.js's (openColour, openAdd).
+// picker and the "+" list are veterans/sparks.ts's and pickers.ts's (openColour, openAdd).
 import { useRef } from 'preact/hooks';
 import { NEW_STARS } from '../veterans/store.ts';
 import { pinkName, skillName, uniqueName } from '../veterans/names.ts';
@@ -205,7 +205,7 @@ function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
     </span>
   );
 }
-/** "+": the target skills she lacks, in pickers.js's list; its aria-expanded drawn from `addOpener` */
+/** "+": the target skills she lacks, in pickers.ts's list; its aria-expanded drawn from `addOpener` */
 function AddSpark({ k, at }: { k: string; at: NodeRef }) {
   const ref = useRef<HTMLButtonElement>(null),
     open = addOpener.value !== null && addOpener.value === ref.current;

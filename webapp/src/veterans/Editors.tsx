@@ -2,7 +2,7 @@
 // The uma picker, the skills prompt, the G1 wins window and the colour picker: one root (#vet-editors, `VetEditors`),
 // their dialogs in that order, so a picker closing as the prompt opens gives the focus up first. The "+" list
 // (`AddList`) draws into #add-pop, which it places by the "+" that opened it, inside that "+"'s open dialog (the page
-// around a modal dialog is inert). What each shows, and its openers, are pickers.js's and sparks.js's.
+// around a modal dialog is inert). What each shows, and its openers, are pickers.ts's and sparks.ts's.
 import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Ref } from 'preact';
 import { gameData } from '../data.ts';

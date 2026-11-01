@@ -1,4 +1,4 @@
-// ---------- the Presets dialog (presets.js holds the edits): the list, Save current skills, a preset's view ----------
+// ---------- the Presets dialog (presets.ts holds the edits): the list, Save current skills, a preset's view ----------
 // The list: per preset its name and count (a click opens its skills as the editor's tiles, with Rename), Load, Overwrite
 // (with the targets now) and a trash can; under it, Save current skills opens a small popup for the name. Each preset is
 // named by its name, unique. The Target skills panel's Presets button calls `openPresets`.

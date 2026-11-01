@@ -21,7 +21,7 @@ pub(crate) fn pink_p(stars: u8, affinity_factor: f64) -> f64 {
     (PINK_RATE[stars as usize] * affinity_factor).min(1.0)
 }
 
-/// Her veteran's pink spark's stars, as the page's roll draws them (`webapp/src/pink.mjs`): 1 star below the first
+/// Her veteran's pink spark's stars, as the page's roll draws them (`webapp/src/pink.ts`): 1 star below the first
 /// bound, 2 below the second, else 3 (20/70/10, MODEL.md)
 const PINK_STAR_BOUNDS: [f64; 2] = [0.2, 0.9];
 
@@ -156,7 +156,7 @@ fn outcome_pink_gen(outcome: &PinkOutcome) -> [f64; 10] {
     spark_chances
 }
 
-/// Her veteran's pink spark, (factor group, stars), drawn as the page's roll draws it (`webapp/src/pink.mjs`,
+/// Her veteran's pink spark, (factor group, stars), drawn as the page's roll draws it (`webapp/src/pink.ts`,
 /// `drawPink`) from successive numbers of `uniform` (each in [0, 1)), in its order: each spark's firing at the Classic
 /// then the Senior April inspiration, in `fire` order; then the aptitude, uniform over those she ends at A or S (no
 /// more numbers when there is none: no pink); then her stars (`PINK_STAR_BOUNDS`). With several outcomes (a veteran

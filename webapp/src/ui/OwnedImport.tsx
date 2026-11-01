@@ -1,5 +1,5 @@
 // ---------- Import umadump: the file button of the Umas and the Support cards panels ----------
-// Either takes card_data.json (owned outfits) or support_card_data.json (owned support cards), or both (owned.js);
+// Either takes card_data.json (owned outfits) or support_card_data.json (owned support cards), or both (owned.ts);
 // `onSaid` gets what the import says, for the panel's status (`useSaid`).
 import { useState } from 'preact/hooks';
 import { importFiles } from '../owned.ts';

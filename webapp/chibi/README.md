@@ -1,6 +1,6 @@
 # The runner strips (`webapp/chibi/`)
 
-While a search runs, the page shows the uma being planned running (`webapp/src/images.js` `runnerHTML`; a spinner
+While a search runs, the page shows the uma being planned running (`webapp/src/images.ts` `runnerHTML`; a spinner
 when a build has no strips). `./build.sh runners` (`chibi.py [all | ID ...] [--force]`) makes one strip
 per roster uma, both eras: her mini body, hair, the shared mini face in her skin tone, her tail
 (`chara_data.tail_model_id`) and the game's mini run motion. AssetStudio's CLI exports FBX, FBX2glTF makes glb, the

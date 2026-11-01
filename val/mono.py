@@ -3,14 +3,14 @@ without her is still there), so a rise in the planner's V is the planner's error
 
 - **last veteran:** plan the pool less its last veteran, then the full pool under that plan's fit (`next.fit`);
 - **rolled veterans:** plan the full pool, then the pool with each of N veterans of its pick added, drawn as the page's
-  Compare and Reroll draw them (career.js `draftOf` / `draftJob`: the landed set from the pick's `outcome_sets`, every
+  Compare and Reroll draw them (analysis `draftOf` / `draftJob`: the landed set from the pick's `outcome_sets`, every
   set including the all-landed one, or each target on its own odds past 12 targets; each landed spark's stars from the
-  job's `star_dist`; each scheduled G1 won with its chance; her pink drawn as pink.mjs `drawPink` draws it; her parents
+  job's `star_dist`; each scheduled G1 won with its chance; her pink drawn as pink.ts `drawPink` draws it; her parents
   copied without their own parents; seeded per pool), each under the full pool's fit and refitted.
 
 The fixed fit takes the continuation's refit out (`Cont` is refitted per pool); what remains is the plan's own
 choice of route through the pool (which lineages its trios are bred from), so a fixed-fit rise is the plan's error. The
-fixed-fit column is what the page's Compare shows (the plan of the pool with her under today's fit, career.js
+fixed-fit column is what the page's Compare shows (the plan of the pool with her under today's fit, compare.ts
 `runComparison`); the refit column is what Add then shows (the pool with her, fitted to it). Refit rises are reported,
 not failed on: a refit can move V either way.
 
@@ -45,7 +45,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-# pink.mjs: grades are aptitude codes 1..8 = G..S; each legacy pink fires at each of the two April inspirations
+# pink.ts: grades are aptitude codes 1..8 = G..S; each legacy pink fires at each of the two April inspirations
 GRADE_A, GRADE_S, INSPIRATIONS = 7, 8, 2
 DEFAULT_STAR_DIST = [0.5, 0.45, 0.05]  # the solver's default rank mix (src/skills.rs)
 RISE = 1e-9
@@ -205,9 +205,9 @@ def last_veteran(job_entry):
     return PoolComparison(name=name, without=without, with_veteran=with_veteran)
 
 
-# ---- a rolled veteran, as career.js draftOf / draftJob build her ----
+# ---- a rolled veteran, as career/analysis draftOf / draftJob build her ----
 def scheduled_races(report, race_names):
-    """career.js scheduledRaces: per race index she runs, her chance of winning it at least once"""
+    """career/roll.ts scheduledRaces: per race index she runs, her chance of winning it at least once"""
     races = {}
     for row in report.get("schedule") or []:
         if row.get("run") is False:
@@ -221,7 +221,7 @@ def scheduled_races(report, race_names):
 
 
 def drawn_pink(aptitudes, rng):
-    """pink.mjs drawPink: {group: stars}, its draws in the same order (fires per inspiration, aptitude, stars)"""
+    """pink.ts drawPink: {group: stars}, its draws in the same order (fires per inspiration, aptitude, stars)"""
     if not aptitudes:
         return {}
     grades = list(aptitudes["start"])
