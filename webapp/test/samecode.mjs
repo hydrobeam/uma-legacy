@@ -51,6 +51,7 @@ const REGEX_AFTER =
 export function tokenize(text) {
   const tokens = [];
   let depth = 0;
+  const casts = []; // per open parenthesis: whether it opens a JSDoc cast (dropped with its closing one)
   let i = 0;
   let lineStart = true;
   let indent = 0;
@@ -106,10 +107,17 @@ export function tokenize(text) {
       let end = i + 1;
       while (end < text.length && WORD.test(text[end])) end++;
       push(end);
+    } else if (ch === '(' && /^\s*\/\*/.test(text.slice(i + 1, i + 200))) {
+      // a JSDoc cast, `/** @type {T} */ (x)`: esbuild keeps the comment, so the parentheses around it; a type
+      // annotation or a TS `as` leaves none
+      casts.push(true);
+      i++;
     } else if ('([{'.includes(ch)) {
+      if (ch === '(') casts.push(false);
       push(i + 1);
       depth++;
-    } else if (')]}'.includes(ch)) {
+    } else if (ch === ')' && casts.pop()) i++;
+    else if (')]}'.includes(ch)) {
       depth--;
       push(i + 1);
     } else push(i + 1);
@@ -154,7 +162,7 @@ export function effects(text) {
   const heads = [];
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k];
-    if (!(t.lineStart && t.depth === 2 && t.indent === 2) || ')]}'.includes(t.text)) continue;
+    if (!(t.lineStart && t.depth === 2 && t.indent === 2) || ')]};'.includes(t.text)) continue;
     let end = k;
     while (end < tokens.length && !'{;'.includes(tokens[end].text)) end++;
     const head = join(tokens.slice(k, end + 1));

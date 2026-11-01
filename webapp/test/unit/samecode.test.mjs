@@ -56,3 +56,10 @@ test('path comments and line breaks are dropped; a changed statement is found on
   const b = statements(iife('  // src/y/x.ts', '  go(', '    1,', '    2', '  );', '  stop(a - -b);'));
   assert.deepEqual(listDiff(a, b), [['go(1,2);'], ['stop(a- -b);']]);
 });
+
+test("a JSDoc cast's parentheses read as none (esbuild keeps them with the comment)", () => {
+  const cast = iife('  var $ = (id) => (', '    /** @type {HTMLElement} */', '    byId(id)', '  );', '  go();');
+  const plain = iife('  var $ = (id) => byId(id);', '  go();');
+  assert.deepEqual(listDiff(statements(cast), statements(plain)), [[], []]);
+  assert.deepEqual(effects(cast), ['go();']);
+});
