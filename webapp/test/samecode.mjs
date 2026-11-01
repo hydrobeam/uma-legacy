@@ -40,7 +40,8 @@ const ENTRIES = [['src/main.js'], ['src/career.js'], ['src/worker.ts', 'worker.t
 const TREE = ['webapp/src', 'webapp/worker.template.js', 'webapp/tsconfig.json', 'webapp/package.json'];
 
 // A JSDoc type or satisfies comment. esbuild keeps such a comment in its output, and with it the parentheses of a cast
-// `/** @type {T} */ (x)`; with the comment gone it prints only the parentheses the expression needs, as for `x as T`
+// `/** @type {T} */ (x)`; with the comment gone it prints only the parentheses the expression needs, as for `x as T`.
+// It is matched in the raw source, strings included: a string holding `/** @type` would lose that text (none does).
 const CAST_COMMENT = /\/\*\*\s*@(?:type|satisfies)\b(?:[^*]|\*(?!\/))*\*\//g;
 export const dropCastComments = (source) => source.replace(CAST_COMMENT, '');
 
@@ -633,15 +634,20 @@ const excerpts = (a, b) => {
 function tree(rev) {
   if (!rev) return W;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'samecode-'));
-  const root = path.join(W, '..');
-  const held = TREE.filter((p) => spawnSync('git', ['-C', root, 'cat-file', '-e', `${rev}:${p}`]).status === 0);
-  const archive = spawnSync('git', ['-C', root, 'archive', '--format=tar', rev, ...held], {
-    maxBuffer: 1 << 28,
-  });
-  if (archive.status !== 0) throw new Error(`git archive ${rev}: ${archive.stderr}`);
-  const untar = spawnSync('tar', ['-x', '-C', dir], { input: archive.stdout });
-  if (untar.status !== 0) throw new Error(`tar: ${untar.stderr}`);
-  return path.join(dir, 'webapp');
+  try {
+    const root = path.join(W, '..');
+    const held = TREE.filter((p) => spawnSync('git', ['-C', root, 'cat-file', '-e', `${rev}:${p}`]).status === 0);
+    const archive = spawnSync('git', ['-C', root, 'archive', '--format=tar', rev, ...held], {
+      maxBuffer: 1 << 28,
+    });
+    if (archive.status !== 0) throw new Error(`git archive ${rev}: ${archive.stderr}`);
+    const untar = spawnSync('tar', ['-x', '-C', dir], { input: archive.stdout });
+    if (untar.status !== 0) throw new Error(`tar: ${untar.stderr}`);
+    return path.join(dir, 'webapp');
+  } catch (error) {
+    fs.rmSync(dir, { recursive: true }); // (the folder made above: nothing of it is kept)
+    throw error;
+  }
 }
 
 // one bundle's comparison, printed: the changed units (a pair with the same first line shown where it first differs),
@@ -685,8 +691,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const listEffects = args.includes('--effects');
   const [baseRev = 'HEAD', headRev = null] = args.filter((a) => a !== '--effects');
-  const base = tree(baseRev);
-  const head = tree(headRev);
+  const trees = []; // the folders made for revisions, removed however the comparison ends
   let same = true;
   let readBeforeDeclared = 0;
   // the entry's name in the tree `dir`
@@ -695,18 +700,24 @@ if (import.meta.main) {
     if (!name) throw new Error(`no entry ${names.join(' or ')} in ${dir}`);
     return name;
   };
-  for (const names of ENTRIES) {
-    const [fromName, toName] = [entryIn(base, names), entryIn(head, names)];
-    const entry = fromName === toName ? toName : `${fromName} -> ${toName}`;
-    const headText = await bundle(head, toName);
-    const result = compare(await bundle(base, fromName), headText);
-    report(entry, result, listEffects);
-    same &&= result.same;
-    const misordered = loadOrder(headText);
-    for (const problem of misordered) console.log(`  READ BEFORE DECLARED: ${loadOrderText(problem)}`);
-    readBeforeDeclared += misordered.length;
+  try {
+    trees.push(tree(baseRev));
+    trees.push(tree(headRev));
+    const [base, head] = trees;
+    for (const names of ENTRIES) {
+      const [fromName, toName] = [entryIn(base, names), entryIn(head, names)];
+      const entry = fromName === toName ? toName : `${fromName} -> ${toName}`;
+      const headText = await bundle(head, toName);
+      const result = compare(await bundle(base, fromName), headText);
+      report(entry, result, listEffects);
+      same &&= result.same;
+      const misordered = loadOrder(headText);
+      for (const problem of misordered) console.log(`  READ BEFORE DECLARED: ${loadOrderText(problem)}`);
+      readBeforeDeclared += misordered.length;
+    }
+  } finally {
+    for (const dir of trees) if (dir !== W) fs.rmSync(path.dirname(dir), { recursive: true });
   }
-  for (const dir of [base, head]) if (dir !== W) fs.rmSync(path.dirname(dir), { recursive: true });
   console.log(same ? 'samecode: the same code' : 'samecode: the code differs (above)');
   if (readBeforeDeclared) console.log(`samecode: ${readBeforeDeclared} read(s) at load before the declaration (above)`);
   process.exit(same && !readBeforeDeclared ? 0 : 1);

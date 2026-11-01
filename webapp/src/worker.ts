@@ -1,7 +1,7 @@
 // Solver worker: the Rust solver compiled to WebAssembly.
-// The wasm's calling convention: the page's JSON request is copied into memory the solver allocates (`alloc`), `init`
-// (the era's data) or `call` (a job) returns where its JSON answer starts and `result_len` its length, and the request's
-// memory is freed (`dealloc`).
+// The wasm's calling convention: the page's JSON request is copied into memory the solver allocates (`alloc`),
+// `init` (the era's data) or `call` (a job) returns where its JSON answer starts and `result_len` its length, and the
+// request's memory is freed (`dealloc`).
 // Typed against the protocol in solver.ts, with the worker's own globals (tsconfig.worker.json).
 import { must } from './must.ts';
 import type { FromWorker, SolverReply, ToWorker } from './solver.ts';
@@ -31,7 +31,8 @@ function callRaw(entry: 'init' | 'call', text: string): SolverReply {
   new Uint8Array(instance.memory.buffer, at, request.length).set(request);
   const answerAt = instance[entry](at, request.length);
   const answerLength = instance.result_len();
-  const answer = decoder.decode(new Uint8Array(instance.memory.buffer, answerAt, answerLength)); // a view, no copy: the memory is not shared and nothing runs in between
+  // (a view, no copy: the memory is not shared and nothing runs in between)
+  const answer = decoder.decode(new Uint8Array(instance.memory.buffer, answerAt, answerLength));
   instance.dealloc(at, request.length);
   return JSON.parse(answer);
 }
@@ -51,10 +52,12 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
               self.postMessage({ type: 'progress', id: runId, ph, k, n } satisfies FromWorker),
           },
         };
-        solver = (await WebAssembly.instantiate(message.module, imports)).exports as SolverExports; // compiled once by the page
+        // (the module was compiled once by the page)
+        solver = (await WebAssembly.instantiate(message.module, imports)).exports as SolverExports;
       } catch {
         throw new Error(
-          'This browser refused to run WebAssembly, which the solver needs. Use a current browser with WebAssembly enabled.',
+          'This browser refused to run WebAssembly, which the solver needs. ' +
+            'Use a current browser with WebAssembly enabled.',
         );
       }
       const r = callRaw('init', message.data);

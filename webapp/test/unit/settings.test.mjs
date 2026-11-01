@@ -1,6 +1,6 @@
 // The settings store (src/settings.ts) and the effect helper (src/store.ts `on`), on a Map standing in for localStorage:
 // each setter copies on write and persists before it assigns; an effect wakes only for the signals it names; what is
-// stored loads back, old shapes included. node --test test/unit/
+// stored loads back, old shapes included. node --test 'test/unit/*.test.*' (in webapp)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ERA } from '../../src/saved.ts';
