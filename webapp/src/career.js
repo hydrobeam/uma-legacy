@@ -2260,7 +2260,7 @@ function importText(text) {
     }
     // each keeps her source (one made by hand stays hand-made); an export from before sources were saved: imported
     importVets(
-      own.veterans.map((v) => ({ src: 'import', ...asVeteran(v) })),
+      own.veterans.map((v) => ({ ...asVeteran(v), src: typeof v.src === 'string' ? v.src : 'import' })),
       true,
     );
     setVTab('own');

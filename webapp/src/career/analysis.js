@@ -75,7 +75,7 @@ let planKept = null;
  *
  * The veteran a career leaves, as entered (a Veteran without id), with `apt` (her end grades) and `bought` (skill group
  * -> 'gold' | 'white') from her roll.
- * @typedef {LineageNode & {borrowed: boolean, parents: LineageNode[], apt?: number[], bought?: Object<number, string>}} Draft
+ * @typedef {LineageNode & {borrowed: boolean, parents: LineageNode[], apt?: number[] | null, bought?: Object<number, string>}} Draft
  */
 /** @type {Simulation} */
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
@@ -406,7 +406,6 @@ function draftOf(r) {
     chara: r.trainee.id,
     outfit: r.trainee.outfits[0]?.id,
     borrowed: false,
-    pinks: {},
     ...rolledOutcome(r, rollSetup()),
     winAt: {},
     parents: r.parents.map((i) => copyNode(vets[i])),

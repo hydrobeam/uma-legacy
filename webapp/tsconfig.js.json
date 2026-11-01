@@ -1,9 +1,11 @@
 {
-  // The page's plain JS: checkJs, not strict (frontend.md: strictNullChecks first, then each module converts to .ts).
+  // The page's plain JS: checkJs with strictNullChecks, not yet the rest of strict (frontend.md: each module converts to
+  // .ts, strict, in its own step).
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "checkJs": true,
-    "strict": false
+    "strict": false,
+    "strictNullChecks": true
   },
   "include": ["src/**/*.js", "src/**/*.mjs", "src/globals.d.ts"]
 }

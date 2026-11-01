@@ -48,7 +48,7 @@ const STORAGE_KEY = 'llp:career',
 const NEW_STARS = 2;
 function loadAll() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null'); // (nothing stored yet: null)
     if (saved && saved.v === STORAGE_VERSION) return saved;
     if (saved && saved.v === 1) {
       // v1: a list of veterans per era

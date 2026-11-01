@@ -296,7 +296,10 @@ export function winsAgenda(opts) {
         offCalendar.push(ix);
         continue;
       }
-      const preferred = [at[ix], info(ix)?.turn, ...turns].filter((t) => turns.includes(t));
+      // (a race not placed by the page, or not in her schedule, has no turn there)
+      const preferred = [at[ix], info(ix)?.turn, ...turns].flatMap((t) =>
+        t !== undefined && turns.includes(t) ? [t] : [],
+      );
       const t = preferred.find((t) => !byTurn.has(t)) ?? preferred[0];
       if (!byTurn.has(t)) byTurn.set(t, []);
       byTurn.get(t).push(ix);

@@ -24,7 +24,7 @@ export const SETTINGS = [...COMMON, ...PER_ERA]; // exported and imported (older
 // anything else saved under the key (an older format) starts from the defaults
 function loadSaved() {
   try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); // (nothing stored yet: null)
     if (saved && saved.v === SETTINGS_VERSION) return saved;
   } catch {
     // storage blocked or the saved settings unreadable: the defaults

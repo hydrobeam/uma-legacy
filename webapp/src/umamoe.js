@@ -85,7 +85,7 @@ function queryString({ factors, min, page, full = false }) {
 
 function loadCache() {
   try {
-    const c = JSON.parse(localStorage.getItem(CACHE_STORE));
+    const c = JSON.parse(localStorage.getItem(CACHE_STORE) ?? 'null'); // (nothing stored yet: null)
     if (c && typeof c === 'object') return c;
   } catch {
     // storage blocked or the cache unreadable: no answers kept

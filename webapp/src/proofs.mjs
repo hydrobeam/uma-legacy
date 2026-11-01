@@ -30,15 +30,18 @@ const reasons = (r) => new Set([...(r.unproven || []), ...(r.job_unproven || [])
 /** @type {(r: ProofFields) => string[]} the causes the job's report establishes */
 export const unprovenWhy = (r) => {
   const named = reasons(r);
-  const breachHere = !!r.cap_exceeded?.length || r.cap_breaches > 0;
+  // (a count a reply lacks, from a solver before it was reported, is none)
+  const breachHere = !!r.cap_exceeded?.length || (r.cap_breaches ?? 0) > 0;
   const breachBefore = !breachHere && (named.has('cap_breach') || !!r.cap_breached?.length);
   return [
     ...(named.has('work_cap') ? ['a search ran out of its work budget'] : []),
-    ...(r.band_overflows > 0 || named.has('band_overflow') ? ['a deck band was too large to check in full'] : []),
+    ...((r.band_overflows ?? 0) > 0 || named.has('band_overflow')
+      ? ['a deck band was too large to check in full']
+      : []),
     ...(breachHere ? ["a deck beat its class's assumed cap"] : []),
     ...(breachBefore ? ["a deck beat its class's assumed cap in an earlier search for these umas"] : []),
-    ...(r.cap_rerun?.unanswered > 0 ? ['a breach of a cap was not checked without the cap'] : []),
-    ...(r.cap_rerun?.unproven > 0 ? ['the check without the cap did not finish'] : []),
+    ...((r.cap_rerun?.unanswered ?? 0) > 0 ? ['a breach of a cap was not checked without the cap'] : []),
+    ...((r.cap_rerun?.unproven ?? 0) > 0 ? ['the check without the cap did not finish'] : []),
   ];
 };
 

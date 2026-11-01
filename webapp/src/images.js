@@ -41,7 +41,8 @@ export function setRunner(id) {
 /** @param {number[]} ids character ids */
 export function setRunnerFrom(ids) {
   const withStrip = ids.filter(hasRun);
-  if (withStrip.length && !withStrip.includes(runner))
+  if (withStrip.length && (runner === null || !withStrip.includes(runner)))
+    // (none picked yet: pick one)
     setRunner(withStrip[Math.floor(Math.random() * withStrip.length)]);
 }
 export function runnerHTML(big = false) {
@@ -73,8 +74,14 @@ function initials(name) {
   return ((first || '?')[0] + (words[1] ? words[1][0] : first[1] || '')).toUpperCase();
 }
 // eager: an image in the first screenful (the roster's first rows): fetched at once, at high priority, not lazily
-/** @param {number} charaId @param {number|null|undefined} outfitId her outfit's portrait, when known @param {number} size in px @param {boolean} [eager] @returns {HTMLSpanElement} */
-export function umaAv(charaId, outfitId, size, eager = false) {
+/**
+ * @param {number | null} uma her character id; null: an unknown uma (a parent nobody recorded, a damaged save), drawn as
+ *   id 0 is: '?' on hue 0, no portrait
+ * @param {number|null|undefined} outfitId her outfit's portrait, when known @param {number} size in px
+ * @param {boolean} [eager] @returns {HTMLSpanElement}
+ */
+export function umaAv(uma, outfitId, size, eager = false) {
+  const charaId = uma ?? 0;
   const disc = document.createElement('span');
   disc.className = 'av';
   // its size and its initials' (style.css .av reads them; a context resizes it with an ordinary rule)
