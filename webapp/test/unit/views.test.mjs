@@ -1,6 +1,7 @@
 // The veterans' views and editors on a fake document (fakedom.mjs), bundled with esbuild as the page bundles them: the
 // spark editor (ui/Sparks under ui/InspView) shows each edit of a draft, whether her card hands it a new record (the
-// store's draft) or the same object edited in place (review-8c 1).
+// store's draft) or the same object edited in place (review-8c 1); change uma commits the uma at the pick, saved and
+// seen by the page's effects, and the skills prompt dismissed keeps her sparks (review-8c 7).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -11,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
+import { memory } from './fakes.mjs';
 
 const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
 const built = await esbuild.build({
@@ -18,6 +20,8 @@ const built = await esbuild.build({
     contents: `
       import '@preact/signals';
       export * as store from './src/veterans/store.ts';
+      export { on } from './src/store.ts';
+      export { changeUma } from './src/veterans/pickers.js';
       export { InspView } from './src/ui/InspView.tsx';
       export { h, render } from 'preact';
       export { signal } from '@preact/signals';
@@ -38,7 +42,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-views-')),
 fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
-const { store: vs, InspView, h, render, signal, loadData } = page;
+const { store: vs, on, changeUma, InspView, h, render, signal, loadData } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: {}, races: [] };
 await loadData();
@@ -89,4 +93,44 @@ test("the spark editor shows each edit of a draft: the store's (a new record eac
     .click();
   await settle();
   assert.match(chipLabel(root2), /, 2 stars\. Click for 3$/, 'a draft edited in place');
+});
+
+test('change uma: the uma is hers at the pick (saved, the page told); the prompt dismissed keeps her sparks', async () => {
+  const storage = memory(),
+    frames = [];
+  vs.initVets({ storage: () => storage, hidden: () => false, afterFrame: (f) => frames.push(f) });
+  vs.addVets([
+    { id: 'a', src: 'hand', borrowed: false, ...node(1001, { [T]: 2 }), outfit: 100101, parents: [node(1), node(2)] },
+  ]);
+  for (const f of frames.splice(0)) f();
+  let woke = 0;
+  const stop = on([vs.vets], () => woke++);
+  changeUma(vs.vetRef('a'), 'Veteran #1');
+  const pick = document.getElementById('pick-list'),
+    ask = document.getElementById('ask-dlg');
+  assert.equal(document.getElementById('pick-dlg').open, true, 'the uma picker is open');
+  pick
+    .querySelectorAll('button.upick')
+    .find((b) => b._nm === 'uma b')
+    .click();
+  assert.equal(ask.open, true, 'the skills prompt asks');
+  ask.close(); // Escape: no choice
+  for (const f of frames.splice(0)) f();
+  const v = vs.vetById('a');
+  assert.deepEqual([v.chara, 'outfit' in v, v.sparks], [1002, false, { [T]: 2 }], 'her uma changed, her sparks kept');
+  assert.equal(JSON.parse(storage.getItem('llp:career')).global.vets[0].chara, 1002, 'saved'); // (node's era: global)
+  assert.equal(woke, 1, "the page's effect saw it (its search and redraw follow)");
+  // a choice on the prompt sets her sparks as a second edit
+  changeUma(vs.vetRef('a'), 'Veteran #1');
+  pick
+    .querySelectorAll('button.upick')
+    .find((b) => b._nm === 'uma c')
+    .click();
+  document
+    .getElementById('ask-btns')
+    .querySelectorAll('button')
+    .find((b) => b.textContent === 'No skills')
+    .click();
+  assert.deepEqual([vs.vetById('a').chara, vs.vetById('a').sparks, woke], [1003, {}, 3]);
+  stop();
 });
