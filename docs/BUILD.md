@@ -182,9 +182,10 @@ the loop page's run state (the search as the status line draws it, the status an
 (`loop/state.ts`), changed only by the transitions its run machine (`loop/run.ts`, `createRun(deps)`: the engine, clock,
 timers, storage and settings passed in) makes, and its status line redraws on an effect over it. The career page's run
 and answer are a third store (`career/state.ts`): what the status line draws of the run, the answer on show and the last
-plan made, each a read-only signal that named transitions replace. A plan is known there by an id given when it is
-made, so the robustness check (`career/run.ts`), whose writes replace the plan's record, writes its result wherever the
-plan is kept. No framework.
+plan made, each a read-only signal that named transitions replace. Its run machine (`career/run.ts`, `createRun(deps)`:
+the search, the plan and the robustness check, with the store's transitions, the engine, clock, page and redraws passed
+in) imports no store, and node tests run it on fakes. A plan is known by an id given when it is made, so the check,
+whose writes replace the plan's record, writes its result wherever the plan is kept. No framework.
 
 In `src/`, `loop/main.js` and `career/main.js` are the two pages' entries (each page's own modules are in its folder,
 `loop/` and `career/`; `career/main.js`'s header maps its folder: the job, the run, the views in `career/view/`); `engine.ts`
