@@ -69,8 +69,8 @@ The greedy and loop policies (pools: `val/jobs/career_U5.json` and `val/sim/pool
     cargo build --release --manifest-path pkg/loopopt/Cargo.toml
     uv run val/sim/make_jobs.py /tmp/sim                         # job files and queue.txt
     (cd pkg/loopopt/data/global && for n in $(cat /tmp/sim/queue.txt); do ../../target/release/loopopt data.json /tmp/sim/$n.json > /tmp/sim/$n.out; done)
-    uv run val/sim/report.py runs /tmp/sim/u5_*.out              # E per policy, paired differences
-    uv run val/sim/report.py audit /tmp/sim/u5_*.out             # the surrogate's fidelity audits
+    uv run --group research val/sim/report.py runs /tmp/sim/u5_*.out              # E per policy, paired differences
+    uv run --group research val/sim/report.py audit /tmp/sim/u5_*.out             # the surrogate's fidelity audits
 
 The exact-model trajectories (`*_gex`, `*_lx`: a career search per decision) take the longest.
 
