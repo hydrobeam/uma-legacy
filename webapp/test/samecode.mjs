@@ -2,16 +2,18 @@
 //   node test/samecode.mjs [BASE [HEAD]] [--effects]   (BASE defaults to HEAD, HEAD to the working tree)
 // Each tree's three bundles (the two pages' entries and the solver's worker) are built by esbuild without minifying,
 // read as tokens (comments dropped, so esbuild's `// path/file.js` lines go; whitespace dropped, so a line the formatter
-// reflowed reads the same) and compared twice:
-// - the multiset of statements: the token runs between one `;`, `{` or `}` and the next, possibly in another order. A
-//   move, a rename to .ts with annotations or a split keeps it; any changed statement breaks it. (A minified hash can't
-//   serve: esbuild's minified names follow the input's character counts, so a type annotation can rename them, and a
-//   split moves code earlier in the bundle.)
-// - the ordered list of load-time effects: the top-level statements that do something when the bundle loads (not a
-//   declaration of a function, class or plain value). Modules run in import order, so a move that changes the order of
-//   storage reads or document listeners breaks it.
-// A module order change also swaps esbuild's collision suffixes (GAP, GAP2), which shows as changed statements:
-// evaluation order did change, so it is reported. --effects lists each bundle's effects. Exits 1 on any difference.
+// reflowed reads the same) and cut into top-level units: the statements of the bundle's IIFE, each whole with its body.
+// Two trees hold the same code when:
+// - each bundle has the same multiset of units, possibly in another order. A move between modules or a rename to .ts
+//   with annotations keeps every unit's text; a change inside a function (statements reordered, a branch swapped, a
+//   statement moved into or out of a block or to another function) changes the unit that holds it.
+// - its load-time effects (the units that do something when the bundle loads: anything but a function declaration or
+//   a declaration whose value is made without a call) run in the same order. Modules run in import order, so a move
+//   that changes the order of storage reads or document listeners breaks it.
+// A module order change also swaps esbuild's collision suffixes (GAP, GAP2), which shows as changed units: evaluation
+// order did change, so it is reported. Not compared: a declaration's place among the effects (a value declared after
+// an effect that reads it at load reads undefined), the templates, the CSS and build.py's flags.
+// --effects lists each bundle's effects. Exits 1 on any difference.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -26,35 +28,65 @@ const ENTRIES = [['src/main.js'], ['src/career.js'], ['src/worker.ts', 'worker.t
 // path a revision lacks (an entry's older name) is left out of its tree
 const TREE = ['webapp/src', 'webapp/worker.template.js', 'webapp/tsconfig.json', 'webapp/package.json'];
 
-// The bundle of `entry` in the webapp folder `dir`, as build.py makes it but unminified; the packages resolve from this
-// checkout's node_modules
-const bundle = (dir, entry) =>
-  esbuild.buildSync({
-    entryPoints: [path.join(dir, entry)],
-    absWorkingDir: dir,
-    nodePaths: [path.join(W, 'node_modules')],
-    bundle: true,
-    format: 'iife',
-    charset: 'utf8',
-    jsx: 'automatic',
-    jsxImportSource: 'preact',
-    legalComments: 'none',
-    logLevel: 'warning',
-    write: false,
-  }).outputFiles[0].text;
+// A JSDoc type or satisfies comment. esbuild keeps such a comment in its output, and with it the parentheses of a cast
+// `/** @type {T} */ (x)`; with the comment gone it prints only the parentheses the expression needs, as for `x as T`
+const CAST_COMMENT = /\/\*\*\s*@(?:type|satisfies)\b(?:[^*]|\*(?!\/))*\*\//g;
+export const dropCastComments = (source) => source.replace(CAST_COMMENT, '');
+
+// the page's sources read without their JSDoc type comments (the packages as they are)
+const castsDropped = {
+  name: 'casts-dropped',
+  setup(build) {
+    build.onLoad({ filter: /\.[jt]sx?$/ }, (args) => {
+      if (args.path.includes(`${path.sep}node_modules${path.sep}`)) return undefined;
+      const source = fs.readFileSync(args.path, 'utf8');
+      return { contents: dropCastComments(source), loader: path.extname(args.path).slice(1) };
+    });
+  },
+};
+
+// The bundle of `entry` in the webapp folder `dir`, as build.py makes it but unminified and without JSDoc type
+// comments; the packages resolve from this checkout's node_modules
+export const bundle = async (dir, entry) =>
+  (
+    await esbuild.build({
+      entryPoints: [path.join(dir, entry)],
+      absWorkingDir: dir,
+      nodePaths: [path.join(W, 'node_modules')],
+      bundle: true,
+      format: 'iife',
+      charset: 'utf8',
+      jsx: 'automatic',
+      jsxImportSource: 'preact',
+      legalComments: 'none',
+      logLevel: 'warning',
+      plugins: [castsDropped],
+      write: false,
+    })
+  ).outputFiles[0].text;
 
 const WORD = /[\w$]/;
-// a `/` starts a regular expression after these (an operator, an opening bracket, a keyword), else it divides
-const REGEX_AFTER =
-  /^$|^[(,=:[!&|?{};+\-*%<>~^]$|^(return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
+// the punctuators longer than one character, longest first, so `a++ + b` and `a + ++b` read apart
+const PUNCTUATORS = [
+  ...['>>>=', '...', '===', '!==', '**=', '<<=', '>>=', '>>>', '&&=', '||=', '??='],
+  ...['=>', '==', '!=', '<=', '>=', '&&', '||', '??', '?.', '++', '--', '**', '<<', '>>'],
+  ...['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='],
+];
+const REGEX_AFTER_WORD = /^(return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await|instanceof)$/;
+// whether a `/` after `prev` starts a regular expression (after an operator, an opening bracket or a keyword) rather
+// than dividing (after a value)
+const regexAfter = (prev) =>
+  !prev ||
+  (prev.kind === 'punct' && !/^([)\]]|\+\+|--)$/.test(prev.text)) ||
+  (prev.kind === 'word' && REGEX_AFTER_WORD.test(prev.text));
 
-// The tokens of esbuild's output: {text, depth (open brackets before it), lineStart (the first token of its line),
-// indent (its line's leading spaces)}. Strings, regular expressions and template literals (with what their `${}` hold)
-// are one token each; comments and whitespace are dropped.
+// The tokens of esbuild's output: {text, kind (word, string, regex or punct), depth (open brackets before it; a closing
+// bracket has its opener's), lineStart (the first token of its line), indent (its line's leading spaces)}. Strings,
+// regular expressions and template literals (with what their `${}` hold) are one token each; comments and whitespace
+// are dropped.
 export function tokenize(text) {
   const tokens = [];
   let depth = 0;
-  const casts = []; // per open parenthesis: whether it opens a JSDoc cast (dropped with its closing one)
   let i = 0;
   let lineStart = true;
   let indent = 0;
@@ -85,8 +117,8 @@ export function tokenize(text) {
     }
     return j;
   };
-  const push = (end) => {
-    tokens.push({ text: text.slice(i, end), depth, lineStart, indent });
+  const push = (end, kind) => {
+    tokens.push({ text: text.slice(i, end), kind, depth, lineStart, indent });
     lineStart = false;
     i = end;
   };
@@ -101,34 +133,30 @@ export function tokenize(text) {
     else if (ch === '/' && text[i + 1] === '*') {
       const close = text.indexOf('*/', i + 2);
       i = close < 0 ? text.length : close + 2;
-    } else if (ch === '"' || ch === "'" || ch === '`') push(quoteEnd(i));
-    else if (ch === '/' && REGEX_AFTER.test(tokens.at(-1)?.text ?? '')) {
+    } else if (ch === '"' || ch === "'" || ch === '`') push(quoteEnd(i), 'string');
+    else if (ch === '/' && regexAfter(tokens.at(-1))) {
       let end = quoteEnd(i);
       while (end < text.length && /[a-z]/.test(text[end])) end++; // its flags
-      push(end);
+      push(end, 'regex');
     } else if (WORD.test(ch)) {
       let end = i + 1;
       while (end < text.length && WORD.test(text[end])) end++;
-      push(end);
-    } else if (ch === '(' && /^\s*\/\*/.test(text.slice(i + 1, i + 200))) {
-      // a JSDoc cast, `/** @type {T} */ (x)`: esbuild keeps the comment, so the parentheses around it; a type
-      // annotation or a TS `as` leaves none
-      casts.push(true);
-      i++;
+      push(end, 'word');
     } else if ('([{'.includes(ch)) {
-      if (ch === '(') casts.push(false);
-      push(i + 1);
+      push(i + 1, 'punct');
       depth++;
-    } else if (ch === ')' && casts.pop()) i++;
-    else if (')]}'.includes(ch)) {
+    } else if (')]}'.includes(ch)) {
       depth--;
-      push(i + 1);
-    } else push(i + 1);
+      push(i + 1, 'punct');
+    } else {
+      const long = PUNCTUATORS.find((p) => text.startsWith(p, i));
+      push(i + (long ? long.length : 1), 'punct');
+    }
   }
   return tokens;
 }
 
-// tokens as text: a space only where two words would otherwise merge, or two signs (`a - -b`)
+// tokens as text: a space only where two words would otherwise merge, or two signs (`a - -b`, `a++ +b`)
 const join = (tokens) =>
   tokens
     .map((t, k) => {
@@ -138,43 +166,91 @@ const join = (tokens) =>
     })
     .join('');
 
-// The statements of a bundle: its tokens cut after each `;`, `{` and `}`, as text
-export function statements(text) {
-  const out = [];
-  let run = [];
-  for (const token of tokenize(text)) {
-    run.push(token);
-    if (';{}'.includes(token.text)) {
-      out.push(join(run));
-      run = [];
-    }
+// The top-level units of a bundle, as token lists: the statements of its IIFE, each whole with its body (a unit starts
+// at its own first token on a line two spaces in, inside the IIFE's two brackets, as esbuild prints them), then the
+// frame (the tokens outside the IIFE's body: "use strict", the IIFE's own brackets)
+export function units(text) {
+  const body = [];
+  const frame = [];
+  for (const t of tokenize(text)) {
+    if (t.depth < 2) frame.push(t);
+    else if (t.lineStart && t.depth === 2 && t.indent === 2 && !')]};'.includes(t.text)) body.push([t]);
+    else if (body.length) body.at(-1).push(t);
+    else frame.push(t);
   }
-  if (run.length) out.push(join(run));
-  return out;
+  return [...body, frame];
 }
 
-// a top-level statement that declares and does nothing else: a function or class, or a value made without a call
-const DECLARATION = /^(async function|function)\b|^class\b/;
-const PURE_VALUE =
-  /^(var|let|const) [\w$]+=(\(|async\(|async [\w$]+=>|[\w$]+=>|\[|\{|function\b|class\b|[0-9"'`-]|null;|true;|false;|void 0;|\/|new (Map|Set|WeakMap)\(\);)/;
-// The load-time effects of a bundle: the top-level statements of its IIFE (its own first tokens on a line two spaces
-// in, inside the IIFE's two brackets) that are not declarations (a `var x = f()` is not: the call runs at load), each
-// as its text up to its first `{` or `;`
-export function effects(text) {
-  const tokens = tokenize(text);
-  const heads = [];
+// the index just past the bracket that closes the one opening at tokens[at]
+const closeOf = (tokens, at) => {
+  let k = at + 1;
+  while (k < tokens.length && tokens[k].depth > tokens[at].depth) k++;
+  return k + 1;
+};
+// the index just past an arrow function's body, from its `=>`: a block, or an expression up to a `,` or `;` at the
+// arrow's depth or a closing bracket below it
+const arrowBodyEnd = (tokens, arrow) => {
+  const depth = tokens[arrow].depth;
+  if (tokens[arrow + 1]?.text === '{') return closeOf(tokens, arrow + 1);
+  let k = arrow + 1;
+  while (k < tokens.length && tokens[k].depth >= depth && !(tokens[k].depth === depth && ',;'.includes(tokens[k].text)))
+    k++;
+  return k;
+};
+// words before a `(` that make it a parenthesised expression, not a call
+const NOT_A_CALLEE = /^(return|typeof|void|delete|in|of|instanceof|case|await|yield|async|new|else|do)$/;
+const PLAIN_COLLECTION = /^(Map|Set|WeakMap|WeakSet)$/;
+
+// Whether a declaration's tokens (after `var`, `let` or `const`; or a class) run anything at load: a call, a `new`
+// other than an empty collection, a tagged template, a template with a call inside, `++`, `--`, `delete` or a compound
+// assignment. The bodies of the functions, arrows and methods it defines are skipped: they run when called.
+export function runsAtLoad(tokens) {
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k];
-    if (!(t.lineStart && t.depth === 2 && t.indent === 2) || ')]};'.includes(t.text)) continue;
-    let end = k;
-    while (end < tokens.length && !'{;'.includes(tokens[end].text)) end++;
-    const head = join(tokens.slice(k, end + 1));
-    const isDeclaration =
-      DECLARATION.test(head) || (/^(var|let|const) /.test(head) && (PURE_VALUE.test(head) || !head.includes('(')));
-    if (!isDeclaration) heads.push(head);
+    const prev = tokens[k - 1];
+    if (t.text === '=>') {
+      k = arrowBodyEnd(tokens, k) - 1;
+    } else if (t.kind === 'word' && t.text === 'function') {
+      let open = k + 1;
+      while (open < tokens.length && !(tokens[open].text === '{' && tokens[open].depth === t.depth)) open++;
+      k = closeOf(tokens, open) - 1;
+    } else if (t.kind === 'word' && t.text === 'new') {
+      const [name, open, close] = [tokens[k + 1], tokens[k + 2], tokens[k + 3]];
+      if (!(PLAIN_COLLECTION.test(name?.text ?? '') && open?.text === '(' && close?.text === ')')) return true;
+      k += 3;
+    } else if (t.text === '(') {
+      const after = closeOf(tokens, k);
+      const next = tokens[after]?.text;
+      if (next === '=>')
+        k = after - 1; // an arrow's parameters (their defaults run when it is called)
+      else if (next === '{')
+        k = closeOf(tokens, after) - 1; // a method's parameters and body
+      else if (prev && (')]'.includes(prev.text) || (prev.kind === 'word' && !NOT_A_CALLEE.test(prev.text))))
+        return true;
+    } else if (t.kind === 'string' && t.text[0] === '`') {
+      if (prev && (prev.kind === 'word' || ')]'.includes(prev.text))) return true; // a tagged template
+      if (t.text.includes('${') && t.text.includes('(')) return true;
+    } else if (/^(\+\+|--|delete|[-+*/%&|^]=|\*\*=|<<=|>>>?=|&&=|\|\|=|\?\?=)$/.test(t.text)) return true;
   }
-  return heads;
+  return false;
 }
+
+// whether a top-level unit only declares: a function, or a variable or class whose value is made without running
+// anything at load
+const isDeclaration = (unit) => {
+  const [first, second] = unit;
+  if (first.text === 'function' || (first.text === 'async' && second?.text === 'function')) return true;
+  if (/^(var|let|const)$/.test(first.text)) return !runsAtLoad(unit.slice(1));
+  if (first.text === 'class') return !runsAtLoad(unit);
+  return false;
+};
+
+// The load-time effects of a bundle, in order, as text: its top-level units that are not declarations
+export const effects = (text) =>
+  units(text)
+    .slice(0, -1)
+    .filter((unit) => !isDeclaration(unit))
+    .map(join);
 
 // The difference of two lists: [entries only in a, entries only in b] (each as often as it is in excess)
 export function listDiff(a, b) {
@@ -184,6 +260,33 @@ export function listDiff(a, b) {
   const only = (sign) => [...count].flatMap(([l, n]) => (Math.sign(n) === sign ? Array(Math.abs(n)).fill(l) : []));
   return [only(1), only(-1)];
 }
+
+// Two bundles compared: {unitCount, gone, added (units' text only in one), effectsBefore, effectsAfter, sameOrder,
+// same}
+export function compare(before, after) {
+  const [ua, ub] = [units(before).map(join), units(after).map(join)];
+  const [gone, added] = listDiff(ua, ub);
+  const [effectsBefore, effectsAfter] = [effects(before), effects(after)];
+  const sameOrder =
+    effectsBefore.length === effectsAfter.length && effectsBefore.every((e, k) => e === effectsAfter[k]);
+  return {
+    unitCount: ub.length,
+    gone,
+    added,
+    effectsBefore,
+    effectsAfter,
+    sameOrder,
+    same: sameOrder && gone.length + added.length === 0,
+  };
+}
+
+// where two texts first differ, as a short excerpt of each
+const excerpts = (a, b) => {
+  let k = 0;
+  while (k < a.length && a[k] === b[k]) k++;
+  const from = Math.max(0, k - 40);
+  return [a.slice(from, k + 60), b.slice(from, k + 60)];
+};
 
 // A webapp folder holding `rev`'s page sources (null: this working tree)
 function tree(rev) {
@@ -198,6 +301,39 @@ function tree(rev) {
   const untar = spawnSync('tar', ['-x', '-C', dir], { input: archive.stdout });
   if (untar.status !== 0) throw new Error(`tar: ${untar.stderr}`);
   return path.join(dir, 'webapp');
+}
+
+// one bundle's comparison, printed: the changed units (a pair with the same first line shown where it first differs),
+// then the first divergence of the effects
+function report(entry, result, listEffects) {
+  const { unitCount, gone, added, effectsBefore, effectsAfter, sameOrder } = result;
+  const changed = gone.length + added.length;
+  console.log(
+    `${entry}: ${unitCount} top-level units, ${changed ? `${gone.length} gone and ${added.length} new` : 'the same'}; ` +
+      `${effectsAfter.length} load-time effects, ${sameOrder ? 'in the same order' : `ORDER CHANGED (${effectsBefore.length} before)`}`,
+  );
+  const head = (unit) => unit.split(/[{;]/)[0];
+  const unpaired = [...added];
+  for (const g of gone.slice(0, 8)) {
+    const k = unpaired.findIndex((a) => head(a) === head(g));
+    if (k < 0) {
+      console.log(`  - ${g.slice(0, 150)}`);
+      continue;
+    }
+    const [was, now] = excerpts(g, unpaired.splice(k, 1)[0]);
+    console.log(`  ~ ${head(g).slice(0, 80)}\n      before: ...${was}\n      after:  ...${now}`);
+  }
+  for (const a of unpaired.slice(0, 8)) console.log(`  + ${a.slice(0, 150)}`);
+  if (changed > 16) console.log(`  (${changed} differing units in all)`);
+  if (!sameOrder) {
+    const k = effectsBefore.findIndex((e, j) => e !== effectsAfter[j]);
+    const at = k < 0 ? effectsBefore.length : k;
+    const show = (e) => (e === undefined ? '(none)' : e.slice(0, 150));
+    console.log(
+      `  first divergence, effect ${at + 1}:\n    before: ${show(effectsBefore[at])}\n    after:  ${show(effectsAfter[at])}`,
+    );
+  }
+  if (listEffects) for (const e of effectsAfter) console.log(`    ${e.slice(0, 150)}`);
 }
 
 if (import.meta.main) {
@@ -216,28 +352,9 @@ if (import.meta.main) {
   for (const names of ENTRIES) {
     const [fromName, toName] = [entryIn(base, names), entryIn(head, names)];
     const entry = fromName === toName ? toName : `${fromName} -> ${toName}`;
-    const [a, b] = [bundle(base, fromName), bundle(head, toName)];
-    const [sa, sb] = [statements(a), statements(b)];
-    const [onlyA, onlyB] = listDiff(sa, sb);
-    const [ea, eb] = [effects(a), effects(b)];
-    const sameOrder = ea.length === eb.length && ea.every((e, k) => e === eb[k]);
-    const changed = onlyA.length + onlyB.length;
-    console.log(
-      `${entry}: ${sb.length} statements, ${changed ? `${onlyA.length} gone and ${onlyB.length} new` : 'the same'}; ` +
-        `${eb.length} load-time effects, ${sameOrder ? 'in the same order' : `ORDER CHANGED (${ea.length} before)`}`,
-    );
-    for (const s of onlyA.slice(0, 8)) console.log(`  - ${s.slice(0, 150)}`);
-    for (const s of onlyB.slice(0, 8)) console.log(`  + ${s.slice(0, 150)}`);
-    if (changed > 16) console.log(`  (${changed} differing statements in all)`);
-    if (!sameOrder) {
-      const k = ea.findIndex((e, j) => e !== eb[j]);
-      const at = k < 0 ? ea.length : k;
-      console.log(
-        `  first divergence, effect ${at + 1}:\n    before: ${ea[at] ?? '(none)'}\n    after:  ${eb[at] ?? '(none)'}`,
-      );
-    }
-    if (listEffects) for (const e of eb) console.log(`    ${e.slice(0, 150)}`);
-    same &&= sameOrder && changed === 0;
+    const result = compare(await bundle(base, fromName), await bundle(head, toName));
+    report(entry, result, listEffects);
+    same &&= result.same;
   }
   for (const dir of [base, head]) if (dir !== W) fs.rmSync(path.dirname(dir), { recursive: true });
   console.log(same ? 'samecode: the same code' : 'samecode: the code differs (above)');
