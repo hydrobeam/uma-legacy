@@ -20,6 +20,7 @@ import { Guard } from './Guard.tsx';
 import { openSkill } from './SkillDetails.tsx';
 import { openSched } from '../../ui/Schedule.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { panel } from '../../ui/Panel.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
 import { cx } from 'tailwind-variants/lite';
 
@@ -113,7 +114,7 @@ export function DeckDialog() {
         <>
           <DialogTitle id="deck-title">Deck</DialogTitle>
           <DialogBody>
-            <div class="deck" id="tree-deck">
+            <div class={cx(panel, 'deck relative grid gap-2 p-2.5 max-md:p-2')} id="tree-deck">
               <div class="dcards">
                 <Guard what="The deck popup">
                   {borrowedLast(deckCards(r.deck)).map((slot) => (

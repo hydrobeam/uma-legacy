@@ -9,6 +9,7 @@ import { useLayoutEffect, useState } from 'preact/hooks';
 import { ERA_NAMES } from '../eras.ts';
 import type { Era } from '../eras.ts';
 import { SegmentedControl } from './SegmentedControl.tsx';
+import { popover } from './Popover.tsx';
 
 /** false for the first draw (the hydration, which must draw what the build drew), true from the next */
 export function useHydrated() {
@@ -117,8 +118,12 @@ export const AddPop = ({
 }) => (
   <div
     ref={boxRef ?? null}
-    class="cpop addpop"
+    class={popover({
+      frame: 'game',
+      class: 'text-ui absolute z-50 grid max-w-[300px] gap-1 p-2.5 focus:outline-none',
+    })}
     id="add-pop"
+    data-pop="add"
     role="dialog"
     aria-label="Add a spark"
     tabIndex={-1}

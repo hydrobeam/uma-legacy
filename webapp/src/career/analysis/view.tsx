@@ -41,6 +41,7 @@ import { simulation, draftJoins } from './state.ts';
 import type { SimulationView } from './state.ts';
 import type { Comparison } from './compare.ts';
 import { Button } from '../../ui/Button.tsx';
+import { panel } from '../../ui/Panel.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
 import { cx } from 'tailwind-variants/lite';
 
@@ -301,7 +302,7 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
                 parents={next.parents.map((i) => parentFace(i, d))}
               />
             </div>
-            <div class="deck">
+            <div class={cx(panel, 'deck relative grid gap-2 p-2.5 max-md:p-2')}>
               <div class="dtitle">
                 <b>Deck</b>
               </div>

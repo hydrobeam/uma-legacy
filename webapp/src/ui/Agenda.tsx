@@ -9,6 +9,7 @@ import type { WinInfo } from '../agenda.ts';
 import type { ScheduleCell } from '../solver.ts';
 import { must } from '../must.ts';
 import { Button } from './Button.tsx';
+import { popover } from './Popover.tsx';
 import { cx } from 'tailwind-variants/lite';
 // the three years' columns (y0, y1, y2: their colours)
 const YEAR_CLASS = ['y0', 'y1', 'y2'];
@@ -323,7 +324,12 @@ function WinsMenu({ menuRef, turn, offered, raceName, info, shownAt, onPick, onB
   return (
     <div
       ref={menuRef}
-      class="cpop wmenu"
+      class={popover({
+        frame: 'game',
+        class:
+          'text-ui absolute z-50 grid w-[min(492px,calc(100vw-48px))] grid-cols-[repeat(auto-fill,150px)] gap-2 p-2.5 focus:outline-none',
+      })}
+      data-pop="wins"
       hidden={turn === null}
       role="dialog"
       tabIndex={-1}
@@ -332,7 +338,7 @@ function WinsMenu({ menuRef, turn, offered, raceName, info, shownAt, onPick, onB
     >
       {turn !== null && (
         <>
-          <p class="hint">{`${turnName(turn)}: which G1 did she win?`}</p>
+          <p class="hint col-span-full">{`${turnName(turn)}: which G1 did she win?`}</p>
           {sorted.map((ix) => (
             <WinPick
               key={ix}

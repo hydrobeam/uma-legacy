@@ -56,7 +56,7 @@ export function initPopover() {
   document.addEventListener('click', (e) => {
     const now = open.peek(),
       target = e.target as Element;
-    if (now && !now.opener.contains(target) && !target.closest('.cpop')) closePop();
+    if (now && !now.opener.contains(target) && !target.closest('[data-pop]')) closePop();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && open.peek()) popBack();

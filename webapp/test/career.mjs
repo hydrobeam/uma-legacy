@@ -684,12 +684,12 @@ export default async function career(b) {
   const dc = pg.locator('#tree-deck .dc').first(),
     dcid = await dc.getAttribute('data-cid');
   await dc.click();
-  await pg.waitForSelector('.cpop:not([hidden]) [data-act="own"]');
+  await pg.waitForSelector('[data-pop="card"]:not([hidden]) [data-act="own"]');
   const preEdit = await showsNow();
   await pg.evaluate(() => {
     window.__seq = [];
   });
-  await pg.locator('.cpop [data-act="own"]').uncheck();
+  await pg.locator('[data-pop="card"] [data-act="own"]').uncheck();
   await done();
   const edit = await oneAnswer(preEdit);
   check(
@@ -698,15 +698,15 @@ export default async function career(b) {
     edit.detail,
   );
   // an edit undone within the pause runs nothing and never dims the answer
-  if (!(await pg.locator('.cpop:not([hidden]) [data-act="own"]').count()))
+  if (!(await pg.locator('[data-pop="card"]:not([hidden]) [data-act="own"]').count()))
     await pg.locator('#tree-deck .dc').first().click();
-  await pg.waitForSelector('.cpop:not([hidden]) [data-act="own"]');
+  await pg.waitForSelector('[data-pop="card"]:not([hidden]) [data-act="own"]');
   const pre3 = await showsNow();
   await pg.evaluate(() => {
     window.__seq = [];
   });
   await pg.evaluate(() => {
-    const c = document.querySelector('.cpop [data-act="own"]');
+    const c = document.querySelector('[data-pop="card"] [data-act="own"]');
     c.click();
     c.click();
   });
@@ -1587,8 +1587,10 @@ export default async function career(b) {
     await expect.soft(pg.locator('#wins-count'), `${name}: the count`).toHaveText(new RegExp(`^${w0 - 1 || 'No'}\\b`));
   }
   await pg.keyboard.press('Enter');
-  const picks = await pg.$$eval('#wins-dlg .wmenu:not([hidden]) button[title]', (l) => l.map((e) => e.textContent));
-  await pg.locator('#wins-dlg .wmenu button', { hasText: wname }).click();
+  const picks = await pg.$$eval('#wins-dlg [data-pop="wins"]:not([hidden]) button[title]', (l) =>
+    l.map((e) => e.textContent),
+  );
+  await pg.locator('#wins-dlg [data-pop="wins"] button', { hasText: wname }).click();
   check(
     "career: … the empty slot's menu lists the G1s held then (her schedule's first, with its odds); a pick puts the win back in that slot",
     picks[0]?.startsWith(wname) &&

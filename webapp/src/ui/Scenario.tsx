@@ -8,6 +8,7 @@ import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../s
 import { skillIconSrc, srcFor } from '../images.ts';
 import { SegmentedControl } from './SegmentedControl.tsx';
 import type { Segment } from './SegmentedControl.tsx';
+import { popover } from './Popover.tsx';
 import { ScenLogo } from './Images.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
 import { tv } from 'tailwind-variants/lite';
@@ -127,7 +128,14 @@ export function ScenarioPicker({ compact = false }: { compact?: boolean }) {
         </button>
       </div>
       <div
-        class={LIST.length === 5 ? 'scenpick five' : 'scenpick'}
+        class={popover({
+          frame: 'panel',
+          class: cx(
+            '@container absolute inset-x-0 top-[calc(100%+4px)] z-20 grid auto-rows-fr gap-1.5 p-2',
+            // five tiles: two rows of two and one centred, all one size
+            LIST.length === 5 ? 'grid-cols-4 *:not-last:col-span-2 *:last:col-[2/span_2]' : 'grid-cols-2',
+          ),
+        })}
         id="scen-menu"
         role="menu"
         aria-labelledby="x-scen-l"
@@ -186,10 +194,16 @@ function Spark({
     </svg>
   );
 }
-// the ? beside the label: what the assumed rank means (the star mix of the legacies' sparks at each)
+// the ? beside the label: what the assumed rank means (the star mix of the legacies' sparks at each); under the label,
+// on a phone opening leftwards, inside the screen
+const noteLook = popover({
+  frame: 'plain',
+  class:
+    'text-note absolute top-[calc(100%+6px)] left-0 z-40 w-max max-w-[240px] px-2.5 py-2 leading-snug max-md:right-0 max-md:left-auto',
+});
 function RankNote({ open, at }: { open: boolean; at: RefObject<HTMLSpanElement | null> }) {
   return (
-    <span class="gpop" id="rank-note" role="tooltip" hidden={!open} ref={at}>
+    <span class={noteLook} id="rank-note" role="tooltip" hidden={!open} ref={at}>
       <table class="rtab">
         <thead>
           <tr>

@@ -156,12 +156,12 @@ export default async function autosearch(b) {
   // the focus on a deck card panel's Owned switch when the card is un-owned: its search draws a new result, which
   // closes the panel, and the focus goes to the results column (not the page top)
   await pg.locator('.deck .dc:not(.bor)').first().click();
-  await pg.locator('.cpop input[role=switch]').focus();
+  await pg.locator('[data-pop="card"] input[role=switch]').focus();
   await pg.keyboard.press('Space');
   await settle(pg);
   const refocus = 'a result drawn while the focus is in its panel: the focus goes to the results column';
   await expect.soft(pg.locator('#rcol'), refocus).toBeFocused();
-  await expect.soft(pg.locator('.cpop').first(), `${refocus}: the panel closed`).toBeHidden();
+  await expect.soft(pg.locator('[data-pop="card"]').first(), `${refocus}: the panel closed`).toBeHidden();
   // a reload shows the kept result as done at once: its line is a change to the region the page loaded with
   await pg.reload();
   await settle(pg);

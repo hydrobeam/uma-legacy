@@ -9,7 +9,10 @@ export default async function panels(b) {
   });
   const dc = pg.locator('.deck .dc').first();
   await dc.click();
-  const href = await pg.locator('.cpop .gtl').getAttribute('href');
+  const href = await pg
+    .locator('[data-pop="card"]')
+    .getByRole('link', { name: /GameTora/ })
+    .getAttribute('href');
   check(
     'deck card panel: GameTora card link',
     /^https:\/\/gametora\.com\/umamusume\/supports\/\d+-[a-z0-9-]+$/.test(href || ''),
@@ -17,7 +20,7 @@ export default async function panels(b) {
   );
   const side = await pg.evaluate(() => {
     const c = document.querySelector('.deck .dc').getBoundingClientRect(),
-      p = document.querySelector('.cpop').getBoundingClientRect();
+      p = document.querySelector('[data-pop="card"]').getBoundingClientRect();
     return { beside: p.left >= c.right || p.right <= c.left, top: Math.abs(p.top - c.top) };
   });
   check(
@@ -39,7 +42,7 @@ export default async function panels(b) {
       cardName,
     );
   const pressedBefore = await pickerPressed();
-  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
+  await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   const pressedAfter = await pickerPressed();
   check(
     'deck card Owned switch updates the card picker',
@@ -47,9 +50,9 @@ export default async function panels(b) {
     `${cardName}: ${pressedBefore} → ${pressedAfter}`,
   );
   check('… and greys the card in the result', (await pg.locator('.deck .dc.off').count()) > 0);
-  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
+  await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   await pg.keyboard.press('Escape');
-  check('Escape closes the panel', await pg.evaluate(() => document.querySelector('.cpop').hidden));
+  check('Escape closes the panel', await pg.evaluate(() => document.querySelector('[data-pop="card"]').hidden));
   // an outfit skill under a member carries its skill icon
   const sp = pg.locator('.loop').first().locator('.mem .spark').first();
   check('outfit skill shows its skill icon', (await sp.locator('img.sic').count()) === 1);
@@ -62,27 +65,30 @@ export default async function panels(b) {
     await fb.click();
     check(
       'a portrait in a swap row opens the same member panel',
-      !(await pg.locator('.cpop').isHidden()) &&
-        (await pg.locator('.cpop input[data-act="uma"]').count()) === 1 &&
-        (await pg.locator('.cpop b').first().innerText()) ===
+      !(await pg.locator('[data-pop="card"]').isHidden()) &&
+        (await pg.locator('[data-pop="card"] input[data-act="uma"]').count()) === 1 &&
+        (await pg.locator('[data-pop="card"] b').first().innerText()) ===
           (await pg.locator(`.loop .mem[data-uma="${id}"] .nm`).first().innerText()),
     );
     await pg.keyboard.press('Escape');
     await mb.click();
   } else skip('a portrait in a swap row opens the same member panel', 'the result has no swap row');
-  check('member panel has one Owned switch', (await pg.locator('.cpop input[role=switch]').count()) === 1);
-  const uh = await pg.locator('.cpop .gtl').getAttribute('href');
+  check('member panel has one Owned switch', (await pg.locator('[data-pop="card"] input[role=switch]').count()) === 1);
+  const uh = await pg
+    .locator('[data-pop="card"]')
+    .getByRole('link', { name: /GameTora/ })
+    .getAttribute('href');
   check(
     'member panel: GameTora character link',
     /^https:\/\/gametora\.com\/umamusume\/characters\/\d{6}-[a-z0-9-]+$/.test(uh || ''),
     uh,
   );
-  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
+  await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   check(
     'member Owned switch updates the roster and greys her',
     (await pg.locator('#roster .ut[data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0,
   );
-  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
+  await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   await pg.keyboard.press('Escape');
   await pg.evaluate(() => window.__release());
   await settle(pg);

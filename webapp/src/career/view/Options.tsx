@@ -23,6 +23,8 @@ import { fmtN } from './parts.ts';
 import { DeckCard } from './Sections.tsx';
 import { Guard } from './Guard.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { panel } from '../../ui/Panel.tsx';
+import { cx } from 'tailwind-variants/lite';
 import { GameBar } from '../../ui/GameBar.tsx';
 
 type Report = DeepReadonly<PlanReport>;
@@ -111,7 +113,7 @@ function OptionsTable() {
         </table>
       </div>
       {recommended && (
-        <div class="deck">
+        <div class={cx(panel, 'deck relative grid gap-2 p-2.5 max-md:p-2')}>
           <div class="dtitle">
             <b>{`Deck of the pair search's career: ${nameOf(recommended)}`}</b>
           </div>

@@ -113,20 +113,20 @@ export default async function keyboard(b) {
   await pg.keyboard.press('Enter');
   const inPop = await pg.evaluate(
     () =>
-      document.querySelector('.cpop').contains(document.activeElement) &&
+      document.querySelector('[data-pop="card"]').contains(document.activeElement) &&
       document.activeElement.getAttribute('role') === 'switch',
   );
   await pg.keyboard.press('Tab');
   await pg.keyboard.press('Tab');
   check('deck card panel: opening focuses its Owned switch', inPop);
-  await expect.soft(pg.locator('.cpop').first(), 'deck card panel: tabbing out closes it').toBeHidden();
+  await expect.soft(pg.locator('[data-pop="card"]').first(), 'deck card panel: tabbing out closes it').toBeHidden();
   await expect.soft(pg.locator('.dc:focus'), '… and returns to the card').toHaveCount(1);
   await pg.locator('.mem .memb').first().focus();
   await pg.keyboard.press('Enter');
   const memIn = await pg.evaluate(() => document.activeElement.getAttribute('role') === 'switch');
   await pg.keyboard.press('Shift+Tab');
   check('member panel: the same (opening focuses its Owned switch)', memIn);
-  await expect.soft(pg.locator('.cpop').first(), 'member panel: Shift+Tab out closes it').toBeHidden();
+  await expect.soft(pg.locator('[data-pop="card"]').first(), 'member panel: Shift+Tab out closes it').toBeHidden();
   await expect.soft(pg.locator('.memb:focus'), '… and returns to her name').toHaveCount(1);
   // Tooltip (gmtip.ts): a control with a title shows it as the game's balloon on keyboard focus, and hides it when the
   // focus leaves it (APG: Escape would hide it too; the page does not). The focus leaves for nothing (a blur): moved to

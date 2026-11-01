@@ -14,6 +14,7 @@ import { must } from '../must.ts';
 import { popBack, popOpen, popOpener, setPanel, togglePop } from '../popover.ts';
 import type { PopOpen, PopSubject } from '../popover.ts';
 import { Switch } from './Switch.tsx';
+import { popover } from './Popover.tsx';
 import { cx } from 'tailwind-variants/lite';
 
 const GAP = 8; // px between the panel and the element it belongs to (beside it); below it, 6
@@ -78,7 +79,15 @@ export function CardPop({ home }: { home: string | null }) {
   return (
     <div
       ref={ref}
-      class={cx('cpop', home !== null ? 'inpopup' : '')}
+      // (in a popup: placed against the screen, over the popup's own layer)
+      class={popover({
+        frame: 'game',
+        class: cx(
+          'text-ui grid max-w-[300px] gap-1.5 px-3 py-2.5 focus:outline-none',
+          home !== null ? 'fixed z-30' : 'absolute z-50',
+        ),
+      })}
+      data-pop="card"
       hidden={!here}
       role="dialog"
       tabIndex={-1}

@@ -151,7 +151,7 @@ export default async function popups(b) {
   const endPanel = async () => {
     const chip = pg.locator('#results .deck .dc[data-cid="30008"][data-end="1"]').first();
     await chip.click();
-    const text = await pg.locator('.cpop:not([hidden])').innerText();
+    const text = await pg.locator('[data-pop="card"]:not([hidden])').innerText();
     await chip.click();
     return text;
   };

@@ -9,6 +9,15 @@ import { fields, setSort } from '../settings.ts';
 import { Button } from './Button.tsx';
 import type { ButtonSize } from './Button.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
+import { popover } from './Popover.tsx';
+
+// the menu under its button's right end, and its items (the checked one bold, in the accent)
+const menuLook = popover({
+  frame: 'plain',
+  class: 'absolute top-[calc(100%+4px)] right-0 z-20 grid min-w-[140px] p-1',
+});
+const item =
+  'hover:bg-accent-soft focus-visible:bg-accent-soft not-aria-checked:text-ink aria-checked:text-accent text-ui rounded-md px-2.5 py-1.75 text-left aria-checked:font-bold max-md:min-h-11';
 
 export interface SortItem<K extends string = string> {
   k: K;
@@ -45,7 +54,7 @@ export function SortMenu<K extends string>({ id, size, what, items, value, arrow
   const text = `${checked.label} ${arrow}`;
   return (
     <div
-      class="sortdd"
+      class="relative flex-none"
       id={`${id}-dd`}
       ref={area}
       onFocusOut={(e) => {
@@ -66,13 +75,14 @@ export function SortMenu<K extends string>({ id, size, what, items, value, arrow
       >
         {text}
       </Button>
-      <div class="sortmenu" id={`${id}-menu`} role="menu" ref={menu} hidden={!open} onKeyDown={(e) => menuKeys(e)}>
+      <div class={menuLook} id={`${id}-menu`} role="menu" ref={menu} hidden={!open} onKeyDown={(e) => menuKeys(e)}>
         {items.map(({ k, label, hint }) => {
           const on = k === value;
           return (
             <button
               key={k}
               type="button"
+              class={item}
               role="menuitemradio"
               data-k={k}
               tabIndex={-1}

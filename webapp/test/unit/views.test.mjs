@@ -229,7 +229,10 @@ test('a win moved to another turn of its race ("moves here") is written once, at
   root.querySelector('button[data-k="add:71"]').click();
   await settle();
   // (the menu's race: its button, named by its title)
-  root.querySelector('.wmenu button[title="Arima Kinen"]').click();
+  const menu = within(root).getByRole('dialog', { name: /G1s held$/ });
+  within(menu)
+    .getByRole('button', { name: /^Arima Kinen/ })
+    .click();
   assert.deepEqual(edits, [{ wins: [0], winAt: { 0: 71 } }]);
 });
 test('a colour bar picked keeps her spark of that colour at its stars (M6)', async () => {
