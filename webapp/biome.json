@@ -26,10 +26,31 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "a11y": { "useButtonType": "error", "useKeyWithClickEvents": "error" },
+      "complexity": { "noUselessFragments": "error" },
+      "correctness": {
+        "noChildrenProp": "error",
+        "useExhaustiveDependencies": "error",
+        "useHookAtTopLevel": "error",
+        "useJsxKeyInIterable": "error"
+      },
+      "nursery": { "noFloatingPromises": "info" },
+      "style": { "noNonNullAssertion": "error", "useImportType": "error" },
+      "suspicious": { "noArrayIndexKey": "error", "noDuplicateJsxProps": "error" }
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.js", "**/*.mjs"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["test/**"],
       "linter": {

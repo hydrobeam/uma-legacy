@@ -362,6 +362,7 @@ global_era = era(GLOBAL_DATA, "card_events.json")
 gm_era = era(JP_DATA, "card_events.json")  # GM era: pal first-year date events left out, as in Global
 # the page scripts: src/main.js, src/career.js and the modules they import, each bundled into one minified IIFE (esbuild
 # from node_modules: npm ci); also the solver's worker script, worker.template.js, minified and wrapped the same way
+# (JSX compiles to Preact's jsx() calls, imported from preact/jsx-runtime)
 ESBUILD = os.path.join(HERE, "node_modules", ".bin", "esbuild")
 if not os.path.exists(ESBUILD):
     raise SystemExit("esbuild missing: run npm ci in webapp/")
@@ -375,6 +376,8 @@ def bundle(entry):  # entry: relative to webapp/
             "--bundle",
             "--format=iife",
             "--charset=utf8",
+            "--jsx=automatic",
+            "--jsx-import-source=preact",
             "--minify",
             "--log-level=warning",
         ],

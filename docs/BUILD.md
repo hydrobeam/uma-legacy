@@ -37,7 +37,7 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
-| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome`, `typescript` | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
+| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome`, `typescript`; `preact` and `@preact/signals` (pinned; bundled into the page, for its views as they become components) | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
 | `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset; the page budgets' transfer estimate); the exporters use the standard library |
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
 | `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
