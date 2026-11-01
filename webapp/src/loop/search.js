@@ -6,10 +6,9 @@ import { runnerHTML } from '../images.js';
 import { ERA } from '../saved.ts';
 import { ASSETS, EXAMPLE, gameData } from '../data.js';
 import { run, restartEngine } from '../engine.ts';
-import { EXTRA, jobTargets, ownedCards, rcardsOff } from '../job.js';
+import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.js';
 import { DEFAULTS, settings } from '../settings.ts';
 import { ui } from '../state.js';
-import { noOutfit } from '../roster.js';
 import { renderDeck } from './results.js';
 import { markOwn } from '../popover.js';
 import { loadExample } from '../presets.js';
@@ -190,11 +189,8 @@ function buildJob(s) {
       run: loadExample,
     });
   const exclude = gameData()
-    .umas.filter((u) => s.roster[u.id] === 'out' || noOutfit(u, s.outfits))
+    .umas.filter((u) => !isOwned(u, s))
     .map((u) => u.id);
-  const exclude_outfits = Object.entries(s.outfits)
-    .filter(([, owned]) => owned === false)
-    .map(([id]) => +id);
   const owned = gameData().umas.length - exclude.length;
   if (owned < 3)
     throw new Blocked('empty', `Mark at least 3 umas as owned to search (${owned} owned now).`, {
@@ -205,16 +201,11 @@ function buildJob(s) {
   const job = {
     cmd: 'deck',
     targets,
-    star_dist: s.rank.split(',').map(Number),
-    exclude,
-    exclude_outfits,
-    extra: EXTRA,
-    owned_cards: ownedCards(s),
-    borrow: true,
+    star_dist: starDist(s),
+    ...ownedFields(s, exclude),
     top_decks: +s.decksTop,
     per_uma: s.perUma !== false,
-    scenario: s.scen || 'unity',
-    ...rcardsOff(s),
+    ...scenarioFields(s),
   };
   return { job, targets };
 }

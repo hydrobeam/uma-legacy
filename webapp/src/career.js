@@ -24,10 +24,10 @@ import {
   stateKey,
 } from './engine.ts';
 import { answerLoad, answerSave } from './statestore.js';
-import { EXTRA, goldGiven, jobTargets, ownedCards, rcardsOff } from './job.js';
+import { goldGiven, isOwned, jobTargets, ownedFields, scenarioFields, starDist } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner, scenLogo, srcFor } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
-import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
+import { initRoster, renderRoster, pickOutfit, outfitNote } from './roster.js';
 import { initCards, cardTitle, borLast, chainEndNote } from './cards.js';
 import { initOwnedImport } from './owned.js';
 import { initPopover, markOwn } from './popover.js';
@@ -87,8 +87,6 @@ const tName = (g) => {
   const s = gameData().skillNames.get(g) || { w: `Skill ${g}`, gd: null };
   return goldGiven(settings.value.scen, g) && s.gd ? s.gd : s.w;
 };
-/** @type {(u: import('./data.js').Uma, s: import('./settings.ts').SettingsView) => boolean} owned under settings `s` */
-const owned = (u, s) => s.roster[u.id] !== 'out' && !noOutfit(u, s.outfits);
 export const btn = (label, cls, fn) => {
   const b = el('button', `btn${cls ? ` ${cls}` : ''}`, label);
   b.type = 'button';
@@ -534,13 +532,10 @@ export function buildJob(s) {
       throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
   }
   const exclude = gameData()
-    .umas.filter((u) => !owned(u, s) && u.id !== plan.trainee)
+    .umas.filter((u) => !isOwned(u, s) && u.id !== plan.trainee)
     .map((u) => u.id);
   if (!plan.trainee && exclude.length >= gameData().umas.length)
     throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
-  const exclude_outfits = Object.entries(s.outfits)
-    .filter(([, v]) => v === false)
-    .map(([k]) => +k);
   const allPlaced = plan.trainee && fixed.length === 2;
   // a place left open: the K best careers by odds (their trainees are among the plan's stage candidates; the plan
   // scores every owned uma, `planPhase`)
@@ -548,14 +543,9 @@ export function buildJob(s) {
   const job = {
     cmd: 'career',
     targets: jobTargets(s),
-    exclude,
-    exclude_outfits,
-    extra: EXTRA,
-    owned_cards: ownedCards(s),
-    borrow: true,
-    star_dist: s.rank.split(',').map(Number),
-    scenario: s.scen || 'unity',
-    ...rcardsOff(s),
+    ...ownedFields(s, exclude),
+    star_dist: starDist(s),
+    ...scenarioFields(s),
     legacies: legaciesJob(),
     trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf),
@@ -619,7 +609,7 @@ const baseOf = (job) => ({
   ...job,
   career: undefined,
   exclude: gameData()
-    .umas.filter((u) => !owned(u, settings.value))
+    .umas.filter((u) => !isOwned(u, settings.value))
     .map((u) => u.id),
   trainees: [],
   fix: [],
@@ -645,7 +635,7 @@ const refBase = (job) =>
   planKey({
     ...job,
     exclude: gameData()
-      .umas.filter((u) => !owned(u, settings.value))
+      .umas.filter((u) => !isOwned(u, settings.value))
       .map((u) => u.id),
     trainees: [],
     fix: [],
@@ -1208,7 +1198,7 @@ function fillTraineeNode(_sp, r, body, acts) {
             plan.fromTable = false; // (chosen by hand: it stays)
             changed();
           },
-          (u) => owned(u, settings.value),
+          (u) => isOwned(u, settings.value),
         ),
       ),
     ),

@@ -6,6 +6,7 @@ import { settings, setOwned } from './settings.ts';
 import { umaAv } from './images.js';
 import { paintSort, sortMenu } from './sortmenu.js';
 import { must } from './must.ts';
+import { isOwned } from './job.js';
 const STATE_LABEL = { own: 'owned', out: 'not owned' };
 // her ownership: 'out' when marked not owned or every outfit of hers is, else her roster mark ('own' by default)
 /** @param {import('./data.js').Uma} u @returns {'own'|'out'} */
@@ -16,9 +17,6 @@ export function umaState(u) {
     ? 'out'
     : mark;
 }
-/** @type {(u: import('./data.js').Uma, outfits: import('./settings.ts').SettingsView['outfits']) => boolean} every
- *  outfit of hers is marked not owned in `outfits` (the settings' marks) */
-export const noOutfit = (u, outfits) => (u.outfits || []).length > 0 && u.outfits.every((o) => outfits[o.id] === false);
 // one tile's ownership: the uma's mark, else the outfit's (o null: an uma without outfits in the data)
 const tileState = (u, o) =>
   settings.value.roster[u.id] === 'out' || (o && settings.value.outfits[o.id] === false) ? 'out' : 'own';
@@ -51,9 +49,7 @@ export const outfitNote = (pick) =>
           .join(', ')}.`
       : '';
 function rosterCount() {
-  const umasOut = gameData().umas.filter(
-    (u) => settings.value.roster[u.id] === 'out' || noOutfit(u, settings.value.outfits),
-  ).length;
+  const umasOut = gameData().umas.filter((u) => !isOwned(u, settings.value)).length;
   const outfits = gameData().umas.reduce((sum, u) => sum + Math.max(1, (u.outfits || []).length), 0);
   const outfitsOut = gameData().umas.reduce(
     (sum, u) => sum + tileOutfits(u).filter((o) => tileState(u, o) === 'out').length,

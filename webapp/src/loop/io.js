@@ -5,8 +5,8 @@ import { SETTINGS, ERA } from '../saved.ts';
 import { SCENARIOS, RANKS, gameData } from '../data.js';
 import { settings, importSettings, importToEra } from '../settings.ts';
 import { ui } from '../state.js';
-import { goldGiven } from '../job.js';
-import { noOutfit, renderRoster, pickOutfit } from '../roster.js';
+import { goldGiven, isOwned } from '../job.js';
+import { renderRoster, pickOutfit } from '../roster.js';
 import { renderTargets } from '../targets.js';
 import { mergePresets } from '../presets.js';
 import { resultsStale } from './search.js';
@@ -26,7 +26,7 @@ function readableSettings() {
       guaranteed: goldGiven(settings.value.scen, t.group) ? 'gold' : 'no',
     })),
     umas_not_owned: gameData()
-      .umas.filter((u) => settings.value.roster[u.id] === 'out' || noOutfit(u, settings.value.outfits))
+      .umas.filter((u) => !isOwned(u, settings.value))
       .map((u) => u.name),
     cards_not_owned: gameData()
       .cards.filter((c) => settings.value.cardsOff[c.id] === false)
