@@ -5,7 +5,7 @@
 // RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
 // dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root), inside a
 // ui/RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
-import '../errorlog.ts'; // first: it listens before any other module runs
+import { started } from '../errorlog.ts'; // first: it listens before any other module runs
 import { render } from 'preact';
 import { $, $input } from '../dom.ts';
 import { ERA } from '../saved.ts';
@@ -183,3 +183,4 @@ function start() {
       showStatus();
     }, 0);
 }
+started(); // (the last statement: errorlog.ts)

@@ -474,7 +474,7 @@ const MOUNTS = {
 // 'file mount point' -> why the module may write into it
 const MOUNT_WRITES = {
   'src/errorlog.ts run-note':
-    "the status line's text, only while the page's scripts first run: an error then stopped the entry before it mounted anything",
+    "the status line's text, only for an error before the entry has run to its end (`started`): it stopped the entry before it drew anything",
 };
 // (file, selector) -> why it may stay
 const MOUNT_READS = {

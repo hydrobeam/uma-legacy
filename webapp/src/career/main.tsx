@@ -28,7 +28,7 @@
 //   view/SkillDetails.tsx  the Skill Details popup
 //   view/Guard.tsx     the render guard each view draws inside
 //   view/parts.ts      small parts the views share
-import '../errorlog.ts'; // first: it listens before any other module runs
+import { started } from '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
 import { batch } from '@preact/signals-core';
@@ -323,3 +323,4 @@ loadData().then(
     paint();
   },
 );
+started(); // (the last statement: errorlog.ts)
