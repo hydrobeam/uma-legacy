@@ -25,6 +25,6 @@ export const tableRows = (r: DeepReadonly<CareerReport>) =>
     if (!c || ix < 0 || !apt || !tables.race_cat) return row;
     const ground = must(tables.race_ground, 'build.py writes race_ground with race_cat')[ix];
     const { cost, grades } = tableCost(apt, tables.race_cat[ix], ground);
-    // @ts-expect-error a scheduled race has its place in a row (`row`): must() in the strict commit
-    return { ...row, cells: [{ ...c, tbl: tableChance(cost, c.row), tapt: cost, grades }] };
+    const tbl = tableChance(cost, must(c.row, 'a scheduled race has its place in a row'));
+    return { ...row, cells: [{ ...c, tbl, tapt: cost, grades }] };
   });
