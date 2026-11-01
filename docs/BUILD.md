@@ -311,7 +311,7 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
   wall clocks aside, with `val/sim/ref__*.out` (`val/same.py TAG --sim`).
 - **Exactness:** `uv run val/owncheck.py BIN 3 "Yaeno Muteki"` and `uv run val/permcheck.py BIN 3` check the search
   against brute force on small owned sets; `uv run val/joint_check.py TAG` recomputes every deck result's odds
-  independently. `uv run val/milp_fixtures.py` recomputes the exact DP's reference fixtures (`pkg/loopopt/tests/fixtures/`)
+  independently. `uv run --group research val/milp_fixtures.py` recomputes the exact DP's reference fixtures (`pkg/loopopt/tests/fixtures/`)
   with an independent MILP after a change to the win model (about 12 minutes, one process; `--check` only compares).
 - **Speed work** follows `docs/PERF.md` (byte-identical outputs, one item per commit with its gain),
   which also holds the planner's speed record. `node webapp/nodebench.mjs <wasm> global pal_A2 …`
