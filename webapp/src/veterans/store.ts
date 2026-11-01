@@ -424,6 +424,41 @@ export function inPlaceRef(node: LineageNode, onEdit: () => void): NodeRef {
   };
 }
 
+// ---------- the veteran analysis' draft
+// The veteran a roll of the career on show leaves (career/analysis): not saved, and apart from the record above, so an
+// edit of her wakes no veterans' effect. Her editors address her, and her parents, by where she is (`draftRef`).
+/** the draft: a lineage node with her two parents, and what the roll knows of her */
+export interface Draft extends LineageNode {
+  borrowed: boolean;
+  parents: LineageNode[];
+  /** the skills she bought (group -> how), from the roll */
+  bought?: Record<number, string>;
+}
+const draftNow = signal<DeepReadonly<Draft> | null>(null);
+/** the draft on show (null: none) */
+export const draft: ReadonlySignal<DeepReadonly<Draft> | null> = draftNow;
+/** a new draft (a roll, a new career on show), or none */
+export function setDraft(next: Draft | DeepReadonly<Draft> | null) {
+  draftNow.value = next && freezeFresh(next);
+}
+/** the draft, for an editor (an edit with no draft does nothing) */
+export const draftRef: NodeRef = {
+  node: () => draft.value ?? undefined,
+  edit: (f) => {
+    const d = draftNow.peek();
+    if (d) draftNow.value = freezeFresh(patched(d, f(d)));
+  },
+};
+/** her parent j, for an editor */
+export const draftParentRef = (j: number): NodeRef => ({
+  node: () => draft.value?.parents[j],
+  edit: (f) => {
+    const d = draftNow.peek();
+    if (d)
+      draftNow.value = freezeFresh({ ...d, parents: replaced(d.parents, j, patched(d.parents[j], f(d.parents[j]))) });
+  },
+});
+
 // ---------- the places
 /** the trainee (null: the planner picks); `byHand`: chosen here, so a change of setup keeps her */
 export function setTrainee(trainee: number | null, byHand: boolean) {

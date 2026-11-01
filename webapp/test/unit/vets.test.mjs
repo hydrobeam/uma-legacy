@@ -271,3 +271,29 @@ test('loading: a v1 save, a damaged veteran and a damaged choice left out, block
   vs.addVets([vet('a')]); // (a blocked save: the edit lasts for the visit)
   assert.deepEqual(ids(), ['a']);
 });
+
+test("the analysis' draft: her own signal, edits by path copy on write, the veterans' effects asleep", () => {
+  fresh();
+  const woke = { vets: 0, draft: 0 },
+    stops = [on([vs.vets], () => woke.vets++), on([vs.draft], () => woke.draft++)];
+  const d = { ...node(5, { 7: 1 }), borrowed: false, parents: [node(1), node(2, { 8: 2 })] };
+  vs.setDraft(d);
+  const first = vs.draft.peek();
+  assert.ok(Object.isFrozen(first) && Object.isFrozen(first.parents[1].sparks), 'a draft set is frozen');
+  vs.draftRef.edit((n) => ({ sparks: { ...n.sparks, 9: 3 } }));
+  vs.draftRef.edit((n) => ({ wins: [...n.wins, 4] }));
+  vs.draftParentRef(1).edit((p) => ({ sparks: { ...p.sparks, 8: 3 } }));
+  vs.draftParentRef(1).edit(() => ({ chara: 33, outfit: undefined }));
+  const now = vs.draft.peek();
+  assert.deepEqual(
+    [now.sparks, now.wins, now.parents[1].sparks, now.parents[1].chara],
+    [{ 7: 1, 9: 3 }, [4], { 8: 3 }, 33],
+  );
+  assert.deepEqual(first.sparks, { 7: 1 }, 'the first record is unchanged');
+  assert.equal(now.parents[0], first.parents[0], 'an untouched parent is the same object');
+  assert.deepEqual(woke, { vets: 0, draft: 5 });
+  vs.setDraft(null);
+  vs.draftRef.edit(() => ({ sparks: {} }));
+  assert.equal(vs.draft.peek(), null, 'an edit with no draft does nothing');
+  for (const stop of stops) stop();
+});
