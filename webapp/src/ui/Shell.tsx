@@ -8,6 +8,7 @@ import type { ComponentChildren, Ref } from 'preact';
 import { useLayoutEffect, useState } from 'preact/hooks';
 import { ERA_NAMES } from '../eras.ts';
 import type { Era } from '../eras.ts';
+import { SegmentedControl } from './SegmentedControl.tsx';
 
 /** false for the first draw (the hydration, which must draw what the build drew), true from the next */
 export function useHydrated() {
@@ -19,9 +20,12 @@ export function useHydrated() {
 /** the game data's era switch: the era on show pressed (Global at build time); a press of the other reloads into it */
 export function EraRow({
   era = 'global',
+  compact = false,
   onPick,
 }: {
   era?: Era | undefined;
+  /** the loop page's smaller setup rows */
+  compact?: boolean;
   onPick?: ((era: Era) => void) | undefined;
 }) {
   return (
@@ -29,27 +33,23 @@ export function EraRow({
       <span class="glab" id="era-l">
         Game data
       </span>
-      {/* biome-ignore lint/a11y/useSemanticElements: a segmented control drawn as the game's pills; a fieldset's border and legend would fight that art */}
-      <div class="seg" role="group" aria-labelledby="era-l">
-        <button
-          type="button"
-          id="era-global"
-          aria-pressed={era === 'global' ? 'true' : 'false'}
-          title="Global, today's data"
-          onClick={onPick && (() => onPick('global'))}
-        >
-          {ERA_NAMES.global}
-        </button>
-        <button
-          type="button"
-          id="era-gm"
-          aria-pressed={era === 'gm' ? 'true' : 'false'}
-          title="JP data from the Grand Masters era (cut at L'Arc's launch, 24 Aug 2023)"
-          onClick={onPick && (() => onPick('gm'))}
-        >
-          {ERA_NAMES.gm}
-        </button>
-      </div>
+      <SegmentedControl<Era>
+        kind="toggle"
+        shape="fill"
+        size={compact ? 'md' : 'lg'}
+        labelledBy="era-l"
+        value={era}
+        onPick={(v) => onPick?.(v)}
+        options={[
+          { v: 'global', id: 'era-global', title: "Global, today's data", body: ERA_NAMES.global },
+          {
+            v: 'gm',
+            id: 'era-gm',
+            title: "JP data from the Grand Masters era (cut at L'Arc's launch, 24 Aug 2023)",
+            body: ERA_NAMES.gm,
+          },
+        ]}
+      />
     </div>
   );
 }

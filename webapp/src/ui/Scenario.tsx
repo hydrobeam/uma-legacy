@@ -6,7 +6,8 @@ import type { Scenario } from '../data.ts';
 import { fields, setRank } from '../settings.ts';
 import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../scenario.ts';
 import { skillIconSrc, srcFor } from '../images.ts';
-import { RadioPills } from './RadioPills.tsx';
+import { SegmentedControl } from './SegmentedControl.tsx';
+import type { Segment } from './SegmentedControl.tsx';
 import { ScenLogo } from './Images.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';
 import { tv } from 'tailwind-variants/lite';
@@ -148,11 +149,16 @@ function RankBadge({ rank, text }: { rank: string; text: string }) {
   const src = srcFor('ui', `rank_${rank}`),
     [failed, setFailed] = useState(false);
   return src && !failed ? (
-    <span class="rk img" data-r={rank}>
-      <img alt="" src={src} onError={() => setFailed(true)} />
+    <span class="inline-flex h-6.5" data-r={rank}>
+      <img
+        class="group-not-on:opacity-45 group-not-on:saturate-50 h-6.5 w-auto"
+        alt=""
+        src={src}
+        onError={() => setFailed(true)}
+      />
     </span>
   ) : (
-    <span class="rk" data-r={rank}>
+    <span class="font-bold" data-r={rank}>
       {text}
     </span>
   );
@@ -224,7 +230,7 @@ function RankNote({ open, at }: { open: boolean; at: RefObject<HTMLSpanElement |
     </span>
   );
 }
-const RANK_PILLS = [
+const RANK_OPTIONS: Segment<string>[] = [
   {
     v: RANKS.below,
     dataV: RANKS.below,
@@ -233,7 +239,7 @@ const RANK_PILLS = [
     body: (
       <>
         <RankBadge rank="b" text="B" />
-        <span class="rkdash">–</span>
+        <span class="group-not-on:text-muted group-on:text-white">–</span>
         <RankBadge rank="splus" text="S+" />
       </>
     ),
@@ -242,8 +248,8 @@ const RANK_PILLS = [
 ];
 // The rank control: data-value carries the chosen star mix, each option's tooltip its rank score range. The ?'s note
 // closes on Escape (the focus back on the ?) or a click elsewhere.
-/** the lineage rank control */
-export function RankControl() {
+/** the lineage rank control (`compact`: the loop page's) */
+export function RankControl({ compact = false }: { compact?: boolean }) {
   const [noteOpen, setNoteOpen] = useState(false),
     question = useRef<HTMLButtonElement>(null),
     note = useRef<HTMLSpanElement>(null);
@@ -274,13 +280,14 @@ export function RankControl() {
         </button>
         <RankNote open={noteOpen} at={note} />
       </span>
-      <RadioPills
-        class="seg rankseg"
+      <SegmentedControl
+        kind="radio"
+        shape="equal"
+        size={compact ? 'md' : 'lg'}
         id="rank"
         labelledBy="rank-l"
         dataValue={rank}
-        pressed={false}
-        pills={RANK_PILLS}
+        options={RANK_OPTIONS}
         value={rank}
         onPick={setRank}
       />

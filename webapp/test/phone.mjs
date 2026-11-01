@@ -206,7 +206,7 @@ export default async function phone(b) {
       return r.top >= 0 && r.bottom <= innerHeight;
     });
   check("phone: the schedule's Close stays on screen at the bottom of the dialog", await closeVis());
-  await pg.locator('#sched-dlg .stab').last().click();
+  await pg.locator('#sched-dlg').getByRole('tab').last().click();
   check(
     'phone: the All three table fits the 375 px screen',
     await pg.evaluate(() =>
@@ -235,7 +235,7 @@ export default async function phone(b) {
   const pills = await pg.evaluate(PILLS);
   check(
     "phone: every pill track's segments fill it flush (full height, no gap at its ends or between them)",
-    !pills.length && (await pg.locator('.seg:visible').count()) >= 3,
+    !pills.length && (await pg.locator('[data-seg]:not([data-seg="apart"]):visible').count()) >= 3,
     pills.slice(0, 4).join(' | '),
   );
   // nothing scrolls sideways with the editors and the result's popups open

@@ -1,4 +1,4 @@
-// The career setup's components: the Borrowed parent choice (into #bp: three choices, saved with the other settings; a
+// The career setup's components: the Borrowed parent choice (#bp: three choices, saved with the other settings; a
 // change runs the planner again: the entry's effect on the setup), and the panel's fold with its summary.
 import { computed, signal } from '@preact/signals';
 import { ERA } from '../../saved.ts';
@@ -8,6 +8,7 @@ import { settings, setBorrowPar } from '../../settings.ts';
 import { scenarioOf } from '../../scenario.ts';
 import { ERA_NAMES } from '../../eras.ts';
 import { BORROW_CHOICES, borrowChoice } from '../job.ts';
+import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 
 const CHOICES = [
   ['allow', 'Allowed', 'This career may borrow one parent, and so may the careers after it'],
@@ -19,24 +20,18 @@ const CHOICES = [
   ['never', 'Never', "No borrowed parents, in this career or the plan's later ones"],
 ] as const;
 export function BorrowChoice() {
-  const now = borrowChoice(settings.value);
   return (
-    <>
-      {CHOICES.map(([v, label, title]) => (
-        <button
-          key={v}
-          type="button"
-          data-v={v}
-          aria-pressed={v === now}
-          title={title}
-          onClick={() => {
-            if (v !== borrowChoice(settings.value)) setBorrowPar(v);
-          }}
-        >
-          {label}
-        </button>
-      ))}
-    </>
+    <SegmentedControl
+      kind="toggle"
+      shape="fill"
+      id="bp"
+      labelledBy="bp-l"
+      value={borrowChoice(settings.value)}
+      onPick={(v) => {
+        if (v !== borrowChoice(settings.value)) setBorrowPar(v);
+      }}
+      options={CHOICES.map(([v, label, title]) => ({ v, dataV: v, title, body: label }))}
+    />
   );
 }
 

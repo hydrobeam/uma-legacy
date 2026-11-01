@@ -762,7 +762,7 @@ export default async function career(b) {
     await expect.soft(sched.locator('.ag-race'), `${name}: … and only those races`).toHaveCount(nRun);
     await expect.soft(sched.locator('.ag-race.wbtn'), `${name}: no win buttons`).toHaveCount(0);
     await expect.soft(sched.locator('.agkey').first(), `${name}: the legend`).toHaveText(/A parent won it/);
-    await expect.soft(sched.locator('.stab'), `${name}: one tab`).toHaveCount(1);
+    await expect.soft(sched.getByRole('tab'), `${name}: one tab`).toHaveCount(1);
     await expect.soft(sched.locator('.ag-year'), `${name}: three years`).toHaveCount(3);
     await expect.soft(sched.locator('.ag-slot.pre'), `${name}: Junior's April to June grey`).toHaveCount(12);
     await expect.soft(sched.locator('.ag-plus, .ag-add'), `${name}: no plus`).toHaveCount(0);

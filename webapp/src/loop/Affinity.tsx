@@ -10,7 +10,7 @@ import { useState } from 'preact/hooks';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
 import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
-import { RadioPills } from '../ui/RadioPills.tsx';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { AffHeart, AffTable } from '../ui/AffTable.tsx';
 import type { AffinityLeg } from '../ui/AffTable.tsx';
 import { UmaAv } from '../ui/Images.tsx';
@@ -88,12 +88,14 @@ function Careers({ loop }: { loop: ResultLoop }) {
   return (
     <>
       <DialogHead id="why-title" title="Affinity" close="Close" onClose={close} />
-      <RadioPills
-        class="afpick"
+      <SegmentedControl
+        kind="radio"
+        shape="apart"
+        class="mt-1 mb-3"
         label="Trainee"
         value={career.trainee.k}
         onPick={(trainee) => setAt(careersFor(trainee)[0].n)}
-        pills={[...careersOf.values()].map(([best, ...others]) => {
+        options={[...careersOf.values()].map(([best, ...others]) => {
           const [p0, p1] = best.parents,
             her = best.trainee;
           const name = others.length ? `${her.name} as the trainee` : `${her.name}, parents ${p0.name} and ${p1.name}`;
@@ -104,21 +106,23 @@ function Careers({ loop }: { loop: ResultLoop }) {
             body: (
               <>
                 {face(her, 28)}
-                <span class="afpn">{her.short || her.name}</span>
+                <span>{her.short || her.name}</span>
                 <AffHeart affinity={best.affinity} />
               </>
             ),
           };
         })}
       />
-      <RadioPills
-        class="afpick afpar"
+      <SegmentedControl
+        kind="radio"
+        shape="apart"
+        class="-mt-1.5 mb-3"
         label="Parents"
         hidden={careers.length < 2}
-        lead={careers.length > 1 && <span class="aflab">Parents</span>}
+        lead={careers.length > 1 && <span class="text-note text-gm-ink2 mr-0.5 font-bold">Parents</span>}
         value={at}
         onPick={setAt}
-        pills={
+        options={
           careers.length < 2
             ? []
             : careers.map((c) => {

@@ -79,6 +79,10 @@
   --color-gm-tab: #ffffff;
   --color-gm-tab-edge: #d8d6dc;
   --color-gm-tab-low: #e6e3ec;
+  /* the chosen pill's darker foot and the light line along its top; a switch's knob */
+  --color-gm-rim: #5aa300;
+  --color-gm-shine: rgba(255, 255, 255, 0.3);
+  --color-gm-knob: #ffffff;
   /* the outline round white text on the game's green */
   --color-outline: #3c7a00;
   --color-outline-glow: rgba(40, 80, 0, 0.45);
@@ -144,6 +148,16 @@
   --shadow-raised: 0 1px 0 rgba(0, 0, 0, 0.06), 0 2px 6px rgba(24, 32, 46, 0.12);
   --shadow-lifted: 0 1px 0 rgba(0, 0, 0, 0.06), 0 4px 12px rgba(24, 32, 46, 0.18);
   --inset-shadow-pressed: inset 0 1px 3px rgba(24, 32, 46, 0.2);
+  /* the game's white panel (ui/Panel.tsx), its popups (ui/Popover.tsx: the game's and the site's menus), a switch's knob */
+  --shadow-panel: 0 2px 8px var(--color-gm-shadow);
+  --shadow-pop: 0 6px 18px var(--color-gm-shadow);
+  --shadow-menu: 0 6px 20px rgba(0, 0, 0, 0.15);
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.3);
+  /* the pill switches (ui/SegmentedControl.tsx): the track's darker foot, the line between two options, the chosen
+     option's rim (a darker foot, a light top) */
+  --inset-shadow-well: inset 0 -3px 0 var(--color-gm-tab-low);
+  --inset-shadow-divide: inset 1px 0 0 var(--color-gm-tab-edge);
+  --inset-shadow-seg-on: inset 0 -3px 0 var(--color-gm-rim), inset 0 2px 0 var(--color-gm-shine);
 
   /* the career runner's sprite strip: 18 frames, --s wide each */
   --animate-runner: runner 0.6s steps(18) infinite;
@@ -159,6 +173,12 @@
   --nine-btn-w: var(--face-btn-w) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch;
   --nine-btn-g: var(--btn-g, linear-gradient(#b4ec52, #7cc40d)) 0 116 0 40 fill / 0 51px 0 18px / 0 stretch;
   --nine-slot-frame: var(--face-slot-frame) 22 fill / 9px / 0 stretch;
+  /* a switch's track (ui/Switch.tsx): the sprite's round ends (30 px of its 60) 9-sliced at the track's half height, so
+     they stay semicircles round the knob; `-sm` for the 20 px track */
+  --nine-tog-off: var(--face-tog-off) 0 30 fill / 0 12px / 0 stretch;
+  --nine-tog-on: var(--tog-on, none) 0 30 fill / 0 12px / 0 stretch;
+  --nine-tog-off-sm: var(--face-tog-off) 0 30 fill / 0 10px / 0 stretch;
+  --nine-tog-on-sm: var(--tog-on, none) 0 30 fill / 0 10px / 0 stretch;
 
   /* the green header bar: diagonal stripes at its left, fading out by a third of the way across */
   --art-bar: linear-gradient(90deg, transparent 0, var(--color-gm-green) 32%),
@@ -168,6 +188,11 @@
   --art-hero: linear-gradient(160deg, #eef1f8 0%, #f7f4f0 55%, #ffffff 100%);
   /* the two slanted notches near a section bar's right end */
   --art-notch: linear-gradient(90deg, var(--color-gm-green2) 6px, transparent 6px 9px, var(--color-gm-green2) 9px);
+  /* the chosen pill switch's green */
+  --art-seg-on: linear-gradient(#b4ec52, #7cc40d);
+  /* the game's check box (ui/Checkbox.tsx), unticked and ticked */
+  --art-chk-off: var(--face-chk-off) center / contain no-repeat;
+  --art-chk-on: var(--chk-on, linear-gradient(#b4ec52, #7cc40d)) center / contain no-repeat;
   /* a section bar's outline: its right end cut on a slant */
   --clip-bar: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
 }
@@ -218,12 +243,18 @@
     --color-gm-tab: #2a2f36;
     --color-gm-tab-edge: #4d535d;
     --color-gm-tab-low: #20242a;
+    --color-gm-rim: #3f7d08;
+    --color-gm-shine: rgba(255, 255, 255, 0.15);
+    --color-gm-knob: #e6e1f0;
 
     --art-hero: linear-gradient(160deg, #2c323c 0%, #252a31 60%, #1f2328 100%);
     --color-outline: #24470a;
     --color-outline-glow: rgba(0, 0, 0, 0.5);
     --face-btn-w: var(--btn-w-dark, var(--btn-w, linear-gradient(#fff, #eceaf2)));
     --face-slot-frame: var(--slot-frame-dark, var(--slot-frame, linear-gradient(#fff, #f1f0f4)));
+    --face-chk-off: var(--chk-off-dark, var(--chk-off, linear-gradient(#fff, #eee)));
+    --face-tog-off: var(--tog-off-dark, var(--tog-off, none));
+    --art-seg-on: linear-gradient(var(--color-gm-bright), var(--color-gm-bright2));
   }
   /* the planner pages: one panel tone in dark mode, as in light mode, where the panel and the game's panel are both
      white; /about keeps its black panels */
@@ -249,6 +280,8 @@
   /* the sprites' faces in light mode (the dark block swaps them); read by the --nine-* tokens */
   --face-btn-w: var(--btn-w, linear-gradient(#fff, #eceaf2));
   --face-slot-frame: var(--slot-frame, linear-gradient(#fff, #f1f0f4));
+  --face-chk-off: var(--chk-off, linear-gradient(#fff, #eee));
+  --face-tog-off: var(--tog-off, none);
 }
 
 /* tokens whose value reads a variable set on the element itself (inline style), so the utility carries the value
@@ -258,6 +291,10 @@
   --art-scen: var(--scen-art, none) right -6px top 18% / 104px auto no-repeat,
     linear-gradient(100deg, var(--color-gm-cell) 45%, var(--color-gm-tab-low));
 }
+
+/* a chosen option, whichever ARIA state says so: a toggle button's aria-pressed, a radio's aria-checked, a tab's
+   aria-selected (ui/SegmentedControl.tsx's options; `not-on:` for the others, `group-on:` inside one) */
+@custom-variant on (&:is([aria-pressed="true"], [aria-checked="true"], [aria-selected="true"]));
 
 /* a 9-slice sprite frame: `nine-btn-w` draws the button's face from the --nine-btn-w token above */
 @utility nine-* {

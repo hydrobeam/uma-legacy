@@ -19,6 +19,7 @@ import { OddsDialog, openOdds } from '../../src/ui/OddsDialog.tsx';
 import { ScheduleDialog, openSched } from '../../src/ui/Schedule.tsx';
 import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.mjs';
+import { within } from '@testing-library/dom';
 
 vi.mock('#page-data', () => import('./fakepage.mjs'));
 
@@ -204,6 +205,6 @@ test('the race schedule, after it failed to draw, draws on its next opening (rev
   openSched({ members: [member], schedule: [] });
   await settle();
   assert.equal(dialog.open, true, 'opened again: open');
-  assert.equal(dialog.querySelectorAll('button.stab').length, 1, 'and drawn (her tab)');
+  assert.equal(within(dialog).getAllByRole('tab').length, 1, 'and drawn (her tab)');
   assert.equal(reported.length, 1, 'no new failure');
 });

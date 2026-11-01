@@ -17,7 +17,7 @@ import { borrowedLast, deckCards, fitSparks } from '../../details.ts';
 import type { DeckSlot } from '../../details.ts';
 import { openSkill } from '../view/SkillDetails.tsx';
 import { InspView } from '../../ui/InspView.tsx';
-import { around } from '../../ui/arrows.ts';
+import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 import { GRADE_LETTER, gradeAt } from '../../grades.ts';
 import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
@@ -171,15 +171,6 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
     const card = list.current?.closest<HTMLElement>('.ud');
     if (card) fitSparks(card);
   }, [onShow]);
-  const show = (key: DetailsTab) => showTab(key);
-  const keys = (i: number) => (e: KeyboardEvent) => {
-    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const next = around(DEFS, i + step).key;
-    show(next);
-    list.current?.querySelector<HTMLElement>(`#udtab-${next}`)?.focus(); // (every tab is always drawn)
-  };
   // (her draft's parents are the career's, in its order: draftOf)
   const legacyIndex = spec.r.parents;
   const pane = (key: DetailsTab) =>
@@ -202,26 +193,23 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
     );
   return (
     <>
-      <div class="udtabs" role="tablist" aria-label="Her details" ref={list}>
-        {DEFS.map(({ key, label }, i) => (
-          <button
-            key={key}
-            type="button"
-            class="udtab"
-            id={`udtab-${key}`}
-            role="tab"
-            data-k={`sim:tab:${key}`}
-            aria-selected={tab.value === key}
-            aria-controls={`udpane-${key}`}
-            tabIndex={tab.value === key ? 0 : -1}
-            onClick={() => show(key)}
-            onKeyDown={keys(i)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div class="udpanes">
+      <SegmentedControl<DetailsTab>
+        kind="tab"
+        shape="equal"
+        size="xl"
+        class="mx-3 mt-1 max-sm:mx-2"
+        label="Her details"
+        value={tab.value}
+        onPick={showTab}
+        options={DEFS.map(({ key, label }) => ({
+          v: key,
+          id: `udtab-${key}`,
+          dataK: `sim:tab:${key}`,
+          controls: `udpane-${key}`,
+          body: label,
+        }))}
+      />
+      <div class="udpanes" ref={list}>
         {DEFS.map(({ key }) => (
           <div
             key={key}

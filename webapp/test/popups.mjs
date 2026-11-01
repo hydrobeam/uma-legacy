@@ -17,8 +17,8 @@ export default async function popups(b) {
   await dialog(pg, 'sched-dlg');
   check(
     'schedule: a tab per member of the rotation plus "All three"',
-    (await pg.locator('#sched-dlg .stab').count()) === 4 &&
-      (await pg.locator('#sched-dlg .stab').last().innerText()) === 'All three',
+    (await pg.locator('#sched-dlg').getByRole('tab').count()) === 4 &&
+      (await pg.locator('#sched-dlg').getByRole('tab').last().innerText()) === 'All three',
   );
   const grids = await pg.evaluate(() =>
     [...document.querySelectorAll('.ag-grid')].map((g) => {
@@ -53,7 +53,7 @@ export default async function popups(b) {
       ),
     ),
   );
-  await pg.locator('#sched-dlg .stab').last().click();
+  await pg.locator('#sched-dlg').getByRole('tab').last().click();
   check(
     'All three shows the comparison table, a column per member',
     (await pg.locator('#sched-dlg table.sched').count()) > 0 &&
@@ -90,7 +90,7 @@ export default async function popups(b) {
     const n = (x) => +x.replace(/\D/g, ''),
       aff = rows.map((r) => n(r.cells[3].textContent));
     return {
-      careers: document.querySelectorAll('#why-dlg .afpick:not(.afpar) button').length,
+      careers: document.querySelectorAll('#why-dlg [aria-label="Trainee"] [role="radio"]').length,
       rows: rows.length,
       own: rows.filter((r) => /her own earlier veteran/.test(r.textContent)).map((r) => n(r.cells[1].textContent)),
       sum: aff.reduce((a, x) => a + x, 0),
@@ -111,12 +111,12 @@ export default async function popups(b) {
   // gmtip.ts over a modal dialog: the balloon is its own element in the top layer (never put inside the dialog, which a
   // component draws), the title held while it shows; a title drawn again meanwhile (as a render that changes it does)
   // is kept when the balloon goes, not overwritten by the one held
-  const pill = pg.locator('#why-dlg .afpick:not(.afpar) button').first();
+  const pill = pg.locator('#why-dlg [aria-label="Trainee"] [role="radio"]').first();
   await pill.hover();
   await pg.waitForSelector('.gmtip:not([hidden])');
   const tip = await pg.evaluate(() => {
     const t = document.querySelector('.gmtip'),
-      held = document.querySelector('#why-dlg .afpick:not(.afpar) button');
+      held = document.querySelector('#why-dlg [aria-label="Trainee"] [role="radio"]');
     const shown = {
       inBody: t.parentElement === document.body,
       top: t.matches(':popover-open'),
@@ -128,7 +128,7 @@ export default async function popups(b) {
   });
   await pg.mouse.move(0, 0);
   const after = await pg.evaluate(() => ({
-    title: document.querySelector('#why-dlg .afpick:not(.afpar) button').title,
+    title: document.querySelector('#why-dlg [aria-label="Trainee"] [role="radio"]').title,
     hidden: document.querySelector('.gmtip').hidden,
     top: document.querySelector('.gmtip').matches(':popover-open'),
   }));

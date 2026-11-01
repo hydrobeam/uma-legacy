@@ -34,6 +34,7 @@ import { focusChosen, sayVets } from './poolState.ts';
 import type { NodeSpec } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 
 // her affinity, legacy by legacy, from the report's six slots (career/inherit.rs `slots`)
 function Affinity({ r }: { r: CareerReport }) {
@@ -196,22 +197,20 @@ function VeteranView({ id }: { id: string }) {
       </div>
       {edit && (
         <div class="row vctl">
-          {/* biome-ignore lint/a11y/useSemanticElements: today's markup (the game's pill pair, .seg); a fieldset would need it restyled */}
-          <div class="seg sm" role="group" aria-label={`Veteran #${i + 1}: yours or a guest`}>
-            {([false, true] as const).map((b) => (
-              <button
-                key={String(b)}
-                type="button"
-                aria-pressed={v.borrowed === b}
-                data-k={`v${v.id}:own${b ? 'bor' : ''}`}
-                onClick={() => {
-                  if (v.borrowed !== b) editVet(id, () => ({ borrowed: b }));
-                }}
-              >
-                {b ? 'Guest' : 'Yours'}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl<boolean>
+            kind="toggle"
+            size="sm"
+            label={`Veteran #${i + 1}: yours or a guest`}
+            value={v.borrowed}
+            onPick={(b) => {
+              if (v.borrowed !== b) editVet(id, () => ({ borrowed: b }));
+            }}
+            options={([false, true] as const).map((b) => ({
+              v: b,
+              dataK: `v${v.id}:own${b ? 'bor' : ''}`,
+              body: b ? 'Guest' : 'Yours',
+            }))}
+          />
           <Button
             class="ml-auto"
             onClick={() => {

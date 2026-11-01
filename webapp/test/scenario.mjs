@@ -199,7 +199,7 @@ export default async function scenario(b) {
   await expect
     .soft(rank.locator('button[data-v="0.50,0.45,0.05"]'), `${arrows}: aria-checked`)
     .toHaveAttribute('aria-checked', 'true');
-  await expect.soft(rank.locator('.rk.img img'), `${arrows}: badges`).toHaveCount(3);
+  await expect.soft(rank.locator('[data-r] img'), `${arrows}: badges`).toHaveCount(3);
   await pg.keyboard.press('ArrowRight');
   await settle(pg);
   await pg.click('#ex-open');

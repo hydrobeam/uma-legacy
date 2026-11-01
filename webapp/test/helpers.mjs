@@ -312,7 +312,7 @@ export const still = (pg) =>
 export const PILLS = () => {
   const bad = [],
     near = (a, b) => Math.abs(a - b) <= 0.6;
-  for (const t of document.querySelectorAll('.seg, .udtabs')) {
+  for (const t of document.querySelectorAll('[data-seg]:not([data-seg="apart"])')) {
     const r = t.getBoundingClientRect(),
       cs = getComputedStyle(t);
     if (!r.width || !r.height || cs.visibility === 'hidden') continue;

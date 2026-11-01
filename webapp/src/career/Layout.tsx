@@ -111,10 +111,7 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
               <span class="glab" id="bp-l">
                 Borrowed parent
               </span>
-              {/* biome-ignore lint/a11y/useSemanticElements: a segmented control drawn as the game's pills; a fieldset's border and legend would fight that art */}
-              <div class="seg" id="bp" role="group" aria-labelledby="bp-l">
-                {views?.borrow}
-              </div>
+              {views?.borrow}
             </div>
           </div>
           <div class="setenh">

@@ -21,7 +21,7 @@ import { openSched } from '../ui/Schedule.tsx';
 import { deckHint } from '../odds.ts';
 import { openOdds } from '../ui/OddsDialog.tsx';
 import { fields, setDecksTop } from '../settings.ts';
-import { RadioPills } from '../ui/RadioPills.tsx';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { CardAv, SkillIcon, UmaAv } from '../ui/Images.tsx';
 import { openWhy } from './Affinity.tsx';
 import type { JobTarget } from './job.ts';
@@ -95,14 +95,15 @@ export function ResultsCount() {
   return (
     <>
       <span id="c-top-l">Results</span>
-      <RadioPills
+      <SegmentedControl
+        kind="radio"
+        size="xs"
         tag="span"
-        class="seg"
         id="c-top"
         labelledBy="c-top-l"
         value={fields.decksTop.value}
         onPick={setDecksTop}
-        pills={[
+        options={[
           { v: '1', dataV: '1', body: '1' },
           { v: '3', dataV: '3', title: 'Three results: a slower search', body: '3' },
         ]}

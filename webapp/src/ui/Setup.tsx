@@ -68,7 +68,7 @@ const guarded = (what: string, view: ComponentChildren) => (
  *  shorter (the loop page). */
 export const setupViews = ({ fadeMore = false, compact = false } = {}) => ({
   scenario: guarded('The scenario picker', <ScenarioPicker compact={compact} />),
-  rank: guarded('The lineage rank', <RankControl />),
+  rank: guarded('The lineage rank', <RankControl compact={compact} />),
   targets: guarded('The target skills', <TargetSkills />),
   umasDialog: guarded(
     'The Umas dialog',

@@ -14,6 +14,7 @@ import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.ts';
 import { pickerFor, pickerClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 import { cx } from 'tailwind-variants/lite';
 
 // why veteran v can't go in place k (or '')
@@ -127,25 +128,18 @@ export function ParentPicker() {
             close="Close"
             onClose={close}
           />
-          <div class="seg" role="tablist" aria-label="Where the parent comes from">
-            {TABS.map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                id={`vp-tab-${key}`}
-                aria-selected={tab === key}
-                aria-controls={`vp-${key}`}
-                onClick={() => {
-                  focusFilter.current = key === 'new';
-                  if (key === 'new') setTyped(['', opening.current]);
-                  setTab([key, opening.current]);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl<Tab>
+            kind="tab"
+            shape="fill"
+            label="Where the parent comes from"
+            value={tab}
+            onPick={(key) => {
+              focusFilter.current = key === 'new';
+              if (key === 'new') setTyped(['', opening.current]);
+              setTab([key, opening.current]);
+            }}
+            options={TABS.map(([key, label]) => ({ v: key, id: `vp-tab-${key}`, controls: `vp-${key}`, body: label }))}
+          />
           <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
             <div class="vpgrid" id="vp-list">
               {/* (its rows only while open: a closed picker draws, and redraws, nothing) */}

@@ -14,7 +14,7 @@ import { must } from '../must.ts';
 import type { DeepReadonly } from '../store.ts';
 import { AgendaGrid, RaceFace, WhenBar } from './Agenda.tsx';
 import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
-import { around } from './arrows.ts';
+import { SegmentedControl } from './SegmentedControl.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 import { Grade, UmaAv } from './Images.tsx';
 import { Button } from './Button.tsx';
@@ -83,20 +83,8 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
   // her outfit's portrait, picked as her result card picks it, from the settings as they are when the popup opens
   const outfitOf = (m: SchedMember) => untracked(() => pickOutfit(m.id, m.outfits).list[0]?.id ?? null);
   const single = members.length === 1,
-    tabs: Tab[] = [...members, ...(single ? [] : ['all' as const])];
-  // the arrows (and Home/End) move between the tabs and select; one tab is in the Tab order (the selected)
-  const tabKeys = (e: KeyboardEvent, i: number) => {
-    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
-    if (to === undefined) return;
-    e.preventDefault();
-    const next = around(tabs, to);
-    setTab(next);
-    // (the tab list the key was pressed in holds every tab)
-    must(
-      (e.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(`#stab-${tabKey(next)}`),
-      'each tab is drawn',
-    ).focus();
-  };
+    tabs: Tab[] = [...members, ...(single ? [] : ['all' as const])],
+    allName = members.length === 3 ? 'All three' : 'All four';
   // the career page's figures are the community table's: its contents behind a button
   const tabled = schedule.some((row) => row.cells.some((c) => c?.tbl !== undefined));
   return (
@@ -115,50 +103,34 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
         )}
       </SchedHead>
       <WinTable hidden={!tableOpen} />
-      <div class="stabs" role="tablist">
-        {tabs.map((t, i) => (
-          <button
-            key={tabKey(t)}
-            type="button"
-            class="stab"
-            role="tab"
-            id={`stab-${tabKey(t)}`}
-            aria-controls="sched-view"
-            aria-selected={tab === t ? 'true' : 'false'}
-            tabIndex={tab === t ? 0 : -1}
-            onClick={() => setTab(t)}
-            onKeyDown={(e) => tabKeys(e, i)}
-          >
-            {t === 'all' ? null : <UmaAv key={`${t.id}`} uma={t.id} outfit={outfitOf(t)} size={28} />}
-            {t === 'all' ? (members.length === 3 ? 'All three' : 'All four') : t.short || t.name}
-          </button>
-        ))}
-        {/* (the "All" table says shared and optional in its own captions) */}
-        <span class="agkey" hidden={tab === 'all'}>
-          {single ? (
-            <>
-              <span>
-                <i class="sh" />A parent won it: builds affinity
-              </span>
-              <span>
-                <i class="op" />
-                No parent won it
-              </span>
-            </>
-          ) : (
-            <>
-              <span>
-                <i class="sh" />
-                Shared G1: builds affinity
-              </span>
-              <span>
-                <i class="op" />
-                Optional G1: runs alone, no affinity
-              </span>
-            </>
-          )}
-        </span>
-      </div>
+      <SegmentedControl
+        kind="tab"
+        shape="apart"
+        value={tabKey(tab)}
+        onPick={(key) =>
+          setTab(
+            must(
+              tabs.find((t) => tabKey(t) === key),
+              'a tab picked is one drawn',
+            ),
+          )
+        }
+        options={tabs.map((t) => ({
+          v: tabKey(t),
+          id: `stab-${tabKey(t)}`,
+          controls: 'sched-view',
+          body:
+            t === 'all' ? (
+              allName
+            ) : (
+              <>
+                <UmaAv key={`${t.id}`} uma={t.id} outfit={outfitOf(t)} size={28} />
+                {t.short || t.name}
+              </>
+            ),
+        }))}
+        trail={<SchedKey single={single} hidden={tab === 'all'} />}
+      />
       <div class="sview" id="sched-view" role="tabpanel" aria-labelledby={`stab-${tabKey(tab)}`}>
         {tab === 'all' ? (
           <SchedTable members={members} schedule={schedule} outfitOf={outfitOf} />
@@ -169,6 +141,33 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
     </>
   );
 }
+// the key to a member's tab, after the tabs (the "All" table says shared and optional in its own captions)
+const SchedKey = ({ single, hidden }: { single: boolean; hidden: boolean }) => (
+  <span class="agkey" hidden={hidden}>
+    {single ? (
+      <>
+        <span>
+          <i class="sh" />A parent won it: builds affinity
+        </span>
+        <span>
+          <i class="op" />
+          No parent won it
+        </span>
+      </>
+    ) : (
+      <>
+        <span>
+          <i class="sh" />
+          Shared G1: builds affinity
+        </span>
+        <span>
+          <i class="op" />
+          Optional G1: runs alone, no affinity
+        </span>
+      </>
+    )}
+  </span>
+);
 // member m's races on the calendar: the turn, and the win odds of the race run there (in the bar, not over the
 // banner's lettering)
 function MemberAgenda({

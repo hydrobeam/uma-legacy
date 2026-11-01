@@ -42,6 +42,7 @@ import {
 } from './poolState.ts';
 import type { Tab } from './poolState.ts';
 import { Button, FileButton } from '../../ui/Button.tsx';
+import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 
 const wideVets = () => matchMedia('(min-width: 760px)').matches;
 
@@ -51,9 +52,7 @@ export function PoolHead() {
   const { by, reversed } = order.value;
   return (
     <>
-      <div class="seg" role="tablist" aria-label="Whose veterans" id="v-tabs">
-        <PoolTabs />
-      </div>
+      <PoolTabs />
       <SortMenu
         id="vs"
         size="note"
@@ -77,22 +76,22 @@ function PoolTabs() {
     ['bor', `Guests · ${guests}`, "Veterans you can borrow (one per career): your borrow list and uma.moe's"],
   ] as const;
   return (
-    <>
-      {tabs.map(([t, label, title]) => (
-        <button
-          key={t}
-          type="button"
-          role="tab"
-          id={`v-tab-${t}`}
-          aria-selected={tab.value === t}
-          aria-controls={tab.value === t ? 'vets' : `vets-${t}`}
-          title={title}
-          onClick={() => setVTab(t)}
-        >
-          {label}
-        </button>
-      ))}
-    </>
+    <SegmentedControl<Tab>
+      kind="tab"
+      shape="equal"
+      class="flex-1"
+      id="v-tabs"
+      label="Whose veterans"
+      value={tab.value}
+      onPick={setVTab}
+      options={tabs.map(([t, label, title]) => ({
+        v: t,
+        id: `v-tab-${t}`,
+        controls: tab.value === t ? 'vets' : `vets-${t}`,
+        title,
+        body: label,
+      }))}
+    />
   );
 }
 interface CardProps {

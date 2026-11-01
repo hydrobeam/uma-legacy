@@ -102,7 +102,7 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
           Loop setup
         </h2>
         <div class="setlist">
-          <EraRow era={s.era} onPick={s.onEra} />
+          <EraRow era={s.era} compact onPick={s.onEra} />
           <div class="scendd" id="scen-dd">
             {views?.scenario}
           </div>

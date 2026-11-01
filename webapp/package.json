@@ -22,6 +22,7 @@
     "@fontsource/zen-maru-gothic": "^5.3.0",
     "@swc/core": "1.16.21",
     "@tailwindcss/vite": "4.3.3",
+    "@testing-library/dom": "10.4.2",
     "@vitejs/plugin-basic-ssl": "2.3.0",
     "dependency-cruiser": "18.7.0",
     "happy-dom": "21.0.4",

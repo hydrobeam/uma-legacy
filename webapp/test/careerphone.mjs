@@ -21,7 +21,9 @@ export default async function careerphone(b) {
   );
   await pg.click('#run-act');
   await pg.waitForFunction(
-    () => /Planned in/.test(document.getElementById('run-note').textContent) && document.querySelector('.ud .udtabs'),
+    () =>
+      /Planned in/.test(document.getElementById('run-note').textContent) &&
+      document.querySelector('.ud [role="tablist"]'),
     null,
     { timeout: 300000 },
   );
@@ -29,7 +31,9 @@ export default async function careerphone(b) {
   if (await pg.locator('.rbbar.folded').count()) await pg.click('#set-fold');
   const inside = await pg.evaluate(() => {
     const p = document.querySelector('.rbbar').getBoundingClientRect();
-    return [...document.querySelectorAll('.rbbar .setlist > *, .rbbar .setlist .seg, #x-scen, .rbbar .lptgt .adder')]
+    return [
+      ...document.querySelectorAll('.rbbar .setlist > *, .rbbar .setlist [data-seg], #x-scen, .rbbar .lptgt .adder'),
+    ]
       .filter((e) => e.getBoundingClientRect().width)
       .filter((e) => {
         const r = e.getBoundingClientRect();
@@ -45,7 +49,7 @@ export default async function careerphone(b) {
     JSON.stringify([await pg.evaluate(SIDEWAYS), inside]),
   );
   await pg.click('#sim-try'); // her card: Try a run's popup
-  await pg.locator('.udtab').nth(1).click();
+  await pg.locator('[role="tablist"][aria-label="Her details"] [role="tab"]').nth(1).click();
   const pills = await pg.evaluate(PILLS);
   const simFits = await pg.evaluate(() => {
     const d = document.getElementById('sim-dlg').getBoundingClientRect(),
@@ -55,7 +59,7 @@ export default async function careerphone(b) {
   await pg.locator('#sim-dlg').getByRole('button', { name: 'Close', exact: true }).click();
   check(
     "career phone: the pill tracks (Game data, rank, her card's tabs) are filled flush by their segments; Try a run's popup fits the screen and scrolls",
-    !pills.length && (await pg.locator('.udtabs').count()) === 1 && simFits,
+    !pills.length && (await pg.locator('[role="tablist"][aria-label="Her details"]').count()) === 1 && simFits,
     pills.slice(0, 4).join(' | '),
   );
   const pick = await pg.evaluate(() => {

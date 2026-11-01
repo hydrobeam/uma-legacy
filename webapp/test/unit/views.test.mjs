@@ -29,6 +29,8 @@ import { InspView } from '../../src/ui/InspView.tsx';
 import { Details, legaciesOf } from '../../src/career/analysis/Details.tsx';
 import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.mjs';
+import { within } from '@testing-library/dom';
+import { SegmentedControl } from '../../src/ui/SegmentedControl.tsx';
 
 vi.mock('#page-data', () => import('./fakepage.mjs'));
 
@@ -294,4 +296,48 @@ test('the uma picker closed draws no list; a G1 wins window whose draft is repla
   await settle();
   assert.equal(byId(editors, 'wins-dlg').open, false, 'her draft gone: the window closes, as the colour picker does');
   assert.equal(back, 1, 'its close called');
+});
+test('a pill switch: radios and tabs are one Tab stop, the arrows pick and focus; toggles each a stop', async () => {
+  const root = document.body.appendChild(document.createElement('div'));
+  const draw = (kind, value, onPick) =>
+    render(
+      h(SegmentedControl, {
+        kind,
+        label: 'Count',
+        value,
+        onPick,
+        options: [
+          { v: '1', body: 'One' },
+          { v: '3', body: 'Three' },
+        ],
+      }),
+      root,
+    );
+  const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+  let picked = [];
+  draw('radio', '1', (v) => picked.push(v));
+  await settle();
+  const group = within(root).getByRole('radiogroup', { name: 'Count' }),
+    one = within(group).getByRole('radio', { name: 'One' }),
+    three = within(group).getByRole('radio', { name: 'Three' });
+  assert.equal(one.getAttribute('aria-checked'), 'true');
+  assert.deepEqual([one.tabIndex, three.tabIndex], [0, -1], 'the chosen radio is the Tab stop');
+  one.focus();
+  key(one, 'ArrowRight');
+  assert.deepEqual(picked, ['3'], 'ArrowRight picks the next');
+  assert.equal(document.activeElement, three, '… and focuses it');
+  three.click();
+  assert.deepEqual(picked, ['3'], 'a radio picked again is no new pick');
+  picked = [];
+  draw('tab', '1', (v) => picked.push(v));
+  await settle();
+  key(within(root).getByRole('tab', { name: 'One' }), 'End');
+  assert.deepEqual(picked, ['3'], 'End picks the last tab');
+  draw('toggle', '3', () => undefined);
+  await settle();
+  const pressed = within(root).getByRole('button', { name: 'Three' });
+  assert.equal(pressed.getAttribute('aria-pressed'), 'true', 'a toggle says pressed');
+  assert.equal(pressed.getAttribute('tabindex'), null, 'and is a Tab stop of its own');
+  render(null, root);
+  root.remove();
 });

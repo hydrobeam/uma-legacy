@@ -28,10 +28,10 @@ export default async function fourloop(b) {
   await dialog(pg, 'sched-dlg');
   check(
     'its schedule: a tab per member plus "All four"',
-    (await pg.locator('#sched-dlg .stab').count()) === 5 &&
-      (await pg.locator('#sched-dlg .stab').last().innerText()) === 'All four',
+    (await pg.locator('#sched-dlg').getByRole('tab').count()) === 5 &&
+      (await pg.locator('#sched-dlg').getByRole('tab').last().innerText()) === 'All four',
   );
-  await pg.locator('#sched-dlg .stab').last().click();
+  await pg.locator('#sched-dlg').getByRole('tab').last().click();
   check(
     'All four: a column per member',
     (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 4,
@@ -41,7 +41,7 @@ export default async function fourloop(b) {
   await dialog(pg, 'why-dlg');
   // a four-uma loop's 12 careers: one pill per trainee (4), then her parents (3 pairs), never the same uma twice in a row
   const afT = await pg.evaluate(() =>
-    [...document.querySelectorAll('#why-dlg .afpick:not(.afpar) button')].map((b) =>
+    [...document.querySelectorAll('#why-dlg [aria-label="Trainee"] [role="radio"]')].map((b) =>
       b.textContent.replace(/\d+/g, '').trim(),
     ),
   );
@@ -49,7 +49,7 @@ export default async function fourloop(b) {
     'its affinity: one pill per trainee, then her three parent pairs; six legacies each, no grandparent is the trainee',
     afT.length === 4 &&
       new Set(afT).size === 4 &&
-      (await pg.locator('#why-dlg .afpar button').count()) === 3 &&
+      (await pg.locator('#why-dlg').getByRole('radiogroup', { name: 'Parents' }).getByRole('radio').count()) === 3 &&
       (await pg.locator('#why-dlg').getByRole('table', { name: 'Affinity' }).locator('tbody tr').count()) === 6 &&
       !(await pg.locator('#why-dlg').getByText('her own earlier veteran').count()),
     afT.join(', '),

@@ -204,10 +204,10 @@ export default async function keyboard(b) {
     pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first(),
     'sched-dlg',
   );
-  if (sched) await pg.locator('#sched-dlg .stab').first().focus();
+  if (sched) await pg.locator('#sched-dlg').getByRole('tab').first().focus();
   await pg.keyboard.press('ArrowRight');
   const tabs = await pg.evaluate(() =>
-    [...document.querySelectorAll('#sched-dlg .stab')].map((t) =>
+    [...document.querySelectorAll('#sched-dlg [role="tab"]')].map((t) =>
       [t.getAttribute('aria-selected'), t.tabIndex, t.getAttribute('aria-controls')].join(':'),
     ),
   );
@@ -216,18 +216,18 @@ export default async function keyboard(b) {
     sched && tabs[1] === 'true:0:sched-view' && tabs.filter((t) => t.startsWith('true')).length === 1,
     tabs.join(' '),
   );
-  await expect.soft(pg.locator('#sched-dlg .stab').nth(1), 'schedule tabs: … and focuses it').toBeFocused();
+  await expect.soft(pg.locator('#sched-dlg').getByRole('tab').nth(1), 'schedule tabs: … and focuses it').toBeFocused();
   await pg.keyboard.press('Escape');
   await dialogKeys(pg, 'Affinity', pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first(), 'why-dlg');
   // affinity: the careers are a radio group of pills; the arrows move and show one
   const why = await clickOpens(pg, pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first(), 'why-dlg');
   const cap0 = why ? await pg.locator('#why-dlg table caption').innerText() : '';
-  if (why) await pg.locator('#why-dlg .afpick:not(.afpar) [aria-checked="true"]').focus();
+  if (why) await pg.locator('#why-dlg [aria-label="Trainee"] [aria-checked="true"]').focus();
   await pg.keyboard.press('ArrowRight');
   check('affinity: the dialog opened', why);
   await expect
     .soft(
-      pg.locator('.afpick [aria-checked="true"]:focus'),
+      pg.locator('#why-dlg [role="radio"][aria-checked="true"]:focus'),
       'affinity: the careers are pill switches, the arrow moves the focus',
     )
     .toHaveCount(1);
