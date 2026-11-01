@@ -55,12 +55,14 @@ function Affinity({ r }: { r: CareerReport }) {
     }));
   return <AffTable legs={legs} />;
 }
-// a dialog of its own from the popup (the uma or parent picker): the popup closes first, in the same write
-const fromNode = (fn: () => void) => () =>
-  batch(() => {
-    closeNode();
-    fn();
-  });
+// a dialog of its own from the popup (the uma or parent picker): the popup closes first. Two writes, not one batch: the
+// popup must close (the browser gives the focus back to its opener) before the other opens and takes that as the place
+// to give it back to; a batch runs its effects last written first, so the picker would open first (signals-core
+// endBatch), and the focus would end on the page when it closes
+const fromNode = (fn: () => void) => () => {
+  closeNode();
+  fn();
+};
 /** her face: a button that changes who she is, or (a listed veteran) just her face */
 interface FaceProps {
   nd: NodeRecord;

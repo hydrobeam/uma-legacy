@@ -96,7 +96,7 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
   for (const f of frames.splice(0)) f();
 });
 
-test('the node popup hands off to the parent picker and removes a veteran in one write each (review-8c 9)', async () => {
+test('the node popup closes before the parent picker opens (two writes), and Remove is one (review-8c 9)', async () => {
   const frames = [];
   vs.initVets({ storage: () => memory(), hidden: () => false, afterFrame: (f) => frames.push(f) });
   vs.addVets(
@@ -111,14 +111,22 @@ test('the node popup hands off to the parent picker and removes a veteran in one
   const root = document.createElement('div');
   render(h(NodeDialog, null), root);
   const button = (text) => root.querySelectorAll('button').find((b) => b.textContent === text);
-  // Choose parent: the popup closes and the picker opens, as one change (an effect on both runs once)
+  // Choose parent: the popup closes, then the picker opens (a batch would run the picker's effects first: the picker
+  // would open over the popup and give the focus back to the popup's button, which is gone by then)
   openNode({ kind: 'p', k: 0 });
   await settle();
   let runs = [];
   const stopPicker = on([nodeOpen, pickerFor], (spec, k) => runs.push([spec, k]));
   button('Choose parent').click();
   stopPicker();
-  assert.deepEqual(runs, [[null, 0]], 'closed and the picker open, in one run');
+  assert.deepEqual(
+    runs,
+    [
+      [null, null],
+      [null, 0],
+    ],
+    'closed, then the picker open',
+  );
   pickerClosed();
   // Remove: the popup closes and she goes, as one change
   openNode({ kind: 'v', id: 'a' });
