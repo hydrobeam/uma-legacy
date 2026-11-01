@@ -40,24 +40,19 @@ const loopSummary = (loop: DeepReadonly<ResultLoop>) => ({
   all_land: fmtIn(loop.p_all),
   at_least_n_minus_1: fmtIn(loop.p_minus1),
   umas: loop.members.map((m, k) => {
-    // @ts-expect-error the result's outfits are read-only; pickOutfit takes a list it may hand back (strict commit: a copy)
-    const outfit = pickOutfit(m.id, loop.outfits[k].outfits).list[0];
+    // (a copy: the result's outfits are read-only, and pickOutfit may hand back the list it is given)
+    const outfit = pickOutfit(m.id, [...loop.outfits[k].outfits]).list[0];
     return m.name + (outfit ? ` ${outfit.label}` : '');
   }),
 });
 // one result: its loop, its deck (and each member's when they differ), the deck's hint odds above half a percent
-const resultSummary = (top: DeepReadonly<LoopResult>) => ({
-  ...loopSummary(top.loop),
-  deck: top.deck.cards,
-  pals: top.deck.pals,
-  borrowed: top.deck.borrowed,
-  ...(top.decks
-    ? {
-        // @ts-expect-error the check on top.decks doesn't narrow it inside the callback (strict commit: destructured)
-        deck_per_uma: Object.fromEntries(top.loop.members.map((m, k) => [m.name, top.decks[k].cards])),
-      }
-    : {}),
-  deck_odds: top.deck.odds
+const resultSummary = ({ loop, deck, decks }: DeepReadonly<LoopResult>) => ({
+  ...loopSummary(loop),
+  deck: deck.cards,
+  pals: deck.pals,
+  borrowed: deck.borrowed,
+  ...(decks ? { deck_per_uma: Object.fromEntries(loop.members.map((m, k) => [m.name, decks[k].cards])) } : {}),
+  deck_odds: deck.odds
     .filter((o) => o.white > 0.005 || o.gold > 0.005)
     .map((o) => ({
       skill: skillName(o.group, 1),
