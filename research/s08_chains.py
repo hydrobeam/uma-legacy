@@ -396,7 +396,7 @@ def dataset(groups: set[int]) -> list[Row]:
     """[(run, kinds, chain card ids, observations)] for every run record with a pal count in `groups` (decks with an
     unknown or non-pal R card left out)"""
     out: list[Row] = []
-    for r in common.runs():
+    for r in common.records():
         if pals(r) not in groups:
             continue
         if r["id"] not in _obs:
@@ -409,7 +409,7 @@ def dataset(groups: set[int]) -> list[Row]:
 def dropped(groups: set[int]) -> int:
     """records with a pal count in `groups` left out for an unknown or non-pal R card"""
     dataset(groups)
-    return sum(1 for r in common.runs() if pals(r) in groups and _obs[r["id"]] is None)
+    return sum(1 for r in common.records() if pals(r) in groups and _obs[r["id"]] is None)
 
 
 def cmp_pmf(lam: float, nu: float, upto: int = 61) -> list[float]:

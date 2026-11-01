@@ -124,12 +124,13 @@ for requested in want:
     for k in range(4):
         r = (audit_certificate.get("class_max_ratio") or [0] * 4)[k]
         deck = (audit_certificate.get("class_max_deck") or [None] * 4)[k]
-        over = caps[k] is not None and r > caps[k] * (1 + 1e-9)
+        cap = caps[k]
+        over = cap is not None and r > cap * (1 + 1e-9)
         problems += over
         who = f"  {deck['trainee']}: {', '.join(deck['cards'])}" if deck and (over or r > 1.0) else ""
-        unchecked = rho.reached is not None and caps[k] is not None and rho.reached <= caps[k]
+        unchecked = rho.reached is not None and cap is not None and rho.reached <= cap
         print(
-            f"    class {CAP_CLASSES[k]:>3}: max exact/product {r:.4f}, normal cap {caps[k]}{' (not checked)' if unchecked else ''}{'  OVER THE CAP' if over else ''}{who}"
+            f"    class {CAP_CLASSES[k]:>3}: max exact/product {r:.4f}, normal cap {cap}{' (not checked)' if unchecked else ''}{'  OVER THE CAP' if over else ''}{who}"
         )
 print(f"{len(want)} jobs in {time.time() - started_all:.0f} s, {problems} problems")
 sys.exit(1 if problems else 0)

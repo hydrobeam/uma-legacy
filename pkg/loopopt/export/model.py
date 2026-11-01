@@ -139,7 +139,7 @@ class RaceModel:
             "select sort_id,turn,condition_id,determine_race from single_mode_route_race where race_set_id=? and scenario_group_id=100 and condition_type=1 and turn<=72 order by sort_id,id",
             character_id,
         )
-        group = {}
+        group: dict[int, list[GoalRace]] = {}
         determinations = {}
         for sort_id, turn_number, program_id, determination in rows:
             if exclude_det2 and determination == 2:

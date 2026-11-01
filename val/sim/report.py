@@ -134,7 +134,7 @@ def e1(paths):
         for a in diff[:5]:
             print(f"    differs: pool {a['pool']} sur {a['sur']} {a['sur_p']:.6e} ex {a['ex']} {a['ex_p']:.6e}")
         lineage_checks = [
-            LineageCheck(*x, cc["argmax"]["sur_val"] or 0)
+            LineageCheck._make([*x, cc["argmax"]["sur_val"] or 0])
             for r in policy_runs.values()
             for cc in r["checks"]
             for x in cc["lineages"]

@@ -171,11 +171,13 @@ def compare_job(name):
     max_ratios, caps = candidate_work.get("class_max_ratio"), candidate_work.get("class_caps")
     if not isinstance(max_ratios, list):
         max_ratios, caps = [candidate_work.get("max_ratio")], [candidate_work.get("cap")]
+    if not isinstance(caps, list):  # (ratios without their caps: none is near a cap)
+        caps = [None] * len(max_ratios)
     is_number = lambda candidate: isinstance(candidate, (int, float))
     near = [
         CapWarning(class_index=k, ratio=ratio, cap=cap)
         for k, (ratio, cap) in enumerate(zip(max_ratios, caps))
-        if is_number(ratio) and is_number(cap) and near_cap(ratio, cap)
+        if isinstance(ratio, (int, float)) and isinstance(cap, (int, float)) and near_cap(ratio, cap)
     ]
     print(
         f"{name}: {'identical' if not differences else 'DIFFERS'}  {reference_times.get(name, '?')} s -> {times[name]} s  {work}"
@@ -382,13 +384,18 @@ def route_first_step(plan, job):
     finisher = (plan.get("v0_plan") or {}).get("c")
     members = sorted(ids.get(m["trainee"], -1) for m in plan.get("members") or [])
     legacies = job.get("legacies") or []
-    chara = lambda i: legacies[i]["chara"] if 0 <= i < len(legacies) else None
+
+    def parent_charas(row):
+        """the row's parents' umas, sorted; None where a parent is no legacy of the job (no match)"""
+        parents = row.get("parents") or []
+        if not all(0 <= i < len(legacies) for i in parents):
+            return None
+        return sorted(legacies[i]["chara"] for i in parents)
+
     rows = [
         o
         for o in options
-        if o.get("role") == "finish"
-        and o["trainee"]["name"] == finisher
-        and sorted(chara(i) for i in o.get("parents") or []) == members
+        if o.get("role") == "finish" and o["trainee"]["name"] == finisher and parent_charas(o) == members
     ]
     return only_row("the finish on two real full veterans", rows, "no finish row of C's on the two members' veterans")
 

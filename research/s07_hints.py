@@ -41,14 +41,18 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import pairwise
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 import common
 
+if TYPE_CHECKING:
+    from scipy.optimize._minimize import _MinimizeOptions  # scipy-stubs: minimize's options
+
 SEC: str = "7"
-SCENARIOS: tuple[tuple[int, str], ...] = ((1, "URA Finale"), (2, "Unity Cup"), (3, "Grand Concert"), (4, "Trackblazer"))
-NELDER_MEAD: dict[str, float] = {"xatol": 1e-6, "fatol": 1e-7, "maxiter": 40000, "maxfev": 80000}
+SCENARIOS: tuple[tuple[int, str], ...] = tuple(common.SCEN.items())  # (scenario id, name)
+
+NELDER_MEAD: _MinimizeOptions = {"xatol": 1e-6, "fatol": 1e-7, "maxiter": 40000, "maxfev": 80000}
 GENERAL_BATCHES: range = range(18)  # the general collection's batches (later ones: targeted collections)
 CARD_ROWS: int = 200  # the rows a card needs for its own cell in the per-card tests
 CHI1: float = 1.920729  # chi2(1) 95% / 2: a likelihood gain beyond it is detectable
@@ -150,7 +154,7 @@ def card_runs(g: GameData) -> list[CardRun]:
     """every record's non-pal deck cards"""
     C = g.cards
     obs: list[CardRun] = []
-    for r in common.runs():
+    for r in common.records():
         hints = [(norm(h["name"]), h["lv"], tuple(h["src"])) for h in r["hints"]]
         npal = sum(1 for c, _, _ in r["deck"] if C.get(c, {}).get("pal"))
         for cid, lb, nm in r["deck"]:
@@ -660,7 +664,7 @@ def median_card() -> tuple[float, float, int]:
     wc = common.cards()
     deck_cards = [
         wc[c]
-        for r in common.runs()
+        for r in common.records()
         for c, _, _ in r["deck"]
         if c in wc and wc[c]["rarity"] > 1 and not wc[c]["pal"] and wc[c].get("kind") != "group"
     ]
@@ -966,7 +970,7 @@ class CovariateRows:
             ll = hits @ np.log(1 - m) + (nr - hits) @ np.log(m)
             dll_dm = (nr - hits) / m - hits / (1 - m)
             dll_deta = dll_dm * slope * np.where(h < TMAX - 1e-6, h, 0.0)  # dh / d(Z th) = h below the table's end
-            return -ll, -(Z.T @ dll_deta)
+            return -float(ll), -(Z.T @ dll_deta)
 
         b = minimize(nll, x0, jac=True, method="L-BFGS-B", options={"maxiter": 2000})
         return CovFit(b.x, -b.fun)
@@ -993,7 +997,7 @@ def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
     rows = CovariateRows(hit[AR.jm][nim], AR.tab[nim], hk, sk, ck, cls, rep)
     l0 = rows.fit(np.zeros((len(ck), 0))).ll
     add(out, "covariate rows", nim.sum(), note=ADOPTED_NOTE)
-    size = {len(r["deck"]) for r in common.runs()}
+    size = {len(r["deck"]) for r in common.records()}
     add(out, "cards per deck min", min(size), note="a fixed size makes pals per deck the same covariate as non-pals")
     add(out, "cards per deck max", max(size))
     for nm, X in covs.items():
@@ -1022,7 +1026,7 @@ def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
 
 def general_rows(D: Data, card_run: np.ndarray) -> Mask:
     """the given card-runs that belong to runs of the general collection"""
-    batch = {r["id"]: r["batch"] for r in common.runs()}
+    batch = {r["id"]: r["batch"] for r in common.records()}
     return np.isin([batch[int(r)] for r in run_of_rows(D, card_run)], GENERAL_BATCHES)
 
 
@@ -1221,7 +1225,7 @@ def priority(D: Data, AR: AdoptedRate, out: Out) -> None:
 
 
 def claims() -> list[common.Value | common.Finding]:
-    if not common.have_runs() or common.mdb() is None:
+    if not common.have_runs() or not common.have_mdb():
         return []
     out: Out = []
     D = build()
@@ -1983,7 +1987,7 @@ def specialty(A: Data, S: SpecialtyRows, fit: PerScenarioD) -> list[common.Value
     # robustness of the adopted per-scenario d's: one scale k on them, h = base_s (1 + hf/100) (1 + k d_s sp/100), the
     # d_s fitted on every row, a base per scenario refitted on each subset (halves of the records, rarity, without each
     # of the eight most-used cards); k = 1 on every row
-    runs = common.runs()
+    runs = common.records()
     cut = runs[len(runs) // 2]["seq"]  # the later half of the records starts here
     rob = {"earlier half": S.seq < cut, "later half": S.seq >= cut, "SR": S.rar == 2, "SSR": S.rar == 3}
     top = [k for k, _ in collections.Counter(S.cid).most_common(8)]

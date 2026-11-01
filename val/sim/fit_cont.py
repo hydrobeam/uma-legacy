@@ -89,7 +89,9 @@ class Trace(NamedTuple):
     ceiling: float | None  # her full-loop odds C, None where the plan's pinf was p1
     lam_after_lift: float | None  # lam at the first row after her odds first rose, mean over runs
     odds: list  # per run, A's odds after n careers (n = 0..careers)
-    plan_cont: tuple | None  # the plan's fit entry for her as (lam, phi, pinf, p0), None without one
+    plan_cont: (
+        tuple[float, float, float, float] | None
+    )  # the plan's fit entry for her as (lam, phi, pinf, p0), None without one
 
 
 def pool_job(entry):
@@ -319,15 +321,15 @@ class PlanCont:
             best = cost
         return best
 
-    def lattice_plan(self, p):
+    def lattice_plan(self, lattice, p):
         g = math.log(p / self.pinf) / math.log(self.p0 / self.pinf)
         r = 1 - self.phi
         t = max(0.0, math.log(g) / math.log(r)) if r > 0 else 0.0
         j = math.floor(t)
         if j >= CONT_N:
-            cost = self.lattice[CONT_N]
+            cost = lattice[CONT_N]
         else:
-            low, high = self.lattice[j], self.lattice[j + 1]
+            low, high = lattice[j], lattice[j + 1]
             cost = min(max(low + (t - j) * (high - low), min(low, high)), max(low, high))
         return min(cost, 1 / p)
 
@@ -341,7 +343,7 @@ class PlanCont:
         if self.lam <= 0 or self.phi <= 0 or self.pinf <= p:
             return 1 / p
         if p > self.p0 and self.lattice:
-            return self.lattice_plan(p)
+            return self.lattice_plan(self.lattice, p)
         return self.plan_n(p)
 
 
@@ -555,7 +557,10 @@ def report(traces, careers):
         cost, k = achievable(trace)
         split = achievable_split(trace)
         variant_lam = max(trace.lam, trace.lam_after_lift) if trace.lam_after_lift else trace.lam
-        plan_cont = f"{plan_cost(*trace.plan_cont, LAM_DECAY):,.0f}" if trace.plan_cont else "-"
+        plan_cont = "-"
+        if trace.plan_cont:
+            lam, phi, pinf, p0 = trace.plan_cont
+            plan_cont = f"{plan_cost(lam, phi, pinf, p0, LAM_DECAY):,.0f}"
         held = f"{cont_cost(trace, held_out[trace.pool]):,.0f}" if trace.pool in held_out else "-"
         print(
             f"| {trace.pool} | {trace.trainee} | 1/{1 / trace.p0:,.0f} | "

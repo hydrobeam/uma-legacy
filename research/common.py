@@ -94,6 +94,14 @@ def runs() -> list[Run] | None:
     return sorted((json.loads(line) for line in open(RUNS, encoding="utf-8")), key=lambda r: r["seq"])
 
 
+def records() -> list[Run]:
+    """the run records, for code that runs only with them (its section asks have_runs() first)"""
+    records = runs()
+    if records is None:
+        raise FileNotFoundError(f"{RUNS} is missing")
+    return records
+
+
 @functools.cache
 def run_list() -> list[dict[str, Any]] | None:
     """the run list's rows (every completed run, with uma-it's rank-score estimates; more runs than the records),
@@ -130,11 +138,22 @@ def factor_groups() -> dict[int, int]:
     return {int(k): v for k, v in gjson("career.json")["factors"].items()}
 
 
+def must[T](value: T | None, what: str) -> T:
+    """the value, where None would be a bug: raises, naming what is missing"""
+    if value is None:
+        raise ValueError(f"{what} is missing")
+    return value
+
+
+def have_mdb() -> bool:
+    return os.path.exists(MDB)
+
+
 @functools.cache
-def mdb() -> sqlite3.Connection | None:
-    """master.mdb (game/global/master.mdb), or None"""
-    if not os.path.exists(MDB):
-        return None
+def mdb() -> sqlite3.Connection:
+    """master.mdb (game/global/master.mdb), read-only; code that can run without it asks have_mdb() first"""
+    if not have_mdb():
+        raise FileNotFoundError(f"{MDB} is missing")
     return sqlite3.connect(f"file:{MDB}?mode=ro", uri=True)
 
 
@@ -925,9 +944,9 @@ def background_counts() -> tuple[dict[tuple[str, int], list[int]], dict[tuple[st
         givable = set().union(*(g.pool.get(c, set()) for c in deck))
         events = {h["name"] for h in r["hints"] if "Events" in h["src"]}
         for sk in skills - givable:
-            for key, table in (((sk, r["scenario"]), by_scen), ((sk, r["scenario"], r["chara"]), by_tr)):
-                table[key][1] += 1
-                table[key][0] += sk in events
+            for counts in (by_scen[(sk, r["scenario"])], by_tr[(sk, r["scenario"], r["chara"])]):
+                counts[1] += 1
+                counts[0] += sk in events
     return dict(by_scen), dict(by_tr)
 
 
@@ -1066,11 +1085,10 @@ def classify(o: AnshinRun) -> str:
     (the date-start's +1 alone: the finale's choice 1 gave nothing); 'c2_lose?' (doubtful) at Lv 1 with no list shown,
     or when the credit is shared ("A or B event") or another source adds to her level, which then cannot be read;
     'none_rb5' (nothing, Risky Business at Lv 5 from other sources), 'none'"""
-    her: Callable[[tuple[int, list[str]] | None], Any] = lambda x: x and any("Anshinzawa" in s for s in x[1])
     nv, rb = o.NV, o.RB
     if nv:
         return "c1_win" if nv[0] >= C1_LV else "c2_win"
-    if her(rb):
+    if rb and any("Anshinzawa" in s for s in rb[1]):  # credited to her
         if rb[1] != [HER_A]:
             return "c2_lose?"
         if rb[0] == 2:
@@ -1669,6 +1687,8 @@ def run_solver(
     machine); returns {file id: output}; cached in resf using fingerprint(). share: the seeded fraction of the
     manifest's runs whose jobs run (sampled from sorted run ids)"""
     if share is not None:
+        if man is None:
+            raise ValueError("a share of the runs needs their manifest (man)")
         keep = set(random.Random(1).sample(sorted(m.run_id for m in man), round(share * len(man))))
         files = [x for x in files if int(x.split("_")[0]) in keep]
     fp = fingerprint(jobdir, files)
@@ -1793,12 +1813,14 @@ def run_rows(
         hs = hints.get(g, [])
         deck_sources = set().union(*[credited_cards(h.sources, card_of) for h in hs]) if hs else set()
         prio = None if r["priority"] is None else g in rank
+        outfit, o_any, o_gold = buy.get("outfit", 0), bool(hs) or g in owned, any(h.tier == 2 for h in hs)
+        carriers = 1.1 ** (nc - 6)
         row = CalRow(
             run=r["id"],
             scen=r["scenario"],
             g=g,
             scen_gold=scen_g,
-            outfit=buy.get("outfit", 0),
+            outfit=outfit,
             zero=t is None,
             dg=buy.get("deck_gold", 0.0),
             dw=buy.get("deck_white", 0.0),
@@ -1808,8 +1830,8 @@ def run_rows(
             acq=1.0 if scen_g else buy["gold"] + buy["white"],
             gold=1.0 if scen_g else buy["gold"],
             plegs=plegs,
-            o_any=bool(hs) or g in owned,
-            o_gold=any(h.tier == 2 for h in hs),
+            o_any=o_any,
+            o_gold=o_gold,
             o_deck=bool(deck_sources),
             o_deck_gold=any(h.tier == 2 and credited_cards(h.sources, card_of) for h in hs),
             o_insp=insp[g].years > 0,
@@ -1829,15 +1851,12 @@ def run_rows(
             ),
             cards_pool=[c for c, _, _ in r["deck"] if g in M.cards[c]["whites"]],
             cards_ev=[c for c, _, _ in r["deck"] if g in M.ev_groups(c)],
-        )
-        carriers = 1.1 ** (nc - 6)
-        row["p_pred"] = SPARK_GOLD_6 * carriers if scen_g else p
-        row["l_obs"] = (
-            SPARK_GOLD_6 * carriers
-            if (row["o_gold"] or row["outfit"] == 2)
+            p_pred=SPARK_GOLD_6 * carriers if scen_g else p,
+            l_obs=SPARK_GOLD_6 * carriers
+            if (o_gold or outfit == 2)
             else SPARK_WHITE_6 * carriers
-            if (row["o_any"] or row["outfit"] == 1)
-            else 0.0
+            if (o_any or outfit == 1)
+            else 0.0,
         )
         run["rows"].append(row)
     return run
@@ -1890,7 +1909,7 @@ def bernoulli_ll(y: np.ndarray, p: np.ndarray) -> float:
 def calib() -> tuple[list[CalRow], list[RunRows]]:
     """section 13's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
     s13_calibration.claims builds them; solver-result reuse follows fingerprint"""
-    R = runs()
+    R = records()
     M = Model()
     card_variants()
     jobdir = os.path.join(OUTD, "jobs8")

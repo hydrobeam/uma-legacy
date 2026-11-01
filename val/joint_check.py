@@ -60,7 +60,7 @@ class StopRisk(NamedTuple):
 class TargetSkill(NamedTuple):
     """An uncertain target's index and hint tier (1 white, 2 gold)."""
 
-    index: int
+    target: int
     tier: int
 
 
@@ -222,7 +222,7 @@ def deck_model(job, d):
     target_count = len(uncertain_targets)
     nm = lambda x: (x, 1.0) if isinstance(x, str) else (x[0], x[1])
     target_skill = lambda n: (
-        TargetSkill(index=uncertain_targets.index(skill_targets[n].group), tier=skill_targets[n].tier)
+        TargetSkill(target=uncertain_targets.index(skill_targets[n].group), tier=skill_targets[n].tier)
         if n in skill_targets and skill_targets[n].group in uncertain_targets
         else None
     )
@@ -398,9 +398,14 @@ def deck_model(job, d):
     )
 
 
-def check(out, job, d, alt_q=None):
-    """max |recomputed / reported p_all - 1| over the result's loops; with `alt_q` (top -> list of per-lineage q
-    vectors) also, per loop, the mean P(all) at each of those q vectors: returns worst alone, or (worst, [[P per vector] per loop]) with alt_q"""
+def check(out, job, d):
+    """max |recomputed / reported p_all - 1| over the result's loops"""
+    return check_loops(out, job, d)[0]
+
+
+def check_loops(out, job, d, alt_q=None):
+    """(max |recomputed / reported p_all - 1| over the result's loops, [[P per vector] per loop]): with `alt_q` (top ->
+    list of per-lineage q vectors), per loop the mean P(all) at each of those q vectors (none without it)"""
     deck_miss_probability, lineage, skills_db, uncertain_targets, _ = deck_model(job, d)
     worst = 0.0
     alt = []
@@ -448,7 +453,7 @@ def check(out, job, d, alt_q=None):
                     for qs in alt_q(top)
                 ]
             )
-    return worst if alt_q is None else (worst, alt)
+    return worst, alt
 
 
 if __name__ == "__main__":

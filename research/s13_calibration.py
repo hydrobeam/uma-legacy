@@ -348,7 +348,8 @@ def exact_tails(rep: Report, sel: RowFn, pred: Callable[[CalRow], float], obs: R
     return Tails(len(rs), k, sum(pred(r) for r in rs), sum(dist[: k + 1]), sum(dist[k:]))
 
 
-def covers(s: Stat) -> bool:
+def covers(s: Stat | None) -> bool:
+    s = common.must(s, "the statistic")
     return s.ratio_low <= 1 <= s.ratio_high
 
 
@@ -356,11 +357,13 @@ def covers_interval(v: RatioInterval) -> bool:
     return v.low <= 1 <= v.high
 
 
-def below(s: Stat) -> bool:
+def below(s: Stat | None) -> bool:
+    s = common.must(s, "the statistic")
     return s.ratio_high < 1
 
 
-def ratio_text(s: Stat) -> str:
+def ratio_text(s: Stat | None) -> str:
+    s = common.must(s, "the statistic")
     return f"{s.ratio:.3f} [{s.ratio_low:.3f}, {s.ratio_high:.3f}], {s.rows:,} rows"
 
 
@@ -464,9 +467,10 @@ def calibration(R: list[Run] | None, M: Model, why: str | None) -> Calibration:
         os.makedirs(OUTD, exist_ok=True)
         bad = card_variants()
         jobdir = os.path.join(OUTD, "jobs8")
-        man, files, drop = build_jobs(R, M, False, jobdir)
+        records = common.must(R, "the run records")
+        man, files, drop = build_jobs(records, M, False, jobdir)
         res = run_solver(jobdir, files, os.path.join(OUTD, "res8.jsonl"))
-        rows, runrows, badrows = rows_of(R, M, res, man)
+        rows, runrows, badrows = rows_of(records, M, res, man)
     rep = Report(rows)
     rep.line(
         f"card variants: max-limit-break check {bad or 'all equal'}; dropped {dict(drop)}; problems {dict(badrows)}"
@@ -2410,7 +2414,7 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
                 + "; listed without excluding 1: "
                 + (
                     ", ".join(
-                        f"{cal.card_name[c]} > {tn(g)} [{single.of_listed[c, g].ratio_low:.2f}, {single.of_listed[c, g].ratio_high:.2f}]"
+                        f"{cal.card_name[common.must(c, 'a listed card')]} > {tn(g)} [{single.of_listed[c, g].ratio_low:.2f}, {single.of_listed[c, g].ratio_high:.2f}]"
                         for c, g in sorted(single.listed - single.off_large)
                     )
                     or "none"
@@ -2557,7 +2561,7 @@ def roll_form_findings(pf: RollFormTests) -> list[Finding]:
 
 def claims(wide: bool = False) -> list[Value | Finding]:
     R = common.runs()
-    why = "needs data" if R is None else "needs master.mdb" if common.mdb() is None else None
+    why = "needs data" if R is None else "needs master.mdb" if not common.have_mdb() else None
     M = Model()
     cal = calibration(R, M, why)
     values: list[Value] = []
@@ -2567,10 +2571,14 @@ def claims(wide: bool = False) -> list[Value | Finding]:
     if why:  # nothing computed: only the findings, as "needs data"
         for f in fs:
             f.holds, f.evidence = None, why
-        return fs + wide_findings(None, None, why=why)
+        return [*fs, *wide_findings(None, None, why=why)]
     out: list[Value | Finding] = [*values, *fs]
     open(os.path.join(OUTD, "report8.txt"), "w").write("\n".join(cal.report.lines) + "\n")
-    out += wide_claims(R, M, forms) if wide else wide_findings(None, None, why="not run (--wide)")
+    out += (
+        wide_claims(common.must(R, "the run records"), M, forms)
+        if wide
+        else wide_findings(None, None, why="not run (--wide)")
+    )
     return out
 
 
@@ -2599,10 +2607,10 @@ def wide_claims(R: list[Run], M: Model, forms: list[RollForm]) -> list[Value | F
         )
     several_model = rep.stat(several_carriers, inspiration_odds, inspired)
     # the inheritance shortfall (predicted minus observed inspirations) by skill: the largest one skill's share
-    by_skill: collections.Counter[int] = collections.Counter()
+    by_skill: collections.defaultdict[int, float] = collections.defaultdict(float)
     for r in rows:
         by_skill[r["g"]] += r["q"] - r["o_insp"]
-    top_group, top = by_skill.most_common(1)[0] if by_skill else (0, float("nan"))
+    top_group, top = max(by_skill.items(), key=lambda item: item[1]) if by_skill else (0, float("nan"))
     top_share = common.div(top, sum(by_skill.values()))
     open(os.path.join(OUTD, "reportW.txt"), "w").write(f"runs {len({r['run'] for r in rows})}, jobs {len(res)}\n")
     sampled = len({m.run_id for m in man if any(f.startswith(f"{m.run_id}_") for f in res)})
@@ -2672,7 +2680,7 @@ def wide_findings(
         (
             S13,
             "other skills: training-pool hints under-predicted: interval entirely above 1",
-            lambda: s_p.ratio_low > 1,
+            lambda: common.must(s_p, "the training-pool statistic").ratio_low > 1,
             lambda: ratio_text(s_p),
         ),
         *[
@@ -2680,10 +2688,11 @@ def wide_findings(
                 S3,
                 f"{name} (a check, the model unchanged, in-sample): rescored with it, the non-target skills' rows with two "
                 "or more carriers, which are not its fitting trials, have an inheritance interval covering 1",
-                lambda i=i: covers(forms[i][2]),
+                lambda i=i: covers(common.must(forms, "the roll forms")[i][2]),
                 lambda i=i: (
-                    f"two or more carriers: scaled {ratio_text(forms[i][2])}, the model {ratio_text(several_model)}; "
-                    f"every row: scaled {ratio_text(forms[i][1])}, the model {ratio_text(s_i)}"
+                    f"two or more carriers: scaled {ratio_text(common.must(forms, 'the roll forms')[i][2])}, the "
+                    f"model {ratio_text(several_model)}; every row: scaled "
+                    f"{ratio_text(common.must(forms, 'the roll forms')[i][1])}, the model {ratio_text(s_i)}"
                 ),
             )
             for i, name in enumerate(("parent factor", "affinity slope"))

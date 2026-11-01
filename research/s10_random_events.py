@@ -101,7 +101,7 @@ class RandomRow(TypedDict):
     row: CalRow
     kind: str  # 'deck' (a deck card's character's event) or 'own' (the trainee's own)
     who: str | None  # the character's name
-    rate: float | None  # the event's chance at the run's K ('own': filled in by careers())
+    rate: float  # the event's chance at the run's K ('own': NaN until careers() fills it in)
     hit: bool  # the target credited to that event (marker_credit(): section 8's rule, unknown counts as not)
     only: bool  # ... and to nothing else, nor owned
     amb: bool  # credited only through an "A or B event" naming her
@@ -226,7 +226,7 @@ def readings(R: list[Run]) -> ReadingSet:
             if x["rarity"] < 2:
                 r_cards += 1
                 continue
-            nm = name.get(ch)
+            nm = name[ch]
             srcs = [s for h in r["hints"] if h["name"] == m for s in h["src"]]
             hit = marker_credit(srcs, nm, m, byname, pool)
             if hit is None:
@@ -816,7 +816,7 @@ def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow],
             if x["rarity"] < 2:
                 skipped["R card"] += 1
                 continue
-            nm = name.get(x["char_id"])
+            nm = name[x["char_id"]]
             ev = f"{nm} event"
             out.append(
                 RandomRow(
@@ -845,7 +845,7 @@ def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow],
                     row=row,
                     kind="own",
                     who=name.get(u),
-                    rate=None,
+                    rate=math.nan,
                     hit="Events" in srcs,
                     only=set(srcs) == {"Events"} and g not in {s // 10 for s in r.get("owned", [])},
                     amb=False,
@@ -977,7 +977,7 @@ def later_choice_runs(R: list[Run], skill: str, chara: int) -> tuple[int, int]:
     list: (the skill credited to her event by section 8's rule, those runs whose credit is not unknown)"""
     _, _, _, sc = markers()
     pool = event_pools(sc)
-    nm = dict(common.mdb().execute("select [index], text from text_data where category = 6")).get(chara)
+    nm = dict(common.mdb().execute("select [index], text from text_data where category = 6"))[chara]
     k = n = 0
     for r in R:
         p = r.get("priority")
@@ -1217,7 +1217,7 @@ def careers_detail(R: list[Run]) -> None:
 
 
 def detail() -> None:
-    R = common.runs()
+    R = common.records()
     rows = readings(R).rows
     print("all records: rate by K", ", ".join(f"{k}: {h}/{n}" for k, (n, h) in sorted(by_k(rows).items())))
     t: collections.defaultdict[int, list[int]] = collections.defaultdict(lambda: [0, 0])

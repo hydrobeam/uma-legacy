@@ -198,7 +198,9 @@ def write_results(items: list[Value | Finding], fresh: bool) -> None:
         if k in seen and seen[k] != c.name:
             sys.exit(f"two values share the key {k}: {seen[k]!r} and {c.name!r}")
         seen[k] = c.name
-        values[k] = c.got if isinstance(c.got, str) else float(c.got)
+        got = c.got
+        assert got is not None  # (not missing())
+        values[k] = got if isinstance(got, str) else float(got)
     by_statement = {(f["section"], f["statement"]): f for f in old["findings"]}
     for f in items:  # a finding evaluated now replaces the committed one; one that needs data only fills a gap
         if isinstance(f, Finding) and (f.holds is not None or (f.section, f.statement) not in by_statement):

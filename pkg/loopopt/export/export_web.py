@@ -83,11 +83,8 @@ def main():
             r, g, _ = skill_groups[skill_id]
             if g in groups and r in (1, 2):
                 coverage[g] = max(coverage.get(g, 0), 2 if r == 2 else 1)
-        label = (
-            re.match(r"(\[.*?\])", outfit_names.get(card_id, "")).group(1)
-            if re.match(r"\[.*?\]", outfit_names.get(card_id, ""))
-            else str(card_id)
-        )
+        title = re.match(r"\[.*?\]", outfit_names.get(card_id, ""))  # the outfit's [Title]
+        label = title.group(0) if title else str(card_id)
         cards.setdefault(character_id, []).append([card_id, label, sorted(coverage.items())])
     json.dump(
         {"cards": cards, "skills": catalog, "names": reward_names},

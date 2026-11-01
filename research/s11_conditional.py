@@ -118,13 +118,13 @@ def head_on(sk: dict[int, str]) -> list[Value | Finding]:
 class ConditionalRow:
     """a calibration row whose trainee has a current conditional event that can hint its target"""
 
-    row: dict[str, Any]  # section 13's calibration row
+    row: common.CalRow  # section 13's calibration row
     key: tuple[int, int]  # (trainee's character, target group)
     mixed: bool  # her shared random event can hint the target too (her events not separable)
     hit: bool  # the target credited to "Events"
 
 
-def conditional_rows(R: list[Any], rows: list[dict[str, Any]]) -> list[ConditionalRow]:
+def conditional_rows(R: list[Any], rows: list[common.CalRow]) -> list[ConditionalRow]:
     """the free calibration rows a conditional event could hint, leaving out those another of her events or the
     scenario's can hint"""
 
@@ -297,7 +297,7 @@ def career_findings(
 ) -> list[Value | Finding]:
     """the careers' conclusions: t on every row, tc on the conditional-only rows (common.CalibTest)"""
     F: Callable[[str, Any, Any], Finding] = lambda st, test, ev: common.finding(SEC, st, test, ev)
-    lim: Callable[[Collection[Any]], float] = lambda keys: chi2.ppf(0.95, len(keys)) / 2
+    lim: Callable[[Collection[Any]], float] = lambda keys: float(chi2.ppf(0.95, len(keys))) / 2
     return [
         F(
             "Conditional events touching default targets hint them on real careers: on the conditional-only rows, the "

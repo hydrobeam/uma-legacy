@@ -367,6 +367,7 @@ for comparison in last_comparisons:
         print(f"{name}: no plan without her {comparison.error or ''}")
         continue
     without, with_veteran = comparison.without, comparison.with_veteran
+    assert without is not None and with_veteran is not None, name  # last_veteran sets both or marks it unavailable
     value_without, value_with = without["v0"], with_veteran.get("v0")
     rise = rises(value_with, value_without)
     fixed_rises += rise

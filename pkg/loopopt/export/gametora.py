@@ -28,7 +28,7 @@ Imported, it is the one reader of those files (no other code decodes them). The 
 """
 
 import argparse, glob, json, os, urllib.request
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 H = os.path.dirname(os.path.abspath(__file__))
 R = os.path.dirname(os.path.dirname(os.path.dirname(H)))
@@ -129,12 +129,23 @@ def choices(event_choices):
     return [ch for ch in (event_choices if isinstance(event_choices, list) else []) if is_choice(ch)]
 
 
-class SkillHint(NamedTuple):
-    """A fixed or random skill hint; random hints have no fixed level."""
+class FixedHint(NamedTuple):
+    """A skill hint at a fixed level"""
 
-    kind: str
-    skills: int | list[int]
-    level: int | None
+    kind: Literal["hint"]
+    skills: int | str  # the skill id (dict_evrew holds one as a string)
+    level: str  # '+1', '+2', ...
+
+
+class RandomHint(NamedTuple):
+    """A hint of one skill drawn from several; no fixed level"""
+
+    kind: Literal["random"]
+    skills: list[int]
+    level: None
+
+
+SkillHint = FixedHint | RandomHint
 
 
 class ChoiceOutcome(NamedTuple):
@@ -158,9 +169,9 @@ def hint(code):
     if not r:
         return None
     if r[0] == "sk":
-        return SkillHint(kind="hint", skills=r[2], level=r[1])
+        return FixedHint(kind="hint", skills=r[2], level=r[1])
     if r[0] == "sr":
-        return SkillHint(kind="random", skills=[x["d"] for x in r[2]], level=None)
+        return RandomHint(kind="random", skills=[x["d"] for x in r[2]], level=None)
     return None
 
 

@@ -110,7 +110,7 @@ def race_rows(R: list[Run]) -> np.ndarray:
             ri = index.get(ALIAS.get(x["race"], x["race"]))
             offered = u["turns"][t] if ri is not None and t < len(u["turns"]) else []
             option = next((o for o in offered if o["race"] == ri), None)
-            if option is None:
+            if option is None or ri is None:
                 continue
             miss[ri] = miss.get(ri, 1.0) * (1 - base_win(option["bp"], position, x["required"], d["pen"]))
             won[ri] = won.get(ri, 0) | int(x["won"])
@@ -329,10 +329,11 @@ def planned_shared_win_claims(R: list[Run], ts: list[Trial]) -> list[Value | Fin
     planned_top: dict[str, common.ClusterRatio] = {}  # at the top band's ratio
     for cat, label in (("P", "parents"), ("G", "grandparents")):
         sel = [t for t in ts if t.category == cat]
+        parts = [common.must(t.race_part, "a trial's race_part (trials(race=True))") for t in sel]
         real = sum(min(1.0, t.base * (1 + t.affinity_h0 / 100)) for t in sel)
-        chance = [min(1.0, t.base * (1 + (t.affinity_h0 - shrink * t.race_part) / 100)) for t in sel]
+        chance = [min(1.0, t.base * (1 + (t.affinity_h0 - shrink * part) / 100)) for t, part in zip(sel, parts)]
         planned[label] = common.cluster_ci([t.passed for t in sel], chance, [t.run for t in sel])
-        chance_top = [min(1.0, t.base * (1 + (t.affinity_h0 - top_shrink * t.race_part) / 100)) for t in sel]
+        chance_top = [min(1.0, t.base * (1 + (t.affinity_h0 - top_shrink * part) / 100)) for t, part in zip(sel, parts)]
         planned_top[label] = common.cluster_ci([t.passed for t in sel], chance_top, [t.run for t in sel])
         at_top = f"with the planner's shared wins at the {top} ratio"
         out += [
@@ -342,7 +343,7 @@ def planned_shared_win_claims(R: list[Run], ts: list[Trial]) -> list[Value | Fin
             Value(
                 SEC,
                 f"{label}: shared-win share of affinity",
-                sum(t.race_part for t in sel) / sum(t.affinity_h0 for t in sel),
+                sum(parts) / sum(t.affinity_h0 for t in sel),
             ),
             Value(SEC, f"{label}: predicted passes, planner's shared wins over the records'", sum(chance) / real),
             Value(SEC, f"{label}: obs / pred with the planner's shared wins", planned[label].ratio),
@@ -403,7 +404,7 @@ def zsum(ts: list[Trial], cat: str, h: int, slope: float = 1.0) -> PassSum:
 
 
 def detail() -> None:
-    R = common.runs()
+    R = common.records()
     ts = trials(R)
     agg: dict[str, list[Any]] = collections.defaultdict(lambda: [0, 0, 0.0, 0.0])  # [trials, passed, pred H0, pred H1]
     for t in ts:

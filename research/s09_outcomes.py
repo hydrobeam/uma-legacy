@@ -48,7 +48,7 @@ from common import (
 from common import Finding, Hint, Run, Value
 
 # the marker an outcome is read by: (skill name, level), or None when it has none
-Sig = tuple[str, int | str] | None
+Sig = tuple[str, int]  # an outcome's marker: (skill, its level)
 # a 90% Wilson interval
 Wil = Callable[[float, float], tuple[float, float]]
 
@@ -74,7 +74,7 @@ class SplitChoice:
     link: int | None  # its chain link
     choice: int  # 1-based
     outs: list[Outcome]  # its outcomes
-    sigs: list[Sig]  # each outcome's marker
+    sigs: list[Sig | None]  # each outcome's marker (None: it has none)
     cnt: list[int]  # per outcome, runs crediting its marker to her event (at its level where outcomes
     # differ only by level)
     cntr: list[
@@ -120,8 +120,8 @@ def split_choices(R: list[Run]) -> list[SplitChoice]:
         if crar.get(cid, 0) < 2:
             continue  # SR / SSR only
         chara = cchar.get(cid)
-        nm = chn.get(chara)
-        if not nm:
+        nm = chn.get(chara) if chara is not None else None
+        if chara is None or not nm:
             continue
         giver: set[tuple[int | str, str]] = set()  # (story id or 'sh' for a shared event, skill)
         for _, sid, chs in es:
@@ -141,12 +141,12 @@ def split_choices(R: list[Run]) -> list[SplitChoice]:
                 outs = outcome_skills(ch, gt, sk)
                 if len(outs) < 2 or len({tuple(sorted(o.items(), key=str)) for o in outs}) < 2:
                     continue
-                sigs: list[Sig] = []
+                sigs: list[Sig | None] = []
                 for o in outs:
                     m = [
                         (k, v)
                         for k, v in o.items()
-                        if v != "?" and nsrc[k] == 1 and sum(o2.get(k) == v for o2 in outs) == 1
+                        if isinstance(v, int) and nsrc[k] == 1 and sum(o2.get(k) == v for o2 in outs) == 1
                     ]
                     sigs.append(m[0] if m else None)
                 if not any(sigs):
@@ -224,24 +224,28 @@ class Credits:
 
 
 def count_credits(
-    mine: list[tuple[Run, dict[str, Hint]]], outs: list[Outcome], sigs: list[Sig], ev: str, floor: dict[str, int]
+    mine: list[tuple[Run, dict[str, Hint]]],
+    outs: list[Outcome],
+    sigs: list[Sig | None],
+    ev: str,
+    floor: dict[str, int | str],
 ) -> Credits:
     """per outcome index, the runs crediting its marker to the event `ev` (Credits). One rule per choice: where two
     marked outcomes share a skill every marker is read by its exact level, credited to her alone; otherwise a marker
     whose skill another outcome also gives is read by its level, the rest by any credit at a level the outcome can give
     (at_level()) or, the second reading, any credit at all"""
     c = Credits(*(collections.Counter() for _ in range(4)), low=0)
-    marked = [j for j, m in enumerate(sigs) if m]
-    distinct = len({sigs[j][0] for j in marked}) == len(marked)
+    marked = [(j, m) for j, m in enumerate(sigs) if m]
+    distinct = len({m[0] for _, m in marked}) == len(marked)
     for _, hs in mine:
         hit: list[int] = []
         hit_any: list[int] = []
-        for j in marked:
-            m = sigs[j]
+        for j, m in marked:
             h = hs.get(m[0])
             if not h or ev not in h["src"]:
                 continue
-            if isinstance(floor.get(m[0]), int) and h["lv"] < floor[m[0]]:
+            low_level = floor.get(m[0])
+            if isinstance(low_level, int) and h["lv"] < low_level:
                 c.low += 1
                 c.low_by[m[0]] += 1
             if not distinct or sum(m[0] in o for o in outs) > 1:  # read by its level
@@ -258,7 +262,7 @@ def count_credits(
                 c.cnt[j] += 1
         if distinct:
             for got, hits in ((c.cntr, hit), (c.cntr_any, hit_any)):
-                if all(could_show(hs, sigs[j], j in hits) for j in marked):
+                if all(could_show(hs, m, j in hits) for j, m in marked):
                     for j in hits:
                         got[j] += 1
     return c
@@ -377,7 +381,8 @@ def equal_scan(X: list[SplitChoice]) -> tuple[list[ScanRow], collections.Counter
     out: list[ScanRow] = []
     skipped: collections.Counter[str] = collections.Counter()
     for x in X:
-        marked = [j for j, m in enumerate(x.sigs) if m]
+        marks = {j: m for j, m in enumerate(x.sigs) if m}  # each marked outcome's marker
+        marked = list(marks)
         if len(marked) < 2:
             skipped["one marked outcome"] += 1
             continue
@@ -386,9 +391,9 @@ def equal_scan(X: list[SplitChoice]) -> tuple[list[ScanRow], collections.Counter
         if sum(c) < MIN_READINGS:
             skipped[f"under {MIN_READINGS} readings"] += 1
             continue
-        split = len({x.sigs[j][0] for j in marked}) == 1
-        j = max(marked, key=lambda i: x.sigs[i][1]) if split else marked[0]
-        sig = x.sigs[j]
+        split = len({marks[j][0] for j in marked}) == 1
+        j = max(marked, key=lambda i: marks[i][1]) if split else marked[0]
+        sig = marks[j]
         link = f"link {x.link}" if x.link else "random"
         out.append(
             ScanRow(
@@ -398,8 +403,8 @@ def equal_scan(X: list[SplitChoice]) -> tuple[list[ScanRow], collections.Counter
                 n=sum(c),
                 eq=equal_marked(x),
                 level_split=split,
-                distinct=len({x.sigs[i][0] for i in marked}) == len(marked),
-                larger=(sig[1] > min(x.sigs[i][1] for i in marked)) if split else None,
+                distinct=len({marks[i][0] for i in marked}) == len(marked),
+                larger=(sig[1] > min(marks[i][1] for i in marked)) if split else None,
                 low=x.low,
                 k_any=ca[j],
                 n_any=sum(ca),
@@ -1597,7 +1602,7 @@ def festa_findings(X: list[SplitChoice]) -> list[Value | Finding]:
 
 
 def detail() -> None:
-    S = common.runs()
+    S = common.records()
     a = anshin(S)
     print(
         "Anshinzawa finale by priority (no Festa): neither shown-prioritised",

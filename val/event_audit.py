@@ -66,11 +66,13 @@ def event_hints(choices):
     """(skill name, level or 'random') for every hint of an event's choices"""
     out = []
     for choice in gametora.choices(choices):
-        for kind, skill, level in gametora.hints(choice[1]):
-            if kind == "hint":
-                out.append(EventHint(skill_name=skill_names.get(skill, f"(JP-only {skill})"), level=level))
+        for hint in gametora.hints(choice[1]):
+            if hint.kind == "hint":
+                out.append(
+                    EventHint(skill_name=skill_names.get(hint.skills, f"(JP-only {hint.skills})"), level=hint.level)
+                )
             else:
-                out += [EventHint(skill_name=skill_names.get(d, "?"), level="random") for d in skill]
+                out += [EventHint(skill_name=skill_names.get(d, "?"), level="random") for d in hint.skills]
     return out
 
 
