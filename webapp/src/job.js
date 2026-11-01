@@ -1,6 +1,6 @@
 // ---------- job fields every search sends (the loop planner and the career page) ----------
 // Each takes the settings it reads (settings.ts: `settings.value`, or the defaults for the example's job).
-import { gameData, SCEN_GOLDS } from './data.js';
+import { gameData, SCEN_GOLDS } from './data.ts';
 /** @typedef {import('./settings.ts').SettingsView} SettingsView */
 // skills a career always gives an uma outside her outfit and the deck: Tokai Teio's Head-On (her Triple Crown event;
 // all three races are her career goals) and Yamanin Zephyr's Slipstream (a goal race's; GameTora's event data lacks it).

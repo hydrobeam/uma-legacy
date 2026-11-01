@@ -1,7 +1,7 @@
 // ---------- the loop search's job, from the settings it is given (it reads no store: the caller passes their values) ----------
 // buildJob: the job for settings `s`, or why they can't be searched (blockedStatus says it); jobKey: the key a job's
 // result is kept and recognised by; doneText: the status line of a finished search.
-import { ASSETS, gameData } from '../data.js';
+import { ASSETS, gameData } from '../data.ts';
 import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.js';
 import { ERA } from '../saved.ts';
 import type { SettingsView } from '../settings.ts';

@@ -44,7 +44,7 @@ class StarMixes(NamedTuple):
 
 
 def mixes() -> StarMixes:
-    src = open(os.path.join(common.ROOT, "webapp", "src", "data.js")).read()
+    src = open(os.path.join(common.ROOT, "webapp", "src", "data.ts")).read()
     ranks = dict(re.findall(r"(\w+): '([\d.]+,[\d.]+,[\d.]+)'", re.search(r"RANKS = \{(.*?)\}", src).group(1)))
     page = {k: tuple(float(x) for x in v.split(",")) for k, v in ranks.items()}
     scenario_ss = {int(i): b == "true" for i, b in re.findall(r"id: (\d+),[^}]*?ss: (true|false)", src)}
