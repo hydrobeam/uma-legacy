@@ -109,7 +109,3 @@ export const ownNoCards = () =>
   setOwned({
     cardsOff: { ...settings.value.cardsOff, ...Object.fromEntries(gameData().cards.map((c) => [c.id, false])) },
   });
-// Kept for callers that drew the card picker before it followed the settings (part 2 of step 11 drops the calls):
-// nothing to do, the picker redraws itself. career/main.tsx calls initCards, popover.js paintCards.
-export const initCards = () => undefined;
-export const paintCards = () => undefined;

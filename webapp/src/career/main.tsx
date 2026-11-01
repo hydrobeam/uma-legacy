@@ -40,14 +40,10 @@ import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, st
 import { answerLoad, answerSave } from '../statestore.js';
 import { goldGiven } from '../job.js';
 import { initScenario, eraScenario } from '../scenario.js';
-import { initRoster, renderRoster } from '../roster.js';
-import { initCards } from '../cards.js';
-import { initOwnedImport } from '../owned.js';
 import { initPopover } from '../popover.js';
 import '../agenda.js'; // (its document listener is added before gmtip's)
-import { initSetup } from '../setup.js';
+import { mountSetup } from '../ui/Setup.tsx';
 import '../gmtip.js'; // the game-style tooltips (both planner pages)
-import { initTargets, renderTargets } from '../targets.js';
 import {
   vets,
   places,
@@ -240,16 +236,10 @@ function initSettings() {
   };
   $('era-global').onclick = () => setEra('global');
   $('era-gm').onclick = () => setEra('gm');
-  initScenario();
-  initRoster();
-  initCards();
-  initOwnedImport();
-  initTargets();
+  initScenario(); // (first: the era's scenario swap is the setup the first search starts from)
   mount('bp', <BorrowChoice />, 'Borrowed parent');
-  renderRoster();
-  renderTargets();
   enginePersist(); // the solver's kept work survives a page reload
-  initSetup();
+  mountSetup(); // the setup editors both pages share (ui/Setup.tsx)
   initFold();
   // the first veterans fold the setup panel (until a fold is chosen)
   if (vets.peek().length) sawVeterans();

@@ -52,6 +52,8 @@ export function RunAct({ stop }: { stop: () => void }) {
       ? {
           key: given.click || given.label,
           label: given.label,
+          // (a press of another view's button by its id, `#r-all` (ui/Roster.tsx): a click, which that view handles as
+          // its own; the mount-root check cannot see an id built at run time, so it is named here)
           run: given.run || (() => $(must(given.click, 'an act without run names the button it presses')).click()),
         }
       : null;

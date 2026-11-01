@@ -5,7 +5,8 @@
 // Its pressed state and the filter's verdict are each bound to a computed, so a click, All / None or a keystroke
 // redraws no tile. Drawn into the template's #cards-panel (`mountCards`).
 import { computed, signal, useComputed } from '@preact/signals';
-import { Fragment, render } from 'preact';
+import { Fragment } from 'preact';
+import { renderGuarded } from './RenderGuard.tsx';
 import { useRef } from 'preact/hooks';
 import { $ } from '../dom.js';
 import { SCENARIOS, gameData } from '../data.js';
@@ -178,5 +179,5 @@ function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
 }
 /** the Support cards panel into its mount point; `fadeMore`: the list's bottom edge fades while there is more below */
 export function mountCards(fadeMore: boolean) {
-  render(<CardsPanel fadeMore={fadeMore} />, $('cards-panel'));
+  renderGuarded(<CardsPanel fadeMore={fadeMore} />, $('cards-panel'), 'The Support cards panel', settings);
 }

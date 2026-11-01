@@ -1,7 +1,7 @@
 // ---------- the setup both planner pages share (panels.template.html): its editors, and the Umas and Support cards ----------
 // dialogs. `mountSetup` draws each editor into its mount point, and makes the Umas and Support cards buttons open their
 // dialogs (Done, Escape or a click on the backdrop closes one), each button with its count. Called once, by each page's
-// entry (the career page's through setup.js, by its old name).
+// entry; each editor draws inside a render guard (ui/RenderGuard.tsx).
 import { $, $dialog, backdropCloses } from '../dom.js';
 import { on } from '../store.ts';
 import { rosterCounts } from '../roster.js';

@@ -78,6 +78,3 @@ export async function importFiles(input) {
   if (changed) setOwned(marks);
   return said.join(' ');
 }
-// Kept for career/main.tsx, which wired the Import buttons before they were the panels' own (part 2 of step 11 drops
-// the call): nothing to do.
-export const initOwnedImport = () => undefined;

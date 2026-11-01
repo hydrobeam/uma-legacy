@@ -88,9 +88,3 @@ export const ownNoUmas = () =>
       ...Object.fromEntries(gameData().umas.map((u) => [u.id, /** @type {const} */ ('out')])),
     },
   });
-// Kept for callers that drew the roster before it followed the settings (part 2 of step 11 drops the calls): nothing
-// to do, the roster redraws itself. career/main.tsx calls initRoster and renderRoster, popover.js paintRoster.
-export const initRoster = () => undefined;
-export const renderRoster = () => undefined;
-/** @param {number} [_umaId] */
-export const paintRoster = (_umaId) => undefined;

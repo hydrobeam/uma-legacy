@@ -40,7 +40,3 @@ export function suggest(typed) {
 export const addTarget = (group) => setTargets([...settings.value.targets, { group }]);
 /** @param {number} at the target's place */
 export const removeTargetAt = (at) => setTargets(settings.value.targets.filter((_, j) => j !== at));
-// Kept for career/main.tsx, which drew the targets before they followed the settings (part 2 of step 11 drops the
-// calls): nothing to do, the editor redraws itself.
-export const initTargets = () => undefined;
-export const renderTargets = () => undefined;

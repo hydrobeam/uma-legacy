@@ -6,7 +6,8 @@
 // run's own errors do: each page names how, `sayRenderErrors`), and the view shows `fallback` until what it draws
 // (`input`) is replaced, when it draws again.
 import type { ReadonlySignal } from '@preact/signals';
-import type { ComponentChildren } from 'preact';
+import { render } from 'preact';
+import type { ComponentChildren, VNode } from 'preact';
 import { useErrorBoundary, useRef } from 'preact/hooks';
 
 interface GuardProps {
@@ -37,3 +38,12 @@ export function RenderGuard({ input, what, fallback = null, children }: GuardPro
   return error && input.value === failedOn.current ? fallback : children;
 }
 const errorText = (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown));
+/** `view` into its mount point `host`, inside a guard: `what` names it on the status line; it draws again once `input`
+ *  (what it draws from) is replaced */
+export const renderGuarded = (view: VNode, host: HTMLElement, what: string, input: ReadonlySignal<unknown>) =>
+  render(
+    <RenderGuard input={input} what={what}>
+      {view}
+    </RenderGuard>,
+    host,
+  );

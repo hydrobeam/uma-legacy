@@ -4,8 +4,8 @@ import { esc } from './dom.js';
 import { gameData } from './data.js';
 import { settings, setOwned } from './settings.ts';
 import { goldGiven } from './job.js';
-import { umaState, paintRoster } from './roster.js';
-import { cardTitle, cardGives, giftsHTML, paintCards, chainEndAt } from './cards.js';
+import { umaState } from './roster.js';
+import { cardTitle, cardGives, giftsHTML, chainEndAt } from './cards.js';
 import { must } from './must.ts';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
@@ -127,7 +127,6 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
     } else if (outfitId) outfits[outfitId] = false;
     else roster[u.id] = 'out';
     setOwned({ roster, outfits });
-    paintRoster(u.id);
     toggle.checked = owned();
   };
 }
@@ -195,7 +194,6 @@ function openCardPop(chip) {
     toggle.onchange = () => {
       const { [c.id]: _, ...rest } = settings.value.cardsOff;
       setOwned({ cardsOff: toggle.checked ? rest : { ...rest, [c.id]: false } });
-      paintCards();
     };
 }
 // a click on what is already open closes it; on another card or name, its panel opens instead

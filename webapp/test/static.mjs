@@ -487,11 +487,7 @@ const MOUNT_READS = {
 // JSDoc `@import` or `import('…')` type): any relative path written in the module that resolves to a .tsx file.
 // A module kept only to give a component's mount an old name another lane's code still imports is listed in
 // VIEW_IMPORTS_KEPT with why; one that no longer imports it fails too.
-const VIEW_IMPORTS_KEPT = {
-  'src/setup.js src/ui/Setup.tsx':
-    "career/main.tsx imports mountSetup as setup.js's initSetup; part 2 of step 11 imports it from ui/Setup.tsx and " +
-    'deletes setup.js',
-};
+const VIEW_IMPORTS_KEPT = {};
 {
   const isView = (file) => file.endsWith('.tsx');
   const viewImports = new Set();

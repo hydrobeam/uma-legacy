@@ -212,7 +212,8 @@ function OptionRow({ r, cur, mine, planReport, places, pick }: RowProps) {
       <td>{fmtIn(r.p_all)}</td>
       {/* the number carries the tooltip (its balloon points at the number, not the middle of the cell) */}
       <td class="orole">
-        <span class="onum" tabIndex={tip ? 0 : undefined} title={tip}>
+        {/* (keyed by having a tip: Preact sets `title` as a property, so a title taken away would stay as title="") */}
+        <span key={tip ? 'tip' : 'none'} class="onum" tabIndex={tip ? 0 : undefined} title={tip}>
           {extraText(r, pick, planReport)}
         </span>
       </td>
