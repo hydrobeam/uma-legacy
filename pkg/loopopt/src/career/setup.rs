@@ -92,7 +92,8 @@ pub(super) fn career_setup<'data>(
         return Err(json!({"error": "Add at least two veterans to choose parents from."}));
     }
     let pool_ids: Vec<u32> = trainees.iter().map(|&i| data.umas[i].id).collect();
-    let entries = deck_entries(cards, deck_job, &uncertain_groups, &pool_ids)?;
+    let entries = deck_entries(cards, deck_job, &uncertain_groups, &pool_ids)
+        .map_err(|refusal| json!({"error": refusal.error}))?;
     let space = deck_space(cards, deck_job, skills, &uncertain_groups, &entries);
     let deck_odds_ceilings = deck_odds_ceilings(data, &space, &owned, uncertain_count, deck_job.deck_size);
     let outfit_coverage: UmaTable<Vec<Vec<u8>>> = model

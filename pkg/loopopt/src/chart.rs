@@ -2,7 +2,55 @@
 //! Win probabilities come from `data`; schedule optimization belongs to `loop_planner::schedules`.
 use crate::data::{Choice, Data, NT, OptRaw, Sched};
 use crate::uma::UmaIndex;
-use serde_json::{Value, json};
+use serde::Serialize;
+use ts_rs::TS;
+
+/// One member's attempt at a scheduled race.
+#[derive(Serialize, TS)]
+pub(crate) struct ScheduleCell {
+    /// her win chance, in percent, rounded
+    pub(crate) p: f64,
+    /// a goal race of her scenario
+    pub(crate) goal: bool,
+    /// the aptitude cost (distance and surface grades), in percentage points
+    pub(crate) apt: i64,
+    /// the career planner's low-aptitude cost (a race at the lowest aptitudes wins less than the table says), in
+    /// percentage points; the loop planner's cells have none
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) low: Option<i64>,
+    /// which race in a row this is (1 = the first)
+    pub(crate) row: usize,
+    /// the penalty for racing several turns in a row, in percentage points (a goal race pays the previous position's)
+    pub(crate) pen: i32,
+}
+
+/// One scheduled G1, one cell per member (null: she doesn't run it).
+#[derive(Serialize, TS)]
+pub(crate) struct ScheduleRow {
+    /// 0 Junior, 1 Classic, 2 Senior
+    pub(crate) year: usize,
+    /// the turn, as "Cl E-Apr" (year, Early or Late, month)
+    pub(crate) when: String,
+    /// its name, shortened; "A/B" when either of two races runs at the same odds
+    pub(crate) race: String,
+    /// two or more members run it (it builds affinity); in a career's schedule, a parent won it
+    pub(crate) shared: bool,
+    pub(crate) cells: Vec<Option<ScheduleCell>>,
+    /// how many members run it
+    pub(crate) runners: usize,
+    /// the other race of an "A/B" pair (the career planner's rows: none)
+    pub(crate) alts: Vec<String>,
+}
+
+/// A loop member as a result names her.
+#[derive(Serialize, TS)]
+pub(crate) struct LoopMember {
+    pub(crate) id: u32,
+    pub(crate) name: String,
+    /// her name shortened for chart columns
+    pub(crate) short: String,
+}
 
 /// Calendar label of turn `turn` (0-based): year, early (E) or late (L) half, month.
 pub(crate) fn when(turn: usize) -> String {
@@ -158,7 +206,7 @@ pub(crate) fn interchangeable(
 }
 
 /// Structured schedule chart: shared G1s (affinity) and optional G1s (one runner, race sparks only).
-pub(crate) fn chart_rows(data: &Data, members: &[UmaIndex], schedules: &[Sched]) -> Value {
+pub(crate) fn chart_rows(data: &Data, members: &[UmaIndex], schedules: &[Sched]) -> Vec<ScheduleRow> {
     let member_count = members.len();
     let streaks: Vec<Vec<usize>> = (0..member_count)
         .map(|i| {
@@ -196,22 +244,26 @@ pub(crate) fn chart_rows(data: &Data, members: &[UmaIndex], schedules: &[Sched])
         }
     }
     rows.sort_unstable();
-    let rows_json: Vec<Value> = rows
-        .iter()
+    rows.iter()
         .map(|&(turn, race)| {
             let mut runner_count = 0;
-            let cells: Vec<Value> = (0..member_count)
+            let cells: Vec<Option<ScheduleCell>> = (0..member_count)
                 .map(|i| match chosen(data, members[i], &schedules[i], turn) {
                     Some(chosen) if chosen.race == race => {
                         runner_count += 1;
                         let streak = streaks[i][turn];
                         // Win chance accounts for aptitude grades (distance + surface, out of 110) and consecutive
                         // races.
-                        json!({"p": (data.option_chance(chosen, streak) * 100.0).round(), "goal": chosen.goal,
-                           "apt": 110 - chosen.win_rate_basis, "row": streak,
-                           "pen": data.streak_penalty(chosen.goal, streak)})
+                        Some(ScheduleCell {
+                            p: (data.option_chance(chosen, streak) * 100.0).round(),
+                            goal: chosen.goal,
+                            apt: i64::from(110 - chosen.win_rate_basis),
+                            low: None,
+                            row: streak,
+                            pen: data.streak_penalty(chosen.goal, streak),
+                        })
                     }
-                    _ => Value::Null,
+                    _ => None,
                 })
                 .collect();
             let shared = runners[race as usize].iter().filter(|runs_race| **runs_race).count() >= 2;
@@ -219,19 +271,26 @@ pub(crate) fn chart_rows(data: &Data, members: &[UmaIndex], schedules: &[Sched])
                 .iter()
                 .map(|&alternative| chart_race_name(&data.race_names[alternative as usize]))
                 .collect();
-            json!({"race": row_label(data, members, schedules, turn, race), "when": when(turn), "year": turn / 24,
-               "shared": shared, "cells": cells, "runners": runner_count, "alts": alternatives})
+            ScheduleRow {
+                race: row_label(data, members, schedules, turn, race),
+                when: when(turn),
+                year: turn / 24,
+                shared,
+                cells,
+                runners: runner_count,
+                alts: alternatives,
+            }
         })
-        .collect();
-    Value::Array(rows_json)
+        .collect()
 }
 
-pub(crate) fn member_json(data: &Data, members: &[UmaIndex]) -> Vec<Value> {
+/// The members of a loop as its result names them.
+pub(crate) fn loop_members(data: &Data, members: &[UmaIndex]) -> Vec<LoopMember> {
     members
         .iter()
         .map(|&member| {
             let uma = &data.umas[member];
-            json!({"id": uma.id, "name": uma.name, "short": short_name(&uma.name)})
+            LoopMember { id: uma.id, name: uma.name.clone(), short: short_name(&uma.name) }
         })
         .collect()
 }

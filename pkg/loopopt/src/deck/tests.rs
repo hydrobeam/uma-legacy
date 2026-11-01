@@ -1139,7 +1139,7 @@ fn deck_limits_refuse_with_an_error() {
     let target_groups = [20159u32];
     let err = |deck_job: &DeckJob, target_groups: &[u32]| match deck_entries(&cards, deck_job, target_groups, &[]) {
         Ok(_) => None,
-        Err(e) => Some(e["error"].as_str().expect("an error message").to_string()),
+        Err(e) => Some(e.error),
     };
     assert_eq!(err(&job_with(json!({})), &target_groups), None);
     for size in [0, 7, 8, usize::MAX] {
@@ -1172,7 +1172,7 @@ fn deck_limits_refuse_with_an_error() {
                 passed += 1;
             }
             Err(e) => {
-                assert!(e["error"].as_str().unwrap().contains("kinds"), "{n} cards: {e}");
+                assert!(e.error.contains("kinds"), "{n} cards: {}", e.error);
                 refused += 1;
             }
         }

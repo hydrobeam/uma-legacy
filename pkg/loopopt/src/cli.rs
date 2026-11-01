@@ -115,11 +115,16 @@ pub(crate) fn print_cli_job(
     job: &serde_json::Value,
 ) {
     let started = Instant::now();
-    let mut out = if mode == "career" {
-        crate::career::run_career(data, skills, cards, job)
+    let (reply, seconds) = if mode == "career" {
+        let reply = crate::career::run_career(data, skills, cards, job);
+        (serde_json::to_value(reply), started.elapsed().as_secs_f64())
     } else {
-        crate::loop_planner::job::run_deck(data, skills, cards, job)
+        let reply = crate::loop_planner::job::run_deck(data, skills, cards, job);
+        (serde_json::to_value(reply), started.elapsed().as_secs_f64())
     };
-    out["timing_s"] = serde_json::json!(started.elapsed().as_secs_f64());
+    // the reply as one JSON object (its keys sorted) with the solver's time beside its fields, replacing a career
+    // reply's own `timing_s` (which counts from after the job was read)
+    let mut out = reply.unwrap();
+    out["timing_s"] = serde_json::json!(seconds);
     println!("{out}");
 }

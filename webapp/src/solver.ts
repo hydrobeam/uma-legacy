@@ -3,6 +3,7 @@
 // the page builds and reads them (loop/job.ts `DeckJob` and loop/types.ts `LoopReport` for `deck`; career/job.ts `CareerJob` and
 // `CareerSearch` for `career`); here, what the worker and the engine read. The solver's side is
 // pkg/loopopt/src/web.rs (`handle`: the commands).
+import type { ScheduleCell as SolverCell, ScheduleRow as SolverRow } from './gen/solver.ts';
 
 /**
  * A job: its command and that command's fields. Named here, the fields the worker and the engine read.
@@ -75,44 +76,20 @@ export type FromWorker =
   | { type: 'error'; id: number | undefined; message: string };
 
 // ---------- the schedule report both commands carry (each G1 a member could run; agenda.ts reads it) ----------
-/** One member's attempt at a scheduled race (the solver's schedule report). */
-export interface ScheduleCell {
-  /** her win chance, in percent */
-  p: number;
-  /** the aptitude cost (distance and surface grades), in percentage points */
-  apt?: number;
-  /** the career planner's low-aptitude cost (a race at the lowest aptitudes wins less than the table says), in
-   *  percentage points; absent from the loop planner's cells */
-  low?: number;
-  /** the penalty for racing several turns in a row, in percentage points (a goal race pays the previous position's) */
-  pen?: number;
-  /** which race in a row this is (1 = the first) */
-  row?: number;
-  /** a goal race of her scenario */
-  goal: boolean;
-  /** the career page: her win chance on the community table, on her own grades (`shownP` shows it in place of `p`, the
-   *  planner's, which counts her pink sparks) */
+/** One member's attempt at a scheduled race: the solver's cell, and on the career page the community table's figures
+ * the page adds (career/view/parts.ts) */
+export type ScheduleCell = SolverCell & {
+  /** her win chance on the community table, on her own grades (`shownP` shows it in place of `p`, the planner's,
+   *  which counts her pink sparks) */
   tbl?: number;
   /** the table's aptitude cost on her own grades, in percentage points */
   tapt?: number;
   /** those grades, as "Mile C, Turf A" */
   grades?: string;
-}
-/** One scheduled G1, one cell per member (null: she doesn't run it). */
-export interface ScheduleRow {
-  /** 0 Junior, 1 Classic, 2 Senior */
-  year: number;
-  /** the turn, as "Cl E-Apr" (year, Early or Late, month) */
-  when: string;
-  /** its name; "A/B" when either of two races runs at the same odds */
-  race: string;
-  /** two or more members run it (it builds affinity); one member: a parent won it */
-  shared: boolean;
+};
+/** One scheduled G1 as the page draws it: the solver's row, its cells as the page shows them; a career's row also
+ * says which of her parents won it */
+export type ScheduleRow = Omit<SolverRow, 'cells'> & {
   cells: (ScheduleCell | null)[];
-  /** one member: which of her parents won it */
   parents?: boolean[];
-  /** how many members run it */
-  runners: number;
-  /** the other race of an "A/B" pair */
-  alts?: string[];
-}
+};

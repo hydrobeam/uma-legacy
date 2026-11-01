@@ -15,6 +15,8 @@ crate-type = ["rlib", "cdylib"]
 serde = { version = "1", features = ["derive", "rc"] }
 # float_roundtrip: a float the solver printed parses back to the same bits (the page sends `next.fit` back)
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# the page's TypeScript types of every report and job, generated from these structs (`./build.sh types`, docs/BUILD.md)
+ts-rs = "=12.0.1"
 
 # build.rs reads the training-hint constants and the career planner's low-basis cost from research/results.json
 [build-dependencies]

@@ -19,8 +19,8 @@
 //! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
 use crate::data::Data;
 use crate::uma::{UmaIndex, UmaTable};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 /// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
 /// the six ancestors already carrying that spark (assumed; docs/RESEARCH.md section 1).
 /// In a running loop all six carry every target.
@@ -585,24 +585,27 @@ impl<'data> Model<'data> {
     /// `deck`: one (white odds, gold odds) pair of slices per member in `members` order. Each slice is indexed by
     /// `self.uncertain`, not by every job target. None uses the job's own deck fields.
     /// `members`: the members (3 or 4); lineages as in `lins(members.len())`, a rotation's X being the trainee.
+    /// `exact_p_all`: per lineage, P(all land) from the exact joint model (the model's product value here is the
+    /// lineage's `rank_value`).
     pub(crate) fn detail(
         &self,
         members: &[UmaIndex],
         o: &dyn Fn(usize, usize) -> f64,
         deck: Option<&[(&[f64], &[f64])]>,
-    ) -> Value {
+        exact_p_all: &[f64],
+    ) -> AffinityDetail {
         let data = self.data;
         let pair = |a: usize, b: usize| f64::from(data.pair_relations[members[a]][members[b]]);
         let trio = |a: usize, b: usize, c: usize| f64::from(data.trio_relations[members[a]][members[b]][members[c]]);
         let mut pairs = vec![];
         for a in 0..members.len() {
             for b in a + 1..members.len() {
-                pairs.push(json!({"a": a, "b": b, "rel": pair(a, b), "wins": o(a, b)}));
+                pairs.push(PairDetail { a, b, rel: pair(a, b), wins: o(a, b) });
             }
         }
         let mut lineage_reports = vec![];
-        for &MemberLineage { trainee: t, first_parent: p1, second_parent: p2, shared_grandparent: x } in
-            lins(members.len())
+        for (l, &MemberLineage { trainee: t, first_parent: p1, second_parent: p2, shared_grandparent: x }) in
+            lins(members.len()).iter().enumerate()
         {
             let mut slots = vec![];
             let mut miss = 1.0f64;
@@ -612,14 +615,28 @@ impl<'data> Model<'data> {
                 let affinity = relation + race;
                 let proc = slot_proc(self.base, affinity);
                 miss *= 1.0 - proc;
-                slots.push(json!({"kind": "parent", "who": [par], "rel": relation, "race": race, "aff": affinity, "proc": proc}));
+                slots.push(LegacySlot {
+                    kind: LegacyKind::Parent,
+                    who: vec![par],
+                    rel: relation,
+                    race,
+                    aff: affinity,
+                    proc,
+                });
                 for g in [other, x] {
                     let relation = trio(t, par, g);
                     let race = 3.0 * o(par, g);
                     let affinity = relation + race;
                     let proc = slot_proc(GP_RATE * self.base, affinity);
                     miss *= 1.0 - proc;
-                    slots.push(json!({"kind": "grandparent", "who": [par, g], "rel": relation, "race": race, "aff": affinity, "proc": proc}));
+                    slots.push(LegacySlot {
+                        kind: LegacyKind::Grandparent,
+                        who: vec![par, g],
+                        rel: relation,
+                        race,
+                        aff: affinity,
+                        proc,
+                    });
                 }
             }
             let q = 1.0 - miss.powi(INSPIRATIONS);
@@ -641,18 +658,120 @@ impl<'data> Model<'data> {
                     q,
                 ),
             };
-            let skills: Vec<Value> = self
+            let skills = self
                 .uncertain
                 .iter()
                 .zip(&probs)
                 .zip(&self.outfit_options[members[t]][k].coverage)
-                .map(|((&i, p), target_coverage)| json!({"group": self.job.targets[i].group, "p": p, "outfit": target_coverage}))
+                .map(|((&i, &p), &outfit)| TargetChance { group: self.job.targets[i].group, p, outfit })
                 .collect();
-            lineage_reports.push(json!({"t": t, "p": [p1, p2], "x": x, "slots": slots, "q": q, "p_all": self.fixed() * value, "skills": skills,
-                             "fixed_gold": self.n_fixed_gold}));
+            lineage_reports.push(LineageDetail {
+                t,
+                p: [p1, p2],
+                x,
+                slots,
+                q,
+                p_all: exact_p_all[l],
+                rank_value: self.fixed() * value,
+                skills,
+                fixed_gold: self.n_fixed_gold,
+            });
         }
-        json!({"base": self.base, "gp_rate": GP_RATE, "inspirations": INSPIRATIONS, "gen_white": GEN_WHITE, "gen_gold": GEN_GOLD, "pairs": pairs, "lineages": lineage_reports})
+        AffinityDetail {
+            base: self.base,
+            gp_rate: GP_RATE,
+            inspirations: INSPIRATIONS,
+            gen_white: GEN_WHITE,
+            gen_gold: GEN_GOLD,
+            pairs,
+            lineages: lineage_reports,
+        }
     }
+}
+
+/// Everything behind a loop's metric (`Model::detail`): the model's constants, each pair of members, each lineage.
+/// Uma numbers index the loop's members.
+#[derive(Serialize, TS)]
+pub(crate) struct AffinityDetail {
+    /// a parent legacy's inheritance rate before affinity (from the job's star mix)
+    pub(crate) base: f64,
+    /// a grandparent's rate as a share of a parent's
+    pub(crate) gp_rate: f64,
+    /// inheritance events per career
+    pub(crate) inspirations: i32,
+    /// the chance an inherited white skill hint lands
+    pub(crate) gen_white: f64,
+    /// the chance an inherited gold skill hint lands
+    pub(crate) gen_gold: f64,
+    pub(crate) pairs: Vec<PairDetail>,
+    pub(crate) lineages: Vec<LineageDetail>,
+}
+
+/// Two members: their relation points and expected shared G1 wins.
+#[derive(Serialize, TS)]
+pub(crate) struct PairDetail {
+    pub(crate) a: usize,
+    pub(crate) b: usize,
+    pub(crate) rel: f64,
+    pub(crate) wins: f64,
+}
+
+/// One career of the loop: trainee `t` bred from parents `p`, who share grandparent `x`.
+#[derive(Serialize, TS)]
+#[ts(rename = "Lineage")]
+pub(crate) struct LineageDetail {
+    /// the trainee
+    pub(crate) t: usize,
+    /// her parents
+    pub(crate) p: [usize; 2],
+    /// the grandparent both parents were bred from
+    pub(crate) x: usize,
+    /// her six legacies: each parent, then that parent's two grandparents
+    pub(crate) slots: Vec<LegacySlot>,
+    /// her chance of an inheritance per career
+    pub(crate) q: f64,
+    /// the chance she lands every target, from the exact joint model
+    pub(crate) p_all: f64,
+    /// the same chance in the model the search ranks by (each target's chance multiplied)
+    pub(crate) rank_value: f64,
+    /// per uncertain target: her chance of landing it, and what her outfit gives of it
+    pub(crate) skills: Vec<TargetChance>,
+    /// how many targets the job counts as gold already (`guaranteed` 2; left out of `skills`)
+    pub(crate) fixed_gold: i32,
+}
+
+/// Whose legacy a slot is.
+#[derive(Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum LegacyKind {
+    Parent,
+    Grandparent,
+}
+
+/// One legacy slot of a career.
+#[derive(Serialize, TS)]
+pub(crate) struct LegacySlot {
+    pub(crate) kind: LegacyKind,
+    /// [parent] or [parent, grandparent]
+    pub(crate) who: Vec<usize>,
+    /// relation points
+    pub(crate) rel: f64,
+    /// the G1 wins shared (expected), as points
+    pub(crate) race: f64,
+    /// affinity
+    pub(crate) aff: f64,
+    /// the chance the slot's legacy is inherited per event
+    pub(crate) proc: f64,
+}
+
+/// A trainee's chance of landing one uncertain target.
+#[derive(Serialize, TS)]
+pub(crate) struct TargetChance {
+    /// the target's skill group
+    pub(crate) group: u32,
+    pub(crate) p: f64,
+    /// what her outfit gives of it: 0 nothing, 1 the white skill, 2 the gold
+    pub(crate) outfit: u8,
 }
 
 /// `Model::outfit_fast` for one outfit, its inputs prepared once for a caller that evaluates it many times (the deck
@@ -819,6 +938,7 @@ pub(crate) fn check_sizes(sizes: &[usize], pool: usize, required: usize) -> Resu
 mod tests {
     use super::*;
     use crate::data::{load, rel_tables};
+    use serde_json::json;
     use std::sync::OnceLock;
     fn data() -> &'static Data {
         static D: OnceLock<Data> = OnceLock::new();
@@ -957,15 +1077,14 @@ mod tests {
                 _ => panic!(),
             }
         };
-        let det = m.detail(&f, &ov, None);
+        let det = m.detail(&f, &ov, None, &[0.0; 3]);
         let pr = |a: usize, b: usize| f64::from(data.pair_relations[f[a]][f[b]]);
         let tr = |a: usize, b: usize, c: usize| f64::from(data.trio_relations[f[a]][f[b]][f[c]]);
-        let ls = det["lineages"].as_array().unwrap();
+        let ls = &det.lineages;
         assert_eq!(ls.len(), 3);
         for (l, &(t, b, c, _)) in [(0usize, 1usize, 2usize, 0usize), (1, 0, 2, 1), (2, 0, 1, 2)].iter().enumerate() {
-            let slots = ls[l]["slots"].as_array().unwrap();
-            let got: Vec<(f64, f64)> =
-                slots.iter().map(|x| (x["rel"].as_f64().unwrap(), x["race"].as_f64().unwrap())).collect();
+            let slots = &ls[l].slots;
+            let got: Vec<(f64, f64)> = slots.iter().map(|slot| (slot.rel, slot.race)).collect();
             // trainee T, parents B (bred from C and T) and C (bred from B and T)
             #[rustfmt::skip] // a table: each row's comment names its slot
             let want = [
@@ -979,28 +1098,25 @@ mod tests {
             for (g, w) in got.iter().zip(&want) {
                 assert!((g.0 - w.0).abs() < 1e-12 && (g.1 - w.1).abs() < 1e-12, "lineage {l}: {g:?} vs {w:?}");
             }
-            assert_eq!(slots[2]["who"], json!([b, t]));
-            assert_eq!(slots[5]["who"], json!([c, t]));
+            assert_eq!(slots[2].who, [b, t]);
+            assert_eq!(slots[5].who, [c, t]);
             // the inheritance chance from those six affinities
             let mut miss = 1.0f64;
             for (k, w) in want.iter().enumerate() {
                 let base = if k % 3 == 0 { m.base } else { GP_RATE * m.base };
                 miss *= 1.0 - (base * (1.0 + (w.0 + w.1) / 100.0)).min(1.0);
             }
-            assert!((ls[l]["q"].as_f64().unwrap() - (1.0 - miss * miss)).abs() < 1e-15);
+            assert!((ls[l].q - (1.0 - miss * miss)).abs() < 1e-15);
         }
         // race weights: a unit of shared wins on one pair moves the summed affinity by 30 (rotation), 60 (loop)
         for f in [&[18usize, 20, 33][..], &[5, 18, 20, 33][..]] {
             let f: Vec<UmaIndex> = f.iter().copied().map(UmaIndex).collect();
             let n = f.len();
             let tot = |o: &dyn Fn(usize, usize) -> f64| -> f64 {
-                m.detail(&f, o, None)["lineages"]
-                    .as_array()
-                    .unwrap()
+                m.detail(&f, o, None, &vec![0.0; lins(n).len()])
+                    .lineages
                     .iter()
-                    .flat_map(|l| {
-                        l["slots"].as_array().unwrap().iter().map(|x| x["race"].as_f64().unwrap()).collect::<Vec<_>>()
-                    })
+                    .flat_map(|l| l.slots.iter().map(|slot| slot.race))
                     .sum()
             };
             for a in 0..n {

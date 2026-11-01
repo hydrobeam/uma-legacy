@@ -4,6 +4,7 @@ use crate::deck::chains::{ChainKind, stop_risk_code};
 use crate::deck::hints::{hint_base, hint_miss, hint_spec, scenario_name};
 use crate::deck::space::{MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, kinds_all};
 use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::refusal::Refusal;
 use crate::skills::SkillsRaw;
 use serde_json::{Value, json};
 /// Mutually exclusive outcomes of one event firing. Probabilities sum to at most 1; the remainder gives no hint.
@@ -939,23 +940,25 @@ pub(crate) fn deck_entries<'data>(
     deck_job: &DeckJob,
     target_groups: &[u32],
     pool_ids: &[u32],
-) -> Result<Entries<'data>, Value> {
+) -> Result<Entries<'data>, Refusal> {
     // the packed search's limits (`MAX_DECK`, `MAX_UNCERTAIN`; `MAX_KINDS` and the locks below), refused before any table
     if !(1..=MAX_DECK).contains(&deck_job.deck_size) {
-        return Err(
-            json!({"error": format!("deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.", deck_job.deck_size)}),
-        );
+        return Err(Refusal::new(format!(
+            "deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.",
+            deck_job.deck_size
+        )));
     }
     if target_groups.len() > MAX_UNCERTAIN {
-        return Err(
-            json!({"error": format!("At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.", target_groups.len())}),
-        );
+        return Err(Refusal::new(format!(
+            "At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.",
+            target_groups.len()
+        )));
     }
     if deck_job.chain_events.is_some() && deck_job.chain_budget.is_some() {
-        return Err(json!({"error": "chain_events and chain_budget both set: give one chain-event law, not both."}));
+        return Err(Refusal::new("chain_events and chain_budget both set: give one chain-event law, not both."));
     }
     if let Some(rule) = deck_job.chain_rule.as_deref().filter(|rule| !["card", "slots"].contains(rule)) {
-        return Err(json!({"error": format!("chain_rule: \"card\" or \"slots\", not \"{rule}\".")}));
+        return Err(Refusal::new(format!("chain_rule: \"card\" or \"slots\", not \"{rule}\".")));
     }
     let is_owned = |id: u32| {
         deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
@@ -968,9 +971,11 @@ pub(crate) fn deck_entries<'data>(
         .find(|id| banned.contains(id))
         .and_then(|id| cards.cards.iter().find(|card| card.id == *id))
     {
-        return Err(
-            json!({"error": format!("{} can't be used in {}: the game bans it from that scenario's deck.", card.name, scenario_name(&deck_job.scenario))}),
-        );
+        return Err(Refusal::new(format!(
+            "{} can't be used in {}: the game bans it from that scenario's deck.",
+            card.name,
+            scenario_name(&deck_job.scenario)
+        )));
     }
     let usable =
         |id: u32| (is_owned(id) || deck_job.borrow) && !deck_job.exclude_cards.contains(&id) && !banned.contains(&id);
@@ -1094,15 +1099,17 @@ pub(crate) fn deck_entries<'data>(
     locked.sort_unstable();
     locked.dedup();
     if locked.len() > deck_job.deck_size {
-        return Err(
-            json!({"error": format!("{} locked cards don't fit in a deck of {}.", locked.len(), deck_job.deck_size)}),
-        );
+        return Err(Refusal::new(format!(
+            "{} locked cards don't fit in a deck of {}.",
+            locked.len(),
+            deck_job.deck_size
+        )));
     }
     let kind_count = kinds_all(&kind).len();
     if kind_count > MAX_KINDS {
-        return Err(
-            json!({"error": format!("The cards' chains come in {kind_count} kinds (lengths, early ends, stop risks); the search takes at most {MAX_KINDS}.")}),
-        );
+        return Err(Refusal::new(format!(
+            "The cards' chains come in {kind_count} kinds (lengths, early ends, stop risks); the search takes at most {MAX_KINDS}."
+        )));
     }
     Ok(Entries { cards, card_indices, kind, end_links, variants, sources, plain_ids, plain_names, plain_chars, locked })
 }

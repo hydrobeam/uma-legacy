@@ -7,26 +7,28 @@ use crate::deck::sources::{Entries, EventOutcome, Sources, TargetReward, TargetS
 use crate::deck::space::deck_space;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::loop_planner::dominance::{DeckEval, DominanceIndex, dominates, k_filter, kfilter_order, sig_of, tie_rank};
+use crate::loop_planner::output::{DeckReply, DeckStats, Skyline};
 use crate::loop_planner::search::{LoopJobInputs, run_multi};
+use crate::refusal::Refusal;
 use crate::skills::{Model, SkillJob, SkillsRaw};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
 /// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with
 /// per-uma decks, for every structure member with a shared deck.
-pub(crate) fn run_deck(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> Value {
+pub(crate) fn run_deck(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> DeckReply {
     run_deck_relaxed(data, skills, cards, job)
 }
 
-pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> Value {
+pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> DeckReply {
     let skill_job: SkillJob = match SkillJob::deserialize(job) {
         Ok(x) => x,
-        Err(e) => return json!({"error": e.to_string()}),
+        Err(e) => return DeckReply::Refusal(Refusal::new(e.to_string())),
     };
     let deck_job: DeckJob = match DeckJob::deserialize(job) {
         Ok(x) => x,
-        Err(e) => return json!({"error": e.to_string()}),
+        Err(e) => return DeckReply::Refusal(Refusal::new(e.to_string())),
     };
     let model = Model::new(data, skills, &skill_job);
     let target_groups: Vec<u32> = model.uncertain.iter().map(|&i| skill_job.targets[i].group).collect();
@@ -42,7 +44,7 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
         .collect();
     let mut entries = match deck_entries(cards, &deck_job, &target_groups, &pool_ids) {
         Ok(e) => e,
-        Err(e) => return e,
+        Err(refusal) => return DeckReply::Refusal(refusal),
     };
     // every entry, before card dominance drops any: the exact per-uma search enumerates decks from these
     let space = (!deck_job.deck_only).then(|| deck_space(cards, &deck_job, skills, &target_groups, &entries));
@@ -51,7 +53,7 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
     let coordinates = dominance_coords(&entries.sources, target_count);
     let enumerator = match DeckEnumerator::new(&entries, &deck_job, target_count, &coordinates) {
         Ok(x) => x,
-        Err(e) => return e,
+        Err(refusal) => return DeckReply::Refusal(refusal),
     };
     let mut counts = EnumerationCounts::default();
     // the decks no other deck beats on every dominance coordinate (the exact search scores every deck it needs from
@@ -59,16 +61,22 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
     let front: Vec<DeckEval> =
         enumerator.run_enum(FrontierOptions { maximum_dominators: 1, first_frontier: None }, &mut counts);
     if front.is_empty() {
-        return json!({"error": "No deck can be built from the allowed cards."});
+        return DeckReply::Refusal(Refusal::new("No deck can be built from the allowed cards."));
     }
     let skyline_indices = skyline(&front);
     let frontier_count = front.len();
     let display_decks = detach(front, &skyline_indices, &entries, &source_builder, skills);
     if deck_job.deck_only {
-        return json!({"sky": display_decks});
+        return DeckReply::Skyline(Skyline { sky: display_decks });
     }
-    let stats = json!({"decks_built": counts.decks_built, "decks_on_frontier": frontier_count, "relevant_cards": enumerator.entry_count, "cards_dropped": dropped_card_count,
-                       "decks_swapped": counts.decks_swapped, "plain_pals": entries.plain_names});
+    let stats = DeckStats {
+        decks_built: counts.decks_built,
+        decks_on_frontier: frontier_count,
+        relevant_cards: enumerator.entry_count,
+        cards_dropped: dropped_card_count,
+        decks_swapped: counts.decks_swapped,
+        plain_pals: std::mem::take(&mut entries.plain_names),
+    };
     let inputs = LoopJobInputs {
         data,
         cards,
@@ -465,7 +473,7 @@ impl<'env> DeckEnumerator<'env> {
         deck_job: &'env DeckJob,
         target_count: usize,
         coordinates: &'env [crate::deck::space::HintCoordinate],
-    ) -> Result<Self, Value> {
+    ) -> Result<Self, Refusal> {
         let (cards, relevant, kind) = (&entries.cards, &entries.card_indices, &entries.kind);
         let allowed_borrow = usize::from(deck_job.borrow);
         let entry_count = relevant.len();
@@ -476,7 +484,7 @@ impl<'env> DeckEnumerator<'env> {
             character_index.entry(cards[card].character_id).or_insert(next_bit);
         }
         if character_index.len() > 128 {
-            return Err(json!({"error": "too many distinct characters among relevant cards"}));
+            return Err(Refusal::new("too many distinct characters among relevant cards"));
         }
         let character_bits: Vec<u128> =
             relevant.iter().map(|&card| 1u128 << character_index[&cards[card].character_id]).collect();

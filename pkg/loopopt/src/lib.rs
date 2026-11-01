@@ -117,9 +117,12 @@ mod checks;
 mod cli;
 mod data;
 mod loop_planner;
+mod refusal;
 mod schedule;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod ts_gen;
 
 pub fn cli_main() {
     let _report = CliBoundReport;
