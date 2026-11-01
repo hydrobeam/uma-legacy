@@ -411,10 +411,9 @@ function nodeShown(spec: NodeSpec, r: CareerReport | null): NodeShown | null {
 /** the node popup (game style): one dialog, drawn again on every change while open */
 export function NodeDialog() {
   const spec = nodeOpen.value,
-    last = useRef<NodeSpec | null>(null), // (closed, it keeps the last node it showed, as a dialog keeps its content)
     body = useRef<HTMLDivElement>(null);
-  if (spec) last.current = spec;
-  const on = last.current && nodeShown(last.current, shown());
+  // (closed, it draws nothing: an edit elsewhere redraws no closed popup)
+  const on = spec && nodeShown(spec, shown());
   // a node that is gone closes the popup; on show, her spark names shrink to fit (details.js fitSparks)
   useLayoutEffect(() => {
     if (spec && !on) closeNode();
