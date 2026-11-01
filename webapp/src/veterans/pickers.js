@@ -64,7 +64,8 @@ export function askClosed() {
   const now = ask.peek();
   if (now?.open) ask.value = { ...now, open: false };
 }
-/** a choice: it lands and the prompt closes in one write, so a held search runs once, after both
+/** a choice: it lands while the prompt still holds the search, then the prompt closes and releases it (that order is what
+ *  makes a held search run once, after both); the batch makes the two one notification
  *  @param {Sparks | null} sparks */
 export function skillsChosen(sparks) {
   const now = ask.peek();

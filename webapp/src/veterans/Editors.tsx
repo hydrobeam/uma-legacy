@@ -71,7 +71,8 @@ function UmaPicker({ pick }: { pick: UmaPick | null }) {
             Close
           </button>
         </div>
-        <PickBody key={pick?.n ?? 0} only={pick?.only ?? null} filterRef={filter} />
+        {/* (closed, no list: an editor closed draws nothing) */}
+        {pick?.open && <PickBody key={pick.n} only={pick.only} filterRef={filter} />}
       </div>
     </Dialog>
   );
@@ -170,16 +171,17 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
 }
 
 // ---------- the G1 wins window: her wins on the calendar (ui/Agenda.tsx WinsEditor), each edit landing on her record
-// as it is then; drawn only while open
+// as it is then; drawn only while open. A node that is gone (a pool veteran removed, the draft replaced) closes it, as
+// it does the colour picker
 function WinsDialog({ edit }: { edit: WinsEdit | null }) {
   const races = useMemo(allRaces, []),
-    open = !!edit?.open,
-    nd: Pick<NodeRecord, 'wins' | 'winAt'> | null = open && edit ? edit.at.node() || { wins: [], winAt: {} } : null;
+    nd = edit?.open ? edit.at.node() : undefined,
+    open = !!nd;
   return (
     <Dialog id="wins-dlg" labelledBy="wins-title" open={open} onClose={winsClosed}>
       <div class="dlg">
         <div class="row between dhead">
-          <h3 id="wins-title">{open && edit ? `G1 wins: ${edit.who}` : 'G1 wins'}</h3>
+          <h3 id="wins-title">{nd && edit ? `G1 wins: ${edit.who}` : 'G1 wins'}</h3>
           <span class="num" id="wins-count">
             {nd ? winsText(nd) : ''}
           </span>

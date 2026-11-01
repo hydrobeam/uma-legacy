@@ -21,6 +21,7 @@ const built = await esbuild.build({
       import '@preact/signals';
       export * as store from './src/veterans/store.ts';
       export { on } from './src/store.ts';
+      export { openUmaPicker, umaPickClosed } from './src/veterans/pickers.js';
       export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed, openAdd, addOpen } from './src/veterans/pickers.js';
       export { VetEditors, AddList } from './src/veterans/Editors.tsx';
       export { WinsEditor } from './src/ui/Agenda.tsx';
@@ -47,6 +48,7 @@ const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, on, changeUma, searchHeld, VetEditors, InspView, Details, legaciesOf, h, render, loadData } = page;
 const { openWins, winsClosed, askSkills, askClosed, openAdd, addOpen, AddList, WinsEditor, openColour } = page;
+const { openUmaPicker, umaPickClosed } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
 globalThis.__LLP_DATA['data-career'] = {
   blues: {},
@@ -292,4 +294,25 @@ test('a throw while the wins window or the skills prompt is open: it goes, the h
   assert.equal(byId(editors, 'wins-dlg')?.open, true, 'the wins window opens again');
   winsClosed();
   stop();
+});
+
+// review-11b 6: a closed editor draws nothing, and one whose node is gone closes, the wins window as the colour picker
+test('the uma picker closed draws no list; a G1 wins window whose draft is replaced closes', async () => {
+  const editors = document.createElement('div');
+  render(h(VetEditors, null), editors);
+  openUmaPicker('Which uma?', () => undefined);
+  await settle();
+  assert.ok(byId(editors, 'pick-list').querySelectorAll('button.upick').length > 0, 'open: every uma');
+  umaPickClosed();
+  await settle();
+  assert.equal(byId(editors, 'pick-list')?.querySelectorAll('button.upick').length ?? 0, 0, 'closed: none');
+  vs.setDraft({ ...node(1001), borrowed: false, parents: [node(1002), node(1003)] });
+  let back = 0;
+  openWins(vs.draftRef(), 'her', { onClose: () => back++ });
+  await settle();
+  assert.equal(byId(editors, 'wins-dlg').open, true, 'open on her draft');
+  vs.setDraft({ ...node(1002), borrowed: false, parents: [node(1001), node(1003)] }); // (a roll: another draft)
+  await settle();
+  assert.equal(byId(editors, 'wins-dlg').open, false, 'her draft gone: the window closes, as the colour picker does');
+  assert.equal(back, 1, 'its close called');
 });
