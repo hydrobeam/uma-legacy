@@ -1,6 +1,6 @@
 // The results column (#results): the options table ("Other careers") under the career on show, and its Saves popup
 // (#save-root). What the table shows is career/options.js's; each row draws again only when what it shows changes.
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import { Fragment } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { fmtIn } from '../../dom.js';
@@ -255,20 +255,20 @@ function PickWhat({ r, places }: { r: DeepReadonly<Row>; places: Places }) {
 }
 
 // ---------- "Saves per run" explained, in plain words, with the plan the numbers come from ----------
-const saves = signal<{ planReport: Report | null; notes: readonly string[]; open: boolean }>({
-  planReport: null,
-  notes: [],
-  open: false,
-});
+// what it explains (kept after a close, the same object) and whether it is open
+type SavesSubject = { planReport: Report; notes: readonly string[] };
+const saves = signal<{ subject: SavesSubject | null; open: boolean }>({ subject: null, open: false });
+// its guard draws again for a new subject only (a close is no reason to try failing content again)
+const savesSubject = computed(() => saves.value.subject);
 function openSaveWhy(planReport: Report, notes: readonly string[]) {
-  saves.value = { planReport, notes, open: true };
+  saves.value = { subject: { planReport, notes }, open: true };
 }
 const closeSaves = () => {
   saves.value = { ...saves.peek(), open: false };
 };
 /** the Saves popup (in #save-root): closed, the focus goes back to the (i), as the browser does */
 export function SavesPopup() {
-  const { planReport, notes, open } = saves.value,
+  const { subject, open } = saves.value,
     close = useRef<HTMLButtonElement>(null);
   // (after the dialog's own focus, which would take the first dropdown)
   useLayoutEffect(() => {
@@ -279,8 +279,8 @@ export function SavesPopup() {
       <h3 class="gmdhdr" id="save-title">
         What these mean
       </h3>
-      <Guard what="The Saves popup" also={saves}>
-        {planReport && <SavesBody planReport={planReport} notes={notes} />}
+      <Guard what="The Saves popup" also={savesSubject}>
+        {subject && <SavesBody planReport={subject.planReport} notes={subject.notes} />}
       </Guard>
       <div class="gmdfoot">
         <button ref={close} type="button" class="btn gmclose" onClick={closeSaves}>

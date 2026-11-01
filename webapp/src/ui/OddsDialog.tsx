@@ -1,7 +1,7 @@
 // ---------- the odds popup (the loop planner's result cards): the chance of landing exactly k of the n targets ----------
 // One dialog, there from load (empty); a result card's Odds fills and opens it. Escape, the backdrop and Close all close
 // it, and the browser gives the focus back to the button that opened it.
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import { pct } from '../odds.js';
 import { Dialog } from './Dialog.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
@@ -17,6 +17,8 @@ export interface OddsSpec {
 }
 // the odds on show (kept after a close, as the dialog's contents were) and whether the popup is open
 const shown = signal<{ spec: OddsSpec | null; open: boolean }>({ spec: null, open: false });
+// its guard draws again for new odds only (a close is no reason to try failing content again)
+const shownSpec = computed(() => shown.value.spec);
 export function openOdds(spec: OddsSpec) {
   shown.value = { spec, open: true };
 }
@@ -27,7 +29,7 @@ export function OddsDialog() {
   const { spec, open } = shown.value;
   return (
     <Dialog id="odds-dlg" cls="gmdlg" labelledBy="odds-title" open={open} onClose={close}>
-      <RenderGuard input={shown} what="The odds">
+      <RenderGuard input={shownSpec} what="The odds">
         {spec && <Odds spec={spec} />}
       </RenderGuard>
     </Dialog>

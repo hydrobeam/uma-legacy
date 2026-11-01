@@ -1,7 +1,7 @@
 // The game-style Skill Details popup: a target skill of the career on show (the tree's targets, Try a run's skills), with
 // her chance of it, where it comes from, which legacies carry it and which cards give it. One dialog, there from load
 // (empty); `openSkill` fills and opens it, and the browser gives the focus back to the tile that opened it.
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import type { Card } from '../../data.js';
 import type { CareerBuy } from '../job.js';
 import { umaName } from '../../veterans/names.js';
@@ -24,6 +24,8 @@ export interface SkillSpec {
   cards?: readonly { card: Card; how: string }[];
 }
 const shown = signal<{ spec: SkillSpec | null; open: boolean }>({ spec: null, open: false });
+// its guard draws again for a new skill only (a close is no reason to try failing content again)
+const shownSpec = computed(() => shown.value.spec);
 /** the popup for one skill */
 export function openSkill(spec: SkillSpec) {
   shown.value = { spec, open: true };
@@ -38,7 +40,7 @@ export function SkillDetails() {
       <h3 class="gmdhdr" id="sk-title">
         Skill Details
       </h3>
-      <Guard what="Skill Details" also={shown}>
+      <Guard what="Skill Details" also={shownSpec}>
         {spec && <Skill spec={spec} />}
       </Guard>
       <div class="gmdfoot">

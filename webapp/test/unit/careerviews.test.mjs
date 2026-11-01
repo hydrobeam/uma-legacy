@@ -25,6 +25,7 @@ const built = await esbuild.build({
       export { answer, loadFails } from './src/career/state.ts';
       export { PoolBody, PoolHead } from './src/career/view/Pool.tsx';
       export { openPool, poolClosed, choose } from './src/career/view/poolState.ts';
+      export { OddsDialog, openOdds } from './src/ui/OddsDialog.tsx';
       export { h, render, options } from 'preact';
       export { loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
@@ -44,7 +45,7 @@ fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
-const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails } = page;
+const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails, OddsDialog, openOdds } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
 await loadData();
 
@@ -144,4 +145,21 @@ test('the veterans dialog: a selection draws two cards, one list is #vets, each 
   await settle();
   assert.ok(pane().childNodes.length > 0, 'open again: drawn');
   for (const f of frames.splice(0)) f();
+});
+
+test('a popup whose content throws reports it once per opening: its close draws nothing again (review-11b 4)', async () => {
+  const reported = [];
+  globalThis.reportError = (e) => reported.push(e);
+  const root = document.createElement('div');
+  render(h(OddsDialog, null), root);
+  openOdds({ title: 'Odds', n: 2, ex: null, pAll: 0.1, expected: 1 }); // (a malformed spec: no chances)
+  await settle();
+  assert.equal(reported.length, 1, 'reported on opening');
+  const dialog = root.querySelector('dialog');
+  dialog.close();
+  await settle();
+  assert.equal(reported.length, 1, 'not again on its close');
+  openOdds({ title: 'Odds', n: 1, ex: [0.5, 0.5], pAll: 0.5, expected: 0.5 });
+  await settle();
+  assert.match(root.querySelector('table.oddtab')?.textContent ?? '', /1\/1/, 'the next odds draw');
 });
