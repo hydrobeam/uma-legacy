@@ -211,9 +211,10 @@ test("the lineage rank's ? opens its note and stops its click there (other popup
       },
     });
   await settle();
-  assert.equal(question.attributes['aria-expanded'], 'true', 'the note is open');
+  const expanded = question.attributes['aria-expanded'];
+  render(null, box); // (first: a failure here leaves no control drawn for the tests after)
+  assert.equal(expanded, 'true', 'the note is open');
   assert.ok(stopped, 'the click went no further than the ?');
-  render(null, box);
 });
 
 test('a sort menu given a value it does not list (a hand-edited storage) shows its first item instead of throwing', async () => {
