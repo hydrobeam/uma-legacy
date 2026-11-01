@@ -75,6 +75,14 @@ check() {   # check STEP: stops when anything was missing, else clears the list 
   MISSING=()
 }
 
+# Runs a command and shows its whole output only when it fails: a compile error is never cut to its last line
+quiet() {
+  local out rc=0
+  out=$("$@" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ]; then printf '%s\n' "$out" >&2; fi
+  return "$rc"
+}
+
 # ---- the data ----
 step_data() {
   need_uv; need "$GLOBAL_MDB" "$JP_MDB"; check data
@@ -110,7 +118,7 @@ step_native() {
 }
 # The release binary. pb, val, valq and mono build it first, so they never run a binary left from before a change
 # (cargo's own check makes this a no-op on an unchanged tree).
-build_solver() { (cd "$C" && cargo build --release 2>&1 | tail -1); }
+build_solver() { (cd "$C" && quiet cargo build --release); }
 # clippy as lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() {
   cargo clippy --quiet --all-targets -- -D warnings \
@@ -126,7 +134,7 @@ cargo_test() {
 step_wasm() {
   need_cargo; need_cmd rustup "https://rustup.rs: adds the wasm target"; need_node; check wasm
   npm_deps
-  (cd "$C" && cargo build --release --lib --target wasm32-unknown-unknown 2>&1 | tail -1)
+  (cd "$C" && quiet cargo build --release --lib --target wasm32-unknown-unknown)
   # -ocimfs=0: wasm-opt inlines no function for having one caller (by default it inlines any such function, whatever
   # its size, undoing #[inline(never)]): a loop split into its own function stays one, so V8 tiers it up
   # (docs/PERF.md). wasm-opt reads the wasm's features from the target_features section rustc writes.
@@ -142,7 +150,7 @@ step_wasm() {
     (cd "$W" && npx wasm-opt -ocimfs=0 -O3 "$RAW_WASM" -o loopopt.opt.wasm)
     echo "$key" >"$W/.loopopt.wasm.key"
   fi
-  (cd "$W" && node example.mjs | tail -1)
+  (cd "$W" && node example.mjs)
 }
 
 # ---- checks ----
@@ -152,8 +160,7 @@ step_lint() {
   (cd "$C" && cargo fmt --check && clippy_all)
   uv run --quiet --project "$R" shellcheck "$R/build.sh" "$R/.githooks/pre-commit"
   (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check)
-  local out
-  out=$(cd "$R" && uv run --quiet python val/test_validation.py 2>&1) || { printf '%s\n' "$out"; false; }
+  (cd "$R" && quiet "${PY[@]}" val/test_validation.py)
   (cd "$W" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn)
   (cd "$W" && npx --no-install tsc -p .)
   (cd "$W" && node test/static.mjs)
