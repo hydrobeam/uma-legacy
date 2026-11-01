@@ -1,4 +1,5 @@
-# Formatting-only commits, skipped by git blame: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# Commits that only reformat, move or rename code, skipped by git blame: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (git blame -C -C follows lines a move carried to another file)
 # rustfmt over pkg/loopopt (rustfmt.toml added)
 cddc544d0fe49330276c79394b15fde5486d59c6
 # Biome formatter on the page JS (2026-10-22): layout only

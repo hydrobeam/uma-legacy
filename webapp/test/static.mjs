@@ -6,9 +6,17 @@
 // - stale storage writes: `localStorage.setItem(key, JSON.stringify(x))` where `x` was not read or built in the same
 //   function after its last await. A copy read earlier (at load, or before a request) overwrites what another tab or
 //   call stored meanwhile; read what is stored, change your part, write it.
-// Exits 1 with the list when either finds one; delete the dead code, or list a built name.
+// - template ids: every id a module looks up by a literal name ($, $dialog, $input, $textarea, getElementById, a
+//   querySelector/closest of '#id') exists on each page whose bundle holds the module (esbuild's metafile), in its
+//   template with the panels filled in, in build.py's own markup or made by one of the bundle's modules. A module that
+//   moves into the other page's bundle, or a template edit, would otherwise crash at load. A lookup that may miss on
+//   purpose is listed in MAY_BE_MISSING with why.
+// Exits 1 with the list when any finds one; delete the dead code, or list a built name.
+// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, and imports
+// against the layer order (LAYERS, frontend.md §2; an error from the career split on).
 import fs from 'node:fs';
 import path from 'node:path';
+import * as esbuild from 'esbuild';
 
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 const read = (f) => fs.readFileSync(path.join(W, f), 'utf8');
@@ -83,9 +91,132 @@ for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
   });
 }
 
+// ---------- template ids: every id a module looks up by name exists on each page whose bundle holds the module
+// A page's markup is its template with the shared panels filled in (as build.py fills them), the markup build.py
+// writes itself (the theme button) and what the bundle's modules make with an id. A lookup a module makes on purpose
+// where the element may be missing is listed in MAY_BE_MISSING with why.
+const MAY_BE_MISSING = {
+  'data-example':
+    'data.js probes it: the data comes in self.__LLP_DATA (build.py), a script element only in old builds',
+  'o-skills-n': 'targets.js: the Target skills button, a panel on neither page now (planner.md P6: deleted in step 6)',
+  'c-top': "cards.js: the loop page's Results switch; the career page has none (cards.js returns before using it)",
+  'c-peruma': "cards.js: the loop page's Deck per uma switch, after the same return",
+};
+const PAGES = { 'src/main.js': 'index.template.html', 'src/career.js': 'career.template.html' };
+const LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
+const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$dialog|\$input|\$textarea|document\.getElementById)\(\s*(?!['"])[^)]/g;
+const SELECTOR_ID = /\.(?:querySelector(?:All)?|closest|matches)\(\s*(['"])#([A-Za-z][\w-]*)\1\s*\)/g;
+const MADE_ID = /(?:\.id\s*=\s*|\bid:\s*|setAttribute\(\s*'id',\s*)(['"`])([A-Za-z][\w-]*)\1|\bid="([A-Za-z][\w-]*)"/g;
+const PANELS = Object.fromEntries(
+  [...read('panels.template.html').matchAll(/<!--panel:(\w+)-->([\s\S]*?)<!--\/panel:\1-->/g)].map((m) => [m[1], m[2]]),
+);
+const fillPanels = (page) => {
+  let filled = page;
+  let m = filled.match(/__PANEL_([A-Z]+)__/);
+  for (; m; m = filled.match(/__PANEL_([A-Z]+)__/)) filled = filled.replace(m[0], PANELS[m[1].toLowerCase()]);
+  return filled;
+};
+const idsIn = (text) => [...text.matchAll(MADE_ID)].map((m) => m[2] || m[3]);
+const srcText = Object.fromEntries(sources.filter(([f]) => f.startsWith('src')));
+// the modules of each page's bundle (esbuild's metafile; paths as in `sources`)
+const bundled = Object.fromEntries(
+  Object.keys(PAGES).map((entry) => {
+    const meta = esbuild.buildSync({
+      entryPoints: [entry],
+      bundle: true,
+      write: false,
+      metafile: true,
+      logLevel: 'error',
+    });
+    return [entry, Object.keys(meta.metafile.inputs).filter((f) => f.startsWith('src/'))];
+  }),
+);
+const looked = new Set();
+const dynamic = Object.values(srcText).reduce((n, text) => n + [...text.matchAll(DYNAMIC_LOOKUP)].length, 0);
+for (const [entry, template] of Object.entries(PAGES)) {
+  const modules = bundled[entry];
+  const ids = new Set([
+    ...idsIn(fillPanels(read(template))),
+    ...idsIn(read('build.py')),
+    ...modules.flatMap((f) => idsIn(srcText[f])),
+  ]);
+  for (const file of modules) {
+    const text = srcText[file];
+    for (const m of [...text.matchAll(LOOKUP)]
+      .map((m) => m[2])
+      .concat([...text.matchAll(SELECTOR_ID)].map((m) => m[2]))) {
+      looked.add(m);
+      const message = `${file}: looks up #${m}, which ${template} (with its panels) and its bundle's modules don't have`;
+      if (!ids.has(m) && !(m in MAY_BE_MISSING) && !problems.includes(message)) problems.push(message);
+    }
+  }
+}
+
+// ---------- reports (printed, never a failure)
+const reports = [];
+// ids in the templates that nothing names: no script, no style rule, no other markup (for=, aria-*, href="#")
+{
+  const templates = ls('.', /\.template\.html$/).filter((f) => f !== 'about.template.html');
+  const others = (file) =>
+    [...sources.filter(([f]) => f !== file), ['src/style.css', read('src/style.css')]].map(([, t]) => t).join('\n');
+  // an id the code builds from a name and a suffix (`${id}-menu`) is named when its name is
+  const suffixes = new Set(sources.flatMap(([, t]) => [...t.matchAll(/\$\{[^}]+\}(-[\w-]+)/g)].map((m) => m[1])));
+  const isNamed = (id, text) => {
+    const word = (w) => new RegExp(`(?<![\\w-])${w}(?![\\w-])`).test(text);
+    return word(id) || [...suffixes].some((x) => id.endsWith(x) && word(id.slice(0, -x.length)));
+  };
+  const unnamed = [];
+  for (const file of templates) {
+    const text = read(file);
+    for (const id of new Set(idsIn(text)))
+      if (!isNamed(id, others(file)) && !isNamed(id, text.split(`id="${id}"`).join('')))
+        unnamed.push(`${file.replace('.template.html', '')}#${id}`);
+  }
+  if (unnamed.length) reports.push(`ids no script, style or markup names (${unnamed.length}): ${unnamed.join(', ')}`);
+  const unused = Object.keys(PANELS).filter(
+    (name) => !templates.some((f) => read(f).includes(`__PANEL_${name.toUpperCase()}__`)),
+  );
+  if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
+}
+// layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page
+// (frontend.md §2: an error from the career split on; a report until then)
+const LAYERS = [
+  ['types', ['globals.d']],
+  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog']],
+  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll']],
+  ['stores', ['settings', 'state', 'save', 'vets']],
+  ['shared', null], // every module not named elsewhere
+  ['page:loop', ['main', 'search', 'results', 'io', 'affinity']],
+  ['page:career', ['career', 'career/analysis', 'career/options']],
+];
+{
+  const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
+  const layerOf = (mod) => {
+    const k = LAYERS.findIndex(([, mods]) => mods?.includes(mod));
+    return k < 0 ? LAYERS.findIndex(([, mods]) => mods === null) : k;
+  };
+  const against = [];
+  for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
+    const from = layerOf(moduleOf(file));
+    for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g)) {
+      const to = layerOf(moduleOf(path.join(path.dirname(file), spec)));
+      const pages = [from, to].map((k) => LAYERS[k][0]);
+      if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
+        against.push(
+          `${moduleOf(file)} (${pages[0]}) -> ${moduleOf(path.join(path.dirname(file), spec))} (${pages[1]})`,
+        );
+    }
+  }
+  if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
+}
+
 if (problems.length) {
   console.log(problems.join('\n'));
   console.log(`${problems.length} static check failure${problems.length === 1 ? '' : 's'} (webapp/test/static.mjs)`);
   process.exit(1);
 }
-console.log('static checks: no dead CSS, no dead exports, no stale storage writes');
+for (const report of reports) console.log(`report: ${report}`);
+console.log(
+  `static checks: no dead CSS, no dead exports, no stale storage writes; ${looked.size} ids looked up, each on its pages ` +
+    `(${dynamic} lookups by a computed id unchecked)`,
+);
