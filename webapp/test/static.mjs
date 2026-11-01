@@ -18,14 +18,15 @@
 // - effects: only store.ts calls signals' `effect` (its `on` helper, which names an effect's signals and runs its body
 //   untracked); anywhere else an effect would subscribe to whatever its body happens to read. A signal's `.subscribe()`
 //   counts as one, and so does importing or re-exporting `effect`.
-// - import cycles: the page's modules import one another without a cycle beyond the known one (KNOWN_CYCLES,
-//   reported): in a cycle a module can run before a declaration it reads at load.
+// - import cycles: the page's modules import one another without a cycle (Biome's noImportCycles too): in a cycle a
+//   module can run before a declaration it reads at load.
+// - layers: an import points to its own layer or one below (LAYERS), and nothing outside a page imports into it;
+//   the imports that broke it when it became a failure are listed (KNOWN_AGAINST) until their module is split.
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
 //   `loadOrder`, on the bundles as samecode builds them).
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
-// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, imports
-// against the layer order (LAYERS; a report while existing modules still break it), and the `@ts-expect-error` markers
-// left by renames to .ts.
+// Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
+// imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
 import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
@@ -176,11 +177,9 @@ for (const [entry, template] of Object.entries(PAGES)) {
   }
 }
 
-// ---------- import cycles: none but the known ones
+// ---------- import cycles: none
 // Without a cycle, a module's imports run before it, so a move between modules can't put a declaration after a
-// load-time reader; within one it can (samecode checks the order of such reads in the bundles, `loadOrder`). The
-// cycle that stands today is reported until career.js is split; any other fails.
-const KNOWN_CYCLES = [['src/career.js', 'src/career/options.js', 'src/career/analysis.js']];
+// load-time reader; within one it can (samecode checks the order of such reads in the bundles, `loadOrder`).
 const cycles = [];
 {
   // the static imports among the page's modules, over the three bundles (a dynamic import runs later: no cycle)
@@ -224,11 +223,10 @@ const cycles = [];
   };
   for (const v of edges.keys()) if (!index.has(v)) connect(v);
   for (const component of cycles)
-    if (!KNOWN_CYCLES.some((known) => component.every((f) => known.includes(f))))
-      problems.push(
-        `import cycle: ${component.join(', ')} import each other (a module in a cycle can run before what it imports ` +
-          'has been declared): break it',
-      );
+    problems.push(
+      `import cycle: ${component.join(', ')} import each other (a module in a cycle can run before what it imports ` +
+        'has been declared): break it',
+    );
 }
 
 // ---------- read before declared: each bundle as samecode reads it (`loadOrder`)
@@ -237,9 +235,6 @@ for (const entry of [...Object.keys(PAGES), WORKER])
 
 // ---------- reports (printed, never a failure)
 const reports = [];
-const knownCycles = cycles.filter((c) => KNOWN_CYCLES.some((known) => c.every((f) => known.includes(f))));
-if (knownCycles.length)
-  reports.push(`known import cycles (${knownCycles.length}): ${knownCycles.map((c) => c.join(' <-> ')).join('; ')}`);
 // ids in the templates that nothing names: no script, no style rule, no other markup (for=, aria-*, href="#")
 {
   const templates = ls('.', /\.template\.html$/).filter((f) => f !== 'about.template.html');
@@ -264,8 +259,8 @@ if (knownCycles.length)
   );
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
 }
-// layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page
-// (a report while existing modules still break it). A logic module (types, io, model) that reaches a store's values
+// layers: an import points to its own layer or one below; a page's modules are imported by nothing outside the page.
+// Any other import against them fails; the known ones (KNOWN_AGAINST) are reported. A logic module (types, io, model) that reaches a store's values
 // through any chain of imports, static, dynamic or re-exported, is a failure: a shared module may read a store, so a
 // logic module's call into one could read it for it.
 // The rule's other logic (frontend.md: run machines, uma.moe sync, io) lives today inside modules that are views too, so
@@ -301,6 +296,8 @@ const LAYERS = [
     ],
   ],
 ];
+// the imports against the layers that stand: vets.js is the veterans' store and their editors (split in step 10)
+const KNOWN_AGAINST = ['vets (stores) -> images (shared)', 'vets (stores) -> agenda (shared)'];
 {
   const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');
   const layerOf = (mod) => {
@@ -324,7 +321,12 @@ const LAYERS = [
         );
     }
   }
-  if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
+  const known = against.filter((a) => KNOWN_AGAINST.includes(a));
+  for (const a of against.filter((x) => !KNOWN_AGAINST.includes(x)))
+    problems.push(`import against the layer order: ${a} (an import points to its own layer or one below)`);
+  for (const k of KNOWN_AGAINST.filter((x) => !against.includes(x)))
+    problems.push(`KNOWN_AGAINST: ${k} no longer stands: drop it`);
+  if (known.length) reports.push(`known imports against the layer order (${known.length}): ${known.join(', ')}`);
   // the value imports among the page's modules (esbuild's metafiles, which leave out `import type`): every kind, a
   // dynamic import() and a re-export included
   const imports = new Map();
