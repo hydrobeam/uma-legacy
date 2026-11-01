@@ -502,19 +502,7 @@ const LAYERS = [
   ],
   ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
   ['shared', null], // every module not named elsewhere
-  [
-    'page:loop',
-    [
-      'loop/main',
-      'loop/run',
-      'loop/io',
-      'loop/RunNote',
-      'loop/Results',
-      'loop/Affinity',
-      'loop/Export',
-      'loop/RenderGuard',
-    ],
-  ],
+  ['page:loop', ['loop/main', 'loop/run', 'loop/io', 'loop/RunNote', 'loop/Results', 'loop/Affinity', 'loop/Export']],
   [
     'page:career',
     [
@@ -526,6 +514,7 @@ const LAYERS = [
       'career/io',
       'career/view/parts',
       'career/view/dialogs',
+      'career/view/Guard',
       'career/view/RunNote',
       'career/view/Tree',
       'career/view/NodeDialog',

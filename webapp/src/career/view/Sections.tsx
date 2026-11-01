@@ -16,6 +16,7 @@ import { Dialog } from '../../ui/Dialog.tsx';
 import { shown } from '../job.js';
 import { tName, tableRows } from './parts.js';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
+import { Guard } from './Guard.tsx';
 
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
@@ -114,9 +115,11 @@ export function DeckDialog() {
           <div class="gmdbody">
             <div class="deck" id="tree-deck">
               <div class="dcards">
-                {borLast([...r.deck.cards]).map((i: number) => (
-                  <DeckCard key={`${i}:${r.deck.cards[i]}`} r={r} i={i} />
-                ))}
+                <Guard what="The deck popup">
+                  {borLast([...r.deck.cards]).map((i: number) => (
+                    <DeckCard key={`${i}:${r.deck.cards[i]}`} r={r} i={i} />
+                  ))}
+                </Guard>
               </div>
             </div>
           </div>

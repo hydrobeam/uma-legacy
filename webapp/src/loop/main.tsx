@@ -4,7 +4,7 @@
 // run machine, job.ts its job, io.js the export's text; the views, components drawn from the state and the settings:
 // RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch, Affinity.tsx and Export.tsx their
 // dialogs. Each is rendered into its mount point here (#run-note, #r-act, #results, #rtop, #why-root, #ex-root), inside a
-// RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
+// ui/RenderGuard.tsx (a dialog's guard is inside it) that reports a throw while drawing on the status line.
 import '../errorlog.ts'; // first: it listens before any other module runs
 import { render } from 'preact';
 import { $, $dialog, $input, backdropCloses } from '../dom.js';
@@ -17,7 +17,7 @@ import type { LoopView, RunState } from './state.ts';
 import type { DeepReadonly } from '../store.ts';
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
-import { RenderGuard } from './RenderGuard.tsx';
+import { RenderGuard, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
 import { initRoster, renderRoster } from '../roster.js';
 import { initTargets, renderTargets } from '../targets.js';
@@ -72,6 +72,8 @@ const loop = createRun({
 // floating button. The status line (the template's live region, empty from load) is drawn from the first
 // status worth showing on (the GM era's loading, a failed load, the first search or the kept result): the example's
 // status, between showFirst and the first search, is never shown.
+// a view that could not be drawn says so as a failed search does
+sayRenderErrors((text) => settle({ kind: 'error', text }));
 function marks(run: DeepReadonly<RunState>, view: DeepReadonly<LoopView>) {
   $('rhead').dataset.kind = run.searching ? 'busy' : view.status.kind;
   const note = $('run-note');

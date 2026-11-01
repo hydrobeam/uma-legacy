@@ -11,6 +11,7 @@ import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.js';
 import { pickerFor, pickerClosed } from './dialogs.ts';
+import { Guard } from './Guard.tsx';
 
 // why veteran v can't go in place k (or '')
 const BLOCKED: Record<string, string> = {
@@ -117,81 +118,84 @@ export function ParentPicker() {
   let headed = false;
   return (
     <Dialog id="vpick-dlg" labelledBy="vpick-title" open={k !== null} onClose={close}>
-      <div class="dlg">
-        <div class="row between dhead">
-          <h3 id="vpick-title">{place === null ? 'Choose a parent' : `Choose parent ${place + 1}`}</h3>
-          <button type="button" class="btn dclose" onClick={close}>
-            Close
-          </button>
-        </div>
-        <div class="seg" role="tablist" aria-label="Where the parent comes from">
-          {TABS.map(([key, label]) => (
+      {/* (inside the dialog: a throw leaves it open, and Escape still closes it) */}
+      <Guard what="The parent picker" also={pickerFor}>
+        <div class="dlg">
+          <div class="row between dhead">
+            <h3 id="vpick-title">{place === null ? 'Choose a parent' : `Choose parent ${place + 1}`}</h3>
+            <button type="button" class="btn dclose" onClick={close}>
+              Close
+            </button>
+          </div>
+          <div class="seg" role="tablist" aria-label="Where the parent comes from">
+            {TABS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`vp-tab-${key}`}
+                aria-selected={tab === key}
+                aria-controls={`vp-${key}`}
+                onClick={() => {
+                  focusFilter.current = key === 'new';
+                  setTab([key, opening.current]);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
+            <div class="vpgrid" id="vp-list">
+              {/* (its rows only while open: a closed picker draws, and redraws, nothing) */}
+              {k !== null && !vets.value.length && (
+                <p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>
+              )}
+              {k !== null &&
+                vets.value.flatMap((v: VetRecord, i: number) => {
+                  const head = v.src === 'umamoe' && !headed;
+                  if (head) headed = true;
+                  return [
+                    head && (
+                      <h4 key="umamoe" class="vpgh">
+                        uma.moe
+                      </h4>
+                    ),
+                    <VetChoice key={v.id} v={v} i={i} k={k} />,
+                  ];
+                })}
+            </div>
+          </div>
+          <div id="vp-new" role="tabpanel" aria-labelledby="vp-tab-new" hidden={tab !== 'new'}>
+            <input
+              ref={filter}
+              type="search"
+              id="vp-filter"
+              placeholder="Filter by name"
+              aria-label="Filter umas by name"
+              onInput={(e) => umas.current && filterUmas(umas.current, e.currentTarget.value)}
+            />
+            <div class="umapick" id="vp-umas" ref={umas} />
+          </div>
+          <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden={tab !== 'auto'}>
+            <p>The planner tries every one of your veterans in this place and keeps the best.</p>
             <button
-              key={key}
+              class="btn primary"
               type="button"
-              role="tab"
-              id={`vp-tab-${key}`}
-              aria-selected={tab === key}
-              aria-controls={`vp-${key}`}
+              id="vp-auto-go"
               onClick={() => {
-                focusFilter.current = key === 'new';
-                setTab([key, opening.current]);
+                if (k === null) return;
+                batch(() => {
+                  close();
+                  setParent(k, null, false);
+                });
               }}
             >
-              {label}
+              Let the planner pick this parent
             </button>
-          ))}
-        </div>
-        <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
-          <div class="vpgrid" id="vp-list">
-            {/* (its rows only while open: a closed picker draws, and redraws, nothing) */}
-            {k !== null && !vets.value.length && (
-              <p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>
-            )}
-            {k !== null &&
-              vets.value.flatMap((v: VetRecord, i: number) => {
-                const head = v.src === 'umamoe' && !headed;
-                if (head) headed = true;
-                return [
-                  head && (
-                    <h4 key="umamoe" class="vpgh">
-                      uma.moe
-                    </h4>
-                  ),
-                  <VetChoice key={v.id} v={v} i={i} k={k} />,
-                ];
-              })}
           </div>
         </div>
-        <div id="vp-new" role="tabpanel" aria-labelledby="vp-tab-new" hidden={tab !== 'new'}>
-          <input
-            ref={filter}
-            type="search"
-            id="vp-filter"
-            placeholder="Filter by name"
-            aria-label="Filter umas by name"
-            onInput={(e) => umas.current && filterUmas(umas.current, e.currentTarget.value)}
-          />
-          <div class="umapick" id="vp-umas" ref={umas} />
-        </div>
-        <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden={tab !== 'auto'}>
-          <p>The planner tries every one of your veterans in this place and keeps the best.</p>
-          <button
-            class="btn primary"
-            type="button"
-            id="vp-auto-go"
-            onClick={() => {
-              if (k === null) return;
-              batch(() => {
-                close();
-                setParent(k, null, false);
-              });
-            }}
-          >
-            Let the planner pick this parent
-          </button>
-        </div>
-      </div>
+      </Guard>
     </Dialog>
   );
 }

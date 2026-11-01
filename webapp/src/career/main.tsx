@@ -28,7 +28,8 @@
 import '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
-import { batch } from '@preact/signals-core';
+import { batch, computed } from '@preact/signals-core';
+import type { ReadonlySignal } from '@preact/signals-core';
 import type { VNode } from 'preact';
 import { $, $dialog, $textarea, backdropCloses } from '../dom.js';
 import { ERA } from '../saved.ts';
@@ -60,7 +61,7 @@ import {
 import { winsOpen } from '../veterans/pickers.js';
 import { setRunner } from '../images.js';
 import { initUmamoe, syncListings, umamoeButton } from '../umamoesetup.js';
-import { Boundary } from '../ui/Boundary.tsx';
+import { sayRenderErrors } from '../ui/RenderGuard.tsx';
 import {
   placesKey,
   buildJob,
@@ -80,16 +81,17 @@ import * as answerStore from './state.ts';
 import { answer, dropAnswer, keepComparisonPlan, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
 import { tName } from './view/parts.js';
+import { Guard } from './view/Guard.tsx';
 import { RunNote, tickNote } from './view/RunNote.tsx';
 import { Tree, Verdict } from './view/Tree.tsx';
 import { NodeDialog } from './view/NodeDialog.tsx';
 import { ParentPicker } from './view/ParentPicker.tsx';
 import { DeckDialog, drawnCard } from './view/Sections.tsx';
 import { BorrowChoice, SetupSummary, initFold } from './view/Setup.tsx';
-import { openNode } from './view/dialogs.ts';
+import { nodeOpen, openNode, pickerFor } from './view/dialogs.ts';
 import { renderResults } from './view/Results.js';
 import { PoolBody, PoolTabs, initVSort } from './view/Pool.tsx';
-import { poolTab, inTab, openPool } from './view/poolState.ts';
+import { poolTab, inTab, openPool, selected } from './view/poolState.ts';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
 import { searchCaveat } from '../proofs.mjs';
 import { must } from '../must.ts';
@@ -99,6 +101,8 @@ import type { CareerSearch } from './job.js';
 // ---------- the run ----------
 // The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,
 // the analysis store, the career on show and her draft. The run machine below drives it through its hooks.
+// Try a run draws her comparison and her draft
+const simulationDrawn = computed(() => [analysisStore.simulation.value, draft.value]);
 const comparison = createComparison({
   engine: { run: runJob, restart: restartEngine, saveState: engineSaveState },
   clock: { setTimer: (f, ms) => setTimeout(f, ms) },
@@ -189,8 +193,17 @@ function drawUnported() {
   renderResults();
   umamoeButton();
 }
-// ---------- the views: each component into its mount point, behind an error boundary ----------
-const mount = (id: string, view: VNode) => render(<Boundary>{view}</Boundary>, $(id));
+// ---------- the views: each component into its mount point, behind a render guard (view/Guard.tsx) ----------
+// a view that could not be drawn says so on the status line, as a failed search does (the answer on show stays)
+sayRenderErrors(loadFails);
+/** `what`: the view's name on the status line (none for the status line itself); `also`: what else it draws from */
+const mount = (id: string, view: VNode, what?: string, also?: ReadonlySignal<unknown>) =>
+  render(
+    <Guard what={what} also={also}>
+      {view}
+    </Guard>,
+    $(id),
+  );
 // The status line (its live region is the template's, there from load) and what it marks around it: the status bar's
 // state (its colours), the results and the tree dimmed while a run replaces the answer on show, the runner (the trainee
 // you chose, else the career on show). Drawn from the first paint the run machine asks for; then `paint` moves its clock.
@@ -233,13 +246,13 @@ function initSettings() {
   initCards();
   initOwnedImport();
   initTargets();
-  mount('bp', <BorrowChoice />);
+  mount('bp', <BorrowChoice />, 'Borrowed parent');
   renderRoster();
   renderTargets();
   enginePersist(); // the solver's kept work survives a page reload
   initSetup();
   initFold();
-  mount('set-sum', <SetupSummary />);
+  mount('set-sum', <SetupSummary />, 'The setup summary');
   // a change of setup (targets, umas, cards, scenario, rank, Borrowed parent): the tree shows the new targets, and the
   // search runs again
   on([jobSetup], () => {
@@ -332,14 +345,14 @@ loadData().then(
       }
     };
     initVSort();
-    mount('tree', <Tree />);
-    mount('lodds', <Verdict />);
-    mount('v-tabs', <PoolTabs />);
-    mount('v-body', <PoolBody />);
-    mount('node-root', <NodeDialog />);
-    mount('deck-root', <DeckDialog />);
-    mount('vpick-root', <ParentPicker />);
-    mount('sim-top', <Analysis comparison={comparison} />);
+    mount('tree', <Tree />, 'The lineage tree');
+    mount('lodds', <Verdict />, 'The odds');
+    mount('v-tabs', <PoolTabs />, "The veterans' tabs", poolTab);
+    mount('v-body', <PoolBody />, 'The veterans', selected);
+    mount('node-root', <NodeDialog />, 'The node popup', nodeOpen);
+    mount('deck-root', <DeckDialog />, 'The deck popup');
+    mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
+    mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);
     drawUnported();
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },

@@ -170,7 +170,7 @@ export function answerFails(text: string) {
 export function dropAnswer() {
   shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), last: null, planState: NO_PLAN });
 }
-/** the page could not load: `text` says why */
+/** the page could not load, or a view could not be drawn (ui/RenderGuard.tsx): `text` says why (the rest stays) */
 export function loadFails(text: string) {
   shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), status: { kind: 'error', text } });
 }

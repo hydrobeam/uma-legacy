@@ -14,7 +14,7 @@ import { RadioPills } from '../ui/RadioPills.tsx';
 import { AffHeart, AffTable } from '../ui/AffTable.tsx';
 import type { AffinityLeg } from '../ui/AffTable.tsx';
 import { UmaAv } from '../ui/Images.tsx';
-import { RenderGuard } from './RenderGuard.tsx';
+import { RenderGuard } from '../ui/RenderGuard.tsx';
 import type { Lineage, ResultLoop } from './types.ts';
 
 // the loop shown at the last opening (`n` counts them: each opening starts at the best career), and whether it is open
