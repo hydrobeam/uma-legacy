@@ -3,63 +3,19 @@
 //! the plan's look-ahead is the one with borrowing (V and Cont's fit are the "allow" job's, to the bit on this pool);
 //! the page's run as two jobs, after an "allow" run in the same worker, plans as the combined job does (each setting's
 //! main search is kept under its own key). "never" answers as the pool without the borrowed veteran.
+mod common;
+use common::{run_jobs, val_job, without_work};
 use serde_json::{Value, json};
-use std::{fs, process::Command};
 
 const BOR: usize = 14;
 
-/// one process running `jobs` in turn (one output line each); `tag` names its job files
-fn run(tag: &str, jobs: &[&Value]) -> Vec<Value> {
-    let dir = std::env::temp_dir();
-    let ps: Vec<_> = jobs
-        .iter()
-        .enumerate()
-        .map(|(i, j)| {
-            let p = dir.join(format!("uma-plan-borrowed-{}-{tag}-{i}.json", std::process::id()));
-            fs::write(&p, j.to_string()).unwrap();
-            p
-        })
-        .collect();
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .arg("data.json")
-        .args(&ps)
-        .env_remove("LOOPOPT_STATE_IN")
-        .env_remove("LOOPOPT_STATE_OUT")
-        .output()
-        .unwrap();
-    for p in &ps {
-        fs::remove_file(p).unwrap();
-    }
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8_lossy(&output.stdout).lines().map(|l| serde_json::from_str(l).unwrap()).collect()
-}
 fn job(bp: Option<&str>) -> Value {
-    let mut j: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
-    )
-    .unwrap();
+    let mut j = val_job("plan/p16.json");
     j["legacies"][BOR]["borrowed"] = json!(true);
     if let Some(b) = bp {
         j["borrowed_parent"] = json!(b);
     }
     j
-}
-/// timings and work counters out
-fn strip(v: &Value) -> Value {
-    match v {
-        Value::Object(m) => Value::Object(
-            m.iter()
-                .filter(|(k, _)| {
-                    !["timing_s", "work", "umas_searched", "umas_certified"].contains(&k.as_str())
-                        && !k.ends_with("_ms")
-                })
-                .map(|(k, x)| (k.clone(), strip(x)))
-                .collect(),
-        ),
-        Value::Array(a) => Value::Array(a.iter().map(strip).collect()),
-        x => x.clone(),
-    }
 }
 /// the legacy indices (`parents`, a slot's `legacy`) as they are once veteran `gone` is left out of the pool
 fn renumber(v: &Value, gone: usize) -> Value {
@@ -125,8 +81,8 @@ fn has_bor(r: &Value) -> bool {
 #[test]
 fn later_picks_without_a_borrowed_parent_and_plans_with_one() {
     let (allow, later) = (job(None), job(Some("later")));
-    let a = &run("a", &[&allow])[0];
-    let l = &run("l", &[&later])[0];
+    let a = &run_jobs("a", &[&allow])[0];
+    let l = &run_jobs("l", &[&later])[0];
     // the premise: with borrowing the best careers and the pick use the borrowed veteran
     assert!(
         has_bor(&a["results"][0]) && has_bor(&a["next"]["choice"]),
@@ -145,7 +101,7 @@ fn later_picks_without_a_borrowed_parent_and_plans_with_one() {
         assert_eq!(l["next"][k], a["next"][k], "{k}");
     }
     // and it matters: without borrowing later (never) V is another
-    let n = &run("n", &[&job(Some("never"))])[0];
+    let n = &run_jobs("n", &[&job(Some("never"))])[0];
     assert_ne!(n["next"]["v0"], a["next"]["v0"]);
     // the page's run as two jobs, after an allow run in the same worker: the combined later job's answer
     let strip_next = |j: &Value| {
@@ -157,10 +113,13 @@ fn later_picks_without_a_borrowed_parent_and_plans_with_one() {
     lp["no_reports"] = json!(true);
     let mut ap = allow.clone();
     ap["no_reports"] = json!(true);
-    let two = run("two", &[&strip_next(&allow), &ap, &strip_next(&later), &lp]);
-    assert!(strip(&two[2]["results"]) == strip(&l["results"]), "the later search job after an allow run differs");
+    let two = run_jobs("two", &[&strip_next(&allow), &ap, &strip_next(&later), &lp]);
     assert!(
-        strip(&two[3]["next"]) == strip(&l["next"]),
+        without_work(&two[2]["results"]) == without_work(&l["results"]),
+        "the later search job after an allow run differs"
+    );
+    assert!(
+        without_work(&two[3]["next"]) == without_work(&l["next"]),
         "the later plan job after an allow run differs from the combined job's"
     );
 }
@@ -182,7 +141,7 @@ fn later_checks_from_the_kept_plan_without_a_borrowed_parent() {
         let mut jobs = vec![&plan];
         // (more than the check's variants: the last ones answer its finished report again)
         jobs.extend(std::iter::repeat_n(&check, 14));
-        let outputs = run(&format!("kept-{}", bp.unwrap_or("allow")), &jobs);
+        let outputs = run_jobs(&format!("kept-{}", bp.unwrap_or("allow")), &jobs);
         let pairs = outputs
             .iter()
             .rev()
@@ -208,8 +167,8 @@ fn never_is_the_pool_without_borrowed_veterans() {
     let never = job(Some("never"));
     let mut gone = job(None);
     gone["legacies"].as_array_mut().unwrap().remove(BOR);
-    let n = &run("nv", &[&never])[0];
-    let g = &run("g", &[&gone])[0];
-    assert!(strip(&renumber(&n["results"], BOR)) == strip(&g["results"]), "results differ");
-    assert!(strip(&renumber(&n["next"], BOR)) == strip(&g["next"]), "plans differ");
+    let n = &run_jobs("nv", &[&never])[0];
+    let g = &run_jobs("g", &[&gone])[0];
+    assert!(without_work(&renumber(&n["results"], BOR)) == without_work(&g["results"]), "results differ");
+    assert!(without_work(&renumber(&n["next"], BOR)) == without_work(&g["next"]), "plans differ");
 }

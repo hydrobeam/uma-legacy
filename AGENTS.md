@@ -27,7 +27,8 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   reference is re-taken. When results move on purpose:
   - the new outputs replace `val/ref__*` / `val/refpu__*` (or `val/plan/ref__*`) in the same commit;
   - `val/joint_check.py TAG` (part of `val`), an independent recomputation of the odds, agrees within 1e-3;
-  - the `plan_roll` fixture (`pkg/loopopt/tests/fixtures/plan_roll.json`) is re-taken from the solver's own rolls;
+  - the `plan_roll` fixture (`pkg/loopopt/tests/fixtures/plan_roll.json`) is re-taken from the solver's own rolls
+    (`BLESS=1`, `docs/BUILD.md`, *Tests*);
   - `./build.sh research` runs again, since §6 recomputes the references and §13 runs the solver.
 
   Speed work keeps outputs byte-identical (`val/same.py`, `docs/PERF.md`). After data or solver changes, rerun

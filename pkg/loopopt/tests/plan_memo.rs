@@ -6,43 +6,22 @@
 //! again and compared bit for bit (the plan panics on a stale value; a memo carried across the refit fails here, while
 //! the output alone need not show it), with the cap lifted (`PLAN_MEMO_CAP`) so clearing cannot hide stale entries.
 //! The output with the memos on must equal the output with them off (`PLAN_MEMO_OFF`) but for timings.
+mod common;
+use common::{State, loopopt, run_with, val_job, without_clocks};
 use serde_json::{Value, json};
-use std::{fs, process::Command};
 
+/// `job`'s output and stderr, with the plan's memos on (`PLAN_MEMO`) and checked (`PLAN_MEMO_CHECK`) or `off`
 fn run(job: &Value, off: bool) -> (Value, String) {
-    let path = std::env::temp_dir().join(format!("uma-plan-memo-{}-{}.json", std::process::id(), u8::from(off)));
-    fs::write(&path, job.to_string()).unwrap();
-    let mut c = Command::new(env!("CARGO_BIN_EXE_loopopt"));
-    c.current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .args(["data.json", path.to_str().unwrap()])
-        .env("PLAN_MEMO", "1");
+    let mut command = loopopt("global", State::NONE);
+    command.env("PLAN_MEMO", "1");
     // (memos on: no cap in practice, so entries made before the refit are still there to be read after it)
     if off {
-        c.env("PLAN_MEMO_OFF", "1").env_remove("PLAN_MEMO_CHECK");
+        command.env("PLAN_MEMO_OFF", "1").env_remove("PLAN_MEMO_CHECK");
     } else {
-        c.env_remove("PLAN_MEMO_OFF").env("PLAN_MEMO_CHECK", "1").env("PLAN_MEMO_CAP", "100000000");
+        command.env_remove("PLAN_MEMO_OFF").env("PLAN_MEMO_CHECK", "1").env("PLAN_MEMO_CAP", "100000000");
     }
-    let output = c.output().unwrap();
-    fs::remove_file(path).unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    (serde_json::from_slice(&output.stdout).unwrap(), String::from_utf8_lossy(&output.stderr).into_owned())
-}
-/// timings out (keys `timing_s` and `*_ms`)
-fn strip(v: &mut Value) {
-    match v {
-        Value::Object(m) => {
-            m.retain(|k, _| k != "timing_s" && !k.ends_with("_ms"));
-            for x in m.values_mut() {
-                strip(x);
-            }
-        }
-        Value::Array(a) => {
-            for x in a {
-                strip(x);
-            }
-        }
-        _ => {}
-    }
+    let ran = run_with(command, &format!("plan-memo-{}", u8::from(off)), &[job]);
+    (ran.outputs.into_iter().next().expect("one output"), ran.stderr)
 }
 /// a number after `key ` in the PLAN_MEMO line
 fn stat(err: &str, key: &str) -> u64 {
@@ -53,21 +32,16 @@ fn stat(err: &str, key: &str) -> u64 {
 
 #[test]
 fn memos_exact_through_a_refit() {
-    let mut job: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p11_noagnes.json")).unwrap(),
-    )
-    .unwrap();
+    let mut job = val_job("plan/p11_noagnes.json");
     // (`builder_careers` 1: with the default 3 the alternative rows' lifts already give Cont its exact builders, and no
     // refit follows the pass-2 searches)
     job["next"] = json!({"proxy_eff": -1.0, "builder_careers": 1});
-    let (mut on, err_on) = run(&job, false);
-    let (mut off, err_off) = run(&job, true);
+    let (on, err_on) = run(&job, false);
+    let (off, err_off) = run(&job, true);
     // the refit path ran, with the memos looked up (and hit) in one run and not at all in the other
     assert!(stat(&err_on, "refits") >= 1, "no refit: {err_on}");
     assert!(stat(&err_on, "hits") > 0, "{err_on}");
     assert_eq!(stat(&err_off, "lookups"), 0, "{err_off}");
     assert!(on["next"]["v0"].as_f64().is_some());
-    strip(&mut on);
-    strip(&mut off);
-    assert!(on == off, "outputs differ with the memos on and off");
+    assert!(without_clocks(&on) == without_clocks(&off), "outputs differ with the memos on and off");
 }

@@ -6,17 +6,15 @@
 //! career (on her and Oguri Cap), with no higher odds than the pick it replaces, and those careers finish: S falls, and the run stops on
 //! the tail S / p. Under goal "first" the same pool runs its first pick to the end. Stopped while its career still
 //! does not finish (before the switch), the looped run has run no finishing career and is censored.
+mod common;
+use common::{run_job, val_job};
 use serde_json::{Value, json};
-use std::{fs, process::Command};
 
 const TARGET_ONE_VETERAN_LACKS: u64 = 20166;
 
 /// The constructed pool's simulation under `goal`, stopped at `max_careers`.
 fn simulate(goal: &str, max_careers: usize) -> Value {
-    let career_job: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/jobs/career_U.json")).unwrap(),
-    )
-    .unwrap();
+    let career_job = val_job("jobs/career_U.json");
     let mut legacies: Vec<Value> = [0, 3, 6, 9].iter().map(|&i| career_job["legacies"][i].clone()).collect();
     for legacy in &mut legacies[1..] {
         legacy["sparks"].as_array_mut().unwrap().retain(|spark| spark[0] != TARGET_ONE_VETERAN_LACKS);
@@ -26,16 +24,7 @@ fn simulate(goal: &str, max_careers: usize) -> Value {
     job["legacies"] = json!(legacies);
     job["simulate"] =
         json!({"policy": "greedy", "goal": goal, "seed": 1, "runs": 1, "max_careers": max_careers, "margin": 0});
-    let path = std::env::temp_dir().join(format!("uma-sim-looped-{goal}-{max_careers}-{}.json", std::process::id()));
-    fs::write(&path, job.to_string()).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .args(["data.json", path.to_str().unwrap()])
-        .output()
-        .unwrap();
-    fs::remove_file(path).unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    serde_json::from_slice(&output.stdout).unwrap()
+    run_job(&format!("sim-looped-{goal}-{max_careers}"), &job)
 }
 
 /// A pick key's parents ("chara:a,b").

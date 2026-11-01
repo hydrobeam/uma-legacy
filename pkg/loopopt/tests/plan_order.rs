@@ -4,45 +4,19 @@
 //! by a plan whose fixed parent was another veteran at the same position is not read (the same review: p10 with legacies
 //! 1 and 6 swapped and fix [6], then in order keeping fix [6], read five caps fitted with another mandatory parent and V
 //! fell 2447.02 -> 2345.70).
+mod common;
+use common::{run_jobs, val_job};
 use serde_json::Value;
-use std::{fs, process::Command};
 
 /// One process running `jobs` in turn (the worker's kept state carried between them), their outputs' `next`.
 fn plans(name: &str, jobs: &[&Value]) -> Vec<Value> {
-    let paths: Vec<_> = (0..jobs.len())
-        .map(|index| std::env::temp_dir().join(format!("uma-plan-order-{name}-{}-{index}.json", std::process::id())))
-        .collect();
-    for (path, job) in paths.iter().zip(jobs) {
-        fs::write(path, job.to_string()).unwrap();
-    }
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .arg("data.json")
-        .args(&paths)
-        .env_remove("LOOPOPT_STATE_IN")
-        .env_remove("LOOPOPT_STATE_OUT")
-        .output()
-        .unwrap();
-    for path in &paths {
-        fs::remove_file(path).unwrap();
-    }
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).unwrap()["next"].clone())
-        .collect()
-}
-
-fn p10() -> Value {
-    serde_json::from_str(&fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p10.json")).unwrap())
-        .unwrap()
+    run_jobs(&format!("plan-order-{name}"), jobs).into_iter().map(|output| output["next"].clone()).collect()
 }
 
 /// p16_borrow: borrowed veterans usable, so every uma's best career is searched before the stage candidates are chosen
 /// and the free slots rank by the careers found (candidates.rs `presearch`), a path p10 (proxies) does not take
 fn p16_borrow() -> Value {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16_borrow.json");
-    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+    val_job("plan/p16_borrow.json")
 }
 
 /// The stage candidates (`fit`'s umas, in order) and the ceiling ranking's picks (`hint`).
@@ -54,7 +28,7 @@ fn candidates(next: &Value) -> (Vec<Value>, Vec<Value>) {
 
 #[test]
 fn the_veterans_order_changes_no_candidate() {
-    let in_order = p10();
+    let in_order = val_job("plan/p10.json");
     let mut reversed = in_order.clone();
     reversed["legacies"].as_array_mut().unwrap().reverse();
     let next = [&plans("in-order", &[&in_order])[0], &plans("reversed", &[&reversed])[0]];
@@ -79,7 +53,7 @@ fn the_veterans_order_changes_no_presearched_candidate() {
 
 #[test]
 fn a_cap_kept_under_another_fixed_veteran_is_not_read() {
-    let mut in_order = p10();
+    let mut in_order = val_job("plan/p10.json");
     in_order["fix"] = serde_json::json!([6]);
     let mut swapped = in_order.clone();
     swapped["legacies"].as_array_mut().unwrap().swap(1, 6);
