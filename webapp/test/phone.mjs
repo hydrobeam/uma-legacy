@@ -18,7 +18,7 @@ export default async function phone(b) {
   const small = await pg.evaluate(() =>
     [
       ...document.querySelectorAll(
-        '.lp .rbbar button, .lp .rbbar select, #rhead button, #rhead select, .loop .lacts button, .mem .memb',
+        '[aria-labelledby="h-set"] button, [aria-labelledby="h-set"] select, #rhead button, #rhead select, .loop .lacts button, .mem .memb',
       ),
     ]
       .filter((e) => e.offsetParent && !e.closest('.roster, .cards'))
@@ -33,7 +33,7 @@ export default async function phone(b) {
   // results first: above the settings, and first in the document (reading and Tab order), the result in the first screen
   const order = await pg.evaluate(() => {
     const c = document.getElementById('rcol'),
-      r = document.querySelector('.lp .rbbar'),
+      r = document.querySelector('[aria-labelledby="h-set"]'),
       o = document.querySelector('#results .loop .odds').getBoundingClientRect();
     return {
       above: c.getBoundingClientRect().top < r.getBoundingClientRect().top,
@@ -277,8 +277,9 @@ export default async function phone(b) {
       pg,
       () =>
         !!(
-          document.querySelector('.lpside').compareDocumentPosition(document.getElementById('rcol')) &
-          Node.DOCUMENT_POSITION_FOLLOWING
+          document
+            .querySelector('[aria-labelledby="h-set"]')
+            .parentElement.compareDocumentPosition(document.getElementById('rcol')) & Node.DOCUMENT_POSITION_FOLLOWING
         ),
     ),
   );

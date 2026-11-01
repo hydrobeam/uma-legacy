@@ -20,7 +20,7 @@ export default async function states(b) {
       note: document.getElementById('run-note').textContent,
       act: document.getElementById('r-act').innerText,
       loops: document.querySelectorAll('#results .loop').length,
-      stale: document.getElementById('results').classList.contains('stale'),
+      stale: document.getElementById('results').hasAttribute('data-stale'),
     }));
   // a job that fails inside the worker: the search ends on the error (it used to spin for ever), the results stay, the
   // worker goes, and the next search runs on a fresh one

@@ -1,14 +1,16 @@
 // ---------- the loop page's one root: everything under the header (loop.html's #app) ----------
 // Drawn at build time with no views and no state (vite/prerender.mjs: the page's first paint), and hydrated by the entry
 // (main.tsx), which fills in `views` once the game data is in (the status line's two parts from the first status worth
-// showing) and the state of what the layout draws itself: the status bar's colours and tooltip, the dimmed results, the
-// switches, the phone's floating status button. Imports nothing but Preact and the shell (ui/Shell.tsx says why).
-// The results column: on a phone (the columns stacked) it comes first, before the setup, in the reading and Tab order
-// too (`phone`; loop.html's script after #app puts it there before the scripts run, so the first paint has it); on
-// a desktop it sticks by its top when it fits the window, by its bottom when it is taller.
+// showing) and the state of what the layout draws itself: the status row's state and tooltip, the dimmed results, the
+// switches, the phone's floating status button. Imports nothing but Preact, the shell and its class helpers
+// (ui/Shell.tsx says why). The results column: on a phone (the columns stacked) it comes first, before the setup, in
+// the reading and Tab order too (`phone`; loop.html's script after #app puts it there before the scripts run, so the
+// first paint has it); on a desktop it scrolls with the page beside the setup.
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { EnhButtons, EraRow, Footer, Ribbon } from '../ui/Shell.tsx';
+import { cx } from 'tailwind-variants/lite';
+import { EnhButtons, EraRow, Footer, Ribbon, setRow } from '../ui/Shell.tsx';
+import { panel } from '../ui/Panel.tsx';
 import type { Badge } from '../ui/Shell.tsx';
 import type { Era } from '../eras.ts';
 import { Button } from '../ui/Button.tsx';
@@ -33,7 +35,7 @@ export interface LoopState {
   era?: Era;
   umas?: Badge;
   cards?: Badge;
-  /** the status bar's state (its colours) and the status line's busy mark and tooltip */
+  /** the status row's state (data-kind: an error's line semibold) and the status line's busy mark and tooltip */
   kind?: string;
   busy?: boolean;
   noteTitle?: string;
@@ -61,30 +63,19 @@ interface Props {
   /** the results column, for the views that reach it (the entry's; one of its own at build time) */
   column?: RefObject<HTMLElement | null>;
 }
-const MARGIN = 12; // px kept above the sticky results column (and below it, when it is taller than the window)
 export function LoopLayout({ version, note = null, act = null, views = null, state: s = {}, column }: Props) {
   const own = useRef<HTMLElement>(null),
     rcol = column ?? own;
-  // the column's sticky offset, and whether it is in view (html.rin: the floating status button hides)
+  // whether the results column is in view (html.rin: the floating status button hides)
   useLayoutEffect(() => {
     const box = rcol.current;
-    if (!box) return;
-    const fit = () => box.style.setProperty('--rtop', `${Math.min(MARGIN, innerHeight - box.offsetHeight - MARGIN)}px`);
-    const sized = new ResizeObserver(fit);
-    sized.observe(box);
-    addEventListener('resize', fit);
-    const seen = window.IntersectionObserver
-      ? new IntersectionObserver((entries) => {
-          // (#rcol's changes since the last call, the newest last)
-          for (const entry of entries) document.documentElement.classList.toggle('rin', entry.isIntersecting);
-        })
-      : null;
-    seen?.observe(box);
-    return () => {
-      sized.disconnect();
-      seen?.disconnect();
-      removeEventListener('resize', fit);
-    };
+    if (!box || !window.IntersectionObserver) return;
+    const seen = new IntersectionObserver((entries) => {
+      // (#rcol's changes since the last call, the newest last)
+      for (const entry of entries) document.documentElement.classList.toggle('rin', entry.isIntersecting);
+    });
+    seen.observe(box);
+    return () => seen.disconnect();
   }, [rcol]);
   // the floating status button takes you back up to the results
   const toResults = () => {
@@ -97,32 +88,42 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
     box.focus({ preventScroll: true });
   };
   const side = (
-    <div class="lpside" key="side">
-      <section class="rbbar" aria-labelledby="h-set">
+    <div class="grid min-w-0 content-start gap-3.5" key="side">
+      {/* the setup panel: its rows one under another, the Enhance buttons under them, the status row at its foot */}
+      <section class={cx(panel, 'grid gap-y-2 self-start px-4.5 pb-3 max-sm:px-3')} aria-labelledby="h-set">
         <Ribbon>Loop setup</Ribbon>
-        <div class="setlist">
+        <div class="relative grid min-w-0 grid-cols-1 content-start gap-1.5">
           <EraRow era={s.era} page="loop" onPick={s.onEra} />
-          <div class="scendd" id="scen-dd">
+          {/* (its menu hangs under the whole list) */}
+          <div class="contents" id="scen-dd">
             {views?.scenario}
           </div>
-          <div class="gctl rankctl" id="rank-ctl">
+          <div class={cx(setRow.loop, 'relative')} id="rank-ctl">
             {views?.rank}
           </div>
         </div>
-        <div class="setenh">
+        <div class="grid grid-cols-[auto_auto] justify-center gap-x-3 gap-y-2 self-center pt-1.5">
           <EnhButtons page="loop" umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
         </div>
-        <div class="rhead" id="rhead" data-kind={s.kind}>
+        {/* the status line in small type over the switches; its colours stay the panel's (data-kind: an error's line
+            semibold) */}
+        <div
+          class="group border-gm-line bg-gm-pane text-caption text-gm-ink mt-0.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 rounded-lg border px-3 pt-2 pb-2.25"
+          id="rhead"
+          data-kind={s.kind}
+        >
+          {/* (a runner before the words: the words wrap beside it, never under it) */}
           <p
-            class={s.busy ? 'runnote busy' : 'runnote'}
+            class="text-ink leading-title m-0 flex grow basis-full flex-wrap items-center gap-x-2 gap-y-0.5 font-medium tabular-nums group-data-[kind=error]:font-semibold empty:hidden has-[>[aria-hidden]:first-child]:flex-nowrap has-[>[aria-hidden]:first-child]:items-start"
             id="run-note"
             role="status"
             aria-live="polite"
             title={s.noteTitle}
+            data-busy={s.busy ? '' : undefined}
           >
             {note}
           </p>
-          <span class="ract" id="r-act">
+          <span class="empty:hidden" id="r-act">
             {act}
           </span>
           <Switch
@@ -145,21 +146,37 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
           </Switch>
         </div>
       </section>
-      <div class="lptgt">
-        <section class="panel" id="skills-panel" aria-labelledby="h-skills">
-          {views?.targets}
-        </section>
-      </div>
+      {/* Target skills in the open, under a green bar */}
+      <section
+        class={cx(panel, 'grid min-w-0 grid-cols-1 gap-3 overflow-hidden px-3 pb-3')}
+        id="skills-panel"
+        aria-labelledby="h-skills"
+      >
+        {views?.targets}
+      </section>
     </div>
   );
   const results = (
-    <main class="rcol" id="rcol" tabIndex={-1} aria-label="Results" ref={rcol} key="results">
-      <span class="rtop" id="rtop">
+    <main
+      class="relative grid min-w-0 grid-cols-1 content-start gap-3 outline-none"
+      id="rcol"
+      tabIndex={-1}
+      aria-label="Results"
+      ref={rcol}
+      key="results"
+    >
+      {/* Results (1 or 3), in the first result's top right corner (on a phone its label for the screen reader only) */}
+      <span
+        class="text-note text-gm-ink2 absolute top-3 right-3.5 z-2 m-0 inline-flex items-center gap-1.5 font-bold max-md:top-2.5 max-md:right-2.5 max-md:*:first:sr-only"
+        id="rtop"
+      >
         {views?.count}
       </span>
+      {/* dimmed while a search runs (after a moment, so a quick one doesn't flicker) and while not these settings' */}
       <div
-        class={s.resultsStale ? 'results stale' : 'results'}
+        class="grid min-w-0 gap-2.5 transition-opacity aria-busy:delay-800 aria-busy:duration-250 aria-busy:not-data-stale:opacity-50 data-stale:opacity-45 motion-reduce:transition-none"
         id="results"
+        data-stale={s.resultsStale ? '' : undefined}
         {...(s.busy === undefined ? {} : { 'aria-busy': s.busy })}
       >
         {views?.results}
@@ -169,9 +186,21 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
   );
   return (
     <>
-      <div class="wrap lp">
+      {/* the page: the setup column beside the results; stacked on a phone, the results first */}
+      <div
+        class="max-w-page font-game text-gm-ink mx-auto grid grid-cols-[minmax(0,400px)_minmax(0,1fr)] items-start gap-4.5 max-xl:grid-cols-1"
+        data-page="loop"
+      >
         {s.phone ? [results, side] : [side, results]}
-        <button class="runpill" id="run-pill" type="button" hidden={s.pill == null} onClick={toResults}>
+        {/* phone: the status line's copy floats at the foot of the screen, a button back to the results (hidden while
+            they are in view) */}
+        <button
+          class="border-accent bg-panel text-body text-ink shadow-pop fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom,0px)+12px)] z-30 hidden min-h-11 items-center gap-2 rounded-lg border px-3.5 py-2 text-left font-semibold tabular-nums max-xl:not-in-[.rin]:flex"
+          id="run-pill"
+          type="button"
+          hidden={s.pill == null}
+          onClick={toResults}
+        >
           {s.pill ?? ''}
         </button>
       </div>

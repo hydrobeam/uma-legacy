@@ -254,19 +254,20 @@ export default async function load(b) {
   check(
     'desktop: Loop setup beside the results, their tops level, the whole page in one 900 px screen',
     await pg.evaluate(() => {
-      const set = document.querySelector('.lp .rbbar').getBoundingClientRect(),
+      const set = document.querySelector('[aria-labelledby="h-set"]').getBoundingClientRect(),
         res = document.querySelector('#results .loop').getBoundingClientRect();
       return (
         set.right <= res.left &&
         Math.abs(set.top - res.top) <= 1 &&
-        document.querySelector('.lpside').getBoundingClientRect().bottom <= innerHeight + 60
+        document.querySelector('[aria-labelledby="h-set"]').parentElement.getBoundingClientRect().bottom <=
+          innerHeight + 60
       );
     }),
   );
   check(
     "the status line and the Auto-search and Deck per uma switches sit at the foot of the setup panel, Results in the results' corner",
     await pg.evaluate(() => {
-      const t = document.querySelector('.lp .rbbar');
+      const t = document.querySelector('[aria-labelledby="h-set"]');
       return (
         ['run-note', 'x-auto', 'c-peruma', 'rank'].every((id) => t.contains(document.getElementById(id))) &&
         document.getElementById('rcol').contains(document.getElementById('c-top')) &&

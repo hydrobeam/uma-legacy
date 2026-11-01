@@ -242,7 +242,7 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
 }
 
 // ---------- waits and reads on the planner page
-export const busy = (pg) => pg.evaluate(() => document.getElementById('run-note').classList.contains('busy'));
+export const busy = (pg) => pg.evaluate(() => document.getElementById('run-note').hasAttribute('data-busy'));
 // wait for the current (auto) search to finish. A setting change marks the status line busy at once (the search
 // itself starts after a short pause), so no fixed sleep is needed; after a page load, the page's first job must have
 // been sent (pages opened without open()'s worker hook have no __runs and skip that part). timeout in ms.
@@ -254,7 +254,7 @@ async function searchSettled(pg, timeout = 180000) {
       // a search has run, or (no job sent) the saved result of these settings shows as done (a reload's)
       return (
         (window.__runs === undefined || window.__runs.length > 0 || /^Checked [\d,]+ decks/.test(n.textContent)) &&
-        !n.classList.contains('busy') &&
+        !n.hasAttribute('data-busy') &&
         /Checked [\d,]+ decks|example/i.test(n.textContent)
       );
     },

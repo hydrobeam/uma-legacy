@@ -30,7 +30,7 @@ export default async function dark(b) {
   await pg.waitForTimeout(300); // time for a system change to (wrongly) take effect
   await themeIs('light', 'dark: … and a system change no longer overrides it');
   // the status box repaints with the page, not after it (its colour transitions wait out the switch)
-  const box = () => pg.evaluate(() => getComputedStyle(document.querySelector('.rhead')).backgroundColor);
+  const box = () => pg.evaluate(() => getComputedStyle(document.getElementById('rhead')).backgroundColor);
   const bLight = await box();
   await pg.click('#theme-btn');
   const bNow = await box();
