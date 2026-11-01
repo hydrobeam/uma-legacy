@@ -185,7 +185,8 @@ step_lint() {
   lint "tsc (js)" in_dir "$W" npx --no-install tsc -p tsconfig.js.json
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
   lint static.mjs in_dir "$W" node test/static.mjs
-  lint "node tests" in_dir "$W" node --test --test-reporter=dot 'test/unit/*.test.*'
+  # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the terminal
+  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*'
   if [ ${#LINT_FAILED[@]} -gt 0 ]; then
     local list
     list=$(printf '%s, ' "${LINT_FAILED[@]}")

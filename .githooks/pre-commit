@@ -35,6 +35,6 @@ if [ -n "$(staged 'webapp/src/*' 'webapp/*.template.*' 'webapp/build.py')" ]; th
 fi
 
 if [ -n "$(staged 'webapp/src/*' 'webapp/test/*')" ]; then
-  (cd "$root/webapp" && node --test --test-reporter=dot 'test/unit/*.test.*' >&2) || fail 'node tests (above)'
+  (cd "$root/webapp" && NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*' >&2) || fail 'node tests (above)'
 fi
 exit 0
