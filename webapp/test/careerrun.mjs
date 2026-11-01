@@ -37,15 +37,20 @@ export default async function careerrun(b) {
   await importDump();
   await pg.waitForFunction(() => window.__careerJobs.some((j) => j.next)); // the plan job is in the worker
   // a preset saved (a settings save that leaves the job as it is), all at once while the plan runs
-  const edit = await pg.evaluate(() => {
+  const edit = await pg.evaluate(async () => {
     const plan = () => /Planning your next career/.test(document.getElementById('run-note').textContent),
       was = plan();
     const jobs = window.__careerJobs.filter((j) => j.cmd !== 'state_out').length,
       workers = window.__workers; // (a state save, `engineSaveState`, is no job of the plan's)
+    // (each dialog is a component: it is drawn a task after the click that opens it)
+    const drawn = () => new Promise((r) => setTimeout(r));
     document.getElementById('t-preset').click();
+    await drawn();
     document.getElementById('pr-save').click();
+    await drawn();
     document.getElementById('prn-save').click();
-    document.getElementById('preset-dlg').close();
+    await drawn();
+    document.querySelector('#preset-dlg .dclose').click();
     return {
       was,
       now: plan(),
