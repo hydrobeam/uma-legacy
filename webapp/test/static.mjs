@@ -10,9 +10,6 @@
 //   page's bundle, or a page edit, would otherwise crash at load. A lookup that may miss on purpose is listed in
 //   MAY_BE_MISSING, per page, with why. An exemption whose id the page has, or that no module of the page looks up,
 //   fails too.
-// - store exports: every signal a store module (the stores layer of .dependency-cruiser.mjs's LAYERS) exports is
-//   read-only all the way down: its `ReadonlySignal<T>` names `DeepReadonly<...>`, an alias of one, a primitive, or a
-//   read-only array of those.
 // - wiring: the career run machine's deps that no browser group checks are named as they must be (engine.key,
 //   analysis.stop and outdate, view.drawCheck).
 // - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
@@ -32,7 +29,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
-import { LAYERS } from '../.dependency-cruiser.mjs';
 
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 const read = (f) => fs.readFileSync(path.join(W, f), 'utf8');
@@ -527,51 +523,6 @@ const reports = [];
     (name) => ![...templates, ...ls('partials', /\.hbs$/)].some((f) => read(f).includes(`{{> ${name}`)),
   );
   if (unused.length) reports.push(`panels no page or panel uses (${unused.length}): ${unused.join(', ')}`);
-}
-// store exports: a store's signal hands out a record nothing may write, nested parts included (frontend.md §2 Rules): the
-// type of each `export const x: ReadonlySignal<T>` in a store module, read as text, is `DeepReadonly<...>`, a primitive
-// or a string literal, a read-only array of those, a union of them, or a type alias of any of these (`type A = ...` in
-// src/)
-{
-  const aliases = new Map(
-    sources.flatMap(([, text]) => [...text.matchAll(/\btype\s+(\w+)\s*=\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()])),
-  );
-  // a union's members, split at the top level (not inside <...>, {...} or (...))
-  const members = (type) => {
-    const out = [];
-    let depth = 0,
-      at = 0;
-    for (let i = 0; i < type.length; i++) {
-      if ('<{(['.includes(type[i])) depth++;
-      else if ('>})]'.includes(type[i])) depth--;
-      else if (type[i] === '|' && depth === 0) {
-        out.push(type.slice(at, i).trim());
-        at = i + 1;
-      }
-    }
-    return [...out, type.slice(at).trim()].filter(Boolean);
-  };
-  const deep = (type) =>
-    members(type).every((t) => {
-      const array = t.match(/^readonly\s+(\w+)\[\]$/);
-      if (array) return deep(array[1]);
-      return (
-        /^DeepReadonly<.*>$/s.test(t) ||
-        (aliases.has(t) && deep(aliases.get(t))) ||
-        ['null', 'boolean', 'number', 'string', 'undefined'].includes(t) ||
-        /^'[^']*'$/.test(t)
-      );
-    });
-  const storeModules = LAYERS.find(([layer]) => layer === 'stores')[1];
-  for (const mod of storeModules) {
-    const file = ls('src', /\.(ts|tsx)$/, true).find((f) => f.replace(/^src\//, '').replace(/\.tsx?$/, '') === mod);
-    for (const m of read(file).matchAll(/^export const (\w+): ReadonlySignal<(.*)> =/gm))
-      if (!deep(m[2]))
-        problems.push(
-          `${file}: \`${m[1]}\` hands out ReadonlySignal<${m[2]}>, writable inside: a store's export is DeepReadonly ` +
-            '(or an alias of one) all the way down',
-        );
-  }
 }
 // the type checker's `@ts-expect-error` markers: each a line a module's rename to .ts left for its strict commit
 // (a count of what the strict commits have left to remove)

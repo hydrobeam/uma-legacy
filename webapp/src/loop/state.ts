@@ -6,10 +6,10 @@
 // them only through the transitions below, each one write (a batch when it changes both), so an effect wakes once per
 // transition. What nothing draws stays in the machine: its staleness token (`searchId`), `busy` and its timers.
 // `resultsStale` and `headline` derive from the two.
-import { batch, computed, signal } from '@preact/signals';
+import { batch, computed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { fmtIn } from '../dom.ts';
-import { deepFreeze } from '../store.ts';
+import { deepFreeze, store } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { JobTarget } from './job.ts';
 import type { DrawnReport, ShownResult, Status } from './types.ts';
@@ -46,18 +46,18 @@ const freezeView = (view: DeepReadonly<LoopView>): DeepReadonly<LoopView> =>
     lastResult:
       view.lastResult && Object.freeze({ ...view.lastResult, meta: Object.freeze({ ...view.lastResult.meta }) }),
   });
-const runRecord = signal<DeepReadonly<RunState>>(Object.freeze(IDLE));
-const viewRecord = signal(freezeView(LOADING));
-const drawnRecord = signal<Readonly<Drawn> | null>(null);
+const [runRecord, setRun] = store<RunState>(Object.freeze(IDLE));
+const [viewRecord, setView] = store<LoopView>(freezeView(LOADING));
+const [drawnRecord, setDrawn] = store<Drawn | null>(null);
 export const loopRun: ReadonlySignal<DeepReadonly<RunState>> = runRecord;
 export const loopView: ReadonlySignal<DeepReadonly<LoopView>> = viewRecord;
 export const loopDrawn: ReadonlySignal<DeepReadonly<Drawn> | null> = drawnRecord;
 /** back to the page's first state (a test's start) */
 export function initLoopState() {
   batch(() => {
-    runRecord.value = Object.freeze(IDLE);
-    viewRecord.value = freezeView(LOADING);
-    drawnRecord.value = null;
+    setRun(Object.freeze(IDLE));
+    setView(freezeView(LOADING));
+    setDrawn(null);
   });
 }
 
@@ -73,25 +73,25 @@ export const headline = computed(() => {
 // ---------- transitions
 /** a search runs, or is about to (the pause after a change): its clock starts at `at` */
 export const beginSearch = (at: number) => {
-  runRecord.value = Object.freeze({ searching: true, phase: 'search', startedAt: at, now: at });
+  setRun(Object.freeze({ searching: true, phase: 'search', startedAt: at, now: at }));
 };
 /** the clock of the running search */
 export const tick = (at: number) => {
-  runRecord.value = Object.freeze({ ...runRecord.peek(), now: at });
+  setRun(Object.freeze({ ...runRecord.peek(), now: at }));
 };
 /** the fast result, on show while the exact check runs */
 export const interim = (result: ShownResult, at: number) =>
   batch(() => {
-    viewRecord.value = freezeView({ ...viewRecord.peek(), lastResult: result });
-    runRecord.value = Object.freeze({ ...runRecord.peek(), phase: 'check', now: at });
+    setView(freezeView({ ...viewRecord.peek(), lastResult: result }));
+    setRun(Object.freeze({ ...runRecord.peek(), phase: 'check', now: at }));
   });
 /** no search runs: the status line says `status`; `result`, when given, is the result on show now */
 export const settle = (status: Status, result?: ShownResult) =>
   batch(() => {
-    viewRecord.value = freezeView({ status, lastResult: result ?? viewRecord.peek().lastResult });
-    runRecord.value = Object.freeze({ ...runRecord.peek(), searching: false, phase: 'search' });
+    setView(freezeView({ status, lastResult: result ?? viewRecord.peek().lastResult }));
+    setRun(Object.freeze({ ...runRecord.peek(), searching: false, phase: 'search' }));
   });
 /** the results column draws `r` (searched for `targets`); `refocus`: Drawn's */
 export const draw = (r: DrawnReport, targets: readonly JobTarget[], refocus: boolean) => {
-  drawnRecord.value = Object.freeze({ r, targets, refocus });
+  setDrawn(Object.freeze({ r, targets, refocus }));
 };

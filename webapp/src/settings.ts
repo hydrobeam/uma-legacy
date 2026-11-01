@@ -6,13 +6,13 @@
 // `jobSetup` changes when any setting a job reads is. Nothing here subscribes: the entries make the effects (store.ts
 // `on`). Read `.value` in handlers and in what an entry's effect calls (`on` runs it untracked); logic modules take
 // the values as arguments.
-import { computed, signal } from '@preact/signals';
+import { computed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { COMMON, ERA, PER_ERA, SAVED, SETTINGS, loadSaved, writeSaved } from './saved.ts';
 import type { Era, Saved, SavedPart } from './saved.ts';
 import { browserStorage } from './storage.ts';
 import type { Backing } from './storage.ts';
-import { deepFreeze } from './store.ts';
+import { deepFreeze, store } from './store.ts';
 import type { DeepReadonly } from './store.ts';
 
 export interface Target {
@@ -92,13 +92,13 @@ const pick = (record: SettingsView, keys: readonly string[]): SavedPart =>
   Object.fromEntries(keys.map((key) => [key, record[key as keyof SettingsView]]));
 
 let storage = browserStorage;
-const record = signal(fromSaved(SAVED));
+const [record, setRecord] = store<Settings>(fromSaved(SAVED));
 export const settings: ReadonlySignal<SettingsView> = record;
 // Load the settings from `storage` and keep them there from now on: the page's are localStorage's, read at load
 // (saved.ts); a test passes its own
 export function initStore(at: () => Backing) {
   storage = at;
-  record.value = fromSaved(loadSaved(at));
+  setRecord(fromSaved(loadSaved(at)));
 }
 export const fields = Object.fromEntries(SETTINGS.map((key) => [key, computed(() => record.value[key])])) as {
   readonly [K in (typeof SETTINGS)[number]]: ReadonlySignal<SettingsView[K]>;
@@ -115,7 +115,7 @@ export const jobSetup = computed(() =>
 function commit(patch: Partial<SettingsView>) {
   const next = deepFreeze({ ...record.peek(), ...patch });
   writeSaved(storage, () => ({ common: pick(next, COMMON), [ERA]: pick(next, PER_ERA) }));
-  record.value = next;
+  setRecord(next);
 }
 export const setTargets = (targets: readonly Target[]) => commit({ targets });
 export const setPresets = (presets: readonly DeepReadonly<Preset>[]) => commit({ presets });

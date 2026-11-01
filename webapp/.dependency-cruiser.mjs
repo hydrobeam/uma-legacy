@@ -11,7 +11,7 @@
 // loop/io.ts, the loop page's Export and Import, an editor that imports shared modules reading the settings.
 // Components stay views: a module that is not a component (.ts) imports no .tsx module, a type import included.
 // Swc parses (dependency-cruiser reads TypeScript through TypeScript's JavaScript API, which TypeScript 7 no longer has).
-// (test/static.mjs reads the stores layer)
+// (biome.json's overrides name the stores layer's modules: they make their records with store.ts's store())
 export const LAYERS = [
   ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved', 'storage']],

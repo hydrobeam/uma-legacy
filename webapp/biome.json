@@ -78,6 +78,33 @@
   ],
   "overrides": [
     {
+      "includes": [
+        "src/settings.ts",
+        "src/loop/state.ts",
+        "src/veterans/store.ts",
+        "src/career/state.ts",
+        "src/career/analysis/state.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@preact/signals": {
+                    "importNames": ["effect", "signal"],
+                    "message": "a store module (.dependency-cruiser.mjs's stores layer) makes its records with store.ts's store(), which hands them out read-only all the way down, and computed() over them; only store.ts makes an effect"
+                  },
+                  "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["src/storage.ts", "test/**"],
       "linter": { "rules": { "style": { "noRestrictedGlobals": "off" } } }
     },

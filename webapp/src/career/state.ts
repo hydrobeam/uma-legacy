@@ -10,10 +10,10 @@
 // Records are frozen as they come in, except the jobs: a job holds the veterans store's legacies (veterans/store.ts
 // `legaciesJob`), one array every job made from the same veterans shares, and the veterans store's to keep. Nothing
 // here subscribes: the entry makes the effects (store.ts `on`).
-import { batch, computed, signal } from '@preact/signals';
+import { batch, computed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { must } from '../must.ts';
-import { deepFreeze } from '../store.ts';
+import { deepFreeze, store } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerJob, CareerSearch, PlanReport } from './job.ts';
 import type { PlacesRecord } from '../veterans/store.ts';
@@ -88,7 +88,7 @@ export type AnswerView = DeepReadonly<Answer>;
 type Check = NonNullable<PlanReport['robust']>;
 
 // ---------- the signals
-const view = signal<DeepReadonly<RunView>>(
+const [view, setView] = store<RunView>(
   deepFreeze({ searching: false, started: false, phase: 'search', phaseStart: 0, lead: '', progress: '' }),
 );
 export const runView: ReadonlySignal<DeepReadonly<RunView>> = view;
@@ -96,7 +96,7 @@ export const runView: ReadonlySignal<DeepReadonly<RunView>> = view;
  *  does not draw it again */
 export const searching = computed(() => view.value.searching);
 const NO_PLAN: PlanNone = { state: 'none', r: null };
-const shownAnswer = signal<AnswerView>(
+const [shownAnswer, setAnswer] = store<AnswerView>(
   deepFreeze({ status: { kind: 'loading', text: 'Loading…' }, last: null, planState: NO_PLAN }),
 );
 export const answer: ReadonlySignal<AnswerView> = shownAnswer;
@@ -105,9 +105,9 @@ export const answer: ReadonlySignal<AnswerView> = shownAnswer;
 // names its parents by legacy index, and the pool can change under an answer the page holds (career/main.tsx: while a
 // pool veteran's G1 wins window is open), so a parent is read by her id here (career/current.ts `legacyVet`), never by
 // her place in the pool now. Empty without an answer; not saved with it (statestore.ts keeps the answer alone).
-const shownPool = signal<readonly string[]>(Object.freeze([]));
+const [shownPool, setPool] = store<readonly string[]>(Object.freeze([]));
 export const answerPool: ReadonlySignal<readonly string[]> = shownPool;
-const lastPlan = signal<DeepReadonly<Reference> | null>(null);
+const [lastPlan, setLastPlan] = store<Reference | null>(null);
 export const reference: ReadonlySignal<DeepReadonly<Reference> | null> = lastPlan;
 // the last few answers, by job and places (career/run.ts's `runKey`), the most recent last (not a signal: nothing draws
 // it)
@@ -134,7 +134,7 @@ function freezeInPlace(next: AnswerView): AnswerView {
 
 // ---------- the run view's transitions (the run machine's phases)
 const runPatch = (patch: Partial<RunView>) => {
-  view.value = deepFreeze({ ...view.peek(), ...patch });
+  setView(deepFreeze({ ...view.peek(), ...patch }));
 };
 /** an edit: a run waits out the pause before its search (nothing runs yet) */
 export const runWaits = (now: number) =>
@@ -161,10 +161,10 @@ export function showAnswer(
   const shownNext = freezeInPlace(next),
     plan = shownNext.planState;
   batch(() => {
-    shownAnswer.value = shownNext;
-    shownPool.value = Object.freeze([...pool]);
+    setAnswer(shownNext);
+    setPool(Object.freeze([...pool]));
     if (plan.state === 'done' && where)
-      lastPlan.value = Object.freeze({ ...where, places: deepFreeze(where.places), result: plan.r, planId: plan.id });
+      setLastPlan(Object.freeze({ ...where, places: deepFreeze(where.places), result: plan.r, planId: plan.id }));
   });
 }
 /** the run ends unsearched (the job can't be built), with `next` (its message, no result) */
@@ -172,27 +172,27 @@ export function runEndsUnsearched(next: AnswerView) {
   const shownNext = freezeInPlace(next);
   batch(() => {
     runEnds();
-    shownAnswer.value = shownNext;
-    shownPool.value = Object.freeze([]);
+    setAnswer(shownNext);
+    setPool(Object.freeze([]));
   });
 }
 /** a run's search failed: `text` says why */
 export function answerFails(text: string) {
   batch(() => {
-    shownAnswer.value = freezeInPlace({ status: { kind: 'error', text }, last: null, planState: NO_PLAN });
-    shownPool.value = Object.freeze([]);
+    setAnswer(freezeInPlace({ status: { kind: 'error', text }, last: null, planState: NO_PLAN }));
+    setPool(Object.freeze([]));
   });
 }
 /** veterans were added or removed: a result names parents by their place in the list, so it goes (the status stays) */
 export function dropAnswer() {
   batch(() => {
-    shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), last: null, planState: NO_PLAN });
-    shownPool.value = Object.freeze([]);
+    setAnswer(freezeInPlace({ ...shownAnswer.peek(), last: null, planState: NO_PLAN }));
+    setPool(Object.freeze([]));
   });
 }
 /** the page could not load, or a view could not be drawn (ui/RenderGuard.tsx): `text` says why (the rest stays) */
 export function loadFails(text: string) {
-  shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), status: { kind: 'error', text } });
+  setAnswer(freezeInPlace({ ...shownAnswer.peek(), status: { kind: 'error', text } }));
 }
 
 // ---------- plans: their ids and their check
@@ -215,8 +215,8 @@ function revisePlan(id: number, revise: (r: DeepReadonly<PlanReport>) => DeepRea
       answers.set(key, Object.freeze({ ...kept, planState }));
   const ref = lastPlan.peek();
   batch(() => {
-    shownAnswer.value = Object.freeze({ ...shownAnswer.peek(), planState });
-    if (ref?.planId === id) lastPlan.value = Object.freeze({ ...ref, result: r });
+    setAnswer(Object.freeze({ ...shownAnswer.peek(), planState }));
+    if (ref?.planId === id) setLastPlan(Object.freeze({ ...ref, result: r }));
   });
   return planState;
 }
@@ -247,8 +247,8 @@ export function keepSavedAnswer(key: string, saved: AnswerView) {
 /** a kept answer drawn again, for a job built on the veterans `pool` (`answerPool`): it is shown, and the run is over */
 export function showKeptAnswer(hit: AnswerView, pool: readonly string[]) {
   batch(() => {
-    shownAnswer.value = hit;
-    shownPool.value = Object.freeze([...pool]);
+    setAnswer(hit);
+    setPool(Object.freeze([...pool]));
     runEnds();
   });
 }
@@ -280,12 +280,12 @@ interface DroppedChoice {
   places: string;
   text: string;
 }
-const droppedChoice = signal<DeepReadonly<DroppedChoice> | null>(null);
+const [droppedChoice, setDropped] = store<DroppedChoice | null>(null);
 export const dropped: ReadonlySignal<DeepReadonly<DroppedChoice> | null> = droppedChoice;
 export const choiceDropped = (note: DroppedChoice) => {
-  droppedChoice.value = deepFreeze(note);
+  setDropped(deepFreeze(note));
 };
 /** a choice made with Use this: the dropped one's note goes */
 export const forgetDroppedChoice = () => {
-  droppedChoice.value = null;
+  setDropped(null);
 };

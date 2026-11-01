@@ -1,5 +1,5 @@
 // What every store shares: the read-only view of a record, and the one way an entry reacts to a store (`on`).
-import { effect, untracked } from '@preact/signals';
+import { effect, signal, untracked } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 
 /** a record as a store hands it out: read-only all the way down (a write from outside is a compile error); an array
@@ -17,6 +17,16 @@ export function deepFreeze<T>(value: T): DeepReadonly<T> {
     for (const inner of Object.values(value)) deepFreeze(inner);
   }
   return value as DeepReadonly<T>;
+}
+/** A store's record in a signal: `[get, set]`. `get` hands it out read-only all the way down (what the store module
+ *  exports, or `computed` signals over it); `set` replaces it, and stays in the module. A store module makes its state
+ *  with this alone (biome.json bans `signal` in the store modules), so nothing it exports can be written from outside. */
+export function store<T>(initial: DeepReadonly<T>) {
+  const record = signal(initial);
+  const set = (next: DeepReadonly<T>) => {
+    record.value = next;
+  };
+  return [record as ReadonlySignal<DeepReadonly<T>>, set] as const;
 }
 type Values<S extends readonly ReadonlySignal<unknown>[]> = {
   [K in keyof S]: S[K] extends ReadonlySignal<infer T> ? T : never;
