@@ -7,15 +7,18 @@
 // runs in the engine: a kill cuts it short), the pause timer and the clock's ticker, what is on show (`shown`, so an
 // answer with the same loops is not drawn again) and the finished search of it (`done`: an automatic search of the same
 // job shows that again instead of running). Everything outside, the engine, the clock, the timers, storage, the
-// settings and what draws a result, comes in `deps`, made once by main.tsx.
+// settings, the store's transitions and what draws a result, comes in `deps`, made once by main.tsx: a model module, it
+// reads no store itself (static.mjs checks it).
 import { ERA } from '../saved.ts';
 import type { SettingsView } from '../settings.ts';
 import type { SolverAnswer, SolverRefusal } from '../solver.ts';
 import { blockedStatus, buildJob, doneText, jobKey } from './job.ts';
 import type { Built, DeckJob, JobTarget } from './job.ts';
-import { beginSearch, interim, loopRun, settle, tick } from './state.ts';
+import type * as LoopState from './state.ts';
 import type { LoopReport, ShownResult, Status } from './types.ts';
 
+/** the run store's transitions and the run state the machine reads (state.ts) */
+export type LoopStore = Pick<typeof LoopState, 'loopRun' | 'beginSearch' | 'interim' | 'settle' | 'tick'>;
 /** the pause after a change before the automatic search (ms) */
 export const PAUSE_MS = 550;
 export type Timer = ReturnType<typeof setTimeout>;
@@ -35,6 +38,8 @@ export interface LoopDeps {
   clearTimer: (timer: Timer | undefined) => void;
   /** where the last finished result is kept */
   storage: () => Pick<Storage, 'getItem' | 'setItem'>;
+  /** the run store (state.ts): its transitions, and the run state read with .peek() */
+  store: LoopStore;
   /** the settings now (read when a search or its pause starts) */
   settings: () => SettingsView;
   /** draws a result (Results.tsx `drawResult`) */
@@ -53,6 +58,7 @@ const hasLoops = (r: LoopReport | SolverRefusal): r is LoopReport => !('error' i
 const lastResultKey = () => `llp:last:${ERA}`;
 
 export function createRun(deps: LoopDeps) {
+  const { loopRun, beginSearch, interim, settle, tick } = deps.store;
   let searchId = 0,
     busy = false;
   let pauseTimer: Timer | undefined, ticker: Timer | undefined;

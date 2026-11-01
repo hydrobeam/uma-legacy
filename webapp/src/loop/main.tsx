@@ -12,6 +12,7 @@ import { ERA } from '../saved.ts';
 import { EXAMPLE, loadData } from '../data.ts';
 import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
+import * as loopStore from './state.ts';
 import { headline, loopDrawn, loopRun, loopView, resultsStale, settle } from './state.ts';
 import type { LoopView, RunState } from './state.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -60,6 +61,7 @@ const loop = createRun({
   every: (fn, ms) => setInterval(fn, ms),
   clearTimer: (timer) => clearTimeout(timer),
   storage: () => localStorage,
+  store: loopStore,
   settings: () => settings.peek(),
   render: drawResult,
   loadExample,

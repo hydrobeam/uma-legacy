@@ -12,6 +12,7 @@ import { isOwned, ownedFields, scenarioFields, starDist } from '../../src/job.ts
 import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
 import { PAUSE_MS, createRun } from '../../src/loop/run.ts';
 import { resultKeys } from '../../src/loop/keys.ts';
+import * as loopStore from '../../src/loop/state.ts';
 import { headline, initLoopState, loopRun, loopView, resultsStale } from '../../src/loop/state.ts';
 import {
   DEFAULTS,
@@ -81,6 +82,7 @@ function page({ saved = FIXTURES.defaults, storage = memory(), example = null, s
     every: clock.every,
     clearTimer: clock.clearTimer,
     storage: () => storage,
+    store: loopStore,
     settings: () => settingsOf(settings.peek()),
     render: (r) => drawn.push(r),
     loadExample: () => examples.push('loaded'),
