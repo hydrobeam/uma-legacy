@@ -16,6 +16,7 @@ import { answer, searching } from '../state.ts';
 import { keyOf } from '../keys.ts';
 import { looped, refFor, shown } from '../job.ts';
 import type { OptionRow as Row, PlanReport } from '../job.ts';
+import type { Note } from '../options.ts';
 import { TIE_CAREERS, extraText, optionsTable, roleText, takeCareer, unsettled, netText } from '../options.ts';
 import type { DeepReadonly } from '../../store.ts';
 import { fmtN } from './parts.ts';
@@ -256,11 +257,11 @@ function PickWhat({ r, places }: { r: DeepReadonly<Row>; places: Places }) {
 
 // ---------- "Saves per run" explained, in plain words, with the plan the numbers come from ----------
 // what it explains (kept after a close, the same object) and whether it is open
-type SavesSubject = { planReport: Report; notes: readonly string[] };
+type SavesSubject = { planReport: Report; notes: readonly Note[] };
 const saves = signal<{ subject: SavesSubject | null; open: boolean }>({ subject: null, open: false });
 // its guard draws again for a new subject only (a close is no reason to try failing content again)
 const savesSubject = computed(() => saves.value.subject);
-function openSaveWhy(planReport: Report, notes: readonly string[]) {
+function openSaveWhy(planReport: Report, notes: readonly Note[]) {
   saves.value = { subject: { planReport, notes }, open: true };
 }
 const closeSaves = () => {
@@ -294,7 +295,7 @@ export function SavesPopup() {
 // row is measured against it (run this career once first, then follow the route), with a worked example from the plan.
 // For anyone: the two columns in a sentence each, the key points in bold and italics, how the saving is worked out in
 // three plain sentences; today's estimate and a worked example behind dropdowns (no formula)
-function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly string[] }) {
+function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly Note[] }) {
   const n = settings.value.targets.length;
   const routePlan = planReport.v0_plan,
     routeMembers = planReport.members || [],
@@ -407,9 +408,9 @@ function SavesBody({ planReport, notes }: { planReport: Report; notes: readonly 
       </p>
       {/* the table's notes, where any (as the popup's other heading: no heading margins) */}
       {notes.length > 0 && <div class="gmdsub">Notes</div>}
-      {notes.map((text) => (
-        <p key={text} class="optnote">
-          {text}
+      {notes.map((note) => (
+        <p key={note.id} class="optnote">
+          {note.text}
         </p>
       ))}
     </div>

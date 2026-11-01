@@ -24,6 +24,11 @@ import { must } from '../must.ts';
 import type { OptionRow, PairSearch, PlanOption, PlanReport } from './job.ts';
 import type { DeepReadonly } from '../store.ts';
 
+/** a note under the table: `id` names it among the others (its kind; a pair-search note, its uma) */
+export interface Note {
+  id: string;
+  text: string;
+}
 /** a row of the table, as the answer store hands it (read-only) */
 type Row = DeepReadonly<OptionRow>;
 /** the plan's report, as the answer store hands it */
@@ -160,37 +165,41 @@ export function optionsTable() {
   const mine = planReport && on && !list.some((o) => keyOf(o) === keyOf(on)) ? on : null;
   if (mine) list.unshift(mine);
   const nameOf = (o: Row): string => `${o.trainee.name}${o.trainee.outfits[0] ? ` ${o.trainee.outfits[0].label}` : ''}`;
-  const notes: string[] = [];
+  const notes: Note[] = [];
   const negative = negativeTopText(planReport, pick);
-  if (negative) notes.push(negative);
+  if (negative) notes.push({ id: 'negative', text: negative });
   // the robustness check found the rule's pick changes with the tested variants (`robust`): every career it selects is in
   // the table; the pick stays the planner's rule's
   if (planReport && unsettled(planReport).size) {
     const names = list.filter((o) => unsettled(planReport).has(keyOf(o))).map(nameOf);
-    notes.push(
-      `The tested variants of the planner’s model (its building curve at the ends of its fitted range, every all-target chance at the ends of its calibration interval, and per-uma scenarios: the top-scoring uma’s all-target chance lower and a rival uma’s higher, by a split inferred from the spread measured between umas) score different careers highest, among the careers shown: ${names.join(', ')}. The pick is the rule’s under the model as fitted.`,
-    );
+    notes.push({
+      id: 'variants',
+      text: `The tested variants of the planner’s model (its building curve at the ends of its fitted range, every all-target chance at the ends of its calibration interval, and per-uma scenarios: the top-scoring uma’s all-target chance lower and a rival uma’s higher, by a split inferred from the spread measured between umas) score different careers highest, among the careers shown: ${names.join(', ')}. The pick is the rule’s under the model as fitted.`,
+    });
   }
-  for (const text of pairSearchNotes(planReport, nameOf)) notes.push(text);
+  notes.push(...pairSearchNotes(planReport, nameOf));
   if (planReport?.check_unavailable)
-    notes.push(
-      'The check of this pick under tested variants of the model did not finish (the solver was stopped or restarted before it was done, or a variant needed more memory than it may take).',
-    );
+    notes.push({
+      id: 'unavailable',
+      text: 'The check of this pick under tested variants of the model did not finish (the solver was stopped or restarted before it was done, or a variant needed more memory than it may take).',
+    });
   // the plan's scorings, or its check's (its variants and pair search: `robust.scoring_complete`), left something out for
   // memory (false; absent from a solver without it): every saving shown, or the check's, may be low, so the pick or the
   // recommendation may not be the model's
   if (planReport?.scoring_complete === false || planReport?.robust?.scoring_complete === false)
-    notes.push(
-      'The planner ran out of memory before it could weigh every route or partner for these careers: their Saves per run may be too low, and the pick may not be the best.',
-    );
+    notes.push({
+      id: 'memory',
+      text: 'The planner ran out of memory before it could weigh every route or partner for these careers: their Saves per run may be too low, and the pick may not be the best.',
+    });
   // a row whose career search was not complete (`proven: false`: its work cap, a band overflow, or her deck class
   // breached its cap, in this job or an earlier one, whatever the cap-free rerun found): the best it found, maybe not
   // her best. The rows don't say which
   // cause was theirs; the plan job's report names the causes it saw in any of its searches (`unprovenWhy`)
   if (planReport && list.some((o) => o.proven === false))
-    notes.push(
-      `The search could not prove the best career for some of these umas (${whyText(planReport.unproven_why || [])}): a better one may exist for them.`,
-    );
+    notes.push({
+      id: 'unproven',
+      text: `The search could not prove the best career for some of these umas (${whyText(planReport.unproven_why || [])}): a better one may exist for them.`,
+    });
   // (a row proven under a named assumption is proven: the run note names the job's assumptions, the plan's searches
   // included, `searchCaveat`, so the table adds no note for them)
   const back = ref && placesKey(ref.places) !== placesKey() ? ref.places : null;
@@ -221,7 +230,7 @@ export const unsettled = (planReport: Plan): Set<string> => {
 // (the solver's `recommendation` then), with the per-uma scenarios that reverse that (`varies_under`) named as a
 // sensitivity, else not better. Nothing until the check is complete, or where it is of another pick. nameOf: an
 // option's trainee as the table names her
-function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanOption>) => string): string[] {
+function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanOption>) => string): Note[] {
   if (!planReport) return [];
   const check = checkDone(planReport);
   if (!check?.pairs) return [];
@@ -235,13 +244,17 @@ function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanO
       : '';
   const lines = check.pairs.trainees
     .filter((found) => (found.reason ?? 'pick') !== 'top')
-    .map((found) => {
+    .map((found): Note => {
+      const id = `pair:${found.trainee}`;
       const shown = shownOf(found),
         who = shown ? nameOf(shown) : found.trainee,
         others = Math.max(0, found.pairs_scored - 1);
       // (a gain on her shown parents themselves is a better deck, not better parents: the solver's `better_parents`)
       if (!found.better_parents)
-        return `No better parents found for ${who} among the ${found.pairs_scored} pairs checked (each with the best deck found so far for it${truncatedText(found)}).`;
+        return {
+          id,
+          text: `No better parents found for ${who} among the ${found.pairs_scored} pairs checked (each with the best deck found so far for it${truncatedText(found)}).`,
+        };
       const varies = (found.corner_margins || []).some((margin) => !(margin > 0))
         ? '; not better under every tested building curve'
         : '';
@@ -253,7 +266,10 @@ function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanO
         found.margin_over_other_pairs == null
           ? ''
           : ` and ${netText(found.margin_over_other_pairs)} vs the best of the ${others} other pairs checked`;
-      return `Better parents found for ${who}: ${found.best_parents.map(vetName).join(' + ')} (Saves ${netText(found.margin_over_shown)} per run vs the shown parents${overOthers}; not certified best${varies}${scaleVaries}${truncatedText(found)}).`;
+      return {
+        id,
+        text: `Better parents found for ${who}: ${found.best_parents.map(vetName).join(' + ')} (Saves ${netText(found.margin_over_shown)} per run vs the shown parents${overOthers}; not certified best${varies}${scaleVaries}${truncatedText(found)}).`,
+      };
     });
   const best = check.pairs.best,
     pickFound = check.pairs.trainees[0],
@@ -278,13 +294,15 @@ function pairSearchNotes(planReport: Plan | null, nameOf: (o: DeepReadonly<PlanO
       ? ` The choice varies under the per-uma scenarios: ${netText(pickDown)} vs the pick with ${pickWho}'s all-target chance ×0.76 and hers ×1.32, ${netText(pickUp)} the reverse.`
       : '';
     if (nominal > 0)
-      lines.push(
-        `Better career found by the pair search (${coverage}): ${where} (Saves ${netText(best.score)} per run, ${netText(nominal)} vs ${side}; not certified best).${varies}`,
-      );
+      lines.push({
+        id: 'pair:best',
+        text: `Better career found by the pair search (${coverage}): ${where} (Saves ${netText(best.score)} per run, ${netText(nominal)} vs ${side}; not certified best).${varies}`,
+      });
     else
-      lines.push(
-        `No other uma's career found by the pair search (${coverage}) beats ${side}: the best, ${where}, saves ${netText(best.score)} per run, ${netText(nominal)} vs it.`,
-      );
+      lines.push({
+        id: 'pair:best',
+        text: `No other uma's career found by the pair search (${coverage}) beats ${side}: the best, ${where}, saves ${netText(best.score)} per run, ${netText(nominal)} vs it.`,
+      });
   }
   return lines;
 }
