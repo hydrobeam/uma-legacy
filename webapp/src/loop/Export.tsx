@@ -7,9 +7,6 @@ import { useRef, useState } from 'preact/hooks';
 import { $input } from '../dom.js';
 import { ERA } from '../saved.ts';
 import { importSettings, importToEra, settings } from '../settings.ts';
-import { renderRoster } from '../roster.js';
-import { renderTargets } from '../targets.js';
-import { paintRank, paintScen } from '../scenario.js';
 import { Dialog } from '../ui/Dialog.tsx';
 import { must } from '../must.ts';
 import { exportText, readImport } from './io.js';
@@ -70,12 +67,8 @@ function ExportBody({ made }: { made: string }) {
     }
     importSettings(read.loaded);
     // what the template draws itself (the rest reads the settings)
-    paintRank();
     $input('c-peruma').checked = settings.peek().perUma !== false;
     $input('x-auto').checked = settings.peek().auto !== false;
-    paintScen();
-    renderRoster();
-    renderTargets();
     setMessage(
       `Settings loaded.${read.bad.length ? ` Not understood, so left as they were: ${read.bad.join(', ')}.` : ''}`,
     );

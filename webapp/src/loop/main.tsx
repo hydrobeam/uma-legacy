@@ -10,7 +10,7 @@ import { render } from 'preact';
 import { $, $dialog, $input, backdropCloses } from '../dom.js';
 import { ERA } from '../saved.ts';
 import { EXAMPLE, loadData } from '../data.js';
-import { DEFAULTS, fields, jobSetup, settings, setAuto, switchEra } from '../settings.ts';
+import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
 import { headline, loopDrawn, loopRun, loopView, resultsStale, settle } from './state.ts';
 import type { LoopView, RunState } from './state.ts';
@@ -19,11 +19,7 @@ import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { RenderGuard, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
-import { initRoster, renderRoster } from '../roster.js';
-import { initTargets, renderTargets } from '../targets.js';
 import { initScenario, eraScenario } from '../scenario.js';
-import { initCards } from '../cards.js';
-import { initOwnedImport } from '../owned.js';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
@@ -31,7 +27,7 @@ import { OddsDialog } from '../ui/OddsDialog.tsx';
 import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.js';
 import { loadExample } from '../presets.js';
-import { initSetup } from '../setup.js';
+import { mountSetup } from '../ui/Setup.tsx';
 import '../gmtip.js'; // the game-style tooltips (both planner pages)
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
@@ -121,25 +117,23 @@ function start() {
     setAuto($input('x-auto').checked);
     if (settings.value.auto && loopView.value.status.kind === 'pending') loop.scheduleSearch();
   }; // the switch changes no result: switching it on searches only changes made while it was off
+  $input('c-peruma').checked = settings.value.perUma;
+  $input('c-peruma').onchange = () => setPerUma($input('c-peruma').checked);
   initScenario(); // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
-  initRoster();
-  initCards();
   render(
     <RenderGuard input={fields.decksTop} what="The Results switch">
       <ResultsCount />
     </RenderGuard>,
     $('rtop'),
   );
-  initOwnedImport();
-  initTargets();
   render(<AffinityDialog />, $('why-root'));
   render(<ExportDialog />, $('ex-root'));
   // the odds popup: its own mount point at the end of <body> (the template has none)
   render(<OddsDialog />, document.body.appendChild(Object.assign(document.createElement('div'), { id: 'odds-root' })));
   $('ex-open').onclick = openExport;
   initPopover();
-  initSetup();
+  mountSetup({ fadeMore: true });
   // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
   // the setup the first search starts from); what the result on show no longer owns greys at once (Results.tsx)
   on([jobSetup], () => loop.scheduleSearch());
@@ -156,25 +150,10 @@ function start() {
     });
     column.focus({ preventScroll: true });
   };
-  // the roster and card boxes: .more while there is more to scroll to below (their bottom edge fades)
-  for (const id of ['roster', 'cards']) {
-    const box = $(id),
-      update = () => box.classList.toggle('more', box.scrollTop + box.clientHeight < box.scrollHeight - 4); // 4 px: rounding slack
-    box.addEventListener('scroll', update, { passive: true });
-    new MutationObserver(update).observe(box, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['hidden'],
-    }); // the filter hides tiles
-    if (window.ResizeObserver) new ResizeObserver(update).observe(box); // also when its dialog opens (its size goes from 0)
-  }
   // the race schedule: drawn into the template's dialog (its mount point), which a backdrop click closes
   render(<ScheduleDialog />, $('sched-dlg'));
   backdropCloses($dialog('sched-dlg'));
 
-  renderRoster();
-  renderTargets(); // renderTargets draws the card picker too (it lists the cards that give a target)
   render(
     <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>
       <Results />

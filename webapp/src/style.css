@@ -180,7 +180,7 @@ input[type="search"], input[type="text"] { width: 100%; }
 .ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 .ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .rtools { gap: 6px; }
-/* the roster and card boxes scroll: their bottom edge fades while there is more below (loop/main.js sets .more) */
+/* the roster and card boxes scroll: their bottom edge fades while there is more below (ui/moreFade.ts sets .more, on the loop page) */
 .roster.more, .cards.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
 .sortdd { position: relative; flex: none; }
 .sortmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; min-width: 140px; background: var(--panel); border: 1px solid var(--line);

@@ -122,8 +122,6 @@ const MAY_BE_MISSING = {
   'src/loop/main.tsx': {},
   'src/career/main.tsx': {
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
-    'c-peruma':
-      "cards.js: the loop page's Deck per uma switch; the career page has none (cards.js returns before using it)",
   },
 };
 const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.tsx': 'career.template.html' };
@@ -246,8 +244,44 @@ const cycles = [];
 // not walk down from one (TRAVERSAL: its children, a query from it, its content written), whether straight from the
 // lookup or from a variable that holds it; nor may it name what is under one in a selector ('#results > *'). A
 // lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
+// the shared setup's editors, drawn on both pages (ui/Setup.tsx mounts them)
+const SETUP_MOUNTS = [
+  [
+    'scen-dd',
+    'src/ui/Scenario.tsx',
+    ['x-scen-l', 'x-scen', 'scen-menu'],
+    ['scenpick', 'stile', 'ssub', 'sgolds', 'sgold'],
+  ],
+  [
+    'rank-ctl',
+    'src/ui/Scenario.tsx',
+    ['rank-l', 'rank-q', 'rank-note', 'rank'],
+    ['rankseg', 'rk', 'rkdash', 'rtab', 'rfoot'],
+  ],
+  [
+    'umas-panel',
+    'src/ui/Roster.tsx',
+    ['h-roster', 'r-all', 'r-none', 'r-file', 'r-count', 'r-filter', 'rs', 'rs-dd', 'rs-menu', 'r-msg', 'roster'],
+    ['ut', 'uol'],
+  ],
+  [
+    'cards-panel',
+    'src/ui/Cards.tsx',
+    ['h-deck', 'c-all', 'c-none', 'c-file', 'c-count', 'c-msg', 'c-filter', 'cs', 'cs-dd', 'cs-menu', 'cards'],
+    ['cgroup', 'ctiles', 'ct', 'cban'],
+  ],
+  [
+    'skills-panel',
+    'src/ui/Targets.tsx',
+    ['h-skills', 't-preset', 't-add', 't-sugg', 'targets', 'preset-dlg', 'pr-title', 'pr-list', 'pr-msg', 'pr-save']
+      .concat(['pr-new', 'prn-title', 'prn-name', 'prn-msg', 'prn-save', 'pr-view', 'prv-title', 'prv-tiles'])
+      .concat(['prv-ren', 'prv-name', 'prv-msg', 'prv-rename']),
+    ['adder', 'sugg', 'snote', 'tgt', 'prlist', 'prow', 'pview', 'pname', 'pmeta', 'pcur', 'pbtns', 'ptrash'],
+  ],
+];
 const MOUNTS = {
   'src/career/main.tsx': [
+    ...SETUP_MOUNTS,
     ['run-note', 'src/career/view/RunNote.tsx', ['run-act'], ['runprog']],
     ['lodds', 'src/career/view/Tree.tsx', ['odds-open', 'sim-try'], ['udodds']],
     [
@@ -323,6 +357,7 @@ const MOUNTS = {
     ],
   ],
   'src/loop/main.tsx': [
+    ...SETUP_MOUNTS,
     ['run-note', 'src/loop/RunNote.tsx', [], []],
     ['r-act', 'src/loop/RunNote.tsx', [], []],
     ['rtop', 'src/loop/Results.tsx', ['c-top', 'c-top-l'], []],
@@ -450,6 +485,13 @@ const MOUNT_READS = {
 // What runs: each bundle's import graph (esbuild's metafiles), so every import esbuild resolves counts (a dynamic
 // import(), either quote, a path without its extension). What esbuild erases before it resolves (an `import type`, a
 // JSDoc `@import` or `import('…')` type): any relative path written in the module that resolves to a .tsx file.
+// A module kept only to give a component's mount an old name another lane's code still imports is listed in
+// VIEW_IMPORTS_KEPT with why; one that no longer imports it fails too.
+const VIEW_IMPORTS_KEPT = {
+  'src/setup.js src/ui/Setup.tsx':
+    "career/main.tsx imports mountSetup as setup.js's initSetup; part 2 of step 11 imports it from ui/Setup.tsx and " +
+    'deletes setup.js',
+};
 {
   const isView = (file) => file.endsWith('.tsx');
   const viewImports = new Set();
@@ -466,7 +508,11 @@ const MOUNT_READS = {
       const view = resolvesToView(file, spec);
       if (view) viewImports.add(`${file} ${view}`);
     }
+  for (const pair of Object.keys(VIEW_IMPORTS_KEPT))
+    if (!viewImports.has(pair))
+      problems.push(`VIEW_IMPORTS_KEPT: ${pair.replace(' ', ' no longer imports ')}: drop it`);
   for (const pair of viewImports) {
+    if (VIEW_IMPORTS_KEPT[pair] !== undefined) continue;
     const [file, view] = pair.split(' ');
     problems.push(`${file}: imports the component module ${view}; logic takes values, components import logic`);
   }

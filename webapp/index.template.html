@@ -68,7 +68,7 @@ __PANEL_ENH__
   <button class="runpill" id="run-pill" type="button" hidden></button>
   <script>
   // phone (the columns stacked): the results come first, before the setup, in the reading and Tab order too; "rin": the
-  // results are in view (loop/main.js keeps it current), which hides the floating status button
+  // results are in view (loop/main.tsx keeps it current), which hides the floating status button
   (function () { var m = matchMedia('(max-width: 960px)'), w = document.querySelector('.wrap'), r = document.getElementById('rcol'), s = w.querySelector('.lpside');
     function place() { if (m.matches) w.prepend(r); else s.after(r); }
     place(); if (m.addEventListener) m.addEventListener('change', place); document.documentElement.classList.add('rin'); })();

@@ -1,13 +1,10 @@
-// ---------- owned umas and cards from umadump: Import in the Umas and Support cards dialogs ----------
+// ---------- owned umas and cards from umadump: Import in the Umas and Support cards dialogs (ui/OwnedImport.tsx) ----------
 // Either dialog's Import takes card_data.json (owned outfits) or support_card_data.json (owned support cards), or both
 // (umadump.js parseOwned). A file is the game's whole list of what you own, so it replaces this era's marks: what it
 // lists is owned, everything else in the data not owned. Ids the data doesn't have (R cards it leaves out, another
 // era's) are skipped.
-import { $, $input } from './dom.js';
 import { gameData } from './data.js';
 import { setOwned } from './settings.ts';
-import { paintRoster } from './roster.js';
-import { paintCards } from './cards.js';
 import { parseOwned } from './umadump.js';
 import { must } from './must.ts';
 
@@ -61,9 +58,10 @@ function importOwned(text, marks) {
   if (!known) throw new Error(`None of its ${noun} are in this data.`);
   return `${known} ${noun} owned${owned.size > known ? ` (${owned.size - known} not in the data)` : ''}.`;
 }
-// the picked files, each in turn; the status names a file that failed
-/** @param {HTMLInputElement} input @param {HTMLElement} status */
-async function importFiles(input, status) {
+// the picked files, each in turn, then the input emptied; returns what the panel's status says (it names a file that
+// failed)
+/** @param {HTMLInputElement} input @returns {Promise<string>} */
+export async function importFiles(input) {
   const said = [];
   /** @type {OwnedMarks} */
   const marks = {};
@@ -77,16 +75,9 @@ async function importFiles(input, status) {
     }
   }
   input.value = '';
-  if (changed) {
-    setOwned(marks);
-    paintRoster();
-    paintCards();
-  }
-  status.textContent = said.join(' ');
+  if (changed) setOwned(marks);
+  return said.join(' ');
 }
-export function initOwnedImport() {
-  for (const panel of ['r', 'c']) {
-    const input = $input(`${panel}-file`);
-    input.onchange = () => importFiles(input, $(`${panel}-msg`));
-  }
-}
+// Kept for career/main.tsx, which wired the Import buttons before they were the panels' own (part 2 of step 11 drops
+// the call): nothing to do.
+export const initOwnedImport = () => undefined;

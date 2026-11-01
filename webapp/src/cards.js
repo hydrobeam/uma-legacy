@@ -1,11 +1,9 @@
-// ---------- support cards: the picker (owned or not, by rarity) and deck options ----------
-import { $, $input, esc } from './dom.js';
-import { SCENARIOS, gameData } from './data.js';
-import { settings, setOwned, setPerUma } from './settings.ts';
-import { goldGiven } from './job.js';
-import { cardAv } from './images.js';
-import { paintSort, sortMenu } from './sortmenu.js';
-import { must } from './must.ts';
+// ---------- support cards: a card's name and what it gives, as the page shows them; what you own of them ----------
+// The Support cards panel that draws the picker is ui/Cards.tsx.
+import { computed } from '@preact/signals';
+import { esc } from './dom.js';
+import { gameData } from './data.js';
+import { fields, settings, setOwned } from './settings.ts';
 /** @import { Card } from './data.js' */
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 const BORROWED = /\(borrowed\)$/; // a deck names its borrowed card with this suffix
@@ -95,128 +93,23 @@ export const giftsHTML = (gifts) =>
         `<span class="gv${x.gold ? ' g' : ''}" title="${esc(x.tip)}">${esc(x.skill)} <small>${esc(x.note)}</small></span>`,
     )
     .join('');
-const scenarioName = (v) => SCENARIOS.find((s) => s.v === v)?.name;
-// one card's tile in the picker: a toggle, pressed = owned; its name is its visible text (name, title, what it gives),
-// so voice control matches it
-function cardTile(c, gifts) {
-  const title = cardTitle(c, false),
-    tile = document.createElement('button');
-  tile.className = 'ct';
-  tile.type = 'button';
-  tile._searchName = c.name.toLowerCase();
-  tile.innerHTML = `<span class="cn">${esc(title.nm)}</span>${title.ti ? `<span class="cti">${esc(title.ti)}</span>` : ''}<span class="cg">${gifts.length ? giftsHTML(gifts) : ''}</span>`;
-  tile.prepend(cardAv(c, 112));
-  // a card the chosen scenario bans (Team Sirius in Unity Cup and Grand Concert): the search leaves it out
-  const scenario = settings.value.scen || 'unity';
-  if ((c.ban || []).includes(scenario)) {
-    tile.classList.add('ban');
-    const note = document.createElement('span');
-    note.className = 'cban';
-    note.textContent = `Not allowed in ${scenarioName(scenario)}`;
-    tile.appendChild(note);
-  }
-  const paint = () => {
-    const owned = settings.value.cardsOff[c.id] !== false;
-    tile.setAttribute('aria-pressed', owned ? 'true' : 'false');
-  };
-  paint();
-  tile._paint = paint;
-  tile.onclick = () => {
-    const { [c.id]: notOwned, ...rest } = settings.value.cardsOff;
-    setOwned({ cardsOff: notOwned === false ? rest : { ...rest, [c.id]: false } });
-    paint();
-    cardCount();
-  };
-  return tile;
+// what is owned, counted over every card (the Support cards button says it): every card counts as owned until you say
+// otherwise
+export const cardsOwned = computed(() => {
+  const off = fields.cardsOff.value;
+  return { owned: gameData().cards.filter((c) => off[c.id] !== false).length, all: gameData().cards.length };
+});
+/** a click on a card's tile: owned <-> not owned; saved @param {number} id */
+export function toggleCard(id) {
+  const { [id]: notOwned, ...rest } = settings.value.cardsOff;
+  setOwned({ cardsOff: notOwned === false ? rest : { ...rest, [id]: false } });
 }
-export function renderCards() {
-  const groups = new Set(
-    settings.value.targets.filter((t) => !goldGiven(settings.value.scen, t.group)).map((t) => t.group),
-  ); // what the deck still has to give
-  const box = $('cards');
-  box.textContent = '';
-  /** @type {[string, (c: Card) => boolean][]} label and test of each rarity's section */
-  const sections = [
-    ['SSR', (c) => c.rar === 3],
-    ['SR', (c) => c.rar === 2],
-    ['R', (c) => c.rar === 1 && (c.pal || settings.value.rcards === true)],
-  ]; // R pals stay usable without R cards
-  const dir = settings.value.cdir === 'desc' ? -1 : 1,
-    sortName = (c) => {
-      const t = cardTitle(c);
-      return `${t.nm} ${t.ti}`;
-    };
-  const order = (a, b) =>
-    dir *
-    (settings.value.csort === 'name'
-      ? sortName(a.c).localeCompare(sortName(b.c))
-      : a.c.rel - b.c.rel || a.c.id - b.c.id);
-  for (const [label, inSection] of sections) {
-    const list = gameData()
-      .cards.filter(inSection)
-      .map((c) => ({ c, gifts: cardGives(c, groups) }))
-      .filter((x) => x.c.pal || x.gifts.length)
-      .sort(order);
-    if (!list.length) continue;
-    const section = document.createElement('div');
-    section.className = 'cgroup';
-    section.innerHTML = `<h3>${label}</h3><div class="ctiles"></div>`;
-    const tiles = must(section.querySelector('.ctiles'), 'the section is made with its tiles box');
-    for (const { c, gifts } of list) tiles.appendChild(cardTile(c, gifts));
-    box.appendChild(section);
-  }
-  paintSort('cs', 'c');
-  filterCards();
-}
-// after an ownership change: every card's pressed state and the count (the list doesn't depend on ownership)
-export function paintCards() {
-  for (const tile of $('cards').querySelectorAll('.ct')) must(tile._paint, 'cardTile gives each tile its _paint')();
-  cardCount();
-}
-// the filter hides cards (and a rarity section left empty) instead of rebuilding the list on every keystroke
-function filterCards() {
-  const filter = $input('c-filter').value.trim().toLowerCase();
-  for (const section of $('cards').querySelectorAll('.cgroup')) {
-    let any = false;
-    for (const tile of section.querySelectorAll('.ct')) {
-      tile.hidden = !!filter && !must(tile._searchName, 'cardTile names each tile').includes(filter);
-      any ||= !tile.hidden;
-    }
-    section.hidden = !any;
-  }
-  cardCount();
-}
-function cardCount() {
-  // the cards listed (those that give a target, and pals, matching the filter) and how many of them are owned (beside All / None owned)
-  const listed = [...$('cards').querySelectorAll('.ct:not([hidden])')],
-    owned = listed.filter((c) => c.getAttribute('aria-pressed') === 'true').length;
-  $('c-count').textContent = `${owned} of ${listed.length} owned`;
-  ownedBadge();
-}
-// the count on the Support cards button: every card counts as owned until you say otherwise
-function ownedBadge() {
-  const owned = gameData().cards.filter((c) => settings.value.cardsOff[c.id] !== false).length,
-    b = $('o-cards');
-  b.dataset.n = `${owned}/${gameData().cards.length}`;
-  b.title = `${owned} of ${gameData().cards.length} support cards owned`;
-}
-export function initCards() {
-  ownedBadge();
-  sortMenu('cs', 'c', () => renderCards());
-  $input('c-filter').oninput = filterCards;
-  $('c-all').onclick = () => {
-    setOwned({ cardsOff: {} });
-    paintCards();
-  };
-  $('c-none').onclick = () => {
-    setOwned({
-      cardsOff: { ...settings.value.cardsOff, ...Object.fromEntries(gameData().cards.map((c) => [c.id, false])) },
-    });
-    paintCards();
-  };
-  if (!$('c-peruma')) return; // the career page has none: one career, one deck
-  $input('c-peruma').checked = settings.value.perUma;
-  $input('c-peruma').onchange = (/** @type {TargetedEvent<HTMLInputElement>} */ e) => {
-    setPerUma(e.target.checked);
-  };
-}
+export const ownAllCards = () => setOwned({ cardsOff: {} });
+export const ownNoCards = () =>
+  setOwned({
+    cardsOff: { ...settings.value.cardsOff, ...Object.fromEntries(gameData().cards.map((c) => [c.id, false])) },
+  });
+// Kept for callers that drew the card picker before it followed the settings (part 2 of step 11 drops the calls):
+// nothing to do, the picker redraws itself. career/main.tsx calls initCards, popover.js paintCards.
+export const initCards = () => undefined;
+export const paintCards = () => undefined;
