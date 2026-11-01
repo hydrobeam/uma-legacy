@@ -1,5 +1,5 @@
 // The browser suite (Playwright Test; test/groups.spec.mjs): webapp/dist served on a free local port, or LLP_URL.
-//   npx playwright test                              every group, Chromium and Firefox
+//   npx playwright test                              every group in Chromium, those tagged @both in Firefox too
 //   npx playwright test --project chromium -g roster  one browser, the groups whose title matches (a regular expression)
 //   LLP_QUICK=1 npx playwright test --project chromium --grep @quick   the fast tier (./build.sh testq)
 // LLP_JOBS groups run in parallel per browser (default 4); LLP_PROF=file appends where each group's time went;
@@ -55,6 +55,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' }, workers: JOBS },
-    { name: 'firefox', use: { browserName: 'firefox' }, workers: JOBS },
+    // Firefox runs the groups where its engine matters (groups.spec.mjs BOTH): the other 17 took 420 of its 650 CPU-s a run
+    { name: 'firefox', use: { browserName: 'firefox' }, workers: JOBS, grep: /@both/ },
   ],
 });

@@ -175,7 +175,7 @@ IndexedDB.
   self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
   `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 4): every group in Chromium, and in Firefox the
   groups tagged `@both` in `groups.spec.mjs` (where its engine matters: the worker, wasm, storage, timing, layout and
-  focus; the others test the page's logic, which Chromium covers, and cost about 400 CPU-s a run in Firefox). Each
+  focus; the others test the page's logic, which Chromium covers, and took 420 of Firefox's 650 CPU-s a run). Each
   group is a module in `webapp/test/` and one test of `webapp/test/groups.spec.mjs`; each check is a step of its test, a failed one a soft failure (the group goes on), a
   throw ends the group. Shared helpers are in `webapp/test/helpers.mjs`. One group: `cd webapp && npx playwright test
   --project chromium -g roster` (`-g` is a regular expression over the titles). A failed test keeps its trace

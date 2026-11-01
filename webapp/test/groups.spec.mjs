@@ -72,8 +72,29 @@ const GROUPS = {
 // search returns (load), the result's dialogs (popups), the phone layout (phone), the contrast audit in light mode
 // (contrast), /about, and the career page up to its one-run answer (career stops there in this tier)
 const QUICK = ['career', 'load', 'popups', 'phone', 'contrast', 'about'];
+// the groups Firefox runs too (tag @both; playwright.config.mjs): where the engine matters, the worker, wasm, IndexedDB
+// and timing (load, states, autosearch, reload, delivery, career, careerrun) or layout and focus (careerphone, phone,
+// panels, keyboard, popups; Firefox rounds lengths differently). The rest test the page's logic, which Chromium covers.
+const BOTH = [
+  'load',
+  'states',
+  'autosearch',
+  'reload',
+  'delivery',
+  'career',
+  'careerrun',
+  'careerphone',
+  'phone',
+  'panels',
+  'keyboard',
+  'popups',
+];
 
 // the groups run on separate workers (each test is one group; the config keeps fullyParallel off for any other file)
 test.describe.configure({ mode: 'parallel' });
 for (const [name, run] of Object.entries(GROUPS))
-  test(name, { tag: QUICK.includes(name) ? ['@quick'] : [] }, ({ browser }) => runGroup(name, run, browser));
+  test(
+    name,
+    { tag: [...(QUICK.includes(name) ? ['@quick'] : []), ...(BOTH.includes(name) ? ['@both'] : [])] },
+    ({ browser }) => runGroup(name, run, browser),
+  );
