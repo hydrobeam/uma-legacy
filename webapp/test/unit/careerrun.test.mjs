@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAUSE_MS, createRun } from '../../src/career/run.ts';
-import { jobKey, planKey } from '../../src/career/keys.js';
+import { jobKey, planKey } from '../../src/career/keys.ts';
 import * as store from '../../src/career/state.ts';
 import { fakeClock, flush } from './fakes.mjs';
 

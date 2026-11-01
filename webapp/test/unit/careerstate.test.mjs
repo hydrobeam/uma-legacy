@@ -33,7 +33,7 @@ import {
   showAnswer,
   showKeptAnswer,
 } from '../../src/career/state.ts';
-import { planKey } from '../../src/career/keys.js';
+import { planKey } from '../../src/career/keys.ts';
 import { checkPhase } from '../../src/career/run.ts';
 
 const PLACES = '{"trainee":null,"parents":[null,null]}';
