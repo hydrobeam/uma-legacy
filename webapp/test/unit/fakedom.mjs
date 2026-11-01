@@ -77,6 +77,10 @@ class Element extends Node {
   removeAttribute(k) {
     delete this.attributes[k];
   }
+  // a text box's select-all (the preset view's rename box calls it): nothing to show here
+  select() {
+    return undefined;
+  }
   addEventListener(type, f) {
     this.listeners[type] = [...(this.listeners[type] || []), f];
   }
