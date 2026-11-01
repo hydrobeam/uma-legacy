@@ -1,7 +1,18 @@
 import { check, artCheck, open, dialog, settle } from './helpers.mjs';
 
+// (runs in the page) every search's first result's first deck card becomes Seiun Sky [Foolproof Plan] (30008), its
+// story ended at link 1, in the replies the page gets (solverreplay.mjs keeps them as the solver sent them)
+const endAtLink = () => {
+  window.__workerHooks.message.push((data) => {
+    const deck = data?.r?.top?.[0]?.deck;
+    if (!deck?.card_ids?.length) return;
+    deck.card_ids[0] = 30008;
+    deck.end_chain_at[0] = 1;
+  });
+};
+
 export default async function popups(b) {
-  const pg = await open(b);
+  const pg = await open(b, { init: endAtLink });
   await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click();
   await dialog(pg, 'sched-dlg');
   check(
@@ -135,22 +146,13 @@ export default async function popups(b) {
   await pg.keyboard.press('Escape');
   // a deck card the search ends at a link: its panel names the skill IT needs prioritised to take the ending choice.
   // Seiun Sky [Foolproof Plan] ends at link 1 for Second Wind; Dodging Danger is on the continuing choice. The card is
-  // a copy of a deck card retagged (the example result ends no chain): opened, read once the panel has drawn, closed
+  // the first result's first deck card, retagged in each of the solver's replies (endAtLink; the searches here end no
+  // chain): opened by its click, read once the panel has drawn, closed by a second click
   const endPanel = async () => {
-    await pg.evaluate(() => {
-      const chip = /** @type {HTMLElement} */ (document.querySelector('.deck .dc').cloneNode(true));
-      Object.assign(chip.dataset, { cid: '30008', end: '1' });
-      chip.classList.remove('bor', 'pal');
-      chip.id = 'end-chip';
-      document.querySelector('.deck .dcards').appendChild(chip);
-      chip.click();
-    });
+    const chip = pg.locator('#results .deck .dc[data-cid="30008"][data-end="1"]').first();
+    await chip.click();
     const text = await pg.locator('.cpop:not([hidden])').innerText();
-    await pg.evaluate(() => {
-      const chip = document.getElementById('end-chip');
-      chip.click();
-      chip.remove();
-    });
+    await chip.click();
     return text;
   };
   const plain = await endPanel();
@@ -164,6 +166,7 @@ export default async function popups(b) {
   );
   await pg.fill('#t-add', 'Dodging Danger');
   await pg.keyboard.press('Enter');
+  await settle(pg);
   const rival = await endPanel();
   check(
     'chain end: a target on the continuing choice is named as making the end uncertain',

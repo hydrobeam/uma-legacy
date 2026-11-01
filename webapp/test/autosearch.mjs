@@ -100,15 +100,25 @@ export default async function autosearch(b) {
   await settle(pg);
   check('… turning it back on searches the change', (await pg.evaluate(() => window.__runs.length)) === n0 + 2);
   const made0 = await pg.evaluate(() => window.__made);
+  const shown0 = await pg.evaluate(() => window.__live.texts.length);
   await pg.evaluate(() =>
     [...document.querySelectorAll('#cards .ct')].slice(0, 5).forEach((b) => {
       b.click();
     }),
   ); // five changes inside one pause
   await noteIs(/Searching/, 'a change shows "Searching…"');
-  // the fast pass is drawn first, with the status saying the exact check is still running
+  // the fast pass is drawn first, with the status saying the exact check is still running: read from every text the
+  // live region showed (watchLiveRegion), as the check may last less than a retrying assertion's interval between reads
   const firstPass = 'the first pass shows while the exact check runs';
-  await noteIs(/Checking the exact odds/, firstPass, 30_000);
+  const checking = await pg
+    .waitForFunction((from) => window.__live.texts.slice(from).some((t) => /Checking the exact odds/.test(t)), shown0, {
+      timeout: 30_000,
+    })
+    .then(
+      () => true,
+      () => false,
+    );
+  check(firstPass, checking, JSON.stringify(await pg.evaluate((from) => window.__live.texts.slice(from), shown0)));
   await expect.soft(loops, `${firstPass}: the results`).not.toHaveCount(0);
   await settle(pg);
   check('a burst of 5 changes is one search on the same worker', (await pg.evaluate(() => window.__made)) === made0);
