@@ -47,7 +47,7 @@ pub(super) struct Pass {
     pub(super) schedule_rejects: usize,
     pub(super) deck_best: crate::FxMap<SharedDeckKey, DeckBest>,
     pub(super) lists: Vec<SharedDecks>,
-    /// (per-uma decks: the solved loops' values, highest first)
+    /// (per-uma decks: the solved loops' values, in no order: `kth_highest` reorders them)
     values: Vec<f64>,
 }
 /// A pass's queue of structures: (ceiling, members) in ceiling order, the next to scan, and the sum below which no
@@ -61,10 +61,13 @@ struct Queue {
 fn in_four_member_units(sum: f64) -> f64 {
     sum * 4.0 / 3.0
 }
-/// The `k`-th highest of `values` (-inf while there are fewer than `k`), sorting them highest first
+/// The `k`-th highest of `values` (-inf while there are fewer than `k`); reorders `values` (an order statistic: the
+/// same value whatever order they were in)
 fn kth_highest(values: &mut [f64], k: usize) -> f64 {
-    values.sort_by(|a, b| b.partial_cmp(a).unwrap());
-    if values.len() >= k { values[k - 1] } else { f64::NEG_INFINITY }
+    if values.len() < k {
+        return f64::NEG_INFINITY;
+    }
+    *values.select_nth_unstable_by(k - 1, |a, b| b.partial_cmp(a).unwrap()).1
 }
 
 impl Pass {
