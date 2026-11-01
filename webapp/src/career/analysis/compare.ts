@@ -13,7 +13,6 @@ import type { DeepReadonly } from '../../store.ts';
 import type * as AnswerStore from '../state.ts';
 import type { PlanDone } from '../state.ts';
 import type * as AnalysisStore from './state.ts';
-import type { Roll } from '../roll.mjs';
 import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.js';
 import type { Draft, NodeRecord } from '../../veterans/store.ts';
 import { keyOf } from '../keys.js';
@@ -48,12 +47,10 @@ export interface ComparisonDeps {
     isFull: (nd: NodeRecord) => boolean;
     /** a run's plan job's `top` (career/job.js `ROLL_K`) */
     planTop: number;
-    /** a fresh draft of career `r`: a random result of it, with her parents' records */
+    /** a fresh draft of career `r`: a random result of it, on her parents' records now (a new career, a roll) */
     draftOf: (r: DeepReadonly<CareerReport>) => Draft;
     /** her draft on show (veterans/store.ts `draft`; null: none) */
     draft: () => DeepReadonly<Draft> | null;
-    /** a random result of career `r` (career/roll.mjs `rolledOutcome` on the settings and data) */
-    roll: (r: DeepReadonly<CareerReport>) => Roll;
   };
 }
 
@@ -363,7 +360,7 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
     const r = page.shown();
     if (!r || page.searching()) return;
     batch(() => {
-      store.draftRolled(page.roll(r));
+      store.draftRolled(page.draftOf(r));
       const request = rollReq(draftNow(), r);
       if (request == null) {
         compare();

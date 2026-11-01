@@ -73,7 +73,7 @@ import {
   isFull,
   ROLL_K,
 } from './job.js';
-import { Analysis, draftOf, drawnHere, rollOf } from './analysis/view.tsx';
+import { Analysis, draftOf, drawnHere } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
@@ -113,7 +113,6 @@ const comparison = createComparison({
     planTop: ROLL_K,
     draftOf,
     draft: () => draft.peek(),
-    roll: rollOf,
   },
 });
 // The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the

@@ -454,6 +454,11 @@ function draftAt(
     },
   };
 }
+/** her parents' records as they are now (the same draft, the same editors: they edit her own fields) */
+export function setDraftParents(parents: readonly LineageNode[] | DeepReadonly<LineageNode[]>) {
+  const d = draftNow.peek();
+  if (d) draftNow.value = freezeFresh({ ...d, parents } as Draft);
+}
 /** the draft on show, for an editor opened now (an edit after she is replaced, or with no draft, does nothing) */
 export const draftRef = (): NodeRef =>
   draftAt(

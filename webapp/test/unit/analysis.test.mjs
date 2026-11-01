@@ -12,7 +12,10 @@ import { STAND_MS, createComparison } from '../../src/career/analysis/compare.ts
 import * as store from '../../src/career/analysis/state.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { on } from '../../src/store.ts';
-import { fakeClock, flush } from './fakes.mjs';
+import { fakeClock, flush, memory } from './fakes.mjs';
+
+// the veterans store on a Map (Add writes into it)
+vs.initVets({ storage: () => memory(), hidden: () => true, afterFrame: (f) => f() });
 
 const { simulation } = store;
 
@@ -43,7 +46,9 @@ const career = (name, parents = [0, 1], p_all = 0.01) => ({
 const node = (sparks = {}) => ({ chara: 7, sparks, pinks: {}, wins: [] });
 // the page: the career on show `shown` (its search job `job`, `fix` set when a parent is fixed), and the plan for it
 function page({ fix = [], planFor = 'shown' } = {}) {
-  const clock = fakeClock(),
+  store.analysisClears(); // (the store is the module's: no test sees the last one's draft)
+  const parents = [node(), node()], // her parents' records now (draftOf copies them)
+    clock = fakeClock(),
     engine = fakeEngine(),
     kept = [],
     shown = career('shown');
@@ -72,11 +77,17 @@ function page({ fix = [], planFor = 'shown' } = {}) {
       baseKey: (j) => JSON.stringify({ ...j, fix: [] }),
       isFull: (nd) => (nd.sparks[1] || 0) > 0,
       planTop: 6,
-      draftOf: () => ({ ...node({ 1: 1 }), borrowed: false, parents: [node(), node()], winAt: {} }),
+      // her first result lands target 1 at 1 star, every later one (a roll) at 3
+      draftOf: () => ({
+        ...node({ 1: deps.draws++ ? 3 : 1 }),
+        borrowed: false,
+        parents: parents.map((x) => structuredClone(x)),
+        winAt: {},
+      }),
       draft: () => vs.draft.peek(),
-      roll: () => ({ sparks: { 1: 3 }, bought: {}, wins: [], pinks: {}, apt: null, blues: {}, greens: {} }),
     },
     searching: false,
+    draws: 0,
   };
   const c = createComparison(deps);
   c.show(shown);
@@ -86,7 +97,7 @@ function page({ fix = [], planFor = 'shown' } = {}) {
     writes.push(simulation.value);
   });
   writes.length = 0;
-  return { c, deps, engine, clock, answer, kept, shown, writes, stop };
+  return { c, deps, engine, clock, answer, kept, shown, writes, stop, parents };
 }
 const sent = (p) => p.engine.jobs.length;
 const states = (p) => p.writes.map((w) => w.state);
@@ -369,7 +380,7 @@ test("her card's tab and the races' fold outlive her record: a new career, no ca
   p.c.show(career('other'));
   p.c.clear();
   p.c.show(p.shown);
-  store.draftAdded();
+  store.draftJoins();
   assert.equal(store.detailsTab.peek(), 'skills');
   assert.equal(store.racesShown.peek(), true);
   store.toggleRaces();
@@ -410,7 +421,7 @@ test('an editor opened on her draft: once another draft replaces her (a new care
     const at = vs.draftRef(); // (opened now, as the G1 wins window or the "+" list is)
     if (replace === 'show') p.c.show(career('other'));
     else if (replace === 'roll') p.c.roll();
-    else store.draftAdded();
+    else store.draftJoins();
     const now = vs.draft.peek();
     assert.equal(at.node(), undefined, `${replace}: her editor sees no node`);
     at.edit((d) => ({ sparks: { ...d.sparks, 5: 1 } }));
@@ -422,4 +433,31 @@ test('an editor opened on her draft: once another draft replaces her (a new care
     }
     p.stop();
   }
+});
+
+// ---------- review-9 F2: her parents follow their records
+test("her parents follow their records while the same career is on show: a new answer, a roll, and Add's record", () => {
+  const p = page();
+  vs.draftRef().edit((d) => ({ sparks: { ...d.sparks, 9: 2 } })); // (entered by hand: kept for the same career)
+  p.parents[0] = node({ 4: 3 }); // her parent #1 edited in the pool
+  p.c.show(p.shown);
+  assert.deepEqual(vs.draft.peek().parents[0].sparks, { 4: 3 }, 'a new answer for the same career: her parents now');
+  assert.equal(vs.draft.peek().sparks[9], 2, 'what she was entered as stays');
+  p.parents[1] = node({ 6: 1 });
+  p.c.roll();
+  assert.deepEqual(vs.draft.peek().parents[1].sparks, { 6: 1 }, 'a roll: her parents now');
+  p.parents[0] = node({ 8: 2 });
+  p.c.show(p.shown);
+  const before = vs.vets.peek().length;
+  assert.equal(store.draftJoins(), 7);
+  const added = vs.vets.peek()[before];
+  assert.deepEqual(
+    added.parents.map((x) => x.sparks),
+    [{ 8: 2 }, { 6: 1 }],
+    'Add writes her parents as they are',
+  );
+  assert.equal(added.src, 'entered');
+  assert.ok(!('apt' in added) && !('bought' in added));
+  assert.equal(vs.draft.peek(), null, 'no draft after Add');
+  p.stop();
 });

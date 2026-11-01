@@ -13,9 +13,8 @@ import { batch, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { deepFreeze } from '../../store.ts';
 import type { DeepReadonly } from '../../store.ts';
-import { draft, setDraft } from '../../veterans/store.ts';
+import { clearPlaces, draft, newVet, setDraft, setDraftParents } from '../../veterans/store.ts';
 import type { Draft } from '../../veterans/store.ts';
-import type { Roll } from '../roll.mjs';
 import type { CareerReport, CareerSearch, PlanOption } from '../job.js';
 
 /** a stand-in while the quick comparison looks for the best career with her */
@@ -85,17 +84,19 @@ const patch = (fields: Partial<SimulationView>) => {
 
 // ---------- the run machine's (career/run.ts, through the comparison's machine)
 /** an answer shows a career: `next` is her fresh draft from it and its key (null: no career on show). The same career
- *  keeps the veteran entered for it (an edit elsewhere, or its undoing, leaves what the player typed); her comparison
- *  starts over on the new pool */
+ *  keeps the veteran entered for it (an edit elsewhere, or its undoing, leaves what the player typed), on her parents'
+ *  records as they are now (an edit of one keeps the career); her comparison starts over on the new pool */
 export function analysisShows(next: { draft: Draft; forKey: string } | null) {
   if (!next) {
     analysisClears();
     return;
   }
-  const keep = !!draft.peek() && record.peek().forKey === next.forKey;
+  const now = draft.peek(),
+    keep = !!now && record.peek().forKey === next.forKey;
   batch(() => {
     record.value = Object.freeze({ state: 'ready', r: null, baseline: null, error: null, forKey: next.forKey });
     if (!keep) setDraft(next.draft);
+    else if (JSON.stringify(now.parents) !== JSON.stringify(next.draft.parents)) setDraftParents(next.draft.parents);
   });
 }
 /** no answer: no career to analyse */
@@ -115,12 +116,12 @@ export function comparisonStops() {
 }
 
 // ---------- the draft's
-/** a roll redraws her: the figures on show go */
-export function draftRolled(outcome: Roll) {
-  const now = draft.peek();
-  if (!now) throw new Error('a roll redraws the entered veteran');
+/** a roll redraws her: `next`, a fresh draft of the career on show (a random result of it, on her parents' records
+ *  now); the figures on show go */
+export function draftRolled(next: Draft) {
+  if (!draft.peek()) throw new Error('a roll redraws the entered veteran');
   batch(() => {
-    setDraft({ ...now, ...outcome, winAt: {} });
+    setDraft(next);
     patch({ r: null, stale: false });
   });
 }
@@ -131,8 +132,20 @@ export function draftChanged() {
   const { r, stale } = record.peek();
   if (draft.peek() && r && !stale) patch({ stale: true });
 }
-/** she joins the veterans: the next answer starts a new draft even for the same career */
-export const draftAdded = () => setDraft(null);
+/** she joins the veterans (Add to veterans): her record as entered, without what only her roll knows (`apt`, `bought`),
+ *  the places back to the planner, and no draft (the next answer starts a new one even for the same career). Returns
+ *  her uma (null: no draft) */
+export function draftJoins() {
+  const now = draft.peek();
+  if (!now) return null;
+  const { apt: _apt, bought: _bought, ...entered } = structuredClone(now) as Draft;
+  batch(() => {
+    setDraft(null);
+    newVet(entered.chara, entered.sparks, { ...entered, src: 'entered', borrowed: false });
+    clearPlaces();
+  });
+  return entered.chara;
+}
 
 // ---------- a comparison's phases (compare.ts)
 /** a roll's quick comparison starts */

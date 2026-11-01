@@ -10,8 +10,7 @@ import { $, $dialog, fmtIn } from '../../dom.js';
 import { careerTables } from '../../data.js';
 import { settings } from '../../settings.ts';
 import { pct } from '../../odds.js';
-import { batch } from '@preact/signals-core';
-import { vets, newVet, clearPlaces, draft, draftRef } from '../../veterans/store.ts';
+import { vets, draft, draftRef } from '../../veterans/store.ts';
 import type { Draft, LineageNode, NodeRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.js';
 import { openWins } from '../../veterans/pickers.js';
@@ -30,7 +29,7 @@ import { openNode } from '../view/dialogs.ts';
 import { DeckCard } from '../view/Sections.tsx';
 import { Details } from './Details.tsx';
 import type { DetailsSpec } from './Details.tsx';
-import { simulation, draftAdded } from './state.ts';
+import { simulation, draftJoins } from './state.ts';
 import type { SimulationView } from './state.ts';
 import type { Comparison } from './compare.ts';
 
@@ -54,8 +53,8 @@ const rollSetup = (): RollSetup => ({
   targets: settings.peek().targets,
   rank: settings.peek().rank,
 });
-/** a random result of career `r` (the machine's `page.roll`) */
-export const rollOf = (r: Career): Roll => rolledOutcome(r, rollSetup());
+/** a random result of career `r` */
+const rollOf = (r: Career): Roll => rolledOutcome(r, rollSetup());
 /** her draft for career `r`: a random result of it, on her two parents' records (the machine's `page.draftOf`) */
 export const draftOf = (r: Career): Draft => ({
   chara: r.trainee.id,
@@ -94,20 +93,13 @@ function openDraftWins(d: DraftView, r: Career, back: () => void) {
     onClose: back,
   });
 }
+// Add to veterans: she joins the pool (./state.ts `draftJoins`), back to the next career
 function addDraft() {
-  const now = draft.peek();
-  if (runView.peek().searching || !now) return;
-  $dialog('sim-dlg').close(); // she joins your veterans: back to the next career
-  const d = structuredClone(now) as Draft;
-  delete d.apt;
-  delete d.bought;
-  draftAdded(); // she is in the pool now: the next answer starts a new one even for the same career
+  if (runView.peek().searching || !draft.peek()) return;
+  $dialog('sim-dlg').close();
+  const chara = draftJoins();
   $('v-msg').textContent =
-    `Added ${umaName(d.chara)} to your veterans. The planner now picks the next career from all of them.`;
-  batch(() => {
-    newVet(d.chara, d.sparks, { ...d, src: 'entered', borrowed: false });
-    clearPlaces();
-  });
+    `Added ${umaName(chara)} to your veterans. The planner now picks the next career from all of them.`;
 }
 
 // ---------- the comparison panel
