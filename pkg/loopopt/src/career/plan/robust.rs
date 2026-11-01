@@ -17,7 +17,7 @@ use crate::career::plan::report::{
 };
 use crate::career::plan::rows::{PickRows, PlanPick, PlanRow, pick_of, search_floor};
 use crate::career::plan::score::FinisherChoice;
-use crate::career::plan::score::score_career;
+use crate::career::plan::score::{counter as score_counter, score_career};
 use crate::career::plan::search::{OPT_SHOW, sim_for};
 use crate::career::plan::sweep::deck_odds;
 use crate::career::plan::{CheckRequest, PlanCandidates, PlanContext, PlanJob, ScoringContext, found_career};
@@ -498,7 +498,7 @@ pub(crate) fn incompleteness_so_far() -> f64 {
     PROF.with(|counters| {
         let counters = counters.borrow();
         let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
-        counter("sc_routes_dropped_uncertified") + counter("sc_partner_setups_dropped")
+        counter(score_counter::ROUTES_DROPPED_UNCERTIFIED) + counter(score_counter::PARTNER_SETUPS_DROPPED)
     })
 }
 
@@ -510,7 +510,7 @@ type ProfileCounters = std::collections::BTreeMap<&'static str, f64>;
 /// `scoring_complete`). Where false, its scores are lower bounds, not the model's
 fn scoring_complete_of(counters: &ProfileCounters) -> bool {
     let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
-    counter("sc_routes_dropped_uncertified") == 0.0 && counter("sc_partner_setups_dropped") == 0.0
+    counter(score_counter::ROUTES_DROPPED_UNCERTIFIED) == 0.0 && counter(score_counter::PARTNER_SETUPS_DROPPED) == 0.0
 }
 
 impl CheckWork {
@@ -549,9 +549,9 @@ impl CheckWork {
         });
         let counter = |name: &str| counters.get(name).copied().unwrap_or(0.0);
         let truncations = Truncations {
-            routes_dropped: counter("sc_routes_dropped"),
-            routes_dropped_uncertified: counter("sc_routes_dropped_uncertified"),
-            partner_setups_dropped: counter("sc_partner_setups_dropped"),
+            routes_dropped: counter(score_counter::ROUTES_DROPPED),
+            routes_dropped_uncertified: counter(score_counter::ROUTES_DROPPED_UNCERTIFIED),
+            partner_setups_dropped: counter(score_counter::PARTNER_SETUPS_DROPPED),
         };
         let pick = VariantPick { truncations: Some(truncations), ..pick_among(&self.draft, &scores) };
         (variant.current_value, pick)
@@ -796,7 +796,7 @@ impl ScenarioMargins {
 
 impl PairSearchWork {
     fn now(simulator: &Sim) -> Self {
-        let outcomes = PROF.with(|counters| counters.borrow().get("sc_out").copied().unwrap_or(0.0));
+        let outcomes = PROF.with(|counters| counters.borrow().get(score_counter::OUTCOMES).copied().unwrap_or(0.0));
         Self { outcomes, nodes: simulator.env.setup.space.nodes.get() as f64 }
     }
     fn since(self, start: Self) -> Self {

@@ -15,6 +15,18 @@ use crate::career::pool::Pool;
 use crate::career::sim::Sim;
 use crate::career::{Career, Legacy, Lineage};
 pub(crate) mod build;
+/// The profile counters (`clock::prof`) a scoring writes that other code reads back by name, one spelling for writer
+/// and readers.
+pub(crate) mod counter {
+    /// Routes the memory budget left out (`routes::keep_routes`), checked or not.
+    pub(crate) const ROUTES_DROPPED: &str = "sc_routes_dropped";
+    /// Of those, the ones no batch could hold and no check cleared: the scoring is then incomplete.
+    pub(crate) const ROUTES_DROPPED_UNCERTIFIED: &str = "sc_routes_dropped_uncertified";
+    /// Partner setups the memory budget left out (`build::fit_partner_setups`): the scoring is then incomplete.
+    pub(crate) const PARTNER_SETUPS_DROPPED: &str = "sc_partner_setups_dropped";
+    /// Outcomes evaluated.
+    pub(crate) const OUTCOMES: &str = "sc_out";
+}
 pub(crate) mod kernel;
 mod routes;
 

@@ -10,7 +10,7 @@ use crate::career::plan::combine::PlanScores;
 use crate::career::plan::cont::{ScoreBase, Want};
 use crate::career::plan::robust::{aside, aside_complete};
 use crate::career::plan::rows::{PlanPick, PlanRow, pick_of};
-use crate::career::plan::score::score_career;
+use crate::career::plan::score::{counter, score_career};
 use crate::career::plan::search::legal_pair;
 use crate::career::plan::sweep::deck_odds;
 use crate::career::plan::{PlanContext, found_career};
@@ -316,7 +316,7 @@ pub(crate) fn pair_decompose(
                 };
                 let incomplete_before = crate::career::plan::robust::incompleteness_so_far();
                 let dropped_before = crate::career::clock::PROF
-                    .with(|prof| prof.borrow().get("sc_routes_dropped").copied().unwrap_or(0.0));
+                    .with(|prof| prof.borrow().get(counter::ROUTES_DROPPED).copied().unwrap_or(0.0));
                 let scored = score_career(
                     simulator,
                     &context.scoring(&base),
@@ -325,7 +325,7 @@ pub(crate) fn pair_decompose(
                     buf,
                 );
                 let dropped = crate::career::clock::PROF
-                    .with(|prof| prof.borrow().get("sc_routes_dropped").copied().unwrap_or(0.0))
+                    .with(|prof| prof.borrow().get(counter::ROUTES_DROPPED).copied().unwrap_or(0.0))
                     - dropped_before;
                 // (the plain scoring beside it: the class split must sum to the same saving)
                 let plain =

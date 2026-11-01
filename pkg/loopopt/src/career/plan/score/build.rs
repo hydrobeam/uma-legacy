@@ -6,7 +6,7 @@ use crate::career::plan::cont::{ScoreBase, Want};
 use crate::career::plan::fold::{All, Leaves, OneLeaf};
 use crate::career::plan::score::kernel::{BatchLeast, FOLD_SCRATCH, LiftStats, RouteWins, Scored, SetupParts};
 use crate::career::plan::score::routes::{LiftSide, LiftSlots, PairedAt, RouteInputs, RouteSet, lift_slots, routes};
-use crate::career::plan::score::{CareerScore, KeptScoring, completes_goal, fm_masks};
+use crate::career::plan::score::{CareerScore, KeptScoring, completes_goal, counter, fm_masks};
 use crate::career::plan::search::{legal_pair, val};
 use crate::career::plan::step::{LiftRead, NO_SLOT, Route, ShadowRoute, WhileBuilding};
 use crate::career::plan::{OutcomeIndex, PoolProvenance, ScoringContext};
@@ -173,7 +173,7 @@ fn fit_partner_setups(
     let (kept, taken) = within_budget(&entries, &candidates, OUTCOME_BUDGET);
     let dropped = kept.iter().filter(|&&keep| !keep).count();
     if dropped > 0 {
-        prof("sc_partner_setups_dropped", dropped as f64);
+        prof(counter::PARTNER_SETUPS_DROPPED, dropped as f64);
     }
     let mut index = 0;
     setups.retain(|_| {
@@ -430,11 +430,11 @@ pub(super) fn evaluate_career(
             // (a route no batch can hold, its lift slots and C past the whole budget: the scoring is incomplete, and
             // says so, `routes_dropped_uncertified`)
             if batched.unbatched > 0 {
-                prof("sc_routes_dropped_uncertified", batched.unbatched as f64);
+                prof(counter::ROUTES_DROPPED_UNCERTIFIED, batched.unbatched as f64);
             }
         }
     }
-    prof("sc_out", evaluation.counters.outcomes as f64);
+    prof(counter::OUTCOMES, evaluation.counters.outcomes as f64);
     prof("sc_trio", evaluation.counters.changed_outcomes as f64);
     prof("sc_cost", evaluation.counters.cost_evaluations as f64);
     prof("sc_same", evaluation.counters.cache_hits as f64);
