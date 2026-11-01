@@ -310,11 +310,14 @@ const LAYERS = [
   }
   if (against.length) reports.push(`imports against the layer order (${against.length}): ${against.join(', ')}`);
 }
-// effects: only store.ts makes one (`on`); comments are dropped first (they name effects)
+// effects: only store.ts makes one (`on`); comments are dropped first (they name effects). A signal's `.subscribe()`
+// is an effect too, and so is a module importing or re-exporting signals' `effect` (either quote)
 {
   const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  const MAKES_EFFECT = /\beffect\s*\(|\.subscribe\s*\(/,
+    TAKES_EFFECT = /\b(?:import|export)\b[^;]*\beffect\b[^;]*from\s*['"]@preact\/signals/;
   for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && f !== path.join('src', 'store.ts')))
-    if (/\beffect\s*\(/.test(code(text)) || /\bimport\b[^;]*\beffect\b[^;]*from\s*'@preact\/signals/.test(text))
+    if (MAKES_EFFECT.test(code(text)) || TAKES_EFFECT.test(text))
       problems.push(`${file}: makes an effect outside store.ts's \`on\` (name its signals: on([a, b], (a, b) => ...))`);
 }
 // the type checker's `@ts-expect-error` markers: each a line a module's rename to .ts left for its strict commit
