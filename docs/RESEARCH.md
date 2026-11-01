@@ -36,7 +36,7 @@ kind of test can show.
 | 9 | IT takes the choice that holds a prioritised skill; four measured outcome shares replace the equal split | rule assumed, tested on careers; shares fitted | prioritised targets' event hints read at the model's rate: 0.997 [0.975, 1.019] |
 | 10 | Random card events are left out | not modelled | the targets they can hint read 1.24 of the model; the same targets on decks without such a card read 0.96 |
 | 11 | Conditional character events are left out | not modelled | sparse pooled comparison inconclusive; Vodka's own Nimble Navigator and Mejiro Ardan's own Ramp Up are known misses |
-| 12 | The parts compose into an exact $P(\text{all})$ under stated independence assumptions, with a lineage's expected shared wins standing in for their chance outcome | derived | an independent implementation reproduces the solver's odds on the 42 reference loop results (2e-15 at worst); the career report's real-lineage path has no independent check |
+| 12 | The parts compose into an exact $P(\text{all})$ under stated independence assumptions, with a lineage's expected shared wins standing in for their chance outcome | derived | an independent implementation reproduces the solver's odds on the 44 reference loop results (2e-15 at worst); the career report's real-lineage path has no independent check |
 | 13 | On targets of unknown priority the model is optimistic where it rates targets likely, and its pooled hint chance reaches 1 only through sources it leaves out; on prioritised targets it is slightly low | tested | unknown priority, predicted 0.6 or more: 0.983 [0.976, 0.990]; from modelled sources alone the bands depart jointly, $p$ = 5.8e-14; pooled 0.997 [0.989, 1.005] on 34,730 rows; prioritised 1.014 [1.005, 1.024] on 10,404 rows, by band $p$ = 0.08 |
 | 13 | Over all targets the model is slightly optimistic, from targets the player left off the list | tested | all rows 0.990 [0.985, 0.995]; targets shown not prioritised 0.953 [0.943, 0.963], 115% of the shortfall; the cause is not established |
 | 13 | The model overstates the chance of landing every target in one career, $P(\text{all})$ | tested | spark-weighted all-target acquisition 0.86 [0.77, 0.96] of the model, worth 386 equally weighted runs, 0.89 without the 50 runs of highest predicted chance; runs showing no priority list 0.78, runs showing one 0.89, a difference of −0.11 [−0.32, +0.12] that is not detectable; scaling each target's chance to its own measured miss brings the acquisition part back to about 1 (in-sample, so consistent with the per-target misses compounding, not a test of it); counting every open target equally, no miss is detected; only 357 runs acquired every open target |
@@ -84,7 +84,7 @@ These concern the planner's search, not the model's fit to careers (section 6).
 | Caveat | Count |
 |---|---|
 | a listed runner-up's pair-ceiling odds pass its winner's | 2 of 13 runner-ups |
-| loops the reported search pass turned down after scheduling them, which no bound here excludes | 222 in 18 of 42 results |
+| loops the reported search pass turned down after scheduling them, which no bound here excludes | 222 in 18 of 44 results |
 
 ### Not settled
 
@@ -707,7 +707,7 @@ other parent; a rotation has $X = T$.
 - **Known miss: the pair ceilings do not certify every listed top.** On 2 results a listed runner-up's ceiling passes its winner's odds, by up to 1.8%; it would need 0.46-2.07% over its schedule found to tie, which the search did not find and the bound cannot exclude.
   In the search pass each result reports, the search also turned down
   222 loops in 18 of the
-  42 results after building their schedules, up to
+  44 results after building their schedules, up to
   51 in one result. Each failed against the last listed place as it stood
   at that point, which only rises, and not against the final listing or its winner. So some would be excluded anyway.
   No bound here excludes them, and how many a better schedule could have kept is not known.
@@ -737,17 +737,17 @@ cannot carry the bound. What carries it is the solver's own check: its test `pai
 (`val/milp_fixtures.py`) on 2,278 pairs. That test runs on frozen test
 data, so it checks the method, not the current ceilings table, which the same code computes.
 
-The bound is computed on the 42 reference results, the best loops and decks found for the validation setups
+The bound is computed on the 44 reference results, the best loops and decks found for the validation setups
 (`val/ref__*`, `val/refpu__*`). An independent implementation reproduces their odds to within 2e-15.
 
 | On the reference results | Value |
 |---|---|
 | winners' odds gained by the shared wins found, over none | 31-107% |
-| most any other schedule could add to a winner, by the pair ceilings | 0.15-2.32%, median 0.87% |
+| most any other schedule could add to a winner, by the pair ceilings | 0.15-2.32%, median 0.82% |
 | listed runner-ups whose pair-ceiling odds reach their winner | 2 of 13 |
 | most any other schedule could add to a winner, by the loose independent ceiling | 6.9-24.4% |
 | loops the reported pass turned down after their schedule was built | 222, in 18 results |
-| winners' odds with every scheduled loss chance scaled by 0.5 (assumed) | +1.3 to +6.3%, median 3.1%; no listed runner-up passes its winner under any of 4 loss scalings (0.5 and 0, on every race or at the lowest basis only) |
+| winners' odds with every scheduled loss chance scaled by 0.5 (assumed) | +1.3 to +6.3%, median 3.4%; no listed runner-up passes its winner under any of 4 loss scalings (0.5 and 0, on every race or at the lowest basis only) |
 | winners' odds with every scheduled win chance 1% lower | change up to 0.92%, median 0.61%; the smallest gap from a listed runner-up to its winner is 0.46%; no listed top reordered |
 
 This bound does not certify the ranking when schedules and decks change jointly. The loss scalings are assumed sizes;
@@ -1052,7 +1052,12 @@ chain would have taken when it ends early.
 - **No scenario effect and no Sasami Anshinzawa [This Might Sting!] effect is detectable on top of the budget.** Her
   decks get more chain events, but they also carry more pals, and the pal count accounts for the difference. Not
   detecting an effect does not show there is none; the tests' numbers are in the evidence below.
-- **Known misses.** Inari One's careers get fewer chain events than the budget predicts; early links run short at 3
+- **Group cards are not pals for the budget** (**tested**). Counted as pals, the budget predicts unseen careers
+  −87.0 nats worse; each group card's own term on top of the budget lies below a pal's $b$, and Heirs to the
+  Throne [Esteemed and Adored]'s below zero too (*Group cards* below). This is tested on the two group cards in the runs; for any other group card, such as
+  Progenitors and Guides [Chasing Eternal Glory] on the JP data, the model assumes the same.
+- **Known misses.** Inari One's careers get fewer chain events than the budget predicts, and so do decks with Heirs to the
+  Throne [Esteemed and Adored], which the model counts as having no effect; early links run short at 3
   pals and long at 1; with five chain cards, chains that never start are slightly over-predicted. The causes are
   unknown.
 
@@ -1315,6 +1320,20 @@ but $n$ and $p$ trade off along a ridge, so the budget keeps $n = 21$ and lets $
 Without the budget, Sasami's decks fit $p$ = 0.351 against
 0.305 for the other runs; with it, her own term is not
 distinguishable from zero.
+
+*Group cards.* Each group card's own term on the logit, on top of the budget (95% profile range: the budget re-fitted at
+each fixed term), against a pal card's $b$ = +0.168:
+
+| Card | Runs | Own term [95%] | Likelihood-ratio $p$ |
+|---|---|---|---|
+| Heirs to the Throne [Esteemed and Adored] | 4,906 | −0.066 [−0.09, −0.04] | 6.7e-06 |
+| Team Sirius [Passing the Dream On] | 215 | −0.060 [−0.16, +0.04] | 0.27 |
+
+Counting them as pals instead loses −86.7 nats in-sample and
+−87.0 held out (SE 10.4, $z$ = −8.4) on the
+4,997 runs with one. Decks with Heirs to the Throne carry more pals besides it, so
+counting it as one flattens $b$ and fits every deck worse. Why pal cards raise $N$ is not known; the fit shows only that
+these two group cards do not.
 
 *Scenarios.* No scenario effect is detectable on top of the budget: an intercept per scenario gains
 2.1 nats for
@@ -1838,7 +1857,7 @@ hinted the target on 3 of them.
 
 The composition is **derived** from sections 1-11 under the independence assumptions stated here; nothing further is
 fitted and no research script computes it. An independent implementation, `val/joint_check.py`, reproduces the solver's exact
-odds on the 42 loop-planner reference results and their listed runner-ups, from the
+odds on the 44 loop-planner reference results and their listed runner-ups, from the
 reported shared wins and relation points (section 6). That covers the loop planner. The career report's path for real
 legacies, described at the end of this section, is what section 13 scores; `val/career_check.py` recomputes its
 reports independently from each career job and the data (slot affinities, $q_k$, carriers, spark scales, landing
