@@ -5,6 +5,7 @@
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
 #   the page's JS: Biome (lint and formatting) on the staged files, then tsc's checkJs over the page (under a second)
 #   the page's JS, CSS or templates: webapp/test/static.mjs (no dead CSS, no dead exports; well under a second)
+#   the page's sources or tests: the node tests, webapp/test/unit/ (well under a second)
 # A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
 root=$(git rev-parse --show-toplevel) || exit 1
 staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
@@ -30,5 +31,9 @@ fi
 
 if [ -n "$(staged 'webapp/src/*' 'webapp/*.template.*' 'webapp/build.py')" ]; then
   (cd "$root/webapp" && node test/static.mjs >&2) || fail 'static checks (above: dead CSS or exports, a stale storage write)'
+fi
+
+if [ -n "$(staged 'webapp/src/*' 'webapp/test/*')" ]; then
+  (cd "$root/webapp" && node --test --test-reporter=dot 'test/unit/*.test.*' >&2) || fail 'node tests (above)'
 fi
 exit 0

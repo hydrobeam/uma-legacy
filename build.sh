@@ -174,6 +174,7 @@ step_lint() {
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint static.mjs in_dir "$W" node test/static.mjs
+  lint "node tests" in_dir "$W" node --test --test-reporter=dot 'test/unit/*.test.*'
   if [ ${#LINT_FAILED[@]} -gt 0 ]; then
     local list
     list=$(printf '%s, ' "${LINT_FAILED[@]}")
