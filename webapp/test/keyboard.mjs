@@ -20,6 +20,14 @@ const opens = (pg, id) =>
     () => true,
     () => false,
   );
+// whether dialog `id` has closed (its close lands on the render after the click or key that closes it)
+const shuts = (pg, id) =>
+  pg
+    .waitForFunction((id) => !document.getElementById(id)?.open, id, { timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
 // a click on `button`, then whether dialog `id` opened (a failed open fails the checks that need it, not the group)
 const clickOpens = async (pg, button, id) => {
   await button.click();
@@ -313,6 +321,74 @@ export default async function keyboard(b) {
   check(
     'keyboard, tabs in the parent picker: Enter selects the focused tab; Escape closes the picker',
     picker && pickNew && !(await isOpen(cp, 'vpick-dlg')),
+  );
+  // ---------- the focus comes back to what opened a popup (review-8c §6): by the keyboard, opened then closed
+  // the node popup, closed by its Close button: back on the tree's parent place it opened from
+  const place = cp.locator('#tree [data-k="node:p0"]');
+  await place.focus();
+  await cp.keyboard.press('Enter');
+  const nodeIn = await opens(cp, 'node-dlg');
+  await cp.locator('#node-dlg .gmclose').click();
+  check(
+    'focus: the node popup, closed by Close, gives the focus back to the tree place that opened it',
+    nodeIn && (await shuts(cp, 'node-dlg')) && (await focusOn(cp, '#tree [data-k="node:p0"]')),
+    await focusName(cp),
+  );
+  // the parent picker, from that place's popup (which closes as the picker opens): Escape gives it back to the place
+  await place.focus();
+  await cp.keyboard.press('Enter');
+  const choose =
+    (await opens(cp, 'node-dlg')) && cp.locator('#node-dlg').getByRole('button', { name: /^(Change|Choose) parent$/ });
+  if (choose) await choose.focus();
+  await cp.keyboard.press('Enter');
+  const pickIn = !!choose && (await opens(cp, 'vpick-dlg'));
+  await cp.keyboard.press('Escape');
+  check(
+    'focus: the parent picker opened from a node popup, closed by Escape, gives the focus back to the tree place',
+    pickIn && (await shuts(cp, 'vpick-dlg')) && (await focusOn(cp, '#tree [data-k="node:p0"]')),
+    await focusName(cp),
+  );
+  // in Veteran Umamusume's pane: the colour picker from her blue bar, and the "+" list from her sparks' "+"
+  const vetsIn = await clickOpens(cp, cp.locator('#v-toggle'), 'set-vets');
+  const bar = cp.locator('#v-pane .vsb.blue button.vskb').first(),
+    barKey = vetsIn ? await bar.getAttribute('data-k') : null;
+  if (barKey) await bar.focus();
+  await cp.keyboard.press('Enter');
+  const colourIn = !!barKey && (await opens(cp, 'col-dlg'));
+  await cp.keyboard.press('Escape');
+  check(
+    'focus: the colour picker, closed by Escape, gives the focus back to the spark bar that opened it',
+    colourIn &&
+      (await shuts(cp, 'col-dlg')) &&
+      (await focusOn(cp, `[data-k="${barKey}"]`)) &&
+      (await isOpen(cp, 'set-vets')),
+    await focusName(cp),
+  );
+  const plus = cp.locator('#v-pane .vskadd').first(),
+    plusKey = vetsIn ? await plus.getAttribute('data-k') : null;
+  if (plusKey) await plus.focus();
+  await cp.keyboard.press('Enter');
+  const listIn =
+    !!plusKey &&
+    (await cp
+      .waitForFunction(() => document.getElementById('add-pop')?.contains(document.activeElement), null, {
+        timeout: 3000,
+      })
+      .then(
+        () => true,
+        () => false,
+      ));
+  await cp.keyboard.press('Escape');
+  const listShut = await cp
+    .waitForFunction(() => document.getElementById('add-pop')?.hidden, null, { timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  check(
+    'focus: the "+" list, closed by Escape, gives the focus back to its "+" (Veteran Umamusume stays open)',
+    listIn && listShut && (await focusOn(cp, `[data-k="${plusKey}"]`)) && (await isOpen(cp, 'set-vets')),
+    await focusName(cp),
   );
   check('no page errors (the career planner)', !cp.errors.length, cp.errors.join(' | '));
   await career.ctx.close();
