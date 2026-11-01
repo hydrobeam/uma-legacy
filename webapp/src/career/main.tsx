@@ -30,7 +30,6 @@
 import { started } from '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
-import { batch } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import type { VNode } from 'preact';
 import { $ } from '../dom.ts';
@@ -40,7 +39,7 @@ import { loadData } from '../data.ts';
 import CAREER from '#career-data';
 import { jobSetup, settings, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
-import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill, stateKey } from '../engine.ts';
+import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from '../engine.ts';
 import { answerLoad, answerSave } from '../statestore.ts';
 import { goldGiven } from '../job.ts';
 import { initScenario, eraScenario } from '../scenario.ts';
@@ -61,21 +60,20 @@ import {
   handBackPlaces,
   setListings,
 } from '../veterans/store.ts';
-import { searchHeld } from '../veterans/pickers.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
-import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
+import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.ts';
 import { connectUmamoe, syncListings } from '../umamoesetup.ts';
 import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
 import { renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { placesKey, isFull, ROLL_K, umasNotOwned } from './job.ts';
-import { currentJob, dropStaleChosen, shown, runJob } from './current.ts';
+import { currentJob, dropStaleChosen, followPool, shown, runJob } from './current.ts';
 import { baseKey, refBase } from './keys.ts';
 import { TryRunDialog, draftOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
-import { answer, dropAnswer, dropped, keepComparisonPlan, loadFails, runView } from './state.ts';
+import { answer, dropped, keepComparisonPlan, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
 import { tName } from './view/parts.ts';
 import { Guard } from './view/Guard.tsx';
@@ -128,7 +126,6 @@ const run = createRun({
     restart: restartEngine,
     nextKill,
     saveState: engineSaveState,
-    key: stateKey,
   },
   clock: {
     now: () => performance.now(),
@@ -149,14 +146,7 @@ const run = createRun({
     saveAnswer: (key, value) => answerSave(ERA, key, value),
   },
   analysis: comparison,
-  view: {
-    shown,
-    paint,
-    // (every view is a component: each follows its signals)
-    drawAll: paint,
-    // (the check's report is in the answer store: the table follows it)
-    drawCheck: paint,
-  },
+  view: { shown, paint },
 });
 // the search's status: done, with a caveat (proofs.ts `searchCaveat`) when the search could not prove the best odds'
 // order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report establishes
@@ -274,23 +264,7 @@ loadData(CAREER).then(
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
     dropStaleChosen();
-    // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
-    // places, so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new
-    // one is ready. While a pool veteran's G1 wins window or a skills prompt is open its edits are saved, and the search
-    // waits for it to close (veterans/pickers.ts `searchHeld`).
-    const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
-    let ids = idsOf(vets.peek());
-    on([vets, places, searchHeld], (list, _places, held) => {
-      if (held) return;
-      if (idsOf(list) !== ids) {
-        ids = idsOf(list);
-        batch(() => {
-          dropAnswer();
-          comparison.clear();
-        });
-      }
-      run.schedule();
-    });
+    followPool(run, comparison); // (an edit of the veterans or places searches again: current.ts)
     // an edit of Try a run's draft: the comparison on show is for the veteran before it (a roll or a new career clears
     // the figures with her, so it marks nothing)
     on([draft], analysisStore.draftChanged);
@@ -310,7 +284,7 @@ loadData(CAREER).then(
     mount('um-root', <UmButton />, "uma.moe's button");
     mount('um-dlg-root', <UmamoeDialog />, "uma.moe's popup");
     mount('save-root', <SavesPopup />, 'The Saves popup');
-    mount('sched-root', <ScheduleDialog />, 'The race schedule', schedOpened);
+    mount('sched-root', <ScheduleDialog />);
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
     mount('sim-root', <TryRunDialog comparison={comparison} />, 'Try a run');
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)

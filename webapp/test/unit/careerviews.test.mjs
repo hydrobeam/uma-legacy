@@ -30,8 +30,7 @@ const built = await esbuild.build({
       export { PoolBody, PoolHead } from './src/career/view/Pool.tsx';
       export { openPool, poolClosed, choose } from './src/career/view/poolState.ts';
       export { OddsDialog, openOdds } from './src/ui/OddsDialog.tsx';
-      export { ScheduleDialog, openSched, schedOpened } from './src/ui/Schedule.tsx';
-      export { Guard } from './src/career/view/Guard.tsx';
+      export { ScheduleDialog, openSched } from './src/ui/Schedule.tsx';
       export { h, render, options } from 'preact';
       export { loadData } from './src/data.ts';`,
     resolveDir: WEBAPP,
@@ -52,7 +51,7 @@ const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
 const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails, OddsDialog, openOdds } = page;
-const { ScheduleDialog, openSched, schedOpened, Guard, nodeOpen, pickerFor, pickerClosed, on } = page;
+const { ScheduleDialog, openSched, nodeOpen, pickerFor, pickerClosed, on } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
 await loadData(globalThis.__LLP_DATA['data-career']);
 
@@ -215,9 +214,9 @@ test('the race schedule, after it failed to draw, draws on its next opening (rev
   const reported = [];
   globalThis.reportError = (e) => reported.push(e);
   sayRenderErrors(() => undefined);
-  // into its mount point (the career entry's guard, with the schedule's openings as its subject)
+  // as either page places it (the dialog's own guard draws it again for a new opening: nothing to wire)
   const root = document.body.appendChild(document.createElement('div'));
-  render(h(Guard, { what: 'The race schedule', also: schedOpened }, h(ScheduleDialog, null)), root);
+  render(h(ScheduleDialog, null), root);
   const member = { k: 0, id: 1001, name: 'Uma A', outfits: [] };
   openSched({ members: [member], schedule: null }); // (malformed: no schedule)
   await settle();

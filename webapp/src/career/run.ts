@@ -10,6 +10,8 @@ import type { DeepReadonly } from '../store.ts';
 import type * as AnswerStore from './state.ts';
 import type { Answer, AnswerView, PlanDone, PlanState, Status } from './state.ts';
 import { jobKey, planKey } from './keys.ts';
+import { stateKey } from '../engine.ts';
+import type { Comparison } from './analysis/compare.ts';
 
 /** the answer store's transitions and reads the machine uses (career/state.ts) */
 export type RunStore = Pick<
@@ -50,8 +52,6 @@ export interface RunDeps {
     nextKill: () => Promise<unknown>;
     /** keep the worker's work for the next page load */
     saveState: () => void;
-    /** the solver's and data's fingerprints (a kept answer is for them alone) */
-    key: () => string;
   };
   /** the clock and timers (performance.now, setTimeout, setInterval) */
   clock: {
@@ -82,30 +82,15 @@ export interface RunDeps {
     loadAnswer: () => Promise<{ key: string; value: AnswerView } | null>;
     saveAnswer: (key: string, value: AnswerView) => void;
   };
-  /** the veteran analysis (analysis/compare.ts `createComparison`): its comparison follows the runs */
-  analysis: {
-    /** a new run: the comparison under way is stale */
-    outdate: () => void;
-    /** an edit: the comparison in flight stops */
-    stop: () => void;
-    /** an answer shows career `r` (null: none) */
-    show: (r: DeepReadonly<CareerReport> | null) => void;
-    /** no answer */
-    clear: () => void;
-    /** a run without places found today's best career: the comparisons' baseline */
-    keepBaseline: (key: string, best: DeepReadonly<CareerReport>) => void;
-  };
-  /** the redraws */
+  /** the veteran analysis' comparison, which follows the runs: only analysis/compare.ts `createComparison` makes one
+   *  (its type carries a brand), so the page can't hand in a stand-in whose `stop` or `outdate` does nothing */
+  analysis: Comparison;
+  /** what the page draws of a run */
   view: {
     /** the career on show (job.ts `shown`) */
     shown: () => DeepReadonly<CareerReport> | null;
-    /** the status line */
+    /** the status line, drawn again (its clock; every other view follows the stores' signals) */
     paint: () => void;
-    /** everything (the tree, the results, the pool), then the status line */
-    drawAll: () => void;
-    /** the plan's table, after a check step (the tree and the veterans stay: a redraw of the open veterans dialog
-     *  under a click in progress would lose the click, or land it on the dialog, which closes it) */
-    drawCheck: () => void;
   };
 }
 
@@ -247,7 +232,7 @@ export function createRun(deps: RunDeps) {
     }
     const key = runKey(job),
       saved = await page.loadAnswer();
-    if (saved?.key === `${engine.key()}\n${key}` && saved.value?.last) store.keepSavedAnswer(key, saved.value);
+    if (saved?.key === `${stateKey()}\n${key}` && saved.value?.last) store.keepSavedAnswer(key, saved.value);
   }
 
   // A run: the search, then (with the trainee's place left to the planner) the plan, both on the one worker; the
@@ -282,7 +267,7 @@ export function createRun(deps: RunDeps) {
     if (last && last.key === key && last.plan === places && planState.state !== 'error') {
       store.runEnds();
       clock.clearTimer(tick);
-      view.drawAll();
+      view.paint();
       resumeCheck(runId);
       return;
     }
@@ -291,7 +276,7 @@ export function createRun(deps: RunDeps) {
       store.showKeptAnswer(hit, pool);
       analysis.show(view.shown());
       clock.clearTimer(tick);
-      view.drawAll();
+      view.paint();
       resumeCheck(runId);
       return;
     }
@@ -329,7 +314,7 @@ export function createRun(deps: RunDeps) {
         if (status.kind === 'done' && planned.state !== 'error') {
           store.keepAnswer(answerKey);
           // kept across a reload too: the same setup draws it at once (`preloadAnswer`)
-          page.saveAnswer(`${engine.key()}\n${answerKey}`, store.answer.peek());
+          page.saveAnswer(`${stateKey()}\n${answerKey}`, store.answer.peek());
         }
         analysis.show(view.shown());
         if (best && !job.trainees.length && !job.fix.length) analysis.keepBaseline(page.baseKey(job), best);
@@ -341,18 +326,18 @@ export function createRun(deps: RunDeps) {
     store.runEnds();
     inflight = null;
     clock.clearTimer(tick);
-    view.drawAll();
+    view.paint();
     if (checkFor) checkPhase(checkDeps(runId), checkFor);
   }
 
-  // what the robustness check of run `runId` needs: its report shows in the plan's table only (`view.drawCheck`); a
-  // plan Compare kept for the same job is the same report, so it takes the check too (`reviseKeptPlan`)
+  // what the robustness check of run `runId` needs: its report shows in the plan's table (which follows the answer
+  // store; `view.paint` moves the status line); a plan Compare kept for the same job is the same report, so it takes the check too (`reviseKeptPlan`)
   const checkDeps = (runId: number): CheckDeps => ({
     runIsCurrent: () => runId === id,
     // (the engine posts the job, a copy: it writes nothing into it)
     runCheck: (job) =>
       Promise.race([engine.run(job as CareerJob, undefined, true), engine.nextKill().then(() => null)]),
-    redraw: view.drawCheck,
+    redraw: view.paint,
     checked: (plan) => store.reviseKeptPlan(plan.job, plan.r),
     store,
   });
@@ -368,7 +353,7 @@ export function createRun(deps: RunDeps) {
     store.runEndsUnsearched(next);
     clock.clearTimer(tick);
     analysis.clear();
-    view.drawAll();
+    view.paint();
   }
 
   // The plan (solver: career/plan/mod.rs `index_rule`, exact odds, no simulation): the same job with `next`, every

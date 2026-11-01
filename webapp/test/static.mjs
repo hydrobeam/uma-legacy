@@ -10,8 +10,6 @@
 //   page's bundle, or a page edit, would otherwise crash at load. A lookup that may miss on purpose is listed in
 //   MAY_BE_MISSING, per page, with why. An exemption whose id the page has, or that no module of the page looks up,
 //   fails too.
-// - wiring: the career run machine's deps that no browser group checks are named as they must be (engine.key,
-//   analysis.stop and outdate, view.drawCheck).
 // - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
 //   the entry only at its mount points, a deliberate read listed with why (MOUNT_READS): by a selector or a class
 //   lookup naming what the component draws, or by walking down from a mount point (its children, a query from it, a
@@ -399,42 +397,6 @@ const MOUNT_READS = {
     for (const selector of Object.keys(reads))
       if (!used.has(`${file} ${selector}`))
         problems.push(`MOUNT_READS: ${file} no longer looks up '${selector}': drop it`);
-}
-
-// ---------- the career run machine's wiring (career/main.tsx `createRun`): the deps no browser group notices when
-// they are miswired (review-8ab finding 4), each named as it must be
-{
-  const WIRES = [
-    [/\bkey: stateKey,/, "engine.key is engine.ts's stateKey (a constant would take another release's saved answer)"],
-    [
-      /\banalysis: comparison,/,
-      "analysis is the comparison's machine (a no-op stop leaves a comparison running across an edit; a no-op outdate " +
-        'leaves it fresh across a new run)',
-    ],
-    [
-      /on\(\[vets, places, searchHeld\], \(list, _places, held\) => \{\s*if \(held\) return;/,
-      "the veterans effect holds the search while a pool veteran's G1 wins window or a skills prompt is open " +
-        '(pickers.ts searchHeld; review-10 1, 2)',
-    ],
-    [
-      /mount\('sched-root', <ScheduleDialog \/>, 'The race schedule', schedOpened\);/,
-      "the race schedule's guard draws it again for a new opening (Schedule.tsx schedOpened: review-11b 5)",
-    ],
-    [
-      /drawCheck: paint,/,
-      'view.drawCheck redraws the status line only (the results column follows the answer store; a redraw of the open ' +
-        'veterans dialog under a click would lose it: run.ts RunDeps)',
-    ],
-  ];
-  for (const [wire, what] of WIRES)
-    if (!wire.test(srcText['src/career/main.tsx']))
-      problems.push(`src/career/main.tsx: the run machine's wiring: ${what}`);
-  if (
-    !/renderGuarded\(<ScheduleDialog \/>, \$\('sched-root'\), 'The race schedule', schedOpened\);/.test(
-      srcText['src/loop/main.tsx'],
-    )
-  )
-    problems.push('src/loop/main.tsx: the race schedule draws inside a guard that draws it again for a new opening');
 }
 
 // ---------- dialogs and mounts: ui/Dialog.tsx is every modal dialog (it calls showModal() and close() from its `open`,

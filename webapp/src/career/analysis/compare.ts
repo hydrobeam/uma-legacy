@@ -134,7 +134,7 @@ export function savedWhere({
   return `Improves a later ${best ? `${best} ` : ''}career; the next career ${samePick ? 'stays' : 'is'} ${pickA.trainee.name}.`;
 }
 
-export function createComparison({ engine, clock, answers, store, page }: ComparisonDeps) {
+function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
   // the comparison under way; a newer one makes it stale, and so does a run: the run machine calls `stop` or `outdate`
   // whenever a new run begins (career/run.ts, its node tests), so this one id covers both
   let comparisonId = 0;
@@ -411,4 +411,8 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
     roll,
   };
 }
-export type Comparison = ReturnType<typeof createComparison>;
+declare const made: unique symbol;
+/** a comparison: what `createComparison` makes, and nothing else can be (its brand exists in the type alone), so the run
+ *  machine's `analysis` is this machine and never a stand-in (career/run.ts RunDeps) */
+export type Comparison = ReturnType<typeof comparisonOf> & { readonly [made]: true };
+export const createComparison = (deps: ComparisonDeps) => comparisonOf(deps) as Comparison;

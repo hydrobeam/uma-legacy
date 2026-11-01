@@ -2,6 +2,7 @@
 // on made-up reports: each transition copies on write; the check knows its plan by id, so its own writes keep it
 // running and a new plan or run stops it; the check reaches every place the plan is kept; an effect wakes only for
 // the signals it names. node --test 'test/unit/*.test.*' (in webapp)
+import './fakepage.mjs'; // (run.ts reads the solver's fingerprints from the page data: engine.ts stateKey)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { on } from '../../src/store.ts';

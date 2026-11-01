@@ -35,9 +35,9 @@ export interface SchedSpec {
 // the schedule on show and its opening (each opening draws it afresh), and whether it is open
 const shown = signal<{ spec: SchedSpec | null; n: number }>({ spec: null, n: 0 });
 const isOpen = signal(false);
-/** the schedule on show and its opening, which only `openSched` writes: what its render guard draws again for (each
- *  entry's), so opening it again after a failure draws it, and nothing else does */
-export const schedOpened: ReadonlySignal<{ spec: SchedSpec | null; n: number }> = shown;
+/** the schedule on show and its opening, which only `openSched` writes: what its render guards draw again for, so
+ *  opening it again after a failure draws it, and nothing else does */
+const schedOpened: ReadonlySignal<{ spec: SchedSpec | null; n: number }> = shown;
 /** the race schedule window for a loop's members (the career page: her alone) */
 export function openSched(spec: SchedSpec) {
   batch(() => {
@@ -48,8 +48,13 @@ export function openSched(spec: SchedSpec) {
 const close = () => {
   isOpen.value = false;
 };
-/** the popup (each entry renders it into #sched-root) */
-export function ScheduleDialog() {
+/** the popup (in #sched-root on both pages), inside its own guard: a new opening draws it again after a failure */
+export const ScheduleDialog = () => (
+  <RenderGuard input={schedOpened} what="The race schedule">
+    <ScheduleBox />
+  </RenderGuard>
+);
+function ScheduleBox() {
   const { spec, n } = shown.value;
   // (a schedule that fails to draw leaves its heading and Close: the dialog is open by then)
   return (

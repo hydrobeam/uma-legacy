@@ -25,7 +25,7 @@ import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
 import { OddsDialog } from '../ui/OddsDialog.tsx';
-import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
+import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.ts';
 import { CardPop } from '../ui/CardPop.tsx';
 import { loadExample } from '../presets.ts';
@@ -163,7 +163,7 @@ function start() {
     column.focus({ preventScroll: true });
   };
   // the race schedule: drawn into the template's dialog (its mount point), which a backdrop click closes
-  renderGuarded(<ScheduleDialog />, $('sched-root'), 'The race schedule', schedOpened);
+  render(<ScheduleDialog />, $('sched-root'));
 
   render(
     <RenderGuard input={loopDrawn} what="The result" fallback={<p>The result could not be drawn.</p>}>

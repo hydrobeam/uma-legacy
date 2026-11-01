@@ -5,6 +5,7 @@
 // after a stop, each phase is one write, the run machine's hooks and a comparison never interleave their writes, the
 // same career keeps her draft (F6), quick and exact share one baseline (F5), and Compare keeps a plan only for a refit.
 // node --test 'test/unit/*.test.*' (in webapp)
+import './fakepage.mjs'; // (run.ts reads the solver's fingerprints from the page data: engine.ts stateKey)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { effect, signal } from '@preact/signals';

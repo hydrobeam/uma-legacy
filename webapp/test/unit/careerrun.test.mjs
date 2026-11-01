@@ -4,10 +4,12 @@
 // replies of older runs are dropped, a check's own writes keep it running while a new plan stops it, the timers end
 // with the run, the comparison goes stale with every new run, and the last visit's answer is drawn after a reload.
 // node --test 'test/unit/*.test.*' (in webapp)
+import './fakepage.mjs'; // (run.ts reads the solver's fingerprints from the page data: engine.ts stateKey)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAUSE_MS, createRun } from '../../src/career/run.ts';
 import { jobKey, planKey } from '../../src/career/keys.ts';
+import { stateKey } from '../../src/engine.ts';
 import * as store from '../../src/career/state.ts';
 import { fakeClock, flush } from './fakes.mjs';
 
@@ -17,7 +19,7 @@ const { answer, answerCareer, runView } = store;
 // the engine: each job held for the test. `cold`: jobs sent now wait on the engine's start (a restart rejects them);
 // otherwise they are in flight (a restart leaves them unanswered)
 function fakeEngine() {
-  const engine = { jobs: [], restarts: 0, saves: 0, cold: false, fingerprint: 'wasm1|engine1', kill: null };
+  const engine = { jobs: [], restarts: 0, saves: 0, cold: false, kill: null };
   const killed = () => {
     engine.kill = engine.kill || Promise.withResolvers();
     return engine.kill.promise;
@@ -38,7 +40,6 @@ function fakeEngine() {
   };
   engine.nextKill = killed;
   engine.saveState = () => engine.saves++;
-  engine.key = () => engine.fingerprint;
   // answer job n (from 0) with the report r
   engine.answer = (n, r, ms = 1500) => {
     const j = engine.jobs[n];
@@ -64,7 +65,7 @@ function page({ trainee = null } = {}) {
   const clock = fakeClock(),
     engine = fakeEngine(),
     target = ++pages,
-    seen = { paints: 0, draws: 0, checkDraws: 0, stops: 0, outdates: 0, shown: [], cleared: 0, saved: [] };
+    seen = { paints: 0, stops: 0, outdates: 0, shown: [], cleared: 0, saved: [] };
   const job = {
     cmd: 'career',
     targets: [{ group: target }],
@@ -101,8 +102,6 @@ function page({ trainee = null } = {}) {
     view: {
       shown: () => answerCareer.peek(),
       paint: () => seen.paints++,
-      drawAll: () => seen.draws++,
-      drawCheck: () => seen.checkDraws++,
     },
     blocked: false,
     broken: false,
@@ -385,10 +384,11 @@ test("the engine restarted under a check: the check's race ends with the kill, a
   const alone = page();
   await edited(alone);
   await answered(alone, 0, ['best'], 'pick');
+  const paints = alone.seen.paints;
   alone.engine.restart();
   await flush();
   assert.equal(answer.peek().planState.r.check_unavailable, true);
-  assert.equal(alone.seen.checkDraws, 1);
+  assert.equal(alone.seen.paints - paints, 1, 'the status line follows the check');
   // an edit first: the check is stale and marks nothing
   const p = page();
   await edited(p);
@@ -434,11 +434,11 @@ test('a reload: the answer kept for this setup and these fingerprints is drawn a
   await edited(first);
   await answered(first, 0, ['best'], 'pick');
   const [{ key, value }] = first.seen.saved;
-  assert.ok(key.startsWith('wasm1|engine1\n'), "the saved answer's key carries the fingerprints");
+  assert.ok(key.startsWith(`${stateKey()}\n`), "the saved answer's key carries the fingerprints");
   // the next visit, the same setup (made here on another page's job: the first page's answer is in the cache too)
   const again = page(),
-    savedFor = (p) => {
-      const saved = { key: `${p.engine.fingerprint}\n${jobKey(p.job)}\n${p.deps.page.places()}`, value };
+    savedFor = (p, fingerprints = stateKey()) => {
+      const saved = { key: `${fingerprints}\n${jobKey(p.job)}\n${p.deps.page.places()}`, value };
       return async () => saved;
     };
   again.deps.page.loadAnswer = savedFor(again);
@@ -450,8 +450,7 @@ test('a reload: the answer kept for this setup and these fingerprints is drawn a
   assert.equal(again.engine.jobs.length, 1, 'its check resumes');
   // another solver or data release: the saved answer is not taken
   const other = page();
-  other.deps.page.loadAnswer = savedFor(other);
-  other.engine.fingerprint = 'wasm2|engine1'; // (after the key was made: the saved one is of the old release)
+  other.deps.page.loadAnswer = savedFor(other, 'wasm0|engine0'); // (kept by an older release)
   await other.run.start();
   await flush();
   assert.equal(other.engine.jobs.length, 1, 'a search is sent');
