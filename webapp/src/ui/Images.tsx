@@ -90,6 +90,12 @@ export function ScenLogo({ sc, title }: { sc: { id: number; name: string; tint: 
     </span>
   );
 }
+/** a grade letter (code 1..8 = G..S): the game's sprite, or the letter (images.js gradeEl) */
+export function Grade({ g }: { g: number }) {
+  const src = srcFor('ui', `grade_${g - 1}`),
+    letter = 'GFEDCBAS'[g - 1] || '?';
+  return src ? <img class="udg" src={src} alt={letter} /> : <b class={`udg txt g${letter}`}>{letter}</b>;
+}
 /** a skill's icon (its gold's: `gold`), or nothing when the page has none (images.js skillIcon) */
 export function SkillIcon({ group, gold = false }: { group: number; gold?: boolean }) {
   const src = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]);

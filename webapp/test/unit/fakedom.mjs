@@ -15,11 +15,13 @@ class Node {
     const p = this.parentNode;
     return p ? p.childNodes[p.childNodes.indexOf(this) + 1] || null : null;
   }
+  // as a real DOM: `ref` (when given) must be a child, and a node moved here leaves its old place first
   insertBefore(n, ref) {
+    if (ref != null && ref.parentNode !== this) throw new Error('insertBefore: the reference node is not a child');
+    if (n === ref) return n;
     if (n.parentNode) n.parentNode.removeChild(n);
-    const at = ref ? this.childNodes.indexOf(ref) : -1;
-    if (at < 0) this.childNodes.push(n);
-    else this.childNodes.splice(at, 0, n);
+    if (ref == null) this.childNodes.push(n);
+    else this.childNodes.splice(this.childNodes.indexOf(ref), 0, n);
     n.parentNode = this;
     return n;
   }
@@ -29,8 +31,11 @@ class Node {
   append(...nodes) {
     for (const n of nodes) this.appendChild(typeof n === 'string' ? new Text(n) : n);
   }
+  // as a real DOM: a node that is not a child throws (splice(-1, 1) would drop the last child instead)
   removeChild(n) {
-    this.childNodes.splice(this.childNodes.indexOf(n), 1);
+    const at = this.childNodes.indexOf(n);
+    if (at < 0) throw new Error('removeChild: the node is not a child');
+    this.childNodes.splice(at, 1);
     n.parentNode = null;
     return n;
   }

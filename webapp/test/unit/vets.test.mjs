@@ -203,15 +203,6 @@ test("an editor by path: an open dialog's second edit lands on the record its fi
   assert.equal(grand.node(), undefined, 'an edit of one gone does nothing');
 });
 
-test('a draft (no store) edited in place through its ref: each edit then onEdit', () => {
-  const d = node(5, { 7: 1 });
-  let edits = 0;
-  const at = vs.inPlaceRef(d, () => edits++);
-  at.edit((n) => ({ sparks: { ...n.sparks, 8: 2 } }));
-  at.edit((n) => ({ wins: [...n.wins, 1] }));
-  assert.deepEqual([d.sparks, d.wins, edits], [{ 7: 1, 8: 2 }, [1], 2]);
-});
-
 test("effects wake for their part only; a places write keeps the veterans' identity and the job's legacies", () => {
   fresh();
   const woke = { vets: 0, places: 0, chosen: 0 };
@@ -280,8 +271,8 @@ test("the analysis' draft: her own signal, edits by path copy on write, the vete
   vs.setDraft(d);
   const first = vs.draft.peek();
   assert.ok(Object.isFrozen(first) && Object.isFrozen(first.parents[1].sparks), 'a draft set is frozen');
-  vs.draftRef.edit((n) => ({ sparks: { ...n.sparks, 9: 3 } }));
-  vs.draftRef.edit((n) => ({ wins: [...n.wins, 4] }));
+  vs.draftRef().edit((n) => ({ sparks: { ...n.sparks, 9: 3 } }));
+  vs.draftRef().edit((n) => ({ wins: [...n.wins, 4] }));
   vs.draftParentRef(1).edit((p) => ({ sparks: { ...p.sparks, 8: 3 } }));
   vs.draftParentRef(1).edit(() => ({ chara: 33, outfit: undefined }));
   const now = vs.draft.peek();
@@ -293,7 +284,20 @@ test("the analysis' draft: her own signal, edits by path copy on write, the vete
   assert.equal(now.parents[0], first.parents[0], 'an untouched parent is the same object');
   assert.deepEqual(woke, { vets: 0, draft: 5 });
   vs.setDraft(null);
-  vs.draftRef.edit(() => ({ sparks: {} }));
+  vs.draftRef().edit(() => ({ sparks: {} }));
   assert.equal(vs.draft.peek(), null, 'an edit with no draft does nothing');
   for (const stop of stops) stop();
+});
+
+test("a draft set, or her parents set, is the store's own copy: the caller's object stays its own (review-10 F6)", () => {
+  const mine = { ...node(5, { 7: 1 }), borrowed: false, parents: [node(1), node(2)] };
+  vs.setDraft(mine);
+  mine.sparks[7] = 3; // (frozen in place, this would throw)
+  assert.equal(vs.draft.peek().sparks[7], 1, 'her draft is not the caller object');
+  const parents = [node(3, { 8: 1 }), node(4)];
+  vs.setDraftParents(parents);
+  parents[0].sparks[8] = 2;
+  assert.equal(vs.draft.peek().parents[0].sparks[8], 1);
+  assert.ok(Object.isFrozen(vs.draft.peek().parents[0]));
+  vs.setDraft(null);
 });

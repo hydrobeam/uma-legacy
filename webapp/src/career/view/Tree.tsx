@@ -2,15 +2,14 @@
 // Try a run beside the title (Verdict, into #lodds). The game's legacy display: portraits only (the trainee; Legacy 1
 // blue and Legacy 2 pink, each the parent with her own two parents), each with its legacy number and affinity; a
 // portrait opens the node popup (her sparks, G1 wins, choose or hand back the place, change who she is). Both draw from
-// the answer and the veterans (`vetsRev`: their records and the places are edited in place until step 10).
+// the answer and the veterans store (veterans/store.ts).
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
-import { $dialog } from '../../dom.js';
 import { vets, places } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.js';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
-import { renderSimulation } from '../analysis.js';
+import { openTryRun } from '../analysis/view.tsx';
 import { idxOf, shown, parentAt } from '../job.js';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { openNode } from './dialogs.ts';
@@ -192,10 +191,7 @@ export function Verdict() {
         id="sim-try"
         aria-haspopup="dialog"
         title="Roll a random result of this career and see whether the veteran it leaves helps your loop"
-        onClick={() => {
-          renderSimulation();
-          $dialog('sim-dlg').showModal();
-        }}
+        onClick={openTryRun}
       >
         Try a run
       </button>

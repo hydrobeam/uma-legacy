@@ -12,7 +12,8 @@
 //   keys.js            the keys a job, a plan job and a career are known by
 //   io.js              Export and Import of the veterans
 //   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
-//   analysis.js        the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
+//   analysis/          the veteran analysis ("Try a run"): state.ts its store (her draft, her comparison), compare.ts
+//                      the comparison's run machine, view.tsx Try a run's popup, Details.tsx her card
 //   options.js         the options table ("Other careers": the plan's careers, Use this) and its Saves popup
 //   view/RunNote.tsx   the status line
 //   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
@@ -21,7 +22,7 @@
 //   view/Sections.tsx  the career's sections in the tree: odds, deck and its popup, schedule, targets, counts
 //   view/Setup.tsx     the Borrowed parent choice, and the setup panel's fold and summary
 //   view/dialogs.ts    which popup is open, for what (the el() modules open them through it)
-//   view/Results.js    the results column (the options table, Try a run: el(), steps 9 and 11)
+//   view/Results.js    the results column (the options table: el(), step 11)
 //   view/Pool.tsx      the veterans dialog: its tabs, lists and the pane beside them
 //   view/parts.js      small parts the el() views share
 import '../errorlog.ts'; // first: it listens before any other module runs
@@ -46,15 +47,37 @@ import '../agenda.js'; // (its document listener is added before gmtip's)
 import { initSetup } from '../setup.js';
 import '../gmtip.js'; // the game-style tooltips (both planner pages)
 import { initTargets, renderTargets } from '../targets.js';
-import { vets, places, persist, flushPersist, clearVets, dropMissing, handBackPlaces } from '../veterans/store.ts';
+import {
+  vets,
+  places,
+  draft,
+  persist,
+  flushPersist,
+  clearVets,
+  dropMissing,
+  handBackPlaces,
+} from '../veterans/store.ts';
 import { winsOpen } from '../veterans/pickers.js';
 import { setRunner } from '../images.js';
 import { initUmamoe, syncListings, umamoeButton } from '../umamoesetup.js';
 import { Boundary } from '../ui/Boundary.tsx';
-import { placesKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown, runJob } from './job.js';
-import { outdateComparison, stopComparison, showAnalysis, clearAnalysis, keepBaseline } from './analysis.js';
+import {
+  placesKey,
+  buildJob,
+  chosenDropped,
+  dropStaleChosen,
+  baseKey,
+  refBase,
+  shown,
+  runJob,
+  isFull,
+  ROLL_K,
+} from './job.js';
+import { Analysis, draftOf, drawnHere } from './analysis/view.tsx';
+import * as analysisStore from './analysis/state.ts';
+import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
-import { answer, dropAnswer, loadFails, runView } from './state.ts';
+import { answer, dropAnswer, keepComparisonPlan, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
 import { tName } from './view/parts.js';
 import { RunNote, tickNote } from './view/RunNote.tsx';
@@ -74,6 +97,24 @@ import type { Status } from './state.ts';
 import type { CareerSearch } from './job.js';
 
 // ---------- the run ----------
+// The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,
+// the analysis store, the career on show and her draft. The run machine below drives it through its hooks.
+const comparison = createComparison({
+  engine: { run: runJob, restart: restartEngine, saveState: engineSaveState },
+  clock: { setTimer: (f, ms) => setTimeout(f, ms) },
+  answers: { answer, keepComparisonPlan },
+  store: analysisStore,
+  page: {
+    shown,
+    searching: () => runView.peek().searching,
+    targets: () => settings.peek().targets,
+    baseKey,
+    isFull,
+    planTop: ROLL_K,
+    draftOf,
+    draft: () => draft.peek(),
+  },
+});
 // The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the
 // settings, veterans and places, the veteran analysis and the redraws. The views that are components draw from the
 // answer store's signals (career/state.ts) and the veterans store's (veterans/store.ts); the redraws here are the el()
@@ -104,13 +145,7 @@ const run = createRun({
     loadAnswer: () => answerLoad(ERA),
     saveAnswer: (key, value) => answerSave(ERA, key, value),
   },
-  analysis: {
-    outdate: outdateComparison,
-    stop: stopComparison,
-    show: showAnalysis,
-    clear: clearAnalysis,
-    keepBaseline,
-  },
+  analysis: comparison,
   view: {
     shown,
     paint,
@@ -148,7 +183,7 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
 }
-// the views still built with el() after a change: the results column (steps 9, 11) and uma.moe's button (step 11); the
+// the views still built with el() after a change: the results column (step 11) and uma.moe's button (step 11); the
 // components follow their signals
 function drawUnported() {
   renderResults();
@@ -233,7 +268,7 @@ document.addEventListener('click', (e) => {
 loadData().then(
   async () => {
     initSettings();
-    initPopover({ drawn: drawnCard });
+    initPopover({ drawn: (chip) => drawnCard(chip) || drawnHere(chip) });
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
     initUmamoe({ open: (v) => openNode({ kind: 'v', id: v.id }) });
     syncListings();
@@ -255,12 +290,15 @@ loadData().then(
         ids = idsOf(list);
         batch(() => {
           dropAnswer();
-          clearAnalysis();
+          comparison.clear();
         });
       }
       run.schedule();
       drawUnported();
     });
+    // an edit of Try a run's draft: the comparison on show is for the veteran before it (a roll or a new career clears
+    // the figures with her, so it marks nothing)
+    on([draft], analysisStore.draftChanged);
     $('v-file').onchange = async (e: Event) => {
       const input = e.target as HTMLInputElement;
       const f = must(input.files, 'a file input has its file list')[0];
@@ -301,6 +339,7 @@ loadData().then(
     mount('node-root', <NodeDialog />);
     mount('deck-root', <DeckDialog />);
     mount('vpick-root', <ParentPicker />);
+    mount('sim-top', <Analysis comparison={comparison} />);
     drawUnported();
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },

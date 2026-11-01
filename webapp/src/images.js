@@ -9,6 +9,7 @@ export function srcFor(kind, id) {
   return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null;
 }
 // a grade letter (code 1..8 = G..S): the game's sprite, or the letter
+// twin: ui/Images.tsx Grade (the same markup, as a component): an edit here goes there too
 /** @param {number} g @returns {HTMLElement} */
 export function gradeEl(g) {
   const s = srcFor('ui', `grade_${g - 1}`),

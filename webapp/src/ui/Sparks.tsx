@@ -1,5 +1,9 @@
-// ---------- a node's sparks as the game's Inspiration cells (the component twin of veterans/sparks.js's sparksEl) ----------
-// The markup sparksEl draws (veterans/sparks.js says what each part is). A chip is keyed by its group, so a click that
+// ---------- a node's sparks as the game's Inspiration cells ----------
+// Her blue (stat), pink (aptitude) and unique (green) sparks first, each a bar of its colour (a dashed one when she has
+// none) that opens its picker; then her target skills' white sparks (click: stars 1 -> 2 -> 3 -> 1, the corner x
+// removes), then "+" (a target skill she lacks). Sparks of skills that are not targets are kept but not shown
+// (read-only: shown, after the targets, greyed). A spark's stars are two spans (the game-style card colours them
+// apart), hidden from the screen reader (the control's label says the count). A chip is keyed by its group, so a click that
 // changes its stars patches the chip and the focus stays on it. Sparks draws `nd` and reads no store: it draws again
 // whenever its parent does (a new record from the veterans store, or a draft edited in place whose card draws again).
 // Every edit goes through `at` (the node by where it is), from her record as it is when the edit lands. The colour
@@ -13,7 +17,7 @@ import type { NodeRecord, NodeRef } from '../veterans/store.ts';
 import { SkillIcon } from './Images.tsx';
 
 type Kind = 'blue' | 'pink' | 'green';
-/** a spark's stars, filled then empty, out of 3 (sparks.js starsEl) */
+/** a spark's stars, filled then empty, out of 3 */
 export function Stars({ n }: { n: number }) {
   return (
     <span class="stars" aria-hidden="true">
@@ -46,7 +50,7 @@ interface ChipProps {
   /** its corner x (none without) */
   onRemove?: () => void;
 }
-/** one spark as a chip (sparks.js chip): click for the next star count, the corner x removes */
+/** one spark as a chip: click for the next star count, the corner x removes */
 function Chip(props: ChipProps) {
   const {
       label,
@@ -75,7 +79,7 @@ function Chip(props: ChipProps) {
   if (readOnly)
     return (
       <span class={c}>
-        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (sparks.js chip): the label names a read-only spark; a role for it is the SparkChips port's (step 10) */}
+        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the el() chip's before it): the label names a read-only spark; a role for it is the SparkChips port's (step 10) */}
         <span class="vskb" aria-label={`${named}, ${stars} stars${other ? ', not a target' : ''}`}>
           {inner}
         </span>
@@ -115,8 +119,10 @@ interface BarProps {
   at: NodeRef;
   readOnly: boolean;
 }
-/** her blue, pink or unique spark as its coloured bar (sparks.js colourBar): a chip for a unique or a pink she has, else
- *  a bar that opens the picker (a missing unique's adds it) */
+/** her blue, pink or unique spark as its coloured bar: a chip for a unique or a pink she has, else
+ *  a bar that opens the picker (a missing unique's adds it). The chip is drawn by calling Chip (it holds no hooks), not
+ *  as a component of its own: the bar is then the same span and button whether she has the spark or not, so adding the
+ *  unique back or setting a first pink keeps the button, and the focus on it (a <Chip> here would replace them) */
 function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
   const spec = KIND[kind],
     cur = currentSpark(nd, kind);
@@ -124,23 +130,20 @@ function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
     if (cur) {
       const [group, stars] = cur,
         label = uniqueName(group) || 'Unique spark';
-      return (
-        <Chip
-          label={label}
-          stars={stars}
-          k={k}
-          readOnly={readOnly}
-          cls="vsb green"
-          tag=" (unique)"
-          onCycle={() => at.edit((now) => ({ greens: { ...now.greens, [group]: (stars % 3) + 1 } }))}
-          onRemove={() =>
-            at.edit((now) => {
-              const { [group]: _, ...rest } = (now.greens || {}) as Record<string, number>;
-              return { greens: rest };
-            })
-          }
-        />
-      );
+      return Chip({
+        label,
+        stars,
+        k,
+        readOnly,
+        cls: 'vsb green',
+        tag: ' (unique)',
+        onCycle: () => at.edit((now) => ({ greens: { ...now.greens, [group]: (stars % 3) + 1 } })),
+        onRemove: () =>
+          at.edit((now) => {
+            const { [group]: _, ...rest } = (now.greens || {}) as Record<string, number>;
+            return { greens: rest };
+          }),
+      });
     }
     return (
       <span class="vsb green none">
@@ -158,18 +161,16 @@ function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
   }
   if (cur && kind === 'pink') {
     const [group, stars] = cur;
-    return (
-      <Chip
-        label={pinkName(group)}
-        stars={stars}
-        pink
-        k={k}
-        readOnly={readOnly}
-        popup
-        aria={`${pinkName(group)} (aptitude), ${stars} star${stars > 1 ? 's' : ''}. Change`}
-        onCycle={() => openColour(at, kind)}
-      />
-    );
+    return Chip({
+      label: pinkName(group),
+      stars,
+      pink: true,
+      k,
+      readOnly,
+      popup: true,
+      aria: `${pinkName(group)} (aptitude), ${stars} star${stars > 1 ? 's' : ''}. Change`,
+      onCycle: () => openColour(at, kind),
+    });
   }
   // a blue (she has one or not), or no pink yet
   const label = cur ? spec.name(cur[0]) || spec.title : `${spec.title}: none`,
@@ -185,7 +186,7 @@ function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
   return (
     <span class={`vsb ${kind}${cur ? '' : ' none'}`}>
       {readOnly ? (
-        // biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (sparks.js colourBar): a read-only bar's label; its role is step 10's
+        // biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the el() bar's before it): a read-only bar's label; its role is step 10's
         <span class="vskb" aria-label={aria}>
           {inner}
         </span>
@@ -235,7 +236,7 @@ interface SparksProps {
   targets: readonly number[];
   readOnly?: boolean;
 }
-/** her sparks (sparks.js sparksEl): her blue, pink and unique bars, her target skills' chips, then "+"; read-only, all her
+/** her sparks: her blue, pink and unique bars, her target skills' chips, then "+"; read-only, all her
  *  white sparks, the targets first, the rest grey */
 export function Sparks({ nd, k, at, targets: tg, readOnly = false }: SparksProps) {
   const targets = new Set(tg),

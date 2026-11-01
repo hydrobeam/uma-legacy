@@ -270,6 +270,26 @@ const MOUNTS = {
     ],
     ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
     [
+      'sim-top',
+      'src/career/analysis/view.tsx',
+      [
+        'simulation',
+        'sim-compare',
+        'sim-roll',
+        'sim-add',
+        'sim-wins',
+        'sim-result',
+        'sim-chance',
+        'sim-verdict',
+      ].concat(['ud-races']),
+      ['simcol', 'simresult', 'simhdr', 'simchance', 'simidle', 'simverdict', 'simrefine', 'simodds', 'simbest']
+        .concat(['simfit', 'nextc', 'nextdeck', 'cfaces', 'cface', 'cwith', 'udtop', 'udpor', 'udmid', 'udname'])
+        .concat(['udout', 'udnm', 'udapt', 'udarow', 'udal', 'udac', 'udan', 'udtabs', 'udtab', 'udpanes', 'udpane'])
+        .concat(['udskills', 'udnone', 'udfoot', 'udcards', 'udcard', 'udfr', 'udlegs', 'udleg', 'udlegh', 'udlegt'])
+        .concat(['udlegp', 'udlegn', 'udguest', 'udleggp', 'udleggx', 'udsub', 'udrec', 'udrecl', 'udstat', 'udmore'])
+        .concat(['udraces', 'udrace', 'udrw', 'udgr', 'udrn', 'udres', 'udact']),
+    ],
+    [
       'vpick-root',
       'src/career/view/ParentPicker.tsx',
       ['vpick-dlg', 'vpick-title', 'vp-tab-vets', 'vp-tab-new', 'vp-tab-auto', 'vp-vets', 'vp-new', 'vp-auto'].concat([
@@ -378,8 +398,11 @@ const MOUNT_READS = {
 {
   const WIRES = [
     [/\bkey: stateKey,/, "engine.key is engine.ts's stateKey (a constant would take another release's saved answer)"],
-    [/\bstop: stopComparison,/, 'analysis.stop is stopComparison (a no-op leaves a comparison running across an edit)'],
-    [/\boutdate: outdateComparison,/, 'analysis.outdate is outdateComparison (a new run makes the comparison stale)'],
+    [
+      /\banalysis: comparison,/,
+      "analysis is the comparison's machine (a no-op stop leaves a comparison running across an edit; a no-op outdate " +
+        'leaves it fresh across a new run)',
+    ],
     [
       /drawCheck: \(\) => \{\s*renderResults\(\);\s*paint\(\);\s*\}/,
       'view.drawCheck redraws the results column and the status line only (a redraw of the open veterans dialog under ' +
@@ -463,9 +486,21 @@ const LAYERS = [
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
   [
     'model',
-    ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/keys', 'career/run', 'loop/job', 'loop/keys'],
+    [
+      'job',
+      'pink',
+      'proofs',
+      'umadump',
+      'umamoe',
+      'career/roll',
+      'career/keys',
+      'career/run',
+      'career/analysis/compare',
+      'loop/job',
+      'loop/keys',
+    ],
   ],
-  ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state']],
+  ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
   ['shared', null], // every module not named elsewhere
   [
     'page:loop',
@@ -484,7 +519,8 @@ const LAYERS = [
     'page:career',
     [
       'career/main',
-      'career/analysis',
+      'career/analysis/view',
+      'career/analysis/Details',
       'career/options',
       'career/job',
       'career/io',

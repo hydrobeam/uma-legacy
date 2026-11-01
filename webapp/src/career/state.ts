@@ -91,6 +91,9 @@ const view = signal<DeepReadonly<RunView>>(
   deepFreeze({ searching: false, started: false, phase: 'search', phaseStart: 0, lead: '', progress: '' }),
 );
 export const runView: ReadonlySignal<DeepReadonly<RunView>> = view;
+/** a run is at work: a view that needs no more of the run reads this, so a plan's progress (a write per candidate)
+ *  does not draw it again */
+export const searching = computed(() => view.value.searching);
 const NO_PLAN: PlanNone = { state: 'none', r: null };
 const shownAnswer = signal<AnswerView>(
   deepFreeze({ status: { kind: 'loading', text: 'Loading…' }, last: null, planState: NO_PLAN }),
@@ -231,7 +234,7 @@ export function showKeptAnswer(hit: AnswerView) {
 
 // ---------- the plan Compare kept
 // the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
-// (analysis.js `runComparison`): the same job a run sends once she is added (keys sorted, the comparison's flag aside),
+// (analysis/compare.ts `runComparison`): the same job a run sends once she is added (keys sorted, the comparison's flag aside),
 // so Add to veterans takes it as it is instead of planning again (the solver is deterministic for its job). A plan
 // under today's fit is never kept here: its job carries `next.fit`, which a run's does not. (Not a signal: nothing
 // draws it.)

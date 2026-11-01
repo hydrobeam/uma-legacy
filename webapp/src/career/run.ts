@@ -79,7 +79,7 @@ export interface RunDeps {
     loadAnswer: () => Promise<{ key: string; value: AnswerView } | null>;
     saveAnswer: (key: string, value: AnswerView) => void;
   };
-  /** the veteran analysis (analysis.js): its comparison follows the runs */
+  /** the veteran analysis (analysis/compare.ts `createComparison`): its comparison follows the runs */
   analysis: {
     /** a new run: the comparison under way is stale */
     outdate: () => void;

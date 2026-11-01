@@ -1,6 +1,5 @@
 // The veterans' views and editors on a fake document (fakedom.mjs), bundled with esbuild as the page bundles them: the
-// spark editor (ui/Sparks under ui/InspView) shows each edit of a draft, whether her card hands it a new record (the
-// store's draft) or the same object edited in place (review-8c 1); change uma commits the uma at the pick, saved and
+// spark editor (ui/Sparks under ui/InspView) shows each edit of the store's draft, a new record each (review-8c 1); change uma commits the uma at the pick, saved and
 // seen by the page's effects, and the skills prompt dismissed keeps her sparks (review-8c 7).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
@@ -23,8 +22,8 @@ const built = await esbuild.build({
       export { on } from './src/store.ts';
       export { changeUma } from './src/veterans/pickers.js';
       export { InspView } from './src/ui/InspView.tsx';
+      export { Details, legaciesOf } from './src/career/analysis/Details.tsx';
       export { h, render } from 'preact';
-      export { signal } from '@preact/signals';
       export { loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
     loader: 'js',
@@ -42,9 +41,9 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-views-')),
 fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
-const { store: vs, on, changeUma, InspView, h, render, signal, loadData } = page;
+const { store: vs, on, changeUma, InspView, Details, legaciesOf, h, render, loadData } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
-globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: {}, races: [] };
+globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: { 30001: 'Her Own' }, races: [] };
 await loadData();
 
 const settle = async () => {
@@ -56,12 +55,12 @@ const T = 20159; // a target skill of the fake page's data
 const chipLabel = (root) =>
   root.querySelectorAll('button').find((b) => b.attributes['data-k'] === `sim:s${T}`)?.attributes['aria-label'];
 
-test("the spark editor shows each edit of a draft: the store's (a new record each) and one edited in place", async () => {
+test("the spark editor shows each edit of the store's draft (a new record each)", async () => {
   // the store's draft: her card reads the signal and hands InspView her record
   vs.setDraft({ ...node(1001, { [T]: 1 }), borrowed: false, parents: [node(1002), node(1003)] });
   const Card = () => {
     const d = vs.draft.value;
-    return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef, targets: [T] });
+    return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef(), targets: [T] });
   };
   const root = document.createElement('div');
   render(h(Card, null), root);
@@ -73,26 +72,36 @@ test("the spark editor shows each edit of a draft: the store's (a new record eac
     .click();
   await settle();
   assert.match(chipLabel(root), /, 2 stars\. Click for 3$/, "the store's draft");
-  // a draft edited in place (one object), whose card draws again on a signal of its own (step 9's `simulation`)
-  const d = { ...node(1001, { [T]: 1 }), borrowed: false, parents: [] };
-  // (the same props on every draw: only her record, edited in place, changes)
-  const shown = signal(0),
-    at = vs.inPlaceRef(d, () => shown.value++),
-    targets = [T],
-    none = [];
-  const Card2 = () => {
-    shown.value; // (it draws again when the draft is edited)
-    return h(InspView, { nd: d, parents: none, k: 'sim', at, targets });
+});
+
+test('her unique spark added back, or a first pink set: the bar is the same button, so the focus stays on it', async () => {
+  vs.setDraft({ ...node(1001), outfit: 30001, borrowed: false, parents: [] });
+  const Card = () => {
+    const d = vs.draft.value;
+    return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef(), targets: [T] });
   };
-  const root2 = document.createElement('div');
-  render(h(Card2, null), root2);
+  const root = document.createElement('div');
+  render(h(Card, null), root);
   await settle();
-  root2
-    .querySelectorAll('button')
-    .find((b) => b.attributes['data-k'] === `sim:s${T}`)
-    .click();
+  const bar = (k) => root.querySelectorAll('button').find((b) => b.attributes['data-k'] === k);
+  const attached = (n) => {
+    while (n && n !== root) n = n.parentNode;
+    return n === root;
+  };
+  const none = bar('sim:green');
+  assert.match(none.textContent, /\+ Unique spark/);
+  none.focus();
+  none.click(); // her unique at 2 stars
   await settle();
-  assert.match(chipLabel(root2), /, 2 stars\. Click for 3$/, 'a draft edited in place');
+  assert.match(bar('sim:green').attributes['aria-label'], /\(unique\), 2 stars/);
+  // (identity as a boolean: an assertion message inspecting two Preact-owned nodes walks their whole graphs)
+  assert.ok(bar('sim:green') === none, "the unique's button is the one that had the focus");
+  assert.ok(attached(document.activeElement), 'the focus is still in the card');
+  // a first pink (the colour picker's pick lands; its close gives the focus back to its opener, which must be there)
+  const pink = bar('sim:pink');
+  vs.draftRef().edit(() => ({ pinks: { 11: 1 } }));
+  await settle();
+  assert.ok(bar('sim:pink') === pink, "the pink's opener is the same button");
 });
 
 test('change uma: the uma is hers at the pick (saved, the page told); the prompt dismissed keeps her sparks', async () => {
@@ -133,4 +142,21 @@ test('change uma: the uma is hers at the pick (saved, the page told); the prompt
     .click();
   assert.deepEqual([vs.vetById('a').chara, vs.vetById('a').sparks, woke], [1003, {}, 3]);
   stop();
+});
+
+test("Try a run's legacies: a place no veteran holds any more (the list changed under the answer) is left out (review-9 F6)", async () => {
+  const career = { parents: [0, 4], trainee: { id: 1001, outfits: [] }, targets: [], deck: null };
+  const list = [{ ...node(1002), id: 'a', borrowed: false, parents: [node(1), node(2)] }];
+  const legacies = legaciesOf(career, list, () => undefined);
+  assert.deepEqual(
+    legacies.map((x) => x.label),
+    ['#1'],
+    'the veteran at #5 is gone: her box goes',
+  );
+  vs.setDraft({ ...node(1001), borrowed: false, parents: [node(1002), node(1003)] });
+  const spec = { d: vs.draft.peek(), r: career, races: [], raceName: String, targets: [T], legacies };
+  const root = document.createElement('div');
+  render(h(Details, { spec, actions: null, winsButton: null }), root);
+  await settle();
+  assert.equal(root.querySelectorAll('div.udleg').length, 1, 'her card draws, with the one legacy');
 });
