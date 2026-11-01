@@ -16,7 +16,7 @@ import { RosterPanel } from './Roster.tsx';
 import { CardsPanel } from './Cards.tsx';
 import { TargetSkills } from './Targets.tsx';
 import { RankControl, ScenarioPicker } from './Scenario.tsx';
-import type { Badge } from './Shell.tsx';
+import type { Badge, Page } from './Shell.tsx';
 import type { Era } from '../eras.ts';
 
 type Which = 'umas' | 'cards';
@@ -63,12 +63,12 @@ const guarded = (what: string, view: ComponentChildren) => (
     {view}
   </RenderGuard>
 );
-/** The setup's editors and its two dialogs, for the page's layout; `fadeMore`: the roster's and the card list's bottom
- *  edge fades while there is more below (the loop page); `compact`: the scenario button is its column's width and
- *  shorter (the loop page). */
-export const setupViews = ({ fadeMore = false, compact = false } = {}) => ({
-  scenario: guarded('The scenario picker', <ScenarioPicker compact={compact} />),
-  rank: guarded('The lineage rank', <RankControl compact={compact} />),
+/** The setup's editors and its two dialogs, for `page`'s layout (the loop page's scenario button is its column's width
+ *  and shorter, its rank switch smaller); `fadeMore`: the roster's and the card list's bottom edge fades while there
+ *  is more below (the loop page). */
+export const setupViews = ({ page, fadeMore = false }: { page: Page; fadeMore?: boolean }) => ({
+  scenario: guarded('The scenario picker', <ScenarioPicker page={page} />),
+  rank: guarded('The lineage rank', <RankControl page={page} />),
   targets: guarded('The target skills', <TargetSkills />),
   umasDialog: guarded(
     'The Umas dialog',

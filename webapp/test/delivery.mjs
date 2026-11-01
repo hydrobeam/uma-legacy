@@ -56,7 +56,7 @@ export default async function delivery(b) {
   check(
     'the first roster portraits load eagerly',
     await pg.evaluate(() => {
-      const im = [...document.querySelectorAll('#roster .av img')];
+      const im = [...document.querySelectorAll('#roster [data-av] img')];
       return (
         im.length > 8 &&
         im.slice(0, 8).every((i) => i.loading === 'eager') &&

@@ -64,7 +64,7 @@ export default async function careergen(b) {
   // Compare first: it prices her under today's plan's fit, so Add plans the pool with her afresh (one plan job, refitted)
   await pg.click('#sim-compare');
   await pg.waitForFunction(
-    () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'),
+    () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result [data-spinner]'),
     null,
     { timeout: 180000 },
   );

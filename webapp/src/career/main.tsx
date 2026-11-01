@@ -189,7 +189,7 @@ const guarded = (what: string | undefined, view: ComponentChildren, also?: Reado
 // the views, made once (the same vnodes on every draw of the root, so a redraw of the layout leaves them be); drawn
 // once the game data is in (`ready`), the status line from the first paint the run machine asks for (`noteShown`)
 const NOTE = guarded(undefined, <RunNote />);
-const setup = setupViews();
+const setup = setupViews({ page: 'career' });
 const VIEWS: CareerViews = {
   rank: setup.rank,
   scenario: setup.scenario,

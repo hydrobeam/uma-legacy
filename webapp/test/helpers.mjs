@@ -297,7 +297,7 @@ export const json = async (_pg, id) => PAGE_DATA[id];
 export const scen = (pg) => pg.getAttribute('#x-scen', 'data-value'); // the chosen scenario
 export async function pickScen(pg, v) {
   await pg.click('#x-scen');
-  await pg.click(`#scen-menu .stile[data-v="${v}"]`);
+  await pg.click(`#scen-menu [role="menuitemradio"][data-v="${v}"]`);
 }
 // no transition or finite animation still running (a fade, a theme change): what a fixed short sleep waited for
 export const still = (pg) =>
@@ -346,7 +346,7 @@ export const CARD_ART = () => {
   const s = new Set();
   let over = 0;
   for (const t of document.querySelectorAll('#cards .ct')) {
-    const c = t.querySelector('.cav').getBoundingClientRect();
+    const c = t.querySelector('[data-card]').getBoundingClientRect();
     s.add(Math.round(c.width));
     if (c.width > t.getBoundingClientRect().width + 0.5) over++;
   }
@@ -437,7 +437,7 @@ export async function careerPage(b) {
       const n = document.getElementById('run-note');
       if (!n) return;
       const s = {
-        busy: !!n.querySelector('.spin, .runner'),
+        busy: !!n.querySelector('[data-spinner]'),
         phase: /Planning your next career…/.test(n.textContent)
           ? 'plan'
           : /Searching careers…/.test(n.textContent)
@@ -511,7 +511,7 @@ export async function careerPage(b) {
       pg.waitForFunction(
         () => {
           const n = document.getElementById('run-note');
-          return !n.querySelector('.spin, .runner') && n.textContent.length > 0;
+          return !n.querySelector('[data-spinner]') && n.textContent.length > 0;
         },
         null,
         { timeout: 180000 },

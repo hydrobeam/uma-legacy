@@ -77,7 +77,8 @@ export default async function cards(b) {
     .toHaveCount(rpals);
   check(
     'every card image carries its type icon',
-    (await pg.locator('#cards .ct .cav.art').count()) === (await pg.locator('#cards .ct .ctype').count()),
+    (await pg.locator('#cards .ct [data-card="art"]').count()) ===
+      (await pg.locator('#cards .ct [data-ctype]').count()),
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();

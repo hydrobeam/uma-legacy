@@ -37,7 +37,7 @@ export default async function panels(b) {
     pg.evaluate(
       (name) =>
         [...document.querySelectorAll('#cards .ct')]
-          .find((t) => t.querySelector('.cav')?.title === name)
+          .find((t) => t.querySelector('[data-card]')?.title === name)
           ?.getAttribute('aria-pressed') ?? null,
       cardName,
     );
@@ -55,7 +55,7 @@ export default async function panels(b) {
   check('Escape closes the panel', await pg.evaluate(() => document.querySelector('[data-pop="card"]').hidden));
   // an outfit skill under a member carries its skill icon
   const sp = pg.locator('.loop').first().locator('.mem .spark').first();
-  check('outfit skill shows its skill icon', (await sp.locator('img.sic').count()) === 1);
+  check('outfit skill shows its skill icon', (await sp.locator('img[data-icon="skill"]').count()) === 1);
   const mb = pg.locator('.loop').first().locator('.mem .memb').nth(1);
   await mb.click();
   await pg.keyboard.press('Escape');

@@ -58,11 +58,11 @@ export default async function gm(b) {
   // the GM era offers Grand Masters as a fifth tile (same size as the others)
   await pg.click('#x-scen');
   const gt = await pg.evaluate(() =>
-    [...document.querySelectorAll('#scen-menu .stile')].map((t) => {
+    [...document.querySelectorAll('#scen-menu [role="menuitemradio"]')].map((t) => {
       const r = t.getBoundingClientRect();
       return {
         v: t.dataset.v,
-        sub: t.querySelector('.ssub').innerText.replace(/\s+/g, ' ').trim(),
+        sub: t.lastElementChild.innerText.replace(/\s+/g, ' ').trim(),
         size: Math.round(r.width) + 'x' + Math.round(r.height),
         x: Math.round(r.left + r.width / 2),
       };

@@ -358,7 +358,7 @@ export default async function careerumamoe(b) {
   await globalTab.goto(PAGE_URL);
   await globalTab.waitForFunction(() => {
     const n = document.getElementById('run-note');
-    return !n.querySelector('.spin, .runner') && n.textContent.length > 0;
+    return !n.querySelector('[data-spinner]') && n.textContent.length > 0;
   });
   const before = requests.length;
   await Promise.all([pg.waitForEvent('load'), pg.click('#era-gm')]);

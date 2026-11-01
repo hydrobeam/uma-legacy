@@ -90,7 +90,7 @@ export default async function load(b) {
   // the deck's odds per target, each with its skill icon
   const dd = await pg.evaluate(() => {
     const l = document.querySelector('#results .loop .dodds');
-    return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length };
+    return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img[data-icon="skill"]').length };
   });
   artCheck('deck odds: a skill icon on every entry', dd.n > 0 && dd.icons === dd.n, JSON.stringify(dd));
   // the odds sit in a frame the (i) button opens; a swap row names its uma by her character icon
@@ -144,7 +144,7 @@ export default async function load(b) {
   );
   const sw = await pg.evaluate(() =>
     [...document.querySelectorAll('#results .loop .deck.swap .swho')].map((w) => ({
-      av: w.querySelectorAll('.av').length,
+      av: w.querySelectorAll('[data-av]').length,
       label: w.querySelector('.vh').textContent,
       tips: [...w.querySelectorAll('.facebtn')].map((a) => a.title),
       shown: [...w.childNodes]
@@ -214,14 +214,14 @@ export default async function load(b) {
   // each swap row: the card that goes greyed ➜ the card that comes in, every card's art on one line, the arrow at its middle
   const rows = await pg.evaluate(() =>
     [...document.querySelectorAll('#results .loop .deck.swap')].map((d) => {
-      const art = [...d.querySelectorAll('.swc .dc .cav')].map((x) => x.getBoundingClientRect()),
+      const art = [...d.querySelectorAll('.swc .dc [data-card]')].map((x) => x.getBoundingClientRect()),
         a = d.querySelector('.swa svg').getBoundingClientRect();
       return {
         outN: d.querySelectorAll('.swout .dc').length,
         inN: d.querySelectorAll('.swin .dc').length,
         tops: art.map((x) => Math.round(x.top)),
         mid: Math.round(Math.abs((a.top + a.bottom) / 2 - (art[0].top + art[0].bottom) / 2)),
-        grey: getComputedStyle(d.querySelector('.swout .dc .cav')).filter,
+        grey: getComputedStyle(d.querySelector('.swout .dc [data-card]')).filter,
       };
     }),
   );

@@ -95,20 +95,21 @@ export interface Badge {
   title: string;
 }
 // ---------- the game's Enhance menu buttons: the game's art (its frame and white lower band, the art spilling over its
-// top edge; the drop shadow follows that shape), the label on the band with a ▶. Umas and Support cards are square, one
-// size on both pages (the label's margins a little wider on the career page); Veteran Umamusume is wide, its two-line
-// label right of the art, as wide as the row of Enhance buttons
+// top edge; the drop shadow follows that shape), the label on the band with a ▶ beside its first line, the count owned
+// under it in small type. Umas and Support cards are square, one size on both pages (the label's margins a little wider
+// on the career page); Veteran Umamusume is wide, its two-line label right of the art, as wide as the row of Enhance
+// buttons
 const ENH_ART = { umas: 'art-enh-umas', cards: 'art-enh-cards', vets: 'art-enh-vets' } as const;
 const ENH = {
   career: {
     button: 'h-28 w-35',
     label:
-      'after:border-l-enh-ink text-body text-enh-ink absolute right-6 bottom-2.25 left-2 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1/2 after:-right-3.25 after:-mt-1.5 after:border-y-6 after:border-l-8 after:border-y-transparent',
+      'after:border-l-enh-ink text-body text-enh-ink absolute right-6 bottom-2.25 left-2 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-0.875 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
   },
   loop: {
     button: 'h-28 w-35',
     label:
-      'after:border-l-enh-ink text-body text-enh-ink absolute right-5 bottom-2.25 left-1.5 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1/2 after:-right-3.25 after:-mt-1.5 after:border-y-6 after:border-l-8 after:border-y-transparent',
+      'after:border-l-enh-ink text-body text-enh-ink absolute right-5 bottom-2.25 left-1.5 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-0.875 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
   },
   wide: {
     button: 'col-span-full h-18 w-71.5',
@@ -145,7 +146,6 @@ export function EnhButton({
       id={id}
       aria-haspopup="dialog"
       aria-label={name}
-      data-n={badge?.n}
       title={badge?.title}
       onClick={onClick}
     >
@@ -156,7 +156,10 @@ export function EnhButton({
         )}
         aria-hidden="true"
       />
-      <span class={ENH[size].label}>{label}</span>
+      <span class={ENH[size].label}>
+        {label}
+        {badge && <span class="text-caption block font-bold tabular-nums opacity-85">{badge.n}</span>}
+      </span>
     </button>
   );
 }

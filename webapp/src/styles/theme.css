@@ -210,6 +210,13 @@
       background-position: calc(-18 * var(--s)) 0;
     }
   }
+  /* the spinner in its place where the page has no runner (ui/Images.tsx Runner) */
+  --animate-spinner: spinner 0.8s linear infinite;
+  @keyframes spinner {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
   /* the game's 9-slice sprites (vite/images.mjs sets --btn-w, ... when the build has them; a CSS gradient stands in
      where it does not), each as a whole border-image: the sprite, its slices (in the sprite's pixels) and the widths
@@ -322,6 +329,8 @@
     --face-enh-umas: var(--enh-umas-dark, var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea)));
     --face-enh-cards: var(--enh-cards-dark, var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea)));
     --face-enh-vets: var(--enh-vets-dark, var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea)));
+    --av-c: 35%;
+    --av-l: 30%;
   }
   /* the planner pages: one panel tone in dark mode, as in light mode, where the panel and the game's panel are both
      white; /about keeps its black panels */
@@ -352,6 +361,9 @@
   --face-enh-umas: var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea));
   --face-enh-cards: var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea));
   --face-enh-vets: var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea));
+  /* a portrait's initials' ground, its saturation and lightness (--color-av; the dark block darkens it) */
+  --av-c: 40%;
+  --av-l: 86%;
 }
 
 /* tokens whose value reads a variable set on the element itself (inline style), so the utility carries the value
@@ -360,6 +372,14 @@
   /* the scenario button: the game's scenario select art (--scen-art, set per button) at the right, on a pale fade */
   --art-scen: var(--scen-art, none) right -6px top 18% / 104px auto no-repeat,
     linear-gradient(100deg, var(--color-gm-cell) 45%, var(--color-gm-tab-low));
+  /* a scenario menu tile (ui/Scenario.tsx): its art at the right, under a fade from the cell's white at the left */
+  --art-stile: linear-gradient(90deg, var(--color-gm-cell) 40%, transparent 78%),
+    var(--scen-art, none) right -10px top 16% / 52% auto no-repeat, var(--color-gm-tab-low);
+  /* a portrait's initials' ground (ui/Images.tsx UmaAv): her hue (--h, per portrait) at the theme's tone */
+  --color-av: hsl(var(--h, 220) var(--av-c) var(--av-l));
+  /* a card tile without art (ui/Images.tsx CardAv): its type's colour (--k) and its rarity's ring (--rr), per card */
+  --color-kind: var(--k);
+  --color-rarity: var(--rr, transparent);
 }
 
 /* a chosen option, whichever ARIA state says so: a toggle button's aria-pressed, a radio's aria-checked, a tab's

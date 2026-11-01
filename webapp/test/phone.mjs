@@ -164,9 +164,9 @@ export default async function phone(b) {
     }),
   );
   const ph = await pg.evaluate(() =>
-    [...document.querySelectorAll('#scen-menu .stile')].map((t) => {
+    [...document.querySelectorAll('#scen-menu [role="menuitemradio"]')].map((t) => {
       const r = t.getBoundingClientRect(),
-        s = t.querySelector('.ssub').getBoundingClientRect();
+        s = t.lastElementChild.getBoundingClientRect();
       return Math.round(r.width) + 'x' + Math.round(r.height) + ' line ' + Math.round(s.height);
     }),
   );

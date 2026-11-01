@@ -46,7 +46,7 @@ const fresh = (common) => {
   return () => JSON.parse(map.get(KEY)).common;
 };
 // an editor into its box, behind its guard, as the layouts draw it
-const mount = (id) => render(setupViews()[BOXES[id]], document.getElementById(id));
+const mount = (id) => render(setupViews({ page: 'career' })[BOXES[id]], document.getElementById(id));
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 };

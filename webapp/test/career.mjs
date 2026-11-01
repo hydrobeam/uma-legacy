@@ -574,7 +574,7 @@ export default async function career(b) {
     await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
     await dialog(pg, 'sk-dlg');
     const sk = pg.locator('#sk-dlg');
-    await expect.soft(sk.locator('.gmdfaces .av'), `${name}: Skill Details' six legacies`).toHaveCount(6);
+    await expect.soft(sk.locator('.gmdfaces [data-av]'), `${name}: Skill Details' six legacies`).toHaveCount(6);
     await expect.soft(sk, `${name}: … its chance to land`).toHaveText(/Lands as a spark: [<\d.]+%/);
     await expect.soft(sk, `${name}: … the legacies carrying it`).toHaveText(/Legacies carrying it/);
     await pg.keyboard.press('Escape');
@@ -784,7 +784,7 @@ export default async function career(b) {
     rs.map((r) => [...r.children].map((c) => c.textContent)),
   );
   const heads = await pg.$$eval('#sched-wintable thead th', (hs) =>
-    hs.slice(1).map((h) => h.querySelectorAll('.udg').length),
+    hs.slice(1).map((h) => h.querySelectorAll('[data-grade]').length),
   );
   const vp = pg.viewportSize();
   await pg.setViewportSize({ width: 375, height: 812 });
@@ -934,12 +934,12 @@ export default async function career(b) {
     pg.evaluate(() => {
       const c = document.querySelector('#simulation .ud');
       if (!c) return 'no card';
-      const f = c.querySelector('.udtop .av'),
+      const f = c.querySelector('.udtop [data-av]'),
         tabs = [...c.querySelectorAll('[role="tab"]')],
         ins = c.querySelector('#udpane-insp'),
         who = ins.querySelector('.simwho'),
         s = who.querySelector('.simskills'),
-        me = who.querySelector(':scope > .av'),
+        me = who.querySelector(':scope > [data-av]'),
         fr = me.getBoundingClientRect(),
         sr = s.getBoundingClientRect();
       const apt = c.querySelector('.udapt');
@@ -1046,7 +1046,7 @@ export default async function career(b) {
           inDeck = new Set(shown.deck.card_ids);
         // (the picker lists the cards that give a target; a tile is known by its card's name, its picture's title)
         const sr = new Set(cards.filter((c) => c.rar === 2 && !inDeck.has(c.id)).map((c) => c.name.toLowerCase()));
-        const title = [...document.querySelectorAll('#cards .ct .cav')].find((t) =>
+        const title = [...document.querySelectorAll('#cards .ct [data-card]')].find((t) =>
           sr.has(t.title.toLowerCase()),
         ).title;
         return { title, id: cards.find((c) => c.name === title).id };
@@ -1059,7 +1059,7 @@ export default async function career(b) {
     const toggleCard = async () => {
       await pg.evaluate(
         (name) =>
-          [...document.querySelectorAll('#cards .ct .cav')]
+          [...document.querySelectorAll('#cards .ct [data-card]')]
             .find((t) => t.title === name)
             .closest('.ct')
             .click(),
@@ -1370,10 +1370,10 @@ export default async function career(b) {
       b.click();
       Math.random = r;
     }
-    return ok.every(Boolean) && !!document.querySelector('#sim-result .spin, #sim-result .runner');
+    return ok.every(Boolean) && !!document.querySelector('#sim-result [data-spinner]');
   });
   await pg.waitForFunction(
-    () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'),
+    () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result [data-spinner]'),
     null,
     { timeout: 180000 },
   );
@@ -1426,7 +1426,7 @@ export default async function career(b) {
   }
   await pg.click('#sim-compare');
   await pg.waitForFunction(
-    () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'),
+    () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result [data-spinner]'),
     null,
     { timeout: 180000 },
   );
@@ -1481,7 +1481,7 @@ export default async function career(b) {
     document.getElementById('sim-compare').click();
   });
   await pg.waitForFunction(
-    () => document.querySelector('#sim-verdict') && !document.querySelector('#run-note .spin, #run-note .runner'),
+    () => document.querySelector('#sim-verdict') && !document.querySelector('#run-note [data-spinner]'),
     null,
     { timeout: 180000 },
   );

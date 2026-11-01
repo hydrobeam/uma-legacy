@@ -10,7 +10,7 @@ export default async function scenario(b) {
   await expect.soft(rankQ, 'lineage rank: the ? … expanded').toHaveAttribute('aria-expanded', 'true');
   await rankQ.click();
   const menu = pg.locator('#scen-menu'),
-    tiles = pg.locator('#scen-menu .stile'),
+    tiles = pg.locator('#scen-menu [role="menuitemradio"]'),
     button = pg.locator('#x-scen'),
     rank = pg.locator('#rank');
   // the button: the chosen scenario (its data-value) and its name for assistive tech
@@ -33,9 +33,9 @@ export default async function scenario(b) {
   if (shots) await pg.locator('#x-scen').screenshot({ path: `${shots}/${bn}-scen-button.png` });
   await pg.click('#x-scen');
   const t = await pg.evaluate(() =>
-    [...document.querySelectorAll('#scen-menu .stile')].map((t) => {
+    [...document.querySelectorAll('#scen-menu [role="menuitemradio"]')].map((t) => {
       const r = t.getBoundingClientRect();
-      const sub = t.querySelector('.ssub'),
+      const sub = t.lastElementChild,
         sr = sub.getBoundingClientRect(),
         pad = parseFloat(getComputedStyle(t).paddingBottom) + parseFloat(getComputedStyle(t).borderBottomWidth);
       return {
@@ -54,10 +54,11 @@ export default async function scenario(b) {
     'each tile has the same hover text as the button gives the chosen scenario',
     await pg.evaluate(
       () =>
-        [...document.querySelectorAll('#scen-menu .stile')].every(
+        [...document.querySelectorAll('#scen-menu [role="menuitemradio"]')].every(
           (t) => t.title && t.title === t.getAttribute('aria-label'),
         ) &&
-        document.querySelector('#scen-menu .stile[data-v="unity"]').title === document.getElementById('x-scen').title,
+        document.querySelector('#scen-menu [role="menuitemradio"][data-v="unity"]').title ===
+          document.getElementById('x-scen').title,
     ),
   );
   const opens = 'opens with four tiles, each with its hint rate against URA Finale';
@@ -81,7 +82,7 @@ export default async function scenario(b) {
   // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
   const golds = await pg.evaluate(
     ([skl, gi]) => {
-      const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
+      const g = document.querySelector('#scen-menu [role="menuitemradio"][data-v="unity"] [role="group"]');
       return {
         want: [20049, 20046].map((x) => ({ name: skl.find((s) => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })),
         // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
@@ -95,7 +96,8 @@ export default async function scenario(b) {
             }))
           : [],
         text: g ? g.innerText.trim() : null,
-        others: document.querySelectorAll('#scen-menu .stile:not([data-v="unity"]) .sgolds').length,
+        others: document.querySelectorAll('#scen-menu [role="menuitemradio"]:not([data-v="unity"]) [role="group"]')
+          .length,
       };
     },
     [await json(pg, 'data-skills'), (await json(pg, 'data-skillicon')).gold],
@@ -118,13 +120,13 @@ export default async function scenario(b) {
   check(
     'logos keep their aspect (object-fit: contain)',
     await pg.evaluate(() =>
-      [...document.querySelectorAll('#scen-dd .slogo img')].every(
+      [...document.querySelectorAll('#scen-dd [data-scen-logo] img')].every(
         (i) => i.naturalWidth > 0 && getComputedStyle(i).objectFit === 'contain',
       ),
     ),
   );
   const marks = 'the open picker marks the chosen tile and focuses it';
-  const unity = menu.locator('.stile[data-v="unity"]');
+  const unity = menu.locator('[role="menuitemradio"][data-v="unity"]');
   await expect.soft(unity, marks).toBeFocused();
   await expect.soft(unity, `${marks}: checked`).toHaveAttribute('aria-checked', 'true');
   await expect.soft(button, `${marks}: the button expanded`).toHaveAttribute('aria-expanded', 'true');
@@ -140,7 +142,7 @@ export default async function scenario(b) {
   await pg.keyboard.press('ArrowRight');
   await pg.keyboard.press('ArrowDown');
   await expect
-    .soft(menu.locator('.stile[data-v="trackblazer"]'), 'arrows move between tiles (two columns)')
+    .soft(menu.locator('[role="menuitemradio"][data-v="trackblazer"]'), 'arrows move between tiles (two columns)')
     .toBeFocused();
   await pg.keyboard.press('Escape');
   await expect.soft(menu, 'Escape closes it and returns focus to the button').toBeHidden();
@@ -215,14 +217,14 @@ export default async function scenario(b) {
   const p2 = await open(b, { before: (p) => p.route('**/img.*/scen/**', (r) => r.abort()) });
   await p2.click('#x-scen');
   const fallback = 'missing logos fall back to name badges';
-  await expect.soft(p2.locator('#scen-dd .slogo img'), `${fallback}: no picture`).toHaveCount(0);
+  await expect.soft(p2.locator('#scen-dd [data-scen-logo] img'), `${fallback}: no picture`).toHaveCount(0);
   await expect
-    .soft(p2.locator('#scen-dd .slogo b'), fallback)
+    .soft(p2.locator('#scen-dd [data-scen-logo] b'), fallback)
     .toHaveText(['Unity Cup', 'Unity Cup', 'Grand Concert', 'URA Finale', 'Trackblazer']);
   const sz = await p2.evaluate(
     () =>
       new Set(
-        [...document.querySelectorAll('#scen-menu .stile')].map((t) => {
+        [...document.querySelectorAll('#scen-menu [role="menuitemradio"]')].map((t) => {
           const r = t.getBoundingClientRect();
           return Math.round(r.width) + 'x' + Math.round(r.height);
         }),
