@@ -21,10 +21,13 @@
 //   view/ParentPicker.tsx  the parent picker
 //   view/Sections.tsx  the career's sections in the tree: odds, deck and its popup, schedule, targets, counts
 //   view/Setup.tsx     the Borrowed parent choice, and the setup panel's fold and summary
-//   view/dialogs.ts    which popup is open, for what (the el() modules open them through it)
+//   view/dialogs.ts    which popup is open, for what (modules that are not views open them through it)
 //   view/Options.tsx   the results column (the options table) and its Saves popup
-//   view/Pool.tsx      the veterans dialog: its tabs, lists and the pane beside them
-//   view/parts.js      small parts the el() views share
+//   view/Pool.tsx      the veterans dialog: its tabs and order menu, lists and the pane beside them
+//   view/Umamoe.tsx    uma.moe's button and popup (umamoesetup.js keeps its listings)
+//   view/SkillDetails.tsx  the Skill Details popup
+//   view/Guard.tsx     the render guard each view draws inside
+//   view/parts.js      small parts the views share
 import '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
@@ -58,7 +61,8 @@ import { searchHeld } from '../veterans/pickers.js';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
 import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.js';
-import { initUmamoe, syncListings, umamoeButton } from '../umamoesetup.js';
+import { syncListings } from '../umamoesetup.js';
+import { UmButton, UmamoePanel } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
 import {
   placesKey,
@@ -87,7 +91,7 @@ import { ParentPicker } from './view/ParentPicker.tsx';
 import { DeckDialog } from './view/Sections.tsx';
 import { SkillDetails } from './view/SkillDetails.tsx';
 import { BorrowChoice, SetupSummary, initFold, sawVeterans } from './view/Setup.tsx';
-import { nodeOpen, openNode, pickerFor } from './view/dialogs.ts';
+import { nodeOpen, pickerFor } from './view/dialogs.ts';
 import { Results, SavesPopup } from './view/Options.tsx';
 import { PoolBody, PoolHead } from './view/Pool.tsx';
 import { poolTab, inTab, openPool, poolClosed, selected } from './view/poolState.ts';
@@ -119,9 +123,9 @@ const comparison = createComparison({
   },
 });
 // The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the
-// settings, veterans and places, the veteran analysis and the redraws. The views that are components draw from the
-// answer store's signals (career/state.ts) and the veterans store's (veterans/store.ts); the redraws here are the el()
-// views'.
+// settings, veterans and places, the veteran analysis and the redraws. The views are components that draw from the
+// answer store's signals (career/state.ts) and the veterans store's (veterans/store.ts): the redraws are the status
+// line's clock.
 const run = createRun({
   engine: {
     run: runJob,
@@ -152,10 +156,8 @@ const run = createRun({
   view: {
     shown,
     paint,
-    drawAll: () => {
-      drawUnported();
-      paint();
-    },
+    // (every view is a component: each follows its signals)
+    drawAll: paint,
     // (the check's report is in the answer store: the table follows it)
     drawCheck: paint,
   },
@@ -183,10 +185,6 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
     ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.`
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
-}
-// the view still built with el() after a change: uma.moe's button (step 11); the components follow their signals
-function drawUnported() {
-  umamoeButton();
 }
 // ---------- the views: each component into its mount point, behind a render guard (view/Guard.tsx) ----------
 // a view that could not be drawn says so on the status line, as a failed search does (the answer on show stays)
@@ -254,7 +252,6 @@ function initSettings() {
     if (places.peek().fromTable) handBackPlaces();
     syncListings(); // a changed target set: its listings (kept, or one request)
     run.schedule();
-    drawUnported();
   });
 }
 // ---------- start ----------
@@ -280,7 +277,6 @@ loadData().then(
     initSettings();
     initPopover();
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
-    initUmamoe({ open: (v) => openNode({ kind: 'v', id: v.id }) });
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
     // Try a run's popup: Close and a backdrop click shut it
@@ -304,7 +300,6 @@ loadData().then(
         });
       }
       run.schedule();
-      drawUnported();
     });
     // an edit of Try a run's draft: the comparison on show is for the veteran before it (a roll or a new career clears
     // the figures with her, so it marks nothing)
@@ -352,11 +347,12 @@ loadData().then(
     mount('vet-editors', <VetEditors />, "The veterans' editors");
     mount('add-pop', <AddList host={$('add-pop')} />, 'The "+" list');
     mount('results', <Results />, 'The other careers');
+    mount('um-root', <UmButton />, "uma.moe's button");
+    mount('um-body', <UmamoePanel />, "uma.moe's popup");
     mount('save-root', <SavesPopup />, 'The Saves popup');
     mount('sched-dlg', <ScheduleDialog />, 'The race schedule');
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
     mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);
-    drawUnported();
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },
   (e: Error) => {
