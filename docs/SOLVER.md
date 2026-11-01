@@ -17,8 +17,8 @@ master.mdb ──(export/export_rs.py)──▶ data.json ──(loopopt)──�
 
 A job comes in through the page's worker (`src/web.rs`) or the command line (`src/cli.rs`). A deck job (the loop
 planner) enters at `loop_planner::job::run_deck`, which builds the deck frontier and hands it to
-`loop_planner::search::run_multi`. A career job (`/career`) enters at `career::run_career` (`run_career_in` with the
-worker's kept state), which builds the job's `Env` (`career::setup`), runs the main search, then the plan
+`loop_planner::search::run_multi`. A career job (`/career`) enters at `career::run_career_in` (with its caller's kept
+state), which builds the job's `Env` (`career::setup`), runs the main search, then the plan
 (`career::plan::index_rule`) when the job has `next`, or the simulator (`career::sim`) when it has `simulate`. Both
 planners search decks with the engine in `src/deck/` (`DeckSpace::search`; the exact odds in `deck::joint`). In a
 folder, open `mod.rs` first: its header maps the children, and it holds the folder's main records and entry point.
@@ -29,7 +29,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/main.rs` | The `loopopt` binary: calls `cli_main` |
 | `src/cli.rs` | The native command line (clap): job loading, event enrichment, kept-state files, dispatch, bound diagnostics, `pbtable` and `constants` |
 | `src/constants.rs` | `SolverConstants`: the model constants `loopopt constants` prints, read from the solver's own |
-| `src/web.rs` | The wasm entry points and their `cmd` requests |
+| `src/web.rs` | The wasm entry point (`Solver`, through wasm-bindgen) and its `cmd` requests |
 | `src/refusal.rs` | `Refusal`: every command's answer when it does not do the job (`{"error": ...}`) |
 | `src/request.rs` | What the solver is asked (`Request`: a job by its `cmd`, its parts nested: `DeckRequest`, `CareerRequest`), the command line's job files (`JobFile`) and `init`'s answer |
 | `src/checks.rs` | The environment switches, read once into `Checks` (`checks::get`), and their thread-local counters |
@@ -74,7 +74,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/deck/caps.rs` | The assumed caps per deck class (`EXACT_CAPS`, `cap_class`) and the exact search's budgets |
 | `src/deck/pdeck.rs` | The decks a search returns (`PDeck`), their shared names (`Name`) and identity key (`DeckId`) |
 | `src/deck/tests.rs` | The deck model's tests |
-| `src/career/mod.rs` | The career planner: the job's records, `Env` and its four parts, `run_career` / `run_career_in` |
+| `src/career/mod.rs` | The career planner: the job's records, `Env` and its four parts, `run_career_in` |
 | `src/career/setup.rs` | The job's `Env` built (`career_setup`), earlier jobs' proofs restored |
 | `src/career/keys.rs` | What the worker keeps a job's work under: the setup, main-search and plan keys, each the content of the job parts it reads |
 | `src/career/run.rs` | The answer once `Env` is built: the main search's output, the plan, rolls, the job's certificates |
@@ -201,7 +201,8 @@ JSON object read from the solver's own constants (`src/constants.rs`): `chain_n`
 `chain_stop_share` ([k, n]), `exact_builders_targets`, `ceil_share`, `lam_decay`, `star_mix` (each rank class's star
 mix, by its name in a job: `below_ss`, `ss_and_up`), `gen_gold`, `gen_white` and `insp_per_star`. A file it cannot read
 or parse (an unknown command or field included) is an error naming the file (exit 2). The wasm interface
-(`src/web.rs`) loads an era's data through its `init` export and runs requests (`request::Request`) through `call`:
+(`src/web.rs`, through wasm-bindgen's glue) is a `Solver` made from an era's data, which runs requests
+(`request::Request`) through `call`:
 `{"cmd": "deck", "skills", "deck"}`, `{"cmd": "career", "skills", "deck", "career"}`, `{"cmd": "state_out"}`,
 `{"cmd": "state_in", "state"}`.
 
@@ -1198,8 +1199,8 @@ a class's plain-pal rate prefix reuses none of the kept careers, and a reused pl
 and per-class ratios) and the corner tables are also kept between jobs of one setup and trainee order (`KeptState::decks`), subject to memo keys and capacity limits. The kept plans, proofs, main searches and roll states survive a page reload through `cmd: "state_out"` /
 `"state_in"` (fields table above).
 
-The worker owns one `KeptState` (plans, proofs, main searches, rolls and deck memos). Native and wasm entry points
-borrow it from one thread-local; `run_career_in`, planning and nested simulator jobs pass `&mut KeptState` downward.
+The worker owns one `KeptState` (plans, proofs, main searches, rolls and deck memos): a field of web.rs's `Solver`, and
+in the command line a local of its run. `run_career_in`, planning and nested simulator jobs pass `&mut KeptState` downward.
 `state_out` reads `&KeptState`; `state_in` validates everything before replacing its serialized fields through `&mut`,
 leaving process-local deck memos intact. The JSON format is unchanged. `run_career_in` explicitly returns the deck
 and corner memos to kept state after every completed job, including early answers; `Env` has no publishing destructor.

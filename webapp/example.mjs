@@ -1,40 +1,24 @@
 // Precompute the example shown before the first search: deck + loop search, Unity Cup targets, everything owned,
 // R cards off (the page default; R pals stay).
 import fs from 'node:fs';
+import { initSync, Solver } from './src/gen/loopopt.js';
 const DATA = '../pkg/loopopt/data/global/';
-const { instance } = await WebAssembly.instantiate(fs.readFileSync('loopopt.opt.wasm'), {
-  env: {
-    clock_ms: () => performance.now(),
-    progress: () => {
-      // no progress to show: the example is computed offline
-    },
-  },
-});
-const solver = instance.exports;
-const encoder = new TextEncoder(),
-  decoder = new TextDecoder();
-// one solver call (`entry`: init or call): the request's JSON copied into the solver's memory, its JSON answer read back
-// (src/worker.ts)
-function call(request, entry = solver.call) {
-  const bytes = encoder.encode(JSON.stringify(request));
-  const at = solver.alloc(bytes.length);
-  new Uint8Array(solver.memory.buffer, at, bytes.length).set(bytes);
-  const answerAt = entry(at, bytes.length),
-    answerLength = solver.result_len();
-  const answer = decoder.decode(new Uint8Array(solver.memory.buffer, answerAt, answerLength).slice());
-  solver.dealloc(at, bytes.length);
-  return JSON.parse(answer);
-}
+// the solver through its glue (src/worker.ts): no progress to show, the example is computed offline
+globalThis.solverProgress = () => {
+  // nothing to show
+};
+initSync({ module: fs.readFileSync('loopopt.opt.wasm') });
 const readJson = (file) => JSON.parse(fs.readFileSync(DATA + file));
-call(
-  {
+const solver = new Solver(
+  JSON.stringify({
     data: readJson('data.json'),
     skills: readJson('web_skills.json'),
     cards: readJson('web_cards.json'),
     events: readJson('card_events.json'),
-  },
-  solver.init,
+  }),
 );
+// one solver call: the job's JSON in, its reply's back
+const call = (job) => JSON.parse(solver.call(JSON.stringify(job)));
 // what the data holds ahead of its start (export/upcoming.py: dated after the export): left out, as the page leaves it
 // out until then. Taken as of the export rather than today, so the example changes only with the data or the solver.
 const later = (kind) => readJson('upcoming.json')[kind].map(([id]) => id);

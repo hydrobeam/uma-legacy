@@ -1,12 +1,11 @@
 //! What the solver is asked: a job by its command (`Request`, what the page's worker sends `call`, web.rs), each job
 //! its parts as nested records (`SkillJob`, `DeckJob`, `CareerJob`); the native command line's job files (`JobFile`:
-//! the job and the data files it names); and what `init` answers. Every job record refuses a field it does not know.
+//! the job and the data files it names). Every job record refuses a field it does not know.
 use crate::career::CareerJob;
 use crate::career::state::StoredState;
 use crate::deck::DeckJob;
-use crate::refusal::Refusal;
 use crate::skills::SkillJob;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use ts_rs::TS;
 
 /// A job by its command (`cmd`).
@@ -81,22 +80,6 @@ pub(crate) struct JobFiles {
     pub(crate) cards: std::path::PathBuf,
     #[serde(default)]
     pub(crate) events: Option<std::path::PathBuf>,
-}
-
-/// `init`'s answer, by its `kind`: the data loaded, or why not.
-#[derive(Serialize, TS)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-#[cfg_attr(not(target_arch = "wasm32"), expect(dead_code, reason = "the wasm's `init` (web.rs) answers it"))]
-pub(crate) enum InitReply {
-    Loaded(Loaded),
-    Refusal(Refusal),
-}
-
-/// The era's data loaded: its uma count.
-#[derive(Serialize, TS)]
-#[cfg_attr(not(any(target_arch = "wasm32", test)), expect(dead_code, reason = "the wasm's `init` (web.rs) answers it"))]
-pub(crate) struct Loaded {
-    pub(crate) umas: usize,
 }
 
 /// Jobs for the crate's tests, read from the validation's job files.
