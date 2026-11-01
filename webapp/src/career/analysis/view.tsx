@@ -70,7 +70,8 @@ export const draftOf = (r: Career): Draft => ({
 // the veteran analysis' G1 wins: the G1 wins editor of the pool (a win in its slot, click to remove; an empty slot lists
 // the G1s she could enter then). Her schedule's races keep their win odds in the turn bar; a win shows at the turn
 // picked for it, else the turn her schedule runs it. A race held in Classic and Senior is one win saddle (one race
-// index). Its edits land on her through the store (`draftRef`). `back`: the focus on close
+// index). Its edits land on her through the store (`draftRef`: on her alone, not on a draft that replaces her while
+// it is open). `back`: the focus on close
 function openDraftWins(d: DraftView, r: Career, back: () => void) {
   // the G1s she could enter, by turn (heldAt), and those her schedule runs, by race (runs: the first turn and its cell)
   const rows = tableRows(r),
@@ -84,7 +85,7 @@ function openDraftWins(d: DraftView, r: Career, back: () => void) {
     if (w.run !== false && !runs.has(ix)) runs.set(ix, { turn: w.turn, cell: w.cells[0] });
   }
   const parentWon = (ix: number) => d.parents.some((p) => p.wins.includes(ix));
-  openWins(draftRef, umaName(d.chara), {
+  openWins(draftRef(), umaName(d.chara), {
     offer: rows.length ? (t: number) => heldAt.get(t) || [] : null,
     info: (ix: number) => {
       const x = runs.get(ix);

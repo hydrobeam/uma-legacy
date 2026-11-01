@@ -351,7 +351,7 @@ test("F5: with a parent fixed, the roll's baseline and Compare's are one job's (
 // ---------- F6: the same career keeps her draft
 test("F6: an answer showing the same career keeps the draft she was entered as; another career's resets it", () => {
   const p = page();
-  vs.draftRef.edit((now) => ({ sparks: { ...now.sparks, 9: 2 } })); // entered by hand
+  vs.draftRef().edit((now) => ({ sparks: { ...now.sparks, 9: 2 } })); // entered by hand
   const draft = vs.draft.peek();
   p.c.show(p.shown);
   assert.equal(vs.draft.peek(), draft, 'the same career: the same draft');
@@ -381,14 +381,14 @@ test("her card's tab and the races' fold outlive her record: a new career, no ca
 test("an edit of her draft (the veterans store's draftRef, the entry's effect): stale only with figures on show", async () => {
   const p = page();
   const marks = on([vs.draft], store.draftChanged);
-  vs.draftRef.edit(() => ({ wins: [3] }));
+  vs.draftRef().edit(() => ({ wins: [3] }));
   assert.deepEqual(vs.draft.peek().wins, [3], 'her draft, a new record');
   assert.equal(p.writes.length, 0, 'no figures: nothing to mark');
   p.c.compare();
   await flush();
   await exactAnswers(p, 0);
   assert.equal(simulation.peek().stale, false);
-  vs.draftRef.edit(() => ({ wins: [] }));
+  vs.draftRef().edit(() => ({ wins: [] }));
   assert.equal(simulation.peek().stale, true, 'the figures are for her before the edit');
   p.c.stop();
   assert.equal(simulation.peek().stale, true, 'a stop leaves the figures, marked stale');
@@ -401,4 +401,25 @@ test("an edit of her draft (the veterans store's draftRef, the entry's effect): 
   assert.ok(!simulation.peek().stale);
   marks();
   p.stop();
+});
+
+// ---------- review-9 F1: an editor is bound to the draft it was opened on
+test('an editor opened on her draft: once another draft replaces her (a new career, a roll, Add), its edits land nowhere', () => {
+  for (const replace of ['show', 'roll', 'add']) {
+    const p = page();
+    const at = vs.draftRef(); // (opened now, as the G1 wins window or the "+" list is)
+    if (replace === 'show') p.c.show(career('other'));
+    else if (replace === 'roll') p.c.roll();
+    else store.draftAdded();
+    const now = vs.draft.peek();
+    assert.equal(at.node(), undefined, `${replace}: her editor sees no node`);
+    at.edit((d) => ({ sparks: { ...d.sparks, 5: 1 } }));
+    assert.equal(vs.draft.peek(), now, `${replace}: the draft on show is untouched`);
+    const fresh = vs.draftRef();
+    if (now) {
+      fresh.edit((d) => ({ sparks: { ...d.sparks, 5: 1 } }));
+      assert.equal(vs.draft.peek().sparks[5], 1, `${replace}: an editor opened on her now edits her`);
+    }
+    p.stop();
+  }
 });

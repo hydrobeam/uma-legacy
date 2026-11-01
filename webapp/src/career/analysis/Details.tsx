@@ -164,7 +164,7 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
         nd={spec.d}
         parents={spec.d.parents}
         k="sim"
-        at={draftRef}
+        at={draftRef()}
         targets={spec.targets}
         header
         meClass="simwho"

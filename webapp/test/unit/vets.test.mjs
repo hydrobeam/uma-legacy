@@ -271,8 +271,8 @@ test("the analysis' draft: her own signal, edits by path copy on write, the vete
   vs.setDraft(d);
   const first = vs.draft.peek();
   assert.ok(Object.isFrozen(first) && Object.isFrozen(first.parents[1].sparks), 'a draft set is frozen');
-  vs.draftRef.edit((n) => ({ sparks: { ...n.sparks, 9: 3 } }));
-  vs.draftRef.edit((n) => ({ wins: [...n.wins, 4] }));
+  vs.draftRef().edit((n) => ({ sparks: { ...n.sparks, 9: 3 } }));
+  vs.draftRef().edit((n) => ({ wins: [...n.wins, 4] }));
   vs.draftParentRef(1).edit((p) => ({ sparks: { ...p.sparks, 8: 3 } }));
   vs.draftParentRef(1).edit(() => ({ chara: 33, outfit: undefined }));
   const now = vs.draft.peek();
@@ -284,7 +284,7 @@ test("the analysis' draft: her own signal, edits by path copy on write, the vete
   assert.equal(now.parents[0], first.parents[0], 'an untouched parent is the same object');
   assert.deepEqual(woke, { vets: 0, draft: 5 });
   vs.setDraft(null);
-  vs.draftRef.edit(() => ({ sparks: {} }));
+  vs.draftRef().edit(() => ({ sparks: {} }));
   assert.equal(vs.draft.peek(), null, 'an edit with no draft does nothing');
   for (const stop of stops) stop();
 });

@@ -59,7 +59,7 @@ test("the spark editor shows each edit of the store's draft (a new record each)"
   vs.setDraft({ ...node(1001, { [T]: 1 }), borrowed: false, parents: [node(1002), node(1003)] });
   const Card = () => {
     const d = vs.draft.value;
-    return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef, targets: [T] });
+    return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef(), targets: [T] });
   };
   const root = document.createElement('div');
   render(h(Card, null), root);
