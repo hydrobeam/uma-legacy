@@ -235,12 +235,17 @@ step_research() {
 }
 
 # ---- the page ----
-# reinstalls when the lockfile is newer than what npm last installed (node_modules/.package-lock.json), so a pulled
-# dependency change (a new or bumped package) is never checked against a stale node_modules
+# the page's packages (webapp/package.json); wrangler (webapp/deploy) and three (webapp/chibi) are packages of their
+# own, installed only by the steps that use them (deploy, runners), so every other install goes without them
 npm_deps() {
   need_node; check npm
-  [ -x "$W/node_modules/.bin/vite" ] && [ ! "$W/package-lock.json" -nt "$W/node_modules/.package-lock.json" ] \
-    || (cd "$W" && npm ci --silent)
+  npm_ci "$W"
+}
+# npm ci in DIR when it has no install or its lockfile is newer than what npm last installed there
+# (node_modules/.package-lock.json), so a pulled dependency change is never run against a stale node_modules
+npm_ci() {   # npm_ci DIR
+  [ -e "$1/node_modules/.package-lock.json" ] && [ ! "$1/package-lock.json" -nt "$1/node_modules/.package-lock.json" ] \
+    || (cd "$1" && npm ci --silent)
 }
 # Vite (webapp/vite.config.mjs), then each page's first-visit size against its budget (size-limit: webapp/.size-limit.mjs)
 step_page() {
@@ -266,6 +271,7 @@ step_runners() {
   fi
   need "${RUNNER_FILES[@]}"; check runners
   step_browsers
+  npm_ci "$W/chibi"   # three.js (chibi/package.json)
   "${PYART[@]}" "$W/chibi/chibi.py" all
 }
 step_art() {   # in the default build: runs what the game files in game/ allow, says what it skips
@@ -309,7 +315,8 @@ step_serve() {
   need_node; need "$NEED_DIST"; check serve
   (cd "$W" && npx --no-install vite preview --port "${PORT:-8000}" --host localhost --strictPort)
 }
-# Cloudflare Pages, a direct upload of webapp/dist (set up once: npx wrangler login; npx wrangler pages project create)
+# Cloudflare Pages, a direct upload of webapp/dist by wrangler, installed here from webapp/deploy's own lockfile (set up
+# once, in webapp/deploy: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
   local dirty
   dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg research/results.json)
@@ -321,7 +328,8 @@ step_deploy() {
   local dirty_flag=false
   if [ -n "$dirty" ]; then dirty_flag=true; fi
   step_wasm; step_page   # the solver it ships is built from this tree, never one left from another
-  (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" \
+  npm_ci "$W/deploy"
+  (cd "$W/deploy" && npx --no-install wrangler pages deploy ../dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" \
     --branch "${CF_PAGES_BRANCH:-main}" --commit-hash "$(git -C "$R" rev-parse HEAD)" \
     --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty="$dirty_flag")
 }

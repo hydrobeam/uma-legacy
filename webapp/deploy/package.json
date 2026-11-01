@@ -1,0 +1,10 @@
+{
+  "name": "legacy-loop-planner-deploy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "What ./build.sh deploy alone needs: wrangler, which uploads webapp/dist to Cloudflare Pages (that step installs it; the page's npm ci does not)",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "wrangler": "4.147.0"
+  }
+}

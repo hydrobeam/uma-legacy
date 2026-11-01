@@ -38,6 +38,8 @@ Everything a build reads lives inside the repository folder, apart from the tool
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
 | `webapp/package.json` (`npm ci` on first use) | the page's packages, below | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
+| `webapp/chibi/package.json` (`npm ci` there by `runners`) | `three` 0.170.0: three.js, which `chibi.html` draws the running mini models with | `runners` |
+| `webapp/deploy/package.json` (`npm ci` there by `deploy`) | `wrangler` 4.147.0 (with its Cloudflare stack, about 210 MB, so the page's install goes without it) | `deploy` (Cloudflare Pages) |
 | `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset, `webapp/vite/mathfont.py`; `brotli` is fonttools' woff2 writer); the exporters use the standard library |
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
 | `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
@@ -64,8 +66,6 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 | `dependency-cruiser` 18.7.0, `@swc/core` 1.16.21 | the module layers (`lint`), in place of `static.mjs`'s layer, store-reach and components-stay-views checks; swc parses the TypeScript, as dependency-cruiser reads it through TypeScript's JavaScript API, which TypeScript 7 no longer has |
 | `purgecss` 8.0.0 | dead CSS (`lint`, `test/deadcss.mjs`), in place of `static.mjs`'s |
 | `playwright` (pinned) | the browser suite, `icons.mjs`, `runners` |
-| `three` | `runners` (the running mini models) |
-| `wrangler` | `deploy` (Cloudflare Pages) |
 | `@biomejs/biome`, `typescript` | `lint` |
 
 **Game files you supply**, all in `game/` (gitignored; needed only to refresh the data or make the art)
@@ -446,7 +446,7 @@ build's `git describe` version.
 Hosting is Cloudflare Pages by direct upload: project `uma-legacy` (`CF_PAGES_PROJECT` overrides), live at
 https://uma-legacy.pages.dev. `deploy` refuses when `webapp/`, `pkg/` or `research/results.json` have uncommitted changes
 (`DEPLOY_DIRTY=1` overrides); `CF_PAGES_BRANCH=preview` publishes to the preview address; `SITE_URL` sets the
-link-preview tags' host. One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create
+link-preview tags' host. One-time setup: `cd webapp/deploy && npm ci && npx wrangler login`, then `npx wrangler pages project create
 uma-legacy --production-branch main --force` (`--force` keeps it on classic Pages; without it wrangler 4.147 delegated
 to Workers-based Pages and failed).
 

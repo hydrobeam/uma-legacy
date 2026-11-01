@@ -9,17 +9,14 @@
     "types": "off"
   },
   "ignoreDependencies": [
-    // run by build.sh, which knip does not read: wasm-opt (wasm), Biome and dependency-cruiser (lint), wrangler (deploy)
+    // run by build.sh, which knip does not read: wasm-opt (wasm), Biome and dependency-cruiser (lint)
     "binaryen",
     "@biomejs/biome",
     "dependency-cruiser",
-    "wrangler",
     // dependency-cruiser's parser (.dependency-cruiser.mjs `parser: 'swc'`)
     "@swc/core",
     // imported by src/style.css, which knip does not read
-    "@fontsource/.+",
-    // served to the runner pages from node_modules by chibi/render.mjs
-    "three"
+    "@fontsource/.+"
   ],
   // vite/mathfont.mjs runs fontTools in the repository's Python environment
   "ignoreBinaries": ["uv"]
