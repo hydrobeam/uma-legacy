@@ -2,7 +2,8 @@
 // bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
 // (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4); the
-// editors redraw for the settings they show only (F6); their lists' keys are unique (F7, preact/debug's check).
+// editors redraw for the settings they show only (F6); their lists' keys are unique (F7, preact/debug's check); two
+// picks of a pill row in one task (careerrun's edit and its undoing) both count.
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -330,4 +331,36 @@ test("a list's keys are unique: a target held twice, in the list and in a preset
     said.filter((s) => s.includes('same key')),
     [],
   );
+});
+
+test('two picks of the rank in one task (an edit and its undoing, before any redraw) both count: by click and by key', async () => {
+  fresh({ rank: '0.50,0.45,0.05' });
+  mountRank();
+  await settle();
+  const box = document.getElementById('rank-ctl'),
+    pill = (v) => box.querySelectorAll('button').find((b) => b.attributes['data-v'] === v);
+  const written = [],
+    stop = S.fields.rank.subscribe((rank) => written.push(rank));
+  pill('0.20,0.70,0.10').click();
+  pill('0.50,0.45,0.05').click();
+  await settle();
+  const group = byId(box, 'rank'),
+    key = (k) => {
+      for (const f of group.listeners.keydown || [])
+        f.call(group, {
+          type: 'keydown',
+          key: k,
+          target: group,
+          currentTarget: group,
+          preventDefault: () => undefined,
+        });
+    };
+  key('ArrowRight');
+  key('ArrowRight'); // (two pills: round to where it was)
+  await settle();
+  stop();
+  const rank = S.settings.value.rank;
+  render(null, box);
+  assert.deepEqual(written, ['0.50,0.45,0.05', '0.20,0.70,0.10', '0.50,0.45,0.05', '0.20,0.70,0.10', '0.50,0.45,0.05']);
+  assert.equal(rank, '0.50,0.45,0.05');
 });
