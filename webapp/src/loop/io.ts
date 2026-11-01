@@ -40,8 +40,7 @@ const loopSummary = (loop: DeepReadonly<ResultLoop>) => ({
   all_land: fmtIn(loop.p_all),
   at_least_n_minus_1: fmtIn(loop.p_minus1),
   umas: loop.members.map((m, k) => {
-    // (a copy: the result's outfits are read-only, and pickOutfit may hand back the list it is given)
-    const outfit = pickOutfit(m.id, [...loop.outfits[k].outfits]).list[0];
+    const outfit = pickOutfit(m.id, loop.outfits[k].outfits).list[0];
     return m.name + (outfit ? ` ${outfit.label}` : '');
   }),
 });

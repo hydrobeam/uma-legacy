@@ -64,8 +64,7 @@ function Schedule({ spec: { members, outfits, schedule }, close }: { spec: Sched
   const [tab, setTab] = useState<TabKey>(0),
     [tableOpen, setTableOpen] = useState(false);
   // her outfit's portrait, picked as her result card picks it, from the settings as they are when the popup opens
-  const outfitOf = (k: number) =>
-    untracked(() => pickOutfit(members[k].id, [...outfits[k].outfits]).list[0]?.id ?? null);
+  const outfitOf = (k: number) => untracked(() => pickOutfit(members[k].id, outfits[k].outfits).list[0]?.id ?? null);
   const single = members.length === 1,
     keys: TabKey[] = [...members.map((_, k) => k), ...(single ? [] : ['all' as const])];
   // the arrows (and Home/End) move between the tabs and select; one tab is in the Tab order (the selected)

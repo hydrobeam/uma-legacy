@@ -132,7 +132,7 @@ export interface CareerTrainee {
   id: number;
   name: string;
   /** her outfits that cover a target; the page puts the one it names first (`oneOutfit`) */
-  outfits: { id: number; label: string }[];
+  outfits: readonly { id: number; label: string }[];
   covers: { group: number; level: number }[];
   /** set by the page: no outfit covers a target, any would do */
   anyOutfit?: boolean;

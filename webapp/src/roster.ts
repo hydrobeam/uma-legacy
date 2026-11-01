@@ -25,8 +25,8 @@ export const tileOutfits = (u: Uma): (Outfit | null)[] => (u.outfits?.length ? u
 // target the same way; empty when none of hers covers one). Among the offered, the first; with none offered, among your
 // owned outfits her original (<id>01), else the first.
 // Returns { list: the chosen first, then the other offered ones (equally good), any: no outfit of hers covers a target }
-export type OutfitPick = { list: { id: number; label: string }[]; any: boolean };
-export function pickOutfit(id: number, offered: { id: number; label: string }[] = []): OutfitPick {
+export type OutfitPick = { list: readonly { id: number; label: string }[]; any: boolean };
+export function pickOutfit(id: number, offered: readonly { id: number; label: string }[] = []): OutfitPick {
   const u = gameData().umas.find((x) => x.id === id),
     mine = (u?.outfits || []).filter((o) => settings.value.outfits[o.id] !== false);
   if (offered.length) return { list: offered, any: false };
