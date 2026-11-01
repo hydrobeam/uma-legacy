@@ -22,6 +22,7 @@ const built = await esbuild.build({
       export { NodeDialog } from './src/career/view/NodeDialog.tsx';
       export { openNode, closeNode } from './src/career/view/dialogs.ts';
       export { sayRenderErrors } from './src/ui/RenderGuard.tsx';
+      export { answer, loadFails } from './src/career/state.ts';
       export { PoolBody, PoolTabs } from './src/career/view/Pool.tsx';
       export { openPool, poolClosed, choose } from './src/career/view/poolState.ts';
       export { h, render, options } from 'preact';
@@ -43,7 +44,7 @@ fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
-const { PoolBody, PoolTabs, openPool, poolClosed, choose } = page;
+const { PoolBody, PoolTabs, openPool, poolClosed, choose, answer, loadFails } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
 await loadData();
 
@@ -60,9 +61,13 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
     { id: 'bad', src: 'hand', borrowed: false, ...node(1001), parents: [node(1002), null] },
     { id: 'good', src: 'hand', borrowed: false, ...node(1003), parents: [node(1002), node(1004)] },
   ]);
+  // the page's own status write (main.tsx), which must not draw the view again (a few at most here: a loop would not end)
   const said = [],
     reported = [];
-  sayRenderErrors((text) => said.push(text));
+  sayRenderErrors((text) => {
+    said.push(text);
+    if (said.length < 4) loadFails(text);
+  });
   globalThis.reportError = (e) => reported.push(e);
   const root = document.createElement('div');
   render(h(NodeDialog, null), root);
@@ -74,6 +79,8 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
   assert.equal(root.querySelectorAll('button.gmclose').length, 1, 'with its Close button');
   assert.equal(reported.length, 1, 'the throw is reported');
   assert.match(said.join(' | '), /^The node popup could not be drawn: /, 'the status line says what');
+  assert.equal(said.length, 1, 'once: the status write draws nothing again');
+  assert.match(answer.peek().status.text, /^The node popup could not be drawn: /, 'on the status line');
   // another subject draws (and closing still works)
   openNode({ kind: 'v', id: 'good' });
   await settle();
