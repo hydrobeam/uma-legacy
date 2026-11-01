@@ -60,9 +60,7 @@ import { initBorrow } from './view/Setup.js';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
 import { searchCaveat } from '../proofs.mjs';
 import { must } from '../must.ts';
-/** @import { CareerJob, PlanReport } from './job.js' */
-/** @import { Answer, PlanDone, Status } from './state.ts' */
-/** @import { DeepReadonly } from '../store.ts' */
+/** @import { Status } from './state.ts' */
 
 // ---------- the run ----------
 // The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the
