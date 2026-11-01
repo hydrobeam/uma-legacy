@@ -22,6 +22,8 @@
 //   module can run before a declaration it reads at load.
 // - layers: an import points to its own layer or one below (LAYERS), and nothing outside a page imports into it;
 //   the imports that broke it when it became a failure are listed (KNOWN_AGAINST) until their module is split.
+// - wiring: the career run machine's deps that no browser group checks are named as they must be (engine.key,
+//   analysis.stop and outdate, view.drawCheck).
 // - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
 //   `loadOrder`, on the bundles as samecode builds them).
 // - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
@@ -336,6 +338,24 @@ const MOUNT_READS = {
         problems.push(`MOUNT_READS: ${file} no longer looks up '${selector}': drop it`);
 }
 
+// ---------- the career run machine's wiring (career/main.tsx `createRun`): the deps no browser group notices when
+// they are miswired (review-8ab finding 4), each named as it must be
+{
+  const WIRES = [
+    [/\bkey: stateKey,/, "engine.key is engine.ts's stateKey (a constant would take another release's saved answer)"],
+    [/\bstop: stopComparison,/, 'analysis.stop is stopComparison (a no-op leaves a comparison running across an edit)'],
+    [/\boutdate: outdateComparison,/, 'analysis.outdate is outdateComparison (a new run makes the comparison stale)'],
+    [
+      /drawCheck: \(\) => \{\s*renderResults\(\);\s*paint\(\);\s*\}/,
+      'view.drawCheck redraws the results column and the status line only (a redraw of the open veterans dialog under ' +
+        'a click would lose it: run.ts RunDeps)',
+    ],
+  ];
+  for (const [wire, what] of WIRES)
+    if (!wire.test(srcText['src/career/main.tsx']))
+      problems.push(`src/career/main.tsx: the run machine's wiring: ${what}`);
+}
+
 // ---------- components stay views: a module that is not one (.ts, .js) imports no .tsx module
 for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && !f.endsWith('.tsx')))
   for (const [, spec] of text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?(?:from\s*)?'([^']+\.tsx)'/g))
@@ -421,28 +441,8 @@ const KNOWN_AGAINST = ['vets (stores) -> images (shared)', 'vets (stores) -> age
   const against = [];
   const logic = ['types', 'io', 'model'].map((name) => LAYERS.findIndex(([layer]) => layer === name)),
     stores = LAYERS.findIndex(([layer]) => layer === 'stores');
-  for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
-    const from = layerOf(moduleOf(file));
-    // (a type-only import or export is left out: types are erased, so they set no load order and read no store)
-    for (const [, spec] of text.matchAll(
-      /(?:^|\n)\s*(?:import|export)\b(?!\s+type\b)[^;'"`]*?(?:from\s*)?'(\.{1,2}\/[^']+)'/g,
-    )) {
-      const to = layerOf(moduleOf(path.join(path.dirname(file), spec)));
-      const pages = [from, to].map((k) => LAYERS[k][0]);
-      if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
-        against.push(
-          `${moduleOf(file)} (${pages[0]}) -> ${moduleOf(path.join(path.dirname(file), spec))} (${pages[1]})`,
-        );
-    }
-  }
-  const known = against.filter((a) => KNOWN_AGAINST.includes(a));
-  for (const a of against.filter((x) => !KNOWN_AGAINST.includes(x)))
-    problems.push(`import against the layer order: ${a} (an import points to its own layer or one below)`);
-  for (const k of KNOWN_AGAINST.filter((x) => !against.includes(x)))
-    problems.push(`KNOWN_AGAINST: ${k} no longer stands: drop it`);
-  if (known.length) reports.push(`known imports against the layer order (${known.length}): ${known.join(', ')}`);
-  // the value imports among the page's modules (esbuild's metafiles, which leave out `import type`): every kind, a
-  // dynamic import() and a re-export included
+  // the value imports among the page's modules (esbuild's metafiles, which leave out `import type`: types are erased,
+  // so they set no load order and read no store): every kind, a dynamic import() and a re-export included
   const imports = new Map();
   for (const meta of Object.values(metafiles))
     for (const [file, input] of Object.entries(meta.inputs))
@@ -453,6 +453,21 @@ const KNOWN_AGAINST = ['vets (stores) -> images (shared)', 'vets (stores) -> age
             ...input.imports.map((i) => i.path).filter((f) => f.startsWith('src/')),
           ]),
         ]);
+  for (const [file, targets] of imports) {
+    const from = layerOf(moduleOf(file));
+    for (const target of targets) {
+      const to = layerOf(moduleOf(target));
+      const pages = [from, to].map((k) => LAYERS[k][0]);
+      if (to > from || (pages[0] !== pages[1] && pages[1].startsWith('page:')))
+        against.push(`${moduleOf(file)} (${pages[0]}) -> ${moduleOf(target)} (${pages[1]})`);
+    }
+  }
+  const known = against.filter((a) => KNOWN_AGAINST.includes(a));
+  for (const a of against.filter((x) => !KNOWN_AGAINST.includes(x)))
+    problems.push(`import against the layer order: ${a} (an import points to its own layer or one below)`);
+  for (const k of KNOWN_AGAINST.filter((x) => !against.includes(x)))
+    problems.push(`KNOWN_AGAINST: ${k} no longer stands: drop it`);
+  if (known.length) reports.push(`known imports against the layer order (${known.length}): ${known.join(', ')}`);
   for (const file of imports.keys()) {
     if (!logic.includes(layerOf(moduleOf(file)))) continue;
     // the shortest import chain from `file` to a store, breadth first
