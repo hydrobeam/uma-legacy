@@ -42,7 +42,8 @@
 //   a mount point (preact's render, RenderGuard's renderGuarded).
 // - deferred writes and listeners at import: no requestAnimationFrame but the ones listed (RAF_KEPT: a measured DOM
 //   write runs from the layout effect of the component that draws what it measures), and no listener added at a
-//   module's top level outside the entries but the load-time effects listed (LOAD_LISTENERS).
+//   module's top level outside the entries but the load-time effects listed (LOAD_LISTENERS); no view built from a
+//   markup string (innerHTML, outerHTML, insertAdjacentHTML): every view is a component.
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
 // imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
@@ -269,6 +270,7 @@ const cycles = [];
 // lookup that stays on purpose is listed in MOUNT_READS with why; an exemption no module makes fails too.
 // the shared setup's editors, drawn on both pages (ui/Setup.tsx mounts them)
 const SETUP_MOUNTS = [
+  ['pop-root', 'src/ui/CardPop.tsx', [], ['cpop', 'pgives', 'pfoot', 'gtl', 'inpopup']],
   [
     'scen-dd',
     'src/ui/Scenario.tsx',
@@ -470,14 +472,13 @@ const MOUNTS = {
 // (file, selector) -> why it may stay
 const MOUNT_READS = {
   'src/popover.ts': {
-    '.deck .dc':
-      'the click delegation, which reads the opener it was clicked on (the panel stays el(): step 11 left it)',
-    '.mem': 'reads the clicked member block’s data-* for her panel (the panel stays el(): step 11 left it)',
-    '.mem .memb': 'the click delegation, reading the opener (the panel stays el(): step 11 left it)',
-    '.loop .facebtn': 'the click delegation, reading the opener (the panel stays el(): step 11 left it)',
-    '.loop': "reads a portrait's result card for her member block (the panel stays el(): step 11 left it)",
-    '.loop.first ${mem}':
-      'reads #1\'s member block for a "Same loop as #1" portrait (the panel stays el(): step 11 left it)',
+    '.deck .dc': 'the click delegation: which opener was clicked, and its data-* for the panel (ui/CardPop.tsx)',
+    '.mem': 'reads the clicked member block’s data-* for her panel, at the click',
+    '.mem .memb': 'the click delegation: which opener was clicked',
+    '.loop .facebtn': 'the click delegation: which opener was clicked',
+    '.loop': "reads a portrait's result card for her member block, at the click",
+    '.loop.first ${mem}': 'reads #1\'s member block for a "Same loop as #1" portrait, at the click',
+    '.cpop': 'a click inside a panel (or a menu drawn as one) keeps the panel open',
   },
 };
 {
@@ -642,7 +643,6 @@ const RAF_KEPT = {
 const LOAD_LISTENERS = {
   'src/errorlog.ts': 'first of all: it logs every uncaught error',
   'src/gmtip.ts': 'the game-style tooltips listen to the whole document on both pages',
-  'src/popover.ts': "the deck card panel's own keys (a string view: the panel is built at import)",
 };
 {
   const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
@@ -652,6 +652,8 @@ const LOAD_LISTENERS = {
       problems.push(
         `${file}: requestAnimationFrame: a DOM write runs from the layout effect of the component it measures`,
       );
+    if (/\.(innerHTML|outerHTML)\s*=|\.insertAdjacentHTML\(/.test(body))
+      problems.push(`${file}: builds a view from a markup string; draw it as a component`);
     if (/^[\w.]*addEventListener\(/m.test(body) && !LOAD_LISTENERS[file] && !ENTRIES.includes(file))
       problems.push(
         `${file}: adds a listener at import; the entries make load-time effects (or list it in LOAD_LISTENERS)`,

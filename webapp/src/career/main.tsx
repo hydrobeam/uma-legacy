@@ -44,6 +44,7 @@ import { answerLoad, answerSave } from '../statestore.ts';
 import { goldGiven } from '../job.ts';
 import { initScenario, eraScenario } from '../scenario.ts';
 import { initPopover } from '../popover.ts';
+import { CardPop } from '../ui/CardPop.tsx';
 import '../agenda.ts'; // (its document listener is added before gmtip's)
 import { cardsBadge, setupButtons, setupViews, umasBadge } from '../ui/Setup.tsx';
 import { rosterCounts } from '../roster.ts';
@@ -270,6 +271,7 @@ loadData().then(
   async () => {
     initSettings();
     initPopover();
+    mount('pop-root', <CardPop home={null} />, 'The deck card panel'); // its slot in the results column
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)

@@ -26,6 +26,7 @@ import { ExportDialog, openExport } from './Export.tsx';
 import { OddsDialog } from '../ui/OddsDialog.tsx';
 import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.ts';
+import { CardPop } from '../ui/CardPop.tsx';
 import { loadExample } from '../presets.ts';
 import { cardsBadge, setupButtons, setupViews, umasBadge } from '../ui/Setup.tsx';
 import { rosterCounts } from '../roster.ts';
@@ -136,6 +137,7 @@ function start() {
   render(<OddsDialog />, document.body.appendChild(Object.assign(document.createElement('div'), { id: 'odds-root' })));
   $('ex-open').onclick = openExport;
   initPopover();
+  render(<CardPop home={null} />, $('pop-root')); // the deck card panel's slot in the results column
   // the setup editors both pages share (ui/Setup.tsx), each into its mount point; the Umas and Support cards buttons
   // open their dialogs, and their counts follow what you own
   for (const { id, what, view } of setupViews({ fadeMore: true })) renderGuarded(view, $(id), what, settings);

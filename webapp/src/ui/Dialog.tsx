@@ -3,9 +3,11 @@
 // close() are called from a layout effect, before the browser paints. The native close (Escape, or close() from the
 // effect) reaches `onClose`, so whoever holds `open` hears every close. A click on the backdrop (the dialog element
 // itself is the target) closes it. The browser returns the focus to the element that had it when the dialog opened.
+// A deck card's panel opened from inside it shows inside it (ui/CardPop.tsx: the page behind a modal is out of reach).
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { must } from '../must.ts';
+import { CardPop } from './CardPop.tsx';
 
 interface DialogProps {
   id: string;
@@ -54,6 +56,7 @@ export function Dialog({ id, cls, labelledBy, label, open, onClose, children }: 
       }}
     >
       {children}
+      <CardPop home={id} />
     </dialog>
   );
 }

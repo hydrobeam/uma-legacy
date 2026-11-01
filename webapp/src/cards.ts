@@ -1,7 +1,6 @@
 // ---------- support cards: a card's name and what it gives, as the page shows them; what you own of them ----------
 // The Support cards panel that draws the picker is ui/Cards.tsx.
 import { computed } from '@preact/signals';
-import { esc } from './dom.ts';
 import { gameData } from './data.ts';
 import { fields, settings, setOwned } from './settings.ts';
 import { must } from './must.ts';
@@ -91,14 +90,6 @@ export const chainEndNote = (c: Card | undefined, link: number) => {
   const { take } = chainEndAt(c, link);
   return take ? `prioritise ${take} (chain end)` : `chain end: link ${link}`;
 };
-// the gifts as the game's small labels (the card list's tiles and a deck card's panel)
-export const giftsHTML = (gifts: CardGift[]): string =>
-  gifts
-    .map(
-      (x) =>
-        `<span class="gv${x.gold ? ' g' : ''}" title="${esc(x.tip)}">${esc(x.skill)} <small>${esc(x.note)}</small></span>`,
-    )
-    .join('');
 // what is owned, counted over every card (the Support cards button says it): every card counts as owned until you say
 // otherwise
 export const cardsOwned = computed(() => {
