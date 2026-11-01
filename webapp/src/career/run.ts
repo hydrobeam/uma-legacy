@@ -9,7 +9,7 @@ import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } 
 import type { DeepReadonly } from '../store.ts';
 import type * as AnswerStore from './state.ts';
 import type { Answer, AnswerView, PlanDone, PlanState, Status } from './state.ts';
-import { jobKey, planKey } from './keys.js';
+import { jobKey, planKey } from './keys.ts';
 
 /** the answer store's transitions and reads the machine uses (career/state.ts) */
 export type RunStore = Pick<

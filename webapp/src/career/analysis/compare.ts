@@ -15,7 +15,7 @@ import type { PlanDone } from '../state.ts';
 import type * as AnalysisStore from './state.ts';
 import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.js';
 import type { Draft, NodeRecord } from '../../veterans/store.ts';
-import { keyOf } from '../keys.js';
+import { keyOf } from '../keys.ts';
 import { PLAN_NEXT } from '../run.ts';
 
 /** what the comparison needs of the page, built once by the entry (career/main.tsx) */

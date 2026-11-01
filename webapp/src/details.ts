@@ -2,25 +2,26 @@
 // What Try a run's card (career/analysis/Details.tsx), the node popups and the decks share: the spark names' fit
 // (`fitSparks`) and a deck's card by its index (`deckCardAt`). (Its Skill Details popup is career/view/SkillDetails.tsx.)
 import { gameData } from './data.js';
+import type { Card } from './data.js';
+import type { ResultDeck } from './loop/types.ts';
+import type { DeepReadonly } from './store.ts';
 
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only
 // Each name takes the largest size f0 - 0.5k that fits, or the first one at or under 9 px (a step-by-step shrink). All
 // names are sized together: every round writes each unsettled name's next size to try, then reads them all (one layout
 // per round, not one per step per name), halving the range of steps left (the width only grows with the size).
-const fitting = new Set(); // roots with a pass already queued (resize fires many times a frame)
-/** @param {ParentNode} [root] */
-export function fitSparks(root = document) {
+const fitting = new Set<ParentNode>(); // roots with a pass already queued (resize fires many times a frame)
+export function fitSparks(root: ParentNode = document): void {
   if (fitting.has(root)) return;
   fitting.add(root);
   requestAnimationFrame(() => {
     fitting.delete(root);
-    const names = [...root.querySelectorAll('.ud .vskn')];
+    const names = [...root.querySelectorAll<HTMLElement>('.ud .vskn')];
     for (const e of names) e.style.fontSize = '';
-    const fits = (e) => !(e.scrollWidth > e.clientWidth + 0.5);
+    const fits = (e: HTMLElement): boolean => !(e.scrollWidth > e.clientWidth + 0.5);
     // per name that overflows (and is on show): base size f0 in px, the steps known not to fit (lo) and known to fit, or
     // the floor (hi); step k is the size f0 - 0.5k, and k = 0 is the CSS size; mid: the step being tried
-    /** @type {{e: HTMLElement, f0: number, lo: number, hi: number, mid: number}[]} */
-    const shrinking = names
+    const shrinking: { e: HTMLElement; f0: number; lo: number; hi: number; mid: number }[] = names
       .filter((e) => e.clientWidth)
       .map((e) => ({ e, f0: parseFloat(getComputedStyle(e).fontSize) }))
       .filter((x) => !fits(x.e))
@@ -49,8 +50,10 @@ addEventListener('resize', () => fitSparks());
 // A deck's i-th card, from the solver's deck report: its name with the report's notes taken off (base), whether it is the
 // borrowed card, and the card's data (null when unknown). The report lists the deck's cards with ids (card_ids) and
 // then the plain ones (plain_ids), in the order of `cards`.
-/** @param {import('./loop/types.ts').ResultDeck} deck @param {number} i @returns {{base: string, borrowed: boolean, card: import('./data.js').Card|undefined}} */
-export function deckCardAt(deck, i) {
+export function deckCardAt(
+  deck: DeepReadonly<ResultDeck>,
+  i: number,
+): { base: string; borrowed: boolean; card: Card | undefined } {
   const name = deck.cards[i];
   const borrowed = /\(borrowed\)$/.test(name),
     base = name
@@ -58,5 +61,10 @@ export function deckCardAt(deck, i) {
       .replace(/ \(end chain at link \d\)$/, '')
       .replace(/ \(link \d+: [^)]*\)$/, '');
   const id = deck.card_ids[i] ?? deck.plain_ids?.[i - deck.card_ids.length];
-  return { base, borrowed, card: gameData().cardById.get(id) || gameData().cards.find((x) => x.name === base) };
+  // (an id the report lacks finds no card: the name finds it then)
+  return {
+    base,
+    borrowed,
+    card: gameData().cardById.get(id as number) || gameData().cards.find((x) => x.name === base),
+  };
 }

@@ -268,7 +268,7 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
 /** one support card of her deck (a click opens its panel: popover.js, which reads the data-* and leaves the markup to
  *  this: its greying and aria-expanded are drawn here) */
 function DeckCell({ deck, i }: { deck: Career['deck']; i: number }) {
-  const { base, borrowed: bor, card: c } = deckCardAt(deck as unknown as Parameters<typeof deckCardAt>[0], i),
+  const { base, borrowed: bor, card: c } = deckCardAt(deck, i),
     endAt = (deck.end_chain_at || [])[i] || 0, // the popover's chain-end advice
     off = !!c && !bor && settings.value.cardsOff[c.id] === false,
     ref = useRef<HTMLButtonElement>(null),

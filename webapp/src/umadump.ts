@@ -6,50 +6,97 @@
 // veterans and the lender's viewer_id (= viewer_id) on the ones offered for borrowing (rental_chara_data.json, the
 // career start screen's borrow list); use_type is 0 on both.
 import { careerTables } from './data.js';
+import type { LineageNode, Sparks, Veteran } from './veterans/store.ts';
+
+// The files are the game's JSON (or uma.moe's), typed below by the fields read: their shape is trusted once a record
+// is found (`records`, `parseTree`'s type check, uma.moe's `inheritance_id`).
+/** a spark as the game lists it */
+interface Factor {
+  factor_id: number;
+}
+/** a veteran or a parent in umadump's export */
+interface ExportNode {
+  card_id: number;
+  factor_info_array?: readonly Factor[];
+  win_saddle_id_array?: readonly number[];
+}
+/** a veteran in umadump's export */
+interface ExportVeteran extends ExportNode {
+  owner_viewer_id?: number;
+  /** read as `+x || undefined`: one missing reads as none */
+  rank_score: number;
+  trained_chara_id?: number;
+  succession_chara_array?: readonly (ExportNode & { position_id: number })[];
+}
+/** a node of uma.moe's lineage planner export */
+interface TreeEntry {
+  position: string;
+  characterId: number;
+  sparks?: readonly { factorId: number; level: number }[];
+  manualWinSaddleIds?: readonly number[];
+}
+/** a lineage's three members on uma.moe: the listed parent and her two */
+type Side = 'main' | 'left' | 'right';
+/** a listing's lineage (uma.moe's `inheritance`): per member, her white factors (a list), her blue, pink and unique
+ *  factor (one each) and her win saddles */
+type Inheritance = {
+  inheritance_id: number;
+  main_parent_id: number;
+  parent_left_id: number;
+  parent_right_id: number;
+  affinity_score: number;
+  win_count: number;
+  white_stars_sum: number;
+  parent_rank: number;
+} & { [K in `${Side}_white_factors` | `${Side}_win_saddles`]?: readonly number[] } & {
+  [K in `${Side}_${'blue' | 'pink' | 'green'}_factors`]?: number;
+};
+/** One result of uma.moe's search (api/v3/search, `search_type=inheritance`). Its numbers are read as `+x || 0`, so one
+ *  missing reads as 0. */
+export interface UmamoeListing {
+  account_id?: string | number;
+  trainer_name?: string;
+  follower_num: number;
+  last_updated?: string;
+  inheritance: Inheritance;
+}
 
 // factor_id = factor group * 100 + stars
-const factorGroup = (factor) => Math.floor(factor.factor_id / 100),
-  factorStars = (factor) => factor.factor_id % 100;
+const factorGroup = (factor: Factor): number => Math.floor(factor.factor_id / 100),
+  factorStars = (factor: Factor): number => factor.factor_id % 100;
 // sparks as {key: stars}, the most stars per key: `keyOf` gives a factor's key, undefined for a factor of another kind
-function bestStars(factors, keyOf) {
-  const out = {};
+function bestStars(factors: readonly Factor[] | undefined, keyOf: (group: number) => number | undefined): Sparks {
+  const out: Sparks = {};
   for (const factor of factors || []) {
     const key = keyOf(factorGroup(factor));
     if (key !== undefined) out[key] = Math.max(out[key] || 0, factorStars(factor));
   }
   return out;
 }
-const kept = (keep) => (group) => (keep(group) ? group : undefined);
+const kept =
+  (keep: (group: number) => boolean) =>
+  (group: number): number | undefined =>
+    keep(group) ? group : undefined;
 // white skill sparks, by skill group
-const sparksOf = (factors) => bestStars(factors, (group) => careerTables().factors[group]);
+const sparksOf = (factors: readonly Factor[] | undefined): Sparks =>
+  bestStars(factors, (group) => careerTables().factors[group]);
 // aptitude (pink) sparks: the groups in careerTables().pinks
-const pinksOf = (factors) =>
+const pinksOf = (factors: readonly Factor[] | undefined): Sparks =>
   bestStars(
     factors,
     kept((group) => careerTables().pinks[group] !== undefined),
   );
 // blue (stat) sparks: factor groups 1..5; unique (green) sparks: the outfit's card id as the factor group
-const isBlue = (group) => group >= 1 && group <= 5,
-  isGreen = (group) => group >= 100000 && careerTables().uniques?.[group] !== undefined;
+const isBlue = (group: number): boolean => group >= 1 && group <= 5,
+  isGreen = (group: number): boolean => group >= 100000 && careerTables().uniques?.[group] !== undefined;
 // single-race G1 wins as race indices, ascending (titles have no index and are left out)
-function winsOf(saddles) {
+function winsOf(saddles: readonly number[] | undefined): number[] {
   return [
     ...new Set((saddles || []).map((saddle) => careerTables().saddles[saddle]).filter((race) => race !== undefined)),
   ].sort((a, b) => a - b);
 }
-/**
- * A veteran or one of her parents as the career page reads her.
- * @typedef {object} VeteranNode
- * @property {number | null} chara character id (null: unknown parent)
- * @property {number} [outfit] her outfit (card) id
- * @property {Object<number, number>} sparks white skill sparks: skill group -> stars
- * @property {Object<number, number>} pinks aptitude sparks: aptitude group -> stars
- * @property {Object<number, number>} [blues] stat sparks: factor group (1..5) -> stars
- * @property {Object<number, number>} [greens] unique skill sparks: outfit id -> stars
- * @property {number[]} wins single-race G1 wins, race indices
- */
-/** @returns {VeteranNode} */
-const node = (record) => ({
+/** a veteran or one of her parents as the career page reads her */
+const node = (record: ExportNode): LineageNode => ({
   chara: Math.floor(record.card_id / 100),
   outfit: record.card_id,
   sparks: sparksOf(record.factor_info_array),
@@ -59,11 +106,12 @@ const node = (record) => ({
   wins: winsOf(record.win_saddle_id_array),
 });
 // a parent the export doesn't have
-const unknownParent = () => ({ chara: null, sparks: {}, pinks: {}, wins: [] });
+const unknownParent = (): LineageNode => ({ chara: null, sparks: {}, pinks: {}, wins: [] });
 
 // the list of veterans in an export: the file's array, or the first array of veteran records inside an object
-function records(json) {
-  const isVet = (x) => x && typeof x === 'object' && 'card_id' in x && 'factor_info_array' in x;
+function records(json: unknown): ExportVeteran[] {
+  // a veteran's record (Array.isArray reads the file's array as any[]: the return type is where its records are typed)
+  const isVet = (x: unknown) => x && typeof x === 'object' && 'card_id' in x && 'factor_info_array' in x;
   if (Array.isArray(json)) return json.filter(isVet);
   if (json && typeof json === 'object')
     for (const value of Object.values(json)) {
@@ -76,9 +124,8 @@ function records(json) {
 // a veteran per top position ("p1", "p2", ...) with her parents at "p1-1" and "p1-2". A spark's factorId x 10 + its level
 // is the game's factor_id (master.mdb succession_factor); saddle ids are the game's win saddles. null when the text is not
 // one; its veterans count as yours (the export doesn't say)
-/** @param {string} text @returns {import('./veterans/store.ts').Veteran[]|null} */
-export function parseTree(text) {
-  let json;
+export function parseTree(text: string): Veteran[] | null {
+  let json: { type?: unknown; payload?: readonly TreeEntry[] } | null;
   try {
     json = JSON.parse(text);
   } catch {
@@ -86,7 +133,7 @@ export function parseTree(text) {
   }
   if (json?.type !== 'lineage-planner' || !Array.isArray(json.payload)) return null;
   const at = new Map(json.payload.map((x) => [x.position, x]));
-  const treeNode = (x) =>
+  const treeNode = (x: TreeEntry): LineageNode =>
     node({
       card_id: x.characterId,
       factor_info_array: (x.sparks || []).map((f) => ({ factor_id: f.factorId * 10 + f.level })),
@@ -106,9 +153,8 @@ export function parseTree(text) {
     }));
 }
 // veterans from umadump's export text; throws an Error with a message for the page when it is not an export
-/** @param {string} text @returns {import('./veterans/store.ts').Veteran[]} */
-export function parseExport(text) {
-  let json;
+export function parseExport(text: string): Veteran[] {
+  let json: unknown;
   try {
     json = JSON.parse(text);
   } catch {
@@ -135,21 +181,20 @@ export function parseExport(text) {
 // A lineage listed on uma.moe's search (api/v3/search, `inheritance`): the parent at main_*, her parents at left_* and
 // right_*, each with the game's factor ids (white as a list, blue, pink and unique one each) and win saddles. A borrowed
 // veteran keyed by the listing (`u` + inheritance_id), with its lender: the trainer to follow in the game
-/** @param {any} item a search result: {account_id, trainer_name, follower_num, last_updated, inheritance} @returns {import('./veterans/store.ts').Veteran} */
-export function parseListing(item) {
+export function parseListing(item: UmamoeListing): Veteran {
   const h = item.inheritance;
-  const side = (s, card) =>
+  const side = (s: Side, card: number): LineageNode =>
     node({
       card_id: card,
-      factor_info_array: [
-        ...(h[`${s}_white_factors`] || []),
-        h[`${s}_blue_factors`],
-        h[`${s}_pink_factors`],
-        h[`${s}_green_factors`],
-      ]
-        .filter(Boolean)
-        .map((factor_id) => ({ factor_id })),
-      win_saddle_id_array: h[`${s}_win_saddles`],
+      factor_info_array: (
+        [
+          ...(h[`${s}_white_factors` as const] || []),
+          h[`${s}_blue_factors` as const],
+          h[`${s}_pink_factors` as const],
+          h[`${s}_green_factors` as const],
+        ].filter(Boolean) as number[]
+      ).map((factor_id) => ({ factor_id })),
+      win_saddle_id_array: h[`${s}_win_saddles` as const],
     });
   return {
     ...side('main', h.main_parent_id),
@@ -176,18 +221,22 @@ export function parseListing(item) {
 // support_card_id, limit_break_count, exp, stock (spare copies), extra_data {level, max_level, ...}. The page keeps
 // ownership only (no stars, levels or limit breaks), so only the ids are read.
 const PICK_OWNED = "Pick umadump's card_data.json or support_card_data.json.";
-/** @typedef {{kind: 'outfits' | 'cards', ids: number[]}} OwnedList what one file says you own: outfit or support card ids */
+/** what one file says you own: outfit or support card ids */
+interface OwnedList {
+  kind: 'outfits' | 'cards';
+  ids: number[];
+}
 // what umadump's owned-umas or owned-cards file lists; throws an Error with a message for the page when it is neither
-/** @param {string} text @returns {OwnedList} */
-export function parseOwned(text) {
-  let json;
+export function parseOwned(text: string): OwnedList {
+  let json: unknown;
   try {
     json = JSON.parse(text);
   } catch {
     throw new Error(`That is not JSON. ${PICK_OWNED}`);
   }
   const list = Array.isArray(json) ? json : [];
-  const every = (test) => list.length > 0 && list.every((x) => x && typeof x === 'object' && test(x));
+  const every = (test: (x: { support_card_id?: unknown; card_id?: unknown }) => boolean): boolean =>
+    list.length > 0 && list.every((x) => x && typeof x === 'object' && test(x));
   if (every((x) => Number.isInteger(x.support_card_id)))
     return { kind: 'cards', ids: list.map((x) => x.support_card_id) };
   // (a veteran has a card_id too, with her sparks)

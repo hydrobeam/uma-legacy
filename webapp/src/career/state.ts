@@ -17,7 +17,7 @@ import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerJob, CareerSearch, PlanReport } from './job.js';
 import type { PlacesRecord } from '../veterans/store.ts';
-import { planKey } from './keys.js';
+import { planKey } from './keys.ts';
 
 /** what the page draws of the run under way */
 export interface RunView {

@@ -11,6 +11,8 @@
 // `max_follower_num` 999: trainers at 1,000 followers can't be followed (left out unless the player asks for full
 // trainers too). Pages count from 0, 100 results each.
 import { careerTables } from './data.js';
+import { must } from './must.ts';
+import type { UmamoeListing } from './umadump.ts';
 
 const KEY_STORE = 'llp:umamoe-key',
   CACHE_STORE = 'llp:umamoe',
@@ -20,8 +22,7 @@ const KEY_STORE = 'llp:umamoe-key',
   PAGE_SIZE = 100,
   FOLLOWABLE = 999;
 
-/** @returns {string} */
-export function savedKey() {
+export function savedKey(): string {
   try {
     return localStorage.getItem(KEY_STORE) || '';
   } catch {
@@ -29,23 +30,22 @@ export function savedKey() {
   }
 }
 // full trainers (1,000 followers: they can't be followed) included in the search: the player's choice, kept here
-export const fullTrainers = () => {
+export const fullTrainers = (): boolean => {
   try {
     return localStorage.getItem('llp:umamoe-full') === '1';
   } catch {
     return false;
   }
 };
-/** @param {boolean} on */
-export function setFullTrainers(on) {
+export function setFullTrainers(on: boolean): void {
   try {
     localStorage.setItem('llp:umamoe-full', on ? '1' : '0');
   } catch {
     // storage blocked: the choice lasts for this visit only
   }
 }
-/** @param {string} key an empty key forgets it */
-export function saveKey(key) {
+/** an empty key forgets it */
+export function saveKey(key: string): void {
   try {
     if (key) localStorage.setItem(KEY_STORE, key);
     else localStorage.removeItem(KEY_STORE);
@@ -56,25 +56,37 @@ export function saveKey(key) {
 
 // the factor groups of each target skill group (careerTables().factors: factor group -> skill group); a target no white spark
 // carries (none in the data) is left out of the filters
-/** @param {number[]} groups @returns {number[][]} */
-export function targetFactors(groups) {
-  const of = new Map(),
+export function targetFactors(groups: readonly number[]): number[][] {
+  const of = new Map<number, number[]>(),
     listed = careerTables().moe && new Set(careerTables().moe); // GM era: only the factors Global has
   for (const [factor, group] of Object.entries(careerTables().factors)) {
     if (listed && !listed.has(+factor)) continue;
     if (!of.has(group)) of.set(group, []);
-    of.get(group).push(+factor);
+    must(of.get(group), 'the list set just above').push(+factor);
   }
   return groups.map((g) => of.get(g) || []).filter((f) => f.length);
 }
 
-/**
- * One search: lineages whose listed parent carries at least `min` of the targets herself, best covered first.
- * @typedef {{factors: number[][], min: number, page: number, full?: boolean}} Query
- * @typedef {{items: any[], total: number, pages: number, cached: boolean}} Answer
- */
-/** @param {Query} q @returns {string} */
-function queryString({ factors, min, page, full = false }) {
+/** One search: lineages whose listed parent carries at least `min` of the targets herself, best covered first. */
+interface Query {
+  factors: readonly (readonly number[])[];
+  min: number;
+  page: number;
+  full?: boolean;
+}
+/** A search's answer: the listings, how many there are in all and on how many pages, and whether it was kept. */
+interface Answer {
+  items: UmamoeListing[];
+  total: number;
+  pages: number;
+  cached: boolean;
+}
+/** an answer kept, with when it came */
+interface CacheEntry {
+  at: number;
+  answer: Omit<Answer, 'cached'>;
+}
+function queryString({ factors, min, page, full = false }: Query): string {
   const p = new URLSearchParams({ search_type: 'inheritance', limit: String(PAGE_SIZE), page: String(page) });
   if (!full) p.set('max_follower_num', String(FOLLOWABLE));
   const any = factors.flatMap((fs) => fs.flatMap((f) => [1, 2, 3].map((stars) => f * 100 + stars))).join(',');
@@ -83,7 +95,7 @@ function queryString({ factors, min, page, full = false }) {
   return p.toString();
 }
 
-function loadCache() {
+function loadCache(): Record<string, CacheEntry> {
   try {
     const c = JSON.parse(localStorage.getItem(CACHE_STORE) ?? 'null'); // (nothing stored yet: null)
     if (c && typeof c === 'object') return c;
@@ -93,8 +105,7 @@ function loadCache() {
   return {};
 }
 // one answer added to the kept ones as stored now (another search or tab may have added one meanwhile)
-/** @param {string} id @param {{at: number, answer: Omit<Answer, 'cached'>}} entry */
-function storeCache(id, entry) {
+function storeCache(id: string, entry: CacheEntry): void {
   const kept = Object.entries({ ...loadCache(), [id]: entry })
     .filter(([, x]) => Date.now() - x.at < CACHE_MS)
     .sort((a, b) => b[1].at - a[1].at)
@@ -108,27 +119,25 @@ function storeCache(id, entry) {
 
 // the reason a search failed, in words for the page; `badKey`: uma.moe refused the key itself
 export class SearchError extends Error {
-  /** @param {string} message @param {boolean} [badKey] */
-  constructor(message, badKey = false) {
+  declare badKey: boolean;
+  constructor(message: string, badKey = false) {
     super(message);
     this.badKey = badKey;
   }
 }
 
 // the kept answer, when one is younger than 24 h
-/** @param {string} era @param {Query} q @returns {(Answer & {at: number})|null} */
-export function keptAnswer(era, q) {
+export function keptAnswer(era: string, q: Query): (Answer & { at: number }) | null {
   const hit = loadCache()[`${era}?${queryString(q)}`];
   return hit && Date.now() - hit.at < CACHE_MS ? { ...hit.answer, cached: true, at: hit.at } : null;
 }
 // the kept answer when one is younger than 24 h (unless `fresh`), else one request; throws SearchError
-/** @param {string} key @param {string} era @param {Query} q @param {boolean} [fresh] @returns {Promise<Answer & {at: number}>} */
-export async function search(key, era, q, fresh = false) {
+export async function search(key: string, era: string, q: Query, fresh = false): Promise<Answer & { at: number }> {
   const kept = fresh ? null : keptAnswer(era, q);
   if (kept) return kept;
   const qs = queryString(q),
     id = `${era}?${qs}`;
-  let res;
+  let res: Response;
   try {
     res = await fetch(`${ENDPOINT}?${qs}`, { headers: { 'X-API-Key': key }, credentials: 'omit' });
   } catch {
@@ -137,13 +146,16 @@ export async function search(key, era, q, fresh = false) {
   if (res.status === 401 || res.status === 403) throw new SearchError('Key rejected: paste a valid one', true);
   if (res.status === 429) throw new SearchError('Too many requests: try in a minute');
   if (!res.ok) throw new SearchError(`uma.moe error ${res.status}`);
-  let body;
+  // biome-ignore lint/suspicious/noExplicitAny: uma.moe's JSON, read defensively: items kept only with an inheritance id, counts coerced (`+x || ...`)
+  let body: any;
   try {
     body = await res.json();
   } catch {
     throw new SearchError('Unreadable answer');
   }
-  const items = Array.isArray(body?.items) ? body.items.filter((x) => x?.inheritance?.inheritance_id) : [];
+  const items = Array.isArray(body?.items)
+    ? body.items.filter((x: Partial<UmamoeListing> | null) => x?.inheritance?.inheritance_id)
+    : [];
   const answer = { items, total: +body?.total || items.length, pages: +body?.total_pages || 1 },
     at = Date.now();
   storeCache(id, { at, answer });

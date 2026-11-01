@@ -96,7 +96,7 @@ import { Results, SavesPopup } from './view/Options.tsx';
 import { PoolBody, PoolHead } from './view/Pool.tsx';
 import { poolTab, inTab, openPool, poolClosed, selected } from './view/poolState.ts';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
-import { searchCaveat } from '../proofs.mjs';
+import { searchCaveat } from '../proofs.ts';
 import { must } from '../must.ts';
 import type { Status } from './state.ts';
 import type { CareerSearch } from './job.js';

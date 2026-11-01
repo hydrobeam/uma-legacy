@@ -1,28 +1,46 @@
 // A roll: a random result of a career (the veteran it leaves), drawn from the solver's report of it. No page state:
 // each function takes the report, what it reads of the settings and data (`RollSetup`) and the random source (`rnd`,
 // Math.random on the page; the browser suite's `career` group passes a seeded one and runs these in node).
-import { drawPink } from '../pink.mjs';
+import { must } from '../must.ts';
+import { drawPink } from '../pink.ts';
+import type { DeepReadonly } from '../store.ts';
+import type { CareerReport } from './job.js';
 
-/**
- * What a roll reads besides the career's report.
- * @typedef {object} RollSetup
- * @property {{races: string[], uniques?: Object<number, unknown>}} career  the career tables (data.js `careerTables()`): the G1
- *   races by index, the outfits with a unique skill
- * @property {readonly {group: number}[]} targets  the target skills, in the job's order (the outcome sets' bit order)
- * @property {string} rank  the rank band's star mix: the chances of 1, 2 and 3 stars, comma-separated
- *
- * A roll: the sparks she landed (skill group -> stars), the skills she bought (group -> 'gold' | 'white'), the G1s she
+/** What a roll reads besides the career's report. */
+export interface RollSetup {
+  /** the career tables (data.js `careerTables()`): the G1 races by index, the outfits with a unique skill */
+  career: { races: readonly string[]; uniques?: Readonly<Record<number, unknown>> };
+  /** the target skills, in the job's order (the outcome sets' bit order) */
+  targets: readonly { group: number }[];
+  /** the rank band's star mix: the chances of 1, 2 and 3 stars, comma-separated */
+  rank: string;
+}
+/** A roll: the sparks she landed (skill group -> stars), the skills she bought (group -> 'gold' | 'white'), the G1s she
  * won (race indices, ascending), her pink spark and end grades (pink.mjs), her blue (stat -> stars) and unique (outfit
- * -> stars) sparks.
- * @typedef {{sparks: Object<number, number>, bought: Object<number, string>, wins: number[], pinks: Object<number,
- *   number>, apt: number[]|null, blues: Object<number, number>, greens: Object<number, number>}} Roll
- * (`r`, below: the career's report, career/job.js `CareerReport`)
- */
+ * -> stars) sparks. */
+export interface Roll {
+  sparks: Record<number, number>;
+  bought: Record<number, string>;
+  wins: number[];
+  pinks: Record<number, number>;
+  apt: number[] | null;
+  blues: Record<number, number>;
+  greens: Record<number, number>;
+}
+/** `r`, below: the career's report (career/job.js `CareerReport`), read only */
+type Report = DeepReadonly<CareerReport>;
+/** a G1 she runs: its index in the career tables' races, its name, the chance she wins it at least once, her turns */
+export interface RaceChance {
+  ix: number;
+  name: string;
+  p: number;
+  turns: number[];
+}
 
 // the G1s she runs (`races`: the career tables' race names, by index), each with p, the chance she wins it at least
 // once, and the turns she runs it at
-export function scheduledRaces(r, races) {
-  const byIndex = new Map();
+export function scheduledRaces(r: Pick<Report, 'schedule'>, races: readonly string[]): RaceChance[] {
+  const byIndex = new Map<number, RaceChance>();
   for (const w of (r.schedule || []).filter((w) => w.run !== false)) {
     const ix = races.indexOf(w.name || w.race);
     if (ix < 0) continue;
@@ -33,7 +51,8 @@ export function scheduledRaces(r, races) {
     byIndex.set(ix, {
       ix,
       name: w.name || w.race,
-      p: 1 - (1 - (prev?.p || 0)) * (1 - w.p),
+      // (a row she runs has its chance: schedule.rs makes it null only on a skipped row, filtered out above)
+      p: 1 - (1 - (prev?.p || 0)) * (1 - must(w.p, 'the win chance of a race she runs')),
       turns: [...(prev?.turns || []), w.turn],
     });
   }
@@ -42,8 +61,12 @@ export function scheduledRaces(r, races) {
 // the skills she bought in a roll, given the sparks it landed (the report's per-target buying and landing chances):
 // a landed one is bought, gold with chance land_gold / land; one that didn't land was bought anyway with chance
 // (buy - land) / (1 - land), gold with chance (gold - land_gold) / (buy - land)
-export function rolledBought(r, sparks, rnd = Math.random) {
-  const bought = {};
+export function rolledBought(
+  r: Report,
+  sparks: Readonly<Record<number, number>>,
+  rnd: () => number = Math.random,
+): Record<number, string> {
+  const bought: Record<number, string> = {};
   for (const t of r.targets) {
     const b = t.buy;
     if (!b) continue;
@@ -58,7 +81,7 @@ export function rolledBought(r, sparks, rnd = Math.random) {
   return bought;
 }
 // a spark's stars, drawn from the rank band's star mix (`rank`: the chances of 1, 2 and 3 stars)
-export function starDraw(rank, rnd = Math.random) {
+export function starDraw(rank: string, rnd: () => number = Math.random): () => number {
   const mix = rank.split(',').map(Number);
   return () => {
     const u = rnd();
@@ -67,10 +90,9 @@ export function starDraw(rank, rnd = Math.random) {
 }
 // a random result of this career: the set of landed targets drawn from its exact odds, each spark's stars from the rank,
 // each G1 she runs won with its chance (it differs every time; the career's first showing is one of these too)
-/** @type {(r: any, setup: RollSetup, rnd?: () => number) => Roll} */
-export function rolledOutcome(r, setup, rnd = Math.random) {
+export function rolledOutcome(r: Report, setup: RollSetup, rnd: () => number = Math.random): Roll {
   const star = starDraw(setup.rank, rnd);
-  const sparks = {};
+  const sparks: Record<number, number> = {};
   if (Array.isArray(r.outcome_sets)) {
     // the landed set (a mask over the targets) drawn by its chance; the last if rounding leaves u past them all
     const u = rnd();
@@ -102,12 +124,15 @@ export function rolledOutcome(r, setup, rnd = Math.random) {
 // stats); its stars follow that stat's value, which the model doesn't have: the rank band's star mix stands in. Her unique
 // (green) spark: always (GameTora: guaranteed for an outfit at 3 stars or more; the page assumes yours are), stars by the
 // rank band (hakuraku: as white sparks, not by the skill's level)
-/** @type {(r: any, setup: RollSetup, rnd?: () => number) => Pick<Roll, 'blues' | 'greens'>} */
-export function rolledBlueGreen(r, setup, rnd = Math.random) {
+export function rolledBlueGreen(
+  r: Report,
+  setup: RollSetup,
+  rnd: () => number = Math.random,
+): Pick<Roll, 'blues' | 'greens'> {
   const star = starDraw(setup.rank, rnd);
   const blues = { [1 + Math.min(4, Math.floor(rnd() * 5))]: star() };
   const out = r.trainee.outfits[0]?.id,
-    greens = {};
+    greens: Record<number, number> = {};
   if (out && setup.career.uniques?.[out]) greens[out] = star();
   return { blues, greens };
 }

@@ -12,7 +12,13 @@ import { setVTab } from './view/poolState.ts';
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a
 // search outside the page); Import takes the file back
 const EXPORT_APP = 'uma-legacy-veterans';
-export function exportVets() {
+/** the page's own export, as far as Import reads it before it checks each veteran (`isVeteran`) */
+interface OwnExport {
+  app: string;
+  era?: string;
+  veterans: { src?: unknown }[];
+}
+export function exportVets(): void {
   // (settings that make no job: the export carries none; a bug building it is reported, and the veterans still export)
   const job = orNull(() => buildJob(settings.value), Blocked);
   // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
@@ -31,12 +37,12 @@ export function exportVets() {
   $dialog('vx-dlg').showModal();
 }
 // Copy: the clipboard API, else select the text and the old copy command, else leave it selected for Ctrl+C
-export function copyExport() {
+export function copyExport(): void {
   const t = $textarea('vx-text'),
-    msg = (m) => {
+    msg = (m: string) => {
       $('vx-msg').textContent = m;
     };
-  const fallback = (why) => {
+  const fallback = (why: string) => {
     t.focus();
     t.select();
     let ok = false;
@@ -56,7 +62,7 @@ export function copyExport() {
     (e) => fallback(e?.message || 'clipboard refused'),
   );
 }
-export function downloadExport() {
+export function downloadExport(): void {
   const url = URL.createObjectURL(new Blob([$textarea('vx-text').value], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;
@@ -67,7 +73,7 @@ export function downloadExport() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   $('vx-msg').textContent = 'Downloaded.';
 }
-function ownExport(text) {
+function ownExport(text: string): OwnExport | null {
   try {
     const o = JSON.parse(text);
     return o && o.app === EXPORT_APP && Array.isArray(o.veterans) ? o : null;
@@ -75,7 +81,7 @@ function ownExport(text) {
     return null;
   }
 }
-export function importText(text) {
+export function importText(text: string): boolean {
   const own = ownExport(text);
   if (own) {
     if (own.era && own.era !== ERA) {
@@ -112,8 +118,8 @@ export function importText(text) {
   }
   try {
     const r = importVets(parseExport(text)),
-      counted = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`,
-      said = [];
+      counted = (k: number, word: string) => `${k} ${word}${k === 1 ? '' : 's'}`,
+      said: string[] = [];
     if (r.added || r.updated)
       said.push(
         `Imported ${counted(r.added + r.updated, 'veteran')} of yours: ${[r.added && `${r.added} new`, r.updated && `${r.updated} already here, updated`].filter(Boolean).join(', ')}`,
@@ -126,7 +132,8 @@ export function importText(text) {
     $('v-msg').textContent = `${said.join('; ')}.`;
     return true;
   } catch (e) {
-    $('v-msg').textContent = e.message;
+    // (parseExport throws an Error with the page's message)
+    $('v-msg').textContent = (e as Error).message;
     return false;
   }
 }

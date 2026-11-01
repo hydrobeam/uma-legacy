@@ -4,7 +4,7 @@
 import { Fragment } from 'preact';
 import { signal } from '@preact/signals-core';
 import { Runner } from '../../ui/Images.tsx';
-import { planCaveat } from '../../proofs.mjs';
+import { planCaveat } from '../../proofs.ts';
 import { answer, runView } from '../state.ts';
 
 const clock = signal(0);
