@@ -22,17 +22,21 @@ import { stateLoad, stateSave, stateDrop } from './statestore.js';
  * @property {boolean} [background] a job an edit lets finish (the career plan's check, one short variant a job; the
  *   state store, `engineSaveState`): `engineBusy` leaves it out, so the worker and what it keeps stay
  */
+/** @type {Worker | null} */
 let worker = null,
+  /** @type {Promise<void> | null} */
   ready = null,
   lastJobId = 0;
 /** @type {Map<number, PendingJob>} */
 const pending = new Map();
 // The wasm (ASSETS.wasm, fingerprinted next to the page) is fetched and compiled once here and the compiled module handed to every
 // worker, so a restart skips fetching and compiling it.
+/** @type {Promise<WebAssembly.Module> | null} */
 let wasmModule = null,
   engineGen = 0; // engineGen: a kill during the compile wait cancels that start
 const eraKey = () => (ERA === 'gm' ? 'gm' : 'global');
 // the solver's data for the active era (its own file, preloaded by the page head)
+/** @type {Promise<string> | null} */
 let engineData = null;
 function eraEngineData() {
   if (!engineData) {
@@ -69,6 +73,7 @@ export const engineBusy = () => waiting > 0 || [...pending.values()].some((job) 
 // foreground jobs waiting for the worker to start and restore (`run`): busy too, and a kill drops them
 let waiting = 0;
 // the next kill (`killEngine`): a job in flight then never answers, so a background job's caller waits on this too
+/** @type {{promise: Promise<unknown>, resolve: (value?: unknown) => void} | null} */
 let nextKillAt = null;
 export function nextKill() {
   if (!nextKillAt) {

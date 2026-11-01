@@ -41,6 +41,7 @@ import {
 // the same job a run sends once she is added (keys sorted, the comparison's flag aside), so Add to veterans takes it as
 // it is instead of planning again (the solver is deterministic for its job). A plan under today's fit is never kept
 // here: its job carries `next.fit`, which a run's does not
+/** @type {{key: string, r: PlanReport, ms: number} | null} */
 let planKept = null;
 
 /**
@@ -77,7 +78,8 @@ let planKept = null;
 /** @type {Simulation} */
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
 let simulationId = 0; // the comparison under way; a newer one (or a run) makes it stale
-let baselineCache = null; // {key: baseKey(job), result}: today's best career, the comparisons' baseline
+/** @type {{key: string, result: CareerReport} | null} key: baseKey(job); result: today's best career, the comparisons' baseline */
+let baselineCache = null;
 
 // ---------- the transitions the run machine (career.js) makes
 // a new run: the comparison under way, if any, is stale (its answer is ignored)
@@ -171,6 +173,11 @@ function openDraftWins(d, r) {
   }); // the button was redrawn by the edits
 }
 // a career as portraits: trainee (outfit), then her two parents; parents: [{chara, outfit, label, her}]
+/**
+ * @param {number} tid @param {number | undefined} outfit
+ * @param {{chara: number | null, outfit?: number, label: string, her?: boolean}[]} parents
+ * @param {string | null} [outfitLabel]
+ */
 function facesEl(tid, outfit, parents, outfitLabel = null) {
   const box = el('span', 'cfaces');
   const t = el('span', 'cface tr');
@@ -246,7 +253,8 @@ async function quickCompare(request) {
   simulation.provisional = false;
   simulation.standing = false;
   renderSimulation();
-  let y = null; // the roll's saving (careers), from the plan's routes (`rollReq`)
+  /** @type {number | null} the roll's saving (careers), from the plan's routes (`rollReq`) */
+  let y = null;
   // her legacy index is after every veteran's
   const base = comparisonJob(),
     legaciesWithHer = [...base.legacies, draftJob(simulation.draft)],
@@ -373,6 +381,7 @@ function savedWhere({ planNow, planWithHer, pickA, samePick, herIndex }) {
   // the route's steps: [the uma of the step, its careers]
   /** @type {(v: NonNullable<PlanReport['v0_plan']>) => [string|null, number][]} */
   const steps = (v) => [v.a, v.b, v.c].map((trainee, i) => [trainee, v.careers[i]]);
+  /** @type {string | null} */
   let best = null,
     gain = 0;
   if (sameTrio) {

@@ -5,6 +5,7 @@
 const DB_NAME = 'llp-solver',
   STORE = 'state',
   ANSWER = 'answer';
+/** @type {Promise<IDBDatabase> | null} */
 let opening = null; // the open database (a promise); a failed open is forgotten, so the next use tries again
 // An open that can't finish (an upgrade waiting on another tab that holds an older version open) gives up after
 // OPEN_MS: the page then plans without stored work rather than wait. Our own connection closes when a newer page asks to

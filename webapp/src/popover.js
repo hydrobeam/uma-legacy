@@ -15,6 +15,7 @@ pop.hidden = true;
 pop.setAttribute('role', 'dialog');
 pop.tabIndex = -1;
 document.getElementById('rcol').appendChild(pop);
+/** @type {HTMLElement | null} */
 let popFor = null; // the card or name button whose panel is open
 export const popHasFocus = () => !pop.hidden && pop.contains(document.activeElement);
 export function closePop() {

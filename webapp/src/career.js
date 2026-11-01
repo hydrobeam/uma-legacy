@@ -100,6 +100,10 @@ export const btn = (label, cls, fn) => {
 // phase at work; the answer (career, tree places, veteran analysis) is drawn once, when the run ends. Until then the
 // previous answer stays on screen, dimmed, its actions off. The run machine's state is this one record, written only by
 // the functions that drive a run (`schedule`, `search`, `planPhase`, `endRun`); everything else reads it.
+/**
+ * @type {{id: number, searching: boolean, started: boolean, phase: 'search' | 'plan', phaseStart: number, lead: string,
+ *   progress: string, inflight: string | null, tick: number | null, timer: number | null}}
+ */
 export const run = {
   id: 0, // the run under way or last made; a newer edit's run makes an older one's work stale
   searching: false, // a run is at work (from the edit, through its pause, to its answer)
@@ -444,6 +448,7 @@ function schedule() {
   // an edit that leaves the job as it is (a preset saved or renamed, a setting changed and back) asks for the answer
   // already coming or on show: a run under way goes on, and an answer on show stands (with her comparison, if one is
   // running); a job that can't be built (`Blocked`) goes on as any other edit
+  /** @type {string | null} */
   let key = null;
   try {
     key = runKey(buildJob());
@@ -1086,7 +1091,9 @@ function familyEl(k, r) {
 // the node popup (game style): one dialog, refilled on every redraw while open
 // nodeOpen, the node on show: {kind: 't'} the trainee, {kind: 'p', k} parent place k, {kind: 'g', k, j} parent k's
 // parent j, {kind: 'v', id} a veteran of the pool
+/** @typedef {{kind: 't' | 'p' | 'g' | 'v', k?: number, j?: number, id?: string}} NodeSpec */
 let nodeDlg = null,
+  /** @type {NodeSpec | null} */
   nodeOpen = null;
 // the data-k of the tree's (or the pool's) button for a node
 const nodeKey = (spec) =>
@@ -1925,6 +1932,7 @@ function initVSort() {
 function renderPool() {
   // the first veterans arriving fold the setup (as a reload with veterans does), unless you folded or opened it
   if (!folded && vets.length) {
+    /** @type {string | null} */
     let chosen = null;
     try {
       chosen = localStorage.getItem('llp:setup-folded');
@@ -2151,6 +2159,7 @@ function initFold() {
 // search outside the page); Import takes the file back
 const EXPORT_APP = 'uma-legacy-veterans';
 function exportVets() {
+  /** @type {CareerJob | null} */
   let job = null;
   try {
     job = buildJob();

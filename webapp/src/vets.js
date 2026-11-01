@@ -168,6 +168,7 @@ for (const d of document.querySelectorAll('dialog')) {
   for (const b of d.querySelectorAll('.dclose')) b.onclick = () => d.close();
 }
 // the uma picker: every uma (or those `only` lets through), filterable; onPick(chara id)
+/** @type {((chara: number) => void) | null} */
 let onUmaPicked = null;
 /** @param {string} title @param {(chara: number) => void} onPick @param {((u: import('./data.js').Uma) => boolean)|null} [only] */
 export function openUmaPicker(title, onPick, only = null) {
@@ -257,6 +258,7 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
 // the page searches again when the dialog closes. opts (the veteran analysis' draft): {offer, info, onEdit, onClose}
 // (see winsAgenda). nd.winAt {race index: turn} is where a win shows, for display only (the solver reads nd.wins).
 const allRaces = () => CAREER.races.map((name, ix) => ({ ix, name, turns: (CAREER.race_turns || [])[ix] || [] }));
+/** @type {(() => void) | null} */
 let winsClose = null;
 export function openWins(nd, who, opts = {}) {
   const opener = /** @type {HTMLElement} */ (document.activeElement);
@@ -303,6 +305,7 @@ $dialog('wins-dlg').addEventListener('close', () => {
 // "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink and unique
 // sparks have bars of their own, each opening a picker)
 const pop = $('add-pop');
+/** @type {HTMLElement | null} */
 let popFor = null;
 function closeAdd() {
   pop.hidden = true;
@@ -897,6 +900,7 @@ export function dropMissing() {
   plan.parents = plan.parents.map((id) => (id && vetById(id) ? id : null));
 }
 // legaciesJob returns the same array until the next edit (`rev`): callers don't change it
+/** @type {JobLegacy[] | null} */
 let legaciesCache = null,
   legaciesRev = -1;
 /**

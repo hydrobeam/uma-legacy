@@ -26,10 +26,13 @@ let searching = false,
 // 'check': the fast result is on screen and the exact check is running
 let phase = 'search';
 // the result on screen: its job's key, its loops and decks (JSON), whether it is the precomputed example
+/** @type {{key: string | null, r: string | null, example: boolean}} */
 let shown = { key: null, r: null, example: false };
 // the finished search of the result on show: its job's key and its status line (an automatic search of the same job
 // shows that again instead of running)
+/** @type {string | null} */
 let doneKey = null,
+  /** @type {import('./state.js').Status | null} */
   doneStatus = null;
 // The status line heading the results (and its copy in the phone's floating button): while a search runs, its time and
 // a Stop button; otherwise ui.status (state.js Status). Whenever the results on screen are not those of the current

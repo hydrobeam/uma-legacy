@@ -242,7 +242,8 @@ function agendaGrid(fill) {
  *   schedule: its turn and its schedule cell with the win odds; `parent`: a parent won it too
  * @property {() => void} onEdit  after every change
  */
-let menuOpen = null; // {menu, opener}: one menu at a time
+/** @type {{menu: HTMLElement, opener: HTMLElement} | null} */
+let menuOpen = null; // one menu at a time
 function closeMenu(refocus) {
   if (!menuOpen) return;
   const { menu, opener } = menuOpen;
@@ -253,7 +254,7 @@ function closeMenu(refocus) {
 }
 document.addEventListener(
   'pointerdown',
-  (e) => {
+  (/** @type {TargetedEvent<Node, PointerEvent>} */ e) => {
     if (menuOpen && !menuOpen.menu.contains(e.target) && !menuOpen.opener.contains(e.target)) closeMenu(false);
   },
   true,
@@ -360,6 +361,7 @@ export function winsAgenda(opts) {
     return p;
   }
   // redraw the calendar; focusKey: the control (data-k) to focus afterwards
+  /** @param {string | null} [focusKey] */
   function draw(focusKey = null) {
     closeMenu(false);
     const { byTurn, offCalendar } = layout(),

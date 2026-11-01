@@ -26,6 +26,7 @@ export function gradeEl(g) {
 // trainee; setRunnerFrom: one of the loop's umas at random, kept while the loop on show has her); before either, a random
 // uma with a strip. Her strip is fetched as soon as she is picked, so she is drawn when the next search shows her; a
 // build without strips keeps the spinner. The negative delay keeps her stride when a status line is redrawn.
+/** @type {number | null} */
 let runner = null;
 const RUN_CYCLE_MS = 600; // one loop of the strip (the CSS animation's duration)
 const hasRun = (id) => SHIPPED.has(`run:${id}`);

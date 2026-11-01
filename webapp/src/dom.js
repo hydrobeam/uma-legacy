@@ -1,6 +1,7 @@
 // DOM shorthands the page modules share.
+// (a literal id is on the page: test/static.mjs checks every one against the templates of the pages that run the module)
 /** @type {(id: string) => HTMLElement} */
-export const $ = (id) => document.getElementById(id);
+export const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
 // the same lookup for an element whose kind the caller knows (a dialog, a text or check box, a text area): no check is
 // made, the type only tells the type checker which properties it has
 /** @type {(id: string) => HTMLDialogElement} */

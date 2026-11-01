@@ -117,6 +117,7 @@ function renderList(msg = '') {
 }
 
 // a preset's skills as the editor's tiles; Rename opens its name for editing, Close
+/** @type {{name: string, groups: number[]} | null} */
 let viewing = null;
 function openView(p) {
   viewing = p;
