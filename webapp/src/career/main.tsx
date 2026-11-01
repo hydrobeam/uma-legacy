@@ -19,10 +19,10 @@
 //   view/NodeDialog.tsx  the tree's node popup, and the veterans dialog's pane (VeteranView)
 //   view/ParentPicker.tsx  the parent picker
 //   view/Sections.tsx  the career's sections in the tree: odds, deck and its popup, schedule, targets, counts
-//   view/Setup.tsx     the Borrowed parent choice
+//   view/Setup.tsx     the Borrowed parent choice, and the setup panel's fold and summary
 //   view/dialogs.ts    which popup is open, for what (the el() modules open them through it)
 //   view/Results.js    the results column (the options table, Try a run: el(), steps 9 and 11)
-//   view/Pool.js       the veterans dialog, and the setup panel's fold (el(), step 10)
+//   view/Pool.tsx      the veterans dialog: its tabs, lists and the pane beside them
 //   view/parts.js      small parts the el() views share
 import '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
@@ -49,7 +49,7 @@ import { initTargets, renderTargets } from '../targets.js';
 import { vets, places, persist, flushPersist, clearVets, dropMissing, handBackPlaces } from '../veterans/store.ts';
 import { winsOpen } from '../veterans/pickers.js';
 import { setRunner } from '../images.js';
-import { initUmamoe, syncListings } from '../umamoesetup.js';
+import { initUmamoe, syncListings, umamoeButton } from '../umamoesetup.js';
 import { Boundary } from '../ui/Boundary.tsx';
 import { placesKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown, runJob } from './job.js';
 import { outdateComparison, stopComparison, showAnalysis, clearAnalysis, keepBaseline } from './analysis.js';
@@ -59,13 +59,14 @@ import { createRun } from './run.ts';
 import { tName } from './view/parts.js';
 import { RunNote, tickNote } from './view/RunNote.tsx';
 import { Tree, Verdict } from './view/Tree.tsx';
-import { NodeDialog, VetPane } from './view/NodeDialog.tsx';
+import { NodeDialog } from './view/NodeDialog.tsx';
 import { ParentPicker } from './view/ParentPicker.tsx';
 import { DeckDialog, drawnCard } from './view/Sections.tsx';
-import { BorrowChoice } from './view/Setup.tsx';
+import { BorrowChoice, SetupSummary, initFold } from './view/Setup.tsx';
 import { openNode } from './view/dialogs.ts';
 import { renderResults } from './view/Results.js';
-import { vTab, poolStale, inTab, setVTab, initVSort, renderPool, drawPool, paintFold, initFold } from './view/Pool.js';
+import { PoolBody, PoolTabs, initVSort } from './view/Pool.tsx';
+import { poolTab, inTab, openPool } from './view/poolState.ts';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
 import { searchCaveat } from '../proofs.mjs';
 import { must } from '../must.ts';
@@ -147,11 +148,11 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
 }
-// the views still built with el() after a change: the results column (steps 9, 11) and the pool (step 10); the
+// the views still built with el() after a change: the results column (steps 9, 11) and uma.moe's button (step 11); the
 // components follow their signals
 function drawUnported() {
   renderResults();
-  renderPool();
+  umamoeButton();
 }
 // ---------- the views: each component into its mount point, behind an error boundary ----------
 const mount = (id: string, view: VNode) => render(<Boundary>{view}</Boundary>, $(id));
@@ -203,6 +204,7 @@ function initSettings() {
   enginePersist(); // the solver's kept work survives a page reload
   initSetup();
   initFold();
+  mount('set-sum', <SetupSummary />);
   // a change of setup (targets, umas, cards, scenario, rank, Borrowed parent): the tree shows the new targets, and the
   // search runs again
   on([jobSetup], () => {
@@ -211,7 +213,6 @@ function initSettings() {
     syncListings(); // a changed target set: its listings (kept, or one request)
     run.schedule();
     drawUnported();
-    paintFold();
   });
 }
 // ---------- start ----------
@@ -277,30 +278,26 @@ loadData().then(
       if (importText($textarea('paste-text').value)) $dialog('paste-dlg').close();
     };
     $('v-toggle').onclick = () => {
-      if (poolStale) drawPool();
+      openPool();
       $dialog('set-vets').showModal();
     };
-    // however the dialog opens, its cards are drawn before it paints (a mutation callback runs before the next frame)
-    new MutationObserver(() => {
-      if ($dialog('set-vets').open && poolStale) drawPool();
-    }).observe($dialog('set-vets'), { attributes: true, attributeFilter: ['open'] });
     $('v-clear').onclick = () => {
       // the open tab's veterans
       // (uma.moe's listings stay, unless one is a chosen parent: they are its answer for the targets, not yours)
       const parents = places.value.parents,
         gone = (v: (typeof vets.value)[number]) => inTab(v) && (v.src !== 'umamoe' || parents.includes(v.id)),
         n = vets.value.filter(gone).length,
-        what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
+        what = poolTab.peek() === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
       if (n && confirm(`Remove all ${what}?`)) {
         clearVets(gone);
         $('v-msg').textContent = `Removed ${what}.`;
       }
     };
-    for (const x of ['own', 'bor']) $(`v-tab-${x}`).onclick = () => setVTab(x);
     initVSort();
     mount('tree', <Tree />);
     mount('lodds', <Verdict />);
-    mount('v-pane', <VetPane />);
+    mount('v-tabs', <PoolTabs />);
+    mount('v-body', <PoolBody />);
     mount('node-root', <NodeDialog />);
     mount('deck-root', <DeckDialog />);
     mount('vpick-root', <ParentPicker />);

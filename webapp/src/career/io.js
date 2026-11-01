@@ -7,7 +7,7 @@ import { umaName } from '../veterans/names.js';
 import { parseExport, parseTree } from '../umadump.js';
 import { orNull } from '../must.ts';
 import { Blocked, buildJob } from './job.js';
-import { setVTab } from './view/Pool.js';
+import { setVTab } from './view/poolState.ts';
 
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a
 // search outside the page); Import takes the file back

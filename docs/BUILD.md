@@ -190,9 +190,10 @@ result wherever the plan is kept. The veterans and the next career's places are 
 build the next record copy-on-write (an edited veteran is a new record, the others stay the same objects), save it (once
 after the next frame, at once while the page is hidden), then assign it, and its editors address a node by where it is
 (a veteran's id, her parent's place), never by an object they hold. Views are Preact components that read the stores through @preact/signals: the loop
-page's, and the career page's status line, tree, node popup, parent picker and deck popup, each rendered by its page's
-entry into the template's mount points; the rest (the career page's results column and veterans pool among them)
-still build their markup with `el()` and `innerHTML`, and the entry draws them again after a change. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
+page's, and the career page's status line, tree, node popup, parent picker, deck popup, veterans dialog (its two tab
+lists both kept mounted, a card drawn again only when her record changes) and setup summary, each rendered by its
+page's entry into the template's mount points; the rest (the career page's results column among them) still build
+their markup with `el()` and `innerHTML`, and the entry draws them again after a change. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
 machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import no component, and only a
 component's own module looks into what it draws (`test/static.mjs`).
 

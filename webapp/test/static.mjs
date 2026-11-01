@@ -259,7 +259,9 @@ const MOUNTS = {
         .concat(['tgcb', 'tgck', 'tgavg']),
     ],
     ['bp', 'src/career/view/Setup.tsx', [], []],
-    ['v-pane', 'src/career/view/NodeDialog.tsx', [], ['vptitle', 'vctl', 'vpars']],
+    ['set-sum', 'src/career/view/Setup.tsx', [], ['sumkv', 'sumk']],
+    ['v-tabs', 'src/career/view/Pool.tsx', ['v-tab-own', 'v-tab-bor'], []],
+    ['v-body', 'src/career/view/Pool.tsx', ['vets', 'v-pane'], ['umcell', 'vsec', 'vptitle', 'vctl', 'vpars']],
     [
       'node-root',
       'src/career/view/NodeDialog.tsx',
@@ -495,6 +497,7 @@ const LAYERS = [
       'career/view/Sections',
       'career/view/Results',
       'career/view/Pool',
+      'career/view/poolState',
       'career/view/Setup',
     ],
   ],

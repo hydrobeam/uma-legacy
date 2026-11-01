@@ -18,7 +18,7 @@ import { AffTable } from '../../ui/AffTable.tsx';
 import { InspView } from '../../ui/InspView.tsx';
 import { idxOf, shown, parentAt, listed } from '../job.js';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
-import { nodeOpen, nodeClosed, openParentPicker, closeNode, paneVet } from './dialogs.ts';
+import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts';
 import type { NodeSpec } from './dialogs.ts';
 
 /** a button of the page's look (parts.js `btn`) */
@@ -242,10 +242,8 @@ export function VeteranView({ id }: { id: string }) {
     </>
   );
 }
-/** the pane beside the pool's list (wide): the veteran chosen there (dialogs.ts `paneVet`) */
-export function VetPane() {
-  const id = paneVet.value;
-  if (!id) return null;
+/** the pane beside the pool's list (wide): the veteran chosen there (Pool.tsx) */
+export function VetPane({ id }: { id: string }) {
   return (
     <>
       <h4 class="vptitle">{veteranTitle(id)}</h4>
