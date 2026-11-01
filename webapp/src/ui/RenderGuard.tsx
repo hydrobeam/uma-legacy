@@ -18,6 +18,8 @@ interface GuardProps {
   what?: string;
   /** shown in the view's place while it cannot be drawn */
   fallback?: ComponentChildren;
+  /** what a failure gives up (a popup's request: nothing then waits on a popup that is gone) */
+  onFail?: () => void;
   children: ComponentChildren;
 }
 // the page's status line, told of a view that could not be drawn (each entry sets it once, before its first render)
@@ -27,13 +29,14 @@ export function sayRenderErrors(on: (text: string) => void) {
   say = on;
 }
 const NOT_FAILED = Symbol('not failed');
-export function RenderGuard({ input, what, fallback = null, children }: GuardProps) {
+export function RenderGuard({ input, what, fallback = null, onFail, children }: GuardProps) {
   // the record it failed on: a new one (the store replaced it) is tried again
   const failedOn = useRef<unknown>(NOT_FAILED);
   const [error] = useErrorBoundary((thrown: unknown) => {
     failedOn.current = input.peek();
     reportError(thrown);
     if (what) say?.(`${what} could not be drawn: ${errorText(thrown)}`);
+    onFail?.();
   });
   return error && input.value === failedOn.current ? fallback : children;
 }

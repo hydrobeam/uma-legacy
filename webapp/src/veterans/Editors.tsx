@@ -8,6 +8,7 @@ import type { Ref } from 'preact';
 import { gameData } from '../data.js';
 import type { Uma } from '../data.js';
 import { Dialog } from '../ui/Dialog.tsx';
+import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { WinsEditor } from '../ui/Agenda.tsx';
 import { useDropdown } from '../ui/SortMenu.tsx';
@@ -32,14 +33,24 @@ import {
 } from './pickers.js';
 import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.js';
 
-/** the editors' dialogs (their requests read here, so one render opens one and closes another in this order) */
+/** the editors' dialogs (their requests read here, so one render opens one and closes another in this order), each
+ *  in a render guard of its own: one that throws is gone, says so on the status line, and gives up its request (a
+ *  search held for it runs), while the others still draw */
 export function VetEditors() {
   return (
     <>
-      <UmaPicker pick={umaPicking.value} />
-      <AskSkills asked={skillsAsked.value} />
-      <WinsDialog edit={winsEditing.value} />
-      <ColourDialog edit={colourEditing.value} />
+      <RenderGuard input={umaPicking} what="The uma picker" onFail={umaPickClosed}>
+        <UmaPicker pick={umaPicking.value} />
+      </RenderGuard>
+      <RenderGuard input={skillsAsked} what="The skills prompt" onFail={askClosed}>
+        <AskSkills asked={skillsAsked.value} />
+      </RenderGuard>
+      <RenderGuard input={winsEditing} what="The G1 wins window" onFail={winsClosed}>
+        <WinsDialog edit={winsEditing.value} />
+      </RenderGuard>
+      <RenderGuard input={colourEditing} what="The colour picker" onFail={colourClosed}>
+        <ColourDialog edit={colourEditing.value} />
+      </RenderGuard>
     </>
   );
 }
@@ -121,25 +132,26 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
   useLayoutEffect(() => {
     if (asked?.open) first.current?.focus();
   }, [asked]);
-  const n = targetGroups().length;
+  const n = targetGroups().length,
+    shown = asked?.open ? asked : null; // (closed, it draws nothing of the last question)
   const choices = [
     { label: 'No skills', sparks: () => ({}), primary: true },
     { label: `All ${n} at 2★`, sparks: () => allTargetsAt(2) },
     { label: `All ${n} at 3★`, sparks: () => allTargetsAt(3) },
     { label: `All ${n} at 1★`, sparks: () => allTargetsAt(1) },
-    ...(asked?.hasSparks ? [{ label: 'Keep her current skills', sparks: () => null }] : []),
+    ...(shown?.hasSparks ? [{ label: 'Keep her current skills', sparks: () => null }] : []),
   ];
   return (
     <Dialog id="ask-dlg" labelledBy="ask-title" open={!!asked?.open} onClose={askClosed}>
       <div class="dlg">
-        <h3 id="ask-title">{asked ? `Add skills to ${asked.name}?` : 'Add skills?'}</h3>
+        <h3 id="ask-title">{shown ? `Add skills to ${shown.name}?` : 'Add skills?'}</h3>
         <p id="ask-text">
-          {asked
-            ? `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them${asked.withParents ? ', and so do her own two parents: the same choice goes on them.' : '.'} You can change the stars of each afterwards.`
+          {shown
+            ? `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them${shown.withParents ? ', and so do her own two parents: the same choice goes on them.' : '.'} You can change the stars of each afterwards.`
             : ''}
         </p>
         <div class="row askrow" id="ask-btns">
-          {asked &&
+          {shown &&
             choices.map(({ label, sparks, primary }) => (
               <button
                 key={label}
@@ -167,7 +179,7 @@ function WinsDialog({ edit }: { edit: WinsEdit | null }) {
     <Dialog id="wins-dlg" labelledBy="wins-title" open={open} onClose={winsClosed}>
       <div class="dlg">
         <div class="row between dhead">
-          <h3 id="wins-title">{edit ? `G1 wins: ${edit.who}` : 'G1 wins'}</h3>
+          <h3 id="wins-title">{open && edit ? `G1 wins: ${edit.who}` : 'G1 wins'}</h3>
           <span class="num" id="wins-count">
             {nd ? winsText(nd) : ''}
           </span>

@@ -52,7 +52,8 @@ globalThis.__LLP_DATA['data-career'] = {
   blues: {},
   pinks: { 11: 'Turf', 12: 'Dirt' },
   uniques: { 30001: 'Her Own' },
-  races: [],
+  races: ['Arima Kinen'],
+  race_turns: [[47, 71]],
 };
 await loadData();
 
@@ -256,4 +257,39 @@ test('a colour bar picked keeps her spark of that colour at its stars (M6)', asy
   await settle();
   button(byId(editors, 'col-dlg'), 'Dirt').click();
   assert.deepEqual(vs.vetById('a').pinks, { 12: 3 }, 'Dirt, at 3 stars as Turf was');
+});
+
+test('a throw while the wins window or the skills prompt is open: it goes, the hold is released, a search runs (review-11b 3)', async () => {
+  const editors = document.createElement('div'),
+    reported = [];
+  globalThis.reportError = (e) => reported.push(e);
+  render(h(VetEditors, null), editors);
+  vs.editVet('a', () => ({ wins: [0], winAt: { 0: 47 } }));
+  // the page's veterans effect, with its hold (career/main.tsx)
+  let woke = 0;
+  const stop = on([vs.vets, searchHeld], (_list, held) => {
+    if (!held) woke++;
+  });
+  // her schedule says she runs it then, but gives no figures: her win's button throws inside the open window
+  openWins(vs.vetRef('a'), 'Veteran #1', { info: () => ({ turn: 47, parent: false }) });
+  await settle();
+  assert.equal(reported.length, 1, 'the throw reported');
+  assert.equal(searchHeld.peek(), false, 'the window gone, the hold released');
+  assert.equal(woke, 1, 'the page searches');
+  // the prompt throwing as it draws
+  const unnamed = {
+    toString: () => {
+      throw new Error('a name that cannot be drawn');
+    },
+  };
+  askSkills(unnamed, false, () => undefined);
+  await settle();
+  assert.equal(searchHeld.peek(), false, 'the prompt gone, the hold released');
+  assert.equal(woke, 2, 'the page searches');
+  // the other editors still draw
+  openWins(vs.vetRef('a'), 'Veteran #1');
+  await settle();
+  assert.equal(byId(editors, 'wins-dlg')?.open, true, 'the wins window opens again');
+  winsClosed();
+  stop();
 });

@@ -18,7 +18,18 @@ interface DialogProps {
   children: ComponentChildren;
 }
 export function Dialog({ id, cls, labelledBy, open, onClose, children }: DialogProps) {
-  const ref = useRef<HTMLDialogElement>(null);
+  const ref = useRef<HTMLDialogElement>(null),
+    // (for its unmount: the props of its last render)
+    last = useRef({ open, onClose });
+  last.current = { open, onClose };
+  // unmounted while open (a render guard's fallback took its place): it says it closed, so whoever holds `open` hears
+  // it, as from a close
+  useLayoutEffect(
+    () => () => {
+      if (last.current.open) last.current.onClose();
+    },
+    [],
+  );
   useLayoutEffect(() => {
     const dialog = must(ref.current, 'the dialog is mounted');
     if (open && !dialog.open) dialog.showModal();

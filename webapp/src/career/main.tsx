@@ -344,7 +344,7 @@ loadData().then(
     mount('node-root', <NodeDialog />, 'The node popup', nodeOpen);
     mount('deck-root', <DeckDialog />, 'The deck popup');
     mount('skill-root', <SkillDetails />, 'Skill Details');
-    mount('vet-editors', <VetEditors />, "The veterans' editors");
+    mount('vet-editors', <VetEditors />, "The veterans' editors"); // (each editor has a guard of its own)
     mount('add-pop', <AddList host={$('add-pop')} />, 'The "+" list');
     mount('results', <Results />, 'The other careers');
     mount('um-root', <UmButton />, "uma.moe's button");
