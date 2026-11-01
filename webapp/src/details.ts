@@ -60,8 +60,9 @@ export interface DeckSlot {
   choice: string;
 }
 // A deck report's cards (the solver's `PDeck::out`), in its order. The report lists the deck's cards with ids
-// (card_ids) and then the plain ones (plain_ids), in the order of `cards`; it leaves out the per-card advice lists
-// (`end_chain_at`, `choices`) where no card has any.
+// (card_ids) and then the plain ones (plain_ids, then any filler slot), in the order of `cards`. The per-card advice
+// lists (`end_chain_at`, `choices`) hold one entry per card with an id, so the plain pals and fillers after them have
+// none: no end link, no choice. (A report without the lists at all, which the type allows, reads the same.)
 export function deckCards(deck: DeepReadonly<ResultDeck>): DeckSlot[] {
   const ids = [...deck.card_ids, ...(deck.plain_ids || [])];
   const slots = deck.cards.map((named, i): DeckSlot => {

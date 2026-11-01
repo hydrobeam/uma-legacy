@@ -12,9 +12,9 @@ export interface ResultDeck {
   card_ids: number[];
   /** the cards in it that are pals, by name */
   pal_cards?: string[];
-  /** per card: the chain link to end its story at (0: none) */
+  /** per card with an id (card_ids' order): the chain link to end its story at (0: none) */
   end_chain_at?: number[];
-  /** per card: the skill to prioritise at its chain link */
+  /** per card with an id (card_ids' order): the skill to prioritise at its chain link */
   choices?: string[];
   /** per target: the chance the deck hints its white, its gold */
   odds: { group: number; white: number; gold: number }[];
