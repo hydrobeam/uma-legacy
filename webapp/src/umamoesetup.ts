@@ -25,38 +25,43 @@ import {
   fullTrainers,
   setFullTrainers,
 } from './umamoe.js';
-/** @import { ReadonlySignal } from '@preact/signals-core' */
-/** @import { VetRecord } from './veterans/store.ts' */
+import type { ReadonlySignal } from '@preact/signals-core';
+import type { UmamoeListing } from './umadump.ts';
+import type { VetRecord } from './veterans/store.ts';
 
-/**
- * The target set the pool's listings are for ('' none), the popup's status and the button's (`shown*`: the answer on
- * show's, put back when a request for another set is dropped), and what was searched.
- * @typedef {{sig: string, text: string, short: string, shownText: string, shownShort: string, min: number, n: number}} UmStatus
- */
-const status = signal(
-  /** @type {UmStatus} */ ({ sig: '', text: '', short: '', shownText: '', shownShort: '', min: 0, n: 0 }),
-);
+/** The target set the pool's listings are for ('' none), the popup's status and the button's (`shown*`: the answer on
+ *  show's, put back when a request for another set is dropped), and what was searched. */
+interface UmStatus {
+  sig: string;
+  text: string;
+  short: string;
+  shownText: string;
+  shownShort: string;
+  min: number;
+  n: number;
+}
+const status = signal<UmStatus>({ sig: '', text: '', short: '', shownText: '', shownShort: '', min: 0, n: 0 });
 /** the listings' status (the popup's line, the button's label) */
-export const umStatus = /** @type {ReadonlySignal<UmStatus>} */ (status);
+export const umStatus: ReadonlySignal<UmStatus> = status;
 const keyNow = signal(savedKey());
 /** a key is saved */
 export const hasKey = computed(() => !!keyNow.value);
 const busy = signal(false);
 /** a request is out (Refresh waits) */
-export const umBusy = /** @type {ReadonlySignal<boolean>} */ (busy);
+export const umBusy: ReadonlySignal<boolean> = busy;
 const full = signal(fullTrainers());
 /** trainers at 1,000 followers included */
-export const umFull = /** @type {ReadonlySignal<boolean>} */ (full);
+export const umFull: ReadonlySignal<boolean> = full;
 // the request under way (`asking`, for the target set `pending`): any later call that changes or keeps the listings,
 // or a forgotten key, makes it stale, so an older answer never lands over a newer one
 let asking = 0,
   pending = '';
 // (each a write: storage, then the signal)
-const keyIs = (/** @type {string} */ key) => {
+const keyIs = (key: string) => {
   saveKey(key);
   keyNow.value = key;
 };
-const statusPatch = (/** @type {Partial<UmStatus>} */ patch) => {
+const statusPatch = (patch: Partial<UmStatus>) => {
   status.value = { ...status.peek(), ...patch };
 };
 
@@ -71,15 +76,14 @@ function query() {
   return factors.length ? { factors, min: Math.max(1, factors.length - 1), page: 0, full: full.peek() } : null;
 }
 // how long ago the answer was fetched: "just now", "12 min ago", "3 h ago" (a kept answer is reused for 24 h)
-const ago = (at) => {
+const ago = (at: number): string => {
   const min = (Date.now() - at) / 60e3;
   return min < 1 ? 'just now' : min < 60 ? `${Math.round(min)} min ago` : `${Math.round(min / 60)} h ago`;
 };
 // the popup's orders, uma.moe's own: its search's order (best covered first), then by her rank, her affinity score, her
 // race wins, her white sparks' stars, the latest updated; each starts best (or latest) first, and picking the chosen one
 // again reverses it, as the umas' and cards' sort menus do; the choice is kept in this browser
-/** @type {Record<string, [string, string, (v: VetRecord) => number]>} */
-export const SORTS = {
+export const SORTS: Record<string, [string, string, (v: VetRecord) => number]> = {
   match: ['Best match', 'uma.moe’s order: the best covered first', (v) => -(order.get(v.id) ?? 1e9)],
   rank: ['Rank', 'Her career rank', (v) => v.rank || 0],
   affinity: ['Affinity', 'Her affinity with her parents, as uma.moe scores it', (v) => v.lender?.affinity || 0],
@@ -99,9 +103,9 @@ const sort = signal(
   })(),
 );
 /** the popup's order */
-export const umSort = /** @type {ReadonlySignal<{by: string, reversed: boolean}>} */ (sort);
-/** an order picked: the one in use again reverses it; kept in this browser @param {string} k */
-export function pickUmSort(k) {
+export const umSort: ReadonlySignal<{ by: string; reversed: boolean }> = sort;
+/** an order picked: the one in use again reverses it; kept in this browser */
+export function pickUmSort(k: string): void {
   const now = sort.peek(),
     next = { by: k, reversed: k === now.by && !now.reversed };
   try {
@@ -111,8 +115,8 @@ export function pickUmSort(k) {
   }
   sort.value = next;
 }
-/** @type {Map<string, number>} each listing's place in uma.moe's answer */
-const order = new Map();
+/** each listing's place in uma.moe's answer */
+const order = new Map<string, number>();
 /** the listings in the popup's order */
 export const listings = computed(() => {
   const { by, reversed } = sort.value,
@@ -121,8 +125,10 @@ export const listings = computed(() => {
   return vets.value.filter((v) => v.src === 'umamoe').sort((x, y) => sign * (score(y) - score(x)));
 });
 
-/** @param {{items: any[], total: number, at: number}} a @param {{min: number, factors: number[][]}} q */
-function take(a, q) {
+function take(
+  a: { items: readonly UmamoeListing[]; total: number; at: number },
+  q: { min: number; factors: readonly (readonly number[])[] },
+): void {
   const listed = a.items.map(parseListing);
   order.clear();
   for (const [i, v] of listed.entries()) order.set(v.id, i);
@@ -141,8 +147,7 @@ function take(a, q) {
 }
 
 // the pool's listings for the target set as it is now: the kept answer at once, else one request (`fresh`: always one)
-/** @param {boolean} [fresh] */
-export async function syncListings(fresh = false) {
+export async function syncListings(fresh = false): Promise<void> {
   const key = keyNow.peek(),
     sig = sigOf(),
     q = query();
@@ -204,14 +209,14 @@ export async function syncListings(fresh = false) {
     }
   }
 }
-/** a key saved: its listings (kept, or one request) @param {string} key */
-export function saveUmKey(key) {
+/** a key saved: its listings (kept, or one request) */
+export function saveUmKey(key: string): void {
   if (!key) return;
   keyIs(key);
   syncListings();
 }
 /** Disconnect: the key forgotten, the listings gone */
-export function forgetUmKey() {
+export function forgetUmKey(): void {
   pending = ''; // so syncListings stales a request still out
   batch(() => {
     keyIs('');
@@ -219,8 +224,8 @@ export function forgetUmKey() {
   });
   syncListings();
 }
-/** Include max borrows: kept, and the listings for that choice @param {boolean} on */
-export function setUmFull(on) {
+/** Include max borrows: kept, and the listings for that choice */
+export function setUmFull(on: boolean): void {
   setFullTrainers(on);
   full.value = on;
   syncListings();
