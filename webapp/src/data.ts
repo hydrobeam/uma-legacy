@@ -212,7 +212,7 @@ export const SKILLICON = SKILL_ICONS.white,
   SKILLICON_GOLD = SKILL_ICONS.gold; // skill group -> icon id of its white / gold version
 export const RACEIDS: Record<string, number> = parse('data-raceids'); // race name -> race id (banner key)
 // target golds a scenario hands out in every Independent Training run (Unity Cup: No Stopping Me!, It's On!)
-export const SCEN_GOLDS = { unity: [20049, 20046] };
+export const SCEN_GOLDS: Record<string, number[]> = { unity: [20049, 20046] };
 // each scenario's training-hint base by scenario key: research/results.json's fit rounded to 3 decimals, which build.py
 // reads with pkg/loopopt/build.rs's keys and rounding, so it is the solver's hint_base
 const HINT_BASE: Record<string, number> = parse('data-hintbase');
