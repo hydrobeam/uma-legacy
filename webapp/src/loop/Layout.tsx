@@ -8,7 +8,7 @@
 // a desktop it sticks by its top when it fits the window, by its bottom when it is taller.
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { EnhButtons, EraRow, Footer } from '../ui/Shell.tsx';
+import { EnhButtons, EraRow, Footer, Ribbon } from '../ui/Shell.tsx';
 import type { Badge } from '../ui/Shell.tsx';
 import type { Era } from '../eras.ts';
 import { Button } from '../ui/Button.tsx';
@@ -99,11 +99,9 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
   const side = (
     <div class="lpside" key="side">
       <section class="rbbar" aria-labelledby="h-set">
-        <h2 class="sethdr" id="h-set">
-          Loop setup
-        </h2>
+        <Ribbon>Loop setup</Ribbon>
         <div class="setlist">
-          <EraRow era={s.era} compact onPick={s.onEra} />
+          <EraRow era={s.era} page="loop" onPick={s.onEra} />
           <div class="scendd" id="scen-dd">
             {views?.scenario}
           </div>
@@ -112,7 +110,7 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
           </div>
         </div>
         <div class="setenh">
-          <EnhButtons umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
+          <EnhButtons page="loop" umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
         </div>
         <div class="rhead" id="rhead" data-kind={s.kind}>
           <p

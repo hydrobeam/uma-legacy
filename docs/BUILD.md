@@ -182,7 +182,7 @@ since (`vite/pagedata.mjs`); the build adds only what depends on the tree it run
 with a portrait in `webapp/img/`. It writes:
 - `index.html` (the career planner, the front page; an old `/career` link redirects there), `loop.html` (`/loop`, the
   loop planner) and `about.html` (`/about`, "How this works", which holds the model text), from the pages of those names
-  in `webapp/`. Shared head and header markup lives in `webapp/partials/` (the theme script, the header's tabs), each
+  in `webapp/`. Shared head and header markup lives in `webapp/partials/` (the theme script, the header), each
   `{{> name}}` filled by `vite-plugin-handlebars`, which also fills the values a page shows (`{{version}}`, `{{site}}`,
   /about's figures; a name without a value stops the build). Everything under a planner page's header is one Preact
   root, `<div id="app">`: its layout (`src/career/Layout.tsx`, `src/loop/Layout.tsx`, which import nothing but Preact

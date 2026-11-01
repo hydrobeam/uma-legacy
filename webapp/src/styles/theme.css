@@ -95,6 +95,24 @@
   --color-yr2: #8a3c0c;
   /* the dimmed page behind a modal dialog */
   --color-backdrop: rgba(20, 20, 30, 0.45);
+  /* the header's wordmark: "uma" as the favicon's three sparkles (each letter's pale fill, its outline, its halo),
+     "-legacy" in the game's brown outlined in white, over a soft shadow */
+  --color-brand-u: #effaff;
+  --color-brand-u-edge: #28a8d8;
+  --color-brand-u-glow: #68c8e8;
+  --color-brand-m: #fff0f6;
+  --color-brand-m-edge: #e84898;
+  --color-brand-m-glow: #f888b8;
+  --color-brand-a: #f5fde0;
+  --color-brand-a-edge: #68a808;
+  --color-brand-a-glow: #98d838;
+  --color-brand-edge: #ffffff;
+  --color-brand-shade: rgba(80, 50, 20, 0.28);
+  /* the setup panel's pink ribbon: its outline and glow */
+  --color-ribbon-edge: #d9468a;
+  --color-ribbon-glow: rgba(150, 20, 80, 0.35);
+  /* the Enhance buttons' labels and their arrows */
+  --color-enh-ink: #5b5470;
 
   --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -111,6 +129,8 @@
   --text-title: 1.05rem; /* 16.8 px: section bars, close buttons (1-1.1) */
   --text-heading: 1.15rem; /* 18.4 px: dialog titles, card titles (1.15-1.2) */
   --text-display: 1.3rem; /* 20.8 px: the setup's pink header (1.3) */
+  --text-headline: 1.55rem; /* 24.8 px: a page's own heading, Next career (1.5-1.6) */
+  --text-brand: clamp(1.6rem, 3.2vw, 2.2rem); /* the header's wordmark, with the window's width */
 
   /* the game's titles: a tight line, a hair of letter spacing */
   --leading-title: 1.3;
@@ -130,6 +150,8 @@
   --container-dialog-lg: 640px;
   --container-dialog-xl: 980px;
   --container-dialog-full: 1480px;
+  /* the planner pages' width: the header, the page grid, the footer */
+  --container-page: 1320px;
 
   /* the planner's widths, five: the legacy sheet's 17 snap to them (400-560 -> sm, 620-640 -> md, 759-760 -> lg,
      860-960 -> xl, 1080-1180 -> 2xl). Components are written desktop-first with max-* (max-md: is a phone, 620 px and
@@ -158,6 +180,28 @@
   --inset-shadow-well: inset 0 -3px 0 var(--color-gm-tab-low);
   --inset-shadow-divide: inset 1px 0 0 var(--color-gm-tab-edge);
   --inset-shadow-seg-on: inset 0 -3px 0 var(--color-gm-rim), inset 0 2px 0 var(--color-gm-shine);
+  /* the header's page tabs: their lift off the page; the light / dark switch's knob and a page heading's green marker:
+     their darker foot */
+  --shadow-tab: 0 1px 3px var(--color-gm-shadow);
+  --inset-shadow-knob: inset 0 -2px 0 var(--color-gm-green);
+  /* the setup ribbon's second white stripe, left of the first */
+  --shadow-stripe: -11px 0 0 rgba(255, 255, 255, 0.3);
+  /* drop shadows (they follow a shape's outline): the wordmark's, the ribbon's chevron, the Enhance art's and its hover
+     glow */
+  --drop-shadow-brand: 0 0.05em 0.05em var(--color-brand-shade);
+  --drop-shadow-ribbon: 0 1px 0 var(--color-ribbon-edge);
+  --drop-shadow-enh: 0 2px 3px var(--color-gm-shadow);
+  --drop-shadow-enh-glow: 0 0 4px var(--color-gm-bright2);
+  /* several drop shadows as one filter (`shade-*`; a drop-shadow-* token holds one): "uma"'s letters' doubled halos,
+     the outline round the light / dark switch's white icon */
+  --shade-brand-u: drop-shadow(0 0 0.035em var(--color-brand-u-glow)) drop-shadow(0 0 0.035em var(--color-brand-u-glow));
+  --shade-brand-m: drop-shadow(0 0 0.035em var(--color-brand-m-glow)) drop-shadow(0 0 0.035em var(--color-brand-m-glow));
+  --shade-brand-a: drop-shadow(0 0 0.035em var(--color-brand-a-glow)) drop-shadow(0 0 0.035em var(--color-brand-a-glow));
+  --shade-outline: drop-shadow(0 1px 0 var(--color-outline)) drop-shadow(0 -1px 0 var(--color-outline))
+    drop-shadow(1px 0 0 var(--color-outline)) drop-shadow(-1px 0 0 var(--color-outline));
+  /* the setup ribbon's white text, outlined in its deeper pink */
+  --text-shadow-ribbon: 0 1px 0 var(--color-ribbon-edge), 1px 0 0 var(--color-ribbon-edge),
+    -1px 0 0 var(--color-ribbon-edge), 0 -1px 0 var(--color-ribbon-edge), 0 2px 2px var(--color-ribbon-glow);
 
   /* the career runner's sprite strip: 18 frames, --s wide each */
   --animate-runner: runner 0.6s steps(18) infinite;
@@ -193,8 +237,23 @@
   /* the game's check box (ui/Checkbox.tsx), unticked and ticked */
   --art-chk-off: var(--face-chk-off) center / contain no-repeat;
   --art-chk-on: var(--chk-on, linear-gradient(#b4ec52, #7cc40d)) center / contain no-repeat;
-  /* a section bar's outline: its right end cut on a slant */
+  /* the game's bright green: the current page's tab, the light / dark switch's knob, a page heading's marker */
+  --art-bright: linear-gradient(var(--color-gm-bright), var(--color-gm-bright2));
+  /* the setup panel's pink ribbon */
+  --art-ribbon: linear-gradient(100deg, var(--color-gm-pink2), var(--color-gm-pink) 75%);
+  /* the Enhance buttons' art (vite/images.mjs's textures, the game's frame and white label band; a pale fill without) */
+  --art-enh-umas: var(--face-enh-umas) center / 100% 100% no-repeat;
+  --art-enh-cards: var(--face-enh-cards) center / 100% 100% no-repeat;
+  --art-enh-vets: var(--face-enh-vets) center / 100% 100% no-repeat;
+  /* a section bar's outline: its right end cut on a slant; the setup ribbon's, at twice the slant */
   --clip-bar: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
+  --clip-ribbon: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+  /* an outline round each letter, under its fill (`letter-edge-*`): the wordmark's white round "-legacy", and each of
+     "uma"'s in its sparkle's colour */
+  --letter-edge-brand: 0.16em var(--color-brand-edge);
+  --letter-edge-u: 0.13em var(--color-brand-u-edge);
+  --letter-edge-m: 0.13em var(--color-brand-m-edge);
+  --letter-edge-a: 0.13em var(--color-brand-a-edge);
 }
 
 /* dark: every site text pair keeps 7:1 (AAA); the card-type, rarity and year colours and the brand stay as they are;
@@ -255,6 +314,14 @@
     --face-chk-off: var(--chk-off-dark, var(--chk-off, linear-gradient(#fff, #eee)));
     --face-tog-off: var(--tog-off-dark, var(--tog-off, none));
     --art-seg-on: linear-gradient(var(--color-gm-bright), var(--color-gm-bright2));
+    /* the wordmark's "-legacy" outlined in dark brown, a darker shadow; the Enhance art darkened (images.py dark_enh),
+       its labels light */
+    --color-brand-edge: #2a1a0c;
+    --color-brand-shade: rgba(0, 0, 0, 0.5);
+    --color-enh-ink: #e6e1f0;
+    --face-enh-umas: var(--enh-umas-dark, var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea)));
+    --face-enh-cards: var(--enh-cards-dark, var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea)));
+    --face-enh-vets: var(--enh-vets-dark, var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea)));
   }
   /* the planner pages: one panel tone in dark mode, as in light mode, where the panel and the game's panel are both
      white; /about keeps its black panels */
@@ -282,6 +349,9 @@
   --face-slot-frame: var(--slot-frame, linear-gradient(#fff, #f1f0f4));
   --face-chk-off: var(--chk-off, linear-gradient(#fff, #eee));
   --face-tog-off: var(--tog-off, none);
+  --face-enh-umas: var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea));
+  --face-enh-cards: var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea));
+  --face-enh-vets: var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea));
 }
 
 /* tokens whose value reads a variable set on the element itself (inline style), so the utility carries the value
@@ -293,8 +363,15 @@
 }
 
 /* a chosen option, whichever ARIA state says so: a toggle button's aria-pressed, a radio's aria-checked, a tab's
-   aria-selected (ui/SegmentedControl.tsx's options; `not-on:` for the others, `group-on:` inside one) */
-@custom-variant on (&:is([aria-pressed="true"], [aria-checked="true"], [aria-selected="true"]));
+   aria-selected, the header's link to the page you are on (ui/SegmentedControl.tsx's options, partials/header.hbs's
+   tabs; `not-on:` for the others, `group-on:` inside one) */
+@custom-variant on (&:is([aria-pressed="true"], [aria-checked="true"], [aria-selected="true"], [aria-current="page"]));
+/* the page an element sits on (data-page on each planner page's layout: career/Layout.tsx, loop/Layout.tsx), for a
+   shared part placed or sized by the page around it */
+@custom-variant career (&:where([data-page="career"] *));
+@custom-variant loop (&:where([data-page="loop"] *));
+/* inside a box whose answer is not the setup's (data-stale: career/Layout.tsx's tree, dimmed while a run works) */
+@custom-variant stale (&:where([data-stale] *));
 
 /* a 9-slice sprite frame: `nine-btn-w` draws the button's face from the --nine-btn-w token above */
 @utility nine-* {
@@ -308,4 +385,13 @@
 /* a layered background (stripes, gradients, art): `art-bar` paints the --art-bar token */
 @utility art-* {
   background: --value(--art-*);
+}
+/* several drop shadows as one filter: `shade-outline` applies the --shade-outline token */
+@utility shade-* {
+  filter: --value(--shade-*);
+}
+/* an outline round each letter, painted under its fill: `letter-edge-brand` draws the --letter-edge-brand token */
+@utility letter-edge-* {
+  -webkit-text-stroke: --value(--letter-edge-*);
+  paint-order: stroke fill;
 }

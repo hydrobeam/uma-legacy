@@ -5,13 +5,14 @@ export default async function about(b) {
   // "How this works": a link in the header to its own page (/about), which links back
   const pg = await open(b);
   // the header is the same on every page: the three pages in one order, the page you are on marked
-  const tabs = pg.locator('header.top .ptabs a'),
-    current = pg.locator('header.top .ptabs a[aria-current="page"]'),
+  const nav = pg.getByRole('navigation', { name: 'Pages' }),
+    tabs = nav.getByRole('link'),
+    current = nav.locator('[aria-current="page"]'),
     PAGES = ['Career planner', 'Loop planner', 'How this works'];
   const header = 'header: the same page tabs everywhere, the current page marked';
   await expect.soft(tabs, header).toHaveText(PAGES);
   await expect.soft(current, `${header}: the loop planner`).toHaveText('Loop planner');
-  await pg.locator('header.top .tnav a', { hasText: 'How this works' }).click();
+  await nav.getByRole('link', { name: 'How this works', exact: true }).click();
   await pg.waitForLoadState(); // (the negative checks below read a page that has loaded)
   await expect.soft(pg, 'header link opens /about').toHaveURL(/\/about$/);
   await expect.soft(pg.locator('main.about h2'), 'header link opens /about: its heading').toHaveText(/How this works/i);
@@ -54,7 +55,7 @@ export default async function about(b) {
   await expect.soft(spec, `${link}: … that one only`).not.toHaveAttribute('open');
   await pg.locator('main.about nav.toc a[href="#model"]').click();
   await expect.soft(spec, `${link}: from the contents`).toHaveAttribute('open');
-  await pg.locator('header.top .tnav a', { hasText: 'Loop planner' }).click();
+  await nav.getByRole('link', { name: 'Loop planner', exact: true }).click();
   await expect.soft(pg, '/about links back to the loop planner').toHaveURL(/\/loop$/);
   await pg.context().close();
 }

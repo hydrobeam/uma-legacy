@@ -39,7 +39,7 @@ const logo = fs
   .readFileSync(path.join(HERE, 'public', 'favicon.svg'), 'utf8')
   .replace(/\bid="g(\d)"/g, 'id="lg$1"')
   .replaceAll('url(#g', 'url(#lg')
-  .replace('<svg ', '<svg class="logo" aria-hidden="true" focusable="false" ')
+  .replace('<svg ', '<svg aria-hidden="true" focusable="false" ')
   .trim();
 
 // what the site's build and the node tests (Vitest, mode 'test') share: the root, and JSX compiled to Preact's jsx()

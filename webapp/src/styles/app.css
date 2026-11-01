@@ -48,4 +48,11 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
+  /* a theme switch repaints at once: transitions wait out that frame (partials/theme.hbs's html.themeswap), so nothing
+     trails the rest of the page; the light / dark switch's knob (on its data-motion button) still slides */
+  :root.themeswap :not([data-motion]),
+  :root.themeswap :not([data-motion])::before,
+  :root.themeswap ::after {
+    transition: none !important;
+  }
 }

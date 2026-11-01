@@ -276,10 +276,9 @@ export default async function career(b) {
   {
     const name =
       "career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner's editor)";
-    await expect
-      .soft(pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg'), `${name}: the Enhance buttons`)
-      .toHaveCount(2);
-    await expect.soft(pg.locator('.rbbar .lptgt #targets .tgt'), `${name}: the targets`).toHaveCount(8);
+    const setup = pg.getByRole('region', { name: 'Career setup' });
+    await expect.soft(setup.locator('#o-umas, #o-cards'), `${name}: the Enhance buttons`).toHaveCount(2);
+    await expect.soft(setup.locator('#skills-panel #targets .tgt'), `${name}: the targets`).toHaveCount(8);
     await expect.soft(pg.locator('#o-skills, #set-skills'), `${name}: no Target skills dialog`).toHaveCount(0);
   }
   // the presets popup inside that panel lays out as on the planner: one column, its tiles the dialog's width, the buttons under them

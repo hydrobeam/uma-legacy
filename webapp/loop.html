@@ -23,20 +23,17 @@
 {{> theme}}
 <link rel="stylesheet" href="/src/styles/app.css">
 </head>
-<body>
-<a class="skip" href="#rcol">Skip to results</a>
-<header class="top">
-  <h1 class="brand" aria-label="uma-legacy">{{{logo}}}<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
-  {{> nav current="loop"}}
-</header>
+<body class="pb-3.5 max-xl:pb-19">
+<a class="absolute -top-50 left-4 z-100 rounded-md border-2 border-accent bg-panel px-3.5 py-2 font-bold text-accent focus:top-2" href="#rcol">Skip to results</a>
+{{> header current="loop" label="uma-legacy"}}
 
 <div id="app"></div>
 <script>
 // phone (the columns stacked): the results column first, before the setup, in the reading and Tab order too, from the
 // first paint (src/loop/Layout.tsx draws it there from then on); html.rin: the results are in view, which hides the
 // floating status button (the layout keeps it current)
-(function () { var w = document.querySelector('.wrap'), r = document.getElementById('rcol');
-  if (matchMedia('(max-width: 960px)').matches) w.prepend(r); document.documentElement.classList.add('rin'); })();
+(function () { var r = document.getElementById('rcol');
+  if (matchMedia('(max-width: 960px)').matches) r.parentNode.prepend(r); document.documentElement.classList.add('rin'); })();
 </script>
 
 <script type="module" src="/src/loop/main.tsx"></script>

@@ -20,11 +20,8 @@
 {{> theme}}
 <link rel="stylesheet" href="/src/styles/app.css">
 </head>
-<body>
-<header class="top">
-  <h1 class="brand" aria-label="uma-legacy career planner">{{{logo}}}<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
-  {{> nav current="career"}}
-</header>
+<body class="pb-3.5 max-xl:pb-19">
+{{> header current="career" label="uma-legacy career planner"}}
 
 <div id="app"></div>
 

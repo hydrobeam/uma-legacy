@@ -146,7 +146,7 @@ export default async function scenario(b) {
   await expect.soft(menu, 'Escape closes it and returns focus to the button').toBeHidden();
   await expect.soft(button, 'Escape closes it and returns focus to the button: focus').toBeFocused();
   await button.click();
-  await pg.click('header.top h1');
+  await pg.getByRole('heading', { level: 1 }).click();
   await expect.soft(menu, 'a click outside closes it').toBeHidden();
   // only the button and the grid count as inside: the label, the row's empty space and the rank control all close it
   const shut = 'clicks on the label, beside the button, on the rank control close it';

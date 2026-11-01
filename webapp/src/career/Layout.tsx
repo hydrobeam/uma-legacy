@@ -4,7 +4,7 @@
 // layout draws itself: the setup bar's fold and summary, the status bar's colours, the dimmed results. Imports nothing
 // but Preact and the shell (ui/Shell.tsx says why).
 import type { ComponentChildren } from 'preact';
-import { AddPop, EnhButtons, EraRow, Footer } from '../ui/Shell.tsx';
+import { AddPop, EnhButton, EnhButtons, EraRow, Footer, Ribbon } from '../ui/Shell.tsx';
 import type { Badge } from '../ui/Shell.tsx';
 import type { Era } from '../eras.ts';
 import { Button } from '../ui/Button.tsx';
@@ -83,7 +83,7 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
       <div class="rb">
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: the ribbon's button (#set-fold) is the keyboard's way; folded, a click anywhere on the bar is the pointer's shortcut */}
         <section class={folded ? 'rbbar folded' : 'rbbar'} aria-labelledby="h-set" onClick={s.onBar}>
-          <h2 class="sethdr" id="h-set">
+          <Ribbon fold>
             <button
               type="button"
               class="setfold"
@@ -95,12 +95,12 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
               Career setup
               <span class="foldi" aria-hidden="true" />
             </button>
-          </h2>
+          </Ribbon>
           <span class="setsum" id="set-sum" role="note" hidden={!folded} aria-label={s.summaryLabel}>
             {views?.summary}
           </span>
           <div class="setlist">
-            <EraRow era={s.era} onPick={s.onEra} />
+            <EraRow era={s.era} page="career" onPick={s.onEra} />
             <div class="gctl rankctl" id="rank-ctl">
               {views?.rank}
             </div>
@@ -115,20 +115,19 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
             </div>
           </div>
           <div class="setenh">
-            <EnhButtons umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
-            <button
-              class="enh wide"
-              type="button"
+            <EnhButtons page="career" umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
+            <EnhButton
               id="v-toggle"
-              aria-haspopup="dialog"
-              aria-label="Your veterans"
+              art="vets"
+              size="wide"
+              name="Your veterans"
+              label={
+                <>
+                  <span>Veteran</span> <span>Umamusume</span>
+                </>
+              }
               onClick={s.onVeterans}
-            >
-              <span class="enhimg" aria-hidden="true" />
-              <span class="enhl">
-                <span>Veteran</span> <span>Umamusume</span>
-              </span>
-            </button>
+            />
           </div>
           <div class="lptgt">
             <section class="panel" id="skills-panel" aria-labelledby="h-skills">
