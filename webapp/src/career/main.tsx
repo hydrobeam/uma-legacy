@@ -90,6 +90,7 @@ import { VetsDialog } from './view/Pool.tsx';
 import { openPool } from './view/poolState.ts';
 import { ExportDialog, PasteDialog, openExport } from './view/Io.tsx';
 import { searchCaveat } from '../proofs.ts';
+import { fitSparks } from '../details.ts';
 import type { Status } from './state.ts';
 import type { CareerSearch } from './job.ts';
 
@@ -258,6 +259,8 @@ try {
 } catch {
   // storage blocked: nothing was kept to remove
 }
+// a resize: the spark names on show shrink to fit their new width (details.ts fitSparks)
+addEventListener('resize', () => fitSparks(document));
 // a save of the veterans still due goes out when the page is hidden or left (a reload or close loses nothing)
 addEventListener('pagehide', flushPersist);
 document.addEventListener('visibilitychange', () => {

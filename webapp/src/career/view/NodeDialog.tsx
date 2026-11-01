@@ -418,7 +418,8 @@ export function NodeDialog() {
     body = useRef<HTMLDivElement>(null);
   // (closed, it draws nothing: an edit elsewhere redraws no closed popup)
   const on = spec && nodeShown(spec, shown());
-  // a node that is gone closes the popup; on show, her spark names shrink to fit (details.ts fitSparks)
+  // a node that is gone closes the popup; on show, her spark names shrink to fit (details.ts fitSparks: this runs after
+  // its Dialog's layout effect has opened it)
   useLayoutEffect(() => {
     if (spec && !on) closeNode();
     if (on && body.current) fitSparks(body.current);

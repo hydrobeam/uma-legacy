@@ -40,6 +40,9 @@
 // - dialogs and mounts: every modal dialog is ui/Dialog.tsx's (no `<dialog>` in a template, no showModal() anywhere
 //   else; the ones not yet ported are listed, TEMPLATE_DIALOGS, until each goes), and only the two entries render into
 //   a mount point (preact's render, RenderGuard's renderGuarded).
+// - deferred writes and listeners at import: no requestAnimationFrame but the ones listed (RAF_KEPT: a measured DOM
+//   write runs from the layout effect of the component that draws what it measures), and no listener added at a
+//   module's top level outside the entries but the load-time effects listed (LOAD_LISTENERS).
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
 // imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
@@ -630,6 +633,32 @@ const ENTRIES = ['src/loop/main.tsx', 'src/career/main.tsx'];
         `${file}: renders into a mount point; the entries alone do (ui/Setup.tsx's setupViews hands them views)`,
       );
   }
+}
+
+// ---------- deferred writes, and listeners added at import
+const RAF_KEPT = {
+  'src/veterans/store.ts': "the veterans' save waits a frame (afterFrame): it writes storage, not the DOM",
+};
+const LOAD_LISTENERS = {
+  'src/errorlog.ts': 'first of all: it logs every uncaught error',
+  'src/gmtip.ts': 'the game-style tooltips listen to the whole document on both pages',
+  'src/popover.ts': "the deck card panel's own keys (a string view: the panel is built at import)",
+};
+{
+  const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && /\.tsx?$/.test(f))) {
+    const body = code(text);
+    if (/\brequestAnimationFrame\(/.test(body) && !RAF_KEPT[file])
+      problems.push(
+        `${file}: requestAnimationFrame: a DOM write runs from the layout effect of the component it measures`,
+      );
+    if (/^[\w.]*addEventListener\(/m.test(body) && !LOAD_LISTENERS[file] && !ENTRIES.includes(file))
+      problems.push(
+        `${file}: adds a listener at import; the entries make load-time effects (or list it in LOAD_LISTENERS)`,
+      );
+  }
+  for (const file of [...Object.keys(RAF_KEPT), ...Object.keys(LOAD_LISTENERS)])
+    if (!sources.some(([f]) => f === file)) problems.push(`RAF_KEPT/LOAD_LISTENERS: ${file} is gone: drop it`);
 }
 
 // ---------- read before declared: each bundle as samecode reads it (`loadOrder`)

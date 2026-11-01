@@ -8,7 +8,7 @@
 // that read a signal (the tabs, the races' fold) draw her again from it rather than skip her as
 // unchanged. Her sparks are edited through the store (`draftRef`).
 import type { ComponentChildren } from 'preact';
-import { useRef } from 'preact/hooks';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import { gameData } from '../../data.ts';
 import { settings } from '../../settings.ts';
 import { popOpener } from '../../popover.ts';
@@ -150,15 +150,17 @@ const DEFS = [
   { key: 'insp', label: 'Inspiration' },
   { key: 'info', label: 'Career Info' },
 ] as const;
-// the tabs and their panes, all three built up front as in the game; a switch shrinks the spark names now on show to
-// fit (details.ts fitSparks waits a frame itself, so the render has landed by then)
+// the tabs and their panes, all three built up front as in the game; once a switch is drawn, the spark names now on show
+// shrink to fit (details.ts fitSparks)
 function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: ComponentChildren }) {
-  const list = useRef<HTMLDivElement>(null);
-  const show = (key: DetailsTab) => {
-    showTab(key);
+  const list = useRef<HTMLDivElement>(null),
+    onShow = tab.value;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per tab drawn (`onShow` is a module signal's value, which Biome reads as constant)
+  useLayoutEffect(() => {
     const card = list.current?.closest<HTMLElement>('.ud');
     if (card) fitSparks(card);
-  };
+  }, [onShow]);
+  const show = (key: DetailsTab) => showTab(key);
   const keys = (i: number) => (e: KeyboardEvent) => {
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!step) return;

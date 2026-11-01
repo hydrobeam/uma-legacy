@@ -353,8 +353,8 @@ function Analysis({ comparison }: { comparison: Comparison }) {
     searching = runSearching.value, // (not runView: a plan's progress would draw her card again each time)
     section = useRef<HTMLElement>(null),
     wins = useRef<HTMLButtonElement>(null);
-  // her spark names shrink to fit (details.ts fitSparks: it waits a frame, measures the names on show, and skips a
-  // closed popup's; `openTryRun` asks again on show)
+  // her spark names shrink to fit (details.ts fitSparks: it measures the names on show and skips a closed popup's;
+  // TryRunDialog fits them again on opening)
   useLayoutEffect(() => {
     if (section.current) fitSparks(section.current);
   });
