@@ -10,6 +10,8 @@ import { test } from 'node:test';
 import { effect, signal } from '@preact/signals-core';
 import { STAND_MS, createComparison } from '../../src/career/analysis/compare.ts';
 import * as store from '../../src/career/analysis/state.ts';
+import * as vs from '../../src/veterans/store.ts';
+import { on } from '../../src/store.ts';
 import { fakeClock, flush } from './fakes.mjs';
 
 const { simulation } = store;
@@ -71,6 +73,7 @@ function page({ fix = [], planFor = 'shown' } = {}) {
       isFull: (nd) => (nd.sparks[1] || 0) > 0,
       planTop: 6,
       draftOf: () => ({ ...node({ 1: 1 }), borrowed: false, parents: [node(), node()], winAt: {} }),
+      draft: () => vs.draft.peek(),
       roll: () => ({ sparks: { 1: 3 }, bought: {}, wins: [], pinks: {}, apt: null, blues: {}, greens: {} }),
     },
     searching: false,
@@ -117,7 +120,7 @@ test('Compare: one write per phase, the baseline from the run (no places), the f
   assert.equal(p.engine.jobs[1].job.next.fit[0][0], 1, "the plan's fit passed on");
   assert.equal(p.kept.length, 0, 'a plan under today’s fit is not kept for Add');
   assert.equal(p.engine.saves, 1);
-  assert.ok(Object.isFrozen(done) && !Object.isFrozen(done.draft), 'the record frozen, her draft not (step 10)');
+  assert.ok(Object.isFrozen(done), 'the record frozen');
   p.stop();
 });
 
@@ -191,7 +194,7 @@ test('a roll: quick figures, the 0.8 s stand, then the exact check behind them; 
   for (const stopFirst of [false, true]) {
     const p = page();
     p.c.roll();
-    assert.equal(simulation.peek().draft.sparks[1], 3, 'her draft rolled (in place)');
+    assert.equal(vs.draft.peek().sparks[1], 3, 'her draft rolled');
     assert.deepEqual(states(p), ['busy'], 'the roll and the quick start: one write');
     await flush(); // (the baseline: the run's own)
     assert.equal(sent(p), 1, "the roll's saving asked of the plan");
@@ -348,14 +351,14 @@ test("F5: with a parent fixed, the roll's baseline and Compare's are one job's (
 // ---------- F6: the same career keeps her draft
 test("F6: an answer showing the same career keeps the draft she was entered as; another career's resets it", () => {
   const p = page();
-  const draft = simulation.peek().draft;
-  store.draftRef.edit((now) => ({ sparks: { ...now.sparks, 9: 2 } })); // entered by hand
+  vs.draftRef.edit((now) => ({ sparks: { ...now.sparks, 9: 2 } })); // entered by hand
+  const draft = vs.draft.peek();
   p.c.show(p.shown);
-  assert.equal(simulation.peek().draft, draft, 'the same career: the same draft');
+  assert.equal(vs.draft.peek(), draft, 'the same career: the same draft');
   assert.equal(simulation.peek().state, 'ready', 'her comparison starts over');
   p.c.show(career('other'));
-  assert.notEqual(simulation.peek().draft, draft);
-  assert.equal(simulation.peek().draft.sparks[9], undefined);
+  assert.notEqual(vs.draft.peek(), draft);
+  assert.equal(vs.draft.peek().sparks[9], undefined);
   p.stop();
 });
 
@@ -375,38 +378,27 @@ test("her card's tab and the races' fold outlive her record: a new career, no ca
   p.stop();
 });
 
-test('an edit of her draft: a new record over the same draft, stale only with figures on show', async () => {
+test("an edit of her draft (the veterans store's draftRef, the entry's effect): stale only with figures on show", async () => {
   const p = page();
-  const draft = simulation.peek().draft;
-  store.draftRef.edit(() => ({ wins: [3] }));
-  assert.deepEqual(draft.wins, [3], 'written into her draft');
-  assert.equal(simulation.peek().stale, false, 'no figures: nothing stale');
-  assert.equal(simulation.peek().draft, draft);
-  assert.equal(p.writes.length, 1, 'a write: the views draw her again');
+  const marks = on([vs.draft], store.draftChanged);
+  vs.draftRef.edit(() => ({ wins: [3] }));
+  assert.deepEqual(vs.draft.peek().wins, [3], 'her draft, a new record');
+  assert.equal(p.writes.length, 0, 'no figures: nothing to mark');
   p.c.compare();
   await flush();
   await exactAnswers(p, 0);
-  store.draftRef.edit(() => ({}));
-  assert.equal(simulation.peek().stale, true);
+  assert.equal(simulation.peek().stale, false);
+  vs.draftRef.edit(() => ({ wins: [] }));
+  assert.equal(simulation.peek().stale, true, 'the figures are for her before the edit');
   p.c.stop();
   assert.equal(simulation.peek().stale, true, 'a stop leaves the figures, marked stale');
   const n = p.writes.length;
   p.c.stop();
   assert.equal(p.writes.length, n, 'a stop with nothing to stop writes nothing');
-  p.stop();
-});
-
-test('an editor opened on her draft edits the draft on show when the edit lands, never one it captured', () => {
-  const p = page();
-  const at = store.draftRef; // (an editor holds the ref, as the G1 wins window does while open)
-  p.c.show(career('other')); // another career: a new draft
-  const now = simulation.peek().draft;
-  at.edit((d) => ({ sparks: { ...d.sparks, 5: 1 } }));
-  assert.equal(at.node(), now);
-  assert.equal(now.sparks[5], 1);
-  store.draftAdded();
-  const n = p.writes.length;
-  at.edit(() => ({ wins: [1] }));
-  assert.equal(p.writes.length, n, 'no draft: an edit lands nowhere');
+  // a roll replaces her and clears the figures in one batch: nothing marked
+  p.c.roll();
+  assert.equal(simulation.peek().r, null);
+  assert.ok(!simulation.peek().stale);
+  marks();
   p.stop();
 });

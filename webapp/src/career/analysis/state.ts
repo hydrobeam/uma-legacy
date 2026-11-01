@@ -1,31 +1,23 @@
 // ---------- the veteran analysis' store: Try a run's record in a signal ----------
-// The veteran this career leaves as the player entered her (the draft) and her comparison, one record handed out
-// read-only. Each phase of the comparison (career/analysis/compare.ts `createComparison`, its run machine) and each
-// edit of the draft replaces the record through a transition below, in one write, so a view never draws a phase half
-// written. The comparison's staleness token and the baseline it caches are the machine's closure state: nothing draws
-// them. Nothing here subscribes: the views read the signal, the machine reads it with peek().
-// The draft is the one part not copied on write and not frozen: she keeps one identity from her roll until she is added
-// or another career replaces her. The editors reach her through `draftRef` (the veterans' editors' `NodeRef`), whose
-// edits land in her through `draftEdited`, which publishes a new record over the same draft: the views draw her again
-// from the record's identity.
+// The comparison of the veteran this career leaves, one record handed out read-only. Each phase of the comparison
+// (career/analysis/compare.ts `createComparison`, its run machine) replaces the record through a transition below, in
+// one write, so a view never draws a phase half written. The comparison's staleness token and the baseline it caches
+// are the machine's closure state: nothing draws them. Nothing here subscribes: the views read the signal, the machine
+// reads it with peek(), and the entry tells it when her draft changes (`draftChanged`).
+// The veteran herself as the player entered her (the draft) is the veterans store's (veterans/store.ts `draft`: a
+// veteran-shaped record, frozen, edited by path through its `draftRef`); the transitions here set her with the record
+// that goes with her (a new career on show, a roll, Add to veterans), in one batch.
 // The folder: state.ts (this store), compare.ts (the comparison's run machine), view.tsx (Try a run's popup: her card's
 // actions and the comparison panel), Details.tsx (her card, the game's Umamusume Details screen).
-import { signal } from '@preact/signals-core';
+import { batch, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { deepFreeze } from '../../store.ts';
 import type { DeepReadonly } from '../../store.ts';
-import type { LineageNode, NodePatch, NodeRef } from '../../veterans/store.ts';
+import { draft, setDraft } from '../../veterans/store.ts';
+import type { Draft } from '../../veterans/store.ts';
 import type { Roll } from '../roll.mjs';
 import type { CareerReport, CareerSearch, PlanOption } from '../job.js';
 
-/** the veteran a career leaves, as entered (a veteran without id), with `apt` (her end grades) and `bought` (skill
- *  group -> 'gold' | 'white') from her roll */
-export type Draft = LineageNode & {
-  borrowed: boolean;
-  parents: LineageNode[];
-  apt?: number[] | null;
-  bought?: Record<number, string>;
-};
 /** a stand-in while the quick comparison looks for the best career with her */
 export interface PendingSearch {
   results: [];
@@ -54,12 +46,10 @@ export interface ExactFigures extends Figures {
   /** where her saving lands (compare.ts `savedWhere`) */
   where: string;
 }
-/** The veteran analysis: the veteran this career leaves (the draft) and her comparison. */
+/** The veteran analysis: the comparison of the veteran this career leaves (the veterans store's `draft`). */
 export interface Simulation extends Partial<Omit<ExactFigures, 'r'>> {
   /** none: no career on show; ready: no comparison yet */
   state: 'none' | 'ready' | 'busy' | 'done' | 'error';
-  /** the entered veteran */
-  draft?: Draft | null;
   /** the comparison's search: the best career with her as a parent (`pending` while the quick comparison looks for it) */
   r?: CareerSearch | PendingSearch | null;
   /** today's best career, without her */
@@ -81,14 +71,14 @@ export interface Simulation extends Partial<Omit<ExactFigures, 'r'>> {
   /** the figures on show are the quick ones */
   quick?: boolean;
 }
-/** the record as the store hands it out: read-only, but for the draft (the header says why) */
-export type SimulationView = DeepReadonly<Omit<Simulation, 'draft'>> & { readonly draft?: Draft | null };
+/** the record as the store hands it out */
+export type SimulationView = DeepReadonly<Simulation>;
 
 // ---------- the signal
 const NONE: SimulationView = Object.freeze({ state: 'none' });
 const record = signal<SimulationView>(NONE);
 export const simulation: ReadonlySignal<SimulationView> = record;
-// the next record: this one with `patch` written over it (the draft is carried over, not copied)
+// the next record: this one with `patch` written over it
 const patch = (fields: Partial<SimulationView>) => {
   record.value = Object.freeze({ ...record.peek(), ...fields });
 };
@@ -99,17 +89,22 @@ const patch = (fields: Partial<SimulationView>) => {
  *  starts over on the new pool */
 export function analysisShows(next: { draft: Draft; forKey: string } | null) {
   if (!next) {
-    record.value = NONE;
+    analysisClears();
     return;
   }
-  const now = record.peek(),
-    draft = now.draft && now.forKey === next.forKey ? now.draft : next.draft;
-  record.value = Object.freeze({ state: 'ready', draft, r: null, baseline: null, error: null, forKey: next.forKey });
+  const keep = !!draft.peek() && record.peek().forKey === next.forKey;
+  batch(() => {
+    record.value = Object.freeze({ state: 'ready', r: null, baseline: null, error: null, forKey: next.forKey });
+    if (!keep) setDraft(next.draft);
+  });
 }
 /** no answer: no career to analyse */
-export const analysisClears = () => {
-  record.value = NONE;
-};
+export function analysisClears() {
+  batch(() => {
+    record.value = NONE;
+    setDraft(null);
+  });
+}
 /** an edit elsewhere: a comparison in flight goes back to idle, or a roll's quick figures stand unchecked (an answer
  *  that stands keeps her); with nothing of the kind on show, no write */
 export function comparisonStops() {
@@ -120,30 +115,24 @@ export function comparisonStops() {
 }
 
 // ---------- the draft's
-/** a roll redraws her (in place: the header says why): the figures on show go */
+/** a roll redraws her: the figures on show go */
 export function draftRolled(outcome: Roll) {
-  const { draft } = record.peek();
-  if (!draft) throw new Error('a roll redraws the entered veteran');
-  Object.assign(draft, outcome, { winAt: {} });
-  patch({ r: null, stale: false });
+  const now = draft.peek();
+  if (!now) throw new Error('a roll redraws the entered veteran');
+  batch(() => {
+    setDraft({ ...now, ...outcome, winAt: {} });
+    patch({ r: null, stale: false });
+  });
 }
-/** an edit of her: `fields` written into the draft (`draftRef`'s editors), the comparison on show for the old one */
-function draftEdited(fields: Partial<Draft>) {
-  const { draft, r, stale } = record.peek();
-  if (draft) Object.assign(draft, fields);
-  patch({ stale: !!r || !!stale });
+/** her draft changed (an edit by her editors, through the veterans store's `draftRef`; the entry's effect on `draft`
+ *  calls this): figures on show are for the old one. A roll's or a new career's draft comes with the figures cleared
+ *  in the same batch, so it marks nothing */
+export function draftChanged() {
+  const { r, stale } = record.peek();
+  if (draft.peek() && r && !stale) patch({ stale: true });
 }
-/** her draft for an editor (veterans/store.ts `NodeRef`: the spark chips, the colour picker, the "+" list, the G1 wins
- *  editor): each edit lands on the draft on show as it is then, through `draftEdited` */
-export const draftRef: NodeRef = {
-  node: () => record.peek().draft ?? undefined,
-  edit: (f: (now: LineageNode) => NodePatch) => {
-    const { draft } = record.peek();
-    if (draft) draftEdited(f(draft) as Partial<Draft>);
-  },
-};
 /** she joins the veterans: the next answer starts a new draft even for the same career */
-export const draftAdded = () => patch({ draft: null });
+export const draftAdded = () => setDraft(null);
 
 // ---------- a comparison's phases (compare.ts)
 /** a roll's quick comparison starts */

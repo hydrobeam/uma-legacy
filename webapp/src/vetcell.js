@@ -1,7 +1,7 @@
 // ---------- a veteran as the game's legacy list draws her ----------
 // Her portrait in its ring (her head over the top), her career-rank badge, her three main sparks under it as the list's
 // tags with their stars, a name under them; a label tab over her when she has a role (the game's "Trainee"). Used by
-// the uma.moe popup's listings and by Veteran Umamusume.
+// the uma.moe popup's listings; Veteran Umamusume draws its twin, ui/VetCell.tsx (an edit to one goes to the other).
 import { el } from './dom.js';
 import { careerTables } from './data.js';
 import { umaAv, srcFor } from './images.js';
@@ -9,7 +9,7 @@ import { umaName, blueName, pinkName, uniqueName } from './veterans/names.js';
 
 // her main sparks as the game's legacy list shows them under a portrait: blue (her stat), pink (her aptitude), green
 // (her unique skill), each a short tag of its colour with its stars under it
-const BLUE_TAG = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
+export const BLUE_TAG = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },
   PINK_TAG = {
     11: 'TURF',
     12: 'DIRT',

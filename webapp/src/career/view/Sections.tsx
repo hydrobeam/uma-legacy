@@ -213,6 +213,7 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
         )}
         {!!b.outfit && (
           <UmaAv
+            key={`${r.trainee.id}:${r.trainee.outfits[0]?.id}`}
             uma={r.trainee.id}
             outfit={r.trainee.outfits[0]?.id}
             size={20}
@@ -220,7 +221,13 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
           />
         )}
         {(b.own_event || 0) > 0.005 && !b.outfit && (
-          <UmaAv uma={r.trainee.id} outfit={null} size={20} title={`Her own events: ${pct(b.own_event ?? 0)}`} />
+          <UmaAv
+            key={r.trainee.id}
+            uma={r.trainee.id}
+            outfit={null}
+            size={20}
+            title={`Her own events: ${pct(b.own_event ?? 0)}`}
+          />
         )}
         {sc && <ScenLogo sc={sc} title="The scenario gives it" />}
       </span>

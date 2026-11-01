@@ -127,6 +127,11 @@ export default async function careervets(b) {
   );
   await ask('All 8 at 2★');
   await done();
+  check(
+    'career: the closed parent picker and node popup hold no rows or node (an edit elsewhere redraws none of them)',
+    (await pg.locator('#vp-list > *').count()) === 0 && (await pg.locator('#node-body > *').count()) === 0,
+    `${await pg.locator('#vp-list > *').count()} rows, ${await pg.locator('#node-body > *').count()} in the popup`,
+  );
   const p1 = pg.locator('.pf').nth(0).locator('.pn.parent');
   const sparksIn = async (key, n) => {
     await node(key);
@@ -172,12 +177,10 @@ export default async function careervets(b) {
   await node('node:p1');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
-  const blocked = await pg.locator('#vp-list .vpt:disabled').count();
+  const blocked = await pg.locator('#vp-list .vpt:disabled').count(),
+    said = await pg.locator('#vp-list .vpt:disabled .vptw').count(); // (read while open: a closed picker holds no rows)
   await pg.locator('#vpick-dlg .dclose').click();
-  check(
-    "career: veterans that can't be parent 2 are greyed out",
-    blocked === 0 || (await pg.locator('#vp-list .vpt:disabled .vptw').count()) === blocked,
-  );
+  check("career: veterans that can't be parent 2 are greyed out", blocked === 0 || said === blocked);
   // the trainee
   await node('node:t');
   await inNode(/^(Choose|Change) trainee$/).click();

@@ -11,8 +11,8 @@ import { careerTables } from '../../data.js';
 import { settings } from '../../settings.ts';
 import { pct } from '../../odds.js';
 import { batch } from '@preact/signals-core';
-import { vets, newVet, clearPlaces } from '../../veterans/store.ts';
-import type { LineageNode, NodeRecord } from '../../veterans/store.ts';
+import { vets, newVet, clearPlaces, draft, draftRef } from '../../veterans/store.ts';
+import type { Draft, LineageNode, NodeRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.js';
 import { openWins } from '../../veterans/pickers.js';
 import { fitSparks } from '../../details.js';
@@ -30,11 +30,13 @@ import { openNode } from '../view/dialogs.ts';
 import { DeckCard } from '../view/Sections.tsx';
 import { Details } from './Details.tsx';
 import type { DetailsSpec } from './Details.tsx';
-import { simulation, draftAdded, draftRef } from './state.ts';
-import type { Draft, SimulationView } from './state.ts';
+import { simulation, draftAdded } from './state.ts';
+import type { SimulationView } from './state.ts';
 import type { Comparison } from './compare.ts';
 
 type Career = DeepReadonly<CareerReport>;
+/** her draft on show (the veterans store's) */
+type DraftView = DeepReadonly<Draft>;
 
 // ---------- her draft (the machine's deps)
 const copyNode = (v: NodeRecord): LineageNode => ({
@@ -69,7 +71,7 @@ export const draftOf = (r: Career): Draft => ({
 // the G1s she could enter then). Her schedule's races keep their win odds in the turn bar; a win shows at the turn
 // picked for it, else the turn her schedule runs it. A race held in Classic and Senior is one win saddle (one race
 // index). Its edits land on her through the store (`draftRef`). `back`: the focus on close
-function openDraftWins(d: Draft, r: Career, back: () => void) {
+function openDraftWins(d: DraftView, r: Career, back: () => void) {
   // the G1s she could enter, by turn (heldAt), and those her schedule runs, by race (runs: the first turn and its cell)
   const rows = tableRows(r),
     runs = new Map<number, { turn: number; cell: unknown }>(),
@@ -92,10 +94,10 @@ function openDraftWins(d: Draft, r: Career, back: () => void) {
   });
 }
 function addDraft() {
-  const { draft } = simulation.peek();
-  if (runView.peek().searching || !draft) return;
+  const now = draft.peek();
+  if (runView.peek().searching || !now) return;
   $dialog('sim-dlg').close(); // she joins your veterans: back to the next career
-  const d = structuredClone(draft);
+  const d = structuredClone(now) as Draft;
   delete d.apt;
   delete d.bought;
   draftAdded(); // she is in the pool now: the next answer starts a new one even for the same career
@@ -123,14 +125,14 @@ function Faces({
   return (
     <span class="cfaces">
       <span class="cface tr">
-        <UmaAv uma={tid} outfit={outfit} size={32} />
+        <UmaAv key={`${tid}:${outfit}`} uma={tid} outfit={outfit} size={32} />
         {umaName(tid) + (outfitLabel ? ` ${outfitLabel}` : '')}
       </span>
       <span class="cwith">with</span>
       {parents.map((p, j) => [
         // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
         <span key={`f${j}`} class="cface">
-          <UmaAv uma={p.chara} outfit={p.outfit} size={26} />
+          <UmaAv key={`${p.chara}:${p.outfit}`} uma={p.chara} outfit={p.outfit} size={26} />
           {p.label}
           {p.her && <span class="her">her</span>}
         </span>,
@@ -144,7 +146,7 @@ function Faces({
   );
 }
 // a parent of a future career by legacy index (index = the veterans' count: the veteran she leaves, `who`)
-const parentFace = (i: number, who: Draft) => {
+const parentFace = (i: number, who: DraftView) => {
   const v = vets.value[i];
   return v
     ? { chara: v.chara, outfit: v.outfit, label: `#${i + 1} ${umaName(v.chara)}` }
@@ -180,7 +182,7 @@ function Figure({
 // what she does for the loop if you enter her: one short line (`saves`: the careers she saves, null: not known). A
 // roll's quick zero is the plan's routes' only (compare.ts `rollReq`), always provisional until the exact comparison
 // answers: it reads "no saving found yet"
-function verdictText(sim: SimulationView, d: Draft, next: Career | undefined, saves: number | null) {
+function verdictText(sim: SimulationView, d: DraftView, next: Career | undefined, saves: number | null) {
   const n = settings.value.targets.length,
     fullyLooped = sim.full && d.parents.length === 2 && d.parents.every(isFull),
     none = sim.quick ? 'saving found yet' : 'careers saved';
@@ -203,7 +205,7 @@ const must = <T,>(x: T | null | undefined): T => {
   return x;
 };
 /** the comparison's verdict in one line: what she does for the loop, where her saving lands, or a rise said as such */
-function ComparisonVerdict({ sim, d, next }: { sim: SimulationView; d: Draft; next: Career | undefined }) {
+function ComparisonVerdict({ sim, d, next }: { sim: SimulationView; d: DraftView; next: Career | undefined }) {
   const { now, withHer } = sim.v0 || { now: null, withHer: null },
     saves = now != null && withHer != null ? now - withHer : null,
     head = verdictText(sim, d, next, saves);
@@ -220,7 +222,7 @@ function ComparisonVerdict({ sim, d, next }: { sim: SimulationView; d: Draft; ne
 }
 // the comparison on show: the verdict in one line, then the two figures it rests on (now -> with her), then the best
 // career with her
-function ComparisonResult({ sim, d }: { sim: SimulationView; d: Draft }) {
+function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
   const n = settings.value.targets.length,
     { now: careersNow, withHer: careersWithHer } = sim.v0 || { now: null, withHer: null },
     next = sim.r?.results[0] as Career | undefined, // (none yet while the quick search for the best career with her runs)
@@ -311,7 +313,7 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: Draft }) {
 const borLastOf = (r: Career) => borLast([...r.deck.cards]) as number[];
 // the panel beside her card: a mini header carrying the chance a roll of this career improves your loop (the plan's
 // `lift`: her outcomes that lower V), then the comparison (before any, a line saying what goes here)
-function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: Draft; r: Career }) {
+function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: DraftView; r: Career }) {
   const busy = sim.state === 'busy',
     { planState } = answer.value,
     opt = planState.state === 'done' ? planState.r.options?.find((o) => keyOf(o) === keyOf(r)) : null;
@@ -351,6 +353,7 @@ export function Analysis({ comparison }: { comparison: Comparison }) {
   // (the career on show reads the places, and her card her parents' records: the veterans store's signals; her own
   // record redraws by its identity, `simulation`)
   const sim = simulation.value,
+    d = draft.value,
     r = shown(),
     searching = runView.value.searching,
     section = useRef<HTMLElement>(null),
@@ -361,7 +364,6 @@ export function Analysis({ comparison }: { comparison: Comparison }) {
     if (section.current) fitSparks(section.current);
   });
   if (!r) return null;
-  const d = sim.draft;
   if (!d)
     return (
       <section class="rbsec simulation" id="simulation" ref={section}>

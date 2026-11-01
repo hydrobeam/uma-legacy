@@ -190,13 +190,13 @@ result wherever the plan is kept. The veterans and the next career's places are 
 build the next record copy-on-write (an edited veteran is a new record, the others stay the same objects), save it (once
 after the next frame, at once while the page is hidden), then assign it, and its editors address a node by where it is
 (a veteran's id, her parent's place), never by an object they hold. Try a run's veteran analysis is a fifth
-(`career/analysis/state.ts`: her draft and her comparison, one record replaced by a transition per phase), changed by its
-own run machine (`career/analysis/compare.ts`, `createComparison(deps)`), which the career run machine drives through
-its hooks; her draft keeps one identity, edited through the store (`draftRef`), and is drawn again from her record's
-identity. Views are Preact components that read the stores through @preact/signals: the loop
-page's, and the career page's status line, tree, node popup, parent picker, deck popup and Try a run, each rendered by its page's
-entry into the template's mount points; the rest (the career page's results column and veterans pool among them)
-still build their markup with `el()` and `innerHTML`, and the entry draws them again after a change. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
+(`career/analysis/state.ts`: her comparison, one record replaced by a transition per phase; her draft is the veterans
+store's `draft`, edited by path through `draftRef`), changed by its own run machine (`career/analysis/compare.ts`,
+`createComparison(deps)`), which the career run machine drives through its hooks. Views are Preact components that read the stores through @preact/signals: the loop
+page's, and the career page's status line, tree, node popup, parent picker, deck popup, veterans dialog (its two tab
+lists both kept mounted, a card drawn again only when her record changes), setup summary and Try a run, each rendered
+by its page's entry into the template's mount points; the rest (the career page's results column among them) still
+build their markup with `el()` and `innerHTML`, and the entry draws them again after a change. Dialogs' `showModal`/`close`, measured placement, the game tooltip (`gmtip.js`) and the run
 machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import no component, and only a
 component's own module looks into what it draws (`test/static.mjs`).
 

@@ -14,15 +14,16 @@ import { settings } from '../../settings.ts';
 import { skillIcon as skillIconEl } from '../../images.js'; // (Skill Details' icon: its dialog is el()-built)
 import { popOpener } from '../../popover.js';
 import { umaName } from '../../veterans/names.js';
-import type { VetRecord } from '../../veterans/store.ts';
 import { deckCardAt, fitSparks, openSkill } from '../../details.js';
 import { InspView } from '../../ui/InspView.tsx';
 import { borLast } from '../../cards.js';
 import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import type { CareerReport } from '../job.js';
-import { detailsTab as tab, draftRef, racesShown, showTab, toggleRaces } from './state.ts';
-import type { DetailsTab, Draft } from './state.ts';
+import { draftRef } from '../../veterans/store.ts';
+import type { Draft, VetRecord } from '../../veterans/store.ts';
+import { detailsTab as tab, racesShown, showTab, toggleRaces } from './state.ts';
+import type { DetailsTab } from './state.ts';
 
 type Career = DeepReadonly<CareerReport>;
 
@@ -63,7 +64,7 @@ const when = (turn: number) =>
 /** what the card shows of her and her career */
 export interface DetailsSpec {
   /** her draft */
-  d: Draft;
+  d: DeepReadonly<Draft>;
   /** the career she came from */
   r: Career;
   /** the G1s her schedule runs, each with her chance of winning it at least once */
@@ -93,6 +94,7 @@ export function Details({
       <div class="udtop">
         <div class="udpor">
           <UmaAv
+            key={`${d.chara}:${d.outfit}`}
             uma={d.chara}
             outfit={d.outfit}
             size={96}
@@ -308,7 +310,7 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
           aria-label={`Legacy ${j + 1}: ${umaName(v.chara)} (${label}). Her sparks`}
           onClick={open}
         >
-          <UmaAv uma={v.chara} outfit={v.outfit} size={64} />
+          <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={64} />
           <span class="udlegn">{`${label} ${umaName(v.chara)}`}</span>
           {v.borrowed && <span class="udguest">Guest</span>}
         </button>
@@ -316,7 +318,13 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
           {v.parents.map((g, k) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
             <div key={k} class="udleggx">
-              <UmaAv uma={g.chara || 0} outfit={g.outfit} size={40} label={umaName(g.chara)} />
+              <UmaAv
+                key={`${g.chara}:${g.outfit}`}
+                uma={g.chara || 0}
+                outfit={g.outfit}
+                size={40}
+                label={umaName(g.chara)}
+              />
               <span>{umaName(g.chara)}</span>
             </div>
           ))}

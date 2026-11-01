@@ -47,7 +47,7 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
       }
     >
       <div class="vpth">
-        <UmaAv uma={v.chara} outfit={v.outfit} size={48} />
+        <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={48} />
         <div>
           <div class="nm">{umaName(v.chara)}</div>
           <div class="sub">
@@ -61,8 +61,8 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
       <div class="vptg">
         Parents:{' '}
         {v.parents.map((g, j) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
-          <UmaAv key={j} uma={g.chara || 0} outfit={g.outfit} size={22} />
+          // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places, each keyed by her uma too
+          <UmaAv key={`${j}:${g.chara}:${g.outfit}`} uma={g.chara || 0} outfit={g.outfit} size={22} />
         ))}
         {` ${v.parents.map((g) => (g.chara ? umaName(g.chara) : 'unknown')).join(', ')}`}
       </div>
@@ -78,7 +78,7 @@ const TABS = [
 type Tab = (typeof TABS)[number][0];
 export function ParentPicker() {
   const k = pickerFor.value,
-    lastK = useRef<number | null>(null), // the place it shows (closed: the last, as a dialog keeps its content)
+    lastK = useRef<number | null>(null), // the place its title names (closed: the last)
     opening = useRef(0), // its openings so far: a tab chosen holds for the opening it was chosen in
     [chosenTab, setTab] = useState<[Tab, number] | null>(null),
     umas = useRef<HTMLDivElement>(null),
@@ -144,10 +144,11 @@ export function ParentPicker() {
         </div>
         <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets" hidden={tab !== 'vets'}>
           <div class="vpgrid" id="vp-list">
-            {place !== null && !vets.value.length && (
+            {/* (its rows only while open: a closed picker draws, and redraws, nothing) */}
+            {k !== null && !vets.value.length && (
               <p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>
             )}
-            {place !== null &&
+            {k !== null &&
               vets.value.flatMap((v: VetRecord, i: number) => {
                 const head = v.src === 'umamoe' && !headed;
                 if (head) headed = true;
@@ -157,7 +158,7 @@ export function ParentPicker() {
                       uma.moe
                     </h4>
                   ),
-                  <VetChoice key={v.id} v={v} i={i} k={place} />,
+                  <VetChoice key={v.id} v={v} i={i} k={k} />,
                 ];
               })}
           </div>

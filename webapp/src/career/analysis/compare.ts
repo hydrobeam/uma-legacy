@@ -13,10 +13,9 @@ import type { DeepReadonly } from '../../store.ts';
 import type * as AnswerStore from '../state.ts';
 import type { PlanDone } from '../state.ts';
 import type * as AnalysisStore from './state.ts';
-import type { Draft } from './state.ts';
 import type { Roll } from '../roll.mjs';
 import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.js';
-import type { LineageNode } from '../../veterans/store.ts';
+import type { Draft, NodeRecord } from '../../veterans/store.ts';
 import { keyOf } from '../keys.js';
 import { PLAN_NEXT } from '../run.ts';
 
@@ -46,11 +45,13 @@ export interface ComparisonDeps {
     /** the target skills, in the job's order */
     targets: () => readonly { group: number }[];
     /** she lands every target (career/job.js `isFull`) */
-    isFull: (nd: LineageNode) => boolean;
+    isFull: (nd: NodeRecord) => boolean;
     /** a run's plan job's `top` (career/job.js `ROLL_K`) */
     planTop: number;
     /** a fresh draft of career `r`: a random result of it, with her parents' records */
     draftOf: (r: DeepReadonly<CareerReport>) => Draft;
+    /** her draft on show (veterans/store.ts `draft`; null: none) */
+    draft: () => DeepReadonly<Draft> | null;
     /** a random result of career `r` (career/roll.mjs `rolledOutcome` on the settings and data) */
     roll: (r: DeepReadonly<CareerReport>) => Roll;
   };
@@ -60,9 +61,10 @@ export interface ComparisonDeps {
 export const STAND_MS = 800;
 
 // the draft as a legacy of the comparison's jobs (a veteran's job record: career/job.js `jobNode`)
-function draftJob(v: Draft) {
-  const pairs = (o: Record<number, number>) => Object.entries(o).map(([g, s]): [number, number] => [+g, s]);
-  const node = (x: LineageNode) => ({
+function draftJob(v: DeepReadonly<Draft>) {
+  const pairs = (o: DeepReadonly<Record<number, number>>) =>
+    Object.entries(o).map(([g, s]): [number, number] => [+g, s]);
+  const node = (x: NodeRecord) => ({
     chara: x.chara || 0,
     sparks: pairs(x.sparks),
     pinks: pairs(x.pinks),
@@ -142,7 +144,7 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
   };
   const comparisonJob = (): CareerJob => JSON.parse(page.baseKey(lastShown().job));
   const draftNow = () => {
-    const { draft } = now();
+    const draft = page.draft();
     if (!draft) throw new Error('a comparison is of the entered veteran');
     return draft;
   };
@@ -168,7 +170,7 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
   // last career she improves as a grandparent, without lifting the candidate's odds) can save careers too, so every
   // roll is confirmed by the exact comparison, its quick figure shown meanwhile as provisional. null when the plan
   // isn't for this career (then Reroll compares exactly).
-  function rollReq(d: Draft, r: DeepReadonly<CareerReport>) {
+  function rollReq(d: DeepReadonly<Draft>, r: DeepReadonly<CareerReport>) {
     const { planState } = answers.answer.peek();
     if (planState.state !== 'done') return null;
     const o = planState.r?.outcomes;
