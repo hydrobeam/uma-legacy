@@ -5,6 +5,8 @@
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
 // Here: the run machine (status line, job, search and plan), the answer, the pedigree, the career sections, the pool,
 // settings and start. Its parts in career/:
+//   state.ts      the answer store: the run on show, the answer, the last plan made, the answers kept
+//   run.ts        the robustness check on the plan on show
 //   roll.mjs      a roll: a random result of a career (no page state; the suite runs it in node)
 //   analysis.js   the veteran analysis ("Try a run"): her draft, her comparison, and the state they keep
 //   options.js    the options table ("Other careers": the plan's careers, Use this) and its Saves popup
@@ -78,8 +80,31 @@ import {
   clearAnalysis,
   keepBaseline,
   keptPlan,
+  reviseKeptPlan,
 } from './career/analysis.js';
 import { optionsEl } from './career/options.js';
+import {
+  answer,
+  answerCareer,
+  answerFails,
+  dropAnswer,
+  keepAnswer,
+  keepSavedAnswer,
+  loadFails,
+  newPlanId,
+  planProgresses,
+  planStarts,
+  recallAnswer,
+  reference,
+  runEnds,
+  runEndsWith,
+  runView,
+  runWaits,
+  searchStarts,
+  showAnswer,
+  showKeptAnswer,
+} from './career/state.ts';
+import { checkComplete, checkPhase } from './career/run.ts';
 import { unprovenWhy, searchCaveat, planCaveat } from './proofs.mjs';
 import { must, orNull } from './must.ts';
 
@@ -100,20 +125,12 @@ export const btn = (label, cls, fn) => {
 // One run per edit, one answer per run. A run has phases: the search (the best careers by odds), then, with the
 // trainee left to the planner, the plan (its pick among them and every other owned uma). The status line names the
 // phase at work; the answer (career, tree places, veteran analysis) is drawn once, when the run ends. Until then the
-// previous answer stays on screen, dimmed, its actions off. The run machine's state is this one record, written only by
-// the functions that drive a run (`schedule`, `search`, `planPhase`, `endRun`); everything else reads it.
-/**
- * @type {{id: number, searching: boolean, started: boolean, phase: 'search' | 'plan', phaseStart: number, lead: string,
- *   progress: string, inflight: string | null, tick: number | undefined, timer: number | undefined}}
- */
+// previous answer stays on screen, dimmed, its actions off. What the page draws of the run and its answer is the
+// answer store's (career/state.ts: `runView`, `answer`); the run machine's own state, which nothing draws, is this
+// record, written only by the functions that drive a run (`schedule`, `search`, `planPhase`, `endRun`).
+/** @type {{id: number, inflight: string | null, tick: number | undefined, timer: number | undefined}} */
 export const run = {
   id: 0, // the run under way or last made; a newer edit's run makes an older one's work stale
-  searching: false, // a run is at work (from the edit, through its pause, to its answer)
-  started: false, // a job of this run is under way (the pause before it dims nothing: an edit that ends where it started runs none)
-  phase: 'search', // 'search' | 'plan': the phase at work
-  phaseStart: 0, // when the phase began (performance.now())
-  lead: '', // the plan phase's lead: what the search found ("Weighed N careers in X s.")
-  progress: '', // the plan's progress, as the solver reports it from inside the plan (`progText`)
   inflight: null, // the run under way: its job and places (`runKey`); null when none is
   tick: undefined, // the status line's one-second redraw while a job runs (setInterval)
   timer: undefined, // the pause between an edit and its search (setTimeout)
@@ -126,7 +143,7 @@ const jobKey = (job) => {
   return `${JSON.stringify([ERA, { ...job, legacies: 0 }])}\n${legaciesJson.json}`;
 };
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
-/** @type {(p?: LineagePlan) => string} */
+/** @type {(p?: DeepReadonly<LineagePlan>) => string} */
 export const placesKey = (p = plan) => JSON.stringify({ trainee: p.trainee, parents: p.parents });
 const runKey = (job) => `${jobKey(job)}\n${placesKey()}`;
 // the plan's phase reports (career/plan/mod.rs `index_rule`: phase, k of n) in words
@@ -141,12 +158,6 @@ const progText = ({ ph, k, n }) =>
           ? `weighing ${n} careers`
           : '';
 /**
- * The status line's message once no run is at work.
- * @typedef {object} Status
- * @property {'loading'|'done'|'empty'|'error'} kind
- * @property {string} text
- * @property {{label: string, run: () => void}|null} [act]  a button after the text (e.g. Try sample veterans)
- *
  * The career job (`buildJob`; the solver reads it as `SkillJob` + `DeckJob` + `CareerJob`, web.rs); a plan job adds
  * `next` and `no_reports`, a comparison `compare`.
  * @typedef {object} CareerJob
@@ -371,35 +382,21 @@ const progText = ({ ph, k, n }) =>
  * @property {number[]} [cap_breached]  trainees (chara ids) whose deck class breached its cap, here or before
  * @property {PlanReport} [next]  a plan job's plan
  * @property {boolean} [pending]  set by the page: a quick comparison's stand-in while the search for her career runs
- *
- * The answer on show: the search's result for a job and the places it ran with (the plan's is `planState`).
- * @typedef {object} Answer
- * @property {CareerSearch} r  the solver's search report
- * @property {CareerJob} job  the job it answers
- * @property {string} key  `jobKey(job)`
- * @property {string} plan  the places, as JSON (`plan` when it ran)
- *
- * The answer's plan: none (the trainee chosen, or no run), done (`r`: the solver's `next` report; `job`: the plan job
- * it ran), or failed.
- * @typedef {{state: 'none', r?: null}} PlanNone
- * @typedef {{state: 'done', r: PlanReport, ms: number, job: CareerJob}} PlanDone
- * @typedef {{state: 'error', text: string}} PlanFailed
- * @typedef {PlanNone | PlanDone | PlanFailed} PlanState
  */
 /** @import { LineagePlan, LineageNode } from './vets.js' */
-/** @type {Status} */
-let status = { kind: 'loading', text: 'Loading…' };
-/** @type {Answer|null} */
-export let last = null;
+/** @import { Answer, PlanDone, Status } from './career/state.ts' */
+/** @import { DeepReadonly } from './store.ts' */
 function paint() {
-  const note = $('run-note');
+  const note = $('run-note'),
+    { searching, started } = runView.value,
+    { status } = answer.value;
   setRunner(plan.trainee || shown()?.trainee?.id); // the runner: the trainee you chose, else the career on show
-  $('rhead').dataset.kind = run.searching ? 'busy' : status.kind;
-  const dimmed = run.searching && run.started && !!shown(); // the previous answer, on screen until this run's
-  $('results').classList.toggle('stale', dimmed || (!run.searching && ['error', 'empty'].includes(status.kind)));
+  $('rhead').dataset.kind = searching ? 'busy' : status.kind;
+  const dimmed = searching && started && !!shown(); // the previous answer, on screen until this run's
+  $('results').classList.toggle('stale', dimmed || (!searching && ['error', 'empty'].includes(status.kind)));
   $('tree').classList.toggle('stale', dimmed);
-  $('results').setAttribute('aria-busy', String(run.searching));
-  if (run.searching) paintBusy(note);
+  $('results').setAttribute('aria-busy', String(searching));
+  if (searching) paintBusy(note);
   else {
     note.textContent = status.text + (status.kind === 'done' ? planNote() : '');
     // its actions, e.g. Import veterans and Try sample veterans (the last is #run-act)
@@ -414,19 +411,20 @@ function paint() {
 // the status line during a run: the search's lead (in the plan phase), the phase at work, the plan's progress and the
 // phase's seconds so far
 function paintBusy(note) {
-  const seconds = Math.floor((performance.now() - run.phaseStart) / 1000);
-  note.textContent = run.phase === 'plan' && run.lead ? `${run.lead} ` : '';
+  const { phase, phaseStart, lead, progress } = runView.value,
+    seconds = Math.floor((performance.now() - phaseStart) / 1000);
+  note.textContent = phase === 'plan' && lead ? `${lead} ` : '';
   const line = el('span');
   line.innerHTML = runnerHTML();
   line.append(
-    run.phase === 'plan' ? 'Planning your next career…' : 'Searching careers…',
+    phase === 'plan' ? 'Planning your next career…' : 'Searching careers…',
     el('span', '', seconds >= 1 ? ` ${seconds} s` : ''),
   );
   /** @type {HTMLElement} */
   (line.lastChild).setAttribute('aria-hidden', 'true');
   // (the plan's progress, before the seconds; like them, not read out at every step)
-  if (run.phase === 'plan' && run.progress) {
-    const pg = el('span', 'runprog', ` (${run.progress})`);
+  if (phase === 'plan' && progress) {
+    const pg = el('span', 'runprog', ` (${progress})`);
     pg.setAttribute('aria-hidden', 'true');
     line.insertBefore(pg, line.lastChild);
   }
@@ -435,6 +433,7 @@ function paintBusy(note) {
 // the plan's line: its time and the named assumptions its searches rest on (the job's, and its proven rows' own) that
 // the search's line does not state (`planCaveat`), or why it failed
 function planNote() {
+  const { last, planState } = answer.value;
   if (planState.state === 'error') return ` Plan not made: ${planState.text}`;
   if (planState.state !== 'done') return '';
   const plan = planState.r,
@@ -456,11 +455,12 @@ function schedule() {
   } catch {
     /* the search says why */
   }
+  const { last, planState } = answer.value;
   if (
     key !== null &&
     (run.inflight
       ? run.inflight === key
-      : !run.searching && last && `${last.key}\n${last.plan}` === key && planState.state !== 'error')
+      : !runView.value.searching && last && `${last.key}\n${last.plan}` === key && planState.state !== 'error')
   )
     return;
   clearTimeout(run.timer);
@@ -472,11 +472,7 @@ function schedule() {
   // a comparison in flight is stopped with it: its panel goes back to idle, or a roll's quick figures stand unchecked
   // (an answer that stands keeps her)
   stopComparison();
-  run.searching = true;
-  run.started = false;
-  run.phase = 'search';
-  run.lead = '';
-  run.phaseStart = performance.now();
+  runWaits(performance.now());
   paint();
   run.timer = setTimeout(search, 600);
 }
@@ -629,18 +625,11 @@ const baseOf = (job) => ({
   p_now: undefined,
 });
 export const baseKey = (job) => JSON.stringify(baseOf(job));
-// the answer's plan (the planner's candidates and its pick; none with the trainee chosen), and the entered veteran
-// with its comparison (on demand)
-/** @type {PlanState} */
-export let planState = { state: 'none', r: null };
 // a career's identity: the solver's `career` (her uma, her parents in order and her deck: two decks on the same parents
 // are two careers), else (an answer from before it) her uma and parents
 export const keyOf = (r) => r.career ?? `${r.trainee.id}:${r.parents.join(',')}`;
-// the last plan made: while the career on show is one you chose on the same setup and veterans (its job without the
-// places), its table stays, so you can weigh the plan's other careers or go back to its pick
-/** @type {{base: string, places: LineagePlan, result: PlanReport}|null} base: `refBase` of its job; places: as it ran with
- *  (LineagePlan: vets.js); result: its `next` report */
-let refPlan = null;
+// the last plan made (career/state.ts `reference`): while the career on show is one you chose on the same setup and
+// veterans (its job without the places), its table stays, so you can weigh the plan's other careers or go back to its pick
 const refBase = (job) =>
   planKey({
     ...job,
@@ -652,13 +641,14 @@ const refBase = (job) =>
     top: 0,
     career: undefined,
   });
-export const refFor = () =>
-  refPlan && last && planState.state !== 'done' && refPlan.base === refBase(last.job) ? refPlan : null;
-// the last few answers, by job and places: going back to one draws it again without a run
-const answers = new Map(),
-  ANSWERS = 4;
+export const refFor = () => {
+  const ref = reference.value,
+    { last, planState } = answer.value;
+  return ref && last && planState.state !== 'done' && ref.base === refBase(last.job) ? ref : null;
+};
 // the answer the last visit drew, when it was for this setup (the solver's and data's fingerprints, the job, the places):
-// put among the answers, so the first search draws it at once instead of planning (the solver is deterministic for its job)
+// put among the answers kept (career/state.ts), so the first search draws it at once instead of planning (the solver is
+// deterministic for its job)
 async function preloadAnswer() {
   let job;
   try {
@@ -668,7 +658,7 @@ async function preloadAnswer() {
   }
   const key = `${jobKey(job)}\n${placesKey()}`,
     saved = await answerLoad(ERA);
-  if (saved?.key === `${stateKey()}\n${key}` && saved.value?.last) answers.set(key, saved.value);
+  if (saved?.key === `${stateKey()}\n${key}` && saved.value?.last) keepSavedAnswer(key, saved.value);
 }
 const canon = (x) =>
   Array.isArray(x)
@@ -746,45 +736,36 @@ async function search() {
   const key = jobKey(job),
     places = placesKey(),
     answerKey = `${key}\n${places}`;
+  const { last, planState } = answer.value;
   if (last && last.key === key && last.plan === places && planState.state !== 'error') {
-    run.searching = false;
+    runEnds();
     clearInterval(run.tick);
     renderAll();
     paint();
     resumeCheck(id);
     return;
   }
-  const hit = answers.get(answerKey);
+  const hit = recallAnswer(answerKey);
   if (hit) {
-    answers.delete(answerKey);
-    answers.set(answerKey, hit); // (the most recent last)
-    ({ status, last, planState } = hit);
+    showKeptAnswer(hit);
     const r = shown();
     showAnalysis(r);
-    run.searching = false;
     clearInterval(run.tick);
     renderAll();
     paint();
     resumeCheck(id);
     return;
   }
-  run.searching = true;
-  run.started = true;
   run.inflight = answerKey;
-  run.phase = 'search';
-  run.lead = '';
-  run.progress = '';
-  run.phaseStart = performance.now();
+  searchStarts(performance.now());
   clearInterval(run.tick);
   run.tick = setInterval(paint, 1000);
   paint();
   const fail = (text) => {
-    status = { kind: 'error', text };
-    last = null;
-    planState = { state: 'none' };
+    answerFails(text);
     clearAnalysis();
   };
-  /** @type {PlanDone|null} the plan to check once it is shown (`checkPhase`) */
+  /** @type {DeepReadonly<PlanDone>|null} the plan to check once it is shown (`checkPhase`) */
   let checkFor = null;
   try {
     const m = await runJob(job);
@@ -797,19 +778,16 @@ async function search() {
       const planned = best && !plan.trainee ? await planPhase(id, job, found) : { state: 'none' };
       if (planned === null) return; // a newer edit took over
       // the answer: the plan's pick (the best odds when no plan ran or it failed), and the veteran you got, drawn once
-      // from it (a comparison on screen was for the old answer)
-      status = searched;
-      last = { r: m.r, job, key, plan: places };
-      planState = planned;
-      if (planned.state === 'done') {
-        refPlan = { base: refBase(job), places: JSON.parse(places), result: planned.r };
-        if (!planned.r.robust) checkFor = planned;
-      }
+      // from it (a comparison on screen was for the old answer); a plan made becomes the reference (`refFor`)
+      showAnswer(
+        { status: searched, last: { r: m.r, job, key, plan: places }, planState: planned },
+        planned.state === 'done' ? { base: refBase(job), places: JSON.parse(places) } : null,
+      );
+      if (planned.state === 'done' && !planned.r.robust) checkFor = planned;
       if (searched.kind === 'done' && planned.state !== 'error') {
-        answers.set(answerKey, { status, last, planState });
-        if (answers.size > ANSWERS) answers.delete(answers.keys().next().value);
+        keepAnswer(answerKey);
         // kept across a reload too: the same setup draws it at once (`preloadAnswer`)
-        answerSave(ERA, `${stateKey()}\n${answerKey}`, { status, last, planState });
+        answerSave(ERA, `${stateKey()}\n${answerKey}`, answer.peek());
       }
       const r = shown();
       showAnalysis(r);
@@ -819,73 +797,41 @@ async function search() {
     if (id !== run.id) return;
     fail(e.message);
   }
-  run.searching = false;
+  runEnds();
   run.inflight = null;
   clearInterval(run.tick);
   renderAll();
   paint();
-  if (checkFor) checkPhase(id, checkFor);
+  if (checkFor) checkPhase(checkDeps(id), checkFor);
 }
-// The robustness check on the pick, once it is shown: the plan job again with `next.robust: "next"`, one variant per
-// job from the plan the worker keeps, as background jobs (an edit lets the variant under way finish and its job waits
-// behind it, so the worker and what it keeps stay), until none is left, then one more for the within-trainee pair
-// search (`next.pair_search`, sent on every check job: the report's `pairs`). Its report attaches only to the plan it was
-// asked for: the same run and plan state, and the pick it names (`robust.plan`). Where the worker no longer keeps the
-// plan (it was stopped or restarted: a stopped comparison, a solver error, a reload) the check is unavailable, and the
-// table says so (`check_unavailable`).
-/** @param {number} id  the run it belongs to @param {PlanDone} planned  its plan */
-async function checkPhase(id, planned) {
-  const current = () => id === run.id && planState === planned;
-  // its report shows in the plan's table only: the tree and the veterans stay as they are (a redraw of the open
-  // veterans dialog under a click in progress would lose the click, or land it on the dialog, which closes it)
-  const redraw = () => {
+// what the robustness check of run `id` needs of the page (career/run.ts `checkPhase`): its report shows in the plan's
+// table only, the tree and the veterans staying as they are (a redraw of the open veterans dialog under a click in
+// progress would lose the click, or land it on the dialog, which closes it); a plan Compare kept for the same job is the
+// same report, so it takes the check too (`reviseKeptPlan`)
+/** @type {(id: number) => import('./career/run.ts').CheckDeps} */
+const checkDeps = (id) => ({
+  runIsCurrent: () => id === run.id,
+  // (the engine posts the job, a copy: it writes nothing into it)
+  runCheck: (job) =>
+    Promise.race([runJob(/** @type {CareerJob} */ (job), undefined, true), nextKill().then(() => null)]),
+  redraw: () => {
     keepFocus(renderResults);
     paint();
-  };
-  const unavailable = () => {
-    planned.r.check_unavailable = true;
-    redraw();
-  };
-  for (;;) {
-    /** @type {{r: {next?: PlanReport, error?: string}, ms: number} | null} */
-    let m = null;
-    try {
-      const job = {
-        ...planned.job,
-        next: { ...planned.job.next, robust: /** @type {'next'} */ ('next'), pair_search: true },
-      };
-      m = await Promise.race([runJob(job, undefined, true), nextKill().then(() => null)]);
-    } catch {
-      m = null;
-    }
-    if (!current()) return;
-    // (a kill loses the check: the stored state keeps no check, so the next worker could not run it; REPORT N7)
-    const check = m?.r.next?.robust;
-    if (!check || check.unavailable || check.error) return unavailable();
-    if (check.plan !== planned.r.outcomes?.career) return;
-    const variantsWereDone = planned.r.robust?.pending === 0;
-    planned.r.robust = check;
-    if (check.pending > 0) continue;
-    redraw();
-    // (done once the pair search is in; a step after the last variant that brought none has nothing more to bring)
-    if (checkComplete(check) || variantsWereDone) return;
-  }
-}
-// a check that has nothing left to run: every variant done and the pair search in (`pairs`; absent where the solver has
-// none)
-/** @type {(check: PlanReport['robust']) => boolean} */
-const checkComplete = (check) => check?.pending === 0 && check.pairs !== null;
+  },
+  checked: (plan) => reviseKeptPlan(plan.job, plan.r),
+});
 // an unfinished check of the plan on show, resumed where its answer is shown again (`checkPhase`; a check cut short by
 // an edit and its undoing, or by a newer answer): nothing where it is done or unavailable
 function resumeCheck(id) {
+  const { planState } = answer.value;
   if (planState.state !== 'done' || planState.r.check_unavailable || checkComplete(planState.r.robust)) return;
-  checkPhase(id, planState);
+  checkPhase(checkDeps(id), planState);
 }
 // a run that ends without searching (the job can't be built): its message, no answer
-function endRun(answer) {
-  run.searching = false;
+/** @param {Answer} next */
+function endRun(next) {
+  runEndsWith(next);
   clearInterval(run.tick);
-  ({ status, last, planState } = answer);
   clearAnalysis();
   renderAll();
   paint();
@@ -922,10 +868,7 @@ function searchStatus(m, found) {
 // alone, so the solver skips the career reports. A trainee you chose leaves it nothing to pick (no plan phase).
 // Returns the plan's state, or null when a newer edit (run `id` no longer current) took over.
 async function planPhase(id, job, found) {
-  run.phase = 'plan';
-  run.lead = found;
-  run.progress = '';
-  run.phaseStart = performance.now();
+  planStarts(found, performance.now());
   paint();
   const { rollout: _r, p_now: _p, ...plain } = job;
   let planned;
@@ -933,12 +876,12 @@ async function planPhase(id, job, found) {
     // Compare may have run this very plan job already (`keptPlan`): take its answer instead of planning again
     const jp = { ...plain, next: { ...PLAN_NEXT }, no_reports: true },
       kept = keptPlan(planKey(jp));
-    /** @type {{r: {next?: PlanReport, error?: string}, ms: number}} */
+    /** @type {{r: {next?: DeepReadonly<PlanReport>, error?: string}, ms: number}} */
     const m2 = kept
       ? { r: { next: kept.r }, ms: kept.ms }
       : await runJob(jp, (p) => {
           if (id === run.id) {
-            run.progress = progText(p);
+            planProgresses(progText(p));
             paint();
           }
         });
@@ -946,7 +889,7 @@ async function planPhase(id, job, found) {
     const x = m2.r.next;
     planned =
       x && !x.error && x.options?.length
-        ? { state: 'done', r: x, ms: m2.ms, job: jp }
+        ? { state: 'done', id: newPlanId(), r: x, ms: m2.ms, job: jp }
         : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
   } catch (e) {
     if (id !== run.id) return null;
@@ -957,12 +900,9 @@ async function planPhase(id, job, found) {
 }
 
 // ---------- the pedigree ----------
-// the career on show: the top result while it belongs to the current plan
-// (the plan's pick once it is made, else the highest odds)
-export const shown = () =>
-  last && last.plan === placesKey() && last.r.results[0]
-    ? (planState.state === 'done' && planState.r.choice) || last.r.results[0]
-    : null;
+// the career on show: the answer's (career/state.ts `answerCareer`: the plan's pick once it is made, else the highest
+// odds) while it belongs to the places on screen (`plan`, not yet a signal, so not part of the computed)
+export const shown = () => (answer.value.last?.plan === placesKey() ? answerCareer.value : null);
 export const fmtN = (x) => Math.round(x).toLocaleString();
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
@@ -1870,7 +1810,8 @@ function renderResults() {
     return;
   }
   // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
-  const open = !plan.trainee || plan.parents.some((p) => !p);
+  const open = !plan.trainee || plan.parents.some((p) => !p),
+    { last, planState } = answer.value;
   if (
     (open &&
       (planState.state === 'done' ? planState.r.options : must(last, 'the sections draw a career on show').r.results)
@@ -2337,9 +2278,8 @@ loadData().then(
     onVetsChange(() => {
       if (vetsSig() !== sig) {
         sig = vetsSig();
-        last = null;
+        dropAnswer();
         clearAnalysis();
-        planState = { state: 'none' };
       }
       schedule();
       renderAll();
@@ -2392,7 +2332,7 @@ loadData().then(
     search();
   },
   (e) => {
-    status = { kind: 'error', text: e.message };
+    loadFails(e.message);
     paint();
   },
 );

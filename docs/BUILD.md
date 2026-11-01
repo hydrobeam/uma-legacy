@@ -178,7 +178,10 @@ The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, minified to `as
 `localStorage['llp:settings']`, read and written in `saved.ts`. The settings are a store (`settings.ts`, on
 @preact/signals-core): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
-the loop page's on-screen state is `ui` (`state.js`). No framework.
+the loop page's on-screen state is `ui` (`state.js`). The career page's run and answer are a second store
+(`career/state.ts`): what the status line draws of the run, the answer on show and the last plan made, each a read-only
+signal that named transitions replace. A plan is known there by an id given when it is made, so the robustness check
+(`career/run.ts`), whose writes replace the plan's record, writes its result wherever the plan is kept. No framework.
 
 In `src/`, `main.js` and `career.js` are the two pages' entries; `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` builds the
 job both pages send (from the settings it is given), and `statestore.js` keeps the solver's work in

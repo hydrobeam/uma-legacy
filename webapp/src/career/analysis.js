@@ -3,8 +3,8 @@
 // running this career again or using her in the next one, on the plan's terms (expected careers to land).
 // This module owns the analysis' state (`simulation`, the comparison under way `simulationId`, the comparisons'
 // baseline `baselineCache`, the plan Compare kept `planKept`); career.js changes it only through the transitions
-// below. It reads the answer and the run machine from career.js (an import cycle: this module's body only declares,
-// so nothing of career.js is read while the bundle loads).
+// below. It reads the answer from the answer store (career/state.ts) and the run machine from career.js (an import
+// cycle: this module's body only declares, so nothing of career.js is read while the bundle loads).
 import { $, $dialog, el, fmtIn } from '../dom.js';
 import { careerTables } from '../data.js';
 import { settings } from '../settings.ts';
@@ -14,9 +14,8 @@ import { pct } from '../odds.js';
 import { vets, plan, changed, newVet, umaName, openWins } from '../vets.js';
 import { detailsEl, fitSparks } from '../details.js';
 import { scheduledRaces, rolledOutcome } from './roll.mjs';
+import { answer, runView } from './state.ts';
 import {
-  last,
-  planState,
   shown,
   run,
   runJob,
@@ -35,7 +34,9 @@ import {
 } from '../career.js';
 import { must } from '../must.ts';
 /** @import { LineageNode } from '../vets.js' */
-/** @import { CareerJob, CareerReport, CareerSearch, PlanDone, PlanOption, PlanReport } from '../career.js' */
+/** @import { CareerJob, CareerReport, CareerSearch, PlanOption, PlanReport } from '../career.js' */
+/** @import { PlanDone } from './state.ts' */
+/** @import { DeepReadonly } from '../store.ts' */
 /** @typedef {{results: CareerReport[], pending: true}} PendingSearch a stand-in while the quick comparison looks for the best career with her */
 
 // the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
@@ -43,7 +44,7 @@ import { must } from '../must.ts';
 // the same job a run sends once she is added (keys sorted, the comparison's flag aside), so Add to veterans takes it as
 // it is instead of planning again (the solver is deterministic for its job). A plan under today's fit is never kept
 // here: its job carries `next.fit`, which a run's does not
-/** @type {{key: string, r: PlanReport, ms: number} | null} */
+/** @type {{key: string, r: DeepReadonly<PlanReport>, ms: number} | null} */
 let planKept = null;
 
 /**
@@ -53,7 +54,7 @@ let planKept = null;
  * @property {Draft|null} [draft]  the entered veteran
  * @property {CareerSearch|PendingSearch|null} [r]  the comparison's search: the best career with her as a parent (`pending` while the
  *   quick comparison looks for it)
- * @property {CareerReport|null} [baseline]  today's best career, without her
+ * @property {DeepReadonly<CareerReport>|null} [baseline]  today's best career, without her
  * @property {string|null} [error]
  * @property {string} [forKey]  `keyOf` the career she came from
  * @property {'quick'|null} [kind]  the running comparison is a roll's quick one
@@ -80,7 +81,7 @@ let planKept = null;
 /** @type {Simulation} */
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
 let simulationId = 0; // the comparison under way; a newer one (or a run) makes it stale
-/** @type {{key: string, result: CareerReport} | null} key: baseKey(job); result: today's best career, the comparisons' baseline */
+/** @type {{key: string, result: DeepReadonly<CareerReport>} | null} key: baseKey(job); result: today's best career, the comparisons' baseline */
 let baselineCache = null;
 
 // ---------- the transitions the run machine (career.js) makes
@@ -109,10 +110,17 @@ export function keepBaseline(key, result) {
 }
 // the plan Compare ran for the pool with her, when a run's plan job is the same (`key`: `planKey`), else null
 export const keptPlan = (key) => (planKept && planKept.key === key ? planKept : null);
+// the plan of job `job` (a run's) has had its check (career/run.ts) write `r`: where it is the plan kept here (the run
+// took it as it was, `keptPlan`), the two are one report, so the kept plan is `r` from now on (a run that takes it again
+// finds its check done)
+/** @type {(job: DeepReadonly<CareerJob>, r: DeepReadonly<PlanReport>) => void} */
+export function reviseKeptPlan(job, r) {
+  if (planKept && planKept.key === planKey(job)) planKept = { ...planKept, r };
+}
 
 // ---------- the analysis
 function comparisonJob() {
-  return JSON.parse(baseKey(must(last, 'a comparison is of the career on show').job));
+  return JSON.parse(baseKey(must(answer.value.last, 'a comparison is of the career on show').job));
 }
 
 // the veteran analysis, ready for the career on show: she starts as a random result of it
@@ -135,13 +143,13 @@ const simulationFor = (r) => {
 };
 // today's best career without her, which a roll's figures and a comparison's both set hers against: the run's when it
 // searched without places (a fixed trainee or parent makes it the best of those), else cached or searched now
-/** @param {CareerJob} base `comparisonJob()` @returns {Promise<CareerReport>} */
+/** @param {CareerJob} base `comparisonJob()` @returns {Promise<DeepReadonly<CareerReport>>} */
 async function baselineFor(base) {
-  const shownNow = must(last, 'a comparison is of the career on show');
+  const shownNow = must(answer.value.last, 'a comparison is of the career on show');
   const key = JSON.stringify(base),
     open = !shownNow.job.trainees.length && !shownNow.job.fix.length,
     cached = baselineCache?.key === key ? baselineCache.result : null;
-  /** @type {{results: CareerReport[]} | import('../solver.ts').SolverRefusal} */
+  /** @type {{results: readonly DeepReadonly<CareerReport>[]} | import('../solver.ts').SolverRefusal} */
   const before = cached ? { results: [cached] } : open ? shownNow.r : (await runJob(base)).r;
   if ('error' in before) throw new Error(before.error);
   if (!before.results?.length) throw new Error('No career found in the current roster.');
@@ -215,7 +223,7 @@ const copyNode = (v) => ({
 const rollSetup = () => ({ career: careerTables(), targets: settings.value.targets, rank: settings.value.rank });
 function rollDraft() {
   const r = shown();
-  if (!r || run.searching) return;
+  if (!r || runView.value.searching) return;
   Object.assign(must(simulation.draft, 'a roll redraws the entered veteran'), rolledOutcome(r, rollSetup()), {
     winAt: {},
   });
@@ -237,6 +245,7 @@ function rollDraft() {
 // every roll is confirmed by the exact comparison, its quick figure shown meanwhile as provisional. null when the plan
 // isn't for this career (then Reroll compares exactly).
 function rollReq(d, r) {
+  const { planState } = answer.value;
   if (planState.state !== 'done') return null;
   const o = planState.r?.outcomes;
   if (!o || !planState.job || (o.career ?? `${o.trainee}:${o.parents.join(',')}`) !== keyOf(r)) return null;
@@ -280,7 +289,7 @@ async function quickCompare(request) {
       return;
     }
     y = roll.y;
-    const v0 = /** @type {PlanDone} */ (planState).r.v0; // done: `request` came from its `rollReq`
+    const v0 = /** @type {DeepReadonly<PlanDone>} */ (answer.value.planState).r.v0; // done: `request` came from its `rollReq`
     simulation.r = { results: [], pending: true };
     simulation.full = isFull(simulation.draft);
     simulation.v0 = { now: v0, withHer: v0 != null ? Math.max(0, v0 - y) : null }; // r: a stand-in, no search figures
@@ -424,7 +433,7 @@ function editDraft() {
 }
 // Compare (or a roll): a press while a comparison runs restarts it with the veteran as she is now
 function compare() {
-  if (run.searching || !shown()) return;
+  if (runView.value.searching || !shown()) return;
   cancelCompare();
   runComparison();
 }
@@ -468,6 +477,7 @@ async function runComparison(refine = false) {
       compare: true,
       no_reports: true,
     }); // as a run's plan job, once she is added
+    const { last, planState } = answer.value;
     let planNow =
       planState.state === 'done' && !must(last, 'a comparison is of the career on show').job.fix.length
         ? planState.r
@@ -528,7 +538,7 @@ async function runComparison(refine = false) {
   renderSimulation();
 }
 function addDraft() {
-  if (run.searching || !simulation.draft) return;
+  if (runView.value.searching || !simulation.draft) return;
   $dialog('sim-dlg').close(); // she joins your veterans: back to the next career
   const d = structuredClone(simulation.draft);
   delete d.apt;
@@ -590,14 +600,14 @@ function analysisCard(d, r) {
   const go = btn('Compare', 'primary', compare);
   go.id = 'sim-compare';
   go.dataset.k = 'sim:compare';
-  go.disabled = run.searching;
+  go.disabled = runView.value.searching;
   const roll = btn('Reroll', '', rollDraft);
   roll.id = 'sim-roll';
   roll.dataset.k = 'sim:roll';
-  roll.disabled = run.searching;
+  roll.disabled = runView.value.searching;
   const add = btn('Add to veterans', '', addDraft);
   add.id = 'sim-add';
-  add.disabled = run.searching;
+  add.disabled = runView.value.searching;
   actions.append(go, roll, add);
   const mid = el('div', 'udmid');
   mid.append(actions); // (the career's odds lead the main view)
@@ -613,7 +623,8 @@ function comparisonPanel(d, r) {
   result.setAttribute('role', 'status');
   const hdr = el('div', 'simhdr');
   hdr.append(el('span', '', 'Comparison'));
-  const opt = planState.state === 'done' ? planState.r.options?.find((o) => keyOf(o) === keyOf(r)) : null;
+  const { planState } = answer.value,
+    opt = planState.state === 'done' ? planState.r.options?.find((o) => keyOf(o) === keyOf(r)) : null;
   if (opt && opt.lift != null) {
     const odds = el(
       'span',

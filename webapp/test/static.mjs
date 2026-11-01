@@ -285,10 +285,10 @@ const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
   ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll']],
-  ['stores', ['settings', 'state', 'vets']],
+  ['stores', ['settings', 'state', 'vets', 'career/state']],
   ['shared', null], // every module not named elsewhere
   ['page:loop', ['main', 'search', 'results', 'io', 'affinity']],
-  ['page:career', ['career', 'career/analysis', 'career/options']],
+  ['page:career', ['career', 'career/analysis', 'career/options', 'career/run']],
 ];
 {
   const moduleOf = (file) => file.replace(/^src\//, '').replace(/\.(js|mjs|ts|tsx)$/, '');

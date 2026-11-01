@@ -13,15 +13,17 @@
  * @property {boolean} [proven_top]  the best odds' order is certified
  * @property {boolean} [complete]  false: a search of the job was cut short, or certified at a lower deck cap only
  * @property {boolean} [given]  the career the job named, scored as it is (career/given.rs): no search ran
- * @property {string[]} [unproven]  why the main search is not complete
- * @property {string[]} [job_unproven]  why any search of the job is not complete
- * @property {string[]} [assumes]  the named assumptions the main search's proof rests on
- * @property {string[]} [job_assumes]  the named assumptions any search of the job rests on
+ * @property {readonly string[]} [unproven]  why the main search is not complete
+ * @property {readonly string[]} [job_unproven]  why any search of the job is not complete
+ * @property {readonly string[]} [assumes]  the named assumptions the main search's proof rests on
+ * @property {readonly string[]} [job_assumes]  the named assumptions any search of the job rests on
  * @property {number} [band_overflows]
- * @property {[number, number, number][]} [cap_exceeded]  per deck class past its assumed cap: [class, ratio, cap]
+ * @property {readonly (readonly [number, number, number])[]} [cap_exceeded]  per deck class past its assumed cap:
+ *   [class, ratio, cap]
  * @property {number} [cap_breaches]  capped deck searches of the job that scored a deck past its cap
- * @property {number[]} [cap_breached]  trainees (chara ids) whose deck class breached its cap, in this job or before
- * @property {{searches: number, unproven: number, unanswered: number}} [cap_rerun]
+ * @property {readonly number[]} [cap_breached]  trainees (chara ids) whose deck class breached its cap, in this job or
+ *   before
+ * @property {{readonly searches: number, readonly unproven: number, readonly unanswered: number}} [cap_rerun]
  */
 
 /** @type {(r: ProofFields) => Set<string>} the unproven reasons the main search and the job name */
@@ -45,7 +47,7 @@ export const unprovenWhy = (r) => {
   ];
 };
 
-/** @type {(why: string[]) => string} */
+/** @type {(why: readonly string[]) => string} */
 export const whyText = (why) =>
   why.length ? `reported: ${why.join('; ')}` : 'no cause reported; its work budget is one possibility';
 
@@ -56,10 +58,10 @@ const ASSUMED = {
   multi_feeder_cap: 'the assumed bound for nested-chain decks beside other feeders',
 };
 
-/** @type {(names: string[] | undefined) => string[]} the named assumptions, as text (unknown names as they are) */
+/** @type {(names: readonly string[] | undefined) => string[]} the named assumptions, as text (unknown names as they are) */
 const assumedWhy = (names) => [...new Set(names || [])].map((name) => ASSUMED[name] || name);
 
-/** @type {(names: string[] | undefined) => string} '' without any */
+/** @type {(names: readonly string[] | undefined) => string} '' without any */
 const assumedText = (names) => {
   const why = assumedWhy(names);
   return why.length ? `proven under ${why.join(' and ')}` : '';
@@ -89,7 +91,7 @@ export function searchCaveat(r) {
 /** The plan's caveat on the status line: the named assumptions the plan job's searches rest on (its `job_assumes`) that
  * the search's caveat (`searchCaveat` of `r`, the search job's report) does not state already ('' without any). The
  * plan table adds no note for them: a proof under a named assumption is still a proof.
- * @type {(planAssumes: string[] | undefined, r: ProofFields) => string} */
+ * @type {(planAssumes: readonly string[] | undefined, r: ProofFields) => string} */
 export function planCaveat(planAssumes, r) {
   const stated = proven(r) ? assumedWhy([...(r.assumes || []), ...(r.job_assumes || [])]) : [];
   const extra = assumedWhy(planAssumes).filter((why) => !stated.includes(why));

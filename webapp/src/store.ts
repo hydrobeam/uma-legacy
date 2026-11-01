@@ -2,9 +2,10 @@
 import { effect, untracked } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 
-/** a record as a store hands it out: read-only all the way down (a write from outside is a compile error) */
-export type DeepReadonly<T> = T extends (infer U)[]
-  ? readonly DeepReadonly<U>[]
+/** a record as a store hands it out: read-only all the way down (a write from outside is a compile error); an array
+ *  or tuple becomes a readonly one (the mapped type keeps its shape), and a function in it stays callable */
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
   : T extends object
     ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
     : T;
