@@ -101,7 +101,7 @@ test("the targets' count chart is the report's: a target removed since leaves it
   render(h(Targets, { r }), root);
   await new Promise((resolve) => setTimeout(resolve, 0));
   // each column: its chance, then its count
-  const columns = [...root.querySelectorAll('span')].filter((s) => /^tgc( all)?$/.test(s.className));
+  const columns = [...root.querySelectorAll('[data-counts] [data-count]')];
   assert.deepEqual(
     columns.map((s) => s.textContent),
     ['13%3/3', '38%2/3', '38%1/3', '13%0/3'],

@@ -198,8 +198,8 @@ export default async function careerumamoe(b) {
   const heads = await pg.locator('#vp-list .vpgh').allTextContents();
   await pg.locator('#vp-list .vpt').nth(bj).click();
   await done();
-  const tileText = (await pg.locator('#tree .pn.parent').first().innerText()).replace(/\s+/g, ' ');
-  const boxButtons = await pg.locator('#tree .pn.parent').first().locator('button:not(.ptile)').count();
+  const tileText = (await pg.locator('#tree [data-node="parent"]').first().innerText()).replace(/\s+/g, ' ');
+  const boxButtons = await pg.locator('#tree [data-node="parent"]').first().locator('button:not([data-k])').count();
   await node('node:p0');
   const copyInPopup = await pg.locator('#node-dlg button', { hasText: 'Copy ID' }).count();
   await closeNode();
@@ -348,9 +348,9 @@ export default async function careerumamoe(b) {
   check(
     'career uma.moe: a parent place naming a veteran not here goes back to the planner, and the page still plans',
     (await pg.evaluate(() => document.getElementById('rhead').dataset.kind)) !== 'loading' &&
-      !!(await pg.textContent('#tree .pn.trainee .nm')) &&
+      !!(await pg.textContent('#tree [data-node="trainee"] [data-nm]')) &&
       !(pg.errors || []).some((e) => /TypeError|ReferenceError/.test(e)), // (the bad key's 401 is logged by the browser)
-    `${(await pg.textContent('#run-note')).slice(0, 40)} | ${await pg.evaluate(() => document.getElementById('rhead').dataset.kind)} | ${await pg.textContent('#tree .pn.trainee .nm')} | ${(pg.errors || []).join(' / ').slice(0, 200)}`,
+    `${(await pg.textContent('#run-note')).slice(0, 40)} | ${await pg.evaluate(() => document.getElementById('rhead').dataset.kind)} | ${await pg.textContent('#tree [data-node="trainee"] [data-nm]')} | ${(pg.errors || []).join(' / ').slice(0, 200)}`,
   );
   // the Grand Masters era borrows from uma.moe too, asking only for the targets' sparks Global has; a tab still on the
   // Global data (opened before the switch) saves its own era's part only

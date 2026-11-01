@@ -22,6 +22,8 @@ import { openSched } from '../../ui/Schedule.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { panel } from '../../ui/Panel.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
+import { chip } from '../../ui/deckChip.ts';
+import { skillTile } from '../../ui/skillTile.ts';
 import { cx } from 'tailwind-variants/lite';
 
 /** the career on show, as the answer store hands it (read-only) */
@@ -31,13 +33,14 @@ type CareerReport = ShownCareer;
 export function Odds({ r }: { r: CareerReport }) {
   const n = r.targets.length;
   return (
+    // the page's headline, as the loop page's: one line, the figure large
     <span
-      class="udodds"
+      class="text-gm-ink flex items-baseline gap-1.5 leading-tight"
       id="odds-open"
       title={`The chance this career lands all ${n} targets (each count under the targets)`}
     >
-      <b>{fmtIn(r.p_all)}</b>
-      <span>{` to land all ${n}`}</span>
+      <b class="text-headline font-black">{fmtIn(r.p_all)}</b>
+      <span class="text-body font-bold">{` to land all ${n}`}</span>
     </span>
   );
 }
@@ -86,22 +89,40 @@ export function DeckCard({ slot }: { slot: DeckSlot }) {
       end: endAt || 0,
     }));
   return (
+    // data-tag: borrowed or pal; data-off: greyed, marked not owned (the checks read both)
     <button
       type="button"
-      class={cx('dc', bor ? 'bor' : c?.pal ? 'pal' : '', off ? 'off' : '')}
+      class={chip({ tag: bor ? 'borrowed' : c?.pal ? 'pal' : 'plain' })}
       data-cid={c ? String(c.id) : undefined}
       data-name={t.nm}
       data-end={endAt ? String(endAt) : undefined}
+      data-tag={tag || undefined}
+      data-off={off ? '' : undefined}
       title={full}
       aria-label={full}
       aria-haspopup="dialog"
       {...opener}
     >
-      <CardAv c={c || null} size={96} titled={false} />
-      <span class="dn">{full}</span>
-      {pick && <i>{`prioritise ${pick}`}</i>}
-      {!!endAt && <i>{chainEndNote(c, endAt)}</i>}
+      <CardAv c={c || null} size={22} titled={false} shape="deck" friend={bor} dim={off ? 'always' : undefined} />
+      <span class="group-has-data-[card=art]/chip:hidden">{full}</span>
+      {pick && <i class="text-caption text-muted not-italic">{`prioritise ${pick}`}</i>}
+      {!!endAt && <i class="text-caption text-muted not-italic">{chainEndNote(c, endAt)}</i>}
     </button>
+  );
+}
+// a deck's cards: six to a row (`row`), or three to a row of larger cards (`popup`, the deck popup's)
+const CARDS = {
+  row: 'grid grid-cols-[repeat(6,minmax(0,84px))] items-start gap-2.5 max-md:gap-1.5',
+  popup: 'grid grid-cols-[repeat(3,minmax(0,104px))] items-start justify-center gap-2.5 max-md:gap-1.5',
+} as const;
+/** a deck's cards, borrowed last, each a DeckCard (data-deck-cards: the checks find a deck's by it) */
+function DeckCards({ deck, fit }: { deck: Parameters<typeof deckCards>[0]; fit: keyof typeof CARDS }) {
+  return (
+    <div class={CARDS[fit]} data-deck-cards="">
+      {borrowedLast(deckCards(deck)).map((slot) => (
+        <DeckCard key={`${slot.i}:${slot.named}`} slot={slot} />
+      ))}
+    </div>
   );
 }
 /** her deck in its popup (the game's dialog): the six cards with their priority and chain notes */
@@ -114,14 +135,10 @@ export function DeckDialog() {
         <>
           <DialogTitle id="deck-title">Deck</DialogTitle>
           <DialogBody>
-            <div class={cx(panel, 'deck relative grid gap-2 p-2.5 max-md:p-2')} id="tree-deck">
-              <div class="dcards">
-                <Guard what="The deck popup">
-                  {borrowedLast(deckCards(r.deck)).map((slot) => (
-                    <DeckCard key={`${slot.i}:${slot.named}`} slot={slot} />
-                  ))}
-                </Guard>
-              </div>
+            <div class={cx(panel, 'grid gap-2 p-2.5 max-md:p-2')} id="tree-deck">
+              <Guard what="The deck popup">
+                <DeckCards deck={r.deck} fit="popup" />
+              </Guard>
             </div>
           </DialogBody>
           <DialogFoot>
@@ -132,8 +149,6 @@ export function DeckDialog() {
     </Dialog>
   );
 }
-/** whether a deck card is this module's (popover.ts leaves its markup alone) */
-
 // the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
 function cardsGiving(r: CareerReport, g: number) {
   const out = [];
@@ -159,6 +174,8 @@ function legaciesCarrying(r: CareerReport, g: number) {
   return out;
 }
 type Target = CareerReport['targets'][number];
+// a target's figures: the legacies' chance, and what else gives it
+const FIGURE = 'text-note text-gm-ink2 inline-flex min-w-0 flex-wrap items-center gap-0.5 font-black tabular-nums';
 // one target's row: the game's skill tile with her chance to land its spark (tap: Skill Details, where it comes from
 // with each chance); her chance to get the skill on the game's bond gauge, gold for its gold skill and white for the
 // white alone; the chance her legacies pass it on; what else gives it (the deck's cards with their chance, her outfit,
@@ -173,37 +190,48 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
     bw = b.white || 0,
     sc = b.kind === 'scenario' ? scenarioOf(settings.value.scen) : null;
   return (
-    <li class="ctg">
+    // (its cells are the list's grid's: data-target marks the row for the checks)
+    <li class="contents" data-target={t.group}>
       <button
         type="button"
-        class="udsk"
+        class={skillTile({ size: 'row', class: 'max-sm:col-span-full max-sm:mt-1.5' })}
         aria-haspopup="dialog"
         aria-label={`${tName(t.group)}: lands ${pct(t.p)}. Where it comes from`}
         onClick={() => openSkill({ b, name: tName(t.group), group: t.group, goldIcon: gold, gold, legacies, cards })}
       >
-        <SkillIcon group={t.group} />
-        <span class="udskn">{tName(t.group)}</span>
-        <b class="tgp" title={`Lands as a spark: ${pct(t.p)}`}>
+        <SkillIcon group={t.group} cls="size-6" />
+        <span class="text-body min-w-0 flex-1 leading-tight wrap-anywhere">{tName(t.group)}</span>
+        <b class="text-heading text-gm-ink shrink-0 font-black tabular-nums" title={`Lands as a spark: ${pct(t.p)}`}>
           {pct(t.p)}
         </b>
       </button>
-      <span class="tgbar" title={`Acquired: ${pct(bg + bw)} (gold ${pct(bg)}, white only ${pct(bw)})`}>
-        <span class="tgfill" style={{ width: `${Math.round((bg + bw) * 1000) / 10}%` }}>
-          <i class="g" style={{ width: `${bg + bw > 0 ? Math.round((bg / (bg + bw)) * 1000) / 10 : 0}%` }} />
-          <i class="w" />
+      {/* the game's bond gauge: its track and its marks at each fifth, gold for the gold skill, white for the white */}
+      <span
+        class="nine-gauge after:art-gauge-marks relative flex h-4.5 px-1.25 py-1 after:pointer-events-none after:absolute after:inset-x-1.25 after:inset-y-1"
+        title={`Acquired: ${pct(bg + bw)} (gold ${pct(bg)}, white only ${pct(bw)})`}
+      >
+        <span
+          class="flex min-w-0 overflow-hidden rounded-full"
+          style={{ width: `${Math.round((bg + bw) * 1000) / 10}%` }}
+        >
+          <i
+            class="art-gauge-gold shrink-0"
+            style={{ width: `${bg + bw > 0 ? Math.round((bg / (bg + bw)) * 1000) / 10 : 0}%` }}
+          />
+          <i class="art-gauge-white flex-1" />
         </span>
       </span>
-      <span class="tgfig" title={`Inherited: ${pct(t.q)}`}>
-        {ico && <img class="tgico" src={ico} alt="" />}
-        <b>{String(Math.round(t.q * 100))}</b>
+      <span class={FIGURE} title={`Inherited: ${pct(t.q)}`}>
+        {ico && <img class="h-auto w-5.75" src={ico} alt="" />}
+        <b class="ml-0.5">{String(Math.round(t.q * 100))}</b>
       </span>
-      <span class="tgfig tgdk" title={cards.length ? `Deck: ${pct(deckP)}` : undefined}>
+      <span class={FIGURE} title={cards.length ? `Deck: ${pct(deckP)}` : undefined} data-deck-figure="">
         {cards.length > 0 && (
           <>
             {cards.map(({ card }) => (
               <CardAv key={card.id} c={card} size={20} />
             ))}
-            <b>{String(Math.round(deckP * 100))}</b>
+            <b class="ml-0.5">{String(Math.round(deckP * 100))}</b>
           </>
         )}
         {!!b.outfit && (
@@ -224,7 +252,7 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
             title={`Her own events: ${pct(b.own_event ?? 0)}`}
           />
         )}
-        {sc && <ScenLogo sc={sc} title="The scenario gives it" />}
+        {sc && <ScenLogo sc={sc} title="The scenario gives it" cls="h-4.5 w-9" />}
       </span>
     </li>
   );
@@ -233,9 +261,11 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
 export function Targets({ r }: { r: CareerReport }) {
   const ico = srcFor('ui', 'ico_legacies');
   return (
-    <section class="rbsec rtgt">
+    <section class="grid min-w-0 gap-2" data-sec="targets">
       <GameBar>Targets</GameBar>
-      <ul class="ctgs">
+      {/* one aligned row a target: the tile, the gauge, the legacies' figure, the others' (on a phone the tile over
+          the other three) */}
+      <ul class="grid grid-cols-[minmax(0,17rem)_minmax(6em,1fr)_3.4em_8em] items-center gap-x-3 gap-y-1.5 max-sm:grid-cols-[minmax(0,1fr)_3.2em_6.5em] max-sm:gap-x-2 max-sm:gap-y-1">
         {[...r.targets]
           .sort((a, b) => a.p - b.p)
           .map((t) => (
@@ -286,34 +316,47 @@ function Counts({ r }: { r: CareerReport }) {
     top = Math.max(...ex),
     arrow = srcFor('ui', 'arrow_avg');
   return (
-    <div class="tgchart">
-      <div class="tgcounts">
+    <div
+      class="bg-gm-pane inset-ring-gm-line relative mt-3.5 rounded-2xl px-1.5 pt-2.5 pb-7.5 inset-ring"
+      data-counts=""
+    >
+      {/* (no gap: every column on one baseline) */}
+      <div class="grid auto-cols-[minmax(0,1fr)] grid-flow-col">
         {ex
           .map((p, k) => ({ k, p }))
           .reverse()
           .map(({ k, p }) => (
             <span
               key={k}
-              class={cx('tgc', k === n ? 'all' : '')}
+              class="grid justify-items-center gap-0.75 tabular-nums"
               title={`Exactly ${k} of ${n}: ${fmtIn(p)} (${pct(p)})`}
+              data-count={k}
             >
-              <b>{pct(p)}</b>
-              <span class="tgcb">
-                <i style={{ height: `${top > 0 ? Math.max(2, Math.round((p / top) * 100)) : 0}%` }} />
+              {/* (a fixed row: every figure on one baseline) */}
+              <b class="text-caption text-gm-ink2 h-4.5 leading-4.5 font-bold">{pct(p)}</b>
+              <span class="border-gm-tile-edge flex h-13 w-full items-end justify-center border-b-2">
+                <i
+                  class={cx(
+                    'block w-[min(70%,30px)] rounded-t-sm',
+                    k === n ? 'art-count-all inset-shadow-count-all' : 'art-count-bar inset-shadow-count-bar',
+                  )}
+                  style={{ height: `${top > 0 ? Math.max(2, Math.round((p / top) * 100)) : 0}%` }}
+                />
               </span>
-              <span class="tgck">{`${k}/${n}`}</span>
+              <span class="text-caption text-gm-ink2 font-black">{`${k}/${n}`}</span>
             </span>
           ))}
       </div>
       {Number.isFinite(r.expected) && (
         // column n - e from the left (all n first), at its centre: (n - e + 0.5) / (n + 1) of the width
         <span
-          class="tgavg"
+          class="absolute bottom-1 inline-flex -translate-x-1/2 items-center gap-0.5 whitespace-nowrap"
           style={{ left: `${((n - r.expected + 0.5) / (n + 1)) * 100}%` }}
           title={`The average roll lands ${r.expected.toFixed(2)} of ${n}`}
+          data-avg=""
         >
-          {arrow && <img src={arrow} alt="" />}
-          <b>{`Avg ${r.expected.toFixed(1)}`}</b>
+          {arrow && <img class="size-5" src={arrow} alt="" />}
+          <b class="text-caption text-count-avg font-black">{`Avg ${r.expected.toFixed(1)}`}</b>
         </span>
       )}
     </div>

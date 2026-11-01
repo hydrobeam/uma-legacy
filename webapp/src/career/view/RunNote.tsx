@@ -34,10 +34,11 @@ function Busy() {
   return (
     <>
       {phase === 'plan' && lead ? `${lead} ` : ''}
-      <span>
-        <Runner />
+      {/* the runner beside the phase, one line */}
+      <span class="inline-flex items-center gap-1.5">
+        <Runner game />
         {phase === 'plan' ? 'Planning your next career…' : 'Searching careers…'}
-        {phase === 'plan' && progress && <span class="runprog" aria-hidden="true">{` (${progress})`}</span>}
+        {phase === 'plan' && progress && <span aria-hidden="true">{` (${progress})`}</span>}
         <span aria-hidden="true">{seconds >= 1 ? ` ${seconds} s` : ''}</span>
       </span>
     </>

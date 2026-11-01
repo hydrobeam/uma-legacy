@@ -449,7 +449,7 @@ export async function careerPage(b) {
           : /Searching careers…/.test(n.textContent)
             ? 'search'
             : '',
-        who: document.querySelector('#tree .pn.trainee .nm')?.textContent || '',
+        who: document.querySelector('#tree [data-node="trainee"] [data-nm]')?.textContent || '',
         draft: document.querySelector('#simulation .ud')
           ? 'v:' +
             [...document.querySelectorAll('#simulation .simskills .vskb')]
@@ -496,7 +496,7 @@ export async function careerPage(b) {
   const showsNow = () =>
     pg.evaluate(
       () =>
-        (document.querySelector('#tree .pn.trainee .nm')?.textContent || '') +
+        (document.querySelector('#tree [data-node="trainee"] [data-nm]')?.textContent || '') +
         '/' +
         (document.querySelector('#simulation .ud')
           ? 'v:' +

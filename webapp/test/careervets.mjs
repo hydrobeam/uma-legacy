@@ -13,7 +13,7 @@ export default async function careervets(b) {
   const toteBefore = await pg.locator('#odds-open').count();
   const cards = pg.locator('#vets .umcell'),
     runNote = pg.locator('#run-note'),
-    ghosts = pg.locator('#tree .pn.ghost');
+    ghosts = pg.locator('#tree [data-ghost]');
   await vetsOpen();
   // (every card marked: one built again loses the mark)
   await pg.evaluate(() => {
@@ -32,7 +32,7 @@ export default async function careervets(b) {
     (await pg.locator('#v-pane .udrow.par').count()) === 2 &&
       toteBefore === 1 &&
       (await pg.locator('#odds-open').count()) === 1 &&
-      (await pg.locator('#tree .pn.ghost').count()) === 3,
+      (await pg.locator('#tree [data-ghost]').count()) === 3,
   );
   await done();
   const rebuilt = await pg.evaluate(() =>
@@ -137,7 +137,7 @@ export default async function careervets(b) {
     'career: the closed parent picker and node popup hold no rows or node (an edit elsewhere redraws none of them)';
   await expect.soft(pg.locator('#vp-list > *'), `${closedEmpty}: the picker`).toHaveCount(0);
   await expect.soft(pg.locator('#node-body > *'), `${closedEmpty}: the popup`).toHaveCount(0);
-  const p1 = pg.locator('.pf').nth(0).locator('.pn.parent');
+  const p1 = pg.locator('#tree [data-legacy="1"] [data-node="parent"]');
   const sparksIn = async (key, n) => {
     await node(key);
     const ok = await pg
@@ -150,13 +150,13 @@ export default async function careervets(b) {
     return ok;
   };
   await expect.soft(p1, 'career: … she is parent 1').toHaveText(/Special Week/);
-  await expect.soft(p1, 'career: … she is parent 1: chosen').not.toHaveClass(/ghost/);
+  await expect.soft(p1, 'career: … she is parent 1: chosen').not.toHaveAttribute('data-ghost');
   check('career: … with the eight targets at 2 stars (in her popup)', await sparksIn('node:p0', 2));
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
   const herParents =
     'career: … her parents are not known yet but carry the same eight sparks, and she joins your veterans';
   await expect
-    .soft(pg.locator('.pf').nth(0).locator('.pn.gp', { hasText: 'Unknown' }), `${herParents}: unknown`)
+    .soft(pg.locator('#tree [data-legacy="1"] [data-node="gp"]', { hasText: 'Unknown' }), `${herParents}: unknown`)
     .toHaveCount(2);
   check(`${herParents}: their sparks`, (await sparksIn('node:p0g0', 2)) && (await sparksIn('node:p0g1', 2)));
   await expect.soft(cards, `${herParents}: 13 veterans`).toHaveCount(13);
@@ -170,7 +170,7 @@ export default async function careervets(b) {
   await pg.locator('#pick-list .upick:visible').first().click();
   await ask('All 8 at 3★');
   await done();
-  const g1 = pg.locator('.pf').nth(0).locator('.pn.gp').first();
+  const g1 = pg.locator('#tree [data-legacy="1"] [data-node="gp"]').first();
   await expect.soft(g1, 'career: a grandparent takes an uma').toHaveText(/Gold Ship/);
   check('career: … and the skills chosen for her', await sparksIn('node:p0g0', 3));
   // the other parent can't be the same uma
@@ -188,7 +188,9 @@ export default async function careervets(b) {
   await pg.fill('#pick-filter', 'Agnes Digital');
   await pg.locator('#pick-list .upick:visible').first().click();
   await done();
-  await expect.soft(pg.locator('#tree .pn.trainee'), 'career: the chosen trainee is set').not.toHaveClass(/ghost/);
+  await expect
+    .soft(pg.locator('#tree [data-node="trainee"]'), 'career: the chosen trainee is set')
+    .not.toHaveAttribute('data-ghost');
   check(
     'career: … and the picks list only parents',
     await pg.$$eval('.alts tbody .altw', (ws) => ws.every((w) => /^Parents /.test(w.textContent.trim()))),
@@ -285,8 +287,8 @@ export default async function careervets(b) {
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
   const outlive = 'career: the veterans and the chosen places outlive a reload';
   await expect.soft(cards, `${outlive}: 13 veterans`).toHaveCount(13);
-  await expect.soft(pg.locator('.pf').nth(0), `${outlive}: parent 1`).toHaveText(/Special Week/);
-  await expect.soft(pg.locator('#tree .pn.trainee'), `${outlive}: the trainee`).toHaveText(/Agnes Digital/);
+  await expect.soft(pg.locator('#tree [data-legacy="1"]'), `${outlive}: parent 1`).toHaveText(/Special Week/);
+  await expect.soft(pg.locator('#tree [data-node="trainee"]'), `${outlive}: the trainee`).toHaveText(/Agnes Digital/);
   await vetsOpen();
   await pg.click('#v-paste');
   await dialog(pg, 'paste-dlg');

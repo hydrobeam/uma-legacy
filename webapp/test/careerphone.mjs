@@ -110,7 +110,7 @@ export default async function careerphone(b) {
   const tree = await pg.evaluate(() => {
     const t = document.getElementById('tree'),
       kids = [...t.children].map((k) => k.getBoundingClientRect()),
-      boxes = [...t.querySelectorAll('.pf')].map((e) => Math.round(e.getBoundingClientRect().height));
+      boxes = [...t.querySelectorAll('[data-legacy]')].map((e) => Math.round(e.getBoundingClientRect().height));
     return {
       column: kids.every((r, i) => r.width >= 330 && (!i || r.top >= kids[i - 1].bottom - 1)),
       boxes,

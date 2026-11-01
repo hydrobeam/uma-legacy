@@ -388,7 +388,7 @@ export default async function career(b) {
   );
   await pg.keyboard.press('Escape');
   const incomplete = { count: memNotes.length, text: memNotes[0] };
-  const trainee = pg.locator('#tree .pn.trainee .nm');
+  const trainee = pg.locator('#tree [data-node="trainee"] [data-nm]');
   {
     const name =
       "career: one answer per run: while it searches, then plans, no career is drawn; the status names each phase; the answer is the plan's pick with the veteran drawn once";
@@ -535,19 +535,24 @@ export default async function career(b) {
     await expect.soft(runNote, `${name}: no check mentioned`).not.toHaveText(/could not finish|checked exact/);
   }
   await expect
-    .soft(pg.locator('#tree .pn.ghost'), "career: the tree shows the planner's trainee and parents")
+    .soft(pg.locator('#tree [data-ghost]'), "career: the tree shows the planner's trainee and parents")
     .toHaveCount(3);
   await expect
-    .soft(pg.locator('#tree .pn.gp'), "career: the tree shows the planner's trainee and parents: … grandparents")
+    .soft(
+      pg.locator('#tree [data-node="gp"]'),
+      "career: the tree shows the planner's trainee and parents: … grandparents",
+    )
     .toHaveCount(4);
   // the odds lead the next career; under the targets, the chance of landing exactly each count, all 8 first
   {
     const name =
       'career: the odds lead the next career; under the targets, the chance of landing exactly each count, in percent, and the average roll';
     await expect.soft(pg.locator('#lodds #odds-open'), name).toHaveText(/^1 in [\d,.]+ to land all 8/);
-    await expect.soft(pg.locator('#tree .rtgt .tgavg b'), `${name}: the average`).toHaveText(/^Avg \d\.\d$/);
-    const oddRows = await pg.$$eval('#tree .rtgt .tgcounts .tgc', (l) =>
-      l.map((c) => [c.querySelector('.tgck').textContent, c.querySelector('b').textContent]),
+    await expect
+      .soft(pg.locator('#tree [data-sec="targets"] [data-avg] b'), `${name}: the average`)
+      .toHaveText(/^Avg \d\.\d$/);
+    const oddRows = await pg.$$eval('#tree [data-sec="targets"] [data-counts] [data-count]', (l) =>
+      l.map((c) => [c.lastElementChild.textContent, c.querySelector('b').textContent]),
     );
     check(
       `${name}: the counts`,
@@ -561,17 +566,17 @@ export default async function career(b) {
   }
   // the targets, lowest first: the game's skill tile with the chance to land; under it her six legacies' faces and the
   // cards that give it; a tile opens Skill Details (her six legacies, the cards)
-  const tgRows = await pg.$$eval('#tree .rtgt .ctg', (l) =>
+  const tgRows = await pg.$$eval('#tree [data-target]', (l) =>
     l.map((x) => ({
-      land: Number.parseFloat(x.querySelector('.udsk .tgp')?.textContent),
-      bar: x.querySelectorAll('.tgbar i').length,
-      legs: x.querySelector('.tgfig')?.title,
+      land: Number.parseFloat(x.querySelector(':scope > button b')?.textContent),
+      bar: x.querySelectorAll('[title^="Acquired"] i').length,
+      legs: x.querySelector('[title^="Inherited"]')?.title,
     })),
   );
   {
     const name =
       "career: the six-card deck in its own place, shown outright; the targets lowest first, each a tile with its chance to land, its gold / white bar and the legacies' chance under it; a tile opens Skill Details with her six legacies";
-    await pg.locator('#tree .rtgt .ctg button.udsk').first().click();
+    await pg.locator('#tree [data-target] > button').first().click();
     await dialog(pg, 'sk-dlg');
     const sk = pg.locator('#sk-dlg');
     await expect.soft(sk.locator('.gmdfaces [data-av]'), `${name}: Skill Details' six legacies`).toHaveCount(6);
@@ -580,7 +585,9 @@ export default async function career(b) {
     await pg.keyboard.press('Escape');
     await pg.click('#deck-open');
     await dialog(pg, 'deck-dlg');
-    await expect.soft(pg.locator('#deck-dlg #tree-deck .dc'), `${name}: the deck's six cards`).toHaveCount(6);
+    await expect
+      .soft(pg.locator('#deck-dlg #tree-deck button[data-name]'), `${name}: the deck's six cards`)
+      .toHaveCount(6);
     await pg.keyboard.press('Escape');
     check(
       `${name}: the targets`,
@@ -598,7 +605,9 @@ export default async function career(b) {
     const targets = await pg.evaluate(() =>
       [...window.__careerResults.findLast((r) => r.next?.choice).next.choice.targets].sort((a, c) => a.p - c.p),
     );
-    const rowDeck = await pg.$$eval('#tree .rtgt .ctg', (l) => l.map((x) => x.querySelector('.tgdk')?.title || ''));
+    const rowDeck = await pg.$$eval('#tree [data-target]', (l) =>
+      l.map((x) => x.querySelector('[data-deck-figure]')?.title || ''),
+    );
     // (pct's rounding: whole percents from 10%, one decimal from 1%)
     const shows = (text, p) => {
       const v = parseFloat(text.replace(/^Deck: /, '')),
@@ -610,7 +619,7 @@ export default async function career(b) {
     const both = targets
       .map((t, i) => ({ i, gw: (t.buy?.deck_gold || 0) * (t.buy?.deck_white || 0), p: hint(t.buy || {}) }))
       .sort((a, c) => c.gw - a.gw)[0];
-    await pg.locator('#tree .rtgt .ctg button.udsk').nth(both.i).click();
+    await pg.locator('#tree [data-target] > button').nth(both.i).click();
     await dialog(pg, 'sk-dlg');
     const lines = await pg.$$eval('#sk-dlg .gmdlist li', (l) =>
       l.map((x) => [x.querySelector('span')?.textContent, x.querySelector('b')?.textContent]),
@@ -630,10 +639,19 @@ export default async function career(b) {
   {
     const name = 'career: the legacies carry no affinity numbers or labels; the trainee shows her total';
     await expect.soft(pg.locator('#tree .gate'), `${name}: no labels`).toHaveCount(0);
-    await expect.soft(pg.locator('#tree .pn:not(.trainee) .aff'), `${name}: no numbers`).toHaveCount(0);
-    await expect.soft(pg.locator('#tree .pn.trainee .aff'), `${name}: her total`).toHaveCount(1);
+    await expect.soft(pg.locator('#tree').getByLabel(/^Affinity \d/), `${name}: no numbers`).toHaveCount(1);
+    await expect
+      .soft(pg.locator('#tree [data-node="trainee"]').getByLabel(/^Affinity \d/), `${name}: her total`)
+      .toHaveCount(1);
   }
-  const affs = [+(await pg.textContent('#tree .pn.trainee .aff')).replace(/\D/g, '')];
+  const affs = [
+    +(
+      await pg
+        .locator('#tree [data-node="trainee"]')
+        .getByLabel(/^Affinity \d/)
+        .textContent()
+    ).replace(/\D/g, ''),
+  ];
   await node('node:t');
   const aff = pg.locator('#node-dlg').getByRole('table', { name: 'Affinity' });
   const affRows = await aff.locator('tbody tr').count(),
@@ -682,7 +700,7 @@ export default async function career(b) {
   // the deck (its popup): a card's panel, as in the planner; marking it not owned searches again without it
   await pg.click('#deck-open');
   await dialog(pg, 'deck-dlg');
-  const dc = pg.locator('#tree-deck .dc').first(),
+  const dc = pg.locator('#tree-deck button[data-name]').first(),
     dcid = await dc.getAttribute('data-cid');
   await dc.click();
   await pg.waitForSelector('[data-pop="card"]:not([hidden]) [data-act="own"]');
@@ -700,7 +718,7 @@ export default async function career(b) {
   );
   // an edit undone within the pause runs nothing and never dims the answer
   if (!(await pg.locator('[data-pop="card"]:not([hidden]) [data-act="own"]').count()))
-    await pg.locator('#tree-deck .dc').first().click();
+    await pg.locator('#tree-deck button[data-name]').first().click();
   await pg.waitForSelector('[data-pop="card"]:not([hidden]) [data-act="own"]');
   const pre3 = await showsNow();
   await pg.evaluate(() => {
@@ -721,14 +739,18 @@ export default async function career(b) {
   check(
     "career: a deck card's panel marks it not owned; the search drops it or borrows it",
     (await pg.evaluate((id) => JSON.parse(localStorage.getItem('llp:settings')).global.cardsOff[id] === false, dcid)) &&
-      (!(await pg.locator(`#tree-deck .dc[data-cid="${dcid}"]`).count()) ||
-        (await pg.locator(`#tree-deck .dc.bor[data-cid="${dcid}"]`).count()) === 1),
+      (!(await pg.locator(`#tree-deck button[data-cid="${dcid}"]`).count()) ||
+        (await pg.locator(`#tree-deck button[data-tag="borrowed"][data-cid="${dcid}"]`).count()) === 1),
   );
   {
     // with a card borrowed, every deck on the page (the tree's, Career Info's) lists it last: the sixth slot, as in the game
-    const rows = await pg.$$eval('.dcards, .udcards', (l) =>
+    const rows = await pg.$$eval('[data-deck-cards], .udcards', (l) =>
       l
-        .map((r) => [...r.querySelectorAll(':scope > .dc')].map((e) => e.classList.contains('bor')))
+        .map((r) =>
+          [...r.querySelectorAll(':scope > button')].map(
+            (e) => e.dataset.tag === 'borrowed' || e.classList.contains('bor'),
+          ),
+        )
         .filter((k) => k.length),
     );
     const bad = rows.filter((k) => k.some((b, i) => b && k.slice(i + 1).some((x) => !x))).length,
@@ -748,8 +770,8 @@ export default async function career(b) {
   // the schedule and the deck: buttons under the trainee, the schedule window (the game's calendar) and the deck's popup
   {
     const name = 'career: the race schedule and the deck are buttons under the trainee, not sections of the page';
-    await expect.soft(pg.locator('#tree .pn.trainee #sched-open'), `${name}: the schedule`).toHaveCount(1);
-    await expect.soft(pg.locator('#tree .pn.trainee #deck-open'), `${name}: the deck`).toHaveCount(1);
+    await expect.soft(pg.locator('#tree [data-node="trainee"] #sched-open'), `${name}: the schedule`).toHaveCount(1);
+    await expect.soft(pg.locator('#tree [data-node="trainee"] #deck-open'), `${name}: the deck`).toHaveCount(1);
     await expect.soft(pg.locator('#tree .lraces, #tree .ldeck'), `${name}: no sections`).toHaveCount(0);
   }
   await pg.click('#sched-open');
@@ -912,11 +934,11 @@ export default async function career(b) {
     "career: the odds and Try a run beside Next career; the next career (trainee and legacies, then her targets), the other careers under it, her card in Try a run's popup",
     await pg.evaluate(() => {
       const t = document.getElementById('tree'),
-        order = [...t.children].map((k) => k.className.split(' ').find((c) => /^(ltrainee|llegacies|rtgt)$/.test(c)));
+        order = [...t.children].map((k) => k.dataset.sec);
       const r = document.getElementById('results'),
         dlg = document.getElementById('sim-dlg');
       return (
-        order.join() === 'ltrainee,llegacies,rtgt' &&
+        order.join() === 'trainee,legacies,targets' &&
         !!document.querySelector('#lodds #odds-open') &&
         !!document.querySelector('#lodds #sim-try') &&
         t.nextElementSibling === r &&
@@ -1124,7 +1146,7 @@ export default async function career(b) {
       .toHaveCount(3);
     await expect.soft(pg.locator('#sim-result .nextc .cface .her'), `${name}: her marked`).toHaveCount(1);
     await expect
-      .soft(pg.locator('#sim-result details.nextdeck:not([open]) .deck .dc'), `${name}: the deck`)
+      .soft(pg.locator('#sim-result details.nextdeck:not([open]) button[data-name]'), `${name}: the deck`)
       .toHaveCount(6);
     await expect.soft(pg.locator('#sim-result > .simodds .tc'), `${name}: its odds outside`).toHaveCount(2);
     await expect

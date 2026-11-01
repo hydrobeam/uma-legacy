@@ -14,9 +14,10 @@ import type { VariantProps } from 'tailwind-variants/lite';
 
 // An uma's portrait: a circle (`round`, --s across, set inline), the roster's square tile (`tile`, its box's width), or
 // a result's face button (ui's `face/` group: loop/Results.tsx), brighter under the pointer: `card`, its corners
-// rounded (a deck's title), `swap`, rounder and 52 px on a phone (a swap row's); her initials on her hue (--h, set
-// inline) in the mono face while there is no picture, a faint edge just outside it; `ring`, a loop member's white
-// ring; `dim`, greyed out: `always`, or `unowned` while her roster tile is marked not owned (the theme's `unowned:`)
+// rounded (a deck's title), `swap`, rounder and 52 px on a phone (a swap row's); `trainee`, a circle 72 px on a phone
+// (the career tree's trainee); her initials on her hue (--h, set inline) in the mono face while there is no picture, a
+// faint edge just outside it; `ring`, a loop member's white ring (`member`) or a tree node's white and cream one
+// (`node`); `dim`, greyed out: `always`, or `unowned` while her roster tile is marked not owned (the theme's `unowned:`)
 const avLook = tv({
   base: 'bg-av font-data text-ink outline-img-edge inline-grid shrink-0 place-items-center overflow-hidden align-middle leading-none font-semibold outline',
   variants: {
@@ -25,8 +26,9 @@ const avLook = tv({
       tile: 'text-display aspect-square h-auto w-full rounded-xl',
       card: 'size-(--s) rounded-md text-(length:--fs) group-hover/face:brightness-106',
       swap: 'size-(--s) rounded-xl text-(length:--fs) group-hover/face:brightness-106 max-md:size-13',
+      trainee: 'size-(--s) rounded-full text-(length:--fs) max-md:size-18',
     },
-    ring: { member: 'shadow-portrait' },
+    ring: { member: 'shadow-portrait', node: 'shadow-node-face' },
     dim: { always: 'opacity-45 grayscale', unowned: 'unowned:opacity-45 unowned:grayscale' },
   },
   defaultVariants: { shape: 'round' },
@@ -230,8 +232,13 @@ export function SkillIcon({ group, gold = false, cls }: { group: number; gold?: 
 /** the runner while a search works (her strip of 18 frames, 30 px; the strip set inline with its size, held on its
  *  first frame for reduced motion), else a spinner; its stride starts in phase with the clock when it appears, and it
  *  stays the same element while the status line around it changes. `cls` sets the runner's margins (layout only) in
- *  place of the default, which overhangs its line a little. */
-export function Runner({ cls }: { cls?: string | undefined } = {}) {
+ *  place of the default, which overhangs its line a little; `game`, the spinner in the game's colours (the career
+ *  page's status line), else the site's. */
+const SPIN = {
+  site: 'border-line border-t-accent animate-spinner inline-block size-3.5 rounded-full border-2 motion-reduce:animate-none',
+  game: 'border-gm-line border-t-gm-green2 animate-spinner inline-block size-3.5 rounded-full border-2 motion-reduce:animate-none',
+} as const;
+export function Runner({ cls, game = false }: { cls?: string | undefined; game?: boolean } = {}) {
   const [at] = useState(() => performance.now()),
     src = runnerSrc();
   return src ? (
@@ -246,7 +253,7 @@ export function Runner({ cls }: { cls?: string | undefined } = {}) {
     />
   ) : (
     <span
-      class="border-line border-t-accent animate-spinner inline-block size-3.5 rounded-full border-2 motion-reduce:animate-none"
+      class={SPIN[game ? 'game' : 'site']}
       data-spinner="spin"
       aria-hidden="true"
       style={`animation-delay:-${Math.round(at % 800)}ms`}

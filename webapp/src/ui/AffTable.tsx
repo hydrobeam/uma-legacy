@@ -2,23 +2,34 @@
 import type { ComponentChildren } from 'preact';
 import { must } from '../must.ts';
 import { cx, tv } from 'tailwind-variants/lite';
+import type { VariantProps } from 'tailwind-variants/lite';
 
+// the heart and the number, in the data face (`data`: the tables, the affinity popup's switches) or the game's, bolder
+// (`game`: the career tree's trainee)
+const heart = tv({
+  base: 'text-caption inline-flex items-center gap-0.75 tabular-nums',
+  variants: { face: { data: 'font-data font-semibold', game: 'font-black' } },
+  defaultVariants: { face: 'data' },
+});
 /** her affinity as the game's heart and the number (none without one) */
 export function AffHeart({
   affinity,
-  cls = 'aff',
+  face,
+  class: place,
   title,
-}: {
+}: VariantProps<typeof heart> & {
   affinity: number | null | undefined;
-  cls?: string;
+  /** where it sits: layout utilities only */
+  class?: string;
   title?: string;
 }) {
   if (affinity === null || affinity === undefined) return null;
   const shown = Math.round(affinity);
   return (
     // biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (the old affEl): its name reads the heart as a number; a role for it is the AffinityTable port's (step 11)
-    <span class={cls} aria-label={`Affinity ${shown}`} title={title ?? `Affinity ${shown}`}>
-      <i class="heart" />
+    <span class={heart({ face, class: place })} aria-label={`Affinity ${shown}`} title={title ?? `Affinity ${shown}`}>
+      {/* the game's heart: pink, a white rim */}
+      <i class="art-heart drop-shadow-heart inline-block h-3.5 w-3.75 shrink-0" />
       {String(shown)}
     </span>
   );
@@ -90,7 +101,7 @@ function Row({
       <td class={num({ kind })}>{whole(legacy.rel)}</td>
       <td class={num({ kind })}>{whole(legacy.race)}</td>
       <td class={num({ kind })}>
-        <AffHeart affinity={legacy.aff} cls="aff justify-end" />
+        <AffHeart affinity={legacy.aff} class="justify-end" />
       </td>
     </tr>
   );

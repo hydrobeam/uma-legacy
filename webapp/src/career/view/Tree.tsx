@@ -19,11 +19,35 @@ import { Button } from '../../ui/Button.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
 import { cx } from 'tailwind-variants/lite';
 
+// A node's look by its kind, each part's list whole: the trainee (her face over her name from 760 px, beside it under
+// that), a parent (her face beside her name, in her legacy box), a grandparent (a face alone in a small panel, her name
+// left to her label). The box takes a ring under the pointer; its portrait button none (it keeps its focus ring).
+const NODE = {
+  trainee: {
+    box: 'hover:shadow-node-hover grid min-w-0 cursor-pointer justify-items-center gap-1 rounded-2xl p-1',
+    tile: 'grid grid-cols-1 items-center justify-items-center gap-x-3 gap-y-0.5 text-center max-lg:grid-cols-[auto_minmax(0,1fr)] max-lg:justify-items-start max-lg:text-left',
+    names: 'grid justify-items-center max-lg:justify-items-start',
+    name: 'text-heading leading-tight font-black',
+  },
+  parent: {
+    box: 'hover:shadow-node-hover grid min-w-0 cursor-pointer justify-items-stretch gap-1 rounded-2xl p-1',
+    tile: 'grid grid-cols-[auto_minmax(0,1fr)] items-center justify-items-start gap-x-3 gap-y-0.5 justify-self-start text-left',
+    names: 'grid justify-items-start',
+    name: 'text-body leading-tight font-black',
+  },
+  gp: {
+    box: 'bg-gm-panel border-gm-edge shadow-node hover:shadow-node-hover grid min-w-0 cursor-pointer justify-items-center gap-1 rounded-2xl border px-1.5 pt-1 pb-1.5',
+    tile: 'grid justify-items-center gap-0.5 text-center',
+    names: 'hidden',
+    name: '',
+  },
+} as const;
 interface PlaceProps {
   /** the node it opens */
   spec: NodeSpec;
-  /** the box's classes */
-  cls: string;
+  kind: keyof typeof NODE;
+  /** a place the planner fills: dimmed while a run works on the next answer */
+  ghost?: boolean;
   /** its data-k (the suite finds a node by it) */
   k: string;
   face: ComponentChildren;
@@ -36,40 +60,51 @@ interface PlaceProps {
   children?: ComponentChildren;
 }
 // A node of the pedigree: its portrait button (her face, name and a line under it) in its box. A click anywhere in the
-// box opens it, as the portrait does (not on the box's own buttons or deck cards); the popup gives the focus back to
-// the portrait when it closes.
-function Place({ spec, cls, k, face, name, sub, label, head, children }: PlaceProps) {
+// box opens it, as the portrait does (not on the box's own buttons); the popup gives the focus back to the portrait
+// when it closes. data-node says its kind, data-ghost a place the planner fills (the checks read both).
+function Place({ spec, kind, ghost = false, k, face, name, sub, label, head, children }: PlaceProps) {
   const tile = useRef<HTMLButtonElement>(null),
-    open = () => openNode(spec, () => tile.current?.focus());
+    open = () => openNode(spec, () => tile.current?.focus()),
+    look = NODE[kind];
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: the box widens the portrait's target for the pointer; the portrait is the keyboard's button
     <div
-      class={cx(cls, 'pnclick')}
+      class={cx(look.box, ghost && 'stale:opacity-45')}
+      data-node={kind}
+      data-ghost={ghost ? '' : undefined}
       onClick={(e) => {
-        if (!(e.target as HTMLElement).closest('button, a, .deck, input')) open();
+        if (!(e.target as HTMLElement).closest('button, a, input')) open();
       }}
     >
       {head}
       <button
         ref={tile}
         type="button"
-        class="ptile"
+        class={cx(
+          look.tile,
+          'focus-visible:outline-accent cursor-pointer rounded-lg px-1 py-0.5 focus-visible:outline-3 focus-visible:outline-offset-2',
+        )}
         data-k={k}
         aria-haspopup="dialog"
         aria-label={label}
         onClick={open}
       >
         {face}
-        <span class="tnm">
-          <span class="nm">{name}</span>
-          {sub && <span class="sub">{sub}</span>}
+        <span class={look.names}>
+          <span class={look.name} data-nm="">
+            {name}
+          </span>
+          {sub && <span class="text-caption text-gm-ink2 leading-tight">{sub}</span>}
         </span>
       </button>
       {children}
     </div>
   );
 }
-const empty = <span class="av empty" />;
+// an empty place: a dashed circle
+const empty = (
+  <span class="border-gm-edge bg-gm-pane inline-block size-18 shrink-0 rounded-full border-2 border-dashed" />
+);
 // her affinity, in all, from the report's six slots (career/inherit.rs `slots`)
 const legacyAff = (r: CareerReport) => r.slots.reduce((a, x) => a + x.aff, 0);
 function Trainee({ r }: { r: CareerReport | null }) {
@@ -81,19 +116,28 @@ function Trainee({ r }: { r: CareerReport | null }) {
   return (
     <Place
       spec={{ kind: 't' }}
-      cls={`pn trainee${plan.trainee ? '' : ' ghost'}`}
+      kind="trainee"
+      ghost={!plan.trainee}
       k="node:t"
-      face={id ? <UmaAv key={`${id}:${outfit?.id}`} uma={id} outfit={outfit?.id} size={96} /> : empty}
+      face={
+        id ? (
+          <UmaAv key={`${id}:${outfit?.id}`} uma={id} outfit={outfit?.id} size={96} shape="trainee" ring="node" />
+        ) : (
+          empty
+        )
+      }
       name={id ? umaName(id) : 'Any uma'}
       sub={id ? outfit?.label || null : 'The planner tries every uma you own.'}
       label={`Trainee: ${id ? umaName(id) : 'the planner picks'}. Details`}
       head={
-        <div class="pnh">
-          <span class="pnl">{plan.trainee ? 'Your pick' : "Planner's pick"}</span>
+        <div class="text-gm-ink flex w-full flex-wrap items-center justify-center gap-1.5">
+          <span class="text-caption text-gm-ink2 font-semibold tracking-wider uppercase">
+            {plan.trainee ? 'Your pick' : "Planner's pick"}
+          </span>
           {tot !== null && (
             <AffHeart
               affinity={tot}
-              cls="aff tot"
+              face="game"
               title={`Affinity ${Math.round(tot)}, her six legacies: click her for the breakdown`}
             />
           )}
@@ -101,7 +145,7 @@ function Trainee({ r }: { r: CareerReport | null }) {
       }
     >
       {r && mine && (
-        <div class="row tdeck">
+        <div class="stale:opacity-45 mt-0.5 flex flex-wrap items-center justify-center gap-2">
           <DeckButton />
           <SchedButton r={r} />
         </div>
@@ -109,18 +153,37 @@ function Trainee({ r }: { r: CareerReport | null }) {
     </Place>
   );
 }
-function Family({ k, r }: { k: number; r: CareerReport | null }) {
+// the game's legacy boxes, Legacy 1 blue and Legacy 2 pink: the box, and its label in the top left corner
+const LEGACY = [
+  { box: 'border-legacy-blue bg-legacy-blue-soft', label: 'bg-legacy-blue text-shadow-legacy-blue' },
+  { box: 'border-legacy-pink bg-legacy-pink-soft', label: 'bg-legacy-pink text-shadow-legacy-pink' },
+] as const;
+function Family({ k, r }: { k: 0 | 1; r: CareerReport | null }) {
   const at = parentAt(k, r),
-    v = at?.v;
+    v = at?.v,
+    look = LEGACY[k];
   return (
-    <div class="pf">
-      <span class="pflab">{`Legacy ${k + 1}`}</span>
+    // data-legacy: its number (the checks find a box by it)
+    <div
+      class={cx(
+        look.box,
+        'relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border-3 px-2.5 pt-6.5 pb-2 max-md:px-1.25 max-md:pt-7 max-md:pb-1.5',
+      )}
+      data-legacy={k + 1}
+    >
+      <span
+        class={cx(
+          look.label,
+          'text-body absolute top-0 left-0 z-1 rounded-tl-lg rounded-br-xl pt-0.5 pr-4 pb-0.75 pl-2.5 font-black text-white',
+        )}
+      >{`Legacy ${k + 1}`}</span>
       {v ? (
         <Place
           spec={{ kind: 'p', k }}
-          cls={`pn parent${at.pick ? ' ghost' : ''}${v.borrowed ? ' bor' : ''}`}
+          kind="parent"
+          ghost={at.pick}
           k={`node:p${k}`}
-          face={<UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={64} />}
+          face={<UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={64} ring="node" />}
           name={umaName(v.chara)}
           sub={
             v.lender
@@ -132,23 +195,23 @@ function Family({ k, r }: { k: number; r: CareerReport | null }) {
       ) : (
         <Place
           spec={{ kind: 'p', k }}
-          cls="pn parent"
+          kind="parent"
           k={`node:p${k}`}
           face={empty}
           name={vets.value.length >= 2 ? 'The planner picks' : 'No parent yet'}
           label={`Parent ${k + 1}: none yet. Details`}
         />
       )}
-      {/* her own parents: the trainee's grandparents */}
+      {/* her own parents: the trainee's grandparents (on a phone, in her popup) */}
       {v && (
-        <div class="pgs">
+        <div class="flex gap-1 max-lg:hidden">
           {parentsPlaced(v.parents).map(([g, j]) => (
             <Place
               key={j}
               spec={{ kind: 'g', k, j }}
-              cls="pn gp"
+              kind="gp"
               k={`node:p${k}g${j}`}
-              face={<UmaAv key={`${g.chara}:${g.outfit}`} uma={g.chara || 0} outfit={g.outfit} size={36} />}
+              face={<UmaAv key={`${g.chara}:${g.outfit}`} uma={g.chara || 0} outfit={g.outfit} size={36} ring="node" />}
               name={g.chara ? umaName(g.chara) : 'Unknown: pick her'}
               label={`Grandparent: ${g.chara ? umaName(g.chara) : 'unknown'}. Details`}
             />
@@ -159,18 +222,18 @@ function Family({ k, r }: { k: number; r: CareerReport | null }) {
   );
 }
 /** The next career as the player sets it up in the game, in the game's order: the trainee, her two legacies, and each
- *  target's chance to land */
+ *  target's chance to land (data-sec names each section for the checks) */
 export function Tree() {
   const r = shown();
   return (
     <>
-      <section class="rbsec ltrainee">
+      <section class="grid min-w-0 gap-2" data-sec="trainee">
         <GameBar>Trainee</GameBar>
         <Trainee r={r} />
       </section>
-      <section class="rbsec llegacies">
+      <section class="grid min-w-0 gap-2" data-sec="legacies">
         <GameBar>Legacies</GameBar>
-        <div class="pk">
+        <div class="grid min-w-0 gap-2.5">
           <Family k={0} r={r} />
           <Family k={1} r={r} />
         </div>

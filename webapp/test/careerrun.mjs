@@ -270,7 +270,7 @@ export default async function careerrun(b) {
   );
   await expect.soft(pg.locator('#run-note'), `${storedTaken}: planned`).toHaveText(/Planned in/);
   // a reload with nothing changed: the last answer drawn at once, no search or plan job
-  const shownBefore = await pg.textContent('#tree .pn.trainee .nm');
+  const shownBefore = await pg.textContent('#tree [data-node="trainee"] [data-nm]');
   await pg.reload();
   await done();
   const noRun = 'career: a reload with nothing changed draws the last answer at once: no search or plan runs';
@@ -279,7 +279,9 @@ export default async function careerrun(b) {
     (await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length)) === 0,
     `${shownBefore} | ${await note()}`,
   );
-  await expect.soft(pg.locator('#tree .pn.trainee .nm'), `${noRun}: the same trainee`).toHaveText(shownBefore);
+  await expect
+    .soft(pg.locator('#tree [data-node="trainee"] [data-nm]'), `${noRun}: the same trainee`)
+    .toHaveText(shownBefore);
   await expect.soft(pg.locator('#run-note'), `${noRun}: planned`).toHaveText(/Planned in/);
   // a roll in a new worker (the stored roll state taken in): answered from it, the plan not run again
   await pg.waitForSelector('#sim-roll:not([disabled])', { state: 'attached', timeout: 180000 }); // (in Try a run's popup, shut)

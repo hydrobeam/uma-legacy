@@ -89,9 +89,9 @@ export function SetupSummary() {
   return (
     <>
       {summaryItems.value.map(([k, v]) => (
-        <span key={k} class="sumkv" aria-hidden="true">
-          <span class="sumk">{k}</span>
-          <b>{v}</b>
+        <span key={k} aria-hidden="true">
+          <span class="text-caption text-gm-ink2 mr-1.5 font-medium">{k}</span>
+          <b class="text-ui text-gm-ink font-bold">{v}</b>
         </span>
       ))}
     </>
