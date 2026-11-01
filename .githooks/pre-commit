@@ -22,7 +22,7 @@ if [ -n "$py" ]; then
   (cd "$root" && uv run --quiet ruff check $py && uv run --quiet ruff format --check $py) || fail 'ruff (above; ruff format fixes formatting)'
 fi
 
-js=$(staged 'webapp/*.js' 'webapp/*.mjs' | sed 's#^webapp/##')
+js=$(staged 'webapp/*.js' 'webapp/*.mjs' 'webapp/*.ts' 'webapp/*.tsx' | sed 's#^webapp/##')
 if [ -n "$js" ]; then
   # shellcheck disable=SC2086 # as above
   (cd "$root/webapp" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn --no-errors-on-unmatched $js \

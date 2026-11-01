@@ -4,11 +4,18 @@
     "allowJs": true,
     "noEmit": true,
     "strict": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "allowUnreachableCode": false,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
     "target": "es2022",
     "lib": ["es2023", "dom", "dom.iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "skipLibCheck": true
   },
-  "include": ["src/**/*.js", "src/**/*.mjs", "src/globals.d.ts"]
+  "include": ["src/**/*.js", "src/**/*.mjs", "src/**/*.ts", "src/**/*.tsx"]
 }
