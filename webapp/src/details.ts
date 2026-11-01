@@ -4,6 +4,7 @@
 import { gameData } from './data.js';
 import type { Card } from './data.js';
 import type { ResultDeck } from './loop/types.ts';
+import type { DeepReadonly } from './store.ts';
 
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only
 // Each name takes the largest size f0 - 0.5k that fits, or the first one at or under 9 px (a step-by-step shrink). All
@@ -49,7 +50,10 @@ addEventListener('resize', () => fitSparks());
 // A deck's i-th card, from the solver's deck report: its name with the report's notes taken off (base), whether it is the
 // borrowed card, and the card's data (null when unknown). The report lists the deck's cards with ids (card_ids) and
 // then the plain ones (plain_ids), in the order of `cards`.
-export function deckCardAt(deck: ResultDeck, i: number): { base: string; borrowed: boolean; card: Card | undefined } {
+export function deckCardAt(
+  deck: DeepReadonly<ResultDeck>,
+  i: number,
+): { base: string; borrowed: boolean; card: Card | undefined } {
   const name = deck.cards[i];
   const borrowed = /\(borrowed\)$/.test(name),
     base = name

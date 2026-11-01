@@ -22,8 +22,7 @@ import { openSched } from '../../ui/Schedule.tsx';
 /** the career on show, as the answer store hands it (read-only) */
 export type ShownCareer = NonNullable<ReturnType<typeof shown>>;
 type CareerReport = ShownCareer;
-// details.js and agenda.js take the solver's records as mutable types; they only read them
-const cardAt = (d: CareerReport['deck'], i: number) => deckCardAt(d as unknown as Parameters<typeof deckCardAt>[0], i);
+// ui/Schedule.tsx's openSched takes the schedule's rows as mutable types; it only reads them
 /** the career's odds of landing all n (each count is under the targets: Counts) */
 export function Odds({ r }: { r: CareerReport }) {
   const n = settings.value.targets.length;
@@ -68,7 +67,7 @@ export function SchedButton({ r }: { r: CareerReport }) {
 /** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.js, which reads the data-* and leaves the markup to this) */
 export function DeckCard({ r, i }: { r: CareerReport; i: number }) {
   const d = r.deck,
-    { base, borrowed: bor, card: c } = cardAt(d, i),
+    { base, borrowed: bor, card: c } = deckCardAt(d, i),
     endAt = (d.end_chain_at || [])[i] || 0,
     pick = (d.choices || [])[i] || (c?.pri ? c.pri.join(', ') : ''),
     t = c ? cardTitle(c) : { nm: base, ti: '' },
@@ -140,7 +139,7 @@ export function DeckDialog() {
 function cardsGiving(r: CareerReport, g: number) {
   const out = [];
   for (let i = 0; i < r.deck.cards.length; i++) {
-    const c = cardAt(r.deck, i).card;
+    const c = deckCardAt(r.deck, i).card;
     if (!c) continue;
     const ways: string[] = [];
     if ((c.whites || []).includes(g)) ways.push('hint');
