@@ -1015,15 +1015,19 @@ export default async function career(b) {
     const offCard = await pg.evaluate(() => {
       const shown = window.__careerResults.findLast((r) => r.next?.choice).next.choice,
         inDeck = new Set(shown.deck.card_ids);
-      // (the picker lists the cards that give a target; a tile is known by its card's name)
+      // (the picker lists the cards that give a target; a tile is known by its card's name, its picture's title)
       const sr = new Set(
         self.__LLP_DATA['data-cards'].filter((c) => c.rar === 2 && !inDeck.has(c.id)).map((c) => c.name.toLowerCase()),
       );
-      return [...document.querySelectorAll('#cards .ct')].find((t) => sr.has(t._searchName))._searchName;
+      return [...document.querySelectorAll('#cards .ct .cav')].find((t) => sr.has(t.title.toLowerCase())).title;
     });
     const toggleCard = async () => {
       await pg.evaluate(
-        (name) => [...document.querySelectorAll('#cards .ct')].find((t) => t._searchName === name).click(),
+        (name) =>
+          [...document.querySelectorAll('#cards .ct .cav')]
+            .find((t) => t.title === name)
+            .closest('.ct')
+            .click(),
         offCard,
       );
       await done();
