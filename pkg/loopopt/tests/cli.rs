@@ -1,14 +1,12 @@
 //! The command line's errors and its `constants` subcommand: a file it cannot read, a job without a known mode or a
 //! missing argument exits 2 with a message (no panic), and `constants` prints the model constants as one JSON object.
-use std::process::{Command, Output};
+mod common;
+use common::State;
+use std::process::Output;
 
 /// `loopopt ARGS` run from the Global data folder.
 fn loopopt(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .args(args)
-        .output()
-        .expect("the binary runs")
+    common::loopopt("global", State::NONE).args(args).output().expect("the binary runs")
 }
 
 /// The command failed with exit 2, its stderr holding `said` and no panic.
@@ -25,10 +23,8 @@ fn errors_name_the_file_and_exit_2() {
     refused(&loopopt(&["no_such_data.json", "../../../../val/jobs/pal_U.json"]), "cannot read no_such_data.json");
     refused(&loopopt(&["pbtable", "no_such_data.json"]), "cannot read no_such_data.json");
     refused(&loopopt(&["data.json"]), "required arguments");
-    let job = std::env::temp_dir().join(format!("uma-cli-mode-{}.json", std::process::id()));
-    std::fs::write(&job, r#"{"mode": "decks"}"#).expect("a temporary file");
-    let output = loopopt(&["data.json", job.to_str().expect("a UTF-8 path")]);
-    std::fs::remove_file(&job).expect("the temporary file goes");
+    let job = common::TempFile::job("cli-mode", &serde_json::json!({"mode": "decks"}));
+    let output = loopopt(&["data.json", job.path().to_str().expect("a UTF-8 path")]);
     refused(&output, r#""mode" must be "deck" or "career""#);
 }
 

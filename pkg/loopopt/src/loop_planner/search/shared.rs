@@ -68,7 +68,7 @@ impl SharedScan {
     /// the threshold a deck must reach: the floor, or the loop's k-th best so far when that is higher
     fn need(&self) -> f64 {
         let mut values: Vec<f64> = self.decks.iter().map(|deck| deck.value).collect();
-        values.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        values.sort_by(|a, b| b.total_cmp(a));
         let kth_value = if values.len() >= self.loop_limit { values[self.loop_limit - 1] } else { f64::NEG_INFINITY };
         let threshold = self.floor.max(kth_value);
         if threshold.is_finite() { threshold } else { values.last().copied().unwrap_or(f64::NEG_INFINITY) }
@@ -137,7 +137,7 @@ impl Multi<'_> {
         };
         let threshold = scan.need();
         let mut list = scan.decks;
-        list.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
+        list.sort_by(|a, b| b.value.total_cmp(&a.value));
         list.retain(|deck| deck.value >= threshold);
         let decks: SharedDecks = Rc::new(list);
         if complete {
@@ -246,7 +246,7 @@ impl Multi<'_> {
             tally.cap_hit = true;
             complete = false;
         }
-        candidates.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
+        candidates.sort_by(|a, b| b.value.total_cmp(&a.value));
         let mut seen: crate::FxSet<(Vec<usize>, usize, usize)> = crate::FxSet::default();
         if complete {
             for ScoredDeck { value, deck: selected } in &candidates {

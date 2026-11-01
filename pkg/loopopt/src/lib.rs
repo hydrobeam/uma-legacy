@@ -101,6 +101,21 @@ impl std::hash::Hasher for Fx {
 pub(crate) type FxMap<K, V> = std::collections::HashMap<K, V, std::hash::BuildHasherDefault<Fx>>;
 pub(crate) type FxSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<Fx>>;
 
+/// A memo's value at `key`: the one kept, else `compute(&key)`'s, kept. The memo is not borrowed while `compute` runs,
+/// so a computation may read the same memo (`entry().or_insert_with` would hold the borrow across it).
+pub(crate) fn memoised<K: Eq + std::hash::Hash, V: Clone>(
+    memo: &std::cell::RefCell<FxMap<K, V>>,
+    key: K,
+    compute: impl FnOnce(&K) -> V,
+) -> V {
+    if let Some(value) = memo.borrow().get(&key) {
+        return value.clone();
+    }
+    let value = compute(&key);
+    memo.borrow_mut().insert(key, value.clone());
+    value
+}
+
 mod career;
 mod deck;
 mod skills;
@@ -118,6 +133,7 @@ mod hex;
 mod loop_planner;
 mod refusal;
 mod request;
+mod rng;
 mod schedule;
 #[cfg(test)]
 mod tests;

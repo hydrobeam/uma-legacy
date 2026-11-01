@@ -314,9 +314,6 @@ pub(crate) fn pair_decompose(
                     ceiling: odds[deck],
                     deck: simulator.evaluator.cache.decks[trainee][deck].deck.clone(),
                 };
-                let incomplete_before = crate::career::plan::robust::incompleteness_so_far();
-                let dropped_before = crate::career::clock::PROF
-                    .with(|prof| prof.borrow().get("sc_routes_dropped").copied().unwrap_or(0.0));
                 let scored = score_career(
                     simulator,
                     &context.scoring(&base),
@@ -324,9 +321,6 @@ pub(crate) fn pair_decompose(
                     Want::Classes,
                     buf,
                 );
-                let dropped = crate::career::clock::PROF
-                    .with(|prof| prof.borrow().get("sc_routes_dropped").copied().unwrap_or(0.0))
-                    - dropped_before;
                 // (the plain scoring beside it: the class split must sum to the same saving)
                 let plain =
                     score_career(simulator, &context.scoring(&base), found_career(trainee, &career), Want::Score, buf);
@@ -363,9 +357,9 @@ pub(crate) fn pair_decompose(
                     p_all: odds[deck],
                     saving: scored.expected_saving,
                     score: scored.expected_saving - 1.0,
-                    routes_dropped: dropped,
+                    routes_dropped: scored.truncation.routes_dropped as f64,
                     score_plain: plain.expected_saving - 1.0,
-                    scoring_complete: crate::career::plan::robust::incompleteness_so_far() == incomplete_before,
+                    scoring_complete: scored.truncation.is_complete() && plain.truncation.is_complete(),
                     classes,
                 })
             })

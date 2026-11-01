@@ -182,23 +182,20 @@ impl<'tab> CapFreeRatios<'tab> {
 
     /// Entry j's ratio per level and outfit, row l * outfit_count + o
     pub(super) fn entry(&self, j: usize) -> Rc<Vec<f64>> {
-        if let Some(ratios) = self.entry_ratios.borrow().get(&j) {
-            return Rc::clone(ratios);
-        }
-        let (target_count, outfit_count) = (self.target_count, self.outfit_count);
-        let rows = self.entry_rows[j].as_ref().unwrap();
-        let level_count = rows.len() / target_count;
-        let mut table = vec![0.0f64; level_count * outfit_count];
-        for outfit in 0..outfit_count {
-            let denominator = self.den(outfit);
-            for l in 0..level_count {
-                table[l * outfit_count + outfit] =
-                    self.ratio(outfit, &rows[l * target_count..(l + 1) * target_count], denominator);
+        crate::memoised(&self.entry_ratios, j, |_| {
+            let (target_count, outfit_count) = (self.target_count, self.outfit_count);
+            let rows = self.entry_rows[j].as_ref().unwrap();
+            let level_count = rows.len() / target_count;
+            let mut table = vec![0.0f64; level_count * outfit_count];
+            for outfit in 0..outfit_count {
+                let denominator = self.den(outfit);
+                for l in 0..level_count {
+                    table[l * outfit_count + outfit] =
+                        self.ratio(outfit, &rows[l * target_count..(l + 1) * target_count], denominator);
+                }
             }
-        }
-        let ratios = Rc::new(table);
-        self.entry_ratios.borrow_mut().insert(j, Rc::clone(&ratios));
-        ratios
+            Rc::new(table)
+        })
     }
 }
 
@@ -573,8 +570,7 @@ impl StateBoundContext<'_> {
                 order_indices.sort_by(|&a, &b| {
                     configuration.states[b as usize]
                         .probability
-                        .partial_cmp(&configuration.states[a as usize].probability)
-                        .unwrap()
+                        .total_cmp(&configuration.states[a as usize].probability)
                         .then(a.cmp(&b))
                 });
                 let mut suffix = vec![0.0f64; state_count + 1];

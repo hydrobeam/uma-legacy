@@ -48,8 +48,6 @@ pub(crate) struct LoopReport {
     pub(crate) stats: DeckStats,
     /// the best loops, best first
     pub(crate) top: Vec<LoopResult>,
-    /// always empty (an older report's field)
-    pub(crate) best: [u8; 0],
     /// a deck per member (false: one deck for the loop)
     pub(crate) per_uma: bool,
     /// loop structures the job's sizes and required umas allow

@@ -15,6 +15,18 @@ use crate::career::pool::Pool;
 use crate::career::sim::Sim;
 use crate::career::{Career, Legacy, Lineage};
 pub(crate) mod build;
+/// The profile counters (`clock::prof`) a scoring writes that other code reads back by name, one spelling for writer
+/// and readers. The truncation counters mirror `Truncation` for the report; completeness reads the record, never these.
+pub(crate) mod counter {
+    /// `Truncation::routes_dropped`.
+    pub(crate) const ROUTES_DROPPED: &str = "sc_routes_dropped";
+    /// `Truncation::routes_dropped_uncertified`.
+    pub(crate) const ROUTES_DROPPED_UNCERTIFIED: &str = "sc_routes_dropped_uncertified";
+    /// `Truncation::partner_setups_dropped`.
+    pub(crate) const PARTNER_SETUPS_DROPPED: &str = "sc_partner_setups_dropped";
+    /// Outcomes evaluated.
+    pub(crate) const OUTCOMES: &str = "sc_out";
+}
 pub(crate) mod kernel;
 mod routes;
 
@@ -73,7 +85,7 @@ pub(crate) fn best_finisher(
                 .map(|upper_bound| FinisherCeiling { upper_bound: upper_bound * scale(lineage.trainee), lineage })
         })
         .collect();
-    finishers.sort_by(|first, second| second.upper_bound.partial_cmp(&first.upper_bound).unwrap());
+    finishers.sort_by(|first, second| second.upper_bound.total_cmp(&first.upper_bound));
     // (the best so far: her scaled odds, her odds, her uma)
     let mut best: Option<(f64, f64, crate::uma::UmaIndex)> = None;
     for &FinisherCeiling { upper_bound, lineage } in &finishers {
@@ -119,6 +131,47 @@ pub(crate) struct KeptScoring {
     pub(crate) later: Vec<Scored>,
 }
 
+/// What a scoring's memory budget (`OUTCOME_BUDGET`) left out, or the sum over several scorings. Each part only lowers
+/// the saving a scoring credits, never raises it.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub(crate) struct Truncation {
+    /// Routes left out (`routes::keep_routes`), checked or not; one whose check cleared it moves no score.
+    pub(crate) routes_dropped: usize,
+    /// Of those, the ones no later batch could hold and no check cleared (`build::LaterBatches`).
+    pub(crate) routes_dropped_uncertified: usize,
+    /// Partner setups left out (`build::fit_partner_setups`).
+    pub(crate) partner_setups_dropped: usize,
+}
+
+impl Truncation {
+    /// Whether nothing was left out that could move a score: the savings are the model's. Where false they are lower
+    /// bounds.
+    pub(crate) const fn is_complete(self) -> bool {
+        self.routes_dropped_uncertified == 0 && self.partner_setups_dropped == 0
+    }
+
+    pub(crate) const fn plus(self, other: Self) -> Self {
+        Self {
+            routes_dropped: self.routes_dropped + other.routes_dropped,
+            routes_dropped_uncertified: self.routes_dropped_uncertified + other.routes_dropped_uncertified,
+            partner_setups_dropped: self.partner_setups_dropped + other.partner_setups_dropped,
+        }
+    }
+}
+
+// Every scoring's truncation (`score_career`, `score_career_of`) since the tally was last taken: the plan's own
+// (`output`, as it takes `clock::PROF`), or a run beside the plan's (`robust::aside_counted`, which puts the plan's back).
+thread_local! { static TRUNCATIONS: std::cell::Cell<Truncation> = std::cell::Cell::default(); }
+
+/// Set the thread's tally of truncations (`TRUNCATIONS`) to `tally` and return what it held.
+pub(crate) fn replace_truncations(tally: Truncation) -> Truncation {
+    TRUNCATIONS.with(|current| current.replace(tally))
+}
+
+fn add_truncation(truncation: Truncation) {
+    TRUNCATIONS.with(|current| current.set(current.get().plus(truncation)));
+}
+
 /// Named outputs of career scoring. `Want` determines which fields are computed; Stats leaves the two
 /// scalar fields at zero, Score leaves `lift_stats` empty, Touch returns zeros everywhere (no evaluation), and only Keep
 /// retains the scoring tables.
@@ -136,6 +189,8 @@ pub(crate) struct CareerScore {
     pub(crate) joint_lifts: Vec<(u64, f64)>,
     /// With `Want::Classes`: the saving split by outcome class (`kernel::ClassSaving`).
     pub(crate) classes: Vec<kernel::ClassSaving>,
+    /// What the memory budget left out (also added to the thread's tally, `TRUNCATIONS`).
+    pub(crate) truncation: Truncation,
 }
 
 /// Score of `career` against `context.score_base`: E[V0 - V0 with her veteran], the chance it exceeds 1e-9,
@@ -157,6 +212,7 @@ pub(crate) fn score_career(
 ) -> CareerScore {
     let started = now_ms();
     let score = evaluate_career(simulator, context, career, want, PoolProvenance::RecordedLegacies, buf);
+    add_truncation(score.truncation);
     prof("score_ms", now_ms() - started);
     prof("score_calls", 1.0);
     score
@@ -172,6 +228,7 @@ pub(crate) fn score_career_of(
 ) -> CareerScore {
     let started = now_ms();
     let score = evaluate_career(simulator, context, career, want, PoolProvenance::Extended, buf);
+    add_truncation(score.truncation);
     prof("score_ms", now_ms() - started);
     prof("score_calls", 1.0);
     score

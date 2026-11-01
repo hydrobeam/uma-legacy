@@ -546,7 +546,7 @@ pub(crate) fn hint_umas(
         working_pool.pop_veteran();
     }
     // best first; equal odds in uma order (stable)
-    out.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
+    out.sort_by(|first, second| second.ceiling.total_cmp(&first.ceiling));
     out.truncate(count);
     out
 }

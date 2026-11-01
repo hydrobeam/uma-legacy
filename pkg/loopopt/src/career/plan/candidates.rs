@@ -678,7 +678,7 @@ impl PlanContext<'_, '_> {
                     row,
                 })
                 .collect();
-            efficiencies.sort_by(|first, second| second.efficiency.partial_cmp(&first.efficiency).unwrap());
+            efficiencies.sort_by(|first, second| second.efficiency.total_cmp(&first.efficiency));
             let Some(best) = efficiencies.first() else { continue };
             let second = efficiencies.get(1).map_or(best.efficiency, |runner_up| runner_up.efficiency);
             for candidate_row in &efficiencies {

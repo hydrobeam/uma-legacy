@@ -730,7 +730,7 @@ fn keep_routes<S>(
     }
     let dropped = kept.iter().filter(|&&keep| !keep).count();
     if dropped > 0 {
-        crate::career::clock::prof("sc_routes_dropped", dropped as f64);
+        crate::career::clock::prof(super::counter::ROUTES_DROPPED, dropped as f64);
     }
     // (a kept route's finisher slot, a left-out route's place among the left out, each by its draft)
     let (mut finisher_of_draft, mut left_of_draft): (Vec<Option<usize>>, Vec<Option<usize>>) =

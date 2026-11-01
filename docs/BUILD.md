@@ -270,6 +270,11 @@ infinite is written as null (serde_json), and such a field is typed `number | nu
 ## Tests
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
+  The integration tests (`pkg/loopopt/tests/`) run the solver binary through one harness, `tests/common/mod.rs`,
+  which clears the kept-state variables (`LOOPOPT_STATE_IN`, `LOOPOPT_STATE_OUT`) of the shell running them. When
+  results move on purpose, `BLESS=1 cargo test --release --test plan_roll rolls_equal` re-takes the roll fixture
+  (`tests/fixtures/plan_roll.json`) from the solver's own rolls, naming each roll that changed and any sample whose y
+  crossed 0.5 (the fixture keeps samples on both sides; pick another there); check the diff and commit it.
 - **Page logic in node:** `npx vitest run` in `webapp` (part of `lint` and the pre-commit hook; about 2 s) runs the
   page's node tests, `webapp/test/unit/`, with the modules compiled as `vite.config.mjs` compiles them (its `test`
   branch: none of the build's plugins). A test file that draws views or runs editors asks for happy-dom's document

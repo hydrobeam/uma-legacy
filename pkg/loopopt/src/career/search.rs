@@ -31,7 +31,7 @@ impl Bar {
 }
 
 /// `CareerSetup::ranked_pairs`' pairs, sorted lazily as `solve`'s candidates are: `gen_cands` emits one trainee's pairs
-/// in (a, b) order, so the stable sort by ceiling (descending, `partial_cmp`: 0 and -0 tie) is the total order (ceiling
+/// in (a, b) order, so the stable sort by ceiling (descending, `total_cmp`) is the total order (ceiling
 /// descending, a, b), unique per pair; each step past the ordered prefix `candidates[..sorted_until]` selects the next
 /// chunk (everything before it orders before everything after it) and sorts only the chunk, so the sequence is the full
 /// sort's, element for element, and a caller that stops early sorts little
@@ -64,8 +64,7 @@ impl Iterator for Ranked {
             let order = |first: &RankedPair, second: &RankedPair| {
                 second
                     .ceiling
-                    .partial_cmp(&first.ceiling)
-                    .unwrap()
+                    .total_cmp(&first.ceiling)
                     .then(first.content_rank.cmp(&second.content_rank))
                     .then(first.first_parent.cmp(&second.first_parent))
                     .then(first.second_parent.cmp(&second.second_parent))
@@ -757,7 +756,7 @@ impl Env<'_> {
             },
         );
         // Best ceiling first, ties by the trainee's place, then the pair's content rank (`pool::pair_rank`, so the pool's
-        // order chooses nothing among equal ceilings), then generation order (partial_cmp, so 0 and -0 tie as there):
+        // order chooses nothing among equal ceilings), then generation order (`total_cmp`, as there):
         // a total order on (ceiling descending, trainee_position, pair key, a, b), unique per candidate.
         // Sorted lazily (`sorted_until`): the loop below reads a short prefix, so each step selects the next chunk
         // (everything before it is ordered before everything after it) and sorts only the chunk; the prefix is the full
@@ -765,8 +764,7 @@ impl Env<'_> {
         let candidate_order = |first: &Candidate, second: &Candidate| {
             second
                 .ceiling
-                .partial_cmp(&first.ceiling)
-                .unwrap()
+                .total_cmp(&first.ceiling)
                 .then(first.trainee_position.cmp(&second.trainee_position))
                 .then(first.content_rank.cmp(&second.content_rank))
                 .then(first.first_parent.cmp(&second.first_parent))

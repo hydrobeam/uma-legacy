@@ -761,7 +761,7 @@ impl PlanInputs<'_, '_> {
     fn promotable_proxies(&self, runs: &[PlanRow]) -> Vec<usize> {
         let mut savings: Vec<f64> =
             runs.iter().filter(|row| self.is_runnable(&row.career)).filter_map(PlanRow::net_saving).collect();
-        savings.sort_by(|first, second| second.partial_cmp(first).unwrap());
+        savings.sort_by(|first, second| second.total_cmp(first));
         if savings.is_empty() {
             return vec![];
         }

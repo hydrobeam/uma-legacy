@@ -198,7 +198,7 @@ impl Sim<'_, '_> {
                 .into_iter()
                 .filter(|candidate| candidate.ceiling >= self.settings.check_frac * best_value)
                 .collect();
-            candidates.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
+            candidates.sort_by(|first, second| second.ceiling.total_cmp(&first.ceiling));
             candidates.truncate(self.settings.check_lineages);
             if let Some(pick) = state.best
                 && !candidates.iter().any(|candidate| candidate.lineage == pick.lineage)

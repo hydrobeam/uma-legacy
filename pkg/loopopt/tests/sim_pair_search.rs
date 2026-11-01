@@ -9,41 +9,17 @@
 //! career, its deck as named, no deck search; the plan's `choice` otherwise), and that career's landed-set chances and
 //! P(all), each equal to the page's career's to the bit (the `career` job the page's Use this sends for it, or the plan's
 //! pick).
+mod common;
+use common::{run_jobs, val_job};
 use serde_json::{Value, json};
-use std::{fs, process::Command};
 
 /// The check jobs the page sends after the plan, at most: one per variant (7 fixed, up to 3 per-uma scenarios), then
 /// one for the pair search; a job after the check is complete answers its report again.
 const CHECK_JOBS: usize = 12;
 
-/// One process running `jobs` in turn (the worker's kept state carried between them, as the page's worker carries it),
-/// in era global; one output per job.
-fn run(tag: &str, jobs: &[Value]) -> Vec<Value> {
-    let dir = std::env::temp_dir();
-    let paths: Vec<_> =
-        (0..jobs.len()).map(|k| dir.join(format!("uma-sim-pairs-{tag}-{}-{k}.json", std::process::id()))).collect();
-    for (path, job) in paths.iter().zip(jobs) {
-        fs::write(path, job.to_string()).unwrap();
-    }
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .arg("data.json")
-        .args(&paths)
-        .env_remove("LOOPOPT_STATE_IN")
-        .env_remove("LOOPOPT_STATE_OUT")
-        .output()
-        .unwrap();
-    for path in &paths {
-        fs::remove_file(path).unwrap();
-    }
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8_lossy(&output.stdout).lines().map(|line| serde_json::from_str(line).unwrap()).collect()
-}
-
 /// The val/plan pool's job as the page's plan job sends it (`no_reports`; the pools already set `top` 6, no places).
 fn plan_job(pool: &str) -> Value {
-    let path = format!("{}/../../val/plan/{pool}.json", env!("CARGO_MANIFEST_DIR"));
-    let mut job: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    let mut job = val_job(&format!("plan/{pool}.json"));
     job["next"] = json!({});
     job["no_reports"] = json!(true);
     job
@@ -80,7 +56,7 @@ fn page_recommendation(pool: &str) -> PageRecommendation {
     let mut check_job = job.clone();
     check_job["next"] = json!({"robust": "next", "pair_search": true});
     let jobs: Vec<Value> = std::iter::once(job).chain(std::iter::repeat_n(check_job, CHECK_JOBS)).collect();
-    let outputs = run(pool, &jobs);
+    let outputs = run_jobs(pool, &jobs);
     let plan = &outputs[0]["next"];
     let check = &outputs[CHECK_JOBS]["next"]["robust"];
     assert_eq!(check["pending"], json!(0), "{pool}: the check is complete");
@@ -114,7 +90,7 @@ struct SimulatedCareer {
 fn simulated_first_career(pool: &str) -> SimulatedCareer {
     let mut job = plan_job(pool);
     job["simulate"] = json!({"policy": "index", "act_on": "pair_search", "runs": 1, "max_careers": 1});
-    let output = &run(&format!("{pool}-sim"), &[job])[0];
+    let output = &run_jobs(&format!("{pool}-sim"), &[job])[0];
     let run = &output["runs"][0];
     let text = |value: &Value| value.as_str().unwrap_or_else(|| panic!("{pool}: not recorded: {run}")).to_string();
     let executed = &run["index"]["executed"][0];
@@ -145,7 +121,7 @@ fn named_career(pool: &str, id: &str) -> LandedSets {
     job["fix"] = json!([first.parse::<usize>().unwrap(), second.parse::<usize>().unwrap()]);
     job["career"] = json!(id);
     job["top"] = json!(1);
-    let output = &run(&format!("{pool}-named"), &[job])[0];
+    let output = &run_jobs(&format!("{pool}-named"), &[job])[0];
     assert_eq!(output["results"][0]["career"], json!(id), "{pool}: the career job reports the career named");
     LandedSets::of(&output["results"][0])
 }

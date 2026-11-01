@@ -167,10 +167,7 @@ impl Entries<'_> {
         let mut order: Vec<usize> = (0..original_count).collect();
         let tie_ranks = tie_rank(&self.card_indices, &self.cards);
         order.sort_by(|&dominator, &candidate| {
-            strength(candidate)
-                .partial_cmp(&strength(dominator))
-                .unwrap()
-                .then(tie_ranks[dominator].cmp(&tie_ranks[candidate]))
+            strength(candidate).total_cmp(&strength(dominator)).then(tie_ranks[dominator].cmp(&tie_ranks[candidate]))
         });
         let need = deck_job.deck_size.saturating_sub(1) + 1;
         let mut keep = vec![true; original_count];

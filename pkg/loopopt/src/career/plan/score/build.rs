@@ -6,7 +6,7 @@ use crate::career::plan::cont::{ScoreBase, Want};
 use crate::career::plan::fold::{All, Leaves, OneLeaf};
 use crate::career::plan::score::kernel::{BatchLeast, FOLD_SCRATCH, LiftStats, RouteWins, Scored, SetupParts};
 use crate::career::plan::score::routes::{LiftSide, LiftSlots, PairedAt, RouteInputs, RouteSet, lift_slots, routes};
-use crate::career::plan::score::{CareerScore, KeptScoring, completes_goal, fm_masks};
+use crate::career::plan::score::{CareerScore, KeptScoring, Truncation, completes_goal, counter, fm_masks};
 use crate::career::plan::search::{legal_pair, val};
 use crate::career::plan::step::{LiftRead, NO_SLOT, Route, ShadowRoute, WhileBuilding};
 use crate::career::plan::{OutcomeIndex, PoolProvenance, ScoringContext};
@@ -153,14 +153,14 @@ pub(crate) const OUTCOME_BUDGET: usize = 1 << 25;
 /// candidate's partners are left out first (the last candidate's first, then rank by rank), until the rest fit, so a
 /// scoring never fails for memory (the setups left out only lower what it credits: fewer partners lift fewer
 /// candidates; counted in `sc_partner_setups_dropped`, and the plan then says its scoring is incomplete,
-/// `scoring_complete`). Returns the entries the kept ones take
+/// `scoring_complete`). Returns the entries the kept ones take and the setups left out
 fn fit_partner_setups(
     simulator: &Sim,
     setups: &mut Vec<Setup>,
     leaf_count: usize,
     table_size: usize,
     factor: usize,
-) -> usize {
+) -> (usize, usize) {
     let entries: Vec<usize> = setups
         .iter()
         .map(|setup| {
@@ -173,14 +173,14 @@ fn fit_partner_setups(
     let (kept, taken) = within_budget(&entries, &candidates, OUTCOME_BUDGET);
     let dropped = kept.iter().filter(|&&keep| !keep).count();
     if dropped > 0 {
-        prof("sc_partner_setups_dropped", dropped as f64);
+        prof(counter::PARTNER_SETUPS_DROPPED, dropped as f64);
     }
     let mut index = 0;
     setups.retain(|_| {
         index += 1;
         kept[index - 1]
     });
-    taken
+    (taken, dropped)
 }
 
 /// `fit_partner_setups`' choice: which setups (their entries, their candidates, in `prepare_setups`' order: candidate
@@ -321,7 +321,9 @@ pub(super) fn evaluate_career(
         && context.score_base.current_value.is_finite();
     // the partner setups' entries, twice where lift setups follow (each reads at most what its partner setup does),
     // checked against the budget before anything is allocated (`fit_partner_setups`)
-    let taken = fit_partner_setups(simulator, &mut setups, leaf_count, table_size, if builds_routes { 2 } else { 1 });
+    let (taken, partner_setups_dropped) =
+        fit_partner_setups(simulator, &mut setups, leaf_count, table_size, if builds_routes { 2 } else { 1 });
+    let mut truncation = Truncation { partner_setups_dropped, ..Truncation::default() };
     let partner_slot_count = setups.len();
     let full_possible = !completes_goal && current.outcome_sets[full_mask] > 0.0;
     let frame = CareerFrame {
@@ -363,6 +365,7 @@ pub(super) fn evaluate_career(
         prof("sc_routes", route_set.routes.len() as f64);
         route_set
     });
+    truncation.routes_dropped = route_set.as_ref().map_or(0, |route_set| route_set.left_out.len());
     let fold_started = now_ms();
     let mut first = route_set.as_ref().map(FirstBatch::of);
     let mut scored = if let (Some(route_set), Some(first)) = (&route_set, &mut first) {
@@ -398,6 +401,7 @@ pub(super) fn evaluate_career(
             lift_stats: vec![LiftStats::default(); candidate_count],
             joint_lifts: vec![],
             classes: vec![],
+            truncation,
         };
     }
     let evaluation_want = if want == Want::Keep { Want::Score } else { want };
@@ -430,11 +434,12 @@ pub(super) fn evaluate_career(
             // (a route no batch can hold, its lift slots and C past the whole budget: the scoring is incomplete, and
             // says so, `routes_dropped_uncertified`)
             if batched.unbatched > 0 {
-                prof("sc_routes_dropped_uncertified", batched.unbatched as f64);
+                prof(counter::ROUTES_DROPPED_UNCERTIFIED, batched.unbatched as f64);
             }
+            truncation.routes_dropped_uncertified = batched.unbatched;
         }
     }
-    prof("sc_out", evaluation.counters.outcomes as f64);
+    prof(counter::OUTCOMES, evaluation.counters.outcomes as f64);
     prof("sc_trio", evaluation.counters.changed_outcomes as f64);
     prof("sc_cost", evaluation.counters.cost_evaluations as f64);
     prof("sc_same", evaluation.counters.cache_hits as f64);
@@ -446,6 +451,7 @@ pub(super) fn evaluate_career(
         lift_stats: evaluation.lift_stats,
         joint_lifts: evaluation.joint_lifts,
         classes: evaluation.classes,
+        truncation,
     }
 }
 

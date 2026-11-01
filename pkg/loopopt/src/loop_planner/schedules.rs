@@ -249,16 +249,16 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
     /// Optimistic start, ascent and group moves, then `iterations` rounds of iterated local search (1-2 members
     /// perturbed against noisy weights, re-ascent, group moves), then the optional G1s that cost no affinity.
     fn solve(&self, iterations: usize, seed: u64, margin: f64) -> [Sched; N] {
-        let mut rng = Rng(seed.wrapping_mul(2_654_435_761).wrapping_add(1) | 1);
+        let mut rng = crate::rng::XorShift64(seed.wrapping_mul(2_654_435_761).wrapping_add(1) | 1);
         let mut schedules = self.optimistic_start();
         let mut value = self.ascent(&mut schedules);
         value = value.max(self.group_moves(&mut schedules, margin));
         for _ in 0..iterations {
             let mut candidate_schedules = schedules;
             let mut candidate_chances = self.member_win_chances(&candidate_schedules);
-            let moves = 1 + (rng.next() % 2) as usize;
+            let moves = 1 + (rng.next_u64() % 2) as usize;
             for _ in 0..moves {
-                let i = (rng.next() % N as u64) as usize;
+                let i = (rng.next_u64() % N as u64) as usize;
                 let mut noisy_weights = self.weights(&candidate_chances, i);
                 for weight in &mut noisy_weights {
                     *weight *= 0.2 + 1.6 * rng.unif();
@@ -372,19 +372,6 @@ impl<'data, const N: usize> LoopProblem<'data, N> {
             }
         }
         current
-    }
-}
-
-struct Rng(u64);
-impl Rng {
-    const fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-    fn unif(&mut self) -> f64 {
-        (self.next() >> 11) as f64 / (1u64 << 53) as f64
     }
 }
 

@@ -62,7 +62,6 @@ impl Multi<'_> {
         LoopReport {
             stats,
             top,
-            best: [],
             per_uma: !self.shared,
             foursomes: self.total_foursomes(),
             foursomes_ranked: pass.generated,
@@ -87,7 +86,7 @@ impl Multi<'_> {
     /// shared: the best `top_decks` distinct decks (ties by identity), each with the loop it scored best in
     fn shared_picks<'pass>(&self, pass: &'pass Pass) -> Vec<LoopPick<'pass>> {
         let mut ranked: Vec<(&SharedDeckKey, &DeckBest)> = pass.deck_best.iter().collect();
-        ranked.sort_by(|a, b| b.1.value.partial_cmp(&a.1.value).unwrap().then(a.0.cmp(b.0)));
+        ranked.sort_by(|a, b| b.1.value.total_cmp(&a.1.value).then(a.0.cmp(b.0)));
         ranked
             .iter()
             .take(self.loop_limit)
@@ -133,7 +132,7 @@ impl Multi<'_> {
         let solved = &pass.solved;
         let mut order: Vec<usize> = (0..solved.len()).collect();
         // stable: ties keep solve order
-        order.sort_by(|&a, &b| solved[b].value.partial_cmp(&solved[a].value).unwrap());
+        order.sort_by(|&a, &b| solved[b].value.total_cmp(&solved[a].value));
         order
             .iter()
             .take(self.loop_limit)

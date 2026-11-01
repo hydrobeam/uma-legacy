@@ -1,36 +1,18 @@
-use serde_json::{Value, json};
-use std::{fs, process::Command};
-
-fn run(job: &Value) -> Value {
-    let path = std::env::temp_dir().join(format!("uma-career-progress-{}-{}.json", std::process::id(), rand_tag(job)));
-    fs::write(&path, job.to_string()).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .args(["data.json", path.to_str().unwrap()])
-        .output()
-        .unwrap();
-    fs::remove_file(path).unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    serde_json::from_slice(&output.stdout).unwrap()
-}
-fn rand_tag(job: &Value) -> u64 {
-    job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)))
-}
+mod common;
+use common::{run_job, val_job};
+use serde_json::json;
 
 /// The weak pool: the landed-set distribution agrees with the career's own odds, and the schedule includes
 /// both run and skipped G1s.
 #[test]
 fn weak_pool_outcomes_and_schedule() {
-    let mut job: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/jobs/career_U5.json")).unwrap(),
-    )
-    .unwrap();
+    let mut job = val_job("jobs/career_U5.json");
     job["trainees"] = json!([1034]); // Inari One
     job["fix"] = json!([2, 3]);
     job["per_trainee"] = json!(false);
     job["top"] = json!(1);
     job["star_dist"] = json!([0.0, 0.0, 1.0]);
-    let result = run(&job);
+    let result = run_job("career-progress", &job);
     let career = &result["results"][0];
     let p: Vec<f64> = career["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
     assert_eq!(p.len(), 256);

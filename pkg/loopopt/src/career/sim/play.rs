@@ -235,7 +235,7 @@ impl Sim<'_, '_> {
         // pair) order, then best first)
         let mut candidates =
             self.env.setup.gen_cands(&mut self.env.state, &state.pool, &[], &trainees, |_, _| true, RankedCareer::new);
-        candidates.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
+        candidates.sort_by(|first, second| second.ceiling.total_cmp(&first.ceiling));
         for candidate in candidates {
             let floor = state.candidate_floor(self.settings.goal);
             if candidate.ceiling * (1.0 + 1e-9) < floor {

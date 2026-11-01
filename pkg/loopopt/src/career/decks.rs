@@ -640,7 +640,7 @@ impl Env<'_> {
         );
         work += CF_NODE_WORK * (setup.space.nodes.get() - nodes_before) + 5 * more.len() + 10_000;
         let mut full = incomplete.is_none();
-        more.sort_by(|first, second| second.value.partial_cmp(&first.value).unwrap());
+        more.sort_by(|first, second| second.value.total_cmp(&first.value));
         for ScoredDeck { value: candidate_product_value, deck: candidate } in more {
             if work > budget {
                 full = false;
@@ -823,7 +823,7 @@ impl Env<'_> {
             audit.multi_searches += usize::from(multi);
             full = rho == setup.space.rho_top();
             let mut cut = false;
-            more.sort_by(|first, second| second.value.partial_cmp(&first.value).unwrap());
+            more.sort_by(|first, second| second.value.total_cmp(&first.value));
             // per deck its nested-chain bound (NEG_INFINITY where none applies: `nested_bound`), and the largest from it
             // on: a deck the bound covers may beat the best below the band's cap times its product value
             let nested_bounds: Vec<f64> =

@@ -281,56 +281,55 @@ impl DeckSpace<'_> {
         lock_bits: &[u8],
         misses: EntryMisses<'_>,
     ) -> std::rc::Rc<Vec<Vec<Dominator>>> {
-        if let Some(table) = self.dominance_cache.borrow().get(&key) {
-            return std::rc::Rc::clone(table);
-        }
-        let target_count = self.target_groups.len();
-        let in_unit = |x: f64| (0.0..=1.0).contains(&x);
-        let ok = |j: usize| {
-            (0..target_count)
-                .all(|t| in_unit(misses.white[j * target_count + t]) && in_unit(misses.gold[j * target_count + t]))
-        };
-        let is_pal = |j: usize| self.cards[self.card_indices[j]].pal;
-        let table = std::rc::Rc::new(
-            (0..entries.len())
-                .map(|p| {
-                    let b = entries[p];
-                    if !ok(b) {
-                        return vec![];
-                    }
-                    (0..p)
-                        .filter_map(|a| {
-                            let aj = entries[a];
-                            if self.borrowed[aj] && !self.borrowed[b] {
-                                return None;
-                            }
-                            if lock_bits[b] != 0 && lock_bits[aj] != lock_bits[b] {
-                                return None;
-                            }
-                            if self.deck_job.pals.is_some() && is_pal(aj) != is_pal(b) {
-                                return None;
-                            }
-                            if !ok(aj)
-                                || !(0..target_count).all(|t| {
-                                    misses.white[aj * target_count + t] <= misses.white[b * target_count + t]
-                                        && misses.gold[aj * target_count + t] <= misses.gold[b * target_count + t]
+        crate::memoised(&self.dominance_cache, key, |_| {
+            let target_count = self.target_groups.len();
+            let in_unit = |x: f64| (0.0..=1.0).contains(&x);
+            let ok = |j: usize| {
+                (0..target_count)
+                    .all(|t| in_unit(misses.white[j * target_count + t]) && in_unit(misses.gold[j * target_count + t]))
+            };
+            let is_pal = |j: usize| self.cards[self.card_indices[j]].pal;
+            std::rc::Rc::new(
+                (0..entries.len())
+                    .map(|p| {
+                        let b = entries[p];
+                        if !ok(b) {
+                            return vec![];
+                        }
+                        (0..p)
+                            .filter_map(|a| {
+                                let aj = entries[a];
+                                if self.borrowed[aj] && !self.borrowed[b] {
+                                    return None;
+                                }
+                                if lock_bits[b] != 0 && lock_bits[aj] != lock_bits[b] {
+                                    return None;
+                                }
+                                if self.deck_job.pals.is_some() && is_pal(aj) != is_pal(b) {
+                                    return None;
+                                }
+                                if !ok(aj)
+                                    || !(0..target_count).all(|t| {
+                                        misses.white[aj * target_count + t] <= misses.white[b * target_count + t]
+                                            && misses.gold[aj * target_count + t] <= misses.gold[b * target_count + t]
+                                    })
+                                {
+                                    return None;
+                                }
+                                Some(Dominator {
+                                    position: a as u32,
+                                    gold_gap_targets: (0..target_count)
+                                        .filter(|&t| {
+                                            misses.gold[aj * target_count + t] < misses.gold[b * target_count + t]
+                                        })
+                                        .fold(0u32, |mask, t| mask | 1 << t),
                                 })
-                            {
-                                return None;
-                            }
-                            Some(Dominator {
-                                position: a as u32,
-                                gold_gap_targets: (0..target_count)
-                                    .filter(|&t| misses.gold[aj * target_count + t] < misses.gold[b * target_count + t])
-                                    .fold(0u32, |mask, t| mask | 1 << t),
                             })
-                        })
-                        .collect()
-                })
-                .collect::<Vec<_>>(),
-        );
-        self.dominance_cache.borrow_mut().insert(key, std::rc::Rc::clone(&table));
-        table
+                            .collect()
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
     }
 }
 

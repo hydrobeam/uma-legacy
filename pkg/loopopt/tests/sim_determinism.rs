@@ -2,26 +2,15 @@
 //! on the val/sim pool4 pool, run 1 of a two-run job (`runs` 2, `first` 0) and the same run alone (`runs` 1, `first` 1),
 //! each in its own process, under goal `looped`, give the same record, wall clocks aside. Each run starts from an empty
 //! kept state (`kept_swap`), so the first run's plans cannot reach the second's.
+mod common;
+use common::{run_job, val_job};
 use serde_json::{Value, json};
-use std::{fs, process::Command};
 
 /// The simulation's output for pool4 with this `simulate` block.
 fn simulate(block: &Value, tag: &str) -> Value {
-    let mut job: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/sim/pools/pool4.json")).unwrap(),
-    )
-    .unwrap();
+    let mut job = val_job("sim/pools/pool4.json");
     job["simulate"] = block.clone();
-    let path = std::env::temp_dir().join(format!("uma-sim-determinism-{tag}-{}.json", std::process::id()));
-    fs::write(&path, job.to_string()).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .args(["data.json", path.to_str().unwrap()])
-        .output()
-        .unwrap();
-    fs::remove_file(path).unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    serde_json::from_slice(&output.stdout).unwrap()
+    run_job(&format!("sim-determinism-{tag}"), &job)
 }
 
 /// A run's record without its wall clocks (`wall_s`, the plans' `plan_s`).
