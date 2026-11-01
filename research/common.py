@@ -7,6 +7,7 @@ return findings as "needs data". Game-backed checks still require their game inp
 import collections, contextlib, functools, hashlib, json, math, os, random, re, sqlite3, subprocess, sys, time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import pairwise
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict
@@ -1129,8 +1130,71 @@ PINK: set[int] = {11, 12, 21, 22, 23, 24, 31, 32, 33, 34}  # pink spark factor i
 WIDE_JOB_TARGETS: int = 12
 SOLVER_BATCH: int = 100  # jobs per solver call (default targets)
 # master.mdb support effect types
+EFFECT_FRIENDSHIP_BONUS, EFFECT_INITIAL_BOND = 1, 14
 EFFECT_HINT_LEVELS, EFFECT_HINT_FREQUENCY, EFFECT_SPECIALTY = 17, 18, 19
 MILESTONES: list[int] = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]  # the levels of support_card_effect_table's columns
+
+
+class CardEffectTables(NamedTuple):
+    """the master.mdb tables a support card's effects are read from"""
+
+    level_cap: dict[int, tuple[int, ...]]  # rarity -> the level cap at limit breaks 0-4
+    card_info: dict[int, tuple[int, int]]  # card -> (rarity, effect table)
+    effects: dict[int, dict[int, tuple[int, ...]]]  # effect table -> type -> values at MILESTONES (-1: none there)
+    unique: dict[int, list[tuple[int, int, int]]]  # card -> its unique effects (level, type, value)
+
+
+@functools.cache
+def card_effect_tables() -> CardEffectTables:
+    db = mdb()
+    level_cap = {
+        r[0]: r[1:]
+        for r in db.execute("select rarity, limit_0, limit_1, limit_2, limit_3, limit_4 from support_card_limit")
+    }
+    card_info = {i: (rar, et) for i, rar, et in db.execute("select id, rarity, effect_table_id from support_card_data")}
+    effects: collections.defaultdict[int, dict[int, tuple[int, ...]]] = collections.defaultdict(dict)
+    for row in db.execute(
+        "select id, type, init,"
+        + ",".join(f"limit_lv{lv}" for lv in MILESTONES[1:])
+        + " from support_card_effect_table"
+    ):
+        effects[row[0]][row[1]] = row[2:]
+    unique: collections.defaultdict[int, list[tuple[int, int, int]]] = collections.defaultdict(list)
+    for cid, lv, t0, v0, t1, v1 in db.execute(
+        "select id, lv, type_0, value_0, type_1, value_1 from support_card_unique_effect"
+    ):
+        unique[cid] += [(lv, t0, v0), (lv, t1, v1)]
+    return CardEffectTables(level_cap, card_info, dict(effects), dict(unique))
+
+
+def card_level(cid: int, lb: int) -> int:
+    """a support card's level cap at a limit break (0-4)"""
+    tables = card_effect_tables()
+    return tables.level_cap[tables.card_info[cid][0]][lb]
+
+
+def effect_interpolated(cid: int, typ: int, level: int) -> Fraction:
+    """a support card's table effect of one type at a level, exactly: linear between the milestone levels its table
+    gives a value at (0 below the first; the last past it); unique effects not included"""
+    tables = card_effect_tables()
+    values = tables.effects.get(tables.card_info[cid][1], {}).get(typ)
+    points = [(m, v) for m, v in zip(MILESTONES, values or ()) if v != -1]
+    if not points or level < points[0][0]:
+        return Fraction(0)
+    for (x0, y0), (x1, y1) in pairwise(points):
+        if level <= x1:
+            return y0 + Fraction((y1 - y0) * (level - x0), x1 - x0)
+    return Fraction(points[-1][1])
+
+
+def card_effect(cid: int, typ: int, level: int) -> int:
+    """a support card's effect of one type at a level: the table's, interpolated and rounded down, plus each unique
+    effect whose level is reached. The game rounds down (section 7, `hint_level_rounding`)"""
+    tables = card_effect_tables()
+    unique = sum(v for lv, t, v in tables.unique.get(cid, []) if t == typ and level >= lv)
+    return math.floor(effect_interpolated(cid, typ, level)) + unique
+
+
 # the generic spark chance of a learned white / gold at six carriers (docs/MODEL.md, spark generation: 20% / 40%,
 # x1.1 per carrier); a row rescales it by 1.1 ** (carriers - 6)
 SPARK_WHITE_6, SPARK_GOLD_6 = 0.2 * 1.1**6, 0.4 * 1.1**6
@@ -1209,54 +1273,13 @@ class HintEffects(NamedTuple):
 def card_variants() -> list[int]:
     """write cards_lb.json and events_lb.json (every card also at limit breaks 0-3) under OUTD; returns the cards whose
     limit-break-4 effects read from master.mdb differ from web_cards.json"""
-    db = mdb()
-
-    def query(sql: str, *args: Any) -> list[Any]:
-        return db.execute(sql, args).fetchall()
-
-    level_cap: dict[int, list[int]] = {
-        r: lv for r, *lv in query("select rarity, limit_0, limit_1, limit_2, limit_3, limit_4 from support_card_limit")
-    }
-
-    def effect(effect_table: int, typ: int, level: int) -> float:
-        """the effect's value at level, linear between milestone levels (-1: no value at that milestone)"""
-        row = query(
-            "select init,limit_lv5,limit_lv10,limit_lv15,limit_lv20,limit_lv25,limit_lv30,limit_lv35,limit_lv40,"
-            "limit_lv45,limit_lv50 from support_card_effect_table where id=? and type=?",
-            effect_table,
-            typ,
-        )
-        if not row:
-            return 0.0
-        pts = [(lv, v) for lv, v in zip(MILESTONES, row[0]) if v != -1]
-        if not pts or level < pts[0][0]:
-            return 0.0
-        for (l0, v0), (l1, v1) in pairwise(pts):
-            if l0 <= level <= l1:
-                return v0 + (v1 - v0) * (level - l0) / (l1 - l0)
-        return float(pts[-1][1])
-
-    def unique(sid: int, typ: int, level: int) -> int:
-        return sum(
-            v
-            for lv, t0, v0, t1, v1 in query(
-                "select lv, type_0, value_0, type_1, value_1 from support_card_unique_effect where id=?", sid
-            )
-            for t, v in ((t0, v0), (t1, v1))
-            if t == typ and level >= lv
-        )
 
     def at_lb(sid: int, lb: int) -> HintEffects:
-        effect_table, rarity = query("select effect_table_id, rarity from support_card_data where id=?", sid)[0]
-        lv = level_cap[rarity][lb]
+        lv = card_level(sid, lb)
         return HintEffects(
-            frequency=max(0, math.floor(effect(effect_table, EFFECT_HINT_FREQUENCY, lv)))
-            + unique(sid, EFFECT_HINT_FREQUENCY, lv),
-            levels=1
-            + max(0, math.floor(effect(effect_table, EFFECT_HINT_LEVELS, lv)))
-            + unique(sid, EFFECT_HINT_LEVELS, lv),
-            specialty=max(0, math.floor(effect(effect_table, EFFECT_SPECIALTY, lv)))
-            + unique(sid, EFFECT_SPECIALTY, lv),
+            frequency=card_effect(sid, EFFECT_HINT_FREQUENCY, lv),
+            levels=1 + card_effect(sid, EFFECT_HINT_LEVELS, lv),
+            specialty=card_effect(sid, EFFECT_SPECIALTY, lv),
         )
 
     web_cards = gjson("web_cards.json")

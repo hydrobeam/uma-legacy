@@ -52,7 +52,7 @@ per-target p, d^g, d^w, q, read through common's build_jobs / run_solver / rows_
               prediction left out
 """
 
-import collections, itertools, math
+import collections, math
 from collections.abc import Callable, Sequence
 from typing import Any, NamedTuple, TypedDict
 import numpy as np
@@ -534,17 +534,16 @@ def covariate_tests(rows: Sequence[Reading], x: ReadingArrays) -> dict[str, Any]
 
 # card effects tested next to K: (master.mdb effect type, name)
 COVARIATES: tuple[tuple[int, str], ...] = (
-    (1, "friendship bonus"),
-    (14, "initial friendship gauge"),
-    (19, "specialty priority"),
+    (common.EFFECT_FRIENDSHIP_BONUS, "friendship bonus"),
+    (common.EFFECT_INITIAL_BOND, "initial friendship gauge"),
+    (common.EFFECT_SPECIALTY, "specialty priority"),
 )
 
 
 def card_effects(rows: Sequence[Reading]) -> list[np.ndarray]:
-    """each reading's card effects (COVARIATES, in that order) at its limit break, per 10 points"""
-    cache: dict[tuple[int, int, int], float] = {}
+    """each reading's card effects (COVARIATES, in that order) at its limit break's level cap, per 10 points"""
     return [
-        np.array([cache.setdefault((r["card"], r["lb"], t), card_effect(r["card"], r["lb"], t)) for r in rows]) / 10
+        np.array([common.card_effect(r["card"], t, common.card_level(r["card"], r["lb"])) for r in rows], float) / 10
         for t, _ in COVARIATES
     ]
 
@@ -576,32 +575,6 @@ def multi_rarity(rows: Sequence[Reading]) -> tuple[list[int], list[int]]:
         multi[r["char"]].add(r["rar"])
     ch = sorted(c for c, v in multi.items() if len(v) > 1)
     return ch, [i for i, r in enumerate(rows) if r["char"] in ch]
-
-
-def card_effect(cid: int, lb: int, typ: int) -> float:
-    """a support card's effect of one type at its limit break's level cap (master.mdb: linear between milestone levels,
-    plus unique effects reached)"""
-    db = common.mdb()
-    eff, rar = db.execute("select effect_table_id, rarity from support_card_data where id = ?", (cid,)).fetchone()
-    lv = db.execute(f"select limit_{lb} from support_card_limit where rarity = ?", (rar,)).fetchone()[0]
-    row = db.execute(
-        "select init, limit_lv5, limit_lv10, limit_lv15, limit_lv20, limit_lv25, limit_lv30, limit_lv35, limit_lv40, "
-        "limit_lv45, limit_lv50 from support_card_effect_table where id = ? and type = ?",
-        (eff, typ),
-    ).fetchone()
-    v = 0.0
-    pts = [(level, x) for level, x in zip([1, *range(5, 55, 5)], row or []) if x != -1]  # (level, value) milestones
-    if pts and lv >= pts[0][0]:
-        v = float(pts[-1][1])
-        for (l0, v0), (l1, v1) in itertools.pairwise(pts):
-            if l0 <= lv <= l1:
-                v = v0 + (v1 - v0) * (lv - l0) / (l1 - l0)
-                break
-    for ulv, t0, v0, t1, v1 in db.execute(
-        "select lv, type_0, value_0, type_1, value_1 from support_card_unique_effect where id = ?", (cid,)
-    ):
-        v += sum(x for t, x in ((t0, v0), (t1, v1)) if t == typ and lv >= ulv)
-    return v
 
 
 def reading_rates(rows: Sequence[Reading]) -> np.ndarray:
