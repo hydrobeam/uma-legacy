@@ -1,6 +1,7 @@
 // A roll: a random result of a career (the veteran it leaves), drawn from the solver's report of it. No page state:
 // each function takes the report, what it reads of the settings and data (`RollSetup`) and the random source (`rnd`,
 // Math.random on the page; the browser suite's `career` group passes a seeded one and runs these in node).
+import { must } from '../must.ts';
 import { drawPink } from '../pink.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerReport } from './job.js';
@@ -50,8 +51,8 @@ export function scheduledRaces(r: Pick<Report, 'schedule'>, races: readonly stri
     byIndex.set(ix, {
       ix,
       name: w.name || w.race,
-      // @ts-expect-error a run row's p is a number (schedule.rs: null only when she skips it): must() in the strict commit
-      p: 1 - (1 - (prev?.p || 0)) * (1 - w.p),
+      // (a row she runs has its chance: schedule.rs makes it null only on a skipped row, filtered out above)
+      p: 1 - (1 - (prev?.p || 0)) * (1 - must(w.p, 'the win chance of a race she runs')),
       turns: [...(prev?.turns || []), w.turn],
     });
   }
