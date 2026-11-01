@@ -609,9 +609,10 @@ const reports = [];
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
 // the review of step 4 traced every such read): loop/run.ts (the loop page's run machine: it changes loop/state.ts
 // through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.ts (the uma.moe panel with its sync: `sigOf` and `query`
-// read the targets), loop/io.ts (the loop page's Export and Import: it writes the store by design, an editor), career/job.ts
-// (the career job, built from the veterans and settings). career/run.ts, the career run machine, is a model module: the
-// answer store's transitions come in its deps.
+// read the targets), loop/io.ts (the loop page's Export and Import: it writes the store by design, an editor).
+// career/run.ts, the career run machine, is a model module: the answer store's transitions come in its deps; so is
+// career/job.ts, whose buildJob takes the settings and the veterans store's record as values (career/current.ts, a page
+// module, passes the stores' own).
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
@@ -624,11 +625,13 @@ const LAYERS = [
       'umadump',
       'umamoe',
       'career/roll',
+      'career/job',
       'career/keys',
       'career/run',
       'career/analysis/compare',
       'loop/job',
       'loop/keys',
+      'veterans/names',
     ],
   ],
   ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
@@ -641,7 +644,7 @@ const LAYERS = [
       'career/analysis/view',
       'career/analysis/Details',
       'career/options',
-      'career/job',
+      'career/current',
       'career/io',
       'career/view/parts',
       'career/view/dialogs',

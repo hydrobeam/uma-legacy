@@ -1,25 +1,18 @@
 // The options table ("Other careers") under the career on show, as figures and words: the plan's careers by Saves per
 // run (or the search's, with a place open), what each row's tags and numbers say, the table's notes, and Use this
 // (`takeCareer`). view/Options.tsx draws it and its Saves popup. It reads the answer from the answer store
-// (career/state.ts) and the career's helpers from job.ts and keys.ts; its one write there is `forgetDroppedChoice`.
+// (career/state.ts) and the career's helpers from job.ts, current.ts and keys.ts; its one write there is
+// `forgetDroppedChoice`.
 import { settings } from '../settings.ts';
 import { pct } from '../odds.ts';
 import { batch } from '@preact/signals-core';
 import { vets, places as yourPlaces, usePlaces, setChosen } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
 import { whyText } from '../proofs.ts';
-import { answer } from './state.ts';
+import { answer, forgetDroppedChoice } from './state.ts';
 import { keyOf } from './keys.ts';
-import {
-  shown,
-  refFor,
-  buildJob,
-  Blocked,
-  chosenSetup,
-  placesKey,
-  forgetDroppedChoice,
-  BORROW_CHOICES,
-} from './job.ts';
+import { Blocked, chosenSetup, placesKey, BORROW_CHOICES } from './job.ts';
+import { currentJob, refFor, shown } from './current.ts';
 import { must } from '../must.ts';
 import type { OptionRow, PairSearch, PlanOption, PlanReport } from './job.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -97,7 +90,7 @@ export function takeCareer(
     forgetDroppedChoice();
     if ((r.alternative || r.pair_search) && r.career) {
       try {
-        setChosen({ places: placesKey(), id: r.career, setup: chosenSetup(buildJob(settings.value)) });
+        setChosen({ places: placesKey(yourPlaces.value), id: r.career, setup: chosenSetup(currentJob()) });
       } catch (e) {
         if (!(e instanceof Blocked)) throw e;
         // settings that make no job: nothing is chosen
@@ -202,7 +195,7 @@ export function optionsTable() {
     });
   // (a row proven under a named assumption is proven: the run note names the job's assumptions, the plan's searches
   // included, `searchCaveat`, so the table adds no note for them)
-  const back = ref && placesKey(ref.places) !== placesKey() ? ref.places : null;
+  const back = ref && placesKey(ref.places) !== placesKey(yourPlaces.value) ? ref.places : null;
   return { on, planReport, places, pick, list, mine, recommended, notes, nameOf, back };
 }
 // the pair search's recommendation as a row of the table (`pairs.recommendation.report`, with its pair-search score and

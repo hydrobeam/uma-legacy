@@ -23,7 +23,8 @@ import { scheduledRaces, rolledOutcome } from '../roll.ts';
 import type { Roll, RollSetup } from '../roll.ts';
 import { answer, runView, searching as runSearching } from '../state.ts';
 import { keyOf } from '../keys.ts';
-import { shown, isFull } from '../job.ts';
+import { isFull } from '../job.ts';
+import { shown } from '../current.ts';
 import type { CareerReport } from '../job.ts';
 import { borLast } from '../../cards.ts';
 import { fmtN, tableRows } from '../view/parts.ts';
@@ -179,7 +180,7 @@ function Figure({
 // answers: it reads "no saving found yet"
 function verdictText(sim: SimulationView, d: DraftView, next: Career | undefined, saves: number | null) {
   const n = settings.value.targets.length,
-    fullyLooped = sim.full && d.parents.length === 2 && d.parents.every(isFull),
+    fullyLooped = sim.full && d.parents.length === 2 && d.parents.every((p) => isFull(p, settings.value.targets)),
     none = sim.quick ? 'saving found yet' : 'careers saved';
   return fullyLooped
     ? 'Fully looped parent'

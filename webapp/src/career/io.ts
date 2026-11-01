@@ -1,12 +1,12 @@
 // Export and Import of the veterans: the page's own export, an uma.moe tree, the game's export.
 import { $, $dialog, $textarea } from '../dom.ts';
 import { ERA } from '../saved.ts';
-import { settings } from '../settings.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
 import { parseExport, parseTree } from '../umadump.ts';
 import { orNull } from '../must.ts';
-import { Blocked, buildJob } from './job.ts';
+import { Blocked } from './job.ts';
+import { currentJob } from './current.ts';
 import { setVTab } from './view/poolState.ts';
 
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a
@@ -20,7 +20,7 @@ interface OwnExport {
 }
 export function exportVets(): void {
   // (settings that make no job: the export carries none; a bug building it is reported, and the veterans still export)
-  const job = orNull(() => buildJob(settings.value), Blocked);
+  const job = orNull(currentJob, Blocked);
   // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
   const veterans = vets.value.filter((v) => v.src !== 'umamoe');
   const data = {

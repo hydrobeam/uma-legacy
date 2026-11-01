@@ -1,30 +1,19 @@
-// The career job: built from the settings, the veterans and the places (`buildJob`), the Use this choice it carries,
-// what reads the job, the places and the career on show, and its run on the solver (`runJob`). The solver's career job
-// and its reports are typed here.
-import { computed } from '@preact/signals-core';
-import { $ } from '../dom.ts';
-import { careerTables, gameData } from '../data.ts';
-import { settings } from '../settings.ts';
-import { run as engineRun, stateKey } from '../engine.ts';
-import { goldGiven, isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
-import { srcFor } from '../images.ts';
-import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob } from '../veterans/store.ts';
-import { umaName, targetGroups } from '../veterans/names.ts';
-import { answer, answerCareer, reference } from './state.ts';
-import { must, orNull } from '../must.ts';
-import { planKey } from './keys.ts';
-import { pickOutfit, outfitNote } from '../roster.ts';
-import { unprovenWhy } from '../proofs.ts';
+// The career job: built from the settings and the veterans store's record (`buildJob`, values in: career/current.ts
+// passes the stores' as they stand), the Use this choice it carries, the parent rules, and the solver's career job and
+// reports, typed here. A model module: it reads no store (static.mjs checks it).
+import { gameData } from '../data.ts';
+import { stateKey } from '../engine.ts';
+import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
+import { umaName } from '../veterans/names.ts';
+import { must } from '../must.ts';
+import type { ScheduleRow, SolverAnswer } from '../solver.ts';
 import type { ResultDeck } from '../loop/types.ts';
 import type { SettingsView } from '../settings.ts';
-import type { PlanProgress, ScheduleRow, SolverAnswer } from '../solver.ts';
-import type { JobLegacy, LineageNode, PlacesRecord, Sparks, Veteran, VetRecord } from '../veterans/store.ts';
+import type { ChosenCareer, JobLegacy, LineageNode, PlacesRecord, VetRecord } from '../veterans/store.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { Status } from './state.ts';
 
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
-export const placesKey = (p: PlacesRecord = places.value): string =>
-  JSON.stringify({ trainee: p.trainee, parents: p.parents });
+export const placesKey = (p: PlacesRecord): string => JSON.stringify({ trainee: p.trainee, parents: p.parents });
 /** The career job (`buildJob`; the solver reads it as `SkillJob` + `DeckJob` + `CareerJob`, web.rs); a plan job adds
  *  `next` and `no_reports`, a comparison `compare`. (A type, not an interface: it is passed as a SolverJob, whose index
  *  signature an interface does not meet.) */
@@ -403,13 +392,16 @@ export interface CareerSearch {
   pending?: boolean;
 }
 // ---------- the job ----------
-/** her place in the pool (-1: none) */
-export const idxOf = (id: string | null): number => vets.value.findIndex((v) => v.id === id);
+/** A status line's button: its label and what it does. */
+export interface StatusAct {
+  label: string;
+  run: () => void;
+}
 /** Settings, veterans and places that make no job: the status line's kind, its text and its button(s). */
 export class Blocked extends Error {
   declare kind: 'empty' | 'error';
-  declare act: Status['act'] | undefined;
-  constructor(kind: 'empty' | 'error', text: string, act?: Status['act']) {
+  declare act: StatusAct | StatusAct[] | undefined;
+  constructor(kind: 'empty' | 'error', text: string, act?: StatusAct | StatusAct[]) {
     super(text);
     this.kind = kind;
     this.act = act;
@@ -420,20 +412,33 @@ export class Blocked extends Error {
 export const BORROW_CHOICES = { allow: 'Allowed', later: 'None left today', never: 'Never' };
 export const borrowChoice = (s: SettingsView): keyof typeof BORROW_CHOICES =>
   Object.hasOwn(BORROW_CHOICES, s.borrowPar) ? (s.borrowPar as keyof typeof BORROW_CHOICES) : 'allow';
-// the career job for settings `s` and the veterans and places (throws Blocked when they make none)
-export function buildJob(s: SettingsView): CareerJob {
+/** What a career job is made of: the settings and the veterans store's record (the veterans, each as the job takes her,
+ *  the places and the career chosen with Use this). */
+export interface JobFrom {
+  settings: SettingsView;
+  vets: readonly VetRecord[];
+  /** every veteran as the job takes her (veterans/store.ts `legaciesJob`: the same array until the veterans change) */
+  legacies: readonly JobLegacy[];
+  places: PlacesRecord;
+  chosen: DeepReadonly<ChosenCareer> | null;
+}
+/** What the status line's buttons do when the veterans make no job: open the veterans dialog, add the sample veterans */
+export interface PoolActs {
+  importVets: () => void;
+  trySamples: () => void;
+}
+// the career job `from` the settings, veterans and places (throws Blocked when they make none; `acts`: its buttons)
+export function buildJob(from: JobFrom, acts: PoolActs): CareerJob {
+  const { settings: s, vets: pool, places: plan } = from;
   if (!s.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
-  const plan = places.value,
-    pool = vets.value;
+  const vetById = (id: string) => pool.find((v) => v.id === id);
   const fixed = (plan.parents.filter(Boolean) as string[]).map(vetById);
   if (pool.length < 2 || !pool.some((v) => !v.borrowed)) {
-    const importVets = { label: 'Import veterans', run: () => $('v-toggle').click() };
+    const importVets = { label: 'Import veterans', run: acts.importVets };
     throw new Blocked(
       'empty',
       'Choose both parents, or import your veterans and let the planner pick.',
-      !pool.some((v) => !listed(v))
-        ? [importVets, { label: 'Try sample veterans', run: () => addVets(sampleVets()) }]
-        : importVets,
+      !pool.some((v) => !listed(v)) ? [importVets, { label: 'Try sample veterans', run: acts.trySamples }] : importVets,
     );
   }
   // the parent places' rules (`pairBlock`): the pair's first, each parent in turn, then the trainee's
@@ -472,24 +477,26 @@ export function buildJob(s: SettingsView): CareerJob {
     ...ownedFields(s, exclude),
     star_dist: starDist(s),
     ...scenarioFields(s),
-    legacies: legaciesJob(),
+    legacies: from.legacies,
     trainees: plan.trainee ? [plan.trainee] : [],
-    fix: plan.parents.filter(Boolean).map(idxOf),
+    fix: plan.parents.filter(Boolean).map((id) => pool.findIndex((v) => v.id === id)),
     per_trainee: false,
     top: allPlaced ? 1 : ROLL_K,
   };
   const borrowed = borrowChoice(s);
   if (borrowed !== 'allow') job.borrowed_parent = borrowed;
-  if (allPlaced && chosenApplies(job)) job.career = must(chosen.value, 'chosenApplies: a choice is saved').id;
+  if (allPlaced && chosenApplies(job, from.chosen, plan))
+    job.career = must(from.chosen, 'chosenApplies: a choice is saved').id;
   return job;
 }
-// the career Use this chose with its deck (veterans/store.ts `chosen`, saved with the plan): a builder's other career (an option
-// with `alternative`: a search on its places would give her best deck there instead, but for the pick, searched on its
-// pair before it is shown; listed with the plan's `builder_careers` above 1, its default 1, which the page keeps: none by
-// default) or the pair search's recommendation (`pair_search`). It is sent only while it applies (`chosenApplies`): its
-// places, the setup it was chosen on (`chosenSetup`: the job's settings, its targets and cards among them, its two
-// parents' records and the solver's and data's fingerprints, engine.ts `stateKey`) and its parents' places in the veteran list (the id names them by index) all as they were. One
-// saved before a reload that no longer applies is dropped, and the search's status says so (`chosenDropped`)
+// the career Use this chose with its deck (veterans/store.ts `chosen`, saved with the plan): a builder's other career (an
+// option with `alternative`: a search on its places would give her best deck there instead, but for the pick, searched
+// on its pair before it is shown; listed with the plan's `builder_careers` above 1, its default 1, which the page keeps:
+// none by default) or the pair search's recommendation (`pair_search`). It is sent only while it applies
+// (`chosenApplies`): its places, the setup it was chosen on (`chosenSetup`: the job's settings, its targets and cards
+// among them, its two parents' records and the solver's and data's fingerprints, engine.ts `stateKey`) and its parents'
+// places in the veteran list (the id names them by index) all as they were. One saved before a reload that no longer
+// applies is dropped, and the search's status says so (career/current.ts `dropStaleChosen`)
 export const chosenSetup = (job: DeepReadonly<CareerJob>): string =>
   JSON.stringify({
     engine: stateKey(),
@@ -498,123 +505,25 @@ export const chosenSetup = (job: DeepReadonly<CareerJob>): string =>
     career: undefined,
     top: undefined,
   });
-const chosenApplies = (job: DeepReadonly<CareerJob>): boolean => {
-  const c = chosen.value;
-  if (!c || c.places !== placesKey() || c.setup !== chosenSetup(job)) return false;
+const chosenApplies = (
+  job: DeepReadonly<CareerJob>,
+  c: DeepReadonly<ChosenCareer> | null,
+  places: PlacesRecord,
+): boolean => {
+  if (!c || c.places !== placesKey(places) || c.setup !== chosenSetup(job)) return false;
   const named = (c.id.split(':')[1] || '').split(',').map(Number),
     fixed = job.fix;
   return named.length === 2 && fixed.length === 2 && named.every((i) => fixed.includes(i));
 };
-/** a saved choice dropped on load, while its places stand */
-export let chosenDropped: { places: string; text: string } | null = null;
-// a choice made with Use this: the dropped one's note goes
-export function forgetDroppedChoice(): void {
-  chosenDropped = null;
-}
-export function dropStaleChosen(): void {
-  const c = chosen.value;
-  if (!c) return;
-  // (settings that make no job: the chosen career no longer applies; a bug building it is reported, and the start goes on)
-  if (orNull(() => buildJob(settings.value), Blocked)?.career === c.id) return;
-  chosenDropped = {
-    places: c.places,
-    text: 'The deck you chose with Use this before the reload no longer fits (its trainee, parents, their records, the targets or the card settings changed), so this is the deck the search finds.',
-  };
-  setChosen(null, true);
-}
 // a full veteran: a spark of every target (with full veteran parents: a fully looped parent)
-export const isFull = (nd: DeepReadonly<LineageNode> | null | undefined): boolean =>
-  !!nd && settings.value.targets.length > 0 && settings.value.targets.every((t) => nd.sparks?.[t.group] > 0);
-// a career on two full veteran parents: her own full veteran there is a fully looped parent (the plan says so; a search's row is read off the veterans)
-export const looped = (r: DeepReadonly<OptionRow>): boolean =>
-  r.looped ?? r.parents.every((i) => isFull(vets.value[i]));
+export const isFull = (nd: DeepReadonly<LineageNode> | null | undefined, targets: SettingsView['targets']): boolean =>
+  !!nd && targets.length > 0 && targets.every((t) => nd.sparks?.[t.group] > 0);
 export const ROLL_K = 6; // careers a search returns with a place open (the plan's candidates; `buildJob`)
-// the job of today's best career over everything (no place set, one result): the comparison's baseline
-const baseOf = (job: DeepReadonly<CareerJob>): DeepReadonly<CareerJob> => ({
-  ...job,
-  career: undefined,
-  exclude: gameData()
-    .umas.filter((u) => !isOwned(u, settings.value))
-    .map((u) => u.id),
-  trainees: [],
-  fix: [],
-  per_trainee: false,
-  top: 1,
-  rollout: undefined,
-  p_now: undefined,
-});
-export const baseKey = (job: DeepReadonly<CareerJob>): string => JSON.stringify(baseOf(job));
-// the last plan made (career/state.ts `reference`): while the career on show is one you chose on the same setup and
-// veterans (its job without the places), its table stays, so you can weigh the plan's other careers or go back to its pick
-export const refBase = (job: DeepReadonly<CareerJob>): string =>
-  planKey({
-    ...job,
-    exclude: gameData()
-      .umas.filter((u) => !isOwned(u, settings.value))
-      .map((u) => u.id),
-    trainees: [],
-    fix: [],
-    top: 0,
-    career: undefined,
-  });
-export const refFor = () => {
-  const ref = reference.value,
-    { last, planState } = answer.value;
-  return ref && last && planState.state !== 'done' && ref.base === refBase(last.job) ? ref : null;
-};
-// ---------- the pedigree ----------
-// the career on show: the answer's (career/state.ts `answerCareer`: the plan's pick once it is made, else the highest
-// odds) while it belongs to the places on screen
-const shownCareer = computed(() => (answer.value.last?.plan === placesKey(places.value) ? answerCareer.value : null));
-export const shown = () => shownCareer.value;
-// which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
-export function parentAt(
-  k: number,
-  r: DeepReadonly<CareerReport> | null | undefined,
-): { v: VetRecord; pick: boolean } | null {
-  const plan = places.value,
-    mine = plan.parents[k] && vetById(plan.parents[k]);
-  if (mine) return { v: mine, pick: false };
-  if (!r) return null;
-  // the other place's chosen veteran (-1: none): the result's parent that isn't her fills this one
-  const other = plan.parents[1 - k] ? idxOf(plan.parents[1 - k]) : -1;
-  const i = other >= 0 ? r.parents.filter((x) => x !== other)[0] : r.parents[k];
-  return i === undefined ? null : { v: vets.value[i], pick: true };
-}
-// sample veterans to try the planner with (no veterans yet): 18 mob umas drawn at random from the game's (those with a
-// portrait), six veterans with two mob parents each, the bare minimum to start a loop: each veteran carries, at 1 star,
-// only the targets nothing but inheritance gives (no card hints or events them, no outfit has them, the scenario
-// doesn't hand them out); her parents carry nothing. No relation points with anyone (the solver knows no mob), no G1
-// wins. Marked as samples; Remove all clears them.
-function sampleVets(): Veteran[] {
-  const all = careerTables().mobs || [],
-    withArt = all.filter(([id]) => srcFor('mob', id)),
-    pool = (withArt.length >= 18 ? withArt : all).slice();
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  const sourced = new Set(careerTables().sourced || []),
-    inherit = targetGroups().filter((g) => !sourced.has(g) && !goldGiven(settings.value.scen, g));
-  const node = (id: number, sparks: Sparks): LineageNode => ({
-    chara: id,
-    sparks,
-    pinks: {},
-    blues: {},
-    greens: {},
-    wins: [],
-  });
-  const out: Veteran[] = [];
-  for (let i = 0; i + 2 < pool.length && out.length < 6; i += 3)
-    out.push({
-      id: `m${pool[i][0]}${Date.now().toString(36)}`,
-      src: 'sample',
-      borrowed: false,
-      ...node(pool[i][0], Object.fromEntries(inherit.map((g) => [g, 1]))),
-      parents: [node(pool[i + 1][0], {}), node(pool[i + 2][0], {})],
-    });
-  return out;
-}
+/** the umas not owned under settings `s`, by id (a baseline's or the last plan's `exclude`: keys.ts `baseKey`) */
+export const umasNotOwned = (s: SettingsView): number[] =>
+  gameData()
+    .umas.filter((u) => !isOwned(u, s))
+    .map((u) => u.id);
 // an uma.moe listing (in the pool, not yours): shown in the popups, never edited
 export const listed = (v: { src: string }): boolean => v.src === 'umamoe';
 // The parent rules for veteran v beside the other parent o (none: no other) with trainee t (0: none), the page's form
@@ -634,35 +543,5 @@ export function pairBlock(
   if (v.borrowed && borrowChoice(s) !== 'allow') return 'setting';
   return '';
 }
-
-// ---------- the job on the solver
-// every career a result names gets one outfit (never "any outfit"): its trainee's outfits are reordered with the chosen
-// one first, filled with one of hers when none covers a target (`anyOutfit`); her popup says which
-function oneOutfit(t: CareerTrainee | undefined): void {
-  if (!t || t.outfitNote != null) return;
-  const f = pickOutfit(t.id, t.outfits || []);
-  t.outfits = f.list;
-  t.anyOutfit = f.any;
-  t.outfitNote = outfitNote(f);
-}
 /** The solver's answer to a career job: its CareerSearch, or a refusal (`'error' in m.r`). */
 export type CareerAnswer = SolverAnswer<CareerSearch>;
-export const runJob = async (
-  job: CareerJob,
-  progress?: (p: PlanProgress) => void,
-  background = false,
-): Promise<CareerAnswer> => {
-  // (a career job: its report is a CareerSearch)
-  const m = (await engineRun(job, undefined, progress, background)) as CareerAnswer;
-  if ('error' in m.r) return m; // (a refusal: nothing to fill in)
-  const r = m.r;
-  for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
-  // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
-  // taken again from `planKept` or `answers` says the same)
-  if (r.next?.options) {
-    r.next.unproven_why = unprovenWhy(r);
-    // (and the named assumptions any search of the job rests on: the status line's plan caveat, `planNote`)
-    r.next.job_assumes = r.job_assumes || [];
-  }
-  return m;
-};

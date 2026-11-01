@@ -7,8 +7,8 @@
 // mount points, settings and start. The rest of career/:
 //   state.ts           the answer store: the run on show, the answer, the last plan made, the answers kept
 //   run.ts             the run machine: an edit's pause, the search, the plan job's `next`, the robustness check
-//   job.ts             the career job from the settings, veterans and places; the solver call (runJob); the career on
-//                      show; the solver's types
+//   job.ts             the career job from the settings, veterans and places (values in); the solver's types
+//   current.ts         that job of the stores now; the solver call (runJob); the career on show and its parents
 //   keys.ts            the keys a job, a plan job and a career are known by
 //   io.ts              Export and Import of the veterans
 //   roll.ts           a roll: a random result of a career (no page state; the suite runs it in node)
@@ -64,23 +64,14 @@ import { setRunner } from '../images.ts';
 import { syncListings } from '../umamoesetup.ts';
 import { UmButton, UmamoePanel } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
-import {
-  placesKey,
-  buildJob,
-  chosenDropped,
-  dropStaleChosen,
-  baseKey,
-  refBase,
-  shown,
-  runJob,
-  isFull,
-  ROLL_K,
-} from './job.ts';
+import { placesKey, isFull, ROLL_K, umasNotOwned } from './job.ts';
+import { currentJob, dropStaleChosen, shown, runJob } from './current.ts';
+import { baseKey, refBase } from './keys.ts';
 import { Analysis, draftOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
-import { answer, dropAnswer, keepComparisonPlan, loadFails, runView } from './state.ts';
+import { answer, dropAnswer, dropped, keepComparisonPlan, loadFails, runView } from './state.ts';
 import { createRun } from './run.ts';
 import { tName } from './view/parts.ts';
 import { Guard } from './view/Guard.tsx';
@@ -115,8 +106,8 @@ const comparison = createComparison({
     shown,
     searching: () => runView.peek().searching,
     targets: () => settings.peek().targets,
-    baseKey,
-    isFull,
+    baseKey: (job) => baseKey(job, umasNotOwned(settings.peek())),
+    isFull: (nd) => isFull(nd, settings.peek().targets),
     planTop: ROLL_K,
     draftOf,
     draft: () => draft.peek(),
@@ -143,11 +134,11 @@ const run = createRun({
   },
   store: answerStore,
   page: {
-    job: () => buildJob(settings.peek()),
+    job: currentJob,
     places: () => placesKey(places.peek()),
     trainee: () => places.peek().trainee,
-    refBase,
-    baseKey,
+    refBase: (job) => refBase(job, umasNotOwned(settings.peek())),
+    baseKey: (job) => baseKey(job, umasNotOwned(settings.peek())),
     searched: searchStatus,
     loadAnswer: () => answerLoad(ERA),
     saveAnswer: (key, value) => answerSave(ERA, key, value),
@@ -169,8 +160,9 @@ const run = createRun({
 // no deck, outfit or event gives them either, or some career would have them)
 function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status {
   const cert = searchCaveat(m.r),
-    dropped = chosenDropped?.places === placesKey(places.peek()) ? ` ${chosenDropped.text}` : '';
-  if (m.r.results.length) return { kind: 'done', text: found + cert + dropped };
+    note = dropped.peek(),
+    droppedText = note?.places === placesKey(places.peek()) ? ` ${note.text}` : '';
+  if (m.r.results.length) return { kind: 'done', text: found + cert + droppedText };
   const carried = new Set(
     vets
       .peek()
@@ -183,7 +175,7 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
   const why = none.length
     ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.`
     : ' with these veterans.';
-  return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
+  return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${droppedText}` };
 }
 // ---------- the views: each component into its mount point, behind a render guard (view/Guard.tsx) ----------
 // a view that could not be drawn says so on the status line, as a failed search does (the answer on show stays)

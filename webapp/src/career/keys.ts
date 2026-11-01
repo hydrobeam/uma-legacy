@@ -1,5 +1,5 @@
 // The keys a career job, a plan job and a career are known by (the answers kept, the plan Compare kept, a career's
-// identity). It reads no store.
+// identity, a comparison's baseline, the last plan's base). It reads no store and no game data.
 import { ERA } from '../saved.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerJob } from './job.ts';
@@ -39,3 +39,29 @@ export const planKey = (job: Job): string => {
   const { compare: _c, rollout: _r, p_now: _p, ...j } = job;
   return JSON.stringify(canon(j));
 };
+// the job of today's best career over everything (no place set, one result): the comparison's baseline. `notOwned`:
+// the umas not owned (job.ts `umasNotOwned`; the job's own `exclude` leaves out the trainee)
+const baseOf = (job: Job, notOwned: readonly number[]): Job => ({
+  ...job,
+  career: undefined,
+  exclude: notOwned,
+  trainees: [],
+  fix: [],
+  per_trainee: false,
+  top: 1,
+  rollout: undefined,
+  p_now: undefined,
+});
+/** the key of `job`'s baseline (`baseOf`) */
+export const baseKey = (job: Job, notOwned: readonly number[]): string => JSON.stringify(baseOf(job, notOwned));
+// the last plan made (career/state.ts `reference`): while the career on show is one you chose on the same setup and
+// veterans (its job without the places), its table stays, so you can weigh the plan's other careers or go back to its pick
+export const refBase = (job: Job, notOwned: readonly number[]): string =>
+  planKey({
+    ...job,
+    exclude: notOwned,
+    trainees: [],
+    fix: [],
+    top: 0,
+    career: undefined,
+  });

@@ -12,7 +12,7 @@ import type { VetRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
 import { VetCell } from '../../ui/VetCell.tsx';
-import { idxOf } from '../job.ts';
+import { idxOf } from '../current.ts';
 import { openNode } from './dialogs.ts';
 import { VetPane } from './NodeDialog.tsx';
 import {

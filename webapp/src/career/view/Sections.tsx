@@ -12,7 +12,7 @@ import { deckCardAt } from '../../details.ts';
 import { cardTitle, borLast, chainEndNote } from '../../cards.ts';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
-import { shown } from '../job.ts';
+import { shown } from '../current.ts';
 import { tName, tableRows } from './parts.ts';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';

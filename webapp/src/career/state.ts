@@ -106,7 +106,7 @@ export const reference: ReadonlySignal<DeepReadonly<Reference> | null> = lastPla
 // it)
 const answers = new Map<string, AnswerView>(),
   ANSWERS = 4;
-/** the career the answer shows, the places it ran with aside (career/job.ts `shown` holds it to the places on screen): the
+/** the career the answer shows, the places it ran with aside (career/current.ts `shown` holds it to the places on screen): the
  *  plan's pick once it is made, else the highest odds; null without a result */
 export const answerCareer = computed(() => {
   const { last, planState } = shownAnswer.value,
@@ -252,3 +252,20 @@ export const keptPlan = (key: string) => (comparisonPlan && comparisonPlan.key =
 export function reviseKeptPlan(job: DeepReadonly<CareerJob>, r: DeepReadonly<PlanReport>) {
   if (comparisonPlan && comparisonPlan.key === planKey(job)) comparisonPlan = { ...comparisonPlan, r };
 }
+
+// ---------- a Use this choice a reload dropped
+/** a choice saved before the reload that no longer fits (career/current.ts `dropStaleChosen`): its places, and what the
+ *  search's status adds while they stand; gone once a career is chosen again */
+interface DroppedChoice {
+  places: string;
+  text: string;
+}
+const droppedChoice = signal<DeepReadonly<DroppedChoice> | null>(null);
+export const dropped: ReadonlySignal<DeepReadonly<DroppedChoice> | null> = droppedChoice;
+export const choiceDropped = (note: DroppedChoice) => {
+  droppedChoice.value = deepFreeze(note);
+};
+/** a choice made with Use this: the dropped one's note goes */
+export const forgetDroppedChoice = () => {
+  droppedChoice.value = null;
+};

@@ -1,6 +1,6 @@
 // ---------- the names the career page shows (umas, skills, sparks), and the target skills' groups ----------
 import { careerTables, gameData } from '../data.ts';
-import { settings } from '../settings.ts';
+import type { SettingsView } from '../settings.ts';
 
 export const umaName = (id: number | null | undefined): string =>
   id ? gameData().names.get(id) || `Uma ${id}` : 'Unknown';
@@ -12,4 +12,4 @@ export const blueName = (g: number | string): string =>
   careerTables().blues?.[g as number] || ['', 'Speed', 'Stamina', 'Power', 'Guts', 'Wit'][g as number] || `Stat ${g}`;
 export const uniqueName = (g: number | string): string | null => careerTables().uniques?.[g as number] || null;
 /** the target skills' groups, in the targets' order */
-export const targetGroups = (): number[] => settings.value.targets.map((t) => t.group);
+export const targetGroups = (targets: SettingsView['targets']): number[] => targets.map((t) => t.group);

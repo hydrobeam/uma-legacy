@@ -10,7 +10,7 @@ import { umaName } from '../../veterans/names.ts';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
 import { openTryRun } from '../analysis/view.tsx';
-import { idxOf, shown, parentAt } from '../job.ts';
+import { idxOf, shown, parentAt } from '../current.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { openNode } from './dialogs.ts';
 import type { NodeSpec } from './dialogs.ts';

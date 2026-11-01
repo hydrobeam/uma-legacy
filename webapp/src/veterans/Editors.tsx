@@ -14,6 +14,7 @@ import { WinsEditor } from '../ui/Agenda.tsx';
 import { useDropdown } from '../ui/dropdown.ts';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
+import { settings } from '../settings.ts';
 import { skillName, targetGroups } from './names.ts';
 import { KIND, colourClosed, colourEditing, currentSpark } from './sparks.ts';
 import type { ColourEdit } from './sparks.ts';
@@ -127,13 +128,13 @@ export function UmaList(props: {
 
 // ---------- the skills prompt: whether to give her the target skills ("No skills" first, the default: a new uma
 // carries nothing until you say so)
-const allTargetsAt = (stars: number) => Object.fromEntries(targetGroups().map((g) => [g, stars]));
+const allTargetsAt = (stars: number) => Object.fromEntries(targetGroups(settings.value.targets).map((g) => [g, stars]));
 function AskSkills({ asked }: { asked: SkillsAsk | null }) {
   const first = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (asked?.open) first.current?.focus();
   }, [asked]);
-  const n = targetGroups().length,
+  const n = targetGroups(settings.value.targets).length,
     shown = asked?.open ? asked : null; // (closed, it draws nothing of the last question)
   const choices = [
     { label: 'No skills', sparks: () => ({}), primary: true },
@@ -297,7 +298,7 @@ const opener = {
 function AddBody({ host, open }: { host: HTMLElement; open: { btn: HTMLElement; at: NodeRef } | null }) {
   const inside = useRef([{ current: host }]).current;
   const sparks = (open?.at.node()?.sparks || {}) as Record<number, number>,
-    missing = open ? targetGroups().filter((g) => !sparks[g]) : [];
+    missing = open ? targetGroups(settings.value.targets).filter((g) => !sparks[g]) : [];
   useLayoutEffect(() => {
     host.hidden = !open;
     if (!open) return;

@@ -14,7 +14,7 @@ import { Dialog } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { answer, searching } from '../state.ts';
 import { keyOf } from '../keys.ts';
-import { looped, refFor, shown } from '../job.ts';
+import { looped, refFor, shown } from '../current.ts';
 import type { OptionRow as Row, PlanReport } from '../job.ts';
 import type { Note } from '../options.ts';
 import { TIE_CAREERS, extraText, optionsTable, roleText, takeCareer, unsettled, netText } from '../options.ts';
