@@ -463,20 +463,22 @@ fn solve_in(value: &Value) -> Option<Vec<KeptSolve>> {
         .collect()
 }
 
-pub(crate) fn state_out(kept: &KeptState) -> Value {
-    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "flags": keyed_flags_out(kept.flags.iter()), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls), "caps": crate::career::plan::caps::caps_out(&kept.step_caps)}})
+pub(crate) fn state_out(kept: &KeptState) -> StateOut {
+    StateOut(
+        json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "flags": keyed_flags_out(kept.flags.iter()), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls), "caps": crate::career::plan::caps::caps_out(&kept.step_caps)}}),
+    )
 }
 
 /// replaces the kept plans, proofs, main searches, plans' roll states and step caps with the page's stored ones and unions its
 /// class flags into the worker's (all or nothing: a store that does not parse is refused)
-pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
+pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> StateIn {
     if value["v"].as_u64() != Some(STATE_VERSION) {
-        return json!({"error": "state: another version"});
+        return StateIn(json!({"error": "state: another version"}));
     }
     // Decode every store before replacing any live state. (The kept plans' per-uma count is checked here, before
     // `bests_in` allocates from it.)
     if !value["bests"].as_array().is_none_or(|bests_list| bests_list.iter().all(|best| len_in(&best["n"]).is_some())) {
-        return json!({"error": "state: does not parse"});
+        return StateIn(json!({"error": "state: does not parse"}));
     }
     let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls), Some(step_caps)) = (
         crate::career::plan::kept::bests_in(&value["bests"]),
@@ -486,7 +488,7 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
         crate::career::plan::roll::rolls_in(&value["rolls"]),
         crate::career::plan::caps::caps_in(&value["caps"]),
     ) else {
-        return json!({"error": "state: does not parse"});
+        return StateIn(json!({"error": "state: does not parse"}));
     };
     let (best_count, seen_count, search_count, roll_count, cap_count) =
         (bests.len(), seen.len(), searches.len(), rolls.len(), step_caps.len());
@@ -507,7 +509,9 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
         checks: std::mem::take(&mut kept.checks),
         decks: std::mem::take(&mut kept.decks),
     };
-    json!({"ok": true, "bests": best_count, "seen": seen_count, "solve": search_count, "rolls": roll_count, "caps": cap_count})
+    StateIn(
+        json!({"ok": true, "bests": best_count, "seen": seen_count, "solve": search_count, "rolls": roll_count, "caps": cap_count}),
+    )
 }
 
 impl CareerSetup<'_> {
@@ -547,5 +551,27 @@ impl CareerSetup<'_> {
                     && found_career.second_parent < pool.veterans.len()
                     && self.sel_fits(&found_career.deck)
             })
+    }
+}
+
+/// `state_out`'s answer.
+#[derive(ts_rs::TS)]
+#[ts(type = "unknown")]
+pub(crate) struct StateOut(pub(crate) serde_json::Value);
+
+/// `state_in`'s answer.
+#[derive(ts_rs::TS)]
+#[ts(type = "unknown")]
+pub(crate) struct StateIn(pub(crate) serde_json::Value);
+
+impl serde::Serialize for StateOut {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl serde::Serialize for StateIn {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
     }
 }

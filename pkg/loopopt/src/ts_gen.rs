@@ -34,6 +34,7 @@ impl TypeVisitor for Declarations<'_> {
 /// The types the page reads or sends; everything they hold follows.
 fn visit_roots(declarations: &mut Declarations) {
     declarations.visit::<crate::loop_planner::output::DeckReply>();
+    declarations.visit::<crate::career::reply::CareerReply>();
 }
 
 /// The file's text, before formatting.

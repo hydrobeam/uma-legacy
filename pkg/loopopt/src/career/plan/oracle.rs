@@ -10,7 +10,8 @@ use crate::career::plan::rows::PlanRow;
 use crate::career::plan::score::score_career;
 use crate::career::plan::{Oracle, PlanContext, found_career};
 use crate::career::sim::Sim;
-use serde_json::{Value, json};
+use serde::Serialize;
+use ts_rs::TS;
 
 /// The trios the oracle prices, today's cheapest first.
 const ORACLE_TRIOS: usize = 8;
@@ -155,7 +156,7 @@ pub(crate) fn joint_oracle(
     runs: &[PlanRow],
     scores: &PlanScores,
     buf: &mut Vec<f64>,
-) -> Value {
+) -> Option<JointOracle> {
     let started_ms = now_ms();
     let PlanContext { input, candidates } = *context;
     let fit = &scores.fit;
@@ -164,7 +165,7 @@ pub(crate) fn joint_oracle(
         || !scores.any_scored
         || !fit.current_value.is_finite()
     {
-        return Value::Null;
+        return None;
     }
     let data = context.data();
     let mut order: Vec<usize> = (0..fit.trios.len()).collect();
@@ -174,22 +175,32 @@ pub(crate) fn joint_oracle(
     let builder_row = |candidate: usize| Some(fit_continuation(fit.evidence[candidate].as_ref()?, FITTED_MODEL).1);
     let stats_base = candidates.stats_base();
     let mut joint_sets: crate::FxMap<usize, Vec<(u64, f64)>> = crate::FxMap::default();
-    let (trios, scoring_complete): (Vec<Value>, bool) = aside_complete(simulator, |simulator| {
+    let (trios, scoring_complete): (Vec<OracleTrio>, bool) = aside_complete(simulator, |simulator| {
         order
             .iter()
             .map(|&index| {
                 let trio = &fit.trios[index];
                 let today = fit.trio_value(trio);
                 let [first, second] = trio.sides;
-                let names = json!([
-                    data.umas[candidates[first.candidate]].name,
-                    data.umas[candidates[second.candidate]].name,
-                    data.umas[trio.finisher].name
-                ]);
+                let names = [
+                    data.umas[candidates[first.candidate]].name.clone(),
+                    data.umas[candidates[second.candidate]].name.clone(),
+                    data.umas[trio.finisher].name.clone(),
+                ];
                 let (Some(first_odds), Some(second_odds)) =
                     (side_odds(context, scores, first), side_odds(context, scores, second))
                 else {
-                    return json!({"trio": names, "v": today, "v_joint": today, "lattice": false});
+                    return OracleTrio {
+                        trio: names,
+                        v: today,
+                        v_joint: today,
+                        lattice: false,
+                        v_separate: None,
+                        above_anchor: None,
+                        same_builder: None,
+                        lifts: None,
+                        lam: None,
+                    };
                 };
                 let rows = [builder_row(first.candidate.0), builder_row(second.candidate.0)];
                 let mut lifts = [JointLift::default(); 2];
@@ -227,29 +238,84 @@ pub(crate) fn joint_oracle(
                     let continuation = &fit.continuations[slot.candidate.0];
                     !continuation.lattice.is_empty() && odds > continuation.anchor_odds
                 });
-                json!({"trio": names, "v": today, "v_joint": lattice(&builders), "v_separate": lattice(&separate),
-                    "lattice": true, "above_anchor": above_anchor, "same_builder": same_builder,
-                    "lifts": lifts.iter().map(|lift| [lift.both, lift.first_only, lift.second_only]).collect::<Vec<_>>(),
-                    "lam": [fit.continuations[first.candidate.0].lam, fit.continuations[second.candidate.0].lam]})
+                OracleTrio {
+                    trio: names,
+                    v: today,
+                    v_joint: lattice(&builders),
+                    lattice: true,
+                    v_separate: Some(lattice(&separate)),
+                    above_anchor: Some(above_anchor),
+                    same_builder: Some(same_builder),
+                    lifts: Some(lifts.iter().map(|lift| [lift.both, lift.first_only, lift.second_only]).collect()),
+                    lam: Some([fit.continuations[first.candidate.0].lam, fit.continuations[second.candidate.0].lam]),
+                }
             })
             .collect()
     });
-    let value_of = |trio: &Value| trio["v_joint"].as_f64().unwrap_or(f64::INFINITY);
+    // (a value JSON cannot hold, not finite, counts as infinite, as when the trios were read back as JSON)
+    let finite_or_infinite = |value: f64| if value.is_finite() { value } else { f64::INFINITY };
+    let value_of = |trio: &OracleTrio| finite_or_infinite(trio.v_joint);
     // (a trio without a lattice: today's value both ways)
-    let separate_of =
-        |trio: &Value| trio["v_separate"].as_f64().or_else(|| trio["v"].as_f64()).unwrap_or(f64::INFINITY);
+    let separate_of = |trio: &OracleTrio| {
+        let separate = trio.v_separate.filter(|value| value.is_finite());
+        finite_or_infinite(separate.unwrap_or(trio.v))
+    };
     let best_joint =
         (0..trios.len()).min_by(|&first, &second| value_of(&trios[first]).total_cmp(&value_of(&trios[second])));
-    json!({
-        "v0": fit.current_value,
-        "v0_joint": best_joint.map(|best| value_of(&trios[best])),
-        "v0_separate": trios.iter().map(separate_of).fold(f64::INFINITY, f64::min),
-        "above_anchor": trios.iter().any(|trio| trio["above_anchor"] == true),
-        "best_trio_changes": best_joint.is_some_and(|best| best != 0),
-        "trios": trios,
-        "oracle_ms": now_ms() - started_ms,
-        "scoring_complete": scoring_complete,
+    Some(JointOracle {
+        v0: fit.current_value,
+        v0_joint: best_joint.map(|best| value_of(&trios[best])),
+        v0_separate: trios.iter().map(separate_of).fold(f64::INFINITY, f64::min),
+        above_anchor: trios.iter().any(|trio| trio.above_anchor == Some(true)),
+        best_trio_changes: best_joint.is_some_and(|best| best != 0),
+        trios,
+        oracle_ms: now_ms() - started_ms,
+        scoring_complete,
     })
+}
+
+/// The joint-lift oracle (`next.oracle` "joint"): V on a joint two-side lattice of the cheapest trios' continuations,
+/// beside the plan's.
+#[derive(Serialize, TS)]
+pub(crate) struct JointOracle {
+    /// the plan's V
+    pub(crate) v0: f64,
+    /// the cheapest trio's value on the lattice (null: no trio)
+    pub(crate) v0_joint: Option<f64>,
+    /// the cheapest with each side's lift alone
+    pub(crate) v0_separate: f64,
+    pub(crate) above_anchor: bool,
+    /// the lattice's cheapest trio is not V's
+    pub(crate) best_trio_changes: bool,
+    pub(crate) trios: Vec<OracleTrio>,
+    pub(crate) oracle_ms: f64,
+    pub(crate) scoring_complete: bool,
+}
+
+/// A trio (A, B, C by name), today's value, its value on the lattice (today's where it has none, `lattice` false);
+/// with a lattice, its value with each side's lift alone, whether a side's odds pass its anchor, whether one builder
+/// lifts both, each builder's lift chances (both sides, the first only, the second only) and the sides' lam.
+#[derive(Serialize, TS)]
+pub(crate) struct OracleTrio {
+    pub(crate) trio: [String; 3],
+    pub(crate) v: f64,
+    pub(crate) v_joint: f64,
+    pub(crate) lattice: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) v_separate: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) above_anchor: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) same_builder: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) lifts: Option<Vec<[f64; 3]>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) lam: Option<[f64; 2]>,
 }
 
 #[cfg(test)]

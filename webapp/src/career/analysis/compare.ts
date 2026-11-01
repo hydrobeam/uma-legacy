@@ -13,10 +13,19 @@ import type { DeepReadonly } from '../../store.ts';
 import type * as AnswerStore from '../state.ts';
 import type { PlanDone } from '../state.ts';
 import type * as AnalysisStore from './state.ts';
+import { planIn, rollIn, searchIn } from '../reply.ts';
+import type { CareerAnswer as Answer } from '../job.ts';
 import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.ts';
 import type { Draft, NodeRecord } from '../../veterans/store.ts';
 import { keyOf } from '../keys.ts';
 import { PLAN_NEXT } from '../run.ts';
+
+// a plan job's plan, or null where it made none (the job refused, or the plan did: a plan's refusal reads as none, as
+// every reader below treats it)
+const planMade = (m: Answer): PlanReport | null => {
+  const plan = 'error' in m.r ? undefined : planIn(m.r);
+  return plan && !('error' in plan) ? plan : null;
+};
 
 /** what the comparison needs of the page, built once by the entry (career/main.tsx) */
 export interface ComparisonDeps {
@@ -162,7 +171,7 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
       cached = baselineCache?.key === key ? baselineCache.result : null;
     const before = cached ? { results: [cached] } : open ? shownNow.r : (await engine.run(base)).r;
     if ('error' in before) throw new Error(before.error);
-    const [best] = before.results ?? [];
+    const [best] = ('results' in before ? before.results : undefined) ?? [];
     if (!best) throw new Error('No career found in the current roster.');
     baselineCache = { key, result: best };
     return best;
@@ -207,15 +216,16 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
       const m = await engine.run({ ...request.job, next: { ...request.job.next, roll: request.stars } } as CareerJob);
       if (gone()) return;
       // (no saving from the plan: the exact comparison answers instead)
-      const roll = 'error' in m.r ? undefined : m.r.next?.roll;
-      if (typeof roll?.y !== 'number') {
+      const roll = 'error' in m.r ? undefined : rollIn(m.r),
+        saving = roll && 'y' in roll ? roll.y : undefined;
+      if (typeof saving !== 'number') {
         batch(() => {
           store.quickHandsOver();
           runComparison();
         });
         return;
       }
-      y = roll.y;
+      y = saving;
       const v0 = (answers.answer.peek().planState as DeepReadonly<PlanDone>).r.v0; // done: `request` came from its `rollReq`
       // a roll that saves careers goes to the exact comparison (which finds the best career with her too) once it has
       // stood 0.8 s, as a zero does (rolling on starts none, so no running check is stopped, the worker with it): the
@@ -241,11 +251,12 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
       const m = await engine.run({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
       if (gone()) return;
       if ('error' in m.r) throw new Error(m.r.error);
-      if (!m.r.results?.length) throw new Error('No next career found.');
+      const search = searchIn(m.r);
+      if (!search?.results?.length) throw new Error('No next career found.');
       // a zero is checked by the exact comparison too (the plan's routes are not every route a replan can take), shown
       // meanwhile as provisional (after the roll has stood a moment: rolling on starts none; a running check would be
       // stopped, the worker with it)
-      store.bestFound(m.r);
+      store.bestFound(search);
     } catch (e) {
       if (gone()) return;
       store.comparisonFails((e as Error).message);
@@ -294,7 +305,8 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
       const m = await engine.run({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
       if (gone()) return;
       if ('error' in m.r) throw new Error(m.r.error);
-      if (!m.r.results?.length) throw new Error('No next career found.');
+      const search = searchIn(m.r);
+      if (!search?.results?.length) throw new Error('No next career found.');
       const full = page.isFull(draftNow());
       const planOf = (legacies: CareerJob['legacies']): CareerJob => ({
         ...base,
@@ -310,7 +322,7 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
       if (!planNow) {
         const mb = await engine.run(planOf(base.legacies));
         if (gone()) return;
-        planNow = ('error' in mb.r ? null : mb.r.next) || null;
+        planNow = planMade(mb);
       }
       // with her: her pool priced under today's plan's fit (`next.fit`, passed on as the plan wrote it), so the two Vs
       // differ only by what she changes, not by Cont fitted again to the pool with her (a refit moves V by hundreds of
@@ -321,8 +333,8 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
         jobWithHer = fit ? { ...planOf(legaciesWithHer), next: { fit } } : planOf(legaciesWithHer),
         ma = await engine.run(jobWithHer as CareerJob);
       if (gone()) return;
-      const planWithHer = ('error' in ma.r ? null : ma.r.next) || null;
-      if (!fit && planWithHer && !planWithHer.error) answers.keepComparisonPlan(jobWithHer, planWithHer, ma.ms);
+      const planWithHer = planMade(ma);
+      if (!fit && planWithHer) answers.keepComparisonPlan(jobWithHer, planWithHer, ma.ms);
       engine.saveState();
       // careers to a fully looped parent with the pool as it is
       const careersToLoop = (next: DeepReadonly<PlanReport> | null) => (next && next.v0 != null ? next.v0 : null);
@@ -338,7 +350,7 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
       // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
       const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
       store.exactDone({
-        r: m.r,
+        r: search,
         full,
         v0: { now: careersNow, withHer: careersWithHer },
         fixedFit: !!fit,

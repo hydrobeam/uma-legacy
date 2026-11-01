@@ -732,6 +732,7 @@ const LAYERS = [
       'umamoe',
       'career/roll',
       'career/job',
+      'career/reply',
       'career/keys',
       'career/run',
       'career/analysis/compare',

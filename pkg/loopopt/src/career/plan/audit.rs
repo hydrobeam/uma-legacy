@@ -11,7 +11,8 @@ use crate::career::plan::search::{capped, legal_pair};
 use crate::career::search::{Found, SearchRequest};
 use crate::career::sim::Sim;
 use crate::career::{Ancestor, Legacy, Lineage};
-use serde_json::{Value, json};
+use serde::Serialize;
+use ts_rs::TS;
 
 /// Outcomes audited per row: her likeliest that land at least one target.
 const AUDIT_OUTCOMES: usize = 5;
@@ -36,7 +37,7 @@ pub(crate) fn audit_lifts(
     rows: &[PlanRow],
     scores: &PlanScores,
     buf: &mut Vec<f64>,
-) -> Value {
+) -> Vec<LiftAudit> {
     let PlanContext { input, candidates } = *context;
     let data = context.data();
     let is_runnable = |career: &Found| input.is_runnable(career);
@@ -136,13 +137,19 @@ pub(crate) fn audit_lifts(
                 let at = ScoredOutcome { original, rescored: &scored, leaf, landed_mask: landed };
                 lifts.push(audit_candidate(simulator, context, candidate, at, &veteran, env_budget));
             }
-            outcome_report.push(json!({"stars": stars, "chance": chance, "lifts": lifts}));
+            outcome_report.push(AuditedOutcome { stars, chance, lifts });
         }
-        report.push(json!({"trainee": data.umas[lineage.trainee].name, "origin": row.origin.name(), "parents": [lineage.first_parent, lineage.second_parent], "score": row.net_saving(), "outcomes": outcome_report}));
+        report.push(LiftAudit {
+            trainee: data.umas[lineage.trainee].name.clone(),
+            origin: row.origin.name(),
+            parents: [lineage.first_parent, lineage.second_parent],
+            score: row.net_saving(),
+            outcomes: outcome_report,
+        });
     }
     simulator.evaluator.cache = cache_before;
     (simulator.env.state.seen, simulator.env.state.ruled) = (seen_before, ruled_before);
-    Value::Array(report)
+    report
 }
 
 /// An audited row's scorings at one of her outcomes: the plan's own (if kept) and the audit's again.
@@ -162,7 +169,7 @@ fn audit_candidate(
     at: ScoredOutcome,
     veteran: &Legacy,
     env_budget: usize,
-) -> Value {
+) -> CandidateLift {
     let PlanContext { input, candidates } = *context;
     let data = context.data();
     let trainee = candidates.trainees[candidate];
@@ -201,5 +208,46 @@ fn audit_candidate(
     pool.pop_veteran();
     simulator.evaluator.put_pool(input.pool, pool);
     let exact = searched.found.first().map_or(0.0, |found| found.value);
-    json!({"candidate": data.umas[trainee].name, "pnow": pnow, "table": table, "table_rescored": table_rescored, "all_partners": all_partners.max(pnow), "exact": exact.max(pnow), "complete": searched.complete})
+    CandidateLift {
+        candidate: data.umas[trainee].name.clone(),
+        pnow,
+        table,
+        table_rescored,
+        all_partners: all_partners.max(pnow),
+        exact: exact.max(pnow),
+        complete: searched.complete,
+    }
+}
+
+/// The lift audit of one row (`next.audit_lifts`): per outcome landing a target, each candidate's odds with her
+/// veteran as a parent, as the plan's tables read them and as exact searches find them.
+#[derive(Serialize, TS)]
+pub(crate) struct LiftAudit {
+    pub(crate) trainee: String,
+    pub(crate) origin: &'static str,
+    pub(crate) parents: [usize; 2],
+    pub(crate) score: Option<f64>,
+    pub(crate) outcomes: Vec<AuditedOutcome>,
+}
+
+/// An outcome: her stars per job target, its chance, and each candidate's lift there.
+#[derive(Serialize, TS)]
+pub(crate) struct AuditedOutcome {
+    pub(crate) stars: Vec<u8>,
+    pub(crate) chance: f64,
+    pub(crate) lifts: Vec<CandidateLift>,
+}
+
+/// A candidate's odds with the outcome's veteran as a parent: now; as the plan's table read them (null: no original
+/// scoring) and as the rescored table does; her best on any partner by the table; and by an exact search, and whether
+/// it completed.
+#[derive(Serialize, TS)]
+pub(crate) struct CandidateLift {
+    pub(crate) candidate: String,
+    pub(crate) pnow: f64,
+    pub(crate) table: Option<f64>,
+    pub(crate) table_rescored: f64,
+    pub(crate) all_partners: f64,
+    pub(crate) exact: f64,
+    pub(crate) complete: bool,
 }

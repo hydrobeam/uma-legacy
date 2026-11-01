@@ -10,6 +10,7 @@ use crate::career::plan::combine::{
 };
 use crate::career::plan::cont::{Cont, Trio, Want, count_refit, trio_v};
 use crate::career::plan::kept::{Bests, CacheStamp, CachedSearch, same_career, stamp_ok, stamped};
+use crate::career::plan::report::PlanWork;
 use crate::career::plan::score::kernel::LiftStats;
 use crate::career::plan::score::{CareerScore, KeptScoring, score_career};
 use crate::career::plan::search::alternative_deck_careers;
@@ -21,7 +22,8 @@ use crate::career::search::{Found, RankedPair};
 use crate::career::sim::Sim;
 use crate::career::{Career, Legacy, Lineage};
 use crate::skills::SkillJob;
-use serde_json::{Value, json};
+use serde::Serialize;
+use ts_rs::TS;
 /// How far below the top score (careers per run, or 5% of the top) a row still gets the exact work the rows at the top
 /// get (`search_floor`): proxy promotion, kept scorings, the check's rows. Search breadth only: the pick is the strict
 /// argmax (`PickRows::pick`), never a row picked within this margin
@@ -643,7 +645,17 @@ pub(crate) fn score_and_promote_rows(
     let best_combo = combinations.first().copied();
     let index_ms = now_ms() - profile.index_started_ms;
     let env = &simulator.env;
-    let work = json!({"nodes": env.setup.space.nodes.get() - profile.nodes_at_start, "exact": env.state.exact_scorings - profile.exact_scorings_at_start, "max_ratio": env.audit.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.audit.max_ratio, "class_max_deck": env.setup.max_decks(&env.audit), "cap": env.setup.space.rho_top().min(env.audit.certified_cap), "class_caps": env.setup.space.caps()});
+    let work = PlanWork {
+        nodes: env.setup.space.nodes.get() - profile.nodes_at_start,
+        exact: env.state.exact_scorings - profile.exact_scorings_at_start,
+        max_ratio: env.audit.max_ratio.iter().copied().fold(0.0f64, f64::max),
+        class_max_ratio: env.audit.max_ratio,
+        class_max_deck: env.setup.max_decks(&env.audit),
+        cap: env.setup.space.rho_top().min(env.audit.certified_cap),
+        class_caps: env.setup.space.caps(),
+        // (the plan's counters, added as it ends: `assemble_plan_output`)
+        prof: std::collections::BTreeMap::new(),
+    };
     let any_scored = runs.iter().any(|plan_row| plan_row.scoring.is_some());
     PlanScores { fit, best_combo, cheapest_combos: combinations, any_scored, combo_ms, index_ms, work }
 }
@@ -797,7 +809,7 @@ pub(crate) fn check_plan_proxies(
     scores: &PlanScores,
     mut cache_before_builders: Cache,
     buf: &mut Vec<f64>,
-) -> Value {
+) -> ProxyCheck {
     let PlanContext { input, candidates } = *context;
     let data = context.data();
     let candidate_count = candidates.trainees.len();
@@ -865,19 +877,64 @@ pub(crate) fn check_plan_proxies(
         // (`origin` and `looped`: a looped row's career is on two full veterans, so its proxy, her unconstrained best
         // career's, is not the same problem; compare base rows only)
         let looped = has_looped_parents(simulator.env.setup.skill_job, input.legacies, &run.career);
-        rows.push(json!({"trainee": data.umas[trainee].name, "origin": run.origin.name(), "looped": looped, "cand": is_candidate, "class": simulator.env.setup.deck_class[trainee], "exact_val": run.career.value, "proxy_val": proxy.as_ref().map(|career| career.value),
-        "same_pair": same_pair, "same_deck": same_deck, "score": exact_score, "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
+        rows.push(ProxyRow {
+            trainee: data.umas[trainee].name.clone(),
+            origin: run.origin.name(),
+            looped,
+            cand: is_candidate,
+            class: simulator.env.setup.deck_class[trainee].0,
+            exact_val: run.career.value,
+            proxy_val: proxy.as_ref().map(|career| career.value),
+            same_pair,
+            same_deck,
+            score: exact_score,
+            proxy_score,
+            eff: exact_efficiencies,
+            proxy_eff: proxy_efficiencies,
+        });
     }
     // (whether the plan this checks prices builders through proxies at all, `builders_use_proxies`: the proxy_check run
     // is the plan job with proxy_check on, so it asks the plan's own settings; not through the surrogate, nor where every
     // builder is searched exactly, so there a proxy's error moves nothing and planval reports it without failing)
     let plan_uses_proxies =
         builders_use_proxies(input.settings, simulator.env.setup.target_count, input.legacies, input.pool.max_borrowed);
-    json!({
-        "cands": candidates.trainees.iter().map(|&uma| data.umas[uma].name.clone()).collect::<Vec<_>>(),
-        "rows": rows,
-        "plan_uses_proxies": plan_uses_proxies,
-    })
+    ProxyCheck {
+        cands: candidates.trainees.iter().map(|&uma| data.umas[uma].name.clone()).collect(),
+        rows,
+        plan_uses_proxies,
+    }
+}
+
+/// The proxy check (`next.proxy_check`): each row's proxy beside her exact career.
+#[derive(Serialize, TS)]
+pub(crate) struct ProxyCheck {
+    /// the stage candidates, by name
+    pub(crate) cands: Vec<String>,
+    pub(crate) rows: Vec<ProxyRow>,
+    /// the plan this checks prices builders through proxies at all
+    pub(crate) plan_uses_proxies: bool,
+}
+
+/// A row's exact career against the proxy the plan would have used: their values, scores and lift efficiencies per
+/// candidate.
+#[derive(Serialize, TS)]
+pub(crate) struct ProxyRow {
+    pub(crate) trainee: String,
+    /// base, looped, nb, alternative or fallback (`RowOrigin::name`)
+    pub(crate) origin: &'static str,
+    pub(crate) looped: bool,
+    /// a stage candidate
+    pub(crate) cand: bool,
+    /// her deck class (an uma index)
+    pub(crate) class: usize,
+    pub(crate) exact_val: f64,
+    pub(crate) proxy_val: Option<f64>,
+    pub(crate) same_pair: bool,
+    pub(crate) same_deck: bool,
+    pub(crate) score: Option<f64>,
+    pub(crate) proxy_score: Option<f64>,
+    pub(crate) eff: Vec<f64>,
+    pub(crate) proxy_eff: Vec<f64>,
 }
 
 /// A row scored against the fit, with the stamp of the cache it read (`stamped`)

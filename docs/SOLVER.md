@@ -29,6 +29,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/main.rs` | The `loopopt` binary: calls `cli_main` |
 | `src/cli.rs` | CLI job loading, event enrichment, kept-state files, dispatch and bound diagnostics |
 | `src/web.rs` | The wasm entry points and their `cmd` requests |
+| `src/refusal.rs` | `Refusal`: every command's answer when it does not do the job (`{"error": ...}`) |
 | `src/checks.rs` | The environment switches, read once into `Checks` (`checks::get`), and their thread-local counters |
 | `src/data.rs` | Race data, schedule choices, relation and ceiling tables, win probabilities and feasibility |
 | `src/uma.rs` | Roster indices and per-uma tables (`UmaIndex`, `UmaTable`) |
@@ -36,15 +37,17 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/chart.rs` | Race/member labels and structured schedule charts (`chart_rows`) |
 | `src/skills.rs` | The skill-target model (`Model`), outfit choices and lineage inheritance probabilities (`lins`) |
 | `src/tests.rs` | Affinity-core tests against independent fixtures and model invariants |
+| `src/ts_gen.rs` | The page's TypeScript types of every reply and job, generated from the structs below (`./build.sh types`; docs/BUILD.md, *Generated types*) |
 | `src/loop_planner/mod.rs` | The loop planner: a deck job's path through its children |
 | `src/loop_planner/dominance.rs` | Dominance signatures, `DominanceIndex`, `k_filter`, candidate decks (`DeckEval`) and odds clusters |
 | `src/loop_planner/job.rs` | Deck-job setup and the nondominated deck frontier (`run_deck`) |
+| `src/loop_planner/output.rs` | A deck job's answer (`DeckReply`: the loop report `LoopReport`, the `deck_only` skyline, or a refusal) |
 | `src/loop_planner/schedules.rs` | Loop affinity scoring, coordinated schedules (`LoopProblem`, `optimize`) and pairwise ceilings |
 | `src/loop_planner/search/mod.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
 | `src/loop_planner/search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
 | `src/loop_planner/search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
 | `src/loop_planner/search/bands.rs` | Loop bands, schedule solving and the budgeted certification passes |
-| `src/loop_planner/search/report.rs` | Reported picks, JSON and diagnostic summaries |
+| `src/loop_planner/search/report.rs` | Reported picks, the loop report and diagnostic summaries |
 | `src/deck/mod.rs` | The deck-search engine: the job records (`Card`, `CardsRaw`, `DeckJob`) and the deck model |
 | `src/deck/space.rs` | The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps |
 | `src/deck/enumerate/mod.rs` | The enumeration's entry (`DeckSpace::search`) and the records a search takes and returns (`BandBound`) |
@@ -69,6 +72,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/career/mod.rs` | The career planner: the job's records, `Env` and its four parts, `run_career` / `run_career_in` |
 | `src/career/setup.rs` | The job read three ways (`CareerJobs`) and its `Env` built (`career_setup`), earlier jobs' proofs restored |
 | `src/career/run.rs` | The answer once `Env` is built: the main search's output, the plan, rolls, the job's certificates |
+| `src/career/reply.rs` | A career job's answer (`CareerReply`: its search with the career reports and certificates, a kept plan's roll or check, the simulator's report, the kept state, a refusal) |
 | `src/career/search.rs` | Career candidates (`gen_cands`), ceilings and the best careers (`Env::solve`) |
 | `src/career/decks.rs` | Exact career deck searches (`Env::best_deck`, `best_deck_run`, `best_deck_cf`) and their kept memos |
 | `src/career/inherit.rs` | Legacy slots, affinity, inheritance chances, their folding (`set_ews`) and `rise`; a lineage's slots taken in one order wherever the veterans stand (`Pool::product_order`, `Pool::grandparent_order`: the lower character id first, indices kept), in `walk_slots` and `gen_cands` alike, so a pair's f64s do not depend on the pool's order (tests/plan_order.rs). Ties: the main career search's candidate order, the planner's ranked pairs (`ranked_pairs`, and the careers kept from them in arrival order) and a scoring's partners break equal ceilings and values by a veteran's content rank (`Pool::content_ranks`: her character, stars, star mix, wins, pinks, borrowed, then her recorded parents', compared in full, no hash) before the indices, so the legacy index only orders veterans equal in all of it, which are interchangeable (tests/career_order.rs: val career_U2 reversed gives the same careers, its fifth result's exact tie between legacies 9 and 10 included) |
@@ -94,11 +98,13 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/career/plan/kept.rs` | Kept plans (`Bests`) and cached career searches |
 | `src/career/plan/roll.rs` | The roll of the plan's pick and its kept state (`RollKeep`) |
 | `src/career/plan/output.rs` | The assembled plan response |
+| `src/career/plan/report.rs` | The plan's answer (`PlanReply`: `Plan`, its roll `RollReply`, its check `CheckReply` with the pair search) |
 | `src/career/sim/mod.rs` | The policy simulator's shared records, construction, and the bar and best pick of a path |
 | `src/career/sim/play.rs` | `simulate` and `play`: path state, veteran admission and pruning, survival, summaries |
 | `src/career/sim/policies.rs` | Greedy, loop, trace, exact and index career selection |
 | `src/career/sim/draw.rs` | Keyed uniforms (`u01`) and failed-career veteran draws |
 | `src/career/sim/audit.rs` | Surrogate checks against exact searches, audit rows |
+| `src/career/sim/report.rs` | The simulator's answer (`SimReply`) and a veteran as a job records her (`LegacyRecord`) |
 
 ---
 

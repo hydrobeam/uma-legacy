@@ -6,7 +6,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 /// One member's attempt at a scheduled race.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct ScheduleCell {
     /// her win chance, in percent, rounded
     pub(crate) p: f64,
@@ -26,7 +26,7 @@ pub(crate) struct ScheduleCell {
 }
 
 /// One scheduled G1, one cell per member (null: she doesn't run it).
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct ScheduleRow {
     /// 0 Junior, 1 Classic, 2 Senior
     pub(crate) year: usize,
@@ -44,7 +44,7 @@ pub(crate) struct ScheduleRow {
 }
 
 /// A loop member as a result names her.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct LoopMember {
     pub(crate) id: u32,
     pub(crate) name: String,

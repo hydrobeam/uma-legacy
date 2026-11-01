@@ -49,10 +49,12 @@ function fakeEngine() {
   return engine;
 }
 
-// the reports: a search's best careers, a plan, a check step
+// the reports: a search's best careers, a plan (a plan job's search: no career reports, its plan in `next`), a check
+// step (a kept plan's follow-up: its `next` alone)
 const career = (name) => ({ trainee: { id: 1001, name }, parents: [0, 1], career: name, p_all: 0.01 });
 const searched = (...names) => ({ results: names.map(career), candidates: 120 });
 const planned = (pick) => ({
+  results: [],
   next: { choice: career(pick), options: [career(pick)], v0: 9, outcomes: { career: pick } },
 });
 const check = (pending, pairs = null, plan = 'pick') => ({ next: { robust: { plan, pending, stable: true, pairs } } });
@@ -241,7 +243,7 @@ test('a failed plan: not kept, not saved, and the same job runs again', async ()
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
-  p.engine.answer(1, { next: { error: 'no option' } });
+  p.engine.answer(1, { results: [], next: { error: 'no option' } });
   await flush();
   assert.equal(answer.peek().planState.state, 'error');
   assert.equal(p.seen.saved.length, 0, 'not saved');
@@ -274,7 +276,7 @@ test('an undo onto a kept answer shows it at once, with her analysis; one whose 
   await edited(q);
   q.engine.answer(0, searched('best'));
   await flush();
-  q.engine.answer(1, { next: { error: 'no option' } });
+  q.engine.answer(1, { results: [], next: { error: 'no option' } });
   await flush();
   q.job.targets.push({ group: 992 });
   await edited(q);

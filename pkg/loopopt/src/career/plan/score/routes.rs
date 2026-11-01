@@ -1154,7 +1154,7 @@ mod lifted_tests {
         let agnes = data.umas.iter().position(|uma| uma.name == "Agnes Digital").map(crate::uma::UmaIndex).unwrap();
         LIFTED.with(|lifted| *lifted.borrow_mut() = Some(vec![]));
         let mut kept = crate::career::state::KeptState::default();
-        let out = crate::career::run_career_in(&data, &skills, &cards, &job, &mut kept);
+        let out = serde_json::to_value(crate::career::run_career_in(&data, &skills, &cards, &job, &mut kept)).unwrap();
         let records = LIFTED.with(|lifted| lifted.borrow_mut().take().unwrap());
         assert!(out["next"]["v0"].is_number(), "the plan ran: {}", out["next"]["error"]);
         let side: Vec<&LiftedRecord> = records

@@ -25,7 +25,7 @@ pub(crate) struct Skyline {
 }
 
 /// The deck enumeration's counts, reported with the loops.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct DeckStats {
     /// decks the enumeration built
     pub(crate) decks_built: usize,
@@ -70,7 +70,7 @@ pub(crate) struct LoopReport {
 }
 
 /// One result of the loop search: the loop and its deck.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct LoopResult {
     pub(crate) r#loop: ResultLoop,
     /// the deck most members share (one deck for the loop: that deck)
@@ -82,7 +82,7 @@ pub(crate) struct LoopResult {
 }
 
 /// A loop in a result; member k is `members[k]`, with `outfits[k]` and `per_trainee[k]`.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct ResultLoop {
     pub(crate) members: Vec<LoopMember>,
     /// the chance every member lands every target, averaged over the loop's careers (what the results are ranked by)
@@ -107,28 +107,28 @@ pub(crate) struct ResultLoop {
 }
 
 /// A member's outfit choice: the outfits that give it (none when it covers no target) and what it covers.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct MemberOutfits {
     pub(crate) outfits: Vec<OutfitLabel>,
     pub(crate) covers: Vec<TargetCover>,
 }
 
 /// An outfit by card id and label (id 0: any outfit).
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct OutfitLabel {
     pub(crate) id: u32,
     pub(crate) label: String,
 }
 
 /// What an outfit gives of a target: `level` 1 its white skill, 2 its gold.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct TargetCover {
     pub(crate) group: u32,
     pub(crate) level: u8,
 }
 
 /// What the answer rests on.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct ExactSummary {
     /// the highest exact / product odds cap certified
     pub(crate) rho: f64,
@@ -156,7 +156,7 @@ pub(crate) struct ExactSummary {
 }
 
 /// A deck by its trainee and cards.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct RatioDeck {
     pub(crate) trainee: u32,
     pub(crate) cards: Vec<Name>,

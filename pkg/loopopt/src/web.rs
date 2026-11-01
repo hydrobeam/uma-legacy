@@ -6,6 +6,7 @@
 //!           {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in
 //!           (page reloads)
 #![allow(unsafe_code, reason = "the wasm exports take the host's pointers: `alloc`/`dealloc`, `init` and `call`")]
+use crate::career::reply::{CareerAnswer, CareerReply};
 use crate::data::{Data, DataRaw, load_raw};
 use crate::refusal::Refusal;
 use crate::skills::SkillsRaw;
@@ -160,8 +161,13 @@ fn handle(request_text: &str) {
                     }
                 }
                 respond(&crate::career::state::KEPT.with(|kept| match cmd.as_str() {
-                    "state_out" => crate::career::state::state_out(&kept.borrow()),
-                    "state_in" => crate::career::state::state_in(&mut kept.borrow_mut(), &job["state"]),
+                    "state_out" => {
+                        CareerReply::Answer(CareerAnswer::StateOut(crate::career::state::state_out(&kept.borrow())))
+                    }
+                    "state_in" => {
+                        let state_in = crate::career::state::state_in(&mut kept.borrow_mut(), &job["state"]);
+                        CareerReply::Answer(CareerAnswer::StateIn(state_in))
+                    }
                     _ => crate::career::run_career_in(data, skills, cards, &job, &mut kept.borrow_mut()),
                 }))
             })

@@ -1116,7 +1116,7 @@ mod tests {
         crate::deck::sources::apply_events_db(&mut job, &skills, &events);
         job["no_reports"] = serde_json::json!(true);
         let plan = |kept: &mut crate::career::state::KeptState| {
-            crate::career::run_career_in(&data, &skills, &cards, &job, kept)
+            serde_json::to_value(crate::career::run_career_in(&data, &skills, &cards, &job, kept)).unwrap()
         };
         let mut full_kept = crate::career::state::KeptState::default();
         let full = plan(&mut full_kept);
@@ -1281,7 +1281,7 @@ mod tests {
         crate::deck::sources::apply_events_db(&mut job, &skills, &events);
         job["no_reports"] = serde_json::json!(true);
         let mut kept = crate::career::state::KeptState::default();
-        let out = crate::career::run_career_in(&data, &skills, &cards, &job, &mut kept);
+        let out = serde_json::to_value(crate::career::run_career_in(&data, &skills, &cards, &job, &mut kept)).unwrap();
         assert!(out["next"]["v0"].is_number(), "the plan ran: {}", out["next"]["error"]);
         let roll = kept.rolls.last().expect("the plan kept its pick's roll state");
         let base = roll.base.base();

@@ -7,7 +7,7 @@
 //! - `shared`: exact shared-deck scans and their cached results.
 //! - `deck_bounds`: individual-deck ceilings for small fixed-pal spaces.
 //! - `bands`: loop-structure bands, schedule solving and the budgeted certification passes.
-//! - `report`: the picks, JSON results and diagnostic summaries.
+//! - `report`: the picks, the loop report and diagnostic summaries.
 use self::shared::SharedResult;
 use self::tables::{
     ByBound, ExactCacheEntry, ExactCeiling, Grid, NG, class_clusters, classes, full_clusters, pair_table,

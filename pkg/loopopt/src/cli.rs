@@ -93,7 +93,7 @@ pub(crate) fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, 
             cards,
             &serde_json::json!({"cmd": "state_in", "state": state["state"]}),
         );
-        eprintln!("state_in: {out}");
+        eprintln!("state_in: {}", serde_json::to_string(&out).unwrap());
     }
 }
 
@@ -101,7 +101,7 @@ pub(crate) fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, 
 pub(crate) fn save_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &crate::deck::CardsRaw) {
     if let Some(path) = &crate::checks::get().state_out {
         let out = crate::career::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_out"}));
-        std::fs::write(path, out.to_string()).unwrap();
+        std::fs::write(path, serde_json::to_string(&out).unwrap()).unwrap();
     }
 }
 

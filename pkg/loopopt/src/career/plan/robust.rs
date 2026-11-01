@@ -11,6 +11,10 @@ use crate::career::plan::cont::{
 };
 use crate::career::plan::kept::career_id;
 use crate::career::plan::pair_bound::{PAIR_SEARCH_PAIRS, trainee_bounded_pairs};
+use crate::career::plan::report::{
+    BestPair, CheckReply, CheckReport, DeckChoice, FinalistReport, PairSearch, PairSearchWork, Recommendation,
+    ScenarioMargins, SharedCoverage, SharedPair, TraineePairsReport, VariantReport, VersusPick,
+};
 use crate::career::plan::rows::{PickRows, PlanPick, PlanRow, pick_of, search_floor};
 use crate::career::plan::score::FinisherChoice;
 use crate::career::plan::score::score_career;
@@ -22,7 +26,8 @@ use crate::career::search::Found;
 use crate::career::sim::Sim;
 use crate::career::state::{KeptState, hash_text, json_without};
 use crate::career::{Env, JobInputs, Legacy};
-use serde_json::{Value, json};
+use crate::refusal::Refusal;
+use serde_json::Value;
 
 include!(concat!(env!("OUT_DIR"), "/plan_constants.rs"));
 
@@ -181,14 +186,14 @@ pub(crate) struct CheckKeep {
     plan_place: usize,
     /// Per variant done, its report (the plan's model first; its `pick` a place in the rows), and the rows the
     /// variants picked (the plan's first).
-    entries: Vec<Value>,
+    entries: Vec<VariantReport>,
     contenders: Vec<usize>,
     /// The variants this check runs, in order (`fixed_variants`, then `differential_variants`).
     variants: Vec<CheckVariant>,
     /// The rows the differential scenarios picked (places in the rows), in the order first picked.
     differential_picks: Vec<usize>,
     /// The within-trainee pair search's report (`CheckWork::pair_search`), once run.
-    pairs: Option<Value>,
+    pairs: Option<PairSearch>,
     check_ms: f64,
     work: Option<CheckWork>,
 }
@@ -351,11 +356,18 @@ pub(crate) fn keep_check(
     let as_planned = draft.rows.iter().map(|row| row.score).collect::<Vec<_>>();
     // (the plan's model's own strict argmax over the shown rows: the plan's pick, `PickRows::pick`)
     let planned_pick = pick_among(&draft, &as_planned);
+    let plan_entry = variant_entry(
+        "plan",
+        VariantSetting { shape: FITTED_SHAPE, scales: OddsScales::ONE },
+        draft.current_value,
+        &planned_pick,
+        &row_ids,
+    );
     let check = CheckKeep {
         key,
         row_ids,
         plan_place: draft.plan_place,
-        entries: vec![variant_entry("plan", FITTED_SHAPE, OddsScales::ONE, draft.current_value, &planned_pick)],
+        entries: vec![plan_entry],
         variants: fixed_variants().into_iter().chain(differential_variants(&draft, planned_pick.pick)).collect(),
         contenders: vec![planned_pick.pick],
         differential_picks: vec![],
@@ -416,31 +428,44 @@ fn pick_among(draft: &CheckDraft, scores: &[f64]) -> VariantPick {
 }
 
 /// A variant's report entry: `kind` "plan" for the plan's own scores, else the variant's (`VariantKind::name`).
-fn variant_entry(
-    kind: &str,
-    variant_shape: ContShape,
+/// A variant's model settings: Cont's shape and the odds scales.
+#[derive(Clone, Copy)]
+struct VariantSetting {
+    shape: ContShape,
     scales: OddsScales,
+}
+
+/// A variant's report entry: `kind` "plan" for the plan's own scores, else the variant's (`VariantKind::name`); its pick
+/// by the row's career id (`row_ids`).
+fn variant_entry(
+    kind: &'static str,
+    setting: VariantSetting,
     current_value: f64,
     pick: &VariantPick,
-) -> Value {
-    let truncations = pick.truncations.map_or(
-        json!({"routes_dropped": null, "routes_dropped_uncertified": null, "partner_setups_dropped": null}),
-        |t| {
-            json!({"routes_dropped": t.routes_dropped, "routes_dropped_uncertified": t.routes_dropped_uncertified,
-            "partner_setups_dropped": t.partner_setups_dropped})
-        },
-    );
-    // (the scaled umas: uma indices, `Data::umas`, with their scales; none for a uniform scale)
-    let scaled: Vec<Value> = scales
-        .scaled
-        .iter()
-        .filter(|&&(uma, _)| uma != crate::uma::NONE)
-        .map(|&(uma, scale)| json!([uma.0, scale]))
-        .collect();
-    json!({"kind": kind, "ceil_share": variant_shape.ceil_share, "lam_decay": variant_shape.lam_decay, "odds_scale": scales.common, "scaled": scaled,
-        "v0": current_value, "pick": pick.pick, "score": pick.score, "margin": pick.margin, "scores": pick.scores,
-        "routes_dropped": truncations["routes_dropped"], "routes_dropped_uncertified": truncations["routes_dropped_uncertified"],
-        "partner_setups_dropped": truncations["partner_setups_dropped"]})
+    row_ids: &[String],
+) -> VariantReport {
+    let VariantSetting { shape, scales } = setting;
+    VariantReport {
+        kind,
+        ceil_share: shape.ceil_share,
+        lam_decay: shape.lam_decay,
+        odds_scale: scales.common,
+        // (the scaled umas: uma indices, `Data::umas`, with their scales; none for a uniform scale)
+        scaled: scales
+            .scaled
+            .iter()
+            .filter(|&&(uma, _)| uma != crate::uma::NONE)
+            .map(|&(uma, scale)| (uma.0, scale))
+            .collect(),
+        v0: current_value,
+        pick: row_ids[pick.pick].clone(),
+        score: pick.score,
+        margin: pick.margin,
+        scores: pick.scores.clone(),
+        routes_dropped: pick.truncations.map(|t| t.routes_dropped),
+        routes_dropped_uncertified: pick.truncations.map(|t| t.routes_dropped_uncertified),
+        partner_setups_dropped: pick.truncations.map(|t| t.partner_setups_dropped),
+    }
 }
 
 /// `run` beside the plan: its scorings read the cached decks only (`Evaluator::frozen`: no deck search, so no deck,
@@ -570,14 +595,23 @@ struct Finalist {
 impl Finalist {
     /// How its career was chosen: its P(all)-best cached deck's score, its best-scoring cached deck's (and whether that is
     /// another deck), the exact search's career's, and which was kept.
-    fn deck_choice(&self) -> Value {
-        json!({"p_all_deck_score": self.p_all_deck_score, "best_cached_score": self.best_cached_score,
-            "score_deck_differs": self.score_deck_differs, "searched_score": self.searched_score,
-            "kept": if self.kept_searched { "searched" } else { "cached" }})
+    const fn deck_choice(&self) -> DeckChoice {
+        DeckChoice {
+            p_all_deck_score: self.p_all_deck_score,
+            best_cached_score: self.best_cached_score,
+            score_deck_differs: self.score_deck_differs,
+            searched_score: self.searched_score,
+            kept: if self.kept_searched { "searched" } else { "cached" },
+        }
     }
     /// Its report: its career (`id`), score, how its exact search ended and its deck choice.
-    fn json(&self, id: String) -> Value {
-        json!({"career": id, "score": self.score, "search": self.searched.status.name(), "deck_choice": self.deck_choice()})
+    const fn report(&self, career: String) -> FinalistReport {
+        FinalistReport {
+            career,
+            score: self.score,
+            search: self.searched.status.name(),
+            deck_choice: self.deck_choice(),
+        }
     }
 }
 
@@ -612,16 +646,61 @@ struct PairSearchFits<'fits> {
     pool: ScoringPool<'fits>,
 }
 
-/// A pair-search report (phase 1's per trainee, phase 2's per finalist) and the career it names, its `career`: what
-/// the recommendation reads (`CheckWork::verdict`).
-struct ReportedCareer {
-    report: Value,
+/// A pair-search report (phase 1's per trainee, `TraineePairsReport`; phase 2's per finalist, `SharedPair`) and the career
+/// it names, its `career`: what the recommendation reads (`CheckWork::verdict`).
+struct ReportedCareer<Report> {
+    report: Report,
     career: Found,
 }
 
-impl ReportedCareer {
+/// What the verdict reads of either phase's report.
+trait PairReport {
+    /// its score (`TraineePairsReport::score`, `FinalistReport::score`)
+    fn reported_score(&self) -> f64;
+    /// the best (trainee, pair) it reports, as the verdict names it
+    fn best_pair(&self) -> BestPair;
+}
+
+impl PairReport for TraineePairsReport {
+    fn reported_score(&self) -> f64 {
+        self.score
+    }
+    fn best_pair(&self) -> BestPair {
+        BestPair::of(&self.trainee, &self.career, self.best_parents, self.score, self.reason)
+    }
+}
+
+impl PairReport for SharedPair {
+    fn reported_score(&self) -> f64 {
+        self.finalist.score
+    }
+    fn best_pair(&self) -> BestPair {
+        BestPair::of(&self.trainee, &self.finalist.career, self.best_parents, self.finalist.score, self.reason)
+    }
+}
+
+impl BestPair {
+    /// The best pair as a report names it; the pick's figures are the verdict's to add.
+    fn of(trainee: &str, career: &str, best_parents: [usize; 2], score: f64, reason: &'static str) -> Self {
+        Self {
+            trainee: trainee.to_owned(),
+            career: career.to_owned(),
+            best_parents,
+            score,
+            reason,
+            pick_trainee_shown: None,
+            margin_over_pick_trainee_shown: None,
+            versus_pick: None,
+        }
+    }
+}
+
+impl<Report: PairReport> ReportedCareer<Report> {
+    /// Its score as the verdict ranks it: one JSON could not hold (not finite) ranks lowest, as when the verdict read
+    /// the report back as JSON.
     fn score(&self) -> f64 {
-        self.report["score"].as_f64().unwrap_or(f64::NEG_INFINITY)
+        let score = self.report.reported_score();
+        if score.is_finite() { score } else { f64::NEG_INFINITY }
     }
 }
 
@@ -629,7 +708,7 @@ impl ReportedCareer {
 /// trainees it tried the shared pairs for, the careers it scored, the shared pairs they could run (summed over them),
 /// and how many of them the bound left pairs unscored for (`trainee_bounded_pairs`).
 struct SharedPairs {
-    finalists: Vec<ReportedCareer>,
+    finalists: Vec<ReportedCareer<SharedPair>>,
     trainees_tried: usize,
     careers_tried: usize,
     pairs_runnable: usize,
@@ -674,15 +753,15 @@ fn phase_two_trainees(
 /// What both phases of the pair search found (`CheckWork::verdict`): phase 1's reports, then phase 2's.
 #[derive(Clone, Copy)]
 struct PairSearchFound<'found> {
-    reports: &'found [ReportedCareer],
-    shared: &'found [ReportedCareer],
+    reports: &'found [ReportedCareer<TraineePairsReport>],
+    shared: &'found [ReportedCareer<SharedPair>],
 }
 
 /// The pair search's verdict (`CheckWork::verdict`): its best (trainee, pair) by score (`best`, null with none) and
 /// the career the page recommends running (`recommendation`).
 struct PairSearchVerdict {
-    best: Value,
-    recommendation: Value,
+    best: Option<BestPair>,
+    recommendation: Recommendation,
 }
 
 /// The career the pair search recommends (`CheckWork::verdict`), why (`source`), and its score in the pair search
@@ -702,16 +781,6 @@ struct CareerAgainst<'careers> {
     against: &'careers Found,
 }
 
-/// A career's margin over the pick's side (`CheckWork::verdict`): under the nominal model, and in the two per-uma
-/// scenarios, the pick's uma's P(all) x DIFFERENTIAL_DOWN against the career's uma's x DIFFERENTIAL_UP (`pick_down`)
-/// and the reverse (`pick_up`), each trio's C chosen again (`variant_fit`).
-#[derive(Clone, Copy)]
-struct ScenarioMargins {
-    nominal: f64,
-    pick_down: f64,
-    pick_up: f64,
-}
-
 impl ScenarioMargins {
     /// The scenarios whose margin's sign differs from the nominal one ("pick varies under these scenarios"): a
     /// sensitivity of the choice to the per-uma calibration, which decides nothing (`CheckWork::verdict`)
@@ -723,17 +792,6 @@ impl ScenarioMargins {
             .map(|(name, _)| name)
             .collect()
     }
-    fn json(self) -> Value {
-        json!({"nominal": self.nominal, "pick_down": self.pick_down, "pick_up": self.pick_up})
-    }
-}
-
-/// The pair search's deterministic work so far (`CheckWork::pair_search`): the outcomes its scorings evaluated
-/// (`sc_out`, in the profile counters `aside` keeps apart from the plan's) and the deck searches' nodes.
-#[derive(Clone, Copy)]
-struct PairSearchWork {
-    outcomes: f64,
-    nodes: f64,
 }
 
 impl PairSearchWork {
@@ -743,9 +801,6 @@ impl PairSearchWork {
     }
     fn since(self, start: Self) -> Self {
         Self { outcomes: self.outcomes - start.outcomes, nodes: self.nodes - start.nodes }
-    }
-    fn json(self) -> Value {
-        json!({"outcomes": self.outcomes, "nodes": self.nodes})
     }
 }
 
@@ -761,7 +816,7 @@ impl CheckWork {
     /// same bound), the best
     /// `PAIR_FINALISTS` of those as finalists. The verdict (`verdict`): the best (trainee, pair) by score over both
     /// phases (`best`), and the career the page recommends (`recommendation`)
-    fn pair_search(&self, simulator: &mut Sim, pool: ScoringPool, trainees: &[PairSearchTrainee]) -> Value {
+    fn pair_search(&self, simulator: &mut Sim, pool: ScoringPool, trainees: &[PairSearchTrainee]) -> PairSearch {
         let started_ms = now_ms();
         let data = simulator.data;
         let variants = fixed_variants();
@@ -781,10 +836,10 @@ impl CheckWork {
                 .iter()
                 .map(|searched| self.estimated_outcomes(simulator, &fits, searched.trainee, &mut buf))
                 .collect();
-            let (mut reports, mut skipped): (Vec<ReportedCareer>, Vec<&str>) = (vec![], vec![]);
+            let (mut reports, mut skipped): (Vec<ReportedCareer<TraineePairsReport>>, Vec<String>) = (vec![], vec![]);
             for (&searched, admitted) in trainees.iter().zip(admitted_trainees(trainees, &estimates)) {
                 if !admitted {
-                    skipped.push(data.umas[searched.trainee].name.as_str());
+                    skipped.push(data.umas[searched.trainee].name.clone());
                     continue;
                 }
                 reports.extend(self.trainee_report(simulator, &fits, searched, &mut memo, &mut buf));
@@ -796,13 +851,22 @@ impl CheckWork {
             let verdict = self.verdict(simulator, &fits, found, &mut buf);
             (reports, shared, skipped, verdict)
         });
-        let reports_json = |reported: Vec<ReportedCareer>| reported.into_iter().map(|r| r.report).collect::<Vec<_>>();
-        let shared_coverage = json!({"trainees": shared.trainees_tried, "careers": shared.careers_tried,
-            "pairs_runnable": shared.pairs_runnable, "trainees_truncated": shared.trainees_truncated});
-        json!({"trainees": reports_json(reports), "shared": reports_json(shared.finalists),
-            "shared_coverage": shared_coverage, "best": verdict.best, "recommendation": verdict.recommendation,
-            "skipped_for_work": skipped, "pair_bound": PAIR_SEARCH_PAIRS, "pairs_ms": now_ms() - started_ms,
-            "scoring_complete": scoring_complete_of(&counters)})
+        PairSearch {
+            trainees: reports.into_iter().map(|reported| reported.report).collect(),
+            shared: shared.finalists.into_iter().map(|reported| reported.report).collect(),
+            shared_coverage: SharedCoverage {
+                trainees: shared.trainees_tried,
+                careers: shared.careers_tried,
+                pairs_runnable: shared.pairs_runnable,
+                trainees_truncated: shared.trainees_truncated,
+            },
+            best: verdict.best,
+            recommendation: verdict.recommendation,
+            skipped_for_work: skipped,
+            pair_bound: PAIR_SEARCH_PAIRS,
+            pairs_ms: now_ms() - started_ms,
+            scoring_complete: scoring_complete_of(&counters),
+        }
     }
     /// The pair search's verdict (`pair_search`, the page's `pairSearchNotes`). `best`: the best (trainee, pair) by score
     /// over both phases (ties: the earlier), with its margin over the pick's trainee's shown career (the plan's pick, for
@@ -829,40 +893,55 @@ impl CheckWork {
             let career = recommended.career;
             let env = &mut simulator.env;
             let report = env.setup.report(&mut env.state, fits.pool.pool, career, false);
-            json!({"career": id(simulator, career), "trainee": data.umas[career.trainee].name,
-                "trainee_id": data.umas[career.trainee].id, "parents": [career.first_parent, career.second_parent],
-                "source": recommended.source, "score": recommended.score, "report": report})
+            Recommendation {
+                career: id(simulator, career),
+                trainee: data.umas[career.trainee].name.clone(),
+                trainee_id: data.umas[career.trainee].id,
+                parents: [career.first_parent, career.second_parent],
+                source: recommended.source,
+                score: recommended.score,
+                report,
+            }
         };
         let plan_pick = &self.draft.rows[self.draft.plan_place].career;
         let pick_report = found.reports.iter().find(|reported| reported.career.trainee == plan_pick.trainee);
         let pick = Recommended { career: plan_pick, source: "plan_pick", score: None };
-        let Some(best) = found
+        // (both phases' reports in turn, each by what the verdict reads: its score, its best pair and its career)
+        let ranked = found
             .reports
             .iter()
-            .chain(found.shared)
-            .reduce(|kept, reported| if reported.score() > kept.score() { reported } else { kept })
+            .map(|reported| (reported.score(), &reported.report as &dyn PairReport, &reported.career))
+            .chain(
+                found
+                    .shared
+                    .iter()
+                    .map(|reported| (reported.score(), &reported.report as &dyn PairReport, &reported.career)),
+            );
+        let Some((best_score, best_report, best_career)) =
+            ranked.reduce(|kept, reported| if reported.0 > kept.0 { reported } else { kept })
         else {
-            return PairSearchVerdict { best: Value::Null, recommendation: recommendation(simulator, pick) };
+            return PairSearchVerdict { best: None, recommendation: recommendation(simulator, pick) };
         };
-        let mut best_json = json!({"trainee": best.report["trainee"], "career": best.report["career"],
-            "best_parents": best.report["best_parents"], "score": best.report["score"], "reason": best.report["reason"],
-            "pick_trainee_shown": pick_report.map(|shown| shown.report["shown"].clone()),
-            "margin_over_pick_trainee_shown": pick_report
-                .and_then(|shown| shown.report["shown_score"].as_f64())
-                .map(|shown_score| best.score() - shown_score)});
+        let mut best_pair = best_report.best_pair();
+        best_pair.pick_trainee_shown = pick_report.map(|shown| shown.report.shown.clone());
+        // (a shown score JSON could not hold, not finite, gives no margin, as when this was read back as JSON)
+        best_pair.margin_over_pick_trainee_shown = pick_report
+            .map(|shown| shown.report.shown_score)
+            .filter(|shown_score| shown_score.is_finite())
+            .map(|shown_score| best_score - shown_score);
         let mut recommended = pick;
-        if !crate::career::plan::kept::same_career(&best.career, plan_pick) {
-            let against = CareerAgainst { career: &best.career, against: plan_pick };
+        if !crate::career::plan::kept::same_career(best_career, plan_pick) {
+            let against = CareerAgainst { career: best_career, against: plan_pick };
             let margins = self.scenario_margins(simulator, fits, against, buf);
-            best_json["versus_pick"] = json!({"career": id(simulator, plan_pick), "margins": margins.json(),
-                "varies_under": margins.varies_under()});
+            best_pair.versus_pick =
+                Some(VersusPick { career: id(simulator, plan_pick), margins, varies_under: margins.varies_under() });
             if margins.nominal > 0.0 {
                 let source =
-                    if best.career.trainee == plan_pick.trainee { "pick_trainee_pair" } else { "cross_trainee" };
-                recommended = Recommended { career: &best.career, source, score: Some(best.score()) };
+                    if best_career.trainee == plan_pick.trainee { "pick_trainee_pair" } else { "cross_trainee" };
+                recommended = Recommended { career: best_career, source, score: Some(best_score) };
             }
         }
-        PairSearchVerdict { best: best_json, recommendation: recommendation(simulator, recommended) }
+        PairSearchVerdict { best: Some(best_pair), recommendation: recommendation(simulator, recommended) }
     }
     /// `against.career`'s score less `against.against`'s (`ScenarioMargins`): under the nominal model, then with the
     /// latter's uma's P(all) x DIFFERENTIAL_DOWN and the former's x DIFFERENTIAL_UP, then the reverse (each trio's C
@@ -912,7 +991,7 @@ impl CheckWork {
         searched: PairSearchTrainee,
         memo: &mut crate::career::plan::combine::PairMemo,
         buf: &mut Vec<f64>,
-    ) -> Option<ReportedCareer> {
+    ) -> Option<ReportedCareer<TraineePairsReport>> {
         let PairSearchTrainee { trainee, reason } = searched;
         let (trainee_started_ms, work_at_start) = (now_ms(), PairSearchWork::now(simulator));
         let pool = fits.pool;
@@ -967,11 +1046,11 @@ impl CheckWork {
         let best_other =
             other_finalists.chain(first_past_finalists).max_by(|first, second| first.0.total_cmp(&second.0));
         let id = |career: &Found| career_id(&simulator.env.setup.space, simulator.data.umas[trainee].id, career);
-        let alternatives: Vec<Value> = finalists
+        let alternatives = finalists
             .iter()
             .enumerate()
             .filter(|&(k, _)| k != winner)
-            .map(|(_, finalist)| finalist.json(id(&finalist.found)))
+            .map(|(_, finalist)| finalist.report(id(&finalist.found)))
             .collect();
         // (the page's better parents: a gain over her shown career on another pair; a gain on her shown pair itself is
         // a better deck, not better parents)
@@ -980,21 +1059,30 @@ impl CheckWork {
                 == (second.first_parent.min(second.second_parent), second.first_parent.max(second.second_parent))
         };
         let better_parents = best.score - found.shown_score > 0.0 && !same_pair(&best.found, &found.shown);
-        let report = json!({
-            "trainee": simulator.data.umas[trainee].name, "reason": reason,
-            "shown": id(&found.shown), "shown_score": found.shown_score,
-            "best_parents": [best.found.first_parent, best.found.second_parent],
-            "career": id(&best.found), "score": best.score, "search": best.searched.status.name(),
-            "proven": best.searched.proven && best.kept_searched, "deck_choice": best.deck_choice(),
-            "margin_over_shown": best.score - found.shown_score, "better_parents": better_parents,
-            "margin_over_other_pairs": best_other.map(|(score, _)| best.score - score),
-            "best_other_pair": best_other.map(|(_, career)| id(career)),
-            "corner_margins": corner_margins, "scale_margins": scale_margins,
-            "alternatives": alternatives, "pairs_scored": found.pairs_scored,
-            "pairs_runnable": found.pairs_runnable, "pairs_truncated": found.pairs_truncated,
-            "trainee_ms": now_ms() - trainee_started_ms,
-            "work": PairSearchWork::now(simulator).since(work_at_start).json(),
-        });
+        let report = TraineePairsReport {
+            trainee: simulator.data.umas[trainee].name.clone(),
+            reason,
+            shown: id(&found.shown),
+            shown_score: found.shown_score,
+            best_parents: [best.found.first_parent, best.found.second_parent],
+            career: id(&best.found),
+            score: best.score,
+            search: best.searched.status.name(),
+            proven: best.searched.proven && best.kept_searched,
+            deck_choice: best.deck_choice(),
+            margin_over_shown: best.score - found.shown_score,
+            better_parents,
+            margin_over_other_pairs: best_other.map(|(score, _)| best.score - score),
+            best_other_pair: best_other.map(|(_, career)| id(career)),
+            corner_margins,
+            scale_margins,
+            alternatives,
+            pairs_scored: found.pairs_scored,
+            pairs_runnable: found.pairs_runnable,
+            pairs_truncated: found.pairs_truncated,
+            trainee_ms: now_ms() - trainee_started_ms,
+            work: PairSearchWork::now(simulator).since(work_at_start),
+        };
         Some(ReportedCareer { report, career: finalists.swap_remove(winner).found })
     }
     /// Phase 2 of the pair search (`pair_search`): the best pairs phase 1 found (its reports' `best_parents`, each once)
@@ -1005,7 +1093,7 @@ impl CheckWork {
         &self,
         simulator: &mut Sim,
         fits: &PairSearchFits,
-        reports: &[ReportedCareer],
+        reports: &[ReportedCareer<TraineePairsReport>],
         memo: &mut crate::career::plan::combine::PairMemo,
         buf: &mut Vec<f64>,
     ) -> SharedPairs {
@@ -1060,20 +1148,22 @@ impl CheckWork {
             .map(|ranked| self.finalist(simulator, &scoring, memo, ranked, buf))
             .collect();
         finalists.sort_by(|first, second| second.score.total_cmp(&first.score));
-        let work = PairSearchWork::now(simulator).since(work_at_start).json();
+        let work = PairSearchWork::now(simulator).since(work_at_start);
         let elapsed_ms = now_ms() - started_ms;
         let finalists = finalists
             .into_iter()
             .map(|finalist| {
                 let trainee = finalist.found.trainee;
                 let id = career_id(&simulator.env.setup.space, data.umas[trainee].id, &finalist.found);
-                let mut report = finalist.json(id);
-                report["trainee"] = json!(data.umas[trainee].name);
-                report["reason"] = json!("shared_pair");
-                report["best_parents"] = json!([finalist.found.first_parent, finalist.found.second_parent]);
-                report["pairs_tried"] = json!(pairs_tried);
-                report["phase_ms"] = json!(elapsed_ms);
-                report["work"] = work.clone();
+                let report = SharedPair {
+                    finalist: finalist.report(id),
+                    trainee: data.umas[trainee].name.clone(),
+                    reason: "shared_pair",
+                    best_parents: [finalist.found.first_parent, finalist.found.second_parent],
+                    pairs_tried,
+                    phase_ms: elapsed_ms,
+                    work,
+                };
                 ReportedCareer { report, career: finalist.found }
             })
             .collect();
@@ -1255,47 +1345,41 @@ impl CheckKeep {
         if matches!(variant.kind, VariantKind::Differential) && !self.differential_picks.contains(&pick.pick) {
             self.differential_picks.push(pick.pick);
         }
-        self.entries.push(variant_entry(variant.kind.name(), variant.shape, variant.scales, current_value, pick));
+        let setting = VariantSetting { shape: variant.shape, scales: variant.scales };
+        self.entries.push(variant_entry(variant.kind.name(), setting, current_value, pick, &self.row_ids));
     }
     /// The check's report so far (`next.robust`): `pending` the variants left; `stable` and `contenders` (each variant's
     /// strict argmax, in the order first picked) over those done; where they disagree, `pick_varies`, a sensitivity
     /// label (the pick varies under these variants), never a tie broken by own odds
-    fn report(&self) -> Value {
+    fn report(&self) -> CheckReport {
         let id_of = |place: usize| self.row_ids[place].clone();
-        let entries: Vec<Value> = self
-            .entries
-            .iter()
-            .map(|entry| {
-                let mut entry = entry.clone();
-                entry["pick"] = json!(id_of(entry["pick"].as_u64().unwrap_or(0) as usize));
-                entry
-            })
-            .collect();
-        json!({
-            "plan": id_of(self.plan_place),
-            "rows": self.row_ids,
-            "variants": entries,
-            "pending": self.pending(),
+        // (a copy: the report is handed out while the check, and its entries, stay kept for its next step)
+        CheckReport {
+            plan: id_of(self.plan_place),
+            rows: self.row_ids.clone(),
+            variants: self.entries.clone(),
+            pending: self.pending(),
             // (stable: every variant's strict argmax is the plan's pick)
-            "stable": self.contenders == [self.plan_place],
-            "contenders": self.contenders.iter().map(|&place| id_of(place)).collect::<Vec<_>>(),
-            "pick_varies": self.contenders.len() > 1,
-            "check_ms": self.check_ms,
-            "pairs": self.pairs,
-            "scoring_complete": self.scoring_complete(),
-        })
+            stable: self.contenders == [self.plan_place],
+            contenders: self.contenders.iter().map(|&place| id_of(place)).collect(),
+            pick_varies: self.contenders.len() > 1,
+            check_ms: self.check_ms,
+            pairs: self.pairs.clone(),
+            scoring_complete: self.scoring_complete(),
+            pairs_error: None,
+        }
     }
     /// Whether every scoring of the check so far was complete (`scoring_complete_of`): each variant's (its truncations;
     /// the plan's own entry has none, `next.scoring_complete` reports it) and the pair search's where it ran. The
     /// page and val/planval.py read it beside the plan's, since the check's recommendation and contenders rest on them
     fn scoring_complete(&self) -> bool {
-        let none_left = |entry: &Value, field: &str| entry[field].as_f64().is_none_or(|count| count == 0.0);
+        // (a count JSON could not hold, not finite, counts as none, as when the entries were read back as JSON)
+        let none_left = |count: Option<f64>| count.is_none_or(|count| !count.is_finite() || count == 0.0);
         let variants_complete = self
             .entries
             .iter()
-            .all(|entry| none_left(entry, "routes_dropped_uncertified") && none_left(entry, "partner_setups_dropped"));
-        let pairs_complete =
-            self.pairs.as_ref().is_none_or(|pairs| pairs["scoring_complete"].as_bool().unwrap_or(true));
+            .all(|entry| none_left(entry.routes_dropped_uncertified) && none_left(entry.partner_setups_dropped));
+        let pairs_complete = self.pairs.as_ref().is_none_or(|pairs| pairs.scoring_complete);
         variants_complete && pairs_complete
     }
 }
@@ -1319,10 +1403,14 @@ pub(crate) fn check_before_plan<'data>(
     input: &JobInputs<'data>,
     pool: ScoringPool,
     plan_job: &PlanJob,
-) -> Option<Value> {
+) -> Option<CheckReply> {
     if plan_job.oracle.is_some() {
-        return (plan_job.robust == Some(CheckRequest::Next))
-            .then(|| json!({"error": "next.robust \"next\" answers from the kept plan, which has no oracle: ask next.oracle with \"all\" or alone"}));
+        return (plan_job.robust == Some(CheckRequest::Next)).then(|| {
+            CheckReply::Refusal(Refusal::new(
+                "next.robust \"next\" answers from the kept plan, which has no oracle: ask next.oracle with \"all\" or \
+                 alone",
+            ))
+        });
     }
     check_kept(env, worker, input, pool, plan_job)
 }
@@ -1340,12 +1428,13 @@ pub(crate) fn check_kept<'data>(
     input: &JobInputs<'data>,
     pool: ScoringPool,
     plan_job: &PlanJob,
-) -> Option<Value> {
+) -> Option<CheckReply> {
     let request = plan_job.robust?;
     let key = check_key(input.job);
     let Some(index) = worker.checks.iter().position(|check| check.key == key) else {
         // (the page's one-variant job never runs the plan behind the player's next job)
-        return (request == CheckRequest::Next).then(|| json!({"error": "no kept plan to check", "unavailable": true}));
+        return (request == CheckRequest::Next)
+            .then(|| CheckReply::Unavailable { error: "no kept plan to check".to_owned(), unavailable: true });
     };
     let kept_check = &worker.checks[index];
     let pairs_lost = plan_job.pair_search && kept_check.pairs.is_none() && kept_check.work.is_none();
@@ -1379,7 +1468,7 @@ pub(crate) fn check_kept<'data>(
                 }
                 std::mem::swap(&mut simulator.evaluator.cache, &mut work.cache);
             }
-            Err(error) => return Some(error),
+            Err(refusal) => return Some(CheckReply::Refusal(refusal)),
         }
         // (put back while a variant, or the pair search asked for, is left; after the last it goes, the report alone kept)
         if check.pending() > 0 || (plan_job.pair_search && check.pairs.is_none()) {
@@ -1389,18 +1478,19 @@ pub(crate) fn check_kept<'data>(
     check.check_ms += now_ms() - started_ms;
     let mut report = check.report();
     if pairs_lost {
-        report["pairs_error"] = json!(
+        report.pairs_error = Some(
             "no pair search: this check's variants finished before a job asked for it, and its working state went with \
-             the last; ask next.robust \"all\" with next.pair_search to run the plan, its check and the pair search again"
+             the last; ask next.robust \"all\" with next.pair_search to run the plan, its check and the pair search again",
         );
     }
     worker.checks.push(check);
-    Some(report)
+    Some(CheckReply::Report(Box::new(report)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     /// A variant's pick over its scores: the strict argmax; equal scores keep the earlier row
     #[test]
@@ -1429,10 +1519,10 @@ mod tests {
             check_ms: 0.0,
             work: None,
         };
-        let varying = check(vec![0, 2, 1]).report();
+        let varying = serde_json::to_value(check(vec![0, 2, 1]).report()).unwrap();
         assert_eq!(varying["pick_varies"], json!(true));
         assert_eq!(varying["contenders"], json!(["a", "c", "b"]));
-        let stable = check(vec![0]).report();
+        let stable = serde_json::to_value(check(vec![0]).report()).unwrap();
         assert_eq!((stable["pick_varies"].clone(), stable["stable"].clone()), (json!(false), json!(true)));
         for removed in ["tied", "near_override", "score_winner"] {
             assert!(varying.get(removed).is_none() && stable.get(removed).is_none(), "{removed}");

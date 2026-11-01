@@ -691,7 +691,7 @@ impl<'data> Model<'data> {
 
 /// Everything behind a loop's metric (`Model::detail`): the model's constants, each pair of members, each lineage.
 /// Uma numbers index the loop's members.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct AffinityDetail {
     /// a parent legacy's inheritance rate before affinity (from the job's star mix)
     pub(crate) base: f64,
@@ -708,7 +708,7 @@ pub(crate) struct AffinityDetail {
 }
 
 /// Two members: their relation points and expected shared G1 wins.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct PairDetail {
     pub(crate) a: usize,
     pub(crate) b: usize,
@@ -717,7 +717,7 @@ pub(crate) struct PairDetail {
 }
 
 /// One career of the loop: trainee `t` bred from parents `p`, who share grandparent `x`.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 #[ts(rename = "Lineage")]
 pub(crate) struct LineageDetail {
     /// the trainee
@@ -741,7 +741,7 @@ pub(crate) struct LineageDetail {
 }
 
 /// Whose legacy a slot is.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum LegacyKind {
     Parent,
@@ -749,7 +749,7 @@ pub(crate) enum LegacyKind {
 }
 
 /// One legacy slot of a career.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct LegacySlot {
     pub(crate) kind: LegacyKind,
     /// [parent] or [parent, grandparent]
@@ -765,7 +765,7 @@ pub(crate) struct LegacySlot {
 }
 
 /// A trainee's chance of landing one uncertain target.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct TargetChance {
     /// the target's skill group
     pub(crate) group: u32,

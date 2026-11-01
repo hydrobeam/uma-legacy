@@ -2,11 +2,12 @@
 //! The page's Use this sends it for a builder's other career (`PlanJob::builder_careers`), which a search on its
 //! parents would replace with her best deck there.
 use crate::career::inherit::{ExactOptions, Inheritance, inherit};
+use crate::career::reply::{CareerAnswer, CareerSearch, JobCertificates, SearchWork};
 use crate::career::run::CareerRun;
 use crate::career::search::Found;
 use crate::career::{Env, Lineage};
 use crate::deck::space::SelectedDeck;
-use serde_json::{Value, json};
+use crate::refusal::Refusal;
 
 /// The career `id` names, parsed (`plan::kept::career_id`): her uma id, her parents (legacy indices, in order), her
 /// deck's named entries by identity (`DeckSpace::entry_key`), its plain pals' card ids and its filler count.
@@ -49,8 +50,8 @@ fn parse_id(id: &str) -> Option<CareerId<'_>> {
 /// take, the job's deck size. Its search fields say one career was scored, and none other weighed: `given`, and neither
 /// `complete` nor `proven_top` (no search compared it with any other career or deck; the page says so, proofs.ts
 /// `searchCaveat`).
-pub(super) fn given_career_output(env: &mut Env, run: &CareerRun, id: &str) -> Value {
-    let error = |why: &str| json!({"error": format!("career: {why}")});
+pub(super) fn given_career_output(env: &mut Env, run: &CareerRun, id: &str) -> CareerAnswer {
+    let error = |why: &str| CareerAnswer::Refusal(Refusal::new(format!("career: {why}")));
     let Some(career) = parse_id(id) else {
         return error("not a career id (uma:parent,parent:entries/plain pals/filler cards).");
     };
@@ -114,7 +115,25 @@ pub(super) fn given_career_output(env: &mut Env, run: &CareerRun, id: &str) -> V
     let found = Found { trainee, first_parent, second_parent, value, ceiling, deck };
     let report = env.setup.report(&mut env.state, pool, &found, true);
     let rho_top = env.setup.space.rho_top();
-    json!({"results": [report], "candidates": 1, "solved": 1, "bounded": 0, "scored": 1, "skipped": 0, "next_bound": null,
-           "complete": false, "proven_top": false, "cap": rho_top, "class_caps": env.setup.space.caps(),
-           "work": {"nodes": 0, "exact": 0}, "given": true})
+    CareerAnswer::Search(Box::new(CareerSearch {
+        results: vec![report],
+        candidates: 1,
+        solved: 1,
+        bounded: 0,
+        scored: 1,
+        skipped: 0,
+        next_bound: None,
+        complete: false,
+        proven_top: false,
+        cap: rho_top,
+        class_caps: env.setup.space.caps(),
+        work: SearchWork { nodes: 0, exact: 0 },
+        given: Some(true),
+        unproven: None,
+        assumes: None,
+        compare: None,
+        next: None,
+        certificates: JobCertificates::default(),
+        timing_s: 0.0,
+    }))
 }

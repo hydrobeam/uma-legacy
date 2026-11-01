@@ -11,14 +11,19 @@ const GRADE_A = 7,
   GRADE_S = 8;
 // April inspirations in a career: each legacy pink gets a chance to fire at each
 const INSPIRATIONS = 2;
-/** What the draw reads of the report's `aptitudes` (career/job.ts `CareerReport`). */
-export interface PinkAptitudes {
+/** One start of a career's pink draw: the grades, and each legacy pink, the aptitude it raises and its chance of firing
+ *  at one inspiration */
+interface PinkStart {
   start: readonly number[];
-  /** each legacy pink: the aptitude it raises and its chance of firing at one inspiration */
   fire: readonly { apt: number; p: number }[];
-  /** per aptitude, the pink spark's group */
-  pink_gen: readonly { group: number }[];
 }
+/** What the draw reads of the report's `aptitudes` (the solver's `Aptitudes`): per aptitude the pink spark's group, and
+ *  her start, or, with a veteran before her result is known among her legacies, each start with its chance (a job's
+ *  own veterans always have one: the page is never sent several) */
+export type PinkAptitudes = { pink_gen: readonly { group: number }[] } & (
+  | PinkStart
+  | { outcomes: readonly (PinkStart & { p: number })[] }
+);
 /** The pink she draws (group -> stars; empty when none) and her end grades (null without `aptitudes`). */
 export interface PinkDraw {
   pinks: Record<number, number>;
@@ -26,11 +31,13 @@ export interface PinkDraw {
 }
 export function drawPink(ap: PinkAptitudes | null | undefined, rnd: () => number = Math.random): PinkDraw {
   if (!ap) return { pinks: {}, apt: null };
-  // the random draws keep this order (the suite's seeded check replays it): every fire chance per inspiration in
-  // `ap.fire` order, then the aptitude, then her stars
-  const grades = ap.start.slice();
+  // the random draws keep this order (the suite's seeded check replays it): with several starts, one for the start (by
+  // their chances, as the solver's `draw_pink`); every fire chance per inspiration in `fire` order, then the aptitude,
+  // then her stars
+  const { start, fire } = 'outcomes' in ap ? drawnStart(ap.outcomes, rnd()) : ap;
+  const grades = start.slice();
   for (let inspiration = 0; inspiration < INSPIRATIONS; inspiration++) {
-    for (const fire of ap.fire) if (rnd() < fire.p) grades[fire.apt] = Math.min(GRADE_S, gradeAt(grades, fire.apt) + 1);
+    for (const f of fire) if (rnd() < f.p) grades[f.apt] = Math.min(GRADE_S, gradeAt(grades, f.apt) + 1);
   }
   // the pinks of the aptitudes she ends at A or S (`pink_gen`: the solver's pink per aptitude, in their order)
   assert(ap.pink_gen.length === grades.length, 'the solver names a pink spark per aptitude');
@@ -40,4 +47,13 @@ export function drawPink(ap: PinkAptitudes | null | undefined, rnd: () => number
     u = rnd();
   const stars = u < 0.2 ? 1 : u < 0.9 ? 2 : 3;
   return { pinks: { [pink.group]: stars }, apt: grades };
+}
+// the start `u` (uniform in [0, 1)) falls in, by the starts' chances in order; the last where rounding leaves u past them
+function drawnStart(outcomes: readonly (PinkStart & { p: number })[], u: number): PinkStart {
+  let remaining = u;
+  for (const outcome of outcomes) {
+    remaining -= outcome.p;
+    if (remaining < 0) return outcome;
+  }
+  return must(outcomes[outcomes.length - 1], 'a career has a start');
 }

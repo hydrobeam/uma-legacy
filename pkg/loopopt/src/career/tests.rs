@@ -167,7 +167,7 @@ fn inheritance_copies_match_lineage() {
 #[test]
 fn state_round_trips_and_refuses_malformed() {
     let (data, skills, cards, v) = p16();
-    let run = |job: &Value| run_career(&data, &skills, &cards, job);
+    let run = |job: &Value| serde_json::to_value(run_career(&data, &skills, &cards, job)).unwrap();
     let state_out = || run(&json!({"cmd": "state_out"}));
     let state_in = |st: &Value| run(&json!({"cmd": "state_in", "state": st}));
     let plan = run(&v);
@@ -182,7 +182,11 @@ fn state_round_trips_and_refuses_malformed() {
         assert!(worker.bests.is_empty() && worker.seen.is_empty() && worker.searches.is_empty());
         assert!(worker.rolls.is_empty() && worker.decks.is_empty(), "simulation must isolate rolls and decks");
         state::kept_swap(&mut worker, saved);
-        assert_eq!(state::state_out(&worker), out, "simulation must restore every serialized collection");
+        assert_eq!(
+            serde_json::to_value(state::state_out(&worker)).unwrap(),
+            out,
+            "simulation must restore every serialized collection"
+        );
         assert_eq!(worker.decks.len(), deck_setups);
     });
     for k in ["bests", "seen", "solve", "flags", "rolls"] {
@@ -365,7 +369,7 @@ fn state_round_trips_and_refuses_malformed() {
 #[test]
 fn a_kept_plan_keeps_its_flags_through_flag_churn() {
     let (data, skills, cards, v) = p16();
-    let run = |job: &Value| run_career(&data, &skills, &cards, job);
+    let run = |job: &Value| serde_json::to_value(run_career(&data, &skills, &cards, job)).unwrap();
     let plan = run(&v);
     assert!(plan.get("error").is_none(), "{}", plan["error"]);
     assert_eq!(plan["proven_top"], json!(true), "the first plan is not proven: {}", plan["unproven"]);

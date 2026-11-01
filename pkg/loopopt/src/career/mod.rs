@@ -51,6 +51,7 @@ use crate::Instant;
 use crate::career::decks::{CfStats, DeckMemo, DeckSearchKey};
 use crate::career::outcomes::CornerKey;
 use crate::career::pool::Pool;
+use crate::career::reply::{CareerAnswer, CareerReply, FollowUp, PlanFollowUp, SearchWork};
 use crate::career::run::{
     CareerRun, answer_kept_check, answer_kept_roll, keep_flags, keep_seen, note_job_certificates, plan_next,
     run_carried_roll, search_output,
@@ -61,6 +62,7 @@ use crate::career::state::{KEPT, KeptState, ProductProof, state_in, state_out};
 use crate::data::Data;
 use crate::deck::space::{DeckSpace, SelectedDeck};
 use crate::deck::{CardsRaw, d_true};
+use crate::refusal::Refusal;
 use crate::skills::{Model, SkillJob, SkillsRaw};
 use crate::uma::{UmaIndex, UmaTable};
 use serde::Deserialize;
@@ -79,6 +81,7 @@ mod evaluator;
 mod given;
 
 mod plan;
+pub(crate) mod reply;
 mod run;
 mod setup;
 mod sim;
@@ -494,7 +497,7 @@ pub(crate) fn forget_kept_decks() {
     KEPT.with(|cell| cell.borrow_mut().decks.clear());
 }
 
-pub(crate) fn run_career(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> Value {
+pub(crate) fn run_career(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value) -> CareerReply {
     KEPT.with(|kept| run_career_in(data, skills, cards, job, &mut kept.borrow_mut()))
 }
 
@@ -505,26 +508,35 @@ pub(crate) fn run_career_in(
     cards: &CardsRaw,
     job: &Value,
     kept: &mut KeptState,
-) -> Value {
+) -> CareerReply {
+    // (the kept work out and back in answers first; then a carried roll)
+    let is_state = matches!(job["cmd"].as_str(), Some("state_out" | "state_in"));
+    match job.get("roll").filter(|roll| !roll.is_null()) {
+        Some(roll) if !is_state => {
+            CareerReply::Carried(Box::new(run_carried_roll(data, skills, cards, job, roll, kept)))
+        }
+        _ => CareerReply::Answer(answer_job(data, skills, cards, job, kept)),
+    }
+}
+
+/// A job's own answer (`run_career_in`, a carried roll aside).
+fn answer_job(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &Value, kept: &mut KeptState) -> CareerAnswer {
     // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
     match job["cmd"].as_str() {
-        Some("state_out") => return state_out(kept),
-        Some("state_in") => return state_in(kept, &job["state"]),
+        Some("state_out") => return CareerAnswer::StateOut(state_out(kept)),
+        Some("state_in") => return CareerAnswer::StateIn(state_in(kept, &job["state"])),
         _ => {}
-    }
-    if let Some(roll) = job.get("roll").filter(|roll| !roll.is_null()) {
-        return run_carried_roll(data, skills, cards, job, roll, kept);
     }
     let jobs = match CareerJobs::parse(job) {
         Ok(jobs) => jobs,
-        Err(error) => return error,
+        Err(refusal) => return CareerAnswer::Refusal(refusal),
     };
     let t_all = Instant::now();
     let input = JobInputs { data, skills, cards, job };
     let model = Model::new(data, skills, &jobs.skills);
     let CareerBuild { mut env, trainees, seen_fingerprint } = match career_setup(&input, &jobs, &model, kept) {
         Ok(setup) => setup,
-        Err(error) => return error,
+        Err(refusal) => return CareerAnswer::Refusal(refusal),
     };
     let out = (|| {
         let career_job = &jobs.career;
@@ -534,16 +546,18 @@ pub(crate) fn run_career_in(
             // (a measurement the page never asks for: left out of the browser build's wasm, as the plan's audit and
             // oracles are)
             if cfg!(target_arch = "wasm32") {
-                return plan::not_in_browser("simulate");
+                return CareerAnswer::Refusal(plan::not_in_browser("simulate"));
             }
-            return crate::career::sim::play::simulate(&mut env, kept, &input, legacies, &trainees, simulation);
+            return CareerAnswer::Simulation(Box::new(crate::career::sim::play::simulate(
+                &mut env, kept, &input, legacies, &trainees, simulation,
+            )));
         }
         let pool = env.setup.pool(legacies);
         // (tests: the job's Env and pool handed to a check instead of the search)
         #[cfg(test)]
         if let Some(hook) = tests::ENV_HOOK.with(|cell| cell.borrow_mut().take()) {
             hook(&mut env, &pool);
-            return json!({});
+            return CareerAnswer::Hooked {};
         }
         // `borrowed_parent` "later": the career picked (the search's results, the plan's rows, and a kept check's pair
         // search and recommendation, answered below before any search) comes from the pool without borrowed parents;
@@ -558,38 +572,48 @@ pub(crate) fn run_career_in(
             pick_pool: own_pool.as_ref(),
         };
         if let Some(roll) = answer_kept_roll(&mut env, kept, &run) {
-            return json!({"next": {"roll": roll}});
+            return CareerAnswer::FollowUp(PlanFollowUp { next: FollowUp::Roll { roll } });
         }
-        if let Some(check) = answer_kept_check(&mut env, kept, &run) {
-            return json!({"next": {"robust": check}});
+        if let Some(robust) = answer_kept_check(&mut env, kept, &run) {
+            return CareerAnswer::FollowUp(PlanFollowUp { next: FollowUp::Robust { robust } });
         }
         if let Some(id) = &career_job.career {
-            let mut out = given::given_career_output(&mut env, &run, id);
-            out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
-            return out;
+            let mut reply = given::given_career_output(&mut env, &run, id);
+            if let CareerAnswer::Search(search) = &mut reply {
+                search.timing_s = t_all.elapsed().as_secs_f64();
+            }
+            return reply;
         }
         env.state.use_seen = true;
         // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
         // search was kept from the job before
         let (nodes_before, exact_scorings_before) = (env.setup.space.nodes.get(), env.state.exact_scorings);
         let search = solve_kept(&mut env, kept, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
-        let search_work = json!({"nodes": env.setup.space.nodes.get() - nodes_before, "exact": env.state.exact_scorings - exact_scorings_before});
+        let search_work = SearchWork {
+            nodes: env.setup.space.nodes.get() - nodes_before,
+            exact: env.state.exact_scorings - exact_scorings_before,
+        };
         env.state.use_seen = true;
         if search.candidates == 0 {
             keep_seen(kept, &env.state, seen_fingerprint);
-            return json!({"error": if career_job.borrowed_parent == BorrowedParent::Allow { "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed." }
-        else { "No legal career: a trainee needs two of your own veterans of other characters (not her own, not the same as each other): borrowed parents are off." } });
+            return CareerAnswer::Refusal(Refusal::new(if career_job.borrowed_parent == BorrowedParent::Allow {
+                "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each \
+                 other), at most one of them borrowed."
+            } else {
+                "No legal career: a trainee needs two of your own veterans of other characters (not her own, not the \
+                 same as each other): borrowed parents are off."
+            }));
         }
         let mut out = search_output(&mut env, &run, &search, search_work, rho_top);
         if let Some(next_job) = &career_job.next
             && !search.found.is_empty()
         {
-            out["next"] = plan_next(&mut env, kept, &run, &search, next_job);
+            out.next = Some(plan_next(&mut env, kept, &run, &search, next_job));
         }
         keep_seen(kept, &env.state, seen_fingerprint);
         note_job_certificates(&env.setup, &env.state, &env.audit, &mut out, rho_top, &trainees);
-        out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
-        out
+        out.timing_s = t_all.elapsed().as_secs_f64();
+        CareerAnswer::Search(Box::new(out))
     })();
     // Publish reusable tables after every completed path, including early answers and simulator jobs.
     keep_flags(kept, &env.setup, &env.state);

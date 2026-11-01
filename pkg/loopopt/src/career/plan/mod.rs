@@ -42,7 +42,6 @@ use crate::career::sim::Sim;
 use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
 use serde::Deserialize;
-use serde_json::Value;
 mod ascent;
 mod audit;
 mod candidates;
@@ -53,7 +52,9 @@ mod fold;
 pub(super) mod kept;
 mod oracle;
 mod output;
+use self::report::{LiftAuditReply, OracleReport, PlanReply};
 mod pair_bound;
+pub(crate) mod report;
 mod robust;
 mod sequenced;
 mod sweep;
@@ -246,8 +247,8 @@ pub(crate) struct PlanJob {
 
 /// A measurement asked of the browser build, which leaves it out (`cfg!(target_arch = "wasm32")`): the native loopopt
 /// runs it.
-pub(crate) fn not_in_browser(job: &str) -> Value {
-    serde_json::json!({ "error": format!("{job}: not in the browser build (the native loopopt runs it)") })
+pub(crate) fn not_in_browser(job: &str) -> crate::refusal::Refusal {
+    crate::refusal::Refusal::new(format!("{job}: not in the browser build (the native loopopt runs it)"))
 }
 
 /// A diagnostic V beside the plan's (`PlanJob::oracle`).
@@ -391,12 +392,12 @@ struct PlanCandidates {
     /// The named loop's members (`PlanJob::loop_members`), as uma indices, with their {id, name} and why the rotation
     /// was refused.
     loop_members: Vec<crate::uma::UmaIndex>,
-    loop_member_info: Vec<Value>,
+    loop_member_info: Vec<self::report::UmaName>,
     loop_member_note: Option<String>,
     /// The candidates the full-loop ceiling ranking added (`hint_umas`), and the ranked umas it left out, as the page
     /// shows them.
-    hint: Vec<Value>,
-    cut: Vec<Value>,
+    hint: Vec<self::report::CandidateHint>,
+    cut: Vec<self::report::CandidateHint>,
     /// The candidates, as uma indices (`Data::umas`): the stage candidates, then the side-only umas.
     trainees: Vec<crate::uma::UmaIndex>,
     /// The first `stage_count` candidates are the stage candidates; the rest are side-only (a usable real full veteran
@@ -577,7 +578,7 @@ struct PlanProfile {
     /// Rows scored that can be the pick.
     scored_runnable_rows: usize,
     /// Where the surrogate's best career differs from the search's (`sur` 2).
-    surrogate_differences: Vec<Value>,
+    surrogate_differences: Vec<self::report::SurrogateDifference>,
 }
 
 /// The plan's rows, in their order (`RowOrigin`), and each trainee's G1 wins, read when fitting a continuation.
@@ -601,7 +602,7 @@ pub(crate) fn index_rule<'data>(
     env: &mut Env<'data>,
     kept: &mut crate::career::state::KeptState,
     input: &PlanInputs<'_, 'data>,
-) -> Value {
+) -> PlanReply {
     let started_ms = now_ms();
     let pick_career = input.pick_solved().found[0].clone();
     progress(1, 0, 0);
@@ -612,7 +613,7 @@ pub(crate) fn index_rule<'data>(
     let PlanSetup { mut sim, candidates, mut searches, mut profile, cache_before_builders } =
         match setup_plan_candidates(env, kept, input, started_ms, pick_career, &mut deck_values) {
             Ok(prepared) => prepared,
-            Err(error) => return error,
+            Err(refusal) => return PlanReply::Refusal(refusal),
         };
     let context = PlanContext { input, candidates: &candidates };
     let mut rows = score_and_admit_proxies(&mut sim, &context, &mut searches, &mut profile, &mut deck_values);
@@ -627,27 +628,29 @@ pub(crate) fn index_rule<'data>(
     // (`proxy_check` alone keeps the cache as it was before the builders' searches)
     let proxy_check = match cache_before_builders {
         Some(cache) if !rows.is_empty() => {
-            check_plan_proxies(&mut sim, &context, &searches, &rows, &scores, cache, &mut deck_values)
+            Some(check_plan_proxies(&mut sim, &context, &searches, &rows, &scores, cache, &mut deck_values))
         }
-        _ => Value::Null,
+        _ => None,
     };
     // (the audit and the oracles are measurements the page never asks for: the browser build answers an error, and its
     // wasm leaves their code out, about 90 KB)
     let lift_audit = if !(input.settings.audit_lifts && scores.any_scored) {
-        Value::Null
+        None
     } else if cfg!(target_arch = "wasm32") {
-        not_in_browser("audit_lifts")
+        Some(LiftAuditReply::Refusal(not_in_browser("audit_lifts")))
     } else {
-        audit::audit_lifts(&mut sim, &context, &rows, &scores, &mut deck_values)
+        Some(LiftAuditReply::Rows(audit::audit_lifts(&mut sim, &context, &rows, &scores, &mut deck_values)))
     };
     let pair_sweep = sweep::pair_sweep(&mut sim, &context, &rows, &scores, &mut deck_values);
     let pair_ascent = ascent::pair_ascent(&mut sim, &context, &rows, &scores, &mut deck_values);
     let pair_decompose = ascent::pair_decompose(&mut sim, &context, &scores, &mut deck_values);
     let oracle = match input.settings.oracle {
-        None => Value::Null,
-        Some(_) if cfg!(target_arch = "wasm32") => not_in_browser("oracle"),
-        Some(Oracle::Sequenced) => sequenced::sequenced_oracle(&mut sim, &context, &rows, &scores, &mut deck_values),
-        Some(Oracle::Joint) => oracle::joint_oracle(&mut sim, &context, &rows, &scores, &mut deck_values),
+        None => None,
+        Some(_) if cfg!(target_arch = "wasm32") => Some(OracleReport::Refusal(not_in_browser("oracle"))),
+        Some(Oracle::Sequenced) => sequenced::sequenced_oracle(&mut sim, &context, &rows, &scores, &mut deck_values)
+            .map(|oracle| OracleReport::Sequenced(Box::new(oracle))),
+        Some(Oracle::Joint) => oracle::joint_oracle(&mut sim, &context, &rows, &scores, &mut deck_values)
+            .map(|oracle| OracleReport::Joint(Box::new(oracle))),
     };
     // (what the check reads, kept after the output: the shown rows, and the deck cache, which the output does not read)
     let check_draft = robust::check_draft(&context, &rows, &scores.fit, scores.any_scored);
@@ -655,7 +658,7 @@ pub(crate) fn index_rule<'data>(
         .is_some()
         .then(|| std::mem::replace(&mut sim.evaluator.cache, Cache::new(context.data().umas.len())));
     let check_ids = check_draft.as_ref().map(|draft| draft.row_ids(context.data(), &sim.env.setup.space));
-    let mut output = assemble_plan_output(sim, &context, searches, rows, &scores, &profile);
+    let mut plan = assemble_plan_output(sim, &context, searches, rows, &scores, &profile);
     // (its steps kept as caps for later plans of a pool holding this one's veterans; none under a given fit)
     if input.settings.fit.is_none() {
         let fit = &scores.fit;
@@ -663,18 +666,10 @@ pub(crate) fn index_rule<'data>(
             caps::plan_caps(&candidates.trainees, &candidates.current_odds, &fit.continuations, &candidates.step_caps);
         caps::keep_caps(kept, candidates.cap_pool.clone(), plan_caps);
     }
-    if !oracle.is_null() {
-        output["oracle"] = oracle;
-    }
-    if !pair_sweep.is_null() {
-        output["pair_sweep"] = pair_sweep;
-    }
-    if !pair_ascent.is_null() {
-        output["pair_ascent"] = pair_ascent;
-    }
-    if !pair_decompose.is_null() {
-        output["pair_decompose"] = pair_decompose;
-    }
+    plan.oracle = oracle;
+    plan.pair_sweep = pair_sweep;
+    plan.pair_ascent = pair_ascent;
+    plan.pair_decompose = pair_decompose;
     if let (Some(draft), Some(cache), Some(row_ids)) = (check_draft, check_cache, check_ids) {
         let key = robust::check_key(input.resources.job);
         let source = robust::CheckSource { candidates, fit: scores.fit, cache };
@@ -685,17 +680,11 @@ pub(crate) fn index_rule<'data>(
             pick_pool: input.pick_pool(),
             fixed_parents: input.fixed_parents,
         };
-        if let Some(check) = robust::check_kept(env, kept, input.resources, pool, input.settings) {
-            output["robust"] = check;
-        }
+        plan.robust = robust::check_kept(env, kept, input.resources, pool, input.settings);
     }
-    if !lift_audit.is_null() {
-        output["lift_audit"] = lift_audit;
-    }
-    if !proxy_check.is_null() {
-        output["proxy_check"] = proxy_check;
-    }
-    output
+    plan.lift_audit = lift_audit;
+    plan.proxy_check = proxy_check;
+    PlanReply::Plan(Box::new(plan))
 }
 
 /// What setup hands the phases: the simulator, the fixed candidates, the search history, the profile, and (with

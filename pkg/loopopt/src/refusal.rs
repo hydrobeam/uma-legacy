@@ -4,7 +4,7 @@ use ts_rs::TS;
 
 /// Why a job was not done (a bad request, a job outside the search's limits, nothing to search). Only a refusal
 /// carries `error`, so `'error' in reply` tells it from a report.
-#[derive(Debug, Serialize, TS)]
+#[derive(Clone, Debug, Serialize, TS)]
 pub(crate) struct Refusal {
     pub(crate) error: String,
 }

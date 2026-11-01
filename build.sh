@@ -176,7 +176,7 @@ wasm_opt_key() {
 GEN_TS="$W/src/gen/solver.ts"
 generated_types() {
   local raw="$C/target/ts-gen-solver.ts"
-  (cd "$C" && quiet env TS_GEN_OUT="$raw" cargo test --quiet --lib ts_gen::write_solver_ts -- --ignored --exact)
+  (cd "$C" && quiet env TS_GEN_OUT="$raw" cargo test --quiet --lib ts_gen::write_solver_ts -- --ignored --exact) || return 1
   (cd "$W" && npx --no-install biome format --stdin-file-path=src/gen/solver.ts <"$raw")
 }
 step_types() {

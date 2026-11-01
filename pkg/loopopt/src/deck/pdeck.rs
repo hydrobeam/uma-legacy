@@ -29,7 +29,7 @@ pub(crate) type Name = std::rc::Rc<str>;
 /// A deck in a result. Parallel lists: `cards[i]` is named with ` (borrowed)` or ` (end chain at link N)` appended
 /// where that applies; `card_ids[i]` is its id (plain pals have a name but no id here: `plain_ids`).
 /// It owns its lists: a result outlives the search that holds the deck.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct ResultDeck {
     pub(crate) cards: Vec<Name>,
     pub(crate) card_ids: Vec<u32>,
@@ -50,7 +50,7 @@ pub(crate) struct ResultDeck {
 }
 
 /// A deck's hint odds for one target.
-#[derive(Serialize, TS)]
+#[derive(Clone, Serialize, TS)]
 pub(crate) struct TargetHintOdds {
     /// the target's skill group
     pub(crate) group: u32,

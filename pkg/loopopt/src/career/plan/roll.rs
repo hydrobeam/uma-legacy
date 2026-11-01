@@ -2,6 +2,7 @@
 use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::caps::{StepCaps, cap_in, cap_out};
 use crate::career::plan::cont::{Cont, MAX_PARTNERS, ScoreBase, ScoringKnobs};
+use crate::career::plan::report::{RollAnswer, RollOutcome, RollReply};
 use crate::career::plan::score::fm_masks;
 use crate::career::plan::score::kernel::{BatchLeast, Scored};
 use crate::career::plan::search::sim_for;
@@ -12,6 +13,7 @@ use crate::career::sim::Sim;
 use crate::career::state::{KeptState, hash_text};
 use crate::career::{Env, JobInputs, Lineage};
 use crate::deck::space::SelectedDeck;
+use crate::refusal::Refusal;
 use serde_json::{Value, json};
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
 /// The base a kept scoring was scored against (`ScoreBase` without the trios, their sides and C's umas, which only the
@@ -122,7 +124,7 @@ pub(crate) fn roll_kept<'data>(
     worker: &mut KeptState,
     input: &JobInputs<'data>,
     plan_job: &PlanJob,
-) -> Option<Value> {
+) -> Option<RollReply> {
     let stars = plan_job.roll.as_ref()?;
     let key = roll_key(input.job);
     let index = worker.rolls.iter().position(|roll| roll.key == key)?;
@@ -130,31 +132,30 @@ pub(crate) fn roll_kept<'data>(
     // (the roll's own timers and counters, `prof`; what the job counted before goes back after)
     let started = now_ms();
     let prof_before = PROF.with(|prof| std::mem::take(&mut *prof.borrow_mut()));
-    let answer = match sim_for(env, worker, input, plan_job) {
+    let outcome = match sim_for(env, worker, input, plan_job) {
         Ok(sim) => roll_answer(&sim, &kept, stars),
-        Err(error) => error,
+        Err(refusal) => RollOutcome::Refusal(refusal),
     };
     keep_roll(worker, kept);
-    let mut answer = answer;
-    let roll_prof = PROF.with(|prof| std::mem::replace(&mut *prof.borrow_mut(), prof_before));
-    if answer.is_object() {
-        answer["ms"] = json!(now_ms() - started);
-        answer["prof"] = json!(roll_prof);
-    }
-    Some(answer)
+    let prof = PROF.with(|prof| std::mem::replace(&mut *prof.borrow_mut(), prof_before));
+    Some(RollReply::Answer(RollAnswer { outcome, ms: now_ms() - started, prof, planned: None }))
 }
 
-fn roll_answer(simulator: &Sim, kept: &RollKeep, stars: &[u8]) -> Value {
+fn roll_answer(simulator: &Sim, kept: &RollKeep, stars: &[u8]) -> RollOutcome {
     let setup = &simulator.env.setup;
     if stars.len() != setup.target_count {
-        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), setup.target_count)});
+        return RollOutcome::Refusal(Refusal::new(format!(
+            "roll: {} stars for {} targets",
+            stars.len(),
+            setup.target_count
+        )));
     }
     let outcome = OutcomeIndex::from_stars(stars, &setup.uncertain_targets, &setup.fixed_targets);
     let score_base = kept.base.base();
     let y = kept.roll(&score_base, outcome);
     // (the scoring's routes only: a route the scoring has not, another lineage of a candidate's whose C her veteran
     // improves without lifting her odds, can save more, so the page confirms every roll with a Compare)
-    json!({"y": (y * 100.0).round() / 100.0})
+    RollOutcome::Saving { y: (y * 100.0).round() / 100.0 }
 }
 
 /// a route's C while a lifted side builds, stored: {"f": its step's bits}, {"s": a finisher slot} or null

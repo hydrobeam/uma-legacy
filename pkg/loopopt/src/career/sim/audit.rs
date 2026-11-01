@@ -8,14 +8,14 @@ use crate::career::search::DeckRes;
 use crate::career::sim::Sim;
 use crate::career::sim::draw::Keys;
 use crate::career::sim::play::PathState;
+use crate::career::sim::report::{ArgmaxCheck, AuditRow, GreedyAudit, LineageCheck, SurrogateCheck};
 use crate::deck::space::SelectedDeck;
-use serde_json::{Value, json};
 
 impl Sim<'_, '_> {
     /// One audit row: a career valued by the surrogate's table (her cached decks, no refresh) against a fresh exact
     /// deck search there: [kind, table value, exact value, (exact - table) / exact, landed-set total variation between
     /// the two decks, search finished].
-    pub(super) fn audit_row(&mut self, pool: &Pool, lineage: Lineage, kind: AuditKind) -> Value {
+    pub(super) fn audit_row(&mut self, pool: &Pool, lineage: Lineage, kind: AuditKind) -> AuditRow {
         let trainee = lineage.trainee;
         let LineageChances { chances: inheritance_chances, carriers, spark_scale } =
             self.env.setup.lineage(pool, lineage);
@@ -88,7 +88,7 @@ impl Sim<'_, '_> {
     /// The greedy audit at a pick change: the exact career search's pick against the surrogate's, and audit rows for
     /// the pick and `audit_sample` random candidates with the newest veteran as a parent (ceiling at least 0.3 x B; every
     /// candidate of the pool at the start)
-    pub(super) fn audit_greedy(&mut self, state: &mut PathState, keys: Keys, career_index: usize) -> Value {
+    pub(super) fn audit_greedy(&mut self, state: &mut PathState, keys: Keys, career_index: usize) -> GreedyAudit {
         let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
         let search = self.env.solve(crate::career::search::SearchRequest {
@@ -140,11 +140,20 @@ impl Sim<'_, '_> {
             candidates.swap(i, j.min(last));
             rows.push(self.audit_row(&state.pool, candidates[i], AuditKind::Random));
         }
-        json!({"t": career_index, "pool": pool_size, "sur": surrogate_key, "sur_p": career.p_all, "ex": exact_pick.as_ref().map(|(_, key)| key.clone()), "ex_p": exact_pick.as_ref().map(|(value, _)| *value),
-               "differs": differs, "proven": search.proven, "rows": rows})
+        GreedyAudit {
+            t: career_index,
+            pool: pool_size,
+            sur: surrogate_key,
+            sur_p: career.p_all,
+            ex: exact_pick.as_ref().map(|(_, key)| key.clone()),
+            ex_p: exact_pick.as_ref().map(|(value, _)| *value),
+            differs,
+            proven: search.proven,
+            rows,
+        }
     }
     /// the surrogate against exact searches on this pool (the argmax career, and the newest veteran's lineages)
-    pub(super) fn check(&mut self, state: &mut PathState, all: bool) -> Value {
+    pub(super) fn check(&mut self, state: &mut PathState, all: bool) -> SurrogateCheck {
         let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
         let search = self.env.solve(crate::career::search::SearchRequest {
@@ -160,8 +169,15 @@ impl Sim<'_, '_> {
                 format!("{}:{},{}", self.data.umas[found.trainee].id, found.first_parent, found.second_parent),
             )
         });
-        let argmax = json!({"pool": state.legacies.len(), "sur": self.key(&career), "sur_p": career.p_all, "sur_val": state.best.map(|pick| pick.value),
-                            "ex": exact_pick.as_ref().map(|(_, key)| key.clone()), "ex_p": exact_pick.as_ref().map(|(value, _)| *value), "proven": search.proven});
+        let argmax = ArgmaxCheck {
+            pool: state.legacies.len(),
+            sur: self.key(&career),
+            sur_p: career.p_all,
+            sur_val: state.best.map(|pick| pick.value),
+            ex: exact_pick.as_ref().map(|(_, key)| key.clone()),
+            ex_p: exact_pick.as_ref().map(|(value, _)| *value),
+            proven: search.proven,
+        };
         let mut rows = vec![];
         if self.settings.check_lineages > 0 {
             let best_value = state.best.map_or(0.0, |pick| pick.value);
@@ -204,14 +220,14 @@ impl Sim<'_, '_> {
                 }
             }
         }
-        json!({"argmax": argmax, "lineages": rows})
+        SurrogateCheck { argmax, lineages: rows }
     }
     fn check_lineage(
         &mut self,
         state: &PathState,
         candidate: RankedCareer,
         interpolation_scratch: &mut Vec<f64>,
-    ) -> Option<Value> {
+    ) -> Option<LineageCheck> {
         let RankedCareer { ceiling, lineage } = candidate;
         let trainee = lineage.trainee;
         let LineageChances { chances: inheritance_chances, carriers, spark_scale } =
@@ -249,7 +265,7 @@ impl Sim<'_, '_> {
             )
         };
         let pick = state.best.is_some_and(|pick| pick.lineage == lineage);
-        Some(json!([
+        Some((
             ceiling,
             reference_bound,
             table_value,
@@ -258,8 +274,8 @@ impl Sim<'_, '_> {
             reference_bound <= table_value * (1.0 + self.evaluator.margin),
             landed_distance,
             finished,
-            pick
-        ]))
+            pick,
+        ))
     }
 }
 
@@ -303,15 +319,15 @@ pub(super) struct ExactDeck {
 }
 
 impl ExactDeck {
-    fn audit_row(&self, kind: AuditKind, table_value: f64, landed_distance: f64) -> Value {
+    fn audit_row(&self, kind: AuditKind, table_value: f64, landed_distance: f64) -> AuditRow {
         let exact_value = self.value;
-        json!([
+        (
             kind as u8,
             table_value,
             exact_value,
             if exact_value > 0.0 { (exact_value - table_value) / exact_value } else { 0.0 },
             landed_distance,
-            self.finished
-        ])
+            self.finished,
+        )
     }
 }

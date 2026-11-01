@@ -6,8 +6,8 @@ import { stateKey } from '../engine.ts';
 import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
 import { starsOf, umaName } from '../veterans/names.ts';
 import { must } from '../must.ts';
-import type { ScheduleRow, SolverAnswer } from '../solver.ts';
-import type { ResultDeck } from '../loop/types.ts';
+import type { SolverAnswer } from '../solver.ts';
+import type * as Gen from '../gen/solver.ts';
 import type { SettingsView } from '../settings.ts';
 import type { ChosenCareer, JobLegacy, LineageNode, PlacesRecord, VetRecord } from '../veterans/store.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -60,346 +60,78 @@ export type CareerJob = {
    *  fixed): Use this on a builder's other career or the pair search's (`chosen`) */
   career?: string | undefined;
 };
-/** One career in a report (career/outcomes.rs `report`): the trainee and her parents, by legacy index. */
-export interface CareerReport {
-  trainee: CareerTrainee;
-  parents: [number, number];
-  /** the career's identity (`kept::career_id`: her uma, parents in order and deck) */
-  career?: string | undefined;
-  /** her six legacies */
-  slots: CareerSlot[];
-  /** per target, in the job's order */
-  targets: CareerTarget[];
-  /** the chance she lands every target */
-  p_all: number;
-  /** the chance she lands all but at most one */
-  p_minus1: number;
-  /** the targets she lands, expected */
-  expected: number;
-  bound: number;
-  deck: ResultDeck;
-  /** per pink the six legacies carry: the chance at least one of the two inheritance events passes it on, and its
-   *  carriers */
-  pinks: { group: number; q: number; carriers: number }[];
-  /** her aptitude grades (codes 1..8 = G..S) and her veteran's pink spark (pink.ts); `fire`: each legacy pink that can
-   *  fire at an April inspiration, its aptitude and chance (outcomes.rs `fire_json`) */
-  aptitudes: {
-    base: number[];
-    start: number[];
-    fire: { group: number; apt: number; p: number; slot: number; stars: number }[];
-    pink_gen: { group: number; p: number }[];
-  };
-  /** every G1 she could enter, in turn order (the search's best career and the plan's pick only) */
-  schedule: CareerScheduleRow[] | null;
-  /** [mask]: the chance of landing exactly the targets in mask (as `schedule`, up to 12 targets) */
-  outcome_sets: number[] | null;
-  /** her G1 wins, expected (as `schedule`) */
-  g1_wins: number | null;
-  /** a plan option: both parents are full veterans */
-  looped?: boolean;
-}
-/** A row of a career's schedule (career/schedule.rs): the loop schedule's row, one cell (hers), with the race's turn.
- */
-export type CareerScheduleRow = ScheduleRow & CareerScheduleFields;
-export interface CareerScheduleFields {
-  /** 0..71 */
-  turn: number;
-  /** the race's full name (`race`: as the chart shows it) */
-  name: string;
-  /** she runs it (false: she skips it) */
-  run: boolean;
-  skipped: boolean;
-  /** what she does that turn instead (a race's name, or "rest") */
-  instead: string;
-  /** her win chance (a fraction; null when she skips it) */
-  p: number | null;
-  /** a goal race of her scenario */
-  goal: boolean;
-}
-export interface CareerTrainee {
-  id: number;
-  name: string;
+// ---------- the solver's reports, generated from its Rust structs (src/gen/solver.ts), with what the page adds ----------
+/** A career's trainee as the page shows her: the solver's, and what the page sets on her (`oneOutfit`) */
+export type CareerTrainee = Omit<Gen.CareerTrainee, 'outfits'> & {
   /** her outfits that cover a target; the page puts the one it names first (`oneOutfit`) */
-  outfits: readonly { id: number; label: string }[];
-  covers: { group: number; level: number }[];
+  outfits: readonly Gen.OutfitLabel[];
   /** set by the page: no outfit covers a target, any would do */
   anyOutfit?: boolean;
   /** set by the page: what her popup says about the outfit */
   outfitNote?: string;
-}
-export interface CareerSlot {
-  kind: 'parent' | 'grandparent';
-  /** the parent's legacy index */
-  legacy: number;
-  /** a grandparent: which of the parent's two */
-  gp: number | null;
-  chara: number;
-  name: string;
-  /** relation points */
-  rel: number;
-  /** shared G1 wins, as points */
-  race: number;
-  /** affinity: rel + race */
-  aff: number;
-}
-export interface CareerTarget {
-  group: number;
-  /** the chance inheritance gives it */
-  q: number;
-  /** legacies with its spark */
-  carriers: number;
-  /** the chance she lands it */
-  p: number;
-  /** a gold the scenario hands out (`buy.scenario`) */
-  gold: boolean;
-  buy: CareerBuy;
-}
-/** How she buys a target and lands it as a spark (outcomes.rs `report`): the chance she buys it as gold and as white,
- *  lands each, and the sources; a gold the scenario hands out has `scenario` and the first four only. */
-export interface CareerBuy {
-  gold: number;
-  white: number;
-  land_gold: number;
-  land_white: number;
-  /** the deck hints its gold */
-  deck_gold?: number;
-  /** the deck hints its white, given it hints no gold */
-  deck_white?: number;
-  /** her own story events give it */
-  own_event?: number;
-  /** inspiration gives it */
-  inherit?: number;
-  /** her outfit's own skill: none, the white, the gold */
-  outfit?: 0 | 1 | 2;
-  scenario?: boolean;
-}
-/** One career of the plan's table (output.rs): a career report with its place in the plan. */
-export type PlanOption = CareerReport & PlanOptionFields;
-export interface PlanOptionFields {
-  /** her place in today's estimate (`roleText`) */
-  role: 'plan' | 'finish' | 'loop' | 'candidate' | 'builder';
-  /** the search's best career */
-  best_odds: boolean;
-  /** the plan's pick */
-  chosen: boolean;
-  /** both parents are full veterans */
-  looped: boolean;
-  /** scored from her own career search */
-  exact: boolean;
-  /** false: her career search was cut short, or her deck class breached its assumed cap */
-  proven?: boolean;
-  /** the named assumptions her proven career rests on (the status line states the plan job's, `planCaveat`; the table
-   *  adds none) */
-  assumes?: string[];
-  stage_cost: number | null;
-  /** the careers she saves toward a fully looped parent, net */
-  index: number | null;
-  saving: number | null;
-  /** the chance her result lowers the careers to a fully looped parent */
-  lift: number | null;
-  /** over her results that lower it, the stage candidate (uma id) whose side the route taken lifts most often and that
-   *  chance, and the chance the route has her own full veteran as a side (`roleText`); null where the row was not
-   *  scored */
-  lifts_side?: { uma: number | null; chance: number; own: number } | null;
-  /** the table's order */
-  score: number | null;
+};
+/** One career in a report (career/outcomes.rs `report`), her trainee as the page shows her, each target's buying read
+ *  as one record (`CareerBuy`) */
+export type CareerReport = Omit<Gen.CareerReport, 'trainee' | 'targets'> & {
+  trainee: CareerTrainee;
+  targets: CareerTarget[];
+};
+export type { CareerScheduleRow, CareerSlot, PairSearch } from '../gen/solver.ts';
+/** A target of a career, its buying read as one record */
+export type CareerTarget = Omit<Gen.CareerTarget, 'buy'> & { buy: CareerBuy };
+/** How she buys a target and lands it, as the page reads it: either of the solver's `TargetBuy`s (an uncertain
+ *  target's, with its sources; a scenario gold's, with `scenario`) as one record, each field absent where it does not
+ *  apply (either is assignable to it) */
+export type CareerBuy = Pick<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'> &
+  Partial<Omit<Gen.SourcedBuy, 'gold' | 'white' | 'land_gold' | 'land_white'>> &
+  Partial<Pick<Gen.ScenarioBuy, 'scenario'>>;
+/** A plan option's own fields (career/plan/output.rs), and the pair search's recommendation's, which the page sets on
+ *  the row it makes of it (`pairSearchRow`) */
+export type PlanOptionFields = Omit<Gen.PlanOption, keyof Gen.CareerReport> & {
   /** the pair search's recommendation (`pairSearchRow`): run as it is, its deck kept */
   pair_search?: boolean;
   /** its Saves per run in the pair search */
   pair_search_score?: number | null | undefined;
-}
+};
+/** One career of the plan's table: a career report with its place in the plan. */
+export type PlanOption = CareerReport & PlanOptionFields;
 /** A row of the Career choices table: a plan option, or a career of the search (without the plan's fields). */
 export type OptionRow = CareerReport & Partial<PlanOptionFields>;
-/** A parent on the plan's route (`trio_report` in plan/output.rs): her step to an all-targets veteran. */
-export interface RouteMember {
-  /** her name */
-  trainee: string | null;
-  /** the chance of landing every target today of the career her fresh side is from */
-  p: number;
-  /** that career's parents, by legacy index (null for a real full veteran) */
-  parents: [number, number] | null;
-  /** that career is another of her top careers, not her best today (`fresh_lineages`) */
-  alternative: boolean;
-  /** a search with both its parents fixed proved that career's odds */
-  proven: boolean;
-  /** the odds her continuation is anchored at */
-  p0: number;
-  /** she already has a full veteran (a poorer parent than a fresh one) */
-  has_full_veteran: boolean;
-  /** the route uses her existing full veteran: her step costs no careers */
-  real: boolean;
-  /** her effective ceiling, the odds her lifts approach (null when lam is 0: no building) */
-  p_inf: number | null;
-  /** the chance a building career lifts her odds, before it falls with the remaining gap */
-  lam: number;
-  /** the share of the remaining log-odds gap to p_inf that each lift closes */
-  phi: number;
-  /** the expected careers she spends building lifts (each building career lifts her odds only by chance) before
-   *  rerunning her best career; 0 when she does not build */
-  building_careers: number;
-  /** her odds once building stops */
-  p_switch: number;
-  /** the career id of the row her lifts are fitted from (null where she grinds, her continuation was given, or her step
-   *  is her cap's) */
-  builder?: string | null;
-  /** her step's expected careers (0 when `real`) */
-  careers: number;
-}
-/** The plan's report (the solver's `next`, career/plan/output.rs), or its refusal (`error`). */
-/** A route's A, B and C steps: the expected careers of each (plan/output.rs writes the three; an infinite cost, a step
- *  that cannot land, is written as null) */
-export type RouteCareers = [number | null, number | null, number | null];
-export interface PlanReport {
-  error?: string;
+/** The robustness check's report on the pick (plan/robust.rs), as the page keeps it from its follow-up jobs */
+export type PlanCheck = Gen.CheckReport;
+/** The plan (the solver's `next`, career/plan/output.rs), with what the page sets on it: its check (`checkPhase`), that
+ *  the check could not finish, why its searches proved nothing (`unprovenWhy`), the plan job's named assumptions */
+export type PlanReport = Omit<Gen.Plan, 'choice' | 'options' | 'robust'> & {
   /** the plan's pick */
   choice: CareerReport | null;
   /** by score, best first */
   options: PlanOption[];
-  /** expected careers to a fully looped parent with the veterans now */
-  v0: number | null;
-  /** today's cheapest route: its steps' trainees by name, their careers, and A's and B's sides (`side_key` in
-   *  career/plan/output.rs: "real:i" her veteran i, "current:i,j" her best career now, on veterans i and j, "alt:i,j"
-   *  another career of hers, on veterans i and j) */
-  v0_plan: {
-    a: string | null;
-    b: string | null;
-    c: string | null;
-    careers: RouteCareers;
-    sides?: string[];
-  } | null;
-  /** the cheapest routes, cheapest first; `near`: within 2% of V's (assumed), so about as cheap */
-  trios?: {
-    a: string | null;
-    b: string | null;
-    c: string | null;
-    careers: RouteCareers;
-    sides?: string[];
-    value: number;
-    near: boolean;
-  }[];
-  /** the route's A and B, in its order (empty without a route) */
-  members?: RouteMember[];
-  /** the career a roll is of (`next.roll`) */
-  outcomes: { trainee: number; parents: [number, number]; career?: string; uncv: number[]; fixed: number[] } | null;
-  /** a roll's saving over the plan's routes (`rollReq`) */
-  roll?: { y: number };
+  /** the robustness check on the pick, set by the page from its follow-up jobs (`checkPhase`) */
+  robust?: PlanCheck;
   /** set by the page: the robustness check could not finish (`checkPhase`) */
   check_unavailable?: boolean;
-  /** false: the plan's memory budget left out a route no batch could hold or a partner setup (career/plan/output.rs),
-   *  so its savings are lower bounds and its pick may not be the model's */
-  scoring_complete?: boolean;
-  /** the robustness check on the pick (plan/robust.rs), set by the page from its follow-up jobs (`checkPhase`): the
-   *  pick it is of, the variants left, whether every tested variant scores the pick highest (`stable`), the careers
-   *  (`keyOf`) the variants score highest (`contenders`), whether they disagree (`pick_varies`: the pick varies under
-   *  these variants, a sensitivity, not a tie); the within-trainee pair search once it has run (`pairs`: null before,
-   *  absent from a solver without it); `error` and `unavailable`: the worker kept no plan to check (robust.rs) */
-  robust?: {
-    plan: string;
-    pending: number;
-    stable: boolean;
-    contenders: string[];
-    pick_varies?: boolean;
-    pairs?: PairSearch | null;
-    scoring_complete?: boolean;
-    error?: string;
-    unavailable?: boolean;
-  };
-  /** the stage candidates and their continuations the plan was fitted to: a comparison passes it on unchanged
-   *  (`next.fit`), so the pool with her is priced the same way */
-  fit?: PlanFit;
   /** set by the page: why some of its career searches proved nothing (`unprovenWhy`) */
   unproven_why?: string[];
-  /** set by the page: the named assumptions any search of the plan job rests on (the job's `job_assumes`, kept with the
-   *  plan; `planCaveat`) */
-  job_assumes?: string[];
-}
-/** The within-trainee pair search (plan/robust.rs `pair_search`), one entry per trainee it ran for: the pick's, then
- *  each one a per-uma scenario scores highest. `shown`: the career she is weighed against (`keyOf`): for the pick's
- *  trainee the pick, for another her best-scoring shown career; `best_parents`: the legacy indices of her best pair by
- *  its best deck found so far; `score`: that pair's Saves per run after its deck was searched exactly;
- *  `margin_over_shown`: that less her shown career's; `margin_over_other_pairs`: that less the best other pair
- *  evaluated (null where there is none; neither margin certifies the best pair); `corner_margins`: the margin over her
- *  shown career under each building-curve corner; `scale_margins`: at her own odds x0.76 and x1.32 (both careers
- *  alike); `pairs_scored`: the pairs she was scored on, the best among them; `pairs_runnable`: the pairs she can run;
- *  `pairs_truncated`: the bound (`pair_bound` per uma) left some of them unscored, the rest by their all-target
- *  ceiling. `reason`: why she was searched ("pick", "scenario": a per-uma scenario's pick, "top": among the 4 best by
- *  score); `better_parents`: her best beats her shown career on another pair. `shared_coverage`: the umas without their
- *  own search the best pairs were tried for, and the careers so scored. `best`: the best (trainee, pair) by score over
- *  both, with its margin over the pick's trainee's shown career and, where it is not the pick, `versus_pick`: its
- *  margins over the pick (`career`) as fitted and in the two per-uma scenarios, and the scenarios that reverse the
- *  fitted margin's sign (`varies_under`: a sensitivity, deciding nothing). `recommendation`: the career to run, the
- *  higher-scoring of the pick and `best` as fitted (`source` "cross_trainee", "pick_trainee_pair" or "plan_pick"), with
- *  its pair-search `score` and `report` (a career report, its deck with it: the table's row for it, `pairSearchRow`).
- */
-export type PairSearch = {
-  trainees: {
-    trainee: string;
-    reason?: string;
-    shown: string;
-    best_parents: [number, number];
-    score: number;
-    margin_over_shown: number;
-    better_parents: boolean;
-    margin_over_other_pairs: number | null;
-    corner_margins?: number[];
-    scale_margins?: number[];
-    pairs_scored: number;
-    pairs_runnable?: number;
-    pairs_truncated?: boolean;
-  }[];
-  shared_coverage?: { trainees: number; careers: number; trainees_truncated?: number };
-  pair_bound?: number;
-  best?: {
-    trainee: string;
-    career: string;
-    best_parents: [number, number];
-    score: number;
-    margin_over_pick_trainee_shown: number | null;
-    versus_pick?: {
-      career: string;
-      margins: { nominal: number; pick_down: number; pick_up: number };
-      varies_under: string[];
-    };
-  } | null;
-  recommendation?: { career: string; source: string; score?: number | null; report?: CareerReport };
+  /** set by the page: the named assumptions any search of the plan job rests on (the job's `job_assumes`) */
+  job_assumes?: Gen.Assumes;
 };
-/** A plan's continuation fit, one entry per stage candidate (`[chara, lam, phi, pinf, ...]`, as the solver writes it;
+/** A route's A, B and C steps: the expected careers of each (null: an infinite cost, a step that cannot land) */
+export type RouteCareers = Gen.Route['careers'];
+export type { RouteMember } from '../gen/solver.ts';
+/** A plan's continuation fit, one entry per stage candidate (`[chara, lam, phi, pinf, p0]`, as the solver writes it;
  *  the page never reads inside it). */
-export type PlanFit = number[][];
-/** The career search's report (career/run.rs `search_output`); a refusal is a SolverRefusal (solver.ts). */
-export interface CareerSearch {
-  /** the best careers, best first */
+export type PlanFit = Gen.Plan['fit'];
+/** The career search's report (career/run.rs `search_output`), its careers as the page shows them, its plan (`next`)
+ *  or the plan's refusal; `pending`: set by the page, a quick comparison's stand-in while the search runs */
+export type CareerSearch = Omit<Gen.CareerSearch, 'results' | 'next'> & {
   results: CareerReport[];
-  /** careers it weighed */
-  candidates: number;
-  /** the best odds' order is certified */
-  proven_top: boolean;
-  /** false: a search of the job was cut short, or certified at a lower deck cap only */
-  complete?: boolean;
-  /** deck bands too large to check in full (each then certified at a lower cap) */
-  band_overflows?: number;
-  /** per deck class past its assumed cap: [class, ratio, cap] */
-  cap_exceeded?: [number, number, number][];
-  /** the deck searches rerun without the cap after a breach: those that proved nothing, and breaches left unanswered */
-  cap_rerun?: { searches: number; unproven: number; unanswered: number };
-  /** why the main search is not complete (`work_cap`, `band_overflow`, `cap_breach`) */
-  unproven?: string[];
-  /** why any search of the job is not complete */
-  job_unproven?: string[];
-  /** the named assumptions the main search's proof rests on (`two_feeder_cap`, `multi_feeder_cap`): still a proof
-   *  (proofs.ts `assumedText`) */
-  assumes?: string[];
-  /** the named assumptions any search of the job rests on */
-  job_assumes?: string[];
-  /** capped deck searches of the job that scored a deck past its class's cap */
-  cap_breaches?: number;
-  /** trainees (chara ids) whose deck class breached its cap, here or before */
-  cap_breached?: number[];
-  /** a plan job's plan */
-  next?: PlanReport;
-  /** set by the page: a quick comparison's stand-in while the search for her career runs */
+  next?: PlanReport | Gen.Refusal;
   pending?: boolean;
-}
+};
+/** What a career job the page sends is answered with: its search (with its plan when it asked for one), or, for a plan
+ *  job's roll or check that the worker answers from the plan it keeps, that alone (career/reply.rs `PlanFollowUp`); a
+ *  refusal is a SolverRefusal */
+export type CareerReply = CareerSearch | Gen.PlanFollowUp;
 // ---------- the job ----------
 /** A status line's button: its label and what it does. */
 export interface StatusAct {
@@ -552,5 +284,5 @@ export function pairBlock(
   if (v.borrowed && borrowChoice(s) !== 'allow') return 'setting';
   return '';
 }
-/** The solver's answer to a career job: its CareerSearch, or a refusal (`'error' in m.r`). */
-export type CareerAnswer = SolverAnswer<CareerSearch>;
+/** The solver's answer to a career job: its CareerReply, or a refusal (`'error' in m.r`). */
+export type CareerAnswer = SolverAnswer<CareerReply>;

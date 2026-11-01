@@ -96,6 +96,7 @@ mod audit;
 mod draw;
 pub(super) mod play;
 mod policies;
+pub(crate) mod report;
 
 fn d_policy() -> String {
     "greedy".into()
@@ -263,7 +264,7 @@ pub(crate) struct Sim<'env, 'data> {
     member_by_trainee: crate::uma::UmaTable<Option<usize>>,
     /// the simulator's own path (false when the plan uses this machinery): audits are taken only there
     record_audits: bool,
-    audits: Vec<Value>,
+    audits: Vec<report::SurrogateAudit>,
 }
 fn canon(character_id: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
     let (mut sparks, mut pinks, mut wins) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
@@ -282,9 +283,29 @@ fn family(legacy: &Legacy) -> String {
     parents.sort();
     format!("{}#{}", legacy.character_id, parents.join("#"))
 }
-fn leg_json(legacy: &Legacy) -> Value {
-    json!({"chara": legacy.character_id, "borrowed": legacy.borrowed, "sparks": legacy.sparks, "wins": legacy.wins, "pinks": legacy.pinks,
-           "parents": legacy.parents.iter().map(|parent| json!({"chara": parent.character_id, "sparks": parent.sparks, "wins": parent.wins, "pinks": parent.pinks})).collect::<Vec<_>>()})
+fn legacy_record(legacy: &Legacy) -> report::LegacyRecord {
+    report::LegacyRecord {
+        chara: legacy.character_id,
+        borrowed: legacy.borrowed,
+        sparks: legacy.sparks.clone(),
+        wins: legacy.wins.clone(),
+        pinks: legacy.pinks.clone(),
+        parents: legacy
+            .parents
+            .iter()
+            .map(|parent| report::AncestorRecord {
+                chara: parent.character_id,
+                sparks: parent.sparks.clone(),
+                wins: parent.wins.clone(),
+                pinks: parent.pinks.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// A veteran in the simulator's own career jobs (`legacies`), as a job sends her.
+fn legacy_job_value(legacy: &Legacy) -> Value {
+    serde_json::to_value(legacy_record(legacy)).unwrap()
 }
 
 impl<'env, 'data> Sim<'env, 'data> {

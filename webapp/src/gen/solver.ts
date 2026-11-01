@@ -31,9 +31,526 @@ export type AffinityDetail = {
 };
 
 /**
+ * A recorded parent of a veteran.
+ */
+export type AncestorRecord = {
+  chara: number;
+  sparks: Array<[number, number]>;
+  wins: Array<number>;
+  pinks: Array<[number, number]>;
+};
+
+/**
+ * Her aptitude grades (data.json `apt` order, codes 1..8 = G..S) and her veteran's pink spark.
+ */
+export type Aptitudes = {
+  /**
+   * her grades before any pink spark fires
+   */
+  base: [number, number, number, number, number, number, number, number, number, number];
+  /**
+   * the chance of each pink type on her veteran
+   */
+  pink_gen: Array<PinkTypeChance>;
+} & (PinkOutcomeReport | { outcomes: Array<WeightedPinkOutcome> });
+
+/**
+ * The surrogate's argmax career on the pool against the exact search's.
+ */
+export type ArgmaxCheck = {
+  pool: number;
+  sur: string;
+  sur_p: number;
+  sur_val: number | null;
+  ex: string | null;
+  ex_p: number | null;
+  proven: boolean;
+};
+
+/**
+ * One ascent: its start and end (trainee by name, parents), the score and rounds at its end (null: it found no
+ * career), the scorings it added and its time.
+ */
+export type AscentRun = {
+  start: [string, [number, number]];
+  end: [string, [number, number]] | null;
+  score: number | null;
+  rounds: number | null;
+  scorings: number;
+  ms: number;
+};
+
+/**
+ * The named assumptions a proof rests on beyond the derived bounds and the measured class caps (docs/SOLVER.md, *What
+ * "proven" rests on*), each that occurred; written as the list of their names (`Assumption`).
+ */
+export type Assumes = Array<'two_feeder_cap' | 'multi_feeder_cap'>;
+
+/**
+ * An outcome: her stars per job target, its chance, and each candidate's lift there.
+ */
+export type AuditedOutcome = { stars: Array<number>; chance: number; lifts: Array<CandidateLift> };
+
+/**
+ * The best (trainee, pair) by score, its margin over the pick's trainee's shown career, and where it is not the
+ * pick, its margins over the pick.
+ */
+export type BestPair = {
+  trainee: string;
+  career: string;
+  best_parents: [number, number];
+  score: number;
+  reason: string;
+  pick_trainee_shown: string | null;
+  margin_over_pick_trainee_shown: number | null;
+  versus_pick?: VersusPick;
+};
+
+/**
+ * A stage candidate the plan considered (`hint`: taken; `cut`: past the slots), with the odds it was ranked by and
+ * where they come from ("searched", "today", "full_loop").
+ */
+export type CandidateHint = { id: number; name: string; ceiling: number; basis: string };
+
+/**
+ * A candidate's odds with the outcome's veteran as a parent: now; as the plan's table read them (null: no original
+ * scoring) and as the rescored table does; her best on any partner by the table; and by an exact search, and whether
+ * it completed.
+ */
+export type CandidateLift = {
+  candidate: string;
+  pnow: number;
+  table: number | null;
+  table_rescored: number;
+  all_partners: number;
+  exact: number;
+  complete: boolean;
+};
+
+/**
+ * The cap-free reruns of the job's deck searches.
+ */
+export type CapRerun = {
+  /**
+   * searches rerun without the cap
+   */
+  searches: number;
+  /**
+   * of those, the ones that proved nothing
+   */
+  unproven: number;
+  /**
+   * breaches left unanswered (`CAP_RERUN=0`)
+   */
+  unanswered: number;
+  work: number;
+};
+
+/**
+ * A career job's own answer.
+ */
+export type CareerAnswer = Refusal | CareerSearch | PlanFollowUp | SimReply | StateOut | StateIn;
+
+/**
+ * A career job's answer: the job's own, or, for a job that carried a roll of a kept plan (`roll`), its own with the
+ * roll's beside it.
+ */
+export type CareerReply = CareerAnswer | CarriedRoll;
+
+/**
+ * One career (career/outcomes.rs `report`): the trainee and her parents (by legacy index), her legacies, per target
+ * odds, aptitudes, deck and schedule.
+ */
+export type CareerReport = {
+  trainee: CareerTrainee;
+  /**
+   * the career's identity (`kept::career_id`: her uma, parents in order and deck)
+   */
+  career: string;
+  parents: [number, number];
+  /**
+   * her six legacies
+   */
+  slots: Array<CareerSlot>;
+  /**
+   * per target, in the job's order
+   */
+  targets: Array<CareerTarget>;
+  /**
+   * the chance she lands every target
+   */
+  p_all: number;
+  /**
+   * the chance she lands all but at most one
+   */
+  p_minus1: number;
+  /**
+   * the targets she lands, expected
+   */
+  expected: number;
+  /**
+   * the search's ceiling on her odds
+   */
+  bound: number;
+  deck: ResultDeck;
+  /**
+   * per pink the six legacies carry: the chance at least one of the two inheritance events passes it on
+   */
+  pinks: Array<PinkInheritance>;
+  /**
+   * her aptitude grades and her veteran's pink spark (null: no pink career for her)
+   */
+  aptitudes: Aptitudes | null;
+  /**
+   * every G1 she could enter, in turn order (the search's best career and the plan's pick only)
+   */
+  schedule: Array<CareerScheduleRow> | null;
+  /**
+   * [mask]: the chance of landing exactly the targets in mask (as `schedule`, up to 12 targets)
+   */
+  outcome_sets: Array<number> | null;
+  /**
+   * her G1 wins, expected (as `schedule`)
+   */
+  g1_wins: number | null;
+};
+
+/**
+ * A G1 of a career's schedule: the loop schedule's row (one cell, hers; `shared`: a parent won it), with the race's
+ * turn and what she does.
+ */
+export type CareerScheduleRow = {
+  /**
+   * 0..71
+   */
+  turn: number;
+  /**
+   * the race's full name (`race`: as the chart shows it)
+   */
+  name: string;
+  /**
+   * she runs it
+   */
+  run: boolean;
+  /**
+   * she skips it
+   */
+  skipped: boolean;
+  /**
+   * what she does that turn instead (a race's name, or "rest"; null when she runs it)
+   */
+  instead: string | null;
+  /**
+   * her win chance, a fraction (null when she skips it)
+   */
+  p: number | null;
+  /**
+   * a goal race of her scenario
+   */
+  goal: boolean;
+  /**
+   * which of her parents won it
+   */
+  parents: [boolean, boolean];
+  /**
+   * 0 Junior, 1 Classic, 2 Senior
+   */
+  year: number;
+  /**
+   * the turn, as "Cl E-Apr" (year, Early or Late, month)
+   */
+  when: string;
+  /**
+   * its name, shortened; "A/B" when either of two races runs at the same odds
+   */
+  race: string;
+  /**
+   * two or more members run it (it builds affinity); in a career's schedule, a parent won it
+   */
+  shared: boolean;
+  cells: Array<ScheduleCell | null>;
+  /**
+   * how many members run it
+   */
+  runners: number;
+  /**
+   * the other race of an "A/B" pair (the career planner's rows: none)
+   */
+  alts: Array<string>;
+};
+
+/**
+ * The career search's answer (career/run.rs `search_output`, or one career as it is, `given`): its careers, its counts,
+ * and what the job's searches certified (`note_job_certificates`).
+ */
+export type CareerSearch = {
+  /**
+   * the best careers, best first (none for a plan job's `no_reports`)
+   */
+  results: Array<CareerReport>;
+  /**
+   * careers it weighed
+   */
+  candidates: number;
+  solved: number;
+  bounded: number;
+  scored: number;
+  skipped: number;
+  /**
+   * the ceiling of every career left unsolved (null: none left, or one career given)
+   */
+  next_bound: number | null;
+  /**
+   * false: a search of the job was cut short, or certified at a lower deck cap only
+   */
+  complete: boolean;
+  /**
+   * the best odds' order is certified
+   */
+  proven_top: boolean;
+  /**
+   * the deck cap certified
+   */
+  cap: number;
+  /**
+   * the assumed cap per deck class
+   */
+  class_caps: [number, number, number, number];
+  work: SearchWork;
+  /**
+   * one career reported as it is (`career`): no search weighed it against any other
+   */
+  given?: boolean;
+  /**
+   * why the main search is not complete
+   */
+  unproven?: Unproven;
+  /**
+   * the named assumptions the main search's proof rests on beyond the derived bounds and the measured class caps
+   * (docs/SOLVER.md, *What "proven" rests on*): still a proof
+   */
+  assumes?: Assumes;
+  /**
+   * a comparison's job
+   */
+  compare?: boolean;
+  /**
+   * a plan job's plan
+   */
+  next?: PlanReply;
+  /**
+   * the solver's time in seconds (0 in the browser build, which has no clock here)
+   */
+  timing_s: number;
+  /**
+   * deck bands too large to check in full (each then certified at a lower cap)
+   */
+  band_overflows?: number;
+  /**
+   * per deck class past its assumed cap: [class, ratio, cap]
+   */
+  cap_exceeded?: Array<[number, number, number]>;
+  /**
+   * a `cap_free` job
+   */
+  cap_free?: boolean;
+  /**
+   * the deck searches rerun without the cap after a breach
+   */
+  cap_rerun?: CapRerun;
+  /**
+   * capped deck searches of the job that scored a deck past its class's cap
+   */
+  cap_breaches?: number;
+  /**
+   * trainees (chara ids) whose deck class breached its cap, here or before
+   */
+  cap_breached?: Array<number>;
+  /**
+   * the largest exact / product odds of a deck past its class's cap within its nested-chain bound
+   */
+  nested_max_ratio?: number;
+  /**
+   * the named assumptions any search of the job rests on
+   */
+  job_assumes?: Assumes;
+  /**
+   * why any search of the job is not complete
+   */
+  job_unproven?: Unproven;
+};
+
+/**
+ * One of a career's six legacies.
+ */
+export type CareerSlot = {
+  kind: LegacyKind;
+  /**
+   * the parent's legacy index
+   */
+  legacy: number;
+  /**
+   * a grandparent: which of the parent's two (null: a parent)
+   */
+  gp: number | null;
+  chara: number;
+  name: string;
+  /**
+   * relation points
+   */
+  rel: number;
+  /**
+   * shared G1 wins, as points
+   */
+  race: number;
+  /**
+   * affinity: rel + race
+   */
+  aff: number;
+  /**
+   * her spark's stars per target, in the job's order
+   */
+  stars: Array<number>;
+  /**
+   * her pink sparks: [group, stars]
+   */
+  pinks: Array<[number, number]>;
+};
+
+/**
+ * One target of a career.
+ */
+export type CareerTarget = {
+  group: number;
+  /**
+   * the chance inheritance gives it
+   */
+  q: number;
+  /**
+   * legacies with its spark
+   */
+  carriers: number;
+  /**
+   * the chance she lands it
+   */
+  p: number;
+  /**
+   * a gold the scenario hands out
+   */
+  gold: boolean;
+  buy: TargetBuy;
+};
+
+/**
+ * The trainee of a career and her outfit.
+ */
+export type CareerTrainee = {
+  id: number;
+  name: string;
+  /**
+   * her outfits that cover a target as this career's
+   */
+  outfits: Array<OutfitLabel>;
+  covers: Array<TargetCover>;
+  /**
+   * the outfit (card id) her schedule runs
+   */
+  schedule_outfit: number;
+};
+
+/**
+ * A job's answer with the roll it carried (`run_carried_roll`).
+ */
+export type CarriedRoll = { roll: RollReply } & (Refusal | CareerSearch | PlanFollowUp | SimReply | StateOut | StateIn);
+
+/**
+ * The plan's robustness check so far (`next.robust`), or why there is none.
+ */
+export type CheckReply = CheckReport | { error: string; unavailable: boolean } | Refusal;
+
+/**
+ * The check's report: the plan's pick and rows (career ids), each variant done, and the pair search once it ran.
+ */
+export type CheckReport = {
+  /**
+   * the plan's pick
+   */
+  plan: string;
+  rows: Array<string>;
+  variants: Array<VariantReport>;
+  /**
+   * the variants left
+   */
+  pending: number;
+  /**
+   * every variant done scores the pick highest
+   */
+  stable: boolean;
+  /**
+   * each variant's strict argmax, in the order first picked
+   */
+  contenders: Array<string>;
+  /**
+   * the variants disagree: the pick varies under them (a sensitivity, not a tie)
+   */
+  pick_varies: boolean;
+  check_ms: number;
+  /**
+   * the within-trainee pair search (null before it ran)
+   */
+  pairs: PairSearch | null;
+  /**
+   * every scoring of the check so far was complete
+   */
+  scoring_complete: boolean;
+  /**
+   * why the pair search asked for is not there
+   */
+  pairs_error?: string;
+};
+
+/**
+ * The deck that reached a class's largest exact / product odds: its trainee and cards by name.
+ */
+export type ClassMaxDeck = { trainee: string; cards: Array<string> };
+
+/**
+ * A finalist's deck: its P(all)-best cached deck's score, its best-scoring cached deck's (and whether that is another
+ * deck), the exact search's career's, and which was kept ("searched" or "cached").
+ */
+export type DeckChoice = {
+  p_all_deck_score: number;
+  best_cached_score: number;
+  score_deck_differs: boolean;
+  searched_score: number;
+  kept: string;
+};
+
+/**
  * A deck job's answer.
  */
 export type DeckReply = Refusal | Skyline | LoopReport;
+
+/**
+ * Her best cached deck on the pair, scored with its saving split by outcome class, beside the plain scoring.
+ */
+export type Decomposed = {
+  trainee: string;
+  parents: [number, number];
+  p_all: number;
+  saving: number;
+  score: number;
+  /**
+   * routes the scoring's memory budget dropped
+   */
+  routes_dropped: number;
+  score_plain: number;
+  scoring_complete: boolean;
+  /**
+   * the outcome classes, by contribution, most first
+   */
+  classes: Array<OutcomeClassReport>;
+};
 
 /**
  * What the answer rests on.
@@ -83,9 +600,118 @@ export type ExactSummary = {
 };
 
 /**
+ * A career an action ran: its id (as the report it was built from names it), P(all) and landed-set chances.
+ */
+export type ExecutedCareer = { career: string; p_all: number; outcome_sets: Array<number> };
+
+/**
+ * How a finalist's career was chosen and searched.
+ */
+export type FinalistReport = {
+  career: string;
+  score: number;
+  /**
+   * how its exact search ended
+   */
+  search: string;
+  deck_choice: DeckChoice;
+};
+
+/**
+ * What a follow-up answers.
+ */
+export type FollowUp = { roll: RollReply } | { robust: CheckReply };
+
+/**
+ * The greedy audit at a pick change: the exact career search's pick against the surrogate's, with audit rows.
+ */
+export type GreedyAudit = {
+  t: number;
+  pool: number;
+  sur: string;
+  sur_p: number;
+  ex: string | null;
+  ex_p: number | null;
+  differs: boolean;
+  proven: boolean;
+  rows: Array<[number, number, number, number, number, boolean]>;
+};
+
+/**
+ * The index policy's plans in a run: their count and times, the pick's role and whether it was the best odds; with
+ * `act_on` "pair_search", what each plan's action ran.
+ */
+export type IndexRecord = {
+  plans: number;
+  plan_s: Array<number>;
+  /**
+   * the pick's role, per plan, counted
+   */
+  roles: { [key in string]: number };
+  /**
+   * plans whose pick was the search's best odds
+   */
+  best_odds: number;
+  /**
+   * `act_on` "pair_search": per recommendation `source`, the plans that acted on it
+   */
+  acted_on?: { [key in string]: number };
+  /**
+   * the careers they named
+   */
+  careers?: Array<string>;
+  check_s?: Array<number>;
+  career_job_s?: Array<number>;
+  /**
+   * the careers that ran
+   */
+  executed?: Array<ExecutedCareer>;
+};
+
+/**
+ * The joint-lift oracle (`next.oracle` "joint"): V on a joint two-side lattice of the cheapest trios' continuations,
+ * beside the plan's.
+ */
+export type JointOracle = {
+  /**
+   * the plan's V
+   */
+  v0: number;
+  /**
+   * the cheapest trio's value on the lattice (null: no trio)
+   */
+  v0_joint: number | null;
+  /**
+   * the cheapest with each side's lift alone
+   */
+  v0_separate: number;
+  above_anchor: boolean;
+  /**
+   * the lattice's cheapest trio is not V's
+   */
+  best_trio_changes: boolean;
+  trios: Array<OracleTrio>;
+  oracle_ms: number;
+  scoring_complete: boolean;
+};
+
+/**
  * Whose legacy a slot is.
  */
 export type LegacyKind = 'parent' | 'grandparent';
+
+/**
+ * A veteran as a job records her (`legacies`): what the simulator's pool holds at a run's end, and what it sends its
+ * in-process jobs (a copy: the pool changes as the path goes on).
+ */
+export type LegacyRecord = {
+  chara: number;
+  borrowed: boolean;
+  sparks: Array<[number, number]>;
+  wins: Array<number>;
+  pinks: Array<[number, number]>;
+  parents: Array<AncestorRecord>;
+};
 
 /**
  * One legacy slot of a career.
@@ -113,6 +739,37 @@ export type LegacySlot = {
    */
   proc: number;
 };
+
+/**
+ * The legal pairs per allowed uma with a cached deck: how many umas, the pairs in all, and the least, median and most
+ * of an uma's (null: no uma).
+ */
+export type LegalPairs = { umas: number; total: number; min: number | null; median: number | null; max: number | null };
+
+/**
+ * The lift audit of one row (`next.audit_lifts`): per outcome landing a target, each candidate's odds with her
+ * veteran as a parent, as the plan's tables read them and as exact searches find them.
+ */
+export type LiftAudit = {
+  trainee: string;
+  origin: string;
+  parents: [number, number];
+  score: number | null;
+  outcomes: Array<AuditedOutcome>;
+};
+
+/**
+ * The lift audit (`next.audit_lifts`), or the browser build's refusal of it (the native loopopt runs it).
+ */
+export type LiftAuditReply = Array<LiftAudit> | Refusal;
+
+export type LiftedCandidate = { candidate: string; odds_now: number; lifted_to: number; builds_there: boolean };
+
+/**
+ * Over a row's outcomes that lower V: the stage candidate (uma id) whose side the route taken lifts most often and
+ * that chance (null and 0 where none), and the chance the route has her own full veteran as a side.
+ */
+export type LiftsSide = { uma: number | null; chance: number; own: number };
 
 /**
  * One career of the loop: trainee `t` bred from parents `p`, who share grandparent `x`.
@@ -155,6 +812,11 @@ export type Lineage = {
    */
   fixed_gold: number;
 };
+
+/**
+ * A loop's audit row, every `audit_every` careers.
+ */
+export type LoopAudit = { t: number; pool: number; rows: [[number, number, number, number, number, boolean]] };
 
 /**
  * A loop member as a result names her.
@@ -260,6 +922,59 @@ export type LoopResult = {
 export type MemberOutfits = { outfits: Array<OutfitLabel>; covers: Array<TargetCover> };
 
 /**
+ * A row's place in the plan.
+ */
+export type OptionRole = 'plan' | 'finish' | 'loop' | 'candidate' | 'builder';
+
+/**
+ * The oracle asked for (`next.oracle`), or the browser build's refusal of it.
+ */
+export type OracleReport = JointOracle | SequencedOracle | Refusal;
+
+/**
+ * A trio (A, B, C by name), today's value, its value on the lattice (today's where it has none, `lattice` false);
+ * with a lattice, its value with each side's lift alone, whether a side's odds pass its anchor, whether one builder
+ * lifts both, each builder's lift chances (both sides, the first only, the second only) and the sides' lam.
+ */
+export type OracleTrio = {
+  trio: [string, string, string];
+  v: number;
+  v_joint: number;
+  lattice: boolean;
+  v_separate?: number;
+  above_anchor?: boolean;
+  same_builder?: boolean;
+  lifts?: Array<[number, number, number]>;
+  lam?: [number, number];
+};
+
+/**
+ * One order of a trio's sides: the first as today, the second after her, C on the two.
+ */
+export type Ordered = {
+  /**
+   * The second side's careers, and whether her best career with the first's veteran was cheaper than her side today.
+   */
+  second: number;
+  second_moved: boolean;
+  c: number;
+  total: number;
+};
+
+/**
+ * An outcome class: whether her veteran is full there, its chance, its contribution to the saving (chance x mean
+ * saving) and mean saving, and per lifted candidate her odds now, the mean odds she is lifted to and whether her step
+ * still builds at them.
+ */
+export type OutcomeClassReport = {
+  full: boolean;
+  chance: number;
+  contribution: number;
+  mean_saving: number;
+  lifted: Array<LiftedCandidate>;
+};
+
+/**
  * An outfit by card id and label (id 0: any outfit).
  */
 export type OutfitLabel = { id: number; label: string };
@@ -283,14 +998,449 @@ export type PDeck = {
 };
 
 /**
+ * The pair ascent (`next.pair_ascent`): coordinate ascent over (trainee, parent pair) by score from each start.
+ */
+export type PairAscent = {
+  legal_pairs: LegalPairs;
+  ascents: Array<AscentRun>;
+  scorings: number;
+  /**
+   * the cost per scoring and per P(all) evaluation over every ascent (null: none)
+   */
+  ms_per_scoring: number | null;
+  ms_per_odds: number | null;
+  ascent_ms: number;
+  scoring_complete: boolean;
+};
+
+/**
+ * One requested (chara, pair) of the decomposition (`next.pair_decompose`), or why it has none.
+ */
+export type PairDecomposition = Decomposed | Refusal;
+
+/**
  * Two members: their relation points and expected shared G1 wins.
  */
 export type PairDetail = { a: number; b: number; rel: number; wins: number };
 
 /**
+ * The within-trainee pair search (`next.pair_search`): one report per trainee it ran for, the shared-pair finalists,
+ * the best (trainee, pair) by score and the career it recommends.
+ */
+export type PairSearch = {
+  trainees: Array<TraineePairsReport>;
+  shared: Array<SharedPair>;
+  shared_coverage: SharedCoverage;
+  /**
+   * the best (trainee, pair) by score over both phases (null: none)
+   */
+  best: BestPair | null;
+  recommendation: Recommendation;
+  /**
+   * trainees the work limit left out of phase 1
+   */
+  skipped_for_work: Array<string>;
+  /**
+   * the pairs scored per trainee at most
+   */
+  pair_bound: number;
+  pairs_ms: number;
+  scoring_complete: boolean;
+};
+
+/**
+ * The pair search's deterministic work: the outcomes its scorings evaluated and the deck searches' nodes.
+ */
+export type PairSearchWork = { outcomes: number; nodes: number };
+
+/**
+ * The pair sweep (`next.pair_sweep`): the best-scoring trainees' pairs by ceiling, each with her best cached deck
+ * there scored.
+ */
+export type PairSweep = { trainees: Array<SweptTrainee>; sweep_ms: number; scoring_complete: boolean };
+
+/**
+ * A pick change: career index, the pick's key, trainee and odds, the pool's size and the path's survival.
+ */
+export type PickChange = { t: number; pick: string; trainee: string; p: number; pool: number; s: number };
+
+/**
+ * A legacy pink that can fire: its group and aptitude, its chance, the legacy slot and its stars.
+ */
+export type PinkFireReport = { group: number; apt: number; p: number; slot: number; stars: number };
+
+/**
+ * A pink (aptitude) spark the legacies carry.
+ */
+export type PinkInheritance = {
+  group: number;
+  /**
+   * the chance at least one of the two inheritance events passes it on
+   */
+  q: number;
+  /**
+   * legacies carrying it
+   */
+  carriers: number;
+};
+
+/**
+ * A start's grades and the legacy pinks that can fire at an April inspiration.
+ */
+export type PinkOutcomeReport = {
+  start: [number, number, number, number, number, number, number, number, number, number];
+  fire: Array<PinkFireReport>;
+};
+
+/**
+ * A pink type's chance on her veteran.
+ */
+export type PinkTypeChance = { group: number; p: number };
+
+/**
+ * The page's next career: its options by score, its pick, and today's cheapest route to a fully looped parent.
+ */
+export type Plan = {
+  /**
+   * the plan's pick (null: no row)
+   */
+  choice: CareerReport | null;
+  rule: PlanRule;
+  mode: PlanMode;
+  /**
+   * expected careers to a fully looped parent with the veterans now (null: no route lands)
+   */
+  v0: number | null;
+  /**
+   * the career a roll is of (`next.roll`; null where the pick was not scored)
+   */
+  outcomes: RollCareer | null;
+  /**
+   * the route's A and B, in its order (empty without a route)
+   */
+  members: Array<RouteMember>;
+  /**
+   * the cheapest routes, cheapest first
+   */
+  trios: Array<RankedRoute>;
+  /**
+   * today's cheapest route (null: none)
+   */
+  v0_plan: Route | null;
+  /**
+   * the stage candidates and their continuations the plan was fitted to: [chara, lam, phi, pinf, p0]
+   */
+  fit: Array<[number, number, number, number, number]>;
+  /**
+   * per candidate (chara id, as text) whose continuation was fitted to this pool, the two builders (chara ids) behind
+   * her full-loop ceiling
+   */
+  pinf_builders: { [key in string]: [number, number] };
+  /**
+   * per candidate (chara id, as text) whose step is her kept cap's, its careers and her odds then
+   */
+  step_caps: { [key in string]: StepCap };
+  loop_members: Array<UmaName>;
+  loop_note: string | null;
+  hint: Array<CandidateHint>;
+  cut: Array<CandidateHint>;
+  side_only: Array<UmaName>;
+  umas_scored: number;
+  umas_searched: number;
+  umas_certified: number;
+  umas_unproven: number;
+  work: PlanWork;
+  sur: number;
+  sur_diff: Array<SurrogateDifference>;
+  loop_ms: number;
+  search_ms: number;
+  combo_ms: number;
+  index_ms: number;
+  total_ms: number;
+  options: Array<PlanOption>;
+  /**
+   * routes the scorings' memory budget left out (each lowers its row's saving, never raises it)
+   */
+  routes_dropped: number;
+  /**
+   * of those, the ones no check cleared (each could have lowered a row's V after her)
+   */
+  routes_dropped_uncertified: number;
+  /**
+   * false where the memory budget left out something that could move a score: the savings are then lower bounds
+   */
+  scoring_complete: boolean;
+  /**
+   * a roll sent with the plan job (`next.roll`), answered from the state the plan just kept
+   */
+  roll?: RollReply;
+  /**
+   * measurement (`next.oracle`): a diagnostic V beside the plan's
+   */
+  oracle?: OracleReport;
+  /**
+   * measurement (`next.pair_sweep`)
+   */
+  pair_sweep?: PairSweep;
+  /**
+   * measurement (`next.pair_ascent`)
+   */
+  pair_ascent?: PairAscent;
+  /**
+   * measurement (`next.pair_decompose`)
+   */
+  pair_decompose?: Array<PairDecomposition>;
+  /**
+   * the robustness check (`next.robust`), when the plan job asks it
+   */
+  robust?: CheckReply;
+  /**
+   * measurement (`next.audit_lifts`)
+   */
+  lift_audit?: LiftAuditReply;
+  /**
+   * measurement (`next.proxy_check`)
+   */
+  proxy_check?: ProxyCheck;
+};
+
+/**
+ * A plan's roll or check answered from the worker's kept state.
+ */
+export type PlanFollowUp = { next: FollowUp };
+
+/**
+ * What the plan's routes are (always trios: A and B building, C finishing).
+ */
+export type PlanMode = 'trio';
+
+/**
+ * One career of the plan's table: a career report with its place in the plan.
+ */
+export type PlanOption = {
+  /**
+   * her place in today's estimate
+   */
+  role: OptionRole;
+  /**
+   * the search's best career
+   */
+  best_odds: boolean;
+  /**
+   * the plan's pick
+   */
+  chosen: boolean;
+  /**
+   * both parents are full veterans
+   */
+  looped: boolean;
+  /**
+   * scored from her own career search (false: a builder the plan could not turn on, from her class's decks)
+   */
+  exact: boolean;
+  /**
+   * a builder's next best career, from her cached decks
+   */
+  alternative?: boolean;
+  /**
+   * false: her career search was cut short, or her deck class breached its assumed cap
+   */
+  proven?: boolean;
+  /**
+   * false: an alternative row never searched on its pair
+   */
+  searched?: boolean;
+  /**
+   * the named assumptions her proven career rests on
+   */
+  assumes?: Assumes;
+  /**
+   * her stage step's careers (null: not a stage candidate)
+   */
+  stage_cost: number | null;
+  /**
+   * the careers she saves toward a fully looped parent, net (null: not scored)
+   */
+  index: number | null;
+  saving: number | null;
+  /**
+   * the chance her result lowers the careers to a fully looped parent
+   */
+  lift: number | null;
+  /**
+   * over her results that lower it, the side lifted most often (null where the row was not scored)
+   */
+  lifts_side: LiftsSide | null;
+  /**
+   * the table's order (null: nothing scored)
+   */
+  score: number | null;
+  trainee: CareerTrainee;
+  /**
+   * the career's identity (`kept::career_id`: her uma, parents in order and deck)
+   */
+  career: string;
+  parents: [number, number];
+  /**
+   * her six legacies
+   */
+  slots: Array<CareerSlot>;
+  /**
+   * per target, in the job's order
+   */
+  targets: Array<CareerTarget>;
+  /**
+   * the chance she lands every target
+   */
+  p_all: number;
+  /**
+   * the chance she lands all but at most one
+   */
+  p_minus1: number;
+  /**
+   * the targets she lands, expected
+   */
+  expected: number;
+  /**
+   * the search's ceiling on her odds
+   */
+  bound: number;
+  deck: ResultDeck;
+  /**
+   * per pink the six legacies carry: the chance at least one of the two inheritance events passes it on
+   */
+  pinks: Array<PinkInheritance>;
+  /**
+   * her aptitude grades and her veteran's pink spark (null: no pink career for her)
+   */
+  aptitudes: Aptitudes | null;
+  /**
+   * every G1 she could enter, in turn order (the search's best career and the plan's pick only)
+   */
+  schedule: Array<CareerScheduleRow> | null;
+  /**
+   * [mask]: the chance of landing exactly the targets in mask (as `schedule`, up to 12 targets)
+   */
+  outcome_sets: Array<number> | null;
+  /**
+   * her G1 wins, expected (as `schedule`)
+   */
+  g1_wins: number | null;
+};
+
+/**
+ * The plan (`next`), or why there is none.
+ */
+export type PlanReply = Refusal | Plan;
+
+/**
+ * What the plan's rule is (always the index rule).
+ */
+export type PlanRule = 'index';
+
+/**
+ * The plan's own work: deck-search nodes and exact scorings, the deck caps' certificates, and its counters.
+ */
+export type PlanWork = {
+  nodes: number;
+  exact: number;
+  max_ratio: number;
+  class_max_ratio: [number, number, number, number];
+  class_max_deck: [ClassMaxDeck | null, ClassMaxDeck | null, ClassMaxDeck | null, ClassMaxDeck | null];
+  cap: number;
+  class_caps: [number, number, number, number];
+  /**
+   * the plan's timers and work counters by name
+   */
+  prof: { [key in string]: number };
+};
+
+/**
+ * The proxy check (`next.proxy_check`): each row's proxy beside her exact career.
+ */
+export type ProxyCheck = {
+  /**
+   * the stage candidates, by name
+   */
+  cands: Array<string>;
+  rows: Array<ProxyRow>;
+  /**
+   * the plan this checks prices builders through proxies at all
+   */
+  plan_uses_proxies: boolean;
+};
+
+/**
+ * A row's exact career against the proxy the plan would have used: their values, scores and lift efficiencies per
+ * candidate.
+ */
+export type ProxyRow = {
+  trainee: string;
+  /**
+   * base, looped, nb, alternative or fallback (`RowOrigin::name`)
+   */
+  origin: string;
+  looped: boolean;
+  /**
+   * a stage candidate
+   */
+  cand: boolean;
+  /**
+   * her deck class (an uma index)
+   */
+  class: number;
+  exact_val: number;
+  proxy_val: number | null;
+  same_pair: boolean;
+  same_deck: boolean;
+  score: number | null;
+  proxy_score: number | null;
+  eff: Array<number>;
+  proxy_eff: Array<number>;
+};
+
+/**
+ * One of the cheapest routes, with its value and whether it is about as cheap as V's.
+ */
+export type RankedRoute = {
+  value: number;
+  /**
+   * within NEAR_TRIO_SHARE of V's
+   */
+  near: boolean;
+  a: string | null;
+  b: string | null;
+  c: string | null;
+  /**
+   * each step's expected careers (null: infinite, a step that cannot land)
+   */
+  careers: [number | null, number | null, number | null];
+  sides: [string, string];
+};
+
+/**
  * A deck by its trainee and cards.
  */
 export type RatioDeck = { trainee: number; cards: Array<string> };
+
+/**
+ * The career the page recommends: the higher-scoring of the plan's pick and the best pair, as fitted.
+ */
+export type Recommendation = {
+  career: string;
+  trainee: string;
+  trainee_id: number;
+  parents: [number, number];
+  /**
+   * "cross_trainee", "pick_trainee_pair" or "plan_pick"
+   */
+  source: string;
+  /**
+   * its pair-search score (null: the plan's pick)
+   */
+  score: number | null;
+  report: CareerReport;
+};
 
 /**
  * Why a job was not done (a bad request, a job outside the search's limits, nothing to search). Only a refusal
@@ -381,6 +1531,154 @@ export type ResultLoop = {
 };
 
 /**
+ * A roll's answer from the plan's kept roll state, with its time and counters.
+ */
+export type RollAnswer = {
+  ms: number;
+  /**
+   * the roll's own timers and counters
+   */
+  prof: { [key in string]: number };
+  /**
+   * answered from the state the plan job just kept (`next.roll` sent with the plan)
+   */
+  planned?: boolean;
+} & ({ y: number } | Refusal);
+
+/**
+ * The career a roll is of: the pick, her uncertain targets and the scenario's guaranteed ones (job-target indices).
+ */
+export type RollCareer = {
+  trainee: number;
+  parents: [number, number];
+  career: string;
+  uncv: Array<number>;
+  fixed: Array<number>;
+};
+
+/**
+ * A roll of the plan's pick (`next.roll`), or why there is none.
+ */
+export type RollReply = RollAnswer | Refusal;
+
+/**
+ * A rotation's keep-or-replace decision at its position: the surrogate's values of the previous veteran and the new
+ * one, the exact values of both, and whether the two agree on the decision.
+ */
+export type RotationAudit = { t: number; rotation: [number, number, number, number, boolean] };
+
+/**
+ * A route to a fully looped parent: A, B (the cheaper step first) and C by name, their steps' expected careers, and
+ * A's and B's sides ("real:i" her veteran i, "current:i,j" her best career now on veterans i and j, "alt:i,j"
+ * another career of hers).
+ */
+export type Route = {
+  a: string | null;
+  b: string | null;
+  c: string | null;
+  /**
+   * each step's expected careers (null: infinite, a step that cannot land)
+   */
+  careers: [number | null, number | null, number | null];
+  sides: [string, string];
+};
+
+/**
+ * A parent on the plan's route (A or B): her step to an all-targets veteran.
+ */
+export type RouteMember = {
+  /**
+   * her name (null: no uma)
+   */
+  trainee: string | null;
+  /**
+   * the chance of landing every target today of the career her fresh side is from
+   */
+  p: number;
+  /**
+   * that career's parents, by legacy index (null for a real full veteran)
+   */
+  parents: [number, number] | null;
+  /**
+   * that career is another of her top careers, not her best today
+   */
+  alternative: boolean;
+  /**
+   * her step is her kept cap's (`caps`), cheaper than her continuation's
+   */
+  capped: boolean;
+  /**
+   * a search with both its parents fixed proved that career's odds
+   */
+  proven: boolean;
+  /**
+   * she already has a full veteran (a poorer parent than a fresh one)
+   */
+  has_full_veteran: boolean;
+  /**
+   * the route uses her existing full veteran: her step costs no careers
+   */
+  real: boolean;
+  /**
+   * her effective ceiling, the odds her lifts approach (null when lam is 0: no building)
+   */
+  p_inf: number | null;
+  /**
+   * the chance a building career lifts her odds, before it falls with the remaining gap
+   */
+  lam: number;
+  /**
+   * the share of the remaining log-odds gap to p_inf that each lift closes
+   */
+  phi: number;
+  /**
+   * the odds her continuation is anchored at
+   */
+  p0: number;
+  /**
+   * the expected careers she spends building lifts before rerunning her best career; 0 when she does not build
+   */
+  building_careers: number;
+  /**
+   * her odds once building stops
+   */
+  p_switch: number;
+  /**
+   * the career id of the row her lifts are fitted from (null where she grinds, her continuation was given, or her
+   * step is her cap's)
+   */
+  builder: string | null;
+  /**
+   * her step's expected careers (0 when `real`; null: infinite)
+   */
+  careers: number | null;
+};
+
+/**
+ * A sample's mean, standard deviation, 95% interval (Student's t), extremes and size.
+ */
+export type RunStats = { n: number; mean: number; sd: number; ci95: [number, number]; min: number; max: number };
+
+/**
+ * A scenario gold: bought for sure, landing at the gold rate.
+ */
+export type ScenarioBuy = {
+  gold: number;
+  white: number;
+  land_gold: number;
+  land_white: number;
+  /**
+   * always true
+   */
+  scenario: boolean;
+};
+
+/**
+ * Margins under the nominal model and the two per-uma scenarios.
+ */
+export type ScenarioMargins = { nominal: number; pick_down: number; pick_up: number };
+
+/**
  * One member's attempt at a scheduled race.
  */
 export type ScheduleCell = {
@@ -443,9 +1741,259 @@ export type ScheduleRow = {
 };
 
 /**
+ * A cached deck on a pair: its P(all) and its career's score.
+ */
+export type ScoredDeck = { p_all: number; score: number };
+
+/**
+ * A search's own work: deck-search nodes and exact scorings (0 for a search kept from an earlier job).
+ */
+export type SearchWork = { nodes: number; exact: number };
+
+/**
+ * The sequenced oracle (`next.oracle` "sequenced"): the cheapest trios with their sides made in turn, beside V.
+ */
+export type SequencedOracle = {
+  v0: number;
+  /**
+   * the cheapest sequenced value (null: no trio)
+   */
+  v0_sequenced: number | null;
+  best_trio_changes: boolean;
+  trios: Array<SequencedTrio>;
+  rows: SequencedRows;
+  oracle_ms: number;
+};
+
+/**
+ * The top rows rescored against the trios at their sequenced values, beside their scores today, and the gaps between
+ * consecutive ones.
+ */
+export type SequencedRows = {
+  v0: number;
+  trainees: Array<string>;
+  score: Array<number>;
+  score_sequenced: Array<number>;
+  gaps: Array<number>;
+  gaps_sequenced: Array<number>;
+  scoring_complete: boolean;
+};
+
+/**
+ * A trio (A, B, C by name), its sides' and C's careers, today's value, each order's (A first, B first; null where
+ * the order changes nothing or no C is legal) and the best of them.
+ */
+export type SequencedTrio = {
+  trio: [string, string, string];
+  sides: [number, number];
+  c: number;
+  v: number;
+  first_a: Ordered | null;
+  first_b: Ordered | null;
+  v_sequenced: number;
+};
+
+/**
+ * Phase 2's reach: the trainees tried, the careers scored, the pairs they could run, the trainees the bound cut.
+ */
+export type SharedCoverage = { trainees: number; careers: number; pairs_runnable: number; trainees_truncated: number };
+
+/**
+ * Phase 2: a best pair of phase 1 tried for a trainee without her own search.
+ */
+export type SharedPair = {
+  trainee: string;
+  /**
+   * always "shared_pair"
+   */
+  reason: string;
+  best_parents: [number, number];
+  pairs_tried: number;
+  phase_ms: number;
+  work: PairSearchWork;
+  career: string;
+  score: number;
+  /**
+   * how its exact search ended
+   */
+  search: string;
+  deck_choice: DeckChoice;
+};
+
+/**
+ * The simulator's answer.
+ */
+export type SimReply = Refusal | SimReport | TraceReport;
+
+/**
+ * Every run of a policy on the job's pool, and the expected careers over them.
+ */
+export type SimReport = {
+  /**
+   * the job's `simulate` object, as sent
+   */
+  simulate: unknown;
+  policy: string;
+  runs: Array<SimRun>;
+  /**
+   * the expected careers over the runs (null: no run)
+   */
+  E: RunStats | null;
+  init_s: number;
+  decks: number;
+  deck_tables: number;
+  refreshes: number;
+  schedules: number;
+  /**
+   * goal `looped` (always "looped")
+   */
+  goal?: string;
+  /**
+   * goal `looped`: runs cut off before their goal (their tails count 0, so E is a lower bound)
+   */
+  censored?: number;
+};
+
+/**
+ * One run of the policy: its expected careers, careers run, the pick at each change, and its work.
+ */
+export type SimRun = {
+  run: number;
+  E: number;
+  careers: number;
+  tail: number;
+  final_p: number;
+  /**
+   * the last pick's key (null: no pick)
+   */
+  final: string | null;
+  pool: number;
+  pruned: number;
+  wall_s: number;
+  candidates: number;
+  ceiling_pass: number;
+  tables: number;
+  refreshes: number;
+  partial_searches: number;
+  /**
+   * each pick change
+   */
+  segs: Array<PickChange>;
+  checks: Array<SurrogateCheck>;
+  audits: Array<SurrogateAudit>;
+  /**
+   * the index policy's plans
+   */
+  index?: IndexRecord;
+  finishing?: number;
+  full_veterans?: number;
+  censored?: boolean;
+  survival?: number;
+  final_legacies?: Array<LegacyRecord>;
+};
+
+/**
  * The nondominated deck frontier of a `deck_only` job.
  */
 export type Skyline = { sky: Array<PDeck> };
+
+/**
+ * An uncertain target's buying and landing, with its sources.
+ */
+export type SourcedBuy = {
+  gold: number;
+  white: number;
+  land_gold: number;
+  land_white: number;
+  /**
+   * the deck hints its gold
+   */
+  deck_gold: number;
+  /**
+   * the deck hints its white, given it hints no gold
+   */
+  deck_white: number;
+  /**
+   * her own story events give it
+   */
+  own_event: number;
+  /**
+   * inspiration gives it
+   */
+  inherit: number;
+  /**
+   * her outfit's own skill: 0 none, 1 the white, 2 the gold
+   */
+  outfit: number;
+};
+
+/**
+ * `state_in`'s answer.
+ */
+export type StateIn = unknown;
+
+/**
+ * `state_out`'s answer.
+ */
+export type StateOut = unknown;
+
+/**
+ * A candidate whose step is her kept cap's: its careers and her odds then.
+ */
+export type StepCap = { careers: number; p: number };
+
+/**
+ * A surrogate audit: at a greedy pick change, the exact career search's pick against the surrogate's with rows for
+ * sampled careers; or, on a loop, one row every `audit_every` careers.
+ */
+export type SurrogateAudit = GreedyAudit | LoopAudit | RotationAudit;
+
+/**
+ * The surrogate against exact searches on a pool: the argmax career, and the lineages checked.
+ */
+export type SurrogateCheck = {
+  argmax: ArgmaxCheck;
+  lineages: Array<[number, number, number, number, number, boolean, number, boolean, boolean]>;
+};
+
+/**
+ * Where the surrogate's best career for a trainee differs from the search's (`sur` 2): each one's parents and odds.
+ */
+export type SurrogateDifference = {
+  trainee: string;
+  search: [[number, number] | null, number];
+  sur: [[number, number] | null, number];
+};
+
+/**
+ * A pair by its ceiling; where she has a cached deck, her best one there (P(all), score) and every cached deck's
+ * P(all) on it.
+ */
+export type SweptPair = {
+  parents: [number, number];
+  ceiling: number;
+  p_all?: number;
+  score?: number;
+  deck_odds?: Array<number>;
+};
+
+/**
+ * A trainee's swept pairs, and every cached deck on her best-scoring pair, scored.
+ */
+export type SweptTrainee = {
+  trainee: string;
+  /**
+   * her best row's score in the plan
+   */
+  row_score: number;
+  pairs: Array<SweptPair>;
+  decks: Array<ScoredDeck>;
+};
+
+/**
+ * How she buys a target and lands it as a spark: the chance she buys it as gold and as white, and lands each.
+ */
+export type TargetBuy = SourcedBuy | ScenarioBuy;
 
 /**
  * A trainee's chance of landing one uncertain target.
@@ -477,4 +2025,126 @@ export type TargetHintOdds = {
   group: number;
   white: number;
   gold: number;
+};
+
+/**
+ * The `trace` policy: per run, each career a builder of the finisher's (A's) loop ran.
+ */
+export type TraceReport = {
+  trace: Array<TraceRun>;
+  /**
+   * the finisher, A
+   */
+  trainee: string;
+  builders: Array<string>;
+};
+
+/**
+ * One traced run: per career [career index, A's odds before it, the builder by name, her lift chance, the odds a lift
+ * takes A to, A's odds after it].
+ */
+export type TraceRun = { run: number; rows: Array<[number, number, string, number, number, number]> };
+
+/**
+ * Phase 1: one trainee's best pair against her shown career.
+ */
+export type TraineePairsReport = {
+  trainee: string;
+  /**
+   * why she was searched: "pick", "scenario" or "top"
+   */
+  reason: string;
+  /**
+   * the career she is weighed against
+   */
+  shown: string;
+  shown_score: number;
+  best_parents: [number, number];
+  career: string;
+  score: number;
+  search: string;
+  proven: boolean;
+  deck_choice: DeckChoice;
+  margin_over_shown: number;
+  /**
+   * her best beats her shown career on another pair
+   */
+  better_parents: boolean;
+  /**
+   * over the best other pair evaluated (null: none)
+   */
+  margin_over_other_pairs: number | null;
+  best_other_pair: string | null;
+  /**
+   * the margin over her shown career under each building-curve corner
+   */
+  corner_margins: Array<number>;
+  /**
+   * at her own odds x0.76 and x1.32
+   */
+  scale_margins: Array<number>;
+  /**
+   * the other finalists
+   */
+  alternatives: Array<FinalistReport>;
+  pairs_scored: number;
+  pairs_runnable: number;
+  pairs_truncated: boolean;
+  trainee_ms: number;
+  work: PairSearchWork;
+};
+
+/**
+ * An uma by chara id and name.
+ */
+export type UmaName = { id: number; name: string };
+
+/**
+ * Why a career search is not complete (`CareerSearchResult::complete` false), each reason that occurred; written as
+ * the list of their names (`UnprovenReason`).
+ */
+export type Unproven = Array<'work_cap' | 'band_overflow' | 'cap_breach'>;
+
+/**
+ * A check variant's scores (`kind` "plan" for the plan's own; else the variant's), its pick (a row's career id) and
+ * the routes its scoring's memory budget dropped (null: the plan's own entry, whose `next` reports them).
+ */
+export type VariantReport = {
+  kind: string;
+  ceil_share: number;
+  lam_decay: number;
+  odds_scale: number;
+  /**
+   * the scaled umas (uma indices) and their scales; none for a uniform scale
+   */
+  scaled: Array<[number, number]>;
+  v0: number | null;
+  pick: string;
+  score: number;
+  margin: number;
+  scores: Array<number>;
+  routes_dropped: number | null;
+  routes_dropped_uncertified: number | null;
+  partner_setups_dropped: number | null;
+};
+
+/**
+ * A career's margins over the plan's pick.
+ */
+export type VersusPick = {
+  career: string;
+  margins: ScenarioMargins;
+  /**
+   * the scenarios whose margin's sign differs from the nominal one ("pick_down", "pick_up")
+   */
+  varies_under: Array<string>;
+};
+
+/**
+ * One possible start and its chance.
+ */
+export type WeightedPinkOutcome = {
+  p: number;
+  start: [number, number, number, number, number, number, number, number, number, number];
+  fire: Array<PinkFireReport>;
 };

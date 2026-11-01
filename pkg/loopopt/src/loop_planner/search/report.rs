@@ -1,4 +1,4 @@
-//! Picks, JSON results and diagnostic summaries from completed loop-search passes.
+//! Picks, the loop report (`LoopReport`) and diagnostic summaries from completed loop-search passes.
 //! Search and certification belong to `bands`.
 use super::Tally;
 use super::bands::{DeckBest, Pass, SolvedLoop};
