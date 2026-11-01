@@ -73,6 +73,7 @@
 !/val/plan/ref_times.txt
 !/val/refpu__*.out
 !/val/career_job.py
+!/val/make_pool.py
 !/val/umadump/
 !/val/spark_gen_fit.py
 !/val/cmp_ratio.py
