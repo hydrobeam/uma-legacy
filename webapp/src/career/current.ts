@@ -135,10 +135,13 @@ function sampleVets(): Veteran[] {
   }
   return out;
 }
-// `list` in a random order: each entry put in at a place drawn uniformly among the places so far (a uniform shuffle)
+// `list` in a random order: Fisher-Yates, its draws as they always were (the browser suite's seeded samples rest on them)
 function shuffled<T>(list: readonly T[]): T[] {
-  const out: T[] = [];
-  for (const x of list) out.splice(Math.floor(Math.random() * (out.length + 1)), 0, x);
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    out.splice(j, 1, ...out.splice(i, 1, ...out.slice(j, j + 1))); // (places i and j swapped)
+  }
   return out;
 }
 
