@@ -1,10 +1,11 @@
-import { PAGE_URL, check, PILLS, SIDEWAYS, still } from './helpers.mjs';
+import { PAGE_URL, CONTEXT, check, PILLS, SIDEWAYS, still } from './helpers.mjs';
 
 export default async function careerphone(b) {
   // the career page on a 375 px phone (iPhone 13 mini) with the sample veterans' answer: nothing scrolls sideways (page or dialogs), the
   // setup rows inside their panel, the pill tracks flush, the pick in Options shaded as one card
   const chromium = b.browserType().name() === 'chromium';
   const ctx = await b.newContext({
+    ...CONTEXT,
     viewport: { width: 375, height: 812 },
     ...(chromium ? { isMobile: true, hasTouch: true } : {}),
   });

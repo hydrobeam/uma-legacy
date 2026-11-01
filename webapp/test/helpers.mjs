@@ -13,6 +13,8 @@ export const LOOP_URL = `${PAGE_URL.replace(/\/?$/, '/')}loop`;
 /** The fast tier (LLP_QUICK=1; ./build.sh testq): career stops at its one-run answer, contrast checks light only. */
 export const QUICK = !!process.env.LLP_QUICK;
 const REPO_ROOT = new URL('../../', import.meta.url);
+/** Every test context: the local server's certificate is self-signed (serve.mjs, HTTP/2 over TLS as the host). */
+export const CONTEXT = { ignoreHTTPSErrors: true };
 /** A file of the repository (data the page was built from, the solver's sources, validation outputs) as a file URL. */
 export const repoUrl = (relative) => new URL(relative, REPO_ROOT);
 
@@ -240,6 +242,7 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
   const ctx = await timed(
     'ctx',
     browser.newContext({
+      ...CONTEXT,
       viewport: { width: w, height: h },
       colorScheme: scheme,
       ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}),
@@ -596,7 +599,7 @@ export const SIDEWAYS = () => {
 // so they run in parallel.
 /** @returns {Promise<CareerPage>} */
 export async function careerPage(b) {
-  const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
+  const ctx = await b.newContext({ ...CONTEXT, viewport: { width: 1440, height: 1000 } });
   await ctx.addInitScript(() => {
     // the setup chosen open, as these tests work its controls after reloads with veterans (unchosen, it would open folded
     // then: careerphone checks that)

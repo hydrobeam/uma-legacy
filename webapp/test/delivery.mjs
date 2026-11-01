@@ -16,6 +16,16 @@ export default async function delivery(b) {
       }),
   });
   check('no third-party requests (fonts self-hosted)', hosts.size === 1, [...hosts].join(' '));
+  // (served as the host serves it, HTTP/2, so the page's requests don't queue as they would over HTTP/1.1; LLP_URL's
+  // own server may differ)
+  const protocols = await pg.evaluate(() => [
+    ...new Set(performance.getEntriesByType('resource').map((e) => e.nextHopProtocol)),
+  ]);
+  check(
+    'the page and its files come over HTTP/2',
+    protocols.length > 0 && protocols.every((p) => p === 'h2'),
+    protocols.join(' '),
+  );
   check(
     'the solver data and binary come from fingerprinted files',
     urls.some((u) => /^\/assets\/engine-global\.[0-9a-f]{10}\.json$/.test(u)) &&

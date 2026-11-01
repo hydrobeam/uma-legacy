@@ -170,7 +170,9 @@ IndexedDB.
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
 - **Browser suite:** `./build.sh test` runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
-  `playwright` package) against `webapp/dist` (or `LLP_URL`) in Chromium and Firefox, test groups in parallel
+  `playwright` package) against `webapp/dist`, served by `serve.mjs` over HTTP/2 with TLS as the host serves it (a
+  self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
+  `LLP_URL`, in Chromium and Firefox, test groups in parallel
   (`LLP_JOBS` per browser, default 4). Each group is a module in `webapp/test/` and one test of
   `webapp/test/groups.spec.mjs`; each check is a step of its test, a failed one a soft failure (the group goes on), a
   throw ends the group. Shared helpers are in `webapp/test/helpers.mjs`. One group: `cd webapp && npx playwright test

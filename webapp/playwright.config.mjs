@@ -22,7 +22,7 @@ const freePort = () =>
     });
   });
 if (!process.env.LLP_URL) process.env.LLP_PORT ??= String(await freePort());
-process.env.LLP_PAGE ??= process.env.LLP_URL || `http://127.0.0.1:${process.env.LLP_PORT}/`; // helpers.mjs PAGE_URL
+process.env.LLP_PAGE ??= process.env.LLP_URL || `https://127.0.0.1:${process.env.LLP_PORT}/`; // helpers.mjs PAGE_URL; HTTP/2 over TLS, as the host
 const JOBS = Math.max(1, +process.env.LLP_JOBS || 4); // per browser
 
 export default defineConfig({
@@ -37,8 +37,9 @@ export default defineConfig({
   webServer: process.env.LLP_URL
     ? undefined
     : {
-        command: `node serve.mjs ${process.env.LLP_PORT} 127.0.0.1`,
+        command: `node serve.mjs ${process.env.LLP_PORT} 127.0.0.1 h2`,
         url: process.env.LLP_PAGE,
+        ignoreHTTPSErrors: true, // its certificate is self-signed (serve.mjs)
         reuseExistingServer: false,
       },
   use: {
