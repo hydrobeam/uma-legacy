@@ -11,13 +11,10 @@ export default async function careerrun(b) {
     new MutationObserver(() => {
       if (window.__notes.at(-1) !== n.textContent) window.__notes.push(n.textContent);
     }).observe(n, { subtree: true, childList: true, characterData: true });
-    const W = window.Worker;
     window.__workers = 0;
-    // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
-    window.Worker = function (...a) {
+    window.__workerHooks.made.push(() => {
       window.__workers++;
-      return new W(...a);
-    };
+    });
   });
   // the first plan's report edited once (`__planEdit`): every score moved so the top (the pick's) is -0.4, and another
   // row put 0.1 below the pick on the pick's parents (the table's numbers only: no job reads them back)

@@ -15,7 +15,8 @@
 // change fails every replaying group until a live run records it, and that run checks the solver's own replies.
 //
 // Every context also gets a seeded Math.random (the sample veterans' draw and the career rolls use it), so a page makes
-// the same jobs in the recording run and in replay.
+// the same jobs in the recording run and in replay, and the stand-in in every group, live ones included, which carries
+// the suite's hooks on the page's workers (`window.__workerHooks`, `__hold`/`__release`: workerStandIn).
 import fs from 'node:fs';
 import path from 'node:path';
 import { STORE_ROOT, storeName } from './replaystore.mjs';
@@ -34,12 +35,15 @@ const untimed = (text) =>
  *   LLP_SOLVER=live)
  * @typedef {{replayed: number, recorded: number, differs: number, missing: string[], held: string[], stopped: string[]}} SolverTally
  */
-/** @param {object} ctx  a browser context, before any other init script (the suite's worker hooks sit on top)
+/** @param {object} ctx  a browser context, before any other init script (the suite's hooks register on the stand-in)
  * @param {SolverMode} mode @param {SolverTally} tally */
 export async function installSolver(ctx, mode, tally) {
   await ctx.addInitScript(seedRandom);
   const record = SOLVER === 'live';
-  if (!mode.replay && !record) return; // the real worker, untouched
+  /** @type {'live'|'record'|'replay'} live: every job to the real worker as the page sends it */
+  const how = record ? 'record' : mode.replay ? 'replay' : 'live';
+  await ctx.addInitScript(workerStandIn, how);
+  if (how === 'live') return;
   // assets: the page's data-assets JSON, which names the store's directory
   await ctx.exposeBinding('__llpSolver', async (_, op, assets, key, text) => {
     if (!/^[0-9a-f]{64}$/.test(key)) throw new Error(`bad solver reply key ${key}`);
@@ -65,7 +69,6 @@ export async function installSolver(ctx, mode, tally) {
     await fs.promises.writeFile(partial, text);
     await fs.promises.rename(partial, file);
   });
-  await ctx.addInitScript(workerStandIn, !record);
   if (mode.replay) ctx.on('page', settleBeforeLeaving);
 }
 // A page stores the worker's kept work 100 ms after a plan (engine.ts engineSaveState), and a new worker restores it
@@ -100,12 +103,26 @@ function seedRandom() {
 }
 
 // (runs in the page) window.Worker replaced by a stand-in that makes the real worker (its script loads, its load errors
-// reach the page) and either records what it answers (replay false) or answers every job from the store and never
-// starts it (replay true; the page's wasm compile then gets an empty module)
-function workerStandIn(replay) {
+// reach the page) and passes every job to it (how 'live'), records what it answers ('record'), or answers every job
+// from the store and never starts it ('replay'; the page's wasm compile then gets an empty module).
+// The suite's hooks on every worker the page makes, which init scripts and groups add to `window.__workerHooks`, each
+// called with the worker: `made()`; `post(message)`, before the worker gets it, may return a message to send in its
+// place (the last added runs first, as an outer wrapper would); `message(data)`, as each message arrives, before the page
+// sees it (a hook may change it); `terminate()`. While `window.__hold` is set, the messages wait (a search stays
+// running however fast it is) until `window.__release()`; a worker terminated meanwhile drops its own.
+function workerStandIn(how) {
   const STOP_GRACE_MS = 3000;
+  const replay = how === 'replay';
   const Real = window.Worker,
     encoder = new TextEncoder();
+  const hooks = { made: [], post: [], message: [], terminate: [] },
+    flushes = [];
+  window.__workerHooks = hooks;
+  window.__hold = false;
+  window.__release = () => {
+    window.__hold = false;
+    for (const flush of flushes) flush();
+  };
   if (replay) {
     // the wasm is still fetched, as the page does; compiling it is the cost replay saves (the 8 bytes of an empty module)
     const empty = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
@@ -156,10 +173,17 @@ function workerStandIn(replay) {
     #recording = new Map(); // job id -> {messages, key, cmd} while the real worker runs it
     #open = new Map(); // job id -> its kind (`kindOf`), from its post to its answer
     #handlers = {};
+    #held = []; // messages that arrived while window.__hold was set
 
     constructor(...args) {
       super();
       this.#real = new Real(...args);
+      flushes.push(() => {
+        const held = this.#held;
+        this.#held = [];
+        for (const data of held) if (!this.#dead) this.dispatchEvent(new MessageEvent('message', { data }));
+      });
+      for (const made of hooks.made) made(this);
       this.#real.addEventListener('message', (e) => this.#fromReal(e.data));
       this.#real.addEventListener('error', (e) =>
         this.dispatchEvent(new ErrorEvent('error', { message: e.message, filename: e.filename, lineno: e.lineno })),
@@ -190,6 +214,7 @@ function workerStandIn(replay) {
       this.#handler('messageerror', f);
     }
     terminate() {
+      for (const terminated of hooks.terminate) terminated(this);
       this.#dead = true;
       this.#real.terminate();
       for (const id of [...this.#open.keys()]) this.#ended(id);
@@ -203,12 +228,20 @@ function workerStandIn(replay) {
     }
     #emit(data) {
       if (this.#dead) return;
-      this.dispatchEvent(new MessageEvent('message', { data }));
+      for (const arrived of hooks.message) arrived(data, this);
+      if (window.__hold) this.#held.push(data);
+      else this.dispatchEvent(new MessageEvent('message', { data }));
       if (data.type === 'result' || data.type === 'error') this.#ended(data.id);
     }
 
-    postMessage(message, transfer) {
+    postMessage(sent, transfer) {
+      let message = sent;
+      for (const post of hooks.post.toReversed()) message = post(message, this) ?? message;
       if (this.#dead) return;
+      if (how === 'live') {
+        this.#real.postMessage(message, transfer);
+        return;
+      }
       if (message?.type === 'init') {
         this.#base = sha256(String(message.data)).then((digest) => `${assets().wasm}|${digest}`);
         if (replay) this.#queue = this.#queue.then(() => this.#emit({ type: 'ready' }));

@@ -5,14 +5,7 @@ export default async function states(b) {
   // (window.__trap: the next jobs reach the worker without their job, so they fail inside it, as a solver trap would)
   const pg = await open(b, {
     init: () => {
-      const W0 = window.Worker;
-      // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
-      window.Worker = function (...a) {
-        const w = new W0(...a),
-          pm = w.postMessage.bind(w);
-        w.postMessage = (m, ...r) => pm(m && m.type === 'run' && window.__trap ? { ...m, job: null } : m, ...r);
-        return w;
-      };
+      window.__workerHooks.post.push((m) => (m?.type === 'run' && window.__trap ? { ...m, job: null } : m));
     },
   });
   const head = () =>

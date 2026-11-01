@@ -143,25 +143,18 @@ async function profile(ctx, pg) {
     prof.solverLog.push(`${kind} ${ms}`);
   });
   await ctx.addInitScript(() => {
-    const W = window.Worker;
-    // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
-    window.Worker = function (...a) {
-      const w = new W(...a),
-        kinds = new Map(),
-        pm = w.postMessage.bind(w);
-      w.postMessage = (m, ...r) => {
-        if (m && m.type === 'run')
-          kinds.set(
-            m.id,
-            m.job.cmd ? m.job.cmd + (m.job.next ? '.next' : '') + (m.job.compare ? '.compare' : '') : 'loop',
-          );
-        return pm(m, ...r);
-      };
-      w.addEventListener('message', (e) => {
-        if (e.data?.type === 'result') window.__llpSolved(kinds.get(e.data.id) || '?', Math.round(e.data.ms));
-      });
-      return w;
-    };
+    const kinds = new WeakMap(); // worker -> its jobs' kinds by job id
+    const hooks = window.__workerHooks;
+    hooks.made.push((w) => kinds.set(w, new Map()));
+    hooks.post.push((m, w) => {
+      if (m?.type === 'run')
+        kinds
+          .get(w)
+          .set(m.id, m.job.cmd ? m.job.cmd + (m.job.next ? '.next' : '') + (m.job.compare ? '.compare' : '') : 'loop');
+    });
+    hooks.message.push((d, w) => {
+      if (d?.type === 'result') window.__llpSolved(kinds.get(w).get(d.id) || '?', Math.round(d.ms));
+    });
   });
   const sleep = pg.waitForTimeout.bind(pg);
   pg.waitForTimeout = (ms) => timed('sleep', sleep(ms), prof);
@@ -255,8 +248,9 @@ function collectErrors(pg) {
 }
 /**
  * The planner in a fresh context (fresh storage), its first search done, with the worker hooks: window.__made and
- * __killed count workers made and terminated, __runs lists the jobs sent, and while __hold is set the worker's replies
- * wait (a search stays running however fast it is) until __release().
+ * __killed count workers made and terminated, __runs lists the jobs sent, __results their answers, and while __hold is
+ * set the worker's replies wait (a search stays running however fast it is) until __release() (solverreplay.mjs's
+ * stand-in holds them).
  * @param {object} [o]
  * @param {number} [o.w] @param {number} [o.h]  the viewport, CSS px
  * @param {boolean} [o.mobile]  a phone (touch, mobile viewport; Chromium only)
@@ -275,63 +269,23 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
     }),
   );
   await ctx.addInitScript(() => {
-    const W = window.Worker;
     window.__made = 0;
     window.__killed = 0;
     window.__runs = []; // the jobs sent to the engine, in order
     window.__results = []; // the engine's answers (each job's `r`), in order
-    // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
-    window.Worker = function (...a) {
-      const w = new W(...a);
+    const hooks = window.__workerHooks;
+    hooks.made.push(() => {
       window.__made++;
-      const t = w.terminate.bind(w);
-      w.terminate = () => {
-        window.__killed++;
-        t();
-      };
-      const pm = w.postMessage.bind(w);
-      w.postMessage = (m, ...r) => {
-        if (m && m.type === 'run') window.__runs.push(m.job);
-        return pm(m, ...r);
-      };
-      let h = null,
-        q = [],
-        dead = false;
-      Object.defineProperty(w, 'onmessage', {
-        get: () => h,
-        set: (f) => {
-          h = f;
-        },
-      });
-      w.addEventListener('message', (e) => {
-        if (e.data?.type === 'result') window.__results.push(e.data.r);
-        if (window.__hold) q.push(e);
-        else if (h) h(e);
-      });
-      const kill = w.terminate;
-      w.terminate = () => {
-        dead = true;
-        q = [];
-        kill();
-      };
-      window.__flush.push(() => {
-        const qq = q;
-        q = [];
-        if (!dead)
-          qq.forEach((e) => {
-            h?.(e);
-          });
-      });
-      return w;
-    };
-    window.__hold = false;
-    window.__flush = [];
-    window.__release = () => {
-      window.__hold = false;
-      window.__flush.forEach((f) => {
-        f();
-      });
-    };
+    });
+    hooks.terminate.push(() => {
+      window.__killed++;
+    });
+    hooks.post.push((m) => {
+      if (m?.type === 'run') window.__runs.push(m.job);
+    });
+    hooks.message.push((d) => {
+      if (d?.type === 'result') window.__results.push(d.r);
+    });
   });
   if (init) await ctx.addInitScript(init);
   const pg = editorAware(await ctx.newPage());
@@ -511,35 +465,27 @@ export async function careerPage(b) {
     } catch {
       // storage blocked: the page opens with its own default
     }
-    const W = window.Worker;
     window.__careerJobs = [];
     window.__careerResults = [];
     // (the plan's robustness check, `next.robust` follow-up jobs, kept apart: the tests' plan jobs and results are the rest)
     window.__checkJobs = [];
     window.__checkResults = [];
-    // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
-    window.Worker = function (...args) {
-      const w = new W(...args),
-        post = w.postMessage.bind(w);
-      // (`__rollPatch`: a test's stand-in for a roll's saving, put over the solver's before the page reads it)
-      w.addEventListener('message', (e) => {
-        if (e.data?.type === 'result') {
-          if (window.__rollPatch && e.data.r?.next?.roll) Object.assign(e.data.r.next.roll, window.__rollPatch);
-          // (`__planPatch`: a test's stand-in for fields of a plan's report, put over the solver's the same way)
-          if (window.__planPatch && e.data.r?.next?.options) Object.assign(e.data.r.next, window.__planPatch);
-          if (window.__planEdit && e.data.r?.next?.options) window.__planEdit(e.data.r.next);
-          if (window.__checkPatch && e.data.r?.next?.robust && !e.data.r.next.options)
-            Object.assign(e.data.r.next.robust, window.__checkPatch);
-          if (e.data.r?.next?.robust && !e.data.r.next.options) window.__checkResults.push(e.data.r);
-          else window.__careerResults.push(e.data.r);
-        }
-      });
-      w.postMessage = (m, ...rest) => {
-        if (m?.type === 'run') (m.job?.next?.robust ? window.__checkJobs : window.__careerJobs).push(m.job);
-        return post(m, ...rest);
-      };
-      return w;
-    };
+    const hooks = window.__workerHooks;
+    // (`__rollPatch`: a test's stand-in for a roll's saving, put over the solver's before the page reads it)
+    hooks.message.push((d) => {
+      if (d?.type !== 'result') return;
+      if (window.__rollPatch && d.r?.next?.roll) Object.assign(d.r.next.roll, window.__rollPatch);
+      // (`__planPatch`: a test's stand-in for fields of a plan's report, put over the solver's the same way)
+      if (window.__planPatch && d.r?.next?.options) Object.assign(d.r.next, window.__planPatch);
+      if (window.__planEdit && d.r?.next?.options) window.__planEdit(d.r.next);
+      if (window.__checkPatch && d.r?.next?.robust && !d.r.next.options)
+        Object.assign(d.r.next.robust, window.__checkPatch);
+      if (d.r?.next?.robust && !d.r.next.options) window.__checkResults.push(d.r);
+      else window.__careerResults.push(d.r);
+    });
+    hooks.post.push((m) => {
+      if (m?.type === 'run') (m.job?.next?.robust ? window.__checkJobs : window.__careerJobs).push(m.job);
+    });
     // what the page shows, each time it changes: busy or not, the phase named, the trainee on show, the veteran you
     // got (her sparks), whether the old answer is dimmed
     window.__seq = [];
