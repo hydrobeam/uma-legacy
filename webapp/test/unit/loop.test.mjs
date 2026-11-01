@@ -53,6 +53,8 @@ function fakeClock() {
   };
   return {
     now: () => now,
+    /** the timers set and not cleared or fired: 'once' or 'every' each */
+    pending: () => [...timers.values()].map((t) => (t.every ? 'every' : 'once')),
     setTimer: (run, ms) => add(run, ms, 0),
     every: (run, ms) => add(run, ms, ms),
     clearTimer: (id) => void timers.delete(id),
@@ -154,6 +156,11 @@ test('Stop during the search kills the worker once; its late answer changes noth
   await flush();
   assert.deepEqual(snapshot(), before);
   assert.equal(p.drawn.length, 0);
+  // its Search again searches the same settings at once
+  loopView.peek().status.act.run();
+  await flush();
+  assert.equal(p.engine.jobs.length, 2);
+  assert.equal(loopRun.peek().searching, true);
 });
 
 test('Stop during the exact check keeps the fast result, said so', async () => {
@@ -233,12 +240,29 @@ test('a burst of edits inside the pause sends one job; the clock starts at the j
   assert.equal(loopRun.peek().now - loopRun.peek().startedAt, 2000); // the clock ticks each second
 });
 
+test("the clock's ticker: one while a search runs, none in an edit's pause, none once the search ends", async () => {
+  const p = page();
+  await searching(p);
+  assert.deepEqual(p.clock.pending(), ['every']);
+  p.loop.doSearch(); // the Search button during a search: a new search, its own ticker
+  await flush();
+  assert.deepEqual(p.clock.pending(), ['every']);
+  p.loop.scheduleSearch(); // an edit: its pause, no clock yet
+  assert.deepEqual(p.clock.pending(), ['once']);
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.deepEqual(p.clock.pending(), ['every']);
+  p.engine.jobs.at(-1).resolve(answer(report(0.02)));
+  await flush();
+  assert.deepEqual(p.clock.pending(), []);
+});
+
 test('Auto-search off: an edit stops the search and asks for Search, which runs even for the job already done', async () => {
   const p = page();
   const job = await searching(p);
   job.resolve(answer(report(0.02)));
   await flush();
-  const second = await searching(p); // the same settings searched again, running
+  await searching(p); // the same settings searched again, running
   setAuto(false);
   p.loop.scheduleSearch();
   assert.equal(p.engine.restarts, 1);
@@ -253,7 +277,6 @@ test('Auto-search off: an edit stops the search and asks for Search, which runs 
   status.act.run();
   await flush();
   assert.equal(p.engine.jobs.length, 3, 'Search runs the done job again');
-  assert.notEqual(p.engine.jobs[2], second);
 });
 
 // ---------- the done-key shortcut
@@ -367,8 +390,15 @@ test('first result: the kept result of these settings, else the example for its 
   const record = settings.peek();
   assert.equal(p.loop.showFirst(), 'kept');
   assert.equal(loopView.peek().status.text, doneTextOf(2500));
+  assert.deepEqual(loopView.peek().lastResult, { kind: 'deck', r: report(0.02), meta: {} }, 'Export has it');
   assert.equal(p.drawn.length, 1);
   assert.equal(settings.peek(), record, 'showFirst writes no setting');
+  // it is a finished search: an edit and its undo search nothing
+  p.loop.scheduleSearch();
+  p.clock.advance(PAUSE_MS);
+  await flush();
+  assert.equal(p.engine.jobs.length, 0);
+  assert.equal(loopView.peek().status.text, doneTextOf(2500));
   // the defaults, nothing kept: the example
   const example = report(0.009);
   const q = page({ example: { r: example, settings: DEFAULTS } });
@@ -493,6 +523,7 @@ test('effects: the setup effect wakes for job settings only, once per setter; th
   // presets, sorts and the Auto switch change no job (P2)
   setPresets([{ name: 'mine', groups: [20049] }]);
   setSort({ prefix: 'r', sort: 'name', dir: 'asc' });
+  setAuto(false);
   setAuto(true);
   assert.deepEqual(runs, { setup: 0, paint: 0 });
   // ownership and targets do, once per setter call; each schedules one search (its pause: one paint)
