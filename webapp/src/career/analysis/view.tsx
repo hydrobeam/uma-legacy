@@ -28,13 +28,12 @@ import { keyOf } from '../keys.ts';
 import { isFull } from '../job.ts';
 import { legacyNumber, legacyVet, legacyVetNow, poolNumber, shown } from '../current.ts';
 import type { CareerReport } from '../job.ts';
-import { borrowedLast, deckCards } from '../../details.ts';
 import { fmtN, tableRows } from '../view/parts.ts';
 import { openNode } from '../view/dialogs.ts';
 import { sayVets } from '../view/poolState.ts';
 import { Guard } from '../view/Guard.tsx';
 import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
-import { DeckCard } from '../view/Sections.tsx';
+import { DeckCards } from '../view/Sections.tsx';
 import { Details, legaciesOf } from './Details.tsx';
 import type { DetailsSpec } from './Details.tsx';
 import { simulation, draftJoins } from './state.ts';
@@ -125,7 +124,13 @@ function addDraft() {
 }
 
 // ---------- the comparison panel
-// a career as portraits: trainee (outfit), then her two parents
+// a career as portraits: trainee (outfit, in bolder type), then her two parents (her marked, data-her), joined by "with"
+// and "+"
+const FACE = {
+  trainee: 'text-ui inline-flex items-center gap-1.25 font-extrabold',
+  parent: 'text-ui inline-flex items-center gap-1.25 font-semibold',
+} as const;
+const WITH = 'text-muted text-note';
 function Faces({
   tid,
   outfit,
@@ -138,21 +143,25 @@ function Faces({
   parents: { chara: number | null; outfit?: number | undefined; label: string; her?: boolean }[];
 }) {
   return (
-    <span class="cfaces">
-      <span class="cface tr">
+    <span class="inline-flex flex-wrap items-center gap-1">
+      <span class={FACE.trainee}>
         <UmaAv key={`${tid}:${outfit}`} uma={tid} outfit={outfit} size={32} />
         {umaName(tid) + (outfitLabel ? ` ${outfitLabel}` : '')}
       </span>
-      <span class="cwith">with</span>
+      <span class={WITH}>with</span>
       {parents.map((p, j) => [
         // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
-        <span key={`f${j}`} class="cface">
+        <span key={`f${j}`} class={FACE.parent}>
           <UmaAv key={`${p.chara}:${p.outfit}`} uma={p.chara} outfit={p.outfit} size={26} />
           {p.label}
-          {p.her && <span class="her">her</span>}
+          {p.her && (
+            <span class="font-data text-caption border-accent text-ink rounded-xs border px-1" data-her="">
+              her
+            </span>
+          )}
         </span>,
         !j && (
-          <span key="with" class="cwith">
+          <span key="with" class={WITH}>
             +
           </span>
         ),
@@ -171,29 +180,36 @@ const parentFace = (i: number, who: DraftView) => {
     : { chara: null, label: `#${i + 1}` };
 };
 // a figure's direction: 'up' (better with her), 'down' (worse) or 'same' (within the estimate's noise, or unknown)
-function direction(now: number | null, withHer: number | null, lowerIsBetter: boolean) {
+function direction(now: number | null, withHer: number | null, lowerIsBetter: boolean): keyof typeof FIGURE_TONE {
   if (now == null || withHer == null) return 'same';
   const gain = lowerIsBetter ? now - withHer : withHer - now;
   return Math.abs(gain) < (lowerIsBetter ? 0.5 : 1e-9 * now) ? 'same' : gain > 0 ? 'up' : 'down';
 }
-/** one figure per row: its label, then now → with her, green when she makes it better, red when worse (`direction`) */
+// a figure's words by its direction; faded while the exact comparison is still working (`held`)
+const FIGURE_TONE = { up: 'text-sim-up', down: 'text-sim-down', same: 'text-gm-ink2' } as const;
+/** one figure per row, ruled off above: its label, then now → with her, green when she makes it better, red when worse
+ *  (`direction`) */
 function Figure({
   label,
   now,
   withHer,
   dir,
+  held,
   title,
 }: {
   label: string;
   now: string;
   withHer: string;
-  dir: string;
+  dir: keyof typeof FIGURE_TONE;
+  held: boolean;
   title: string;
 }) {
   return (
-    <div class="tc" title={title}>
-      <span class="tl">{label}</span>
-      <b class={cx('tv', dir)}>{`${now} → ${withHer}`}</b>
+    <div class="border-gm-line flex items-baseline justify-between gap-2 border-t pt-1.5" title={title}>
+      <span class="text-note text-gm-ink2">{label}</span>
+      <b
+        class={cx('text-body font-bold tabular-nums', FIGURE_TONE[dir], held && 'opacity-55')}
+      >{`${now} → ${withHer}`}</b>
     </div>
   );
 }
@@ -224,8 +240,8 @@ function ComparisonVerdict({ sim, d, next }: { sim: SimulationView; d: DraftView
     saves = now != null && withHer != null ? now - withHer : null,
     head = verdictText(sim, d, next, saves);
   return (
-    <p class="simverdict" id="sim-verdict">
-      <strong>{head}</strong>
+    <p class="text-note text-gm-ink2 stale:opacity-50 leading-snug" id="sim-verdict">
+      <strong class="text-title text-gm-ink mb-0.5 block font-black">{head}</strong>
       {/^Saves /.test(head) && sim.where ? sim.where : null}
       {/* a rise (never from a roll's quick figures, which can't rise): shown as it is, and said to be the planner's */}
       {saves != null && saves <= -0.5
@@ -234,6 +250,16 @@ function ComparisonVerdict({ sim, d, next }: { sim: SimulationView; d: DraftView
     </p>
   );
 }
+// the comparison panel's parts: each top-level one faded while the figures are for her result before an edit (the
+// panel's data-stale, the theme's `stale:`), but the note saying so; a run's line (the runner beside its words: `plain`,
+// in the site's ink, as it showed; `refine`, smaller, in the game's lighter brown); the gold-ruled note; the odds rows
+const RUN_NOTE = {
+  plain: 'text-ink stale:opacity-50 flex items-start gap-2 font-medium tabular-nums',
+  refine: 'text-note text-gm-ink2 stale:opacity-50 flex items-start gap-2 font-medium tabular-nums',
+} as const;
+const RUNNER_PLACE = '-mt-1.5 -mb-1.25';
+const NOTE = 'border-gold bg-gold-soft text-ink border-l-5 px-3 py-2';
+const ODDS = 'stale:opacity-50 grid grid-cols-1 gap-1';
 // the comparison on show: the verdict in one line, then the two figures it rests on (now -> with her), then the best
 // career with her
 function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
@@ -250,51 +276,53 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
   const fromTable = sim.quick
     ? " From the planner's table for this career (her sparks exact, her G1 wins at their chances; only the routes the plan kept); Compare checks this exact roll."
     : '';
+  const held = !!(sim.refining || sim.standing);
   const loop = (
     <Figure
       label="Careers to loop"
       now={careersNow != null ? `about ${fmtN(careersNow)}` : '?'}
       withHer={careersWithHer != null ? fmtN(careersWithHer) : '?'}
       dir={rose ? 'same' : direction(careersNow, careersWithHer, true)}
+      held={held}
       title={`Expected careers to a fully looped parent: with your veterans now → with her too${nextWithHer}${fromTable}`}
     />
   );
   // with her priced under today's fit (`fixedFit`): the plan after Add is fitted to the pool with her, so it can show
   // other figures (more careers or fewer), which this one line says
   const fitNote = sim.fixedFit && careersNow != null && (
-    <p class="simfit">
+    <p class="text-note text-gm-ink2 stale:opacity-50 leading-snug" data-fit="">
       Counted with today's plan; after Add the planner refits it to your veterans with her, so its figures can differ.
     </p>
   );
-  const held = !!(sim.refining || sim.standing);
   const baseline = next && must(sim.baseline, 'figures with her best career have a baseline');
   return (
     <>
-      {sim.stale && <p class="note">These figures are for her result before your last edit. Compare to update them.</p>}
+      {sim.stale && <p class={NOTE}>These figures are for her result before your last edit. Compare to update them.</p>}
       <ComparisonVerdict sim={sim} d={d} next={next} />
       {(sim.refining || sim.standing || sim.provisional) && (
-        <p class="runnote simrefine">
-          <Runner />
-          <span>{sim.provisional ? 'Checking…' : 'Working out how many careers it saves…'}</span>
+        <p class={RUN_NOTE.refine} data-run="refine">
+          <Runner cls={RUNNER_PLACE} />
+          <span class="min-w-0">{sim.provisional ? 'Checking…' : 'Working out how many careers it saves…'}</span>
         </p>
       )}
       {/* the best career with her as a parent: its odds against today's best, then folded its portraits and deck */}
       {next && baseline ? (
         <>
-          <div class={cx('simodds', held && 'held')}>
+          <div class={ODDS} data-odds="">
             {loop}
             <Figure
               label={`All ${n} odds`}
               now={fmtIn(baseline.p_all)}
               withHer={fmtIn(next.p_all)}
               dir={direction(baseline.p_all, next.p_all, false)}
+              held={held}
               title={`All ${n}: today's best career → the best career with her as a parent (${pct(baseline.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(baseline.p_minus1)} → ${fmtIn(next.p_minus1)})`}
             />
           </div>
           {fitNote}
-          <details class="nextdeck">
-            <summary>Best career with her</summary>
-            <div class="nextc">
+          <details class="stale:opacity-50">
+            <summary class="text-note cursor-pointer font-bold max-md:py-2.5">Best career with her</summary>
+            <div class="text-note my-1.5 flex flex-wrap items-center gap-1">
               <Faces
                 tid={next.trainee.id}
                 outfit={next.trainee.outfits[0]?.id}
@@ -302,25 +330,21 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
                 parents={next.parents.map((i) => parentFace(i, d))}
               />
             </div>
-            <div class={cx(panel, 'deck relative grid gap-2 p-2.5 max-md:p-2')}>
-              <div class="dtitle">
-                <b>Deck</b>
-              </div>
-              <div class="dcards">
-                {borrowedLast(deckCards(next.deck)).map((slot) => (
-                  <DeckCard key={`${slot.i}:${slot.named}`} slot={slot} />
-                ))}
-              </div>
+            <div class={cx(panel, 'relative grid gap-2 p-2.5 max-md:p-2')}>
+              <b class="pr-8">Deck</b>
+              <DeckCards deck={next.deck} fit="mini" />
             </div>
           </details>
         </>
       ) : (
         <>
-          <div class={cx('simodds', held && 'held')}>{loop}</div>
+          <div class={ODDS} data-odds="">
+            {loop}
+          </div>
           {fitNote}
-          <p class="runnote simbest">
-            <Runner />
-            <span>Finding the best career with her…</span>
+          <p class={RUN_NOTE.plain} data-run="best">
+            <Runner cls={RUNNER_PLACE} />
+            <span class="min-w-0">Finding the best career with her…</span>
           </p>
         </>
       )}
@@ -334,12 +358,17 @@ function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: DraftView; r: 
     { planState } = answer.value,
     opt = planState.state === 'done' ? planState.r.options?.find((o) => keyOf(o) === keyOf(r)) : null;
   return (
-    <div class={cx('simresult', sim.stale ? 'stale' : '')} id="sim-result" role="status">
-      <div class="simhdr">
+    <div
+      class="bg-gm-panel border-gm-edge shadow-panel font-game text-gm-ink text-ui grid gap-2 rounded-xl border p-2.5"
+      id="sim-result"
+      role="status"
+      data-stale={sim.stale ? '' : undefined}
+    >
+      <div class="art-bar text-shadow-outline text-body stale:opacity-50 -mx-2.5 -mt-2.5 flex items-baseline justify-between gap-2 rounded-t-xl py-0.75 pr-6.5 pl-2.5 font-black text-white">
         <span>Comparison</span>
         {opt && opt.lift != null && (
           <span
-            class="simchance"
+            class="text-note font-bold whitespace-nowrap"
             id="sim-chance"
             title={`The planner's chance that a roll of this career lowers the careers to a fully looped parent (${pct(opt.lift)})`}
           >
@@ -347,14 +376,18 @@ function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: DraftView; r: 
           </span>
         )}
       </div>
-      {!busy && !sim.error && !sim.r && <p class="simidle">Compare or reroll to see if she improves your loop.</p>}
+      {!busy && !sim.error && !sim.r && (
+        <p class="text-ui text-gm-ink2 stale:opacity-50 leading-snug">
+          Compare or reroll to see if she improves your loop.
+        </p>
+      )}
       {busy ? (
-        <p class="runnote">
-          <Runner />
-          <span>Comparing…</span>
+        <p class={RUN_NOTE.plain}>
+          <Runner cls={RUNNER_PLACE} />
+          <span class="min-w-0">Comparing…</span>
         </p>
       ) : sim.error ? (
-        <p class="note">{sim.error}</p>
+        <p class={NOTE}>{sim.error}</p>
       ) : sim.r ? (
         <ComparisonResult sim={sim} d={d} />
       ) : null}
@@ -363,6 +396,11 @@ function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: DraftView; r: 
 }
 
 // ---------- the popup
+// the analysis: its bar, her card under it and the comparison beside them once the popup's body (a container) is 820 px
+// wide (the bar and card 600 px at most), the card's top aligned from 900 px; one column under that. (Its 22 px top
+// margin is the old sheet's section margin, which reached the popup.)
+const SECTION =
+  'mt-5.5 grid min-w-0 gap-3 @min-[820px]:grid-cols-[minmax(0,600px)_minmax(220px,1fr)] @min-[820px]:gap-x-4 @min-[900px]:items-start';
 /** The veteran analysis: her card (./Details.tsx; she starts as a random result of this career) with its actions, and
  *  the comparison panel beside it. */
 function Analysis({ comparison }: { comparison: Comparison }) {
@@ -382,7 +420,7 @@ function Analysis({ comparison }: { comparison: Comparison }) {
   if (!r) return null;
   if (!d)
     return (
-      <section class="rbsec simulation" id="simulation" ref={section}>
+      <section class={SECTION} id="simulation" ref={section}>
         <GameBar shape="card" class="w-full max-w-160">
           Veteran analysis
         </GameBar>
@@ -400,7 +438,7 @@ function Analysis({ comparison }: { comparison: Comparison }) {
   // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose answer
   // replaces the career on show)
   const actions = (
-    <div class="row">
+    <div class="flex flex-wrap justify-center gap-1.5">
       <Button
         variant="primary"
         size="note"
@@ -432,12 +470,17 @@ function Analysis({ comparison }: { comparison: Comparison }) {
     </Button>
   );
   return (
-    <section class="rbsec simulation" id="simulation" ref={section}>
+    <section class={SECTION} id="simulation" ref={section}>
       <GameBar shape="card" class="w-full max-w-160">
         Veteran analysis
       </GameBar>
-      <Details spec={spec} actions={actions} winsButton={winsButton} />
-      <div class="simcol">
+      <Details
+        spec={spec}
+        actions={actions}
+        winsButton={winsButton}
+        class="-mt-3 w-full max-w-160 @min-[900px]:col-start-1 @min-[900px]:row-start-2"
+      />
+      <div class="grid min-w-0 content-start gap-2 @min-[820px]:col-start-2 @min-[820px]:row-span-2 @min-[820px]:row-start-1">
         <ComparisonPanel sim={sim} d={d} r={r} />
       </div>
     </section>
@@ -466,7 +509,11 @@ export function TryRunDialog({ comparison }: { comparison: Comparison }) {
     <Dialog size="xl" id="sim-dlg" tall labelledBy="sim-title" open={open} onClose={closeTryRun}>
       <DialogPanel>
         <DialogHead id="sim-title" title="Try a run" close="Close" onClose={closeTryRun} />
-        <div class="dlgscroll" id="sim-top" ref={body}>
+        <div
+          class="@container grid max-h-[calc(100dvh-110px)] min-w-0 gap-2.5 overflow-y-auto overscroll-contain pr-1"
+          id="sim-top"
+          ref={body}
+        >
           <Guard what="Try a run" also={simulationDrawn}>
             <Analysis comparison={comparison} />
           </Guard>

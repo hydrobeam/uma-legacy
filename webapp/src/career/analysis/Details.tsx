@@ -85,16 +85,19 @@ export function Details({
   spec,
   actions,
   winsButton,
+  class: place,
 }: {
   spec: DetailsSpec;
   actions: ComponentChildren;
   winsButton: ComponentChildren;
+  /** where it sits: layout utilities only */
+  class?: string;
 }) {
   const { d, r } = spec,
     outfit = r.trainee.outfits[0]?.label || null,
     apt = d.apt || (r.aptitudes?.start.kind === 'known' ? r.aptitudes.start.start : null);
   return (
-    <div class="ud">
+    <div class={cx('ud', place)}>
       <div class="udtop">
         <div class="udpor">
           <UmaAv

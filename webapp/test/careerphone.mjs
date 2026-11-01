@@ -53,7 +53,7 @@ export default async function careerphone(b) {
   const pills = await pg.evaluate(PILLS);
   const simFits = await pg.evaluate(() => {
     const d = document.getElementById('sim-dlg').getBoundingClientRect(),
-      body = document.querySelector('#sim-dlg .dlgscroll');
+      body = document.getElementById('sim-top');
     return d.left >= 0 && d.right <= 375 && d.bottom <= 812 && body.scrollHeight > body.clientHeight;
   });
   await pg.locator('#sim-dlg').getByRole('button', { name: 'Close', exact: true }).click();

@@ -1144,23 +1144,21 @@ export default async function career(b) {
   {
     const name = 'career: … its careers to loop read "about N → M" (whole careers), a saving one decimal';
     await expect
-      .soft(pg.locator('#sim-result .simodds .tc .tv').first(), name)
+      .soft(pg.locator('#sim-result [data-odds] b').first(), name)
       .toHaveText(/^(about [\d,]+|\?) → ([\d,]+|\?)$/);
     await expect.soft(verdict, `${name}: the saving`).not.toHaveText(/Saves [\d,]+ careers|rises by [\d,]+ with/);
   }
   {
     const name =
       'career: … the best career with her folded under "Best career with her": portraits (trainee, then her two parents, her marked) and its deck; its odds outside';
+    await expect.soft(pg.locator('#sim-result details:not([open]) [data-av]'), `${name}: the portraits`).toHaveCount(3);
+    await expect.soft(pg.locator('#sim-result details [data-her]'), `${name}: her marked`).toHaveCount(1);
     await expect
-      .soft(pg.locator('#sim-result details.nextdeck:not([open]) .nextc .cface'), `${name}: the portraits`)
-      .toHaveCount(3);
-    await expect.soft(pg.locator('#sim-result .nextc .cface .her'), `${name}: her marked`).toHaveCount(1);
-    await expect
-      .soft(pg.locator('#sim-result details.nextdeck:not([open]) button[data-name]'), `${name}: the deck`)
+      .soft(pg.locator('#sim-result details:not([open]) button[data-name]'), `${name}: the deck`)
       .toHaveCount(6);
-    await expect.soft(pg.locator('#sim-result > .simodds .tc'), `${name}: its odds outside`).toHaveCount(2);
+    await expect.soft(pg.locator('#sim-result > [data-odds] > div'), `${name}: its odds outside`).toHaveCount(2);
     await expect
-      .soft(pg.locator('#sim-result details.nextdeck summary'), `${name}: the fold`)
+      .soft(pg.locator('#sim-result details summary'), `${name}: the fold`)
       .toHaveText(/^Best career with her$/);
   }
   check(
@@ -1190,7 +1188,7 @@ export default async function career(b) {
         return !!j && !!r && JSON.stringify(j.career.next) === JSON.stringify({ fit: r.next.fit });
       }),
     );
-    await expect.soft(pg.locator('#sim-result > .simfit'), `${name}: the line`).toHaveCount(1);
+    await expect.soft(pg.locator('#sim-result > [data-fit]'), `${name}: the line`).toHaveCount(1);
   }
   // a roll: a random result of this career, compared at once (stubbed random numbers: nothing lands, then everything at 3 stars)
   const roll = async (u) => {
@@ -1205,7 +1203,7 @@ export default async function career(b) {
       (n) =>
         window.__careerJobs.filter((j) => j.career.compare).length > n &&
         document.querySelector('#sim-verdict') &&
-        !document.querySelector('#sim-result .simbest'),
+        !document.querySelector('#sim-result [data-run="best"]'),
       before,
       { timeout: 180000 },
     );
@@ -1260,7 +1258,7 @@ export default async function career(b) {
   );
   // a zero (the solver's answer replaced: y 0; every zero is checked) shows no saving while it is checked,
   // and the exact comparison starts once the roll has stood 0.8 s
-  await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 }); // (the last roll's check done)
+  await pg.waitForFunction(() => !document.querySelector('#sim-result [data-run="refine"]'), null, { timeout: 180000 }); // (the last roll's check done)
   const refines = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.career.compare && j.career.next).length),
     rf0 = await refines();
   // (what shows, and whether the exact comparison has started, read the moment "Checking…" renders: a DOM observer runs
@@ -1290,7 +1288,7 @@ export default async function career(b) {
       () => true,
       () => false,
     );
-  await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 });
+  await pg.waitForFunction(() => !document.querySelector('#sim-result [data-run="refine"]'), null, { timeout: 180000 });
   await pg.evaluate(() => {
     delete window.__rollPatch;
   });
@@ -1354,8 +1352,7 @@ export default async function career(b) {
     JSON.stringify({ exStarted, ins0, after }),
   );
   await pg.waitForFunction(
-    () =>
-      document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .simbest, #sim-result .simrefine'),
+    () => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result [data-run]'),
     null,
     { timeout: 180000 },
   );

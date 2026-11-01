@@ -69,7 +69,7 @@ export function SchedButton({ r }: { r: CareerReport }) {
   );
 }
 /** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.ts) */
-export function DeckCard({ slot }: { slot: DeckSlot }) {
+function DeckCard({ slot }: { slot: DeckSlot }) {
   const { base, borrowed: bor, card: c, endAt } = slot,
     pick = slot.choice || (c?.pri ? c.pri.join(', ') : ''),
     t = c ? cardTitle(c) : { nm: base, ti: '' },
@@ -110,10 +110,12 @@ export function DeckCard({ slot }: { slot: DeckSlot }) {
     </button>
   );
 }
-// a deck's cards: six to a row (`row`), or three to a row of larger cards (`popup`, the deck popup's)
+// a deck's cards: six to a row (`row`), three to a row of larger cards (`popup`, the deck popup's) or of smaller ones
+// (`mini`, Try a run's comparison panel)
 const CARDS = {
   row: 'grid grid-cols-[repeat(6,minmax(0,84px))] items-start gap-2.5 max-md:gap-1.5',
   popup: 'grid grid-cols-[repeat(3,minmax(0,104px))] items-start justify-center gap-2.5 max-md:gap-1.5',
+  mini: 'grid grid-cols-[repeat(3,minmax(0,72px))] items-start gap-2.5 max-md:gap-1.5',
 } as const;
 /** a deck's cards, borrowed last, each a DeckCard (data-deck-cards: the checks find a deck's by it) */
 export function DeckCards({ deck, fit }: { deck: Parameters<typeof deckCards>[0]; fit: keyof typeof CARDS }) {

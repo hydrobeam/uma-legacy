@@ -149,6 +149,9 @@
   --color-spark-none-green: #9fd94a;
   /* a veteran tile's stars where the game's star row isn't shipped (ui/VetCell.tsx) */
   --color-vet-star: #f0a800;
+  /* Try a run's comparison (career/analysis/view.tsx): a figure she makes better, worse */
+  --color-sim-up: #3c8f00;
+  --color-sim-down: #c8344f;
 
   --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -248,6 +251,10 @@
   --shadow-vet-tab: 0 1px 0 rgba(0, 0, 0, 0.2);
   /* a portrait in the Inspiration view (ui/InspView.tsx): the game's white and cream rings */
   --shadow-insp-face: 0 0 0 3px var(--color-gm-panel), 0 0 0 5px #efe3cf;
+  /* her card in Try a run (career/analysis/Details.tsx): her portrait's cream ring round its white mat; an aptitude
+     cell's darker foot */
+  --shadow-card-face: 0 0 0 3px #efe3cf, 0 2px 5px var(--color-gm-shadow);
+  --inset-shadow-grade: inset 0 -2px 0 var(--color-gm-tab-low);
   /* the setup ribbon's second white stripe, left of the first */
   --shadow-stripe: -11px 0 0 rgba(255, 255, 255, 0.3);
   /* drop shadows (they follow a shape's outline): the wordmark's, the ribbon's chevron, the Enhance art's and its hover
@@ -482,6 +489,8 @@
     --color-trash-slit: #2b2934;
     --color-skill-ink: #f4eeff;
     --color-count-avg: #ff86b0;
+    --color-sim-up: #8fd94a;
+    --color-sim-down: #ff7d93;
     /* the white spark bars and the "+" list's cells darkened (images.py dark_sprites), light words on them */
     --color-spark-ink: #f6ece3;
     --color-spark-rim: #18161d;
