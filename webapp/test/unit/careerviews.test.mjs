@@ -20,7 +20,8 @@ const built = await esbuild.build({
       import '@preact/signals';
       export * as store from './src/veterans/store.ts';
       export { NodeDialog } from './src/career/view/NodeDialog.tsx';
-      export { openNode, closeNode } from './src/career/view/dialogs.ts';
+      export { openNode, closeNode, nodeOpen, pickerFor, pickerClosed } from './src/career/view/dialogs.ts';
+      export { on } from './src/store.ts';
       export { sayRenderErrors } from './src/ui/RenderGuard.tsx';
       export { answer, loadFails } from './src/career/state.ts';
       export { PoolBody, PoolHead } from './src/career/view/Pool.tsx';
@@ -48,7 +49,7 @@ const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
 const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails, OddsDialog, openOdds } = page;
-const { ScheduleDialog, openSched, schedOpened, Guard } = page;
+const { ScheduleDialog, openSched, schedOpened, Guard, nodeOpen, pickerFor, pickerClosed, on } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
 await loadData();
 
@@ -92,6 +93,42 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
   closeNode();
   await settle();
   assert.equal(dlg.open, false, 'Close closes it');
+  for (const f of frames.splice(0)) f();
+});
+
+test('the node popup hands off to the parent picker and removes a veteran in one write each (review-8c 9)', async () => {
+  const frames = [];
+  vs.initVets({ storage: () => memory(), hidden: () => false, afterFrame: (f) => frames.push(f) });
+  vs.addVets(
+    ['a', 'b'].map((id, i) => ({
+      id,
+      src: 'hand',
+      borrowed: false,
+      ...node(1001 + i),
+      parents: [node(1003), node(1004)],
+    })),
+  );
+  const root = document.createElement('div');
+  render(h(NodeDialog, null), root);
+  const button = (text) => root.querySelectorAll('button').find((b) => b.textContent === text);
+  // Choose parent: the popup closes and the picker opens, as one change (an effect on both runs once)
+  openNode({ kind: 'p', k: 0 });
+  await settle();
+  let runs = [];
+  const stopPicker = on([nodeOpen, pickerFor], (spec, k) => runs.push([spec, k]));
+  button('Choose parent').click();
+  stopPicker();
+  assert.deepEqual(runs, [[null, 0]], 'closed and the picker open, in one run');
+  pickerClosed();
+  // Remove: the popup closes and she goes, as one change
+  openNode({ kind: 'v', id: 'a' });
+  await settle();
+  runs = [];
+  const stopRemove = on([nodeOpen, vs.vets], (spec, list) => runs.push([spec, list.map((v) => v.id)]));
+  button('Remove').click();
+  stopRemove();
+  assert.deepEqual(runs, [[null, ['b']]], 'closed and removed, in one run');
+  await settle();
   for (const f of frames.splice(0)) f();
 });
 
