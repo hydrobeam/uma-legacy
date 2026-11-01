@@ -50,7 +50,6 @@
 !/webapp/package-lock.json
 !/webapp/biome.json
 !/webapp/tsconfig.json
-!/webapp/tsconfig.js.json
 !/webapp/tsconfig.worker.json
 !/val/
 /val/*

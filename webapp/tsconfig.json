@@ -1,9 +1,8 @@
 {
-  // The page's TypeScript (.ts, .tsx), strict. The .js modules it imports are typed by inference; their own checks are
-  // tsconfig.js.json's (checkJs, not strict) until every module is converted to .ts.
+  // The page's TypeScript (.ts, .tsx), strict. Every module is .ts or .tsx: with allowJs off, an import of a stray .js
+  // fails here.
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": false,
+    "allowJs": false,
     "noEmit": true,
     "strict": true,
     "noImplicitReturns": true,

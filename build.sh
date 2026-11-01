@@ -182,7 +182,6 @@ step_lint() {
   lint test_validation in_dir "$R" quiet "${PY[@]}" val/test_validation.py
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
-  lint "tsc (js)" in_dir "$W" npx --no-install tsc -p tsconfig.js.json
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
   lint static.mjs in_dir "$W" node test/static.mjs
   # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the terminal
