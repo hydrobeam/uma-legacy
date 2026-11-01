@@ -110,7 +110,7 @@ steps).
 `rollouts.py` forces each of a pool's top rows as the first career (`simulate.force`), continues with greedy under goal
 `looped` for 50 careers in all on common draws, and values each run's end by the plan's own V of its final pool
 (`simulate.keep_pool`), weighted by the run's survival. The paired difference T(row) - T(pick) is compared with
-score(pick) - score(row). One command reruns it (`uv run val/sim/rollouts.py BIN OUT_DIR --runs N [POOL ...]`); a run
+score(pick) - score(row). One command reruns it (`uv run --group research val/sim/rollouts.py BIN OUT_DIR --runs N [POOL ...]`); a run
 costs about 3 plans per pool.
 
 What it can and cannot see: in the measurement below no run of any row on any of the four pools finished within its 50
@@ -158,8 +158,8 @@ by at least the gap. `--index N` adds N runs of the plan's own policy paired wit
 degrees of freedom). It tests neither Cont nor the pick: run it on pools
 whose greedy runs finish (a real full veteran), where it places V's level and nothing else.
 
-    uv run val/sim/v_level.py pkg/loopopt/target/release/loopopt /tmp/vl --runs 1000 p16_borrow   # 37 s of CPU
-    uv run val/sim/v_level.py pkg/loopopt/target/release/loopopt /tmp/vl --runs 1000 --index 5 p16_borrow   # + 5 index runs, 50-160 s each
+    uv run --group research val/sim/v_level.py pkg/loopopt/target/release/loopopt /tmp/vl --runs 1000 p16_borrow   # 37 s of CPU
+    uv run --group research val/sim/v_level.py pkg/loopopt/target/release/loopopt /tmp/vl --runs 1000 --index 5 p16_borrow   # + 5 index runs, 50-160 s each
 
 Run on 2026-10-26 (a release binary whose plan reproduces val/plan's reference V to the bit): p16_borrow V 212.52, greedy 198.1 [192.2, 204.0] over 1,000 runs (none
 censored), V - greedy +14.4 [+8.5, +20.3] careers: V reads 7.3% high against a policy the player can run (z 4.8). Runs

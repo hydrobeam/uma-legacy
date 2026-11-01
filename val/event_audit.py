@@ -37,7 +37,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("--all", action="store_true", help="also print the non-target hints")
 SHOW_ALL = parser.parse_args().all
-connection = sqlite3.connect(REPO + "game/global/master.mdb")
+connection = sqlite3.connect(f"file:{REPO}game/global/master.mdb?mode=ro", uri=True)
 query = lambda s, *a: connection.execute(s, a).fetchall()
 skill_names = dict(query("select [index], text from text_data where category = 47"))
 event_titles = dict(query("select [index], text from text_data where category = 181"))
