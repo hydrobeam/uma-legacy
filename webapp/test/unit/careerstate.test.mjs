@@ -24,7 +24,7 @@ import {
   reference,
   reviseKeptPlan,
   runEnds,
-  runEndsWith,
+  runEndsUnsearched,
   runView,
   runWaits,
   searchStarts,
@@ -127,7 +127,7 @@ test('each answer transition copies on write and freezes what it brings in, the 
       (a) => assert.deepEqual(a.status, { kind: 'error', text: 'no worker' }),
     ],
     ['loadFails', () => loadFails('no data'), (a) => assert.equal(a.status.text, 'no data')],
-    ['runEndsWith', () => runEndsWith(made()), (a) => assert.equal(a.last.key, 'job')],
+    ['runEndsUnsearched', () => runEndsUnsearched(made()), (a) => assert.equal(a.last.key, 'job')],
   ];
   for (const [name, step, after] of STEPS) {
     const before = answer.value,
@@ -205,7 +205,7 @@ const fakes = (replies, during = () => undefined) => {
   let current = true;
   return {
     seen,
-    endRun: () => {
+    newRun: () => {
       current = false;
     },
     deps: {
@@ -249,7 +249,7 @@ test('a new plan stops the check, even one like it; so do a new run and a worker
   assert.equal(answer.value.planState.r.robust, undefined, 'the new plan has no check of the old one');
   assert.equal(run.seen.checked.length, 1);
   // a new run (an edit) while the first variant runs
-  run = fakes(REPLIES(), (n) => n === 1 && run.endRun());
+  run = fakes(REPLIES(), (n) => n === 1 && run.newRun());
   await checkPhase(run.deps, answer.value.planState);
   assert.equal(run.seen.jobs.length, 1);
   assert.equal(answer.value.planState.r.robust, undefined);
@@ -296,7 +296,7 @@ test('an effect wakes only for the signals it names: a check wakes the answer an
   expect("the check's step (the pick unchanged)", () => setPlanCheck(id, check(1)), 0, 1, 0, 1);
   expect('a new answer with a plan', () => showAnswer(made('new'), WHERE), 0, 1, 1, 1);
   expect('the answer dropped', () => dropAnswer(), 0, 1, 1, 0);
-  expect('the run over, with an answer (its batch: the one-batch test)', () => runEndsWith(made()), 1, 1, 1, 0);
+  expect('the run over, with an answer (its batch: the one-batch test)', () => runEndsUnsearched(made()), 1, 1, 1, 0);
   expect('a load failure (status only)', () => loadFails('x'), 0, 1, 0, 0);
   for (const stop of stops) stop();
 });
@@ -313,7 +313,7 @@ test('each two-signal transition is one batch: an effect on both signals runs on
     stop();
     assert.equal(runs, 1, what);
   };
-  once('the run ends unsearched: the run view and the answer', [answer, runView], () => runEndsWith(made()));
+  once('the run ends unsearched: the run view and the answer', [answer, runView], () => runEndsUnsearched(made()));
   once('an answer with a plan: the answer and the reference', [answer, reference], () => showAnswer(made(), WHERE));
   const id = answer.value.planState.id;
   once("a check step: the answer and the reference (the plan's)", [answer, reference], () =>

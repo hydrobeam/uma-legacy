@@ -109,8 +109,9 @@ export const answerCareer = computed(() => {
   return (planState.state === 'done' && planState.r.choice) || best;
 });
 
-// frozen as it comes in, all but the jobs (the header)
-function frozen(next: AnswerView): AnswerView {
+// the answer `next` frozen in place, all but its jobs (the header says why), and returned: the run machine's own
+// references to its parts (the plan it checks, the baseline it keeps) are frozen with it
+function freezeInPlace(next: AnswerView): AnswerView {
   deepFreeze(next.status);
   if (next.last) deepFreeze(next.last.r);
   if (next.planState.state === 'done') deepFreeze(next.planState.r);
@@ -140,7 +141,7 @@ export const runEnds = () => runPatch({ searching: false });
 /** the search's answer; a plan it made becomes the `reference`, with `where` it was made (`base`, `places`: given
  *  with a plan, null without) */
 export function showAnswer(next: AnswerView, where: Pick<Reference, 'base' | 'places'> | null) {
-  const shownNext = frozen(next),
+  const shownNext = freezeInPlace(next),
     plan = shownNext.planState;
   batch(() => {
     shownAnswer.value = shownNext;
@@ -148,9 +149,9 @@ export function showAnswer(next: AnswerView, where: Pick<Reference, 'base' | 'pl
       lastPlan.value = Object.freeze({ ...where, places: deepFreeze(where.places), result: plan.r, planId: plan.id });
   });
 }
-/** the run ends with `next` (no search ran: the job can't be built) */
-export function runEndsWith(next: AnswerView) {
-  const shownNext = frozen(next);
+/** the run ends unsearched (the job can't be built), with `next` (its message, no result) */
+export function runEndsUnsearched(next: AnswerView) {
+  const shownNext = freezeInPlace(next);
   batch(() => {
     runEnds();
     shownAnswer.value = shownNext;
@@ -158,15 +159,15 @@ export function runEndsWith(next: AnswerView) {
 }
 /** a run's search failed: `text` says why */
 export function answerFails(text: string) {
-  shownAnswer.value = frozen({ status: { kind: 'error', text }, last: null, planState: NO_PLAN });
+  shownAnswer.value = freezeInPlace({ status: { kind: 'error', text }, last: null, planState: NO_PLAN });
 }
 /** veterans were added or removed: a result names parents by their place in the list, so it goes (the status stays) */
 export function dropAnswer() {
-  shownAnswer.value = frozen({ ...shownAnswer.peek(), last: null, planState: NO_PLAN });
+  shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), last: null, planState: NO_PLAN });
 }
 /** the page could not load: `text` says why */
 export function loadFails(text: string) {
-  shownAnswer.value = frozen({ ...shownAnswer.peek(), status: { kind: 'error', text } });
+  shownAnswer.value = freezeInPlace({ ...shownAnswer.peek(), status: { kind: 'error', text } });
 }
 
 // ---------- plans: their ids and their check
@@ -216,7 +217,7 @@ export function recallAnswer(key: string) {
 /** an answer kept since the last visit (statestore.js), under `key`: its plan gets an id of this page's */
 export function keepSavedAnswer(key: string, saved: AnswerView) {
   const planState = saved.planState.state === 'done' ? { ...saved.planState, id: newPlanId() } : saved.planState;
-  answers.set(key, frozen({ ...saved, planState }));
+  answers.set(key, freezeInPlace({ ...saved, planState }));
 }
 /** a kept answer drawn again: it is shown, and the run is over */
 export function showKeptAnswer(hit: AnswerView) {

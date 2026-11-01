@@ -23,7 +23,7 @@ export type RunStore = Pick<
   | 'planStarts'
   | 'planProgresses'
   | 'runEnds'
-  | 'runEndsWith'
+  | 'runEndsUnsearched'
   | 'showAnswer'
   | 'showKeptAnswer'
   | 'answerFails'
@@ -360,7 +360,7 @@ export function createRun(deps: RunDeps) {
   }
   // a run that ends without searching (the job can't be built): its message, no answer
   function endUnsearched(next: Answer) {
-    store.runEndsWith(next);
+    store.runEndsUnsearched(next);
     clock.clearTimer(tick);
     analysis.clear();
     view.drawAll();
