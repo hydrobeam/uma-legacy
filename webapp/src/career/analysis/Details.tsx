@@ -70,7 +70,6 @@ export interface DetailsSpec {
   /** the G1s her schedule runs, each with her chance of winning it at least once */
   races: { ix: number; name: string; p: number; turns: number[] }[];
   raceName: (ix: number) => string;
-  /** after an edit of her sparks */
   /** the target skills' groups, in the job's order */
   targets: readonly number[];
   /** her two parents' records, each with her place and what opens her node */

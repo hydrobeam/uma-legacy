@@ -1,6 +1,7 @@
 // ---------- the game's Inspiration view of a veteran ----------
 // "Sparks" (Try a run's card: `header`), her sparks as the game's spark bars, then "Legacy Origin": her parents' (each a
-// row with her portrait). Her parents' sparks are editable when `parentKey` names their controls. It reads no store (as Sparks): it draws again whenever its parent does.
+// row with her portrait). Her parents' sparks are editable when `parentKey` names their controls. It reads no store (as
+// Sparks): it draws again whenever its parent does.
 import { umaName } from '../veterans/names.js';
 import type { NodeRecord, NodeRef } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';

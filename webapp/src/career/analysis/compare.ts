@@ -296,9 +296,9 @@ export function createComparison({ engine, clock, answers, store, page }: Compar
         compare: true,
         no_reports: true,
       }); // as a run's plan job, once she is added
-      const { last, planState } = answers.answer.peek();
+      const { planState } = answers.answer.peek();
       let planNow: DeepReadonly<PlanReport> | null =
-        planState.state === 'done' && !(last ?? lastShown()).job.fix.length ? planState.r : null;
+        planState.state === 'done' && !lastShown().job.fix.length ? planState.r : null;
       if (!planNow) {
         const mb = await engine.run(planOf(base.legacies));
         if (gone()) return;

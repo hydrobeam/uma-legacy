@@ -15,6 +15,7 @@ import type { Draft, LineageNode, NodeRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.js';
 import { openWins } from '../../veterans/pickers.js';
 import { fitSparks } from '../../details.js';
+import { must } from '../../must.ts';
 import { Runner, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import { scheduledRaces, rolledOutcome } from '../roll.mjs';
@@ -189,14 +190,10 @@ function verdictText(sim: SimulationView, d: DraftView, next: Career | undefined
           ? `Saves ${saves.toFixed(1)} careers`
           : sim.herParent
             ? 'Parent of the next career'
-            : next && next.p_all > must(sim.baseline).p_all * (1 + 1e-9)
+            : next && next.p_all > must(sim.baseline, 'figures with her best career have a baseline').p_all * (1 + 1e-9)
               ? `Better odds, no ${none}`
               : `No ${none}`;
 }
-const must = <T,>(x: T | null | undefined): T => {
-  if (x == null) throw new Error('figures with her best career have a baseline');
-  return x;
-};
 /** the comparison's verdict in one line: what she does for the loop, where her saving lands, or a rise said as such */
 function ComparisonVerdict({ sim, d, next }: { sim: SimulationView; d: DraftView; next: Career | undefined }) {
   const { now, withHer } = sim.v0 || { now: null, withHer: null },
@@ -243,7 +240,7 @@ function ComparisonResult({ sim, d }: { sim: SimulationView; d: DraftView }) {
     </p>
   );
   const held = sim.refining || sim.standing ? ' held' : '';
-  const baseline = next && must(sim.baseline);
+  const baseline = next && must(sim.baseline, 'figures with her best career have a baseline');
   return (
     <>
       {sim.stale && <p class="note">These figures are for her result before your last edit. Compare to update them.</p>}
