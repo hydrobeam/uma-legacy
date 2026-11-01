@@ -35,6 +35,7 @@ import type { ReadonlySignal } from '@preact/signals';
 import type { VNode } from 'preact';
 import { $ } from '../dom.ts';
 import { ERA } from '../saved.ts';
+import { update } from '../storage.ts';
 import { loadData } from '../data.ts';
 import CAREER from '#career-data';
 import { jobSetup, settings, switchEra } from '../settings.ts';
@@ -256,11 +257,7 @@ function initSettings() {
 }
 // ---------- start ----------
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
-try {
-  localStorage.removeItem('llp:loops');
-} catch {
-  // storage blocked: nothing was kept to remove
-}
+update('llp:loops', () => null); // (storage blocked: nothing was kept to remove)
 // a resize: the spark names on show shrink to fit their new width (details.ts fitSparks)
 addEventListener('resize', () => fitSparks(document));
 // a save of the veterans still due goes out when the page is hidden or left (a reload or close loses nothing)

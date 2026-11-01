@@ -39,6 +39,15 @@
       "nursery": { "noFloatingPromises": "info" },
       "style": {
         "noNonNullAssertion": "error",
+        "noRestrictedGlobals": {
+          "level": "error",
+          "options": {
+            "deniedGlobals": {
+              "localStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)",
+              "sessionStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)"
+            }
+          }
+        },
         "useImportType": "error",
         "noRestrictedImports": {
           "level": "error",
@@ -64,9 +73,14 @@
   },
   "plugins": [
     { "path": "./lint/effects.grit", "includes": ["src/**", "!src/store.ts"] },
-    { "path": "./lint/mutable-export.grit", "includes": ["src/**"] }
+    { "path": "./lint/mutable-export.grit", "includes": ["src/**"] },
+    { "path": "./lint/storage-write.grit", "includes": ["src/**", "!src/storage.ts"] }
   ],
   "overrides": [
+    {
+      "includes": ["src/storage.ts", "test/**"],
+      "linter": { "rules": { "style": { "noRestrictedGlobals": "off" } } }
+    },
     {
       "includes": ["src/store.ts", "test/**"],
       "linter": { "rules": { "style": { "noRestrictedImports": "off" } } }

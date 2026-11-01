@@ -4,6 +4,7 @@ import { computed, signal } from '@preact/signals';
 import { useLayoutEffect } from 'preact/hooks';
 import { $ } from '../../dom.ts';
 import { ERA } from '../../saved.ts';
+import { read, update } from '../../storage.ts';
 import { RANKS } from '../../data.ts';
 import { settings, setBorrowPar } from '../../settings.ts';
 import { scenarioOf } from '../../scenario.ts';
@@ -46,16 +47,8 @@ export function BorrowChoice() {
 // the choice is kept in this browser, and until one is made it folds once there are veterans (the plan's answer, not
 // the settings, is what a return visit is for).
 const FOLD_KEY = 'llp:setup-folded';
-const foldChosen = signal<boolean | null>(
-  (() => {
-    try {
-      const f = localStorage.getItem(FOLD_KEY);
-      return f === null ? null : f === '1';
-    } catch {
-      return null; // storage blocked: as if no fold was chosen
-    }
-  })(),
-);
+const kept = read(FOLD_KEY); // (storage blocked: as if no fold was chosen)
+const foldChosen = signal<boolean | null>(kept === null ? null : kept === '1');
 // the first veterans fold it, and it stays folded (a latch: the entry sets it when veterans arrive, `sawVeterans`)
 const sawVets = signal(false);
 const folded = computed(() => foldChosen.value ?? sawVets.value);
@@ -69,11 +62,7 @@ export function initFold() {
   bar.addEventListener('click', (e) => {
     if (!folded.peek() && !(e.target as HTMLElement).closest('#h-set')) return;
     foldChosen.value = !folded.peek();
-    try {
-      localStorage.setItem(FOLD_KEY, foldChosen.value ? '1' : '0');
-    } catch {
-      // storage blocked: the fold holds for this visit only
-    }
+    update(FOLD_KEY, () => (foldChosen.value ? '1' : '0')); // (storage blocked: the fold holds for this visit only)
   });
 }
 /** folded, the setup's summary: each setting as its label, light, and its value, bold, as the panel's rows read (the

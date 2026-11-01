@@ -8,8 +8,10 @@
 // the values as arguments.
 import { computed, signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { COMMON, ERA, PER_ERA, SAVED, SETTINGS, browserStorage, loadSaved, writeSaved } from './saved.ts';
-import type { Era, Saved, SavedPart, SettingsStorage } from './saved.ts';
+import { COMMON, ERA, PER_ERA, SAVED, SETTINGS, loadSaved, writeSaved } from './saved.ts';
+import type { Era, Saved, SavedPart } from './saved.ts';
+import { browserStorage } from './storage.ts';
+import type { Backing } from './storage.ts';
 import { deepFreeze } from './store.ts';
 import type { DeepReadonly } from './store.ts';
 
@@ -94,7 +96,7 @@ const record = signal(fromSaved(SAVED));
 export const settings: ReadonlySignal<SettingsView> = record;
 // Load the settings from `storage` and keep them there from now on: the page's are localStorage's, read at load
 // (saved.ts); a test passes its own
-export function initStore(at: () => SettingsStorage) {
+export function initStore(at: () => Backing) {
   storage = at;
   record.value = fromSaved(loadSaved(at));
 }
@@ -112,7 +114,7 @@ export const jobSetup = computed(() =>
 // persist, then assign (the effects run in the assignment)
 function commit(patch: Partial<SettingsView>) {
   const next = deepFreeze({ ...record.peek(), ...patch });
-  writeSaved(storage, { common: pick(next, COMMON), [ERA]: pick(next, PER_ERA) });
+  writeSaved(storage, () => ({ common: pick(next, COMMON), [ERA]: pick(next, PER_ERA) }));
   record.value = next;
 }
 export const setTargets = (targets: readonly Target[]) => commit({ targets });
@@ -142,7 +144,7 @@ export const importSettings = (imported: Partial<Settings>) => commit(dropRequir
 /** this tab's settings with `patch` over them (a scenario the other era opens on), and the era */
 export function switchEra(era: Era, patch: Partial<Settings>) {
   const next = { ...record.peek(), ...patch };
-  writeSaved(storage, { common: pick(next, COMMON), [ERA]: pick(next, PER_ERA) }, era);
+  writeSaved(storage, () => ({ common: pick(next, COMMON), [ERA]: pick(next, PER_ERA) }), era);
 }
 /** an import's settings for the other era: its shared settings over this tab's, its per-era ones over that era's as
  *  stored */
@@ -151,11 +153,11 @@ export function importToEra(era: Era, imported: Partial<Settings>) {
     Object.fromEntries(Object.entries(imported).filter(([key]) => keys.includes(key)));
   writeSaved(
     storage,
-    {
+    (stored) => ({
       common: { ...pick(record.peek(), COMMON), ...given(COMMON) },
       [ERA]: pick(record.peek(), PER_ERA),
-      [era]: { ...loadSaved(storage)[era], ...given(PER_ERA) },
-    },
+      [era]: { ...stored[era], ...given(PER_ERA) },
+    }),
     era,
   );
 }

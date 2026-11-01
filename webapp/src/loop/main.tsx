@@ -8,6 +8,7 @@ import { started } from '../errorlog.ts'; // first: it listens before any other 
 import { render } from 'preact';
 import { $, $input } from '../dom.ts';
 import { ERA } from '../saved.ts';
+import { browserStorage } from '../storage.ts';
 import { loadData } from '../data.ts';
 import EXAMPLE from '../../example.json'; // the default settings' result, precomputed (example.mjs)
 import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
@@ -62,7 +63,7 @@ const loop = createRun({
   setTimer: (fn, ms) => setTimeout(fn, ms),
   every: (fn, ms) => setInterval(fn, ms),
   clearTimer: (timer) => clearTimeout(timer),
-  storage: () => localStorage,
+  storage: browserStorage,
   store: { loopRun, beginSearch, interim, settle, tick },
   settings: () => settings.peek(),
   render: drawResult,

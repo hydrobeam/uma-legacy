@@ -11,6 +11,8 @@
 import { computed, signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { ERA } from '../saved.ts';
+import { browserStorage, readJson, updateJson } from '../storage.ts';
+import type { Backing } from '../storage.ts';
 import { isGrades } from '../grades.ts';
 import type { DeepReadonly } from '../store.ts';
 
@@ -87,14 +89,14 @@ interface VetsState {
 }
 /** where the store saves, and when (the page's: localStorage, after the next frame; a test passes its own) */
 export interface VetsHost {
-  storage: () => Pick<Storage, 'getItem' | 'setItem'>;
+  storage: () => Backing;
   /** the page is hidden: a save goes out at once */
   hidden: () => boolean;
   /** run `f` once the next frame has been drawn */
   afterFrame: (f: () => void) => void;
 }
 const browserHost: VetsHost = {
-  storage: () => localStorage,
+  storage: browserStorage,
   hidden: () => document.visibilityState === 'hidden',
   afterFrame: (f) => requestAnimationFrame(() => setTimeout(f)),
 };
@@ -106,21 +108,19 @@ const STORAGE_KEY = 'llp:career',
 // stars of a skill added by hand: 2, the most common star count of a white spark at SS rank (70% at rank score 17,500+,
 // 45% below it; hakuraku.moe)
 export const NEW_STARS = 2;
-function loadAll() {
-  try {
-    const saved = JSON.parse(host.storage().getItem(STORAGE_KEY) ?? 'null'); // (nothing stored yet: null)
-    if (saved && saved.v === STORAGE_VERSION) return saved;
-    if (saved && saved.v === 1) {
-      // v1: a list of veterans per era
-      const upgraded: Record<string, unknown> = { v: STORAGE_VERSION };
-      for (const era of ['global', 'gm']) if (Array.isArray(saved[era])) upgraded[era] = { vets: saved[era] };
-      return upgraded;
-    }
-  } catch {
-    // storage blocked or the veterans unreadable: none
+// what is stored, in this version (nothing, unreadable or the storage blocked: none)
+// biome-ignore lint/suspicious/noExplicitAny: the stored object, unchecked until each part is read
+function asAll(saved: any) {
+  if (saved && saved.v === STORAGE_VERSION) return saved;
+  if (saved && saved.v === 1) {
+    // v1: a list of veterans per era
+    const upgraded: Record<string, unknown> = { v: STORAGE_VERSION };
+    for (const era of ['global', 'gm']) if (Array.isArray(saved[era])) upgraded[era] = { vets: saved[era] };
+    return upgraded;
   }
   return { v: STORAGE_VERSION };
 }
+const loadAll = () => asAll(readJson(STORAGE_KEY, host.storage));
 /** a stored or pasted object, before it is checked */
 type Raw = Record<string, unknown>;
 /** a record the page can show and the solver can read: an id and two parent nodes (a damaged one is left out) */
@@ -207,18 +207,20 @@ let persistDue = false;
 function write(state: VetsState) {
   persistDue = false;
   // (uma.moe's listings come back from its kept answer; one chosen as a parent is saved, so the place keeps her). Only
-  // this era is written over what is stored now: another tab's write to the other era survives this tab's.
-  const all = loadAll();
-  all[ERA] = {
-    vets: state.vets.filter((v) => v.src !== 'umamoe' || state.plan.parents.includes(v.id)),
-    plan: state.plan,
-    chosen: state.chosen,
-  };
-  try {
-    host.storage().setItem(STORAGE_KEY, JSON.stringify(all));
-  } catch {
-    // storage blocked or full: the edit lasts for this visit only
-  }
+  // this era is written over what is stored now: another tab's write to the other era survives this tab's. (Storage
+  // blocked or full: the edit lasts for this visit only.)
+  updateJson(
+    STORAGE_KEY,
+    (stored) => ({
+      ...asAll(stored),
+      [ERA]: {
+        vets: state.vets.filter((v) => v.src !== 'umamoe' || state.plan.parents.includes(v.id)),
+        plan: state.plan,
+        chosen: state.chosen,
+      },
+    }),
+    host.storage,
+  );
 }
 /** save the record now (the era switch, before its reload) */
 export const persist = () => write(record.peek());

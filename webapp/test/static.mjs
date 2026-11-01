@@ -4,9 +4,6 @@
 // knip (knip.jsonc) and tsc, import cycles by Biome (noImportCycles), the module layers, the logic that reaches no
 // store and the components that stay views by dependency-cruiser (.dependency-cruiser.mjs), effects outside store.ts
 // and exported mutable bindings by Biome (noRestrictedImports, lint/*.grit), `@ts-ignore` by Biome (noTsIgnore).
-// - stale storage writes: `localStorage.setItem(key, JSON.stringify(x))` where `x` was not read or built in the same
-//   function after its last await. A copy read earlier (at load, or before a request) overwrites what another tab or
-//   call stored meanwhile; read what is stored, change your part, write it.
 // - template ids: every id a module looks up by a literal name ($, $input, getElementById, a querySelector/closest of
 //   '#id') exists on each page whose bundle holds the module (esbuild's metafile), in its page with its partials filled
 //   in, in the build plugins' own markup or made by one of the bundle's modules. A module that moves into the other
@@ -55,25 +52,6 @@ const sources = [
   ...BUILD_FILES,
 ].map((f) => [f, read(f)]);
 const problems = [];
-
-// ---------- stale storage writes
-for (const [file, text] of sources.filter(([f]) => f.startsWith('src'))) {
-  const lines = text.split('\n');
-  lines.forEach((line, k) => {
-    const m = line.match(/localStorage\.setItem\([^,]+,\s*JSON\.stringify\(([A-Za-z_$][\w$]*)\)\)/);
-    if (!m) return;
-    let start = k;
-    while (start > 0 && !/^(export )?(async )?function |^(export )?const [\w$]+ = (async )?\(/.test(lines[start]))
-      start--;
-    const body = lines.slice(start, k).join('\n'),
-      after = body.slice(body.lastIndexOf('await ') + 1),
-      name = m[1].replace(/\$/g, '\\$');
-    if (!new RegExp(`(?:const|let)\\s+${name}(?![\\w$])|(?<![\\w$.])${name}\\s*=(?!=)`).test(after))
-      problems.push(
-        `${file}:${k + 1}: stores ${m[1]}, a copy not read from storage in this function (after its last await)`,
-      );
-  });
-}
 
 // ---------- template ids: every id a module looks up by name exists on each page whose bundle holds the module
 // A page's markup is its page with the shared partials filled in (as the build fills them), the markup the build
@@ -613,6 +591,5 @@ if (problems.length) {
 }
 for (const report of reports) console.log(`report: ${report}`);
 console.log(
-  `static checks: no stale storage writes; ${looked.size} ids looked up, each on its pages ` +
-    `(${dynamic} lookups by a computed id unchecked)`,
+  `static checks: ${looked.size} ids looked up, each on its pages ` + `(${dynamic} lookups by a computed id unchecked)`,
 );

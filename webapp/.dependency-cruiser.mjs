@@ -14,7 +14,7 @@
 // (test/static.mjs reads the stores layer)
 export const LAYERS = [
   ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types']],
-  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
+  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved', 'storage']],
   [
     'model',
     ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/keys', 'career/run']
