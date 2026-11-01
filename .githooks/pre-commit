@@ -5,7 +5,7 @@
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
 #   the page's JS: Biome (lint and formatting) on the staged files, then tsc over the page and the worker (seconds)
 #   the page's JS, CSS, pages, tests or build: knip (dead exports, files, dependencies), dependency-cruiser (the module
-#     layers), test/deadcss.mjs (PurgeCSS) and test/static.mjs (the project's own checks); about 4 s together
+#     layers), test/deadcss.mjs (PurgeCSS) and no `@ts-expect-error` in src/ (a grep: no linter sees a comment); about 4 s
 #   the page's sources or tests: the node tests, webapp/test/unit/ (Vitest; about 2 s)
 # A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
 root=$(git rev-parse --show-toplevel) || exit 1
@@ -32,8 +32,8 @@ fi
 
 if [ -n "$(staged 'webapp/src/*' 'webapp/test/*' 'webapp/*.html' 'webapp/partials/*' 'webapp/vite/*' 'webapp/*.mjs' 'webapp/*.json' 'webapp/*.jsonc')" ]; then
   (cd "$root/webapp" && npx --no-install knip >&2 && npx --no-install depcruise --config .dependency-cruiser.mjs src >&2 \
-    && node test/deadcss.mjs >&2 && node test/static.mjs >&2) \
-    || fail 'knip, dependency-cruiser, dead CSS or static checks (above)'
+    && node test/deadcss.mjs >&2 && ! grep -rn --include='*.ts' --include='*.tsx' '@ts-expect-error' src >&2) \
+    || fail 'knip, dependency-cruiser, dead CSS or a @ts-expect-error (above)'
 fi
 
 if [ -n "$(staged 'webapp/src/*' 'webapp/test/*')" ]; then

@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@preact/signals": "2.11.4",
-    "@preact/signals-core": "1.14.5",
     "binaryen": "^132.0.0",
     "preact": "11.1.1"
   },
@@ -24,10 +23,10 @@
     "@swc/core": "1.16.21",
     "@vitejs/plugin-basic-ssl": "2.3.0",
     "dependency-cruiser": "18.7.0",
-    "esbuild": "^0.28.2",
     "happy-dom": "21.0.4",
     "knip": "6.44.1",
     "playwright": "1.63.0",
+    "preact-render-to-string": "6.8.2",
     "purgecss": "8.0.0",
     "size-limit": "14.3.0",
     "typescript": "7.0.2",

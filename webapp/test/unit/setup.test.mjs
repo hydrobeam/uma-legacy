@@ -8,8 +8,6 @@
 // npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
 import 'preact/debug';
 import '@preact/signals';
 import { h, options, render } from 'preact';
@@ -17,7 +15,6 @@ import * as S from '../../src/settings.ts';
 import * as P from '../../src/presets.ts';
 import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
 import { setupViews } from '../../src/ui/Setup.tsx';
-import { renderGuarded } from '../../src/ui/RenderGuard.tsx';
 import { SettingsSort, SortMenu } from '../../src/ui/SortMenu.tsx';
 import { gameData, loadData } from '../../src/data.ts';
 import { SKILLS, UMAS } from './fakepage.mjs';
@@ -25,12 +22,16 @@ import { SKILLS, UMAS } from './fakepage.mjs';
 vi.mock('#page-data', () => import('./fakepage.mjs'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
-const WEBAPP = path.join(import.meta.dirname, '..', '..');
-// the editors' mount points: the setup partials both planner pages hold (vite.config.mjs fills them in)
-const SETUP_PARTIALS = ['era', 'scen', 'rank', 'enh', 'skills', 'dlgumas', 'dlgcards'];
-document.body.innerHTML = SETUP_PARTIALS.map((p) =>
-  fs.readFileSync(path.join(WEBAPP, 'partials', `${p}.hbs`), 'utf8'),
-).join('');
+// the editors' boxes, as both planner pages' layouts hold them (career/Layout.tsx, loop/Layout.tsx), and the view
+// each draws (ui/Setup.tsx `setupViews`)
+const BOXES = {
+  'scen-dd': 'scenario',
+  'rank-ctl': 'rank',
+  'skills-panel': 'targets',
+  'set-umas-root': 'umasDialog',
+  'set-cards-root': 'cardsDialog',
+};
+for (const id of Object.keys(BOXES)) document.body.appendChild(document.createElement('div')).id = id;
 // two skills of one white name (the GM era's two "Pressure" skills)
 SKILLS.push([20301, 'Pressure', null], [20302, 'Pressure', null]);
 // the outfits' labels the Umas panel shows (the fake page's outfits have none)
@@ -44,11 +45,8 @@ const fresh = (common) => {
   S.initStore(() => ({ getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) }));
   return () => JSON.parse(map.get(KEY)).common;
 };
-// an editor into its mount point, as the entries draw it (ui/Setup.tsx `setupViews`)
-const mount = (id) => {
-  const { view, what } = setupViews().find((v) => v.id === id);
-  renderGuarded(view, document.getElementById(id), what, S.settings);
-};
+// an editor into its box, behind its guard, as the layouts draw it
+const mount = (id) => render(setupViews()[BOXES[id]], document.getElementById(id));
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 };

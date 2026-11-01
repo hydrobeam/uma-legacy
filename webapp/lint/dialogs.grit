@@ -1,0 +1,16 @@
+// Every modal dialog is ui/Dialog.tsx's: it calls showModal() and close() from its `open` prop, hears every close
+// (Escape, the backdrop), and holds the deck card panel's slot. No other module draws a <dialog> or calls showModal()
+// (biome.json's plugins, src/ but ui/Dialog.tsx)
+language js
+
+or {
+  `$dialog.showModal($...)`,
+  JsxOpeningElement(name = `dialog`),
+  JsxSelfClosingElement(name = `dialog`)
+} as $use where {
+  register_diagnostic(
+    span = $use,
+    message = "A modal dialog outside ui/Dialog.tsx: draw a <Dialog open={...} onClose={...}>",
+    severity = "error"
+  )
+}

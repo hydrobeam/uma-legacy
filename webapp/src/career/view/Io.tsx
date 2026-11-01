@@ -1,6 +1,6 @@
 // The veterans' Export and Paste popups (ui/Dialog): Export shows the text of the veterans, the plan and the job (Copy,
 // Download), made when it opens (career/io.ts `exportText`); Paste takes a text to import (io.ts `importText`), its box
-// empty at each opening. The career entry renders each into its mount point.
+// empty at each opening. The career page's layout draws each in its box.
 import { signal } from '@preact/signals';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { must } from '../../must.ts';

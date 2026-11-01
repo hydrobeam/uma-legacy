@@ -2,8 +2,7 @@
 // the key until one is saved, then the status, what was searched, Include max borrows, the order menu
 // (ui/SortMenu.tsx), every listing as a card (ui/VetCell.tsx: a card opens her veteran popup), Refresh and Disconnect.
 // What they show is umamoesetup.ts's (its signals and its sync).
-import { computed } from '@preact/signals-core';
-import { signal } from '@preact/signals-core';
+import { computed, signal } from '@preact/signals';
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { Dialog } from '../../ui/Dialog.tsx';

@@ -8,10 +8,13 @@
 // Saved per data era in localStorage['llp:career'] = {v: 2, global: {vets, plan, chosen}, gm: {...}}: an edit is saved
 // once after the next frame (edits in between share it), at once while the page is hidden, and a save still due goes
 // out when the page is hidden or left (the entry listens: `flushPersist`).
-import { computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
+import { computed } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
 import { ERA } from '../saved.ts';
+import { browserStorage, readJson, updateJson } from '../storage.ts';
+import type { Backing } from '../storage.ts';
 import { isGrades } from '../grades.ts';
+import { store } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 
 /** a spark map: group -> stars (1-3); keys are object keys, so strings once read back with Object.keys / entries */
@@ -87,14 +90,14 @@ interface VetsState {
 }
 /** where the store saves, and when (the page's: localStorage, after the next frame; a test passes its own) */
 export interface VetsHost {
-  storage: () => Pick<Storage, 'getItem' | 'setItem'>;
+  storage: () => Backing;
   /** the page is hidden: a save goes out at once */
   hidden: () => boolean;
   /** run `f` once the next frame has been drawn */
   afterFrame: (f: () => void) => void;
 }
 const browserHost: VetsHost = {
-  storage: () => localStorage,
+  storage: browserStorage,
   hidden: () => document.visibilityState === 'hidden',
   afterFrame: (f) => requestAnimationFrame(() => setTimeout(f)),
 };
@@ -106,21 +109,19 @@ const STORAGE_KEY = 'llp:career',
 // stars of a skill added by hand: 2, the most common star count of a white spark at SS rank (70% at rank score 17,500+,
 // 45% below it; hakuraku.moe)
 export const NEW_STARS = 2;
-function loadAll() {
-  try {
-    const saved = JSON.parse(host.storage().getItem(STORAGE_KEY) ?? 'null'); // (nothing stored yet: null)
-    if (saved && saved.v === STORAGE_VERSION) return saved;
-    if (saved && saved.v === 1) {
-      // v1: a list of veterans per era
-      const upgraded: Record<string, unknown> = { v: STORAGE_VERSION };
-      for (const era of ['global', 'gm']) if (Array.isArray(saved[era])) upgraded[era] = { vets: saved[era] };
-      return upgraded;
-    }
-  } catch {
-    // storage blocked or the veterans unreadable: none
+// what is stored, in this version (nothing, unreadable or the storage blocked: none)
+// biome-ignore lint/suspicious/noExplicitAny: the stored object, unchecked until each part is read
+function asAll(saved: any) {
+  if (saved && saved.v === STORAGE_VERSION) return saved;
+  if (saved && saved.v === 1) {
+    // v1: a list of veterans per era
+    const upgraded: Record<string, unknown> = { v: STORAGE_VERSION };
+    for (const era of ['global', 'gm']) if (Array.isArray(saved[era])) upgraded[era] = { vets: saved[era] };
+    return upgraded;
   }
   return { v: STORAGE_VERSION };
 }
+const loadAll = () => asAll(readJson(STORAGE_KEY, host.storage));
 /** a stored or pasted object, before it is checked */
 type Raw = Record<string, unknown>;
 /** a record the page can show and the solver can read: an id and two parent nodes (a damaged one is left out) */
@@ -187,7 +188,7 @@ function loaded(): VetsState {
     chosen: isChosen(mine.chosen) ? mine.chosen : null,
   });
 }
-const record = signal<VetsState>(loaded());
+const [record, setRecord] = store<VetsState>(loaded());
 /** every veteran of this era; a veteran's number on the page is her index here plus one */
 export const vets: ReadonlySignal<readonly VetRecord[]> = computed(() => record.value.vets);
 /** the next career's places (saved as `plan`) */
@@ -199,7 +200,7 @@ export const chosen: ReadonlySignal<DeepReadonly<ChosenCareer> | null> = compute
 export function initVets(at: VetsHost) {
   host = at;
   persistDue = false;
-  record.value = loaded();
+  setRecord(loaded());
 }
 
 // ---------- saving
@@ -207,18 +208,20 @@ let persistDue = false;
 function write(state: VetsState) {
   persistDue = false;
   // (uma.moe's listings come back from its kept answer; one chosen as a parent is saved, so the place keeps her). Only
-  // this era is written over what is stored now: another tab's write to the other era survives this tab's.
-  const all = loadAll();
-  all[ERA] = {
-    vets: state.vets.filter((v) => v.src !== 'umamoe' || state.plan.parents.includes(v.id)),
-    plan: state.plan,
-    chosen: state.chosen,
-  };
-  try {
-    host.storage().setItem(STORAGE_KEY, JSON.stringify(all));
-  } catch {
-    // storage blocked or full: the edit lasts for this visit only
-  }
+  // this era is written over what is stored now: another tab's write to the other era survives this tab's. (Storage
+  // blocked or full: the edit lasts for this visit only.)
+  updateJson(
+    STORAGE_KEY,
+    (stored) => ({
+      ...asAll(stored),
+      [ERA]: {
+        vets: state.vets.filter((v) => v.src !== 'umamoe' || state.plan.parents.includes(v.id)),
+        plan: state.plan,
+        chosen: state.chosen,
+      },
+    }),
+    host.storage,
+  );
 }
 /** save the record now (the era switch, before its reload) */
 export const persist = () => write(record.peek());
@@ -234,7 +237,7 @@ function commit(patch: Partial<VetsState>, now = false) {
     persistDue = true;
     host.afterFrame(flushPersist);
   }
-  record.value = next;
+  setRecord(next);
 }
 
 // ---------- reading
@@ -452,7 +455,7 @@ export interface Draft extends LineageNode {
   /** the skills she bought (group -> how), from the roll */
   bought?: Record<number, string>;
 }
-const draftNow = signal<DeepReadonly<Draft> | null>(null);
+const [draftNow, putDraft] = store<Draft | null>(null);
 let draftGen = 0; // the draft on show's generation (a staleness token: a number, never her object)
 /** the draft on show (null: none) */
 export const draft: ReadonlySignal<DeepReadonly<Draft> | null> = draftNow;
@@ -460,7 +463,7 @@ export const draft: ReadonlySignal<DeepReadonly<Draft> | null> = draftNow;
  *  its own frozen copy (the caller's object stays the caller's, unfrozen) */
 export function setDraft(next: Draft | DeepReadonly<Draft> | null) {
   draftGen++;
-  draftNow.value = next && freezeFresh(structuredClone(next) as Draft);
+  putDraft(next && freezeFresh(structuredClone(next) as Draft));
 }
 // the draft on show for an editor opened now: `at` reads her (or her parent), `next` her edited record
 function draftAt(
@@ -476,14 +479,14 @@ function draftAt(
     },
     edit: (f) => {
       const d = now();
-      if (d) draftNow.value = freezeFresh(next(d, f));
+      if (d) putDraft(freezeFresh(next(d, f)));
     },
   };
 }
 /** her parents' records as they are now (the same draft, the same editors: they edit her own fields) */
 export function setDraftParents(parents: readonly LineageNode[] | DeepReadonly<LineageNode[]>) {
   const d = draftNow.peek();
-  if (d) draftNow.value = freezeFresh({ ...d, parents: structuredClone(parents) } as Draft);
+  if (d) putDraft(freezeFresh({ ...d, parents: structuredClone(parents) } as Draft));
 }
 /** the draft on show, for an editor opened now (an edit after she is replaced, or with no draft, does nothing) */
 export const draftRef = (): NodeRef =>

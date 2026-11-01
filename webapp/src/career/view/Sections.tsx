@@ -1,12 +1,11 @@
 // The career's sections in the tree: the odds, the deck (its button and popup), the race schedule's button, the
 // targets with what gives each, and the chance of each count of them.
-import { useRef } from 'preact/hooks';
 import { fmtIn } from '../../dom.ts';
 import { assert } from '../../must.ts';
 import { settings } from '../../settings.ts';
 import { srcFor } from '../../images.ts';
 import { scenarioOf } from '../../scenario.ts';
-import { popOpener } from '../../popover.ts';
+import { usePopOpener } from '../../ui/CardPop.tsx';
 import { pct, deckHint } from '../../odds.ts';
 import { starsOf } from '../../veterans/names.ts';
 import { borrowedLast, deckCards } from '../../details.ts';
@@ -64,7 +63,7 @@ export function SchedButton({ r }: { r: CareerReport }) {
     </button>
   );
 }
-/** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.ts, which reads the data-* and leaves the markup to this) */
+/** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.ts) */
 export function DeckCard({ slot }: { slot: DeckSlot }) {
   const { base, borrowed: bor, card: c, endAt } = slot,
     pick = slot.choice || (c?.pri ? c.pri.join(', ') : ''),
@@ -77,11 +76,15 @@ export function DeckCard({ slot }: { slot: DeckSlot }) {
       (pick ? ` · prioritise ${pick}` : '') +
       (endAt ? ` · ${chainEndNote(c, endAt)}` : ''),
     off = !!c && !bor && settings.value.cardsOff[c.id] === false,
-    ref = useRef<HTMLButtonElement>(null),
-    open = popOpener.value !== null && popOpener.value === ref.current;
+    opener = usePopOpener(true, () => ({
+      kind: 'card',
+      cid: c ? c.id : null,
+      name: t.nm,
+      borrowed: bor,
+      end: endAt || 0,
+    }));
   return (
     <button
-      ref={ref}
       type="button"
       class={`dc${bor ? ' bor' : c?.pal ? ' pal' : ''}${off ? ' off' : ''}`}
       data-cid={c ? String(c.id) : undefined}
@@ -90,7 +93,7 @@ export function DeckCard({ slot }: { slot: DeckSlot }) {
       title={full}
       aria-label={full}
       aria-haspopup="dialog"
-      aria-expanded={open}
+      {...opener}
     >
       <CardAv c={c || null} size={96} titled={false} />
       <span class="dn">{full}</span>

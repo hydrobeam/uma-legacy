@@ -8,6 +8,9 @@ declare module '*/example.json' {
   export default report;
 }
 
+/** the page's version, as its footer says it (vite.config.mjs `define`: the git tag and commits since it) */
+declare const __LLP_VERSION__: string;
+
 interface HTMLElement {
   /** an uma-picker button: her name in lower case */
   _nm?: string;

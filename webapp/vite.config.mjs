@@ -15,6 +15,7 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { imageCatalog, images } from './vite/images.mjs';
 import { mathFont } from './vite/mathfont.mjs';
 import { pageData, pageDataIds } from './vite/pagedata.mjs';
+import { prerender } from './vite/prerender.mjs';
 import { aboutFigures } from './vite/research.mjs';
 
 const HERE = import.meta.dirname;
@@ -59,22 +60,34 @@ export default defineConfig(({ mode }) => (mode === 'test' ? { ...shared, plugin
 
 function site() {
   const catalog = imageCatalog(IMG);
+  const VERSION = version();
   return {
     ...shared,
     appType: 'mpa', // /loop serves loop.html, as the host serves it; a path with no page is a 404
+    // the version the planner pages' footer shows (drawn by their layouts: vite/prerender.mjs at build, the entry on load)
+    define: { __LLP_VERSION__: JSON.stringify(VERSION) },
     plugins: [
-      // the pages' shared markup (partials/: the theme script, the header's tabs, the setup rows, the Enhance buttons,
-      // the settings editors' mount points; one copy of each, one set of ids) and the values they show
+      // the pages' shared head and header markup (partials/: the theme script, the header's tabs; /about's too) and the
+      // values they show
       handlebars({
         partialDirectory: path.join(HERE, 'partials'),
         compileOptions: { strict: true }, // a value a page names and the build lacks stops the build
         helpers: { eq: (a, b) => a === b },
         context: {
-          version: version(),
+          version: VERSION,
           // the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own
           site: (process.env.SITE_URL || 'https://uma-legacy.pages.dev').replace(/\/+$/, ''),
           logo,
           ...aboutFigures(),
+        },
+      }),
+      // each planner page's one root, drawn into its HTML (the first paint), which its entry hydrates
+      prerender({
+        root: HERE,
+        version: VERSION,
+        pages: {
+          'index.html': { module: 'src/career/Layout.tsx', layout: 'CareerLayout' },
+          'loop.html': { module: 'src/loop/Layout.tsx', layout: 'LoopLayout' },
         },
       }),
       images(catalog, IMG, path.join(HERE, 'src', 'style.css')),
@@ -99,8 +112,14 @@ function site() {
       assetsInlineLimit: 0, // every asset its own file, cached on its own
       rolldownOptions: {
         input: Object.fromEntries(['index', 'loop', 'about'].map((page) => [page, path.join(HERE, `${page}.html`)])),
-        // the modules both pages' scripts share, in one file (.size-limit.json counts it for each)
-        output: { chunkFileNames: 'assets/shared-[hash].js' },
+        output: {
+          // the modules both pages' scripts share, in one file (.size-limit.json counts it for each)
+          chunkFileNames: 'assets/shared-[hash].js',
+          // top-level const and let stay as written (Vite turns them into var by default): a read before its
+          // declaration has run throws at load, which the browser suite sees, in place of an undefined read going on
+          // unnoticed (Rolldown still writes a top-level class as `var X = class`)
+          topLevelVar: false,
+        },
       },
     },
   };

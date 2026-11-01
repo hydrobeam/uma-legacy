@@ -2,7 +2,7 @@
 // grandparent. It draws the node on show (dialogs.ts `nodeOpen`) from the answer and the veterans store, so an edit in
 // it, or one behind it, redraws it in place; a node that is gone (a removed veteran, a grandparent whose parent place
 // emptied) closes it. Its edits address the node by where it is (veterans/store.ts `vetRef`, `parentRef`).
-import { batch } from '@preact/signals-core';
+import { batch } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
@@ -22,7 +22,7 @@ import {
 import { umaName } from '../../veterans/names.ts';
 import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.ts';
 import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans/store.ts';
-import { Dialog } from '../../ui/Dialog.tsx';
+import { Dialog, anyDialogOpen } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../ui/AffTable.tsx';
 import { InspView } from '../../ui/InspView.tsx';
@@ -442,7 +442,7 @@ export function NodeDialog() {
     const back = nodeClosed();
     if (back)
       setTimeout(() => {
-        if (document.activeElement === document.body && !document.querySelector('dialog[open]')) back();
+        if (document.activeElement === document.body && !anyDialogOpen()) back();
       });
   };
   return (

@@ -3,7 +3,7 @@
 // running and a new plan or run stops it; the check reaches every place the plan is kept; an effect wakes only for
 // the signals it names. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { on } from '../../src/store.ts';
 import * as store from '../../src/career/state.ts';
 import {
@@ -35,6 +35,8 @@ import {
 } from '../../src/career/state.ts';
 import { planKey } from '../../src/career/keys.ts';
 import { checkPhase } from '../../src/career/run.ts';
+
+vi.mock('#page-data', () => import('./fakepage.mjs')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
 
 const PLACES = '{"trainee":null,"parents":[null,null]}';
 const career = (name) => ({ trainee: { id: 1001, name }, parents: [0, 1], career: name, p_all: 0.01 });

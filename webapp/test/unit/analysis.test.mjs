@@ -6,13 +6,15 @@
 // same career keeps her draft (F6), quick and exact share one baseline (F5), and Compare keeps a plan only for a refit.
 // npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
-import { effect, signal } from '@preact/signals-core';
+import { test, vi } from 'vitest';
+import { effect, signal } from '@preact/signals';
 import { STAND_MS, createComparison, savedWhere } from '../../src/career/analysis/compare.ts';
 import * as store from '../../src/career/analysis/state.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { on } from '../../src/store.ts';
 import { fakeClock, flush, memory } from './fakes.mjs';
+
+vi.mock('#page-data', () => import('./fakepage.mjs')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
 
 // the veterans store on a Map (Add writes into it)
 vs.initVets({ storage: () => memory(), hidden: () => true, afterFrame: (f) => f() });

@@ -11,9 +11,10 @@
 // (`targetFactors`). `syncListings` runs inside the career page's settings effect: it reads every signal with peek(),
 // so that effect subscribes to none of them. What it reads and writes of the page, the targets and the veterans store's
 // listings, comes in through `connectUmamoe`, called once by the entry: it reads no store itself (.dependency-cruiser.mjs checks it).
-import { batch, computed, signal } from '@preact/signals-core';
+import { batch, computed, signal } from '@preact/signals';
 import { ERA } from './saved.ts';
 import { must } from './must.ts';
+import { read, update } from './storage.ts';
 import { parseListing } from './umadump.ts';
 import {
   savedKey,
@@ -25,7 +26,7 @@ import {
   fullTrainers,
   setFullTrainers,
 } from './umamoe.ts';
-import type { ReadonlySignal } from '@preact/signals-core';
+import type { ReadonlySignal } from '@preact/signals';
 import type { UmamoeListing } from './umadump.ts';
 import type { SettingsView } from './settings.ts';
 import type { Veteran, VetRecord } from './veterans/store.ts';
@@ -115,15 +116,9 @@ export const SORTS: Record<UmSort, [string, string, (v: VetRecord) => number]> =
 };
 const isUmSort = (k: string | undefined): k is UmSort => k !== undefined && Object.hasOwn(SORTS, k);
 const SORT_KEY = 'llp:umamoe-sort';
+const [keptSort, keptDir] = (read(SORT_KEY) || '').split(':'); // (storage blocked: by match)
 const sort = signal<{ by: UmSort; reversed: boolean }>(
-  (() => {
-    try {
-      const [k, dir] = (localStorage.getItem(SORT_KEY) || '').split(':');
-      return isUmSort(k) ? { by: k, reversed: dir === 'rev' } : { by: 'match', reversed: false };
-    } catch {
-      return { by: 'match', reversed: false };
-    }
-  })(),
+  isUmSort(keptSort) ? { by: keptSort, reversed: keptDir === 'rev' } : { by: 'match', reversed: false },
 );
 /** the popup's order */
 export const umSort: ReadonlySignal<{ by: UmSort; reversed: boolean }> = sort;
@@ -131,11 +126,7 @@ export const umSort: ReadonlySignal<{ by: UmSort; reversed: boolean }> = sort;
 export function pickUmSort(k: UmSort): void {
   const now = sort.peek(),
     next = { by: k, reversed: k === now.by && !now.reversed };
-  try {
-    localStorage.setItem(SORT_KEY, `${k}${next.reversed ? ':rev' : ''}`);
-  } catch {
-    // storage blocked: the sort lasts for this visit only
-  }
+  update(SORT_KEY, () => `${k}${next.reversed ? ':rev' : ''}`); // (storage blocked: for this visit only)
   sort.value = next;
 }
 /** each listing's place in uma.moe's answer */

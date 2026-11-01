@@ -9,9 +9,9 @@
 // that goes with her (a new career on show, a roll, Add to veterans), in one batch.
 // The folder: state.ts (this store), compare.ts (the comparison's run machine), view.tsx (Try a run's popup: her card's
 // actions and the comparison panel), Details.tsx (her card, the game's Umamusume Details screen).
-import { batch, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
-import { deepFreeze } from '../../store.ts';
+import { batch } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
+import { deepFreeze, store } from '../../store.ts';
 import type { DeepReadonly } from '../../store.ts';
 import { clearPlaces, draft, newVet, setDraft, setDraftParents } from '../../veterans/store.ts';
 import type { Draft } from '../../veterans/store.ts';
@@ -75,11 +75,11 @@ export type SimulationView = DeepReadonly<Simulation>;
 
 // ---------- the signal
 const NONE: SimulationView = Object.freeze({ state: 'none' });
-const record = signal<SimulationView>(NONE);
+const [record, setRecord] = store<Simulation>(NONE);
 export const simulation: ReadonlySignal<SimulationView> = record;
 // the next record: this one with `patch` written over it
 const patch = (fields: Partial<SimulationView>) => {
-  record.value = Object.freeze({ ...record.peek(), ...fields });
+  setRecord(Object.freeze({ ...record.peek(), ...fields }));
 };
 
 // ---------- the run machine's (career/run.ts, through the comparison's machine)
@@ -94,7 +94,7 @@ export function analysisShows(next: { draft: Draft; forKey: string } | null) {
   const now = draft.peek(),
     keep = !!now && record.peek().forKey === next.forKey;
   batch(() => {
-    record.value = Object.freeze({ state: 'ready', r: null, baseline: null, error: null, forKey: next.forKey });
+    setRecord(Object.freeze({ state: 'ready', r: null, baseline: null, error: null, forKey: next.forKey }));
     if (!keep) setDraft(next.draft);
     else if (JSON.stringify(now.parents) !== JSON.stringify(next.draft.parents)) setDraftParents(next.draft.parents);
   });
@@ -102,7 +102,7 @@ export function analysisShows(next: { draft: Draft; forKey: string } | null) {
 /** no answer: no career to analyse */
 export function analysisClears() {
   batch(() => {
-    record.value = NONE;
+    setRecord(NONE);
     setDraft(null);
   });
 }
@@ -204,15 +204,15 @@ export const comparisonCancelled = () => patch({ state: 'ready' });
 // ---------- her card's tabs (Details.tsx): apart from the record, so a new draft or career keeps them, as a card's
 // own state would not (it starts over whenever the card is drawn anew)
 export type DetailsTab = 'skills' | 'insp' | 'info';
-const tabOnShow = signal<DetailsTab>('insp'),
-  racesOnShow = signal(false);
+const [tabOnShow, setTab] = store<DetailsTab>('insp'),
+  [racesOnShow, setRaces] = store<boolean>(false);
 /** the tab on show (Inspiration first: it is where her sparks are entered) */
 export const detailsTab: ReadonlySignal<DetailsTab> = tabOnShow;
 /** Career Info's race-by-race record unfolded */
 export const racesShown: ReadonlySignal<boolean> = racesOnShow;
 export const showTab = (key: DetailsTab) => {
-  tabOnShow.value = key;
+  setTab(key);
 };
 export const toggleRaces = () => {
-  racesOnShow.value = !racesOnShow.peek();
+  setRaces(!racesOnShow.peek());
 };

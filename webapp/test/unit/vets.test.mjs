@@ -5,7 +5,7 @@
 // that part. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { batch } from '@preact/signals-core';
+import { batch } from '@preact/signals';
 import { ERA } from '../../src/saved.ts';
 import { on } from '../../src/store.ts';
 import * as vs from '../../src/veterans/store.ts';

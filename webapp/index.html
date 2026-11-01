@@ -21,61 +21,11 @@
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-{{> preload}}
 <header class="top">
   <h1 class="brand" aria-label="uma-legacy career planner">{{{logo}}}<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></h1>
   {{> nav current="career"}}
 </header>
 
-<div class="rb">
-  <section class="rbbar" aria-labelledby="h-set">
-    <h2 class="sethdr" id="h-set"><button type="button" class="setfold" id="set-fold" aria-expanded="true" aria-controls="set-body">Career setup<span class="foldi" aria-hidden="true"></span></button></h2>
-    <span class="setsum" id="set-sum" role="note" hidden></span>
-    <div class="setlist">
-{{> era}}
-      {{> rank}}{{> scen}}
-      <div class="gctl setrow bpctl"><span class="glab" id="bp-l">Borrowed parent</span>
-        <div class="seg" id="bp" role="group" aria-labelledby="bp-l"></div></div>
-    </div>
-    <div class="setenh">
-{{> enh}}
-      <button class="btn enh wide" type="button" id="v-toggle" aria-haspopup="dialog" aria-label="Your veterans"><span class="enhimg" aria-hidden="true"></span><span class="enhl"><span>Veteran</span> <span>Umamusume</span></span></button>
-    </div>
-    <div class="lptgt">{{> skills}}</div>
-  </section>
-
-  <main class="rbmain" id="rcol" tabindex="-1" aria-labelledby="h-lin">
-    <div class="rbtitle">
-      <h2 id="h-lin">Next career</h2>
-      <div class="lodds" id="lodds"></div>
-      <span id="um-root"></span>
-      <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
-    </div>
-    <div class="lineup" id="tree"></div>
-    <div id="results"></div>
-    <div id="pop-root"></div>
-  </main>
-
-</div>
-
-<div id="vets-root"></div>
-<div id="um-dlg-root"></div>
-<div id="sim-root"></div>
-{{> dlgumas}}{{> dlgcards}}
-
-<div id="vpick-root"></div>
-<div id="node-root"></div>
-<div id="deck-root"></div>
-<div id="skill-root"></div>
-<div id="save-root"></div>
-<div id="sched-root"></div>
-<div id="vet-editors"></div>
-<div id="paste-root"></div>
-<div id="vx-root"></div>
-<div class="cpop addpop" id="add-pop" role="dialog" aria-label="Add a spark" tabindex="-1" hidden></div>
-
-<footer class="foot">
-  <p class="row"><button class="btn" type="button" id="v-export" title="Your veterans, setup and the planner's search as text to copy or download (bring it back with Paste in Veteran Umamusume)">Export</button><span class="hint" id="ver">Version {{version}}</span></p>
-</footer>
+<div id="app"></div>
 
 <script type="module" src="/src/career/main.tsx"></script>

@@ -52,19 +52,19 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 
 | Package | Why |
 |---|---|
-| `preact`, `@preact/signals`, `@preact/signals-core` | the page's views and stores (bundled into the page) |
+| `preact`, `@preact/signals` | the page's views and stores (bundled into the page); signals are imported from `@preact/signals` alone (Biome's `noRestrictedImports` bans `@preact/signals-core`: one package, one signal graph) |
 | `vite` 8.3.5 | builds `webapp/dist/` (`page`): bundles the entries and the worker, fingerprints every asset, minifies the stylesheet, serves the build (`serve`, the browser suite); in place of the hand-written `build.py` and `serve.mjs` |
-| `vite-plugin-handlebars` 2.0.3 | the pages' shared markup (`webapp/partials/`) and the values they show (version, site address, /about's research figures); in place of `build.py`'s own templating |
+| `vite-plugin-handlebars` 2.0.3 | the pages' shared head and header markup (`webapp/partials/`) and the values they show (version, site address, /about's research figures); in place of `build.py`'s own templating |
+| `preact-render-to-string` 6.8.2 | each planner page's root drawn into its HTML at build time (`vite/prerender.mjs`), which the entry hydrates |
 | `vite-plugin-static-copy` 4.1.1 | copies the fonts' licences into `dist/licenses/` |
 | `@vitejs/plugin-basic-ssl` 2.3.0 | the self-signed certificate `vite preview` serves HTTP/2 with (`cache/tls/`), in place of `serve.mjs`'s openssl call |
 | `size-limit` 14.3.0, `@size-limit/file` 14.3.0 | each page's first-visit budget (`webapp/.size-limit.mjs`), in place of `build.py`'s `page_cost` |
 | `@fontsource/*` (4 fonts) | the self-hosted fonts' Latin subsets, imported by `src/style.css` |
 | `binaryen` | `wasm-opt` (`wasm`) |
-| `esbuild` | its metafiles give `static.mjs` each page's modules; the page itself is built by Vite |
-| `knip` 6.44.1 | dead exports, files and dependencies, imports of nothing (`lint`), in place of `static.mjs`'s dead-export and import checks |
+| `knip` 6.44.1 | dead exports, files and dependencies, imports of nothing (`lint`) |
 | `vitest` 5.0.5, `happy-dom` 21.0.4 | the node tests (`webapp/test/unit/`), compiled by the page's Vite config; happy-dom is the document of those that draw views, in place of the hand-written `fakedom.mjs` |
-| `dependency-cruiser` 18.7.0, `@swc/core` 1.16.21 | the module layers (`lint`), in place of `static.mjs`'s layer, store-reach and components-stay-views checks; swc parses the TypeScript, as dependency-cruiser reads it through TypeScript's JavaScript API, which TypeScript 7 no longer has |
-| `purgecss` 8.0.0 | dead CSS (`lint`, `test/deadcss.mjs`), in place of `static.mjs`'s |
+| `dependency-cruiser` 18.7.0, `@swc/core` 1.16.21 | the module layers (`lint`); swc parses the TypeScript, as dependency-cruiser reads it through TypeScript's JavaScript API, which TypeScript 7 no longer has |
+| `purgecss` 8.0.0 | dead CSS (`lint`, `test/deadcss.mjs`) |
 | `playwright` (pinned) | the browser suite, `icons.mjs`, `runners` |
 | `@biomejs/biome`, `typescript` | `lint` |
 
@@ -110,7 +110,7 @@ it stops; the `art` step instead says what it skipped.
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing), then the page's lists. Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them), then the page's lists |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | every check below runs whatever the others found, and the step ends by naming the ones that failed: `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker, twice: the page's TypeScript, strict (`webapp/tsconfig.json`; every module is `.ts` or `.tsx`, and with `allowJs` off an import of a stray `.js` fails), and the solver's worker with a worker's globals (`webapp/tsconfig.worker.json`, strict); what the browser suite can't see going stale, by standard tools first: knip (`webapp/knip.jsonc`: files no entry reaches, exports no other file imports, dependencies nothing uses, imports of a package not listed or a file that does not exist), dependency-cruiser (`webapp/.dependency-cruiser.mjs`: a value import points to its own layer of `LAYERS` or one below, nothing outside a page imports into it, so no logic module (types, io, model) reaches a store; a `.ts` module imports no `.tsx` one, a type import included), PurgeCSS (`webapp/test/deadcss.mjs`: a selector of `style.css` naming a class, id, element or attribute no script, page, partial or build plugin names; a name built from parts is listed in its `BUILT` with where), and Biome's rules for import cycles (`noImportCycles`), effects (`effect` imported anywhere but `store.ts`: `noRestrictedImports`; a `.subscribe()` or a namespace's `.effect()`: `lint/effects.grit`), exported mutable bindings (`lint/mutable-export.grit`) and `@ts-ignore` (`noTsIgnore`); then `webapp/test/static.mjs`, the project's own checks: `localStorage` writes of a copy not read from storage after the function's last `await` (one tab's write then erases another's), ids a module looks up by name that a page holding the module lacks (one that may miss on purpose is listed in its `MAY_BE_MISSING`, under each page where it may, with why; an exemption whose id the page has, or that nothing on the page looks up, fails), a store signal exported writable inside (not `DeepReadonly` all the way down), the career run machine's wiring, a look into a component's DOM from outside its module, a page `<dialog>` or a `showModal()` outside `ui/Dialog.tsx`, a render into a mount point outside the two entries, a `requestAnimationFrame` or a listener added at import outside its short lists, and a view built from a markup string, with reports that never fail it (ids nothing names, partials no page uses, `@ts-expect-error` markers); the page's node tests (`webapp/test/unit/`, Vitest) |
+| `lint` | every check below runs whatever the others found, and the step ends by naming the ones that failed: `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker, twice: the page's TypeScript, strict (`webapp/tsconfig.json`; every module is `.ts` or `.tsx`, and with `allowJs` off an import of a stray `.js` fails), and the solver's worker with a worker's globals (`webapp/tsconfig.worker.json`, strict); what the browser suite can't see going stale, by standard tools first: knip (`webapp/knip.jsonc`: files no entry reaches, exports no other file imports, dependencies nothing uses, imports of a package not listed or a file that does not exist), dependency-cruiser (`webapp/.dependency-cruiser.mjs`: a value import points to its own layer of `LAYERS` or one below, nothing outside a page imports into it, so no logic module (types, io, model) reaches a store; a `.ts` module imports no `.tsx` one, a type import included), PurgeCSS (`webapp/test/deadcss.mjs`: a selector of `style.css` naming a class, id, element or attribute no script, page, partial or build plugin names; a name built from parts is listed in its `BUILT` with where), and Biome's rules (`webapp/biome.json`; each allowance an override or a plugin's `includes`, its reason in the rule's message or the plugin's header): import cycles (`noImportCycles`); effects (`effect` imported anywhere but `store.ts`: `noRestrictedImports`; a `.subscribe()` or a namespace's `.effect()`: `lint/effects.grit`); exported mutable bindings (`lint/mutable-export.grit`); `@ts-ignore` (`noTsIgnore`); storage, written only by `storage.ts`'s read-modify-write `update` (the `localStorage` global by `noRestrictedGlobals`, a `.setItem`/`.removeItem` by `lint/storage-write.grit`); a store module's state made by `store.ts`'s `store()`, which hands it out `DeepReadonly` (`signal` banned there); signals from `@preact/signals` alone; `render`/`hydrate` in the two entries alone (each page is one root); a lookup in the document outside the entries (`lint/dom-lookup.grit`); a `<dialog>` or `showModal()` outside `ui/Dialog.tsx` (`lint/dialogs.grit`); a `requestAnimationFrame` outside `veterans/store.ts` (`noRestrictedGlobals`); a listener added at a module's top level outside the entries, `errorlog.ts` and `gmtip.ts` (`lint/load-listener.grit`); a view built from a markup string (`lint/markup-string.grit`); then a grep for `@ts-expect-error` in `webapp/src` (tsc accepts it and no linter sees a comment); the page's node tests (`webapp/test/unit/`, Vitest) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files, then the page's lists (`data.json` is one of their inputs); it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (stable; rebuilding std with `-Z build-std` was measured on 2026-10-31 to change neither the output nor the speed, and under 2 KB of size), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, its flags (`WASM_OPT_FLAGS`, the one list the command also reads) and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -180,9 +180,16 @@ since (`vite/pagedata.mjs`); the build adds only what depends on the tree it run
 with a portrait in `webapp/img/`. It writes:
 - `index.html` (the career planner, the front page; an old `/career` link redirects there), `loop.html` (`/loop`, the
   loop planner) and `about.html` (`/about`, "How this works", which holds the model text), from the pages of those names
-  in `webapp/`. Shared markup lives in `webapp/partials/` (the theme script, the header's tabs, the setup rows, the
-  Enhance buttons, the settings editors' mount points), each `{{> name}}` filled by `vite-plugin-handlebars`, which also
-  fills the values a page shows (`{{version}}`, `{{site}}`, /about's figures; a name without a value stops the build).
+  in `webapp/`. Shared head and header markup lives in `webapp/partials/` (the theme script, the header's tabs), each
+  `{{> name}}` filled by `vite-plugin-handlebars`, which also fills the values a page shows (`{{version}}`, `{{site}}`,
+  /about's figures; a name without a value stops the build). Everything under a planner page's header is one Preact
+  root, `<div id="app">`: its layout (`src/career/Layout.tsx`, `src/loop/Layout.tsx`, which import nothing but Preact
+  and `src/ui/Shell.tsx`) is drawn into the HTML at build time by Preact's `renderToString` (`vite/prerender.mjs`,
+  through Vite's `runnerImport`), so the first paint has the setup's markup, and the entry hydrates it.
+  (@preact/preset-vite's prerender, vite-prerender-plugin, renders every route into the first HTML input as one
+  template, so it can't fill two pages with heads of their own.) The footer's version reaches the entries as
+  `__LLP_VERSION__` (Vite's `define`). The solver's preload script and asset table go into each planner page's head
+  from `vite/pagedata.mjs`.
   Both planner pages carry `class="game"` on `<html>`, which scopes the game-style rules in `style.css` (career-only
   layout under `.rb`, the loop planner's under `.lp`).
 - `assets/`: every shared file named by a fingerprint of its content and cached for a year: the stylesheet (with the
@@ -202,7 +209,7 @@ with a portrait in `webapp/img/`. It writes:
 
 The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, built by Vite to `assets/worker-<hash>.js`; its messages both ways are typed in `src/solver.ts`). Saved settings are one versioned object,
 `localStorage['llp:settings']`, read and written in `saved.ts`. The settings are a store (`settings.ts`, on
-@preact/signals-core): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
+@preact/signals): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
 the loop page's run state (the search as the status line draws it, the status and the result on show) is a store too
 (`loop/state.ts`), changed only by the transitions its run machine (`loop/run.ts`, `createRun(deps)`: the engine, clock,
@@ -223,12 +230,14 @@ page's, and the career page's status line, tree, node popup, parent picker, deck
 lists both kept mounted, a card drawn again only when her record changes), setup summary and Try a run, and the setup
 editors both pages share (`ui/`: the scenario picker, the lineage rank, the Umas and Support cards panels, the target
 skills and their presets, listed by `ui/Setup.tsx`'s `setupViews`), and the career page's results column, popups and
-veteran editors, each rendered by its page's entry into the template's mount points; the deck card panel too
-(`ui/CardPop.tsx`, which `popover.ts`'s click delegation opens: a slot in the results column and in every dialog).
-Every modal dialog is `ui/Dialog.tsx`'s, which alone calls `showModal`/`close`. Measured placement and the spark
-names' fit (`details.ts`, from the layout effect of the component it measures), the game tooltip (`gmtip.ts`) and the
-run machines stay imperative by design. Logic modules (`.ts`) take values and import no component, and only a
-component's own module looks into what it draws (`.dependency-cruiser.mjs`, `test/static.mjs`).
+veteran editors, each drawn in its place in its page's one root (the layout; the entry makes the views once and hands
+them in after the game data loads); the deck card panel too (`ui/CardPop.tsx`, opened by its openers' own clicks,
+`usePopOpener`: a slot in the results column and in every dialog, since a popover over a modal dialog is inert in both
+engines). Every modal dialog is `ui/Dialog.tsx`'s, which alone calls `showModal`/`close`. Measured placement and the
+spark names' fit (`details.ts`, from the layout effect of the component it measures), the game tooltip (`gmtip.ts`)
+and the run machines stay imperative by design. Logic modules (`.ts`) take values and import no component
+(`.dependency-cruiser.mjs`), and a component reaches its DOM by refs: no lookup in the document outside the entries
+(Biome, `lint/dom-lookup.grit`).
 
 In `src/`, `loop/main.tsx` and `career/main.tsx` are the two pages' entries (each page's own modules are in its folder,
 `loop/` and `career/`; `career/main.tsx`'s header maps its folder: the job, the run, the views in `career/view/`);
@@ -238,7 +247,7 @@ keeps the solver's work in IndexedDB.
 
 Every page module is `.ts` or `.tsx`, checked strict with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
 and the four flags that cost nothing (`webapp/tsconfig.json`, the worker's too); none carries `@ts-expect-error` or
-`@ts-ignore` (Biome's `noTsIgnore` fails one; static.mjs reports any `@ts-expect-error`). An index read is avoided where the data can take the shape it is read in
+`@ts-ignore` (Biome's `noTsIgnore` fails one; `lint` and the hook grep for `@ts-expect-error`, which no linter sees). An index read is avoided where the data can take the shape it is read in
 (records in place of parallel lists: `loop/members.ts`; a veteran by her id: `career/current.ts` `legacyVet`); a key
 from data (a grade, a race's track, a sort) gets its type where it is first read, checked there (`grades.ts`
 `gradeAt`, `data.ts`). What is left is `must(value, reason)` for a value provably there, `assert(cond, reason)` for a
@@ -255,7 +264,6 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
   build's page data with a small made-up game's (`vi.mock('#page-data', () => import('./fakepage.mjs'))`). happy-dom
   fires a dialog's `close` at once where a browser queues it, so a test lets tasks run after a close before it reads
   what the close did.
-  A commit it passes changes no behaviour and needs no browser run; one that changes behaviour fails it by design.
 - **Browser suite:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
   `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host serves it (a
   self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
@@ -376,8 +384,8 @@ uv run shellcheck build.sh .githooks/pre-commit   # (from the repo root)
   turns on `.githooks/pre-commit`, which checks what the commit stages, by kind: Rust, `cargo fmt --check` and native
   clippy with warnings denied (about 5 s after a change; a minute the first time in a new worktree); Python, ruff check
   and format on the staged files; the page's JS, Biome (lint and formatting) on the staged files and `tsc`, and for any
-  page source, test or build file, knip, dependency-cruiser, `webapp/test/deadcss.mjs` and `webapp/test/static.mjs`
-  (about 4 s together), and for any page source or test the node tests (about 2 s). It checks
+  page source, test or build file, knip, dependency-cruiser, `webapp/test/deadcss.mjs` and a grep for
+  `@ts-expect-error` (about 4 s together), and for any page source or test the node tests (about 2 s). It checks
   the working tree's files, not only the staged parts. The wasm clippy and the whole-repo checks are left to `lint`.
 - **Blame:** commits that only reformat, move or rename code are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.

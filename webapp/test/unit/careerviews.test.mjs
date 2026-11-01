@@ -16,8 +16,7 @@ import { answer, loadFails } from '../../src/career/state.ts';
 import { PoolBody, PoolHead } from '../../src/career/view/Pool.tsx';
 import { choose, openPool, poolClosed } from '../../src/career/view/poolState.ts';
 import { OddsDialog, openOdds } from '../../src/ui/OddsDialog.tsx';
-import { ScheduleDialog, openSched, schedOpened } from '../../src/ui/Schedule.tsx';
-import { Guard } from '../../src/career/view/Guard.tsx';
+import { ScheduleDialog, openSched } from '../../src/ui/Schedule.tsx';
 import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.mjs';
 
@@ -185,9 +184,9 @@ test('the race schedule, after it failed to draw, draws on its next opening (rev
   const reported = [];
   globalThis.reportError = (e) => reported.push(e);
   sayRenderErrors(() => undefined);
-  // into its mount point (the career entry's guard, with the schedule's openings as its subject)
+  // as either page places it (the dialog's own guard draws it again for a new opening: nothing to wire)
   const root = document.body.appendChild(document.createElement('div'));
-  render(h(Guard, { what: 'The race schedule', also: schedOpened }, h(ScheduleDialog, null)), root);
+  render(h(ScheduleDialog, null), root);
   const member = { k: 0, id: 1001, name: 'Uma A', outfits: [] };
   openSched({ members: [member], schedule: null }); // (malformed: no schedule)
   await settle();

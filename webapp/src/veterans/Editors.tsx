@@ -4,6 +4,7 @@
 // (`AddList`) draws into #add-pop, which it places by the "+" that opened it, inside that "+"'s open dialog (the page
 // around a modal dialog is inert). What each shows, and its openers, are pickers.ts's and sparks.ts's.
 import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { createPortal } from 'preact';
 import type { Ref } from 'preact';
 import { gameData } from '../data.ts';
 import type { Uma } from '../data.ts';
@@ -12,6 +13,7 @@ import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { WinsEditor } from '../ui/Agenda.tsx';
 import { useDropdown } from '../ui/dropdown.ts';
+import { AddPop } from '../ui/Shell.tsx';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 import { settings } from '../settings.ts';
@@ -283,10 +285,11 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
 }
 
 // ---------- "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink
-// and unique sparks have bars of their own). Drawn into #add-pop (`host`), which it places under its "+": inside the
-// "+"'s open dialog, placed against it. A dropdown (ui/dropdown.ts useDropdown): a press outside it and its "+"
-// closes it (another "+" moves it there); Escape closes it, not the dialog around it, back to the "+".
-export const AddList = ({ host }: { host: HTMLElement }) => <AddBody host={host} open={addOpen.value} />;
+// and unique sparks have bars of their own). Its box (#add-pop, ui/Shell.tsx AddPop) sits in the page's layout while
+// shut; open from a "+" inside a dialog, it is drawn inside that dialog (a portal: the page behind a modal dialog is out
+// of reach), placed against the "+". A dropdown (ui/dropdown.ts useDropdown): a press outside it and its "+" closes it
+// (another "+" moves it there); Escape closes it, not the dialog around it, back to the "+".
+export const AddList = () => <AddBody open={addOpen.value} />;
 // the "+" the list is open on, as the dropdown's button: read when a click lands, so a second "+" pressed has the list
 // before the click reaches the document; once closed, the last one (Escape gives it the focus back)
 const opener = {
@@ -295,17 +298,18 @@ const opener = {
     return addOpen.peek()?.btn ?? this.last;
   },
 };
-function AddBody({ host, open }: { host: HTMLElement; open: { btn: HTMLElement; at: NodeRef } | null }) {
-  const inside = useRef([{ current: host }]).current;
+function AddBody({ open }: { open: { btn: HTMLElement; at: NodeRef } | null }) {
+  const box = useRef<HTMLDivElement>(null),
+    inside = useRef([box]).current;
   const sparks = (open?.at.node()?.sparks || {}) as Record<number, number>,
-    missing = open ? targetGroups(settings.value.targets).filter((g) => !sparks[g]) : [];
+    missing = open ? targetGroups(settings.value.targets).filter((g) => !sparks[g]) : [],
+    // (the dialog the "+" sits in, if any: where the box is drawn)
+    dialog = open?.btn.closest('dialog[open]') ?? null;
   useLayoutEffect(() => {
-    host.hidden = !open;
-    if (!open) return;
+    const host = box.current;
+    if (!open || !host) return;
     opener.last = open.btn;
-    const r = open.btn.getBoundingClientRect(),
-      dialog = open.btn.closest('dialog[open]');
-    if ((dialog || document.body) !== host.parentElement) (dialog || document.body).appendChild(host);
+    const r = open.btn.getBoundingClientRect();
     if (dialog) {
       const h = dialog.getBoundingClientRect();
       host.style.left = `${Math.max(4, Math.min(r.left - h.left, h.width - 300))}px`;
@@ -315,11 +319,10 @@ function AddBody({ host, open }: { host: HTMLElement; open: { btn: HTMLElement; 
       host.style.top = `${r.bottom + scrollY + 6}px`;
     }
     host.focus();
-  }, [open, host]);
+  }, [open, dialog]);
   useDropdown(!!open, closeAdd, opener, inside);
-  if (!open) return null;
-  return (
-    <>
+  const list = open && (
+    <AddPop hidden={false} boxRef={box}>
       <p class="hint">{missing.length ? 'Target skills she lacks' : 'She has every target skill.'}</p>
       <div class="addlist">
         {missing.map((g) => (
@@ -336,6 +339,9 @@ function AddBody({ host, open }: { host: HTMLElement; open: { btn: HTMLElement; 
           </button>
         ))}
       </div>
-    </>
+    </AddPop>
   );
+  // shut: the empty box in its place; open in a dialog: the box there, and none in its place (one #add-pop at a time)
+  if (!list) return <AddPop boxRef={box} />;
+  return dialog ? createPortal(list, dialog) : list;
 }
