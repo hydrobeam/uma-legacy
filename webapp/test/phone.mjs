@@ -261,7 +261,7 @@ export default async function phone(b) {
     side.slice(0, 4).join(' | '),
   );
   const swTouch = await pg.evaluate(() =>
-    [...document.querySelectorAll('.rhead .sw')].map((l) =>
+    [...document.querySelectorAll('#rhead label:has([role="switch"])')].map((l) =>
       Math.round(l.getBoundingClientRect().height - 2 * parseFloat(getComputedStyle(l, '::before').top)),
     ),
   );

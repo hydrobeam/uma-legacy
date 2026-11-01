@@ -13,6 +13,7 @@ import type { CardGift } from '../cards.ts';
 import { must } from '../must.ts';
 import { popBack, popOpen, popOpener, setPanel, togglePop } from '../popover.ts';
 import type { PopOpen, PopSubject } from '../popover.ts';
+import { Switch } from './Switch.tsx';
 import { cx } from 'tailwind-variants/lite';
 
 const GAP = 8; // px between the panel and the element it belongs to (beside it); below it, 6
@@ -133,17 +134,9 @@ function UmaBody({ subject: { uma, outfit, outfitLabel, outfitNote } }: { subjec
         {outfitNote && <div class="onote">{outfitNote}</div>}
       </div>
       <div class="pfoot">
-        <label class="sw">
-          <input
-            type="checkbox"
-            // biome-ignore lint/a11y/useAriaPropsForRole: a native checkbox's checked state is the switch's (ARIA in HTML: no aria-checked on a checkbox)
-            role="switch"
-            data-act="uma"
-            checked={owned}
-            onChange={(e) => toggle(e.currentTarget.checked)}
-          />
+        <Switch data-act="uma" checked={owned} onChange={(e) => toggle(e.currentTarget.checked)}>
           Owned
-        </label>
+        </Switch>
         <a class="gtl" href={umaUrl(u, outfit)} target="_blank" rel="noopener">
           GameTora ↗︎
         </a>
@@ -174,20 +167,16 @@ function CardBody({ subject: { cid, name, borrowed, end } }: { subject: PopSubje
       {end > 0 && <ChainEnd c={c} link={end} />}
       <div class="pfoot">
         {c && !borrowed ? (
-          <label class="sw">
-            <input
-              type="checkbox"
-              // biome-ignore lint/a11y/useAriaPropsForRole: a native checkbox's checked state is the switch's (ARIA in HTML: no aria-checked on a checkbox)
-              role="switch"
-              data-act="own"
-              checked={owned}
-              onChange={(e) => {
-                const { [c.id]: _, ...rest } = settings.value.cardsOff;
-                setOwned({ cardsOff: e.currentTarget.checked ? rest : { ...rest, [c.id]: false } });
-              }}
-            />
+          <Switch
+            data-act="own"
+            checked={owned}
+            onChange={(e) => {
+              const { [c.id]: _, ...rest } = settings.value.cardsOff;
+              setOwned({ cardsOff: e.currentTarget.checked ? rest : { ...rest, [c.id]: false } });
+            }}
+          >
             Owned
-          </label>
+          </Switch>
         ) : (
           <span />
         )}

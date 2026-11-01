@@ -27,6 +27,7 @@ import { SortMenu } from '../../ui/SortMenu.tsx';
 import { VetCell } from '../../ui/VetCell.tsx';
 import { openNode } from './dialogs.ts';
 import { Button } from '../../ui/Button.tsx';
+import { Checkbox } from '../../ui/Checkbox.tsx';
 
 const umOpen = signal(false);
 const closeUm = () => {
@@ -143,8 +144,11 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
           {sig ? `Parents with ${min}+ of your ${n} targets${full ? '' : ', from trainers you can follow'}` : ''}
         </p>
         <div class="row between">
-          <label class="umtog" title="Trainers at 1,000 followers: their veterans can't be borrowed by following them">
-            <input type="checkbox" id="um-full" checked={full} onChange={(e) => setUmFull(e.currentTarget.checked)} />
+          <label
+            class="text-ui inline-flex items-center gap-1.5"
+            title="Trainers at 1,000 followers: their veterans can't be borrowed by following them"
+          >
+            <Checkbox id="um-full" checked={full} onChange={(e) => setUmFull(e.currentTarget.checked)} />
             {' Include max borrows'}
           </label>
           <SortMenu

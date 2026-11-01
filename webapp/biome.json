@@ -33,6 +33,7 @@
       "preset": "recommended",
       "a11y": {
         "useButtonType": "error",
+        "noLabelWithoutControl": { "level": "error", "options": { "inputComponents": ["Checkbox"] } },
         "useKeyWithClickEvents": "error"
       },
       "complexity": {

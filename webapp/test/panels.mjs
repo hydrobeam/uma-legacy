@@ -39,7 +39,7 @@ export default async function panels(b) {
       cardName,
     );
   const pressedBefore = await pickerPressed();
-  await pg.locator('.cpop .sw').click();
+  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
   const pressedAfter = await pickerPressed();
   check(
     'deck card Owned switch updates the card picker',
@@ -47,7 +47,7 @@ export default async function panels(b) {
     `${cardName}: ${pressedBefore} → ${pressedAfter}`,
   );
   check('… and greys the card in the result', (await pg.locator('.deck .dc.off').count()) > 0);
-  await pg.locator('.cpop .sw').click();
+  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
   await pg.keyboard.press('Escape');
   check('Escape closes the panel', await pg.evaluate(() => document.querySelector('.cpop').hidden));
   // an outfit skill under a member carries its skill icon
@@ -77,12 +77,12 @@ export default async function panels(b) {
     /^https:\/\/gametora\.com\/umamusume\/characters\/\d{6}-[a-z0-9-]+$/.test(uh || ''),
     uh,
   );
-  await pg.locator('.cpop .sw').click();
+  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
   check(
     'member Owned switch updates the roster and greys her',
     (await pg.locator('#roster .ut[data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0,
   );
-  await pg.locator('.cpop .sw').click();
+  await pg.locator('.cpop').getByRole('switch', { name: 'Owned' }).click();
   await pg.keyboard.press('Escape');
   await pg.evaluate(() => window.__release());
   await settle(pg);

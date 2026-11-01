@@ -12,6 +12,7 @@ import { EnhButtons, EraRow, Footer } from '../ui/Shell.tsx';
 import type { Badge } from '../ui/Shell.tsx';
 import type { Era } from '../eras.ts';
 import { Button } from '../ui/Button.tsx';
+import { Switch } from '../ui/Switch.tsx';
 
 /** the dialogs' boxes at the end of the page, in order */
 const LOOP_DIALOGS = ['set-umas-root', 'set-cards-root', 'why-root', 'sched-root', 'ex-root', 'odds-root'] as const;
@@ -126,31 +127,24 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
           <span class="ract" id="r-act">
             {act}
           </span>
-          <label class="sw rauto" title="Automatically search 0.55s after a change">
-            <input
-              type="checkbox"
-              // biome-ignore lint/a11y/useAriaPropsForRole: a native checkbox's checked state is the switch's (ARIA in HTML: no aria-checked on a checkbox)
-              role="switch"
-              id="x-auto"
-              checked={s.auto ?? true}
-              onChange={s.onAuto && ((e) => s.onAuto?.(e.currentTarget.checked))}
-            />
-            Auto-search
-          </label>
-          <label
-            class="sw rper"
-            title="Each uma gets the best deck for her own outfit and targets: better odds than one deck for the whole loop"
+          <Switch
+            size="sm"
+            title="Automatically search 0.55s after a change"
+            id="x-auto"
+            checked={s.auto ?? true}
+            onChange={s.onAuto && ((e) => s.onAuto?.(e.currentTarget.checked))}
           >
-            <input
-              type="checkbox"
-              // biome-ignore lint/a11y/useAriaPropsForRole: as above
-              role="switch"
-              id="c-peruma"
-              checked={s.perUma ?? true}
-              onChange={s.onPerUma && ((e) => s.onPerUma?.(e.currentTarget.checked))}
-            />
+            Auto-search
+          </Switch>
+          <Switch
+            size="sm"
+            title="Each uma gets the best deck for her own outfit and targets: better odds than one deck for the whole loop"
+            id="c-peruma"
+            checked={s.perUma ?? true}
+            onChange={s.onPerUma && ((e) => s.onPerUma?.(e.currentTarget.checked))}
+          >
             Deck per uma
-          </label>
+          </Switch>
         </div>
       </section>
       <div class="lptgt">
