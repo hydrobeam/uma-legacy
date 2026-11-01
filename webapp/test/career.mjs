@@ -306,10 +306,12 @@ export default async function career(b) {
   {
     const name =
         'career: the Career setup ribbon (its edge too, not the strip beside it; folded, the summary) folds the panel to a one-line summary and back',
-      list = pg.locator('.rbbar .setlist');
+      list = pg.getByRole('group', { name: 'Game data' });
     const hb = await pg.locator('#h-set').boundingBox(),
-      bb = await pg.locator('.rbbar').boundingBox();
-    await pg.locator('.rbbar').click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
+      bb = await pg.getByRole('region', { name: 'Career setup' }).boundingBox();
+    await pg
+      .getByRole('region', { name: 'Career setup' })
+      .click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
     await expect.soft(list, `${name}: the strip beside the ribbon leaves it open`).toBeVisible();
     // (the ribbon measured again: clicking the bar may have scrolled it)
     const hb2 = await pg.locator('#h-set').boundingBox();
@@ -542,7 +544,7 @@ export default async function career(b) {
   {
     const name =
       'career: the odds lead the next career; under the targets, the chance of landing exactly each count, in percent, and the average roll';
-    await expect.soft(pg.locator('.rbtitle .lodds #odds-open'), name).toHaveText(/^1 in [\d,.]+ to land all 8/);
+    await expect.soft(pg.locator('#lodds #odds-open'), name).toHaveText(/^1 in [\d,.]+ to land all 8/);
     await expect.soft(pg.locator('#tree .rtgt .tgavg b'), `${name}: the average`).toHaveText(/^Avg \d\.\d$/);
     const oddRows = await pg.$$eval('#tree .rtgt .tgcounts .tgc', (l) =>
       l.map((c) => [c.querySelector('.tgck').textContent, c.querySelector('b').textContent]),
@@ -915,8 +917,8 @@ export default async function career(b) {
         dlg = document.getElementById('sim-dlg');
       return (
         order.join() === 'ltrainee,llegacies,rtgt' &&
-        !!document.querySelector('.rbtitle .lodds #odds-open') &&
-        !!document.querySelector('.rbtitle .lodds #sim-try') &&
+        !!document.querySelector('#lodds #odds-open') &&
+        !!document.querySelector('#lodds #sim-try') &&
         t.nextElementSibling === r &&
         !r.querySelector('#sim-top, #goal-note, .lhead') &&
         !!dlg.querySelector('#sim-top #simulation #sim-compare') &&

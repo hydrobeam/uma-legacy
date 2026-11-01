@@ -2,12 +2,14 @@
 // Drawn at build time with no views and no state (vite/prerender.mjs: the page's first paint), and hydrated by the entry
 // (main.tsx), which fills in `views` (each view behind its guard) once the game data is in, and the state of what the
 // layout draws itself: the setup bar's fold and summary, the status bar's colours, the dimmed results. Imports nothing
-// but Preact and the shell (ui/Shell.tsx says why).
+// but Preact, the shell and its class helpers (ui/Shell.tsx says why).
 import type { ComponentChildren } from 'preact';
-import { AddPop, EnhButton, EnhButtons, EraRow, Footer, Ribbon } from '../ui/Shell.tsx';
+import { cx } from 'tailwind-variants/lite';
+import { AddPop, EnhButton, EnhButtons, EraRow, Footer, Ribbon, setLabel, setRow } from '../ui/Shell.tsx';
 import type { Badge } from '../ui/Shell.tsx';
 import type { Era } from '../eras.ts';
 import { Button } from '../ui/Button.tsx';
+import { panel } from '../ui/Panel.tsx';
 
 /** the dialogs' and popups' boxes at the end of the page, in order */
 const CAREER_DIALOGS = [
@@ -76,85 +78,144 @@ interface Props {
   views?: CareerViews | null | undefined;
   state?: CareerState;
 }
+// the setup panel: the ribbon, the settings, the Enhance buttons and Target skills side by side from 1180 px (one
+// column under that); folded, the ribbon and a one-line summary
+const SETUP = cx(
+  panel,
+  "grid grid-cols-[max-content_max-content_minmax(0,1fr)] grid-rows-[auto_1fr] items-start gap-x-6 gap-y-2 px-4.5 pb-3 [grid-template-areas:'hdr_enh_tgt'_'list_enh_tgt'] max-2xl:grid-cols-1 max-2xl:grid-rows-none max-2xl:[grid-template-areas:'hdr'_'list'_'enh'_'tgt'] max-sm:px-3",
+);
+const FOLDED = cx(panel, 'flex cursor-pointer items-center gap-3.5 px-4.5 max-sm:px-3');
 export function CareerLayout({ version, note = null, views = null, state: s = {} }: Props) {
   const folded = !!s.folded;
   return (
     <>
-      <div class="rb">
+      {/* the page: the setup panel over the next career (on a phone, under it) */}
+      <div class="max-w-page font-game text-gm-ink mx-auto grid gap-6.5" data-page="career">
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: the ribbon's button (#set-fold) is the keyboard's way; folded, a click anywhere on the bar is the pointer's shortcut */}
-        <section class={folded ? 'rbbar folded' : 'rbbar'} aria-labelledby="h-set" onClick={s.onBar}>
+        <section class={folded ? FOLDED : SETUP} aria-labelledby="h-set" onClick={s.onBar}>
           <Ribbon fold>
             <button
               type="button"
-              class="setfold"
+              class="inline-flex cursor-pointer items-center gap-2.5 rounded-sm focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-white"
               id="set-fold"
               aria-expanded={folded ? 'false' : 'true'}
               aria-controls="set-body"
               title={s.folded === undefined ? undefined : folded ? 'Show the career setup' : 'Fold the career setup'}
             >
               Career setup
-              <span class="foldi" aria-hidden="true" />
+              {/* the chevron: up while open, down while folded */}
+              <span
+                class={cx(
+                  'drop-shadow-ribbon size-2 border-r-3 border-b-3 border-white',
+                  folded ? '-translate-y-0.75 rotate-45' : 'translate-y-0.75 -rotate-135',
+                )}
+                aria-hidden="true"
+              />
             </button>
           </Ribbon>
-          <span class="setsum" id="set-sum" role="note" hidden={!folded} aria-label={s.summaryLabel}>
+          <span
+            class="text-ui text-gm-ink2 inline-flex flex-wrap items-baseline gap-x-5.5 gap-y-1 font-bold"
+            id="set-sum"
+            role="note"
+            hidden={!folded}
+            aria-label={s.summaryLabel}
+          >
             {views?.summary}
           </span>
-          <div class="setlist">
-            <EraRow era={s.era} page="career" onPick={s.onEra} />
-            <div class="gctl rankctl" id="rank-ctl">
-              {views?.rank}
+          {/* what folding hides: its parts are the panel's own grid's */}
+          <div class="contents" id="set-body" hidden={folded}>
+            {/* the settings, spread down the panel's height (Target skills sets it) */}
+            <div class="relative grid min-w-0 grid-cols-[max-content] content-evenly gap-y-1.5 self-stretch pb-1.5 [grid-area:list] max-md:grid-cols-1">
+              <EraRow era={s.era} page="career" onPick={s.onEra} />
+              <div class={cx(setRow.career, 'relative')} id="rank-ctl">
+                {views?.rank}
+              </div>
+              {/* (its menu hangs under the whole list) */}
+              <div class="contents" id="scen-dd">
+                {views?.scenario}
+              </div>
+              {/* on a narrow phone its three choices share the row's width under the label */}
+              <div class={cx(setRow.career, 'max-sm:*:data-seg:col-span-full')}>
+                <span class={setLabel.stacked} id="bp-l">
+                  Borrowed parent
+                </span>
+                {views?.borrow}
+              </div>
             </div>
-            <div class="scendd" id="scen-dd">
-              {views?.scenario}
+            {/* Umas and Support cards, Veteran Umamusume under them as wide as the two, together at the top */}
+            <div class="grid grid-cols-[auto_auto] content-start justify-start gap-1.5 self-start pt-2.5 pb-1.5 [grid-area:enh]">
+              <EnhButtons page="career" umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
+              <EnhButton
+                id="v-toggle"
+                art="vets"
+                size="wide"
+                name="Your veterans"
+                label={
+                  <>
+                    <span>Veteran</span> <span>Umamusume</span>
+                  </>
+                }
+                onClick={s.onVeterans}
+              />
             </div>
-            <div class="gctl setrow bpctl">
-              <span class="glab" id="bp-l">
-                Borrowed parent
-              </span>
-              {views?.borrow}
-            </div>
-          </div>
-          <div class="setenh">
-            <EnhButtons page="career" umas={s.umas} cards={s.cards} onUmas={s.onUmas} onCards={s.onCards} />
-            <EnhButton
-              id="v-toggle"
-              art="vets"
-              size="wide"
-              name="Your veterans"
-              label={
-                <>
-                  <span>Veteran</span> <span>Umamusume</span>
-                </>
-              }
-              onClick={s.onVeterans}
-            />
-          </div>
-          <div class="lptgt">
-            <section class="panel" id="skills-panel" aria-labelledby="h-skills">
+            {/* Target skills in the open: its title bar, the add box and Presets on one row (the add box on its own
+                row on a phone), the tiles under them */}
+            <section
+              class="bg-gm-panel border-gm-edge mt-2.5 grid min-w-0 grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-2.5 self-start rounded-2xl border px-3 pb-3 [grid-area:tgt] [grid-template-areas:'h_add_btn'_'list_list_list'] max-md:grid-cols-[minmax(0,1fr)_max-content] max-md:[grid-template-areas:'h_btn'_'add_add'_'list_list']"
+              id="skills-panel"
+              aria-labelledby="h-skills"
+            >
               {views?.targets}
             </section>
           </div>
         </section>
 
-        <main class="rbmain" id="rcol" tabIndex={-1} aria-labelledby="h-lin">
-          <div class="rbtitle">
-            <h2 id="h-lin">Next career</h2>
-            <div class="lodds" id="lodds">
+        <main class="grid min-w-0 gap-2.5 outline-none max-lg:-order-1" id="rcol" tabIndex={-1} aria-labelledby="h-lin">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h2
+              class="before:art-bright before:inset-shadow-knob text-headline text-gm-ink flex items-center gap-2.5 font-black before:h-[1.1em] before:w-2 before:rounded-sm"
+              id="h-lin"
+            >
+              Next career
+            </h2>
+            {/* the odds and Try a run: the title row's own items */}
+            <div class="contents empty:hidden" id="lodds">
               {views?.verdict}
             </div>
-            <span id="um-root">{views?.umamoe}</span>
-            <div class="rhead" id="rhead" data-kind={s.kind ?? 'loading'}>
-              <span class="runnote" id="run-note" role="status" aria-live="polite">
+            <span class="contents" id="um-root">
+              {views?.umamoe}
+            </span>
+            {/* the status: the game's brown words, no box; only an error gets a frame (the game's pink-edged note), and
+                a finished run's line is read out, not shown */}
+            <div
+              class="text-body text-gm-ink2 data-[kind=error]:bg-gm-cell data-[kind=error]:border-gm-pink2 data-[kind=error]:text-gm-ink flex flex-[1_1_24em] flex-wrap items-center gap-x-3 gap-y-1.5 px-1 py-0.5 font-bold data-[kind=done]:sr-only data-[kind=error]:rounded-full data-[kind=error]:border-2 data-[kind=error]:px-3.5 data-[kind=error]:py-1.25"
+              id="rhead"
+              data-kind={s.kind ?? 'loading'}
+            >
+              <span
+                class="flex flex-[1_1_18em] flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums empty:hidden"
+                id="run-note"
+                role="status"
+                aria-live="polite"
+              >
                 {note}
               </span>
             </div>
           </div>
-          <div class={s.treeStale ? 'lineup stale' : 'lineup'} id="tree">
+          {/* the next career as the player sets it up in the game: the trainee over her legacies, her targets beside
+              them from 760 px (one column under that) */}
+          <div
+            class="mt-1 grid min-w-0 grid-cols-1 items-start gap-x-4.5 gap-y-4 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)] lg:grid-rows-[auto_1fr] lg:*:nth-3:col-start-2 lg:*:nth-3:row-span-2 lg:*:nth-3:row-start-1"
+            id="tree"
+            data-stale={s.treeStale ? '' : undefined}
+          >
             {views?.tree}
           </div>
+          {/* dimmed while a run works (after a moment, so a quick one doesn't flicker) and while it is not this setup's */}
           <div
+            class="grid min-w-0 gap-2.5 transition-opacity aria-busy:delay-800 aria-busy:duration-250 aria-busy:not-data-stale:opacity-50 data-stale:opacity-45 motion-reduce:transition-none"
             id="results"
-            class={s.resultsStale ? 'stale' : undefined}
+            data-stale={s.resultsStale ? '' : undefined}
             {...(s.busy === undefined ? {} : { 'aria-busy': s.busy })}
           >
             {views?.results}

@@ -104,9 +104,9 @@ export default async function careerumamoe(b) {
     'career uma.moe: one button beside Next career once you have a veteran (none before), its panel shut, nothing in Career setup, nothing sent',
     shutBefore &&
       (await label()) === 'Borrow from uma.moe' &&
-      (await pg.locator('.rbtitle #um-open').isVisible()) &&
+      (await pg.locator('#um-root #um-open').isVisible()) &&
       !(await pg.evaluate(() => document.getElementById('um-dlg').open)) &&
-      (await pg.locator('.setlist #um-row').count()) === 0 &&
+      (await pg.locator('#set-body #um-row').count()) === 0 &&
       requests.length === 0,
   );
   await pg.click('#um-open');
@@ -369,7 +369,7 @@ export default async function careerumamoe(b) {
   const asked = requests.slice(before).map((r) => new URL(r.url).searchParams.get('optional_white_sparks') || '');
   check(
     'career uma.moe: the Grand Masters era borrows from uma.moe too, asking only for sparks Global has',
-    (await pg.locator('.rbtitle #um-open').isVisible()) &&
+    (await pg.locator('#um-root #um-open').isVisible()) &&
       asked.length > 0 &&
       asked.every((q) => q.split(',').every((f) => FACTORS[Math.floor(+f / 10)] !== undefined)),
     `${await label()} | ${asked.join(' / ').slice(0, 120)}`,

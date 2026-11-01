@@ -64,7 +64,7 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
     }
   };
   return (
-    <div class="adder">
+    <div class="adder career:mt-1.5 career:[grid-area:add] career:max-md:mt-0 loop:mb-1.5">
       <input
         type="search"
         id="t-add"
@@ -111,7 +111,7 @@ function TargetList({ addBox }: { addBox: RefObject<HTMLInputElement | null> }) 
     refocus.current = null;
   });
   return (
-    <div class="targets" id="targets" ref={box}>
+    <div class="targets career:[grid-area:list]" id="targets" ref={box}>
       {targets.length ? null : <p class="hint">No target skills yet. Add one above.</p>}
       {targets.map((t, at) => {
         const white = namesOf(t.group).w;
@@ -140,9 +140,16 @@ export function TargetSkills() {
   const addBox = useRef<HTMLInputElement>(null);
   return (
     <>
-      <div class="row between">
-        <h2 id="h-skills">Target skills</h2>
-        <Button id="t-preset" aria-haspopup="dialog" onClick={openPresets}>
+      <div class="row between career:contents loop:-mx-3 loop:mb-2">
+        <h2 class="career:-ml-3 career:[grid-area:h]" id="h-skills">
+          Target skills
+        </h2>
+        <Button
+          class="career:[grid-area:btn] loop:mr-3 mt-1.5"
+          id="t-preset"
+          aria-haspopup="dialog"
+          onClick={openPresets}
+        >
           Presets
         </Button>
       </div>

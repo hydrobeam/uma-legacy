@@ -158,7 +158,7 @@ export default async function scenario(b) {
   await pg.mouse.click(bb.x + bb.width + 8, bb.y + bb.height / 2);
   await expect.soft(menu, `${shut}: beside the button`).toBeHidden();
   await button.click();
-  await pg.click('.rankctl > span');
+  await pg.click('#rank-ctl > span');
   await expect.soft(menu, `${shut}: the rank control`).toBeHidden();
   await button.click();
   await pg.keyboard.press('End');

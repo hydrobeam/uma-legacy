@@ -28,11 +28,13 @@ export default async function careerphone(b) {
     { timeout: 300000 },
   );
   // (the first veterans fold the setup; its rows are checked open)
-  if (await pg.locator('.rbbar.folded').count()) await pg.click('#set-fold');
+  if (await pg.locator('#set-fold[aria-expanded="false"]').count()) await pg.click('#set-fold');
   const inside = await pg.evaluate(() => {
-    const p = document.querySelector('.rbbar').getBoundingClientRect();
+    const p = document.querySelector('[aria-labelledby="h-set"]').getBoundingClientRect();
     return [
-      ...document.querySelectorAll('.rbbar .setlist > *, .rbbar .setlist [data-seg], #x-scen, .rbbar .lptgt .adder'),
+      ...document.querySelectorAll(
+        '#set-body > :first-child > *, #set-body > :first-child [data-seg], #x-scen, #t-add',
+      ),
     ]
       .filter((e) => e.getBoundingClientRect().width)
       .filter((e) => {
@@ -43,9 +45,7 @@ export default async function careerphone(b) {
   });
   check(
     'career phone: no sideways scroll; the setup rows and the add-a-skill box sit inside their panel',
-    !(await pg.evaluate(SIDEWAYS)).length &&
-      !inside.length &&
-      (await pg.locator('.rbbar .lptgt .adder input').boundingBox()).width > 200,
+    !(await pg.evaluate(SIDEWAYS)).length && !inside.length && (await pg.locator('#t-add').boundingBox()).width > 200,
     JSON.stringify([await pg.evaluate(SIDEWAYS), inside]),
   );
   await pg.click('#sim-try'); // her card: Try a run's popup
@@ -132,7 +132,7 @@ export default async function careerphone(b) {
   await pg.evaluate(() => localStorage.removeItem('llp:setup-folded')); // (no fold chosen: the one opened above forgotten)
   await back();
   const ret = await pg.evaluate(() => ({
-    folded: document.querySelector('.rbbar').classList.contains('folded'),
+    folded: document.getElementById('set-fold').getAttribute('aria-expanded') === 'false',
     sum: !document.getElementById('set-sum').hidden,
     top: Math.round(document.getElementById('tree').getBoundingClientRect().top + scrollY),
   }));
@@ -140,7 +140,7 @@ export default async function careerphone(b) {
   await back();
   check(
     'career phone: back with veterans, the setup opens folded and the tree starts on the first screen; opened, it stays open',
-    ret.folded && ret.sum && ret.top < 812 && !(await pg.locator('.rbbar.folded').count()),
+    ret.folded && ret.sum && ret.top < 812 && !(await pg.locator('#set-fold[aria-expanded="false"]').count()),
     JSON.stringify(ret),
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));

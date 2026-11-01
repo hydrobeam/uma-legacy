@@ -450,7 +450,7 @@ export async function careerPage(b) {
               .map((b) => b.getAttribute('aria-label'))
               .join('|')
           : '',
-        stale: !!document.querySelector('#results.stale'),
+        stale: document.getElementById('results')?.hasAttribute('data-stale') ?? false,
       };
       const k = JSON.stringify(s);
       if (window.__seq.at(-1)?.k !== k) window.__seq.push({ ...s, k });
@@ -460,7 +460,7 @@ export async function careerPage(b) {
       childList: true,
       characterData: true,
       attributes: true,
-      attributeFilter: ['class'],
+      attributeFilter: ['class', 'data-stale'],
     });
   });
   // one answer per run: while the run is busy the page shows the answer it had before it (`pre`, none at first), dimmed

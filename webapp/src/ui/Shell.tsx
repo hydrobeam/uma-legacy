@@ -26,13 +26,13 @@ export type Page = 'career' | 'loop';
 // narrow phone, the career page's). As the game's Umamusume Details labels its rows (Track, Distance, Style): plain
 // bold labels in a column, no tile behind them, no box round the row (the controls are the only framed things)
 /** a setup row (its label, its control): Game data, Borrowed parent, the lineage rank, the scenario */
-const setRow = {
+export const setRow = {
   career:
     'text-body grid grid-cols-[8.8em_minmax(0,1fr)] items-center justify-items-start gap-2.5 py-0.5 max-sm:grid-cols-[6.6em_minmax(0,1fr)] max-sm:gap-2',
   loop: 'text-body grid grid-cols-[8.4em_minmax(0,1fr)] items-center justify-items-start gap-2 py-0.5',
 } as const;
 /** a setup row's label (`stacked`: over its control, the row's width, on a narrow phone) */
-const setLabel = {
+export const setLabel = {
   beside:
     'text-body text-gm-ink flex items-center gap-1.5 self-stretch justify-self-stretch pr-1 pl-0.5 leading-tight font-bold',
   stacked:
