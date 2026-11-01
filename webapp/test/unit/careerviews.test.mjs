@@ -1,5 +1,6 @@
 // The career page's views on a fake document (fakedom.mjs), bundled with esbuild as the page bundles them: a view that
-// throws while drawing (review-8c 3: the render guard, ui/RenderGuard.tsx under career/view/Guard.tsx).
+// throws while drawing (review-8c 3: the render guard, ui/RenderGuard.tsx under career/view/Guard.tsx); the veterans
+// dialog's lists and pane (review-10 2-4).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -21,7 +22,9 @@ const built = await esbuild.build({
       export { NodeDialog } from './src/career/view/NodeDialog.tsx';
       export { openNode, closeNode } from './src/career/view/dialogs.ts';
       export { sayRenderErrors } from './src/ui/RenderGuard.tsx';
-      export { h, render } from 'preact';
+      export { PoolBody, PoolTabs } from './src/career/view/Pool.tsx';
+      export { openPool, poolClosed, choose } from './src/career/view/poolState.ts';
+      export { h, render, options } from 'preact';
       export { loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
     loader: 'js',
@@ -39,7 +42,8 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-careerviews-')),
 fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
-const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, loadData } = page;
+const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
+const { PoolBody, PoolTabs, openPool, poolClosed, choose } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
 await loadData();
 
@@ -77,5 +81,58 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
   closeNode();
   await settle();
   assert.equal(dlg.open, false, 'Close closes it');
+  for (const f of frames.splice(0)) f();
+});
+
+// every element under `root`, depth first
+const elements = (root) => root.childNodes.filter((c) => c.nodeType === 1).flatMap((c) => [c, ...elements(c)]);
+test('the veterans dialog: a selection draws two cards, one list is #vets, each tab names its own list, closed no pane', async () => {
+  const frames = [];
+  vs.initVets({ storage: () => memory(), hidden: () => false, afterFrame: (f) => frames.push(f) });
+  vs.addVets(
+    ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({
+      id,
+      src: 'hand',
+      borrowed: i === 4,
+      ...node(1001 + (i % 3)),
+      parents: [node(1002), node(1003)],
+    })),
+  );
+  const tabs = document.createElement('div'),
+    body = document.createElement('div');
+  render(h(PoolTabs, null), tabs);
+  render(h(PoolBody, null), body);
+  openPool();
+  await settle();
+  // the cards drawn on a selection (each card reads whether she is the one chosen through a computed of her own)
+  let cards = 0;
+  const diffed = options.diffed;
+  options.diffed = (vnode) => {
+    if (vnode.type?.name === 'PoolCard') cards++;
+    diffed?.(vnode);
+  };
+  choose('c');
+  await settle();
+  options.diffed = diffed;
+  assert.equal(cards, 2, 'the one chosen before and the one chosen now');
+  const withId = (id) => elements(body).filter((e) => e.attributes.id === id);
+  assert.equal(withId('vets').length, 1, 'one list is #vets');
+  assert.equal(withId('vets-bor').length, 1, "the Guests list, hidden, by its tab's name");
+  assert.deepEqual(
+    elements(tabs).map((b) => [b.attributes.id, b.attributes['aria-controls']]),
+    [
+      ['v-tab-own', 'vets'],
+      ['v-tab-bor', 'vets-bor'],
+    ],
+    'each tab names its own list',
+  );
+  const pane = () => withId('v-pane')[0];
+  assert.ok(pane().childNodes.length > 0, 'open: the pane draws the one chosen');
+  poolClosed();
+  await settle();
+  assert.equal(pane().childNodes.length, 0, 'closed: the pane draws nothing');
+  openPool();
+  await settle();
+  assert.ok(pane().childNodes.length > 0, 'open again: drawn');
   for (const f of frames.splice(0)) f();
 });

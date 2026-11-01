@@ -1,7 +1,7 @@
 // The veterans dialog's state (Pool.tsx draws it): the tab on show, the one chosen beside the list, the list's order,
-// whether the dialog has opened, and each tab's veterans in that order. Apart from the component, so the el() modules
+// whether the dialog has opened and whether it is open, and each tab's veterans in that order. Apart from the component, so the el() modules
 // (io.js's imports switch the tab) take it without importing a view.
-import { computed, signal } from '@preact/signals-core';
+import { batch, computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { settings } from '../../settings.ts';
 import { vets } from '../../veterans/store.ts';
@@ -11,11 +11,14 @@ export type Tab = 'own' | 'bor';
 const tab = signal<Tab>('own'),
   chosen = signal<string | null>(null),
   dialogOpened = signal(false),
+  dialogOpen = signal(false),
   ordered = signal({ by: 'tg', reversed: false });
 /** the tab on show */
 export const poolTab: ReadonlySignal<Tab> = tab;
 /** the dialog has opened (its cards are drawn from then on) */
 export const opened: ReadonlySignal<boolean> = dialogOpened;
+/** the dialog is open (the pane beside the lists is drawn only then) */
+export const poolOpen: ReadonlySignal<boolean> = dialogOpen;
 /** the list's order: VSORTS' key, reversed or not */
 export const order: ReadonlySignal<{ by: string; reversed: boolean }> = ordered;
 /** her tab: Guests (borrowed) or yours */
@@ -53,9 +56,17 @@ export function setVTab(t: Tab) {
   tab.value = t;
   chosen.value = selected.peek();
 }
-/** the dialog opens: its cards are drawn (they stay, and follow every change, from then on) */
+/** the dialog opens: its cards are drawn (they stay, and follow every change, from then on: a tab switch or a new
+ *  opening builds none), and the pane beside them */
 export function openPool() {
-  dialogOpened.value = true;
+  batch(() => {
+    dialogOpened.value = true;
+    dialogOpen.value = true;
+  });
+}
+/** the dialog has closed: the pane draws nothing (an edit elsewhere redraws no closed pane) */
+export function poolClosed() {
+  dialogOpen.value = false;
 }
 /** her, beside the list */
 export function choose(id: string) {

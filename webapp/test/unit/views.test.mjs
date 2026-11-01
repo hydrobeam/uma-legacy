@@ -21,7 +21,7 @@ const built = await esbuild.build({
       import '@preact/signals';
       export * as store from './src/veterans/store.ts';
       export { on } from './src/store.ts';
-      export { changeUma, searchHeld } from './src/veterans/pickers.js';
+      export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed } from './src/veterans/pickers.js';
       export { VetEditors } from './src/veterans/Editors.tsx';
       export { InspView } from './src/ui/InspView.tsx';
       export { Details, legaciesOf } from './src/career/analysis/Details.tsx';
@@ -44,6 +44,7 @@ fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, on, changeUma, searchHeld, VetEditors, InspView, Details, legaciesOf, h, render, loadData } = page;
+const { openWins, winsClosed, askSkills, askClosed } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: { 30001: 'Her Own' }, races: [] };
 await loadData();
@@ -169,4 +170,20 @@ test("Try a run's legacies: a place no veteran holds any more (the list changed 
   render(h(Details, { spec, actions: null, winsButton: null }), root);
   await settle();
   assert.equal(root.querySelectorAll('div.udleg').length, 1, 'her card draws, with the one legacy');
+});
+
+test("the search is held while a pool veteran's G1 wins window or a skills prompt is open (not the draft's window)", () => {
+  openWins(vs.vetRef('a'), 'Veteran #1');
+  assert.equal(searchHeld.peek(), true, "a pool veteran's wins window holds it");
+  winsClosed();
+  assert.equal(searchHeld.peek(), false, 'closed: released');
+  let back = 0;
+  openWins(vs.draftRef(), 'her', { onClose: () => back++ });
+  assert.equal(searchHeld.peek(), false, "the draft's window (its own close) holds nothing");
+  winsClosed();
+  assert.equal(back, 1, 'its close called once');
+  askSkills('Uma B', false, () => undefined);
+  assert.equal(searchHeld.peek(), true, 'a skills prompt holds it');
+  askClosed();
+  assert.equal(searchHeld.peek(), false, 'dismissed: released');
 });

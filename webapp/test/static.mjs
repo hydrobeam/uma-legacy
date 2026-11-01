@@ -431,6 +431,11 @@ const MOUNT_READS = {
         'leaves it fresh across a new run)',
     ],
     [
+      /on\(\[vets, places, searchHeld\], \(list, _places, held\) => \{\s*if \(held\) return;/,
+      "the veterans effect holds the search while a pool veteran's G1 wins window or a skills prompt is open " +
+        '(pickers.js searchHeld; review-10 1, 2)',
+    ],
+    [
       /drawCheck: paint,/,
       'view.drawCheck redraws the status line only (the results column follows the answer store; a redraw of the open ' +
         'veterans dialog under a click would lose it: run.ts RunDeps)',

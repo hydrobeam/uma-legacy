@@ -94,7 +94,7 @@ import { BorrowChoice, SetupSummary, initFold } from './view/Setup.tsx';
 import { nodeOpen, openNode, pickerFor } from './view/dialogs.ts';
 import { Results, SavesPopup } from './view/Options.tsx';
 import { PoolBody, PoolTabs, initVSort } from './view/Pool.tsx';
-import { poolTab, inTab, openPool, selected } from './view/poolState.ts';
+import { poolTab, inTab, openPool, poolClosed, selected } from './view/poolState.ts';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
 import { searchCaveat } from '../proofs.mjs';
 import { must } from '../must.ts';
@@ -334,6 +334,7 @@ loadData().then(
       openPool();
       $dialog('set-vets').showModal();
     };
+    $dialog('set-vets').addEventListener('close', poolClosed);
     $('v-clear').onclick = () => {
       // the open tab's veterans
       // (uma.moe's listings stay, unless one is a chosen parent: they are its answer for the targets, not yours)

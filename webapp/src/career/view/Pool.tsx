@@ -1,6 +1,7 @@
 // The veterans dialog (Veteran Umamusume): its two tabs (PoolTabs, into #v-tabs), the two tab lists and the pane beside
 // them (PoolBody, into #v-body). Both lists stay mounted once the dialog has opened, the one not on show `hidden`, so a
-// tab switch builds nothing; the list on show is `#vets` (its id moves with the tab). A card is drawn again only when
+// tab switch builds nothing; the list on show is `#vets` (its id moves with the tab); the pane is drawn only while the
+// dialog is open (closed, an edit elsewhere redraws no pane). A card is drawn again only when
 // her record, her number, her parent place or the targets change (her card reads the chosen one through a computed of
 // its own, so a selection draws two cards). The order menu (#vs) stays el(): sortmenu.js `wireMenu`.
 import { useComputed } from '@preact/signals';
@@ -16,7 +17,18 @@ import { VetCell } from '../../ui/VetCell.tsx';
 import { idxOf } from '../job.js';
 import { openNode } from './dialogs.ts';
 import { VetPane } from './NodeDialog.tsx';
-import { VSORTS, choose, lists, opened, order, poolTab as tab, selected, setOrder, setVTab } from './poolState.ts';
+import {
+  VSORTS,
+  choose,
+  lists,
+  opened,
+  order,
+  poolOpen,
+  poolTab as tab,
+  selected,
+  setOrder,
+  setVTab,
+} from './poolState.ts';
 import type { Tab } from './poolState.ts';
 
 const wideVets = () => matchMedia('(min-width: 760px)').matches;
@@ -70,7 +82,7 @@ export function PoolTabs() {
           role="tab"
           id={`v-tab-${t}`}
           aria-selected={tab.value === t}
-          aria-controls="vets"
+          aria-controls={tab.value === t ? 'vets' : `vets-${t}`}
           title={title}
           onClick={() => setVTab(t)}
         >
@@ -154,9 +166,9 @@ function PoolList({ t }: { t: Tab }) {
     </div>
   );
 }
-/** the lists and the pane beside them (a wide dialog: the one chosen) */
+/** the lists and the pane beside them (a wide dialog: the one chosen; nothing while the dialog is closed) */
 export function PoolBody() {
-  const id = opened.value ? selected.value : null;
+  const id = poolOpen.value ? selected.value : null;
   return (
     <>
       <PoolList t="own" />
