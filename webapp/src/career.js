@@ -81,7 +81,7 @@ import {
 } from './career/analysis.js';
 import { optionsEl } from './career/options.js';
 import { unprovenWhy, searchCaveat, planCaveat } from './proofs.mjs';
-import { must } from './must.ts';
+import { must, orNull } from './must.ts';
 
 const tName = (g) => {
   const s = gameData().skillNames.get(g) || { w: `Skill ${g}`, gd: null };
@@ -600,14 +600,8 @@ export function forgetDroppedChoice() {
 }
 function dropStaleChosen() {
   if (!chosen.career) return;
-  let applies = false;
-  try {
-    applies = buildJob(settings.value).career === chosen.career.id;
-  } catch (e) {
-    if (!(e instanceof Blocked)) throw e;
-    // settings that make no job: the chosen career no longer applies
-  }
-  if (applies) return;
+  // (settings that make no job: the chosen career no longer applies; a bug building it is reported, and the start goes on)
+  if (orNull(() => buildJob(settings.value), Blocked)?.career === chosen.career.id) return;
   chosenDropped = {
     places: chosen.career.places,
     text: 'The deck you chose with Use this before the reload no longer fits (its trainee, parents, their records, the targets or the card settings changed), so this is the deck the search finds.',
@@ -2211,14 +2205,8 @@ function initFold() {
 // search outside the page); Import takes the file back
 const EXPORT_APP = 'uma-legacy-veterans';
 function exportVets() {
-  /** @type {CareerJob | null} */
-  let job = null;
-  try {
-    job = buildJob(settings.value);
-  } catch (e) {
-    if (!(e instanceof Blocked)) throw e;
-    // settings that make no job: the export carries none
-  }
+  // (settings that make no job: the export carries none; a bug building it is reported, and the veterans still export)
+  const job = orNull(() => buildJob(settings.value), Blocked);
   // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
   const veterans = vets.filter((v) => v.src !== 'umamoe');
   const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans, plan, job };
