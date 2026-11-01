@@ -6,7 +6,8 @@
 // made by the entry and handed in). Her card is ./Details.tsx. This module also makes her draft from a career
 // (`draftOf`, `rollOf`: the page's veterans and settings, for the machine's deps) and adds her to the veterans.
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { $, $dialog, fmtIn } from '../../dom.ts';
+import { computed, signal } from '@preact/signals-core';
+import { fmtIn } from '../../dom.ts';
 import { careerTables } from '../../data.ts';
 import { settings } from '../../settings.ts';
 import { pct } from '../../odds.ts';
@@ -29,6 +30,9 @@ import type { CareerReport } from '../job.ts';
 import { borLast } from '../../cards.ts';
 import { fmtN, tableRows } from '../view/parts.ts';
 import { openNode } from '../view/dialogs.ts';
+import { sayVets } from '../view/poolState.ts';
+import { Guard } from '../view/Guard.tsx';
+import { Dialog } from '../../ui/Dialog.tsx';
 import { DeckCard } from '../view/Sections.tsx';
 import { Details, legaciesOf } from './Details.tsx';
 import type { DetailsSpec } from './Details.tsx';
@@ -99,10 +103,9 @@ function openDraftWins(d: DraftView, r: Career, back: () => void) {
 // Add to veterans: she joins the pool (./state.ts `draftJoins`), back to the next career
 function addDraft() {
   if (runView.peek().searching || !draft.peek()) return;
-  $dialog('sim-dlg').close();
+  closeTryRun();
   const chara = draftJoins();
-  $('v-msg').textContent =
-    `Added ${umaName(chara)} to your veterans. The planner now picks the next career from all of them.`;
+  sayVets(`Added ${umaName(chara)} to your veterans. The planner now picks the next career from all of them.`);
 }
 
 // ---------- the comparison panel
@@ -341,7 +344,7 @@ function ComparisonPanel({ sim, d, r }: { sim: SimulationView; d: DraftView; r: 
 // ---------- the popup
 /** The veteran analysis: her card (./Details.tsx; she starts as a random result of this career) with its actions, and
  *  the comparison panel beside it. */
-export function Analysis({ comparison }: { comparison: Comparison }) {
+function Analysis({ comparison }: { comparison: Comparison }) {
   // (the career on show reads the places, and her card her parents' records: the veterans store's signals; her own
   // record redraws by its identity, `simulation`)
   const sim = simulation.value,
@@ -415,8 +418,40 @@ export function Analysis({ comparison }: { comparison: Comparison }) {
     </section>
   );
 }
-/** Try a run's popup opens (the tree's button): her spark names are measured now they are on show */
+const tryRunOpen = signal(false);
+/** Try a run's popup opens (the tree's button) */
 export function openTryRun() {
-  $dialog('sim-dlg').showModal();
-  fitSparks($('sim-top'));
+  tryRunOpen.value = true;
+}
+const closeTryRun = () => {
+  tryRunOpen.value = false;
+};
+// what Try a run draws: her comparison and her draft (a new one draws it again after a failure)
+const simulationDrawn = computed(() => [simulation.value, draft.value]);
+/** Try a run's popup (ui/Dialog; the career entry renders it into #sim-root): the analysis behind its guard. Once it is
+ *  on show (its dialog's own layout effect has opened it), her spark names are measured. */
+export function TryRunDialog({ comparison }: { comparison: Comparison }) {
+  const open = tryRunOpen.value,
+    body = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per opening (`open` is a module signal's value, which Biome reads as constant)
+  useLayoutEffect(() => {
+    if (open && body.current) fitSparks(body.current);
+  }, [open]);
+  return (
+    <Dialog id="sim-dlg" cls="simdlg" labelledBy="sim-title" open={open} onClose={closeTryRun}>
+      <div class="dlg">
+        <div class="row between dhead">
+          <h3 id="sim-title">Try a run</h3>
+          <button class="btn dclose" type="button" onClick={closeTryRun}>
+            Close
+          </button>
+        </div>
+        <div class="dlgscroll" id="sim-top" ref={body}>
+          <Guard what="Try a run" also={simulationDrawn}>
+            <Analysis comparison={comparison} />
+          </Guard>
+        </div>
+      </div>
+    </Dialog>
+  );
 }

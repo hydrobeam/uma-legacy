@@ -17,8 +17,3 @@ export const fmtIn = (p: number): string => {
   const runs = 1 / p;
   return `1 in ${runs >= 100 ? Math.round(runs).toLocaleString() : runs.toFixed(1)}`;
 };
-// a click on the dialog's backdrop (the dialog element itself is the target) closes it
-export const backdropCloses = (dialog: HTMLDialogElement) =>
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) dialog.close();
-  });

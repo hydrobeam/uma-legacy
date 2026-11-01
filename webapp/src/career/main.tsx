@@ -31,10 +31,10 @@
 import '../errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { render } from 'preact';
-import { batch, computed } from '@preact/signals-core';
+import { batch } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import type { VNode } from 'preact';
-import { $, $dialog, $textarea, backdropCloses } from '../dom.ts';
+import { $ } from '../dom.ts';
 import { ERA } from '../saved.ts';
 import { loadData } from '../data.ts';
 import { jobSetup, settings, switchEra } from '../settings.ts';
@@ -55,7 +55,6 @@ import {
   draft,
   persist,
   flushPersist,
-  clearVets,
   dropMissing,
   handBackPlaces,
   setListings,
@@ -65,12 +64,12 @@ import { AddList, VetEditors } from '../veterans/Editors.tsx';
 import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.ts';
 import { connectUmamoe, syncListings } from '../umamoesetup.ts';
-import { UmButton, UmamoePanel } from './view/Umamoe.tsx';
+import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
 import { renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { placesKey, isFull, ROLL_K, umasNotOwned } from './job.ts';
 import { currentJob, dropStaleChosen, shown, runJob } from './current.ts';
 import { baseKey, refBase } from './keys.ts';
-import { Analysis, draftOf } from './analysis/view.tsx';
+import { TryRunDialog, draftOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
@@ -87,11 +86,10 @@ import { SkillDetails } from './view/SkillDetails.tsx';
 import { BorrowChoice, SetupSummary, initFold, sawVeterans } from './view/Setup.tsx';
 import { nodeOpen, pickerFor } from './view/dialogs.ts';
 import { Results, SavesPopup } from './view/Options.tsx';
-import { PoolBody, PoolHead } from './view/Pool.tsx';
-import { poolTab, inTab, openPool, poolClosed, selected } from './view/poolState.ts';
-import { exportVets, copyExport, downloadExport, importText } from './io.ts';
+import { VetsDialog } from './view/Pool.tsx';
+import { openPool } from './view/poolState.ts';
+import { ExportDialog, PasteDialog, openExport } from './view/Io.tsx';
 import { searchCaveat } from '../proofs.ts';
-import { must } from '../must.ts';
 import type { Status } from './state.ts';
 import type { CareerSearch } from './job.ts';
 
@@ -100,8 +98,6 @@ import type { CareerSearch } from './job.ts';
 connectUmamoe({ targets: () => settings.peek().targets, setListings });
 // The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,
 // the analysis store, the career on show and her draft. The run machine below drives it through its hooks.
-// Try a run draws her comparison and her draft
-const simulationDrawn = computed(() => [analysisStore.simulation.value, draft.value]);
 const comparison = createComparison({
   engine: { run: runJob, restart: restartEngine, saveState: engineSaveState },
   clock: { setTimer: (f, ms) => setTimeout(f, ms) },
@@ -256,9 +252,6 @@ function initSettings() {
   });
 }
 // ---------- start ----------
-// the template's dialogs: Close (or Done) closes each
-for (const d of document.querySelectorAll('dialog'))
-  for (const b of d.querySelectorAll<HTMLElement>('.dclose')) b.onclick = () => d.close();
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
 try {
   localStorage.removeItem('llp:loops');
@@ -270,9 +263,6 @@ addEventListener('pagehide', flushPersist);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushPersist();
 });
-document.addEventListener('click', (e) => {
-  if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close();
-}); // a backdrop click closes
 loadData().then(
   async () => {
     initSettings();
@@ -280,10 +270,6 @@ loadData().then(
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
     syncListings();
     dropMissing(); // (a place naming a veteran not here: an uma.moe one whose answer is gone, say)
-    // Try a run's popup: Close and a backdrop click shut it
-    const simDlg = $dialog('sim-dlg');
-    for (const x of simDlg.querySelectorAll<HTMLElement>('.dclose')) x.onclick = () => simDlg.close();
-    backdropCloses(simDlg);
     dropStaleChosen();
     // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
     // places, so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new
@@ -305,43 +291,13 @@ loadData().then(
     // an edit of Try a run's draft: the comparison on show is for the veteran before it (a roll or a new career clears
     // the figures with her, so it marks nothing)
     on([draft], analysisStore.draftChanged);
-    $('v-file').onchange = async (e: Event) => {
-      const input = e.target as HTMLInputElement;
-      const f = must(input.files, 'a file input has its file list')[0];
-      if (f) importText(await f.text());
-      input.value = '';
-    };
-    $('v-paste').onclick = () => {
-      $textarea('paste-text').value = '';
-      $dialog('paste-dlg').showModal();
-    };
-    $('v-export').onclick = exportVets;
-    $('vx-copy').onclick = copyExport;
-    $('vx-dl').onclick = downloadExport;
-    $('paste-load').onclick = () => {
-      if (importText($textarea('paste-text').value)) $dialog('paste-dlg').close();
-    };
-    $('v-toggle').onclick = () => {
-      openPool();
-      $dialog('set-vets').showModal();
-    };
-    $dialog('set-vets').addEventListener('close', poolClosed);
-    $('v-clear').onclick = () => {
-      // the open tab's veterans
-      // (uma.moe's listings stay, unless one is a chosen parent: they are its answer for the targets, not yours)
-      const parents = places.value.parents,
-        gone = (v: (typeof vets.value)[number]) => inTab(v) && (v.src !== 'umamoe' || parents.includes(v.id)),
-        n = vets.value.filter(gone).length,
-        what = poolTab.peek() === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
-      if (n && confirm(`Remove all ${what}?`)) {
-        clearVets(gone);
-        $('v-msg').textContent = `Removed ${what}.`;
-      }
-    };
+    $('v-toggle').onclick = openPool;
+    $('v-export').onclick = openExport;
     mount('tree', <Tree />, 'The lineage tree');
     mount('lodds', <Verdict />, 'The odds');
-    mount('v-head', <PoolHead />, "The veterans' tabs", poolTab);
-    mount('v-body', <PoolBody />, 'The veterans', selected);
+    mount('vets-root', <VetsDialog />, 'The veterans dialog');
+    mount('paste-root', <PasteDialog />, 'The Paste popup');
+    mount('vx-root', <ExportDialog />, 'The Export popup');
     mount('node-root', <NodeDialog />, 'The node popup', nodeOpen);
     mount('deck-root', <DeckDialog />, 'The deck popup');
     mount('skill-root', <SkillDetails />, 'Skill Details');
@@ -349,11 +305,11 @@ loadData().then(
     mount('add-pop', <AddList host={$('add-pop')} />, 'The "+" list');
     mount('results', <Results />, 'The other careers');
     mount('um-root', <UmButton />, "uma.moe's button");
-    mount('um-body', <UmamoePanel />, "uma.moe's popup");
+    mount('um-dlg-root', <UmamoeDialog />, "uma.moe's popup");
     mount('save-root', <SavesPopup />, 'The Saves popup');
     mount('sched-root', <ScheduleDialog />, 'The race schedule', schedOpened);
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
-    mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);
+    mount('sim-root', <TryRunDialog comparison={comparison} />, 'Try a run');
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },
   (e: Error) => {

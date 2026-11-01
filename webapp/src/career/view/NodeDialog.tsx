@@ -5,7 +5,6 @@
 import { batch } from '@preact/signals-core';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { $ } from '../../dom.ts';
 import { settings } from '../../settings.ts';
 import { isOwned } from '../../job.ts';
 import { fitSparks } from '../../details.ts';
@@ -21,6 +20,7 @@ import { listed } from '../job.ts';
 import { idxOf, shown, parentAt } from '../current.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts';
+import { sayVets } from './poolState.ts';
 import type { NodeSpec } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 
@@ -215,7 +215,7 @@ function VeteranView({ id }: { id: string }) {
                 closeNode();
                 removeVet(id);
               });
-              $('v-msg').textContent = `Removed ${name} from your veterans.`;
+              sayVets(`Removed ${name} from your veterans.`);
             }}
           />
         </div>

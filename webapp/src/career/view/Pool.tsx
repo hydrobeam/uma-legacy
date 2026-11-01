@@ -1,13 +1,13 @@
-// The veterans dialog (Veteran Umamusume): its head (PoolHead, into #v-head: the two tabs and the order menu,
-// ui/SortMenu.tsx), the two tab lists and the pane beside them (PoolBody, into #v-body). Both lists stay mounted once the
-// dialog has opened, the one not on show `hidden`, so a tab switch builds nothing; the list on show is `#vets` (its id
-// moves with the tab); the pane is drawn only while the dialog is open (closed, an edit elsewhere redraws no pane). A
-// card is drawn again only when her record, her number, her parent place or the targets change (her card reads the
-// chosen one through a computed of its own, so a selection draws two cards).
+// The veterans dialog (Veteran Umamusume, VetsDialog): its head (PoolHead, in #v-head: the two tabs and the order
+// menu, ui/SortMenu.tsx), the two tab lists and the pane beside them (PoolBody, in #v-body), and its tools. Both lists
+// stay mounted once the dialog has opened, the one not on show `hidden`, so a tab switch builds nothing; the list on
+// show is `#vets` (its id moves with the tab); the pane is drawn only while the dialog is open (closed, an edit
+// elsewhere redraws no pane). A card is drawn again only when her record, her number, her parent place or the targets
+// change (her card reads the chosen one through a computed of its own, so a selection draws two cards).
 import { useComputed } from '@preact/signals';
 import { settings } from '../../settings.ts';
 import type { Target } from '../../settings.ts';
-import { vets, places } from '../../veterans/store.ts';
+import { vets, places, clearVets } from '../../veterans/store.ts';
 import type { VetRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
@@ -15,17 +15,26 @@ import { VetCell } from '../../ui/VetCell.tsx';
 import { idxOf } from '../current.ts';
 import { openNode } from './dialogs.ts';
 import { VetPane } from './NodeDialog.tsx';
+import { Guard } from './Guard.tsx';
+import { openPaste } from './Io.tsx';
+import { importText } from '../io.ts';
+import { Dialog } from '../../ui/Dialog.tsx';
+import { must } from '../../must.ts';
 import {
   VSORTS,
   choose,
+  inTab,
   lists,
   opened,
   order,
+  poolClosed,
   poolOpen,
   poolTab as tab,
+  sayVets,
   selected,
   setOrder,
   setVTab,
+  vetsNote,
 } from './poolState.ts';
 import type { Tab } from './poolState.ts';
 
@@ -167,4 +176,68 @@ export function PoolBody() {
       </section>
     </>
   );
+}
+/** The veterans dialog (Veteran Umamusume, ui/Dialog: its button opens it, `openPool`): the head and the body, each
+ *  behind its guard, and the tools under them: Import umadump file, Paste, Remove all and what the last of them did
+ *  (`vetsNote`). The career entry renders it into #vets-root. */
+export function VetsDialog() {
+  return (
+    <Dialog id="set-vets" cls="setdlg vetdlg" labelledBy="h-vets" open={poolOpen.value} onClose={poolClosed}>
+      <div class="dlg">
+        <div class="row between dhead">
+          <h3 id="h-vets">Veteran Umamusume</h3>
+          <button class="btn dclose" type="button" onClick={poolClosed}>
+            Done
+          </button>
+        </div>
+        <div class="vhead" id="v-head">
+          <Guard what="The veterans' tabs" also={tab}>
+            <PoolHead />
+          </Guard>
+        </div>
+        <div class="vbody" id="v-body">
+          <Guard what="The veterans" also={selected}>
+            <PoolBody />
+          </Guard>
+        </div>
+        <div class="row vtools">
+          <label
+            class="btn filebtn"
+            title="umadump (github.com/Werseter/umadump) reads them from the game: trained_chara_data.json for yours, rental_chara_data.json for your borrow list"
+          >
+            Import umadump file
+            <input type="file" id="v-file" accept=".json,application/json" onChange={importFile} />
+          </label>
+          <button class="btn" type="button" id="v-paste" onClick={openPaste}>
+            Paste
+          </button>
+          <button class="btn" type="button" id="v-clear" onClick={removeAll}>
+            Remove all
+          </button>
+          <span class="hint" id="v-msg" role="status">
+            {vetsNote.value}
+          </span>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+// a umadump file chosen: imported, and the input emptied (the same file can be chosen again)
+async function importFile(e: Event) {
+  const input = e.currentTarget as HTMLInputElement;
+  const f = must(input.files, 'a file input has its file list')[0];
+  if (f) importText(await f.text());
+  input.value = '';
+}
+// Remove all: the open tab's veterans (uma.moe's listings stay, unless one is a chosen parent: they are its answer for
+// the targets, not yours)
+function removeAll() {
+  const parents = places.value.parents,
+    gone = (v: VetRecord) => inTab(v) && (v.src !== 'umamoe' || parents.includes(v.id)),
+    n = vets.value.filter(gone).length,
+    what = tab.peek() === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
+  if (n && confirm(`Remove all ${what}?`)) {
+    clearVets(gone);
+    sayVets(`Removed ${what}.`);
+  }
 }

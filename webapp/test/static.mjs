@@ -317,9 +317,12 @@ const MOUNTS = {
     ],
     ['um-root', 'src/career/view/Umamoe.tsx', ['um-open'], []],
     [
-      'um-body',
+      'um-dlg-root',
       'src/career/view/Umamoe.tsx',
       [
+        'um-dlg',
+        'um-title',
+        'um-body',
         'um-keyrow',
         'um-key',
         'um-save',
@@ -344,8 +347,26 @@ const MOUNTS = {
     ],
     ['bp', 'src/career/view/Setup.tsx', [], []],
     ['set-sum', 'src/career/view/Setup.tsx', [], ['sumkv', 'sumk']],
-    ['v-head', 'src/career/view/Pool.tsx', ['v-tabs', 'v-tab-own', 'v-tab-bor', 'vs', 'vs-menu', 'vs-dd'], []],
-    ['v-body', 'src/career/view/Pool.tsx', ['vets', 'v-pane'], ['umcell', 'vsec', 'vptitle', 'vctl', 'vpars']],
+    [
+      'vets-root',
+      'src/career/view/Pool.tsx',
+      [
+        'set-vets',
+        'h-vets',
+        'v-head',
+        'v-tabs',
+        'v-tab-own',
+        'v-tab-bor',
+        'vs',
+        'vs-menu',
+        'vs-dd',
+        'v-body',
+        'vets',
+      ].concat(['v-pane', 'v-file', 'v-paste', 'v-clear', 'v-msg']),
+      ['umcell', 'vsec', 'vptitle', 'vctl', 'vpars', 'vtools', 'filebtn'],
+    ],
+    ['paste-root', 'src/career/view/Io.tsx', ['paste-dlg', 'paste-title', 'paste-text', 'paste-load'], []],
+    ['vx-root', 'src/career/view/Io.tsx', ['vx-dlg', 'vx-title', 'vx-text', 'vx-copy', 'vx-dl', 'vx-msg'], []],
     [
       'node-root',
       'src/career/view/NodeDialog.tsx',
@@ -375,9 +396,12 @@ const MOUNTS = {
     ['add-pop', 'src/veterans/Editors.tsx', [], ['addlist', 'addsk', 'addn']],
     ['skill-root', 'src/career/view/SkillDetails.tsx', ['sk-dlg', 'sk-title'], ['gmdfaces', 'gmdcard', 'gmdcards']],
     [
-      'sim-top',
+      'sim-root',
       'src/career/analysis/view.tsx',
       [
+        'sim-dlg',
+        'sim-title',
+        'sim-top',
         'simulation',
         'sim-compare',
         'sim-roll',
@@ -577,7 +601,7 @@ const VIEW_IMPORTS_KEPT = {};
 // ---------- dialogs and mounts: ui/Dialog.tsx is every modal dialog (it calls showModal() and close() from its `open`,
 // restores the focus, closes on the backdrop); a render into a mount point starts a view's effects, which the entries
 // alone decide (frontend.md §2 Rules). The template dialogs a module still opens by hand, until each is ported:
-const TEMPLATE_DIALOGS = ['set-vets', 'um-dlg', 'sim-dlg', 'paste-dlg', 'vx-dlg'];
+const TEMPLATE_DIALOGS = [];
 const ENTRIES = ['src/loop/main.tsx', 'src/career/main.tsx'];
 {
   const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
@@ -697,6 +721,7 @@ const LAYERS = [
       'career/view/Sections',
       'career/view/Results',
       'career/view/Pool',
+      'career/view/Io',
       'career/view/poolState',
       'career/view/Setup',
     ],

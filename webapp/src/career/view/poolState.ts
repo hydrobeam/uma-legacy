@@ -68,6 +68,12 @@ export function openPool() {
 export function poolClosed() {
   dialogOpen.value = false;
 }
+const note = signal('');
+/** what the dialog says last (an import, a removal, a veteran added: its status line) */
+export const vetsNote: ReadonlySignal<string> = note;
+export const sayVets = (text: string) => {
+  note.value = text;
+};
 /** her, beside the list */
 export function choose(id: string) {
   chosen.value = id;

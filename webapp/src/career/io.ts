@@ -1,5 +1,6 @@
-// Export and Import of the veterans: the page's own export, an uma.moe tree, the game's export.
-import { $, $dialog, $textarea } from '../dom.ts';
+// Export and Import of the veterans: the page's own export, an uma.moe tree, the game's export. The Export and Paste
+// popups that show them are view/Io.tsx's; an import's outcome is said in the veterans dialog (poolState.ts `sayVets`).
+import { $ } from '../dom.ts';
 import { ERA } from '../saved.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
@@ -7,7 +8,7 @@ import { parseExport, parseTree } from '../umadump.ts';
 import { orNull } from '../must.ts';
 import { Blocked } from './job.ts';
 import { currentJob } from './current.ts';
-import { setVTab } from './view/poolState.ts';
+import { sayVets, setVTab } from './view/poolState.ts';
 
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a
 // search outside the page); Import takes the file back
@@ -18,7 +19,8 @@ interface OwnExport {
   era?: string;
   veterans: { src?: unknown }[];
 }
-export function exportVets(): void {
+/** the export's text: the veterans, the plan and the job of the stores now */
+export function exportText(): string {
   // (settings that make no job: the export carries none; a bug building it is reported, and the veterans still export)
   const job = orNull(currentJob, Blocked);
   // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
@@ -32,16 +34,11 @@ export function exportVets(): void {
     plan: places.value,
     job,
   };
-  $textarea('vx-text').value = JSON.stringify(data);
-  $('vx-msg').textContent = '';
-  $dialog('vx-dlg').showModal();
+  return JSON.stringify(data);
 }
-// Copy: the clipboard API, else select the text and the old copy command, else leave it selected for Ctrl+C
-export function copyExport(): void {
-  const t = $textarea('vx-text'),
-    msg = (m: string) => {
-      $('vx-msg').textContent = m;
-    };
+// Copy text box `t`'s text: the clipboard API, else select the text and the old copy command, else leave it selected for
+// Ctrl+C; `msg` says how it went
+export function copyExport(t: HTMLTextAreaElement, msg: (m: string) => void): void {
   const fallback = (why: string) => {
     t.focus();
     t.select();
@@ -62,8 +59,9 @@ export function copyExport(): void {
     (e) => fallback(e?.message || 'clipboard refused'),
   );
 }
-export function downloadExport(): void {
-  const url = URL.createObjectURL(new Blob([$textarea('vx-text').value], { type: 'application/json' }));
+/** the export's text as a file */
+export function downloadExport(text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = `uma-legacy-veterans-${ERA}.json`;
@@ -71,7 +69,6 @@ export function downloadExport(): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  $('vx-msg').textContent = 'Downloaded.';
 }
 function ownExport(text: string): OwnExport | null {
   try {
@@ -85,13 +82,14 @@ export function importText(text: string): boolean {
   const own = ownExport(text);
   if (own) {
     if (own.era && own.era !== ERA) {
-      $('v-msg').textContent = `Not imported: that export is of the ${$('era-' + own.era)?.textContent} data.`;
+      sayVets(`Not imported: that export is of the ${$('era-' + own.era)?.textContent} data.`);
       return true;
     }
     const damaged = own.veterans.filter((v) => !isVeteran(v)).length;
     if (damaged) {
-      $('v-msg').textContent =
-        `Not imported: ${damaged} veteran${damaged === 1 ? '' : 's'} in that export ${damaged === 1 ? 'is' : 'are'} damaged (no id or two parents).`;
+      sayVets(
+        `Not imported: ${damaged} veteran${damaged === 1 ? '' : 's'} in that export ${damaged === 1 ? 'is' : 'are'} damaged (no id or two parents).`,
+      );
       return true;
     }
     // each keeps her source (one made by hand stays hand-made); an export from before sources were saved: imported
@@ -100,20 +98,22 @@ export function importText(text: string): boolean {
       true,
     );
     setVTab('own');
-    $('v-msg').textContent =
-      `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.`;
+    sayVets(
+      `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.`,
+    );
     return true;
   }
   const tree = parseTree(text);
   if (tree) {
     if (!tree.length) {
-      $('v-msg').textContent = 'No veteran in that uma.moe tree.';
+      sayVets('No veteran in that uma.moe tree.');
       return false;
     }
     addVets(tree);
     const first = vets.value.indexOf(tree[0]) + 1;
-    $('v-msg').textContent =
-      `Added ${tree.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${first}${tree.length > 1 ? `-#${first + tree.length - 1}` : ''} (marked yours: switch to Borrowed if she is a friend's).`;
+    sayVets(
+      `Added ${tree.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${first}${tree.length > 1 ? `-#${first + tree.length - 1}` : ''} (marked yours: switch to Borrowed if she is a friend's).`,
+    );
     return true;
   }
   try {
@@ -129,11 +129,11 @@ export function importText(text: string): boolean {
         `${said.length ? 'r' : 'R'}eplaced the borrow list with ${counted(r.borrowed, 'borrowed veteran')}${r.dropped ? ` (it had ${r.dropped})` : ''}`,
       );
     setVTab(r.added || r.updated ? 'own' : 'bor');
-    $('v-msg').textContent = `${said.join('; ')}.`;
+    sayVets(`${said.join('; ')}.`);
     return true;
   } catch (e) {
     // (parseExport throws an Error with the page's message)
-    $('v-msg').textContent = (e as Error).message;
+    sayVets((e as Error).message);
     return false;
   }
 }
