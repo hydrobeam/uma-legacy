@@ -3,13 +3,14 @@
 // their dialogs in that order, so a picker closing as the prompt opens gives the focus up first. The "+" list
 // (`AddList`) draws into #add-pop, which it places by the "+" that opened it, inside that "+"'s open dialog (the page
 // around a modal dialog is inert). What each shows, and its openers, are pickers.js's and sparks.js's.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Ref } from 'preact';
 import { gameData } from '../data.js';
 import type { Uma } from '../data.js';
 import { Dialog } from '../ui/Dialog.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { WinsEditor } from '../ui/Agenda.tsx';
+import { useDropdown } from '../ui/SortMenu.tsx';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 import { skillName, targetGroups } from './names.js';
@@ -268,14 +269,25 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
 
 // ---------- "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink
 // and unique sparks have bars of their own). Drawn into #add-pop (`host`), which it places under its "+": inside the
-// "+"'s open dialog, placed against it. A press outside it and its "+" closes it; Escape closes it back to the "+".
+// "+"'s open dialog, placed against it. A dropdown (ui/SortMenu.tsx useDropdown): a press outside it and its "+"
+// closes it (another "+" moves it there); Escape closes it, not the dialog around it, back to the "+".
 export const AddList = ({ host }: { host: HTMLElement }) => <AddBody host={host} open={addOpen.value} />;
+// the "+" the list is open on, as the dropdown's button: read when a click lands, so a second "+" pressed has the list
+// before the click reaches the document; once closed, the last one (Escape gives it the focus back)
+const opener = {
+  last: null as HTMLElement | null,
+  get current() {
+    return addOpen.peek()?.btn ?? this.last;
+  },
+};
 function AddBody({ host, open }: { host: HTMLElement; open: { btn: HTMLElement; at: NodeRef } | null }) {
+  const inside = useRef([{ current: host }]).current;
   const sparks = (open?.at.node()?.sparks || {}) as Record<number, number>,
     missing = open ? targetGroups().filter((g) => !sparks[g]) : [];
   useLayoutEffect(() => {
     host.hidden = !open;
     if (!open) return;
+    opener.last = open.btn;
     const r = open.btn.getBoundingClientRect(),
       dialog = open.btn.closest('dialog[open]');
     if ((dialog || document.body) !== host.parentElement) (dialog || document.body).appendChild(host);
@@ -289,24 +301,7 @@ function AddBody({ host, open }: { host: HTMLElement; open: { btn: HTMLElement; 
     }
     host.focus();
   }, [open, host]);
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!host.contains(target) && !open.btn.contains(target)) closeAdd();
-    };
-    const onEscape = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      closeAdd();
-      open.btn.focus();
-    };
-    document.addEventListener('click', outside);
-    document.addEventListener('keydown', onEscape);
-    return () => {
-      document.removeEventListener('click', outside);
-      document.removeEventListener('keydown', onEscape);
-    };
-  }, [open, host]);
+  useDropdown(!!open, closeAdd, opener, inside);
   if (!open) return null;
   return (
     <>

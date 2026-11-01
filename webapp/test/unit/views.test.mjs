@@ -4,7 +4,7 @@
 // prompt dismissed keeps her sparks (review-8c 7).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
-import './fakedom.mjs';
+import { dispatchToDocument } from './fakedom.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
@@ -21,8 +21,8 @@ const built = await esbuild.build({
       import '@preact/signals';
       export * as store from './src/veterans/store.ts';
       export { on } from './src/store.ts';
-      export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed } from './src/veterans/pickers.js';
-      export { VetEditors } from './src/veterans/Editors.tsx';
+      export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed, openAdd, addOpen } from './src/veterans/pickers.js';
+      export { VetEditors, AddList } from './src/veterans/Editors.tsx';
       export { InspView } from './src/ui/InspView.tsx';
       export { Details, legaciesOf } from './src/career/analysis/Details.tsx';
       export { h, render } from 'preact';
@@ -44,7 +44,7 @@ fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, on, changeUma, searchHeld, VetEditors, InspView, Details, legaciesOf, h, render, loadData } = page;
-const { openWins, winsClosed, askSkills, askClosed } = page;
+const { openWins, winsClosed, askSkills, askClosed, openAdd, addOpen, AddList } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: { 30001: 'Her Own' }, races: [] };
 await loadData();
@@ -186,4 +186,23 @@ test("the search is held while a pool veteran's G1 wins window or a skills promp
   assert.equal(searchHeld.peek(), true, 'a skills prompt holds it');
   askClosed();
   assert.equal(searchHeld.peek(), false, 'dismissed: released');
+});
+
+test('a second "+" pressed while a "+" list is open moves the list there (review-11b 1)', async () => {
+  const host = document.createElement('div'),
+    first = document.createElement('button'),
+    second = document.createElement('button');
+  render(h(AddList, { host }), host);
+  openAdd(first, vs.vetRef('a'));
+  await settle(); // drawn, its listeners on
+  // the second "+": its own handler, then the click reaches the document
+  openAdd(second, vs.vetRef('a'));
+  dispatchToDocument('click', { target: second });
+  await settle();
+  assert.ok(addOpen.peek()?.btn === second, 'the list is on the second "+"');
+  assert.equal(host.hidden, false, 'and shown');
+  // a press elsewhere closes it
+  dispatchToDocument('click', { target: document.createElement('div') });
+  await settle();
+  assert.ok(addOpen.peek() === null, 'closed by a press outside');
 });

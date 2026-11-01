@@ -11,6 +11,13 @@ class Node {
   get firstChild() {
     return this.childNodes[0] || null;
   }
+  contains(n) {
+    for (let e = n; e; e = e.parentNode) if (e === this) return true;
+    return false;
+  }
+  get parentElement() {
+    return this.parentNode?.nodeType === 1 ? this.parentNode : null;
+  }
   get nextSibling() {
     const p = this.parentNode;
     return p ? p.childNodes[p.childNodes.indexOf(this) + 1] || null : null;
@@ -105,7 +112,8 @@ class Element extends Node {
   querySelector(sel) {
     return this.querySelectorAll(sel)[0] || null;
   }
-  closest() {
+  closest(sel) {
+    for (let e = this; e; e = e.parentElement) if (e.matches(sel)) return e;
     return null;
   }
   getBoundingClientRect() {
@@ -153,8 +161,20 @@ globalThis.document = {
   },
   querySelectorAll: () => [],
   querySelector: () => null,
-  addEventListener: () => undefined,
+  // the document's listeners: a test delivers an event to them with `dispatchToDocument` (a click bubbling up, say)
+  listeners: {},
+  addEventListener(type, f) {
+    this.listeners[type] = [...(this.listeners[type] || []), f];
+  },
+  removeEventListener(type, f) {
+    this.listeners[type] = (this.listeners[type] || []).filter((x) => x !== f);
+  },
 };
+/** an event reaching the document's listeners (after the target's own, as a bubbling one does) */
+export function dispatchToDocument(type, fields) {
+  const e = { type, preventDefault: () => undefined, stopPropagation: () => undefined, ...fields };
+  for (const f of globalThis.document.listeners[type] || []) f(e);
+}
 globalThis.Image = class extends Element {
   constructor() {
     super('img');
@@ -162,6 +182,8 @@ globalThis.Image = class extends Element {
 };
 globalThis.CSS = { escape: (s) => s };
 globalThis.requestAnimationFrame = (f) => setTimeout(f, 0);
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
+Object.assign(globalThis, { scrollX: 0, scrollY: 0, innerWidth: 1440, innerHeight: 900 });
 globalThis.matchMedia = () => ({ matches: true, addEventListener: () => undefined });
 globalThis.addEventListener = () => undefined;
 export { Element };
