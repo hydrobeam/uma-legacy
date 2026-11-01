@@ -5,6 +5,7 @@
 // elsewhere redraws no pane). A card is drawn again only when her record, her number, her parent place or the targets
 // change (her card reads the chosen one through a computed of its own, so a selection draws two cards).
 import { useComputed } from '@preact/signals';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import { settings } from '../../settings.ts';
 import type { Target } from '../../settings.ts';
 import { vets, places, clearVets } from '../../veterans/store.ts';
@@ -30,6 +31,7 @@ import {
   poolClosed,
   poolOpen,
   poolTab as tab,
+  refocusAsked,
   sayVets,
   selected,
   setOrder,
@@ -133,7 +135,15 @@ function PoolList({ t }: { t: Tab }) {
   const on = tab.value === t,
     list = lists[t].value,
     parents = places.value.parents,
-    targets = settings.value.targets;
+    targets = settings.value.targets,
+    grid = useRef<HTMLDivElement>(null),
+    ask = refocusAsked.value;
+  // a removal asked for the focus: the card chosen now takes it (by her number, which her card's id carries)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per ask (`ask` is a module signal's value, which Biome reads as constant)
+  useLayoutEffect(() => {
+    const id = selected.peek();
+    if (ask && on && id) grid.current?.querySelector<HTMLElement>(`#vet-${idxOf(id)}`)?.focus();
+  }, [ask]);
   const groups: [string, (readonly [VetRecord, number])[]][] =
     t === 'own'
       ? [['', list]]
@@ -142,7 +152,14 @@ function PoolList({ t }: { t: Tab }) {
           ['uma.moe', list.filter(([v]) => v.src === 'umamoe')],
         ];
   return (
-    <div class="umgrid vets" id={on ? 'vets' : `vets-${t}`} role="tabpanel" aria-labelledby={`v-tab-${t}`} hidden={!on}>
+    <div
+      ref={grid}
+      class="umgrid vets"
+      id={on ? 'vets' : `vets-${t}`}
+      role="tabpanel"
+      aria-labelledby={`v-tab-${t}`}
+      hidden={!on}
+    >
       {!opened.value ? null : list.length ? (
         groups.flatMap(([head, rows]) =>
           rows.length

@@ -20,7 +20,7 @@ import { listed } from '../job.ts';
 import { idxOf, shown, parentAt } from '../current.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
 import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts';
-import { sayVets } from './poolState.ts';
+import { focusChosen, sayVets } from './poolState.ts';
 import type { NodeSpec } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 
@@ -218,6 +218,7 @@ function VeteranView({ id }: { id: string }) {
                 removeVet(id);
               });
               sayVets(`Removed ${name} from your veterans.`);
+              focusChosen(); // (her card, which had the focus or opened this popup, is gone)
             }}
           />
         </div>

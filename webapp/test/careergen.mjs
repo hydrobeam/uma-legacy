@@ -152,6 +152,18 @@ export default async function careergen(b) {
   await pg.locator(`#vet-${removalIndex}`).click();
   await pg.locator('#v-pane .vdel').click();
   await saved();
+  // her card had the focus and is gone: the card chosen now takes it (review-8c §6)
+  const focusAfter = await pg
+    .waitForFunction(() => document.activeElement?.matches('#vets .umcell.sel'), null, { timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  check(
+    'focus: after Remove, the card chosen now has the focus (not the page)',
+    focusAfter,
+    await pg.evaluate(() => `${document.activeElement?.tagName}#${document.activeElement?.id}`),
+  );
   check(
     'career: removing a selected veteran immediately redraws and clears the fixed parent',
     (await pg.locator('#vets .umcell').count()) === removal.count - 1 &&

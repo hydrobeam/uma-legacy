@@ -68,6 +68,13 @@ export function openPool() {
 export function poolClosed() {
   dialogOpen.value = false;
 }
+const refocus = signal(0);
+/** a veteran removed (her card, the focus with it, is gone): the card chosen now takes the focus (`focusChosen`) */
+export const focusChosen = () => {
+  refocus.value++;
+};
+/** how many times `focusChosen` has asked (Pool.tsx's list on show follows it) */
+export const refocusAsked: ReadonlySignal<number> = refocus;
 const note = signal('');
 /** what the dialog says last (an import, a removal, a veteran added: its status line) */
 export const vetsNote: ReadonlySignal<string> = note;
