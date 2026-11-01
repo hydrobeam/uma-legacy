@@ -26,6 +26,8 @@ const built = await esbuild.build({
       export { PoolBody, PoolHead } from './src/career/view/Pool.tsx';
       export { openPool, poolClosed, choose } from './src/career/view/poolState.ts';
       export { OddsDialog, openOdds } from './src/ui/OddsDialog.tsx';
+      export { ScheduleDialog, openSched, schedOpened } from './src/ui/Schedule.tsx';
+      export { Guard } from './src/career/view/Guard.tsx';
       export { h, render, options } from 'preact';
       export { loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
@@ -46,6 +48,7 @@ const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
 const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails, OddsDialog, openOdds } = page;
+const { ScheduleDialog, openSched, schedOpened, Guard } = page;
 globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
 await loadData();
 
@@ -162,4 +165,26 @@ test('a popup whose content throws reports it once per opening: its close draws 
   openOdds({ title: 'Odds', n: 1, ex: [0.5, 0.5], pAll: 0.5, expected: 0.5 });
   await settle();
   assert.match(root.querySelector('table.oddtab')?.textContent ?? '', /1\/1/, 'the next odds draw');
+});
+
+test('the race schedule, after it failed to draw, draws on its next opening (review-11b 5)', async () => {
+  const reported = [];
+  globalThis.reportError = (e) => reported.push(e);
+  sayRenderErrors(() => undefined);
+  // the template's dialog is its mount point (the career entry's guard, with the schedule's openings as its subject)
+  const dialog = document.createElement('dialog');
+  render(h(Guard, { what: 'The race schedule', also: schedOpened }, h(ScheduleDialog, null)), dialog);
+  const member = { id: 1001, name: 'Uma A' };
+  openSched({ members: [member], outfits: [], schedule: [] }); // (malformed: no outfits for her)
+  await settle();
+  assert.equal(reported.length, 1, 'the throw reported');
+  const close = dialog.querySelectorAll('button').find((b) => b.textContent === 'Close');
+  assert.ok(close !== undefined, 'its heading and Close stay');
+  close.click();
+  assert.equal(dialog.open, false, 'closed');
+  openSched({ members: [member], outfits: [{ outfits: [] }], schedule: [] });
+  await settle();
+  assert.equal(dialog.open, true, 'opened again: open');
+  assert.equal(dialog.querySelectorAll('button.stab').length, 1, 'and drawn (her tab)');
+  assert.equal(reported.length, 1, 'no new failure');
 });

@@ -59,7 +59,7 @@ import {
 } from '../veterans/store.ts';
 import { searchHeld } from '../veterans/pickers.js';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
-import { ScheduleDialog } from '../ui/Schedule.tsx';
+import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.js';
 import { syncListings } from '../umamoesetup.js';
 import { UmButton, UmamoePanel } from './view/Umamoe.tsx';
@@ -350,7 +350,7 @@ loadData().then(
     mount('um-root', <UmButton />, "uma.moe's button");
     mount('um-body', <UmamoePanel />, "uma.moe's popup");
     mount('save-root', <SavesPopup />, 'The Saves popup');
-    mount('sched-dlg', <ScheduleDialog />, 'The race schedule');
+    mount('sched-dlg', <ScheduleDialog />, 'The race schedule', schedOpened);
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
     mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);
     await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)

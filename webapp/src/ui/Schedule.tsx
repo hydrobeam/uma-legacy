@@ -4,12 +4,15 @@
 // into it (the dialog is its mount point) and opens it; Close, Escape and the backdrop close it. Each opening starts on
 // the first member, the Win table folded.
 import { signal, untracked } from '@preact/signals';
+import type { ReadonlySignal } from '@preact/signals';
+import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { YEARS, TABLE_PAIRS, gradeCode, shownP, slotOf, tableFigure, turnLabel, why } from '../agenda.js';
 import type { ScheduleCell, ScheduleRow } from '../agenda.js';
 import { pickOutfit } from '../roster.js';
 import { must } from '../must.ts';
 import { AgendaGrid, RaceFace, WhenBar } from './Agenda.tsx';
+import { RenderGuard } from './RenderGuard.tsx';
 import { Grade, UmaAv } from './Images.tsx';
 
 /** what the popup shows: the members (the career page: her alone), their outfits, their schedule */
@@ -20,6 +23,9 @@ export interface SchedSpec {
 }
 // the schedule on show, and its opening (each opening draws it afresh)
 const shown = signal<{ spec: SchedSpec | null; n: number }>({ spec: null, n: 0 });
+/** the schedule on show and its opening, which only `openSched` writes: what its render guard draws again for (each
+ *  entry's), so opening it again after a failure draws it, and nothing else does */
+export const schedOpened: ReadonlySignal<{ spec: SchedSpec | null; n: number }> = shown;
 /** the race schedule window for a loop's members (the career page: her alone) */
 export function openSched(spec: SchedSpec) {
   shown.value = { spec, n: shown.peek().n + 1 };
@@ -34,12 +40,25 @@ export function ScheduleDialog() {
     const d = body.current?.parentElement as HTMLDialogElement | null | undefined;
     if (n && d && !d.open) d.showModal();
   }, [n]);
+  const close = () => dialog().close();
+  // (a schedule that fails to draw leaves its heading and Close: the dialog is open by then)
   return (
     <div class="dlg" id="sched-body" ref={body}>
-      {spec && <Schedule key={n} spec={spec} close={() => dialog().close()} />}
+      <RenderGuard input={schedOpened} what="The race schedule" fallback={<SchedHead close={close} />}>
+        {spec && <Schedule key={n} spec={spec} close={close} />}
+      </RenderGuard>
     </div>
   );
 }
+const SchedHead = ({ close, children }: { close: () => void; children?: ComponentChildren }) => (
+  <div class="row between dhead">
+    <h3 id="sched-title">Race schedule</h3>
+    {children}
+    <button class="btn" type="button" onClick={close}>
+      Close
+    </button>
+  </div>
+);
 type TabKey = number | 'all';
 function Schedule({ spec: { members, outfits, schedule }, close }: { spec: SchedSpec; close: () => void }) {
   const [tab, setTab] = useState<TabKey>(0),
@@ -66,8 +85,7 @@ function Schedule({ spec: { members, outfits, schedule }, close }: { spec: Sched
   const tabled = schedule.some((row) => row.cells.some((c) => c?.tbl !== undefined));
   return (
     <>
-      <div class="row between dhead">
-        <h3 id="sched-title">Race schedule</h3>
+      <SchedHead close={close}>
         {tabled && (
           <button
             class="btn sm"
@@ -80,10 +98,7 @@ function Schedule({ spec: { members, outfits, schedule }, close }: { spec: Sched
             Win table
           </button>
         )}
-        <button class="btn" type="button" onClick={close}>
-          Close
-        </button>
-      </div>
+      </SchedHead>
       <WinTable hidden={!tableOpen} />
       <div class="stabs" role="tablist">
         {keys.map((key, i) => (

@@ -501,6 +501,10 @@ const MOUNT_READS = {
         '(pickers.js searchHeld; review-10 1, 2)',
     ],
     [
+      /mount\('sched-dlg', <ScheduleDialog \/>, 'The race schedule', schedOpened\);/,
+      "the race schedule's guard draws it again for a new opening (Schedule.tsx schedOpened: review-11b 5)",
+    ],
+    [
       /drawCheck: paint,/,
       'view.drawCheck redraws the status line only (the results column follows the answer store; a redraw of the open ' +
         'veterans dialog under a click would lose it: run.ts RunDeps)',
@@ -509,6 +513,12 @@ const MOUNT_READS = {
   for (const [wire, what] of WIRES)
     if (!wire.test(srcText['src/career/main.tsx']))
       problems.push(`src/career/main.tsx: the run machine's wiring: ${what}`);
+  if (
+    !/renderGuarded\(<ScheduleDialog \/>, \$\('sched-dlg'\), 'The race schedule', schedOpened\);/.test(
+      srcText['src/loop/main.tsx'],
+    )
+  )
+    problems.push('src/loop/main.tsx: the race schedule draws inside a guard that draws it again for a new opening');
 }
 
 // ---------- components stay views: a module that is not one (.ts, .js) imports no .tsx module

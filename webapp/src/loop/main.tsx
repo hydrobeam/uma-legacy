@@ -17,14 +17,14 @@ import type { LoopView, RunState } from './state.ts';
 import type { DeepReadonly } from '../store.ts';
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
-import { RenderGuard, sayRenderErrors } from '../ui/RenderGuard.tsx';
+import { RenderGuard, renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
 import { initScenario, eraScenario } from '../scenario.js';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
 import { OddsDialog } from '../ui/OddsDialog.tsx';
-import { ScheduleDialog } from '../ui/Schedule.tsx';
+import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.js';
 import { loadExample } from '../presets.js';
 import { mountSetup } from '../ui/Setup.tsx';
@@ -151,7 +151,7 @@ function start() {
     column.focus({ preventScroll: true });
   };
   // the race schedule: drawn into the template's dialog (its mount point), which a backdrop click closes
-  render(<ScheduleDialog />, $('sched-dlg'));
+  renderGuarded(<ScheduleDialog />, $('sched-dlg'), 'The race schedule', schedOpened);
   backdropCloses($dialog('sched-dlg'));
 
   render(
