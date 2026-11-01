@@ -208,6 +208,13 @@ In `src/`, `loop/main.tsx` and `career/main.tsx` are the two pages' entries (eac
 send (from the settings it is given; `loop/job.ts` and `career/job.ts` build their jobs from them), and `statestore.ts`
 keeps the solver's work in IndexedDB.
 
+Every page module is `.ts` or `.tsx`, checked strict with `exactOptionalPropertyTypes` and the four flags that cost
+nothing (`webapp/tsconfig.json`); none carries `@ts-expect-error` or `@ts-ignore` (static.mjs reports any).
+`noUncheckedIndexedAccess` is off: on 2026-11-01 it raised 190 errors in 40 files (the worker none; most in
+`loop/Results.tsx`, 30, and `loop/Affinity.tsx`, 29). Each fix chooses what the page does when an entry is missing, a
+guard that skips it or `must()` that fails loudly, so each changes behaviour; made all at once, guards that silently
+skip what should never be missing would go unreviewed. Turning it on is the maintainer's decision.
+
 ## Tests
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
