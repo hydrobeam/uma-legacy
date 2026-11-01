@@ -14,7 +14,7 @@ import handlebars from 'vite-plugin-handlebars';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { imageCatalog, images } from './vite/images.mjs';
 import { mathFont } from './vite/mathfont.mjs';
-import { pageData } from './vite/pagedata.mjs';
+import { pageData, pageDataIds } from './vite/pagedata.mjs';
 import { aboutFigures } from './vite/research.mjs';
 
 const HERE = import.meta.dirname;
@@ -38,52 +38,69 @@ const logo = fs
   .replaceAll('url(#g', 'url(#lg')
   .replace('<svg ', '<svg class="logo" aria-hidden="true" focusable="false" ')
   .trim();
-const catalog = imageCatalog(IMG);
 
-export default defineConfig({
+// what the site's build and the node tests (Vitest, mode 'test') share: the root, and JSX compiled to Preact's jsx()
+// calls, imported from preact/jsx-runtime
+const shared = {
   root: HERE,
-  appType: 'mpa', // /loop serves loop.html, as the host serves it; a path with no page is a 404
-  // JSX compiles to Preact's jsx() calls, imported from preact/jsx-runtime
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
-  plugins: [
-    // the pages' shared markup (partials/: the theme script, the header's tabs, the setup rows, the Enhance buttons, the
-    // settings editors' mount points; one copy of each, one set of ids) and the values they show
-    handlebars({
-      partialDirectory: path.join(HERE, 'partials'),
-      compileOptions: { strict: true }, // a value a page names and the build lacks stops the build
-      helpers: { eq: (a, b) => a === b },
-      context: {
-        version: version(),
-        // the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own
-        site: (process.env.SITE_URL || 'https://uma-legacy.pages.dev').replace(/\/+$/, ''),
-        logo,
-        ...aboutFigures(),
+};
+// the node tests (test/unit; ./build.sh lint, the pre-commit hook): the page's modules as the build compiles them, none
+// of the build's plugins (its page data is each test's own, by vi.mock of '#page-data'); a test file that draws views
+// asks for happy-dom's document (`@vitest-environment happy-dom`), at a desktop's size
+const test = {
+  include: ['test/unit/*.test.mjs'],
+  environmentOptions: { happyDOM: { width: 1440, height: 900 } },
+  testTimeout: 60_000,
+};
+
+export default defineConfig(({ mode }) => (mode === 'test' ? { ...shared, plugins: [pageDataIds()], test } : site()));
+
+function site() {
+  const catalog = imageCatalog(IMG);
+  return {
+    ...shared,
+    appType: 'mpa', // /loop serves loop.html, as the host serves it; a path with no page is a 404
+    plugins: [
+      // the pages' shared markup (partials/: the theme script, the header's tabs, the setup rows, the Enhance buttons,
+      // the settings editors' mount points; one copy of each, one set of ids) and the values they show
+      handlebars({
+        partialDirectory: path.join(HERE, 'partials'),
+        compileOptions: { strict: true }, // a value a page names and the build lacks stops the build
+        helpers: { eq: (a, b) => a === b },
+        context: {
+          version: version(),
+          // the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own
+          site: (process.env.SITE_URL || 'https://uma-legacy.pages.dev').replace(/\/+$/, ''),
+          logo,
+          ...aboutFigures(),
+        },
+      }),
+      images(catalog, IMG, path.join(HERE, 'src', 'style.css')),
+      pageData({ catalog, imgDir: IMG, wasm: '/loopopt.opt.wasm', solverPages: ['index.html', 'loop.html'] }),
+      mathFont('about.html'),
+      // `vite preview` (./build.sh serve, the browser suite) over HTTP/2 with TLS, as the host serves the site:
+      // browsers speak HTTP/2 only over TLS, and over HTTP/1.1 a page's requests queue for six connections. The
+      // certificate is self-signed, made once into cache/tls.
+      basicSsl({ certDir: path.join(HERE, '..', 'cache', 'tls'), domains: ['127.0.0.1', 'localhost'] }),
+      // the fonts' SIL Open Font Licenses, beside the fonts (not fingerprinted: kept out of assets/)
+      viteStaticCopy({
+        targets: ['zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math', 'zen-maru-gothic'].map((font) => ({
+          src: `node_modules/@fontsource/${font}/LICENSE`,
+          dest: 'licenses',
+          rename: { stripBase: true, name: `OFL-${font}.txt` },
+        })),
+      }),
+    ],
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true, // dist/ holds build output only: nothing stale is deployed
+      assetsInlineLimit: 0, // every asset its own file, cached on its own
+      rolldownOptions: {
+        input: Object.fromEntries(['index', 'loop', 'about'].map((page) => [page, path.join(HERE, `${page}.html`)])),
+        // the modules both pages' scripts share, in one file (.size-limit.json counts it for each)
+        output: { chunkFileNames: 'assets/shared-[hash].js' },
       },
-    }),
-    images(catalog, IMG, path.join(HERE, 'src', 'style.css')),
-    pageData({ catalog, imgDir: IMG, wasm: '/loopopt.opt.wasm', solverPages: ['index.html', 'loop.html'] }),
-    mathFont('about.html'),
-    // `vite preview` (./build.sh serve, the browser suite) over HTTP/2 with TLS, as the host serves the site: browsers
-    // speak HTTP/2 only over TLS, and over HTTP/1.1 a page's requests queue for six connections. The certificate is
-    // self-signed, made once into cache/tls.
-    basicSsl({ certDir: path.join(HERE, '..', 'cache', 'tls'), domains: ['127.0.0.1', 'localhost'] }),
-    // the fonts' SIL Open Font Licenses, beside the fonts (not fingerprinted: kept out of assets/)
-    viteStaticCopy({
-      targets: ['zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math', 'zen-maru-gothic'].map((font) => ({
-        src: `node_modules/@fontsource/${font}/LICENSE`,
-        dest: 'licenses',
-        rename: { stripBase: true, name: `OFL-${font}.txt` },
-      })),
-    }),
-  ],
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true, // dist/ holds build output only: nothing stale is deployed
-    assetsInlineLimit: 0, // every asset its own file, cached on its own
-    rolldownOptions: {
-      input: Object.fromEntries(['index', 'loop', 'about'].map((page) => [page, path.join(HERE, `${page}.html`)])),
-      // the modules both pages' scripts share, in one file (.size-limit.json counts it for each)
-      output: { chunkFileNames: 'assets/shared-[hash].js' },
     },
-  },
-});
+  };
+}

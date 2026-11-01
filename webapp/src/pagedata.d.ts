@@ -1,4 +1,4 @@
-// The types of the page data the build writes (vite/pagedata.mjs '#page-data'; package.json's imports name this file
+// The types of the page data the build writes (vite/pagedata.mjs '#page-data'; tsconfig.json's paths name this file
 // for the type checker). Each value is JSON the build wrote from the exports, unchecked: this is the one place it gets
 // a type.
 import type { Assets, PageData } from './data.ts';

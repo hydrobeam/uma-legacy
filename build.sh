@@ -187,8 +187,9 @@ step_lint() {
   lint dependency-cruiser in_dir "$W" npx --no-install depcruise --config .dependency-cruiser.mjs src
   lint "dead CSS" in_dir "$W" node test/deadcss.mjs
   lint static.mjs in_dir "$W" node test/static.mjs
-  # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the terminal
-  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*'
+  # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the
+  # terminal, and a hung one at 5 minutes (each test's own limit, 60 s: vite.config.mjs)
+  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest run --reporter=dot
   if [ ${#LINT_FAILED[@]} -gt 0 ]; then
     local list
     list=$(printf '%s, ' "${LINT_FAILED[@]}")

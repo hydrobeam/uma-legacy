@@ -99,11 +99,19 @@ const fillPanels = (page) => {
 };
 const idsIn = (text) => [...text.matchAll(MADE_ID)].map((m) => m[2] || m[3]);
 const srcText = Object.fromEntries(sources.filter(([f]) => f.startsWith('src')));
-// each page's metafile (esbuild): its modules and their imports, paths as in `sources`
+// each page's metafile (esbuild): its modules and their imports, paths as in `sources` (the page data, modules the Vite
+// build writes, outside: no file holds them)
 const metafiles = Object.fromEntries(
   Object.keys(PAGES).map((entry) => [
     entry,
-    esbuild.buildSync({ entryPoints: [entry], bundle: true, write: false, metafile: true, logLevel: 'error' }).metafile,
+    esbuild.buildSync({
+      entryPoints: [entry],
+      bundle: true,
+      write: false,
+      metafile: true,
+      external: ['#page-data', '#career-data'],
+      logLevel: 'error',
+    }).metafile,
   ]),
 );
 // the modules of each page's bundle

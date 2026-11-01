@@ -3,9 +3,9 @@
 // one in flight unanswered, as engine.ts does), a fake clock and timers, and fakes of the page's parts. Staleness: late
 // replies of older runs are dropped, a check's own writes keep it running while a new plan stops it, the timers end
 // with the run, the comparison goes stale with every new run, and the last visit's answer is drawn after a reload.
-// node --test 'test/unit/*.test.*' (in webapp)
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { PAUSE_MS, createRun } from '../../src/career/run.ts';
 import { jobKey, planKey } from '../../src/career/keys.ts';
 import * as store from '../../src/career/state.ts';
