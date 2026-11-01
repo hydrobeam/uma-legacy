@@ -39,7 +39,7 @@ export function InspView({
     <div class="udinsp">
       <div class={`udlin${parents.length ? '' : ' solo'}`}>
         <div class="udrow me">
-          <UmaAv uma={nd.chara || 0} outfit={nd.outfit} size={64} cls="udface" />
+          <UmaAv key={`${nd.chara}:${nd.outfit}`} uma={nd.chara || 0} outfit={nd.outfit} size={64} cls="udface" />
           {/* biome-ignore lint/a11y/useSemanticElements: today's markup (details.js inspView); a fieldset's legend and border would need the spark grid restyled */}
           <div class="simskills" role="group" aria-label="Her sparks">
             <Sparks nd={nd} k={k} at={at} targets={targets} readOnly={readOnly} />
@@ -54,6 +54,7 @@ export function InspView({
           // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
           <div key={j} class="udrow par">
             <UmaAv
+              key={`${g.chara}:${g.outfit}`}
               uma={g.chara || 0}
               outfit={g.outfit}
               size={64}

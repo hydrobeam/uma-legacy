@@ -164,6 +164,18 @@ export default async function careerumamoe(b) {
       (await pg.textContent('#vets .vsec')) === 'uma.moe' &&
       (await pg.textContent('#v-tab-bor')) === 'Guests · 2',
   );
+  // the pane's Copy ID is the veteran's on show: another listing chosen after a copy reads Copy ID, never the first
+  // one's "Copied" or (a failed copy) her trainer's ID
+  await pg.locator('#vets .umcell').nth(0).click();
+  await pg.locator('#v-pane button', { hasText: 'Copy ID' }).click();
+  const copied = await pg.locator('#v-pane .twho .btn.sm').textContent();
+  await pg.locator('#vets .umcell').nth(1).click();
+  const next = await pg.locator('#v-pane .twho .btn.sm').textContent();
+  check(
+    'career uma.moe: Copy ID in the pane, then another listing: hers reads Copy ID (no state carried to her)',
+    copied !== 'Copy ID' && next === 'Copy ID',
+    `${copied} -> ${next}`,
+  );
   await pg.click('#v-tab-own');
   await vetsShut();
   await pg.click('#v-export');

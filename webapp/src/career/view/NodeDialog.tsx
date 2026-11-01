@@ -34,7 +34,7 @@ function Affinity({ r }: { r: CareerReport }) {
     .map((ix) => r.slots.find((x) => x.kind === 'parent' && x.legacy === ix))
     .filter((p) => !!p)
     .map((p) => ({
-      face: <UmaAv uma={p.chara || 0} outfit={null} size={30} />,
+      face: <UmaAv key={p.chara} uma={p.chara || 0} outfit={null} size={30} />,
       name: nm(p),
       rel: p.rel,
       race: p.race,
@@ -43,7 +43,7 @@ function Affinity({ r }: { r: CareerReport }) {
         .filter((x) => x.kind === 'grandparent' && x.legacy === p.legacy)
         .sort((a, b) => (a.gp ?? 0) - (b.gp ?? 0))
         .map((g) => ({
-          face: <UmaAv uma={g.chara || 0} outfit={null} size={24} />,
+          face: <UmaAv key={g.chara} uma={g.chara || 0} outfit={null} size={24} />,
           name: nm(g),
           rel: g.rel,
           race: g.race,
@@ -67,7 +67,7 @@ interface FaceProps {
   change: boolean;
 }
 function Face({ nd, at, size, label, change }: FaceProps) {
-  const face = <UmaAv uma={nd.chara || 0} outfit={nd.outfit} size={size} />;
+  const face = <UmaAv key={`${nd.chara}:${nd.outfit}`} uma={nd.chara || 0} outfit={nd.outfit} size={size} />;
   if (!change) return face;
   const title = `${label}: ${umaName(nd.chara)}. Change who she is`;
   return (
@@ -249,7 +249,7 @@ export function VetPane() {
   return (
     <>
       <h4 class="vptitle">{veteranTitle(id)}</h4>
-      <VeteranView id={id} />
+      <VeteranView key={id} id={id} />
     </>
   );
 }
@@ -270,7 +270,12 @@ function traineeNode(r: CareerReport | null): NodeShown {
       <>
         {id ? (
           <div class="twho">
-            <UmaAv uma={id} outfit={mine ? r?.trainee.outfits[0]?.id : null} size={72} />
+            <UmaAv
+              key={`${id}:${mine ? r?.trainee.outfits[0]?.id : null}`}
+              uma={id}
+              outfit={mine ? r?.trainee.outfits[0]?.id : null}
+              size={72}
+            />
             <div>
               <div class="nm">{umaName(id)}</div>
               {mine && r?.trainee.outfits[0] && <div class="ctt">{r.trainee.outfits[0].label}</div>}
@@ -336,7 +341,7 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
             aria-label={`Parent ${k + 1}: ${umaName(v.chara)}. Choose another parent`}
             onClick={fromNode(() => openParentPicker(k))}
           >
-            <UmaAv uma={v.chara} outfit={v.outfit} size={64} />
+            <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={64} />
           </button>
           <div class="tnm">
             <NameCover v={v} />
@@ -347,7 +352,7 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
             </div>
           </div>
           <Wins nd={v} at={vetRef(v.id)} who={umaName(v.chara)} k={`p${k}`} edit={!listed(v)} />
-          {v.lender && <CopyId v={v} />}
+          {v.lender && <CopyId key={v.id} v={v} />}
         </div>
         <div class="ud udbare">
           <InspView
@@ -401,7 +406,7 @@ function nodeShown(spec: NodeSpec, r: CareerReport | null): NodeShown | null {
   if (spec.kind === 'p') return parentNode(spec.k, r);
   if (spec.kind === 'g') return grandparentNode(spec.k, spec.j, r);
   const title = veteranTitle(spec.id);
-  return title ? { title, body: <VeteranView id={spec.id} /> } : null;
+  return title ? { title, body: <VeteranView key={spec.id} id={spec.id} /> } : null;
 }
 /** the node popup (game style): one dialog, drawn again on every change while open */
 export function NodeDialog() {

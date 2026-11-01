@@ -47,7 +47,7 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
       }
     >
       <div class="vpth">
-        <UmaAv uma={v.chara} outfit={v.outfit} size={48} />
+        <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={48} />
         <div>
           <div class="nm">{umaName(v.chara)}</div>
           <div class="sub">
@@ -61,8 +61,8 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
       <div class="vptg">
         Parents:{' '}
         {v.parents.map((g, j) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
-          <UmaAv key={j} uma={g.chara || 0} outfit={g.outfit} size={22} />
+          // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places, each keyed by her uma too
+          <UmaAv key={`${j}:${g.chara}:${g.outfit}`} uma={g.chara || 0} outfit={g.outfit} size={22} />
         ))}
         {` ${v.parents.map((g) => (g.chara ? umaName(g.chara) : 'unknown')).join(', ')}`}
       </div>
