@@ -75,8 +75,10 @@ game art are never committed.
 
 ## Steps
 
-Each step but `hooks` and `research` checks its requirements first and, when something is missing, names every
-missing tool or file and what it is before it stops; the `art` step instead says what it skipped.
+`./build.sh help` lists the steps with one line each, from the table `STEPS` at the top of `build.sh`, which also
+says which steps the default build and `all` run; this section has the detail. Each step but `hooks` and `research`
+checks its requirements first and, when something is missing, names every missing tool or file and what it is before
+it stops; the `art` step instead says what it skipped.
 
 | Step | Does |
 |---|---|
@@ -100,6 +102,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `mono` | the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
+| `help` | the steps, from `build.sh`'s table |
 
 The solver's training-hint constants (each scenario's base and specialty weight, `pkg/loopopt/src/deck/hints.rs`) are
 the research fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every
