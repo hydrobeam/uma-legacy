@@ -196,7 +196,8 @@ IndexedDB.
   statement reordered or moved between blocks or functions changes it) and the same ordered list of load-time steps
   (the units that run when the bundle loads: storage reads, listeners, lookups, a declaration whose value calls
   anything; and the declarations that read another top-level variable at load, a snapshot such as `var V = o.v`). A
-  bundle whose entry was moved or renamed is compared across it (`ENTRIES` lists each entry's names). In the
+  bundle whose entry was moved or renamed is compared across it (`ENTRIES` lists each entry's names), and esbuild's
+  collision suffixes (`run`, `run2`), which a module order change reshuffles, are paired back first. In the
   HEAD tree alone, no bundle may read a top-level variable at load before its declaration has run (esbuild prints
   top-level `const` and `class` as `var`, so such a read finds `undefined`, with no TDZ error; static.mjs runs the same
   check). Its own cases, behaviour changes it must report and moves it must pass, are `test/unit/samecode.test.mjs`.

@@ -282,3 +282,45 @@ test('not read at load: a function body nobody calls at load, a listener, a prop
   );
   assert.deepEqual(loadOrder(text), []);
 });
+
+// esbuild's collision suffixes: an entry's own `search` moved to a new module imported first takes the unsuffixed
+// name, and the other module's `search` becomes `search2`. Paired back, the move reads the same; a change does not.
+const suffixBase = {
+  'main.js':
+    "import { s } from './s.js';\nfunction search() { return 2; }\nwindow.go = () => s() + search();\n" +
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a module's source, holding a template literal
+    'window.t = () => `${search()} of ${s()}`;\nwindow.o = { search, s };',
+  's.js': 'function search() { return 1; }\nexport function s() { return search(); }',
+};
+const suffixMoved = (searchBody, entryUses = 'search') => ({
+  'main.js':
+    `import { search } from './n.js';\nimport { s } from './s.js';\nwindow.go = () => s() + ${entryUses}();\n` +
+    `window.t = () => \`\${${entryUses}()} of \${s()}\`;\nwindow.o = { search, s };`,
+  's.js': suffixBase['s.js'],
+  'n.js': `export function search() { ${searchBody} }`,
+});
+test('the same code: a move that swaps collision suffixes (calls, a template, a shorthand property)', async () => {
+  const result = compare(await bundleOf(suffixBase), await bundleOf(suffixMoved('return 2;')));
+  assert.deepEqual([result.gone, result.added, result.sameOrder], [[], [], true]);
+  assert.deepEqual(result.renamed.sort(), [
+    ['search', 'search2'],
+    ['search2', 'search'],
+  ]);
+});
+test('reported: a move that swaps collision suffixes and changes the moved function', async () => {
+  assert.equal(await sameCode(suffixBase, suffixMoved('return 3;')), false);
+});
+test("reported: a call moved to another module's function of the same name", async () => {
+  const before = {
+    'main.js': "import { a, b } from './a.js';\nimport { c } from './c.js';\nwindow.go = () => [a(), b(), c()];",
+    'a.js': 'function fmt(x) { return x + 1; }\nexport const a = () => fmt(1);\nexport const b = () => fmt(5);',
+    'c.js': 'export function fmt(x) { return x * 2; }\nexport const c = () => fmt(2);',
+  };
+  const after = {
+    ...before,
+    'a.js':
+      "import { fmt as other } from './c.js';\nfunction fmt(x) { return x + 1; }\n" +
+      'export const a = () => other(1);\nexport const b = () => fmt(5);',
+  };
+  assert.equal(await sameCode(before, after), false);
+});

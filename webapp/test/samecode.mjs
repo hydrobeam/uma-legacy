@@ -16,8 +16,12 @@
 // "not a function" TypeError later), never a TDZ error; and with an import cycle a move between modules can put a
 // declaration after its reader. Read at load: in a top-level statement outside the functions it defines, or in a
 // function such a statement calls by name, as far as is visible without running it.
-// A module order change also swaps esbuild's collision suffixes (GAP, GAP2), which shows as changed units: evaluation
-// order did change, so it is reported. Not compared: what a function called at load reads through a method, a
+// A module order change also reshuffles esbuild's collision suffixes (GAP, GAP2), and a new library's short names push
+// the page's own to new ones: before comparing, the after-bundle's names are renamed one to one within each suffix
+// family to the pairing that leaves the fewest units differing (`pairSuffixes`; printed as a note). Every word naming
+// a binding is renamed (properties are not; a shorthand property keeps its key), so the renamed bundle runs as the
+// after-bundle does. A nested local esbuild suffixed in some functions and not others can't be paired so and still
+// shows. Not compared: what a function called at load reads through a method, a
 // constructor or a callback; a getter's or a function's own reads against the effects (only declarations are
 // ordered); the templates, the CSS and build.py's flags.
 // --effects lists each bundle's load-time steps. Exits 1 on any difference or misordered read.
@@ -184,16 +188,6 @@ export function tokenize(text) {
   }
   return tokens;
 }
-
-// tokens as text: a space only where two words would otherwise merge, or two signs (`a - -b`, `a++ +b`)
-const join = (tokens) =>
-  tokens
-    .map((t, k) => {
-      const before = tokens[k - 1]?.text.at(-1) ?? '';
-      const glue = (WORD.test(before) && WORD.test(t.text[0])) || ('+-'.includes(before) && before === t.text[0]);
-      return (k && glue ? ' ' : '') + t.text;
-    })
-    .join('');
 
 // The top-level units of a bundle, as token lists: the statements of its IIFE, each whole with its body (a unit starts
 // at its own first token on a line two spaces in, inside the IIFE's two brackets, as esbuild prints them), then the
@@ -461,6 +455,138 @@ function stepsOf(bodyUnits) {
 // The load-time steps of a bundle (`stepsOf`), in order, as text
 export const effects = (text) => stepsOf(units(text).slice(0, -1)).map(join);
 
+// ---------- esbuild's collision suffixes
+
+// A name esbuild printed with a collision suffix: two modules' top-level `run` become `run` and `run2` in module
+// order, and a nested `p` that a new top-level `p` would shadow becomes `p2`. A move that changes the module order, or
+// a library's short names, reshuffles them.
+const SUFFIXED = /^([A-Za-z_$][\w$]*?)([2-9]|[1-9]\d+)$/;
+// the browser's own names: esbuild never suffixes a global, and renaming a reference to one would change what it names
+const GLOBALS = new Set([
+  ...Object.getOwnPropertyNames(globalThis),
+  ...['window', 'document', 'self', 'top', 'parent', 'name', 'location', 'navigator', 'event', 'status', 'origin'],
+  ...['history', 'screen', 'localStorage', 'sessionStorage', 'indexedDB'],
+]);
+const NO_RENAME = new Map();
+
+// whether the word at tokens[k] is a shorthand property (`{ a }`, `{ a = 1 }` in a pattern): its key and its binding
+const isShorthand = (tokens, k) => {
+  const [prev, next] = [tokens[k - 1]?.text, tokens[k + 1]?.text];
+  if (!(prev === '{' || prev === ',') || !(next === ',' || next === '}' || next === '=')) return false;
+  const open = holderOf(tokens, k);
+  return open >= 0 && tokens[open].text === '{' && objectBrace(tokens, open);
+};
+// a template literal's text, the code in its `${}` as tokens joined (with the bindings in `rename` renamed)
+const templates = new Map(); // a template's text -> its text unrenamed
+function templateText(text, rename) {
+  const pieces = templatePieces(text);
+  if (pieces.length === 1) return text;
+  const renames = [...rename.keys()].some((name) => text.includes(name));
+  if (!renames && templates.has(text)) return templates.get(text);
+  const joined = pieces.map((piece, j) => (j % 2 ? textOf(tokenize(piece), rename) : piece)).join('');
+  if (!renames) templates.set(text, joined);
+  return joined;
+}
+// Tokens as text: a space only where two words would otherwise merge, or two signs (`a - -b`, `a++ +b`); a template's
+// code joined the same way. `rename` (name -> name): the bindings to rename, wherever a word names one (inside a
+// template's `${}` too; not a property, an object key or a method's name); a shorthand property keeps its key (`{ a }`
+// with a renamed to b reads `{a:b}`).
+function textOf(tokens, rename = NO_RENAME) {
+  const texts = tokens.map((t, k) => {
+    if (t.kind === 'string' && t.text[0] === '`') return templateText(t.text, rename);
+    if (t.kind !== 'word' || !rename.has(t.text) || isPropertyName(tokens, k)) return t.text;
+    return isShorthand(tokens, k) ? `${t.text}:${rename.get(t.text)}` : rename.get(t.text);
+  });
+  return texts
+    .map((text, k) => {
+      const before = texts[k - 1]?.at(-1) ?? '';
+      const glue = (WORD.test(before) && WORD.test(text[0])) || ('+-'.includes(before) && before === text[0]);
+      return (k && glue ? ' ' : '') + text;
+    })
+    .join('');
+}
+const join = (tokens) => textOf(tokens);
+
+// The suffix families of two bundles' units: each stem's names (the stem, stem2, stem3, ...) where a word names a
+// binding, in either bundle, when there are two or more
+function suffixFamilies(unitLists) {
+  const words = new Set();
+  const collect = (tokens) =>
+    tokens.forEach((t, k) => {
+      if (t.kind === 'word' && !isPropertyName(tokens, k)) words.add(t.text);
+      else if (t.kind === 'string' && t.text[0] === '`')
+        for (const [j, piece] of templatePieces(t.text).entries()) if (j % 2) collect(tokenize(piece));
+    });
+  for (const unitList of unitLists) for (const unit of unitList) collect(unit);
+  const families = new Map();
+  for (const word of words) {
+    const m = SUFFIXED.exec(word);
+    if (!m || GLOBALS.has(word) || GLOBALS.has(m[1])) continue;
+    if (!families.has(m[1])) families.set(m[1], new Set(words.has(m[1]) ? [m[1]] : []));
+    families.get(m[1]).add(word);
+  }
+  return [...families].filter(([, names]) => names.size > 1).sort(([a], [b]) => (a < b ? -1 : 1));
+}
+// every order of `items`
+const orders = (items) =>
+  items.length < 2 ? [items] : items.flatMap((x, k) => orders(items.filter((_, j) => j !== k)).map((o) => [x, ...o]));
+
+// The renaming of the after-bundle's suffixed names that leaves the fewest units differing: within each family, its
+// names in another order (every order for up to five names, else swaps while one helps), family by family, twice (a
+// unit can hold two families). A renaming within a family maps its names one to one and every word naming one of
+// them, so the renamed bundle runs as the after-bundle does: a pure move reads the same, a change still differs.
+// Returns after's name -> the name it reads as (only the names that moved).
+function pairSuffixes(before, after) {
+  const rename = new Map();
+  const [unchanged, changed] = listDiff(before.map(join), after.map(join));
+  if (unchanged.length + changed.length === 0) return rename; // (nothing to pair: the names already agree)
+  for (let pass = 0; pass < 2; pass++)
+    for (const [, family] of suffixFamilies([before, after])) {
+      const names = [...family].sort();
+      const pattern = new RegExp(`(?<![\\w$])(?:${names.map((n) => n.replace(/\$/g, '\\$')).join('|')})(?![\\w$])`);
+      const touched = (units) => units.filter((unit) => unit.some((t) => pattern.test(t.text)));
+      const [beforeTexts, afterUnits] = [touched(before).map(join), touched(after)];
+      const withOrder = (order) => {
+        const trial = new Map(rename);
+        for (const [k, name] of names.entries()) {
+          if (order[k] === name) trial.delete(name);
+          else trial.set(name, order[k]);
+        }
+        return trial;
+      };
+      const cost = (order) => {
+        const trial = withOrder(order);
+        const [gone, added] = listDiff(
+          beforeTexts,
+          afterUnits.map((unit) => textOf(unit, trial)),
+        );
+        return gone.length + added.length;
+      };
+      let best = names.map((name) => rename.get(name) ?? name);
+      let bestCost = cost(best);
+      if (bestCost === 0) continue;
+      if (names.length <= 5)
+        for (const order of orders(names)) {
+          const c = cost(order);
+          if (c < bestCost) [best, bestCost] = [order, c];
+        }
+      else
+        for (let improved = true; improved; ) {
+          improved = false;
+          for (let i = 0; i < best.length; i++)
+            for (let j = i + 1; j < best.length; j++) {
+              const order = [...best];
+              [order[i], order[j]] = [order[j], order[i]];
+              const c = cost(order);
+              if (c < bestCost) [best, bestCost, improved] = [order, c, true];
+            }
+        }
+      for (const [name, to] of withOrder(best)) if (family.has(name)) rename.set(name, to);
+      for (const name of names) if (rename.get(name) === name) rename.delete(name);
+    }
+  return rename;
+}
+
 // The difference of two lists: [entries only in a, entries only in b] (each as often as it is in excess)
 export function listDiff(a, b) {
   const count = new Map();
@@ -470,13 +596,16 @@ export function listDiff(a, b) {
   return [only(1), only(-1)];
 }
 
-// Two bundles compared: {unitCount, gone, added (units' text only in one), effectsBefore, effectsAfter, sameOrder,
-// same}
+// Two bundles compared, after's suffixed names paired with before's (`pairSuffixes`): {unitCount, gone, added (units'
+// text only in one), effectsBefore, effectsAfter (the load-time steps), sameOrder, renamed (after's names read as
+// another: [name, as]), same}
 export function compare(before, after) {
   const [unitsBefore, unitsAfter] = [units(before), units(after)];
-  const [ua, ub] = [unitsBefore.map(join), unitsAfter.map(join)];
+  const rename = pairSuffixes(unitsBefore, unitsAfter);
+  const [ua, ub] = [unitsBefore.map(join), unitsAfter.map((unit) => textOf(unit, rename))];
   const [gone, added] = listDiff(ua, ub);
-  const [effectsBefore, effectsAfter] = [unitsBefore, unitsAfter].map((us) => stepsOf(us.slice(0, -1)).map(join));
+  const effectsBefore = stepsOf(unitsBefore.slice(0, -1)).map(join);
+  const effectsAfter = stepsOf(unitsAfter.slice(0, -1)).map((unit) => textOf(unit, rename));
   const sameOrder =
     effectsBefore.length === effectsAfter.length && effectsBefore.every((e, k) => e === effectsAfter[k]);
   return {
@@ -486,6 +615,7 @@ export function compare(before, after) {
     effectsBefore,
     effectsAfter,
     sameOrder,
+    renamed: [...rename],
     same: sameOrder && gone.length + added.length === 0,
   };
 }
@@ -543,6 +673,10 @@ function report(entry, result, listEffects) {
       `  first divergence, step ${at + 1}:\n    before: ${show(effectsBefore[at])}\n    after:  ${show(effectsAfter[at])}`,
     );
   }
+  if (result.renamed.length)
+    console.log(
+      `  note: suffixes paired (after's name read as): ${result.renamed.map(([a, b]) => `${a} as ${b}`).join(', ')}`,
+    );
   if (listEffects) for (const e of effectsAfter) console.log(`    ${e.slice(0, 150)}`);
 }
 
