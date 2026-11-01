@@ -6,14 +6,17 @@ Templates: the distinct veterans of the hand-built Global pools (val/plan's, at 
 pool this script wrote, and val/jobs' career jobs). Each veteran takes
 - a character drawn from the Global roster, and two parent characters drawn apart from hers and from each other (an
   unknown parent, character 0, stays unknown);
-- one template's sparks and her parents' records (sparks, pinks, wins: inherited together, so kept together), from the
-  strong templates (at least STRONG_SPARKS of the base job's targets sparked) for a borrowed veteran (assumed:
-  lent veterans are strong ones), else from every template;
+- one template's sparks and her parents' records (sparks, pinks, wins: inherited together, so kept together). FULL
+  veterans (default 1) take a full template, every base target sparked; the others a template short of at least one
+  target, a borrowed one's from the strong ones (at least STRONG_SPARKS sparked; assumed: lent veterans are strong
+  ones). The hand-built pools hold many full records: drawn freely they gave 101 full veterans of 360, and with 8
+  V's trio still stood on two of them (V about 78, the finish alone), so the plan had nothing to build; the real
+  roster above had V's trio on one real side and one still building;
 - another template's G1 wins and a third's pinks.
 Seeded: the same arguments and templates write the same job.
 
-usage: uv run val/make_pool.py [--size N] [--borrowed K] [--seed S] [--base JOB] [--plain] OUT
-  defaults: 360 veterans, 75 borrowed, seed 1, base val/plan/p16.json (its targets and settings); the job asks for the
+usage: uv run val/make_pool.py [--size N] [--borrowed K] [--full F] [--seed S] [--base JOB] [--plain] OUT
+  defaults: 360 veterans, 75 borrowed, 1 full, seed 1, base val/plan/p16.json (its targets and settings); the job asks for the
   robustness check and the pair search (`next`: robust "all", pair_search), as the page's check job does, unless
   --plain. OUT: val/plan/p360_check.json for the val/plan job."""
 
@@ -21,6 +24,7 @@ import argparse
 import json
 import os
 import random
+from typing import NamedTuple
 
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
@@ -44,8 +48,17 @@ def template_jobs():
     return plan + career
 
 
+class Templates(NamedTuple):
+    """The distinct template records, in job order, by how many of the base job's targets they spark."""
+
+    full: list  # every target
+    partial: list  # not every target
+    strong: list  # not every target, at least STRONG_SPARKS
+    every: list  # all of them: the G1 wins' and pinks' sources
+
+
 def templates(base_targets):
-    """(every distinct template veteran, the strong ones), in job order, from the hand-built pools only"""
+    """the `Templates` from the hand-built pools only"""
     seen, veterans = set(), []
     for path in template_jobs():
         pool = json.load(open(path))["legacies"]
@@ -57,8 +70,14 @@ def templates(base_targets):
             if key not in seen:
                 seen.add(key)
                 veterans.append(record)
-    strong = [v for v in veterans if sum(group in base_targets for group, _stars in v["sparks"]) >= STRONG_SPARKS]
-    return veterans, strong
+    sparked = lambda record: sum(group in base_targets for group, _stars in record["sparks"])
+    partial = [v for v in veterans if sparked(v) < len(base_targets)]
+    return Templates(
+        full=[v for v in veterans if sparked(v) == len(base_targets)],
+        partial=partial,
+        strong=[v for v in partial if sparked(v) >= STRONG_SPARKS],
+        every=veterans,
+    )
 
 
 def veteran(sparks_from, wins_from, pinks_from, roster, rng, borrowed):
@@ -87,21 +106,24 @@ def main():
     parser.add_argument("out", metavar="OUT")
     parser.add_argument("--size", type=int, default=360)
     parser.add_argument("--borrowed", type=int, default=75)
+    parser.add_argument("--full", type=int, default=1, help="veterans with every base target sparked")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--base", default=os.path.join(PLAN_DIR, "p16.json"))
     parser.add_argument("--plain", action="store_true", help="no robustness check or pair search in `next`")
     arguments = parser.parse_args()
     base = json.load(open(arguments.base))
     base_targets = {target["group"] for target in base["targets"]}
-    veterans, strong = templates(base_targets)
+    records = templates(base_targets)
     roster = json.load(open(os.path.join(REPO, "pkg", "loopopt", "data", "global", "base.json")))["roster"]
     rng = random.Random(arguments.seed)
     borrowed = set(rng.sample(range(arguments.size), arguments.borrowed))
+    full = set(rng.sample(range(arguments.size), arguments.full))
+    sparks_source = lambda i: records.full if i in full else records.strong if i in borrowed else records.partial
     legacies = [
         veteran(
-            sparks_from=rng.choice(strong if i in borrowed else veterans),
-            wins_from=rng.choice(veterans),
-            pinks_from=rng.choice(veterans),
+            sparks_from=rng.choice(sparks_source(i)),
+            wins_from=rng.choice(records.every),
+            pinks_from=rng.choice(records.every),
             roster=roster,
             rng=rng,
             borrowed=i in borrowed,
@@ -111,8 +133,9 @@ def main():
     plan = {} if arguments.plain else {"robust": "all", "pair_search": True}
     json.dump({**base, "legacies": legacies, "next": plan}, open(arguments.out, "w"))
     print(
-        f"{arguments.out}: {len(legacies)} veterans ({len(borrowed)} borrowed) from {len(veterans)} templates "
-        f"({len(strong)} strong), {len(roster)} characters"
+        f"{arguments.out}: {len(legacies)} veterans ({len(borrowed)} borrowed, {len(full)} full) from "
+        f"{len(records.every)} templates ({len(records.full)} full, {len(records.strong)} strong of the rest), "
+        f"{len(roster)} characters"
     )
 
 

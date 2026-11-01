@@ -233,9 +233,10 @@ IndexedDB.
   `val/plan/jobs.json` and compares each whole output with `val/plan/ref__*.out`. Two of them take the page's own
   settings: `p16_borrow_check` asks for the robustness check and the pair search (`next.robust: "all"`, every
   variant in one job, where the page sends `"next"`, one variant per job), `p16_borrow_never` sets `borrowed_parent:
-  "never"`. `p360_check` is the planner at a real roster's scale (360 veterans, 75 borrowed, with the check and pair
-  search), written by `uv run val/make_pool.py val/plan/p360_check.json` from the other pools' veterans under
-  fresh characters (a scale test, not a model of real rosters); it is in `val/plan/slow.json`, so only `val` runs it.
+  "never"`. `p360_check` is the planner at a real roster's scale (360 veterans, 75 borrowed, one with every target,
+  with the check and pair search), written by `uv run val/make_pool.py val/plan/p360_check.json` from the other
+  pools' veterans under fresh characters (a scale test, not a model of real rosters; V's trio on one real side and one
+  still building, as on a real roster; 10.6 s alone, so `valq` runs it too).
   An output without a reference fails (planval and `cmp2.py`) until its reference is taken. `val/mono.py BIN`
   checks that adding a veteran never raises the planner's estimate (on every plan job but the check's, whose plan
   `p16_borrow` already is; `./build.sh mono` runs it, about 10-20 CPU-min, estimated from the plan jobs' times);
