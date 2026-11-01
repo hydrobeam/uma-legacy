@@ -1,15 +1,13 @@
 // ---------- the Umas panel: All / None owned, Import, the count; the filter and the order; one tile per outfit ----------
 // A tile's look follows her ownership (roster.ts tileState) and the filter, each bound to its own computed, so a click
 // or a keystroke changes the attributes it moves and redraws no tile; the list redraws only when its order changes.
-// Drawn into the template's #umas-panel (`mountRoster`).
+// Drawn in the Umas dialog (ui/Setup.tsx).
 import { computed, signal, useComputed } from '@preact/signals';
 import { Fragment } from 'preact';
-import { renderGuarded } from './RenderGuard.tsx';
 import { useRef } from 'preact/hooks';
-import { $ } from '../dom.ts';
 import { gameData } from '../data.ts';
 import type { Outfit, Uma } from '../data.ts';
-import { fields, settings } from '../settings.ts';
+import { fields } from '../settings.ts';
 import { ownAllUmas, ownNoUmas, rosterCounts, tileOutfits, tileState, toggleTile } from '../roster.ts';
 import { UmaAv } from './Images.tsx';
 import { OwnedImport, useSaid } from './OwnedImport.tsx';
@@ -73,7 +71,7 @@ function RosterList({ fadeMore }: { fadeMore: boolean }) {
     </div>
   );
 }
-function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
+export function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
   const [said, say] = useSaid();
   return (
     <>
@@ -113,8 +111,4 @@ function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
       <RosterList fadeMore={fadeMore} />
     </>
   );
-}
-/** the Umas panel into its mount point; `fadeMore`: the list's bottom edge fades while there is more below */
-export function mountRoster(fadeMore: boolean) {
-  renderGuarded(<RosterPanel fadeMore={fadeMore} />, $('umas-panel'), 'The Umas panel', settings);
 }

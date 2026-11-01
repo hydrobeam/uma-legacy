@@ -27,7 +27,9 @@ import { OddsDialog } from '../ui/OddsDialog.tsx';
 import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.ts';
 import { loadExample } from '../presets.ts';
-import { mountSetup } from '../ui/Setup.tsx';
+import { cardsBadge, setupButtons, setupViews, umasBadge } from '../ui/Setup.tsx';
+import { rosterCounts } from '../roster.ts';
+import { cardsOwned } from '../cards.ts';
 import '../gmtip.ts'; // the game-style tooltips (both planner pages)
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
@@ -134,7 +136,12 @@ function start() {
   render(<OddsDialog />, document.body.appendChild(Object.assign(document.createElement('div'), { id: 'odds-root' })));
   $('ex-open').onclick = openExport;
   initPopover();
-  mountSetup({ fadeMore: true });
+  // the setup editors both pages share (ui/Setup.tsx), each into its mount point; the Umas and Support cards buttons
+  // open their dialogs, and their counts follow what you own
+  for (const { id, what, view } of setupViews({ fadeMore: true })) renderGuarded(view, $(id), what, settings);
+  setupButtons();
+  on([rosterCounts], umasBadge);
+  on([cardsOwned], cardsBadge);
   // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
   // the setup the first search starts from); what the result on show no longer owns greys at once (Results.tsx)
   on([jobSetup], () => loop.scheduleSearch());

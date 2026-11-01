@@ -37,6 +37,9 @@
 // - specifiers: every relative import in src/ and test/ names a file that exists (`./x.ts`, never `./x.js` for it:
 //   esbuild and tsc would map that to x.ts, Node would not). test/unit's esbuild bundles resolve `./src/...` from
 //   webapp/; samecode.test.mjs's specifiers are fixtures of its own trees.
+// - dialogs and mounts: every modal dialog is ui/Dialog.tsx's (no `<dialog>` in a template, no showModal() anywhere
+//   else; the ones not yet ported are listed, TEMPLATE_DIALOGS, until each goes), and only the two entries render into
+//   a mount point (preact's render, RenderGuard's renderGuarded).
 // Exits 1 with the list when any finds one; delete the dead code, or list a built name.
 // Reports, printed and never a failure: ids in the planner templates nothing names, panels no page uses, the known
 // imports against the layer order, and the `@ts-expect-error` markers left by renames to .ts.
@@ -568,6 +571,40 @@ const VIEW_IMPORTS_KEPT = {};
     if (VIEW_IMPORTS_KEPT[pair] !== undefined) continue;
     const [file, view] = pair.split(' ');
     problems.push(`${file}: imports the component module ${view}; logic takes values, components import logic`);
+  }
+}
+
+// ---------- dialogs and mounts: ui/Dialog.tsx is every modal dialog (it calls showModal() and close() from its `open`,
+// restores the focus, closes on the backdrop); a render into a mount point starts a view's effects, which the entries
+// alone decide (frontend.md §2 Rules). The template dialogs a module still opens by hand, until each is ported:
+const TEMPLATE_DIALOGS = ['sched-dlg', 'set-vets', 'um-dlg', 'sim-dlg', 'paste-dlg', 'vx-dlg'];
+const ENTRIES = ['src/loop/main.tsx', 'src/career/main.tsx'];
+{
+  const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  const templateDialogs = new Set(
+    [...ls('.', /\.template\.html$/), 'build.py'].flatMap((f) =>
+      [...read(f).matchAll(/<dialog\b[^>]*\bid="([\w-]+)"/g)].map((m) => m[1]),
+    ),
+  );
+  for (const id of templateDialogs)
+    if (!TEMPLATE_DIALOGS.includes(id))
+      problems.push(
+        `#${id}: a <dialog> in a template; render it with ui/Dialog.tsx (its open prop shows and closes it)`,
+      );
+  for (const id of TEMPLATE_DIALOGS)
+    if (!templateDialogs.has(id)) problems.push(`TEMPLATE_DIALOGS: #${id} is no template's any more: drop it`);
+  for (const [file, text] of sources.filter(([f]) => f.startsWith('src') && /\.tsx?$/.test(f))) {
+    const body = code(text);
+    if (file !== path.join('src', 'ui', 'Dialog.tsx') && /\.showModal\(/.test(body) && !TEMPLATE_DIALOGS.length)
+      problems.push(`${file}: calls showModal(); a dialog is ui/Dialog.tsx's, opened by its open prop`);
+    if (
+      !ENTRIES.includes(file) &&
+      file !== path.join('src', 'ui', 'RenderGuard.tsx') &&
+      /(^|[^.\w])(render|renderGuarded)\(/m.test(body)
+    )
+      problems.push(
+        `${file}: renders into a mount point; the entries alone do (ui/Setup.tsx's setupViews hands them views)`,
+      );
   }
 }
 

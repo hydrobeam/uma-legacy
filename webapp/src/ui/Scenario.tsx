@@ -1,18 +1,9 @@
-// ---------- the scenario picker and the lineage rank control (scenario.ts holds the scenarios and the pick) ----------
-// The picker: a button showing the chosen scenario, opening a grid of the scenarios (role=menu, the tiles menuitemradio
-// buttons, as the sort menus: ui/SortMenu.tsx, dropdown.ts). Opening focuses the chosen tile; the arrows move between tiles (two
-// columns); Escape, a click outside the button and the grid, or the focus leaving the picker closes it. A pick brings
-// its guaranteed golds (the targets and the card picker follow the scenario) and sets its default lineage rank.
-// The rank control: a two-option toggle (B to S+ / SS and up) with the game's rank badges, and a ? that explains it.
-// Drawn into the template's #scen-dd and #rank-ctl (`mountScenario`, `mountRank`).
-import { renderGuarded } from './RenderGuard.tsx';
 import type { RefObject } from 'preact';
 import { batch } from '@preact/signals';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { $ } from '../dom.ts';
 import { RANKS, SKILLICON_GOLD } from '../data.ts';
 import type { Scenario } from '../data.ts';
-import { fields, setRank, settings } from '../settings.ts';
+import { fields, setRank } from '../settings.ts';
 import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../scenario.ts';
 import { srcFor } from '../images.ts';
 import { RadioPills } from './RadioPills.tsx';
@@ -74,7 +65,8 @@ function ScenarioTile({ sc, checked, onPick }: { sc: Scenario; checked: boolean;
     </button>
   );
 }
-function ScenarioPicker() {
+/** the scenario picker */
+export function ScenarioPicker() {
   const [open, setOpen] = useState(false),
     button = useRef<HTMLButtonElement>(null),
     menu = useRef<HTMLDivElement>(null);
@@ -241,7 +233,8 @@ const RANK_PILLS = [
 ];
 // The rank control: data-value carries the chosen star mix, each option's tooltip its rank score range. The ?'s note
 // closes on Escape (the focus back on the ?) or a click elsewhere.
-function RankControl() {
+/** the lineage rank control */
+export function RankControl() {
   const [noteOpen, setNoteOpen] = useState(false),
     question = useRef<HTMLButtonElement>(null),
     note = useRef<HTMLSpanElement>(null);
@@ -285,5 +278,3 @@ function RankControl() {
     </>
   );
 }
-export const mountScenario = () => renderGuarded(<ScenarioPicker />, $('scen-dd'), 'The scenario picker', settings);
-export const mountRank = () => renderGuarded(<RankControl />, $('rank-ctl'), 'The lineage rank', settings);

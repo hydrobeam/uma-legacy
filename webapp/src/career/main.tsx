@@ -45,7 +45,9 @@ import { goldGiven } from '../job.ts';
 import { initScenario, eraScenario } from '../scenario.ts';
 import { initPopover } from '../popover.ts';
 import '../agenda.ts'; // (its document listener is added before gmtip's)
-import { mountSetup } from '../ui/Setup.tsx';
+import { cardsBadge, setupButtons, setupViews, umasBadge } from '../ui/Setup.tsx';
+import { rosterCounts } from '../roster.ts';
+import { cardsOwned } from '../cards.ts';
 import '../gmtip.ts'; // the game-style tooltips (both planner pages)
 import {
   vets,
@@ -64,7 +66,7 @@ import { ScheduleDialog, schedOpened } from '../ui/Schedule.tsx';
 import { setRunner } from '../images.ts';
 import { connectUmamoe, syncListings } from '../umamoesetup.ts';
 import { UmButton, UmamoePanel } from './view/Umamoe.tsx';
-import { sayRenderErrors } from '../ui/RenderGuard.tsx';
+import { renderGuarded, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { placesKey, isFull, ROLL_K, umasNotOwned } from './job.ts';
 import { currentJob, dropStaleChosen, shown, runJob } from './current.ts';
 import { baseKey, refBase } from './keys.ts';
@@ -231,7 +233,12 @@ function initSettings() {
   initScenario(); // (first: the era's scenario swap is the setup the first search starts from)
   mount('bp', <BorrowChoice />, 'Borrowed parent');
   enginePersist(); // the solver's kept work survives a page reload
-  mountSetup(); // the setup editors both pages share (ui/Setup.tsx)
+  // the setup editors both pages share (ui/Setup.tsx), each into its mount point; the Umas and Support cards buttons
+  // open their dialogs, and their counts follow what you own
+  for (const { id, what, view } of setupViews()) renderGuarded(view, $(id), what, settings);
+  setupButtons();
+  on([rosterCounts], umasBadge);
+  on([cardsOwned], cardsBadge);
   initFold();
   // the first veterans fold the setup panel (until a fold is chosen)
   if (vets.peek().length) sawVeterans();

@@ -24,10 +24,9 @@ const built = await esbuild.build({
       export * as settings from './src/settings.ts';
       export * as presets from './src/presets.ts';
       export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
-      export { mountTargets } from './src/ui/Targets.tsx';
-      export { mountRank } from './src/ui/Scenario.tsx';
+      export { setupViews } from './src/ui/Setup.tsx';
+      export { renderGuarded } from './src/ui/RenderGuard.tsx';
       export { SettingsSort, SortMenu } from './src/ui/SortMenu.tsx';
-      export { mountRoster } from './src/ui/Roster.tsx';
       export { h, options, render } from 'preact';
       export { gameData, loadData } from './src/data.ts';`,
     resolveDir: WEBAPP,
@@ -51,11 +50,10 @@ const {
   presets: P,
   PresetDialogs,
   openPresets,
-  mountTargets,
-  mountRank,
+  setupViews,
+  renderGuarded,
   SettingsSort,
   SortMenu,
-  mountRoster,
   h,
   options,
   render,
@@ -74,6 +72,11 @@ const fresh = (common) => {
   const map = new Map([[KEY, JSON.stringify({ v: 2, era: 'global', common, global: {} })]]);
   S.initStore(() => ({ getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) }));
   return () => JSON.parse(map.get(KEY)).common;
+};
+// an editor into its mount point, as the entries draw it (ui/Setup.tsx `setupViews`)
+const mount = (id) => {
+  const { view, what } = setupViews().find((v) => v.id === id);
+  renderGuarded(view, document.getElementById(id), what, S.settings);
 };
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
@@ -173,7 +176,7 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
 
 test("a target's × removes its own place (one skill held twice too); the focus goes to the next ×, else the last", async () => {
   const stored = fresh({ targets: [{ group: 20049 }, { group: 20159 }, { group: 20049 }, { group: 20166 }] });
-  mountTargets();
+  mount('skills-panel');
   await settle();
   const box = document.getElementById('skills-panel');
   const removes = () => box.querySelectorAll('button.x');
@@ -198,7 +201,7 @@ test("a target's × removes its own place (one skill held twice too); the focus 
 
 test("the lineage rank's ? opens its note and stops its click there (other popups' outside-click handlers never see it)", async () => {
   fresh({});
-  mountRank();
+  mount('rank-ctl');
   await settle();
   const box = document.getElementById('rank-ctl'),
     question = byId(box, 'rank-q');
@@ -264,8 +267,8 @@ test('two presets of one name in storage (a hand-edit): the first is kept, so Ov
 
 test('a commit of a setting the editors do not show redraws none of them and re-runs no roster tile', async () => {
   fresh({});
-  mountRoster(false);
-  mountTargets();
+  mount('set-umas-root');
+  mount('skills-panel');
   await settle();
   type(byId(document.getElementById('skills-panel'), 't-add'), 'sk'); // the suggestions listed
   await settle();
@@ -298,7 +301,7 @@ test('a commit of a setting the editors do not show redraws none of them and re-
   }
   assert.deepEqual(drawn, [], 'no editor redrawn');
   assert.equal(readsAfter, 0, "no tile's state re-read");
-  render(null, document.getElementById('umas-panel'));
+  render(null, document.getElementById('set-umas-root'));
   render(null, document.getElementById('skills-panel'));
 });
 
@@ -312,7 +315,7 @@ test("a list's keys are unique: a target held twice, in the list and in a preset
     { error } = console;
   console.error = (...args) => said.push(String(args[0]));
   try {
-    mountTargets();
+    mount('skills-panel');
     await settle();
     const panel = document.getElementById('skills-panel');
     type(byId(panel, 't-add'), 'pressure'); // both are targets already: a note each
@@ -335,7 +338,7 @@ test("a list's keys are unique: a target held twice, in the list and in a preset
 
 test('two picks of the rank in one task (an edit and its undoing, before any redraw) both count: by click and by key', async () => {
   fresh({ rank: '0.50,0.45,0.05' });
-  mountRank();
+  mount('rank-ctl');
   await settle();
   const box = document.getElementById('rank-ctl'),
     pill = (v) => box.querySelectorAll('button').find((b) => b.attributes['data-v'] === v);

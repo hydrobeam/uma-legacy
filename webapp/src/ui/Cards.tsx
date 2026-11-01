@@ -3,12 +3,10 @@
 // pals, by rarity, in the chosen order; it is drawn again only when that list changes (targets, scenario, order). A tile
 // is a toggle, pressed = owned; its name is its visible text (name, title, what it gives), so voice control matches it.
 // Its pressed state and the filter's verdict are each bound to a computed, so a click, All / None or a keystroke
-// redraws no tile. Drawn into the template's #cards-panel (`mountCards`).
+// redraws no tile. Drawn in the Support cards dialog (ui/Setup.tsx).
 import { computed, signal, useComputed } from '@preact/signals';
 import { Fragment } from 'preact';
-import { renderGuarded } from './RenderGuard.tsx';
 import { useRef } from 'preact/hooks';
-import { $ } from '../dom.ts';
 import { SCENARIOS, gameData } from '../data.ts';
 import type { Card } from '../data.ts';
 import { fields, settings } from '../settings.ts';
@@ -136,7 +134,7 @@ function CardList({ fadeMore }: { fadeMore: boolean }) {
     </div>
   );
 }
-function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
+export function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
   const [said, say] = useSaid();
   return (
     <>
@@ -178,8 +176,4 @@ function CardsPanel({ fadeMore }: { fadeMore: boolean }) {
       </div>
     </>
   );
-}
-/** the Support cards panel into its mount point; `fadeMore`: the list's bottom edge fades while there is more below */
-export function mountCards(fadeMore: boolean) {
-  renderGuarded(<CardsPanel fadeMore={fadeMore} />, $('cards-panel'), 'The Support cards panel', settings);
 }

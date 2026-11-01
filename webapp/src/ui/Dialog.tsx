@@ -11,13 +11,15 @@ interface DialogProps {
   id: string;
   cls?: string;
   /** the id of its heading */
-  labelledBy: string;
+  labelledBy?: string;
+  /** its name, when no heading names it */
+  label?: string;
   open: boolean;
   /** the dialog has closed (or is closing): set `open` false */
   onClose: () => void;
   children: ComponentChildren;
 }
-export function Dialog({ id, cls, labelledBy, open, onClose, children }: DialogProps) {
+export function Dialog({ id, cls, labelledBy, label, open, onClose, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null),
     // (for its unmount: the props of its last render)
     last = useRef({ open, onClose });
@@ -42,6 +44,7 @@ export function Dialog({ id, cls, labelledBy, open, onClose, children }: DialogP
       id={id}
       class={cls}
       aria-labelledby={labelledBy}
+      aria-label={label}
       onClose={(e) => {
         // (a close event is queued: one that arrives after the dialog was opened again is stale)
         if (!e.currentTarget.open) onClose();
