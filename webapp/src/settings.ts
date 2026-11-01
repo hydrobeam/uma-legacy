@@ -112,14 +112,19 @@ function commit(patch: Partial<SettingsView>) {
 export const setTargets = (targets: readonly Target[]) => commit({ targets });
 export const setPresets = (presets: readonly DeepReadonly<Preset>[]) => commit({ presets });
 export const setRank = (rank: string) => commit({ rank });
-// a scenario comes with its lineage rank
-export const setScenario = (scen: string, rank: string) => commit({ scen, rank });
+/** a scenario with its lineage rank (named: two strings in a row would swap unseen) */
+export const setScenario = (choice: { scen: string; rank: string }) => commit({ scen: choice.scen, rank: choice.rank });
 export const setAuto = (auto: boolean) => commit({ auto });
 export const setDecksTop = (decksTop: string) => commit({ decksTop });
 export const setPerUma = (perUma: boolean) => commit({ perUma });
 export const setBorrowPar = (borrowPar: string) => commit({ borrowPar });
-/** a sort menu's choice: `prefix` 'r' (umas: rsort, rdir) or 'c' (cards) */
-export const setSort = (prefix: 'r' | 'c', sort: string, dir: string) =>
+/** a sort menu's choice: `prefix` 'r' (umas: rsort, rdir) or 'c' (cards), the field it sorts by and the direction */
+export interface SortChoice {
+  prefix: 'r' | 'c';
+  sort: string;
+  dir: 'asc' | 'desc';
+}
+export const setSort = ({ prefix, sort, dir }: SortChoice) =>
   commit(prefix === 'r' ? { rsort: sort, rdir: dir } : { csort: sort, cdir: dir });
 /** what is owned: the umas' marks, the outfits', the cards' (each one given replaces that one) */
 export const setOwned = (owned: Partial<Pick<Settings, 'roster' | 'outfits' | 'cardsOff'>>) => commit(owned);

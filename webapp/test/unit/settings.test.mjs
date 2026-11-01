@@ -47,13 +47,13 @@ const SETTERS = [
   ['setTargets', () => setTargets([{ group: 1 }]), ['targets']],
   ['setPresets', () => setPresets([{ name: 'a', groups: [1, 2] }]), ['presets']],
   ['setRank', () => setRank('0.20,0.70,0.10'), ['rank']],
-  ['setScenario', () => setScenario('grandmasters', '0.20,0.70,0.10'), ['scen', 'rank']],
+  ['setScenario', () => setScenario({ scen: 'grandmasters', rank: '0.20,0.70,0.10' }), ['scen', 'rank']],
   ['setAuto', () => setAuto(false), ['auto']],
   ['setDecksTop', () => setDecksTop('3'), ['decksTop']],
   ['setPerUma', () => setPerUma(false), ['perUma']],
   ['setBorrowPar', () => setBorrowPar('never'), ['borrowPar']],
-  ['setSort (umas)', () => setSort('r', 'name', 'asc'), ['rsort', 'rdir']],
-  ['setSort (cards)', () => setSort('c', 'name', 'asc'), ['csort', 'cdir']],
+  ['setSort (umas)', () => setSort({ prefix: 'r', sort: 'name', dir: 'asc' }), ['rsort', 'rdir']],
+  ['setSort (cards)', () => setSort({ prefix: 'c', sort: 'name', dir: 'asc' }), ['csort', 'cdir']],
   ['setOwned (cards)', () => setOwned({ cardsOff: { 30116: false } }), ['cardsOff']],
   ['setOwned (umas)', () => setOwned({ roster: { 1001: 'out' }, outfits: { 100201: false } }), ['roster', 'outfits']],
   // an import replaces what it carries, and the umas' and outfits' marks (it drops "must include")
@@ -139,7 +139,7 @@ test('an effect runs only when a signal it names changes, never on an unrelated 
   // subscribed it to nothing (`on` runs it untracked)
   setPresets([{ name: 'a', groups: [1, 2] }]);
   setRank('0.20,0.70,0.10');
-  setSort('r', 'name', 'asc');
+  setSort({ prefix: 'r', sort: 'name', dir: 'asc' });
   setAuto(!settings.value.auto);
   assert.equal(runs['reads everything'], 1, 'reads everything: after other setters');
   for (const stop of stops) stop();

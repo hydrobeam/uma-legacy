@@ -30,7 +30,7 @@ const rankOf = (sc) => (sc.ss ? RANKS.ss : RANKS.below);
 // can be changed by hand afterwards; saved
 function chooseScenario(v) {
   const sc = scenarioOf(v);
-  setScenario(sc.v, rankOf(sc));
+  setScenario({ scen: sc.v, rank: rankOf(sc) });
   paintRank();
 }
 // Switching to the JP Grand Masters-era data opens on its newest scenario, Grand Masters (with its golds and rank

@@ -33,8 +33,8 @@ export function paintSort(id, key) {
 export function sortMenu(id, key, render) {
   wireMenu(id, (k) => {
     const [sortBy, direction] = sortOf(key);
-    if (k === sortBy) setSort(key, sortBy, direction === 'desc' ? 'asc' : 'desc');
-    else setSort(key, k, k === 'rel' ? 'desc' : 'asc');
+    if (k === sortBy) setSort({ prefix: key, sort: sortBy, dir: direction === 'desc' ? 'asc' : 'desc' });
+    else setSort({ prefix: key, sort: k, dir: k === 'rel' ? 'desc' : 'asc' });
     render(); // ordering only: saved, no new search
   });
 }
