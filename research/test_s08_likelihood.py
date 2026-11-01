@@ -1,6 +1,6 @@
 """Synthetic likelihood checks; no run records or game database.
 
-Run with: uv run --group research python research/test_s08_likelihood.py
+Run with: uv run --group research python research/test_s08_likelihood.py (./build.sh lint runs it)
 """
 
 import collections

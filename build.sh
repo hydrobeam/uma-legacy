@@ -211,6 +211,7 @@ step_lint() {
   lint "ruff check" in_dir "$R" uv run --quiet ruff check
   lint "ruff format" in_dir "$R" uv run --quiet ruff format --check
   lint test_validation in_dir "$R" quiet "${PY[@]}" val/test_validation.py
+  lint test_s08_likelihood in_dir "$R" quiet uv run --quiet --group research python research/test_s08_likelihood.py
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
