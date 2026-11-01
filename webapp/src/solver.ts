@@ -17,25 +17,33 @@ export interface SolverJob {
   /** a deck search: false ranks by the product of per-target odds only (the worker's fast first pass); else the
    * worker runs that pass, then the exact one */
   exact?: boolean;
-  /** `deck` runs as a deck search, as `cmd` does (no job the page builds sets it) */
-  mode?: string;
   [field: string]: unknown;
 }
 
-/** A report: its command's own shape, or a refusal, `error`: why the job was not done. */
+/** A reply as the worker reads it: a report, or a refusal (`error`). */
 export interface SolverReply {
   error?: string;
 }
 
+/** A command's report: its own shape (the caller of `run` names it, R). It has no `error`: a reply with one is a
+ * refusal. */
+export type SolverReport = object;
+
+/** A refusal: why the job was not done (web.rs `handle` and each command's checks), or, from the engine, that the
+ * worker stopped with an error. Only a refusal carries `error`. */
+export interface SolverRefusal {
+  error: string;
+}
+
 /** `state_out`'s report: what the worker keeps of the career planner's work (career/state.rs `state_out`). */
-export interface StateOutReply extends SolverReply {
+export interface StateOutReply {
   ok?: true;
   state?: unknown;
 }
 
-/** The answer to a job: the solver's report and its time in ms. */
-export interface SolverAnswer<R extends SolverReply = SolverReply> {
-  r: R;
+/** The answer to a job: the solver's report R or a refusal (`'error' in r` tells them apart), and its time in ms. */
+export interface SolverAnswer<R extends SolverReport = SolverReport> {
+  r: R | SolverRefusal;
   ms: number;
 }
 
@@ -59,7 +67,9 @@ export type FromWorker =
   | { type: 'ready' }
   /** a career plan's phase, while job `id` runs */
   | ({ type: 'progress'; id: number } & PlanProgress)
-  /** job `id`'s answer (`result`), or a deck search's fast first pass before it (`interim`) */
-  | ({ type: 'interim' | 'result'; id: number } & SolverAnswer)
-  /** a job failed in the worker (`id`), or the start did (`id` undefined); a refusal is a `result` with `r.error` */
+  /** job `id`'s answer (`result`), or a deck search's fast first pass before it (`interim`): its report */
+  | { type: 'interim' | 'result'; id: number; r: SolverReport; ms: number }
+  /** the same, refused: `r` holds only why */
+  | { type: 'interim' | 'result'; id: number; r: SolverRefusal; ms: number }
+  /** a job failed in the worker (`id`), or the start did (`id` undefined) */
   | { type: 'error'; id: number | undefined; message: string };

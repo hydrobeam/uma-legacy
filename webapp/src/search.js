@@ -308,7 +308,10 @@ export async function doSearch(auto = false) {
       if (shown.example || shown.key !== key || shown.r !== loops) ui.lastRender();
       shown = { key, r: loops, example: false };
     };
-    const hasLoops = (r) => !r.error && r.top && r.top.length;
+    /** a report with loops: not a refusal, not empty
+     * @param {import('./results.js').LoopReport | import('./solver.ts').SolverRefusal} r
+     * @returns {r is import('./results.js').LoopReport} */
+    const hasLoops = (r) => !('error' in r) && r.top?.length > 0;
     phase = 'search';
     busy = true;
     const answer = await run(job, (/** @type {DeckAnswer} */ interim) => {
@@ -323,7 +326,7 @@ export async function doSearch(auto = false) {
     if (!hasLoops(answer.r))
       ui.status = {
         kind: 'error',
-        text: answer.r.error ? `Not searched: ${answer.r.error}` : 'No result: no loop fits these settings.',
+        text: 'error' in answer.r ? `Not searched: ${answer.r.error}` : 'No result: no loop fits these settings.',
       };
     else {
       draw(answer.r);

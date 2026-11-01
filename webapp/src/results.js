@@ -46,9 +46,8 @@ import { must } from './must.ts';
  * @property {ResultDeck} deck  the deck most members share (one deck for the loop: that deck)
  * @property {ResultDeck[]} [decks]  per member, when each has her own
  *
- * The loop search's report (loop_planner/search/report.rs), or its refusal (`error`).
+ * The loop search's report (loop_planner/search/report.rs); a refusal is a SolverRefusal (solver.ts).
  * @typedef {object} LoopReport
- * @property {string} [error]  why it did not search
  * @property {LoopResult[]} top  the best loops, best first
  * @property {boolean} per_uma  a deck per member (false: one deck for the loop)
  * @property {number} decks_built  decks the search built

@@ -8,14 +8,14 @@ import type {
   PlanProgress,
   SolverAnswer,
   SolverJob,
-  SolverReply,
+  SolverReport,
   StateOutReply,
   ToWorker,
 } from './solver.ts';
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 /** A job posted to the worker and not answered yet, by its id. */
 interface PendingJob {
-  /** called with the solver's answer */
+  /** called with the solver's answer (a report or a refusal) */
   done: (answer: SolverAnswer) => void;
   /** a deck search's fast first pass */
   interim: ((answer: SolverAnswer) => void) | undefined;
@@ -178,9 +178,10 @@ export const stateKey = (): string => `${ASSETS.wasm}|${ASSETS.engine[eraKey()]}
 export function enginePersist() {
   persistOn = true;
 }
-// posts a job to the running worker as it is (no gate) and resolves with its answer; R: the report the job's command
-// makes (the worker's JSON is taken to be it: the caller chose the command)
-function post<R extends SolverReply = SolverReply>(
+// posts a job to the running worker as it is (no gate) and resolves with its answer: a refusal, or a report taken to be
+// R, the report the job's command makes (the caller chose the command). The cast below bridges only that: `done` takes
+// an R where the worker hands any report.
+function post<R extends SolverReport = SolverReport>(
   job: SolverJob,
   interim?: (answer: SolverAnswer<R>) => void,
   progress?: (progress: PlanProgress) => void,
@@ -205,7 +206,7 @@ async function restore() {
     );
   if (!stored || !worker) return;
   const answer = await post({ cmd: 'state_in', state: stored });
-  if (!answer.r || answer.r.error) stateDrop(key);
+  if (!answer.r || 'error' in answer.r) stateDrop(key);
 }
 // after a plan: store what the worker holds as soon as it is idle (a job in flight comes first, a background one
 // excepted: the store waits behind it in the worker; a killed worker saves nothing). The store is a background job
@@ -224,7 +225,7 @@ export function engineSaveState() {
     try {
       await ready;
       const answer = await post<StateOutReply>({ cmd: 'state_out' }, undefined, undefined, true);
-      if (answer.r?.state) stateSave(stateKey(), answer.r.state);
+      if (!('error' in answer.r) && answer.r.state) stateSave(stateKey(), answer.r.state);
     } catch {
       /* the worker went: nothing to save */
     }
@@ -244,7 +245,7 @@ const gate = (job: SolverJob): SolverJob =>
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: career/plan/mod.rs `index_rule`) while it runs
 // R: the report the job's command makes (results.js LoopReport for `deck`, career.js CareerSearch for `career`)
-export function run<R extends SolverReply = SolverReply>(
+export function run<R extends SolverReport = SolverReport>(
   job: SolverJob,
   interim?: (answer: SolverAnswer<R>) => void,
   progress?: (progress: PlanProgress) => void,

@@ -352,9 +352,8 @@ const progText = ({ ph, k, n }) =>
  * the page never reads inside it).
  * @typedef {number[][]} PlanFit
  *
- * The career search's report (career/run.rs `search_output`), or its refusal (`error`).
+ * The career search's report (career/run.rs `search_output`); a refusal is a SolverRefusal (solver.ts).
  * @typedef {object} CareerSearch
- * @property {string} [error]
  * @property {CareerReport[]} results  the best careers, best first
  * @property {number} candidates  careers it weighed
  * @property {boolean} proven_top  the best odds' order is certified
@@ -699,13 +698,14 @@ function oneOutfit(t) {
   t.anyOutfit = f.any;
   t.outfitNote = outfitNote(f);
 }
-/** @type {(job: CareerJob, progress?: (p: import('./solver.ts').PlanProgress) => void, background?: boolean) => Promise<{r: CareerSearch, ms: number}>} */
+/** The solver's answer to a career job: its CareerSearch, or a refusal (`'error' in m.r`).
+ * @typedef {import('./solver.ts').SolverAnswer<CareerSearch>} CareerAnswer */
+/** @type {(job: CareerJob, progress?: (p: import('./solver.ts').PlanProgress) => void, background?: boolean) => Promise<CareerAnswer>} */
 export const runJob = async (job, progress, background = false) => {
   // (a career job: its report is a CareerSearch)
-  const m = /** @type {import('./solver.ts').SolverAnswer<CareerSearch>} */ (
-      await engineRun(job, undefined, progress, background)
-    ),
-    r = m.r || {};
+  const m = /** @type {CareerAnswer} */ (await engineRun(job, undefined, progress, background));
+  if ('error' in m.r) return m; // (a refusal: nothing to fill in)
+  const r = m.r;
   for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
   // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
   // taken again from `planKept` or `answers` says the same)
@@ -789,7 +789,7 @@ async function search() {
   try {
     const m = await runJob(job);
     if (id !== run.id) return;
-    if (m.r.error) fail(`Not searched: ${m.r.error}`);
+    if ('error' in m.r) fail(`Not searched: ${m.r.error}`);
     else {
       const found = searchedText(m),
         searched = searchStatus(m, found);

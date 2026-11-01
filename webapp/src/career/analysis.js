@@ -141,10 +141,10 @@ async function baselineFor(base) {
   const key = JSON.stringify(base),
     open = !shownNow.job.trainees.length && !shownNow.job.fix.length,
     cached = baselineCache?.key === key ? baselineCache.result : null;
-  /** @type {{results: CareerReport[], error?: string}} */
+  /** @type {{results: CareerReport[]} | import('../solver.ts').SolverRefusal} */
   const before = cached ? { results: [cached] } : open ? shownNow.r : (await runJob(base)).r;
-  if (before.error || !before.results?.length)
-    throw new Error(before.error || 'No career found in the current roster.');
+  if ('error' in before) throw new Error(before.error);
+  if (!before.results?.length) throw new Error('No career found in the current roster.');
   baselineCache = { key, result: before.results[0] };
   return before.results[0];
 }
@@ -273,8 +273,8 @@ async function quickCompare(request) {
     const m = await runJob({ ...request.job, next: { ...request.job.next, roll: request.stars } });
     if (gone()) return;
     // (no saving from the plan: the exact comparison answers instead)
-    const roll = m.r.next?.roll;
-    if (m.r.error || typeof roll?.y !== 'number') {
+    const roll = 'error' in m.r ? undefined : m.r.next?.roll;
+    if (typeof roll?.y !== 'number') {
       simulation.kind = null;
       runComparison();
       return;
@@ -318,7 +318,8 @@ async function quickCompare(request) {
   try {
     const m = await runJob({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
     if (gone()) return;
-    if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
+    if ('error' in m.r) throw new Error(m.r.error);
+    if (!m.r.results?.length) throw new Error('No next career found.');
     simulation.r = m.r;
   } catch (e) {
     if (gone()) return;
@@ -456,7 +457,8 @@ async function runComparison(refine = false) {
       herIndex = base.legacies.length;
     const m = await runJob({ ...base, fix: [herIndex], legacies: legaciesWithHer, top: 1, compare: true });
     if (gone()) return;
-    if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
+    if ('error' in m.r) throw new Error(m.r.error);
+    if (!m.r.results?.length) throw new Error('No next career found.');
     const full = isFull(simulation.draft);
     const planOf = (legacies) => ({
       ...base,
@@ -473,7 +475,7 @@ async function runComparison(refine = false) {
     if (!planNow) {
       const mb = await runJob(planOf(base.legacies));
       if (gone()) return;
-      planNow = mb.r.next || null;
+      planNow = ('error' in mb.r ? null : mb.r.next) || null;
     }
     // with her: her pool priced under today's plan's fit (`next.fit`, passed on as the plan wrote it), so the two Vs
     // differ only by what she changes, not by Cont fitted again to the pool with her (a refit moves V by hundreds of
@@ -484,7 +486,7 @@ async function runComparison(refine = false) {
       jobWithHer = fit ? { ...planOf(legaciesWithHer), next: { fit } } : planOf(legaciesWithHer),
       ma = await runJob(jobWithHer);
     if (gone()) return;
-    const planWithHer = ma.r.next || null;
+    const planWithHer = ('error' in ma.r ? null : ma.r.next) || null;
     if (!fit && planWithHer && !planWithHer.error) planKept = { key: planKey(jobWithHer), r: planWithHer, ms: ma.ms };
     engineSaveState();
     const careersToLoop = (next) => (next && next.v0 != null ? next.v0 : null); // careers to a fully looped parent with the pool as it is
